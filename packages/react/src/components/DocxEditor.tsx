@@ -200,6 +200,7 @@ import { useHyperlinkHandlers } from "./hooks/useHyperlinkHandlers";
 import { useImageHandlers } from "./hooks/useImageHandlers";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useZoomAndPageInfo } from "./hooks/useZoomAndPageInfo";
+import { useWheelZoom } from "../hooks/useWheelZoom";
 import { InlineHeaderFooterEditor } from "./InlineHeaderFooterEditor";
 import type { InlineHeaderFooterEditorRef } from "./InlineHeaderFooterEditor";
 import { detectActiveTrackedChange, detectImageContext } from "./selectionDetection";
@@ -415,6 +416,7 @@ export function DocxEditor({
   showMarginGuides: _showMarginGuides = false,
   marginGuideColor: _marginGuideColor,
   initialZoom = 1,
+  enableWheelZoom = true,
   readOnly: readOnlyProp = false,
   autoOpenReviewSidebar = true,
   components,
@@ -862,6 +864,19 @@ export function DocxEditor({
       pagedEditorRef,
       initialZoom,
     });
+
+  // Ctrl/Cmd+wheel and trackpad-pinch zoom. Controlled by DocxEditor's
+  // viewport-anchored zoom (a single source of truth): the hook reads the live
+  // value and emits the next one through setZoomWithViewportAnchor, so it never
+  // diverges from the toolbar control or the imperative setZoom. Keyboard
+  // shortcuts stay off here to avoid clashing with the editor's own Ctrl chords.
+  useWheelZoom({
+    containerRef: scrollContainerRef,
+    enabled: enableWheelZoom,
+    getCurrentZoom: () => zoomRef.current,
+    onZoomChange: setZoomWithViewportAnchor,
+    enableKeyboardShortcuts: false,
+  });
   const [bodyHistoryAvailability, setBodyHistoryAvailability] = useState({
     canRedo: false,
     canUndo: false,

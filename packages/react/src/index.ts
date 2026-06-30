@@ -18,6 +18,16 @@ export {
   insertTableInView,
   insertTableOfContentsInView,
 } from "@stll/folio-core/prosemirror";
+export { ZoomControl, type ZoomControlProps, type ZoomLevel } from "./components/ui/ZoomControl";
+export {
+  clampZoom,
+  formatZoom,
+  parseZoom,
+  useWheelZoom,
+  ZOOM_PRESETS,
+  type UseWheelZoomOptions,
+  type UseWheelZoomReturn,
+} from "./hooks/useWheelZoom";
 export {
   createEmptyDocument,
   type CreateEmptyDocumentOptions,

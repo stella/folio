@@ -175,12 +175,6 @@
   cursor: not-allowed;
 }
 
-.pg-zoom {
-  min-width: 3rem;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-
 .pg-sep {
   width: 1px;
   height: 1.25rem;

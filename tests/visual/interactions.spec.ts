@@ -210,14 +210,20 @@ test.describe("table", () => {
     expect(cols0).toBeGreaterThan(0);
 
     // Insert a row below -> row count grows.
-    await (await openTableCellMenu(page)).getByRole("menuitem", { name: "Insert row below" }).click();
+    await (
+      await openTableCellMenu(page)
+    )
+      .getByRole("menuitem", { name: "Insert row below" })
+      .click();
     await page.waitForTimeout(250);
     const rowsAfterInsert = await countNodes(page, "tableRow");
     expect(rowsAfterInsert).toBeGreaterThan(rows0);
 
     // Insert a column right -> the first row gains exactly one cell (a collapsed
     // caret must add a single column, uniformly, not one per existing column).
-    await (await openTableCellMenu(page))
+    await (
+      await openTableCellMenu(page)
+    )
       .getByRole("menuitem", { name: "Insert column right" })
       .click();
     await page.waitForTimeout(250);
@@ -283,9 +289,7 @@ test.describe("header/footer", () => {
   // Reads the header's hidden content editor (the `[data-hf-r-id]` ProseMirror
   // that backs the painted `.layout-page-header`).
   const headerContent = (page: Page) =>
-    page.evaluate(
-      () => document.querySelector("[data-hf-r-id] .ProseMirror")?.textContent ?? "",
-    );
+    page.evaluate(() => document.querySelector("[data-hf-r-id] .ProseMirror")?.textContent ?? "");
 
   // Text of every header in the *saved* document model. `getDocument()`
   // (buildCurrentDocument) flushes the persistent hidden header/footer views
@@ -293,9 +297,9 @@ test.describe("header/footer", () => {
   // serialise — the round-trip persistence path, independent of any UI commit.
   const savedHeaderText = (page: Page) =>
     page.evaluate(() => {
-      const doc = globalThis.__folioPlayground?.getEditorRef()?.getDocument() as
-        | { package?: { headers?: unknown } }
-        | null;
+      const doc = globalThis.__folioPlayground?.getEditorRef()?.getDocument() as {
+        package?: { headers?: unknown };
+      } | null;
       const collect = (node: unknown): string => {
         if (typeof node === "string") return node;
         if (node === null || typeof node !== "object") return "";
@@ -415,7 +419,8 @@ test.describe("zoom", () => {
   test("setZoom updates getZoom and scales the rendered page", async ({ page }) => {
     await mountFixture(page, "sample.docx");
 
-    const pageWidth = async () => (await page.locator(".layout-page").first().boundingBox())?.width ?? 0;
+    const pageWidth = async () =>
+      (await page.locator(".layout-page").first().boundingBox())?.width ?? 0;
 
     expect(await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom())).toBe(
       1,
@@ -433,13 +438,22 @@ test.describe("zoom", () => {
     expect(ratio).toBeLessThan(1.7);
   });
 
-  test("the playground zoom-in control drives the editor zoom", async ({ page }) => {
+  test("the in-toolbar zoom control changes the editor zoom", async ({ page }) => {
     await mountFixture(page, "sample.docx");
-    await page.getByRole("button", { name: "Zoom in" }).click();
-    await page.waitForTimeout(150);
-    const zoom = await page.evaluate(() =>
-      globalThis.__folioPlayground?.getEditorRef()?.getZoom(),
+
+    expect(await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom())).toBe(
+      1,
     );
-    expect(zoom).toBeGreaterThan(1);
+
+    // The toolbar zoom widget (a labelled "Zoom" group holding a Select) is the
+    // canonical zoom UI. Open it and pick 150%; the editor zoom must follow.
+    const zoomGroup = page.getByRole("group", { name: "Zoom" });
+    await zoomGroup.getByRole("combobox").click();
+    await page.getByRole("option", { name: "150%" }).click();
+    await page.waitForTimeout(200);
+
+    expect(await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom())).toBe(
+      1.5,
+    );
   });
 });
