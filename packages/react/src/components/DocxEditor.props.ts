@@ -150,6 +150,22 @@ export type DocxEditorProps = {
   showPrintButton?: boolean;
   /** Callback when print is triggered */
   onPrint?: () => void;
+  /**
+   * Insert controls are opt-in: each toolbar control renders only when its
+   * handler is provided (and, for tables, `showTableInsert` is not false). Omit
+   * a handler to keep that control out of the toolbar. Wire these to the
+   * view-level helpers exported from the package (`insertTableInView`,
+   * `insertPageBreakInView`, `insertTableOfContentsInView`, `insertImageFromFile`).
+   */
+  onInsertImage?: (() => void) | undefined;
+  /** Insert a `rows × columns` table at the current selection. */
+  onInsertTable?: ((rows: number, columns: number) => void) | undefined;
+  /** Whether the Insert Table control is shown when `onInsertTable` is set (default: true). */
+  showTableInsert?: boolean | undefined;
+  /** Insert a page break at the current selection. */
+  onInsertPageBreak?: (() => void) | undefined;
+  /** Insert a table of contents generated from the document's headings. */
+  onInsertTOC?: (() => void) | undefined;
   /** Callback when content is copied */
   onCopy?: () => void;
   /** Callback when content is cut */

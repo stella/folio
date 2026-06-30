@@ -159,3 +159,11 @@ export {
   generateTOC,
 } from "./commands";
 export type { TableContextInfo, BorderPreset, TableBorderPreset } from "./commands";
+
+// View-level insert helpers (image / table / page break / table of contents)
+export {
+  insertImageFromFile,
+  insertPageBreakInView,
+  insertTableInView,
+  insertTableOfContentsInView,
+} from "./insertOperations";

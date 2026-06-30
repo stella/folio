@@ -10,6 +10,14 @@ export type { ColorPreset, FolioButtonProps, FolioUIComponents, OutlineItem } fr
 // it in this provider to inject their own UI components.
 export { FolioUIProvider } from "./ui/folio-ui";
 export { FormattingBar, type FormattingBarProps } from "./components/FormattingBar";
+// View-level insert operations — consumers wire these into the toolbar's
+// `onInsert*` handlers (the Insert group renders only when a handler is passed).
+export {
+  insertImageFromFile,
+  insertPageBreakInView,
+  insertTableInView,
+  insertTableOfContentsInView,
+} from "@stll/folio-core/prosemirror";
 export {
   createEmptyDocument,
   type CreateEmptyDocumentOptions,

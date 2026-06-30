@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 
-import { DocxEditor, createEmptyDocument } from "@stll/folio-react";
+import {
+  DocxEditor,
+  createEmptyDocument,
+  insertImageFromFile,
+  insertPageBreakInView,
+  insertTableInView,
+  insertTableOfContentsInView,
+} from "@stll/folio-react";
 import type { Document as FolioDocument, DocxEditorRef, EditorMode } from "@stll/folio-react";
 
 const ZOOM_MIN = 0.25;
@@ -179,6 +186,44 @@ export function App() {
   const handleZoomOut = useCallback(() => applyZoom(zoom - ZOOM_STEP), [applyZoom, zoom]);
   const handleZoomReset = useCallback(() => applyZoom(ZOOM_INITIAL), [applyZoom]);
 
+  const handleInsertImage = useCallback(() => {
+    const view = editorRef.current?.getEditorRef()?.getView();
+    if (!view) {
+      return;
+    }
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (file) {
+        void insertImageFromFile(view, file, () => view.focus());
+      }
+    });
+    input.click();
+  }, []);
+
+  const handleInsertTable = useCallback((rows: number, columns: number) => {
+    const view = editorRef.current?.getEditorRef()?.getView();
+    if (view) {
+      insertTableInView(view, rows, columns);
+    }
+  }, []);
+
+  const handleInsertPageBreak = useCallback(() => {
+    const view = editorRef.current?.getEditorRef()?.getView();
+    if (view) {
+      insertPageBreakInView(view);
+    }
+  }, []);
+
+  const handleInsertTOC = useCallback(() => {
+    const view = editorRef.current?.getEditorRef()?.getView();
+    if (view) {
+      insertTableOfContentsInView(view);
+    }
+  }, []);
+
   const toggleDarkMode = useCallback(() => {
     document.documentElement.classList.toggle("dark");
   }, []);
@@ -207,6 +252,11 @@ export function App() {
           initialZoom={ZOOM_INITIAL}
           mode={editorMode}
           onModeChange={setEditorMode}
+          onInsertImage={handleInsertImage}
+          onInsertTable={handleInsertTable}
+          showTableInsert={true}
+          onInsertPageBreak={handleInsertPageBreak}
+          onInsertTOC={handleInsertTOC}
         />
       </main>
 
