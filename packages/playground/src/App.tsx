@@ -197,11 +197,11 @@ export function App() {
     input.addEventListener("change", () => {
       const file = input.files?.[0];
       if (file) {
-        void insertImageFromFile(view, file, () => view.focus());
+        insertImageFromFile(view, file, () => view.focus()).catch(handleError);
       }
     });
     input.click();
-  }, []);
+  }, [handleError]);
 
   const handleInsertTable = useCallback((rows: number, columns: number) => {
     const view = editorRef.current?.getEditorRef()?.getView();

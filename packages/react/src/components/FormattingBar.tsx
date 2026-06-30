@@ -606,6 +606,7 @@ export function FormattingBar(props: FormattingBarProps) {
                   disabled={disabled}
                   title={t("insertTable")}
                   ariaLabel={t("insertTable")}
+                  testId="toolbar-insert-table"
                 >
                   <TableIcon size={ICON_SIZE} />
                 </ToolbarButton>
