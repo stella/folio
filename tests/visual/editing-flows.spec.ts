@@ -67,31 +67,84 @@ function countNodes(page: Page, typeName: string): Promise<number> {
 
 type SelectionMarkState = {
   text: string;
+  /** Whether EVERY text node inside the selection carries the mark. */
   bold: boolean;
   italic: boolean;
   underline: boolean;
+  /** Whether the single character immediately before the selection has the mark. */
+  beforeBold: boolean;
+  beforeItalic: boolean;
+  beforeUnderline: boolean;
+  /** Whether the single character immediately after the selection has the mark. */
+  afterBold: boolean;
+  afterItalic: boolean;
+  afterUnderline: boolean;
 };
 
 /**
- * Marks carried by the live selection range. Reads `rangeHasMark` for each
- * formatting mark over the current `from..to`, plus the selected text so the
- * caller can prove the selection is the span it intended to format.
+ * Mark coverage around the live selection. For each formatting mark the
+ * `bold` / `italic` / `underline` fields report FULL coverage: every text node
+ * inside `from..to` must carry the mark, so a command that formatted only part
+ * of the selection (or none of it) fails the assertion. The `before*` / `after*`
+ * fields report the mark on the single adjacent character on each side, so a
+ * leak of formatting onto neighbouring text is caught too. The selected text is
+ * returned so the caller can prove the selection is the span it meant to format.
  */
 function selectionMarkState(page: Page): Promise<SelectionMarkState> {
   return page.evaluate(() => {
+    const empty = {
+      text: "",
+      bold: false,
+      italic: false,
+      underline: false,
+      beforeBold: false,
+      beforeItalic: false,
+      beforeUnderline: false,
+      afterBold: false,
+      afterItalic: false,
+      afterUnderline: false,
+    };
     const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
-    if (!view) return { text: "", bold: false, italic: false, underline: false };
+    if (!view) return empty;
     const { from, to } = view.state.selection;
     const { schema, doc } = view.state;
-    const hasMark = (name: string): boolean => {
+
+    // True only when the mark is present on EVERY text node touched by the
+    // selection — partial or absent coverage returns false.
+    const wholeSelectionHasMark = (name: string): boolean => {
       const type = schema.marks[name];
-      return type ? doc.rangeHasMark(from, to, type) : false;
+      if (!type) return false;
+      let sawText = false;
+      let covered = true;
+      doc.nodesBetween(from, to, (node) => {
+        if (node.isText) {
+          sawText = true;
+          if (!type.isInSet(node.marks)) covered = false;
+        }
+        return true;
+      });
+      return sawText && covered;
     };
+
+    // Whether the single character at [pos, pos + 1] carries the mark; used to
+    // confirm a toggle did not bleed onto the chars adjacent to the selection.
+    const charHasMark = (pos: number, name: string): boolean => {
+      const type = schema.marks[name];
+      if (!type || pos < 0 || pos + 1 > doc.content.size) return false;
+      return doc.rangeHasMark(pos, pos + 1, type);
+    };
+
     return {
       text: doc.textBetween(from, to),
-      bold: hasMark("bold"),
-      italic: hasMark("italic"),
-      underline: hasMark("underline"),
+      bold: wholeSelectionHasMark("bold"),
+      italic: wholeSelectionHasMark("italic"),
+      underline: wholeSelectionHasMark("underline"),
+      beforeBold: charHasMark(from - 1, "bold"),
+      beforeItalic: charHasMark(from - 1, "italic"),
+      beforeUnderline: charHasMark(from - 1, "underline"),
+      afterBold: charHasMark(to, "bold"),
+      afterItalic: charHasMark(to, "italic"),
+      afterUnderline: charHasMark(to, "underline"),
     };
   });
 }
@@ -173,9 +226,22 @@ test.describe("inline formatting", () => {
     await expect.poll(async () => (await selectionMarkState(page)).text).toBe(MARKER);
     const before = await selectionMarkState(page);
 
-    // Each shortcut flips ONLY its own mark; the other two are untouched. This
-    // proves the keymap wires Mod-b/i/u to the matching schema mark and applies
-    // it to the selection (not the whole document).
+    // The chars flanking the selection must keep their formatting through every
+    // toggle: a shortcut that bled onto adjacent text would change these. Held
+    // constant in each expectation below.
+    const neighbors = {
+      beforeBold: before.beforeBold,
+      beforeItalic: before.beforeItalic,
+      beforeUnderline: before.beforeUnderline,
+      afterBold: before.afterBold,
+      afterItalic: before.afterItalic,
+      afterUnderline: before.afterUnderline,
+    };
+
+    // Each shortcut flips ONLY its own mark across the WHOLE selection; the other
+    // two marks and both neighbours are untouched. This proves the keymap wires
+    // Mod-b/i/u to the matching schema mark and applies it to the full selection
+    // (not just one char, not the whole document, not the adjacent text).
     await page.keyboard.press(`${MOD}+b`);
     await expect
       .poll(() => selectionMarkState(page))
@@ -184,6 +250,7 @@ test.describe("inline formatting", () => {
         bold: !before.bold,
         italic: before.italic,
         underline: before.underline,
+        ...neighbors,
       });
     const afterBold = await selectionMarkState(page);
 
@@ -195,6 +262,7 @@ test.describe("inline formatting", () => {
         bold: afterBold.bold,
         italic: !afterBold.italic,
         underline: afterBold.underline,
+        ...neighbors,
       });
     const afterItalic = await selectionMarkState(page);
 
@@ -206,6 +274,7 @@ test.describe("inline formatting", () => {
         bold: afterItalic.bold,
         italic: afterItalic.italic,
         underline: !afterItalic.underline,
+        ...neighbors,
       });
     const afterUnderline = await selectionMarkState(page);
 
@@ -219,6 +288,7 @@ test.describe("inline formatting", () => {
         bold: before.bold,
         italic: afterUnderline.italic,
         underline: afterUnderline.underline,
+        ...neighbors,
       });
   });
 });
