@@ -147,12 +147,8 @@ function savedHfText(page: Page, slot: "headers" | "footers"): Promise<string> {
 async function openTableCellMenu(page: Page): Promise<Locator> {
   const cell = page.locator(".layout-table-cell").first();
   await cell.scrollIntoViewIfNeeded();
-  const box = await cell.boundingBox();
-  if (!box) throw new Error("no painted table cell");
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await page.mouse.click(cx, cy);
-  await page.mouse.click(cx, cy, { button: "right" });
+  await cell.click();
+  await cell.click({ button: "right" });
   const menu = page.locator('[role="menu"][aria-label="Text editing menu"]');
   await menu.waitFor({ state: "visible", timeout: 5000 });
   return menu;
@@ -174,43 +170,56 @@ test.describe("inline formatting", () => {
     for (let i = 0; i < MARKER.length; i += 1) {
       await page.keyboard.press("Shift+ArrowLeft");
     }
-    await page.waitForTimeout(150);
-
+    await expect.poll(async () => (await selectionMarkState(page)).text).toBe(MARKER);
     const before = await selectionMarkState(page);
-    expect(before.text).toBe(MARKER);
 
     // Each shortcut flips ONLY its own mark; the other two are untouched. This
     // proves the keymap wires Mod-b/i/u to the matching schema mark and applies
     // it to the selection (not the whole document).
     await page.keyboard.press(`${MOD}+b`);
-    await page.waitForTimeout(120);
+    await expect
+      .poll(() => selectionMarkState(page))
+      .toEqual({
+        text: MARKER,
+        bold: !before.bold,
+        italic: before.italic,
+        underline: before.underline,
+      });
     const afterBold = await selectionMarkState(page);
-    expect(afterBold.bold).toBe(!before.bold);
-    expect(afterBold.italic).toBe(before.italic);
-    expect(afterBold.underline).toBe(before.underline);
 
     await page.keyboard.press(`${MOD}+i`);
-    await page.waitForTimeout(120);
+    await expect
+      .poll(() => selectionMarkState(page))
+      .toEqual({
+        text: MARKER,
+        bold: afterBold.bold,
+        italic: !afterBold.italic,
+        underline: afterBold.underline,
+      });
     const afterItalic = await selectionMarkState(page);
-    expect(afterItalic.italic).toBe(!afterBold.italic);
-    expect(afterItalic.bold).toBe(afterBold.bold);
-    expect(afterItalic.underline).toBe(afterBold.underline);
 
     await page.keyboard.press(`${MOD}+u`);
-    await page.waitForTimeout(120);
+    await expect
+      .poll(() => selectionMarkState(page))
+      .toEqual({
+        text: MARKER,
+        bold: afterItalic.bold,
+        italic: afterItalic.italic,
+        underline: !afterItalic.underline,
+      });
     const afterUnderline = await selectionMarkState(page);
-    expect(afterUnderline.underline).toBe(!afterItalic.underline);
-    expect(afterUnderline.bold).toBe(afterItalic.bold);
-    expect(afterUnderline.italic).toBe(afterItalic.italic);
 
     // Toggling bold a second time removes only bold; italic + underline persist,
     // confirming the three marks are independent on the same range.
     await page.keyboard.press(`${MOD}+b`);
-    await page.waitForTimeout(120);
-    const afterUnbold = await selectionMarkState(page);
-    expect(afterUnbold.bold).toBe(before.bold);
-    expect(afterUnbold.italic).toBe(afterUnderline.italic);
-    expect(afterUnbold.underline).toBe(afterUnderline.underline);
+    await expect
+      .poll(() => selectionMarkState(page))
+      .toEqual({
+        text: MARKER,
+        bold: before.bold,
+        italic: afterUnderline.italic,
+        underline: afterUnderline.underline,
+      });
   });
 });
 
@@ -255,18 +264,15 @@ test.describe("lists", () => {
 
     // Bullet list applies numbering id 1 to the caret paragraph.
     await page.getByRole("button", { name: "Bullet List" }).click();
-    await page.waitForTimeout(150);
-    expect(await caretParagraphNumId(page)).toBe(1);
+    await expect.poll(() => caretParagraphNumId(page)).toBe(1);
 
     // Switching to a numbered list moves it to a distinct numbering id (2).
     await page.getByRole("button", { name: "Numbered List" }).click();
-    await page.waitForTimeout(150);
-    expect(await caretParagraphNumId(page)).toBe(2);
+    await expect.poll(() => caretParagraphNumId(page)).toBe(2);
 
     // Clicking the already-active numbered-list button clears list formatting.
     await page.getByRole("button", { name: "Numbered List" }).click();
-    await page.waitForTimeout(150);
-    expect(await caretParagraphNumId(page)).toBeNull();
+    await expect.poll(() => caretParagraphNumId(page)).toBeNull();
   });
 });
 
@@ -277,20 +283,15 @@ test.describe("table", () => {
     const rows0 = await countNodes(page, "tableRow");
     expect(rows0).toBeGreaterThan(0);
 
-    await (
-      await openTableCellMenu(page)
-    )
-      .getByRole("menuitem", { name: "Insert row below" })
-      .click();
-    await page.waitForTimeout(250);
-    expect(await countNodes(page, "tableRow")).toBeGreaterThan(rows0);
+    const menu = await openTableCellMenu(page);
+    await menu.getByRole("menuitem", { name: "Insert row below" }).click();
+    await expect.poll(() => countNodes(page, "tableRow")).toBeGreaterThan(rows0);
 
     // Re-place the caret in the table body so the history shortcut targets the
     // body view, then ONE undo must restore the original row count: a structural
     // insert participates in history as a single revertible step.
     await page.locator(".layout-table-cell").first().click();
     await page.keyboard.press(`${MOD}+z`);
-    await page.waitForTimeout(250);
-    expect(await countNodes(page, "tableRow")).toBe(rows0);
+    await expect.poll(() => countNodes(page, "tableRow")).toBe(rows0);
   });
 });
