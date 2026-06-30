@@ -255,6 +255,28 @@ test.describe("insert toolbar", () => {
     // A new table node appears in the live ProseMirror document.
     expect(await countNodes(page, "table")).toBe(tablesBefore + 1);
   });
+
+  test("activating an insert control by keyboard refocuses the editor for typing", async ({
+    page,
+  }) => {
+    await mountFixture(page, "sample.docx");
+    await page.locator(".layout-paragraph").first().click();
+
+    // Move focus to the button and activate it with the keyboard (not a click):
+    // mouse clicks refocus via the bar's mouse-up handler, but keyboard
+    // activation must refocus the editor itself, or typing is swallowed by the
+    // still-focused toolbar button.
+    const insertTable = page.locator('[data-testid="toolbar-insert-table"]');
+    await insertTable.focus();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(250);
+
+    // The caret is back in the document, so typed text lands in the model
+    // rather than being dropped on the focused button.
+    await page.keyboard.type("Zqx", { delay: 15 });
+    await page.waitForTimeout(150);
+    expect(await docText(page)).toContain("Zqx");
+  });
 });
 
 test.describe("header/footer", () => {
