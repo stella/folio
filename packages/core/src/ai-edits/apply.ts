@@ -723,6 +723,19 @@ const applyTextReplacement = ({
   );
 
   if (mode === "direct") {
+    // Partial-block replacement carrying inline emphasis: rebuild the matched
+    // range as real bold/italic runs instead of stripping the markers to plain
+    // text. Full-block replaceBlock in direct mode is intercepted earlier and
+    // never reaches here with emphasis; the tracked-changes path below still
+    // strips, since its word-diff redline can't carry inline marks.
+    if (item.operation.type === "replaceInBlock" && hasInlineEmphasis(item.operation.replace)) {
+      const content = buildEmphasisInlineContent(
+        nextTr.doc.type.schema,
+        item.operation.replace,
+        commentMark ? [commentMark] : [],
+      );
+      return nextTr.replaceWith(item.from, item.to, content);
+    }
     nextTr = nextTr.insertText(replacement, item.from, item.to);
     if (commentMark && replacement.length > 0) {
       nextTr = nextTr.addMark(item.from, item.from + replacement.length, commentMark);
