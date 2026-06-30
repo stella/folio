@@ -15,10 +15,14 @@ import {
   BaselineIcon,
   BoldIcon,
   ChevronDownIcon,
+  ImageIcon,
   ItalicIcon,
   MoreHorizontalIcon,
   PilcrowIcon,
   Redo2Icon,
+  SeparatorHorizontalIcon,
+  TableIcon,
+  TableOfContentsIcon,
   UnderlineIcon,
   Undo2Icon,
 } from "lucide-react";
@@ -39,6 +43,10 @@ import { StylePicker } from "./ui/StylePicker";
 
 const ICON_SIZE = 16;
 const INLINE_SECONDARY_CONTROLS_MIN_WIDTH = 760;
+
+/** Default grid the Insert Table button requests (the toolbar has no size picker). */
+const DEFAULT_TABLE_ROWS = 2;
+const DEFAULT_TABLE_COLUMNS = 2;
 
 /** Document color presets — hex values for OOXML compatibility. */
 const DOCUMENT_COLOR_PRESETS: ColorPreset[] = [
@@ -96,6 +104,11 @@ export function FormattingBar(props: FormattingBarProps) {
     documentStyles,
     theme,
     onRefocusEditor,
+    onInsertImage,
+    onInsertTable,
+    showTableInsert = true,
+    onInsertPageBreak,
+    onInsertTOC,
     priorityExtra,
     inlineExtra,
     stylePickerLabel,
@@ -216,6 +229,16 @@ export function FormattingBar(props: FormattingBarProps) {
     },
     [disabled, onFormat, onRefocusEditor],
   );
+
+  const handleInsertTable = useCallback(() => {
+    if (!disabled) {
+      onInsertTable?.(DEFAULT_TABLE_ROWS, DEFAULT_TABLE_COLUMNS);
+    }
+  }, [disabled, onInsertTable]);
+
+  const showTableButton = showTableInsert && Boolean(onInsertTable);
+  const hasInsertControls =
+    Boolean(onInsertImage) || showTableButton || Boolean(onInsertPageBreak) || Boolean(onInsertTOC);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -560,6 +583,56 @@ export function FormattingBar(props: FormattingBarProps) {
             <UnderlineIcon size={ICON_SIZE} />
           </ToolbarButton>
         </ToolbarGroup>
+
+        {/* Insert group — each control is opt-in: it renders only when its
+            handler (and flag, for tables) is provided by the consumer. */}
+        {hasInsertControls && (
+          <>
+            <ToolbarSeparator />
+            <ToolbarGroup label={t("insertGroup")}>
+              {onInsertImage && (
+                <ToolbarButton
+                  onClick={onInsertImage}
+                  disabled={disabled}
+                  title={t("insertImage")}
+                  ariaLabel={t("insertImage")}
+                >
+                  <ImageIcon size={ICON_SIZE} />
+                </ToolbarButton>
+              )}
+              {showTableButton && (
+                <ToolbarButton
+                  onClick={handleInsertTable}
+                  disabled={disabled}
+                  title={t("insertTable")}
+                  ariaLabel={t("insertTable")}
+                >
+                  <TableIcon size={ICON_SIZE} />
+                </ToolbarButton>
+              )}
+              {onInsertPageBreak && (
+                <ToolbarButton
+                  onClick={onInsertPageBreak}
+                  disabled={disabled}
+                  title={t("insertPageBreak")}
+                  ariaLabel={t("insertPageBreak")}
+                >
+                  <SeparatorHorizontalIcon size={ICON_SIZE} />
+                </ToolbarButton>
+              )}
+              {onInsertTOC && (
+                <ToolbarButton
+                  onClick={onInsertTOC}
+                  disabled={disabled}
+                  title={t("insertTableOfContents")}
+                  ariaLabel={t("insertTableOfContents")}
+                >
+                  <TableOfContentsIcon size={ICON_SIZE} />
+                </ToolbarButton>
+              )}
+            </ToolbarGroup>
+          </>
+        )}
 
         {showSecondaryInline ? (
           <>

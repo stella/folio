@@ -428,6 +428,11 @@ export function DocxEditor({
   onScrollTopChange,
   showOutline: showOutlineProp = true,
   onPrint,
+  onInsertImage,
+  onInsertTable,
+  showTableInsert = true,
+  onInsertPageBreak,
+  onInsertTOC,
   onCopy: _onCopy,
   onCut: _onCut,
   onPaste: _onPaste,
@@ -3131,6 +3136,11 @@ export function DocxEditor({
                       onImageTransform={handleImageTransform}
                       onOpenImageProperties={handleOpenImageProperties}
                       onTableAction={handleTableAction}
+                      onInsertImage={onInsertImage}
+                      onInsertTable={onInsertTable}
+                      showTableInsert={showTableInsert}
+                      onInsertPageBreak={onInsertPageBreak}
+                      onInsertTOC={onInsertTOC}
                       priorityExtra={toolbarPriorityExtra}
                       inlineExtra={toolbarInlineExtra}
                       {...(history.state.package.styles?.styles
