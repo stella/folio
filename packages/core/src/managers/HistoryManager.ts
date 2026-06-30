@@ -111,12 +111,13 @@ export class HistoryManager<T> extends Subscribable<HistorySnapshot<T>> {
     const timeSinceLastPush = now - this.lastPushTime;
 
     if (timeSinceLastPush < this.groupingInterval && this.undoStack.length > 0) {
-      // Fold this change into the most recent entry, keeping the state from
-      // before the grouped run.
+      // Fold this change into the most recent entry, keeping its stored state
+      // (the state from before the grouped run) so a later undo restores to the
+      // start of the group, not just one push back.
       const last = this.undoStack.at(-1);
       const desc = description || last?.description;
       this.undoStack[this.undoStack.length - 1] = {
-        state: this.currentState,
+        state: last?.state ?? this.currentState,
         timestamp: now,
         ...(desc !== undefined ? { description: desc } : {}),
       };

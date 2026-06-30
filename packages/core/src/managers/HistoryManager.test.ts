@@ -53,18 +53,18 @@ describe("HistoryManager", () => {
     expect(manager.redo()).toBeUndefined();
   });
 
-  test("groups rapid pushes into a single undo entry", () => {
+  test("groups rapid pushes into one undo entry; undo restores to the group start", () => {
     // A wide window groups every push that lands within it.
     const manager = new HistoryManager<number>(0, { groupingInterval: 10_000 });
     manager.push(1);
     manager.push(2);
     manager.push(3);
 
-    // Grouping keeps a single entry but advances its stored boundary to the
-    // state before the most recent push (faithfully ported from the original
-    // useHistory grouping), so a single undo steps back one push.
+    // The rapid run collapses to a single undo entry that keeps the state from
+    // before the group, so one undo steps back past the whole group (1,2,3 -> 0),
+    // not just the last push.
     expect(manager.getSnapshot().undoCount).toBe(1);
-    expect(manager.undo()).toBe(2);
+    expect(manager.undo()).toBe(0);
   });
 
   test("caps the undo stack at maxEntries", () => {
