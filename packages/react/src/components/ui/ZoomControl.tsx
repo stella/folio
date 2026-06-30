@@ -68,10 +68,13 @@ export function ZoomControl({
 
   const matchingLevel = levels.find((level) => Math.abs(level.value - value) < 0.001);
   const displayLabel = matchingLevel ? matchingLevel.label : `${Math.round(value * 100)}%`;
+  // Use the matched preset's exact string so the active item highlights even
+  // when `value` is a near-preset float (e.g. 0.9999 from continuous zoom).
+  const selectValue = matchingLevel ? matchingLevel.value.toString() : value.toString();
 
   return (
     <Select
-      value={value.toString()}
+      value={selectValue}
       onValueChange={(newValue) => {
         if (typeof newValue !== "string") {
           return;

@@ -94,6 +94,13 @@ const DEFAULT_MAX_ZOOM = 4;
 const DEFAULT_ZOOM_STEP = 0.1;
 
 /**
+ * Per-event zoom sensitivity for Ctrl/Cmd+wheel and trackpad pinch. Multiplies
+ * deltaY inside an exponential so zoom scales continuously: small pinch deltas
+ * nudge gently while a coarse mouse-wheel notch still moves a perceptible amount.
+ */
+const WHEEL_ZOOM_SENSITIVITY = 0.003;
+
+/**
  * Preset zoom levels for snapping
  */
 export const ZOOM_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
@@ -207,7 +214,11 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
         return;
       }
       // Controlled mode does not own state; the external owner re-renders us.
+      // Uncontrolled mode mirrors the new value into the ref synchronously (like
+      // DocxEditor's controlled path) so a fast second delta in the same tick
+      // composes from the fresh value, not the still-stale pre-render state.
       if (!getCurrentZoom) {
+        zoomRef.current = clampedZoom;
         setZoomState(clampedZoom);
       }
       onZoomChange?.(clampedZoom);
@@ -276,20 +287,17 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
         event.preventDefault();
       }
 
-      // Determine zoom direction
-      // deltaY > 0 means scrolling down (zoom out)
-      // deltaY < 0 means scrolling up (zoom in)
+      // Scale by a continuous factor proportional to deltaY rather than a fixed
+      // step. Trackpad pinch arrives as a stream of small-deltaY ctrlKey wheel
+      // events; a discrete step per event would slam between min and max. The
+      // exponential keeps zoom multiplicative (symmetric in/out) and smooth for
+      // both pinch and discrete mouse-wheel notches. deltaY < 0 = zoom in.
       const delta = event.deltaY;
-
-      if (delta < 0) {
-        // Scroll up = zoom in
-        setZoom(readZoom() + zoomStep);
-      } else if (delta > 0) {
-        // Scroll down = zoom out
-        setZoom(readZoom() - zoomStep);
+      if (delta !== 0) {
+        setZoom(readZoom() * Math.exp(-delta * WHEEL_ZOOM_SENSITIVITY));
       }
     },
-    [enabled, preventDefault, zoomStep, setZoom, readZoom],
+    [enabled, preventDefault, setZoom, readZoom],
   );
 
   /**
@@ -330,11 +338,12 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
     [enabled, enableKeyboardShortcuts, zoomIn, zoomOut, zoomTo100],
   );
 
-  // Attach wheel listener to container. Read `.current` in render scope so the
-  // effect re-runs when the container mounts on a later render (it starts null
-  // until the document loads), mirroring useZoomAndPageInfo's scroll listener.
-  const container = containerRef?.current ?? null;
+  // Attach wheel listener to container. Read `.current` inside the effect (it
+  // runs after the DOM is mutated, so the ref is populated by then); handleWheel
+  // is rebuilt on render, so the effect re-runs and picks up the container once
+  // it mounts on a later render (it starts null until the document loads).
   useEffect(() => {
+    const container = containerRef?.current;
     if (!enabled || !container) {
       return;
     }
@@ -345,7 +354,7 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
     return () => {
       container.removeEventListener("wheel", handleWheel);
     };
-  }, [enabled, container, handleWheel]);
+  }, [enabled, containerRef, handleWheel]);
 
   // Attach keyboard listener
   useEffect(() => {
