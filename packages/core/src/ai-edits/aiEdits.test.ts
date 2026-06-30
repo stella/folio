@@ -1411,6 +1411,46 @@ describe("Folio AI edit operations", () => {
     expect(text).not.toContain("*");
   });
 
+  test("replaceInBlock **bold** becomes a real bold run mid-block (direct mode)", () => {
+    const state = makeState(["Effective Date: TBD."]);
+    const snapshot = createFolioAIEditSnapshot(state.doc);
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "op-1",
+          type: "replaceInBlock",
+          blockId: snapshot.blocks[0]?.id ?? "",
+          find: "Date:",
+          replace: "**Date:**",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    const block = view.state.doc.child(0);
+    expect(block.textContent).toBe("Effective Date: TBD.");
+    expect(block.textContent).not.toContain("*");
+    const runs: { text: string; marks: string[] }[] = [];
+    block.descendants((node) => {
+      if (node.isText) {
+        runs.push({
+          text: node.text ?? "",
+          marks: node.marks.map((m) => m.type.name),
+        });
+      }
+    });
+    expect(runs).toEqual([
+      { text: "Effective ", marks: [] },
+      { text: "Date:", marks: ["bold"] },
+      { text: " TBD.", marks: [] },
+    ]);
+  });
+
   test("page-break-only inserts are skipped in tracked-changes mode", () => {
     const view = makeView(makeState(["Anchor block."]));
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
