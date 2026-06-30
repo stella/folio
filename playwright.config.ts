@@ -23,7 +23,7 @@ export default defineConfig({
   // `--project=interactions` so cross-machine font rendering can't make it
   // flaky; the screenshot baselines stay a local/manual concern.
   projects: [
-    { name: "interactions", testMatch: /interactions\.spec\.ts/u },
+    { name: "interactions", testMatch: /(?:interactions|editing-flows)\.spec\.ts/u },
     { name: "rendering", testMatch: /rendering\.spec\.ts/u },
     { name: "performance", testMatch: /editing-performance\.spec\.ts/u },
   ],
