@@ -230,11 +230,36 @@ export function FormattingBar(props: FormattingBarProps) {
     [disabled, onFormat, onRefocusEditor],
   );
 
-  const handleInsertTable = useCallback(() => {
-    if (!disabled) {
-      onInsertTable?.(DEFAULT_TABLE_ROWS, DEFAULT_TABLE_COLUMNS);
+  // After an insert, return focus to the editor so the caret lands in the new
+  // content. Mouse clicks refocus via the bar's mouse-up handler, but keyboard
+  // activation (Tab + Enter/Space) does not, so each insert refocuses itself.
+  const handleInsertImage = useCallback(() => {
+    if (!disabled && onInsertImage) {
+      onInsertImage();
+      requestAnimationFrame(() => onRefocusEditor?.());
     }
-  }, [disabled, onInsertTable]);
+  }, [disabled, onInsertImage, onRefocusEditor]);
+
+  const handleInsertTable = useCallback(() => {
+    if (!disabled && onInsertTable) {
+      onInsertTable(DEFAULT_TABLE_ROWS, DEFAULT_TABLE_COLUMNS);
+      requestAnimationFrame(() => onRefocusEditor?.());
+    }
+  }, [disabled, onInsertTable, onRefocusEditor]);
+
+  const handleInsertPageBreak = useCallback(() => {
+    if (!disabled && onInsertPageBreak) {
+      onInsertPageBreak();
+      requestAnimationFrame(() => onRefocusEditor?.());
+    }
+  }, [disabled, onInsertPageBreak, onRefocusEditor]);
+
+  const handleInsertTOC = useCallback(() => {
+    if (!disabled && onInsertTOC) {
+      onInsertTOC();
+      requestAnimationFrame(() => onRefocusEditor?.());
+    }
+  }, [disabled, onInsertTOC, onRefocusEditor]);
 
   const showTableButton = showTableInsert && Boolean(onInsertTable);
   const hasInsertControls =
@@ -592,7 +617,7 @@ export function FormattingBar(props: FormattingBarProps) {
             <ToolbarGroup label={t("insertGroup")}>
               {onInsertImage && (
                 <ToolbarButton
-                  onClick={onInsertImage}
+                  onClick={handleInsertImage}
                   disabled={disabled}
                   title={t("insertImage")}
                   ariaLabel={t("insertImage")}
@@ -613,7 +638,7 @@ export function FormattingBar(props: FormattingBarProps) {
               )}
               {onInsertPageBreak && (
                 <ToolbarButton
-                  onClick={onInsertPageBreak}
+                  onClick={handleInsertPageBreak}
                   disabled={disabled}
                   title={t("insertPageBreak")}
                   ariaLabel={t("insertPageBreak")}
@@ -623,7 +648,7 @@ export function FormattingBar(props: FormattingBarProps) {
               )}
               {onInsertTOC && (
                 <ToolbarButton
-                  onClick={onInsertTOC}
+                  onClick={handleInsertTOC}
                   disabled={disabled}
                   title={t("insertTableOfContents")}
                   ariaLabel={t("insertTableOfContents")}
