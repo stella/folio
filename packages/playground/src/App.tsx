@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import { IntlProvider } from "use-intl";
 
 import {
   DocxEditor,
@@ -10,8 +11,20 @@ import {
   insertTableOfContentsInView,
 } from "@stll/folio-react";
 import type { Document as FolioDocument, DocxEditorRef, EditorMode } from "@stll/folio-react";
+import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
 const ZOOM_INITIAL = 1;
+const DEFAULT_LOCALE = "en";
+// Only Arabic in the bundled set needs RTL; flip the shell so the editor chrome
+// (built on logical CSS properties) mirrors.
+const RTL_LOCALES = new Set<string>(["ar"]);
+
+const languageLabel = (locale: string): string => {
+  const name = new Intl.DisplayNames([locale], { type: "language" }).of(
+    new Intl.Locale(locale).language,
+  );
+  return name ? `${name} (${locale})` : locale;
+};
 
 declare global {
   // Test hook: visual + interaction specs read live editor state through this.
@@ -65,6 +78,7 @@ export function App() {
   const [fileName, setFileName] = useState("Untitled.docx");
   const [status, setStatus] = useState("");
   const [editorMode, setEditorMode] = useState<EditorMode>("editing");
+  const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
 
   // Load fixture from ?file= query param (visual + interaction tests) or
   // generate a body from ?paragraphs= (performance tests).
@@ -223,80 +237,102 @@ export function App() {
   }, []);
 
   return (
-    <div className="pg-shell">
-      <main className="pg-editor-area">
-        <DocxEditor
-          ref={editorRef}
-          document={documentBuffer ? null : currentDocument}
-          documentBuffer={documentBuffer}
-          author="Folio User"
-          onError={handleError}
-          showToolbar={true}
-          initialZoom={ZOOM_INITIAL}
-          mode={editorMode}
-          onModeChange={setEditorMode}
-          onInsertImage={handleInsertImage}
-          onInsertTable={handleInsertTable}
-          showTableInsert={true}
-          onInsertPageBreak={handleInsertPageBreak}
-          onInsertTOC={handleInsertTOC}
-        />
-      </main>
+    <IntlProvider
+      locale={locale}
+      messages={getFolioMessages(locale)}
+      timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+    >
+      <div className="pg-shell" dir={RTL_LOCALES.has(locale) ? "rtl" : "ltr"}>
+        <main className="pg-editor-area">
+          <DocxEditor
+            ref={editorRef}
+            document={documentBuffer ? null : currentDocument}
+            documentBuffer={documentBuffer}
+            author="Folio User"
+            onError={handleError}
+            showToolbar={true}
+            initialZoom={ZOOM_INITIAL}
+            mode={editorMode}
+            onModeChange={setEditorMode}
+            onInsertImage={handleInsertImage}
+            onInsertTable={handleInsertTable}
+            showTableInsert={true}
+            onInsertPageBreak={handleInsertPageBreak}
+            onInsertTOC={handleInsertTOC}
+          />
+        </main>
 
-      <div className="pg-controls" data-testid="playground-controls">
-        <button
-          type="button"
-          className="pg-button"
-          aria-pressed={trackChangesOn}
-          onClick={() => setEditorMode(trackChangesOn ? "editing" : "suggesting")}
-        >
-          {trackChangesOn ? "Tracking" : "Track Changes"}
-        </button>
-        <button
-          type="button"
-          className="pg-button"
-          aria-pressed={editorMode === "viewing"}
-          onClick={() => setEditorMode(editorMode === "viewing" ? "editing" : "viewing")}
-        >
-          View Only
-        </button>
+        <div className="pg-controls" data-testid="playground-controls">
+          <button
+            type="button"
+            className="pg-button"
+            aria-pressed={trackChangesOn}
+            onClick={() => setEditorMode(trackChangesOn ? "editing" : "suggesting")}
+          >
+            {trackChangesOn ? "Tracking" : "Track Changes"}
+          </button>
+          <button
+            type="button"
+            className="pg-button"
+            aria-pressed={editorMode === "viewing"}
+            onClick={() => setEditorMode(editorMode === "viewing" ? "editing" : "viewing")}
+          >
+            View Only
+          </button>
 
-        <span className="pg-sep" aria-hidden="true" />
+          <span className="pg-sep" aria-hidden="true" />
 
-        <button type="button" className="pg-button" onClick={handleOpenDocument}>
-          Open
-        </button>
-        <input
-          ref={fileInputRef}
-          aria-label="Open .docx file"
-          id="file-input"
-          type="file"
-          accept=".docx"
-          onChange={(e) => void handleFileSelect(e)}
-          className="pg-visually-hidden"
-        />
-        <button type="button" className="pg-button" onClick={handleNewDocument}>
-          New
-        </button>
-        <button type="button" className="pg-button" onClick={() => void handleSave()}>
-          Save
-        </button>
+          <button type="button" className="pg-button" onClick={handleOpenDocument}>
+            Open
+          </button>
+          <input
+            ref={fileInputRef}
+            aria-label="Open .docx file"
+            id="file-input"
+            type="file"
+            accept=".docx"
+            onChange={(e) => void handleFileSelect(e)}
+            className="pg-visually-hidden"
+          />
+          <button type="button" className="pg-button" onClick={handleNewDocument}>
+            New
+          </button>
+          <button type="button" className="pg-button" onClick={() => void handleSave()}>
+            Save
+          </button>
 
-        <span className="pg-sep" aria-hidden="true" />
+          <span className="pg-sep" aria-hidden="true" />
 
-        <button
-          type="button"
-          className="pg-button"
-          onClick={toggleDarkMode}
-          aria-label="Toggle theme"
-          title="Toggle theme"
-        >
-          ◐
-        </button>
+          <button
+            type="button"
+            className="pg-button"
+            onClick={toggleDarkMode}
+            aria-label="Toggle theme"
+            title="Toggle theme"
+          >
+            ◐
+          </button>
 
-        {status && <span className="pg-status">{status}</span>}
-        <span className="pg-filename">{fileName}</span>
+          <span className="pg-sep" aria-hidden="true" />
+
+          <select
+            data-testid="language-select"
+            aria-label="Editor language"
+            className="pg-button"
+            value={locale}
+            onChange={(event) => setLocale(event.currentTarget.value)}
+          >
+            {FOLIO_LOCALES.map((loc) => (
+              <option key={loc} value={loc}>
+                {languageLabel(loc)}
+              </option>
+            ))}
+          </select>
+
+          {status && <span className="pg-status">{status}</span>}
+          <span className="pg-filename">{fileName}</span>
+        </div>
       </div>
-    </div>
+    </IntlProvider>
   );
 }

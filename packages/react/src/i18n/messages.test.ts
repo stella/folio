@@ -1,0 +1,127 @@
+import { describe, expect, test } from "bun:test";
+
+import { FOLIO_LOCALES, getFolioMessages, isFolioLocale } from "./messages";
+
+// Keys folio added after the translated catalogs were captured; non-English
+// locales intentionally fall back to the English string until translated. Keep
+// this list in sync with the catalog generator so the fallback stays explicit
+// rather than silently masking a missing translation.
+const ENGLISH_FALLBACK_KEYS = [
+  "insertGroup",
+  "insertImage",
+  "insertPageBreak",
+  "insertTable",
+  "insertTableOfContents",
+  "zoomGroup",
+] as const;
+
+const flatten = (obj: Record<string, unknown>, prefix = ""): Map<string, string> => {
+  const out = new Map<string, string>();
+  for (const [key, value] of Object.entries(obj)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === "string") {
+      out.set(path, value);
+      continue;
+    }
+    if (value && typeof value === "object") {
+      for (const [k, v] of flatten(value as Record<string, unknown>, path)) {
+        out.set(k, v);
+      }
+    }
+  }
+  return out;
+};
+
+const folioOf = (locale: string): Map<string, string> =>
+  flatten(getFolioMessages(locale).folio as Record<string, unknown>);
+
+const englishKeys = folioOf("en");
+
+describe("getFolioMessages", () => {
+  test("ships exactly the 13 documented locales", () => {
+    expect([...FOLIO_LOCALES]).toEqual([
+      "en",
+      "de",
+      "fr",
+      "es",
+      "cs",
+      "ar",
+      "et",
+      "hu",
+      "lt",
+      "lv",
+      "pl",
+      "pt-BR",
+      "sk",
+    ]);
+    expect(new Set(FOLIO_LOCALES).size).toBe(FOLIO_LOCALES.length);
+  });
+
+  test("isFolioLocale narrows to bundled locales only", () => {
+    expect(isFolioLocale("de")).toBe(true);
+    expect(isFolioLocale("pt-BR")).toBe(true);
+    expect(isFolioLocale("xx")).toBe(false);
+    expect(isFolioLocale("en-US")).toBe(false);
+  });
+
+  test("falls back to English for an unbundled locale", () => {
+    expect(getFolioMessages("xx")).toBe(getFolioMessages("en"));
+  });
+
+  test("English is 100% complete (every key present and non-empty)", () => {
+    expect(englishKeys.size).toBeGreaterThan(0);
+    for (const [key, value] of englishKeys) {
+      expect(value.length, `folio.${key} must be a non-empty English string`).toBeGreaterThan(0);
+    }
+  });
+
+  test("every locale has the exact same key set as English (no missing/extra keys)", () => {
+    const expected = [...englishKeys.keys()].sort();
+    for (const locale of FOLIO_LOCALES) {
+      const actual = [...folioOf(locale).keys()].sort();
+      expect(actual, `locale ${locale} key set`).toEqual(expected);
+    }
+  });
+
+  test("no translated value is empty in any locale", () => {
+    for (const locale of FOLIO_LOCALES) {
+      for (const [key, value] of folioOf(locale)) {
+        expect(value.length, `${locale}: folio.${key} is empty`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test("a toolbar label renders translated, not the English source, in non-English locales", () => {
+    // `folio.bold` is a stable toolbar aria-label (FormattingBar).
+    expect(folioOf("de").get("bold")).toBe("Fett");
+    expect(folioOf("cs").get("bold")).toBe("Tučné");
+    expect(folioOf("ar").get("bold")).toBe("عريض");
+    expect(folioOf("ar").get("bold")).toMatch(/\p{Script=Arabic}/u);
+
+    const english = englishKeys.get("bold");
+    for (const locale of FOLIO_LOCALES) {
+      if (locale === "en") {
+        continue;
+      }
+      expect(folioOf(locale).get("bold"), `${locale} should translate folio.bold`).not.toBe(
+        english,
+      );
+    }
+  });
+
+  test("the common date-picker label is folded into folio.* and translated", () => {
+    expect(folioOf("en").get("clearDate")).toBe("Clear date");
+    expect(folioOf("de").get("clearDate")).toBe("Datum löschen");
+    expect(folioOf("ar").get("clearDate")).toMatch(/\p{Script=Arabic}/u);
+  });
+
+  test("the post-extraction keys fall back to the English string (flagged for translation)", () => {
+    for (const key of ENGLISH_FALLBACK_KEYS) {
+      const english = englishKeys.get(key);
+      expect(english, `folio.${key} must exist in English`).toBeDefined();
+      for (const locale of FOLIO_LOCALES) {
+        expect(folioOf(locale).get(key), `${locale}: folio.${key} fallback`).toBe(english);
+      }
+    }
+  });
+});
