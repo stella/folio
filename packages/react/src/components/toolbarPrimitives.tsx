@@ -209,6 +209,11 @@ export type ToolbarButtonProps = {
   className?: string | undefined;
   /** ARIA label for accessibility */
   ariaLabel?: string | undefined;
+  /**
+   * Explicit, locale-independent `data-testid`. Overrides the value derived
+   * from the (localized) label so tests can target the button by a stable id.
+   */
+  testId?: string | undefined;
 };
 
 /**
@@ -239,8 +244,11 @@ export function ToolbarButton({
   children,
   className,
   ariaLabel,
+  testId,
 }: ToolbarButtonProps) {
-  const testId = toToolbarTestId(ariaLabel) || toToolbarTestId(title, { stripParentheses: true });
+  const derivedTestId =
+    toToolbarTestId(ariaLabel) || toToolbarTestId(title, { stripParentheses: true });
+  const resolvedTestId = testId ?? (derivedTestId ? `toolbar-${derivedTestId}` : undefined);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -265,7 +273,7 @@ export function ToolbarButton({
       disabled={disabled}
       aria-pressed={active}
       aria-label={ariaLabel || title}
-      data-testid={testId ? `toolbar-${testId}` : undefined}
+      data-testid={resolvedTestId}
     >
       {children}
     </button>
