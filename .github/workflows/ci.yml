@@ -39,3 +39,27 @@ jobs:
 
       - name: Validate dist
         run: bun run validate-dist
+
+  interactions:
+    name: Interaction e2e (playground)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      # Behaviour specs only (assert document content + editor state). The
+      # screenshot baselines (rendering.spec) and perf budgets
+      # (editing-performance.spec) are env-specific, so they are not run here;
+      # the `interactions` Playwright project starts the playground dev server
+      # via the config's webServer.
+      - name: Run interaction specs
+        run: bun run test:interactions
+

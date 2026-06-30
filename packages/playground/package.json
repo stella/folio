@@ -1,0 +1,28 @@
+{
+  "name": "@stll/playground",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Internal dev + visual-test harness that mounts @stll/folio-react. Not published.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsgo --noEmit",
+    "format": "oxfmt ."
+  },
+  "dependencies": {
+    "@stll/folio-react": "workspace:*",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "use-intl": "^4.13.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "tailwindcss": "4.3.1",
+    "vite": "8.0.16"
+  }
+}

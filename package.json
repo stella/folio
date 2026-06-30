@@ -31,6 +31,7 @@
     "validate-dist:core": "bun scripts/validate-dist.ts core",
     "validate-dist:react": "bun scripts/validate-dist.ts react",
     "test:visual": "bunx playwright test",
+    "test:interactions": "bunx playwright test --project=interactions",
     "test:visual:update": "bunx playwright test --update-snapshots",
     "test:visual:report": "bunx playwright show-report"
   },

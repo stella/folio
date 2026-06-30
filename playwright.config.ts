@@ -18,11 +18,20 @@ export default defineConfig({
     deviceScaleFactor: 2,
     colorScheme: "light",
   },
-  // Start playground dev server automatically
+  // Projects split the behaviour specs (env-independent: assert content + editor
+  // state) from the screenshot baselines (env-specific). CI runs only
+  // `--project=interactions` so cross-machine font rendering can't make it
+  // flaky; the screenshot baselines stay a local/manual concern.
+  projects: [
+    { name: "interactions", testMatch: /interactions\.spec\.ts/u },
+    { name: "rendering", testMatch: /rendering\.spec\.ts/u },
+    { name: "performance", testMatch: /editing-performance\.spec\.ts/u },
+  ],
+  // Start the playground dev server automatically (reused if already running).
   webServer: {
     command: "bun --filter @stll/playground dev",
     url: "http://localhost:4200",
     reuseExistingServer: true,
-    cwd: "../..",
+    timeout: 120_000,
   },
 });
