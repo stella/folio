@@ -9,7 +9,7 @@
  * `pushDocument` routing, and reading the live hidden HF PM doc at save time.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { EditorView } from "prosemirror-view";
 
@@ -109,10 +109,21 @@ export const useHeaderFooterEditor = ({
   // Resolved header/footer content
   // -------------------------------------------------------------------------
 
-  const resolution = useMemo(
+  const rawResolution = useMemo(
     () => resolveHeaderFooterContent(history.state?.package),
     [history.state],
   );
+  // `history.state` is transiently null while the document buffer is parsed and
+  // during relayout. Falling through to the empty resolution on those renders
+  // blanks the active H/F rIds, which breaks edit focus (getActiveView returns
+  // null, so typing lands in the body) and flickers the rendered chrome. Hold
+  // the last resolved structure and reuse it until a real document state
+  // arrives again.
+  const lastResolution = useRef(rawResolution);
+  if (history.state?.package) {
+    lastResolution.current = rawResolution;
+  }
+  const resolution = history.state?.package ? rawResolution : lastResolution.current;
   const {
     headerContent,
     footerContent,

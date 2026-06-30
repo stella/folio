@@ -148,7 +148,11 @@ export function InlineHeaderFooterEditor({
         view.focus();
       }
       attempts++;
-      if (attempts < MAX_FOCUS_ATTEMPTS && !view?.hasFocus()) {
+      // Keep watching for the whole window, not just until the first successful
+      // focus: entering edit mode triggers a relayout/repaint that can clear or
+      // steal focus *after* it first lands, so re-focus on any frame where the
+      // HF view has lost it.
+      if (attempts < MAX_FOCUS_ATTEMPTS) {
         rafId = requestAnimationFrame(tryFocus);
       }
     };

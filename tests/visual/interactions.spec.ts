@@ -294,6 +294,62 @@ test.describe("header/footer", () => {
     expect(await savedHeaderText(page)).toContain("HdrMark");
   });
 
+  test("double-clicking an image-only header still routes edits into the header", async ({
+    page,
+  }) => {
+    await mountFixture(page, "podily-bps.docx");
+
+    const header = page.locator(".layout-page-header").first();
+    await header.scrollIntoViewIfNeeded();
+
+    // This first-page header holds only a floating logo image plus an empty
+    // paragraph — there is no body-flow text under the cursor. A double-click in
+    // the header band must still enter header edit mode AND land the caret in the
+    // header content editor, rather than falling through to the body (the nearest
+    // editable text). Regression guard for the title-page / image-only header.
+    await header.dblclick();
+    await page.locator(".hf-inline-editor").waitFor({ state: "visible", timeout: 5000 });
+
+    // Pause before typing: a real user does not type instantly, so focus must
+    // stay in the header view past the brief entry-focus window, not snap back
+    // to the body once the window elapses.
+    await page.waitForTimeout(1200);
+    await page.keyboard.type("HdrMark", { delay: 15 });
+    await page.waitForTimeout(150);
+
+    const result = await page.evaluate(() => {
+      const top = (
+        globalThis as unknown as {
+          __folioPlayground: {
+            getEditorRef: () => {
+              getDocument?: () => { package?: { headers?: unknown } };
+              getEditorRef: () => {
+                getView?: () => { state: { doc: { textContent: string } } } | null;
+              };
+            };
+          };
+        }
+      ).__folioPlayground.getEditorRef();
+      const headers = top.getDocument?.()?.package?.headers;
+      const modelJson = JSON.stringify(
+        headers instanceof Map ? [...headers.values()] : (headers ?? {}),
+      );
+      return {
+        painted:
+          document.querySelector('[data-page-number="1"] .layout-page-header')?.textContent ?? "",
+        modelHasEdit: modelJson.includes("HdrMark"),
+        body: top.getEditorRef().getView?.()?.state.doc.textContent ?? "",
+      };
+    });
+
+    // The edit is visible in the painted header (the user sees what they type)...
+    expect(result.painted).toContain("HdrMark");
+    // ...is persisted into the saved document model (survives save)...
+    expect(result.modelHasEdit).toBe(true);
+    // ...and never leaks into the body (the nearest editable text).
+    expect(result.body).not.toContain("HdrMark");
+  });
+
   // NOTE: the *UI* save-on-body-click / save-on-exit commit path is not driven
   // here. While the inline header overlay is open the painted body paragraph is
   // not hittable, so a synthetic body click times out (a Playwright limitation,
