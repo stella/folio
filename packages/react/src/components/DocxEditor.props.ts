@@ -118,6 +118,8 @@ export type DocxEditorProps = {
   marginGuideColor?: string;
   /** Initial zoom level (default: 1.0) */
   initialZoom?: number;
+  /** Whether Ctrl/Cmd+wheel and trackpad-pinch zoom are enabled (default: true) */
+  enableWheelZoom?: boolean;
   /** Whether the editor is read-only. When true, hides toolbar and rulers */
   readOnly?: boolean;
   /** Whether comments/tracked changes should auto-open the review sidebar (default: true) */

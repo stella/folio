@@ -36,6 +36,7 @@ import { FontPicker } from "./ui/FontPicker";
 import { FontSizePicker } from "./ui/FontSizePicker";
 import { ListButtons, createDefaultListState } from "./ui/ListButtons";
 import { StylePicker } from "./ui/StylePicker";
+import { ZoomControl } from "./ui/ZoomControl";
 
 const ICON_SIZE = 16;
 const INLINE_SECONDARY_CONTROLS_MIN_WIDTH = 760;
@@ -93,6 +94,9 @@ export function FormattingBar(props: FormattingBarProps) {
     showTextColorPicker = true,
     showAlignmentButtons = true,
     showListButtons = true,
+    showZoomControl,
+    zoom,
+    onZoomChange,
     documentStyles,
     theme,
     onRefocusEditor,
@@ -592,8 +596,15 @@ export function FormattingBar(props: FormattingBarProps) {
         )}
       </div>
 
-      {/* Host extras (track changes, etc.) */}
-      <div className="ms-auto flex shrink-0 items-center gap-1">{children}</div>
+      {/* Host extras (zoom, track changes, etc.) */}
+      <div className="ms-auto flex shrink-0 items-center gap-1">
+        {showZoomControl !== false && zoom !== undefined && onZoomChange !== undefined && (
+          <ToolbarGroup label={t("zoomGroup")}>
+            <ZoomControl value={zoom} onChange={onZoomChange} disabled={disabled} compact />
+          </ToolbarGroup>
+        )}
+        {children}
+      </div>
     </div>
   );
 }

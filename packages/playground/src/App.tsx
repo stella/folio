@@ -4,14 +4,7 @@ import type { ChangeEvent } from "react";
 import { DocxEditor, createEmptyDocument } from "@stll/folio-react";
 import type { Document as FolioDocument, DocxEditorRef, EditorMode } from "@stll/folio-react";
 
-const ZOOM_MIN = 0.25;
-const ZOOM_MAX = 2;
-const ZOOM_STEP = 0.1;
 const ZOOM_INITIAL = 1;
-
-function clampZoom(zoom: number): number {
-  return Math.min(Math.max(zoom, ZOOM_MIN), ZOOM_MAX);
-}
 
 declare global {
   // Test hook: visual + interaction specs read live editor state through this.
@@ -65,7 +58,6 @@ export function App() {
   const [fileName, setFileName] = useState("Untitled.docx");
   const [status, setStatus] = useState("");
   const [editorMode, setEditorMode] = useState<EditorMode>("editing");
-  const [zoom, setZoom] = useState(ZOOM_INITIAL);
 
   // Load fixture from ?file= query param (visual + interaction tests) or
   // generate a body from ?paragraphs= (performance tests).
@@ -170,15 +162,6 @@ export function App() {
     setStatus(`Error: ${error.message}`);
   }, []);
 
-  const applyZoom = useCallback((next: number) => {
-    const clamped = clampZoom(next);
-    setZoom(clamped);
-    editorRef.current?.setZoom(clamped);
-  }, []);
-  const handleZoomIn = useCallback(() => applyZoom(zoom + ZOOM_STEP), [applyZoom, zoom]);
-  const handleZoomOut = useCallback(() => applyZoom(zoom - ZOOM_STEP), [applyZoom, zoom]);
-  const handleZoomReset = useCallback(() => applyZoom(ZOOM_INITIAL), [applyZoom]);
-
   const toggleDarkMode = useCallback(() => {
     document.documentElement.classList.toggle("dark");
   }, []);
@@ -247,37 +230,6 @@ export function App() {
         </button>
         <button type="button" className="pg-button" onClick={() => void handleSave()}>
           Save
-        </button>
-
-        <span className="pg-sep" aria-hidden="true" />
-
-        <button
-          type="button"
-          className="pg-button"
-          onClick={handleZoomOut}
-          disabled={zoom <= ZOOM_MIN}
-          aria-label="Zoom out"
-          title="Zoom out"
-        >
-          −
-        </button>
-        <button
-          type="button"
-          className="pg-button pg-zoom"
-          onClick={handleZoomReset}
-          title="Reset zoom"
-        >
-          {Math.round(zoom * 100)}%
-        </button>
-        <button
-          type="button"
-          className="pg-button"
-          onClick={handleZoomIn}
-          disabled={zoom >= ZOOM_MAX}
-          aria-label="Zoom in"
-          title="Zoom in"
-        >
-          +
         </button>
 
         <span className="pg-sep" aria-hidden="true" />

@@ -10,6 +10,16 @@ export type { ColorPreset, FolioButtonProps, FolioUIComponents, OutlineItem } fr
 // it in this provider to inject their own UI components.
 export { FolioUIProvider } from "./ui/folio-ui";
 export { FormattingBar, type FormattingBarProps } from "./components/FormattingBar";
+export { ZoomControl, type ZoomControlProps, type ZoomLevel } from "./components/ui/ZoomControl";
+export {
+  clampZoom,
+  formatZoom,
+  parseZoom,
+  useWheelZoom,
+  ZOOM_PRESETS,
+  type UseWheelZoomOptions,
+  type UseWheelZoomReturn,
+} from "./hooks/useWheelZoom";
 export {
   createEmptyDocument,
   type CreateEmptyDocumentOptions,
