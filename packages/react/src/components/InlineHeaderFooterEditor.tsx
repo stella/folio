@@ -126,26 +126,29 @@ export function InlineHeaderFooterEditor({
     };
   }, [targetElement, parentElement]);
 
-  // Focus the persistent HF PM when the chrome mounts so typing starts
-  // immediately after double-click. The HF view may not exist yet at
-  // mount: HiddenHeaderFooterPMs creates views inside a useEffect, and
-  // for freshly-created HF parts (empty header on a doc that had none),
-  // the chrome and the view-creation effect can land in either order.
-  // Retry across a short rAF window so focus lands as soon as the view
-  // is available; bail after MAX_FOCUS_ATTEMPTS frames to avoid leaking
-  // a rAF loop in pathological cases.
+  // Latest getActiveView, read through a ref so the focus loop below is never
+  // stuck on a stale mount-time closure if the active HF view resolves later.
+  const getActiveViewRef = useRef(getActiveView);
+  getActiveViewRef.current = getActiveView;
+
+  // Move focus into the persistent HF view when the chrome mounts so typing
+  // starts immediately after double-click. A single focus() is unreliable: the
+  // HF view may not exist yet at mount (HiddenHeaderFooterPMs creates views in
+  // its own effect), AND entering edit mode triggers a relayout/repaint that
+  // re-grabs focus for the body PM — so a one-shot focus() gets stolen back and
+  // typing lands in the body. Keep nudging focus into the HF view across a short
+  // rAF window until it actually holds focus (or the window ends).
   useEffect(() => {
-    const MAX_FOCUS_ATTEMPTS = 10;
+    const MAX_FOCUS_ATTEMPTS = 30;
     let attempts = 0;
     let rafId: number | null = null;
     const tryFocus = () => {
-      const view = getActiveView();
-      if (view) {
+      const view = getActiveViewRef.current();
+      if (view && !view.hasFocus()) {
         view.focus();
-        return;
       }
       attempts++;
-      if (attempts < MAX_FOCUS_ATTEMPTS) {
+      if (attempts < MAX_FOCUS_ATTEMPTS && !view?.hasFocus()) {
         rafId = requestAnimationFrame(tryFocus);
       }
     };
@@ -155,7 +158,7 @@ export function InlineHeaderFooterEditor({
         cancelAnimationFrame(rafId);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- getActiveView is a closure over parent state; focus must fire only on mount, not re-steal focus on every parent re-render
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- focus must fire only on mount; the view is read through a ref to avoid a stale closure
   }, []);
 
   const handleClose = useCallback(() => {
