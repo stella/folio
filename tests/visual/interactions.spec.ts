@@ -413,4 +413,29 @@ test.describe("zoom", () => {
       1.5,
     );
   });
+
+  test("Ctrl/Cmd+wheel pinch zooms in smoothly without slamming to the max", async ({ page }) => {
+    await mountFixture(page, "sample.docx");
+    expect(await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom())).toBe(
+      1,
+    );
+
+    // Simulate a trackpad pinch-in: a burst of small-deltaY ctrlKey wheel events
+    // over the scroll container. The continuous factor must nudge zoom up gently
+    // (proving the listener attached past the container's late mount), not jump
+    // it toward the max the way a discrete per-event step would.
+    await page.evaluate(() => {
+      const el = document.querySelector("[data-folio-scroll]");
+      for (let i = 0; i < 20; i += 1) {
+        el?.dispatchEvent(
+          new WheelEvent("wheel", { deltaY: -4, ctrlKey: true, bubbles: true, cancelable: true }),
+        );
+      }
+    });
+    await page.waitForTimeout(200);
+
+    const zoom = await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.getZoom());
+    expect(zoom).toBeGreaterThan(1);
+    expect(zoom).toBeLessThan(1.6);
+  });
 });
