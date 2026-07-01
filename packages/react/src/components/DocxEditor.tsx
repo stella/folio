@@ -40,7 +40,6 @@ import { applyFolioAIEditOperations, createFolioAIEditSnapshot } from "@stll/fol
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
-import { getPageSize } from "@stll/folio-core/paged-layout/sectionGeometry";
 // ProseMirror editor
 import {
   TextSelection,
@@ -3177,14 +3176,6 @@ export function DocxEditor({
 
   const imagePropertiesCurrentData = buildImagePropertiesData(state.pmImageContext);
 
-  // Mirror PagedEditor's centered-viewport width so the vertical ruler can share
-  // the page's horizontal centering offset (see scaledViewportStyle in PagedEditor).
-  const scaledViewportWidth = Math.max(
-    1,
-    getPageSize(effectiveSectionProperties ?? null).w * zoom +
-      (showCommentsSidebar ? COMMENTS_SIDEBAR_SCROLL_GUTTER : 0),
-  );
-
   return (
     <FolioUIProvider components={components}>
       <ErrorProvider>
@@ -3301,7 +3292,6 @@ export function DocxEditor({
                         indentRight={state.paragraphIndentRight}
                         onIndentLeftChange={handleIndentLeftChange}
                         onIndentRightChange={handleIndentRightChange}
-                        showFirstLineIndent={!readOnly}
                         firstLineIndent={state.paragraphFirstLineIndent}
                         hangingIndent={state.paragraphHangingIndent}
                         onFirstLineIndentChange={handleFirstLineIndentChange}
@@ -3334,16 +3324,17 @@ export function DocxEditor({
                       })}
                       onContextMenu={handleEditorContextMenu}
                     >
-                      {/* Vertical ruler — shares the centered page's horizontal
-                          offset so its margin handles line up with the document
-                          on viewports wider than the page. paddingTop tracks the
-                          viewport's scaled top padding so the ruler's zero aligns
-                          with the first page's top edge across zoom levels. */}
+                      {/* Vertical ruler — sits at the editor content's left edge
+                          (left:0), in the far-left gutter clear of the centered
+                          page; it deliberately does not track page-centering, per
+                          the word-processor gutter convention. paddingTop keeps the
+                          ruler's zero aligned with the first page's top edge across
+                          zoom levels. */}
                       {rulerVisible && !readOnly && (
                         <div
                           style={{
                             position: "absolute",
-                            left: `max(0px, calc((100% - ${String(scaledViewportWidth)}px) / 2))`,
+                            left: 0,
                             top: 0,
                             zIndex: 20,
                             paddingTop: VIEWPORT_PADDING_TOP * zoom,
