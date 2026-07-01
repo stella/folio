@@ -1,0 +1,49 @@
+name: Nightly Property Tests
+
+on:
+  schedule:
+    # 05:17 UTC daily, offset from the top of the hour to avoid the scheduler's
+    # peak-minute contention.
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      factor:
+        description: "numRuns multiplier (overrides the default nightly factor)"
+        required: false
+        default: "10"
+
+permissions: {}
+
+jobs:
+  property-test:
+    name: Property tests (nightly budget)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      # persist-credentials: false — this job can be manually dispatched on any
+      # branch ref, so the checkout token must not linger in the git config for
+      # branch-controlled steps to reuse.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      # Run only the property tests, in isolation, with a larger per-test budget
+      # than PR CI affords. Each package's test:property selects every test file
+      # that uses fc.assert (by content, so a file need not be named
+      # *.property.test.ts to be covered). `propertyConfig` from
+      # test/property-testing.ts reads PROPERTY_TEST_NUM_RUNS_FACTOR to scale
+      # every property's numRuns; verbose reporting is on under CI so a failing
+      # run logs the full list of shrunk values plus the replay seed.
+      - name: Property test suite
+        run: bun run test:property
+        env:
+          PROPERTY_TEST_NUM_RUNS_FACTOR: ${{ github.event.inputs.factor || '10' }}

@@ -31,10 +31,18 @@ const paraIdArb = fc.stringMatching(/^[A-Z]{3}[0-9]{4}$/u).map((id) => id.toUppe
 
 const paraTextArb = fc.stringMatching(/^[A-Za-z0-9 ]{1,40}$/u);
 
-type Para = { id: string; text: string };
+type RunMark = "b" | "i" | "u";
+
+type Para = { id: string; text: string; marks: RunMark[]; list: boolean };
+
+// Emphasis and list numbering the patcher must carry through untouched. `<w:pPr>`
+// and `<w:rPr>` both start with the bytes `<w:p`/`<w:r`, so they exercise the
+// paragraph-counter and offset scanner's guards against mistaking a property
+// element for a real `<w:p>`/`<w:r>` boundary.
+const marksArb = fc.subarray(["b", "i", "u"] as RunMark[], { minLength: 0, maxLength: 3 });
 
 const paragraphsArb: fc.Arbitrary<Para[]> = fc.uniqueArray(
-  fc.record({ id: paraIdArb, text: paraTextArb }),
+  fc.record({ id: paraIdArb, text: paraTextArb, marks: marksArb, list: fc.boolean() }),
   {
     selector: (p) => p.id,
     minLength: 2,
@@ -42,8 +50,23 @@ const paragraphsArb: fc.Arbitrary<Para[]> = fc.uniqueArray(
   },
 );
 
+function renderRunProps(marks: RunMark[]): string {
+  if (marks.length === 0) {
+    return "";
+  }
+  const tags = marks.map((m) => (m === "u" ? '<w:u w:val="single"/>' : `<w:${m}/>`)).join("");
+  return `<w:rPr>${tags}</w:rPr>`;
+}
+
+function renderParaProps(list: boolean): string {
+  if (!list) {
+    return "";
+  }
+  return '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>';
+}
+
 function renderParagraph(p: Para): string {
-  return `<w:p w14:paraId="${p.id}"><w:r><w:t>${p.text}</w:t></w:r></w:p>`;
+  return `<w:p w14:paraId="${p.id}">${renderParaProps(p.list)}<w:r>${renderRunProps(p.marks)}<w:t>${p.text}</w:t></w:r></w:p>`;
 }
 
 function renderDoc(paras: Para[]): string {
