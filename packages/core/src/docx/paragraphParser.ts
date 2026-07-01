@@ -1130,8 +1130,9 @@ function parseHyperlink(
   styles: StyleMap | null,
   theme: Theme | null,
   media: Map<string, MediaFile> | null,
+  rootXmlns: Record<string, string> = {},
 ): Hyperlink {
-  return parseHyperlinkFromModule(node, rels, styles, theme, media);
+  return parseHyperlinkFromModule(node, rels, styles, theme, media, rootXmlns);
 }
 
 /**
@@ -1389,7 +1390,7 @@ function parseParagraphContents(
       }
 
       case "hyperlink":
-        contents.push(parseHyperlink(child, rels, styles, theme, media));
+        contents.push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns));
         break;
 
       case "bookmarkStart":
@@ -1421,6 +1422,12 @@ function parseParagraphContents(
         const sdtEndPr = findChild(child, "w", "sdtEndPr");
         const sdtContentEl = findChild(child, "w", "sdtContent");
         if (sdtContentEl) {
+          // Accumulate the `w:sdt` wrapper's own xmlns before recursing; a
+          // non-canonical prefix scoped on the `w:sdt` element (not just its
+          // `w:sdtContent`) must reach a captured VML `w:pict` inside the
+          // content control. The recursion merges `w:sdtContent`'s own xmlns on
+          // top of this.
+          const sdtInScopeXmlns = mergeXmlnsDeclarations(inScopeXmlns, child);
           const sdtParsed = parseParagraphContents(
             sdtContentEl,
             styles,
@@ -1429,7 +1436,7 @@ function parseParagraphContents(
             rels,
             media,
             trackedContext,
-            inScopeXmlns,
+            sdtInScopeXmlns,
           );
           const properties = parseSdtProperties(sdtPr, sdtEndPr);
           pushInlineSdtSegments({

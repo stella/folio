@@ -27,7 +27,12 @@ import type {
 import { sanitizeExternalUrl, sanitizeLinkTarget } from "../utils/urlSecurity";
 import { parseRun } from "./runParser";
 import type { StyleMap } from "./styleParser";
-import { getAttribute, getChildElements, parseNumericAttribute } from "./xmlParser";
+import {
+  getAttribute,
+  getChildElements,
+  mergeXmlnsDeclarations,
+  parseNumericAttribute,
+} from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 // ============================================================================
@@ -105,6 +110,7 @@ export function parseHyperlink(
   styles: StyleMap | null = null,
   theme: Theme | null = null,
   media: Map<string, MediaFile> | null = null,
+  rootXmlns: Record<string, string> = {},
 ): Hyperlink {
   const hyperlink: Hyperlink = {
     type: "hyperlink",
@@ -170,14 +176,18 @@ export function parseHyperlink(
   }
 
   // === Parse Children ===
-  // Hyperlinks contain runs for the display text, and possibly bookmarks
+  // Hyperlinks contain runs for the display text, and possibly bookmarks.
+  // Accumulate the hyperlink's own xmlns onto the inherited set so a captured
+  // VML `w:pict` inside a run resolves a non-canonical prefix scoped on the
+  // `w:hyperlink` wrapper itself.
+  const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
   const children = getChildElements(node);
   for (const child of children) {
     const localName = getLocalName(child.name);
 
     switch (localName) {
       case "r":
-        hyperlink.children.push(parseRun(child, styles, theme, rels, media));
+        hyperlink.children.push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
         break;
 
       case "bookmarkStart":

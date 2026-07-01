@@ -89,7 +89,105 @@ function firstDrawing(block: Paragraph | Table | undefined): DrawingContent | un
   return run?.content.find((c): c is DrawingContent => c.type === "drawing");
 }
 
+/** First drawing carried by a run nested inside the paragraph's first hyperlink. */
+function firstDrawingInHyperlink(block: Paragraph | Table | undefined): DrawingContent | undefined {
+  if (block?.type !== "paragraph") {
+    return undefined;
+  }
+  const hyperlink = block.content.find((c) => c.type === "hyperlink");
+  if (hyperlink?.type !== "hyperlink") {
+    return undefined;
+  }
+  for (const child of hyperlink.children) {
+    if (child.type !== "run") {
+      continue;
+    }
+    const drawing = child.content.find((c): c is DrawingContent => c.type === "drawing");
+    if (drawing) {
+      return drawing;
+    }
+  }
+  return undefined;
+}
+
+/** First drawing carried by a run nested inside the paragraph's first inline SDT. */
+function firstDrawingInInlineSdt(block: Paragraph | Table | undefined): DrawingContent | undefined {
+  if (block?.type !== "paragraph") {
+    return undefined;
+  }
+  const sdt = block.content.find((c) => c.type === "inlineSdt");
+  if (sdt?.type !== "inlineSdt") {
+    return undefined;
+  }
+  for (const child of sdt.content) {
+    if (child.type !== "run") {
+      continue;
+    }
+    const drawing = child.content.find((c): c is DrawingContent => c.type === "drawing");
+    if (drawing) {
+      return drawing;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Build a DOCX whose document root declares only the `w` namespace plus a single
+ * image relationship (`rIdImg`). The caller supplies the `<w:body>` inner XML so
+ * a test can scope non-canonical VML / relationship prefixes on whichever
+ * wrapper element (`w:hyperlink`, inline `w:sdt`, …) it is exercising.
+ */
+async function bodyScopedPictDocx(bodyInnerXml: string): Promise<ArrayBuffer> {
+  const zip = new JSZip();
+  zip.file(
+    "[Content_Types].xml",
+    `${XML}
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+  );
+  zip.file(
+    "_rels/.rels",
+    `${XML}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
+</Relationships>`,
+  );
+  zip.file(
+    "word/_rels/document.xml.rels",
+    `${XML}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
+</Relationships>`,
+  );
+  zip.file(
+    "word/document.xml",
+    `${XML}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    ${bodyInnerXml}
+    <w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>
+  </w:body>
+</w:document>`,
+  );
+  zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
+  zip.file(
+    "word/styles.xml",
+    `${XML}
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
+  );
+  return zip.generateAsync({ type: "arraybuffer" });
+}
+
 const PICT_WITH_IMAGE = `<w:pict><v:shape id="Picture 1" type="#_x0000_t75" style="width:2in;height:1in"><v:imagedata r:id="rIdImg" o:title="logo"/></v:shape></w:pict>`;
+
+// A VML shape/imagedata whose prefixes (`v2`, `r2`) are declared on an ancestor
+// wrapper rather than the document root; used to prove the in-scope xmlns set
+// accumulates through that wrapper before the captured pict is emitted.
+const PICT_WITH_ALT_PREFIXES = `<w:pict><v2:shape style="width:2in;height:1in"><v2:imagedata r2:id="rIdImg"/></v2:shape></w:pict>`;
 
 describe("VML w:pict inline images", () => {
   test("parses a w:pict into a drawing/image node with style dimensions + resolved media", async () => {
@@ -550,5 +648,67 @@ describe("VML w:pict inline images", () => {
     expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
     expect(docXml).toContain("<v2:shape");
     expect(docXml).toContain('r2:id="rIdImg"');
+  });
+
+  test("captures xmlns declarations scoped on a w:hyperlink wrapping a w:pict", async () => {
+    // The non-canonical VML / relationship prefixes are bound on the
+    // <w:hyperlink>, so the in-scope set must accumulate through the hyperlink
+    // wrapper into its child run before the captured pict is emitted.
+    const original = await bodyScopedPictDocx(
+      `<w:p><w:hyperlink w:anchor="section1" xmlns:v2="urn:schemas-microsoft-com:vml" xmlns:r2="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:r>${PICT_WITH_ALT_PREFIXES}</w:r></w:hyperlink></w:p>`,
+    );
+
+    const doc = await parseDocx(original, { preloadFonts: false });
+    const drawing = firstDrawingInHyperlink(doc.package.document.content.at(0));
+    expect(drawing?.image.rId).toBe("rIdImg");
+    expect(drawing?.image.src?.startsWith("data:image/png")).toBe(true);
+    expect(drawing?.image.size.width).toBe(1_828_800);
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    expect((await validateDocx(out)).valid).toBe(true);
+
+    const outZip = await JSZip.loadAsync(out);
+    const docXml = await outZip.file("word/document.xml")!.async("text");
+    // The hyperlink-scoped bindings are carried onto the captured pict.
+    expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
+    expect(docXml).toContain("<v2:shape");
+    expect(docXml).toContain('r2:id="rIdImg"');
+
+    // Re-parsing the saved output still resolves the picture (lossless).
+    const reparsed = await parseDocx(out, { preloadFonts: false });
+    const reDrawing = firstDrawingInHyperlink(reparsed.package.document.content.at(0));
+    expect(reDrawing?.image.rId).toBe("rIdImg");
+    expect(reDrawing?.image.src?.startsWith("data:image/png")).toBe(true);
+  });
+
+  test("captures xmlns declarations scoped on an inline w:sdt wrapping a w:pict", async () => {
+    // The non-canonical prefixes are bound on the <w:sdt> element itself (not on
+    // its <w:sdtContent>), so the merge must fold the sdt wrapper's own xmlns in
+    // before recursing into the content control.
+    const original = await bodyScopedPictDocx(
+      `<w:p><w:sdt xmlns:v2="urn:schemas-microsoft-com:vml" xmlns:r2="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:sdtPr><w:tag w:val="logo"/></w:sdtPr><w:sdtContent><w:r>${PICT_WITH_ALT_PREFIXES}</w:r></w:sdtContent></w:sdt></w:p>`,
+    );
+
+    const doc = await parseDocx(original, { preloadFonts: false });
+    const drawing = firstDrawingInInlineSdt(doc.package.document.content.at(0));
+    expect(drawing?.image.rId).toBe("rIdImg");
+    expect(drawing?.image.src?.startsWith("data:image/png")).toBe(true);
+    expect(drawing?.image.size.width).toBe(1_828_800);
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    expect((await validateDocx(out)).valid).toBe(true);
+
+    const outZip = await JSZip.loadAsync(out);
+    const docXml = await outZip.file("word/document.xml")!.async("text");
+    // The sdt-scoped bindings are carried onto the captured pict.
+    expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
+    expect(docXml).toContain("<v2:shape");
+    expect(docXml).toContain('r2:id="rIdImg"');
+
+    // Re-parsing the saved output still resolves the picture (lossless).
+    const reparsed = await parseDocx(out, { preloadFonts: false });
+    const reDrawing = firstDrawingInInlineSdt(reparsed.package.document.content.at(0));
+    expect(reDrawing?.image.rId).toBe("rIdImg");
+    expect(reDrawing?.image.src?.startsWith("data:image/png")).toBe(true);
   });
 });
