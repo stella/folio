@@ -7,7 +7,7 @@
  * - Optional dragging to adjust margins
  * - Support for zoom levels
  *
- * Similar to Google Docs' vertical ruler.
+ * Similar to a word processor's vertical ruler.
  */
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
@@ -50,7 +50,7 @@ const DEFAULT_MARGIN_TWIPS = 1440; // 1 inch
 const TWIPS_PER_INCH = 1440;
 const TWIPS_PER_CM = 567;
 
-// Ruler styling - Google Docs style
+// Ruler styling — word-processor style
 // Exported so the outline toggle/panel can inset past the vertical ruler
 // (it overlays the editor's left edge) instead of rendering on top of it.
 export const RULER_WIDTH = 20;

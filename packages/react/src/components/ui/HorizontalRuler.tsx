@@ -1,5 +1,5 @@
 /**
- * HorizontalRuler Component — Google Docs style
+ * HorizontalRuler Component — word-processor style
  *
  * 3 handles only:
  * - Left side: first-line indent (▼ down at top) + left indent (▲ up at bottom)
@@ -289,7 +289,7 @@ export function HorizontalRuler({
         ))}
       </div>
 
-      {/* === 3 INDENT HANDLES (Google Docs style) === */}
+      {/* === 3 INDENT HANDLES (word-processor style) === */}
 
       {/* First-line indent — ▼ down triangle at top-left */}
       {showFirstLineIndent && (
@@ -400,7 +400,7 @@ function RulerTick({ tick }: { tick: TickData }): React.ReactElement {
 }
 
 /**
- * Indent triangle handle — Google Docs style.
+ * Indent triangle handle — word-processor style.
  * direction="down": ▼ anchored at top (first-line indent, right indent)
  * direction="up":   ▲ anchored at bottom (left indent)
  */

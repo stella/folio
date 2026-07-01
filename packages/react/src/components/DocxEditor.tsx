@@ -820,7 +820,7 @@ export function DocxEditor({
   // Keep history.state accessible in stable callbacks without stale closures
   const historyStateRef = useRef(history.state);
   historyStateRef.current = history.state;
-  // Track current border color/width for border presets (like Google Docs)
+  // Track current border color/width for border presets
   const borderSpecRef = useRef({
     style: "single",
     size: 4,
@@ -3711,7 +3711,7 @@ export function DocxEditor({
                 </div>
                 {/* end scroll container */}
 
-                {/* Page indicator — Google Docs style, next to scrollbar while scrolling */}
+                {/* Page indicator — next to scrollbar while scrolling */}
                 {scrollPageInfo.totalPages > 1 && (
                   <div
                     style={{
@@ -3779,7 +3779,7 @@ export function DocxEditor({
               {/* end wrapper for scroll container + outline */}
             </div>
 
-            {/* Hyperlink popup (Google Docs-style) */}
+            {/* Hyperlink popup */}
             <HyperlinkPopup
               data={hyperlinkPopupData}
               onNavigate={handleHyperlinkPopupNavigate}
