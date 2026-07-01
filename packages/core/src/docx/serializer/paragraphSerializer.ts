@@ -568,7 +568,12 @@ function serializeHyperlink(hyperlink: Hyperlink): string {
     attrs.push(`w:tgtFrame="${escapeXml(hyperlink.target)}"`);
   }
 
-  if (hyperlink.history === false) {
+  // Round-trip an explicit `w:history` either way. The parser only sets
+  // `history` from a present `w:history="1"`/`"0"`, so emitting nothing for
+  // `true` used to drop the attribute on save.
+  if (hyperlink.history === true) {
+    attrs.push('w:history="1"');
+  } else if (hyperlink.history === false) {
     attrs.push('w:history="0"');
   }
 
@@ -670,13 +675,15 @@ function serializeSimpleField(field: SimpleField): string {
 function serializeComplexField(field: ComplexField): string {
   const parts: string[] = [];
 
-  // Extract formatting from the first result run to apply to structural runs
-  // (begin/separate/end). OOXML consumers expect consistent formatting across
-  // all runs in a complex field. Fall back to the field's captured run
-  // formatting when there is no result run, so a collapsed PAGE field's
-  // `w:rPr` (size/color) survives the round-trip (eigenpal/docx-editor#909).
-  const resultFormatting = field.fieldResult[0]?.formatting ?? field.formatting;
-  const rPrXml = resultFormatting ? serializeTextFormatting(resultFormatting) : "";
+  // Formatting for the structural runs (begin/separate/end). Prefer the field's
+  // captured run formatting: the parser re-captures ComplexField.formatting from
+  // the first non-empty field-run `w:rPr`, so re-presenting it on the begin run
+  // keeps that value stable across a save→parse round-trip. Fall back to the
+  // first result run's formatting when the field has no captured formatting.
+  // The collapsed PAGE field (no result run) still recovers its `w:rPr`
+  // (size/color) from field.formatting (eigenpal/docx-editor#909).
+  const structuralFormatting = field.formatting ?? field.fieldResult[0]?.formatting;
+  const rPrXml = structuralFormatting ? serializeTextFormatting(structuralFormatting) : "";
 
   // Begin field character (never set dirty — dirty causes apps to recalculate
   // and potentially discard run formatting)
@@ -911,10 +918,25 @@ function serializeTrackedChange(
   return `<w:${tag} ${attrs.join(" ")}>${contentXml}</w:${tag}>`;
 }
 
+/** Emit the `<w:commentReference>` run Word places after a comment range end. */
+function serializeCommentReferenceRun(id: number): string {
+  return `<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="${id}"/></w:r>`;
+}
+
 /**
- * Serialize a single paragraph content item
+ * Serialize a single paragraph content item.
+ *
+ * `explicitCommentReferenceIds` holds the comment ids that already have their
+ * own `commentReference` node in this paragraph (the parsed-from-Word shape).
+ * For those, the `commentRangeEnd` marker must NOT also synthesize a reference
+ * run, or a save→parse round-trip doubles the `<w:commentReference>`. The
+ * editor (fromProseDoc) path emits range markers with no reference node, so the
+ * synthetic run is still written when the id is absent from the set.
  */
-function serializeParagraphContent(content: ParagraphContent): string {
+function serializeParagraphContent(
+  content: ParagraphContent,
+  explicitCommentReferenceIds: ReadonlySet<number>,
+): string {
   switch (content.type) {
     case "run":
       return serializeRun(content);
@@ -933,12 +955,11 @@ function serializeParagraphContent(content: ParagraphContent): string {
     case "commentRangeStart":
       return `<w:commentRangeStart w:id="${content.id}"/>`;
     case "commentRangeEnd":
-      return (
-        `<w:commentRangeEnd w:id="${content.id}"/>` +
-        `<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="${content.id}"/></w:r>`
-      );
+      return explicitCommentReferenceIds.has(content.id)
+        ? `<w:commentRangeEnd w:id="${content.id}"/>`
+        : `<w:commentRangeEnd w:id="${content.id}"/>${serializeCommentReferenceRun(content.id)}`;
     case "commentReference":
-      return `<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="${content.id}"/></w:r>`;
+      return serializeCommentReferenceRun(content.id);
     case "insertion":
       return serializeTrackedChange("ins", content);
     case "deletion":
@@ -997,10 +1018,20 @@ export function serializeParagraph(paragraph: Paragraph): string {
     parts.push(`<w:pPr>${extractPPrInner(pPrXml)}${sectionPropertiesXml}</w:pPr>`);
   }
 
+  // Comment ids whose reference run is modeled explicitly (parsed-from-Word),
+  // so the matching commentRangeEnd does not double-emit it (see
+  // serializeParagraphContent).
+  const explicitCommentReferenceIds = new Set<number>();
+  for (const content of paragraph.content) {
+    if (content.type === "commentReference") {
+      explicitCommentReferenceIds.add(content.id);
+    }
+  }
+
   // Add paragraph content
   let pendingRenderedPageBreak = paragraph.renderedPageBreakBefore === true;
   for (const content of paragraph.content) {
-    let contentXml = serializeParagraphContent(content);
+    let contentXml = serializeParagraphContent(content, explicitCommentReferenceIds);
     if (contentXml) {
       if (pendingRenderedPageBreak) {
         const next = injectRenderedPageBreakIntoFirstRun(contentXml);
