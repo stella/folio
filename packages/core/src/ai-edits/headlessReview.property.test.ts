@@ -20,10 +20,10 @@
  *         same visible text as the same edit applied in `direct` mode.
  *       - Reject restores: a tracked-changes edit then `rejectAll()` restores the
  *         original visible text.
- *   - Selective ≡ full repack asserts the selective-save branch actually ran (an
- *     untouched paragraph stays byte-identical to the baseline) before comparing
- *     it against a forced full repack, so the equivalence is never vacuously
- *     satisfied by selective silently falling back to a repack.
+ *   - Selective ≡ full repack calls `attemptSelectiveSave` directly and asserts a
+ *     non-null return (null = it bailed to a full repack) before comparing it
+ *     against a forced full repack, so the equivalence can never be vacuously
+ *     satisfied by selective never actually running.
  *
  * Fixture provenance and licensing: see
  * `../docx/__tests__/__fixtures__/corpus/PROVENANCE.md`.
@@ -31,7 +31,6 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -40,7 +39,7 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
-import { findParagraphOffsets } from "../docx/selectiveXmlPatch";
+import { attemptSelectiveSave } from "../docx/selectiveSave";
 import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
@@ -91,14 +90,6 @@ const replaceOp = (target: EditTarget, replace: string): FolioAIEditOperation =>
   find: target.find,
   replace,
 });
-
-const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
-  const file = (await JSZip.loadAsync(buffer)).file("word/document.xml");
-  if (!file) {
-    throw new Error("word/document.xml missing from package");
-  }
-  return file.async("text");
-};
 
 /**
  * Corpus fixtures ship without `w14:paraId`s; the editor allocates them on load
@@ -221,52 +212,49 @@ describe("headless reviewer invariants (full corpus)", () => {
   );
 
   test(
-    "selective save runs (untouched bytes preserved) and matches a forced full repack",
+    "selective save engages (attemptSelectiveSave returns non-null) and matches a full repack",
     async () => {
       let engaged = 0;
       for (const filename of FIXTURE_FILES) {
         const baseline = await makeParaIdBaseline(readFixture(filename));
         const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
         const targets = editTargets(reviewer.snapshot().blocks);
-        // Need an untouched second block to prove selective preserved its bytes.
-        if (targets.length < 2) {
+        if (targets.length === 0) {
           continue;
         }
-        const untouched = targets.at(-1)!;
-        const applied = reviewer.applyOperations([replaceOp(targets[0]!, "ZZWORD")], {
-          mode: "direct",
-        });
+        const target = targets[0]!;
+        const applied = reviewer.applyOperations([replaceOp(target, "ZZWORD")], { mode: "direct" });
         if (applied.applied.length === 0) {
           continue;
         }
+        const editedDocument = reviewer.toDocument();
 
-        const selectiveBuffer = await reviewer.toBuffer();
-        const fullRepackBuffer = await repackDocx({
-          ...reviewer.toDocument(),
-          originalBuffer: baseline,
+        // Directly observe engagement instead of inferring it from bytes: call
+        // the selective-save entry point with the same inputs the reviewer's own
+        // toBuffer() derives for this edit (one non-structural in-block change to
+        // a paraId-bearing block). A non-null return IS selective save engaging;
+        // null means it bailed to a full repack. Inferring engagement from
+        // byte-identity would false-positive because the baseline is itself a
+        // repack, so a full-repack fallback can reproduce the same bytes.
+        const selective = await attemptSelectiveSave(editedDocument, baseline, {
+          changedParaIds: new Set([target.blockId]),
+          structuralChange: false,
+          hasUntrackedChanges: false,
         });
-
-        // Proof the selective branch ran: the untouched paragraph's bytes in the
-        // selective output are identical to the baseline. A full-repack fallback
-        // re-serializes from the model and would not preserve them verbatim.
-        const baselineXml = await documentXml(baseline);
-        const selectiveXml = await documentXml(selectiveBuffer);
-        const baselineOffsets = findParagraphOffsets(baselineXml, untouched.blockId);
-        const selectiveOffsets = findParagraphOffsets(selectiveXml, untouched.blockId);
-        expect(baselineOffsets).not.toBeNull();
-        expect(selectiveOffsets).not.toBeNull();
-        if (baselineOffsets && selectiveOffsets) {
-          expect(selectiveXml.slice(selectiveOffsets.start, selectiveOffsets.end)).toBe(
-            baselineXml.slice(baselineOffsets.start, baselineOffsets.end),
-          );
+        expect(selective).not.toBeNull();
+        if (selective === null) {
+          continue;
         }
-
-        const fromSelective = await FolioDocxReviewer.fromBuffer(selectiveBuffer, { author: "AI" });
-        const fromFull = await FolioDocxReviewer.fromBuffer(fullRepackBuffer, { author: "AI" });
-        expect(blockTexts(fromSelective)).toEqual(blockTexts(fromFull));
         engaged += 1;
+
+        // Selective and a forced full repack of the same edited model must
+        // re-parse to the same visible text.
+        const fullRepack = await repackDocx({ ...editedDocument, originalBuffer: baseline });
+        const fromSelective = await FolioDocxReviewer.fromBuffer(selective, { author: "AI" });
+        const fromFull = await FolioDocxReviewer.fromBuffer(fullRepack, { author: "AI" });
+        expect(blockTexts(fromSelective)).toEqual(blockTexts(fromFull));
       }
-      // Loud failure if no fixture ever exercised the selective path: the
+      // Loud failure if the selective path never engaged across the corpus: the
       // equivalence above would then be vacuous.
       expect(engaged).toBeGreaterThan(0);
     },
