@@ -13,7 +13,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import type { DrawingContent, Paragraph, Run } from "../types/document";
+import type { DrawingContent, Paragraph, Run, Table } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx, validateDocx } from "./rezip";
@@ -80,12 +80,12 @@ ${imageRel ? `  <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Tar
   return zip.generateAsync({ type: "arraybuffer" });
 }
 
-/** Pull the first drawing content out of the first body paragraph's first run. */
-function firstDrawing(paragraph: Paragraph | undefined): DrawingContent | undefined {
-  if (paragraph?.type !== "paragraph") {
+/** Pull the first drawing content out of a paragraph's first run. */
+function firstDrawing(block: Paragraph | Table | undefined): DrawingContent | undefined {
+  if (block?.type !== "paragraph") {
     return undefined;
   }
-  const run = paragraph.content.find((c): c is Run => c.type === "run");
+  const run = block.content.find((c): c is Run => c.type === "run");
   return run?.content.find((c): c is DrawingContent => c.type === "drawing");
 }
 
@@ -415,5 +415,140 @@ describe("VML w:pict inline images", () => {
     const reDrawing = firstDrawing(reparsed.package.document.content.at(0));
     expect(reDrawing?.image.rId).toBe("rIdImg");
     expect(reDrawing?.image.src?.startsWith("data:image/png")).toBe(true);
+  });
+
+  test("uses the Choice image when the Fallback pict's relationship cannot be resolved", async () => {
+    // The Fallback VML references a missing relationship, so it cannot resolve
+    // to a media part; the resolvable Choice DrawingML image must win.
+    const zip = new JSZip();
+    zip.file(
+      "[Content_Types].xml",
+      `${XML}
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+    );
+    zip.file(
+      "_rels/.rels",
+      `${XML}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
+</Relationships>`,
+    );
+    // Only the Choice image resolves; the Fallback's rIdMissing is absent.
+    zip.file(
+      "word/_rels/document.xml.rels",
+      `${XML}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdChoice" Type="${RELATIONSHIP_TYPES.image}" Target="media/choice.png"/>
+</Relationships>`,
+    );
+    zip.file(
+      "word/document.xml",
+      `${XML}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    <w:p><w:r>
+      <mc:AlternateContent>
+        <mc:Choice Requires="wps"><w:drawing><wp:inline><wp:extent cx="914400" cy="914400"/><wp:docPr id="1" name="choice"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="choice"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdChoice"/></pic:blipFill><pic:spPr/></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice>
+        <mc:Fallback><w:pict><v:shape style="width:2in;height:1in"><v:imagedata r:id="rIdMissing"/></v:shape></w:pict></mc:Fallback>
+      </mc:AlternateContent>
+    </w:r></w:p>
+    <w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>
+  </w:body>
+</w:document>`,
+    );
+    zip.file("word/media/choice.png", ONE_PIXEL_PNG_BASE64, { base64: true });
+    zip.file(
+      "word/styles.xml",
+      `${XML}
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
+    );
+    const original = await zip.generateAsync({ type: "arraybuffer" });
+
+    const doc = await parseDocx(original, { preloadFonts: false });
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    // The resolvable Choice image is used, not the unresolvable Fallback pict.
+    expect(drawing?.image.rId).toBe("rIdChoice");
+    expect(drawing?.image.src?.startsWith("data:image/png")).toBe(true);
+  });
+
+  test("captures xmlns declarations scoped on a table cell containing a w:pict", async () => {
+    // The non-canonical VML / relationship prefixes are bound on the <w:tc>, so
+    // the in-scope set must accumulate through tbl -> tr -> tc into the cell.
+    const zip = new JSZip();
+    zip.file(
+      "[Content_Types].xml",
+      `${XML}
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+    );
+    zip.file(
+      "_rels/.rels",
+      `${XML}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
+</Relationships>`,
+    );
+    zip.file(
+      "word/_rels/document.xml.rels",
+      `${XML}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
+</Relationships>`,
+    );
+    // Root declares only w; v2/r2 are scoped on the <w:tc>.
+    zip.file(
+      "word/document.xml",
+      `${XML}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:tbl>
+      <w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>
+      <w:tblGrid><w:gridCol w:w="5000"/></w:tblGrid>
+      <w:tr><w:tc xmlns:v2="urn:schemas-microsoft-com:vml" xmlns:r2="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+        <w:tcPr><w:tcW w:w="5000" w:type="dxa"/></w:tcPr>
+        <w:p><w:r><w:pict><v2:shape style="width:2in;height:1in"><v2:imagedata r2:id="rIdImg"/></v2:shape></w:pict></w:r></w:p>
+      </w:tc></w:tr>
+    </w:tbl>
+    <w:p/>
+    <w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>
+  </w:body>
+</w:document>`,
+    );
+    zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
+    zip.file(
+      "word/styles.xml",
+      `${XML}
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
+    );
+    const original = await zip.generateAsync({ type: "arraybuffer" });
+
+    const doc = await parseDocx(original, { preloadFonts: false });
+    const table = doc.package.document.content.at(0);
+    expect(table?.type).toBe("table");
+    if (table?.type !== "table") {
+      throw new Error("expected a table");
+    }
+    const drawing = firstDrawing(table.rows.at(0)?.cells.at(0)?.content.at(0));
+    expect(drawing?.image.rId).toBe("rIdImg");
+    expect(drawing?.image.src?.startsWith("data:image/png")).toBe(true);
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    expect((await validateDocx(out)).valid).toBe(true);
+
+    const outZip = await JSZip.loadAsync(out);
+    const docXml = await outZip.file("word/document.xml")!.async("text");
+    // The cell-scoped bindings are carried onto the captured pict.
+    expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
+    expect(docXml).toContain("<v2:shape");
+    expect(docXml).toContain('r2:id="rIdImg"');
   });
 });

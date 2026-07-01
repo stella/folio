@@ -973,9 +973,10 @@ function parseRunContents(
       case "AlternateContent": {
         // mc:AlternateContent — folio cannot evaluate `mc:Requires`, so it
         // renders the Choice by default. A VML `w:pict` in the Fallback is the
-        // compatibility image folio can always show; prefer it when the Fallback
-        // carries a real VML picture (not a textbox / empty pict), and keep the
-        // whole AlternateContent on save so the Choice is not lost.
+        // compatibility image folio can always show; prefer it only when it
+        // resolves to a real media part (not a textbox / empty pict / broken
+        // relationship), otherwise fall through to the Choice's DrawingML image.
+        // The whole AlternateContent is kept on save so the Choice is not lost.
         const alternateChildren = getChildElements(child);
         const choiceEl = alternateChildren.find((el) => getLocalName(el.name) === "Choice");
         const fallbackEl = alternateChildren.find((el) => getLocalName(el.name) === "Fallback");
@@ -986,7 +987,7 @@ function parseRunContents(
         const fallbackVml = fallbackPict
           ? parseVmlImageContent(fallbackPict, rels, media, rootXmlns)
           : null;
-        if (fallbackVml) {
+        if (fallbackVml?.image.src) {
           fallbackVml.rawXml = elementToXml(cloneWithXmlnsDeclarations(child, rootXmlns));
           contents.push(fallbackVml);
           break;
