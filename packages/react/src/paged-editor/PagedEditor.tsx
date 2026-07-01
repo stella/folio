@@ -181,6 +181,7 @@ import type { AnonymizationRectGroup } from "./AnonymizationRectsOverlay";
 import { AutocompleteCaretOverlay } from "./AutocompleteCaretOverlay";
 import type { AutocompleteCaretRect } from "./AutocompleteCaretOverlay";
 import { loadEmbeddedFontFaces, removeFontFaces } from "./embeddedFonts";
+import { loadHostFontFaces, type FontDefinition } from "./hostFonts";
 import { createHiddenEditorState, HiddenProseMirror } from "./HiddenProseMirror";
 import type {
   HiddenProseMirrorCollaboration,
@@ -209,6 +210,13 @@ export type PagedEditorProps = {
    * edited document passed back. Falls back to a metadata signature when omitted.
    */
   documentKey?: string;
+  /**
+   * Host-provided custom font faces to register with the browser (the
+   * DocxEditor `fonts` prop). Registered on the same best-effort FontFace path
+   * as embedded document fonts, with the same font-ready re-layout so first
+   * paint measures against the real metrics.
+   */
+  fonts?: ReadonlyArray<FontDefinition>;
   /** Document styles for style resolution. */
   styles?: StyleDefinitions | null;
   /** Theme for styling. */
@@ -1613,6 +1621,7 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
     ref,
     document,
     documentKey,
+    fonts: hostFonts,
     styles,
     theme: _theme,
     sectionProperties,
@@ -5550,6 +5559,42 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
       removeFontFaces(registered);
     };
   }, [embeddedFontBuffer]);
+
+  // Register the host app's custom font faces (the `fonts` prop) on the same
+  // best-effort FontFace path, then re-layout via the identical font-ready tail
+  // as the embedded path above. Without the explicit re-layout, faces supplied
+  // on initial mount register after the first layout has run, so the document
+  // would keep its fallback-font metrics until the next edit. Keyed on the prop
+  // identity; the cleanup unregisters the faces on change / unmount.
+  useEffect(() => {
+    if (!hostFonts || hostFonts.length === 0) {
+      return undefined;
+    }
+    let cancelled = false;
+    let registered: FontFace[] = [];
+    void loadHostFontFaces(hostFonts).then((faces) => {
+      if (cancelled) {
+        removeFontFaces(faces);
+        return;
+      }
+      registered = faces;
+      if (faces.length === 0) {
+        return;
+      }
+      const view = hiddenPMRef.current?.getView();
+      if (!view) {
+        return;
+      }
+      resetCanvasContext();
+      clearAllCaches();
+      runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
+      updateSelectionOverlayRef.current(view.state);
+    });
+    return () => {
+      cancelled = true;
+      removeFontFaces(registered);
+    };
+  }, [hostFonts]);
 
   // Re-layout when non-document layout inputs change (e.g., after HF editor save
   // or parent-driven page setup/theme updates).

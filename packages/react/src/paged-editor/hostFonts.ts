@@ -33,10 +33,29 @@ export type FontFaceInput = {
   descriptors: FontFaceDescriptors;
 };
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Structural guard for one `fonts` entry. The prop is typed, but a plain-JS
+ * host can pass anything (null, a bare value, wrong field types), so validate
+ * at the boundary instead of trusting the declared type.
+ */
+function isValidFontDefinition(font: unknown): font is FontDefinition {
+  if (typeof font !== "object" || font === null) {
+    return false;
+  }
+  return (
+    isNonEmptyString(Reflect.get(font, "family")) && isNonEmptyString(Reflect.get(font, "src"))
+  );
+}
+
 /**
  * Normalize the `fonts` prop into `FontFace` constructor inputs. Pure: no DOM
- * work, so it is unit-testable. Entries missing a family or src are skipped
- * (best-effort); `src` becomes a CSS `url(...)` source string.
+ * work, so it is unit-testable. Entries that are not objects with non-empty
+ * string family/src are skipped (best-effort — never throw on host input);
+ * `src` becomes a CSS `url(...)` source string.
  */
 export function toFontFaceInputs(
   fonts: ReadonlyArray<FontDefinition> | undefined,
@@ -46,16 +65,20 @@ export function toFontFaceInputs(
   }
   const inputs: FontFaceInput[] = [];
   for (const font of fonts) {
-    const family = font.family.trim();
-    const src = font.src.trim();
-    if (!family || !src) {
+    if (!isValidFontDefinition(font)) {
       continue;
     }
     const descriptors: FontFaceDescriptors = { display: "swap" };
-    if (font.weight !== undefined) {
+    // Only a number/string weight is representable; anything else (a symbol
+    // would even make `String()` throw) is dropped to the default.
+    if (typeof font.weight === "number" || typeof font.weight === "string") {
       descriptors.weight = String(font.weight);
     }
-    inputs.push({ family, source: `url(${JSON.stringify(src)})`, descriptors });
+    inputs.push({
+      family: font.family.trim(),
+      source: `url(${JSON.stringify(font.src.trim())})`,
+      descriptors,
+    });
   }
   return inputs;
 }

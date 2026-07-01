@@ -35,4 +35,24 @@ describe("normalizeFontFamilies", () => {
       option,
     ]);
   });
+
+  test("skips null / undefined / blank / malformed entries", () => {
+    const option: FontOption = { name: "Keep", fontFamily: "Keep, serif", category: "serif" };
+    // Simulate an untrusted plain-JS host slipping in invalid entries.
+    const messy = [
+      null,
+      undefined,
+      "",
+      "   ",
+      42,
+      { fontFamily: "No Name, serif" },
+      { name: "No Family" },
+      "Arial",
+      option,
+    ] as unknown as ReadonlyArray<string | FontOption>;
+    expect(normalizeFontFamilies(messy)).toEqual([
+      { name: "Arial", fontFamily: "Arial", category: "other" },
+      option,
+    ]);
+  });
 });

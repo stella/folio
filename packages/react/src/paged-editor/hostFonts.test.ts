@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { toFontFaceInputs } from "./hostFonts";
+import { toFontFaceInputs, type FontDefinition } from "./hostFonts";
 
 describe("toFontFaceInputs", () => {
   test("returns [] for undefined and empty input", () => {
@@ -52,5 +52,32 @@ describe("toFontFaceInputs", () => {
   test("escapes quotes in src via JSON.stringify", () => {
     const [input] = toFontFaceInputs([{ family: "Brand Sans", src: '/a".woff2' }]);
     expect(input?.source).toBe('url("/a\\".woff2")');
+  });
+
+  test("skips malformed host entries (null, non-object, wrong field types)", () => {
+    // Simulate an untrusted plain-JS host passing values the type forbids.
+    const malformed = [
+      null,
+      undefined,
+      42,
+      "Arial",
+      { src: "/no-family.woff2" },
+      { family: "No Src" },
+      { family: 123, src: "/bad-family.woff2" },
+      { family: "Bad Src", src: 456 },
+      { family: "Keep", src: "/keep.woff2" },
+    ] as unknown as ReadonlyArray<FontDefinition>;
+    const inputs = toFontFaceInputs(malformed);
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]?.family).toBe("Keep");
+  });
+
+  test("drops a non-number/string weight instead of throwing", () => {
+    const withSymbolWeight = [
+      { family: "Sym", src: "/s.woff2", weight: Symbol("x") },
+    ] as unknown as ReadonlyArray<FontDefinition>;
+    const [input] = toFontFaceInputs(withSymbolWeight);
+    expect(input?.family).toBe("Sym");
+    expect(input?.descriptors).not.toHaveProperty("weight");
   });
 });
