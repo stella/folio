@@ -27,8 +27,10 @@ import type {
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import type { Document, SdtProperties, Theme, TabStop } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
+import type { FontDefinition } from "../paged-editor/hostFonts";
 import type { PagedEditorRef } from "../paged-editor/PagedEditor";
 import type { FolioUIComponents } from "../ui/folio-ui";
+import type { FontOption } from "./ui/FontPicker";
 import type { DocumentLoadState } from "./hooks/useDocumentLoader";
 // `EditorMode` is owned by `./hooks/useEditorMode`. Re-imported here for use
 // in `DocxEditorProps`; the canonical export is from the hook module.
@@ -92,6 +94,23 @@ export type DocxEditorProps = {
   onError?: (error: Error) => void;
   /** Callback when fonts are loaded */
   onFontsLoaded?: () => void;
+  /**
+   * Custom families shown in the toolbar's font-family dropdown. Strings render
+   * as plain family names; pass `FontOption` objects for a CSS fallback chain
+   * and category grouping. Omit to use folio's built-in defaults; an empty
+   * array renders an empty (but enabled) dropdown. Pass a stable reference — an
+   * inline array is a fresh identity every render.
+   */
+  fontFamilies?: ReadonlyArray<string | FontOption>;
+  /**
+   * Custom font faces the host registers with the browser (its own brand/web
+   * fonts) so runs render in them. Each entry injects one face via the
+   * `FontFace` API; multiple entries can share `family` for different weights.
+   * Registration is best-effort: a malformed entry is skipped, never thrown.
+   * Match `family` to the `fontFamilies` name a user applies. Pass a stable
+   * reference — a new array identity re-registers on every render.
+   */
+  fonts?: ReadonlyArray<FontDefinition>;
   /** Theme for styling */
   theme?: Theme | null;
   /** Whether to show toolbar (default: true) */

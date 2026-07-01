@@ -425,6 +425,8 @@ export function DocxEditor({
   onSelectionTextChange,
   onError,
   onFontsLoaded: onFontsLoadedCallback,
+  fontFamilies,
+  fonts,
   theme,
   showToolbar = true,
   showZoomControl = true,
@@ -3373,6 +3375,7 @@ export function DocxEditor({
                       canRedo={hfEditPosition ? history.canRedo : bodyHistoryAvailability.canRedo}
                       disabled={readOnly}
                       theme={history.state.package.theme || theme || null}
+                      fontFamilies={fontFamilies}
                       showZoomControl={showZoomControl}
                       zoom={zoom}
                       onZoomChange={setZoomWithViewportAnchor}
@@ -3514,6 +3517,7 @@ export function DocxEditor({
                         ref={pagedEditorRef}
                         document={history.state}
                         {...(documentKey !== undefined ? { documentKey } : {})}
+                        {...(fonts !== undefined ? { fonts } : {})}
                         theme={history.state.package.theme || theme || null}
                         sectionProperties={effectiveSectionProperties ?? null}
                         headerContent={headerContent}

@@ -18,7 +18,7 @@ export type FontOption = {
 export type FontPickerProps = {
   value?: string;
   onChange?: (fontFamily: string) => void;
-  fonts?: FontOption[];
+  fonts?: FontOption[] | undefined;
   disabled?: boolean;
   className?: string;
   placeholder?: string;
