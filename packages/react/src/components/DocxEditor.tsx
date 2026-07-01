@@ -3389,7 +3389,7 @@ export function DocxEditor({
                                   }}
                                   isAddingComment={isAddingComment}
                                   addCommentYPosition={addCommentYPosition}
-                                  topOffset={0}
+                                  topOffset={toolbarHeight}
                                 />
                               </Suspense>
                             );
