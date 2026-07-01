@@ -54,13 +54,16 @@ import {
 } from "./parserEnums";
 import { parseShapeFromDrawing, shouldPreserveRawShapeDrawing } from "./shapeParser";
 import type { StyleMap } from "./styleParser";
+import { parseVmlImageContent } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
 import {
+  cloneWithXmlnsDeclarations,
   findChild,
   findChildren,
   getAttribute,
   getChildElements,
   getTextContent,
+  mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumericAttribute,
   elementToXml,
@@ -866,6 +869,7 @@ function parseRunContents(
   runElement: XmlElement,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  rootXmlns: Record<string, string> = {},
 ): RunContent[] {
   const contents: RunContent[] = [];
   const children = getChildElements(runElement);
@@ -935,9 +939,20 @@ function parseRunContents(
         break;
       }
 
-      case "pict":
+      case "pict": {
+        // Legacy VML inline picture (e.g. an old-format header logo). Resolve
+        // it to the same drawing/image node a DrawingML image produces so it
+        // renders through the existing image path; the original VML round-trips
+        // verbatim via the drawing's rawXml.
+        const vmlDrawing = parseVmlImageContent(child, rels, media, rootXmlns);
+        if (vmlDrawing) {
+          contents.push(vmlDrawing);
+        }
+        break;
+      }
+
       case "object":
-        // Legacy VML pictures/objects are not part of the active DrawingML path.
+        // Legacy OLE objects remain outside the active image path.
         break;
 
       case "rPr":
@@ -956,10 +971,29 @@ function parseRunContents(
       }
 
       case "AlternateContent": {
-        // mc:AlternateContent — prefer mc:Choice over mc:Fallback
-        const choiceEl = getChildElements(child).find((el) => getLocalName(el.name) === "Choice");
-        const targetEl =
-          choiceEl ?? getChildElements(child).find((el) => getLocalName(el.name) === "Fallback");
+        // mc:AlternateContent — folio cannot evaluate `mc:Requires`, so it
+        // renders the Choice by default. A VML `w:pict` in the Fallback is the
+        // compatibility image folio can always show; prefer it only when it
+        // resolves to a real media part (not a textbox / empty pict / broken
+        // relationship), otherwise fall through to the Choice's DrawingML image.
+        // The whole AlternateContent is kept on save so the Choice is not lost.
+        const alternateChildren = getChildElements(child);
+        const choiceEl = alternateChildren.find((el) => getLocalName(el.name) === "Choice");
+        const fallbackEl = alternateChildren.find((el) => getLocalName(el.name) === "Fallback");
+
+        const fallbackPict = fallbackEl
+          ? getChildElements(fallbackEl).find((el) => getLocalName(el.name) === "pict")
+          : undefined;
+        const fallbackVml = fallbackPict
+          ? parseVmlImageContent(fallbackPict, rels, media, rootXmlns)
+          : null;
+        if (fallbackVml?.image.src) {
+          fallbackVml.rawXml = elementToXml(cloneWithXmlnsDeclarations(child, rootXmlns));
+          contents.push(fallbackVml);
+          break;
+        }
+
+        const targetEl = choiceEl ?? fallbackEl;
         if (targetEl) {
           for (const innerChild of getChildElements(targetEl)) {
             const innerName = getLocalName(innerChild.name);
@@ -972,6 +1006,13 @@ function parseRunContents(
                   innerDrawing.rawXml = elementToXml(child);
                 }
                 contents.push(innerDrawing);
+              }
+            } else if (innerName === "pict") {
+              // A VML picture in the chosen Choice (no Fallback image present).
+              const innerVml = parseVmlImageContent(innerChild, rels, media, rootXmlns);
+              if (innerVml) {
+                innerVml.rawXml = elementToXml(cloneWithXmlnsDeclarations(child, rootXmlns));
+                contents.push(innerVml);
               }
             }
           }
@@ -1016,6 +1057,7 @@ export function parseRun(
   theme: Theme | null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
+  rootXmlns: Record<string, string> = {},
 ): Run {
   const run: Run = {
     type: "run",
@@ -1035,8 +1077,10 @@ export function parseRun(
     }
   }
 
-  // Parse run contents (text, tabs, breaks, images, etc.)
-  run.content = parseRunContents(node, rels, media);
+  // Parse run contents (text, tabs, breaks, images, etc.). Accumulate the run's
+  // own xmlns onto the inherited set so a captured VML `w:pict` replay resolves
+  // any prefix scoped on the run itself.
+  run.content = parseRunContents(node, rels, media, mergeXmlnsDeclarations(rootXmlns, node));
 
   return run;
 }

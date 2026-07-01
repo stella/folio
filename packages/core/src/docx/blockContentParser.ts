@@ -44,11 +44,15 @@ import {
   findDeep,
   getChildElements,
   getLocalName,
+  mergeXmlnsDeclarations,
   type XmlElement,
 } from "./xmlParser";
 
 type ParseBlockContentOptions = {
   inHeaderFooter?: boolean;
+  // Source root `xmlns:*` declarations, threaded to the run parser so a captured
+  // VML `w:pict` replay stays self-contained under non-canonical prefixes.
+  rootXmlns?: Record<string, string>;
 };
 
 const toRoman = (numParam: number): string => {
@@ -367,7 +371,12 @@ export const parseBlockContent = (
   parseBlockContentWithState(parent, styles, theme, numbering, rels, media, {
     listCounters: new Map(),
     abstractCounters: new Map(),
-    options,
+    // Accumulate the container's own xmlns onto the inherited in-scope set so a
+    // captured VML `w:pict` replay resolves prefixes scoped on this level too.
+    options: {
+      ...options,
+      rootXmlns: mergeXmlnsDeclarations(options?.rootXmlns ?? {}, parent),
+    },
   });
 
 const parseBlockContentWithState = (

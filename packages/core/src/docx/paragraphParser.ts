@@ -65,6 +65,7 @@ import {
   findChildren,
   getAttribute,
   getChildElements,
+  mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumericAttribute,
   elementToXml,
@@ -1158,6 +1159,7 @@ function parseSimpleField(
   theme: Theme | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  rootXmlns: Record<string, string> = {},
 ): SimpleField {
   const instruction = getAttribute(node, "w", "instr") ?? "";
   const fieldType = parseFieldType(instruction);
@@ -1182,11 +1184,12 @@ function parseSimpleField(
   }
 
   // Parse child runs (the display value)
+  const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
   const children = getChildElements(node);
   for (const child of children) {
     const localName = getLocalName(child.name);
     if (localName === "r") {
-      field.content.push(parseRun(child, styles, theme, rels, media));
+      field.content.push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
     }
   }
 
@@ -1206,9 +1209,14 @@ function parseParagraphContents(
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
   trackedContext: TrackedChangeParseContext = "default",
+  rootXmlns: Record<string, string> = {},
 ): ParagraphContent[] {
   const contents: ParagraphContent[] = [];
   const children = getChildElements(paraElement);
+  // Accumulate this container's own xmlns (a paragraph or tracked-change /
+  // SDT wrapper may scope non-canonical prefixes) onto the inherited set, so a
+  // captured VML `w:pict` replay resolves prefixes scoped at this level too.
+  const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, paraElement);
 
   // State for tracking complex fields
   let inComplexField = false;
@@ -1230,7 +1238,7 @@ function parseParagraphContents(
         // Check for field characters in this run
         const runElement =
           trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
-        const run = parseRun(runElement, styles, theme, rels, media);
+        const run = parseRun(runElement, styles, theme, rels, media, inScopeXmlns);
         const commentReferenceId = getCommentReferenceId(runElement);
 
         // Look for field characters
@@ -1393,7 +1401,7 @@ function parseParagraphContents(
         break;
 
       case "fldSimple":
-        contents.push(parseSimpleField(child, styles, theme, rels, media));
+        contents.push(parseSimpleField(child, styles, theme, rels, media, inScopeXmlns));
         break;
 
       case "pPr":
@@ -1421,6 +1429,7 @@ function parseParagraphContents(
             rels,
             media,
             trackedContext,
+            inScopeXmlns,
           );
           const properties = parseSdtProperties(sdtPr, sdtEndPr);
           pushInlineSdtSegments({
@@ -1435,7 +1444,16 @@ function parseParagraphContents(
       case "ins": {
         // Track change: insertion — parse content and wrap
         const insInfo = parseTrackedChangeInfo(child);
-        const insContent = parseParagraphContents(child, styles, theme, null, rels, media);
+        const insContent = parseParagraphContents(
+          child,
+          styles,
+          theme,
+          null,
+          rels,
+          media,
+          "default",
+          inScopeXmlns,
+        );
         pushTrackedChangeSegments({
           contents,
           type: "insertion",
@@ -1455,6 +1473,7 @@ function parseParagraphContents(
           rels,
           media,
           "deletion",
+          inScopeXmlns,
         );
         pushTrackedChangeSegments({
           contents,
@@ -1474,6 +1493,7 @@ function parseParagraphContents(
           rels,
           media,
           "deletion",
+          inScopeXmlns,
         );
         pushTrackedChangeSegments({
           contents,
@@ -1486,7 +1506,16 @@ function parseParagraphContents(
 
       case "moveTo": {
         const moveToInfo = parseTrackedChangeInfo(child);
-        const moveToContent = parseParagraphContents(child, styles, theme, null, rels, media);
+        const moveToContent = parseParagraphContents(
+          child,
+          styles,
+          theme,
+          null,
+          rels,
+          media,
+          "default",
+          inScopeXmlns,
+        );
         pushTrackedChangeSegments({
           contents,
           type: "moveTo",
@@ -1600,7 +1629,7 @@ export function parseParagraph(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
-  options?: { inHeaderFooter?: boolean },
+  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
 ): Paragraph {
   const paragraph: Paragraph = {
     type: "paragraph",
@@ -1652,7 +1681,16 @@ export function parseParagraph(
   }
 
   // Parse paragraph contents (runs, hyperlinks, bookmarks, fields)
-  const rawContent = parseParagraphContents(node, styles, theme, numbering, rels, media);
+  const rawContent = parseParagraphContents(
+    node,
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    "default",
+    options?.rootXmlns ?? {},
+  );
 
   // Consolidate consecutive runs with identical formatting
   // This reduces fragmentation (e.g., 252 tiny runs → a few larger runs)

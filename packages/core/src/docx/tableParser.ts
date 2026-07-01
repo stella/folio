@@ -74,6 +74,7 @@ import {
   findChildren,
   getAttribute,
   getChildElements,
+  mergeXmlnsDeclarations,
   parseNumericAttribute,
   parseBooleanElement,
 } from "./xmlParser";
@@ -1136,6 +1137,20 @@ export function parseTableCellProperties(
  * @param media - Media files for images
  * @returns Array of content blocks
  */
+type TableParseOptions = { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> };
+
+/**
+ * Accumulate a table container's own `xmlns:*` onto the inherited in-scope set,
+ * so a `w:pict` nested inside a cell still resolves prefixes scoped on the
+ * `w:tbl` / `w:tr` / `w:tc` wrapper.
+ */
+function withContainerXmlns(
+  options: TableParseOptions | undefined,
+  element: XmlElement,
+): TableParseOptions {
+  return { ...options, rootXmlns: mergeXmlnsDeclarations(options?.rootXmlns ?? {}, element) };
+}
+
 function parseCellContent(
   tcElement: XmlElement,
   styles: StyleMap | null,
@@ -1143,7 +1158,7 @@ function parseCellContent(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-  options?: { inHeaderFooter?: boolean },
+  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
 ): (Paragraph | Table)[] {
   const content: (Paragraph | Table)[] = [];
   const pendingBookmarkMarkers: BookmarkMarker[] = [];
@@ -1214,7 +1229,7 @@ export function parseTableCell(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-  options?: { inHeaderFooter?: boolean },
+  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
 ): TableCell {
   const cell: TableCell = {
     type: "tableCell",
@@ -1236,8 +1251,16 @@ export function parseTableCell(
     cell.structuralChange = cellStructChange;
   }
 
-  // Parse content
-  cell.content = parseCellContent(tcElement, styles, theme, numbering, rels, media, options);
+  // Parse content, threading the cell's own xmlns down the in-scope set.
+  cell.content = parseCellContent(
+    tcElement,
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    withContainerXmlns(options, tcElement),
+  );
 
   return cell;
 }
@@ -1264,7 +1287,7 @@ export function parseTableRow(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-  options?: { inHeaderFooter?: boolean },
+  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
 ): TableRow {
   const row: TableRow = {
     type: "tableRow",
@@ -1286,12 +1309,13 @@ export function parseTableRow(
     row.structuralChange = rowStructChange;
   }
 
-  // Parse cells
+  // Parse cells, threading the row's own xmlns down the in-scope set.
+  const rowOptions = withContainerXmlns(options, trElement);
   const pendingBookmarkMarkers: BookmarkMarker[] = [];
   const parseRowChild = (child: XmlElement): void => {
     const localName = getLocalName(child.name);
     if (localName === "tc") {
-      const cell = parseTableCell(child, styles, theme, numbering, rels, media, options);
+      const cell = parseTableCell(child, styles, theme, numbering, rels, media, rowOptions);
       if (pendingBookmarkMarkers.length > 0) {
         prependBookmarkMarkersToFirstParagraphInCell(cell, pendingBookmarkMarkers);
         pendingBookmarkMarkers.length = 0;
@@ -1510,7 +1534,7 @@ export function parseTable(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-  options?: { inHeaderFooter?: boolean },
+  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
 ): Table {
   const table: Table = {
     type: "table",
@@ -1534,13 +1558,14 @@ export function parseTable(
     table.columnWidths = columnWidths;
   }
 
-  // Parse rows
+  // Parse rows, threading the table's own xmlns down the in-scope set.
+  const tableOptions = withContainerXmlns(options, tblElement);
   const rowsWithGridOffsets = new Set<number>();
   const parseTableChild = (child: XmlElement): void => {
     const localName = getLocalName(child.name);
     if (localName === "tr") {
       const rowIndex = table.rows.length;
-      const row = parseTableRow(child, styles, theme, numbering, rels, media, options);
+      const row = parseTableRow(child, styles, theme, numbering, rels, media, tableOptions);
       table.rows.push(row);
       if (hasRowGridOffsets(child)) {
         rowsWithGridOffsets.add(rowIndex);
