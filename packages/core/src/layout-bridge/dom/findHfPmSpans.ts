@@ -339,5 +339,16 @@ export function findHfSlotKindForTarget(target: Node | null): {
   if (footer) {
     return { kind: "footer", element: footer };
   }
+  // Moved page-layer HF content (a floating image / text box relocated out of
+  // the header/footer box) carries the slot kind on `[data-hf-slot-kind]` — the
+  // same marker `findHfSlotForTarget` resolves — so double-clicking it also
+  // enters edit mode.
+  const associated = target.closest("[data-hf-slot-kind]");
+  if (associated) {
+    const kind = associated.dataset["hfSlotKind"];
+    if (kind === "header" || kind === "footer") {
+      return { kind, element: associated };
+    }
+  }
   return null;
 }

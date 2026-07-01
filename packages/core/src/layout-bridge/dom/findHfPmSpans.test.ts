@@ -328,4 +328,19 @@ describe("findHfSlotKindForTarget", () => {
     } as unknown as Element;
     expect(findHfSlotKindForTarget(target)).toBeNull();
   });
+
+  test("resolves a moved page-layer HF element by its slot-kind metadata", () => {
+    const associatedEl = {
+      dataset: { hfSlotKind: "footer" },
+    } as unknown as HTMLElement;
+    const target = {
+      closest(selector: string) {
+        return selector === "[data-hf-slot-kind]" ? associatedEl : null;
+      },
+    } as unknown as Element;
+    expect(findHfSlotKindForTarget(target)).toEqual({
+      kind: "footer",
+      element: associatedEl,
+    });
+  });
 });
