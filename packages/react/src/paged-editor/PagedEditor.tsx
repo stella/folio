@@ -428,6 +428,7 @@ const EMPTY_PLUGINS: Plugin[] = [];
 // (a fresh `[]` per transaction would fail every identity comparison).
 const EMPTY_TEMPLATE_PREVIEW_ENTRIES: readonly TemplatePreviewEntry[] = [];
 const EMPTY_AI_SUGGESTIONS: readonly AISuggestion[] = [];
+const EMPTY_SELECTION_RECTS: SelectionRect[] = [];
 
 const DEFERRED_KEYDOWN_REPLAY_KEYS = new Set([
   "ArrowDown",
@@ -5861,10 +5862,13 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
               painter lays out and paints them (with the accent chip in
               highlighted mode) as part of the pages themselves. */}
 
-          {/* Selection overlay */}
+          {/* Selection overlay. In HF edit mode the body caret/selection is
+              suppressed so it does not linger beside the HF caret — the
+              HfCaretOverlay below owns the caret while a header/footer is
+              being edited. */}
           <SelectionOverlay
-            selectionRects={selectionRects}
-            caretPosition={caretPosition}
+            selectionRects={hfEditMode ? EMPTY_SELECTION_RECTS : selectionRects}
+            caretPosition={hfEditMode ? null : caretPosition}
             isFocused={isFocused}
             pageGap={pageGap}
             markCaretRect

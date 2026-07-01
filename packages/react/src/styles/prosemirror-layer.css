@@ -754,13 +754,11 @@
   border-top: 1px dotted var(--doc-primary);
 }
 
-/* Hide the original layout-painter content in the area being edited */
-.paged-editor--editing-header .layout-page-header > * {
-  visibility: hidden;
-}
-.paged-editor--editing-footer .layout-page-footer > * {
-  visibility: hidden;
-}
+/* Post-eigenpal#611 the painter is the sole visible HF renderer in edit mode
+   too (the inline overlay no longer mounts its own PM), so the old
+   `.paged-editor--editing-{header,footer} > * { visibility: hidden }` patch that
+   hid the painter under that overlay is gone — it would now hide the live text
+   being typed. Kept in sync with editor.css. */
 
 /* Remove hover effect on header/footer when in editing mode */
 .paged-editor--hf-editing .layout-page-header:hover,
