@@ -11,6 +11,7 @@
     "bulletList": "Liste à puces",
     "checkingDocxEditDescription": "stella vérifie encore si ce DOCX peut être modifié en toute sécurité. Réessayez une fois le document chargé.",
     "checkingDocxEditTitle": "Vérification du document",
+    "clearDate": "Effacer la date",
     "comment": "Commenter",
     "comments": {
       "addPlaceholder": "Ajouter un commentaire...",
@@ -78,13 +79,13 @@
     "increaseIndent": "Augmenter le retrait",
     "insertColumnLeft": "Insérer une colonne à gauche",
     "insertColumnRight": "Insérer une colonne à droite",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "Insérer",
+    "insertImage": "Insérer une image",
+    "insertPageBreak": "Insérer un saut de page",
     "insertRowAbove": "Insérer une ligne au-dessus",
     "insertRowBelow": "Insérer une ligne en dessous",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "Insérer un tableau",
+    "insertTableOfContents": "Insérer une table des matières",
     "inserted": "Inséré",
     "italic": "Italique",
     "italicShortcut": "Italique (Ctrl+I)",
@@ -97,7 +98,7 @@
     "markupView": {
       "allMarkup": "Toutes les marques",
       "noMarkup": "Aucune marque",
-      "original": "Original",
+      "original": "Version d'origine",
       "simple": "Marques simples"
     },
     "moreFormatting": "Plus de mise en forme",
@@ -143,7 +144,6 @@
     "unlockForEditing": "Déverrouiller pour modifier",
     "unsupportedDocxEditDescription": "Ce fichier DOCX contient des structures que Folio ne peut pas réécrire sans risque. Pour éviter de corrompre le fichier, téléchargez-le et modifiez-le dans Word.",
     "unsupportedDocxEditTitle": "Modification bloquée",
-    "zoomGroup": "Zoom",
-    "clearDate": "Effacer la date"
+    "zoomGroup": "Niveau de zoom"
   }
 }

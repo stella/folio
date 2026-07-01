@@ -11,6 +11,7 @@
     "bulletList": "Lista com marcadores",
     "checkingDocxEditDescription": "stella ainda está verificando se este DOCX pode ser editado com segurança. Tente novamente quando o documento terminar de carregar.",
     "checkingDocxEditTitle": "Verificando documento",
+    "clearDate": "Limpar data",
     "comment": "Comentário",
     "comments": {
       "addPlaceholder": "Adicione um comentário...",
@@ -78,13 +79,13 @@
     "increaseIndent": "Aumentar recuo",
     "insertColumnLeft": "Inserir coluna à esquerda",
     "insertColumnRight": "Inserir coluna à direita",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "Inserir",
+    "insertImage": "Inserir imagem",
+    "insertPageBreak": "Inserir quebra de página",
     "insertRowAbove": "Inserir linha acima",
     "insertRowBelow": "Inserir linha abaixo",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "Inserir tabela",
+    "insertTableOfContents": "Inserir sumário",
     "inserted": "Inserido",
     "italic": "Itálico",
     "italicShortcut": "Itálico (Ctrl+I)",
@@ -97,7 +98,7 @@
     "markupView": {
       "allMarkup": "Toda Marcação",
       "noMarkup": "Nenhuma Marcação",
-      "original": "Original",
+      "original": "Versão original",
       "simple": "Marcação Simples"
     },
     "moreFormatting": "Mais formatação",
@@ -143,7 +144,6 @@
     "unlockForEditing": "Desbloquear para editar",
     "unsupportedDocxEditDescription": "Este DOCX contém estruturas que o Folio não pode reescrever com segurança. Para evitar corromper o arquivo, baixe-o e edite-o no Word.",
     "unsupportedDocxEditTitle": "Edição bloqueada",
-    "zoomGroup": "Zoom",
-    "clearDate": "Limpar data"
+    "zoomGroup": "Nível de zoom"
   }
 }

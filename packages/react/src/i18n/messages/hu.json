@@ -11,6 +11,7 @@
     "bulletList": "Felsorolás",
     "checkingDocxEditDescription": "A stella még ellenőrzi, hogy ez a DOCX biztonságosan szerkeszthető-e. Próbálja újra, amikor a dokumentum betöltődött.",
     "checkingDocxEditTitle": "Dokumentum ellenőrzése",
+    "clearDate": "Dátum törlése",
     "comment": "Megjegyzés",
     "comments": {
       "addPlaceholder": "Megjegyzés hozzáadása…",
@@ -78,13 +79,13 @@
     "increaseIndent": "Behúzás növelése",
     "insertColumnLeft": "Oszlop beszúrása balra",
     "insertColumnRight": "Oszlop beszúrása jobbra",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "Beszúrás",
+    "insertImage": "Kép beszúrása",
+    "insertPageBreak": "Oldaltörés beszúrása",
     "insertRowAbove": "Sor beszúrása fölé",
     "insertRowBelow": "Sor beszúrása alá",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "Táblázat beszúrása",
+    "insertTableOfContents": "Tartalomjegyzék beszúrása",
     "inserted": "Beszúrva",
     "italic": "Dőlt",
     "italicShortcut": "Dőlt (Ctrl+I)",
@@ -143,7 +144,6 @@
     "unlockForEditing": "Feloldás szerkesztéshez",
     "unsupportedDocxEditDescription": "Ez a DOCX olyan szerkezeteket tartalmaz, amelyeket a Folio nem tud biztonságosan átírni. A fájl sérülésének elkerülése érdekében töltse le, és szerkessze Wordben.",
     "unsupportedDocxEditTitle": "A szerkesztés letiltva",
-    "zoomGroup": "Zoom",
-    "clearDate": "Dátum törlése"
+    "zoomGroup": "Nagyítás"
   }
 }

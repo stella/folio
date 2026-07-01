@@ -11,6 +11,7 @@
     "bulletList": "Ženklelių sąrašas",
     "checkingDocxEditDescription": "stella vis dar tikrina, ar šį DOCX galima saugiai redaguoti. Bandykite dar kartą, kai dokumentas baigs krautis.",
     "checkingDocxEditTitle": "Tikrinamas dokumentas",
+    "clearDate": "Išvalyti datą",
     "comment": "Komentaras",
     "comments": {
       "addPlaceholder": "Pridėti komentarą…",
@@ -78,13 +79,13 @@
     "increaseIndent": "Padidinti įtrauką",
     "insertColumnLeft": "Įterpti stulpelį kairėje",
     "insertColumnRight": "Įterpti stulpelį dešinėje",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "Įterpti",
+    "insertImage": "Įterpti paveikslėlį",
+    "insertPageBreak": "Įterpti puslapio lūžį",
     "insertRowAbove": "Įterpti eilutę virš",
     "insertRowBelow": "Įterpti eilutę po",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "Įterpti lentelę",
+    "insertTableOfContents": "Įterpti turinį",
     "inserted": "Įterpta",
     "italic": "Kursyvas",
     "italicShortcut": "Kursyvas (Ctrl+I)",
@@ -143,7 +144,6 @@
     "unlockForEditing": "Atrakinti redagavimui",
     "unsupportedDocxEditDescription": "Šiame DOCX yra struktūrų, kurių Folio negali saugiai perrašyti. Kad failas nesugadintumėte, atsisiųskite jį ir redaguokite programoje Word.",
     "unsupportedDocxEditTitle": "Redagavimas užblokuotas",
-    "zoomGroup": "Zoom",
-    "clearDate": "Išvalyti datą"
+    "zoomGroup": "Mastelis"
   }
 }

@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import { FOLIO_LOCALES, getFolioMessages, isFolioLocale } from "./messages";
 
-// Keys folio added after the translated catalogs were captured; non-English
-// locales intentionally fall back to the English string until translated. Keep
-// this list in sync with the catalog generator so the fallback stays explicit
-// rather than silently masking a missing translation.
-const ENGLISH_FALLBACK_KEYS = [
+// Toolbar labels folio added after the initial translated catalogs were
+// captured. They are now translated in every non-English locale; the
+// i18n-check gate (scripts/i18n-check.ts) stops them regressing to the English
+// source.
+const POST_EXTRACTION_KEYS = [
   "insertGroup",
   "insertImage",
   "insertPageBreak",
@@ -115,12 +115,17 @@ describe("getFolioMessages", () => {
     expect(folioOf("ar").get("clearDate")).toMatch(/\p{Script=Arabic}/u);
   });
 
-  test("the post-extraction keys fall back to the English string (flagged for translation)", () => {
-    for (const key of ENGLISH_FALLBACK_KEYS) {
+  test("the post-extraction keys are translated (not the English source) in every non-English locale", () => {
+    for (const key of POST_EXTRACTION_KEYS) {
       const english = englishKeys.get(key);
       expect(english, `folio.${key} must exist in English`).toBeDefined();
       for (const locale of FOLIO_LOCALES) {
-        expect(folioOf(locale).get(key), `${locale}: folio.${key} fallback`).toBe(english);
+        if (locale === "en") {
+          continue;
+        }
+        expect(folioOf(locale).get(key), `${locale}: folio.${key} should be translated`).not.toBe(
+          english,
+        );
       }
     }
   });

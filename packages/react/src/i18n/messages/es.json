@@ -11,6 +11,7 @@
     "bulletList": "Lista con viñetas",
     "checkingDocxEditDescription": "stella sigue comprobando si este DOCX se puede editar de forma segura. Vuelve a intentarlo cuando el documento termine de cargarse.",
     "checkingDocxEditTitle": "Comprobando el documento",
+    "clearDate": "Borrar fecha",
     "comment": "Comentario",
     "comments": {
       "addPlaceholder": "Añadir comentario...",
@@ -78,13 +79,13 @@
     "increaseIndent": "Aumentar sangría",
     "insertColumnLeft": "Insertar columna a la izquierda",
     "insertColumnRight": "Insertar columna a la derecha",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "Insertar",
+    "insertImage": "Insertar imagen",
+    "insertPageBreak": "Insertar salto de página",
     "insertRowAbove": "Insertar fila encima",
     "insertRowBelow": "Insertar fila debajo",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "Insertar tabla",
+    "insertTableOfContents": "Insertar tabla de contenido",
     "inserted": "Insertado",
     "italic": "Cursiva",
     "italicShortcut": "Cursiva (Ctrl+I)",
@@ -97,7 +98,7 @@
     "markupView": {
       "allMarkup": "Todas las revisiones",
       "noMarkup": "Ninguna revisión",
-      "original": "Original",
+      "original": "Versión original",
       "simple": "Revisión sencilla"
     },
     "moreFormatting": "Más formato",
@@ -143,7 +144,6 @@
     "unlockForEditing": "Desbloquear para editar",
     "unsupportedDocxEditDescription": "Este DOCX contiene estructuras que Folio no puede reescribir de forma segura. Para no dañar el archivo, descárgalo y edítalo en Word.",
     "unsupportedDocxEditTitle": "Edición bloqueada",
-    "zoomGroup": "Zoom",
-    "clearDate": "Borrar fecha"
+    "zoomGroup": "Nivel de zoom"
   }
 }

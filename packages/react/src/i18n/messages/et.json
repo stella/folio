@@ -11,6 +11,7 @@
     "bulletList": "Täpploend",
     "checkingDocxEditDescription": "stella kontrollib veel, kas seda DOCX-i saab turvaliselt muuta. Proovige uuesti, kui dokument on laadimise lõpetanud.",
     "checkingDocxEditTitle": "Dokumendi kontrollimine",
+    "clearDate": "Tühjenda kuupäev",
     "comment": "Kommenteeri",
     "comments": {
       "addPlaceholder": "Lisa kommentaar…",
@@ -70,7 +71,7 @@
     },
     "finishEditing": "Lõpeta muutmine",
     "fontColor": "Fondi värv",
-    "fontGroup": "Font",
+    "fontGroup": "Fondid",
     "fontSize": "Fondi suurus",
     "formattingToolbar": "Vormindusriba",
     "hideDetails": "Peida üksikasjad",
@@ -78,13 +79,13 @@
     "increaseIndent": "Suurenda taanet",
     "insertColumnLeft": "Lisa veerg vasakule",
     "insertColumnRight": "Lisa veerg paremale",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "Lisa",
+    "insertImage": "Lisa pilt",
+    "insertPageBreak": "Lisa leheküljepiir",
     "insertRowAbove": "Lisa rida ülespoole",
     "insertRowBelow": "Lisa rida allapoole",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "Lisa tabel",
+    "insertTableOfContents": "Lisa sisukord",
     "inserted": "Lisatud",
     "italic": "Kaldkiri",
     "italicShortcut": "Kaldkiri (Ctrl+I)",
@@ -143,7 +144,6 @@
     "unlockForEditing": "Ava muutmiseks",
     "unsupportedDocxEditDescription": "See DOCX sisaldab struktuure, mida Folio ei suuda turvaliselt ümber kirjutada. Faili rikkumise vältimiseks laadi see alla ja muuda Wordis.",
     "unsupportedDocxEditTitle": "Muutmine on blokeeritud",
-    "zoomGroup": "Zoom",
-    "clearDate": "Tühjenda kuupäev"
+    "zoomGroup": "Suum"
   }
 }

@@ -11,6 +11,7 @@
     "bulletList": "Aizzīmju saraksts",
     "checkingDocxEditDescription": "stella vēl pārbauda, vai šo DOCX var droši rediģēt. Mēģiniet vēlreiz, kad dokuments būs pilnībā ielādēts.",
     "checkingDocxEditTitle": "Pārbauda dokumentu",
+    "clearDate": "Notīrīt datumu",
     "comment": "Komentārs",
     "comments": {
       "addPlaceholder": "Pievienot komentāru…",
@@ -78,13 +79,13 @@
     "increaseIndent": "Palielināt atkāpi",
     "insertColumnLeft": "Ievietot kolonnu pa kreisi",
     "insertColumnRight": "Ievietot kolonnu pa labi",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "Ievietot",
+    "insertImage": "Ievietot attēlu",
+    "insertPageBreak": "Ievietot lappuses pārtraukumu",
     "insertRowAbove": "Ievietot rindu virs",
     "insertRowBelow": "Ievietot rindu zem",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "Ievietot tabulu",
+    "insertTableOfContents": "Ievietot satura rādītāju",
     "inserted": "Ievietots",
     "italic": "Slīpraksts",
     "italicShortcut": "Slīpraksts (Ctrl+I)",
@@ -143,7 +144,6 @@
     "unlockForEditing": "Atbloķēt rediģēšanai",
     "unsupportedDocxEditDescription": "Šajā DOCX failā ir struktūras, ko Folio nevar droši pārrakstīt. Lai nesabojātu failu, lejupielādējiet to un rediģējiet programmā Word.",
     "unsupportedDocxEditTitle": "Rediģēšana bloķēta",
-    "zoomGroup": "Zoom",
-    "clearDate": "Notīrīt datumu"
+    "zoomGroup": "Tālummaiņa"
   }
 }

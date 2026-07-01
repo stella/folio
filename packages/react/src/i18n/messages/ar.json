@@ -11,6 +11,7 @@
     "bulletList": "قائمة نقطية",
     "checkingDocxEditDescription": "لا تزال stella تتحقق مما إذا كان يمكن تعديل ملف DOCX هذا بأمان. حاول مرة أخرى عند انتهاء تحميل المستند.",
     "checkingDocxEditTitle": "جارٍ فحص المستند",
+    "clearDate": "مسح التاريخ",
     "comment": "تعليق",
     "comments": {
       "addPlaceholder": "أضف تعليقًا...",
@@ -78,13 +79,13 @@
     "increaseIndent": "زيادة المسافة البادئة",
     "insertColumnLeft": "إدراج عمود إلى اليسار",
     "insertColumnRight": "إدراج عمود إلى اليمين",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "إدراج",
+    "insertImage": "إدراج صورة",
+    "insertPageBreak": "إدراج فاصل صفحات",
     "insertRowAbove": "إدراج صف أعلى",
     "insertRowBelow": "إدراج صف أسفل",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "إدراج جدول",
+    "insertTableOfContents": "إدراج جدول المحتويات",
     "inserted": "مُدرَج",
     "italic": "مائل",
     "italicShortcut": "مائل (Ctrl+I)",
@@ -143,7 +144,6 @@
     "unlockForEditing": "إلغاء القفل للتعديل",
     "unsupportedDocxEditDescription": "يحتوي ملف DOCX هذا على بِنى لا يستطيع Folio إعادة كتابتها بأمان. لتجنّب إتلاف الملف، نزّله وعدّله في Word.",
     "unsupportedDocxEditTitle": "التعديل محظور",
-    "zoomGroup": "Zoom",
-    "clearDate": "مسح التاريخ"
+    "zoomGroup": "تكبير/تصغير"
   }
 }

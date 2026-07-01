@@ -11,6 +11,7 @@
     "bulletList": "Aufzählung",
     "checkingDocxEditDescription": "stella prüft noch, ob diese DOCX-Datei sicher bearbeitet werden kann. Versuchen Sie es erneut, sobald das Dokument vollständig geladen ist.",
     "checkingDocxEditTitle": "Dokument wird geprüft",
+    "clearDate": "Datum löschen",
     "comment": "Kommentar",
     "comments": {
       "addPlaceholder": "Kommentar hinzufügen...",
@@ -78,13 +79,13 @@
     "increaseIndent": "Einzug vergrößern",
     "insertColumnLeft": "Spalte links einfügen",
     "insertColumnRight": "Spalte rechts einfügen",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "Einfügen",
+    "insertImage": "Bild einfügen",
+    "insertPageBreak": "Seitenumbruch einfügen",
     "insertRowAbove": "Zeile oberhalb einfügen",
     "insertRowBelow": "Zeile unterhalb einfügen",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "Tabelle einfügen",
+    "insertTableOfContents": "Inhaltsverzeichnis einfügen",
     "inserted": "Eingefügt",
     "italic": "Kursiv",
     "italicShortcut": "Kursiv (Strg+I)",
@@ -97,7 +98,7 @@
     "markupView": {
       "allMarkup": "Das gesamte Markup",
       "noMarkup": "Kein Markup",
-      "original": "Original",
+      "original": "Originalversion",
       "simple": "Einfaches Markup"
     },
     "moreFormatting": "Weitere Formatierung",
@@ -143,7 +144,6 @@
     "unlockForEditing": "Zum Bearbeiten entsperren",
     "unsupportedDocxEditDescription": "Diese DOCX enthält Strukturen, die Folio nicht sicher umschreiben kann. Laden Sie sie herunter und bearbeiten Sie sie in Word, um eine Beschädigung der Datei zu vermeiden.",
     "unsupportedDocxEditTitle": "Bearbeitung gesperrt",
-    "zoomGroup": "Zoom",
-    "clearDate": "Datum löschen"
+    "zoomGroup": "Zoomstufe"
   }
 }

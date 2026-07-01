@@ -11,6 +11,7 @@
     "bulletList": "Lista punktowana",
     "checkingDocxEditDescription": "stella nadal sprawdza, czy ten DOCX można bezpiecznie edytować. Spróbuj ponownie, gdy dokument się załaduje.",
     "checkingDocxEditTitle": "Sprawdzanie dokumentu",
+    "clearDate": "Wyczyść datę",
     "comment": "Komentarz",
     "comments": {
       "addPlaceholder": "Dodaj komentarz...",
@@ -78,13 +79,13 @@
     "increaseIndent": "Zwiększ wcięcie",
     "insertColumnLeft": "Wstaw kolumnę z lewej",
     "insertColumnRight": "Wstaw kolumnę z prawej",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "Wstaw",
+    "insertImage": "Wstaw obraz",
+    "insertPageBreak": "Wstaw podział strony",
     "insertRowAbove": "Wstaw wiersz powyżej",
     "insertRowBelow": "Wstaw wiersz poniżej",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "Wstaw tabelę",
+    "insertTableOfContents": "Wstaw spis treści",
     "inserted": "Wstawiono",
     "italic": "Kursywa",
     "italicShortcut": "Kursywa (Ctrl+I)",
@@ -143,7 +144,6 @@
     "unlockForEditing": "Odblokuj, aby edytować",
     "unsupportedDocxEditDescription": "Ten plik DOCX zawiera struktury, których Folio nie może bezpiecznie przepisać. Aby nie uszkodzić pliku, pobierz go i edytuj w programie Word.",
     "unsupportedDocxEditTitle": "Edycja zablokowana",
-    "zoomGroup": "Zoom",
-    "clearDate": "Wyczyść datę"
+    "zoomGroup": "Powiększenie"
   }
 }

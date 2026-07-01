@@ -11,6 +11,7 @@
     "bulletList": "Odrážkový seznam",
     "checkingDocxEditDescription": "stella ještě ověřuje, jestli lze tento DOCX bezpečně upravovat. Zkuste to znovu, až se dokument načte.",
     "checkingDocxEditTitle": "Kontrola dokumentu",
+    "clearDate": "Vymazat datum",
     "comment": "Komentář",
     "comments": {
       "addPlaceholder": "Přidat komentář...",
@@ -78,13 +79,13 @@
     "increaseIndent": "Zvětšit odsazení",
     "insertColumnLeft": "Vložit sloupec vlevo",
     "insertColumnRight": "Vložit sloupec vpravo",
-    "insertGroup": "Insert",
-    "insertImage": "Insert image",
-    "insertPageBreak": "Insert page break",
+    "insertGroup": "Vložit",
+    "insertImage": "Vložit obrázek",
+    "insertPageBreak": "Vložit konec stránky",
     "insertRowAbove": "Vložit řádek nad",
     "insertRowBelow": "Vložit řádek pod",
-    "insertTable": "Insert table",
-    "insertTableOfContents": "Insert table of contents",
+    "insertTable": "Vložit tabulku",
+    "insertTableOfContents": "Vložit obsah",
     "inserted": "Vloženo",
     "italic": "Kurzíva",
     "italicShortcut": "Kurzíva (Ctrl+I)",
@@ -143,7 +144,6 @@
     "unlockForEditing": "Odemknout pro možnost úprav",
     "unsupportedDocxEditDescription": "Tento DOCX obsahuje struktury, které Folio neumí bezpečně přepsat. Aby se soubor nepoškodil, stáhněte ho a upravte ve Wordu.",
     "unsupportedDocxEditTitle": "Úpravy zablokovány",
-    "zoomGroup": "Zoom",
-    "clearDate": "Vymazat datum"
+    "zoomGroup": "Přiblížení"
   }
 }
