@@ -68,6 +68,17 @@ describe("getFolioMessages", () => {
     expect(getFolioMessages("xx")).toBe(getFolioMessages("en"));
   });
 
+  test("resolves a regional tag to its base-language catalog", () => {
+    expect(getFolioMessages("de-DE")).toBe(getFolioMessages("de"));
+    expect(getFolioMessages("fr-FR")).toBe(getFolioMessages("fr"));
+    // pt-BR ships in its own right; pt-PT has no base match, so it falls back.
+    expect(getFolioMessages("pt-PT")).toBe(getFolioMessages("en"));
+  });
+
+  test("falls back to English for a structurally invalid tag", () => {
+    expect(getFolioMessages("!!invalid")).toBe(getFolioMessages("en"));
+  });
+
   test("English is 100% complete (every key present and non-empty)", () => {
     expect(englishKeys.size).toBeGreaterThan(0);
     for (const [key, value] of englishKeys) {

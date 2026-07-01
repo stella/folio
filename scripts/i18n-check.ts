@@ -160,18 +160,22 @@ export const syncMessages = (source: NestedMessages, target: NestedMessages): Ne
   const sourceKeys = new Set(flattenKeys(source));
   const targetKeys = new Set(flattenKeys(result));
 
+  // Delete stale keys BEFORE adding new ones: when a key changes from a leaf to
+  // a namespace (source has `foo.bar`, target still has `foo`), adding `foo.bar`
+  // first and then deleting the now-extra `foo` would remove the freshly-created
+  // subtree, leaving the locale still missing `foo.bar`.
+  for (const key of targetKeys) {
+    if (!sourceKeys.has(key)) {
+      deleteNestedKey(result, key);
+    }
+  }
+
   for (const key of sourceKeys) {
     if (!targetKeys.has(key)) {
       const value = getNestedValue(source, key);
       if (value !== undefined) {
         setNestedValue(result, key, value);
       }
-    }
-  }
-
-  for (const key of targetKeys) {
-    if (!sourceKeys.has(key)) {
-      deleteNestedKey(result, key);
     }
   }
 

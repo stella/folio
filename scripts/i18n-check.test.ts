@@ -39,6 +39,15 @@ describe("syncMessages", () => {
       folio: { insertTable: "Insert table", zoomGroup: "Priblíženie" },
     });
   });
+
+  test("keeps the new subtree when a key changes from a leaf to a namespace", () => {
+    // en promoted `greeting` from a string to a namespace; the stale leaf must
+    // drop without deleting the freshly-added `greeting.formal`.
+    const source: NestedMessages = { greeting: { formal: "Good day" } };
+    const target: NestedMessages = { greeting: "Hi" };
+
+    expect(syncMessages(source, target)).toEqual({ greeting: { formal: "Good day" } });
+  });
 });
 
 describe("findUntranslated", () => {
