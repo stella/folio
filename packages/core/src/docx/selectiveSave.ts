@@ -8,6 +8,8 @@
  * Returns null on any failure, signaling the caller to fall back to full repack.
  */
 
+import type JSZip from "jszip";
+
 import type { Document, BlockContent } from "../types/document";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { RELATIONSHIP_TYPES } from "./relsParser";
@@ -21,9 +23,10 @@ import {
   COMMENTS_CONTENT_TYPE,
 } from "./rezip";
 import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES } from "./selectiveSaveFlags";
-import { buildPatchedDocumentXml } from "./selectiveXmlPatch";
+import { buildPatchedDocumentXml, buildPatchedNoteXml, collectParaIds } from "./selectiveXmlPatch";
 import { serializeComments } from "./serializer/commentSerializer";
 import { serializeDocument } from "./serializer/documentSerializer";
+import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
 
 const SYNTHETIC_IMAGE_RID_PREFIX = "rId_img_";
 
@@ -80,6 +83,94 @@ function hasNewImagesOrHyperlinks(blocks: BlockContent[]): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Splice edited footnote/endnote paragraphs into their parts and return the
+ * candidate ids that could NOT be routed to a note part (an id that is neither
+ * a body nor a note paragraph — the caller bails on those).
+ *
+ * The document model only retains the normal notes, so this never rewrites a
+ * whole note part (that would drop the separator notes the model omits): it
+ * splices only the edited note paragraphs by `paraId` via
+ * {@link buildPatchedNoteXml}, keeping separators and unedited notes byte-exact.
+ *
+ * Returns null to signal the caller should bail to a full repack (a note
+ * paragraph could not be spliced safely).
+ */
+async function patchNoteParts(
+  zip: JSZip,
+  doc: Document,
+  candidateIds: Set<string>,
+  updates: Map<string, string>,
+): Promise<Set<string> | null> {
+  const footnotes = doc.package.footnotes ?? [];
+  const endnotes = doc.package.endnotes ?? [];
+  const remainingIds = new Set(candidateIds);
+  if (footnotes.length === 0 && endnotes.length === 0) {
+    return remainingIds;
+  }
+
+  // Word writes note parts at the conventional lowercase path; match
+  // case-insensitively so a producer that cased them differently still hits the
+  // existing entry (writing a new-cased path would duplicate the part).
+  const findPart = (conventionalLowerPath: string) => {
+    const direct = zip.file(conventionalLowerPath);
+    if (direct) {
+      return direct;
+    }
+    for (const [path, file] of Object.entries(zip.files)) {
+      if (!file.dir && path.toLowerCase() === conventionalLowerPath) {
+        return file;
+      }
+    }
+    return null;
+  };
+
+  const patchPart = async (
+    conventionalLowerPath: string,
+    serialize: () => string,
+  ): Promise<boolean> => {
+    const file = findPart(conventionalLowerPath);
+    if (!file) {
+      return true;
+    }
+    const originalXml = await file.async("text");
+    const originalIds = collectParaIds(originalXml);
+    const partIds = new Set<string>();
+    for (const id of remainingIds) {
+      if (originalIds.has(id)) {
+        partIds.add(id);
+      }
+    }
+    if (partIds.size === 0) {
+      return true;
+    }
+    const patched = buildPatchedNoteXml(originalXml, serialize(), partIds);
+    if (patched === null) {
+      return false;
+    }
+    updates.set(file.name, patched);
+    for (const id of partIds) {
+      remainingIds.delete(id);
+    }
+    return true;
+  };
+
+  if (
+    footnotes.length > 0 &&
+    !(await patchPart("word/footnotes.xml", () => serializeFootnotes(footnotes)))
+  ) {
+    return null;
+  }
+  if (
+    endnotes.length > 0 &&
+    !(await patchPart("word/endnotes.xml", () => serializeEndnotes(endnotes)))
+  ) {
+    return null;
+  }
+
+  return remainingIds;
 }
 
 export type SelectiveSaveOptions = {
@@ -153,24 +244,51 @@ export async function attemptSelectiveSave(
     const zip = await JSZip.loadAsync(originalBuffer);
     const updates = new Map<string, string>();
 
-    // Patch document.xml if paragraphs changed
+    // Patch document.xml and the note parts (footnotes.xml / endnotes.xml). A
+    // changed paraId lives in exactly one part, so partition against the body's
+    // own paraIds: body ids patch document.xml, the rest are routed to the note
+    // parts. A plain body edit has no note candidates, so the note parts are
+    // never read or rewritten and stay verbatim.
     if (changedParaIds.size > 0) {
       const docXmlFile = zip.file("word/document.xml");
       if (!docXmlFile) {
         return null;
       }
       const originalDocXml = await docXmlFile.async("text");
+      const bodyParaIds = collectParaIds(originalDocXml);
 
-      const serializedDocXml = serializeDocument(doc);
-      const patchedDocXml = buildPatchedDocumentXml(
-        originalDocXml,
-        serializedDocXml,
-        changedParaIds,
-      );
-      if (!patchedDocXml) {
-        return null;
+      const bodyChangedIds = new Set<string>();
+      const noteCandidateIds = new Set<string>();
+      for (const id of changedParaIds) {
+        if (bodyParaIds.has(id)) {
+          bodyChangedIds.add(id);
+        } else {
+          noteCandidateIds.add(id);
+        }
       }
-      updates.set("word/document.xml", patchedDocXml);
+
+      if (noteCandidateIds.size > 0) {
+        const unrouted = await patchNoteParts(zip, doc, noteCandidateIds, updates);
+        // A splice failure, or a changed id that is neither a body nor a note
+        // paragraph, falls back to full repack — matching the prior safety when
+        // buildPatchedDocumentXml met a paraId it could not resolve.
+        if (unrouted === null || unrouted.size > 0) {
+          return null;
+        }
+      }
+
+      if (bodyChangedIds.size > 0) {
+        const serializedDocXml = serializeDocument(doc);
+        const patchedDocXml = buildPatchedDocumentXml(
+          originalDocXml,
+          serializedDocXml,
+          bodyChangedIds,
+        );
+        if (!patchedDocXml) {
+          return null;
+        }
+        updates.set("word/document.xml", patchedDocXml);
+      }
     }
 
     // Overwrite `word/comments.xml` whenever the source already had one,

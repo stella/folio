@@ -129,7 +129,7 @@ export function countParagraphElements(xml: string): number {
 /**
  * Find all paraIds in an XML string and return counts (to detect duplicates).
  */
-function collectParaIds(xml: string): Map<string, number> {
+export function collectParaIds(xml: string): Map<string, number> {
   const ids = new Map<string, number>();
   const pattern = /w14:paraId="(?<id>[^"]+)"/gu;
   let match: RegExpExecArray | null;
@@ -146,18 +146,30 @@ export type PatchValidationResult = {
   reason?: string;
 };
 
+export type PatchSafetyOptions = {
+  /**
+   * Require the original and serialized XML to hold the same number of `<w:p>`
+   * elements. Guards document.xml against structural drift. Notes disable it:
+   * the model only retains the normal notes, so a serialized note part
+   * legitimately has fewer paragraphs than the original (which still carries
+   * the separator notes). See {@link buildPatchedNoteXml}.
+   */
+  checkParagraphCount?: boolean;
+};
+
 /**
  * Validate that a selective patch can be safely applied.
  *
  * Checks:
  * - All changed paraIds exist in original XML (exactly once)
  * - All changed paraIds exist in serialized XML (exactly once)
- * - Paragraph count matches between original and serialized
+ * - Paragraph count matches between original and serialized (unless disabled)
  */
 export function validatePatchSafety(
   originalXml: string,
   serializedXml: string,
   changedIds: Set<string>,
+  options: PatchSafetyOptions = {},
 ): PatchValidationResult {
   if (changedIds.size === 0) {
     return { safe: true };
@@ -186,6 +198,10 @@ export function validatePatchSafety(
     if (serCount > 1) {
       return { safe: false, reason: `duplicate-paraId-in-serialized: ${id}` };
     }
+  }
+
+  if (options.checkParagraphCount === false) {
+    return { safe: true };
   }
 
   // Check paragraph counts match
@@ -223,7 +239,53 @@ export function buildPatchedDocumentXml(
     return null;
   }
 
-  // Collect all replacements: { start, end, newXml }
+  return spliceChangedParagraphs(originalXml, serializedXml, changedIds);
+}
+
+/**
+ * Build a patched note part (word/footnotes.xml / word/endnotes.xml) by
+ * splicing edited note paragraphs into the original, preserving unchanged
+ * content byte-for-byte.
+ *
+ * Unlike {@link buildPatchedDocumentXml} this does NOT require the paragraph
+ * counts to match: the document model only retains the normal notes, so the
+ * serialized note XML omits the separator / continuationSeparator paragraphs
+ * the original part still carries. Splicing by `paraId` keeps those separators
+ * and every unedited note byte-exact while replacing only the edited ones.
+ *
+ * Returns null if any changed id is missing or ambiguous in either input, so
+ * the caller can fall back to preserving the original part verbatim.
+ */
+export function buildPatchedNoteXml(
+  originalXml: string,
+  serializedXml: string,
+  changedIds: Set<string>,
+): string | null {
+  if (changedIds.size === 0) {
+    return originalXml;
+  }
+
+  const validation = validatePatchSafety(originalXml, serializedXml, changedIds, {
+    checkParagraphCount: false,
+  });
+  if (!validation.safe) {
+    return null;
+  }
+
+  return spliceChangedParagraphs(originalXml, serializedXml, changedIds);
+}
+
+/**
+ * Replace each changed paragraph in `originalXml` with its re-serialized form
+ * extracted from `serializedXml`, splicing end-to-start so earlier offsets stay
+ * valid. Assumes safety has already been validated. Returns null if an offset
+ * or extraction unexpectedly fails.
+ */
+function spliceChangedParagraphs(
+  originalXml: string,
+  serializedXml: string,
+  changedIds: Set<string>,
+): string | null {
   const replacements: { start: number; end: number; newXml: string }[] = [];
 
   for (const paraId of changedIds) {
