@@ -12,6 +12,7 @@
     "checkingDocxEditDescription": "stella nadal sprawdza, czy ten DOCX można bezpiecznie edytować. Spróbuj ponownie, gdy dokument się załaduje.",
     "checkingDocxEditTitle": "Sprawdzanie dokumentu",
     "clearDate": "Wyczyść datę",
+    "clipboardReadFailed": "Nie udało się odczytać schowka. Sprawdź uprawnienia do schowka i spróbuj ponownie.",
     "comment": "Komentarz",
     "comments": {
       "addPlaceholder": "Dodaj komentarz...",

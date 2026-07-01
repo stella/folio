@@ -12,6 +12,7 @@
     "checkingDocxEditDescription": "stella sigue comprobando si este DOCX se puede editar de forma segura. Vuelve a intentarlo cuando el documento termine de cargarse.",
     "checkingDocxEditTitle": "Comprobando el documento",
     "clearDate": "Borrar fecha",
+    "clipboardReadFailed": "No se pudo leer el portapapeles. Comprueba los permisos del portapapeles e inténtalo de nuevo.",
     "comment": "Comentario",
     "comments": {
       "addPlaceholder": "Añadir comentario...",

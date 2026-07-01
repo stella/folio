@@ -62,6 +62,25 @@ describe("cleanPastedHtml — Office cruft removal", () => {
     expect(cleanPastedHtml('<span title="x>y"></span>keep')).toBe("keep");
   });
 
+  test("keeps a stylesheet hidden inside comment delimiters inside <style>", () => {
+    const out = cleanPastedHtml('<style><!-- .keep{color:red} --></style><p class="keep">x</p>');
+    // The style block (and its class rule) must survive the comment strip so the
+    // downstream inliner can still resolve `.keep`.
+    expect(out).toContain("<style>");
+    expect(out).toContain(".keep{color:red}");
+    expect(out).toContain('<p class="keep">x</p>');
+  });
+
+  test("still strips comments that sit outside a <style> block", () => {
+    const out = cleanPastedHtml(
+      "<!-- drop me --><style>.a{color:red}</style><!-- and me --><p>x</p>",
+    );
+    expect(out).not.toContain("drop me");
+    expect(out).not.toContain("and me");
+    expect(out).toContain("<style>.a{color:red}</style>");
+    expect(out).toContain("<p>x</p>");
+  });
+
   test("removes conditional comments including the Office xml island", () => {
     const html = "<!--[if gte mso 9]><xml><o:OfficeDocumentSettings/></xml><![endif]--><p>Body</p>";
     const out = cleanPastedHtml(html);

@@ -12,6 +12,7 @@
     "checkingDocxEditDescription": "لا تزال stella تتحقق مما إذا كان يمكن تعديل ملف DOCX هذا بأمان. حاول مرة أخرى عند انتهاء تحميل المستند.",
     "checkingDocxEditTitle": "جارٍ فحص المستند",
     "clearDate": "مسح التاريخ",
+    "clipboardReadFailed": "تعذّرت قراءة الحافظة. تحقّق من أذونات الحافظة وحاول مرة أخرى.",
     "comment": "تعليق",
     "comments": {
       "addPlaceholder": "أضف تعليقًا...",

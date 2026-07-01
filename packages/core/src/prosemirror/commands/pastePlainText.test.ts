@@ -2,8 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 
-import { buildPlainTextSlice, pasteWithoutFormatting } from "./pastePlainText";
+import {
+  buildPlainTextSlice,
+  CLIPBOARD_READ_ERROR_EVENT,
+  pasteWithoutFormatting,
+} from "./pastePlainText";
 
 // Minimal block schema (no DOM needed to construct or fill it).
 const blockSchema = new Schema({
@@ -113,5 +118,30 @@ describe("pasteWithoutFormatting dry run", () => {
     withClipboard(undefined, () => {
       expect(pasteWithoutFormatting(fakeState)).toBe(false);
     });
+  });
+
+  test("emits a clipboard-read-error event when the read is denied", async () => {
+    const dom = new EventTarget();
+    let firedError: unknown;
+    dom.addEventListener(CLIPBOARD_READ_ERROR_EVENT, (event) => {
+      firedError = (event as CustomEvent).detail?.error;
+    });
+    const view = {
+      dom,
+      isDestroyed: false,
+      state: fakeState,
+      dispatch: () => undefined,
+    } as unknown as EditorView;
+
+    withClipboard(
+      () => Promise.reject(new Error("denied")),
+      () => {
+        expect(pasteWithoutFormatting(fakeState, () => undefined, view)).toBe(true);
+      },
+    );
+
+    // Flush the rejected-read microtasks so the catch handler runs.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(firedError).toBeInstanceOf(Error);
   });
 });

@@ -12,6 +12,7 @@
     "checkingDocxEditDescription": "stella kontrollib veel, kas seda DOCX-i saab turvaliselt muuta. Proovige uuesti, kui dokument on laadimise lõpetanud.",
     "checkingDocxEditTitle": "Dokumendi kontrollimine",
     "clearDate": "Tühjenda kuupäev",
+    "clipboardReadFailed": "Lõikelauda ei õnnestunud lugeda. Kontrollige lõikelaua õigusi ja proovige uuesti.",
     "comment": "Kommenteeri",
     "comments": {
       "addPlaceholder": "Lisa kommentaar…",

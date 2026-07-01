@@ -14,6 +14,15 @@ import type { Command } from "prosemirror-state";
 const PARAGRAPH_BREAK = /(?:\r\n?|\n)+/;
 
 /**
+ * Dispatched on the editor view DOM when the clipboard read behind a
+ * "paste without formatting" keystroke fails (e.g. clipboard-read permission
+ * denied). The command owns no UI, so the host shell listens for this bubbling
+ * event and decides how to surface it (toast, telemetry, or no-op) rather than
+ * the keystroke silently doing nothing.
+ */
+export const CLIPBOARD_READ_ERROR_EVENT = "folio:clipboard-read-error";
+
+/**
  * Build a mark-free slice from plain text, one paragraph per run of newlines.
  *
  * Pure and DOM-free so it is unit-testable and reusable from both the keymap
@@ -45,8 +54,10 @@ export function buildPlainTextSlice(text: string, schema: Schema): Slice {
  * `dispatch` (menus/toolbars) returns `true` without touching the clipboard or
  * the document. Only when `dispatch` is provided does it read the clipboard and
  * insert; it then returns `true` (claiming the key) so the browser's own
- * "paste without formatting" shortcut does not also fire. The read is
- * best-effort: a denied or unavailable clipboard is swallowed rather than thrown.
+ * "paste without formatting" shortcut does not also fire. A failed read (denied
+ * permission, unsupported) is surfaced to the host via a
+ * {@link CLIPBOARD_READ_ERROR_EVENT} on the view DOM so the keystroke is never a
+ * silent no-op.
  */
 export const pasteWithoutFormatting: Command = (state, dispatch, view) => {
   if (typeof navigator === "undefined" || !navigator.clipboard?.readText) {
@@ -74,8 +85,14 @@ export const pasteWithoutFormatting: Command = (state, dispatch, view) => {
       const slice = buildPlainTextSlice(text, schema);
       view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
     })
-    .catch(() => {
-      // Best-effort: clipboard read can be denied or unsupported.
+    .catch((error: unknown) => {
+      // Surface the failure to the shell instead of swallowing it; guard the
+      // constructor so importing this module stays safe in non-DOM contexts.
+      if (typeof CustomEvent === "function" && !view.isDestroyed) {
+        view.dom.dispatchEvent(
+          new CustomEvent(CLIPBOARD_READ_ERROR_EVENT, { detail: { error }, bubbles: true }),
+        );
+      }
     });
 
   return true;

@@ -12,6 +12,7 @@
     "checkingDocxEditDescription": "stella is still checking whether this DOCX can be edited safely. Try again when the document finishes loading.",
     "checkingDocxEditTitle": "Checking document",
     "clearDate": "Clear date",
+    "clipboardReadFailed": "Couldn't read the clipboard. Check clipboard permissions and try again.",
     "comment": "Comment",
     "comments": {
       "addPlaceholder": "Add a comment...",

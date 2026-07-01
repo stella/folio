@@ -12,6 +12,7 @@
     "checkingDocxEditDescription": "stella ešte kontroluje, či možno tento DOCX bezpečne upravovať. Skúste to znova, keď sa dokument načíta.",
     "checkingDocxEditTitle": "Kontrola dokumentu",
     "clearDate": "Vymazať dátum",
+    "clipboardReadFailed": "Nepodarilo sa prečítať schránku. Skontrolujte povolenia schránky a skúste to znova.",
     "comment": "Komentár",
     "comments": {
       "addPlaceholder": "Pridať komentár...",

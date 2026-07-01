@@ -19,7 +19,14 @@
 
 /**
  * Remove every HTML comment, including downlevel conditional comments
- * (`<!--[if gte mso 9]> ... <![endif]-->`) that carry the Office `<xml>` island.
+ * (`<!--[if gte mso 9]> ... <![endif]-->`) that carry the Office `<xml>` island,
+ * while leaving the contents of `<style>` elements untouched.
+ *
+ * The `<style>` carve-out matters because legacy pasted HTML hides stylesheet
+ * CSS inside comment delimiters (`<style><!-- .c { ... } --></style>`, the old
+ * CDATA-hiding trick). This cleanup runs before the style inliner and must hand
+ * it an intact stylesheet, so a blanket comment strip would drop class rules
+ * that used to be inlined. Style blocks are copied through verbatim.
  *
  * A single linear scan rather than a regex: clipboard HTML is untrusted, and a
  * lazy `<!--[\s\S]*?-->` against the multi-character `-->` terminator backtracks
@@ -27,23 +34,41 @@
  * through end-of-string so no stray `<!--` can survive.
  */
 function stripHtmlComments(html: string): string {
+  const lower = html.toLowerCase();
   let result = "";
   let cursor = 0;
 
   while (cursor < html.length) {
-    const start = html.indexOf("<!--", cursor);
-    if (start === -1) {
+    const commentStart = html.indexOf("<!--", cursor);
+    if (commentStart === -1) {
       result += html.slice(cursor);
       break;
     }
 
-    result += html.slice(cursor, start);
-    const end = html.indexOf("-->", start + 4);
-    if (end === -1) {
+    // A `<style>` element that opens before the next comment is copied through
+    // verbatim (delimiters and all) so the downstream inliner still sees its CSS.
+    const styleStart = lower.indexOf("<style", cursor);
+    if (styleStart !== -1 && styleStart < commentStart) {
+      const openTagEnd = html.indexOf(">", styleStart);
+      const closeStart = openTagEnd === -1 ? -1 : lower.indexOf("</style", openTagEnd + 1);
+      const closeTagEnd = closeStart === -1 ? -1 : html.indexOf(">", closeStart);
+      if (closeTagEnd === -1) {
+        // Malformed/unterminated <style>: keep the remainder as-is and stop.
+        result += html.slice(cursor);
+        break;
+      }
+      result += html.slice(cursor, closeTagEnd + 1);
+      cursor = closeTagEnd + 1;
+      continue;
+    }
+
+    result += html.slice(cursor, commentStart);
+    const commentEnd = html.indexOf("-->", commentStart + 4);
+    if (commentEnd === -1) {
       break;
     }
 
-    cursor = end + 3;
+    cursor = commentEnd + 3;
   }
 
   return result;

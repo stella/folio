@@ -12,6 +12,7 @@
     "checkingDocxEditDescription": "stella prüft noch, ob diese DOCX-Datei sicher bearbeitet werden kann. Versuchen Sie es erneut, sobald das Dokument vollständig geladen ist.",
     "checkingDocxEditTitle": "Dokument wird geprüft",
     "clearDate": "Datum löschen",
+    "clipboardReadFailed": "Zwischenablage konnte nicht gelesen werden. Prüfen Sie die Berechtigungen für die Zwischenablage und versuchen Sie es erneut.",
     "comment": "Kommentar",
     "comments": {
       "addPlaceholder": "Kommentar hinzufügen...",

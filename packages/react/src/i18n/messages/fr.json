@@ -12,6 +12,7 @@
     "checkingDocxEditDescription": "stella vérifie encore si ce DOCX peut être modifié en toute sécurité. Réessayez une fois le document chargé.",
     "checkingDocxEditTitle": "Vérification du document",
     "clearDate": "Effacer la date",
+    "clipboardReadFailed": "Impossible de lire le presse-papiers. Vérifiez les autorisations du presse-papiers et réessayez.",
     "comment": "Commenter",
     "comments": {
       "addPlaceholder": "Ajouter un commentaire...",

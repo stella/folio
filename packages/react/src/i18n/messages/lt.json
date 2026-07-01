@@ -12,6 +12,7 @@
     "checkingDocxEditDescription": "stella vis dar tikrina, ar šį DOCX galima saugiai redaguoti. Bandykite dar kartą, kai dokumentas baigs krautis.",
     "checkingDocxEditTitle": "Tikrinamas dokumentas",
     "clearDate": "Išvalyti datą",
+    "clipboardReadFailed": "Nepavyko nuskaityti iškarpinės. Patikrinkite iškarpinės leidimus ir bandykite dar kartą.",
     "comment": "Komentaras",
     "comments": {
       "addPlaceholder": "Pridėti komentarą…",

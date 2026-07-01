@@ -12,6 +12,7 @@
     "checkingDocxEditDescription": "stella vēl pārbauda, vai šo DOCX var droši rediģēt. Mēģiniet vēlreiz, kad dokuments būs pilnībā ielādēts.",
     "checkingDocxEditTitle": "Pārbauda dokumentu",
     "clearDate": "Notīrīt datumu",
+    "clipboardReadFailed": "Neizdevās nolasīt starpliktuvi. Pārbaudiet starpliktuves atļaujas un mēģiniet vēlreiz.",
     "comment": "Komentārs",
     "comments": {
       "addPlaceholder": "Pievienot komentāru…",
