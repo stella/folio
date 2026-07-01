@@ -251,6 +251,7 @@ export function App() {
             author="Folio User"
             onError={handleError}
             showToolbar={true}
+            showRuler={true}
             initialZoom={ZOOM_INITIAL}
             mode={editorMode}
             onModeChange={setEditorMode}

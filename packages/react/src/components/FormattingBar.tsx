@@ -20,6 +20,7 @@ import {
   MoreHorizontalIcon,
   PilcrowIcon,
   Redo2Icon,
+  RulerIcon,
   SeparatorHorizontalIcon,
   TableIcon,
   TableOfContentsIcon,
@@ -105,6 +106,8 @@ export function FormattingBar(props: FormattingBarProps) {
     showZoomControl,
     zoom,
     onZoomChange,
+    rulerVisible = false,
+    onToggleRuler,
     documentStyles,
     theme,
     onRefocusEditor,
@@ -697,6 +700,19 @@ export function FormattingBar(props: FormattingBarProps) {
 
       {/* Host extras (zoom, track changes, etc.) */}
       <div className="ms-auto flex shrink-0 items-center gap-1">
+        {onToggleRuler && (
+          <ToolbarGroup label={t("viewGroup")}>
+            <ToolbarButton
+              active={rulerVisible}
+              onClick={onToggleRuler}
+              title={t("ruler.toggle")}
+              ariaLabel={t("ruler.toggle")}
+              testId="toolbar-toggle-ruler"
+            >
+              <RulerIcon size={ICON_SIZE} />
+            </ToolbarButton>
+          </ToolbarGroup>
+        )}
         {showZoomControl !== false && zoom !== undefined && onZoomChange !== undefined && (
           <ToolbarGroup label={t("zoomGroup")}>
             <ZoomControl value={zoom} onChange={onZoomChange} disabled={disabled} compact />

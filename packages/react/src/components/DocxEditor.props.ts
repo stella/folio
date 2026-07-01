@@ -116,6 +116,14 @@ export type DocxEditorProps = {
   showMarginGuides?: boolean;
   /** Color for margin guides (default: '#c0c0c0') */
   marginGuideColor?: string;
+  /**
+   * Whether the horizontal and vertical rulers start visible (default: false).
+   * Seeds the initial state of the toolbar's ruler toggle; users show/hide the
+   * rulers at runtime from there (like Word's View > Ruler).
+   */
+  showRuler?: boolean;
+  /** Measurement unit shown on the rulers (default: 'inch'). */
+  rulerUnit?: "inch" | "cm";
   /** Initial zoom level (default: 1.0) */
   initialZoom?: number;
   /** Whether Ctrl/Cmd+wheel and trackpad-pinch zoom are enabled (default: true) */

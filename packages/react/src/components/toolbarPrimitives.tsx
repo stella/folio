@@ -141,6 +141,10 @@ export type ToolbarProps = {
   zoom?: number | undefined;
   /** Callback when zoom changes */
   onZoomChange?: ((zoom: number) => void) | undefined;
+  /** Whether the rulers are currently visible (drives the toggle's active state) */
+  rulerVisible?: boolean | undefined;
+  /** Toggle the rulers on/off. The ruler control renders only when this is provided. */
+  onToggleRuler?: (() => void) | undefined;
   /** Callback to refocus the editor after toolbar interactions */
   onRefocusEditor?: (() => void) | undefined;
   /** Callback when a table should be inserted */

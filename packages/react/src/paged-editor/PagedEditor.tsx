@@ -405,7 +405,7 @@ type TextInputDispatchTarget<TView> = {
 // =============================================================================
 
 export const DEFAULT_PAGE_GAP = 24;
-const COMMENTS_SIDEBAR_SCROLL_GUTTER = 304;
+export const COMMENTS_SIDEBAR_SCROLL_GUTTER = 304;
 
 /** Distance in px from a row/column boundary that triggers the insert button */
 /** Distance in px from the table edge where boundary detection is active */

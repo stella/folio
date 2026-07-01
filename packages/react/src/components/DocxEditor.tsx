@@ -61,6 +61,10 @@ import {
   toggleNumberedList,
   increaseIndent,
   decreaseIndent,
+  setIndentLeft,
+  setIndentRight,
+  setIndentFirstLine,
+  removeTabStop,
   increaseListLevel,
   decreaseListLevel,
   clearFormatting,
@@ -156,11 +160,17 @@ import { queryHtmlElement } from "@stll/folio-core/utils/domGuards";
 import { onFontsLoaded } from "@stll/folio-core/utils/fontLoader";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
-import { pointsToHalfPoints } from "@stll/folio-core/utils/units";
+import { pointsToHalfPoints, twipsToPixels } from "@stll/folio-core/utils/units";
 import { useDocumentHistory } from "../hooks/useHistory";
 import { useTableSelection } from "../hooks/useTableSelection";
-import { PagedEditor } from "../paged-editor/PagedEditor";
+import {
+  PagedEditor,
+  VIEWPORT_PADDING_TOP,
+  COMMENTS_SIDEBAR_SCROLL_GUTTER,
+} from "../paged-editor/PagedEditor";
 import type { PagedEditorRef } from "../paged-editor/PagedEditor";
+import { HorizontalRuler } from "./ui/HorizontalRuler";
+import { VerticalRuler } from "./ui/VerticalRuler";
 import { FolioUIProvider, DEFAULT_COMPONENTS } from "../ui/folio-ui";
 import { containedHandler } from "../utils/contained-handler";
 import { clampRangeToDocSize, resolveFolioAIBlockRange } from "./aiEditRange";
@@ -415,6 +425,8 @@ export function DocxEditor({
   showHeaderFooterEditing = true,
   showMarginGuides: _showMarginGuides = false,
   marginGuideColor: _marginGuideColor,
+  showRuler: showRulerProp = false,
+  rulerUnit = "inch",
   initialZoom = 1,
   enableWheelZoom = true,
   readOnly: readOnlyProp = false,
@@ -497,6 +509,9 @@ export function DocxEditor({
   const [tablePropsOpen, setTablePropsOpen] = useState(false);
   // Footnote properties dialog state
   const [footnotePropsOpen, setFootnotePropsOpen] = useState(false);
+  // Ruler visibility — seeded from the prop, then user-driven via the toolbar toggle.
+  const [rulerVisible, setRulerVisible] = useState(showRulerProp);
+  const toggleRuler = useCallback(() => setRulerVisible((visible) => !visible), []);
   // Document outline sidebar state
   const [showOutline, setShowOutline] = useState(showOutlineProp);
   const showOutlineRef = useRef(false);
@@ -2423,6 +2438,64 @@ export function DocxEditor({
     [history.state, readOnly, handleDocumentChange],
   );
 
+  // Ruler drag handlers. Page-margin drags go through the section-properties
+  // updater so they land in undo/redo; paragraph indent and tab-stop changes
+  // dispatch through the active editor view (ported from docx-editor's
+  // usePageSetupControls).
+  const handleLeftMarginChange = useCallback(
+    (twips: number) => handlePageSetupApply({ marginLeft: twips }),
+    [handlePageSetupApply],
+  );
+  const handleRightMarginChange = useCallback(
+    (twips: number) => handlePageSetupApply({ marginRight: twips }),
+    [handlePageSetupApply],
+  );
+  const handleTopMarginChange = useCallback(
+    (twips: number) => handlePageSetupApply({ marginTop: twips }),
+    [handlePageSetupApply],
+  );
+  const handleBottomMarginChange = useCallback(
+    (twips: number) => handlePageSetupApply({ marginBottom: twips }),
+    [handlePageSetupApply],
+  );
+  const handleIndentLeftChange = useCallback(
+    (twips: number) => {
+      const view = getActiveEditorView();
+      if (!view) return;
+      setIndentLeft(twips)(view.state, view.dispatch);
+    },
+    [getActiveEditorView],
+  );
+  const handleIndentRightChange = useCallback(
+    (twips: number) => {
+      const view = getActiveEditorView();
+      if (!view) return;
+      setIndentRight(twips)(view.state, view.dispatch);
+    },
+    [getActiveEditorView],
+  );
+  const handleFirstLineIndentChange = useCallback(
+    (twips: number) => {
+      const view = getActiveEditorView();
+      if (!view) return;
+      // Negative twips encode a hanging indent.
+      if (twips < 0) {
+        setIndentFirstLine(-twips, true)(view.state, view.dispatch);
+      } else {
+        setIndentFirstLine(twips, false)(view.state, view.dispatch);
+      }
+    },
+    [getActiveEditorView],
+  );
+  const handleTabStopRemove = useCallback(
+    (positionTwips: number) => {
+      const view = getActiveEditorView();
+      if (!view) return;
+      removeTabStop(positionTwips)(view.state, view.dispatch);
+    },
+    [getActiveEditorView],
+  );
+
   // Handle save
   const handleSave = useCallback(
     async (options?: { selective?: boolean }): Promise<ArrayBuffer | null> => {
@@ -3145,6 +3218,8 @@ export function DocxEditor({
                       showZoomControl={showZoomControl}
                       zoom={zoom}
                       onZoomChange={setZoomWithViewportAnchor}
+                      rulerVisible={rulerVisible}
+                      onToggleRuler={toggleRuler}
                       editorRef={editorContentRef}
                       onRefocusEditor={focusActiveEditor}
                       onImageWrapType={handleImageWrapType}
@@ -3181,6 +3256,50 @@ export function DocxEditor({
                     requestAnimationFrame(syncCommentHighlightStyles);
                   }}
                 >
+                  {/* Horizontal ruler — sticky-top, centered over the page so it
+                      scrolls horizontally with the document. paddingRight biases
+                      the centered ruler left by the comments-sidebar scroll gutter
+                      so it tracks the page when the sidebar shifts it. */}
+                  {rulerVisible && (
+                    <div
+                      style={{
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 20,
+                        display: "flex",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        paddingBlock: 4,
+                        paddingLeft: 20,
+                        paddingRight:
+                          20 + (showCommentsSidebar ? COMMENTS_SIDEBAR_SCROLL_GUTTER : 0),
+                        minWidth:
+                          twipsToPixels(effectiveSectionProperties?.pageWidth ?? 12240) * zoom +
+                          40 +
+                          (showCommentsSidebar ? COMMENTS_SIDEBAR_SCROLL_GUTTER : 0),
+                        backgroundColor: "var(--muted)",
+                        transition: "padding 0.2s ease",
+                      }}
+                    >
+                      <HorizontalRuler
+                        sectionProps={effectiveSectionProperties ?? null}
+                        zoom={zoom}
+                        unit={rulerUnit}
+                        editable={!readOnly}
+                        onLeftMarginChange={handleLeftMarginChange}
+                        onRightMarginChange={handleRightMarginChange}
+                        indentLeft={state.paragraphIndentLeft}
+                        indentRight={state.paragraphIndentRight}
+                        onIndentLeftChange={handleIndentLeftChange}
+                        onIndentRightChange={handleIndentRightChange}
+                        firstLineIndent={state.paragraphFirstLineIndent}
+                        hangingIndent={state.paragraphHangingIndent}
+                        onFirstLineIndentChange={handleFirstLineIndentChange}
+                        tabStops={state.paragraphTabs}
+                        onTabStopRemove={handleTabStopRemove}
+                      />
+                    </div>
+                  )}
                   {/* Editor content wrapper */}
                   <div
                     style={{
@@ -3205,6 +3324,31 @@ export function DocxEditor({
                       })}
                       onContextMenu={handleEditorContextMenu}
                     >
+                      {/* Vertical ruler — pinned at the editor content's left
+                          edge (folio's outline rail is right-aligned, so no left
+                          inset is needed). paddingTop tracks the viewport's
+                          scaled top padding so the ruler's zero aligns with the
+                          first page's top edge across zoom levels. */}
+                      {rulerVisible && !readOnlyProp && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: 0,
+                            top: 0,
+                            zIndex: 20,
+                            paddingTop: VIEWPORT_PADDING_TOP * zoom,
+                          }}
+                        >
+                          <VerticalRuler
+                            sectionProps={effectiveSectionProperties ?? null}
+                            zoom={zoom}
+                            unit={rulerUnit}
+                            editable={!readOnly}
+                            onTopMarginChange={handleTopMarginChange}
+                            onBottomMarginChange={handleBottomMarginChange}
+                          />
+                        </div>
+                      )}
                       <PagedEditor
                         ref={pagedEditorRef}
                         document={history.state}
