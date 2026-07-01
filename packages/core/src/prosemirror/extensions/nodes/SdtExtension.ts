@@ -22,6 +22,8 @@ export const SdtExtension = createNodeExtension({
       alias: { default: null },
       /** Tag (developer identifier) */
       tag: { default: null },
+      /** Numeric `w:id/@w:val`. */
+      id: { default: null },
       /** Lock setting */
       lock: { default: null },
       /** Placeholder text */
@@ -38,6 +40,13 @@ export const SdtExtension = createNodeExtension({
       dropdownLastValue: { default: null },
       /** Checkbox checked state */
       checked: { default: null },
+      /**
+       * Verbatim `<w:sdtPr>` / `<w:sdtEndPr>` captured by the parser so
+       * unmodeled OOXML features (`w:dataBinding`, `w15:*`, custom XML
+       * mappings) round-trip after a save, mirroring the block-SDT node.
+       */
+      rawPropertiesXml: { default: null },
+      rawEndPropertiesXml: { default: null },
     },
     parseDOM: [
       {
@@ -47,10 +56,13 @@ export const SdtExtension = createNodeExtension({
             return false;
           }
           const el = dom;
+          const idRaw = el.dataset["sdtId"];
+          const id = idRaw ? Number.parseInt(idRaw, 10) : null;
           return {
             sdtType: el.dataset["sdtType"] || "richText",
             alias: el.dataset["alias"] || null,
             tag: el.dataset["tag"] || null,
+            id: id !== null && !Number.isNaN(id) ? id : null,
             lock: el.dataset["lock"] || null,
             placeholder: el.dataset["placeholder"] || null,
             showingPlaceholder: el.dataset["showingPlaceholder"] === "true",
@@ -67,6 +79,10 @@ export const SdtExtension = createNodeExtension({
               }
               return null;
             })(),
+            // Raw XML is preserved on the model, not the DOM; consumers that
+            // round-trip through PM re-attach it from the source.
+            rawPropertiesXml: null,
+            rawEndPropertiesXml: null,
           };
         },
       },
@@ -83,6 +99,9 @@ export const SdtExtension = createNodeExtension({
       }
       if (attrs.tag) {
         dataAttrs["data-tag"] = attrs.tag;
+      }
+      if (attrs.id !== undefined) {
+        dataAttrs["data-sdt-id"] = String(attrs.id);
       }
       if (attrs.lock) {
         dataAttrs["data-lock"] = attrs.lock;

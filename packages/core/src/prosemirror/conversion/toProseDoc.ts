@@ -1788,13 +1788,20 @@ function convertInlineSdt(
       sdtType: props.sdtType,
       alias: props.alias ?? null,
       tag: props.tag ?? null,
+      id: props.id ?? null,
       lock: props.lock ?? null,
       placeholder: props.placeholder ?? null,
       showingPlaceholder: props.showingPlaceholder ?? false,
       dateFormat: props.dateFormat ?? null,
       dateValueISO: props.dateValueISO ?? null,
       listItems: props.listItems ? JSON.stringify(props.listItems) : null,
+      dropdownLastValue: props.dropdownLastValue ?? null,
       checked: props.checked ?? null,
+      // Pass the captured `w:sdtPr` / `w:sdtEndPr` through as attrs so the
+      // serializer replays them verbatim after a save, keeping unmodeled
+      // OOXML features lossless — the same contract as `convertBlockSdt`.
+      rawPropertiesXml: props.rawPropertiesXml ?? null,
+      rawEndPropertiesXml: props.rawEndPropertiesXml ?? null,
     },
     inlineNodes.length > 0 ? inlineNodes : undefined,
   );

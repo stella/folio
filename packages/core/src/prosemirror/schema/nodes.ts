@@ -338,6 +338,8 @@ export type SdtAttrs = {
   alias?: string;
   /** Tag (developer identifier) */
   tag?: string;
+  /** Numeric `w:id/@w:val`. */
+  id?: number;
   /** Lock setting */
   lock?: NonNullable<SdtProperties["lock"]>;
   /** Placeholder text */
@@ -354,6 +356,10 @@ export type SdtAttrs = {
   dropdownLastValue?: string;
   /** Checkbox checked state */
   checked?: boolean;
+  /** Captured `<w:sdtPr>…</w:sdtPr>` for round-trip replay. */
+  rawPropertiesXml?: string;
+  /** Captured `<w:sdtEndPr>…</w:sdtEndPr>` for round-trip replay. */
+  rawEndPropertiesXml?: string;
 };
 
 /**

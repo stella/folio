@@ -1563,6 +1563,9 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
   if (attrs.tag) {
     properties.tag = attrs.tag;
   }
+  if (attrs.id !== undefined) {
+    properties.id = attrs.id;
+  }
   if (attrs.lock) {
     properties.lock = attrs.lock;
   }
@@ -1581,8 +1584,17 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
   if (attrs.listItems) {
     properties.listItems = parseSdtListItems(attrs.listItems);
   }
+  if (attrs.dropdownLastValue !== undefined) {
+    properties.dropdownLastValue = attrs.dropdownLastValue;
+  }
   if (attrs.checked !== undefined) {
     properties.checked = attrs.checked;
+  }
+  if (attrs.rawPropertiesXml) {
+    properties.rawPropertiesXml = attrs.rawPropertiesXml;
+  }
+  if (attrs.rawEndPropertiesXml) {
+    properties.rawEndPropertiesXml = attrs.rawEndPropertiesXml;
   }
 
   // Extract content from the sdt node's children. OOXML allows runs,

@@ -29,12 +29,14 @@ import type {
   MoveFromRangeStart,
   MoveToRangeStart,
   ParagraphPropertyChange,
+  SdtProperties,
   TabStop,
   ShadingProperties,
   TextFormatting,
   TrackedChangeInfo,
 } from "../../types/document";
 import { numPrEqual } from "../numberingParser";
+import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
 import { serializeBorder } from "./borderSerializer";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
 import { serializeRun, serializeTextFormatting } from "./runSerializer";
@@ -721,12 +723,19 @@ function serializeComplexField(field: ComplexField): string {
 }
 
 /**
- * Serialize an inline SDT (w:sdt)
+ * Synthesize a `<w:sdtPr>` from the modeled {@link SdtProperties}.
+ *
+ * Only reached for an inline SDT that carries no captured `rawPropertiesXml`
+ * (constructed programmatically rather than parsed from a DOCX). Mirrors the
+ * block-SDT fallback: emit `w:id` first so the parsed numeric id survives,
+ * then the shared identity fields, then the type-defining marker.
  */
-function serializeInlineSdt(sdt: InlineSdt): string {
-  const props = sdt.properties;
+function synthesizeInlineSdtPr(props: SdtProperties): string {
   const prParts: string[] = [];
 
+  if (props.id !== undefined) {
+    prParts.push(`<w:id w:val="${props.id}"/>`);
+  }
   if (props.alias) {
     prParts.push(`<w:alias w:val="${escapeXml(props.alias)}"/>`);
   }
@@ -810,6 +819,21 @@ function serializeInlineSdt(sdt: InlineSdt): string {
       break;
   }
 
+  return `<w:sdtPr>${prParts.join("")}</w:sdtPr>`;
+}
+
+/**
+ * Serialize an inline SDT (w:sdt).
+ *
+ * Replays the captured `<w:sdtPr>` / `<w:sdtEndPr>` verbatim so unmodeled
+ * OOXML features (`w:id`, `w:dataBinding`, `w15:*`, custom XML mappings)
+ * survive the round-trip, mirroring the block-SDT serializer. Without this
+ * the properties block was re-synthesized from the modeled projection alone,
+ * silently dropping every unmodeled feature (and `w:sdtEndPr`) on save.
+ */
+function serializeInlineSdt(sdt: InlineSdt): string {
+  const props = sdt.properties;
+
   const contentXml = sdt.content
     .map((item): string => {
       switch (item.type) {
@@ -839,7 +863,24 @@ function serializeInlineSdt(sdt: InlineSdt): string {
     })
     .join("");
 
-  return `<w:sdt><w:sdtPr>${prParts.join("")}</w:sdtPr><w:sdtContent>${contentXml}</w:sdtContent></w:sdt>`;
+  // Reconcile any modeled interactive edit (checkbox toggle, date pick,
+  // dropdown selection) into the raw properties before replay so it is not
+  // discarded, exactly as the block-SDT serializer does. Unmodeled markers
+  // inside the raw string are left untouched.
+  const baseSdtPr = props.rawPropertiesXml ?? synthesizeInlineSdtPr(props);
+  const dateFullDate =
+    props.sdtType === "date" && props.dateValueISO ? props.dateValueISO : undefined;
+  const dropdownLastValue =
+    props.sdtType === "dropdown" || props.sdtType === "comboBox"
+      ? props.dropdownLastValue
+      : undefined;
+  const sdtPrXml = reconcileRawSdtPr(baseSdtPr, props, {
+    ...(dateFullDate !== undefined ? { dateFullDate } : {}),
+    ...(dropdownLastValue !== undefined ? { dropdownLastValue } : {}),
+  });
+  const sdtEndPrXml = props.rawEndPropertiesXml ?? "";
+
+  return `<w:sdt>${sdtPrXml}${sdtEndPrXml}<w:sdtContent>${contentXml}</w:sdtContent></w:sdt>`;
 }
 
 function serializeMoveRangeStart(
