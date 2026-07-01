@@ -115,6 +115,16 @@
     "rejectChange": "Módosítás elutasítása",
     "removeLink": "Hivatkozás eltávolítása",
     "renderErrorDescription": "Hiba történt az összetevő megjelenítése közben. Próbálja újra, vagy forduljon az ügyfélszolgálathoz, ha a probléma továbbra is fennáll.",
+    "ruler": {
+      "bottomMargin": "Alsó margó",
+      "firstLineIndent": "Első sor behúzása",
+      "horizontal": "Vízszintes vonalzó",
+      "leftIndent": "Bal oldali behúzás",
+      "rightIndent": "Jobb oldali behúzás",
+      "toggle": "Vonalzó",
+      "topMargin": "Felső margó",
+      "vertical": "Függőleges vonalzó"
+    },
     "saveCheckpointFailedDescription": "A DOCX helyben létrejött, de a stella nem tudta feltölteni a mentési pontot. Hagyja nyitva a szerkesztőt, és próbálja újra a mentést.",
     "saveCheckpointFailedTitle": "A mentés feltöltése sikertelen",
     "saveEditorUnavailableDescription": "A szerkesztő még nem áll készen. Várja meg, amíg a dokumentum betöltődik, majd próbálja újra a mentést.",
@@ -144,6 +154,7 @@
     "unlockForEditing": "Feloldás szerkesztéshez",
     "unsupportedDocxEditDescription": "Ez a DOCX olyan szerkezeteket tartalmaz, amelyeket a Folio nem tud biztonságosan átírni. A fájl sérülésének elkerülése érdekében töltse le, és szerkessze Wordben.",
     "unsupportedDocxEditTitle": "A szerkesztés letiltva",
+    "viewGroup": "Nézet",
     "zoomGroup": "Nagyítás"
   }
 }

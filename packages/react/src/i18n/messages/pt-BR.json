@@ -115,6 +115,16 @@
     "rejectChange": "Rejeitar alteração",
     "removeLink": "Remover link",
     "renderErrorDescription": "Ocorreu um erro ao renderizar este componente. Tente novamente ou entre em contato com o suporte se o problema persistir.",
+    "ruler": {
+      "bottomMargin": "Margem inferior",
+      "firstLineIndent": "Recuo da primeira linha",
+      "horizontal": "Régua horizontal",
+      "leftIndent": "Recuo à esquerda",
+      "rightIndent": "Recuo à direita",
+      "toggle": "Régua",
+      "topMargin": "Margem superior",
+      "vertical": "Régua vertical"
+    },
     "saveCheckpointFailedDescription": "O DOCX foi criado localmente, mas stella não conseguiu fazer upload do checkpoint. Mantenha o editor aberto e tente salvar novamente.",
     "saveCheckpointFailedTitle": "Não foi possível fazer upload do salvamento",
     "saveEditorUnavailableDescription": "O editor ainda não está pronto. Aguarde o documento terminar de carregar e tente salvar novamente.",
@@ -144,6 +154,7 @@
     "unlockForEditing": "Desbloquear para editar",
     "unsupportedDocxEditDescription": "Este DOCX contém estruturas que o Folio não pode reescrever com segurança. Para evitar corromper o arquivo, baixe-o e edite-o no Word.",
     "unsupportedDocxEditTitle": "Edição bloqueada",
+    "viewGroup": "Exibir",
     "zoomGroup": "Nível de zoom"
   }
 }

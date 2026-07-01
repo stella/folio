@@ -115,6 +115,16 @@
     "rejectChange": "Änderung ablehnen",
     "removeLink": "Link entfernen",
     "renderErrorDescription": "Beim Rendern dieser Komponente ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut oder wenden Sie sich an den Support, falls das Problem weiterhin besteht.",
+    "ruler": {
+      "bottomMargin": "Unterer Rand",
+      "firstLineIndent": "Erstzeileneinzug",
+      "horizontal": "Horizontales Lineal",
+      "leftIndent": "Linker Einzug",
+      "rightIndent": "Rechter Einzug",
+      "toggle": "Lineal",
+      "topMargin": "Oberer Rand",
+      "vertical": "Vertikales Lineal"
+    },
     "saveCheckpointFailedDescription": "Die DOCX-Datei wurde lokal erstellt, aber stella konnte den Speicherpunkt nicht hochladen. Lassen Sie den Editor geöffnet und versuchen Sie erneut zu speichern.",
     "saveCheckpointFailedTitle": "Speicherstand konnte nicht hochgeladen werden",
     "saveEditorUnavailableDescription": "Der Editor ist noch nicht bereit. Warten Sie, bis das Dokument vollständig geladen ist, und versuchen Sie dann erneut zu speichern.",
@@ -144,6 +154,7 @@
     "unlockForEditing": "Zum Bearbeiten entsperren",
     "unsupportedDocxEditDescription": "Diese DOCX enthält Strukturen, die Folio nicht sicher umschreiben kann. Laden Sie sie herunter und bearbeiten Sie sie in Word, um eine Beschädigung der Datei zu vermeiden.",
     "unsupportedDocxEditTitle": "Bearbeitung gesperrt",
+    "viewGroup": "Ansicht",
     "zoomGroup": "Zoomstufe"
   }
 }

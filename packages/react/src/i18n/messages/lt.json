@@ -115,6 +115,16 @@
     "rejectChange": "Atmesti keitimą",
     "removeLink": "Pašalinti nuorodą",
     "renderErrorDescription": "Atvaizduojant šį komponentą įvyko klaida. Bandykite dar kartą arba susisiekite su pagalba, jei problema kartojasi.",
+    "ruler": {
+      "bottomMargin": "Apatinė paraštė",
+      "firstLineIndent": "Pirmosios eilutės įtrauka",
+      "horizontal": "Horizontali liniuotė",
+      "leftIndent": "Kairioji įtrauka",
+      "rightIndent": "Dešinioji įtrauka",
+      "toggle": "Liniuotė",
+      "topMargin": "Viršutinė paraštė",
+      "vertical": "Vertikali liniuotė"
+    },
     "saveCheckpointFailedDescription": "DOCX buvo sukurtas vietiniame įrenginyje, tačiau stella nepavyko įkelti kontrolinio taško. Palikite redaktorių atidarytą ir bandykite išsaugoti dar kartą.",
     "saveCheckpointFailedTitle": "Nepavyko įkelti išsaugojimo",
     "saveEditorUnavailableDescription": "Redaktorius dar nepasiruošęs. Palaukite, kol dokumentas bus įkeltas, ir bandykite išsaugoti dar kartą.",
@@ -144,6 +154,7 @@
     "unlockForEditing": "Atrakinti redagavimui",
     "unsupportedDocxEditDescription": "Šiame DOCX yra struktūrų, kurių Folio negali saugiai perrašyti. Kad failas nesugadintumėte, atsisiųskite jį ir redaguokite programoje Word.",
     "unsupportedDocxEditTitle": "Redagavimas užblokuotas",
+    "viewGroup": "Rodinys",
     "zoomGroup": "Mastelis"
   }
 }

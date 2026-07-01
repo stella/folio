@@ -115,6 +115,16 @@
     "rejectChange": "Lükka muudatus tagasi",
     "removeLink": "Eemalda link",
     "renderErrorDescription": "Selle komponendi kuvamisel tekkis viga. Proovige uuesti või võtke ühendust toega, kui probleem püsib.",
+    "ruler": {
+      "bottomMargin": "Alaveeris",
+      "firstLineIndent": "Esimese rea taane",
+      "horizontal": "Horisontaalne joonlaud",
+      "leftIndent": "Vasak taane",
+      "rightIndent": "Parem taane",
+      "toggle": "Joonlaud",
+      "topMargin": "Ülaveeris",
+      "vertical": "Vertikaalne joonlaud"
+    },
     "saveCheckpointFailedDescription": "DOCX loodi kohapeal, kuid stella ei saanud kontrollpunkti üles laadida. Hoia redaktor avatuna ja proovi uuesti salvestada.",
     "saveCheckpointFailedTitle": "Salvestust ei saanud üles laadida",
     "saveEditorUnavailableDescription": "Redaktor pole veel valmis. Oota, kuni dokument on laadinud, ja proovi siis uuesti salvestada.",
@@ -144,6 +154,7 @@
     "unlockForEditing": "Ava muutmiseks",
     "unsupportedDocxEditDescription": "See DOCX sisaldab struktuure, mida Folio ei suuda turvaliselt ümber kirjutada. Faili rikkumise vältimiseks laadi see alla ja muuda Wordis.",
     "unsupportedDocxEditTitle": "Muutmine on blokeeritud",
+    "viewGroup": "Vaade",
     "zoomGroup": "Suum"
   }
 }

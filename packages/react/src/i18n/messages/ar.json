@@ -115,6 +115,16 @@
     "rejectChange": "رفض التغيير",
     "removeLink": "إزالة الرابط",
     "renderErrorDescription": "حدث خطأ ما أثناء عرض هذا الجزء من المستند. أعد تحميل الصفحة، وإذا استمر الأمر فأخبرنا بذلك.",
+    "ruler": {
+      "bottomMargin": "الهامش السفلي",
+      "firstLineIndent": "المسافة البادئة للسطر الأول",
+      "horizontal": "المسطرة الأفقية",
+      "leftIndent": "المسافة البادئة اليسرى",
+      "rightIndent": "المسافة البادئة اليمنى",
+      "toggle": "المسطرة",
+      "topMargin": "الهامش العلوي",
+      "vertical": "المسطرة العمودية"
+    },
     "saveCheckpointFailedDescription": "تم إنشاء ملف DOCX محليًا، لكن تعذّر على stella رفع نقطة الحفظ. أبقِ المحرر مفتوحًا وحاول الحفظ مرة أخرى.",
     "saveCheckpointFailedTitle": "تعذّر رفع الحفظ",
     "saveEditorUnavailableDescription": "المحرر غير جاهز بعد. انتظر حتى ينتهي تحميل المستند، ثم حاول الحفظ مرة أخرى.",
@@ -144,6 +154,7 @@
     "unlockForEditing": "إلغاء القفل للتعديل",
     "unsupportedDocxEditDescription": "يحتوي ملف DOCX هذا على بِنى لا يستطيع Folio إعادة كتابتها بأمان. لتجنّب إتلاف الملف، نزّله وعدّله في Word.",
     "unsupportedDocxEditTitle": "التعديل محظور",
+    "viewGroup": "عرض",
     "zoomGroup": "تكبير/تصغير"
   }
 }

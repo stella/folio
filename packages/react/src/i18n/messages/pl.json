@@ -115,6 +115,16 @@
     "rejectChange": "Odrzuć zmianę",
     "removeLink": "Usuń link",
     "renderErrorDescription": "Wystąpił błąd podczas renderowania tego komponentu. Spróbuj ponownie albo skontaktuj się z pomocą techniczną, jeśli problem będzie się powtarzał.",
+    "ruler": {
+      "bottomMargin": "Margines dolny",
+      "firstLineIndent": "Wcięcie pierwszego wiersza",
+      "horizontal": "Linijka pozioma",
+      "leftIndent": "Wcięcie z lewej",
+      "rightIndent": "Wcięcie z prawej",
+      "toggle": "Linijka",
+      "topMargin": "Margines górny",
+      "vertical": "Linijka pionowa"
+    },
     "saveCheckpointFailedDescription": "Plik DOCX został utworzony lokalnie, ale stella nie mogła przesłać punktu kontrolnego. Pozostaw edytor otwarty i spróbuj zapisać ponownie.",
     "saveCheckpointFailedTitle": "Nie udało się przesłać zapisu",
     "saveEditorUnavailableDescription": "Edytor nie jest jeszcze gotowy. Poczekaj, aż dokument zakończy ładowanie, a następnie spróbuj zapisać ponownie.",
@@ -144,6 +154,7 @@
     "unlockForEditing": "Odblokuj, aby edytować",
     "unsupportedDocxEditDescription": "Ten plik DOCX zawiera struktury, których Folio nie może bezpiecznie przepisać. Aby nie uszkodzić pliku, pobierz go i edytuj w programie Word.",
     "unsupportedDocxEditTitle": "Edycja zablokowana",
+    "viewGroup": "Widok",
     "zoomGroup": "Powiększenie"
   }
 }

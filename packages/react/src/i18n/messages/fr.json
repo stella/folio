@@ -115,6 +115,16 @@
     "rejectChange": "Rejeter la modification",
     "removeLink": "Supprimer le lien",
     "renderErrorDescription": "Une erreur s'est produite lors du rendu de ce composant. Réessayez ou contactez le support si le problème persiste.",
+    "ruler": {
+      "bottomMargin": "Marge inférieure",
+      "firstLineIndent": "Retrait de première ligne",
+      "horizontal": "Règle horizontale",
+      "leftIndent": "Retrait à gauche",
+      "rightIndent": "Retrait à droite",
+      "toggle": "Règle",
+      "topMargin": "Marge supérieure",
+      "vertical": "Règle verticale"
+    },
     "saveCheckpointFailedDescription": "Le DOCX a été créé localement, mais stella n’a pas pu téléverser le point de sauvegarde. Laissez l’éditeur ouvert et réessayez d’enregistrer.",
     "saveCheckpointFailedTitle": "Impossible de téléverser la sauvegarde",
     "saveEditorUnavailableDescription": "L’éditeur n’est pas encore prêt. Attendez la fin du chargement du document, puis réessayez d’enregistrer.",
@@ -144,6 +154,7 @@
     "unlockForEditing": "Déverrouiller pour modifier",
     "unsupportedDocxEditDescription": "Ce fichier DOCX contient des structures que Folio ne peut pas réécrire sans risque. Pour éviter de corrompre le fichier, téléchargez-le et modifiez-le dans Word.",
     "unsupportedDocxEditTitle": "Modification bloquée",
+    "viewGroup": "Affichage",
     "zoomGroup": "Niveau de zoom"
   }
 }

@@ -115,6 +115,16 @@
     "rejectChange": "Odmítnout změnu",
     "removeLink": "Odebrat odkaz",
     "renderErrorDescription": "Při vykreslování této komponenty došlo k chybě. Zkuste to znovu nebo kontaktujte podporu, pokud problém přetrvává.",
+    "ruler": {
+      "bottomMargin": "Dolní okraj",
+      "firstLineIndent": "Odsazení prvního řádku",
+      "horizontal": "Vodorovné pravítko",
+      "leftIndent": "Odsazení zleva",
+      "rightIndent": "Odsazení zprava",
+      "toggle": "Pravítko",
+      "topMargin": "Horní okraj",
+      "vertical": "Svislé pravítko"
+    },
     "saveCheckpointFailedDescription": "DOCX se lokálně vytvořil, ale Stelle se nepodařilo nahrát checkpoint. Nechte editor otevřený a zkuste uložit znovu.",
     "saveCheckpointFailedTitle": "Uložení se nepodařilo nahrát",
     "saveEditorUnavailableDescription": "Editor ještě není připravený. Počkejte, až se dokument načte, a zkuste uložit znovu.",
@@ -144,6 +154,7 @@
     "unlockForEditing": "Odemknout pro možnost úprav",
     "unsupportedDocxEditDescription": "Tento DOCX obsahuje struktury, které Folio neumí bezpečně přepsat. Aby se soubor nepoškodil, stáhněte ho a upravte ve Wordu.",
     "unsupportedDocxEditTitle": "Úpravy zablokovány",
+    "viewGroup": "Zobrazení",
     "zoomGroup": "Přiblížení"
   }
 }

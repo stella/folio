@@ -115,6 +115,16 @@
     "rejectChange": "Noraidīt izmaiņu",
     "removeLink": "Noņemt saiti",
     "renderErrorDescription": "Renderējot šo komponentu, radās kļūda. Mēģiniet vēlreiz vai sazinieties ar atbalstu, ja problēma atkārtojas.",
+    "ruler": {
+      "bottomMargin": "Apakšējā mala",
+      "firstLineIndent": "Pirmās rindas atkāpe",
+      "horizontal": "Horizontālais lineāls",
+      "leftIndent": "Kreisā atkāpe",
+      "rightIndent": "Labā atkāpe",
+      "toggle": "Lineāls",
+      "topMargin": "Augšējā mala",
+      "vertical": "Vertikālais lineāls"
+    },
     "saveCheckpointFailedDescription": "DOCX tika izveidots lokāli, taču stella nevarēja augšupielādēt kontrolpunktu. Atstājiet redaktoru atvērtu un mēģiniet saglabāt vēlreiz.",
     "saveCheckpointFailedTitle": "Neizdevās augšupielādēt saglabāto",
     "saveEditorUnavailableDescription": "Redaktors vēl nav gatavs. Pagaidiet, līdz dokuments ir ielādēts, un tad mēģiniet saglabāt vēlreiz.",
@@ -144,6 +154,7 @@
     "unlockForEditing": "Atbloķēt rediģēšanai",
     "unsupportedDocxEditDescription": "Šajā DOCX failā ir struktūras, ko Folio nevar droši pārrakstīt. Lai nesabojātu failu, lejupielādējiet to un rediģējiet programmā Word.",
     "unsupportedDocxEditTitle": "Rediģēšana bloķēta",
+    "viewGroup": "Skats",
     "zoomGroup": "Tālummaiņa"
   }
 }
