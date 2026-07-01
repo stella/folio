@@ -45,13 +45,31 @@ class FakeFontFace {
   }
 }
 
-type Global = {
-  document?: unknown;
-  FontFace?: unknown;
-};
+type StubbedGlobal = "document" | "FontFace";
 
-let priorDocument: unknown;
-let priorFontFace: unknown;
+// CI runners expose `document`/`FontFace` as readonly globals, so a plain
+// assignment throws. Redefine them via a configurable descriptor (matching
+// folio-core's global-stub tests) and delete/restore afterwards.
+function stubGlobal(prop: StubbedGlobal, value: unknown): void {
+  Object.defineProperty(globalThis, prop, { value, configurable: true, writable: true });
+}
+
+function restoreGlobal(prop: StubbedGlobal, had: boolean, original: unknown): void {
+  if (had) {
+    Object.defineProperty(globalThis, prop, {
+      value: original,
+      configurable: true,
+      writable: true,
+    });
+  } else {
+    Reflect.deleteProperty(globalThis, prop);
+  }
+}
+
+let hadDocument: boolean;
+let originalDocument: unknown;
+let hadFontFace: boolean;
+let originalFontFace: unknown;
 
 beforeEach(() => {
   fontFaceMode = "load-ok";
@@ -59,10 +77,12 @@ beforeEach(() => {
   deletedFaces = [];
   extractImpl = () => Promise.resolve([fakeFont()]);
 
-  priorDocument = (globalThis as Global).document;
-  priorFontFace = (globalThis as Global).FontFace;
+  hadDocument = "document" in globalThis;
+  originalDocument = (globalThis as { document?: unknown }).document;
+  hadFontFace = "FontFace" in globalThis;
+  originalFontFace = (globalThis as { FontFace?: unknown }).FontFace;
 
-  (globalThis as Global).document = {
+  stubGlobal("document", {
     fonts: {
       add: (face: unknown) => addedFaces.push(face),
       delete: (face: unknown) => {
@@ -70,13 +90,13 @@ beforeEach(() => {
         return true;
       },
     },
-  };
-  (globalThis as Global).FontFace = FakeFontFace;
+  });
+  stubGlobal("FontFace", FakeFontFace);
 });
 
 afterEach(() => {
-  (globalThis as Global).document = priorDocument;
-  (globalThis as Global).FontFace = priorFontFace;
+  restoreGlobal("document", hadDocument, originalDocument);
+  restoreGlobal("FontFace", hadFontFace, originalFontFace);
 });
 
 describe("loadEmbeddedFontFaces (best-effort)", () => {
@@ -107,7 +127,7 @@ describe("loadEmbeddedFontFaces (best-effort)", () => {
   });
 
   test("returns [] outside a DOM (no document.fonts)", async () => {
-    (globalThis as Global).document = undefined;
+    stubGlobal("document", undefined);
     expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual([]);
   });
 });
