@@ -67,6 +67,14 @@ export type InlineHeaderFooterEditorRef = {
 // ============================================================================
 
 const separatorBarStyle: CSSProperties = {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  // Anchor the bar's bottom edge to the container's top so the "Header" label
+  // and Options sit ABOVE the painted HF content. The painter shows through the
+  // overlay now, so an in-flow bar would render right on top of the first row
+  // of HF text; hoisting it outside the content box keeps them from overlapping.
+  bottom: "100%",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -74,7 +82,14 @@ const separatorBarStyle: CSSProperties = {
   fontSize: 11,
   color: "var(--doc-link)",
   userSelect: "none",
+  // Container is pointer-events: none so the painter beneath receives clicks;
+  // restore events on the chrome bar so the label + Options stay interactive.
+  pointerEvents: "auto",
 };
+
+// Footer bar mirrors the header bar but sits BELOW its painted content (its top
+// edge anchored to the container's bottom) so it never overlaps the footer text.
+const footerBarStyle: CSSProperties = { ...separatorBarStyle, bottom: "auto", top: "100%" };
 
 const labelStyle: CSSProperties = {
   fontWeight: 500,
@@ -103,6 +118,7 @@ export function InlineHeaderFooterEditor({
     top: number;
     left: number;
     width: number;
+    height: number;
   } | null>(null);
 
   useEffect(() => {
@@ -113,6 +129,7 @@ export function InlineHeaderFooterEditor({
         top: targetRect.top - parentRect.top + parentElement.scrollTop,
         left: targetRect.left - parentRect.left + parentElement.scrollLeft,
         width: targetRect.width,
+        height: targetRect.height,
       });
     };
     computePosition();
@@ -224,6 +241,10 @@ export function InlineHeaderFooterEditor({
     top: overlayPos.top,
     left: overlayPos.left,
     width: overlayPos.width,
+    // Match the painted HF rect height so the chrome bar (anchored via
+    // `bottom: 100%` for the header, `top: 100%` for the footer) sits flush
+    // against the content box instead of collapsing onto the first text row.
+    height: overlayPos.height,
     zIndex: 10,
     // No pointer events on the chrome container itself — the painted HF
     // beneath must receive clicks so the pointer pipeline routes them to
@@ -234,7 +255,7 @@ export function InlineHeaderFooterEditor({
   return (
     <div role="presentation" className="hf-inline-editor" style={containerStyle}>
       {position === "footer" && (
-        <div className="hf-separator-bar" style={{ ...separatorBarStyle, pointerEvents: "auto" }}>
+        <div className="hf-separator-bar" style={footerBarStyle}>
           <span style={labelStyle}>{label}</span>
           <OptionsMenu
             label={label}
@@ -249,7 +270,7 @@ export function InlineHeaderFooterEditor({
       )}
 
       {position === "header" && (
-        <div className="hf-separator-bar" style={{ ...separatorBarStyle, pointerEvents: "auto" }}>
+        <div className="hf-separator-bar" style={separatorBarStyle}>
           <span style={labelStyle}>{label}</span>
           <OptionsMenu
             label={label}
