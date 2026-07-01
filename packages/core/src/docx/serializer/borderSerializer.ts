@@ -19,8 +19,10 @@ import { escapeXml, intAttr } from "./xmlUtils";
  * A `BorderSpec` only reaches here when the source set it or the user turned the
  * border off, so emitting it is faithful, not noise — dropping it silently
  * re-inherited the container default (e.g. hidden table gridlines reappeared as
- * a full grid on reload). `nil`/`none` carry no size/color/space, so emit just
- * the value.
+ * a full grid on reload). A `nil`/`none` side usually carries no
+ * size/color/space, but Word writes `w:sz="0" w:space="0" w:color="auto"` on a
+ * turned-off side; those are emitted when present so the value survives a
+ * save→parse round-trip and is not otherwise added.
  *
  * `style` and the color values come straight from the parsed DOCX (the parser
  * casts `w:val`/`w:color` without validating the enum), so they are
@@ -30,10 +32,6 @@ import { escapeXml, intAttr } from "./xmlUtils";
 export function serializeBorder(border: BorderSpec | undefined, elementName: string): string {
   if (!border) {
     return "";
-  }
-
-  if (border.style === "none" || border.style === "nil") {
-    return `<w:${elementName} w:val="${border.style}"/>`;
   }
 
   const attrs: string[] = [`w:val="${escapeXml(border.style)}"`];

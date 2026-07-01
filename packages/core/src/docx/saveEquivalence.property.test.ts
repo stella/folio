@@ -331,33 +331,22 @@ describe("invariant 1: no-op save fidelity", () => {
     propertyTestTimeout(20_000),
   );
 
-  // KNOWN FAILING — full repack is NOT a lossless model fixed point on rich docs.
-  // Re-serializing an unedited doc and re-parsing it drifts from the original
-  // model in two reproducible ways on current main:
-  //   - docx-editor-demo.docx: a <w:commentReference> is DUPLICATED
-  //     ($.document.content[20].content grows from 7 to 8 children).
-  //   - podily-bps.docx: a complex-field (REF) run loses its fontFamily
-  //     ($.document.content[86].content[1].formatting.fontFamily
-  //      "Georgia" -> undefined).
-  // Both are full-repack serializer fidelity gaps, independent of any edit.
-  // Selective save preserves the original bytes and does NOT exhibit either
-  // (see the invariant-1 selective test above), so this is a repack bug, not a
-  // selective-save bug. Do NOT delete `.failing` to make CI green — fix the
-  // serializer; this test then flips to passing and flags itself.
-  test.failing(
+  // Full repack must be a lossless model fixed point: re-serializing an unedited
+  // doc and re-parsing it recovers the original model. Two serializer fidelity
+  // gaps used to break this (a duplicated <w:commentReference>, and a
+  // complex-field run losing its fontFamily); both are fixed in the paragraph
+  // serializer, so this now holds across the rich fixtures too.
+  test(
     "full repack of an unedited doc is a lossless model fixed point",
     async () => {
       await fc.assert(
-        fc.asyncProperty(
-          fc.constantFrom("docx-editor-demo.docx", "podily-bps.docx"),
-          async (name) => {
-            const buffer = readFixture(name);
-            const doc = await parse(buffer);
-            const repacked = await fullRepack(doc, buffer);
-            expect(normalizedPackage(await parse(repacked))).toEqual(normalizedPackage(doc));
-          },
-        ),
-        propertyConfig({ numRuns: 6, seed: SEED }),
+        fc.asyncProperty(fc.constantFrom(...FIXTURES), async (name) => {
+          const buffer = readFixture(name);
+          const doc = await parse(buffer);
+          const repacked = await fullRepack(doc, buffer);
+          expect(normalizedPackage(await parse(repacked))).toEqual(normalizedPackage(doc));
+        }),
+        propertyConfig({ numRuns: 9, seed: SEED }),
       );
     },
     propertyTestTimeout(20_000),
@@ -369,14 +358,11 @@ describe("invariant 1: no-op save fidelity", () => {
 // ============================================================================
 
 describe("invariant 2: selective equals full repack", () => {
-  // KNOWN FAILING — the two paths do NOT persist the same model on podily-bps.
-  // After any edit, full repack re-serializes every paragraph and drops the
-  // Georgia fontFamily on the unedited complex-field run (invariant 1 above),
-  // while selective save copies that paragraph's ORIGINAL bytes untouched.
-  // parse(SEL) is therefore MORE faithful than parse(FULL); they diverge
-  // because full repack loses data, not because selective save is wrong. The
-  // fix belongs in the serializer; this test flips to passing once it lands.
-  test.failing("parse(selective) deep-equals parse(full) for an edited doc", async () => {
+  // The two paths must persist the same model. Selective save copies unchanged
+  // paragraphs byte-for-byte; full repack re-serializes them. With the serializer
+  // fidelity gaps fixed (see invariant 1), re-serializing an unchanged paragraph
+  // now round-trips, so the two paths agree at the parsed-model level.
+  test("parse(selective) deep-equals parse(full) for an edited doc", async () => {
     const buffer = readFixture(EDIT_FIXTURE);
     const doc = await parse(buffer);
     const paraId = applyEdit(doc, { targetSelector: 0, kind: "append", text: "EDIT" });

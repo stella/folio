@@ -1360,15 +1360,22 @@ function parseParagraphContents(
             }
             inComplexField = false;
           }
+        } else if (commentReferenceId !== null) {
+          // A run whose only payload is `<w:commentReference>` parses to an
+          // empty run plus the reference node. The empty run is a vestigial
+          // artifact — the reference serializer re-emits its own run, so a lone
+          // empty run here does not survive re-parsing and breaks round-trip
+          // idempotence. Keep the run only when it also carries real content.
+          if (run.content.length > 0) {
+            contents.push(run);
+          }
+          contents.push({
+            type: "commentReference",
+            id: commentReferenceId,
+          });
         } else {
           // Regular run, not part of a field
           contents.push(run);
-          if (commentReferenceId !== null) {
-            contents.push({
-              type: "commentReference",
-              id: commentReferenceId,
-            });
-          }
         }
         break;
       }

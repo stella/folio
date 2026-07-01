@@ -210,7 +210,10 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
       fontAttrs.push(`w:eastAsiaTheme="${formatting.fontFamily.eastAsiaTheme}"`);
     }
     if (formatting.fontFamily.csTheme) {
-      fontAttrs.push(`w:csTheme="${formatting.fontFamily.csTheme}"`);
+      // OOXML spells this attribute all-lowercase (`w:cstheme`), unlike its
+      // camelCase siblings above; the parser reads `w:cstheme`, so emitting
+      // `w:csTheme` would silently drop the CS theme font on round-trip.
+      fontAttrs.push(`w:cstheme="${formatting.fontFamily.csTheme}"`);
     }
     if (fontAttrs.length > 0) {
       parts.push(`<w:rFonts ${fontAttrs.join(" ")}/>`);
