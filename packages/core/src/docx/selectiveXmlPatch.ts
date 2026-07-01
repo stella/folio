@@ -599,6 +599,30 @@ function reconstructCustomNumFmt(width: string): string {
 }
 
 /**
+ * The synthetic `decimalZero{width}` width the parser would derive from an
+ * original level's number-format element (its custom `w:format` first token),
+ * as the same digit-count string the SYNTHETIC_NUM_FMT_PATTERN captures. Mirrors
+ * `parseCustomNumberFormat` (first comma-separated token, `^0+1$`, clamped to 5).
+ * Returns null when the element carries no zero-padded custom format, so a
+ * genuine format change is never mistaken for the original.
+ */
+function originalNumFmtWidth(numFmtElement: string): string | null {
+  for (const match of numFmtElement.matchAll(/<w:numFmt\b[^>]*\/>/gu)) {
+    const tag = match[0];
+    if (!/\bw:val="custom"/u.test(tag)) {
+      continue;
+    }
+    const format = /\bw:format="(?<format>[^"]*)"/u.exec(tag)?.groups?.["format"];
+    if (format === undefined) {
+      continue;
+    }
+    const firstToken = format.split(",")[0]?.trim() ?? "";
+    return /^0+1$/u.test(firstToken) ? String(Math.min(firstToken.length, 5)) : null;
+  }
+  return null;
+}
+
+/**
  * Collect the `xmlns` / `xmlns:*` declarations from an element's opening tag
  * (the substring up to its first `>`).
  */
@@ -647,8 +671,11 @@ function withXmlnsDeclarations(fragmentXml: string, xmlnsDecls: Record<string, s
  * definition is re-serialized, so without this pass the level's custom format
  * would be replaced by an invalid value and lost on reparse. For each level
  * whose re-emitted numFmt is synthetic, restore the original level's numFmt
- * element by ilvl; when the original cannot be resolved, fall back to a valid
- * OOXML custom format that preserves the zero-pad width rather than leaving a
+ * element by ilvl ONLY when the model's synthetic value still matches the
+ * original's (the format was not edited, just preserved past an unrelated
+ * change). When the model deliberately changed the width (e.g. decimalZero4 ->
+ * decimalZero5), or the original cannot be resolved, emit a valid OOXML custom
+ * format for the CURRENT width instead — honoring the edit and never leaving a
  * synthetic value.
  */
 function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): string {
@@ -679,20 +706,24 @@ function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): str
       LEVEL_ID_ATTR,
       ilvl,
     );
+    // SAFETY: named group `width` present because SYNTHETIC_NUM_FMT_PATTERN matched
+    const currentWidth = synthetic.groups!["width"]!;
     const original = origLevel ? extractLevelNumFmtElement(origLevel) : null;
     let replacement: string;
-    if (original && origLevel) {
-      // The restored element (e.g. mc:AlternateContent) may use a prefix bound
-      // on the replaced ancestors (w:abstractNum / w:lvl) instead of the
-      // numbering root; carry those declarations onto it so it stays resolvable.
+    if (original && origLevel && originalNumFmtWidth(original) === currentWidth) {
+      // Format unchanged — restore the original element verbatim. It (e.g.
+      // mc:AlternateContent) may use a prefix bound on the replaced ancestors
+      // (w:abstractNum / w:lvl) instead of the numbering root; carry those
+      // declarations onto it so it stays resolvable.
       const ancestorXmlns = {
         ...collectXmlnsFromOpeningTag(originalDefXml),
         ...collectXmlnsFromOpeningTag(origLevel),
       };
       replacement = withXmlnsDeclarations(original, ancestorXmlns);
     } else {
-      // SAFETY: named group `width` present because SYNTHETIC_NUM_FMT_PATTERN matched
-      replacement = reconstructCustomNumFmt(synthetic.groups!["width"]!);
+      // The model changed the width (or the original is unresolvable): honor the
+      // current value via a valid OOXML custom format, never the synthetic literal.
+      replacement = reconstructCustomNumFmt(currentWidth);
     }
     const restoredLevel =
       curLevel.slice(0, synthetic.index) +

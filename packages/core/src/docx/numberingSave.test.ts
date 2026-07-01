@@ -409,6 +409,63 @@ describe("numbering-definition write path (custom / AlternateContent numFmt)", (
     const result = await repackDocx({ ...doc, originalBuffer: buffer });
     await expectCustomFormatSurvives(result);
   });
+
+  // A genuine format edit (decimalZero4 -> decimalZero5) must NOT be reverted to
+  // the original element, and must never emit the non-OOXML synthetic literal.
+  const editLevelNumFmt = (doc: Document, numFmt: "decimalZero5"): void => {
+    const level = doc.package.numbering?.abstractNums
+      .find((a) => a.abstractNumId === 0)
+      ?.levels.find((l) => l.ilvl === 0);
+    if (!level) {
+      throw new Error("expected level 0 on abstractNum 0");
+    }
+    level.numFmt = numFmt;
+  };
+
+  const expectWidthChangedToFive = async (saved: ArrayBuffer): Promise<void> => {
+    const savedNumberingXml = await readPart(saved, "word/numbering.xml");
+    // The NEW width (5) is emitted as a valid OOXML custom format...
+    expect(savedNumberingXml).toContain('<w:numFmt w:val="custom" w:format="00001"/>');
+    // ...not the synthetic literal, and not the original width-4 format.
+    expect(savedNumberingXml).not.toContain("decimalZero5");
+    expect(savedNumberingXml).not.toContain("0001, 0002, 0003");
+    // It round-trips to the edited synthetic value.
+    const reparsed = await parseDocx(saved, { preloadFonts: false });
+    const level = reparsed.package.numbering?.abstractNums
+      .find((a) => a.abstractNumId === 0)
+      ?.levels.find((l) => l.ilvl === 0);
+    expect(level?.numFmt).toBe("decimalZero5");
+  };
+
+  test("selective save honors an intentional synthetic width change (4 -> 5)", async () => {
+    const buffer = await buildDocx({
+      numberingXml: customNumberingXml,
+      documentXml: singleListDocumentXml(1),
+    });
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    editLevelNumFmt(doc, "decimalZero5");
+    const result = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error("selective save returned null");
+    }
+    await expectWidthChangedToFive(result);
+  });
+
+  test("full repack honors an intentional synthetic width change (4 -> 5)", async () => {
+    const buffer = await buildDocx({
+      numberingXml: customNumberingXml,
+      documentXml: singleListDocumentXml(1),
+    });
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    editLevelNumFmt(doc, "decimalZero5");
+    const result = await repackDocx({ ...doc, originalBuffer: buffer });
+    await expectWidthChangedToFive(result);
+  });
 });
 
 describe("numbering-definition write path (ancestor-scoped xmlns on restored numFmt)", () => {
