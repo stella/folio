@@ -13,6 +13,7 @@ import { describe, expect, test } from "bun:test";
 
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { schema } from "../../prosemirror/schema";
 import type { Document, InlineSdt, Paragraph } from "../../types/document";
 import { parseParagraph } from "../paragraphParser";
 import type { XmlElement } from "../xmlParser";
@@ -137,5 +138,68 @@ describe("inline SDT raw-property round-trip", () => {
     expect(serialized).toContain("<w:dataBinding");
     expect(serialized).toContain('w:xpath="/root/clause"');
     expect(serialized).toContain("Value");
+  });
+});
+
+describe("inline SDT null-default normalization", () => {
+  test("PM null-default attrs never enter the model or the serialized XML", () => {
+    // A control with no id / dropdownLastValue / checked: `toProseDoc`
+    // materializes these as PM null defaults on the `sdt` node.
+    const original: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText", alias: "x" },
+          content: [{ type: "run", content: [{ type: "text", text: "v" }] }],
+        },
+      ],
+    };
+    const baseDocument = {
+      package: { document: { content: [original] } } as Document["package"],
+    } as Document;
+
+    // Confirm the scenario: the PM `sdt` node really carries null defaults.
+    const pmDoc = toProseDoc(baseDocument);
+    let sdtNode: { attrs: Record<string, unknown> } | undefined;
+    pmDoc.descendants((node) => {
+      if (node.type.name === "sdt") {
+        sdtNode = node;
+        return false;
+      }
+      return true;
+    });
+    expect(sdtNode?.attrs["id"]).toBeNull();
+    expect(sdtNode?.attrs["dropdownLastValue"]).toBeNull();
+    expect(sdtNode?.attrs["checked"]).toBeNull();
+
+    // The null defaults must not survive back into the typed model.
+    const roundTripped = fromProseDoc(pmDoc, baseDocument);
+    const rtParagraph = roundTripped.package.document.content.find(
+      (c): c is Paragraph => c.type === "paragraph",
+    );
+    const sdt = rtParagraph ? firstInlineSdt(rtParagraph) : undefined;
+    expect(sdt?.properties.id).toBeUndefined();
+    expect(sdt?.properties.dropdownLastValue).toBeUndefined();
+    expect(sdt?.properties.checked).toBeUndefined();
+    expect(sdt?.properties.id).not.toBeNull();
+
+    // And no stray `null` reaches the serialized XML (e.g. `<w:id w:val="null"/>`).
+    const serialized = rtParagraph ? serializeParagraph(rtParagraph) : "";
+    expect(serialized).not.toContain("<w:id");
+    expect(serialized).not.toContain("null");
+  });
+
+  test("toDOM omits data-sdt-id when the id is a null default", () => {
+    const toDOM = schema.nodes["sdt"]?.spec.toDOM;
+    expect(toDOM).toBeDefined();
+    if (!toDOM) {
+      return;
+    }
+    const node = schema.node("sdt", {}, undefined);
+    const rendered = toDOM(node) as [string, Record<string, string>, number];
+    const domAttrs = rendered[1];
+    expect("data-sdt-id" in domAttrs).toBe(false);
+    expect(Object.values(domAttrs)).not.toContain("null");
   });
 });

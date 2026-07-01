@@ -733,7 +733,7 @@ function serializeComplexField(field: ComplexField): string {
 function synthesizeInlineSdtPr(props: SdtProperties): string {
   const prParts: string[] = [];
 
-  if (props.id !== undefined) {
+  if (typeof props.id === "number") {
     prParts.push(`<w:id w:val="${props.id}"/>`);
   }
   if (props.alias) {
@@ -871,7 +871,8 @@ function serializeInlineSdt(sdt: InlineSdt): string {
   const dateFullDate =
     props.sdtType === "date" && props.dateValueISO ? props.dateValueISO : undefined;
   const dropdownLastValue =
-    props.sdtType === "dropdown" || props.sdtType === "comboBox"
+    (props.sdtType === "dropdown" || props.sdtType === "comboBox") &&
+    typeof props.dropdownLastValue === "string"
       ? props.dropdownLastValue
       : undefined;
   const sdtPrXml = reconcileRawSdtPr(baseSdtPr, props, {

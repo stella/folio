@@ -1563,7 +1563,10 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
   if (attrs.tag) {
     properties.tag = attrs.tag;
   }
-  if (attrs.id !== undefined) {
+  // `typeof` guards (not `!== undefined`) so a ProseMirror null default can
+  // never enter the `number` / `string` / `boolean`-typed model property,
+  // matching the block-SDT reader (`convertPMBlockSdt`).
+  if (typeof attrs.id === "number") {
     properties.id = attrs.id;
   }
   if (attrs.lock) {
@@ -1584,10 +1587,10 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
   if (attrs.listItems) {
     properties.listItems = parseSdtListItems(attrs.listItems);
   }
-  if (attrs.dropdownLastValue !== undefined) {
+  if (typeof attrs.dropdownLastValue === "string") {
     properties.dropdownLastValue = attrs.dropdownLastValue;
   }
-  if (attrs.checked !== undefined) {
+  if (typeof attrs.checked === "boolean") {
     properties.checked = attrs.checked;
   }
   if (attrs.rawPropertiesXml) {

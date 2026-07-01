@@ -100,7 +100,7 @@ export const SdtExtension = createNodeExtension({
       if (attrs.tag) {
         dataAttrs["data-tag"] = attrs.tag;
       }
-      if (attrs.id !== undefined) {
+      if (typeof attrs.id === "number") {
         dataAttrs["data-sdt-id"] = String(attrs.id);
       }
       if (attrs.lock) {
