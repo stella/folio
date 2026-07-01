@@ -21,6 +21,7 @@ import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { schema, singletonManager } from "../prosemirror/schema";
 import { FolioDocxReviewer, applyFolioAIEditsToBuffer } from "./headless";
+import type { FolioReviewChange } from "./headless";
 import type { FolioAIBlock } from "./types";
 
 const FIXTURE = path.join(
@@ -229,5 +230,170 @@ describe("headless docx review round-trip", () => {
     expect(skipped).toEqual([]);
     expect(blockText(target)).toContain("Heading");
     expect(await partText(buffer, "word/document.xml")).toContain("Intro paragraph.");
+  });
+});
+
+const insertionChange = (reviewer: FolioDocxReviewer): FolioReviewChange => {
+  const change = reviewer.getChanges().find((c) => c.type === "insertion");
+  if (!change) {
+    throw new Error("expected an insertion change");
+  }
+  return change;
+};
+
+describe("headless docx review discovery + resolve", () => {
+  test("getContentAsText labels every block with its stable id", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const blocks = reviewer.getContent();
+    const heading = findBlock(blocks, "Heading");
+
+    const text = reviewer.getContentAsText();
+    expect(text).toContain(`[${heading.id}] `);
+    expect(text).toContain("Heading paragraph.");
+    for (const block of blocks) {
+      expect(text).toContain(`[${block.id}]`);
+    }
+  });
+
+  test("getChanges surfaces the deletion and insertion of a tracked replace", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    reviewer.applyOperations([
+      { id: "t1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" },
+    ]);
+
+    const changes = reviewer.getChanges();
+    const insertion = changes.find((c) => c.type === "insertion");
+    const deletion = changes.find((c) => c.type === "deletion");
+    expect(insertion?.text).toContain("Intro");
+    expect(deletion?.text).toContain("Heading");
+    expect(insertion?.author).toBe("AI Reviewer");
+    expect(insertion?.blockId).toBe(target.id);
+    // The two sides carry distinct revision ids.
+    expect(insertion?.id).not.toBe(deletion?.id);
+    // Filtering narrows to one kind.
+    const onlyInsertions = reviewer.getChanges({ type: "insertion" });
+    expect(onlyInsertions.every((c) => c.type === "insertion")).toBe(true);
+    expect(reviewer.getChanges({ author: "Nobody" })).toEqual([]);
+  });
+
+  test("acceptChange keeps the insertion as plain text; rejectChange drops it", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+
+    const accepting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+    const acceptTarget = findBlock(accepting.snapshot().blocks, "Heading");
+    accepting.applyOperations([
+      {
+        id: "a1",
+        type: "replaceInBlock",
+        blockId: acceptTarget.id,
+        find: "Heading",
+        replace: "Intro",
+      },
+    ]);
+    expect(accepting.acceptChange(insertionChange(accepting))).toBe(true);
+    const acceptedXml = await partText(await accepting.toBuffer(), "word/document.xml");
+    expect(acceptedXml).toContain("Intro");
+    expect(acceptedXml).not.toContain("<w:ins ");
+    // The accepted change no longer shows up in discovery.
+    expect(accepting.getChanges().some((c) => c.type === "insertion")).toBe(false);
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+    const rejectTarget = findBlock(rejecting.snapshot().blocks, "Heading");
+    rejecting.applyOperations([
+      {
+        id: "r1",
+        type: "replaceInBlock",
+        blockId: rejectTarget.id,
+        find: "Heading",
+        replace: "Intro",
+      },
+    ]);
+    expect(rejecting.rejectChange(insertionChange(rejecting))).toBe(true);
+    const rejectedXml = await partText(await rejecting.toBuffer(), "word/document.xml");
+    expect(rejectedXml).not.toContain("Intro");
+    expect(rejectedXml).not.toContain("<w:ins ");
+  });
+
+  test("acceptAll and rejectAll resolve every tracked change", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+
+    const accepting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+    const acceptBlocks = accepting.snapshot().blocks;
+    accepting.applyOperations([
+      {
+        id: "m1",
+        type: "replaceInBlock",
+        blockId: findBlock(acceptBlocks, "Heading").id,
+        find: "Heading",
+        replace: "Intro",
+      },
+      {
+        id: "m2",
+        type: "replaceInBlock",
+        blockId: findBlock(acceptBlocks, "Trailing").id,
+        find: "Trailing",
+        replace: "Closing",
+      },
+    ]);
+    expect(accepting.getChanges().length).toBeGreaterThanOrEqual(4);
+    expect(accepting.acceptAll()).toBeGreaterThanOrEqual(4);
+    const acceptedXml = await partText(await accepting.toBuffer(), "word/document.xml");
+    expect(acceptedXml).toContain("Intro paragraph.");
+    expect(acceptedXml).toContain("Closing paragraph.");
+    expect(acceptedXml).not.toContain("<w:ins ");
+    expect(acceptedXml).not.toContain("<w:del ");
+    expect(accepting.getChanges()).toEqual([]);
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });
+    const rejectBlocks = rejecting.snapshot().blocks;
+    rejecting.applyOperations([
+      {
+        id: "m3",
+        type: "replaceInBlock",
+        blockId: findBlock(rejectBlocks, "Heading").id,
+        find: "Heading",
+        replace: "Intro",
+      },
+      {
+        id: "m4",
+        type: "replaceInBlock",
+        blockId: findBlock(rejectBlocks, "Trailing").id,
+        find: "Trailing",
+        replace: "Closing",
+      },
+    ]);
+    expect(rejecting.rejectAll()).toBeGreaterThanOrEqual(4);
+    const rejectedXml = await partText(await rejecting.toBuffer(), "word/document.xml");
+    expect(rejectedXml).toContain("Heading paragraph.");
+    expect(rejectedXml).toContain("Trailing paragraph.");
+    expect(rejectedXml).not.toContain("Intro");
+    expect(rejectedXml).not.toContain("Closing");
+    expect(rejectedXml).not.toContain("<w:ins ");
+    expect(rejectedXml).not.toContain("<w:del ");
+  });
+
+  test("getComments returns authored comments with their anchor", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    reviewer.applyOperations([
+      {
+        id: "c1",
+        type: "commentOnBlock",
+        blockId: target.id,
+        comment: { text: "Clarify this clause." },
+      },
+    ]);
+
+    const comments = reviewer.getComments();
+    expect(comments).toHaveLength(1);
+    expect(comments[0]?.text).toBe("Clarify this clause.");
+    expect(comments[0]?.author).toBe("AI Reviewer");
+    expect(comments[0]?.blockId).toBe(target.id);
+    expect(comments[0]?.anchoredText).toContain("Heading paragraph.");
+    expect(reviewer.getComments({ author: "Nobody" })).toEqual([]);
   });
 });

@@ -33,6 +33,12 @@ export {
   type ApplyFolioAIEditsToBufferResult,
   type FolioApplyOperationsOptions,
   type FolioDocxReviewerOptions,
+  type FolioReviewChange,
+  type FolioReviewChangeFilter,
+  type FolioReviewChangeKind,
+  type FolioReviewComment,
+  type FolioReviewCommentFilter,
+  type FolioReviewCommentReply,
 } from "./ai-edits/headless";
 export type {
   FolioAIComment,

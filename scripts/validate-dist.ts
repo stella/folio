@@ -137,7 +137,13 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
   core: {
     "@stll/folio-core": ["createEmptyDocument", "createDocx", "deriveBlockId"],
     "@stll/folio-core/markdown": ["toMarkdown", "fromMarkdown", "toMarkdownResult"],
-    "@stll/folio-core/server": ["deriveBlockId", "createEmptyDocument", "createDocx"],
+    "@stll/folio-core/server": [
+      "deriveBlockId",
+      "createEmptyDocument",
+      "createDocx",
+      "FolioDocxReviewer",
+      "applyFolioAIEditsToBuffer",
+    ],
     "@stll/folio-core/types/block-id": ["deriveBlockId", "isFolioBlockId"],
   },
   react: {
