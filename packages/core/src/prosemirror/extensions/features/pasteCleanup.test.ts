@@ -37,11 +37,23 @@ describe("cleanPastedHtml — Office cruft removal", () => {
     expect(out).toContain(">x</span>");
   });
 
-  test("drops producer class tokens but preserves real ones", () => {
-    expect(cleanPastedHtml('<p class="MsoNormal">a</p>')).toBe("<p>a</p>");
+  test("keeps producer class tokens so the style inliner can match them", () => {
+    // The inliner resolves `.MsoNormal { ... }` rules against these classes; the
+    // schema parser ignores class names, so they are harmless after parsing.
+    expect(cleanPastedHtml('<p class="MsoNormal">a</p>')).toBe('<p class="MsoNormal">a</p>');
     expect(cleanPastedHtml('<p class="MsoListParagraph highlighted">a</p>')).toBe(
-      '<p class="highlighted">a</p>',
+      '<p class="MsoListParagraph highlighted">a</p>',
     );
+  });
+
+  test("preserves both the <style> rule and its class so the inliner can apply it", () => {
+    // Regression: cleanup runs before the style inliner, so it must keep the
+    // MsoNormal class AND the stylesheet, or the class rule's formatting is lost.
+    const out = cleanPastedHtml(
+      '<style>.MsoNormal{font-size:18pt}</style><p class="MsoNormal">x</p>',
+    );
+    expect(out).toContain("<style>.MsoNormal{font-size:18pt}</style>");
+    expect(out).toContain('<p class="MsoNormal">x</p>');
   });
 
   test("removes namespaced Office tags and smart tags but keeps their text", () => {
@@ -122,7 +134,9 @@ describe("cleanPastedHtml — Office cruft removal", () => {
     expect(out).toContain("<td");
     expect(out).toContain("padding:5pt");
     expect(out).not.toContain("mso-");
-    expect(out).not.toContain("MsoNormal");
+    // Producer classes stay on the elements for the inliner to match.
+    expect(out).toContain('class="MsoTableGrid"');
+    expect(out).toContain('class="MsoNormal"');
     expect(out).toContain("Cell");
   });
 
@@ -132,7 +146,8 @@ describe("cleanPastedHtml — Office cruft removal", () => {
       '<p class="MsoListParagraph" style="mso-list:l0 level1 lfo1; margin-left:36pt">Second</p>';
     const out = cleanPastedHtml(html);
     expect(out).not.toContain("mso-list");
-    expect(out).not.toContain("MsoListParagraph");
+    // The list class is kept so the inliner can resolve its `<style>` rule.
+    expect(out).toContain('class="MsoListParagraph"');
     expect(out).toContain("margin-left:36pt");
     expect(out).toContain("First");
     expect(out).toContain("Second");

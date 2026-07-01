@@ -4,9 +4,10 @@
  * Content pasted from word processors and web pages arrives wrapped in a large
  * amount of producer-specific cruft: conditional comments, XML processing
  * instructions, namespaced markup (`<o:p>`, `<w:sdt>`, smart tags), `mso-*`
- * style declarations, producer-only class names, and empty spans. None of it
- * maps to the editor schema, and some of it confuses the browser HTML parser
- * that ProseMirror's clipboard pipeline relies on.
+ * style declarations, and empty spans. None of it maps to the editor schema,
+ * and some of it confuses the browser HTML parser that ProseMirror's clipboard
+ * pipeline relies on. Producer class names (`MsoNormal`, ...) are deliberately
+ * kept so the downstream style inliner can match `<style>` rules against them.
  *
  * `cleanPastedHtml` normalizes the raw clipboard HTML string into something the
  * schema's `parseDOM` rules can read cleanly. It is a pure string transform so
@@ -139,24 +140,13 @@ function splitStyleDeclarations(value: string): string[] {
   return declarations;
 }
 
-/**
- * Drop producer-only class tokens (`MsoNormal`, `MsoListParagraph`, ...) while
- * keeping any real class names. Bounded per attribute like {@link stripMsoStyles}.
- */
-function stripMsoClasses(html: string): string {
-  return html.replace(
-    /(\s+)class=(?:"([^"]*)"|'([^']*)')/gi,
-    (_match, ws: string, dq: string | undefined, sq: string | undefined) => {
-      const raw = dq ?? sq ?? "";
-      const quote = dq === undefined ? "'" : '"';
-      const kept = raw
-        .split(/\s+/)
-        .filter((token) => token.length > 0 && !/^mso/i.test(token))
-        .join(" ");
-      return kept ? `${ws}class=${quote}${kept}${quote}` : "";
-    },
-  );
-}
+// Producer-only class names (`MsoNormal`, `MsoListParagraph`, ...) are left in
+// place on purpose. The downstream style inliner matches them against `<style>`
+// rules to inline real Word formatting (e.g. `.MsoNormal { font-size: 18pt }`),
+// and the schema's `parseDOM` keys off tags, marks, and specific attributes —
+// never arbitrary class names — so leftover producer classes are dropped on
+// parse and cause no harm. Stripping them here (before the inliner runs) would
+// break class-based paste, so it is intentionally not done.
 
 // Matches the local name and attributes after a tag's prefix, treating quoted
 // attribute values as opaque so a `>` inside a value (e.g. `title="a>b"`) does
@@ -212,7 +202,6 @@ export function cleanPastedHtml(html: string): string {
     cleaned = cleaned.replace(STRAY_XML_TAG, "");
     cleaned = cleaned.replace(NOISE_TAG, "");
     cleaned = stripMsoStyles(cleaned);
-    cleaned = stripMsoClasses(cleaned);
     cleaned = stripEmptySpans(cleaned);
     return cleaned.trim();
   } catch {
