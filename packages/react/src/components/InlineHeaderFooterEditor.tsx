@@ -134,10 +134,17 @@ export function InlineHeaderFooterEditor({
     };
     computePosition();
 
+    // The HF box grows/shrinks as the user types, and the footer bar is
+    // anchored to the box bottom (`top: 100%`), so the overlay height must
+    // track the box — recompute on target resize, not just scroll/window.
+    const resizeObserver = new ResizeObserver(computePosition);
+    resizeObserver.observe(targetElement);
+
     const scrollParent = parentElement.closest('[style*="overflow"]') || parentElement;
     scrollParent.addEventListener("scroll", computePosition);
     window.addEventListener("resize", computePosition);
     return () => {
+      resizeObserver.disconnect();
       scrollParent.removeEventListener("scroll", computePosition);
       window.removeEventListener("resize", computePosition);
     };
