@@ -241,10 +241,9 @@ describe("commentParser", () => {
       expect(comments[1].parentId).toBeUndefined();
     });
 
-    test("falls back to first-paragraph paraId when w:comment has none", () => {
-      // Some Word exporters put the join key on the first `w:p` child,
-      // not on `w:comment` itself. The reply-thread metadata still has
-      // to be applied.
+    test("falls back to the comment paragraph's paraId when w:comment has none", () => {
+      // Some Word exporters put the join key on the `w:p` child, not on
+      // `w:comment` itself. The reply-thread metadata still has to be applied.
       const commentsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
             xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
@@ -276,6 +275,40 @@ describe("commentParser", () => {
       );
 
       expect(comments[0].done).toBe(true);
+      expect(comments[1].parentId).toBe(1);
+    });
+
+    test("uses the LAST paragraph's paraId to join a multi-paragraph comment", () => {
+      // Word keys commentsExtended on the comment's final paragraph; a reply's
+      // parent link must resolve against that id, not the first paragraph's.
+      const commentsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
+  <w:comment w:id="1" w:author="Alice" w:date="2024-02-10T15:30:00">
+    <w:p w14:paraId="F1RST000"><w:r><w:t>parent line one</w:t></w:r></w:p>
+    <w:p w14:paraId="1A2B3C4D"><w:r><w:t>parent line two</w:t></w:r></w:p>
+  </w:comment>
+  <w:comment w:id="2" w:author="Bob" w:date="2024-03-05T09:15:00">
+    <w:p w14:paraId="5E6F7A8B"><w:r><w:t>reply</w:t></w:r></w:p>
+  </w:comment>
+</w:comments>`;
+      const extendedXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">
+  <w15:commentEx w15:paraId="1A2B3C4D" w15:done="0"/>
+  <w15:commentEx w15:paraId="5E6F7A8B" w15:paraIdParent="1A2B3C4D" w15:done="0"/>
+</w15:commentsEx>`;
+
+      const comments = parseComments(
+        commentsXml,
+        emptyStyles,
+        emptyTheme,
+        emptyRels,
+        emptyMedia,
+        null,
+        extendedXml,
+      );
+
+      // paraIdParent points at the parent's LAST paragraph (1A2B3C4D).
       expect(comments[1].parentId).toBe(1);
     });
 

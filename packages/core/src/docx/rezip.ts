@@ -32,13 +32,14 @@
 import { panic } from "better-result";
 import JSZip from "jszip";
 
-import type { BlockContent, HeaderFooter, Image, Hyperlink } from "../types/content";
+import type { BlockContent, Comment, HeaderFooter, Image, Hyperlink } from "../types/content";
 import type { Document, Watermark } from "../types/document";
+import { applyReplyThreadMarkers } from "./commentReplyMarkers";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { assertValidFolioDocumentModel } from "./modelValidation";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import { buildPatchedNoteXml, collectParaIds, extractParagraphXml } from "./selectiveXmlPatch";
-import { serializeComments } from "./serializer/commentSerializer";
+import { serializeComments, serializeCommentsExtended } from "./serializer/commentSerializer";
 import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
@@ -157,7 +158,54 @@ async function serializeCommentsToZip(
   await Promise.all([
     ensureCommentsContentType(zip, compressionLevel),
     ensureCommentsRelationship(zip, compressionLevel),
+    writeCommentsExtendedToZip(comments, zip, compressionLevel),
   ]);
+}
+
+/**
+ * Write `word/commentsExtended.xml` (reply threading + resolved state) plus its
+ * content-type override and relationship, or remove a stale part when the model
+ * no longer needs one. The reply-thread markers in `document.xml` are
+ * synthesized separately (see {@link applyReplyThreadMarkers}); this is the part
+ * that links each reply to its parent.
+ */
+async function writeCommentsExtendedToZip(
+  comments: Comment[],
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
+  const xml = serializeCommentsExtended(comments);
+  const existing = findZipEntryCaseInsensitive(zip, "word/commentsextended.xml");
+  if (!xml) {
+    // No thread/resolved state to record. Drop a stale baseline part so a
+    // removed thread does not resurrect on the next open.
+    if (existing) {
+      zip.remove(existing.name);
+    }
+    return;
+  }
+
+  zip.file(existing?.name ?? "word/commentsExtended.xml", xml, {
+    compression: "DEFLATE",
+    compressionOptions: { level: compressionLevel },
+  });
+  await Promise.all([
+    ensureCommentsExtendedContentType(zip, compressionLevel),
+    ensureCommentsExtendedRelationship(zip, compressionLevel),
+  ]);
+}
+
+function findZipEntryCaseInsensitive(zip: JSZip, lowerPath: string): JSZip.JSZipObject | null {
+  const direct = zip.file(lowerPath);
+  if (direct) {
+    return direct;
+  }
+  for (const [path, file] of Object.entries(zip.files)) {
+    if (!file.dir && path.toLowerCase() === lowerPath) {
+      return file;
+    }
+  }
+  return null;
 }
 
 // ============================================================================
@@ -625,6 +673,10 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
 
   assertValidFolioDocumentModel(exportDocument, "Cannot repack invalid DOCX document model");
 
+  // Give every reply comment its parent's anchor before serializing, so the
+  // reply round-trips with matching commentRange markers + reference.
+  applyReplyThreadMarkers(exportDocument);
+
   // Serialize and update document.xml (after image/hyperlink rIds have been rewritten)
   const documentXml = serializeDocument(exportDocument);
   const originalDocumentXml = await originalZip.file("word/document.xml")?.async("text");
@@ -734,6 +786,10 @@ export async function repackDocxFromRaw(
 
   assertValidFolioDocumentModel(exportDocument, "Cannot repack invalid DOCX document model");
 
+  // Give every reply comment its parent's anchor before serializing, so the
+  // reply round-trips with matching commentRange markers + reference.
+  applyReplyThreadMarkers(exportDocument);
+
   const documentXml = serializeDocument(exportDocument);
   if (rawContent.documentXml) {
     assertDocumentPackageFidelity(rawContent.documentXml, documentXml, exportDocument);
@@ -788,6 +844,9 @@ export async function repackDocxFromRaw(
 export const COMMENTS_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
 
+export const COMMENTS_EXTENDED_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml";
+
 /**
  * Ensure [Content_Types].xml contains an Override for word/comments.xml.
  * If the document already had comments, this is a no-op.
@@ -841,6 +900,62 @@ async function ensureCommentsRelationship(zip: JSZip, compressionLevel: number):
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
   });
+}
+
+/** Ensure [Content_Types].xml overrides word/commentsExtended.xml. No-op if present. */
+async function ensureCommentsExtendedContentType(
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
+  const ctFile = zip.file("[Content_Types].xml");
+  if (!ctFile) {
+    return;
+  }
+
+  const ctXml = await ctFile.async("text");
+  if (ctXml.toLowerCase().includes("/word/commentsextended.xml")) {
+    return;
+  }
+
+  zip.file(
+    "[Content_Types].xml",
+    ctXml.replace(
+      "</Types>",
+      `<Override PartName="/word/commentsExtended.xml" ContentType="${COMMENTS_EXTENDED_CONTENT_TYPE}"/></Types>`,
+    ),
+    { compression: "DEFLATE", compressionOptions: { level: compressionLevel } },
+  );
+}
+
+/**
+ * Ensure word/_rels/document.xml.rels references commentsExtended.xml. No-op if
+ * present. Word reaches the part through this relationship, so a freshly added
+ * part (a reply created on a document that had none) needs it wired up.
+ */
+async function ensureCommentsExtendedRelationship(
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
+  const relsPath = "word/_rels/document.xml.rels";
+  const relsFile = zip.file(relsPath);
+  if (!relsFile) {
+    return;
+  }
+
+  const relsXml = await relsFile.async("text");
+  if (relsXml.toLowerCase().includes("commentsextended.xml")) {
+    return;
+  }
+
+  const newRId = `rId${findMaxRId(relsXml) + 1}`;
+  zip.file(
+    relsPath,
+    relsXml.replace(
+      "</Relationships>",
+      `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.commentsExtended}" Target="commentsExtended.xml"/></Relationships>`,
+    ),
+    { compression: "DEFLATE", compressionOptions: { level: compressionLevel } },
+  );
 }
 
 // ============================================================================

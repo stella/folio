@@ -397,6 +397,44 @@ describe("headless docx review discovery + resolve", () => {
     expect(reviewer.getComments({ author: "Nobody" })).toEqual([]);
   });
 
+  test("replyTo threads a reply under a comment and round-trips it", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    reviewer.applyOperations([
+      { id: "c1", type: "commentOnBlock", blockId: target.id, comment: { text: "Parent note." } },
+    ]);
+    const parent = reviewer.getComments()[0];
+    expect(parent).toBeDefined();
+    if (!parent) {
+      return;
+    }
+
+    const reply = reviewer.replyTo(parent, { text: "Threaded response.", author: "Second" });
+    expect(reply).not.toBeNull();
+
+    // The thread now carries the reply.
+    const thread = reviewer.getComments()[0];
+    expect(thread?.replies).toHaveLength(1);
+    expect(thread?.replies[0]?.text).toBe("Threaded response.");
+
+    // Round-trips as a real reply: linked in commentsExtended.xml and anchored.
+    const saved = await reviewer.toBuffer();
+    const reparsed = await parseDocx(saved, { preloadFonts: false });
+    const savedComments = reparsed.package.document.comments ?? [];
+    const savedReply = savedComments.find((c) => c.parentId !== undefined);
+    expect(savedReply?.parentId).toBe(parent.id);
+
+    const extended = await partText(saved, "word/commentsExtended.xml");
+    expect(extended).toContain("w15:paraIdParent");
+    const documentXml = await partText(saved, "word/document.xml");
+    expect(documentXml).toContain(`<w:commentRangeStart w:id="${savedReply?.id}"/>`);
+    expect(documentXml).toContain(`<w:commentReference w:id="${savedReply?.id}"/>`);
+
+    // A reply to an unknown comment is refused.
+    expect(reviewer.replyTo(9999, { text: "orphan" })).toBeNull();
+  });
+
   test("ops from one parse's snapshot resolve on a separate parse of a paraId-less doc", async () => {
     // The raw corpus fixture ships without `w14:paraId`s. Two independent
     // parses must mint identical block ids so ops built against the first

@@ -64,7 +64,7 @@ function parseCommentsExtensible(xml: string): Map<string, string> {
   return dateUtcByParaId;
 }
 
-type CommentExtendedInfo = {
+export type CommentExtendedInfo = {
   parentParaId?: string;
   done?: boolean;
 };
@@ -83,7 +83,7 @@ type CommentExtendedInfo = {
  * `w15:paraIdParent` points at the parent thread's paraId; `w15:done`
  * (`"1"` / `"true"`) marks the thread resolved.
  */
-function parseCommentsExtended(xml: string): Map<string, CommentExtendedInfo> {
+export function parseCommentsExtended(xml: string): Map<string, CommentExtendedInfo> {
   const infoByParaId = new Map<string, CommentExtendedInfo>();
 
   const root = parseXml(xml);
@@ -184,19 +184,22 @@ export function parseComments(
       child.attributes?.["w15:paraId"] ??
       getAttribute(child, "w", "paraId");
     if (!rawParaId) {
+      // commentsExtensible (UTC dates) and commentsExtended (reply links) key
+      // on the LAST paragraph's `w14:paraId`, so walk every `w:p` and keep the
+      // final one — for a single-paragraph comment first and last coincide.
       for (const sub of getChildElements(child)) {
         const subLocal = sub.name?.replace(/^.*:/u, "") ?? "";
         if (subLocal !== "p") {
           continue;
         }
-        rawParaId =
+        const subParaId =
           getAttribute(sub, "w14", "paraId") ??
           sub.attributes?.["w14:paraId"] ??
           getAttribute(sub, "w15", "paraId") ??
           sub.attributes?.["w15:paraId"] ??
           getAttribute(sub, "w", "paraId");
-        if (rawParaId) {
-          break;
+        if (subParaId) {
+          rawParaId = subParaId;
         }
       }
     }
