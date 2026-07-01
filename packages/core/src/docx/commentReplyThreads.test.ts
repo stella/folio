@@ -42,6 +42,8 @@ type FixtureOptions = {
   includeReplyMarkers: boolean;
   /** Mark the parent thread resolved (`w15:done="1"`). */
   parentDone: boolean;
+  /** Omit the optional `w15:done` attribute entirely (defaults to "0"/false). */
+  omitDone?: boolean;
 };
 
 const anchorParagraph = (includeReplyMarkers: boolean): string => {
@@ -71,9 +73,11 @@ const comment = (id: number, paraId: string, author: string, text: string): stri
 const commentsXml = `${XML_DECLARATION}
 <w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">${comment(PARENT_ID, PARENT_PARA_ID, "Alice", "parent question")}${comment(REPLY1_ID, REPLY1_PARA_ID, "Bob", "first reply")}${comment(REPLY2_ID, REPLY2_PARA_ID, "Cara", "second reply")}</w:comments>`;
 
-const commentsExtendedXmlFor = (parentDone: boolean): string =>
-  `${XML_DECLARATION}
-<w15:commentsEx xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="${PARENT_PARA_ID}" w15:done="${parentDone ? "1" : "0"}"/><w15:commentEx w15:paraId="${REPLY1_PARA_ID}" w15:paraIdParent="${PARENT_PARA_ID}" w15:done="0"/><w15:commentEx w15:paraId="${REPLY2_PARA_ID}" w15:paraIdParent="${PARENT_PARA_ID}" w15:done="0"/></w15:commentsEx>`;
+const commentsExtendedXmlFor = (parentDone: boolean, omitDone = false): string => {
+  const done = (value: "0" | "1"): string => (omitDone ? "" : ` w15:done="${value}"`);
+  return `${XML_DECLARATION}
+<w15:commentsEx xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="${PARENT_PARA_ID}"${done(parentDone ? "1" : "0")}/><w15:commentEx w15:paraId="${REPLY1_PARA_ID}" w15:paraIdParent="${PARENT_PARA_ID}"${done("0")}/><w15:commentEx w15:paraId="${REPLY2_PARA_ID}" w15:paraIdParent="${PARENT_PARA_ID}"${done("0")}/></w15:commentsEx>`;
+};
 
 const stylesXml = `${XML_DECLARATION}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
@@ -113,7 +117,10 @@ const buildThreadedDocx = (options: FixtureOptions): Promise<ArrayBuffer> => {
   zip.file("word/document.xml", documentXmlFor(options.includeReplyMarkers));
   zip.file("word/styles.xml", stylesXml);
   zip.file("word/comments.xml", commentsXml);
-  zip.file("word/commentsExtended.xml", commentsExtendedXmlFor(options.parentDone));
+  zip.file(
+    "word/commentsExtended.xml",
+    commentsExtendedXmlFor(options.parentDone, options.omitDone),
+  );
   zip.file("docProps/core.xml", corePropertiesXml);
   return zip.generateAsync({ type: "arraybuffer" });
 };
@@ -213,6 +220,27 @@ const assertRepliesThreaded = (doc: Document): void => {
   }
 };
 
+/** Rewrite the first text run in the first body paragraph; returns whether it hit. */
+const editFirstBodyText = (doc: Document, newText: string): boolean => {
+  for (const block of doc.package.document.content) {
+    if (block.type !== "paragraph") {
+      continue;
+    }
+    for (const item of block.content) {
+      if (item.type !== "run") {
+        continue;
+      }
+      for (const runItem of item.content) {
+        if (runItem.type === "text") {
+          runItem.text = newText;
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+};
+
 // ============================================================================
 // TESTS
 // ============================================================================
@@ -261,6 +289,36 @@ describe("comment reply threads — round-trip", () => {
     const savedExtended = await readPart(saved, "word/commentsExtended.xml");
     expect(savedExtended).toBe(originalExtended);
 
+    assertRepliesThreaded(await parse(saved));
+  });
+
+  test("a done-less commentsExtended.xml stays byte-exact after an unrelated edit", async () => {
+    // The source omits the optional `w15:done` (defaults to "0"); an unrelated
+    // body edit must not rewrite commentsExtended.xml just because the serializer
+    // would write `w15:done="0"` explicitly.
+    const buffer = await buildThreadedDocx({
+      includeReplyMarkers: true,
+      parentDone: false,
+      omitDone: true,
+    });
+    const doc = await parse(buffer);
+    expect(editFirstBodyText(doc, "anchored text (edited)")).toBe(true);
+
+    const saved = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set([BODY_PARA_ID]),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+    expect(saved).not.toBeNull();
+    if (!saved) {
+      return;
+    }
+
+    // The edit landed, but commentsExtended.xml is untouched (byte-exact).
+    expect(await readPart(saved, "word/document.xml")).toContain("anchored text (edited)");
+    expect(await readPart(saved, "word/commentsExtended.xml")).toBe(
+      await readPart(buffer, "word/commentsExtended.xml"),
+    );
     assertRepliesThreaded(await parse(saved));
   });
 

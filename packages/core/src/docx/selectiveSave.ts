@@ -205,7 +205,14 @@ const commentsExtendedInfoEqual = (
   }
   for (const [paraId, infoA] of a) {
     const infoB = b.get(paraId);
-    if (!infoB || infoA.parentParaId !== infoB.parentParaId || infoA.done !== infoB.done) {
+    // `w15:done` is optional and defaults to "0"/false, so a source that omits
+    // it must compare equal to one that writes `w15:done="0"` — otherwise an
+    // unchanged, done-less thread is flagged as changed and needlessly rewritten.
+    if (
+      !infoB ||
+      infoA.parentParaId !== infoB.parentParaId ||
+      (infoA.done ?? false) !== (infoB.done ?? false)
+    ) {
       return false;
     }
   }
