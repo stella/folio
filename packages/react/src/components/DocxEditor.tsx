@@ -2204,9 +2204,8 @@ export function DocxEditor({
   }, [paintFormatToSelection, setFormatPainterMode]);
 
   // Keyboard: Ctrl/Cmd+Shift+C copies formatting, Ctrl/Cmd+Shift+V paints it,
-  // Esc disarms. The paint binding only claims the keystroke once something has
-  // been copied, so an untouched Ctrl/Cmd+Shift+V still reaches the browser /
-  // paste handling instead of being swallowed here.
+  // Esc disarms. Both chords belong to the format painter (the word-processor
+  // convention); painting with nothing copied is simply a no-op.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -2236,7 +2235,7 @@ export function DocxEditor({
         captureFormatPainter();
         return;
       }
-      if (key === "v" && capturedFormatMarksRef.current.length > 0) {
+      if (key === "v") {
         event.preventDefault();
         event.stopImmediatePropagation();
         paintFormatToSelection();
