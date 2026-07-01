@@ -867,6 +867,7 @@ function parseRunContents(
   runElement: XmlElement,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  rootXmlns: Record<string, string> = {},
 ): RunContent[] {
   const contents: RunContent[] = [];
   const children = getChildElements(runElement);
@@ -941,7 +942,7 @@ function parseRunContents(
         // it to the same drawing/image node a DrawingML image produces so it
         // renders through the existing image path; the original VML round-trips
         // verbatim via the drawing's rawXml.
-        const vmlDrawing = parseVmlImageContent(child, rels, media);
+        const vmlDrawing = parseVmlImageContent(child, rels, media, rootXmlns);
         if (vmlDrawing) {
           contents.push(vmlDrawing);
         }
@@ -1028,6 +1029,7 @@ export function parseRun(
   theme: Theme | null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
+  rootXmlns: Record<string, string> = {},
 ): Run {
   const run: Run = {
     type: "run",
@@ -1048,7 +1050,7 @@ export function parseRun(
   }
 
   // Parse run contents (text, tabs, breaks, images, etc.)
-  run.content = parseRunContents(node, rels, media);
+  run.content = parseRunContents(node, rels, media, rootXmlns);
 
   return run;
 }

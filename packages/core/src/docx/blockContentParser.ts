@@ -49,6 +49,9 @@ import {
 
 type ParseBlockContentOptions = {
   inHeaderFooter?: boolean;
+  // Source root `xmlns:*` declarations, threaded to the run parser so a captured
+  // VML `w:pict` replay stays self-contained under non-canonical prefixes.
+  rootXmlns?: Record<string, string>;
 };
 
 const toRoman = (numParam: number): string => {

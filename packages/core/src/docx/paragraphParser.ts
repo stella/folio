@@ -1158,6 +1158,7 @@ function parseSimpleField(
   theme: Theme | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  rootXmlns: Record<string, string> = {},
 ): SimpleField {
   const instruction = getAttribute(node, "w", "instr") ?? "";
   const fieldType = parseFieldType(instruction);
@@ -1186,7 +1187,7 @@ function parseSimpleField(
   for (const child of children) {
     const localName = getLocalName(child.name);
     if (localName === "r") {
-      field.content.push(parseRun(child, styles, theme, rels, media));
+      field.content.push(parseRun(child, styles, theme, rels, media, rootXmlns));
     }
   }
 
@@ -1206,6 +1207,7 @@ function parseParagraphContents(
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
   trackedContext: TrackedChangeParseContext = "default",
+  rootXmlns: Record<string, string> = {},
 ): ParagraphContent[] {
   const contents: ParagraphContent[] = [];
   const children = getChildElements(paraElement);
@@ -1230,7 +1232,7 @@ function parseParagraphContents(
         // Check for field characters in this run
         const runElement =
           trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
-        const run = parseRun(runElement, styles, theme, rels, media);
+        const run = parseRun(runElement, styles, theme, rels, media, rootXmlns);
         const commentReferenceId = getCommentReferenceId(runElement);
 
         // Look for field characters
@@ -1393,7 +1395,7 @@ function parseParagraphContents(
         break;
 
       case "fldSimple":
-        contents.push(parseSimpleField(child, styles, theme, rels, media));
+        contents.push(parseSimpleField(child, styles, theme, rels, media, rootXmlns));
         break;
 
       case "pPr":
@@ -1421,6 +1423,7 @@ function parseParagraphContents(
             rels,
             media,
             trackedContext,
+            rootXmlns,
           );
           const properties = parseSdtProperties(sdtPr, sdtEndPr);
           pushInlineSdtSegments({
@@ -1435,7 +1438,16 @@ function parseParagraphContents(
       case "ins": {
         // Track change: insertion — parse content and wrap
         const insInfo = parseTrackedChangeInfo(child);
-        const insContent = parseParagraphContents(child, styles, theme, null, rels, media);
+        const insContent = parseParagraphContents(
+          child,
+          styles,
+          theme,
+          null,
+          rels,
+          media,
+          "default",
+          rootXmlns,
+        );
         pushTrackedChangeSegments({
           contents,
           type: "insertion",
@@ -1455,6 +1467,7 @@ function parseParagraphContents(
           rels,
           media,
           "deletion",
+          rootXmlns,
         );
         pushTrackedChangeSegments({
           contents,
@@ -1474,6 +1487,7 @@ function parseParagraphContents(
           rels,
           media,
           "deletion",
+          rootXmlns,
         );
         pushTrackedChangeSegments({
           contents,
@@ -1486,7 +1500,16 @@ function parseParagraphContents(
 
       case "moveTo": {
         const moveToInfo = parseTrackedChangeInfo(child);
-        const moveToContent = parseParagraphContents(child, styles, theme, null, rels, media);
+        const moveToContent = parseParagraphContents(
+          child,
+          styles,
+          theme,
+          null,
+          rels,
+          media,
+          "default",
+          rootXmlns,
+        );
         pushTrackedChangeSegments({
           contents,
           type: "moveTo",
@@ -1600,7 +1623,7 @@ export function parseParagraph(
   numbering: NumberingMap | null,
   rels: RelationshipMap | null = null,
   media: Map<string, MediaFile> | null = null,
-  options?: { inHeaderFooter?: boolean },
+  options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
 ): Paragraph {
   const paragraph: Paragraph = {
     type: "paragraph",
@@ -1652,7 +1675,16 @@ export function parseParagraph(
   }
 
   // Parse paragraph contents (runs, hyperlinks, bookmarks, fields)
-  const rawContent = parseParagraphContents(node, styles, theme, numbering, rels, media);
+  const rawContent = parseParagraphContents(
+    node,
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    "default",
+    options?.rootXmlns ?? {},
+  );
 
   // Consolidate consecutive runs with identical formatting
   // This reduces fragmentation (e.g., 252 tiny runs → a few larger runs)

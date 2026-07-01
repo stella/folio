@@ -22,6 +22,8 @@
 
 import type { Watermark } from "../types/document";
 import {
+  cloneWithXmlnsDeclarations,
+  collectXmlnsDeclarations,
   elementToXml,
   findChild,
   findChildren,
@@ -120,48 +122,6 @@ export function parseWatermark(header: XmlElement): ParsedWatermark | undefined 
     }
   }
   return undefined;
-}
-
-/**
- * Collect every `xmlns:*` declaration from a header element's
- * attributes. The serializer's hard-coded root namespaces only cover
- * canonical prefixes (`a`, `w`, `wp`, …); a DOCX that binds an
- * extension namespace to a non-canonical prefix would replay an
- * unbound prefix when the captured paragraph alone is emitted. We
- * carry the source declarations forward onto the captured paragraph
- * so the raw replay is self-contained regardless of prefix choice.
- */
-function collectXmlnsDeclarations(header: XmlElement): Record<string, string> {
-  const out: Record<string, string> = {};
-  const attrs = header.attributes;
-  if (!attrs) {
-    return out;
-  }
-  for (const [key, value] of Object.entries(attrs)) {
-    if ((key === "xmlns" || key.startsWith("xmlns:")) && value !== undefined) {
-      out[key] = String(value);
-    }
-  }
-  return out;
-}
-
-/**
- * Return a shallow clone of `element` whose attributes carry every
- * `xmlns:*` declaration in `xmlnsDecls`. Existing attributes (including
- * any namespace declarations the paragraph already carries) win over
- * the header-level ones.
- */
-function cloneWithXmlnsDeclarations(
-  element: XmlElement,
-  xmlnsDecls: Record<string, string>,
-): XmlElement {
-  if (Object.keys(xmlnsDecls).length === 0) {
-    return element;
-  }
-  return {
-    ...element,
-    attributes: { ...xmlnsDecls, ...element.attributes },
-  };
 }
 
 /**

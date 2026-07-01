@@ -163,4 +163,116 @@ describe("VML w:pict inline images", () => {
     expect(docXml).toContain("<w:pict");
     expect(docXml).toContain('r:id="rIdImg"');
   });
+
+  test("parses shape dimensions with case-insensitive units", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:shape style="width:2IN;height:1Pt"><v:imagedata r:id="rIdImg"/></v:shape></w:pict>`,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    // 2IN = 192px = 1,828,800 EMU; 1Pt = 96/72 px = 12,700 EMU.
+    expect(drawing?.image.size.width).toBe(1_828_800);
+    expect(drawing?.image.size.height).toBe(12_700);
+  });
+
+  test("rejects a malformed length rather than mis-parsing it", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:shape style="width:1.2.3in;height:1in"><v:imagedata r:id="rIdImg"/></v:shape></w:pict>`,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    // `1.2.3in` is not a valid length, so the width is dropped (0), not truncated
+    // to `1.2`; the valid height still parses.
+    expect(drawing?.image.size.width).toBe(0);
+    expect(drawing?.image.size.height).toBe(914_400);
+  });
+
+  test("resolves the relationship id from o:relid when r:id is absent", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:shape style="width:1in;height:1in"><v:imagedata o:relid="rIdImg"/></v:shape></w:pict>`,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    expect(drawing?.image.rId).toBe("rIdImg");
+    expect(drawing?.image.src?.startsWith("data:image/png")).toBe(true);
+  });
+
+  test("round-trips a w:pict that binds VML/relationship namespaces to non-canonical prefixes", async () => {
+    // A DOCX whose root binds VML (`v2`), office (`o2`), and relationship (`r2`)
+    // namespaces to non-canonical prefixes the serializer's root does not
+    // declare. The captured VML must carry those declarations so it resolves.
+    const zip = new JSZip();
+    zip.file(
+      "[Content_Types].xml",
+      `${XML}
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+    );
+    zip.file(
+      "_rels/.rels",
+      `${XML}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
+</Relationships>`,
+    );
+    zip.file(
+      "word/_rels/document.xml.rels",
+      `${XML}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
+</Relationships>`,
+    );
+    zip.file(
+      "word/document.xml",
+      `${XML}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v2="urn:schemas-microsoft-com:vml" xmlns:o2="urn:schemas-microsoft-com:office:office" xmlns:r2="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    <w:p><w:r><w:pict><v2:shape style="width:2in;height:1in"><v2:imagedata r2:id="rIdImg" o2:title="logo"/></v2:shape></w:pict></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>
+  </w:body>
+</w:document>`,
+    );
+    zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
+    zip.file(
+      "word/styles.xml",
+      `${XML}
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:styles>`,
+    );
+    const original = await zip.generateAsync({ type: "arraybuffer" });
+
+    const doc = await parseDocx(original, { preloadFonts: false });
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    expect(drawing?.image.rId).toBe("rIdImg");
+    expect(drawing?.image.src?.startsWith("data:image/png")).toBe(true);
+    expect(drawing?.image.size.width).toBe(1_828_800);
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    expect((await validateDocx(out)).valid).toBe(true);
+
+    const outZip = await JSZip.loadAsync(out);
+    const docXml = await outZip.file("word/document.xml")!.async("text");
+    // The non-canonical prefix bindings travel with the captured VML.
+    expect(docXml).toContain('xmlns:v2="urn:schemas-microsoft-com:vml"');
+    expect(docXml).toContain("<v2:shape");
+    expect(docXml).toContain('r2:id="rIdImg"');
+
+    // Re-parsing the saved output still resolves the picture (lossless).
+    const reparsed = await parseDocx(out, { preloadFonts: false });
+    const reDrawing = firstDrawing(reparsed.package.document.content.at(0));
+    expect(reDrawing?.image.rId).toBe("rIdImg");
+    expect(reDrawing?.image.src?.startsWith("data:image/png")).toBe(true);
+  });
 });

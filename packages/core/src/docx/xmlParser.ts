@@ -842,3 +842,44 @@ export function findAllDeep(
   search(root);
   return results;
 }
+
+/**
+ * Collect every `xmlns` / `xmlns:*` declaration from an element's attributes.
+ *
+ * The serializer's hard-coded root namespaces only cover canonical prefixes
+ * (`a`, `w`, `wp`, `v`, `o`, …); a DOCX that binds a namespace to a
+ * non-canonical prefix would replay an unbound prefix when a captured subtree
+ * is emitted on its own. Carrying the source declarations forward keeps the
+ * raw replay self-contained regardless of the producer's prefix choice.
+ */
+export function collectXmlnsDeclarations(element: XmlElement): Record<string, string> {
+  const out: Record<string, string> = {};
+  const attrs = element.attributes;
+  if (!attrs) {
+    return out;
+  }
+  for (const [key, value] of Object.entries(attrs)) {
+    if ((key === "xmlns" || key.startsWith("xmlns:")) && value !== undefined) {
+      out[key] = String(value);
+    }
+  }
+  return out;
+}
+
+/**
+ * Return a shallow clone of `element` whose attributes carry every declaration
+ * in `xmlnsDecls`. Existing attributes (including any namespace declarations the
+ * element already carries) win over the injected ones.
+ */
+export function cloneWithXmlnsDeclarations(
+  element: XmlElement,
+  xmlnsDecls: Record<string, string>,
+): XmlElement {
+  if (Object.keys(xmlnsDecls).length === 0) {
+    return element;
+  }
+  return {
+    ...element,
+    attributes: { ...xmlnsDecls, ...element.attributes },
+  };
+}

@@ -27,7 +27,7 @@ import type { NumberingMap } from "./numberingParser";
 import { getParagraphText } from "./paragraphParser";
 import { parseSectionProperties, getDefaultSectionProperties } from "./sectionParser";
 import type { StyleMap } from "./styleParser";
-import { parseXml, findChild } from "./xmlParser";
+import { parseXml, findChild, collectXmlnsDeclarations } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 // ============================================================================
@@ -226,8 +226,12 @@ export function parseDocumentBody(
     return result;
   }
 
-  // Parse all block content (paragraphs, tables)
-  result.content = parseBlockContent(bodyEl, styles, theme, numbering, rels, media);
+  // Parse all block content (paragraphs, tables). The root `xmlns:*`
+  // declarations travel with it so a captured VML `w:pict` replay stays
+  // self-contained under non-canonical namespace prefixes.
+  result.content = parseBlockContent(bodyEl, styles, theme, numbering, rels, media, {
+    rootXmlns: collectXmlnsDeclarations(documentEl),
+  });
 
   // Parse final section properties (w:body/w:sectPr)
   const finalSectPr = findChild(bodyEl, "w", "sectPr");

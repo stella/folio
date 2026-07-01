@@ -41,7 +41,7 @@ import { parseBlockContent } from "./blockContentParser";
 import type { NumberingMap } from "./numberingParser";
 import type { StyleMap } from "./styleParser";
 import { parseWatermark } from "./watermarkParser";
-import { parseXml } from "./xmlParser";
+import { collectXmlnsDeclarations, parseXml } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 // Re-export reference parsers for backward compatibility
@@ -137,6 +137,7 @@ export function parseHeader(
 
   result.content = parseBlockContent(contentRoot, styles, theme, numbering, rels, media, {
     inHeaderFooter: true,
+    rootXmlns: collectXmlnsDeclarations(rootElement),
   });
 
   return result;
@@ -200,6 +201,7 @@ export function parseFooter(
 
   result.content = parseBlockContent(rootElement, styles, theme, numbering, rels, media, {
     inHeaderFooter: true,
+    rootXmlns: collectXmlnsDeclarations(rootElement),
   });
 
   return result;
