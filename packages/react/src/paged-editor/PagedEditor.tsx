@@ -5572,6 +5572,22 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
     }
     let cancelled = false;
     let registered: FontFace[] = [];
+
+    // Drop cached font metrics and re-run layout so measurements reflect the
+    // current faces — or, on the cleanup path, their absence. Shared by the
+    // register and unregister paths so both re-measure identically. No-op when
+    // the view is gone (e.g. during unmount), so it is safe to call in cleanup.
+    const remeasureForFontChange = () => {
+      const view = hiddenPMRef.current?.getView();
+      if (!view) {
+        return;
+      }
+      resetCanvasContext();
+      clearAllCaches();
+      runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
+      updateSelectionOverlayRef.current(view.state);
+    };
+
     void loadHostFontFaces(hostFonts).then((faces) => {
       if (cancelled) {
         removeFontFaces(faces);
@@ -5581,18 +5597,19 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
       if (faces.length === 0) {
         return;
       }
-      const view = hiddenPMRef.current?.getView();
-      if (!view) {
-        return;
-      }
-      resetCanvasContext();
-      clearAllCaches();
-      runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
-      updateSelectionOverlayRef.current(view.state);
+      remeasureForFontChange();
     });
+
     return () => {
       cancelled = true;
+      if (registered.length === 0) {
+        return;
+      }
+      // Fonts were cleared or changed: unregister the faces, then re-measure so
+      // the document drops the now-removed custom metrics immediately instead
+      // of keeping them until the next edit.
       removeFontFaces(registered);
+      remeasureForFontChange();
     };
   }, [hostFonts]);
 
