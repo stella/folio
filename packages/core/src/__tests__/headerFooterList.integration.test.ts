@@ -29,7 +29,7 @@ import { renderPage } from "../layout-painter/renderPage";
 function createFakeStyle(): Record<string, string> {
   const store: Record<string, string> = {};
   return new Proxy(store, {
-    get(target, prop: string) {
+    get(target, prop) {
       if (prop === "setProperty") {
         return (key: string, value: string) => {
           target[key] = value;
@@ -38,11 +38,14 @@ function createFakeStyle(): Record<string, string> {
       if (prop === "getPropertyValue") {
         return (key: string) => target[key] ?? "";
       }
-      return target[prop];
+      return typeof prop === "string" ? target[prop] : undefined;
     },
-    set(target, prop: string, value: string) {
-      target[prop] = value;
-      return true;
+    set(target, prop, value) {
+      if (typeof prop === "string") {
+        target[prop] = value as string;
+        return true;
+      }
+      return false;
     },
   }) as unknown as Record<string, string>;
 }
@@ -152,6 +155,7 @@ function toggleListInHeader(command: typeof toggleBulletList, headerText: string
 
 function withFakeDocument<T>(run: () => T): T {
   const original = globalThis.document;
+  const hadDocument = "document" in globalThis;
   Object.defineProperty(globalThis, "document", { value: fakeDocument, configurable: true });
   clearTextWidthCache();
   resetCanvasContext();
@@ -160,7 +164,14 @@ function withFakeDocument<T>(run: () => T): T {
   } finally {
     clearTextWidthCache();
     resetCanvasContext();
-    Object.defineProperty(globalThis, "document", { value: original, configurable: true });
+    // Delete rather than restore `undefined` when there was no global document
+    // to begin with (Bun/Node), so `"document" in globalThis` stays false and
+    // we don't pollute other tests sharing the process.
+    if (hadDocument) {
+      Object.defineProperty(globalThis, "document", { value: original, configurable: true });
+    } else {
+      Reflect.deleteProperty(globalThis, "document");
+    }
   }
 }
 
