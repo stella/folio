@@ -64,6 +64,22 @@ const VML_TEXT_WATERMARK_SHAPETYPE = "#_x0000_t136";
 const VML_PICTURE_WATERMARK_ID_PREFIX = "WordPictureWatermark";
 
 /**
+ * Whether a VML `<v:shape>` is a watermark rather than ordinary inline
+ * imagery. Text watermarks use the WordArt shapetype; picture watermarks
+ * carry a `WordPictureWatermark…` id. The VML image parser uses this to
+ * leave watermark shapes to this module, so a header watermark is not also
+ * rendered as an inline picture.
+ */
+export function isWatermarkShape(shape: XmlElement): boolean {
+  const shapeType = getAttribute(shape, null, "type") ?? "";
+  if (shapeType === VML_TEXT_WATERMARK_SHAPETYPE) {
+    return true;
+  }
+  const shapeId = getAttribute(shape, null, "id") ?? "";
+  return shapeId.startsWith(VML_PICTURE_WATERMARK_ID_PREFIX);
+}
+
+/**
  * Walk a parsed `<w:hdr>` element and return the watermark it carries,
  * or `undefined` when none is present. Scans every candidate shape /
  * anchor in the header so a non-watermark shape (e.g. a logo image)

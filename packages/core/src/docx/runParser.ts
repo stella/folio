@@ -54,6 +54,7 @@ import {
 } from "./parserEnums";
 import { parseShapeFromDrawing, shouldPreserveRawShapeDrawing } from "./shapeParser";
 import type { StyleMap } from "./styleParser";
+import { parseVmlImageContent } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
 import {
   findChild,
@@ -935,9 +936,20 @@ function parseRunContents(
         break;
       }
 
-      case "pict":
+      case "pict": {
+        // Legacy VML inline picture (e.g. an old-format header logo). Resolve
+        // it to the same drawing/image node a DrawingML image produces so it
+        // renders through the existing image path; the original VML round-trips
+        // verbatim via the drawing's rawXml.
+        const vmlDrawing = parseVmlImageContent(child, rels, media);
+        if (vmlDrawing) {
+          contents.push(vmlDrawing);
+        }
+        break;
+      }
+
       case "object":
-        // Legacy VML pictures/objects are not part of the active DrawingML path.
+        // Legacy OLE objects remain outside the active image path.
         break;
 
       case "rPr":
