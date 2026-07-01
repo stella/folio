@@ -156,38 +156,19 @@ export function FormattingBar(props: FormattingBarProps) {
   }, [disabled, canRedo, onRedo]);
 
   // Format painter: a single click arms a one-shot paint, a double-click arms
-  // the sticky (keep-on) mode. The one-shot arm is deferred so a double-click
-  // can pre-empt it — otherwise the first click of a double would fire first.
-  const painterClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (painterClickTimer.current) {
-        clearTimeout(painterClickTimer.current);
-      }
-    },
-    [],
-  );
-
+  // the sticky (keep-on) mode. The native `dblclick` event drives sticky mode,
+  // so there is no single-vs-double timing race: the intermediate click just
+  // re-toggles and `dblclick` settles the mode.
   const handleFormatPainterClick = useCallback(() => {
     if (disabled || !onFormatPainter) {
       return;
     }
-    if (painterClickTimer.current) {
-      clearTimeout(painterClickTimer.current);
-    }
-    painterClickTimer.current = setTimeout(() => {
-      painterClickTimer.current = null;
-      onFormatPainter(false);
-    }, 220);
+    onFormatPainter(false);
   }, [disabled, onFormatPainter]);
 
   const handleFormatPainterDoubleClick = useCallback(() => {
     if (disabled || !onFormatPainter) {
       return;
-    }
-    if (painterClickTimer.current) {
-      clearTimeout(painterClickTimer.current);
-      painterClickTimer.current = null;
     }
     onFormatPainter(true);
   }, [disabled, onFormatPainter]);

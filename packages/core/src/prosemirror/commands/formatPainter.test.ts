@@ -76,6 +76,33 @@ describe("captureFormatMarks", () => {
     });
     expect(captureFormatMarks(select(plain, 1, 6))).toEqual([]);
   });
+
+  test("does not paint an override mark that only carries excluded (hidden/rtl) attrs", () => {
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("x", [mark("runFormattingOverride", { hidden: false, rtl: false })]),
+        ]),
+      ]),
+    });
+    expect(captureFormatMarks(select(state, 1, 2))).toEqual([]);
+  });
+
+  test("strips excluded attrs but keeps the rest of a mixed override mark", () => {
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("x", [mark("runFormattingOverride", { bold: false, rtl: false })]),
+        ]),
+      ]),
+    });
+    const captured = captureFormatMarks(select(state, 1, 2));
+    const override = findMark(captured, "runFormattingOverride");
+    expect(override?.attrs["bold"]).toBe(false);
+    expect(override?.attrs["rtl"]).toBeNull();
+  });
 });
 
 describe("applyFormatMarks", () => {

@@ -45,6 +45,51 @@ export const PAINTABLE_MARK_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Formatting that must never be painted — whether it arrives as its own mark or
+ * is smuggled in as a `runFormattingOverride` attr (e.g. `rtl: false`,
+ * `hidden: false`). Single source of truth: it gates both the mark-type
+ * exclusion and the override-attr filtering below, so an exclusion can't leak
+ * back in through the override mark as new override attrs are added.
+ */
+const NON_PAINTABLE_FORMATS: ReadonlySet<string> = new Set(["rtl", "hidden"]);
+
+/** A mark is paintable when it is in the allowlist and not a hard exclusion. */
+function isPaintableMark(mark: Mark): boolean {
+  const name = mark.type.name;
+  return PAINTABLE_MARK_NAMES.has(name) && !NON_PAINTABLE_FORMATS.has(name);
+}
+
+/**
+ * Strip excluded overrides (`rtl`/`hidden`) from a `runFormattingOverride` mark
+ * so they cannot be re-smuggled past the mark-type exclusion. Returns the mark
+ * unchanged when it carries no excluded attr, a trimmed mark when it carries a
+ * mix, or null when only excluded overrides remain (nothing paintable left).
+ */
+function sanitizeOverrideMark(mark: Mark): Mark | null {
+  const kept: Record<string, unknown> = {};
+  let removedExcluded = false;
+
+  for (const [key, value] of Object.entries(mark.attrs)) {
+    if (value === null || value === undefined) {
+      continue;
+    }
+    if (NON_PAINTABLE_FORMATS.has(key)) {
+      removedExcluded = true;
+      continue;
+    }
+    kept[key] = value;
+  }
+
+  if (!removedExcluded) {
+    return mark;
+  }
+  if (Object.keys(kept).length === 0) {
+    return null;
+  }
+  return mark.type.create(kept);
+}
+
+/**
  * Marks of the first text node inside [from, to). A word processor's format
  * brush copies from the start of the source selection, so a mixed selection
  * yields the formatting of its leading run.
@@ -75,7 +120,22 @@ function firstTextMarks(state: EditorState, from: number, to: number): readonly 
 export function captureFormatMarks(state: EditorState): Mark[] {
   const { empty, $from, from, to } = state.selection;
   const source = empty ? (state.storedMarks ?? $from.marks()) : firstTextMarks(state, from, to);
-  return source.filter((mark) => PAINTABLE_MARK_NAMES.has(mark.type.name));
+
+  const captured: Mark[] = [];
+  for (const mark of source) {
+    if (!isPaintableMark(mark)) {
+      continue;
+    }
+    if (mark.type.name === "runFormattingOverride") {
+      const sanitized = sanitizeOverrideMark(mark);
+      if (sanitized) {
+        captured.push(sanitized);
+      }
+      continue;
+    }
+    captured.push(mark);
+  }
+  return captured;
 }
 
 /**

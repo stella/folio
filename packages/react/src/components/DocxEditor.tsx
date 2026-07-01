@@ -2179,15 +2179,18 @@ export function DocxEditor({
     [captureFormatPainter, setFormatPainterMode],
   );
 
-  // Paint on the mouseup that completes a new selection inside the editor. A
-  // one-shot arm disarms after a successful paint; sticky stays armed.
+  // Paint on the mouseup that completes a new selection. A one-shot arm disarms
+  // after a successful paint; sticky stays armed.
   useEffect(() => {
     const handleMouseUp = (event: MouseEvent) => {
       if (formatPainterModeRef.current === "off") {
         return;
       }
-      const editor = editorContentRef.current;
-      if (!editor || !(event.target instanceof Node) || !editor.contains(event.target)) {
+      // Paint on any release except one on the toolbar: a drag often ends on the
+      // scrollbar, ruler, or page margin rather than strictly inside the editor
+      // content. The toolbar guard keeps the arming click from self-painting.
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-folio-toolbar]")) {
         return;
       }
       // Defer so ProseMirror's own mouseup selection sync settles first.
@@ -2209,8 +2212,18 @@ export function DocxEditor({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        if (formatPainterModeRef.current !== "off") {
-          capturedFormatMarksRef.current = [];
+        const armed = formatPainterModeRef.current !== "off";
+        const hasCopiedFormat = capturedFormatMarksRef.current.length > 0;
+        // Nothing to cancel — let Esc bubble so it can close a parent modal etc.
+        if (!armed && !hasCopiedFormat) {
+          return;
+        }
+        // Esc disarms and clears the copied format; claim it so the same
+        // keystroke does not also bubble up to close a parent modal or sidebar.
+        event.preventDefault();
+        event.stopPropagation();
+        capturedFormatMarksRef.current = [];
+        if (armed) {
           setFormatPainterMode("off");
         }
         return;
