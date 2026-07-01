@@ -599,6 +599,45 @@ function reconstructCustomNumFmt(width: string): string {
 }
 
 /**
+ * Collect the `xmlns` / `xmlns:*` declarations from an element's opening tag
+ * (the substring up to its first `>`).
+ */
+function collectXmlnsFromOpeningTag(elementXml: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const tagEnd = elementXml.indexOf(">");
+  const openTag = tagEnd === -1 ? elementXml : elementXml.slice(0, tagEnd);
+  const pattern = /\s(?<name>xmlns(?::[\w.-]+)?)="(?<uri>[^"]*)"/gu;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(openTag)) !== null) {
+    // SAFETY: named groups `name`/`uri` present when the regex matches
+    out[match.groups!["name"]!] = match.groups!["uri"]!;
+  }
+  return out;
+}
+
+/**
+ * Carry the given `xmlns` declarations onto `fragmentXml`'s root element so it
+ * resolves every prefix even after the ancestor that declared them is replaced.
+ * Declarations the fragment already carries win (mirrors the VML
+ * `cloneWithXmlnsDeclarations` self-contained-clone behaviour, in the string
+ * domain the byte-exact splice needs).
+ */
+function withXmlnsDeclarations(fragmentXml: string, xmlnsDecls: Record<string, string>): string {
+  const own = collectXmlnsFromOpeningTag(fragmentXml);
+  const additions = Object.entries(xmlnsDecls)
+    .filter(([name]) => !(name in own))
+    .map(([name, uri]) => ` ${name}="${uri}"`);
+  if (additions.length === 0) {
+    return fragmentXml;
+  }
+  let nameEnd = 1; // skip the opening "<"
+  while (nameEnd < fragmentXml.length && !isXmlNameBoundary(fragmentXml[nameEnd])) {
+    nameEnd += 1;
+  }
+  return fragmentXml.slice(0, nameEnd) + additions.join("") + fragmentXml.slice(nameEnd);
+}
+
+/**
  * Swap each synthetic `decimalZero{3,4,5}` numFmt in a re-serialized definition
  * back to the original level's number-format element.
  *
@@ -641,8 +680,20 @@ function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): str
       ilvl,
     );
     const original = origLevel ? extractLevelNumFmtElement(origLevel) : null;
-    // SAFETY: named group `width` present because SYNTHETIC_NUM_FMT_PATTERN matched
-    const replacement = original ?? reconstructCustomNumFmt(synthetic.groups!["width"]!);
+    let replacement: string;
+    if (original && origLevel) {
+      // The restored element (e.g. mc:AlternateContent) may use a prefix bound
+      // on the replaced ancestors (w:abstractNum / w:lvl) instead of the
+      // numbering root; carry those declarations onto it so it stays resolvable.
+      const ancestorXmlns = {
+        ...collectXmlnsFromOpeningTag(originalDefXml),
+        ...collectXmlnsFromOpeningTag(origLevel),
+      };
+      replacement = withXmlnsDeclarations(original, ancestorXmlns);
+    } else {
+      // SAFETY: named group `width` present because SYNTHETIC_NUM_FMT_PATTERN matched
+      replacement = reconstructCustomNumFmt(synthetic.groups!["width"]!);
+    }
     const restoredLevel =
       curLevel.slice(0, synthetic.index) +
       replacement +

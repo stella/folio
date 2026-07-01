@@ -410,3 +410,70 @@ describe("numbering-definition write path (custom / AlternateContent numFmt)", (
     await expectCustomFormatSurvives(result);
   });
 });
+
+describe("numbering-definition write path (ancestor-scoped xmlns on restored numFmt)", () => {
+  // The custom format's `mc:` prefix (and the `w14` its Choice requires) are
+  // declared on the w:abstractNum ancestor, NOT the numbering root. Re-emitting
+  // the definition drops those ancestor declarations, so the restored numFmt
+  // element must carry them or the saved part has an undefined prefix.
+  const MC_URI = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+  const W14_URI = "http://schemas.microsoft.com/office/word/2010/wordml";
+  const SCOPED_ALT_CONTENT =
+    "<mc:AlternateContent>" +
+    '<mc:Choice Requires="w14"><w:numFmt w:val="custom" w:format="0001, 0002, 0003"/></mc:Choice>' +
+    '<mc:Fallback><w:numFmt w:val="decimal"/></mc:Fallback></mc:AlternateContent>';
+  const scopedNumberingXml =
+    `${XML_DECLARATION}\n` +
+    '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    `<w:abstractNum w:abstractNumId="0" xmlns:mc="${MC_URI}" xmlns:w14="${W14_URI}">` +
+    '<w:multiLevelType w:val="hybridMultilevel"/>' +
+    `<w:lvl w:ilvl="0"><w:start w:val="1"/>${SCOPED_ALT_CONTENT}<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/><w:lvlJc w:val="left"/></w:lvl></w:abstractNum>` +
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
+    "</w:numbering>";
+
+  const expectSelfContainedFormat = async (saved: ArrayBuffer): Promise<void> => {
+    const savedNumberingXml = await readPart(saved, "word/numbering.xml");
+    // The restored numFmt element now declares the prefixes its ancestor used,
+    // so no dangling mc:/w14 prefix survives in the saved part.
+    expect(savedNumberingXml).toContain(`<mc:AlternateContent xmlns:mc="${MC_URI}"`);
+    expect(savedNumberingXml).toContain(`xmlns:w14="${W14_URI}"`);
+    expect(savedNumberingXml).not.toContain("decimalZero4");
+    expect(savedNumberingXml).toContain(`<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`);
+    const reparsed = await parseDocx(saved, { preloadFonts: false });
+    expect(levelText(reparsed, 0)).toBe(EDITED_LVL_TEXT);
+    const level = reparsed.package.numbering?.abstractNums
+      .find((a) => a.abstractNumId === 0)
+      ?.levels.find((l) => l.ilvl === 0);
+    expect(level?.numFmt).toBe("decimalZero4");
+  };
+
+  test("selective save makes the restored custom format self-contained", async () => {
+    const buffer = await buildDocx({
+      numberingXml: scopedNumberingXml,
+      documentXml: singleListDocumentXml(1),
+    });
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    editFirstLevelText(doc, 0, EDITED_LVL_TEXT);
+    const result = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error("selective save returned null");
+    }
+    await expectSelfContainedFormat(result);
+  });
+
+  test("full repack makes the restored custom format self-contained", async () => {
+    const buffer = await buildDocx({
+      numberingXml: scopedNumberingXml,
+      documentXml: singleListDocumentXml(1),
+    });
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    editFirstLevelText(doc, 0, EDITED_LVL_TEXT);
+    const result = await repackDocx({ ...doc, originalBuffer: buffer });
+    await expectSelfContainedFormat(result);
+  });
+});
