@@ -265,6 +265,7 @@ export function InlineHeaderFooterEditor({
         <div className="hf-separator-bar" style={footerBarStyle}>
           <span style={labelStyle}>{label}</span>
           <OptionsMenu
+            position={position}
             label={label}
             showOptions={showOptions}
             setShowOptions={setShowOptions}
@@ -280,6 +281,7 @@ export function InlineHeaderFooterEditor({
         <div className="hf-separator-bar" style={separatorBarStyle}>
           <span style={labelStyle}>{label}</span>
           <OptionsMenu
+            position={position}
             label={label}
             showOptions={showOptions}
             setShowOptions={setShowOptions}
@@ -299,6 +301,7 @@ export function InlineHeaderFooterEditor({
 // ============================================================================
 
 function OptionsMenu({
+  position,
   label,
   showOptions,
   setShowOptions,
@@ -307,6 +310,7 @@ function OptionsMenu({
   onClose,
   getActiveView,
 }: {
+  position: "header" | "footer";
   label: string;
   showOptions: boolean;
   setShowOptions: (v: boolean | ((prev: boolean) => boolean)) => void;
@@ -347,7 +351,9 @@ function OptionsMenu({
         Options ▾
       </button>
       {showOptions && (
-        <div className="hf-options-dropdown">
+        <div
+          className={`hf-options-dropdown${position === "footer" ? " hf-options-dropdown--up" : ""}`}
+        >
           <button
             type="button"
             className="hf-options-item"

@@ -102,6 +102,14 @@
   box-shadow: 0 2px 6px var(--doc-shadow-sm);
 }
 
+/* Footer options open upward: the footer bar sits below its content, so a
+   downward menu near the bottom of a page would push Remove/Close past the
+   page extent and clip them. */
+.hf-options-dropdown--up {
+  top: auto;
+  bottom: 100%;
+}
+
 .hf-options-item {
   display: block;
   width: 100%;
