@@ -336,12 +336,14 @@ export function HorizontalRuler({
         />
       )}
 
-      {/* Tab stop markers (display only) */}
+      {/* Tab stop markers (display only). TabStop.position is measured from the
+          text area's left edge, so offset by the left margin to place the marker
+          on the physical page; removal still receives the raw text-area position. */}
       {tabStops?.map((tab) => (
         <TabStopMarker
           key={tab.position}
           tabStop={tab}
-          positionPx={twipsToPixels(tab.position) * zoom}
+          positionPx={twipsToPixels(leftMarginTwips + tab.position) * zoom}
           onDoubleClick={() => onTabStopRemove?.(tab.position)}
         />
       ))}
