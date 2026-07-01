@@ -34,11 +34,14 @@ import JSZip from "jszip";
 
 import type { BlockContent, HeaderFooter, Image, Hyperlink } from "../types/content";
 import type { Document, Watermark } from "../types/document";
+import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { assertValidFolioDocumentModel } from "./modelValidation";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
+import { buildPatchedNoteXml, collectParaIds, extractParagraphXml } from "./selectiveXmlPatch";
 import { serializeComments } from "./serializer/commentSerializer";
 import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
+import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
 import { escapeXml } from "./serializer/xmlUtils";
 import { isPreservableDocxEntry } from "./unzip";
 import type { RawDocxContent } from "./unzip";
@@ -641,6 +644,10 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
   // Serialize and update modified headers/footers
   serializeHeadersFootersToZip(exportDocument, newZip, compressionLevel);
 
+  // Splice edited footnote/endnote bodies back into their parts (separators and
+  // unedited notes stay byte-exact).
+  await serializeNotesToZip(exportDocument, originalZip, newZip, compressionLevel);
+
   // Serialize comments
   await serializeCommentsToZip(exportDocument, newZip, compressionLevel);
 
@@ -743,6 +750,10 @@ export async function repackDocxFromRaw(
 
   // Serialize and update modified headers/footers
   serializeHeadersFootersToZip(exportDocument, newZip, compressionLevel);
+
+  // Splice edited footnote/endnote bodies back into their parts (separators and
+  // unedited notes stay byte-exact).
+  await serializeNotesToZip(exportDocument, rawContent.originalZip, newZip, compressionLevel);
 
   // Serialize comments
   await serializeCommentsToZip(exportDocument, newZip, compressionLevel);
@@ -1489,6 +1500,122 @@ function serializeHeadersFootersToZip(doc: Document, zip: JSZip, compressionLeve
   for (const [filename, xml] of collectHeaderFooterUpdates(doc)) {
     zip.file(filename, xml, { compression: "DEFLATE", compressionOptions });
   }
+}
+
+/**
+ * Write edited footnote/endnote bodies into the repacked ZIP.
+ *
+ * The full repack rebuilds document.xml from the model, but note parts are
+ * preserved from the original ZIP: the model only retains the normal notes, so
+ * re-emitting the whole part would drop the separator / continuationSeparator
+ * notes Word requires. Instead each edited note paragraph is spliced by `paraId`
+ * into the ORIGINAL part, so an edited note gets the model content while
+ * separators and every unedited note stay byte-exact.
+ *
+ * Full repack has no change-tracking signal, so "edited" is detected by
+ * comparing the current model's note serialization against a BASELINE that
+ * re-parses and re-serializes the original part. Both go through the same
+ * (lossy) parse+serialize — e.g. the in-note `w:footnoteRef` auto-number mark
+ * the model does not represent is dropped on both sides — so an unedited note
+ * matches its baseline and is left verbatim (mark intact); only a genuine body
+ * edit differs and is spliced.
+ */
+async function serializeNotesToZip(
+  doc: Document,
+  originalZip: JSZip,
+  newZip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
+  const footnotes = doc.package.footnotes ?? [];
+  if (footnotes.length > 0) {
+    await patchNotePartIntoZip(
+      "word/footnotes.xml",
+      serializeFootnotes(footnotes),
+      (xml) => serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
+      originalZip,
+      newZip,
+      compressionLevel,
+    );
+  }
+  const endnotes = doc.package.endnotes ?? [];
+  if (endnotes.length > 0) {
+    await patchNotePartIntoZip(
+      "word/endnotes.xml",
+      serializeEndnotes(endnotes),
+      (xml) => serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
+      originalZip,
+      newZip,
+      compressionLevel,
+    );
+  }
+}
+
+async function patchNotePartIntoZip(
+  conventionalLowerPath: string,
+  currentXml: string,
+  baselineFrom: (originalXml: string) => string,
+  originalZip: JSZip,
+  newZip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
+  const file = findNotePartEntry(originalZip, conventionalLowerPath);
+  if (!file) {
+    return;
+  }
+  const originalXml = await file.async("text");
+  const changedIds = collectChangedNoteParaIds(baselineFrom(originalXml), currentXml);
+  if (changedIds.size === 0) {
+    return;
+  }
+  // Splice the edited paragraphs into the ORIGINAL bytes (not the baseline), so
+  // unedited notes keep their verbatim markup.
+  const patched = buildPatchedNoteXml(originalXml, currentXml, changedIds);
+  if (patched === null) {
+    return;
+  }
+  newZip.file(file.name, patched, {
+    compression: "DEFLATE",
+    compressionOptions: { level: compressionLevel },
+  });
+}
+
+/**
+ * The note paragraphs whose current serialization differs from the baseline
+ * (re-parsed original) serialization — i.e. the ones actually edited. A
+ * paragraph is only considered when its `paraId` resolves uniquely in both,
+ * so it can be spliced safely.
+ */
+function collectChangedNoteParaIds(baselineXml: string, currentXml: string): Set<string> {
+  const changed = new Set<string>();
+  const baselineIds = collectParaIds(baselineXml);
+  for (const [id, count] of collectParaIds(currentXml)) {
+    if (count !== 1 || baselineIds.get(id) !== 1) {
+      continue;
+    }
+    const before = extractParagraphXml(baselineXml, id);
+    const after = extractParagraphXml(currentXml, id);
+    if (before !== null && after !== null && before !== after) {
+      changed.add(id);
+    }
+  }
+  return changed;
+}
+
+/**
+ * Locate a note part in the ZIP, matching case-insensitively so a producer that
+ * cased the entry differently still resolves to the existing part.
+ */
+function findNotePartEntry(zip: JSZip, conventionalLowerPath: string): JSZip.JSZipObject | null {
+  const direct = zip.file(conventionalLowerPath);
+  if (direct) {
+    return direct;
+  }
+  for (const [path, file] of Object.entries(zip.files)) {
+    if (!file.dir && path.toLowerCase() === conventionalLowerPath) {
+      return file;
+    }
+  }
+  return null;
 }
 
 // ============================================================================
