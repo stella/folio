@@ -15,7 +15,7 @@
  * Ported from eigenpal/docx-editor (see NOTICE.md).
  */
 
-import { parseRelationships } from "../docx/relsParser";
+import { parseRelationships, resolveRelativePath } from "../docx/relsParser";
 import { unzipDocx } from "../docx/unzip";
 import type { RelationshipMap } from "../types";
 import { deobfuscateFont, isValidFontKey } from "./fontDeobfuscation";
@@ -61,22 +61,28 @@ const EMBED_KINDS = [
   { ref: "embedBoldItalic", weight: 700, style: "italic" },
 ] as const satisfies readonly EmbedKind[];
 
+// The font table's relationships always live at this OPC part path; embed
+// targets resolve relative to it (see `resolveRelativePath`).
+const FONTTABLE_RELS_BASE_PATH = "word/_rels/fontTable.xml.rels";
 const FONTTABLE_RELS_PATH = "word/_rels/fonttable.xml.rels";
 
+/** Normalize a package path for comparison: drop leading slashes, lowercase. */
+function normalizePackagePath(path: string): string {
+  return path.replace(/^\/+/u, "").toLowerCase();
+}
+
 /**
- * Resolve a relationship target (e.g. `fonts/font1.odttf`, relative to the
- * `word/` folder) to the matching key in the unzipped font map, matched
- * case-insensitively (ZIP entry casing varies across producers).
+ * Find the font binary for an already-resolved package path (e.g.
+ * `word/fonts/font1.odttf`) in the unzipped font map, matched case- and
+ * leading-slash-insensitively (ZIP entry casing/prefixes vary across producers).
  */
 function lookupFontData(
-  target: string,
+  resolvedPath: string,
   fonts: ReadonlyMap<string, ArrayBuffer>,
 ): ArrayBuffer | undefined {
-  const cleaned = target.replace(/^\/+/u, "");
-  const fullPath = cleaned.toLowerCase().startsWith("word/") ? cleaned : `word/${cleaned}`;
-  const wanted = fullPath.toLowerCase();
+  const wanted = normalizePackagePath(resolvedPath);
   for (const [path, data] of fonts) {
-    if (path.toLowerCase() === wanted) {
+    if (normalizePackagePath(path) === wanted) {
       return data;
     }
   }
@@ -95,7 +101,11 @@ function resolveFace(
     return null;
   }
 
-  const raw = lookupFontData(target, fonts);
+  // Resolve the rel target against the font-table part base the same way the
+  // rest of the package resolves rels, so `fonts/font1.odttf`, `../media/...`,
+  // and leading-slash absolute targets all land on the right ZIP entry.
+  const resolvedPath = resolveRelativePath(FONTTABLE_RELS_BASE_PATH, target);
+  const raw = lookupFontData(resolvedPath, fonts);
   if (!raw) {
     return null;
   }
@@ -149,7 +159,7 @@ export function getEmbeddedFontFaces(parts: EmbeddedFontParts): EmbeddedFont[] {
 
 function findFontTableRels(allXml: ReadonlyMap<string, string>): string | undefined {
   for (const [path, xml] of allXml) {
-    if (path.toLowerCase() === FONTTABLE_RELS_PATH) {
+    if (normalizePackagePath(path) === FONTTABLE_RELS_PATH) {
       return xml;
     }
   }

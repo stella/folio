@@ -193,6 +193,49 @@ describe("getEmbeddedFontFaces", () => {
       }),
     ).toEqual([]);
   });
+
+  test("resolves a rel target relative to word/ against a leading-slash ZIP key", () => {
+    // `Target="fonts/font1.odttf"` is relative to the fontTable part base
+    // (`word/`) and must resolve to `word/fonts/font1.odttf`, matched even when
+    // the ZIP entry carries a leading slash.
+    const fonts = new Map<string, ArrayBuffer>([["/word/fonts/font1.odttf", obfuscated.buffer]]);
+    const faces = getEmbeddedFontFaces({
+      fontTableXml: FONT_TABLE_XML,
+      fontTableRelsXml: FONT_TABLE_RELS,
+      fonts,
+    });
+    expect(faces.map((f) => f.weight)).toEqual([400]);
+    expect(faces[0]?.family).toBe("My Brand Sans");
+  });
+
+  test("resolves a leading-slash absolute rel target", () => {
+    const absoluteRels = `${XML_DECLARATION}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="/word/fonts/font1.odttf"/>
+</Relationships>`;
+    const fonts = new Map<string, ArrayBuffer>([["word/fonts/font1.odttf", obfuscated.buffer]]);
+    const faces = getEmbeddedFontFaces({
+      fontTableXml: FONT_TABLE_XML,
+      fontTableRelsXml: absoluteRels,
+      fonts,
+    });
+    expect(faces.map((f) => f.weight)).toEqual([400]);
+  });
+
+  test("resolves a rel target that walks up out of word/ (../fonts/...)", () => {
+    const traversalRels = `${XML_DECLARATION}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="../fonts/font1.odttf"/>
+</Relationships>`;
+    // `word/` + `../fonts/font1.odttf` collapses to `fonts/font1.odttf`.
+    const fonts = new Map<string, ArrayBuffer>([["fonts/font1.odttf", obfuscated.buffer]]);
+    const faces = getEmbeddedFontFaces({
+      fontTableXml: FONT_TABLE_XML,
+      fontTableRelsXml: traversalRels,
+      fonts,
+    });
+    expect(faces.map((f) => f.weight)).toEqual([400]);
+  });
 });
 
 describe("extractEmbeddedFonts (buffer)", () => {

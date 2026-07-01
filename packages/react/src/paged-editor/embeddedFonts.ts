@@ -8,7 +8,7 @@
  * preventing one document's embedded family from bleeding into the next.
  */
 
-import { extractEmbeddedFonts } from "@stll/folio-core/fonts/embeddedFonts";
+import { extractEmbeddedFonts, type EmbeddedFont } from "@stll/folio-core/fonts/embeddedFonts";
 
 function getDocumentFontSet(): FontFaceSet | null {
   if (typeof document === "undefined" || !("fonts" in document)) {
@@ -30,7 +30,14 @@ export async function loadEmbeddedFontFaces(buffer: ArrayBuffer): Promise<FontFa
     return [];
   }
 
-  const fonts = await extractEmbeddedFonts(buffer);
+  // Embedded fonts are best-effort: a corrupt/oversized package makes unzip
+  // throw. Never let that break rendering — fall back to the CSS font stack.
+  let fonts: EmbeddedFont[];
+  try {
+    fonts = await extractEmbeddedFonts(buffer);
+  } catch {
+    return [];
+  }
   if (fonts.length === 0) {
     return [];
   }
@@ -38,11 +45,18 @@ export async function loadEmbeddedFontFaces(buffer: ArrayBuffer): Promise<FontFa
   const loaded: FontFace[] = [];
   await Promise.all(
     fonts.map(async (font) => {
-      const face = new FontFace(font.family, font.bytes, {
-        weight: String(font.weight),
-        style: font.style,
-      });
-      fontSet.add(face);
+      let face: FontFace;
+      try {
+        // `new FontFace` throws synchronously (SyntaxError) on an invalid family
+        // or descriptor; `fontSet.add` can reject a face too. Skip on failure.
+        face = new FontFace(font.family, font.bytes, {
+          weight: String(font.weight),
+          style: font.style,
+        });
+        fontSet.add(face);
+      } catch {
+        return;
+      }
       const ready = await face.load().then(
         () => true,
         () => false,
