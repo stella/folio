@@ -6,6 +6,7 @@ import {
   findHfPmAnchors,
   findHfPmSpans,
   findHfSlotForTarget,
+  findHfSlotKindForTarget,
 } from "./findHfPmSpans";
 
 const headerSpan = {
@@ -283,5 +284,48 @@ describe("findHfSlotForTarget", () => {
       },
     } as unknown as Element;
     expect(findHfSlotForTarget(target)).toBeNull();
+  });
+});
+
+describe("findHfSlotKindForTarget", () => {
+  test("returns null for a null target", () => {
+    expect(findHfSlotKindForTarget(null)).toBeNull();
+  });
+
+  test("resolves an empty header box that has no rId yet (double-click to add)", () => {
+    // The painter renders `.layout-page-header` as the hover-hint / double-click
+    // target even on a page with no header part, so it carries no `data-rid`.
+    const headerEl = {} as unknown as HTMLElement;
+    const target = {
+      closest(selector: string) {
+        return selector === ".layout-page-header" ? headerEl : null;
+      },
+    } as unknown as Element;
+    expect(findHfSlotKindForTarget(target)).toEqual({
+      kind: "header",
+      element: headerEl,
+    });
+  });
+
+  test("resolves an empty footer box when there is no header ancestor", () => {
+    const footerEl = {} as unknown as HTMLElement;
+    const target = {
+      closest(selector: string) {
+        return selector === ".layout-page-footer" ? footerEl : null;
+      },
+    } as unknown as Element;
+    expect(findHfSlotKindForTarget(target)).toEqual({
+      kind: "footer",
+      element: footerEl,
+    });
+  });
+
+  test("returns null for a body target outside any HF box", () => {
+    const target = {
+      closest() {
+        return null;
+      },
+    } as unknown as Element;
+    expect(findHfSlotKindForTarget(target)).toBeNull();
   });
 });
