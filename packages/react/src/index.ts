@@ -5,6 +5,9 @@ export type {
   DocxEditorRef,
 } from "./components/DocxEditor.props";
 export type { EditorMode } from "./components/hooks/useEditorMode";
+// Custom-font prop types: `fontFamilies` (picker list) + `fonts` (FontFace registration).
+export type { FontOption } from "./components/ui/FontPicker";
+export type { FontDefinition } from "./paged-editor/hostFonts";
 export type { ColorPreset, FolioButtonProps, FolioUIComponents, OutlineItem } from "./ui/folio-ui";
 // Consumers rendering folio chrome (e.g. FormattingBar) outside DocxEditor wrap
 // it in this provider to inject their own UI components.

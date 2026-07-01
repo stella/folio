@@ -10,11 +10,44 @@
 
 import { extractEmbeddedFonts, type EmbeddedFont } from "@stll/folio-core/fonts/embeddedFonts";
 
-function getDocumentFontSet(): FontFaceSet | null {
+export function getDocumentFontSet(): FontFaceSet | null {
   if (typeof document === "undefined" || !("fonts" in document)) {
     return null;
   }
   return document.fonts;
+}
+
+/**
+ * Register one font face on the document font set, best-effort. Returns the
+ * loaded `FontFace`, or `null` when construction throws (invalid family or
+ * descriptor) or the binary/URL fails to load (malformed / subsetted). Shared
+ * by the embedded-document-font and host-provided-font (`fonts` prop) paths so
+ * both skip a bad face identically instead of throwing.
+ */
+export async function registerFontFace(
+  fontSet: FontFaceSet,
+  family: string,
+  source: string | BufferSource,
+  descriptors: FontFaceDescriptors,
+): Promise<FontFace | null> {
+  let face: FontFace;
+  try {
+    // `new FontFace` throws synchronously (SyntaxError) on an invalid family
+    // or descriptor; `fontSet.add` can reject a face too. Skip on failure.
+    face = new FontFace(family, source, descriptors);
+    fontSet.add(face);
+  } catch {
+    return null;
+  }
+  const ready = await face.load().then(
+    () => true,
+    () => false,
+  );
+  if (ready) {
+    return face;
+  }
+  fontSet.delete(face);
+  return null;
 }
 
 /**
@@ -45,34 +78,20 @@ export async function loadEmbeddedFontFaces(buffer: ArrayBuffer): Promise<FontFa
   const loaded: FontFace[] = [];
   await Promise.all(
     fonts.map(async (font) => {
-      let face: FontFace;
-      try {
-        // `new FontFace` throws synchronously (SyntaxError) on an invalid family
-        // or descriptor; `fontSet.add` can reject a face too. Skip on failure.
-        face = new FontFace(font.family, font.bytes, {
-          weight: String(font.weight),
-          style: font.style,
-        });
-        fontSet.add(face);
-      } catch {
-        return;
-      }
-      const ready = await face.load().then(
-        () => true,
-        () => false,
-      );
-      if (ready) {
+      const face = await registerFontFace(fontSet, font.family, font.bytes, {
+        weight: String(font.weight),
+        style: font.style,
+      });
+      if (face) {
         loaded.push(face);
-        return;
       }
-      fontSet.delete(face);
     }),
   );
   return loaded;
 }
 
-/** Remove previously registered embedded faces from the document font set. */
-export function removeEmbeddedFontFaces(faces: readonly FontFace[]): void {
+/** Remove previously registered faces from the document font set. */
+export function removeFontFaces(faces: readonly FontFace[]): void {
   const fontSet = getDocumentFontSet();
   if (!fontSet) {
     return;

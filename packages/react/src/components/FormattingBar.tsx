@@ -8,7 +8,7 @@
  * editing mode) is accessible via keyboard shortcuts or host app chrome.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import {
@@ -39,6 +39,7 @@ import { ToolbarButton, ToolbarGroup, ToolbarSeparator } from "./toolbarPrimitiv
 import type { ToolbarProps, FormattingAction } from "./toolbarPrimitives";
 import { AlignmentButtons } from "./ui/AlignmentButtons";
 import { FontPicker } from "./ui/FontPicker";
+import { normalizeFontFamilies } from "./ui/normalizeFontFamilies";
 import { FontSizePicker } from "./ui/FontSizePicker";
 import { ListButtons, createDefaultListState } from "./ui/ListButtons";
 import { StylePicker } from "./ui/StylePicker";
@@ -103,6 +104,7 @@ export function FormattingBar(props: FormattingBarProps) {
     formatPainterActive = false,
     onFormatPainter,
     showFontPicker = true,
+    fontFamilies,
     showFontSizePicker = true,
     showTextColorPicker = true,
     showAlignmentButtons = true,
@@ -193,6 +195,11 @@ export function FormattingBar(props: FormattingBarProps) {
     }
     onFormatPainter(true);
   }, [disabled, onFormatPainter]);
+
+  // Normalize the host's `fontFamilies` prop into the picker's FontOption[].
+  // folio runs no React Compiler, so this memo is load-bearing: it keeps a
+  // stable list reference across renders (undefined falls back to defaults).
+  const fontPickerOptions = useMemo(() => normalizeFontFamilies(fontFamilies), [fontFamilies]);
 
   const handleFontFamilyChange = useCallback(
     (fontFamily: string) => {
@@ -473,6 +480,7 @@ export function FormattingBar(props: FormattingBarProps) {
           <FontPicker
             value={currentFormatting.fontFamily || "Arial"}
             onChange={handleFontFamilyChange}
+            fonts={fontPickerOptions}
             disabled={disabled}
             width={108}
             placeholder="Arial"

@@ -176,6 +176,8 @@ import {
   COMMENTS_SIDEBAR_SCROLL_GUTTER,
 } from "../paged-editor/PagedEditor";
 import type { PagedEditorRef } from "../paged-editor/PagedEditor";
+import { removeFontFaces } from "../paged-editor/embeddedFonts";
+import { loadHostFontFaces } from "../paged-editor/hostFonts";
 import { HorizontalRuler } from "./ui/HorizontalRuler";
 import { VerticalRuler } from "./ui/VerticalRuler";
 import { FolioUIProvider, DEFAULT_COMPONENTS } from "../ui/folio-ui";
@@ -425,6 +427,8 @@ export function DocxEditor({
   onSelectionTextChange,
   onError,
   onFontsLoaded: onFontsLoadedCallback,
+  fontFamilies,
+  fonts,
   theme,
   showToolbar = true,
   showZoomControl = true,
@@ -1188,6 +1192,29 @@ export function DocxEditor({
     });
     return cleanup;
   }, [onFontsLoadedCallback]);
+
+  // Register the host app's custom font faces (the `fonts` prop) via the same
+  // best-effort FontFace path as embedded document fonts. Keyed on the prop
+  // identity (pass a stable reference); unregisters on change/unmount so a
+  // removed font cannot linger in the document font set.
+  useEffect(() => {
+    if (!fonts || fonts.length === 0) {
+      return undefined;
+    }
+    let cancelled = false;
+    let registered: FontFace[] = [];
+    void loadHostFontFaces(fonts).then((faces) => {
+      if (cancelled) {
+        removeFontFaces(faces);
+        return;
+      }
+      registered = faces;
+    });
+    return () => {
+      cancelled = true;
+      removeFontFaces(registered);
+    };
+  }, [fonts]);
 
   // Sync editing mode to ProseMirror suggestion mode plugin
   useEffect(() => {
@@ -3373,6 +3400,7 @@ export function DocxEditor({
                       canRedo={hfEditPosition ? history.canRedo : bodyHistoryAvailability.canRedo}
                       disabled={readOnly}
                       theme={history.state.package.theme || theme || null}
+                      fontFamilies={fontFamilies}
                       showZoomControl={showZoomControl}
                       zoom={zoom}
                       onZoomChange={setZoomWithViewportAnchor}

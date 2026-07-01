@@ -10,6 +10,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import type { ColorValue, ParagraphAlignment, Style, Theme } from "@stll/folio-core/types/document";
 import { cn } from "../lib/utils";
+import type { FontOption } from "./ui/FontPicker";
 import type { ListState } from "./ui/ListButtons";
 import type { TableAction } from "@stll/folio-core/utils/tableOperations";
 import { Tooltip } from "./ui/Tooltip";
@@ -113,6 +114,12 @@ export type ToolbarProps = {
   children?: ReactNode | undefined;
   /** Whether to show font family picker (default: true) */
   showFontPicker?: boolean | undefined;
+  /**
+   * Custom families for the font-family dropdown (strings and/or `FontOption`
+   * objects). Omit to use the built-in defaults; an empty array renders an
+   * empty dropdown. Normalized to `FontOption[]` before reaching the picker.
+   */
+  fontFamilies?: ReadonlyArray<string | FontOption> | undefined;
   /** Whether to show font size picker (default: true) */
   showFontSizePicker?: boolean | undefined;
   /** Whether to show text color picker (default: true) */

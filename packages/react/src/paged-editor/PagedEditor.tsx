@@ -180,7 +180,7 @@ import { AnonymizationRectsOverlay } from "./AnonymizationRectsOverlay";
 import type { AnonymizationRectGroup } from "./AnonymizationRectsOverlay";
 import { AutocompleteCaretOverlay } from "./AutocompleteCaretOverlay";
 import type { AutocompleteCaretRect } from "./AutocompleteCaretOverlay";
-import { loadEmbeddedFontFaces, removeEmbeddedFontFaces } from "./embeddedFonts";
+import { loadEmbeddedFontFaces, removeFontFaces } from "./embeddedFonts";
 import { createHiddenEditorState, HiddenProseMirror } from "./HiddenProseMirror";
 import type {
   HiddenProseMirrorCollaboration,
@@ -5529,7 +5529,7 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
     let registered: FontFace[] = [];
     void loadEmbeddedFontFaces(embeddedFontBuffer).then((faces) => {
       if (cancelled) {
-        removeEmbeddedFontFaces(faces);
+        removeFontFaces(faces);
         return;
       }
       registered = faces;
@@ -5547,7 +5547,7 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
     });
     return () => {
       cancelled = true;
-      removeEmbeddedFontFaces(registered);
+      removeFontFaces(registered);
     };
   }, [embeddedFontBuffer]);
 
