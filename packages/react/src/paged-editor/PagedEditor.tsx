@@ -180,6 +180,7 @@ import { AnonymizationRectsOverlay } from "./AnonymizationRectsOverlay";
 import type { AnonymizationRectGroup } from "./AnonymizationRectsOverlay";
 import { AutocompleteCaretOverlay } from "./AutocompleteCaretOverlay";
 import type { AutocompleteCaretRect } from "./AutocompleteCaretOverlay";
+import { loadEmbeddedFontFaces, removeEmbeddedFontFaces } from "./embeddedFonts";
 import { createHiddenEditorState, HiddenProseMirror } from "./HiddenProseMirror";
 import type {
   HiddenProseMirrorCollaboration,
@@ -5511,6 +5512,44 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
       fontSet.removeEventListener("loadingerror", handleFontsLoaded);
     };
   }, []);
+
+  // Register the document's embedded fonts (obfuscated `word/fonts/*.odttf`) as
+  // `@font-face`s so text renders in its authored fonts instead of fallbacks,
+  // then re-layout once they load so glyph advances use the real metrics. Keyed
+  // on the source buffer: registration happens per loaded document, and the
+  // cleanup unregisters the faces so one document's family cannot bleed into the
+  // next. The 250ms font-ready suppression window can swallow the shared
+  // loadingdone re-layout, so this path relays out explicitly.
+  const embeddedFontBuffer = document?.originalBuffer ?? null;
+  useEffect(() => {
+    if (!embeddedFontBuffer) {
+      return undefined;
+    }
+    let cancelled = false;
+    let registered: FontFace[] = [];
+    void loadEmbeddedFontFaces(embeddedFontBuffer).then((faces) => {
+      if (cancelled) {
+        removeEmbeddedFontFaces(faces);
+        return;
+      }
+      registered = faces;
+      if (faces.length === 0) {
+        return;
+      }
+      const view = hiddenPMRef.current?.getView();
+      if (!view) {
+        return;
+      }
+      resetCanvasContext();
+      clearAllCaches();
+      runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
+      updateSelectionOverlayRef.current(view.state);
+    });
+    return () => {
+      cancelled = true;
+      removeEmbeddedFontFaces(registered);
+    };
+  }, [embeddedFontBuffer]);
 
   // Re-layout when non-document layout inputs change (e.g., after HF editor save
   // or parent-driven page setup/theme updates).

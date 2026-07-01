@@ -139,3 +139,13 @@ export {
   type MarkdownOptions,
   type MarkdownResult,
 } from "./markdown";
+
+// Embedded fonts: de-obfuscate the `word/fonts/*.odttf` binaries a document
+// carries so it can render in its authored (embedded-only) fonts. Pure and
+// DOM-free; the React editor registers the result as `@font-face`s.
+export {
+  extractEmbeddedFonts,
+  getEmbeddedFontFaces,
+  type EmbeddedFont,
+  type EmbeddedFontParts,
+} from "./fonts/embeddedFonts";
