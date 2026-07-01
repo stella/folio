@@ -483,6 +483,15 @@ function collectElementIds(xml: string, openLiteral: string, idAttr: string): Ma
 
 type NumberingElementKind = "abstractNum" | "num";
 
+// LIMITATION: these matchers assume the WordprocessingML namespace is bound to
+// the conventional `w:` prefix (as the folio serializers themselves always
+// emit). numbering.xml could in theory bind it to a different prefix (e.g.
+// `<wp:abstractNum>`); real Word never does. On such a part the splice simply
+// finds nothing to match, so `buildPatchedNumberingXml` returns null and both
+// save paths leave numbering.xml byte-exact verbatim — the edit is not applied,
+// but there is no corruption or malformed output. Making this prefix-agnostic
+// would also require every folio serializer to emit the document's actual
+// prefix, which is out of proportion for an input that never occurs in practice.
 const NUMBERING_OPEN_LITERAL: Record<NumberingElementKind, string> = {
   abstractNum: "<w:abstractNum",
   num: "<w:num",

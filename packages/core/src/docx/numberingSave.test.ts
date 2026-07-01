@@ -534,3 +534,63 @@ describe("numbering-definition write path (ancestor-scoped xmlns on restored num
     await expectSelfContainedFormat(result);
   });
 });
+
+describe("numbering-definition write path (non-w: prefix graceful degradation)", () => {
+  // numbering.xml binds the WordprocessingML namespace to a non-conventional
+  // prefix (`wp:`). The splice matches definitions by the literal `w:` prefix,
+  // so it finds nothing to splice: the edit is not applied, but the part is left
+  // byte-exact verbatim (no corruption / malformed output on either save path).
+  // Real Word always uses `w:`; this only guards the pathological input.
+  const WML_URI = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const altPrefixNumberingXml =
+    `${XML_DECLARATION}\n` +
+    `<wp:numbering xmlns:wp="${WML_URI}">` +
+    '<wp:abstractNum wp:abstractNumId="0"><wp:multiLevelType wp:val="hybridMultilevel"/>' +
+    `<wp:lvl wp:ilvl="0"><wp:start wp:val="1"/><wp:numFmt wp:val="decimal"/><wp:lvlText wp:val="${ORIGINAL_LVL_TEXT}"/><wp:lvlJc wp:val="left"/></wp:lvl></wp:abstractNum>` +
+    '<wp:num wp:numId="1"><wp:abstractNumId wp:val="0"/></wp:num>' +
+    "</wp:numbering>";
+
+  const expectNumberingByteExact = async (saved: ArrayBuffer, original: string): Promise<void> => {
+    // The alt-prefix part is left verbatim (edit not applied, nothing corrupted).
+    expect(await readPart(saved, "word/numbering.xml")).toBe(original);
+    // And the saved document still parses.
+    await expect(parseDocx(saved, { preloadFonts: false })).resolves.toBeDefined();
+  };
+
+  // The parser resolves element/attribute NAMES by local name, so the abstract
+  // numbering still populates from the `wp:` part; change a modeled field so the
+  // write path attempts a splice, then finds no `<w:abstractNum` to match.
+  const forceModelChange = (doc: Document): void => {
+    const abstractNum = doc.package.numbering?.abstractNums[0];
+    if (!abstractNum) {
+      throw new Error("expected the parser to populate at least one abstractNum");
+    }
+    abstractNum.multiLevelType = "multilevel";
+  };
+
+  test("edit degrades to a byte-exact no-op on both save paths", async () => {
+    const buffer = await buildDocx({
+      numberingXml: altPrefixNumberingXml,
+      documentXml: singleListDocumentXml(1),
+    });
+    const originalNumberingXml = await readPart(buffer, "word/numbering.xml");
+
+    const selectiveDoc = await parseDocx(buffer, { preloadFonts: false });
+    forceModelChange(selectiveDoc);
+    const selective = await attemptSelectiveSave(selectiveDoc, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+    expect(selective).not.toBeNull();
+    if (!selective) {
+      throw new Error("selective save returned null");
+    }
+    await expectNumberingByteExact(selective, originalNumberingXml);
+
+    const fullDoc = await parseDocx(buffer, { preloadFonts: false });
+    forceModelChange(fullDoc);
+    const full = await repackDocx({ ...fullDoc, originalBuffer: buffer });
+    await expectNumberingByteExact(full, originalNumberingXml);
+  });
+});
