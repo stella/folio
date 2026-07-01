@@ -396,4 +396,26 @@ describe("headless docx review discovery + resolve", () => {
     expect(comments[0]?.anchoredText).toContain("Heading paragraph.");
     expect(reviewer.getComments({ author: "Nobody" })).toEqual([]);
   });
+
+  test("ops from one parse's snapshot resolve on a separate parse of a paraId-less doc", async () => {
+    // The raw corpus fixture ships without `w14:paraId`s. Two independent
+    // parses must mint identical block ids so ops built against the first
+    // snapshot resolve against the second rather than skipping as missingBlock.
+    const first = await FolioDocxReviewer.fromBuffer(readFixture());
+    const snapshot = first.snapshot();
+    const target = findBlock(snapshot.blocks, "Heading");
+
+    const second = await FolioDocxReviewer.fromBuffer(readFixture());
+    expect(second.getContent().map((b) => b.id)).toEqual(first.getContent().map((b) => b.id));
+
+    const result = second.applyOperations(
+      [{ id: "d1", type: "replaceInBlock", blockId: target.id, find: "Heading", replace: "Intro" }],
+      { mode: "direct" },
+    );
+    expect(result.skipped).toEqual([]);
+    expect(result.applied.map((a) => a.id)).toEqual(["d1"]);
+
+    const outXml = await partText(await second.toBuffer(), "word/document.xml");
+    expect(outXml).toContain("Intro paragraph.");
+  });
 });

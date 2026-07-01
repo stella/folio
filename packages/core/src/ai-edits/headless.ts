@@ -35,15 +35,16 @@ import {
 } from "../prosemirror/commands/comments";
 import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import {
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
+  ignoreTrackedChanges,
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
 import type { Document } from "../types/document";
+import { MAX_HEX_ID_EXCLUSIVE } from "../utils/hexId";
 import { applyFolioAIEditOperations } from "./apply";
 import { createFolioAIEditSnapshot } from "./snapshot";
 import type {
@@ -81,6 +82,67 @@ const createReviewerComment = (text: string, author: string): Comment => ({
     },
   ],
 });
+
+/** Deterministic 8-char uppercase hex id (FNV-1a over `seed`), `< 0x7FFFFFFF`. */
+const deterministicHexId = (seed: string): string => {
+  let hash = 2_166_136_261;
+  for (const character of seed) {
+    hash = Math.imul(hash ^ (character.codePointAt(0) ?? 0), 16_777_619) >>> 0;
+  }
+  return (hash % MAX_HEX_ID_EXCLUSIVE).toString(16).toUpperCase().padStart(8, "0");
+};
+
+/**
+ * Assign a stable `w14:paraId` to every body paragraph that lacks one (or
+ * duplicates an earlier id), derived deterministically from the paragraph's
+ * text plus its document ordinal. Re-parsing the SAME bytes mints the SAME ids,
+ * so the block ids a snapshot exposes are reproducible across
+ * {@link FolioDocxReviewer.fromBuffer} calls — the documented "snapshot on one
+ * parse, apply on another" flow resolves instead of skipping every op as a
+ * stale anchor. Word-authored paraIds are preserved; only gaps and collisions
+ * get a fresh id.
+ *
+ * The shared `ParaIdAllocatorExtension` mints RANDOM ids (correct for freshly
+ * typed paragraphs in the live editor); this load-time pass is deterministic so
+ * a paraId-less corpus document anchors reproducibly. The transaction is marked
+ * ignore-tracked so the change baseline stays clean.
+ */
+const ensureDeterministicParaIdsInState = (state: EditorState): EditorState => {
+  const seen = new Set<string>();
+  const updates: { pos: number; attrs: Record<string, unknown> }[] = [];
+  let ordinal = 0;
+
+  state.doc.descendants((node, pos) => {
+    if (node.type.name !== "paragraph") {
+      return undefined;
+    }
+    ordinal += 1;
+    const existing = node.attrs["paraId"];
+    if (typeof existing === "string" && existing.length > 0 && !seen.has(existing)) {
+      seen.add(existing);
+      return false;
+    }
+    let paraId = deterministicHexId(`${node.textContent}:${ordinal}`);
+    for (let salt = 1; seen.has(paraId); salt++) {
+      paraId = deterministicHexId(`${node.textContent}:${ordinal}:${salt}`);
+    }
+    seen.add(paraId);
+    updates.push({ pos, attrs: { ...node.attrs, paraId } });
+    return false;
+  });
+
+  if (updates.length === 0) {
+    return state;
+  }
+
+  const tr = state.tr;
+  for (const update of updates) {
+    tr.setNodeMarkup(update.pos, undefined, update.attrs);
+  }
+  ignoreTrackedChanges(tr);
+  tr.setMeta("addToHistory", false);
+  return state.apply(tr);
+};
 
 /** Options for {@link FolioDocxReviewer.fromBuffer}. */
 export type FolioDocxReviewerOptions = {
@@ -186,15 +248,17 @@ const revisionIdOf = (target: FolioReviewChange | number): number =>
   typeof target === "number" ? target : target.id;
 
 const commentPlainText = (comment: Comment): string =>
-  comment.content.map(paragraphPlainText).join("\n");
+  // A comment parsed from a malformed package can omit `content`; the model
+  // types it as required, so guard at this untrusted boundary.
+  (comment.content ?? []).map(paragraphPlainText).join("\n");
 
 const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
   const parts: string[] = [];
-  for (const item of paragraph.content) {
+  for (const item of paragraph.content ?? []) {
     if (item.type !== "run") {
       continue;
     }
-    for (const runItem of item.content) {
+    for (const runItem of item.content ?? []) {
       if (runItem.type === "text") {
         parts.push(runItem.text);
       }
@@ -254,9 +318,11 @@ export class FolioDocxReviewer {
     const plugins: Plugin[] = singletonManager.getPlugins();
     // Allocate paraIds up front (the editor does this on load) so every block
     // anchors on a stable id and the selective-save path can key changed
-    // paragraphs by paraId. `ensureParaIdsInState` marks its transaction
-    // ignore-tracked, so the change baseline stays clean.
-    const state = ensureParaIdsInState(
+    // paragraphs by paraId. Deterministic (not random) allocation so a
+    // paraId-less document yields the SAME block ids on every parse: ops built
+    // from one parse's snapshot then resolve against another parse of the same
+    // bytes instead of skipping as stale anchors.
+    const state = ensureDeterministicParaIdsInState(
       EditorState.create({ schema, doc: toProseDoc(baseDocument), plugins }),
     );
     return new FolioDocxReviewer({
@@ -471,22 +537,21 @@ export class FolioDocxReviewer {
 
   /**
    * Accept every tracked change in the body. Returns the number of changes
-   * present before the sweep. Note-body changes are out of scope.
+   * present before the sweep. Runs unconditionally: the underlying command also
+   * resolves paragraph-level changes (`w:pPrChange`, paragraph-boundary
+   * ins/del) that {@link getChanges} does not enumerate. Note-body changes are
+   * out of scope.
    */
   acceptAll(): number {
-    const count = this.getChanges().length;
-    if (count > 0) {
-      this.runCommand(acceptAllChanges());
-    }
+    const count = this.countTrackedChanges();
+    this.runCommand(acceptAllChanges());
     return count;
   }
 
   /** Reject every tracked change in the body. See {@link acceptAll}. */
   rejectAll(): number {
-    const count = this.getChanges().length;
-    if (count > 0) {
-      this.runCommand(rejectAllChanges());
-    }
+    const count = this.countTrackedChanges();
+    this.runCommand(rejectAllChanges());
     return count;
   }
 
@@ -510,15 +575,54 @@ export class FolioDocxReviewer {
    */
   async toBuffer(): Promise<ArrayBuffer> {
     const document = this.toDocument();
-    const selective = await attemptSelectiveSave(document, this.originalBuffer, {
-      changedParaIds: getChangedParagraphIds(this.state),
-      structuralChange: hasStructuralChanges(this.state),
-      hasUntrackedChanges: hasUntrackedChanges(this.state),
-    });
+    const selective = await this.trySelectiveSave(document);
     if (selective) {
       return selective;
     }
     return repackDocx({ ...document, originalBuffer: this.originalBuffer });
+  }
+
+  /**
+   * Attempt the selective patch, treating a throw the same as a decline. Odd
+   * source XML can make the paragraph diff throw rather than return `null`; a
+   * full repack is the correct lossless fallback in both cases, so the fallback
+   * is the graceful handling — no separate error surface is needed here.
+   */
+  private async trySelectiveSave(document: Document): Promise<ArrayBuffer | null> {
+    try {
+      return await attemptSelectiveSave(document, this.originalBuffer, {
+        changedParaIds: getChangedParagraphIds(this.state),
+        structuralChange: hasStructuralChanges(this.state),
+        hasUntrackedChanges: hasUntrackedChanges(this.state),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Count every tracked change an accept-all / reject-all sweep resolves: the
+   * inline insertion / deletion groups {@link getChanges} enumerates, plus
+   * paragraph-level changes (`pPrMark`, `_propertyChanges`) that live on
+   * paragraph attrs rather than inline marks.
+   */
+  private countTrackedChanges(): number {
+    let count = this.getChanges().length;
+    this.state.doc.descendants((node) => {
+      if (node.type.name !== "paragraph") {
+        return undefined;
+      }
+      const pPrMark = node.attrs["pPrMark"];
+      if (pPrMark !== null && pPrMark !== undefined) {
+        count += 1;
+      }
+      const propertyChanges = node.attrs["_propertyChanges"];
+      if (Array.isArray(propertyChanges) && propertyChanges.length > 0) {
+        count += 1;
+      }
+      return false;
+    });
+    return count;
   }
 
   /** Map each snapshot block's start position to its stable id. */
