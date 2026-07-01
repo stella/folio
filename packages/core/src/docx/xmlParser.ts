@@ -867,6 +867,25 @@ export function collectXmlnsDeclarations(element: XmlElement): Record<string, st
 }
 
 /**
+ * Merge an element's own `xmlns` / `xmlns:*` declarations onto an inherited
+ * in-scope set, returning the accumulated set. Threaded down the ancestor
+ * chain (root -> paragraph -> run -> pict), the element's own declarations
+ * override an inherited binding for the same prefix, matching XML scoping. The
+ * inherited object is not mutated; the same reference is returned unchanged when
+ * the element declares nothing.
+ */
+export function mergeXmlnsDeclarations(
+  inherited: Record<string, string>,
+  element: XmlElement,
+): Record<string, string> {
+  const own = collectXmlnsDeclarations(element);
+  if (Object.keys(own).length === 0) {
+    return inherited;
+  }
+  return { ...inherited, ...own };
+}
+
+/**
  * Return a shallow clone of `element` whose attributes carry every declaration
  * in `xmlnsDecls`. Existing attributes (including any namespace declarations the
  * element already carries) win over the injected ones.

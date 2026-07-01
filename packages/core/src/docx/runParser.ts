@@ -57,11 +57,13 @@ import type { StyleMap } from "./styleParser";
 import { parseVmlImageContent } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
 import {
+  cloneWithXmlnsDeclarations,
   findChild,
   findChildren,
   getAttribute,
   getChildElements,
   getTextContent,
+  mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumericAttribute,
   elementToXml,
@@ -969,10 +971,28 @@ function parseRunContents(
       }
 
       case "AlternateContent": {
-        // mc:AlternateContent — prefer mc:Choice over mc:Fallback
-        const choiceEl = getChildElements(child).find((el) => getLocalName(el.name) === "Choice");
-        const targetEl =
-          choiceEl ?? getChildElements(child).find((el) => getLocalName(el.name) === "Fallback");
+        // mc:AlternateContent — folio cannot evaluate `mc:Requires`, so it
+        // renders the Choice by default. A VML `w:pict` in the Fallback is the
+        // compatibility image folio can always show; prefer it when the Fallback
+        // carries a real VML picture (not a textbox / empty pict), and keep the
+        // whole AlternateContent on save so the Choice is not lost.
+        const alternateChildren = getChildElements(child);
+        const choiceEl = alternateChildren.find((el) => getLocalName(el.name) === "Choice");
+        const fallbackEl = alternateChildren.find((el) => getLocalName(el.name) === "Fallback");
+
+        const fallbackPict = fallbackEl
+          ? getChildElements(fallbackEl).find((el) => getLocalName(el.name) === "pict")
+          : undefined;
+        const fallbackVml = fallbackPict
+          ? parseVmlImageContent(fallbackPict, rels, media, rootXmlns)
+          : null;
+        if (fallbackVml) {
+          fallbackVml.rawXml = elementToXml(cloneWithXmlnsDeclarations(child, rootXmlns));
+          contents.push(fallbackVml);
+          break;
+        }
+
+        const targetEl = choiceEl ?? fallbackEl;
         if (targetEl) {
           for (const innerChild of getChildElements(targetEl)) {
             const innerName = getLocalName(innerChild.name);
@@ -985,6 +1005,13 @@ function parseRunContents(
                   innerDrawing.rawXml = elementToXml(child);
                 }
                 contents.push(innerDrawing);
+              }
+            } else if (innerName === "pict") {
+              // A VML picture in the chosen Choice (no Fallback image present).
+              const innerVml = parseVmlImageContent(innerChild, rels, media, rootXmlns);
+              if (innerVml) {
+                innerVml.rawXml = elementToXml(cloneWithXmlnsDeclarations(child, rootXmlns));
+                contents.push(innerVml);
               }
             }
           }
@@ -1049,8 +1076,10 @@ export function parseRun(
     }
   }
 
-  // Parse run contents (text, tabs, breaks, images, etc.)
-  run.content = parseRunContents(node, rels, media, rootXmlns);
+  // Parse run contents (text, tabs, breaks, images, etc.). Accumulate the run's
+  // own xmlns onto the inherited set so a captured VML `w:pict` replay resolves
+  // any prefix scoped on the run itself.
+  run.content = parseRunContents(node, rels, media, mergeXmlnsDeclarations(rootXmlns, node));
 
   return run;
 }

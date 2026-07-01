@@ -65,6 +65,7 @@ import {
   findChildren,
   getAttribute,
   getChildElements,
+  mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumericAttribute,
   elementToXml,
@@ -1183,11 +1184,12 @@ function parseSimpleField(
   }
 
   // Parse child runs (the display value)
+  const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
   const children = getChildElements(node);
   for (const child of children) {
     const localName = getLocalName(child.name);
     if (localName === "r") {
-      field.content.push(parseRun(child, styles, theme, rels, media, rootXmlns));
+      field.content.push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
     }
   }
 
@@ -1211,6 +1213,10 @@ function parseParagraphContents(
 ): ParagraphContent[] {
   const contents: ParagraphContent[] = [];
   const children = getChildElements(paraElement);
+  // Accumulate this container's own xmlns (a paragraph or tracked-change /
+  // SDT wrapper may scope non-canonical prefixes) onto the inherited set, so a
+  // captured VML `w:pict` replay resolves prefixes scoped at this level too.
+  const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, paraElement);
 
   // State for tracking complex fields
   let inComplexField = false;
@@ -1232,7 +1238,7 @@ function parseParagraphContents(
         // Check for field characters in this run
         const runElement =
           trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
-        const run = parseRun(runElement, styles, theme, rels, media, rootXmlns);
+        const run = parseRun(runElement, styles, theme, rels, media, inScopeXmlns);
         const commentReferenceId = getCommentReferenceId(runElement);
 
         // Look for field characters
@@ -1395,7 +1401,7 @@ function parseParagraphContents(
         break;
 
       case "fldSimple":
-        contents.push(parseSimpleField(child, styles, theme, rels, media, rootXmlns));
+        contents.push(parseSimpleField(child, styles, theme, rels, media, inScopeXmlns));
         break;
 
       case "pPr":
@@ -1423,7 +1429,7 @@ function parseParagraphContents(
             rels,
             media,
             trackedContext,
-            rootXmlns,
+            inScopeXmlns,
           );
           const properties = parseSdtProperties(sdtPr, sdtEndPr);
           pushInlineSdtSegments({
@@ -1446,7 +1452,7 @@ function parseParagraphContents(
           rels,
           media,
           "default",
-          rootXmlns,
+          inScopeXmlns,
         );
         pushTrackedChangeSegments({
           contents,
@@ -1467,7 +1473,7 @@ function parseParagraphContents(
           rels,
           media,
           "deletion",
-          rootXmlns,
+          inScopeXmlns,
         );
         pushTrackedChangeSegments({
           contents,
@@ -1487,7 +1493,7 @@ function parseParagraphContents(
           rels,
           media,
           "deletion",
-          rootXmlns,
+          inScopeXmlns,
         );
         pushTrackedChangeSegments({
           contents,
@@ -1508,7 +1514,7 @@ function parseParagraphContents(
           rels,
           media,
           "default",
-          rootXmlns,
+          inScopeXmlns,
         );
         pushTrackedChangeSegments({
           contents,

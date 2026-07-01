@@ -44,6 +44,7 @@ import {
   findDeep,
   getChildElements,
   getLocalName,
+  mergeXmlnsDeclarations,
   type XmlElement,
 } from "./xmlParser";
 
@@ -370,7 +371,12 @@ export const parseBlockContent = (
   parseBlockContentWithState(parent, styles, theme, numbering, rels, media, {
     listCounters: new Map(),
     abstractCounters: new Map(),
-    options,
+    // Accumulate the container's own xmlns onto the inherited in-scope set so a
+    // captured VML `w:pict` replay resolves prefixes scoped on this level too.
+    options: {
+      ...options,
+      rootXmlns: mergeXmlnsDeclarations(options?.rootXmlns ?? {}, parent),
+    },
   });
 
 const parseBlockContentWithState = (
