@@ -39,7 +39,11 @@ import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { assertValidFolioDocumentModel } from "./modelValidation";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import { buildPatchedNoteXml, collectParaIds, extractParagraphXml } from "./selectiveXmlPatch";
-import { serializeComments, serializeCommentsExtended } from "./serializer/commentSerializer";
+import {
+  ensureThreadedCommentParaIds,
+  serializeComments,
+  serializeCommentsExtended,
+} from "./serializer/commentSerializer";
 import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
@@ -149,50 +153,100 @@ async function serializeCommentsToZip(
     return;
   }
 
+  // Threaded/resolved comments need a stable last-paragraph paraId so
+  // comments.xml and commentsExtended.xml reference the same key.
+  ensureThreadedCommentParaIds(comments);
+
   const commentsXml = serializeComments(comments);
   zip.file("word/comments.xml", commentsXml, {
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
   });
 
-  await Promise.all([
-    ensureCommentsContentType(zip, compressionLevel),
-    ensureCommentsRelationship(zip, compressionLevel),
-    writeCommentsExtendedToZip(comments, zip, compressionLevel),
-  ]);
+  // Sequential, not Promise.all: comments.xml and commentsExtended.xml both
+  // edit [Content_Types].xml and document.xml.rels, so concurrent
+  // read-modify-write would drop one part's override/relationship.
+  await ensureCommentsContentType(zip, compressionLevel);
+  await ensureCommentsRelationship(zip, compressionLevel);
+  await syncCommentsExtendedPart(comments, zip, compressionLevel);
 }
 
 /**
- * Write `word/commentsExtended.xml` (reply threading + resolved state) plus its
- * content-type override and relationship, or remove a stale part when the model
- * no longer needs one. The reply-thread markers in `document.xml` are
- * synthesized separately (see {@link applyReplyThreadMarkers}); this is the part
- * that links each reply to its parent.
+ * Bring `word/commentsExtended.xml` and its packaging (content-type override +
+ * relationship) in line with the model: write the part when there is thread /
+ * resolved state to record, or remove the part AND its override AND its
+ * relationship together when there is none. Managing all three consistently
+ * keeps the package valid (a dangling override or a relationship pointing at a
+ * removed part triggers Word's repair prompt). The reply-thread markers in
+ * `document.xml` are synthesized separately (see {@link applyReplyThreadMarkers}).
  */
-async function writeCommentsExtendedToZip(
+async function syncCommentsExtendedPart(
   comments: Comment[],
   zip: JSZip,
   compressionLevel: number,
 ): Promise<void> {
   const xml = serializeCommentsExtended(comments);
-  const existing = findZipEntryCaseInsensitive(zip, "word/commentsextended.xml");
+  const existing = findZipEntryCaseInsensitive(zip, COMMENTS_EXTENDED_PART_LOWER);
+
   if (!xml) {
-    // No thread/resolved state to record. Drop a stale baseline part so a
-    // removed thread does not resurrect on the next open.
-    if (existing) {
-      zip.remove(existing.name);
+    // No thread/resolved state to record. Drop the part with its override and
+    // relationship so a removed thread neither resurrects nor dangles.
+    if (!existing) {
+      return;
     }
+    zip.remove(existing.name);
+    await transformPackagingFile(
+      zip,
+      "[Content_Types].xml",
+      removeCommentsExtendedOverride,
+      compressionLevel,
+    );
+    await transformPackagingFile(
+      zip,
+      "word/_rels/document.xml.rels",
+      removeCommentsExtendedRelationship,
+      compressionLevel,
+    );
     return;
   }
 
-  zip.file(existing?.name ?? "word/commentsExtended.xml", xml, {
+  zip.file(existing?.name ?? COMMENTS_EXTENDED_PART, xml, {
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
   });
-  await Promise.all([
-    ensureCommentsExtendedContentType(zip, compressionLevel),
-    ensureCommentsExtendedRelationship(zip, compressionLevel),
-  ]);
+  await transformPackagingFile(
+    zip,
+    "[Content_Types].xml",
+    addCommentsExtendedOverride,
+    compressionLevel,
+  );
+  await transformPackagingFile(
+    zip,
+    "word/_rels/document.xml.rels",
+    addCommentsExtendedRelationship,
+    compressionLevel,
+  );
+}
+
+/** Read a packaging file, apply a pure transform, and write it back if it changed. */
+async function transformPackagingFile(
+  zip: JSZip,
+  path: string,
+  transform: (xml: string) => string,
+  compressionLevel: number,
+): Promise<void> {
+  const file = zip.file(path);
+  if (!file) {
+    return;
+  }
+  const xml = await file.async("text");
+  const next = transform(xml);
+  if (next !== xml) {
+    zip.file(path, next, {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    });
+  }
 }
 
 function findZipEntryCaseInsensitive(zip: JSZip, lowerPath: string): JSZip.JSZipObject | null {
@@ -847,6 +901,42 @@ export const COMMENTS_CONTENT_TYPE =
 export const COMMENTS_EXTENDED_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml";
 
+export const COMMENTS_EXTENDED_PART = "word/commentsExtended.xml";
+export const COMMENTS_EXTENDED_PART_LOWER = "word/commentsextended.xml";
+
+// Pure [Content_Types].xml / .rels transforms for the commentsExtended part.
+// Shared by the full-repack and selective save paths so both add and remove the
+// part's override + relationship the same way (see syncCommentsExtendedPart).
+
+export function addCommentsExtendedOverride(contentTypesXml: string): string {
+  if (contentTypesXml.toLowerCase().includes("/word/commentsextended.xml")) {
+    return contentTypesXml;
+  }
+  return contentTypesXml.replace(
+    "</Types>",
+    `<Override PartName="/word/commentsExtended.xml" ContentType="${COMMENTS_EXTENDED_CONTENT_TYPE}"/></Types>`,
+  );
+}
+
+export function removeCommentsExtendedOverride(contentTypesXml: string): string {
+  return contentTypesXml.replace(/<Override\b[^>]*commentsExtended\.xml[^>]*\/>/giu, "");
+}
+
+export function addCommentsExtendedRelationship(relsXml: string): string {
+  if (relsXml.toLowerCase().includes("commentsextended.xml")) {
+    return relsXml;
+  }
+  const newRId = `rId${findMaxRId(relsXml) + 1}`;
+  return relsXml.replace(
+    "</Relationships>",
+    `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.commentsExtended}" Target="commentsExtended.xml"/></Relationships>`,
+  );
+}
+
+export function removeCommentsExtendedRelationship(relsXml: string): string {
+  return relsXml.replace(/<Relationship\b[^>]*commentsExtended\.xml[^>]*\/>/giu, "");
+}
+
 /**
  * Ensure [Content_Types].xml contains an Override for word/comments.xml.
  * If the document already had comments, this is a no-op.
@@ -900,62 +990,6 @@ async function ensureCommentsRelationship(zip: JSZip, compressionLevel: number):
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
   });
-}
-
-/** Ensure [Content_Types].xml overrides word/commentsExtended.xml. No-op if present. */
-async function ensureCommentsExtendedContentType(
-  zip: JSZip,
-  compressionLevel: number,
-): Promise<void> {
-  const ctFile = zip.file("[Content_Types].xml");
-  if (!ctFile) {
-    return;
-  }
-
-  const ctXml = await ctFile.async("text");
-  if (ctXml.toLowerCase().includes("/word/commentsextended.xml")) {
-    return;
-  }
-
-  zip.file(
-    "[Content_Types].xml",
-    ctXml.replace(
-      "</Types>",
-      `<Override PartName="/word/commentsExtended.xml" ContentType="${COMMENTS_EXTENDED_CONTENT_TYPE}"/></Types>`,
-    ),
-    { compression: "DEFLATE", compressionOptions: { level: compressionLevel } },
-  );
-}
-
-/**
- * Ensure word/_rels/document.xml.rels references commentsExtended.xml. No-op if
- * present. Word reaches the part through this relationship, so a freshly added
- * part (a reply created on a document that had none) needs it wired up.
- */
-async function ensureCommentsExtendedRelationship(
-  zip: JSZip,
-  compressionLevel: number,
-): Promise<void> {
-  const relsPath = "word/_rels/document.xml.rels";
-  const relsFile = zip.file(relsPath);
-  if (!relsFile) {
-    return;
-  }
-
-  const relsXml = await relsFile.async("text");
-  if (relsXml.toLowerCase().includes("commentsextended.xml")) {
-    return;
-  }
-
-  const newRId = `rId${findMaxRId(relsXml) + 1}`;
-  zip.file(
-    relsPath,
-    relsXml.replace(
-      "</Relationships>",
-      `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.commentsExtended}" Target="commentsExtended.xml"/></Relationships>`,
-    ),
-    { compression: "DEFLATE", compressionOptions: { level: compressionLevel } },
-  );
 }
 
 // ============================================================================

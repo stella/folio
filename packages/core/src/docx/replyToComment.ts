@@ -56,30 +56,37 @@ const freshParaId = (used: Set<string>): string => {
  * return it, mutating the thread root's last paragraph to guarantee it has a
  * paraId. Does NOT append the reply to `comments` — the caller owns storage
  * (the standalone {@link replyToComment} writes it back to the document model;
- * the headless reviewer keeps its own created-comment list). Throws when the
- * parent comment does not exist. A reply to a reply re-parents onto the same
- * thread as the target (Word threads are flat: every reply links to the root).
+ * the headless reviewer keeps its own created-comment list). Returns `null` when
+ * the parent comment does not exist, or is malformed (no paragraphs) so it
+ * cannot anchor a thread. A reply to a reply re-parents onto the same thread as
+ * the target (Word threads are flat: every reply links to the root).
  */
 export const createReply = (
   comments: readonly Comment[],
   parentCommentId: number,
   input: CreateCommentReplyInput,
-): Comment => {
+): Comment | null => {
   const parent = comments.find((comment) => comment.id === parentCommentId);
   if (!parent) {
-    throw new Error(`replyToComment: no comment with id ${parentCommentId}`);
+    return null;
   }
   // Word models replies as a flat list under the thread root, so a reply to a
   // reply attaches to that reply's parent rather than nesting.
   const threadRootId = parent.parentId ?? parent.id;
 
-  const used = usedParaIds(comments);
+  // The root's last paragraph is the thread key; a comment with no paragraphs
+  // (malformed / empty) cannot anchor a reply, so refuse rather than index into
+  // an empty array.
+  const threadRoot = comments.find((comment) => comment.id === threadRootId) ?? parent;
+  const rootLastParagraph = (threadRoot.content ?? []).at(-1);
+  if (!rootLastParagraph) {
+    return null;
+  }
 
+  const used = usedParaIds(comments);
   // The root's last paragraph must carry a paraId so the reply can reference it
   // via `w15:paraIdParent`; a doc authored without paraIds gets one now.
-  const threadRoot = comments.find((comment) => comment.id === threadRootId) ?? parent;
-  const rootLastParagraph = threadRoot.content.at(-1);
-  if (rootLastParagraph && !rootLastParagraph.paraId) {
+  if (!rootLastParagraph.paraId) {
     rootLastParagraph.paraId = freshParaId(used);
   }
 
@@ -102,16 +109,20 @@ export const createReply = (
 
 /**
  * Append a reply to `parentCommentId` in `doc`'s comment list, mutating the
- * document model in place, and return the created reply. Throws when the parent
- * comment does not exist.
+ * document model in place, and return the created reply. Returns `null` when the
+ * parent comment does not exist or cannot anchor a thread (see
+ * {@link createReply}).
  */
 export const replyToComment = (
   doc: Document,
   parentCommentId: number,
   input: CreateCommentReplyInput,
-): Comment => {
+): Comment | null => {
   const comments = doc.package.document.comments ?? [];
   const reply = createReply(comments, parentCommentId, input);
+  if (!reply) {
+    return null;
+  }
   doc.package.document.comments = [...comments, reply];
   return reply;
 };

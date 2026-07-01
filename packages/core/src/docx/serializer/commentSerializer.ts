@@ -4,6 +4,7 @@
  * Serializes Comment[] to OOXML comments.xml format.
  */
 
+import { deterministicHexId } from "../../utils/hexId";
 import type { Comment, Paragraph, Run } from "../../types/content";
 import { escapeXml } from "./xmlUtils";
 
@@ -157,7 +158,91 @@ export function serializeComments(comments: Comment[]): string {
 
 /** The `w14:paraId` Word threads a comment by: its LAST paragraph's paraId. */
 function commentThreadParaId(comment: Comment): string | undefined {
-  return comment.content.at(-1)?.paraId;
+  return comment.content?.at(-1)?.paraId;
+}
+
+/**
+ * The ids of comments that need a `commentsExtended.xml` entry: a reply, a
+ * reply's parent (the thread root), or any comment carrying a resolved state.
+ * A plain top-level comment set yields an empty set, so no part is written.
+ */
+function threadedCommentIds(comments: readonly Comment[]): Set<number> {
+  const replyParents = new Set<number>();
+  for (const comment of comments) {
+    if (comment.parentId !== undefined) {
+      replyParents.add(comment.parentId);
+    }
+  }
+  const ids = new Set<number>();
+  for (const comment of comments) {
+    if (
+      comment.parentId !== undefined ||
+      replyParents.has(comment.id) ||
+      comment.done !== undefined
+    ) {
+      ids.add(comment.id);
+    }
+  }
+  return ids;
+}
+
+const commentPlainText = (comment: Comment): string => {
+  let text = "";
+  for (const paragraph of comment.content ?? []) {
+    for (const item of paragraph.content ?? []) {
+      if (item.type !== "run") {
+        continue;
+      }
+      for (const runItem of item.content ?? []) {
+        if (runItem.type === "text") {
+          text += runItem.text;
+        }
+      }
+    }
+  }
+  return text;
+};
+
+/**
+ * Assign a deterministic `w14:paraId` to the LAST paragraph of every comment
+ * that needs a commentsExtended entry (a reply, a reply's parent, or a resolved
+ * comment) but has none. A document authored or loaded without comment paraIds
+ * would otherwise have no stable key to thread through commentsExtended.xml, and
+ * the thread link would be silently dropped. Word-authored ids are preserved;
+ * only threaded, id-less paragraphs are filled. Deterministic (content- and
+ * id-derived) so repeated saves mint the SAME id. MUST run before serializing
+ * BOTH comments.xml and commentsExtended.xml so the two reference the same id.
+ */
+export function ensureThreadedCommentParaIds(comments: readonly Comment[]): void {
+  const threaded = threadedCommentIds(comments);
+  if (threaded.size === 0) {
+    return;
+  }
+
+  const used = new Set<string>();
+  for (const comment of comments) {
+    for (const paragraph of comment.content ?? []) {
+      if (paragraph.paraId) {
+        used.add(paragraph.paraId.toUpperCase());
+      }
+    }
+  }
+
+  for (const comment of comments) {
+    if (!threaded.has(comment.id)) {
+      continue;
+    }
+    const last = (comment.content ?? []).at(-1);
+    if (!last || last.paraId) {
+      continue;
+    }
+    let paraId = deterministicHexId(`comment:${comment.id}:${commentPlainText(comment)}`);
+    for (let salt = 1; used.has(paraId.toUpperCase()); salt++) {
+      paraId = deterministicHexId(`comment:${comment.id}:${salt}`);
+    }
+    used.add(paraId.toUpperCase());
+    last.paraId = paraId;
+  }
 }
 
 type CommentExtendedEntry = {
@@ -174,29 +259,27 @@ type CommentExtendedEntry = {
  * `commentsExtended.xml`, matching how Word omits it.
  *
  * A `w15:commentEx` keys on the comment's LAST paragraph paraId; a reply's
- * `w15:paraIdParent` points at its parent comment's last-paragraph paraId. A
- * comment lacking a resolvable paraId is skipped (it cannot be keyed), which is
- * only reachable for a malformed model since {@link replyToComment} assigns
- * paraIds to every threaded comment.
+ * `w15:paraIdParent` points at its parent comment's last-paragraph paraId. Ids
+ * are guaranteed present by {@link ensureThreadedCommentParaIds}; the `!paraId`
+ * skip is a last-ditch safety for a malformed model.
  */
 function buildCommentExtendedEntries(comments: readonly Comment[]): CommentExtendedEntry[] | null {
+  const threaded = threadedCommentIds(comments);
+  if (threaded.size === 0) {
+    return null;
+  }
+
   const paraIdByCommentId = new Map<number, string>();
-  const isReplyParent = new Set<number>();
   for (const comment of comments) {
     const paraId = commentThreadParaId(comment);
     if (paraId) {
       paraIdByCommentId.set(comment.id, paraId);
     }
-    if (comment.parentId !== undefined) {
-      isReplyParent.add(comment.parentId);
-    }
   }
 
   const entries: CommentExtendedEntry[] = [];
   for (const comment of comments) {
-    const isReply = comment.parentId !== undefined;
-    const needsEntry = isReply || isReplyParent.has(comment.id) || comment.done !== undefined;
-    if (!needsEntry) {
+    if (!threaded.has(comment.id)) {
       continue;
     }
     const paraId = paraIdByCommentId.get(comment.id);

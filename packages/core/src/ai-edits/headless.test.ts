@@ -431,6 +431,16 @@ describe("headless docx review discovery + resolve", () => {
     expect(documentXml).toContain(`<w:commentRangeStart w:id="${savedReply?.id}"/>`);
     expect(documentXml).toContain(`<w:commentReference w:id="${savedReply?.id}"/>`);
 
+    // Adding comments.xml AND commentsExtended.xml in one repack must wire both
+    // parts' content-type overrides and relationships (they edit the same two
+    // packaging files, so a concurrent write would drop one).
+    const contentTypes = await partText(saved, "[Content_Types].xml");
+    expect(contentTypes).toContain("/word/comments.xml");
+    expect(contentTypes).toContain("/word/commentsExtended.xml");
+    const rels = await partText(saved, "word/_rels/document.xml.rels");
+    expect(rels.toLowerCase()).toContain('target="comments.xml"');
+    expect(rels.toLowerCase()).toContain("commentsextended.xml");
+
     // A reply to an unknown comment is refused.
     expect(reviewer.replyTo(9999, { text: "orphan" })).toBeNull();
   });

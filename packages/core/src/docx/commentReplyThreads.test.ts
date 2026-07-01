@@ -12,12 +12,18 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import type { BlockContent, Comment, Document, Paragraph } from "../types/document";
+import { applyReplyThreadMarkers } from "./commentReplyMarkers";
+import { parseComments } from "./commentParser";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { replyToComment } from "./replyToComment";
-import { repackDocx } from "./rezip";
+import { repackDocx, validateDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
-import { serializeCommentsExtended } from "./serializer/commentSerializer";
+import {
+  ensureThreadedCommentParaIds,
+  serializeComments,
+  serializeCommentsExtended,
+} from "./serializer/commentSerializer";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -291,6 +297,10 @@ describe("comment reply threads — create-reply API", () => {
     const doc = await parse(buffer);
 
     const reply = replyToComment(doc, PARENT_ID, { author: "Reviewer", text: "a fresh reply" });
+    expect(reply).not.toBeNull();
+    if (!reply) {
+      return;
+    }
     expect(reply.parentId).toBe(PARENT_ID);
 
     // A created reply has no anchor yet, so save goes through the full repack.
@@ -304,6 +314,20 @@ describe("comment reply threads — create-reply API", () => {
     expect(markers.reference.has(reply.id)).toBe(true);
   });
 
+  test("replyToComment returns null for an unknown or paragraph-less parent", () => {
+    const parentless: Document = {
+      package: {
+        document: {
+          content: [],
+          comments: [{ id: PARENT_ID, author: "Alice", content: [] }],
+        },
+      },
+    };
+    // Unknown parent id, and a parent with no paragraphs to anchor the thread.
+    expect(replyToComment(parentless, 9999, { author: "R", text: "x" })).toBeNull();
+    expect(replyToComment(parentless, PARENT_ID, { author: "R", text: "x" })).toBeNull();
+  });
+
   test("serializeCommentsExtended is null for a document with no threads or resolved state", () => {
     const plain: Comment[] = [
       {
@@ -314,6 +338,118 @@ describe("comment reply threads — create-reply API", () => {
     ];
     expect(serializeCommentsExtended(plain)).toBeNull();
   });
+});
+
+describe("comment reply threads — package lifecycle + deterministic ids", () => {
+  test("removing a thread drops commentsExtended.xml + its content-type + rel", async () => {
+    // No reply markers in the body, so removing the reply comments leaves no
+    // dangling references (only the parent's anchor, which survives).
+    const buffer = await buildThreadedDocx({ includeReplyMarkers: false, parentDone: true });
+    const doc = await parse(buffer);
+
+    // Simulate the whole thread being removed from the model: keep only the
+    // parent, and clear its resolved state so nothing needs a commentEx entry.
+    const parent = commentById(doc, PARENT_ID);
+    expect(parent).toBeDefined();
+    if (!parent) {
+      return;
+    }
+    delete parent.done;
+    doc.package.document.comments = [parent];
+
+    const saved = await repackDocx({ ...doc, originalBuffer: buffer });
+    const zip = await JSZip.loadAsync(saved);
+    expect(zip.file("word/commentsExtended.xml")).toBeNull();
+
+    const contentTypes = await readPart(saved, "[Content_Types].xml");
+    expect(contentTypes.toLowerCase()).not.toContain("commentsextended.xml");
+    const rels = await readPart(saved, "word/_rels/document.xml.rels");
+    expect(rels.toLowerCase()).not.toContain("commentsextended.xml");
+
+    // The package must still be a valid DOCX after the removal.
+    const validation = await validateDocx(saved);
+    expect(validation.valid).toBe(true);
+  });
+
+  test("selective save bails to full repack when a thread must be removed", async () => {
+    const buffer = await buildThreadedDocx({ includeReplyMarkers: false, parentDone: true });
+    const doc = await parse(buffer);
+    const parent = commentById(doc, PARENT_ID);
+    if (!parent) {
+      return;
+    }
+    delete parent.done;
+    doc.package.document.comments = [parent];
+
+    const saved = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+    expect(saved).toBeNull();
+  });
+
+  test("synthesis does not crash on a malformed paragraph with no content", () => {
+    const doc: Document = {
+      package: {
+        document: {
+          content: [{ type: "paragraph", formatting: {} } as Paragraph],
+          comments: [
+            { id: 1, author: "A", content: [{ type: "paragraph", formatting: {}, content: [] }] },
+            {
+              id: 2,
+              author: "B",
+              parentId: 1,
+              content: [{ type: "paragraph", formatting: {}, content: [] }],
+            },
+          ],
+        },
+      },
+    };
+    expect(() => applyReplyThreadMarkers(doc)).not.toThrow();
+  });
+
+  test("paraId-less threaded comments get deterministic ids and thread correctly", () => {
+    // A model with threading but NO comment paraIds (e.g. built programmatically).
+    const makeComments = (): Comment[] => [
+      { id: 1, author: "Alice", content: [textParagraph("parent")] },
+      { id: 2, author: "Bob", parentId: 1, content: [textParagraph("reply")] },
+    ];
+
+    const comments = makeComments();
+    ensureThreadedCommentParaIds(comments);
+    const parentParaId = comments[0]?.content.at(-1)?.paraId;
+    const replyParaId = comments[1]?.content.at(-1)?.paraId;
+    expect(parentParaId).toBeTruthy();
+    expect(replyParaId).toBeTruthy();
+    expect(replyParaId).not.toBe(parentParaId);
+
+    // Deterministic: a second run mints the same ids.
+    const again = makeComments();
+    ensureThreadedCommentParaIds(again);
+    expect(again[0]?.content.at(-1)?.paraId).toBe(parentParaId);
+    expect(again[1]?.content.at(-1)?.paraId).toBe(replyParaId);
+
+    // The serialized commentsExtended references those real ids and threads.
+    const extendedXml = serializeCommentsExtended(comments);
+    expect(extendedXml).not.toBeNull();
+    const parsed = parseComments(
+      serializeComments(comments),
+      null,
+      null,
+      new Map(),
+      new Map(),
+      null,
+      extendedXml,
+    );
+    expect(parsed.find((c) => c.id === 2)?.parentId).toBe(1);
+  });
+});
+
+const textParagraph = (text: string): Paragraph => ({
+  type: "paragraph",
+  formatting: {},
+  content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
 });
 
 async function readPart(buffer: ArrayBuffer, path: string): Promise<string> {

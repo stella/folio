@@ -45,7 +45,7 @@ import {
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
 import type { Document } from "../types/document";
-import { MAX_HEX_ID_EXCLUSIVE } from "../utils/hexId";
+import { deterministicHexId } from "../utils/hexId";
 import { applyFolioAIEditOperations } from "./apply";
 import { createFolioAIEditSnapshot } from "./snapshot";
 import type {
@@ -83,15 +83,6 @@ const createReviewerComment = (text: string, author: string): Comment => ({
     },
   ],
 });
-
-/** Deterministic 8-char uppercase hex id (FNV-1a over `seed`), `< 0x7FFFFFFF`. */
-const deterministicHexId = (seed: string): string => {
-  let hash = 2_166_136_261;
-  for (const character of seed) {
-    hash = Math.imul(hash ^ (character.codePointAt(0) ?? 0), 16_777_619) >>> 0;
-  }
-  return (hash % MAX_HEX_ID_EXCLUSIVE).toString(16).toUpperCase().padStart(8, "0");
-};
 
 /**
  * Assign a stable `w14:paraId` to every body paragraph that lacks one (or
@@ -543,17 +534,16 @@ export class FolioDocxReviewer {
       ...(this.baseDocument.package.document.comments ?? []),
       ...this.createdComments,
     ];
-    try {
-      const reply = createReply(existing, parentId, {
-        author: input.author ?? this.author,
-        text: input.text,
-        ...(input.initials !== undefined ? { initials: input.initials } : {}),
-      });
-      this.createdComments.push(reply);
-      return { id: reply.id, author: reply.author, date: reply.date ?? null, text: input.text };
-    } catch {
+    const reply = createReply(existing, parentId, {
+      author: input.author ?? this.author,
+      text: input.text,
+      ...(input.initials !== undefined ? { initials: input.initials } : {}),
+    });
+    if (!reply) {
       return null;
     }
+    this.createdComments.push(reply);
+    return { id: reply.id, author: reply.author, date: reply.date ?? null, text: input.text };
   }
 
   /**

@@ -49,38 +49,40 @@ const surfacesFromDocument = (doc: Document): ReplyThreadSurfaces => ({
   ...(doc.package.endnotes !== undefined ? { endnotes: doc.package.endnotes } : {}),
 });
 
+// Malformed input can omit a container's children; guard every content / rows /
+// cells access with the same `?? []` so a walk never crashes on a bad model.
 const surfaceBlockGroups = (surfaces: ReplyThreadSurfaces): BlockContent[][] => {
-  const groups: BlockContent[][] = [surfaces.body];
+  const groups: BlockContent[][] = [surfaces.body ?? []];
   for (const header of surfaces.headers?.values() ?? []) {
-    groups.push(header.content);
+    groups.push(header.content ?? []);
   }
   for (const footer of surfaces.footers?.values() ?? []) {
-    groups.push(footer.content);
+    groups.push(footer.content ?? []);
   }
   for (const footnote of surfaces.footnotes ?? []) {
-    groups.push(footnote.content);
+    groups.push(footnote.content ?? []);
   }
   for (const endnote of surfaces.endnotes ?? []) {
-    groups.push(endnote.content);
+    groups.push(endnote.content ?? []);
   }
   return groups;
 };
 
 const eachParagraph = (blocks: BlockContent[], visit: (paragraph: Paragraph) => void): void => {
-  for (const block of blocks) {
+  for (const block of blocks ?? []) {
     if (block.type === "paragraph") {
       visit(block);
       continue;
     }
     if (block.type === "table") {
-      for (const row of block.rows) {
-        for (const cell of row.cells) {
-          eachParagraph(cell.content, visit);
+      for (const row of block.rows ?? []) {
+        for (const cell of row.cells ?? []) {
+          eachParagraph(cell.content ?? [], visit);
         }
       }
       continue;
     }
-    eachParagraph(block.content, visit);
+    eachParagraph(block.content ?? [], visit);
   }
 };
 
@@ -96,7 +98,7 @@ const scanAnchors = (surfaces: ReplyThreadSurfaces): AnchorScan => {
   const anchoredIds = new Set<number>();
   for (const group of surfaceBlockGroups(surfaces)) {
     eachParagraph(group, (paragraph) => {
-      for (const item of paragraph.content) {
+      for (const item of paragraph.content ?? []) {
         if (item.type === "commentRangeStart") {
           rangeIds.add(item.id);
           anchoredIds.add(item.id);
@@ -122,7 +124,8 @@ const injectIntoParagraph = (
   replyIdsByParent: Map<number, number[]>,
   parentsWithRange: ReadonlySet<number>,
 ): number => {
-  const touchesReplyParent = paragraph.content.some((item) => {
+  const content = paragraph.content ?? [];
+  const touchesReplyParent = content.some((item) => {
     if (item.type === "commentRangeStart" || item.type === "commentRangeEnd") {
       return replyIdsByParent.has(item.id);
     }
@@ -137,7 +140,7 @@ const injectIntoParagraph = (
 
   const next: Paragraph["content"] = [];
   let injected = 0;
-  for (const item of paragraph.content) {
+  for (const item of content) {
     next.push(item);
     if (item.type === "commentRangeStart") {
       for (const replyId of replyIdsByParent.get(item.id) ?? []) {
