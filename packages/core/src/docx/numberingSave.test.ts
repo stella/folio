@@ -1,0 +1,282 @@
+/**
+ * Round-trip tests for the numbering-definition write path.
+ *
+ * Parses a DOCX carrying a `word/numbering.xml` with two abstract numberings
+ * (plus a `w:numPicBullet` and `w:nsid`/`w:tmpl` the model does NOT represent),
+ * mutates one numbering definition in the model, saves through BOTH save paths,
+ * re-parses, and asserts:
+ * - the edited definition persists on save, and
+ * - the UNEDITED definition plus the model-omitted parts (numPicBullet, the
+ *   untouched abstractNum's nsid/tmpl) and every other package part stay
+ *   byte-exact.
+ *
+ * Sibling of the footnote/endnote body write path (see noteSave.test.ts): a
+ * save that changes only a body paragraph must leave numbering.xml verbatim.
+ */
+
+import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
+
+import type { Document } from "../types/document";
+import { parseDocx } from "./parser";
+import { RELATIONSHIP_TYPES } from "./relsParser";
+import { repackDocx } from "./rezip";
+import { attemptSelectiveSave } from "./selectiveSave";
+
+const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+
+// Numbering ids used by the fixture. `EDITED_ABSTRACT_ID` is the definition the
+// tests mutate; `UNTOUCHED_ABSTRACT_ID` must survive byte-exact.
+const EDITED_ABSTRACT_ID = 0;
+const UNTOUCHED_ABSTRACT_ID = 1;
+const EDITED_NUM_ID = 1;
+
+const ORIGINAL_LVL_TEXT = "%1.";
+const EDITED_LVL_TEXT = "%1)";
+
+// A picture-bullet definition and per-abstractNum nsid/tmpl — none of which the
+// model represents. They must round-trip verbatim through both save paths.
+const NUM_PIC_BULLET =
+  '<w:numPicBullet w:numPicBulletId="0"><w:pict><v:shape id="_x0000_i1025" style="width:9pt;height:9pt"/></w:pict></w:numPicBullet>';
+const UNTOUCHED_ABSTRACT =
+  `<w:abstractNum w:abstractNumId="${UNTOUCHED_ABSTRACT_ID}" w15:restartNumberingAfterBreak="0">` +
+  '<w:nsid w:val="1A2B3C4D"/><w:multiLevelType w:val="hybridMultilevel"/><w:tmpl w:val="0409000F"/>' +
+  '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/>' +
+  '<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>' +
+  '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"/></w:rPr></w:lvl></w:abstractNum>';
+// The edited abstractNum also carries nsid/tmpl the model omits; editing it
+// re-emits it from the model (the documented safe-subset), so those are lost on
+// the CHANGED definition only — the assertions below check the untouched one.
+const EDITED_ABSTRACT =
+  `<w:abstractNum w:abstractNumId="${EDITED_ABSTRACT_ID}" w15:restartNumberingAfterBreak="0">` +
+  '<w:nsid w:val="0F1E2D3C"/><w:multiLevelType w:val="hybridMultilevel"/><w:tmpl w:val="04090001"/>' +
+  `<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/>` +
+  '<w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>';
+
+const numberingXml =
+  `${XML_DECLARATION}\n` +
+  '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+  'xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" ' +
+  'xmlns:v="urn:schemas-microsoft-com:vml">' +
+  NUM_PIC_BULLET +
+  EDITED_ABSTRACT +
+  UNTOUCHED_ABSTRACT +
+  `<w:num w:numId="${EDITED_NUM_ID}"><w:abstractNumId w:val="${EDITED_ABSTRACT_ID}"/></w:num>` +
+  `<w:num w:numId="2"><w:abstractNumId w:val="${UNTOUCHED_ABSTRACT_ID}"/></w:num>` +
+  "</w:numbering>";
+
+const BODY_PARA_ID = "B0000001";
+const documentXml = `${XML_DECLARATION}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    <w:p w14:paraId="${BODY_PARA_ID}"><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${EDITED_NUM_ID}"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">First item</w:t></w:r></w:p>
+    <w:p w14:paraId="B0000002"><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">Bullet item</w:t></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+  </w:body>
+</w:document>`;
+
+const stylesXml = `${XML_DECLARATION}
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
+</w:styles>`;
+
+const corePropertiesXml = `${XML_DECLARATION}
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dcterms:modified xsi:type="dcterms:W3CDTF">2024-01-01T00:00:00.000Z</dcterms:modified>
+</cp:coreProperties>`;
+
+const contentTypesXml = `${XML_DECLARATION}
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+</Types>`;
+
+const packageRelsXml = `${XML_DECLARATION}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+</Relationships>`;
+
+const documentRelsXml = `${XML_DECLARATION}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.numbering}" Target="numbering.xml"/>
+</Relationships>`;
+
+async function createNumberingFixture(): Promise<ArrayBuffer> {
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", contentTypesXml);
+  zip.file("_rels/.rels", packageRelsXml);
+  zip.file("word/_rels/document.xml.rels", documentRelsXml);
+  zip.file("word/document.xml", documentXml);
+  zip.file("word/styles.xml", stylesXml);
+  zip.file("word/numbering.xml", numberingXml);
+  zip.file("docProps/core.xml", corePropertiesXml);
+  return zip.generateAsync({ type: "arraybuffer" });
+}
+
+async function readPart(buffer: ArrayBuffer, path: string): Promise<string> {
+  const zip = await JSZip.loadAsync(buffer);
+  const file = zip.file(path);
+  if (!file) {
+    throw new Error(`No ${path} in package`);
+  }
+  return file.async("text");
+}
+
+function editFirstLevelText(doc: Document, abstractNumId: number, newText: string): void {
+  const abstractNum = doc.package.numbering?.abstractNums.find(
+    (a) => a.abstractNumId === abstractNumId,
+  );
+  const level = abstractNum?.levels.find((l) => l.ilvl === 0);
+  if (!level) {
+    throw new Error(`expected level 0 on abstractNum ${abstractNumId}`);
+  }
+  level.lvlText = newText;
+}
+
+function levelText(doc: Document, abstractNumId: number): string | undefined {
+  return doc.package.numbering?.abstractNums
+    .find((a) => a.abstractNumId === abstractNumId)
+    ?.levels.find((l) => l.ilvl === 0)?.lvlText;
+}
+
+describe("numbering-definition write path (selective save)", () => {
+  test("edited numbering definition persists; untouched definition + omitted parts stay byte-exact", async () => {
+    const buffer = await createNumberingFixture();
+    const originalDocumentXml = await readPart(buffer, "word/document.xml");
+    const originalStylesXml = await readPart(buffer, "word/styles.xml");
+
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    editFirstLevelText(doc, EDITED_ABSTRACT_ID, EDITED_LVL_TEXT);
+
+    const result = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error("selective save returned null");
+    }
+
+    // The edit round-trips through re-parse.
+    const reparsed = await parseDocx(result, { preloadFonts: false });
+    expect(levelText(reparsed, EDITED_ABSTRACT_ID)).toBe(EDITED_LVL_TEXT);
+
+    // Other parts are untouched.
+    expect(await readPart(result, "word/document.xml")).toBe(originalDocumentXml);
+    expect(await readPart(result, "word/styles.xml")).toBe(originalStylesXml);
+
+    // Within numbering.xml: the edit landed, the old marker is gone, and the
+    // untouched definition + the model-omitted picture bullet stay byte-exact.
+    const savedNumberingXml = await readPart(result, "word/numbering.xml");
+    expect(savedNumberingXml).toContain(`<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`);
+    expect(savedNumberingXml).not.toContain(`<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/>`);
+    expect(savedNumberingXml).toContain(UNTOUCHED_ABSTRACT);
+    expect(savedNumberingXml).toContain(NUM_PIC_BULLET);
+  });
+
+  test("a body-only edit leaves numbering.xml byte-exact", async () => {
+    const buffer = await createNumberingFixture();
+    const originalNumberingXml = await readPart(buffer, "word/numbering.xml");
+
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    const bodyPara = doc.package.document.content[0];
+    if (!bodyPara || bodyPara.type !== "paragraph") {
+      throw new Error("expected a body paragraph");
+    }
+    for (const item of bodyPara.content) {
+      if (item.type === "run") {
+        for (const runContent of item.content) {
+          if (runContent.type === "text") {
+            runContent.text = "First item edited";
+          }
+        }
+      }
+    }
+
+    const result = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set([BODY_PARA_ID]),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error("selective save returned null");
+    }
+
+    // numbering.xml is never touched by a body-only edit.
+    expect(await readPart(result, "word/numbering.xml")).toBe(originalNumberingXml);
+    expect(await readPart(result, "word/document.xml")).toContain("First item edited");
+  });
+});
+
+describe("numbering-definition write path (full repack)", () => {
+  test("edited numbering definition persists through repackDocx; untouched parts intact", async () => {
+    const buffer = await createNumberingFixture();
+
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    editFirstLevelText(doc, EDITED_ABSTRACT_ID, EDITED_LVL_TEXT);
+
+    const result = await repackDocx(doc);
+
+    const reparsed = await parseDocx(result, { preloadFonts: false });
+    expect(levelText(reparsed, EDITED_ABSTRACT_ID)).toBe(EDITED_LVL_TEXT);
+
+    const savedNumberingXml = await readPart(result, "word/numbering.xml");
+    expect(savedNumberingXml).toContain(`<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`);
+    expect(savedNumberingXml).not.toContain(`<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/>`);
+    expect(savedNumberingXml).toContain(UNTOUCHED_ABSTRACT);
+    expect(savedNumberingXml).toContain(NUM_PIC_BULLET);
+  });
+
+  test("a repack with no numbering edit leaves numbering.xml byte-exact", async () => {
+    const buffer = await createNumberingFixture();
+    const originalNumberingXml = await readPart(buffer, "word/numbering.xml");
+
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    const result = await repackDocx(doc);
+
+    // Byte-exact preservation includes the parts the model does not represent:
+    // an unedited numbering is never re-serialized, so numPicBullet, nsid, and
+    // tmpl all survive even though the model drops them.
+    const savedNumberingXml = await readPart(result, "word/numbering.xml");
+    expect(savedNumberingXml).toBe(originalNumberingXml);
+    expect(savedNumberingXml).toContain(NUM_PIC_BULLET);
+    expect(savedNumberingXml).toContain('<w:tmpl w:val="04090001"/>');
+
+    // The definitions still round-trip unchanged.
+    const reparsed = await parseDocx(result, { preloadFonts: false });
+    expect(levelText(reparsed, EDITED_ABSTRACT_ID)).toBe(ORIGINAL_LVL_TEXT);
+  });
+
+  test("selective and full repack produce the same numbering.xml after an edit", async () => {
+    const buffer = await createNumberingFixture();
+
+    const docForSelective = await parseDocx(buffer, { preloadFonts: false });
+    editFirstLevelText(docForSelective, EDITED_ABSTRACT_ID, EDITED_LVL_TEXT);
+    const selective = await attemptSelectiveSave(docForSelective, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+    expect(selective).not.toBeNull();
+    if (!selective) {
+      throw new Error("selective save returned null");
+    }
+
+    const docForFull = await parseDocx(buffer, { preloadFonts: false });
+    editFirstLevelText(docForFull, EDITED_ABSTRACT_ID, EDITED_LVL_TEXT);
+    const full = await repackDocx({ ...docForFull, originalBuffer: buffer });
+
+    expect(await readPart(selective, "word/numbering.xml")).toBe(
+      await readPart(full, "word/numbering.xml"),
+    );
+  });
+});

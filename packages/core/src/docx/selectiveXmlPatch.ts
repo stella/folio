@@ -318,6 +318,228 @@ function spliceChangedParagraphs(
   return result;
 }
 
+// ============================================================================
+// NUMBERING DEFINITION PATCHING (word/numbering.xml)
+// ============================================================================
+//
+// Numbering definitions carry no `w14:paraId`; a `w:abstractNum` is keyed by its
+// `w:abstractNumId` attribute and a `w:num` by its `w:numId`. These helpers
+// mirror the paragraph splice above but target whole definition elements by id,
+// so an edited list definition is re-emitted from the model while every
+// untouched definition (and the parts the model omits — `w:nsid`, `w:tmpl`,
+// `w:numPicBullet`, unmodeled level sub-elements) stays byte-exact.
+
+type NumberingElementKind = "abstractNum" | "num";
+
+const NUMBERING_OPEN_LITERAL: Record<NumberingElementKind, string> = {
+  abstractNum: "<w:abstractNum",
+  num: "<w:num",
+};
+
+const NUMBERING_CLOSE_TAG: Record<NumberingElementKind, string> = {
+  abstractNum: "</w:abstractNum>",
+  num: "</w:num>",
+};
+
+const NUMBERING_ID_ATTR: Record<NumberingElementKind, string> = {
+  abstractNum: "w:abstractNumId",
+  num: "w:numId",
+};
+
+/**
+ * Whether the character after an opening `<w:num` / `<w:abstractNum` literal
+ * marks the actual element rather than a longer-named sibling — `<w:num ` /
+ * `<w:num>` (the instance) but not `<w:numFmt` / `<w:numbering`, and
+ * `<w:abstractNum ` but not the `<w:abstractNumId>` child of an instance.
+ */
+function isElementBoundaryChar(char: string | undefined): boolean {
+  return char === ">" || char === " " || char === "/";
+}
+
+/**
+ * Find the exact start/end offsets of a numbering definition element identified
+ * by its id attribute, depth-counting the matching close tag. Returns null when
+ * the id is absent or appears more than once (ambiguous).
+ */
+function findNumberingElementOffsets(
+  xml: string,
+  kind: NumberingElementKind,
+  id: string,
+): { start: number; end: number } | null {
+  const openLiteral = NUMBERING_OPEN_LITERAL[kind];
+  const closeTag = NUMBERING_CLOSE_TAG[kind];
+  const idAttr = NUMBERING_ID_ATTR[kind];
+
+  const pattern = new RegExp(
+    `${escapeRegExp(openLiteral)}[\\s][^>]*${escapeRegExp(idAttr)}="${escapeRegExp(id)}"`,
+    "gu",
+  );
+  const matches: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(xml)) !== null) {
+    matches.push(match.index);
+  }
+  if (matches.length !== 1) {
+    return null;
+  }
+  // SAFETY: matches.length === 1 verified above
+  const start = matches[0]!;
+  const afterOpenIndex = openLiteral.length;
+
+  let pos = start;
+  let depth = 0;
+  while (pos < xml.length) {
+    const tagStart = xml.indexOf("<", pos);
+    if (tagStart === -1) {
+      break;
+    }
+    if (xml.startsWith(openLiteral, tagStart)) {
+      if (!isElementBoundaryChar(xml[tagStart + afterOpenIndex])) {
+        // A longer-named sibling like <w:numFmt> — not our element.
+        pos = tagStart + 1;
+        continue;
+      }
+      const tagEnd = xml.indexOf(">", tagStart);
+      if (tagEnd === -1) {
+        break;
+      }
+      if (xml[tagEnd - 1] === "/") {
+        if (depth === 0) {
+          return { start, end: tagEnd + 1 };
+        }
+        pos = tagEnd + 1;
+      } else {
+        depth++;
+        pos = tagEnd + 1;
+      }
+    } else if (xml.startsWith(closeTag, tagStart)) {
+      depth--;
+      if (depth === 0) {
+        return { start, end: tagStart + closeTag.length };
+      }
+      pos = tagStart + closeTag.length;
+    } else {
+      pos = tagStart + 1;
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract the serialized XML for a single numbering definition element by id.
+ */
+function extractNumberingElementXml(
+  xml: string,
+  kind: NumberingElementKind,
+  id: string,
+): string | null {
+  const offsets = findNumberingElementOffsets(xml, kind, id);
+  if (!offsets) {
+    return null;
+  }
+  return xml.slice(offsets.start, offsets.end);
+}
+
+/**
+ * Collect the ids carried by opening tags of a numbering definition element,
+ * with counts so duplicates can be rejected. Only real element opening tags
+ * match (the `[\s]` after the literal excludes `<w:numFmt` and the like).
+ */
+function collectNumberingElementIds(xml: string, kind: NumberingElementKind): Map<string, number> {
+  const ids = new Map<string, number>();
+  const pattern = new RegExp(
+    `${escapeRegExp(NUMBERING_OPEN_LITERAL[kind])}[\\s][^>]*?${escapeRegExp(NUMBERING_ID_ATTR[kind])}="(?<id>[^"]+)"`,
+    "gu",
+  );
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(xml)) !== null) {
+    // SAFETY: named group `id` always present when the regex matches
+    const id = match.groups!["id"]!;
+    ids.set(id, (ids.get(id) ?? 0) + 1);
+  }
+  return ids;
+}
+
+export type ChangedNumberingDefs = {
+  abstractNums: Set<string>;
+  nums: Set<string>;
+};
+
+/**
+ * The numbering definitions whose current serialization differs from the
+ * baseline (re-parsed original) serialization — the ones actually edited. An id
+ * is only considered when it resolves uniquely in BOTH inputs, so a definition
+ * added or removed relative to the original (which cannot be spliced by id) is
+ * left out; both save paths defer those to the byte-exact original part.
+ */
+export function collectChangedNumberingDefs(
+  baselineXml: string,
+  currentXml: string,
+): ChangedNumberingDefs {
+  const changedForKind = (kind: NumberingElementKind): Set<string> => {
+    const changed = new Set<string>();
+    const baselineIds = collectNumberingElementIds(baselineXml, kind);
+    for (const [id, count] of collectNumberingElementIds(currentXml, kind)) {
+      if (count !== 1 || baselineIds.get(id) !== 1) {
+        continue;
+      }
+      const before = extractNumberingElementXml(baselineXml, kind, id);
+      const after = extractNumberingElementXml(currentXml, kind, id);
+      if (before !== null && after !== null && before !== after) {
+        changed.add(id);
+      }
+    }
+    return changed;
+  };
+  return { abstractNums: changedForKind("abstractNum"), nums: changedForKind("num") };
+}
+
+/**
+ * Build a patched `word/numbering.xml` by splicing the changed `w:abstractNum` /
+ * `w:num` definitions from `currentXml` (the model's serialization) into
+ * `originalXml`, preserving every other byte. Returns the original unchanged
+ * when nothing changed, or null when a changed id cannot be resolved uniquely
+ * in either input (so the caller preserves the original part verbatim).
+ */
+export function buildPatchedNumberingXml(
+  originalXml: string,
+  currentXml: string,
+  changed: ChangedNumberingDefs,
+): string | null {
+  if (changed.abstractNums.size === 0 && changed.nums.size === 0) {
+    return originalXml;
+  }
+
+  const replacements: { start: number; end: number; newXml: string }[] = [];
+  const collect = (kind: NumberingElementKind, ids: Set<string>): boolean => {
+    for (const id of ids) {
+      const origOffsets = findNumberingElementOffsets(originalXml, kind, id);
+      if (!origOffsets) {
+        return false;
+      }
+      const newXml = extractNumberingElementXml(currentXml, kind, id);
+      if (newXml === null) {
+        return false;
+      }
+      replacements.push({ start: origOffsets.start, end: origOffsets.end, newXml });
+    }
+    return true;
+  };
+
+  if (!collect("abstractNum", changed.abstractNums) || !collect("num", changed.nums)) {
+    return null;
+  }
+
+  // Splice end-to-start so earlier offsets stay valid. abstractNum and num
+  // elements are disjoint siblings, so descending-by-start ordering is total.
+  replacements.sort((a, b) => b.start - a.start);
+  let result = originalXml;
+  for (const { start, end, newXml } of replacements) {
+    result = result.slice(0, start) + newXml + result.slice(end);
+  }
+  return result;
+}
+
 function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }

@@ -14,6 +14,7 @@ import type { Document, BlockContent, Comment } from "../types/document";
 import { parseCommentsExtended, type CommentExtendedInfo } from "./commentParser";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { validateFolioDocumentModel } from "./modelValidation";
+import { parseNumbering } from "./numberingParser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import {
   applyUpdatesToZip,
@@ -29,7 +30,13 @@ import {
   addCommentsExtendedRelationship,
 } from "./rezip";
 import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES } from "./selectiveSaveFlags";
-import { buildPatchedDocumentXml, buildPatchedNoteXml, collectParaIds } from "./selectiveXmlPatch";
+import {
+  buildPatchedDocumentXml,
+  buildPatchedNoteXml,
+  buildPatchedNumberingXml,
+  collectChangedNumberingDefs,
+  collectParaIds,
+} from "./selectiveXmlPatch";
 import {
   ensureThreadedCommentParaIds,
   serializeComments,
@@ -37,6 +44,7 @@ import {
 } from "./serializer/commentSerializer";
 import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
+import { serializeNumberingXml } from "./serializer/numberingSerializer";
 
 const SYNTHETIC_IMAGE_RID_PREFIX = "rId_img_";
 
@@ -288,6 +296,58 @@ async function ensureCommentsExtendedPackaging(
   return true;
 }
 
+/**
+ * Splice edited numbering definitions into word/numbering.xml when the model's
+ * numbering differs from the original part.
+ *
+ * Numbering definitions carry no `paraId`, so this is NOT keyed off
+ * `changedParaIds` — it always runs (like the comments/header updates) and uses
+ * a re-parse+re-serialize baseline to detect which `w:abstractNum` / `w:num`
+ * definitions actually changed. The model omits parts of numbering.xml
+ * (`w:nsid`/`w:tmpl`, custom formats, level sub-elements), so only the changed
+ * definitions are spliced by id; every other definition stays byte-exact.
+ *
+ * Any absent numbering part, unchanged numbering, or unsplittable edit leaves
+ * the original part untouched — the file is simply not added to `updates`.
+ */
+async function patchNumberingPart(
+  zip: JSZip,
+  doc: Document,
+  updates: Map<string, string>,
+): Promise<void> {
+  const numbering = doc.package.numbering;
+  if (!numbering || (numbering.abstractNums.length === 0 && numbering.nums.length === 0)) {
+    return;
+  }
+
+  const conventionalLowerPath = "word/numbering.xml";
+  let file = zip.file(conventionalLowerPath);
+  if (!file) {
+    for (const [path, entry] of Object.entries(zip.files)) {
+      if (!entry.dir && path.toLowerCase() === conventionalLowerPath) {
+        file = entry;
+        break;
+      }
+    }
+  }
+  if (!file) {
+    return;
+  }
+
+  const originalXml = await file.async("text");
+  const baselineXml = serializeNumberingXml(parseNumbering(originalXml).definitions);
+  const currentXml = serializeNumberingXml(numbering);
+  const changed = collectChangedNumberingDefs(baselineXml, currentXml);
+  if (changed.abstractNums.size === 0 && changed.nums.size === 0) {
+    return;
+  }
+  const patched = buildPatchedNumberingXml(originalXml, currentXml, changed);
+  if (patched === null) {
+    return;
+  }
+  updates.set(file.name, patched);
+}
+
 export type SelectiveSaveOptions = {
   /** Changed paragraph IDs to selectively patch */
   changedParaIds: Set<string>;
@@ -464,6 +524,11 @@ export async function attemptSelectiveSave(
     if (!(await patchCommentsExtended(zip, comments, updates))) {
       return null;
     }
+
+    // Splice edited numbering definitions into word/numbering.xml. Numbering
+    // carries no paraId, so this always runs and self-detects changes (like the
+    // comments/header updates above); a no-op when numbering is unchanged.
+    await patchNumberingPart(zip, doc, updates);
 
     // Serialize modified headers/footers
     for (const [path, xml] of headerFooterUpdates) {

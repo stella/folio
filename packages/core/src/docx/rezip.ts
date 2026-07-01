@@ -37,8 +37,15 @@ import type { Document, Watermark } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { assertValidFolioDocumentModel } from "./modelValidation";
+import { parseNumbering } from "./numberingParser";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
-import { buildPatchedNoteXml, collectParaIds, extractParagraphXml } from "./selectiveXmlPatch";
+import {
+  buildPatchedNoteXml,
+  buildPatchedNumberingXml,
+  collectChangedNumberingDefs,
+  collectParaIds,
+  extractParagraphXml,
+} from "./selectiveXmlPatch";
 import {
   ensureThreadedCommentParaIds,
   serializeComments,
@@ -47,6 +54,7 @@ import {
 import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
+import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { escapeXml } from "./serializer/xmlUtils";
 import { isPreservableDocxEntry } from "./unzip";
 import type { RawDocxContent } from "./unzip";
@@ -754,6 +762,10 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
   // unedited notes stay byte-exact).
   await serializeNotesToZip(exportDocument, originalZip, newZip, compressionLevel);
 
+  // Splice edited numbering definitions back into word/numbering.xml (untouched
+  // definitions and the parts the model omits stay byte-exact).
+  await serializeNumberingIntoZip(exportDocument, originalZip, newZip, compressionLevel);
+
   // Serialize comments
   await serializeCommentsToZip(exportDocument, newZip, compressionLevel);
 
@@ -864,6 +876,10 @@ export async function repackDocxFromRaw(
   // Splice edited footnote/endnote bodies back into their parts (separators and
   // unedited notes stay byte-exact).
   await serializeNotesToZip(exportDocument, rawContent.originalZip, newZip, compressionLevel);
+
+  // Splice edited numbering definitions back into word/numbering.xml (untouched
+  // definitions and the parts the model omits stay byte-exact).
+  await serializeNumberingIntoZip(exportDocument, rawContent.originalZip, newZip, compressionLevel);
 
   // Serialize comments
   await serializeCommentsToZip(exportDocument, newZip, compressionLevel);
@@ -1697,6 +1713,52 @@ async function serializeNotesToZip(
       compressionLevel,
     );
   }
+}
+
+/**
+ * Write edited numbering definitions into word/numbering.xml.
+ *
+ * Like the note parts, numbering.xml is preserved verbatim by the copy loop:
+ * the model does not faithfully retain it (abstractNums drop `w:nsid`/`w:tmpl`,
+ * custom number formats collapse, level `w:pPr`/`w:rPr` keep only a subset), so
+ * re-emitting the whole part would lose those pieces. Instead each edited
+ * `w:abstractNum` / `w:num` is spliced by id into the ORIGINAL part.
+ *
+ * Full repack has no change-tracking signal, so "edited" is detected by
+ * comparing the model's numbering serialization against a BASELINE that
+ * re-parses and re-serializes the original part. Both go through the same
+ * (lossy) parse+serialize, so an unedited definition matches its baseline and
+ * is left byte-exact; only a genuine definition edit differs and is spliced.
+ */
+async function serializeNumberingIntoZip(
+  doc: Document,
+  originalZip: JSZip,
+  newZip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
+  const numbering = doc.package.numbering;
+  if (!numbering || (numbering.abstractNums.length === 0 && numbering.nums.length === 0)) {
+    return;
+  }
+  const file = findNotePartEntry(originalZip, "word/numbering.xml");
+  if (!file) {
+    return;
+  }
+  const originalXml = await file.async("text");
+  const baselineXml = serializeNumberingXml(parseNumbering(originalXml).definitions);
+  const currentXml = serializeNumberingXml(numbering);
+  const changed = collectChangedNumberingDefs(baselineXml, currentXml);
+  if (changed.abstractNums.size === 0 && changed.nums.size === 0) {
+    return;
+  }
+  const patched = buildPatchedNumberingXml(originalXml, currentXml, changed);
+  if (patched === null) {
+    return;
+  }
+  newZip.file(file.name, patched, {
+    compression: "DEFLATE",
+    compressionOptions: { level: compressionLevel },
+  });
 }
 
 async function patchNotePartIntoZip(
