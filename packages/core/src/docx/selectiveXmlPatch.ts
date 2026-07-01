@@ -7,6 +7,20 @@
  */
 
 /**
+ * Whether `char` ends an element's tag name in XML — a whitespace separator
+ * (space, tab, CR, or LF, all valid before attributes per XML 1.0 §3.1), the
+ * tag close `>`, or a self-close `/`. Manual tag scanners must accept every
+ * whitespace form, not just a literal space, so newline-formatted markup
+ * (`<w:p\n  w14:paraId="…">`) is still recognized as the element rather than
+ * mistaken for a longer-named sibling.
+ */
+function isXmlNameBoundary(char: string | undefined): boolean {
+  return (
+    char === " " || char === "\t" || char === "\n" || char === "\r" || char === ">" || char === "/"
+  );
+}
+
+/**
  * Find the exact string start and end offsets of a <w:p> element
  * identified by its w14:paraId attribute.
  *
@@ -58,7 +72,7 @@ export function findParagraphOffsets(
     if (xml.startsWith("<w:p", tagStart)) {
       const charAfterTag = xml[tagStart + 4];
       // Must be <w:p> or <w:p or <w:p/ (not <w:pPr, <w:pStyle, etc.)
-      if (charAfterTag === ">" || charAfterTag === " " || charAfterTag === "/") {
+      if (isXmlNameBoundary(charAfterTag)) {
         // Check for self-closing: <w:p ... />
         const tagEnd = xml.indexOf(">", tagStart);
         if (tagEnd === -1) {
@@ -116,10 +130,11 @@ export function countParagraphElements(xml: string): number {
   const pattern = /<w:p[\s>]/gu;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(xml)) !== null) {
-    // Verify this is actually <w:p and not <w:pPr etc.
+    // Verify this is actually <w:p and not <w:pPr etc. The regex already
+    // required a whitespace-or-`>` boundary, so this rejects only <w:pPr-style
+    // names while accepting every whitespace form (space, tab, CR, LF).
     const idx = match.index;
-    const charAfter = xml[idx + 4];
-    if (charAfter === ">" || charAfter === " ") {
+    if (isXmlNameBoundary(xml[idx + 4])) {
       count++;
     }
   }
@@ -329,63 +344,19 @@ function spliceChangedParagraphs(
 // untouched definition (and the parts the model omits — `w:nsid`, `w:tmpl`,
 // `w:numPicBullet`, unmodeled level sub-elements) stays byte-exact.
 
-type NumberingElementKind = "abstractNum" | "num";
-
-const NUMBERING_OPEN_LITERAL: Record<NumberingElementKind, string> = {
-  abstractNum: "<w:abstractNum",
-  num: "<w:num",
-};
-
-const NUMBERING_CLOSE_TAG: Record<NumberingElementKind, string> = {
-  abstractNum: "</w:abstractNum>",
-  num: "</w:num>",
-};
-
-const NUMBERING_ID_ATTR: Record<NumberingElementKind, string> = {
-  abstractNum: "w:abstractNumId",
-  num: "w:numId",
-};
-
 /**
- * Whether the character after an opening `<w:num` / `<w:abstractNum` literal
- * marks the actual element rather than a longer-named sibling — `<w:num ` /
- * `<w:num>` (the instance) but not `<w:numFmt` / `<w:numbering`, and
- * `<w:abstractNum ` but not the `<w:abstractNumId>` child of an instance.
+ * Depth-count the end of the element that opens at `start` (an `<openLiteral…>`
+ * offset), returning its full range. Nested same-name opens increment depth;
+ * the matching `closeTag` (or a self-close) at depth 0 ends it. The boundary
+ * check skips longer-named siblings (`<w:numFmt>` when scanning `<w:num`).
  */
-function isElementBoundaryChar(char: string | undefined): boolean {
-  return char === ">" || char === " " || char === "/";
-}
-
-/**
- * Find the exact start/end offsets of a numbering definition element identified
- * by its id attribute, depth-counting the matching close tag. Returns null when
- * the id is absent or appears more than once (ambiguous).
- */
-function findNumberingElementOffsets(
+function scanElementRange(
   xml: string,
-  kind: NumberingElementKind,
-  id: string,
+  start: number,
+  openLiteral: string,
+  closeTag: string,
 ): { start: number; end: number } | null {
-  const openLiteral = NUMBERING_OPEN_LITERAL[kind];
-  const closeTag = NUMBERING_CLOSE_TAG[kind];
-  const idAttr = NUMBERING_ID_ATTR[kind];
-
-  const pattern = new RegExp(
-    `${escapeRegExp(openLiteral)}[\\s][^>]*${escapeRegExp(idAttr)}="${escapeRegExp(id)}"`,
-    "gu",
-  );
-  const matches: number[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(xml)) !== null) {
-    matches.push(match.index);
-  }
-  if (matches.length !== 1) {
-    return null;
-  }
-  // SAFETY: matches.length === 1 verified above
-  const start = matches[0]!;
   const afterOpenIndex = openLiteral.length;
-
   let pos = start;
   let depth = 0;
   while (pos < xml.length) {
@@ -394,8 +365,7 @@ function findNumberingElementOffsets(
       break;
     }
     if (xml.startsWith(openLiteral, tagStart)) {
-      if (!isElementBoundaryChar(xml[tagStart + afterOpenIndex])) {
-        // A longer-named sibling like <w:numFmt> — not our element.
+      if (!isXmlNameBoundary(xml[tagStart + afterOpenIndex])) {
         pos = tagStart + 1;
         continue;
       }
@@ -426,29 +396,80 @@ function findNumberingElementOffsets(
 }
 
 /**
- * Extract the serialized XML for a single numbering definition element by id.
+ * Find the exact start/end offsets of the element `<openLiteral … idAttr="id">`,
+ * depth-counting its matching close tag. Returns null when the id is absent or
+ * ambiguous (appears more than once).
  */
-function extractNumberingElementXml(
+function findElementByIdAttr(
   xml: string,
-  kind: NumberingElementKind,
+  openLiteral: string,
+  closeTag: string,
+  idAttr: string,
   id: string,
-): string | null {
-  const offsets = findNumberingElementOffsets(xml, kind, id);
-  if (!offsets) {
+): { start: number; end: number } | null {
+  const pattern = new RegExp(
+    `${escapeRegExp(openLiteral)}[\\s][^>]*${escapeRegExp(idAttr)}="${escapeRegExp(id)}"`,
+    "gu",
+  );
+  const matches: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(xml)) !== null) {
+    matches.push(match.index);
+  }
+  if (matches.length !== 1) {
     return null;
   }
-  return xml.slice(offsets.start, offsets.end);
+  // SAFETY: matches.length === 1 verified above
+  return scanElementRange(xml, matches[0]!, openLiteral, closeTag);
 }
 
 /**
- * Collect the ids carried by opening tags of a numbering definition element,
- * with counts so duplicates can be rejected. Only real element opening tags
- * match (the `[\s]` after the literal excludes `<w:numFmt` and the like).
+ * Extract the serialized XML for `<openLiteral … idAttr="id">…`, or null when it
+ * cannot be resolved uniquely.
  */
-function collectNumberingElementIds(xml: string, kind: NumberingElementKind): Map<string, number> {
+function extractElementByIdAttr(
+  xml: string,
+  openLiteral: string,
+  closeTag: string,
+  idAttr: string,
+  id: string,
+): string | null {
+  const offsets = findElementByIdAttr(xml, openLiteral, closeTag, idAttr, id);
+  return offsets ? xml.slice(offsets.start, offsets.end) : null;
+}
+
+/**
+ * The full range of the first `<openLiteral …>…</closeTag>` element, or null.
+ * Used to locate an unkeyed sub-element (a level's `mc:AlternateContent`).
+ */
+function findFirstElement(
+  xml: string,
+  openLiteral: string,
+  closeTag: string,
+): { start: number; end: number } | null {
+  let pos = 0;
+  while (pos < xml.length) {
+    const idx = xml.indexOf(openLiteral, pos);
+    if (idx === -1) {
+      return null;
+    }
+    if (isXmlNameBoundary(xml[idx + openLiteral.length])) {
+      return scanElementRange(xml, idx, openLiteral, closeTag);
+    }
+    pos = idx + 1;
+  }
+  return null;
+}
+
+/**
+ * Collect the ids carried by opening `<openLiteral … idAttr="…">` tags, with
+ * counts so duplicates can be rejected. The `[\s]` after the literal restricts
+ * matches to the exact element (excluding `<w:numFmt` when scanning `<w:num`).
+ */
+function collectElementIds(xml: string, openLiteral: string, idAttr: string): Map<string, number> {
   const ids = new Map<string, number>();
   const pattern = new RegExp(
-    `${escapeRegExp(NUMBERING_OPEN_LITERAL[kind])}[\\s][^>]*?${escapeRegExp(NUMBERING_ID_ATTR[kind])}="(?<id>[^"]+)"`,
+    `${escapeRegExp(openLiteral)}[\\s][^>]*?${escapeRegExp(idAttr)}="(?<id>[^"]+)"`,
     "gu",
   );
   let match: RegExpExecArray | null;
@@ -459,6 +480,64 @@ function collectNumberingElementIds(xml: string, kind: NumberingElementKind): Ma
   }
   return ids;
 }
+
+type NumberingElementKind = "abstractNum" | "num";
+
+const NUMBERING_OPEN_LITERAL: Record<NumberingElementKind, string> = {
+  abstractNum: "<w:abstractNum",
+  num: "<w:num",
+};
+
+const NUMBERING_CLOSE_TAG: Record<NumberingElementKind, string> = {
+  abstractNum: "</w:abstractNum>",
+  num: "</w:num>",
+};
+
+const NUMBERING_ID_ATTR: Record<NumberingElementKind, string> = {
+  abstractNum: "w:abstractNumId",
+  num: "w:numId",
+};
+
+const LEVEL_OPEN_LITERAL = "<w:lvl";
+const LEVEL_CLOSE_TAG = "</w:lvl>";
+const LEVEL_ID_ATTR = "w:ilvl";
+
+function findNumberingElementOffsets(
+  xml: string,
+  kind: NumberingElementKind,
+  id: string,
+): { start: number; end: number } | null {
+  return findElementByIdAttr(
+    xml,
+    NUMBERING_OPEN_LITERAL[kind],
+    NUMBERING_CLOSE_TAG[kind],
+    NUMBERING_ID_ATTR[kind],
+    id,
+  );
+}
+
+function extractNumberingElementXml(
+  xml: string,
+  kind: NumberingElementKind,
+  id: string,
+): string | null {
+  return extractElementByIdAttr(
+    xml,
+    NUMBERING_OPEN_LITERAL[kind],
+    NUMBERING_CLOSE_TAG[kind],
+    NUMBERING_ID_ATTR[kind],
+    id,
+  );
+}
+
+function collectNumberingElementIds(xml: string, kind: NumberingElementKind): Map<string, number> {
+  return collectElementIds(xml, NUMBERING_OPEN_LITERAL[kind], NUMBERING_ID_ATTR[kind]);
+}
+
+// Synthetic number formats folio's parser mints from custom / mc:AlternateContent
+// formats (`decimalZero3/4/5`). These are NOT valid OOXML values, so a changed
+// definition must never emit them verbatim — see restoreLevelNumFmts.
+const SYNTHETIC_NUM_FMT_PATTERN = /<w:numFmt w:val="decimalZero(?<width>[345])"\/>/u;
 
 export type ChangedNumberingDefs = {
   abstractNums: Set<string>;
@@ -495,6 +574,91 @@ export function collectChangedNumberingDefs(
 }
 
 /**
+ * The element representing a level's number format in the source XML: the
+ * `<mc:AlternateContent>` block Word wraps a custom format in, else a
+ * self-closing `<w:numFmt …/>` (covers `<w:numFmt w:val="custom" w:format=…/>`).
+ */
+function extractLevelNumFmtElement(levelXml: string): string | null {
+  const alt = findFirstElement(levelXml, "<mc:AlternateContent", "</mc:AlternateContent>");
+  if (alt) {
+    return levelXml.slice(alt.start, alt.end);
+  }
+  const match = /<w:numFmt\b[^>]*\/>/u.exec(levelXml);
+  return match ? match[0] : null;
+}
+
+/**
+ * A valid OOXML custom number format equivalent to a `decimalZero{width}`
+ * synthetic value: a zero-padded first token folio's parser reads back to the
+ * same width. Used only when the original element cannot be resolved, so a
+ * changed definition never emits a non-OOXML synthetic value.
+ */
+function reconstructCustomNumFmt(width: string): string {
+  const token = `${"0".repeat(Number.parseInt(width, 10) - 1)}1`;
+  return `<w:numFmt w:val="custom" w:format="${token}"/>`;
+}
+
+/**
+ * Swap each synthetic `decimalZero{3,4,5}` numFmt in a re-serialized definition
+ * back to the original level's number-format element.
+ *
+ * folio's parser collapses a Word custom / mc:AlternateContent number format
+ * into a synthetic `decimalZero{3,4,5}` value the model cannot re-emit as valid
+ * OOXML. When an unrelated field of the definition is edited, the whole
+ * definition is re-serialized, so without this pass the level's custom format
+ * would be replaced by an invalid value and lost on reparse. For each level
+ * whose re-emitted numFmt is synthetic, restore the original level's numFmt
+ * element by ilvl; when the original cannot be resolved, fall back to a valid
+ * OOXML custom format that preserves the zero-pad width rather than leaving a
+ * synthetic value.
+ */
+function restoreLevelNumFmts(originalDefXml: string, currentDefXml: string): string {
+  const replacements: { start: number; end: number; newXml: string }[] = [];
+  for (const [ilvl, count] of collectElementIds(currentDefXml, LEVEL_OPEN_LITERAL, LEVEL_ID_ATTR)) {
+    if (count !== 1) {
+      continue;
+    }
+    const curOffsets = findElementByIdAttr(
+      currentDefXml,
+      LEVEL_OPEN_LITERAL,
+      LEVEL_CLOSE_TAG,
+      LEVEL_ID_ATTR,
+      ilvl,
+    );
+    if (!curOffsets) {
+      continue;
+    }
+    const curLevel = currentDefXml.slice(curOffsets.start, curOffsets.end);
+    const synthetic = SYNTHETIC_NUM_FMT_PATTERN.exec(curLevel);
+    if (!synthetic) {
+      continue;
+    }
+    const origLevel = extractElementByIdAttr(
+      originalDefXml,
+      LEVEL_OPEN_LITERAL,
+      LEVEL_CLOSE_TAG,
+      LEVEL_ID_ATTR,
+      ilvl,
+    );
+    const original = origLevel ? extractLevelNumFmtElement(origLevel) : null;
+    // SAFETY: named group `width` present because SYNTHETIC_NUM_FMT_PATTERN matched
+    const replacement = original ?? reconstructCustomNumFmt(synthetic.groups!["width"]!);
+    const restoredLevel =
+      curLevel.slice(0, synthetic.index) +
+      replacement +
+      curLevel.slice(synthetic.index + synthetic[0].length);
+    replacements.push({ start: curOffsets.start, end: curOffsets.end, newXml: restoredLevel });
+  }
+
+  replacements.sort((a, b) => b.start - a.start);
+  let result = currentDefXml;
+  for (const { start, end, newXml } of replacements) {
+    result = result.slice(0, start) + newXml + result.slice(end);
+  }
+  return result;
+}
+
+/**
  * Build a patched `word/numbering.xml` by splicing the changed `w:abstractNum` /
  * `w:num` definitions from `currentXml` (the model's serialization) into
  * `originalXml`, preserving every other byte. Returns the original unchanged
@@ -517,10 +681,14 @@ export function buildPatchedNumberingXml(
       if (!origOffsets) {
         return false;
       }
-      const newXml = extractNumberingElementXml(currentXml, kind, id);
-      if (newXml === null) {
+      const reserialized = extractNumberingElementXml(currentXml, kind, id);
+      if (reserialized === null) {
         return false;
       }
+      // Restore any custom/mc:AlternateContent numFmt the model flattened to a
+      // synthetic value, so editing an unrelated field never corrupts the format.
+      const originalDefXml = originalXml.slice(origOffsets.start, origOffsets.end);
+      const newXml = restoreLevelNumFmts(originalDefXml, reserialized);
       replacements.push({ start: origOffsets.start, end: origOffsets.end, newXml });
     }
     return true;

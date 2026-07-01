@@ -106,16 +106,23 @@ const documentRelsXml = `${XML_DECLARATION}
   <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.numbering}" Target="numbering.xml"/>
 </Relationships>`;
 
-async function createNumberingFixture(): Promise<ArrayBuffer> {
+async function buildDocx(parts: {
+  numberingXml: string;
+  documentXml: string;
+}): Promise<ArrayBuffer> {
   const zip = new JSZip();
   zip.file("[Content_Types].xml", contentTypesXml);
   zip.file("_rels/.rels", packageRelsXml);
   zip.file("word/_rels/document.xml.rels", documentRelsXml);
-  zip.file("word/document.xml", documentXml);
+  zip.file("word/document.xml", parts.documentXml);
   zip.file("word/styles.xml", stylesXml);
-  zip.file("word/numbering.xml", numberingXml);
+  zip.file("word/numbering.xml", parts.numberingXml);
   zip.file("docProps/core.xml", corePropertiesXml);
   return zip.generateAsync({ type: "arraybuffer" });
+}
+
+async function createNumberingFixture(): Promise<ArrayBuffer> {
+  return buildDocx({ numberingXml, documentXml });
 }
 
 async function readPart(buffer: ArrayBuffer, path: string): Promise<string> {
@@ -278,5 +285,128 @@ describe("numbering-definition write path (full repack)", () => {
     expect(await readPart(selective, "word/numbering.xml")).toBe(
       await readPart(full, "word/numbering.xml"),
     );
+  });
+});
+
+// A document referencing a single numbering instance, for the focused fixtures
+// below.
+const singleListDocumentXml = (numId: number) => `${XML_DECLARATION}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    <w:p w14:paraId="C0000001"><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">Item</w:t></w:r></w:p>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+  </w:body>
+</w:document>`;
+
+describe("numbering-definition write path (newline-formatted opening tags)", () => {
+  // The abstractNum / num opening tags carry a newline before their id
+  // attribute, which is valid XML. The element scanner must treat it as a name
+  // boundary (not a longer-named sibling) or the patch silently no-ops.
+  const newlineNumberingXml =
+    `${XML_DECLARATION}\n` +
+    '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:abstractNum\n    w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>' +
+    `<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/><w:lvlJc w:val="left"/></w:lvl></w:abstractNum>` +
+    '<w:num\n    w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
+    "</w:numbering>";
+
+  test("edit persists through both save paths despite newline-formatted tags", async () => {
+    const buffer = await buildDocx({
+      numberingXml: newlineNumberingXml,
+      documentXml: singleListDocumentXml(1),
+    });
+
+    const selectiveDoc = await parseDocx(buffer, { preloadFonts: false });
+    editFirstLevelText(selectiveDoc, 0, EDITED_LVL_TEXT);
+    const selective = await attemptSelectiveSave(selectiveDoc, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+    expect(selective).not.toBeNull();
+    if (!selective) {
+      throw new Error("selective save returned null");
+    }
+    expect(levelText(await parseDocx(selective, { preloadFonts: false }), 0)).toBe(EDITED_LVL_TEXT);
+    expect(await readPart(selective, "word/numbering.xml")).toContain(
+      `<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`,
+    );
+
+    const fullDoc = await parseDocx(buffer, { preloadFonts: false });
+    editFirstLevelText(fullDoc, 0, EDITED_LVL_TEXT);
+    const full = await repackDocx({ ...fullDoc, originalBuffer: buffer });
+    expect(levelText(await parseDocx(full, { preloadFonts: false }), 0)).toBe(EDITED_LVL_TEXT);
+  });
+});
+
+describe("numbering-definition write path (custom / AlternateContent numFmt)", () => {
+  // abstractNum 0 level 0 carries a Word custom number format wrapped in
+  // mc:AlternateContent. folio's model flattens it to a synthetic decimalZero4
+  // it cannot re-emit as valid OOXML, so editing an UNRELATED field (lvlText)
+  // must preserve the original numFmt element rather than write the synthetic.
+  const CUSTOM_ALT_CONTENT =
+    '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">' +
+    '<mc:Choice Requires="w14"><w:numFmt w:val="custom" w:format="0001, 0002, 0003"/></mc:Choice>' +
+    '<mc:Fallback><w:numFmt w:val="decimal"/></mc:Fallback></mc:AlternateContent>';
+  const customNumberingXml =
+    `${XML_DECLARATION}\n` +
+    '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+    'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ' +
+    'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">' +
+    '<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>' +
+    `<w:lvl w:ilvl="0"><w:start w:val="1"/>${CUSTOM_ALT_CONTENT}<w:lvlText w:val="${ORIGINAL_LVL_TEXT}"/><w:lvlJc w:val="left"/></w:lvl></w:abstractNum>` +
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
+    "</w:numbering>";
+
+  const expectCustomFormatSurvives = async (saved: ArrayBuffer): Promise<void> => {
+    const savedNumberingXml = await readPart(saved, "word/numbering.xml");
+    // The original custom numFmt element is preserved verbatim...
+    expect(savedNumberingXml).toContain(CUSTOM_ALT_CONTENT);
+    // ...and no synthetic (non-OOXML) value leaked into the saved file.
+    expect(savedNumberingXml).not.toContain("decimalZero4");
+    // The edit landed and the format still round-trips to the synthetic model value.
+    expect(savedNumberingXml).toContain(`<w:lvlText w:val="${EDITED_LVL_TEXT}"/>`);
+    const reparsed = await parseDocx(saved, { preloadFonts: false });
+    expect(levelText(reparsed, 0)).toBe(EDITED_LVL_TEXT);
+    const level = reparsed.package.numbering?.abstractNums
+      .find((a) => a.abstractNumId === 0)
+      ?.levels.find((l) => l.ilvl === 0);
+    expect(level?.numFmt).toBe("decimalZero4");
+  };
+
+  test("selective save preserves the custom format when a different field is edited", async () => {
+    const buffer = await buildDocx({
+      numberingXml: customNumberingXml,
+      documentXml: singleListDocumentXml(1),
+    });
+    // Sanity: the model flattened the custom format to the synthetic value.
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    const level = doc.package.numbering?.abstractNums
+      .find((a) => a.abstractNumId === 0)
+      ?.levels.find((l) => l.ilvl === 0);
+    expect(level?.numFmt).toBe("decimalZero4");
+
+    editFirstLevelText(doc, 0, EDITED_LVL_TEXT);
+    const result = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error("selective save returned null");
+    }
+    await expectCustomFormatSurvives(result);
+  });
+
+  test("full repack preserves the custom format when a different field is edited", async () => {
+    const buffer = await buildDocx({
+      numberingXml: customNumberingXml,
+      documentXml: singleListDocumentXml(1),
+    });
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    editFirstLevelText(doc, 0, EDITED_LVL_TEXT);
+    const result = await repackDocx({ ...doc, originalBuffer: buffer });
+    await expectCustomFormatSurvives(result);
   });
 });
