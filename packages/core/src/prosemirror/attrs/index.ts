@@ -540,6 +540,7 @@ export const readSdtAttrs = (node: PMNode): ReadProseMirrorAttrsResult<SdtAttrs>
   requiredOneOf(attrs, "sdtType", "sdt.attrs.sdtType", issues, SDT_TYPE_VALUES);
   optionalString(attrs, "alias", "sdt.attrs.alias", issues);
   optionalString(attrs, "tag", "sdt.attrs.tag", issues);
+  optionalNumber(attrs, "id", "sdt.attrs.id", issues);
   optionalOneOf(attrs, "lock", "sdt.attrs.lock", issues, SDT_LOCK_VALUES);
   optionalString(attrs, "placeholder", "sdt.attrs.placeholder", issues);
   optionalBoolean(attrs, "showingPlaceholder", "sdt.attrs.showingPlaceholder", issues);
@@ -548,6 +549,8 @@ export const readSdtAttrs = (node: PMNode): ReadProseMirrorAttrsResult<SdtAttrs>
   optionalSdtListItems(attrs, "listItems", "sdt.attrs.listItems", issues);
   optionalString(attrs, "dropdownLastValue", "sdt.attrs.dropdownLastValue", issues);
   optionalBoolean(attrs, "checked", "sdt.attrs.checked", issues);
+  optionalString(attrs, "rawPropertiesXml", "sdt.attrs.rawPropertiesXml", issues);
+  optionalString(attrs, "rawEndPropertiesXml", "sdt.attrs.rawEndPropertiesXml", issues);
 
   return attrsResult(attrs, issues);
 };

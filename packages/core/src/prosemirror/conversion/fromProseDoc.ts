@@ -1563,6 +1563,12 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
   if (attrs.tag) {
     properties.tag = attrs.tag;
   }
+  // `typeof` guards (not `!== undefined`) so a ProseMirror null default can
+  // never enter the `number` / `string` / `boolean`-typed model property,
+  // matching the block-SDT reader (`convertPMBlockSdt`).
+  if (typeof attrs.id === "number") {
+    properties.id = attrs.id;
+  }
   if (attrs.lock) {
     properties.lock = attrs.lock;
   }
@@ -1581,8 +1587,17 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
   if (attrs.listItems) {
     properties.listItems = parseSdtListItems(attrs.listItems);
   }
-  if (attrs.checked !== undefined) {
+  if (typeof attrs.dropdownLastValue === "string") {
+    properties.dropdownLastValue = attrs.dropdownLastValue;
+  }
+  if (typeof attrs.checked === "boolean") {
     properties.checked = attrs.checked;
+  }
+  if (attrs.rawPropertiesXml) {
+    properties.rawPropertiesXml = attrs.rawPropertiesXml;
+  }
+  if (attrs.rawEndPropertiesXml) {
+    properties.rawEndPropertiesXml = attrs.rawEndPropertiesXml;
   }
 
   // Extract content from the sdt node's children. OOXML allows runs,
