@@ -10,7 +10,7 @@
  * Drag tooltip shows value during any drag.
  */
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type { CSSProperties } from "react";
 import type { SectionProperties, TabStop } from "@stll/folio-core/types/document";
 import { twipsToPixels, pixelsToTwips, formatPx } from "@stll/folio-core/utils/units";
@@ -132,6 +132,27 @@ export function HorizontalRuler({
   const rightIndentPosPx = pageWidthPx - rightMarginPx - indentRightPx;
   const firstLinePosPx = leftMarginPx + indentLeftPx + firstLineIndentPx;
 
+  // Values handleDrag reads change on every margin/indent update while a drag
+  // is in flight. Stash them in a ref read inside the (stable) handler so the
+  // mousemove/mouseup effect binds document listeners once per drag, not per frame.
+  const dragParams = {
+    dragging,
+    zoom,
+    pageWidthTwips,
+    leftMarginTwips,
+    rightMarginTwips,
+    contentTwips,
+    indentLeft,
+    indentRight,
+    onLeftMarginChange,
+    onRightMarginChange,
+    onFirstLineIndentChange,
+    onIndentLeftChange,
+    onIndentRightChange,
+  };
+  const dragParamsRef = useRef(dragParams);
+  dragParamsRef.current = dragParams;
+
   const handleDragStart = useCallback(
     (e: React.MouseEvent, marker: MarkerType) => {
       if (!editable) return;
@@ -142,64 +163,48 @@ export function HorizontalRuler({
     [editable],
   );
 
-  const handleDrag = useCallback(
-    (e: MouseEvent) => {
-      if (!dragging || !rulerRef.current) return;
+  const handleDrag = useCallback((e: MouseEvent) => {
+    const params = dragParamsRef.current;
+    if (!params.dragging || !rulerRef.current) return;
 
-      const rect = rulerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      setDragPositionPx(x);
-      const positionTwips = pixelsToTwips(x / zoom);
+    const rect = rulerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    setDragPositionPx(x);
+    const positionTwips = pixelsToTwips(x / params.zoom);
 
-      if (dragging === "leftMargin") {
-        const maxMargin = pageWidthTwips - rightMarginTwips - 720;
-        const rounded = Math.round(Math.max(0, Math.min(positionTwips, maxMargin)));
-        setDragValue(rounded);
-        onLeftMarginChange?.(rounded);
-      } else if (dragging === "rightMargin") {
-        const fromRight = pageWidthTwips - positionTwips;
-        const maxMargin = pageWidthTwips - leftMarginTwips - 720;
-        const rounded = Math.round(Math.max(0, Math.min(fromRight, maxMargin)));
-        setDragValue(rounded);
-        onRightMarginChange?.(rounded);
-      } else if (dragging === "firstLineIndent") {
-        const base = leftMarginTwips + indentLeft;
-        const indentFromBase = positionTwips - base;
-        const maxIndent = contentTwips - indentLeft - indentRight - 720;
-        const rounded = Math.round(Math.max(-indentLeft, Math.min(indentFromBase, maxIndent)));
-        setDragValue(rounded);
-        onFirstLineIndentChange?.(rounded);
-      } else if (dragging === "leftIndent") {
-        const indentFromMargin = positionTwips - leftMarginTwips;
-        const maxIndent = contentTwips - indentRight - 720;
-        const rounded = Math.round(Math.max(0, Math.min(indentFromMargin, maxIndent)));
-        setDragValue(rounded);
-        onIndentLeftChange?.(rounded);
-      } else if (dragging === "rightIndent") {
-        const rightEdge = pageWidthTwips - rightMarginTwips;
-        const indentFromRight = rightEdge - positionTwips;
-        const maxIndent = contentTwips - indentLeft - 720;
-        const rounded = Math.round(Math.max(0, Math.min(indentFromRight, maxIndent)));
-        setDragValue(rounded);
-        onIndentRightChange?.(rounded);
-      }
-    },
-    [
-      dragging,
-      zoom,
-      pageWidthTwips,
-      leftMarginTwips,
-      rightMarginTwips,
-      contentTwips,
-      indentLeft,
-      indentRight,
-      onLeftMarginChange,
-      onRightMarginChange,
-      onFirstLineIndentChange,
-      onIndentLeftChange,
-      onIndentRightChange,
-    ],
-  );
+    if (params.dragging === "leftMargin") {
+      const maxMargin = params.pageWidthTwips - params.rightMarginTwips - 720;
+      const rounded = Math.round(Math.max(0, Math.min(positionTwips, maxMargin)));
+      setDragValue(rounded);
+      params.onLeftMarginChange?.(rounded);
+    } else if (params.dragging === "rightMargin") {
+      const fromRight = params.pageWidthTwips - positionTwips;
+      const maxMargin = params.pageWidthTwips - params.leftMarginTwips - 720;
+      const rounded = Math.round(Math.max(0, Math.min(fromRight, maxMargin)));
+      setDragValue(rounded);
+      params.onRightMarginChange?.(rounded);
+    } else if (params.dragging === "firstLineIndent") {
+      const base = params.leftMarginTwips + params.indentLeft;
+      const indentFromBase = positionTwips - base;
+      const maxIndent = params.contentTwips - params.indentLeft - params.indentRight - 720;
+      const rounded = Math.round(Math.max(-params.indentLeft, Math.min(indentFromBase, maxIndent)));
+      setDragValue(rounded);
+      params.onFirstLineIndentChange?.(rounded);
+    } else if (params.dragging === "leftIndent") {
+      const indentFromMargin = positionTwips - params.leftMarginTwips;
+      const maxIndent = params.contentTwips - params.indentRight - 720;
+      const rounded = Math.round(Math.max(0, Math.min(indentFromMargin, maxIndent)));
+      setDragValue(rounded);
+      params.onIndentLeftChange?.(rounded);
+    } else if (params.dragging === "rightIndent") {
+      const rightEdge = params.pageWidthTwips - params.rightMarginTwips;
+      const indentFromRight = rightEdge - positionTwips;
+      const maxIndent = params.contentTwips - params.indentLeft - 720;
+      const rounded = Math.round(Math.max(0, Math.min(indentFromRight, maxIndent)));
+      setDragValue(rounded);
+      params.onIndentRightChange?.(rounded);
+    }
+  }, []);
 
   const handleDragEnd = useCallback(() => {
     setDragging(null);
@@ -219,7 +224,10 @@ export function HorizontalRuler({
     return undefined;
   }, [dragging, handleDrag, handleDragEnd]);
 
-  const ticks = generateTicks(pageWidthTwips, zoom, unit);
+  const ticks = useMemo(
+    () => generateTicks(pageWidthTwips, zoom, unit),
+    [pageWidthTwips, zoom, unit],
+  );
 
   return (
     <div

@@ -10,7 +10,7 @@
  * Similar to Google Docs' vertical ruler.
  */
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type { CSSProperties } from "react";
 import type { SectionProperties } from "@stll/folio-core/types/document";
 import { twipsToPixels, pixelsToTwips, formatPx } from "@stll/folio-core/utils/units";
@@ -95,6 +95,21 @@ export function VerticalRuler({
   const topMarginPx = twipsToPixels(topMarginTwips) * zoom;
   const bottomMarginPx = twipsToPixels(bottomMarginTwips) * zoom;
 
+  // Values handleDrag reads change on every margin update while a drag is in
+  // flight. Stash them in a ref read inside the (stable) handler so the
+  // mousemove/mouseup effect binds document listeners once per drag, not per frame.
+  const dragParams = {
+    dragging,
+    zoom,
+    pageHeightTwips,
+    topMarginTwips,
+    bottomMarginTwips,
+    onTopMarginChange,
+    onBottomMarginChange,
+  };
+  const dragParamsRef = useRef(dragParams);
+  dragParamsRef.current = dragParams;
+
   // Handle drag start
   const handleDragStart = useCallback(
     (e: React.MouseEvent, marker: MarkerType) => {
@@ -106,36 +121,26 @@ export function VerticalRuler({
   );
 
   // Handle drag
-  const handleDrag = useCallback(
-    (e: MouseEvent) => {
-      if (!dragging || !rulerRef.current) return;
+  const handleDrag = useCallback((e: MouseEvent) => {
+    const params = dragParamsRef.current;
+    if (!params.dragging || !rulerRef.current) return;
 
-      const rect = rulerRef.current.getBoundingClientRect();
-      const y = e.clientY - rect.top;
+    const rect = rulerRef.current.getBoundingClientRect();
+    const y = e.clientY - rect.top;
 
-      const positionTwips = pixelsToTwips(y / zoom);
+    const positionTwips = pixelsToTwips(y / params.zoom);
 
-      if (dragging === "topMargin") {
-        const maxMargin = pageHeightTwips - bottomMarginTwips - 720;
-        const newMargin = Math.max(0, Math.min(positionTwips, maxMargin));
-        onTopMarginChange?.(Math.round(newMargin));
-      } else if (dragging === "bottomMargin") {
-        const fromBottom = pageHeightTwips - positionTwips;
-        const maxMargin = pageHeightTwips - topMarginTwips - 720;
-        const newMargin = Math.max(0, Math.min(fromBottom, maxMargin));
-        onBottomMarginChange?.(Math.round(newMargin));
-      }
-    },
-    [
-      dragging,
-      zoom,
-      pageHeightTwips,
-      topMarginTwips,
-      bottomMarginTwips,
-      onTopMarginChange,
-      onBottomMarginChange,
-    ],
-  );
+    if (params.dragging === "topMargin") {
+      const maxMargin = params.pageHeightTwips - params.bottomMarginTwips - 720;
+      const newMargin = Math.max(0, Math.min(positionTwips, maxMargin));
+      params.onTopMarginChange?.(Math.round(newMargin));
+    } else if (params.dragging === "bottomMargin") {
+      const fromBottom = params.pageHeightTwips - positionTwips;
+      const maxMargin = params.pageHeightTwips - params.topMarginTwips - 720;
+      const newMargin = Math.max(0, Math.min(fromBottom, maxMargin));
+      params.onBottomMarginChange?.(Math.round(newMargin));
+    }
+  }, []);
 
   // Handle drag end
   const handleDragEnd = useCallback(() => {
@@ -156,7 +161,10 @@ export function VerticalRuler({
   }, [dragging, handleDrag, handleDragEnd]);
 
   // Generate tick marks
-  const ticks = generateVerticalTicks(pageHeightTwips, zoom, unit);
+  const ticks = useMemo(
+    () => generateVerticalTicks(pageHeightTwips, zoom, unit),
+    [pageHeightTwips, zoom, unit],
+  );
 
   const rulerStyle: CSSProperties = {
     position: "relative",

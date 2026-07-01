@@ -3260,7 +3260,7 @@ export function DocxEditor({
                       scrolls horizontally with the document. paddingRight biases
                       the centered ruler left by the comments-sidebar scroll gutter
                       so it tracks the page when the sidebar shifts it. */}
-                  {rulerVisible && (
+                  {rulerVisible && !readOnly && (
                     <div
                       style={{
                         position: "sticky",
@@ -3329,7 +3329,7 @@ export function DocxEditor({
                           inset is needed). paddingTop tracks the viewport's
                           scaled top padding so the ruler's zero aligns with the
                           first page's top edge across zoom levels. */}
-                      {rulerVisible && !readOnlyProp && (
+                      {rulerVisible && !readOnly && (
                         <div
                           style={{
                             position: "absolute",
