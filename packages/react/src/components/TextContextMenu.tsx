@@ -149,7 +149,7 @@ const DEFAULT_MENU_ITEMS: TextContextMenuItem[] = [
   {
     action: "pasteAsPlainText",
     label: "Paste as Plain Text",
-    shortcut: "Ctrl+Shift+V",
+    shortcut: "Ctrl+Alt+V",
     dividerAfter: true,
   },
   { action: "delete", label: "Delete", shortcut: "Del", dividerAfter: true },
@@ -762,7 +762,7 @@ export function getTextActionShortcut(action: TextContextAction): string {
     cut: "Ctrl+X",
     copy: "Ctrl+C",
     paste: "Ctrl+V",
-    pasteAsPlainText: "Ctrl+Shift+V",
+    pasteAsPlainText: "Ctrl+Alt+V",
     selectAll: "Ctrl+A",
     delete: "Del",
     separator: "",

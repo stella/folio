@@ -2153,7 +2153,7 @@ export function DocxEditor({
       {
         action: "pasteAsPlainText",
         label: t("pasteUnformatted"),
-        shortcut: `${mod}+Shift+V`,
+        shortcut: `${mod}+Alt+V`,
         dividerAfter: true,
       },
       {

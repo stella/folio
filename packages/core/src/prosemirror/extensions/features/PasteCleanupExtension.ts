@@ -9,7 +9,7 @@
  *    default clipboard parser; ProseMirror chains every plugin's
  *    `transformPastedHTML`, so this cooperates with the inliner rather than
  *    replacing it, and `<style>` blocks are left intact for it to resolve.
- * 2. `Mod-Shift-v` — "paste without formatting", inserting clipboard text with
+ * 2. `Mod-Alt-v` — "paste without formatting", inserting clipboard text with
  *    the source formatting stripped (see {@link pasteWithoutFormatting}).
  */
 
@@ -36,7 +36,9 @@ export const PasteCleanupExtension = createExtension({
     return {
       plugins: [plugin],
       keyboardShortcuts: {
-        "Mod-Shift-v": pasteWithoutFormatting,
+        // Ctrl/Cmd+Alt+V (the plain-paste convention on the web); Ctrl/Cmd+Shift+V
+        // is reserved for the format painter.
+        "Mod-Alt-v": pasteWithoutFormatting,
       },
     };
   },
