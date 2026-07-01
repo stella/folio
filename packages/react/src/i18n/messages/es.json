@@ -74,6 +74,8 @@
     "fontColor": "Color de fuente",
     "fontGroup": "Fuente",
     "fontSize": "Tamaño de fuente",
+    "formatPainter": "Copiar formato",
+    "formatPainterShortcut": "Copiar formato (Ctrl+Shift+C)",
     "formattingToolbar": "Barra de formato",
     "hideDetails": "Ocultar detalles",
     "historyGroup": "Historial",

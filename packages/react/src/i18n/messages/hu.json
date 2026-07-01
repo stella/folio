@@ -74,6 +74,8 @@
     "fontColor": "Betűszín",
     "fontGroup": "Betűtípus",
     "fontSize": "Betűméret",
+    "formatPainter": "Formátummásoló",
+    "formatPainterShortcut": "Formátummásoló (Ctrl+Shift+C)",
     "formattingToolbar": "Formázási eszköztár",
     "hideDetails": "Részletek elrejtése",
     "historyGroup": "Előzmények",

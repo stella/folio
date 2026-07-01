@@ -1445,3 +1445,13 @@
   align-items: center;
   justify-content: center;
 }
+
+/* ============================================================================
+ * FORMAT PAINTER — armed cursor affordance
+ * ============================================================================ */
+
+/* While the format painter is armed, the editor shows a copy cursor so the next
+ * drag reads as "paint formatting here". */
+.folio-editor[data-folio-format-painter="armed"] [contenteditable="true"] {
+  cursor: copy;
+}

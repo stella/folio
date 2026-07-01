@@ -74,6 +74,8 @@
     "fontColor": "Farba písma",
     "fontGroup": "Písmo",
     "fontSize": "Veľkosť písma",
+    "formatPainter": "Kopírovať formát",
+    "formatPainterShortcut": "Kopírovať formát (Ctrl+Shift+C)",
     "formattingToolbar": "Panel formátovania",
     "hideDetails": "Skryť detaily",
     "historyGroup": "História",

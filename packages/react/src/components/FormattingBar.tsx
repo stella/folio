@@ -18,6 +18,7 @@ import {
   ImageIcon,
   ItalicIcon,
   MoreHorizontalIcon,
+  PaintbrushIcon,
   PilcrowIcon,
   Redo2Icon,
   RulerIcon,
@@ -98,6 +99,9 @@ export function FormattingBar(props: FormattingBarProps) {
     editorRef,
     children,
     showStylePicker = true,
+    showFormatPainter = true,
+    formatPainterActive = false,
+    onFormatPainter,
     showFontPicker = true,
     showFontSizePicker = true,
     showTextColorPicker = true,
@@ -150,6 +154,43 @@ export function FormattingBar(props: FormattingBarProps) {
       onRedo();
     }
   }, [disabled, canRedo, onRedo]);
+
+  // Format painter: a single click arms a one-shot paint, a double-click arms
+  // the sticky (keep-on) mode. The one-shot arm is deferred so a double-click
+  // can pre-empt it — otherwise the first click of a double would fire first.
+  const painterClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (painterClickTimer.current) {
+        clearTimeout(painterClickTimer.current);
+      }
+    },
+    [],
+  );
+
+  const handleFormatPainterClick = useCallback(() => {
+    if (disabled || !onFormatPainter) {
+      return;
+    }
+    if (painterClickTimer.current) {
+      clearTimeout(painterClickTimer.current);
+    }
+    painterClickTimer.current = setTimeout(() => {
+      painterClickTimer.current = null;
+      onFormatPainter(false);
+    }, 220);
+  }, [disabled, onFormatPainter]);
+
+  const handleFormatPainterDoubleClick = useCallback(() => {
+    if (disabled || !onFormatPainter) {
+      return;
+    }
+    if (painterClickTimer.current) {
+      clearTimeout(painterClickTimer.current);
+      painterClickTimer.current = null;
+    }
+    onFormatPainter(true);
+  }, [disabled, onFormatPainter]);
 
   const handleFontFamilyChange = useCallback(
     (fontFamily: string) => {
@@ -614,6 +655,19 @@ export function FormattingBar(props: FormattingBarProps) {
           >
             <UnderlineIcon size={ICON_SIZE} />
           </ToolbarButton>
+          {showFormatPainter && onFormatPainter && (
+            <ToolbarButton
+              onClick={handleFormatPainterClick}
+              onDoubleClick={handleFormatPainterDoubleClick}
+              active={formatPainterActive}
+              disabled={disabled}
+              title={t("formatPainterShortcut")}
+              ariaLabel={t("formatPainter")}
+              testId="toolbar-format-painter"
+            >
+              <PaintbrushIcon size={ICON_SIZE} />
+            </ToolbarButton>
+          )}
         </ToolbarGroup>
 
         {/* Insert group — each control is opt-in: it renders only when its

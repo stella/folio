@@ -74,6 +74,8 @@
     "fontColor": "Fondi värv",
     "fontGroup": "Fondid",
     "fontSize": "Fondi suurus",
+    "formatPainter": "Vormingupintsel",
+    "formatPainterShortcut": "Vormingupintsel (Ctrl+Shift+C)",
     "formattingToolbar": "Vormindusriba",
     "hideDetails": "Peida üksikasjad",
     "historyGroup": "Ajalugu",

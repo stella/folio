@@ -127,6 +127,16 @@ export type ToolbarProps = {
   showLineSpacingPicker?: boolean | undefined;
   /** Whether to show style picker (default: true) */
   showStylePicker?: boolean | undefined;
+  /** Whether to show the format painter button (default: true) */
+  showFormatPainter?: boolean | undefined;
+  /** Whether the format painter is armed (drives the button's active state) */
+  formatPainterActive?: boolean | undefined;
+  /**
+   * Arm the format painter: capture the current selection's formatting so the
+   * next selection is painted. `sticky` (double-click) keeps it armed until Esc
+   * or a toggle off; a single click disarms after one paint.
+   */
+  onFormatPainter?: ((sticky: boolean) => void) | undefined;
   /** Document styles for the style picker */
   documentStyles?: Style[] | undefined;
   /** Theme for the style picker */
@@ -207,6 +217,8 @@ export type ToolbarButtonProps = {
   title?: string | undefined;
   /** Click handler */
   onClick?: (() => void) | undefined;
+  /** Double-click handler (e.g. format painter sticky mode) */
+  onDoubleClick?: (() => void) | undefined;
   /** Button content */
   children: ReactNode;
   /** Additional CSS class name */
@@ -245,6 +257,7 @@ export function ToolbarButton({
   disabled = false,
   title,
   onClick,
+  onDoubleClick,
   children,
   className,
   ariaLabel,
@@ -274,6 +287,7 @@ export function ToolbarButton({
       )}
       onMouseDown={handleMouseDown}
       onClick={disabled ? undefined : onClick}
+      onDoubleClick={disabled ? undefined : onDoubleClick}
       disabled={disabled}
       aria-pressed={active}
       aria-label={ariaLabel || title}

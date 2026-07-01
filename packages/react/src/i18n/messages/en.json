@@ -74,6 +74,8 @@
     "fontColor": "Font color",
     "fontGroup": "Font",
     "fontSize": "Font size",
+    "formatPainter": "Format Painter",
+    "formatPainterShortcut": "Format Painter (Ctrl+Shift+C)",
     "formattingToolbar": "Formatting toolbar",
     "hideDetails": "Hide details",
     "historyGroup": "History",

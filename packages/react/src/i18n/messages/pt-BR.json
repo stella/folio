@@ -74,6 +74,8 @@
     "fontColor": "Cor da fonte",
     "fontGroup": "Fonte",
     "fontSize": "Tamanho da fonte",
+    "formatPainter": "Pincel de Formatação",
+    "formatPainterShortcut": "Pincel de Formatação (Ctrl+Shift+C)",
     "formattingToolbar": "Barra de ferramentas de formatação",
     "hideDetails": "Ocultar detalhes",
     "historyGroup": "Histórico",

@@ -33,6 +33,7 @@ import {
   XIcon,
 } from "lucide-react";
 // Paginated editor
+import type { Mark } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { useTranslations } from "use-intl";
 
@@ -68,6 +69,8 @@ import {
   increaseListLevel,
   decreaseListLevel,
   clearFormatting,
+  captureFormatMarks,
+  applyFormatMarks,
   applyStyle,
   createStyleResolver,
   toggleBidi,
@@ -824,6 +827,21 @@ export function DocxEditor({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const editorContentRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Format painter: "armed" paints the next selection once then disarms;
+  // "sticky" keeps painting until Esc or the button is toggled off. The ref
+  // mirrors the mode for the imperative mouseup/keydown listeners (which fire
+  // outside React render); the captured marks live in a ref so they survive
+  // between the copy and the paint.
+  const [formatPainterMode, setFormatPainterModeState] = useState<"off" | "armed" | "sticky">(
+    "off",
+  );
+  const formatPainterModeRef = useRef<"off" | "armed" | "sticky">("off");
+  const capturedFormatMarksRef = useRef<readonly Mark[]>([]);
+  const setFormatPainterMode = useCallback((next: "off" | "armed" | "sticky") => {
+    formatPainterModeRef.current = next;
+    setFormatPainterModeState(next);
+  }, []);
 
   const {
     contextMenu,
@@ -2125,6 +2143,110 @@ export function DocxEditor({
     [getActiveEditorView, getCachedStyleResolver],
   );
 
+  // Capture the current selection's character formatting into the buffer used
+  // by the paint step (toolbar mouseup / Ctrl+Shift+V).
+  const captureFormatPainter = useCallback(() => {
+    const view = getActiveEditorView();
+    capturedFormatMarksRef.current = view ? captureFormatMarks(view.state) : [];
+  }, [getActiveEditorView]);
+
+  // Paint the captured formatting onto the current selection. Returns whether a
+  // paint actually happened (nothing captured / collapsed selection ⇒ false).
+  const paintFormatToSelection = useCallback((): boolean => {
+    const view = getActiveEditorView();
+    if (!view) {
+      return false;
+    }
+    const applied = applyFormatMarks(capturedFormatMarksRef.current)(view.state, view.dispatch);
+    if (applied) {
+      requestAnimationFrame(() => view.focus());
+    }
+    return applied;
+  }, [getActiveEditorView]);
+
+  // Toolbar button: single click (sticky=false) arms a one-shot paint,
+  // double-click (sticky=true) keeps it on. Clicking while armed toggles off.
+  const handleFormatPainter = useCallback(
+    (sticky: boolean) => {
+      if (formatPainterModeRef.current !== "off") {
+        capturedFormatMarksRef.current = [];
+        setFormatPainterMode("off");
+        return;
+      }
+      captureFormatPainter();
+      setFormatPainterMode(sticky ? "sticky" : "armed");
+    },
+    [captureFormatPainter, setFormatPainterMode],
+  );
+
+  // Paint on the mouseup that completes a new selection inside the editor. A
+  // one-shot arm disarms after a successful paint; sticky stays armed.
+  useEffect(() => {
+    const handleMouseUp = (event: MouseEvent) => {
+      if (formatPainterModeRef.current === "off") {
+        return;
+      }
+      const editor = editorContentRef.current;
+      if (!editor || !(event.target instanceof Node) || !editor.contains(event.target)) {
+        return;
+      }
+      // Defer so ProseMirror's own mouseup selection sync settles first.
+      requestAnimationFrame(() => {
+        const painted = paintFormatToSelection();
+        if (painted && formatPainterModeRef.current === "armed") {
+          setFormatPainterMode("off");
+        }
+      });
+    };
+
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => document.removeEventListener("mouseup", handleMouseUp);
+  }, [paintFormatToSelection, setFormatPainterMode]);
+
+  // Keyboard: Ctrl/Cmd+Shift+C copies formatting, Ctrl/Cmd+Shift+V paints it,
+  // Esc disarms. The paint binding only claims the keystroke once something has
+  // been copied, so an untouched Ctrl/Cmd+Shift+V still reaches the browser /
+  // paste handling instead of being swallowed here.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (formatPainterModeRef.current !== "off") {
+          capturedFormatMarksRef.current = [];
+          setFormatPainterMode("off");
+        }
+        return;
+      }
+
+      const isCtrl = event.ctrlKey || event.metaKey;
+      if (!isCtrl || !event.shiftKey || event.altKey) {
+        return;
+      }
+
+      const target = event.target;
+      const withinEditor =
+        target instanceof Node && editorContentRef.current?.contains(target) === true;
+      if (!withinEditor) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "c") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        captureFormatPainter();
+        return;
+      }
+      if (key === "v" && capturedFormatMarksRef.current.length > 0) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        paintFormatToSelection();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, [captureFormatPainter, paintFormatToSelection, setFormatPainterMode]);
+
   const handleContextMenu = useCallback(
     (data: { x: number; y: number; hasSelection: boolean }) => {
       openContextMenu({ x: data.x, y: data.y }, data.hasSelection);
@@ -3208,6 +3330,7 @@ export function DocxEditor({
             className={`folio-root folio-editor${displayMode !== "all-markup" ? ` folio-root--${displayMode}` : ""}${showHeaderFooterEditing ? "" : " folio-no-hf-edit"} ${className}`}
             style={containerStyle}
             data-testid="folio-editor"
+            data-folio-format-painter={formatPainterMode !== "off" ? "armed" : undefined}
           >
             {/* Main content area */}
             <div style={mainContentStyle}>
@@ -3245,6 +3368,8 @@ export function DocxEditor({
                       onToggleRuler={toggleRuler}
                       editorRef={editorContentRef}
                       onRefocusEditor={focusActiveEditor}
+                      formatPainterActive={formatPainterMode !== "off"}
+                      onFormatPainter={handleFormatPainter}
                       onImageWrapType={handleImageWrapType}
                       onImageTransform={handleImageTransform}
                       onOpenImageProperties={handleOpenImageProperties}

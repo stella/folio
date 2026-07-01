@@ -74,6 +74,8 @@
     "fontColor": "Schriftfarbe",
     "fontGroup": "Schriftart",
     "fontSize": "Schriftgröße",
+    "formatPainter": "Format übertragen",
+    "formatPainterShortcut": "Format übertragen (Strg+Umschalt+C)",
     "formattingToolbar": "Formatierungsleiste",
     "hideDetails": "Details ausblenden",
     "historyGroup": "Verlauf",

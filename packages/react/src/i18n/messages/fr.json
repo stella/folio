@@ -74,6 +74,8 @@
     "fontColor": "Couleur de police",
     "fontGroup": "Police",
     "fontSize": "Taille de police",
+    "formatPainter": "Reproduire la mise en forme",
+    "formatPainterShortcut": "Reproduire la mise en forme (Ctrl+Maj+C)",
     "formattingToolbar": "Barre d’outils de mise en forme",
     "hideDetails": "Masquer les détails",
     "historyGroup": "Historique",

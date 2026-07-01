@@ -74,6 +74,8 @@
     "fontColor": "Fonta krāsa",
     "fontGroup": "Fonts",
     "fontSize": "Fonta lielums",
+    "formatPainter": "Formāta otiņa",
+    "formatPainterShortcut": "Formāta otiņa (Ctrl+Shift+C)",
     "formattingToolbar": "Formatēšanas rīkjosla",
     "hideDetails": "Slēpt detaļas",
     "historyGroup": "Vēsture",

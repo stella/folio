@@ -74,6 +74,8 @@
     "fontColor": "لون الخط",
     "fontGroup": "الخط",
     "fontSize": "حجم الخط",
+    "formatPainter": "نسخ التنسيق",
+    "formatPainterShortcut": "نسخ التنسيق (Ctrl+Shift+C)",
     "formattingToolbar": "شريط أدوات التنسيق",
     "hideDetails": "إخفاء التفاصيل",
     "historyGroup": "السجل",

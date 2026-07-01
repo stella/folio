@@ -113,6 +113,9 @@ export {
 } from "./table";
 export type { TableContextInfo, BorderPreset, TableBorderPreset } from "./table";
 
+// Format painter (copy/paste character formatting)
+export { captureFormatMarks, applyFormatMarks, PAINTABLE_MARK_NAMES } from "./formatPainter";
+
 // Page break
 export { insertPageBreak } from "./pageBreak";
 

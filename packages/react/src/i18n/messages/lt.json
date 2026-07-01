@@ -74,6 +74,8 @@
     "fontColor": "Šrifto spalva",
     "fontGroup": "Šriftas",
     "fontSize": "Šrifto dydis",
+    "formatPainter": "Formato kopijavimas",
+    "formatPainterShortcut": "Formato kopijavimas (Ctrl+Shift+C)",
     "formattingToolbar": "Formatavimo įrankių juosta",
     "hideDetails": "Slėpti detales",
     "historyGroup": "Istorija",

@@ -74,6 +74,8 @@
     "fontColor": "Kolor czcionki",
     "fontGroup": "Czcionka",
     "fontSize": "Rozmiar czcionki",
+    "formatPainter": "Malarz formatów",
+    "formatPainterShortcut": "Malarz formatów (Ctrl+Shift+C)",
     "formattingToolbar": "Pasek formatowania",
     "hideDetails": "Ukryj szczegóły",
     "historyGroup": "Historia",

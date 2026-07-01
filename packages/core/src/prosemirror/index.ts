@@ -153,6 +153,10 @@ export {
   setCellFillColor,
   setTableBorderColor,
   setTableBorderWidth,
+  // Format painter (copy/paste character formatting)
+  captureFormatMarks,
+  applyFormatMarks,
+  PAINTABLE_MARK_NAMES,
   // Page break
   insertPageBreak,
   // Table of Contents
