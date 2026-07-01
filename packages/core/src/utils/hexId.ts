@@ -29,3 +29,16 @@ export const generateHexId = (): string =>
     .toString(16)
     .toUpperCase()
     .padStart(8, "0");
+
+/**
+ * Deterministic 8-char uppercase hex id (FNV-1a over `seed`), `< 0x7FFFFFFF`.
+ * Re-deriving from the same seed mints the same id, so content/position-derived
+ * ids (block paraIds, comment thread keys) are stable across saves.
+ */
+export const deterministicHexId = (seed: string): string => {
+  let hash = 2_166_136_261;
+  for (const character of seed) {
+    hash = Math.imul(hash ^ (character.codePointAt(0) ?? 0), 16_777_619) >>> 0;
+  }
+  return (hash % MAX_HEX_ID_EXCLUSIVE).toString(16).toUpperCase().padStart(8, "0");
+};

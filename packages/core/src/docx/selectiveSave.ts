@@ -10,7 +10,9 @@
 
 import type JSZip from "jszip";
 
-import type { Document, BlockContent } from "../types/document";
+import type { Document, BlockContent, Comment } from "../types/document";
+import { parseCommentsExtended, type CommentExtendedInfo } from "./commentParser";
+import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import {
@@ -21,10 +23,18 @@ import {
   hasUnmaterializedHeaderFooter,
   hasModelDrivenPictureWatermark,
   COMMENTS_CONTENT_TYPE,
+  COMMENTS_EXTENDED_PART,
+  COMMENTS_EXTENDED_PART_LOWER,
+  addCommentsExtendedOverride,
+  addCommentsExtendedRelationship,
 } from "./rezip";
 import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES } from "./selectiveSaveFlags";
 import { buildPatchedDocumentXml, buildPatchedNoteXml, collectParaIds } from "./selectiveXmlPatch";
-import { serializeComments } from "./serializer/commentSerializer";
+import {
+  ensureThreadedCommentParaIds,
+  serializeComments,
+  serializeCommentsExtended,
+} from "./serializer/commentSerializer";
 import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
 
@@ -173,6 +183,111 @@ async function patchNoteParts(
   return remainingIds;
 }
 
+const findZipEntryCaseInsensitive = (zip: JSZip, lowerPath: string): JSZip.JSZipObject | null => {
+  const direct = zip.file(lowerPath);
+  if (direct) {
+    return direct;
+  }
+  for (const [path, file] of Object.entries(zip.files)) {
+    if (!file.dir && path.toLowerCase() === lowerPath) {
+      return file;
+    }
+  }
+  return null;
+};
+
+const commentsExtendedInfoEqual = (
+  a: Map<string, CommentExtendedInfo>,
+  b: Map<string, CommentExtendedInfo>,
+): boolean => {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const [paraId, infoA] of a) {
+    const infoB = b.get(paraId);
+    // `w15:done` is optional and defaults to "0"/false, so a source that omits
+    // it must compare equal to one that writes `w15:done="0"` — otherwise an
+    // unchanged, done-less thread is flagged as changed and needlessly rewritten.
+    if (
+      !infoB ||
+      infoA.parentParaId !== infoB.parentParaId ||
+      (infoA.done ?? false) !== (infoB.done ?? false)
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * Reconcile commentsExtended.xml on the selective path. Returns `false` to
+ * signal the caller must bail to a full repack (which owns removing / rewiring
+ * the part + content-type + relationship as a unit); `true` when the part is
+ * unchanged or was safely patched into `updates`.
+ *
+ * - Threading unchanged (compared through the same parser, so attribute-order
+ *   noise is ignored): leave the part byte-exact.
+ * - Threading removed (no desired part but a baseline exists): bail — removing
+ *   the part plus its dangling override/relationship cleanly is the full
+ *   repack's job.
+ * - Threading changed: write the part and ensure its override + relationship,
+ *   bailing if the packaging files needed to wire it are absent.
+ */
+async function patchCommentsExtended(
+  zip: JSZip,
+  comments: Comment[],
+  updates: Map<string, string>,
+): Promise<boolean> {
+  const desiredXml = serializeCommentsExtended(comments);
+  const existing = findZipEntryCaseInsensitive(zip, COMMENTS_EXTENDED_PART_LOWER);
+
+  if (!desiredXml) {
+    return existing === null;
+  }
+
+  const baselineInfo = existing
+    ? parseCommentsExtended(await existing.async("text"))
+    : new Map<string, CommentExtendedInfo>();
+  if (commentsExtendedInfoEqual(parseCommentsExtended(desiredXml), baselineInfo)) {
+    return true;
+  }
+
+  updates.set(existing?.name ?? COMMENTS_EXTENDED_PART, desiredXml);
+  return ensureCommentsExtendedPackaging(zip, updates);
+}
+
+/**
+ * Add the content-type override + relationship for commentsExtended.xml if
+ * absent, composing over any pending `updates`. Returns `false` when a packaging
+ * file needed to wire the part is missing (the caller then bails to full repack
+ * rather than write a part nothing references).
+ */
+async function ensureCommentsExtendedPackaging(
+  zip: JSZip,
+  updates: Map<string, string>,
+): Promise<boolean> {
+  const ctPath = "[Content_Types].xml";
+  const ctXml = updates.get(ctPath) ?? (await zip.file(ctPath)?.async("text"));
+  if (ctXml === undefined) {
+    return false;
+  }
+  const nextCt = addCommentsExtendedOverride(ctXml);
+  if (nextCt !== ctXml) {
+    updates.set(ctPath, nextCt);
+  }
+
+  const relsPath = "word/_rels/document.xml.rels";
+  const relsXml = updates.get(relsPath) ?? (await zip.file(relsPath)?.async("text"));
+  if (relsXml === undefined) {
+    return false;
+  }
+  const nextRels = addCommentsExtendedRelationship(relsXml);
+  if (nextRels !== relsXml) {
+    updates.set(relsPath, nextRels);
+  }
+  return true;
+}
+
 export type SelectiveSaveOptions = {
   /** Changed paragraph IDs to selectively patch */
   changedParaIds: Set<string>;
@@ -229,6 +344,12 @@ export async function attemptSelectiveSave(
   // A picture watermark spanning multiple headers needs per-header image
   // relationship rebinding, which only the full repack path performs.
   if (hasModelDrivenPictureWatermark(doc)) {
+    return null;
+  }
+  // A reply with no anchor of its own must get its parent's commentRange
+  // markers, which means editing the parent's paragraph — not necessarily one of
+  // `changedParaIds`. The full repack owns that synthesis, so hand off to it.
+  if (hasUnsynthesizedReplyRanges(doc)) {
     return null;
   }
   if (!validateFolioDocumentModel(doc).valid) {
@@ -297,6 +418,9 @@ export async function attemptSelectiveSave(
     // previous part as-is) and round-trip back as phantom threads.
     const hadCommentsFile = zip.file("word/comments.xml") !== null;
     if (hasComments || hadCommentsFile) {
+      // Threaded/resolved comments need a stable last-paragraph paraId so
+      // comments.xml and commentsExtended.xml reference the same key.
+      ensureThreadedCommentParaIds(comments);
       updates.set("word/comments.xml", serializeComments(comments));
     }
     if (hasComments) {
@@ -331,6 +455,14 @@ export async function attemptSelectiveSave(
           );
         }
       }
+    }
+
+    // Reply threading / resolved state lives in commentsExtended.xml. Rewrite it
+    // only when the model's threading differs from what the file already
+    // encodes, so an unrelated body edit leaves the part byte-exact. Bail to
+    // full repack when the part cannot be reconciled safely (e.g. a removal).
+    if (!(await patchCommentsExtended(zip, comments, updates))) {
+      return null;
     }
 
     // Serialize modified headers/footers

@@ -24,6 +24,7 @@ import type { Command } from "prosemirror-state";
 import type { Plugin } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
+import { createReply } from "../docx/replyToComment";
 import { attemptSelectiveSave } from "../docx/selectiveSave";
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
@@ -44,7 +45,7 @@ import {
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
 import type { Document } from "../types/document";
-import { MAX_HEX_ID_EXCLUSIVE } from "../utils/hexId";
+import { deterministicHexId } from "../utils/hexId";
 import { applyFolioAIEditOperations } from "./apply";
 import { createFolioAIEditSnapshot } from "./snapshot";
 import type {
@@ -82,15 +83,6 @@ const createReviewerComment = (text: string, author: string): Comment => ({
     },
   ],
 });
-
-/** Deterministic 8-char uppercase hex id (FNV-1a over `seed`), `< 0x7FFFFFFF`. */
-const deterministicHexId = (seed: string): string => {
-  let hash = 2_166_136_261;
-  for (const character of seed) {
-    hash = Math.imul(hash ^ (character.codePointAt(0) ?? 0), 16_777_619) >>> 0;
-  }
-  return (hash % MAX_HEX_ID_EXCLUSIVE).toString(16).toUpperCase().padStart(8, "0");
-};
 
 /**
  * Assign a stable `w14:paraId` to every body paragraph that lacks one (or
@@ -198,6 +190,15 @@ export type FolioReviewCommentReply = {
   author: string;
   date: string | null;
   text: string;
+};
+
+/** Input for {@link FolioDocxReviewer.replyTo}. */
+export type FolioReviewReplyInput = {
+  /** Reply body text. */
+  text: string;
+  /** Reply author; defaults to the reviewer's author. */
+  author?: string;
+  initials?: string;
 };
 
 /** A comment thread discovered in the document. */
@@ -514,6 +515,35 @@ export class FolioDocxReviewer {
         (filter.author === undefined || thread.author === filter.author) &&
         (filter.done === undefined || thread.done === filter.done),
     );
+  }
+
+  /**
+   * Add a reply to a comment thread. Pass a {@link FolioReviewComment} from
+   * {@link getComments} or its id; the reply threads under that comment's root
+   * (Word threads are flat). On {@link toBuffer} the reply is written as a real
+   * Word reply — linked via `commentsExtended.xml` and given its own
+   * `commentRange` markers + reference anchored on the parent's range. Returns
+   * the created reply, or `null` when the target comment is absent.
+   */
+  replyTo(
+    target: FolioReviewComment | number,
+    input: FolioReviewReplyInput,
+  ): FolioReviewCommentReply | null {
+    const parentId = typeof target === "number" ? target : target.id;
+    const existing = [
+      ...(this.baseDocument.package.document.comments ?? []),
+      ...this.createdComments,
+    ];
+    const reply = createReply(existing, parentId, {
+      author: input.author ?? this.author,
+      text: input.text,
+      ...(input.initials !== undefined ? { initials: input.initials } : {}),
+    });
+    if (!reply) {
+      return null;
+    }
+    this.createdComments.push(reply);
+    return { id: reply.id, author: reply.author, date: reply.date ?? null, text: input.text };
   }
 
   /**

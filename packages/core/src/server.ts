@@ -25,6 +25,7 @@ export {
   type FolioBlockId,
 } from "./types/block-id";
 export { createDocx } from "./docx/rezip";
+export { replyToComment, type CreateCommentReplyInput } from "./docx/replyToComment";
 export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
 export {
   FolioDocxReviewer,
@@ -39,6 +40,7 @@ export {
   type FolioReviewComment,
   type FolioReviewCommentFilter,
   type FolioReviewCommentReply,
+  type FolioReviewReplyInput,
 } from "./ai-edits/headless";
 export type {
   FolioAIComment,
