@@ -2303,7 +2303,9 @@ export function DocxEditor({
         case "pasteAsPlainText":
           try {
             const text = await navigator.clipboard.readText();
-            if (text) {
+            // The clipboard read is async: bail if the editor unmounted while it
+            // was in flight rather than dispatching against a destroyed view.
+            if (text && !view.isDestroyed) {
               // replaceSelection with a paragraph slice preserves line breaks;
               // insertText would flatten them into one paragraph.
               const slice = buildPlainTextSlice(text, view.state.schema);

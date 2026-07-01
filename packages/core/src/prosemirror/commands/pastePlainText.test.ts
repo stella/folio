@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
+import type { EditorState } from "prosemirror-state";
 
-import { buildPlainTextSlice } from "./pastePlainText";
+import { buildPlainTextSlice, pasteWithoutFormatting } from "./pastePlainText";
 
 // Minimal block schema (no DOM needed to construct or fill it).
 const blockSchema = new Schema({
@@ -71,5 +72,46 @@ describe("buildPlainTextSlice", () => {
     });
     const slice = buildPlainTextSlice("just text", inlineSchema);
     expect(slice.content.textBetween(0, slice.content.size)).toBe("just text");
+  });
+});
+
+describe("pasteWithoutFormatting dry run", () => {
+  const withClipboard = (readText: (() => Promise<string>) | undefined, run: () => void): void => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { clipboard: readText ? { readText } : undefined },
+    });
+    try {
+      run();
+    } finally {
+      if (original) {
+        Object.defineProperty(globalThis, "navigator", original);
+      } else {
+        Reflect.deleteProperty(globalThis, "navigator");
+      }
+    }
+  };
+
+  const fakeState = { schema: blockSchema } as unknown as EditorState;
+
+  test("a dispatch-less probe reports available without touching the clipboard", () => {
+    let read = false;
+    withClipboard(
+      () => {
+        read = true;
+        return Promise.resolve("x");
+      },
+      () => {
+        expect(pasteWithoutFormatting(fakeState)).toBe(true);
+        expect(read).toBe(false);
+      },
+    );
+  });
+
+  test("reports unavailable when the runtime has no clipboard reader", () => {
+    withClipboard(undefined, () => {
+      expect(pasteWithoutFormatting(fakeState)).toBe(false);
+    });
   });
 });

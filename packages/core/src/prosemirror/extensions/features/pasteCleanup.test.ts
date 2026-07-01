@@ -18,6 +18,16 @@ describe("cleanPastedHtml — Office cruft removal", () => {
     expect(out).toBe("<span>text</span>");
   });
 
+  test("does not corrupt a declaration whose value contains semicolons", () => {
+    const out = cleanPastedHtml(
+      `<div style="mso-foo:bar; background:url('data:image/png;base64,AAAB');color:red">x</div>`,
+    );
+    expect(out).not.toContain("mso-foo");
+    expect(out).toContain("data:image/png;base64,AAAB");
+    expect(out).toContain("color:red");
+    expect(out).toContain(">x</div>");
+  });
+
   test("keeps a quoted font name that uses the other quote character", () => {
     const out = cleanPastedHtml(
       `<span style="mso-bidi-font-family:'Times New Roman'; font-family:'Times New Roman'">x</span>`,
@@ -42,6 +52,14 @@ describe("cleanPastedHtml — Office cruft removal", () => {
     expect(out).not.toContain("o:p");
     expect(out).toContain("Berlin");
     expect(out).toContain("today");
+  });
+
+  test("removes a namespaced tag whose attribute value contains a quoted '>'", () => {
+    expect(cleanPastedHtml('<o:p data-x="a>b">keep</o:p>')).toBe("keep");
+  });
+
+  test("removes an empty span whose attribute value contains a quoted '>'", () => {
+    expect(cleanPastedHtml('<span title="x>y"></span>keep')).toBe("keep");
   });
 
   test("removes conditional comments including the Office xml island", () => {

@@ -52,9 +52,8 @@ function stripHtmlComments(html: string): string {
 /**
  * Drop `mso-*` declarations from every inline `style` attribute while keeping
  * legitimate CSS. Operates per attribute (bounded `[^"]*` / `[^']*` inside the
- * quotes) so it can never run past the attribute into unrelated markup, and
- * splits on `;` rather than quotes so font names containing the other quote
- * character survive. An attribute left empty is removed entirely.
+ * quotes) so it can never run past the attribute into unrelated markup. An
+ * attribute left with no non-`mso-*` declarations is removed entirely.
  */
 function stripMsoStyles(html: string): string {
   // Capture the leading whitespace too so dropping an emptied attribute does not
@@ -64,14 +63,55 @@ function stripMsoStyles(html: string): string {
     (_match, ws: string, dq: string | undefined, sq: string | undefined) => {
       const raw = dq ?? sq ?? "";
       const quote = dq === undefined ? "'" : '"';
-      const kept = raw
-        .split(";")
+      const kept = splitStyleDeclarations(raw)
         .map((declaration) => declaration.trim())
         .filter((declaration) => declaration.length > 0 && !/^mso-/i.test(declaration))
         .join("; ");
       return kept ? `${ws}style=${quote}${kept}${quote}` : "";
     },
   );
+}
+
+/**
+ * Split a CSS `style` value into declarations on top-level `;` only.
+ *
+ * A naive `split(";")` corrupts values that legitimately contain a semicolon
+ * inside a function or a quoted string (e.g. `background:url("data:...;base64,...")`).
+ * This scan ignores `;` while inside parentheses or a quoted string, so such
+ * declarations stay intact.
+ */
+function splitStyleDeclarations(value: string): string[] {
+  const declarations: string[] = [];
+  let current = "";
+  let parenDepth = 0;
+  let quote: '"' | "'" | null = null;
+
+  for (const char of value) {
+    if (quote !== null) {
+      current += char;
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === "(") {
+      parenDepth++;
+    } else if (char === ")") {
+      parenDepth = Math.max(0, parenDepth - 1);
+    } else if (char === ";" && parenDepth === 0) {
+      declarations.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+
+  if (current) {
+    declarations.push(current);
+  }
+  return declarations;
 }
 
 /**
@@ -93,14 +133,20 @@ function stripMsoClasses(html: string): string {
   );
 }
 
+// Matches the local name and attributes after a tag's prefix, treating quoted
+// attribute values as opaque so a `>` inside a value (e.g. `title="a>b"`) does
+// not truncate the tag mid-attribute. Stays linear: each alternative begins on
+// a distinct character (`"`, `'`, or any other non-`>` char).
+const TAG_TAIL = `(?:"[^"]*"|'[^']*'|[^>"'])*`;
+
 // Word/Office/VML/OMML namespaced tags and smart tags (`<o:p>`, `<w:sdt>`,
 // `<v:shape>`, `<m:oMath>`, `<st1:place>`). Tag-only removal keeps any inner
 // text so wrapped user content is never deleted.
-const NAMESPACED_TAG = /<\/?(?:[owvm]|st\d+):[^>]*>/gi;
-const XML_PROCESSING_INSTRUCTION = /<\?xml[^>]*>/gi;
-const STRAY_XML_TAG = /<\/?xml[^>]*>/gi;
-const NOISE_TAG = /<\/?(?:font|meta|link)[^>]*>/gi;
-const EMPTY_SPAN = /<span(?:\s[^>]*)?><\/span>/gi;
+const NAMESPACED_TAG = new RegExp(`<\\/?(?:[owvm]|st\\d+):${TAG_TAIL}>`, "gi");
+const XML_PROCESSING_INSTRUCTION = new RegExp(`<\\?xml${TAG_TAIL}>`, "gi");
+const STRAY_XML_TAG = new RegExp(`<\\/?xml${TAG_TAIL}>`, "gi");
+const NOISE_TAG = new RegExp(`<\\/?(?:font|meta|link)${TAG_TAIL}>`, "gi");
+const EMPTY_SPAN = new RegExp(`<span(?:\\s${TAG_TAIL})?><\\/span>`, "gi");
 const MAX_EMPTY_SPAN_PASSES = 5;
 
 /**

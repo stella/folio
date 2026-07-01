@@ -39,16 +39,26 @@ export function buildPlainTextSlice(text: string, schema: Schema): Slice {
 /**
  * Read the clipboard and insert it as unformatted text at the current selection.
  *
- * Returns `true` (claiming the key) whenever a clipboard read can be attempted,
- * so the browser's own "paste without formatting" shortcut does not also fire.
- * The read is best-effort: a denied or unavailable clipboard is swallowed
- * rather than thrown.
+ * Dry-runnable per the ProseMirror command convention: applicability does not
+ * depend on the (asynchronously read) clipboard contents, so the command is
+ * "available" whenever the runtime exposes a clipboard reader. A probe with no
+ * `dispatch` (menus/toolbars) returns `true` without touching the clipboard or
+ * the document. Only when `dispatch` is provided does it read the clipboard and
+ * insert; it then returns `true` (claiming the key) so the browser's own
+ * "paste without formatting" shortcut does not also fire. The read is
+ * best-effort: a denied or unavailable clipboard is swallowed rather than thrown.
  */
 export const pasteWithoutFormatting: Command = (state, dispatch, view) => {
-  if (!dispatch || !view) {
+  if (typeof navigator === "undefined" || !navigator.clipboard?.readText) {
     return false;
   }
-  if (typeof navigator === "undefined" || !navigator.clipboard?.readText) {
+  // Dry run: report availability without side effects.
+  if (!dispatch) {
+    return true;
+  }
+  // Executing needs the view so the async clipboard result dispatches against
+  // fresh state once it resolves; a captured stale state would misplace it.
+  if (!view) {
     return false;
   }
 
@@ -56,7 +66,9 @@ export const pasteWithoutFormatting: Command = (state, dispatch, view) => {
   void navigator.clipboard
     .readText()
     .then((text) => {
-      if (!text) {
+      // The clipboard read is async: the editor may have been torn down while
+      // it was in flight, so re-check before dispatching against a dead view.
+      if (!text || view.isDestroyed) {
         return;
       }
       const slice = buildPlainTextSlice(text, schema);
