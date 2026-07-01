@@ -126,6 +126,7 @@ import {
   setContentControlValueTr,
 } from "@stll/folio-core/prosemirror/commands/contentControls";
 import { setContentControlContentBlocksTr } from "@stll/folio-core/prosemirror/commands/contentControlsBlockFill";
+import { buildPlainTextSlice } from "@stll/folio-core/prosemirror/commands/pastePlainText";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
@@ -2303,7 +2304,10 @@ export function DocxEditor({
           try {
             const text = await navigator.clipboard.readText();
             if (text) {
-              view.dispatch(view.state.tr.insertText(text));
+              // replaceSelection with a paragraph slice preserves line breaks;
+              // insertText would flatten them into one paragraph.
+              const slice = buildPlainTextSlice(text, view.state.schema);
+              view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
             }
           } catch {
             // Clipboard access denied

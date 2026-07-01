@@ -116,6 +116,9 @@ export type { TableContextInfo, BorderPreset, TableBorderPreset } from "./table"
 // Page break
 export { insertPageBreak } from "./pageBreak";
 
+// Paste without formatting
+export { buildPlainTextSlice, pasteWithoutFormatting } from "./pastePlainText";
+
 // Table of Contents
 export { generateTOC } from "./paragraph";
 

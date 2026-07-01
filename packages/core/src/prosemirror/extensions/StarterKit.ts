@@ -28,6 +28,7 @@ import { ImagePasteExtension } from "./features/ImagePasteExtension";
 import { ListExtension } from "./features/ListExtension";
 import { ParagraphChangeTrackerExtension } from "./features/ParagraphChangeTrackerExtension";
 import { ParaIdAllocatorExtension } from "./features/ParaIdAllocatorExtension";
+import { PasteCleanupExtension } from "./features/PasteCleanupExtension";
 import { PasteStyleInlinerExtension } from "./features/PasteStyleInlinerExtension";
 import { SelectionTrackerExtension } from "./features/SelectionTrackerExtension";
 import { AllCapsExtension } from "./marks/AllCapsExtension";
@@ -172,6 +173,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   }
 
   // Features
+  add("pasteCleanup", PasteCleanupExtension());
   add("pasteStyleInliner", PasteStyleInlinerExtension());
   add("list", ListExtension());
   add("baseKeymap", BaseKeymapExtension());
