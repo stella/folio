@@ -26,3 +26,17 @@ export {
 } from "./types/block-id";
 export { createDocx } from "./docx/rezip";
 export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
+export {
+  FolioDocxReviewer,
+  applyFolioAIEditsToBuffer,
+  type ApplyFolioAIEditsToBufferOptions,
+  type ApplyFolioAIEditsToBufferResult,
+  type FolioApplyOperationsOptions,
+  type FolioDocxReviewerOptions,
+} from "./ai-edits/headless";
+export type {
+  FolioAIComment,
+  FolioAIEditApplyMode,
+  FolioAIEditApplyResult,
+  FolioAIEditOperation,
+} from "./ai-edits/types";

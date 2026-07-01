@@ -1,4 +1,4 @@
-export { applyFolioAIEditOperations } from "./apply";
+export { applyFolioAIEditOperations, type FolioAIEditView } from "./apply";
 export {
   createFolioAIEditSnapshot,
   hashFolioAIBlockText,

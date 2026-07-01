@@ -21,7 +21,16 @@ import type {
 } from "./types";
 import { diffWordSegments } from "./word-diff";
 
-type FolioAIEditView = {
+/**
+ * The only editor surface the apply logic touches: a current `state`
+ * and a `dispatch` that swaps in the next one. A live `EditorView`
+ * satisfies this structurally, and so does a headless seam
+ * (`{ state, dispatch: (tr) => { state = state.apply(tr); } }`) — the
+ * apply path never reaches for anything DOM-bound on the view, which is
+ * what lets the same operation applier drive both the React editor and
+ * the server-side reviewer in `./headless`.
+ */
+export type FolioAIEditView = {
   state: EditorState;
   dispatch: (transaction: Transaction) => void;
 };
