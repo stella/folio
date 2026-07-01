@@ -16,15 +16,20 @@
 //                   both `moduleResolution: node16` and `bundler`.
 //     3. External — React is never bundled; prosemirror/jszip stay external.
 //
-//   react — 5 checks (the four below plus the CSS bundle):
-//     1. Runtime  — ESM `import` of `@stll/folio-react` resolves, including its
+//   react — 6 checks (the five below plus the messages subpath declaration):
+//     1. Runtime  — ESM `import` of `@stll/folio-react` and
+//                   `@stll/folio-react/messages` resolve, including its
 //                   transitive `@stll/folio-core` imports (installed from a
-//                   sibling tarball, npm-style).
+//                   sibling tarball, npm-style). `getFolioMessages` returns a
+//                   `{ folio }` catalog for a bundled and a fallback locale.
 //     2. Types    — node16 + bundler.
 //     3. CSS      — `dist/editor.css` exists, parses, carries the bundled rules,
 //                   and preserves `@fontsource` `@import`s (not inlined).
 //     4. External — React / react-dom / ProseMirror AND `@stll/folio-core` are
 //                   imported as externals, never bundled into the JS.
+//     5. Messages — the published `messages.d.ts` exports `FolioMessages` /
+//                   `getFolioMessages` and never imports a `./messages/*.json`
+//                   source file (dist inlines the JSON, ships no JSON).
 //
 // Exits non-zero on any failure. Run via `bun run validate-dist:<pkg>`.
 
@@ -137,8 +142,27 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
   },
   react: {
     "@stll/folio-react": ["DocxEditor", "FolioUIProvider", "FormattingBar", "createDocx"],
+    "@stll/folio-react/messages": ["getFolioMessages", "FOLIO_LOCALES", "isFolioLocale"],
   },
 };
+
+// The messages subpath must return a live `{ folio }` catalog for a bundled and
+// a fallback locale, not merely export a name.
+const messagesRuntimeCheck =
+  target === "react"
+    ? `
+try {
+  const m = await import("@stll/folio-react/messages");
+  for (const loc of ["en", "xx"]) {
+    const msgs = m.getFolioMessages(loc);
+    if (!msgs || typeof msgs !== "object" || !("folio" in msgs)) {
+      failed = true;
+      console.error("getFolioMessages(" + JSON.stringify(loc) + ") did not resolve to a folio catalog");
+    }
+  }
+} catch (err) { failed = true; console.error("messages subpath threw: " + (err?.message ?? err)); }
+`
+    : "";
 
 // --- Check 1: runtime ESM import -------------------------------------------
 const runtimeScript = `
@@ -151,6 +175,7 @@ for (const [spec, names] of Object.entries(expect)) {
     if (missing.length) { failed = true; console.error("missing from " + spec + ": " + missing.join(", ")); }
   } catch (err) { failed = true; console.error("import threw for " + spec + ": " + (err?.message ?? err)); }
 }
+${messagesRuntimeCheck}
 process.exit(failed ? 1 : 0);
 `;
 const runtimeFile = path.join(consumerDir, "runtime-check.mjs");
@@ -179,9 +204,10 @@ export type Surface = [Document, MarkdownOptions, FolioBlockId];
 `
     : `
 import { DocxEditor, FolioUIProvider, createDocx, type DocxEditorProps } from "@stll/folio-react";
+import { getFolioMessages, type FolioMessages } from "@stll/folio-react/messages";
 
-export const used = [DocxEditor, FolioUIProvider, createDocx];
-export type Surface = [DocxEditorProps];
+export const used = [DocxEditor, FolioUIProvider, createDocx, getFolioMessages];
+export type Surface = [DocxEditorProps, FolioMessages];
 `;
 await writeFile(path.join(consumerDir, "consumer.ts"), consumerTs);
 
@@ -320,6 +346,31 @@ record(
         .filter(Boolean)
         .join("; "),
 );
+
+// --- Check 5 (react only): messages subpath declaration is self-contained ---
+if (target === "react") {
+  const dtsPath = path.join(installedDist, "messages.d.ts");
+  if (!existsSync(dtsPath)) {
+    record("messages: dist/messages.d.ts present", false, "missing from tarball");
+  } else {
+    const dts = await readFile(dtsPath, "utf-8");
+    // dist ships no locale JSON (tsdown inlines it into the JS), so a
+    // `./messages/*.json` import in the published declaration is unresolvable
+    // for a TS consumer of `@stll/folio-react/messages`.
+    const jsonImports = dts.match(/["'][^"']*messages\/[^"']*\.json["']/gu) ?? [];
+    const declaresSurface = dts.includes("FolioMessages") && dts.includes("getFolioMessages");
+    const ok = jsonImports.length === 0 && declaresSurface;
+    const detail = ok
+      ? "FolioMessages / getFolioMessages self-contained; no source-JSON import"
+      : [
+          jsonImports.length > 0 && `imports source JSON: ${jsonImports.join(", ")}`,
+          !declaresSurface && "missing FolioMessages / getFolioMessages declarations",
+        ]
+          .filter(Boolean)
+          .join("; ");
+    record("messages: .d.ts free of source-JSON imports", ok, detail);
+  }
+}
 
 // --- Summary ----------------------------------------------------------------
 await rm(packDir, { recursive: true, force: true });

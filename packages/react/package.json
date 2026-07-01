@@ -29,6 +29,7 @@
   ],
   "exports": {
     ".": "./src/index.ts",
+    "./messages": "./src/i18n/messages.ts",
     "./editor.css": "./src/styles/editor.css"
   },
   "publishConfig": {

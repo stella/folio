@@ -46,6 +46,52 @@ export function Editor({ docx }: { docx: ArrayBuffer }) {
 The editor renders to the DOM; under SSR, load it from a client-only/dynamic
 import.
 
+## Internationalization
+
+The editor reads its UI strings from [`use-intl`](https://github.com/amannn/use-intl)
+under the `folio.*` namespace, so it must be wrapped in an `IntlProvider`. folio
+**bundles its own translations** for that namespace, so a consumer only merges
+folio's catalog and sets the locale — the editor localizes itself:
+
+```tsx
+import { IntlProvider } from "use-intl";
+import { DocxEditor } from "@stll/folio-react";
+import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
+import "@stll/folio-react/editor.css";
+
+export function Editor({ docx, locale }: { docx: ArrayBuffer; locale: string }) {
+  return (
+    <IntlProvider locale={locale} messages={getFolioMessages(locale)}>
+      <DocxEditor documentBuffer={docx} />
+    </IntlProvider>
+  );
+}
+```
+
+`@stll/folio-react/messages` exports:
+
+- `getFolioMessages(locale: string): FolioMessages` — the bundled `{ folio: … }`
+  catalog for `locale`, falling back to English for any locale folio does not ship.
+- `FOLIO_LOCALES` — the bundled locales as a readonly tuple (also a `FolioLocale`
+  type and an `isFolioLocale` guard).
+
+Bundled locales: `en`, `de`, `fr`, `es`, `cs`, `ar`, `et`, `hu`, `lt`, `lv`,
+`pl`, `pt-BR`, `sk`. Arabic (`ar`) is right-to-left: set `dir="rtl"` on a
+container around the editor for that locale.
+
+**Merging with your own app messages.** folio owns exactly one top-level
+namespace (`folio.*`), so a shallow spread merges cleanly with your app's other
+namespaces. Put folio first so your app wins on any intentional override:
+
+```tsx
+const messages = { ...getFolioMessages(locale), ...appMessages[locale] };
+```
+
+Do **not** re-declare the `folio.*` keys in your own catalog: let folio's bundled
+catalog be the source of truth for that namespace (otherwise a stale app copy
+would win the merge). The playground (`packages/playground`) wires this up with a
+language switcher you can use to preview every bundled locale.
+
 ## Development
 
 ```sh

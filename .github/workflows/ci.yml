@@ -28,6 +28,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: i18n check
+        run: bun run check:i18n
+
       - name: Typecheck
         run: bun run typecheck
 

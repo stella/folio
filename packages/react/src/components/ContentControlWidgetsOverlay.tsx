@@ -87,7 +87,6 @@ export function ContentControlWidgetsOverlay({ getEditorView }: ContentControlWi
   const { Item: MenuItem } = folioUI.Menu;
   const DatePickerPopover = folioUI.DatePickerPopover;
   const t = useTranslations("folio");
-  const tCommon = useTranslations("common");
   const [open, setOpen] = useState<OpenPicker | null>(null);
 
   // Hold the latest resolver in a ref so the subscription effect's
@@ -218,7 +217,7 @@ export function ContentControlWidgetsOverlay({ getEditorView }: ContentControlWi
       )}
       {open.kind === "date" && (
         <DatePickerPopover
-          clearLabel={tCommon("clearDate")}
+          clearLabel={t("clearDate")}
           defaultOpen
           onChange={(value) => {
             if (value) {
