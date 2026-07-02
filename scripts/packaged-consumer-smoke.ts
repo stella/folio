@@ -39,6 +39,9 @@ const waitForServer = async (url: string, timeoutMs: number): Promise<boolean> =
   while (Date.now() < deadline) {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
+      // Drain the body so each poll releases its connection instead of
+      // leaving a socket tied to an unconsumed response.
+      await response.arrayBuffer();
       if (response.ok || response.status === 404) {
         return true;
       }
@@ -50,11 +53,29 @@ const waitForServer = async (url: string, timeoutMs: number): Promise<boolean> =
   return false;
 };
 
+// Print a captured preview-server log with a header, if it has content.
+const dumpLog = async (label: string, logPath: string): Promise<void> => {
+  if (logPath === "") {
+    return;
+  }
+  const file = Bun.file(logPath);
+  if (!(await file.exists())) {
+    return;
+  }
+  const content = await file.text();
+  if (content.trim() !== "") {
+    console.error(`\n--- ${label} ---\n${content}`);
+  }
+};
+
 let failure: string | null = null;
+let succeeded = false;
 
 let corePackDir = "";
 let reactPackDir = "";
 let consumerDir = "";
+let previewStdoutPath = "";
+let previewStderrPath = "";
 let preview: ReturnType<typeof Bun.spawn> | null = null;
 try {
   corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
@@ -92,6 +113,11 @@ try {
   }
 
   console.log(`→ serving the built app on ${PREVIEW_URL}`);
+  // Redirect the server's stdio to files rather than piping: an unread pipe
+  // blocks the child once the OS buffer fills, and the files double as CI
+  // debugging output — they are dumped below whenever the smoke fails.
+  previewStdoutPath = path.join(consumerDir, "vite-preview.stdout.log");
+  previewStderrPath = path.join(consumerDir, "vite-preview.stderr.log");
   preview = Bun.spawn(
     [
       "bun",
@@ -103,7 +129,11 @@ try {
       "--port",
       `${PREVIEW_PORT}`,
     ],
-    { cwd: consumerDir, stdout: "pipe", stderr: "pipe" },
+    {
+      cwd: consumerDir,
+      stdout: Bun.file(previewStdoutPath),
+      stderr: Bun.file(previewStderrPath),
+    },
   );
   if (!(await waitForServer(PREVIEW_URL, 30_000))) {
     throw new Error(`packaged-consumer-smoke: preview server never came up on ${PREVIEW_URL}.`);
@@ -114,11 +144,19 @@ try {
     .cwd(repoRoot)
     .env({ ...process.env, PLAYWRIGHT_BASE_URL: PREVIEW_URL })
     .nothrow();
-  if (smoke.exitCode !== 0) {
+  if (smoke.exitCode === 0) {
+    succeeded = true;
+  } else {
     failure = "\n✗ packaged-consumer-smoke: the runtime smoke FAILED against the served tarballs.";
   }
 } finally {
   preview?.kill();
+  // On any failure (assertion or thrown step), surface the preview server's
+  // captured output for CI debugging before the staging dir is removed.
+  if (!succeeded) {
+    await dumpLog("vite preview stdout", previewStdoutPath);
+    await dumpLog("vite preview stderr", previewStderrPath);
+  }
   for (const dir of [corePackDir, reactPackDir, consumerDir]) {
     if (dir !== "") {
       await rm(dir, { recursive: true, force: true });

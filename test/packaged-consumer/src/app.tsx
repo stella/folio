@@ -70,6 +70,12 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
 
   const deadline = Date.now() + 8000;
   while (Date.now() < deadline) {
+    // Fail fast: a worker that errored (failed spawn, module threw on load)
+    // marks the proxy dead, so no width will ever land — no point waiting out
+    // the full deadline.
+    if (!canPrefetchMeasurement()) {
+      return { width: -1, alive: false };
+    }
     const width = getCachedTextWidth(text, fontCacheKey, letterSpacing);
     if (width !== undefined) {
       return { width, alive: canPrefetchMeasurement() };
@@ -96,6 +102,13 @@ function App() {
   useEffect(() => {
     void (async () => {
       const response = await fetch("/fixture.docx");
+      // Fail loudly on a non-OK response: silently handing an error page's
+      // bytes to DocxEditor would produce a confusing downstream parse error.
+      // The thrown rejection surfaces as a pageerror, which the smoke's
+      // console net turns into a clear failure.
+      if (!response.ok) {
+        throw new Error(`fixture fetch failed: HTTP ${response.status} for /fixture.docx`);
+      }
       setBuffer(await response.arrayBuffer());
     })();
   }, []);
