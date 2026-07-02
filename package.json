@@ -35,6 +35,8 @@
     "validate-dist": "bun scripts/validate-dist.ts core && bun scripts/validate-dist.ts react",
     "validate-dist:core": "bun scripts/validate-dist.ts core",
     "validate-dist:react": "bun scripts/validate-dist.ts react",
+    "api:update": "bun scripts/api-reports.ts --update",
+    "api:check": "bun scripts/api-reports.ts",
     "bench": "bun benchmarks/index.ts",
     "bench:cross-language": "bun benchmarks/cross-language/run.ts",
     "test:visual": "bunx playwright test",
@@ -46,6 +48,7 @@
   "devDependencies": {
     "@codspeed/tinybench-plugin": "^5.7.1",
     "@eigenpal/docx-editor-core": "^1.9.0",
+    "@microsoft/api-extractor": "7.58.9",
     "@playwright/test": "^1.61.1",
     "@stll/folio-core": "workspace:*",
     "@stll/oxlint-config": "0.3.0",
