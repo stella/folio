@@ -56,6 +56,46 @@ describe("findUncoveredUtilities", () => {
     expect(result.uncovered).toEqual([]);
   });
 
+  test("extracts literals nested inside template-literal interpolations", () => {
+    // The dist bundle keeps conditionals inside className templates; the
+    // branches' classes must count, or a compile miss would ship silently.
+    const result = findUncoveredUtilities({
+      jsFiles: js('className: `flex antialiased ${on ? "bg-popover" : "text-muted-foreground"}`'),
+      standaloneCss: STANDALONE_CSS,
+    });
+    expect(result.candidates).toBe(4);
+    expect(result.uncovered).toEqual([]);
+  });
+
+  test("comparison operands inside interpolations are not class tokens", () => {
+    // `position === "footer"` is a discriminator, not a class; only the branch
+    // literal counts.
+    const result = findUncoveredUtilities({
+      jsFiles: js('className: `flex${position === "footer" ? " bg-popover" : ""}`'),
+      standaloneCss: STANDALONE_CSS,
+    });
+    expect(result.candidates).toBe(2);
+    expect(result.uncovered).toEqual([]);
+  });
+
+  test("reports drift for an uncovered utility inside an interpolation", () => {
+    const result = findUncoveredUtilities({
+      jsFiles: js('className: `flex ${on ? "mt-[12345px]" : "bg-popover"}`'),
+      standaloneCss: STANDALONE_CSS,
+    });
+    expect(result.uncovered).toEqual(["mt-[12345px]"]);
+  });
+
+  test("an interpolation splitting a class never tokenizes as a complete class", () => {
+    // `w-[${size}px]` is runtime-assembled; its static fragments must not be
+    // reported (no static sheet could ever cover them).
+    const result = findUncoveredUtilities({
+      jsFiles: js("className: `flex w-[${size}px]`"),
+      standaloneCss: STANDALONE_CSS,
+    });
+    expect(result.uncovered).toEqual([]);
+  });
+
   test("ignores import specifiers, i18n keys, and element/attribute names", () => {
     // None of these appear in a className/cn context, so none are candidates.
     const result = findUncoveredUtilities({

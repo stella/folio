@@ -65,15 +65,77 @@ const ANY_CLASS_RE = /\.((?:\\.|[^\s.,{}()>~+:#[\]])+)/gu;
 
 const unescapeClass = (escaped: string): string => escaped.replace(/\\(.)/gu, "$1");
 
+// Split a template-literal body into its static text (interpolations replaced
+// by a separator, so a partial class like `w-[${size}px]` never tokenizes as a
+// complete one) and the code inside each balanced `${...}` (brace-counted,
+// string-aware). An unbalanced `${` means the outer literal regex chopped a
+// template that itself nests another template; the tail is dropped rather than
+// recursed, so half an expression cannot masquerade as a class token.
+const splitTemplate = (body: string): { staticText: string; interpolations: string[] } => {
+  let staticText = "";
+  const interpolations: string[] = [];
+  let i = 0;
+  while (i < body.length) {
+    if (body[i] !== "$" || body[i + 1] !== "{") {
+      staticText += body[i];
+      i += 1;
+      continue;
+    }
+    let j = i + 2;
+    let depth = 1;
+    while (j < body.length && depth > 0) {
+      const c = body[j];
+      if (c === '"' || c === "'" || c === "`") {
+        j += 1;
+        while (j < body.length && body[j] !== c) {
+          if (body[j] === "\\") {
+            j += 1;
+          }
+          j += 1;
+        }
+      } else if (c === "{") {
+        depth += 1;
+      } else if (c === "}") {
+        depth -= 1;
+      }
+      j += 1;
+    }
+    if (depth > 0) {
+      break; // unbalanced: chopped template, drop the tail
+    }
+    interpolations.push(body.slice(i + 2, j - 1));
+    staticText += " ";
+    i = j;
+  }
+  return { staticText, interpolations };
+};
+
+// A string literal adjacent to a comparison operator inside an interpolation is
+// an operand (`position === "footer"`), not a class; strip those before
+// extracting, or discriminator values would surface as phantom class tokens.
+const COMPARISON_OPERAND_RE =
+  /[!=]==?\s*(["'])(?:\\.|(?!\1).)*\1|(["'])(?:\\.|(?!\2).)*\2\s*[!=]==?/gu;
+
 // Pull the contents of every `"..."`, `'...'`, and `` `...` `` literal from a
-// snippet; template interpolations (`${...}`) are runtime values, not classes,
-// so they are blanked to a separator.
+// snippet. Template interpolations are recursed into, so literals nested in a
+// conditional (`` `base ${on ? "border-transparent" : "bg-muted"}` ``) still
+// count — missing them would be a silent false negative, the exact failure this
+// guard exists to catch. The interpolation expression itself is replaced by a
+// separator in the static text (runtime values are not classes).
 const collectLiteralContents = (snippet: string, out: string[]): void => {
   const re = /(["'`])((?:\\.|(?!\1)[^\\])*)\1/gu;
   for (const match of snippet.matchAll(re)) {
     const quote = match[1];
     const value = match[2] ?? "";
-    out.push(quote === "`" ? value.replace(/\$\{[^}]*\}/gu, " ") : value);
+    if (quote !== "`") {
+      out.push(value);
+      continue;
+    }
+    const { staticText, interpolations } = splitTemplate(value);
+    out.push(staticText);
+    for (const code of interpolations) {
+      collectLiteralContents(code.replace(COMPARISON_OPERAND_RE, " "), out);
+    }
   }
 };
 
