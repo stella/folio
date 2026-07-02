@@ -59,60 +59,78 @@ const buildAndPack = async (pkgDir: string, destDir: string): Promise<string> =>
     : panic(`packaged-consumer: bun pm pack produced no tarball for ${name}`);
 };
 
-const corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
-const reactPackDir = await mkdtemp(path.join(tmpdir(), "folio-react-pack-"));
-const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-packaged-consumer-"));
+// Track the failure instead of calling `process.exit` inside the `try`:
+// `process.exit` terminates without unwinding, so the `finally` cleanup would
+// be skipped — the exact leak this structure exists to prevent. Any thrown
+// error still propagates (Bun exits non-zero on it) after cleanup runs.
+let failure: string | null = null;
+let workerChunk: string | undefined;
 
-const coreTarball = await buildAndPack(coreDir, corePackDir);
-const reactTarball = await buildAndPack(reactDir, reactPackDir);
+let corePackDir = "";
+let reactPackDir = "";
+let consumerDir = "";
+try {
+  corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
+  reactPackDir = await mkdtemp(path.join(tmpdir(), "folio-react-pack-"));
+  consumerDir = await mkdtemp(path.join(tmpdir(), "folio-packaged-consumer-"));
 
-// Copy the checked-in consumer app out of the monorepo so no workspace linkage
-// leaks in; install the packed artifacts npm-style.
-console.log(`→ staging consumer in ${consumerDir}`);
-await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
-await cp(path.join(consumerSrc, "vite.config.ts"), path.join(consumerDir, "vite.config.ts"));
+  const coreTarball = await buildAndPack(coreDir, corePackDir);
+  const reactTarball = await buildAndPack(reactDir, reactPackDir);
 
-const consumerPkg = {
-  name: "folio-packaged-consumer",
-  version: "0.0.0",
-  private: true,
-  type: "module",
-  // Pin folio-react's transitive folio-core to the packed tarball (not a
-  // registry lookup): the two must resolve to each other's packed dist.
-  overrides: { "@stll/folio-core": coreTarball },
-};
-await writeFile(
-  path.join(consumerDir, "package.json"),
-  `${JSON.stringify(consumerPkg, null, 2)}\n`,
-);
+  // Copy the checked-in consumer app out of the monorepo so no workspace
+  // linkage leaks in; install the packed artifacts npm-style.
+  console.log(`→ staging consumer in ${consumerDir}`);
+  await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
+  await cp(path.join(consumerSrc, "vite.config.ts"), path.join(consumerDir, "vite.config.ts"));
 
-console.log("→ installing tarballs + peers");
-await $`bun add ${reactTarball} ${coreTarball} react@^19 react-dom@^19 use-intl@^4 vite@^8 @types/react@^19 @types/react-dom@^19`
-  .cwd(consumerDir)
-  .quiet();
-
-console.log("→ production vite build over the packed tarballs");
-const build = await $`bun x vite build`.cwd(consumerDir).nothrow();
-if (build.exitCode !== 0) {
-  console.error(build.stderr.toString() || build.stdout.toString());
-  console.error("\n✗ packaged-consumer: production vite build FAILED against the packed tarballs.");
-  process.exit(1);
-}
-
-// The worker must have resolved and emitted its own chunk; otherwise the URL
-// target silently vanished (e.g. externalized away) and the gate would be moot.
-const distFiles = await readdir(path.join(consumerDir, "dist"), { recursive: true });
-const workerChunk = distFiles.find((f) => f.includes("font-metrics.worker") && f.endsWith(".js"));
-if (!workerChunk) {
-  console.error(
-    `✗ packaged-consumer: build produced no worker chunk. dist: ${distFiles.join(", ")}`,
+  const consumerPkg = {
+    name: "folio-packaged-consumer",
+    version: "0.0.0",
+    private: true,
+    type: "module",
+    // Pin folio-react's transitive folio-core to the packed tarball (not a
+    // registry lookup): the two must resolve to each other's packed dist.
+    overrides: { "@stll/folio-core": coreTarball },
+  };
+  await writeFile(
+    path.join(consumerDir, "package.json"),
+    `${JSON.stringify(consumerPkg, null, 2)}\n`,
   );
-  process.exit(1);
+
+  console.log("→ installing tarballs + peers");
+  await $`bun add ${reactTarball} ${coreTarball} react@^19 react-dom@^19 use-intl@^4 vite@^8 @types/react@^19 @types/react-dom@^19`
+    .cwd(consumerDir)
+    .quiet();
+
+  console.log("→ production vite build over the packed tarballs");
+  const build = await $`bun x vite build`.cwd(consumerDir).nothrow();
+  if (build.exitCode === 0) {
+    // The worker must have resolved and emitted its own chunk; otherwise the
+    // URL target silently vanished (e.g. externalized away) and the gate would
+    // be moot.
+    const distFiles = await readdir(path.join(consumerDir, "dist"), { recursive: true });
+    workerChunk = distFiles.find((f) => f.includes("font-metrics.worker") && f.endsWith(".js"));
+    if (!workerChunk) {
+      failure = `✗ packaged-consumer: build produced no worker chunk. dist: ${distFiles.join(", ")}`;
+    }
+  } else {
+    console.error(build.stderr.toString() || build.stdout.toString());
+    failure = "\n✗ packaged-consumer: production vite build FAILED against the packed tarballs.";
+  }
+} finally {
+  // `rm` with `force` tolerates a dir that was never created (empty string is
+  // guarded); cleanup runs on success, on failure, and on a thrown step.
+  for (const dir of [corePackDir, reactPackDir, consumerDir]) {
+    if (dir !== "") {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
 }
 
-await rm(corePackDir, { recursive: true, force: true });
-await rm(reactPackDir, { recursive: true, force: true });
-await rm(consumerDir, { recursive: true, force: true });
+if (failure !== null) {
+  console.error(failure);
+  process.exit(1);
+}
 
 console.log(
   `\n✓ packaged-consumer: production vite build succeeded; worker chunk emitted (${workerChunk}).`,
