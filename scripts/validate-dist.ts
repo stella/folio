@@ -317,9 +317,13 @@ if (target === "react") {
 const jsFiles = (await readdir(installedDist, { recursive: true })).filter((f) =>
   f.endsWith(".js"),
 );
-const allJs = (
-  await Promise.all(jsFiles.map(async (f) => await readFile(path.join(installedDist, f), "utf-8")))
-).join("\n");
+const jsContents = await Promise.all(
+  jsFiles.map(async (f) => ({
+    file: f,
+    code: await readFile(path.join(installedDist, f), "utf-8"),
+  })),
+);
+const allJs = jsContents.map((c) => c.code).join("\n");
 // Tell-tale internals that only exist if React's source were bundled.
 const reactSentinels = [
   "react-stack-bottom-frame",
@@ -351,6 +355,40 @@ record(
       ]
         .filter(Boolean)
         .join("; "),
+);
+
+// --- Check: `new URL(..., import.meta.url)` targets ship in dist ------------
+// Every asset a published module references via `new URL("<rel>",
+// import.meta.url)` (worker entries, wasm, fonts) must be a file that actually
+// ships in the tarball. A downstream bundler resolves these specifiers
+// literally against the emitted module (Vite/rolldown's
+// `vite:worker-import-meta-url` treats the worker entry as a build entry), so a
+// dangling target — e.g. a specifier left pointing at a `.ts` source that the
+// package build never emits — aborts the consumer build with UNRESOLVED_ENTRY.
+const urlTargetRe = /new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)/gu;
+const danglingUrlTargets: string[] = [];
+let urlTargetCount = 0;
+for (const { file, code } of jsContents) {
+  for (const match of code.matchAll(urlTargetRe)) {
+    const spec = match[1];
+    // Only file-relative specifiers resolve against the module; skip absolute
+    // URLs (`https:`, `data:`, `blob:`) and protocol-relative ones.
+    if (/^[a-z][a-z0-9+.-]*:/iu.test(spec) || spec.startsWith("//")) {
+      continue;
+    }
+    urlTargetCount += 1;
+    const resolved = path.resolve(path.dirname(path.join(installedDist, file)), spec);
+    if (!existsSync(resolved)) {
+      danglingUrlTargets.push(`${file} -> ${spec}`);
+    }
+  }
+}
+record(
+  "assets: new URL(..., import.meta.url) targets exist in dist",
+  danglingUrlTargets.length === 0,
+  danglingUrlTargets.length === 0
+    ? `${urlTargetCount} URL target(s) resolve inside dist`
+    : `missing target(s): ${danglingUrlTargets.join("; ")}`,
 );
 
 // --- Check 5 (react only): messages subpath declaration is self-contained ---
