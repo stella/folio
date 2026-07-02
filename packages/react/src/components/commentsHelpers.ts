@@ -21,6 +21,19 @@ export function allocateCommentId(): number {
   return nextCommentId++;
 }
 
+/**
+ * Bump the in-process comment-id counter above `id` so a later
+ * `allocateCommentId()` can never re-mint an id that was adopted from an
+ * external source-of-truth model. No-op when `id` is already below the
+ * current counter. Mirrors the allocator-seeding behaviour of upstream
+ * docx-editor's `CommentIdAllocator.seedAbove` (05f2ab84).
+ */
+export function seedCommentIdAbove(id: number): void {
+  if (id >= nextCommentId) {
+    nextCommentId = id + 1;
+  }
+}
+
 export function getCommentAuthorKey(author?: string): string {
   const trimmed = author?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : "Unknown";
@@ -69,9 +82,25 @@ export function getFallbackCommentYPosition(scrollContainer: HTMLElement | null)
   );
 }
 
-export function createComment(text: string, authorName: string, parentId?: number): Comment {
+/**
+ * Build a Comment. By default the id is freshly allocated; pass `id` to adopt a
+ * specific OOXML comment id (e.g. one an external source-of-truth model already
+ * assigned) so the preview mirrors the comment under the SAME id — the counter
+ * is then seeded above it so later mints never collide. Ports upstream
+ * docx-editor `feat(ref): proposeChange/addComment can adopt an external OOXML
+ * id` (05f2ab84), adapted to folio's `createComment` factory.
+ */
+export function createComment(
+  text: string,
+  authorName: string,
+  parentId?: number,
+  id?: number,
+): Comment {
+  if (id !== undefined) {
+    seedCommentIdAbove(id);
+  }
   return {
-    id: allocateCommentId(),
+    id: id ?? allocateCommentId(),
     author: authorName,
     date: new Date().toISOString(),
     content: [

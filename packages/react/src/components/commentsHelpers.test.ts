@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Comment } from "@stll/folio-core/types/content";
-import { collectCommentIdsFromSources, pruneOrphanedComments } from "./commentsHelpers";
+import {
+  allocateCommentId,
+  collectCommentIdsFromSources,
+  createComment,
+  pruneOrphanedComments,
+  seedCommentIdAbove,
+} from "./commentsHelpers";
 
 function makeComment(id: number, parentId?: number): Comment {
   return {
@@ -237,5 +243,39 @@ describe("pruneOrphanedComments", () => {
     expect(
       pruneOrphanedComments([anchoredParent, unparsedReplyA, unparsedReplyB], new Set([1])),
     ).toEqual([anchoredParent, unparsedReplyA, unparsedReplyB]);
+  });
+});
+
+/**
+ * Adopting an externally-assigned OOXML comment id (ports upstream docx-editor
+ * 05f2ab84, adapted to folio's `createComment` factory). folio's allocator is a
+ * process-global monotonic counter, so absolute ids aren't fixed; the invariant
+ * is that a comment can adopt a supplied id AND that the counter is seeded above
+ * it so a later mint can never re-issue it.
+ */
+describe("createComment: external comment id adoption", () => {
+  test("adopts a supplied commentId instead of minting one", () => {
+    const comment = createComment("Please confirm the carve-out.", "CLM", undefined, 9999);
+    expect(comment.id).toBe(9999);
+  });
+
+  test("still mints a fresh, monotonically increasing id when none is supplied", () => {
+    const first = createComment("a", "CLM").id;
+    const second = createComment("b", "CLM").id;
+    expect(second).toBe(first + 1);
+  });
+
+  test("seeds the allocator above an adopted id that exceeds the counter", () => {
+    const base = allocateCommentId();
+    const adopted = base + 5000;
+    createComment("note", "CLM", undefined, adopted);
+    // The next fresh mint must clear the adopted id, not collide with it.
+    expect(allocateCommentId()).toBe(adopted + 1);
+  });
+
+  test("seedCommentIdAbove is a no-op for an id below the current counter", () => {
+    const a = allocateCommentId();
+    seedCommentIdAbove(a - 1000);
+    expect(allocateCommentId()).toBe(a + 1);
   });
 });
