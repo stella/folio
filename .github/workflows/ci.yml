@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   changeset:
-    name: Changeset present for src changes
+    name: Changeset present for core/react src changes
     # PR-only: needs a base branch to diff against. The bot's Version Packages
     # PR touches no src, so this passes there without a special case.
     if: github.event_name == 'pull_request'
@@ -28,7 +28,7 @@ jobs:
         with:
           bun-version-file: "package.json"
 
-      - name: Require a changeset (or an empty one) for packages/*/src edits
+      - name: Require a changeset (or an empty one) for core/react src edits
         run: bun scripts/check-changeset.ts
         env:
           CHANGESET_BASE_REF: origin/${{ github.base_ref }}
@@ -140,4 +140,3 @@ jobs:
       # shipped runtime catalog (IntlError: MISSING_MESSAGE).
       - name: Runtime smoke over packed tarballs
         run: bun run test:packaged-consumer-smoke
-
