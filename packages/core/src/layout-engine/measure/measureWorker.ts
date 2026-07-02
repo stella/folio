@@ -154,7 +154,7 @@ function createTransport(): MeasureWorkerTransport | null {
     // Vite-compatible worker construction. The bundler resolves the
     // URL at build time. We cast to the transport shape so this file
     // does not depend on the global `Worker` type at module load.
-    const worker = new Worker(new URL("font-metrics.worker.ts", import.meta.url), {
+    const worker = new Worker(new URL("font-metrics.worker.js", import.meta.url), {
       type: "module",
     });
     return worker as unknown as MeasureWorkerTransport;
