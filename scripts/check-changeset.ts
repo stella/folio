@@ -21,12 +21,26 @@ const SRC_RE = /^packages\/(?:core|react)\/src\//;
 const CHANGESET_RE = /^\.changeset\/(?!README\.md$)[^/]+\.md$/;
 
 // Best-effort: make sure the base ref is present locally. A full checkout
-// already has it; ignore failure (e.g. offline local runs).
+// already has it; ignore failure here (e.g. offline local runs) — if the ref
+// really is missing, the `git diff` below fails loudly.
 await $`git fetch --no-tags origin ${BASE.replace(/^origin\//, "")}`.nothrow().quiet();
 
 const diff = async (filter: string): Promise<string[]> => {
-  const out = await $`git diff --name-only --diff-filter=${filter} ${BASE}...HEAD`.nothrow().text();
-  return out
+  // `.nothrow()` + an explicit exit-code check: a failed `git diff` (missing
+  // base ref, shallow clone, malformed BASE) must fail the job loudly. Letting
+  // it read as an empty diff would silently bypass the whole gate.
+  const result = await $`git diff --name-only --diff-filter=${filter} ${BASE}...HEAD`
+    .nothrow()
+    .quiet();
+  if (result.exitCode !== 0) {
+    console.error(
+      `changeset check: \`git diff ${BASE}...HEAD\` failed (exit ${result.exitCode}); cannot verify changesets.`,
+    );
+    console.error(result.stderr.toString());
+    process.exit(1);
+  }
+  return result.stdout
+    .toString()
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
