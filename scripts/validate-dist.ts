@@ -41,6 +41,8 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { scanDistUrlTargets } from "./dist-url-targets";
+
 const repoRoot = path.resolve(import.meta.dir, "..");
 const prepareScript = path.join(repoRoot, "scripts", "prepare-publish.ts");
 const tscBin = path.join(repoRoot, "node_modules", ".bin", "tsc");
@@ -365,30 +367,15 @@ record(
 // `vite:worker-import-meta-url` treats the worker entry as a build entry), so a
 // dangling target — e.g. a specifier left pointing at a `.ts` source that the
 // package build never emits — aborts the consumer build with UNRESOLVED_ENTRY.
-const urlTargetRe = /new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)/gu;
-const danglingUrlTargets: string[] = [];
-let urlTargetCount = 0;
-for (const { file, code } of jsContents) {
-  for (const match of code.matchAll(urlTargetRe)) {
-    const spec = match[1];
-    // Only file-relative specifiers resolve against the module; skip absolute
-    // URLs (`https:`, `data:`, `blob:`) and protocol-relative ones.
-    if (/^[a-z][a-z0-9+.-]*:/iu.test(spec) || spec.startsWith("//")) {
-      continue;
-    }
-    urlTargetCount += 1;
-    const resolved = path.resolve(path.dirname(path.join(installedDist, file)), spec);
-    if (!existsSync(resolved)) {
-      danglingUrlTargets.push(`${file} -> ${spec}`);
-    }
-  }
-}
+// Scan logic (skip absolute URLs, strip `?query`/`#hash`) lives in
+// `dist-url-targets.ts` with its own unit tests.
+const urlTargets = scanDistUrlTargets(jsContents, installedDist);
 record(
   "assets: new URL(..., import.meta.url) targets exist in dist",
-  danglingUrlTargets.length === 0,
-  danglingUrlTargets.length === 0
-    ? `${urlTargetCount} URL target(s) resolve inside dist`
-    : `missing target(s): ${danglingUrlTargets.join("; ")}`,
+  urlTargets.dangling.length === 0,
+  urlTargets.dangling.length === 0
+    ? `${urlTargets.total} URL target(s) resolve inside dist`
+    : `missing target(s): ${urlTargets.dangling.join("; ")}`,
 );
 
 // --- Check 5 (react only): messages subpath declaration is self-contained ---
