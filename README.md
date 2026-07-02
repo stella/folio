@@ -154,6 +154,39 @@ bun run lint
 bun run validate-dist   # clean-room publish-shape validation for both packages
 ```
 
+## Releasing
+
+Releases are driven by [Changesets](https://github.com/changesets/changesets).
+The two packages are versioned independently.
+
+**Every PR that edits `packages/core/src` or `packages/react/src` must add a
+changeset.** CI enforces this (`bun run changeset:check`):
+
+```sh
+bunx changeset          # pick packages + bump level, write a summary
+```
+
+For a source change that genuinely needs no release (comments, internal-only
+refactor), record that explicitly instead:
+
+```sh
+bunx changeset --empty
+```
+
+Commit the generated `.changeset/*.md` file with your PR.
+
+How a version reaches npm:
+
+1. PRs merge to `main`, each carrying its changeset(s).
+2. `release-pr.yml` maintains a **"Version Packages"** PR that applies the
+   pending changesets — bumping the affected `package.json` versions, updating
+   changelogs, and re-syncing `bun.lock`.
+3. Merging that PR lands the version bumps on `main`, which trips
+   `publish.yml`'s `packages/{core,react}/package.json` path filter and runs the
+   hardened OIDC publish + GitHub Release for the bumped package(s).
+
+Changesets never publishes; `publish.yml` is the sole publish mechanism.
+
 ## Acknowledgements
 
 folio began as a private fork of [Eigenpal](https://eigenpal.com)'s
