@@ -31,6 +31,7 @@
     "lint:fix": "bun --bun oxlint -c oxlint.config.ts --fix packages scripts test benchmarks",
     "format": "oxfmt .",
     "sync-ai": "bash scripts/sync-ai-skills.sh",
+    "test:packaged-consumer": "bun scripts/packaged-consumer-build.ts",
     "validate-dist": "bun scripts/validate-dist.ts core && bun scripts/validate-dist.ts react",
     "validate-dist:core": "bun scripts/validate-dist.ts core",
     "validate-dist:react": "bun scripts/validate-dist.ts react",

@@ -88,3 +88,23 @@ jobs:
         env:
           DIFFERENTIAL_REQUIRED: "1"
 
+  packaged-consumer:
+    name: Packaged-consumer build (tarballs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      # Builds + packs both packages, installs the tarballs into a clean-room
+      # consumer OUTSIDE the workspace, and runs a production `vite build`. The
+      # playground e2e consumes SOURCE and so cannot catch a packaging
+      # regression (e.g. a worker `new URL(..., import.meta.url)` target the
+      # dist never emits); this build consumes the published TARBALLS.
+      - name: Production Vite build over packed tarballs
+        run: bun run test:packaged-consumer
+
