@@ -62,6 +62,10 @@ export default library({
     // Module-augmentation files must use `interface` for declaration merging;
     // oxlint's --fix would rewrite it to `type` and break the augmentation.
     "packages/react/types/**/*.d.ts",
+    // Machine-generated typed-message catalog (scripts/i18n-typegen.ts). Its
+    // shape mirrors en.json byte-for-byte so `i18n-typegen --check` can diff it;
+    // linting/`--fix` would rewrite it and break that drift check.
+    "**/*.gen.ts",
   ],
   overrides: [
     {
