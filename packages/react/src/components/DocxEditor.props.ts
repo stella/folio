@@ -374,6 +374,23 @@ export type DocxEditorRef = {
    */
   rejectAIEditOperation: (revisionIds: number | readonly number[]) => boolean;
   /**
+   * Undo / redo the last history-recorded edit IN PLACE — e.g. an
+   * `acceptAIEditOperation` / `rejectAIEditOperation` resolution — without
+   * reloading the document, so the view and scroll position are preserved.
+   * Routes to whichever surface is active: the inline header/footer editor
+   * when one is being edited, otherwise the document body. Only edits that
+   * produce document changes are recorded; selection-only changes (scroll /
+   * locate) carry no steps and are never undone. Returns `false` when there
+   * is nothing to undo / redo.
+   *
+   * Ports upstream docx-editor `feat(react): accept/reject and undo/redo
+   * tracked changes via the editor ref` (ff971a7b): folio already exposes
+   * id-scoped accept/reject through `acceptAIEditOperation` /
+   * `rejectAIEditOperation`, so only the in-place undo/redo surface is new.
+   */
+  undo: () => boolean;
+  redo: () => boolean;
+  /**
    * Scroll the editor viewport so the tracked-change marks belonging to the
    * given `revisionIds` come into view, and select them. No-op when none of the
    * revisions are present.

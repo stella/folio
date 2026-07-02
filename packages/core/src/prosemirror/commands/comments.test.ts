@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { history, redo, undo, undoDepth } from "prosemirror-history";
 import { Schema } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
-import type { Transaction } from "prosemirror-state";
+import type { Node as PMNode } from "prosemirror-model";
+import { EditorState, TextSelection } from "prosemirror-state";
+import type { Command, Transaction } from "prosemirror-state";
 
 import {
   acceptChange,
@@ -400,5 +402,133 @@ describe("tracked change navigation", () => {
       to: 10,
       type: "insertion",
     });
+  });
+});
+
+/**
+ * Undoing / redoing an id-scoped accept/reject IN PLACE, through
+ * prosemirror-history — the mechanism the editor ref's `undo()` / `redo()`
+ * drive (ports upstream docx-editor ff971a7b). folio's id-scoped resolver is
+ * `acceptAIEditRevision` / `rejectAIEditRevision`; each dispatches a single
+ * transaction, so one `undo()` reverses the whole resolution — even a coalesced
+ * revision whose sites span multiple paragraphs — with no document reload.
+ */
+describe("undo / redo of an id-scoped resolution — in-place reversal, no reload", () => {
+  const REV = 7;
+
+  /** One paragraph: `keep `, then `tracked` carrying `markName`@REV, then ` tail`. */
+  const docWith = (markName: "insertion" | "deletion"): PMNode => {
+    const markType = schema.marks[markName]!;
+    const attrs = { revisionId: REV, author: "AI", date: "2026-01-01" };
+    return schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("keep "),
+        schema.text("tracked", [markType.create(attrs)]),
+        schema.text(" tail"),
+      ]),
+    ]);
+  };
+
+  /** An editor with history(), so undo/redo run the ref's real mechanism. */
+  const editor = (doc: PMNode) => {
+    let state = EditorState.create({ schema, doc, plugins: [history()] });
+    return {
+      get state() {
+        return state;
+      },
+      run(cmd: Command) {
+        return cmd(state, (tr) => {
+          state = state.apply(tr);
+        });
+      },
+    };
+  };
+
+  const text = (state: EditorState) => state.doc.textContent;
+  const hasMark = (state: EditorState, name: string) => {
+    let found = false;
+    state.doc.descendants((node) => {
+      if (node.marks.some((mark) => mark.type.name === name)) {
+        found = true;
+      }
+    });
+    return found;
+  };
+
+  test("undo restores an accepted insertion mark; redo drops it again", () => {
+    const ed = editor(docWith("insertion"));
+    expect(ed.run(acceptAIEditRevision(REV))).toBe(true);
+    expect(hasMark(ed.state, "insertion")).toBe(false);
+
+    ed.run(undo);
+    expect(hasMark(ed.state, "insertion")).toBe(true);
+    expect(text(ed.state)).toBe("keep tracked tail");
+
+    ed.run(redo);
+    expect(hasMark(ed.state, "insertion")).toBe(false);
+  });
+
+  test("undo restores text removed by accepting a deletion", () => {
+    const ed = editor(docWith("deletion"));
+    expect(ed.run(acceptAIEditRevision(REV))).toBe(true);
+    expect(text(ed.state)).toBe("keep  tail");
+
+    ed.run(undo);
+    expect(text(ed.state)).toBe("keep tracked tail");
+    expect(hasMark(ed.state, "deletion")).toBe(true);
+  });
+
+  test("undo restores text + mark removed by rejecting an insertion; redo re-removes", () => {
+    const ed = editor(docWith("insertion"));
+    expect(ed.run(rejectAIEditRevision(REV))).toBe(true);
+    expect(text(ed.state)).toBe("keep  tail");
+    expect(hasMark(ed.state, "insertion")).toBe(false);
+
+    ed.run(undo);
+    expect(text(ed.state)).toBe("keep tracked tail");
+    expect(hasMark(ed.state, "insertion")).toBe(true);
+
+    ed.run(redo);
+    expect(text(ed.state)).toBe("keep  tail");
+  });
+
+  test("resolves every site of a coalesced revision in one undoable step", () => {
+    const insertion = schema.marks["insertion"]!;
+    const attrs = { revisionId: REV, author: "AI", date: "2026-01-01" };
+    // The same revisionId on two non-contiguous runs across two paragraphs.
+    const ed = editor(
+      schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("a "),
+          schema.text("one", [insertion.create(attrs)]),
+          schema.text(" b"),
+        ]),
+        schema.node("paragraph", null, [
+          schema.text("c "),
+          schema.text("two", [insertion.create(attrs)]),
+          schema.text(" d"),
+        ]),
+      ]),
+    );
+    const before = undoDepth(ed.state);
+    expect(ed.run(acceptAIEditRevision(REV))).toBe(true);
+    expect(hasMark(ed.state, "insertion")).toBe(false); // every site resolved...
+    expect(undoDepth(ed.state)).toBe(before + 1); // ...in a single history step,
+    ed.run(undo);
+    expect(hasMark(ed.state, "insertion")).toBe(true); // so one undo restores them all.
+  });
+
+  test("a selection-only change is never recorded, so undo() still targets the last edit", () => {
+    const ed = editor(docWith("insertion"));
+    ed.run(acceptAIEditRevision(REV));
+    expect(hasMark(ed.state, "insertion")).toBe(false);
+    // Move the selection — no document steps, so prosemirror-history ignores it
+    // (the ref undo()'s documented guarantee that scroll/locate isn't undone).
+    ed.run((state, dispatch) => {
+      dispatch?.(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+      return true;
+    });
+    ed.run(undo);
+    expect(hasMark(ed.state, "insertion")).toBe(true); // reverted the ACCEPT, not the selection
   });
 });

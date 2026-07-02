@@ -2853,6 +2853,28 @@ export function DocxEditor({
         }
         return rejectAIEditRevision(revisionId)(view.state, view.dispatch);
       },
+      // In-place undo/redo of the last history-recorded edit (e.g. an
+      // accept/reject resolution), routed to the active surface — the inline
+      // header/footer editor when one is being edited, otherwise the body.
+      // Mirrors `undoActiveEditor`/`redoActiveEditor` but returns the
+      // prosemirror-history result so a host can tell whether anything was
+      // reversed. Ports upstream docx-editor ff971a7b.
+      undo: () => {
+        if (hfEditPosition && hfEditorRef.current) {
+          return hfEditorRef.current.undo();
+        }
+        const undone = pagedEditorRef.current?.undo() ?? false;
+        requestAnimationFrame(refreshBodyHistoryAvailability);
+        return undone;
+      },
+      redo: () => {
+        if (hfEditPosition && hfEditorRef.current) {
+          return hfEditorRef.current.redo();
+        }
+        const redone = pagedEditorRef.current?.redo() ?? false;
+        requestAnimationFrame(refreshBodyHistoryAvailability);
+        return redone;
+      },
       scrollToAIEditOperation: (revisionId) => {
         const view = pagedEditorRef.current?.getView();
         if (!view) {
@@ -2985,6 +3007,8 @@ export function DocxEditor({
       loadBuffer,
       updateComments,
       commentsDirtyRef,
+      hfEditPosition,
+      refreshBodyHistoryAvailability,
     ],
   );
 
