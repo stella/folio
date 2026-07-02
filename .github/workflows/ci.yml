@@ -111,3 +111,13 @@ jobs:
       - name: Production Vite build over packed tarballs
         run: bun run test:packaged-consumer
 
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      # Runtime half of the same gate: serve the built consumer and drive it in a
+      # browser. Catches failures the build cannot see — a worker that resolves at
+      # build time but fails to spawn/execute, and UI strings missing from the
+      # shipped runtime catalog (IntlError: MISSING_MESSAGE).
+      - name: Runtime smoke over packed tarballs
+        run: bun run test:packaged-consumer-smoke
+

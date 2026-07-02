@@ -23,41 +23,18 @@
 //
 // Exits non-zero on any failure. Run via `bun run test:packaged-consumer`.
 
-import { panic } from "better-result";
 import { $ } from "bun";
-import { cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const repoRoot = path.resolve(import.meta.dir, "..");
-const prepareScript = path.join(repoRoot, "scripts", "prepare-publish.ts");
-const coreDir = path.join(repoRoot, "packages", "core");
-const reactDir = path.join(repoRoot, "packages", "react");
-const consumerSrc = path.join(repoRoot, "test", "packaged-consumer");
-
-// Build a package, transform its package.json to the published dist shape
-// (reversibly), pack a tarball into destDir, and return the tarball path.
-const buildAndPack = async (pkgDir: string, destDir: string): Promise<string> => {
-  const name = path.basename(pkgDir);
-  console.log(`→ building @stll/folio-${name}`);
-  await $`bun run build`.cwd(pkgDir).quiet();
-
-  const pkgJsonPath = path.join(pkgDir, "package.json");
-  const original = await readFile(pkgJsonPath, "utf-8");
-  try {
-    console.log(`→ transforming @stll/folio-${name} package.json to dist shape`);
-    await $`bun ${prepareScript} ${pkgDir}`.quiet();
-    console.log(`→ packing @stll/folio-${name} tarball`);
-    await $`bun pm pack --destination ${destDir}`.cwd(pkgDir).quiet();
-  } finally {
-    // Always restore the in-repo source-shape package.json.
-    await writeFile(pkgJsonPath, original);
-  }
-  const tgz = (await readdir(destDir)).find((f) => f.endsWith(".tgz"));
-  return tgz
-    ? path.join(destDir, tgz)
-    : panic(`packaged-consumer: bun pm pack produced no tarball for ${name}`);
-};
+import {
+  buildAndPack,
+  consumerSrc,
+  coreDir,
+  reactDir,
+  writeConsumerPackageJson,
+} from "./packaged-consumer-lib";
 
 // Track the failure instead of calling `process.exit` inside the `try`:
 // `process.exit` terminates without unwinding, so the `finally` cleanup would
@@ -83,19 +60,7 @@ try {
   await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
   await cp(path.join(consumerSrc, "vite.config.ts"), path.join(consumerDir, "vite.config.ts"));
 
-  const consumerPkg = {
-    name: "folio-packaged-consumer",
-    version: "0.0.0",
-    private: true,
-    type: "module",
-    // Pin folio-react's transitive folio-core to the packed tarball (not a
-    // registry lookup): the two must resolve to each other's packed dist.
-    overrides: { "@stll/folio-core": coreTarball },
-  };
-  await writeFile(
-    path.join(consumerDir, "package.json"),
-    `${JSON.stringify(consumerPkg, null, 2)}\n`,
-  );
+  await writeConsumerPackageJson(consumerDir, coreTarball);
 
   console.log("→ installing tarballs + peers");
   await $`bun add ${reactTarball} ${coreTarball} react@^19 react-dom@^19 use-intl@^4 vite@^8 @types/react@^19 @types/react-dom@^19`
