@@ -176,6 +176,9 @@ jobs:
         # skipped), the tag already exists and we skip.
         env:
           GH_TOKEN: ${{ github.token }}
+          # The job downloads only the tarball artifact (no checkout), so gh
+          # cannot infer the repository from a git remote; pass it explicitly.
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.tarball.outputs.tag }}
           NAME: ${{ steps.tarball.outputs.name }}
           VERSION: ${{ steps.tarball.outputs.version }}
