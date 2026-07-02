@@ -25,6 +25,13 @@ name: Publish
 # that version. The hardened action is idempotent: it skips a name@version
 # already on the registry, so bumping only one package republishes only it.
 # Manual dispatch with `publish` unchecked builds + packs only (a dry run).
+#
+# Each successful publish also cuts a GitHub Release (tag `<name>@<version>`)
+# with the exact tarball that went to npm attached as an asset. That tarball is
+# the content-addressed link between the public GitHub reference and the npm
+# artifact: downstream users can verify byte-for-byte that what they install
+# matches this release. Release creation is idempotent — it skips if the tag
+# already exists, mirroring the hardened action's version-level idempotency.
 
 env:
   NODE_VERSION: "22"
@@ -96,8 +103,10 @@ jobs:
   publish:
     name: Publish @stll/folio-${{ matrix.pkg }}
     needs: pack
-    # Auto-publish on a version-bump push; on manual dispatch, only when ticked.
-    if: ${{ github.event_name == 'push' || inputs.publish }}
+    # Auto-publish only from main: a version-bump push to main, or a manual
+    # dispatch from main with the publish checkbox ticked. A dispatch from any
+    # other branch is a dry run (pack only), never a publish.
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish) }}
     runs-on: ubuntu-latest
     strategy:
       # core before react: react's published dep on @stll/folio-core must already
@@ -106,7 +115,11 @@ jobs:
       matrix:
         pkg: [core, react]
     permissions:
-      contents: read
+      # contents: write cuts the per-version GitHub Release below. Safe to grant
+      # alongside id-token here: this job runs no untrusted build scripts (they
+      # ran in the pack job); it only downloads a prebuilt tarball, publishes it,
+      # and creates the release.
+      contents: write
       id-token: write # OIDC only here; build scripts already ran in the pack job
       attestations: write # build provenance attestation for the published tarball
     steps:
@@ -127,15 +140,54 @@ jobs:
           name: npm-tarball-${{ matrix.pkg }}
           path: release-artifacts/
 
-      - name: Resolve tarball path
+      - name: Resolve tarball metadata
         id: tarball
         shell: bash
         run: |
           set -euo pipefail
           tgz="$(ls release-artifacts/*.tgz)"
-          echo "path=${tgz}" >> "${GITHUB_OUTPUT}"
+          # Read name and version from the tarball's bundled package.json — the
+          # published artifact is whatever bytes are in the .tgz, so the release
+          # tag must reflect that (and `bun pm pack` has already rewritten any
+          # `workspace:`/`catalog:` deps to concrete versions inside it).
+          tar -xOf "${tgz}" package/package.json > "${RUNNER_TEMP}/pkg.json"
+          name="$(node -p "require('${RUNNER_TEMP}/pkg.json').name")"
+          version="$(node -p "require('${RUNNER_TEMP}/pkg.json').version")"
+          {
+            echo "path=${tgz}"
+            echo "name=${name}"
+            echo "version=${version}"
+            echo "tag=${name}@${version}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Publish to npm
         uses: stella/.github/.github/actions/npm-publish-hardened@96b8912e0786548c4e62046ce3965769991dd0e0
         with:
+          # Real releases ship as `latest`, promoting past the one-time
+          # `placeholder`-tagged bootstrap stubs. `latest` is the action default,
+          # set here explicitly so the intent is visible at the call site.
           tarball: ${{ steps.tarball.outputs.path }}
+          tag: latest
+
+      - name: Create GitHub Release
+        # Attach the exact tarball published to npm so the GitHub Release is the
+        # content-addressed public reference for the artifact. Idempotent: on a
+        # re-run (or when the sibling package was not bumped and npm publish was
+        # skipped), the tag already exists and we skip.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tarball.outputs.tag }}
+          NAME: ${{ steps.tarball.outputs.name }}
+          VERSION: ${{ steps.tarball.outputs.version }}
+          TARBALL: ${{ steps.tarball.outputs.path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "::notice::Release ${TAG} already exists; skipping."
+            exit 0
+          fi
+          gh release create "${TAG}" "${TARBALL}" \
+            --target "${GITHUB_SHA}" \
+            --title "${NAME}@${VERSION}" \
+            --notes "\`${NAME}@${VERSION}\` published to npm via OIDC trusted publishing with SLSA provenance. The attached tarball is the exact artifact published to the registry."
