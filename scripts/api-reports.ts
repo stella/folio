@@ -28,7 +28,7 @@ import {
   ExtractorConfig,
   ExtractorLogLevel,
 } from "@microsoft/api-extractor";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 type PackageTarget = { slug: string; name: string; root: string };
@@ -77,7 +77,7 @@ const resolveDts = (packageRoot: string, subpath: string, srcPath: string): stri
 //                                 is no single `.d.ts` to snapshot
 //   - non-JS assets (`*.css`)     stylesheet, carries no declarations
 const entriesFor = (pkg: PackageTarget): { entries: Entry[]; missing: string[] } => {
-  const pkgJson = require(path.join(pkg.root, "package.json")) as {
+  const pkgJson = JSON.parse(readFileSync(path.join(pkg.root, "package.json"), "utf8")) as {
     exports: Record<string, unknown>;
   };
   const entries: Entry[] = [];
@@ -153,10 +153,6 @@ type RunResult = { errors: number; drifted: Entry[] };
 
 const runPackage = (pkg: PackageTarget, isLocal: boolean): RunResult => {
   const { entries, missing } = entriesFor(pkg);
-  const reportDir = reportDirFor(pkg);
-  const tempDir = tempDirFor(pkg);
-  mkdirSync(reportDir, { recursive: true });
-  mkdirSync(tempDir, { recursive: true });
 
   if (missing.length > 0) {
     console.error(`\nMissing built .d.ts for ${missing.length} export(s) in ${pkg.name}:`);
@@ -168,6 +164,11 @@ const runPackage = (pkg: PackageTarget, isLocal: boolean): RunResult => {
     console.error(`No snapshot entries for ${pkg.name}. Run \`bun run build:${pkg.slug}\` first.`);
     process.exit(1);
   }
+
+  const reportDir = reportDirFor(pkg);
+  const tempDir = tempDirFor(pkg);
+  mkdirSync(reportDir, { recursive: true });
+  mkdirSync(tempDir, { recursive: true });
 
   // Share one CompilerState across every entry so the tsconfig is parsed and
   // the dist tree walked once, not once per subpath.
@@ -208,7 +209,11 @@ const runPackage = (pkg: PackageTarget, isLocal: boolean): RunResult => {
 const args = process.argv.slice(2);
 const isLocal = args.includes("--update") || args.includes("--local");
 const pkgArgIdx = args.indexOf("--package");
-const pkgArg = pkgArgIdx !== -1 ? args[pkgArgIdx + 1] : null;
+const pkgArg = pkgArgIdx !== -1 ? args.at(pkgArgIdx + 1) : null;
+if (pkgArgIdx !== -1 && !pkgArg) {
+  console.error("--package requires a package name or slug.");
+  process.exit(1);
+}
 
 const targets = pkgArg ? PACKAGES.filter((p) => p.slug === pkgArg || p.name === pkgArg) : PACKAGES;
 if (pkgArg && targets.length === 0) {
