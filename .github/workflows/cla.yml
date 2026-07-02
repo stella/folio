@@ -16,7 +16,8 @@ permissions:
 jobs:
   cla:
     if: >-
-      (
+      !github.event.repository.private && (
+
         github.event_name == 'pull_request_target'
         && github.event.pull_request.user.login != 'dependabot[bot]'
       ) || (
