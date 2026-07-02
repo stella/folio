@@ -186,48 +186,54 @@ export function ContentControlWidgetsOverlay({ getEditorView }: ContentControlWi
     close();
   };
 
+  // `folio-root` wrapper re-establishes the editor root inside this body portal
+  // so, on the standalone-stylesheet path, the design tokens and scoped
+  // utilities (`bg-popover`, ...) below resolve (and `.dark .folio-root` themes
+  // it). `display: contents` keeps the positioned widget's own layout intact.
   return createPortal(
-    <div
-      role="dialog"
-      aria-label={
-        open.kind === "dropdown"
-          ? t("contentControlDropdownAriaLabel")
-          : t("contentControlDateAriaLabel")
-      }
-      style={style}
-      className="bg-popover text-popover-foreground min-w-[10rem] rounded-md border p-1 shadow-md"
-    >
-      {open.kind === "dropdown" && (
-        <div role="menu" className="flex flex-col">
-          {open.items.length === 0 ? (
-            <div className="text-muted-foreground px-2 py-1 text-sm">
-              {t("contentControlDropdownNoOptions")}
-            </div>
-          ) : (
-            open.items.map((item) => (
-              <MenuItem
-                key={`${item.value}::${item.displayText}`}
-                onClick={() => onDropdownPick(item.value)}
-              >
-                {item.displayText}
-              </MenuItem>
-            ))
-          )}
-        </div>
-      )}
-      {open.kind === "date" && (
-        <DatePickerPopover
-          clearLabel={t("clearDate")}
-          defaultOpen
-          onChange={(value) => {
-            if (value) {
-              onDatePick(value);
-            }
-          }}
-          showIcon={false}
-          value={null}
-        />
-      )}
+    <div className="folio-root" style={{ display: "contents" }}>
+      <div
+        role="dialog"
+        aria-label={
+          open.kind === "dropdown"
+            ? t("contentControlDropdownAriaLabel")
+            : t("contentControlDateAriaLabel")
+        }
+        style={style}
+        className="bg-popover text-popover-foreground min-w-[10rem] rounded-md border p-1 shadow-md"
+      >
+        {open.kind === "dropdown" && (
+          <div role="menu" className="flex flex-col">
+            {open.items.length === 0 ? (
+              <div className="text-muted-foreground px-2 py-1 text-sm">
+                {t("contentControlDropdownNoOptions")}
+              </div>
+            ) : (
+              open.items.map((item) => (
+                <MenuItem
+                  key={`${item.value}::${item.displayText}`}
+                  onClick={() => onDropdownPick(item.value)}
+                >
+                  {item.displayText}
+                </MenuItem>
+              ))
+            )}
+          </div>
+        )}
+        {open.kind === "date" && (
+          <DatePickerPopover
+            clearLabel={t("clearDate")}
+            defaultOpen
+            onChange={(value) => {
+              if (value) {
+                onDatePick(value);
+              }
+            }}
+            showIcon={false}
+            value={null}
+          />
+        )}
+      </div>
     </div>,
     document.body,
   );

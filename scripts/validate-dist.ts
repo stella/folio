@@ -42,6 +42,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { scanDistUrlTargets } from "./dist-url-targets";
+import { findUncoveredUtilities } from "./standalone-css-coverage";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 const prepareScript = path.join(repoRoot, "scripts", "prepare-publish.ts");
@@ -311,6 +312,63 @@ if (target === "react") {
           .join("; ");
     record("css: bundled, valid, @fontsource preserved", ok, detail);
   }
+
+  // --- Check 3b: self-sufficient standalone.css -----------------------------
+  // Same document + chrome CSS as editor.css PLUS pre-compiled Tailwind
+  // utilities scoped under `.folio-root`, so a consumer needs no Tailwind of
+  // their own. Must be fully compiled (no un-expanded `@tailwind`/`@config`/
+  // `@source` directives), carry scoped utilities + token fallbacks, and still
+  // preserve the @fontsource `@import`s.
+  const standalonePath = path.join(installedDist, "standalone.css");
+  if (!existsSync(standalonePath)) {
+    record("css: dist/standalone.css present", false, "missing from tarball");
+  } else {
+    const css = await readFile(standalonePath, "utf-8");
+    const fontImports = css.match(/@import\s+["']@fontsource\/[^"']+["']/gu) ?? [];
+    // Scoped utilities (`.folio-root .<utility>`) plus low-specificity token
+    // fallbacks are what make the sheet self-sufficient.
+    const hasScopedUtilities = /\.folio-root \.[a-z]/u.test(css);
+    const hasTokenFallback = /:where\(\.folio-root\)/u.test(css) && css.includes("--popover:");
+    const hasDocRules = css.includes(".ProseMirror") && css.includes(".folio-default-button");
+    // No Tailwind source directive may survive into the shipped file.
+    const uncompiled = /@tailwind\b|@config\b|@source\b|@apply\b/u.test(css);
+    const fontsourceInlined =
+      /url\([^)]*@fontsource/u.test(css) || /url\(["']?data:font/u.test(css);
+
+    let parses = true;
+    let parseDetail = "";
+    try {
+      transform({ filename: "standalone.css", code: Buffer.from(css), minify: false });
+    } catch (error) {
+      parses = false;
+      parseDetail = error instanceof Error ? error.message : String(error);
+    }
+
+    const ok =
+      css.length > 10_000 &&
+      parses &&
+      hasScopedUtilities &&
+      hasTokenFallback &&
+      hasDocRules &&
+      !uncompiled &&
+      fontImports.length >= 20 &&
+      !fontsourceInlined;
+    const detail = ok
+      ? `${(css.length / 1024).toFixed(1)} kB, scoped utilities + token fallbacks + doc rules, ${fontImports.length} @fontsource imports preserved`
+      : [
+          css.length <= 10_000 && `too small (${css.length}B)`,
+          !parses && `invalid CSS: ${parseDetail}`,
+          !hasScopedUtilities && "no `.folio-root .<utility>` rules",
+          !hasTokenFallback && "no `:where(.folio-root)` token fallbacks",
+          !hasDocRules && "missing bundled document/chrome rules",
+          uncompiled && "un-expanded Tailwind directive present",
+          fontImports.length < 20 && `only ${fontImports.length} @fontsource imports`,
+          fontsourceInlined && "@fontsource appears inlined as font data",
+        ]
+          .filter(Boolean)
+          .join("; ");
+    record("css: standalone.css self-sufficient (scoped utilities + tokens)", ok, detail);
+  }
 }
 
 // --- Check 4: externals not bundled into the JS -----------------------------
@@ -358,6 +416,29 @@ record(
         .filter(Boolean)
         .join("; "),
 );
+
+// --- Check (react only): standalone.css covers every utility the JS uses ----
+// Every Tailwind utility a shipped component references must have a generated
+// rule in the packed standalone.css. Fails if a class in the dist JS was not
+// picked up by the standalone compile (a `@source` glob that missed a new
+// component dir, a stale build), which would leave a consumer on the standalone
+// path with an unstyled control and no error.
+if (target === "react") {
+  const standalonePath = path.join(installedDist, "standalone.css");
+  if (!existsSync(standalonePath)) {
+    record("css: standalone.css utility coverage", false, "standalone.css missing from tarball");
+  } else {
+    const standaloneCss = await readFile(standalonePath, "utf-8");
+    const { candidates, uncovered } = findUncoveredUtilities({ jsFiles: jsContents, standaloneCss });
+    record(
+      "css: standalone.css covers every utility used in dist JS",
+      uncovered.length === 0,
+      uncovered.length === 0
+        ? `${candidates} utility class(es) referenced, all present in standalone.css`
+        : `missing from standalone.css: ${uncovered.join(", ")}`,
+    );
+  }
+}
 
 // --- Check: `new URL(..., import.meta.url)` targets ship in dist ------------
 // Every asset a published module references via `new URL("<rel>",

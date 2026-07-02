@@ -564,7 +564,16 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
     return menu;
   }
 
-  return createPortal(menu, document.body);
+  // Wrap in `folio-root` so, on the standalone-stylesheet path, the editor's
+  // design tokens and scoped utilities apply to this body-portalled menu (and
+  // `.dark .folio-root` themes it). `display: contents` keeps the fixed menu's
+  // own layout intact.
+  return createPortal(
+    <div className="folio-root" style={{ display: "contents" }}>
+      {menu}
+    </div>,
+    document.body,
+  );
 };
 
 // ============================================================================

@@ -23,8 +23,18 @@ function DefaultDialogRoot(props: FolioDialogRootProps) {
   return <DialogPrimitive.Root {...props} />;
 }
 
-function DefaultDialogPortal(props: FolioDialogPortalProps) {
-  return <DialogPrimitive.Portal {...props} />;
+function DefaultDialogPortal({ children, ...props }: FolioDialogPortalProps) {
+  // `folio-root` re-establishes the editor root inside the body portal so design
+  // tokens and the standalone stylesheet's scoped utilities apply to the dialog
+  // (and `.dark .folio-root` themes it). `display: contents` keeps the wrapper
+  // out of layout, so the fixed-position backdrop/popup are unaffected.
+  return (
+    <DialogPrimitive.Portal {...props}>
+      <div className="folio-root" style={{ display: "contents" }}>
+        {children}
+      </div>
+    </DialogPrimitive.Portal>
+  );
 }
 
 function DefaultDialogBackdrop({ className, ...props }: FolioDialogBackdropProps) {

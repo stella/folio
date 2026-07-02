@@ -42,7 +42,10 @@ function DefaultMenuPopup({
       <MenuPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
-        className="folio-default-menu-positioner"
+        // `folio-root` re-establishes the editor root inside the body portal so
+        // design tokens and the standalone stylesheet's scoped utilities apply
+        // to the portalled content (and `.dark .folio-root` themes it).
+        className="folio-default-menu-positioner folio-root"
         side={side}
         sideOffset={sideOffset}
       >

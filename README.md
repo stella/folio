@@ -36,7 +36,7 @@ bun add @stll/folio-core
 
 ```tsx
 import { DocxEditor } from "@stll/folio-react";
-import "@stll/folio-react/editor.css";
+import "@stll/folio-react/standalone.css";
 
 export function Editor({ docx }: { docx: ArrayBuffer }) {
   return <DocxEditor documentBuffer={docx} onSave={(out) => download(out)} />;
@@ -45,6 +45,56 @@ export function Editor({ docx }: { docx: ArrayBuffer }) {
 
 The editor renders to the DOM; under SSR, load it from a client-only/dynamic
 import.
+
+### Styling: two integration modes
+
+The editor's chrome (toolbar, menus, dialogs) is authored with Tailwind utility
+classes and semantic design tokens. Pick the stylesheet that matches your app.
+
+**1. `standalone.css` — no Tailwind required (default).** A single,
+self-contained import: the bundled document/ProseMirror styles plus a
+pre-compiled copy of every utility folio's own components use. The utilities are
+scoped under `.folio-root`, so they cannot leak into or restyle your app, and
+the design tokens ship as low-specificity fallbacks you can override.
+
+```tsx
+import "@stll/folio-react/standalone.css";
+```
+
+Override the theme by setting the tokens on `.folio-root` (a normal class rule
+outranks the shipped `:where(.folio-root)` fallbacks):
+
+```css
+.folio-root {
+  --background: #fdfdfc;
+  --foreground: #1c1c1a;
+  --primary: #3b5bdb;
+  /* ...only the tokens you want to change... */
+}
+```
+
+For dark mode, add a `.dark` class to an ancestor (e.g. `<html>`); the editor
+and its body-portalled overlays theme themselves from it.
+
+**2. `editor.css` — you already run Tailwind.** Import only the bundled document
++ chrome styles and let your own Tailwind build generate the utilities. Point a
+`@source` at folio's shipped code so the classes its components use are scanned,
+and supply the semantic tokens (`--background`, `--foreground`, `--popover`, …)
+from your design system:
+
+```css
+/* your app's Tailwind entry */
+@import "tailwindcss";
+@source "../node_modules/@stll/folio-react/dist/**/*.js";
+```
+
+```tsx
+import "@stll/folio-react/editor.css";
+```
+
+Use this mode when your app's tokens and folio's should stay in lockstep. Do not
+import both stylesheets: `standalone.css` already contains everything
+`editor.css` does.
 
 ## Internationalization
 

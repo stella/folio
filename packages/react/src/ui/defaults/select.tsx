@@ -61,7 +61,10 @@ function DefaultSelectPopup({ className, children, ...props }: FolioSelectPopupP
     <SelectPrimitive.Portal>
       <SelectPrimitive.Positioner
         align="start"
-        className="folio-default-select-positioner"
+        // `folio-root` re-establishes the editor root inside the body portal so
+        // design tokens and the standalone stylesheet's scoped utilities apply
+        // to the portalled content (and `.dark .folio-root` themes it).
+        className="folio-default-select-positioner folio-root"
         side="bottom"
         sideOffset={4}
       >

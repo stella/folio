@@ -1,0 +1,170 @@
+/**
+ * Tailwind entry for the self-sufficient `@stll/folio-react/standalone.css`.
+ *
+ * This file is the INPUT the build compiles (see `scripts/build-css.ts`); it is
+ * never shipped as-is. The compiler:
+ *   - scans folio's own React source (`@source`) for utility class names,
+ *   - generates every one of those utilities, scoped under `.folio-root` via
+ *     `@config` (`important: ".folio-root"`), so they cannot bleed into a host,
+ *   - inlines the semantic-token -> Tailwind-color mapping (`@theme inline`),
+ *   - and emits the low-specificity token fallbacks + minimal reset below.
+ *
+ * The build then concatenates the compiled utilities with the bundled
+ * `editor.css` (document + ProseMirror + chrome styles) to produce one
+ * self-contained `dist/standalone.css` a consumer can import with no Tailwind
+ * of their own. The `editor.css` export and its own-Tailwind contract are
+ * unchanged.
+ *
+ * Preflight is intentionally excluded: Tailwind's `important` selector does not
+ * scope the base reset, so a full preflight would restyle the host app's
+ * elements globally. The scoped `@layer base` reset below covers only what the
+ * generated utilities require (`box-sizing`, `border-style: solid` so
+ * `border-*` widths render, form-control normalization), confined to
+ * `.folio-root`.
+ */
+
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* `important: ".folio-root"` scopes generated utilities under the editor root. */
+@config "../../tailwind.config.js";
+
+/* Scan folio's React chrome for the utility classes to generate. */
+@source "../**/*.{ts,tsx}";
+
+/* folio toggles dark mode with a `.dark` class on an ancestor (host `<html>`),
+ * matching the primary own-Tailwind path. */
+@custom-variant dark (&:is(.dark *));
+
+/* Map folio's semantic tokens onto Tailwind color names so `bg-popover`,
+ * `text-muted-foreground`, `border-input`, ... resolve to the tokens below (or
+ * to a consumer's overrides). `inline` keeps these out of `:root` and inlines
+ * `var(--token)` straight into each utility. Mirrors the token set the primary
+ * (own-Tailwind) path expects the host to provide. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+/* Base design tokens as LOW-SPECIFICITY fallbacks: `:where(.folio-root)` has
+ * zero specificity, so a consumer theme (`.folio-root { --background: ... }`,
+ * or their own token layer) always wins. `editor.css` maps its `--doc-*`
+ * aliases onto these. Values mirror the neutral palette the primary path uses.
+ * These are the only tokens the standalone path must supply itself; the primary
+ * path gets them from the host design system. */
+:where(.folio-root) {
+  --background: #ffffff;
+  --foreground: #262626;
+  --card: #ffffff;
+  --card-foreground: #262626;
+  --popover: #ffffff;
+  --popover-foreground: #262626;
+  --primary: #262626;
+  --primary-foreground: #fafafa;
+  --secondary: rgb(0 0 0 / 4%);
+  --secondary-foreground: #262626;
+  --muted: rgb(0 0 0 / 4%);
+  --muted-foreground: #525252;
+  --accent: rgb(0 0 0 / 4%);
+  --accent-foreground: #262626;
+  --destructive: #ef4444;
+  --destructive-foreground: #b91c1c;
+  --info: #3b82f6;
+  --info-foreground: #1d4ed8;
+  --success: #10b981;
+  --success-foreground: #047857;
+  --warning: #f59e0b;
+  --warning-foreground: #b45309;
+  --highlight: rgb(253 224 71 / 50%);
+  --highlight-foreground: #262626;
+  --border: rgb(0 0 0 / 10%);
+  --input: rgb(0 0 0 / 12%);
+  --ring: #a3a3a3;
+}
+
+:where(.folio-root.dark, .dark .folio-root) {
+  --background: #0a0a0a;
+  --foreground: #f5f5f5;
+  --card: #171717;
+  --card-foreground: #f5f5f5;
+  --popover: #171717;
+  --popover-foreground: #f5f5f5;
+  --primary: #f5f5f5;
+  --primary-foreground: #262626;
+  --secondary: rgb(255 255 255 / 4%);
+  --secondary-foreground: #f5f5f5;
+  --muted: rgb(255 255 255 / 4%);
+  --muted-foreground: #a3a3a3;
+  --accent: rgb(255 255 255 / 4%);
+  --accent-foreground: #f5f5f5;
+  --destructive: #f87171;
+  --destructive-foreground: #f87171;
+  --info: #3b82f6;
+  --info-foreground: #60a5fa;
+  --success: #10b981;
+  --success-foreground: #34d399;
+  --warning: #f59e0b;
+  --warning-foreground: #fbbf24;
+  --highlight: rgb(234 179 8 / 20%);
+  --highlight-foreground: #f5f5f5;
+  --border: rgb(255 255 255 / 8%);
+  --input: rgb(255 255 255 / 10%);
+  --ring: #737373;
+}
+
+/* Minimal scoped reset (standalone path only). Utilities live in the later
+ * `utilities` layer, so they always win over these base defaults. Confined to
+ * `.folio-root` and written with `:where()` so nothing here can outrank a
+ * consumer rule. */
+@layer base {
+  :where(.folio-root) *,
+  :where(.folio-root) *::before,
+  :where(.folio-root) *::after {
+    box-sizing: border-box;
+    /* Tailwind's `border-*` utilities set only width and assume this default. */
+    border: 0 solid;
+  }
+
+  :where(.folio-root) button,
+  :where(.folio-root) input,
+  :where(.folio-root) select,
+  :where(.folio-root) optgroup,
+  :where(.folio-root) textarea {
+    font: inherit;
+    color: inherit;
+    background-color: transparent;
+    border-radius: 0;
+  }
+
+  :where(.folio-root) button,
+  :where(.folio-root) input:where([type="button"], [type="reset"], [type="submit"]) {
+    appearance: button;
+  }
+}
