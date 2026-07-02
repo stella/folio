@@ -284,7 +284,7 @@ export function ToolbarButton({
       className={cn(
         "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
         "transition-colors duration-100",
-        "-webkit-font-smoothing-antialiased",
+        "antialiased",
         "text-[var(--doc-text-muted)] hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)]",
         active &&
           "bg-[var(--doc-primary-light)] text-[var(--doc-text)] hover:bg-[var(--doc-primary-light)]",

@@ -101,7 +101,7 @@ export function ImagePropertiesDialog({
             <div className="flex flex-col gap-2">
               <div className={sectionLabelCls}>Alt Text</div>
               <textarea
-                className="border-input bg-background text-foreground font-inherit min-h-[60px] resize-y rounded border px-1.5 py-1 text-xs outline-none"
+                className="border-input bg-background text-foreground font-[inherit] min-h-[60px] resize-y rounded border px-1.5 py-1 text-xs outline-none"
                 value={alt}
                 onChange={(e) => setAlt(e.target.value)}
                 placeholder="Describe this image for accessibility..."
