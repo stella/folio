@@ -22,7 +22,12 @@
 // first (`./messages` -> `dist/messages.d.ts`) then the mirrored source path
 // (`./markdown` -> `dist/markdown/index.d.ts`), whichever was emitted.
 
-import { CompilerState, Extractor, ExtractorConfig } from "@microsoft/api-extractor";
+import {
+  CompilerState,
+  Extractor,
+  ExtractorConfig,
+  ExtractorLogLevel,
+} from "@microsoft/api-extractor";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
@@ -73,13 +78,26 @@ const resolveDts = (packageRoot: string, subpath: string, srcPath: string): stri
 //   - non-JS assets (`*.css`)     stylesheet, carries no declarations
 const entriesFor = (pkg: PackageTarget): { entries: Entry[]; missing: string[] } => {
   const pkgJson = require(path.join(pkg.root, "package.json")) as {
-    exports: Record<string, string>;
+    exports: Record<string, unknown>;
   };
   const entries: Entry[] = [];
   const missing: string[] = [];
   for (const [key, srcPath] of Object.entries(pkgJson.exports)) {
     if (key === "./package.json" || key.includes("*")) continue;
-    if (typeof srcPath !== "string" || path.extname(srcPath) === ".css") continue;
+    // In-repo exports are plain `./src/*.ts` strings; `prepare-publish.ts`
+    // panics on any other shape at publish time. Fail loudly here too, so a
+    // future refactor to conditional-exports objects breaks this gate visibly
+    // instead of silently dropping entries from the snapshot.
+    if (typeof srcPath !== "string") {
+      console.error(
+        `${pkg.name}: export "${key}" is not a plain source-path string ` +
+          `(got ${JSON.stringify(srcPath)}).\n` +
+          `In-repo exports must point at ./src/*.ts (see scripts/prepare-publish.ts); ` +
+          `teach scripts/api-reports.ts about the new shape before changing this.`,
+      );
+      process.exit(1);
+    }
+    if (path.extname(srcPath) === ".css") continue;
     const dts = resolveDts(pkg.root, key, srcPath);
     if (dts) {
       entries.push({ key, slug: slugForKey(key), dts });
@@ -165,8 +183,18 @@ const runPackage = (pkg: PackageTarget, isLocal: boolean): RunResult => {
       localBuild: isLocal,
       showVerboseMessages: false,
       compilerState,
+      // Suppress console/info chatter (bundled-TS version banners, per-entry
+      // "copy the file" drift hints — the driver prints its own drift summary)
+      // and warning spam (`ae-missing-release-tag` on every untagged symbol).
+      // Error-severity messages fall through to API Extractor's default
+      // handler so their text is printed. Note `errorCount`/`warningCount`
+      // are incremented before the `handled` check (MessageRouter), so even a
+      // handled error still fails the run via `totalErrors` below; letting
+      // errors through only restores the diagnostic text.
       messageCallback: (message) => {
-        message.handled = true;
+        if (message.logLevel !== ExtractorLogLevel.Error) {
+          message.handled = true;
+        }
       },
     });
     errors += result.errorCount;
