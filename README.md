@@ -108,9 +108,10 @@ bun run validate-dist   # clean-room publish-shape validation for both packages
 folio began as a private fork of [Eigenpal](https://eigenpal.com)'s
 [docx-editor](https://github.com/eigenpal/docx-editor) by
 [Jedr Blaszyk](https://github.com/jedrazb). The code has since been extended
-(mostly to match the needs of [stella](https://github.com/stella/stella). After the upstream
-repository was taken down, we're publishing folio fork. The original license and copyright are
-preserved in [`NOTICE.md`](./NOTICE.md).
+(mostly to match the needs of [stella](https://github.com/stella/stella)). After the upstream
+repository was taken down, we are publishing the folio fork as an independently maintained
+continuation. The original license and copyright are preserved in
+[`NOTICE.md`](./NOTICE.md).
 
 ## License
 
