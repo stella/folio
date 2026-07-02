@@ -57,7 +57,10 @@ export default library({
     "unicorn/number-literal-case": "off",
     "unicorn/prefer-response-static-json": "off",
   },
-  jsPlugins: ["./.oxlint-plugins/folio-layer-boundaries.ts"],
+  jsPlugins: [
+    "./.oxlint-plugins/folio-layer-boundaries.ts",
+    "./.oxlint-plugins/folio-asset-urls.ts",
+  ],
   ignorePatterns: [
     // Module-augmentation files must use `interface` for declaration merging;
     // oxlint's --fix would rewrite it to `type` and break the augmentation.
@@ -112,6 +115,18 @@ export default library({
       ],
       rules: {
         "folio-layer-boundaries/no-upstream-import": "error",
+      },
+    },
+    {
+      // Worker/asset URL targets must survive the package build. A
+      // `new URL("<x>.ts", import.meta.url)` in shipped source resolves to a
+      // file the dist build never emits (it renames `.ts` -> `.js`), aborting a
+      // downstream bundler with UNRESOLVED_ENTRY. See
+      // `.oxlint-plugins/folio-asset-urls.ts` and the matching test at
+      // `packages/core/src/__tests__/asset-url-extensions.test.ts`.
+      files: ["packages/*/src/**/*.{ts,tsx}"],
+      rules: {
+        "folio-asset-urls/no-source-extension-url": "error",
       },
     },
     {
