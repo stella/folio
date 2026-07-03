@@ -218,6 +218,39 @@ describe("calculateHeaderFooterVisualBounds", () => {
     // image bottom = top + 1117 = 1016.
     expect(bounds).toEqual({ visualTop: -101, visualBottom: 1016 });
   });
+
+  test("ignores floating images positioned entirely below the page", () => {
+    const footerMetrics: HeaderFooterMetrics = {
+      ...metrics,
+      section: "footer",
+    };
+    const blocks: FlowBlock[] = [
+      {
+        kind: "paragraph",
+        id: "footer",
+        runs: [
+          {
+            kind: "image",
+            src: "off-page.png",
+            width: 100,
+            height: 80,
+            position: {
+              vertical: { relativeTo: "page", posOffset: 8_000_000 },
+            },
+          },
+        ],
+      },
+    ];
+
+    const bounds = calculateHeaderFooterVisualBounds(
+      blocks,
+      [{ kind: "paragraph", lines: [], totalHeight: 12 }],
+      12,
+      footerMetrics,
+    );
+
+    expect(bounds).toEqual({ visualTop: 0, visualBottom: 12 });
+  });
 });
 
 describe("calculateHeaderFooterMarginPushBounds", () => {

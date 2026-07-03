@@ -284,6 +284,31 @@ export function resolveHeaderFooterVisualTop(
   return paragraphY;
 }
 
+function pageBandInHeaderFooterCoords(
+  metrics: HeaderFooterMetrics,
+  flowHeight: number,
+): { top: number; bottom: number } {
+  const flowTop =
+    metrics.section === "header"
+      ? (metrics.margins.header ?? 48)
+      : metrics.pageSize.h - (metrics.margins.footer ?? 48) - flowHeight;
+  return {
+    top: -flowTop,
+    bottom: metrics.pageSize.h - flowTop,
+  };
+}
+
+/** True when a float's box overlaps the page band in header/footer coordinates. */
+function floatIntersectsPageBand(
+  blockTop: number,
+  blockBottom: number,
+  metrics: HeaderFooterMetrics,
+  flowHeight: number,
+): boolean {
+  const band = pageBandInHeaderFooterCoords(metrics, flowHeight);
+  return blockBottom > band.top && blockTop <= band.bottom;
+}
+
 function resolveHeaderFooterFloatingTableVisualTop(
   floating: FloatingTablePosition,
   measure: TableMeasure,
@@ -370,8 +395,12 @@ export function calculateHeaderFooterVisualBounds(
           continue;
         }
         const runTop = resolveHeaderFooterVisualTop(run, paragraphStartY, flowHeight, metrics);
+        const runBottom = runTop + run.height;
+        if (!floatIntersectsPageBand(runTop, runBottom, metrics, flowHeight)) {
+          continue;
+        }
         visualTop = Math.min(visualTop, runTop);
-        visualBottom = Math.max(visualBottom, runTop + run.height);
+        visualBottom = Math.max(visualBottom, runBottom);
       }
 
       cursorY = paragraphBottomY;
@@ -412,15 +441,22 @@ export function calculateHeaderFooterVisualBounds(
           flowHeight,
           metrics,
         );
-        visualTop = Math.min(visualTop, blockTop);
-        visualBottom = Math.max(visualBottom, blockTop + blockHeight);
+        const blockBottom = blockTop + blockHeight;
+        if (floatIntersectsPageBand(blockTop, blockBottom, metrics, flowHeight)) {
+          visualTop = Math.min(visualTop, blockTop);
+          visualBottom = Math.max(visualBottom, blockBottom);
+        }
       } else if (
         block.kind === "textBox" &&
         isPositionedHeaderFooterTextBoxBlock(block) &&
         measure.kind === "textBox"
       ) {
-        visualTop = Math.min(visualTop, cursorY);
-        visualBottom = Math.max(visualBottom, cursorY + measure.height);
+        const blockTop = cursorY;
+        const blockBottom = blockTop + measure.height;
+        if (floatIntersectsPageBand(blockTop, blockBottom, metrics, flowHeight)) {
+          visualTop = Math.min(visualTop, blockTop);
+          visualBottom = Math.max(visualBottom, blockBottom);
+        }
       }
     }
   }
