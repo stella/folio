@@ -1,6 +1,6 @@
 import { clearAllCaches } from "../cache";
 import { installCanvasMeasureProvider, resetCanvasContext } from "../measureContainer";
-import { resetMeasureProvider } from "../measureProvider";
+import { getMeasureProvider, setMeasureProvider } from "../measureProvider";
 
 /** Width contribution of a single character, given the active canvas font. */
 export type FakeCharWidth = (char: string, font: string) => number;
@@ -45,6 +45,7 @@ export function withFakeTextMeasure(
 ): void {
   const charWidth = options.charWidth ?? uppercaseAwareCharWidth;
   const originalDocument = globalThis.document;
+  const originalMeasureProvider = getMeasureProvider();
   let measureCount = 0;
   const fakeDocument = {
     createElement() {
@@ -80,7 +81,7 @@ export function withFakeTextMeasure(
   try {
     runTest(() => measureCount);
   } finally {
-    resetMeasureProvider();
+    setMeasureProvider(originalMeasureProvider);
     resetCanvasContext();
     clearAllCaches();
     Object.defineProperty(globalThis, "document", {
