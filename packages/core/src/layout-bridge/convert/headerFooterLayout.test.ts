@@ -181,6 +181,39 @@ describe("calculateHeaderFooterVisualBounds", () => {
     expect(bounds).toEqual({ visualTop: 0, visualBottom: 1100 });
   });
 
+  test("uses page-anchored vertical position for floating text box visual bounds", () => {
+    const blocks: FlowBlock[] = [
+      {
+        kind: "textBox",
+        id: "letterhead-box",
+        width: 560,
+        height: 200,
+        displayMode: "float",
+        position: {
+          vertical: { relativeTo: "margin", posOffset: -1_460_500 },
+        },
+        content: [],
+      },
+      {
+        kind: "paragraph",
+        id: "title",
+        runs: [{ kind: "text", text: "Header" }],
+      },
+    ];
+
+    const bounds = calculateHeaderFooterVisualBounds(
+      blocks,
+      [
+        { kind: "textBox", width: 560, height: 200, innerMeasures: [] },
+        { kind: "paragraph", lines: [], totalHeight: 12 },
+      ],
+      12,
+      metrics,
+    );
+
+    expect(bounds).toEqual({ visualTop: -101, visualBottom: 99 });
+  });
+
   test("includes behindDoc images in visualBottom (render+hash signal)", () => {
     // Full-page letterhead: anchored to "margin", posOffset -1460500 EMU
     // (≈ -153px) places the image just above the body margin and its 1117px

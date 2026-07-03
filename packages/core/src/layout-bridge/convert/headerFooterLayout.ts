@@ -24,6 +24,7 @@ import type {
   FloatingTablePosition,
   HeaderFooterContent,
   ImageRun,
+  ImageRunPosition,
   Measure,
   PageMargins,
   Run,
@@ -226,9 +227,10 @@ function getPositionAlignment(axis: PositionedAxis | undefined): string | undefi
   return axis?.align ?? axis?.alignment;
 }
 
-export function resolveHeaderFooterVisualTop(
-  run: ImageRun,
-  paragraphY: number,
+export function resolveHeaderFooterPositionedVisualTop(
+  position: ImageRunPosition | undefined,
+  elementHeight: number,
+  sourceY: number,
   flowHeight: number,
   metrics: HeaderFooterMetrics,
 ): number {
@@ -236,10 +238,10 @@ export function resolveHeaderFooterVisualTop(
     metrics.section === "header"
       ? (metrics.margins.header ?? 48)
       : metrics.pageSize.h - (metrics.margins.footer ?? 48) - flowHeight;
-  const vertical = run.position?.vertical;
+  const vertical = position?.vertical;
 
   if (!vertical) {
-    return paragraphY;
+    return sourceY;
   }
 
   const align = getPositionAlignment(vertical);
@@ -253,10 +255,10 @@ export function resolveHeaderFooterVisualTop(
       return -flowTop;
     }
     if (align === "bottom") {
-      return metrics.pageSize.h - run.height - flowTop;
+      return metrics.pageSize.h - elementHeight - flowTop;
     }
     if (align === "center") {
-      return (metrics.pageSize.h - run.height) / 2 - flowTop;
+      return (metrics.pageSize.h - elementHeight) / 2 - flowTop;
     }
   }
 
@@ -270,18 +272,33 @@ export function resolveHeaderFooterVisualTop(
       return marginTop - flowTop;
     }
     if (align === "bottom") {
-      return marginTop + marginHeight - run.height - flowTop;
+      return marginTop + marginHeight - elementHeight - flowTop;
     }
     if (align === "center") {
-      return marginTop + (marginHeight - run.height) / 2 - flowTop;
+      return marginTop + (marginHeight - elementHeight) / 2 - flowTop;
     }
   }
 
   if (offsetPx !== undefined) {
-    return paragraphY + offsetPx;
+    return sourceY + offsetPx;
   }
 
-  return paragraphY;
+  return sourceY;
+}
+
+export function resolveHeaderFooterVisualTop(
+  run: ImageRun,
+  paragraphY: number,
+  flowHeight: number,
+  metrics: HeaderFooterMetrics,
+): number {
+  return resolveHeaderFooterPositionedVisualTop(
+    run.position,
+    run.height,
+    paragraphY,
+    flowHeight,
+    metrics,
+  );
 }
 
 function pageBandInHeaderFooterCoords(
@@ -451,7 +468,13 @@ export function calculateHeaderFooterVisualBounds(
         isPositionedHeaderFooterTextBoxBlock(block) &&
         measure.kind === "textBox"
       ) {
-        const blockTop = cursorY;
+        const blockTop = resolveHeaderFooterPositionedVisualTop(
+          block.position,
+          measure.height,
+          cursorY,
+          flowHeight,
+          metrics,
+        );
         const blockBottom = blockTop + measure.height;
         if (floatIntersectsPageBand(blockTop, blockBottom, metrics, flowHeight)) {
           visualTop = Math.min(visualTop, blockTop);
