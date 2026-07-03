@@ -3447,19 +3447,13 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
         return false;
       }
       scrollToPositionImpl(startPos);
-      const flashPara = (): void => {
-        if (!options?.highlight) {
-          return;
-        }
-        const pages = pagesContainerRef.current;
-        if (!pages) {
-          return;
-        }
-        flashParagraphFragmentsByParaId(pages, paraId, options.highlight);
-      };
-      flashPara();
       requestAnimationFrame(() => {
-        flashPara();
+        if (options?.highlight) {
+          const pages = pagesContainerRef.current;
+          if (pages) {
+            flashParagraphFragmentsByParaId(pages, paraId, options.highlight);
+          }
+        }
         const targetNode = state.doc.nodeAt(startPos);
         const inner =
           targetNode?.isTextblock === true
