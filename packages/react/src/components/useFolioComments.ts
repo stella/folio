@@ -68,8 +68,8 @@ export function useFolioComments({
       if (resolved === commentsRef.current) {
         return;
       }
+      commentsRef.current = resolved;
       if (!isControlledComments) {
-        commentsRef.current = resolved;
         setInternalComments(resolved);
       }
       onCommentsChangeRef.current?.(resolved);
