@@ -13,6 +13,8 @@ import {
 import type { Document as FolioDocument, DocxEditorRef, EditorMode } from "@stll/folio-react";
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
+import { CollaborationApp } from "./CollaborationApp";
+
 const ZOOM_INITIAL = 1;
 const DEFAULT_LOCALE = "en";
 // Only Arabic in the bundled set needs RTL; flip the shell so the editor chrome
@@ -25,6 +27,9 @@ const languageLabel = (locale: string): string => {
   );
   return name ? `${name} (${locale})` : locale;
 };
+
+const isCollaborationDemo = (): boolean =>
+  new URLSearchParams(window.location.search).has("collaboration");
 
 declare global {
   // Test hook: visual + interaction specs read live editor state through this.
@@ -71,6 +76,10 @@ function createLargeDocument(paragraphCount: number): FolioDocument {
 }
 
 export function App() {
+  if (isCollaborationDemo()) {
+    return <CollaborationApp />;
+  }
+
   const editorRef = useRef<DocxEditorRef>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(null);
