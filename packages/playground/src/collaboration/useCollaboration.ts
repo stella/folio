@@ -14,7 +14,7 @@ export type CollaborativeUser = {
 };
 
 export type CollaborationState = {
-  collaboration: DocxEditorCollaboration;
+  collaboration: DocxEditorCollaboration | null;
   users: CollaborativeUser[];
   roomName: string;
   status: "connecting" | "connected" | "disconnected";
@@ -42,6 +42,8 @@ const createCollaborationResources = (roomName: string) => {
     yXmlFragment: xmlFragment,
   };
 };
+
+type CollaborationResources = ReturnType<typeof createCollaborationResources>;
 
 const syncYComments = (yComments: Y.Array<Comment>, next: Comment[]): void => {
   const nextIds = new Set(next.map((comment) => comment.id));
@@ -72,29 +74,48 @@ export const useCollaboration = (
   roomName: string,
   localUser: { name: string; color: string },
 ): CollaborationState => {
-  const [{ ydoc, provider, plugins, yComments, yXmlFragment }] = useState(() =>
-    createCollaborationResources(roomName),
-  );
-
+  const [resources, setResources] = useState<CollaborationResources | null>(null);
   const [users, setUsers] = useState<CollaborativeUser[]>([]);
   const [status, setStatus] = useState<CollaborationState["status"]>("connecting");
-  const [comments, setCommentsState] = useState<Comment[]>(() => yComments.toArray());
+  const [comments, setCommentsState] = useState<Comment[]>([]);
 
-  const collaboration = useMemo(
-    (): DocxEditorCollaboration => ({
-      yXmlFragment,
-      plugins,
-      awareness: provider.awareness,
+  const collaboration = useMemo((): DocxEditorCollaboration | null => {
+    if (!resources) {
+      return null;
+    }
+    return {
+      yXmlFragment: resources.yXmlFragment,
+      plugins: resources.plugins,
+      awareness: resources.provider.awareness,
       shouldSeed: true,
-    }),
-    [plugins, provider.awareness, yXmlFragment],
-  );
+    };
+  }, [resources]);
 
   useEffect(() => {
-    provider.awareness.setLocalStateField("user", localUser);
-  }, [localUser.color, localUser.name, provider]);
+    const nextResources = createCollaborationResources(roomName);
+    setResources(nextResources);
+    setStatus("connecting");
+    setUsers([]);
+    setCommentsState(nextResources.yComments.toArray());
+
+    return () => {
+      nextResources.provider.destroy();
+      nextResources.ydoc.destroy();
+    };
+  }, [roomName]);
 
   useEffect(() => {
+    resources?.provider.awareness.setLocalStateField("user", {
+      name: localUser.name,
+      color: localUser.color,
+    });
+  }, [localUser.color, localUser.name, resources]);
+
+  useEffect(() => {
+    if (!resources) {
+      return;
+    }
+    const { provider } = resources;
     const refreshUsers = () => {
       const localId = provider.awareness.clientID;
       const all: CollaborativeUser[] = [];
@@ -124,30 +145,29 @@ export const useCollaboration = (
       provider.awareness.off("change", refreshUsers);
       provider.off("status", handleStatus);
     };
-  }, [provider]);
+  }, [resources]);
 
   useEffect(() => {
+    if (!resources) {
+      return;
+    }
+    const { yComments } = resources;
     const sync = () => setCommentsState(yComments.toArray());
     sync();
     yComments.observeDeep(sync);
     return () => yComments.unobserveDeep(sync);
-  }, [yComments]);
+  }, [resources]);
 
   const setComments = useCallback(
     (next: Comment[]) => {
-      ydoc.transact(() => {
-        syncYComments(yComments, next);
+      if (!resources) {
+        return;
+      }
+      resources.ydoc.transact(() => {
+        syncYComments(resources.yComments, next);
       });
     },
-    [ydoc, yComments],
-  );
-
-  useEffect(
-    () => () => {
-      provider.destroy();
-      ydoc.destroy();
-    },
-    [provider, ydoc],
+    [resources],
   );
 
   return { collaboration, users, roomName, status, comments, setComments };

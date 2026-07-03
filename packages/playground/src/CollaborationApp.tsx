@@ -82,16 +82,20 @@ export function CollaborationApp() {
           </div>
         </header>
         <main className="pg-editor-area">
-          <DocxEditor
-            document={seedDocument}
-            author={user.name}
-            collaboration={collaboration}
-            comments={comments}
-            onCommentsChange={setComments}
-            showToolbar={true}
-            showRuler={true}
-            initialZoom={1}
-          />
+          {collaboration ? (
+            <DocxEditor
+              document={seedDocument}
+              author={user.name}
+              collaboration={collaboration}
+              comments={comments}
+              onCommentsChange={setComments}
+              showToolbar={true}
+              showRuler={true}
+              initialZoom={1}
+            />
+          ) : (
+            <div className="pg-collab-loading">Connecting...</div>
+          )}
         </main>
       </div>
     </IntlProvider>

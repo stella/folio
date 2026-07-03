@@ -227,6 +227,13 @@
   color: var(--success-foreground);
 }
 
+.pg-collab-loading {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  color: var(--muted-foreground);
+}
+
 .pg-avatar-stack {
   display: flex;
   align-items: center;
