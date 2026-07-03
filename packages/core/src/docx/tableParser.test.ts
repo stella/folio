@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseTable } from "./tableParser";
+import { parseTable, parseTableMeasurement } from "./tableParser";
 import type { XmlElement } from "./xmlParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -13,6 +13,22 @@ function parseTableXml(xml: string) {
 }
 
 const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+
+describe("parseTableMeasurement", () => {
+  const tblW = (w: string, type = "pct") => {
+    const root = parseXmlDocument(`<w:tblW ${NS} w:w="${w}" w:type="${type}"/>`) as XmlElement;
+    return parseTableMeasurement(root);
+  };
+
+  test("normalizes percent-suffixed pct widths to 50ths-of-percent", () => {
+    expect(tblW("100%")).toEqual({ value: 5000, type: "pct" });
+    expect(tblW("50%")).toEqual({ value: 2500, type: "pct" });
+  });
+
+  test("keeps canonical pct integers unchanged", () => {
+    expect(tblW("5000")).toEqual({ value: 5000, type: "pct" });
+  });
+});
 
 describe("inferImplicitSingleCellRowSpans", () => {
   test("does not expand a vMerge continuation single-cell row", () => {
@@ -186,5 +202,17 @@ describe("table bookmark placement", () => {
       type: "bookmarkEnd",
       id: 2,
     });
+  });
+});
+
+describe("parseTable pct width", () => {
+  test("parses a full-width pct table from a percent-suffixed tblW", () => {
+    const table = parseTableXml(`<w:tbl ${NS}>
+      <w:tblPr><w:tblW w:w="100%" w:type="pct"/></w:tblPr>
+      <w:tblGrid><w:gridCol w:w="5000" w:type="pct"/></w:tblGrid>
+      <w:tr><w:tc><w:tcPr><w:tcW w:w="5000" w:type="pct"/></w:tcPr><w:p/></w:tc></w:tr>
+    </w:tbl>`);
+
+    expect(table.formatting?.width).toEqual({ value: 5000, type: "pct" });
   });
 });

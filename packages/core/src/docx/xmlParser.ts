@@ -705,6 +705,31 @@ export function parseNumericAttribute(
 }
 
 /**
+ * Parse `w:w` on a table width/height element. For `w:type="pct"`, producers
+ * sometimes emit human-readable percentages (`100%`) instead of 50ths-of-percent
+ * (`5000`); normalize those to the ECMA-376 unit the layout engine expects.
+ */
+export function parseTableMeasurementValue(
+  element: XmlElement | null | undefined,
+  widthType: string,
+): number | undefined {
+  const raw = getAttribute(element, "w", "w");
+  if (raw === null) {
+    return undefined;
+  }
+
+  if (widthType === "pct" && raw.endsWith("%")) {
+    const pct = Number.parseFloat(raw.slice(0, -1));
+    if (!Number.isNaN(pct)) {
+      return Math.round(pct * 50);
+    }
+  }
+
+  const num = Number.parseInt(raw, 10);
+  return Number.isNaN(num) ? undefined : num;
+}
+
+/**
  * Parse a boolean value from an attribute or element presence
  *
  * OOXML boolean conventions:

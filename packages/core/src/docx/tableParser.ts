@@ -76,6 +76,7 @@ import {
   getChildElements,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
+  parseTableMeasurementValue,
   parseBooleanElement,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -95,13 +96,14 @@ export function parseTableMeasurement(element: XmlElement | null): TableMeasurem
     return undefined;
   }
 
-  const value = parseNumericAttribute(element, "w", "w") ?? 0;
   const typeStr = getAttribute(element, "w", "type") ?? "dxa";
 
   let type: TableWidthType = "dxa";
   if (typeStr === "auto" || typeStr === "dxa" || typeStr === "nil" || typeStr === "pct") {
     type = typeStr;
   }
+
+  const value = parseTableMeasurementValue(element, type) ?? 0;
 
   return { value, type };
 }

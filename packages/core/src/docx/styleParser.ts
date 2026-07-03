@@ -66,6 +66,7 @@ import {
   getLocalName,
   parseBooleanElement,
   parseNumericAttribute,
+  parseTableMeasurementValue,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -787,9 +788,9 @@ function parseTableMeasurement(element: XmlElement | null): TableMeasurement | u
     return undefined;
   }
 
-  const w = parseNumericAttribute(element, "w", "w");
   const rawType = getAttribute(element, "w", "type");
   const type = rawType === null ? "dxa" : narrowEnum(rawType, TableWidthTypeSchema);
+  const w = type ? parseTableMeasurementValue(element, type) : undefined;
 
   if (w !== undefined && type) {
     return { value: w, type };
