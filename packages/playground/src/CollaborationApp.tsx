@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IntlProvider } from "use-intl";
 
 import { DocxEditor, createEmptyDocument } from "@stll/folio-react";
@@ -31,6 +31,22 @@ export function CollaborationApp() {
   const [user] = useState(loadOrCreateUser);
   const [room] = useState(getOrCreateRoomFromUrl);
   const [shareCopied, setShareCopied] = useState(false);
+  const shareCopiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!window.location.hash) {
+      window.history.replaceState(null, "", `#${room}`);
+    }
+  }, [room]);
+
+  useEffect(
+    () => () => {
+      if (shareCopiedTimeoutRef.current) {
+        clearTimeout(shareCopiedTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const { collaboration, users, status, comments, setComments } = useCollaboration(room, user);
   const seedDocument = useMemo(() => createEmptyDocument(), []);
@@ -39,7 +55,10 @@ export function CollaborationApp() {
     try {
       await navigator.clipboard.writeText(window.location.href);
       setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 1500);
+      if (shareCopiedTimeoutRef.current) {
+        clearTimeout(shareCopiedTimeoutRef.current);
+      }
+      shareCopiedTimeoutRef.current = setTimeout(() => setShareCopied(false), 1500);
     } catch {
       setShareCopied(false);
     }

@@ -43,13 +43,37 @@ const createCollaborationResources = (roomName: string) => {
   };
 };
 
+const syncYComments = (yComments: Y.Array<Comment>, next: Comment[]): void => {
+  const nextIds = new Set(next.map((comment) => comment.id));
+
+  for (let i = yComments.length - 1; i >= 0; i--) {
+    if (!nextIds.has(yComments.get(i).id)) {
+      yComments.delete(i, 1);
+    }
+  }
+
+  const indexById = new Map(yComments.toArray().map((comment, index) => [comment.id, index]));
+
+  for (const comment of next) {
+    const index = indexById.get(comment.id);
+    if (index === undefined) {
+      yComments.push([comment]);
+      continue;
+    }
+    const existing = yComments.get(index);
+    if (JSON.stringify(existing) !== JSON.stringify(comment)) {
+      yComments.delete(index, 1);
+      yComments.insert(index, [comment]);
+    }
+  }
+};
+
 export const useCollaboration = (
   roomName: string,
   localUser: { name: string; color: string },
 ): CollaborationState => {
-  const { ydoc, provider, plugins, yComments, yXmlFragment } = useMemo(
-    () => createCollaborationResources(roomName),
-    [roomName],
+  const [{ ydoc, provider, plugins, yComments, yXmlFragment }] = useState(() =>
+    createCollaborationResources(roomName),
   );
 
   const [users, setUsers] = useState<CollaborativeUser[]>([]);
@@ -112,12 +136,7 @@ export const useCollaboration = (
   const setComments = useCallback(
     (next: Comment[]) => {
       ydoc.transact(() => {
-        if (yComments.length > 0) {
-          yComments.delete(0, yComments.length);
-        }
-        if (next.length > 0) {
-          yComments.push(next);
-        }
+        syncYComments(yComments, next);
       });
     },
     [ydoc, yComments],

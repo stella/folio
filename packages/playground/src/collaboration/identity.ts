@@ -47,7 +47,5 @@ export const getOrCreateRoomFromUrl = (): string => {
   if (hash) {
     return hash;
   }
-  const room = `room-${Math.random().toString(36).slice(2, 10)}`;
-  window.history.replaceState(null, "", `#${room}`);
-  return room;
+  return `room-${Math.random().toString(36).slice(2, 10)}`;
 };
