@@ -47,6 +47,7 @@ import {
   formatDocumentModelIssues,
   validateFolioDocumentModel,
 } from "./modelValidation";
+import { extractMetafileRaster, isMetafileMimeType } from "./metafileRaster";
 import { parseNumbering } from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
 import { normalizeNumberingReferences } from "./numberingReferenceNormalization";
@@ -69,6 +70,16 @@ import type { DocxUnzipLimits, RawDocxContent } from "./unzip";
 export type ProgressCallback = (stage: string, percent: number) => void;
 
 /**
+ * Host hook for converting media the browser cannot render natively
+ * (EMF/WMF/TIFF) into a displayable `data:` or `blob:` URL. Receives the
+ * parsed {@link MediaFile} (original bytes on `.data`); return the replacement
+ * URL, or `null`/`undefined` to keep the built-in handling. Built-in handling
+ * already extracts an embedded PNG/JPEG from EMF/WMF when one exists; this
+ * hook is for vector-only metafiles where the host rasterizes server-side.
+ */
+export type MediaResolver = (file: MediaFile) => Promise<string | null | undefined>;
+
+/**
  * Parsing options
  */
 export type ParseOptions = {
@@ -86,6 +97,8 @@ export type ParseOptions = {
   unzipLimits?: Partial<Omit<DocxUnzipLimits, "allowedMediaMimeTypes">> & {
     allowedMediaMimeTypes?: Iterable<string>;
   };
+  /** Optional async hook to override display URLs for non-browser media. */
+  mediaResolver?: MediaResolver;
 };
 
 // ============================================================================
@@ -111,6 +124,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     parseNotes = true,
     detectVariables = true,
     unzipLimits,
+    mediaResolver,
   } = options;
 
   const warnings: string[] = [];
@@ -178,6 +192,9 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     // ========================================================================
     onProgress("Processing media files...", 35);
     const media = await timeStageAsync("media", () => buildMediaMap(raw, rels));
+    if (mediaResolver) {
+      await timeStageAsync("mediaResolver", () => applyMediaResolver(media, mediaResolver));
+    }
     onProgress("Processed media", 40);
 
     // ========================================================================
@@ -442,6 +459,23 @@ async function buildMediaMap(
       }
     }
 
+    const raster = isMetafileMimeType(mimeType) ? extractMetafileRaster(data) : null;
+    if (raster) {
+      const mediaFile: MediaFile = {
+        path,
+        filename,
+        mimeType,
+        data,
+        dataUrl: mediaToDataUrl(raster.bytes.buffer as ArrayBuffer, raster.mimeType),
+      };
+      media.set(path, mediaFile);
+      const normalizedPath = path.replace(/^word\//u, "");
+      if (normalizedPath !== path) {
+        media.set(normalizedPath, mediaFile);
+      }
+      continue;
+    }
+
     const mediaFile: MediaFile = {
       path,
       filename,
@@ -461,6 +495,25 @@ async function buildMediaMap(
   }
 
   return media;
+}
+
+async function applyMediaResolver(
+  media: Map<string, MediaFile>,
+  resolver: MediaResolver,
+): Promise<void> {
+  const files = [...new Set(media.values())];
+  await Promise.all(
+    files.map(async (file) => {
+      try {
+        const url = await resolver(file);
+        if (url) {
+          file.dataUrl = url;
+        }
+      } catch {
+        // Host hook failure: keep built-in display URL.
+      }
+    }),
+  );
 }
 
 function attachLazyDataUrl(mediaFile: MediaFile): void {

@@ -38,6 +38,7 @@ import type {
   MediaFile,
 } from "../types/document";
 import { parseBlockContent } from "./blockContentParser";
+import { assignHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import type { NumberingMap } from "./numberingParser";
 import type { StyleMap } from "./styleParser";
 import { parseWatermark } from "./watermarkParser";
@@ -140,6 +141,8 @@ export function parseHeader(
     rootXmlns: collectXmlnsDeclarations(rootElement),
   });
 
+  assignHeaderFooterVerbatimXml(result, headerXml);
+
   return result;
 }
 
@@ -203,6 +206,8 @@ export function parseFooter(
     inHeaderFooter: true,
     rootXmlns: collectXmlnsDeclarations(rootElement),
   });
+
+  assignHeaderFooterVerbatimXml(result, footerXml);
 
   return result;
 }

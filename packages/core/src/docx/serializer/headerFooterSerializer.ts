@@ -11,6 +11,7 @@
  */
 
 import type { BlockContent, HeaderFooter, Watermark } from "../../types/document";
+import { getHeaderFooterVerbatimXml, canReplayHeaderFooterVerbatim } from "../headerFooterVerbatim";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
@@ -76,6 +77,11 @@ function serializeBlock(block: BlockContent): string {
  * @returns Complete XML string for header*.xml or footer*.xml
  */
 export function serializeHeaderFooter(hf: HeaderFooter): string {
+  const verbatim = getHeaderFooterVerbatimXml(hf);
+  if (verbatim && canReplayHeaderFooterVerbatim(hf)) {
+    return verbatim;
+  }
+
   const rootTag = hf.type === "header" ? "w:hdr" : "w:ftr";
   const nsDecl = buildNamespaceDeclarations();
 

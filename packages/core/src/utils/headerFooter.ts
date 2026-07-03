@@ -17,6 +17,7 @@ import type {
   HeaderFooter,
   SectionProperties,
 } from "../types/document";
+import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 
 export type HeaderFooterPosition = "header" | "footer";
 
@@ -360,6 +361,7 @@ export const saveHeaderFooterContent = ({
     hdrFtrType: isFirstPage ? "first" : "default",
     content: blocks,
   };
+  clearHeaderFooterVerbatimXml(updated);
   const newMap = new Map(map);
   newMap.set(activeRId, updated);
 

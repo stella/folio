@@ -50,6 +50,11 @@ const DEFAULT_ALLOWED_MEDIA_MIME_TYPES = new Set([
   "image/bmp",
   "image/tiff",
   "image/webp",
+  // EMF/WMF: browsers cannot render metafiles natively, but Word stores
+  // header logos and OLE previews this way. Load when the byte signature
+  // validates so the parser can extract an embedded PNG/JPEG raster.
+  "image/x-emf",
+  "image/x-wmf",
 ]);
 
 const PRESERVABLE_MEDIA_MIME_TYPES = new Set([
@@ -568,6 +573,23 @@ function isMediaContentAllowed(data: ArrayBuffer, mimeType: string): boolean {
       );
     case "image/tiff":
       return (bytes[0] === 0x49 && bytes[1] === 0x49) || (bytes[0] === 0x4d && bytes[1] === 0x4d);
+    case "image/x-emf":
+    case "image/emf":
+      return (
+        bytes.length >= 44 &&
+        bytes[0] === 1 &&
+        bytes[40] === 0x20 &&
+        bytes[41] === 0x45 &&
+        bytes[42] === 0x4d &&
+        bytes[43] === 0x46
+      );
+    case "image/x-wmf":
+    case "image/wmf":
+      return (
+        bytes.length >= 4 &&
+        ((bytes[0] === 0xd7 && bytes[1] === 0xcd && bytes[2] === 0xc6 && bytes[3] === 0xa5) ||
+          (bytes[0] === 0x01 && bytes[1] === 0x00 && bytes[2] === 0x09))
+      );
     default:
       return false;
   }
