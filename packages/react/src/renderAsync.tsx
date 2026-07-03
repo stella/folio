@@ -74,6 +74,7 @@ export const renderAsync = (
   return new Promise<DocxEditorHandle>((resolve, reject) => {
     const ref = React.createRef<DocxEditorRef>();
     let root: Root | null = null;
+    let settled = false;
 
     try {
       root = createRoot(container);
@@ -106,12 +107,14 @@ export const renderAsync = (
         ref.current?.scrollToPage(pageNumber);
       },
       destroy: () => {
+        if (!settled) {
+          settled = true;
+          reject(new Error("Editor was destroyed before mounting completed."));
+        }
         root?.unmount();
         root = null;
       },
     };
-
-    let settled = false;
 
     const element = (
       <IntlProvider locale={locale} messages={getFolioMessages(locale)}>
@@ -122,6 +125,8 @@ export const renderAsync = (
             editorOptions["onError"]?.(error);
             if (!settled) {
               settled = true;
+              root?.unmount();
+              root = null;
               reject(error);
             }
           }}
