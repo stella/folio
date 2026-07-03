@@ -38,7 +38,7 @@ const folioOf = (locale: string): Map<string, string> =>
 const englishKeys = folioOf("en");
 
 describe("getFolioMessages", () => {
-  test("ships exactly the 13 documented locales", () => {
+  test("ships exactly the 17 documented locales", () => {
     expect([...FOLIO_LOCALES]).toEqual([
       "en",
       "de",
@@ -47,12 +47,16 @@ describe("getFolioMessages", () => {
       "cs",
       "ar",
       "et",
+      "he",
+      "hi",
       "hu",
       "lt",
       "lv",
       "pl",
       "pt-BR",
       "sk",
+      "tr",
+      "zh-CN",
     ]);
     expect(new Set(FOLIO_LOCALES).size).toBe(FOLIO_LOCALES.length);
   });
