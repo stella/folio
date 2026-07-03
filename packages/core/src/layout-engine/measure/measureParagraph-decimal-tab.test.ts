@@ -272,4 +272,42 @@ describe("measureInlineWidthAfterTab — floating images (PR #512 codex P2)", ()
       expect(Math.abs((lineA?.width ?? 0) - (lineB?.width ?? 0))).toBeLessThanOrEqual(0.5);
     });
   });
+
+  test("a block image after a right tab does not contribute to following width", () => {
+    withFakeTextMeasure(() => {
+      const baseAttrs = { tabs: [{ val: "end" as const, pos: 5000 }] };
+
+      const withBlockImage = {
+        kind: "paragraph" as const,
+        id: "tab-block-img",
+        runs: [
+          { kind: "text" as const, text: "Title", fontSize: 11 },
+          { kind: "tab" as const },
+          {
+            kind: "image" as const,
+            src: "img.png",
+            width: 300,
+            height: 100,
+            wrapType: "topAndBottom" as const,
+          },
+        ],
+        attrs: baseAttrs,
+      };
+
+      const withoutImage = {
+        kind: "paragraph" as const,
+        id: "tab-no-block-img",
+        runs: [{ kind: "text" as const, text: "Title", fontSize: 11 }, { kind: "tab" as const }],
+        attrs: baseAttrs,
+      };
+
+      const a = measureParagraph(withBlockImage, 400);
+      const b = measureParagraph(withoutImage, 400);
+      const lineA = a.lines.at(0);
+      const lineB = b.lines.at(0);
+      expect(lineA).toBeDefined();
+      expect(lineB).toBeDefined();
+      expect(Math.abs((lineA?.width ?? 0) - (lineB?.width ?? 0))).toBeLessThanOrEqual(0.5);
+    });
+  });
 });

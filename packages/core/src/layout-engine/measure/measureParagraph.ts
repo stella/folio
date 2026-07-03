@@ -372,6 +372,10 @@ function isEmptyTextRun(run: TextRun): boolean {
  * desync measurer and painter on tab advance for paragraphs with a tab
  * preceding a floating image.
  */
+function isBlockLayoutImageRun(run: ImageRun): boolean {
+  return run.wrapType === "topAndBottom" || run.displayMode === "block";
+}
+
 function measureInlineWidthAfterTab(
   runs: Run[],
   tabIndex: number,
@@ -383,12 +387,19 @@ function measureInlineWidthAfterTab(
     if (!next || isTabRun(next) || isLineBreakRun(next)) {
       break;
     }
+    if (isImageRun(next)) {
+      if (isBlockLayoutImageRun(next)) {
+        break;
+      }
+      if (!isFloatingImageRun(next)) {
+        width += inlineImageBoundingBox(next).width || 0;
+      }
+      continue;
+    }
     if (isTextRun(next)) {
       width += measureTextWidth(next.text || "", runToFontStyle(next));
     } else if (isFieldRun(next)) {
       width += measureTextWidth(fieldMeasureText(next, fieldValues), runToFontStyle(next));
-    } else if (isImageRun(next) && !isFloatingImageRun(next)) {
-      width += inlineImageBoundingBox(next).width || 0;
     } else if (isMathRun(next)) {
       width += measureTextWidth(next.plainText || "[equation]", runToFontStyle(next));
     }
@@ -400,6 +411,9 @@ function hasFollowingTabOnLine(runs: Run[], tabIndex: number): boolean {
   for (let i = tabIndex + 1; i < runs.length; i++) {
     const next = runs[i];
     if (!next || isLineBreakRun(next)) {
+      break;
+    }
+    if (isImageRun(next) && isBlockLayoutImageRun(next)) {
       break;
     }
     if (isTabRun(next)) {
