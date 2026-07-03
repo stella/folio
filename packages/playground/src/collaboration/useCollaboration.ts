@@ -24,22 +24,33 @@ export type CollaborationState = {
 
 const SIGNALING_SERVERS = ["wss://signaling.yjs.dev", "wss://y-webrtc-signaling-eu.herokuapp.com"];
 
+const createCollaborationResources = (roomName: string) => {
+  const doc = new Y.Doc();
+  const collabProvider = new WebrtcProvider(roomName, doc, { signaling: SIGNALING_SERVERS });
+  const xmlFragment = doc.getXmlFragment("prosemirror");
+  const collabPlugins = [
+    ySyncPlugin(xmlFragment),
+    yCursorPlugin(collabProvider.awareness),
+    yUndoPlugin(),
+  ];
+  const commentsArray = doc.getArray<Comment>("comments");
+  return {
+    ydoc: doc,
+    provider: collabProvider,
+    plugins: collabPlugins,
+    yComments: commentsArray,
+    yXmlFragment: xmlFragment,
+  };
+};
+
 export const useCollaboration = (
   roomName: string,
   localUser: { name: string; color: string },
 ): CollaborationState => {
-  const { ydoc, provider, plugins, yComments, yXmlFragment } = useMemo(() => {
-    const ydoc = new Y.Doc();
-    const provider = new WebrtcProvider(roomName, ydoc, { signaling: SIGNALING_SERVERS });
-    const yXmlFragment = ydoc.getXmlFragment("prosemirror");
-    const plugins = [
-      ySyncPlugin(yXmlFragment),
-      yCursorPlugin(provider.awareness),
-      yUndoPlugin(),
-    ];
-    const yComments = ydoc.getArray<Comment>("comments");
-    return { ydoc, provider, plugins, yComments, yXmlFragment };
-  }, [roomName]);
+  const { ydoc, provider, plugins, yComments, yXmlFragment } = useMemo(
+    () => createCollaborationResources(roomName),
+    [roomName],
+  );
 
   const [users, setUsers] = useState<CollaborativeUser[]>([]);
   const [status, setStatus] = useState<CollaborationState["status"]>("connecting");

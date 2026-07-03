@@ -8,6 +8,19 @@ import { AvatarStack } from "./collaboration/AvatarStack";
 import { getOrCreateRoomFromUrl, loadOrCreateUser } from "./collaboration/identity";
 import { useCollaboration } from "./collaboration/useCollaboration";
 
+const collaborationStatusLabel = (
+  status: "connecting" | "connected" | "disconnected",
+  room: string,
+): string => {
+  if (status === "connected") {
+    return `Live · ${room}`;
+  }
+  if (status === "connecting") {
+    return "Connecting…";
+  }
+  return "Offline";
+};
+
 /**
  * Live Yjs + WebRTC collaboration demo.
  *
@@ -39,11 +52,7 @@ export function CollaborationApp() {
           <div className="pg-collab-header__left">
             <strong>folio collaboration demo</strong>
             <span className="pg-collab-status" data-status={status}>
-              {status === "connected"
-                ? `Live · ${room}`
-                : status === "connecting"
-                  ? "Connecting…"
-                  : "Offline"}
+              {collaborationStatusLabel(status, room)}
             </span>
           </div>
           <div className="pg-collab-header__right">
