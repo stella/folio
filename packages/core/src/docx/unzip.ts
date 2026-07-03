@@ -587,8 +587,11 @@ function isMediaContentAllowed(data: ArrayBuffer, mimeType: string): boolean {
     case "image/wmf":
       return (
         bytes.length >= 4 &&
-        ((bytes[0] === 0xd7 && bytes[1] === 0xcd && bytes[2] === 0xc6 && bytes[3] === 0xa5) ||
-          (bytes[0] === 0x01 && bytes[1] === 0x00 && bytes[2] === 0x09))
+        ((bytes[0] === 0xd7 && bytes[1] === 0xcd && bytes[2] === 0xc6 && bytes[3] === 0x9a) ||
+          ((bytes[0] === 0x01 || bytes[0] === 0x02) &&
+            bytes[1] === 0x00 &&
+            bytes[2] === 0x09 &&
+            bytes[3] === 0x00))
       );
     default:
       return false;

@@ -466,7 +466,13 @@ async function buildMediaMap(
         filename,
         mimeType,
         data,
-        dataUrl: mediaToDataUrl(raster.bytes.buffer as ArrayBuffer, raster.mimeType),
+        dataUrl: mediaToDataUrl(
+          raster.bytes.buffer.slice(
+            raster.bytes.byteOffset,
+            raster.bytes.byteOffset + raster.bytes.byteLength,
+          ),
+          raster.mimeType,
+        ),
       };
       media.set(path, mediaFile);
       const normalizedPath = path.replace(/^word\//u, "");
