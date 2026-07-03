@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseParagraph } from "./paragraphParser";
+import { getParagraphText, parseParagraph } from "./paragraphParser";
 import type { XmlElement } from "./xmlParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -464,11 +464,7 @@ describe("parseParagraph smartTag wrapper", () => {
       </w:p>
     `);
 
-    const text = paragraph.content
-      .flatMap((item) => (item.type === "run" ? item.content : []))
-      .filter((part) => part.type === "text")
-      .map((part) => (part.type === "text" ? part.text : ""))
-      .join("");
+    const text = getParagraphText(paragraph);
     expect(text).toContain("SMARTTAG-CITY");
     expect(text).toContain(", STATE");
   });

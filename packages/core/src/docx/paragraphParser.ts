@@ -1536,6 +1536,7 @@ function parseParagraphContents(
         // w:smartTag is a transparent inline wrapper (legacy Word smart-tag
         // recognizer markup). Its children are ordinary paragraph content;
         // recurse so the wrapped runs are not dropped.
+        const smartTagInScopeXmlns = mergeXmlnsDeclarations(inScopeXmlns, child);
         const inner = parseParagraphContents(
           child,
           styles,
@@ -1544,7 +1545,7 @@ function parseParagraphContents(
           rels,
           media,
           trackedContext,
-          inScopeXmlns,
+          smartTagInScopeXmlns,
         );
         contents.push(...inner);
         break;
