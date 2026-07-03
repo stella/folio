@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { findWordBreaks } from "./lineBreaks";
+import { findWordBreaks, isBreakChar } from "./lineBreaks";
 
 describe("findWordBreaks", () => {
   test("breaks after spaces and hyphens in Latin text", () => {
@@ -17,5 +17,13 @@ describe("findWordBreaks", () => {
     const text = "𠀀文";
     const breaks = findWordBreaks(text);
     expect(breaks).toEqual([2, 3]);
+  });
+});
+
+describe("isBreakChar", () => {
+  test("treats CJK code points and low surrogates as break chars", () => {
+    expect(isBreakChar("世")).toBe(true);
+    expect(isBreakChar("A")).toBe(false);
+    expect(isBreakChar("\uDC00")).toBe(true);
   });
 });

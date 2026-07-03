@@ -29,5 +29,20 @@ export function findWordBreaks(text: string): number[] {
 }
 
 export function isBreakChar(char: string | undefined): boolean {
-  return char === " " || char === "-" || char === "\t";
+  if (char === undefined) {
+    return false;
+  }
+  if (char === " " || char === "-" || char === "\t") {
+    return true;
+  }
+  const codePoint = char.codePointAt(0);
+  if (codePoint === undefined) {
+    return false;
+  }
+  // Astral CJK ends on a low surrogate; treat it as a break so run glue does
+  // not span ideograph boundaries.
+  if (char >= "\uDC00" && char <= "\uDFFF") {
+    return true;
+  }
+  return isCjkCodePoint(codePoint);
 }
