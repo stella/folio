@@ -577,7 +577,8 @@ export type ParagraphAttrs = {
 // @public
 export type ParagraphBlock = {
     kind: "paragraph";
-    id: BlockId;
+    id: BlockId; /** Stable Word `w14:paraId` / PM `paraId`, when available. */
+    paraId?: string;
     runs: Run[];
     attrs?: ParagraphAttrs;
     bookmarks?: string[]; /** ProseMirror start position for this block. */

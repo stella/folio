@@ -119,6 +119,7 @@ import { ResolvedAnchor } from '@stll/folio-core/ai-suggestions/conflict';
 import { resolveSuggestionAnchor } from '@stll/folio-core/ai-suggestions/conflict';
 import { scanDirectives } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
 import { scrollFolioPositionIntoView } from '@stll/folio-core/paged-layout/scrollToPmPosition';
+import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
 import { SdtProperties } from '@stll/folio-core/types/document';
 import { Select } from '@base-ui/react/select';
 import { SelectionState } from '@stll/folio-core/prosemirror';
@@ -381,7 +382,8 @@ export type DocxEditorRef = {
     focus: () => void; /** Get current page number */
     getCurrentPage: () => number; /** Get total page count */
     getTotalPages: () => number; /** Scroll to a specific page */
-    scrollToPage: (pageNumber: number) => void; /** Open print preview */
+    scrollToPage: (pageNumber: number) => void;
+    scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean; /** Open print preview */
     openPrintPreview: () => void; /** Print the document directly */
     print: () => void; /** Load a pre-parsed document programmatically */
     loadDocument: (doc: Document_2) => void; /** Load a DOCX buffer programmatically (ArrayBuffer, Uint8Array, Blob, or File) */
@@ -577,6 +579,8 @@ export { resolveSuggestionAnchor }
 export { scanDirectives }
 
 export { scrollFolioPositionIntoView }
+
+export { ScrollToParaIdOptions }
 
 export { setActiveCitationMeta }
 
