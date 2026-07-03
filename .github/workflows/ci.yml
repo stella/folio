@@ -13,6 +13,26 @@ permissions:
   contents: read
 
 jobs:
+  changeset:
+    name: Changeset present for core/react src changes
+    # PR-only: needs a base branch to diff against. The bot's Version Packages
+    # PR touches no src, so this passes there without a special case.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # need history to compute the merge base with main
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - name: Require a changeset (or an empty one) for core/react src edits
+        run: bun scripts/check-changeset.ts
+        env:
+          CHANGESET_BASE_REF: origin/${{ github.base_ref }}
+
   ci:
     name: Lint, typecheck, test, build (core + react)
     runs-on: ubuntu-latest
@@ -120,4 +140,3 @@ jobs:
       # shipped runtime catalog (IntlError: MISSING_MESSAGE).
       - name: Runtime smoke over packed tarballs
         run: bun run test:packaged-consumer-smoke
-

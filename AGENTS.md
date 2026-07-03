@@ -288,6 +288,13 @@ the browser, built on ProseMirror. Two published packages plus a dev playground:
   differential parity gate — extend them when you change parsing, layout, or
   editor interactions.
 - Return minimal data from public APIs; do not export types that have no consumer.
+- **Add a changeset with any `packages/core/src` or `packages/react/src`
+  change.** Run `bunx changeset` (pick the packages, bump level, and a one-line
+  summary) and commit the generated `.changeset/*.md`. For a src change that
+  needs no release, use `bunx changeset --empty`. CI (`bun run changeset:check`)
+  fails the PR otherwise. The private playground is not published and needs no
+  changesets. Releases: merging the changeset-generated "Version Packages" PR
+  bumps `package.json`, which triggers the existing `publish.yml`.
 
 ## Cursor Cloud specific instructions
 
