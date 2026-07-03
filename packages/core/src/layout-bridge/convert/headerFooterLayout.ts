@@ -323,7 +323,7 @@ function floatIntersectsPageBand(
   flowHeight: number,
 ): boolean {
   const band = pageBandInHeaderFooterCoords(metrics, flowHeight);
-  return blockBottom > band.top && blockTop <= band.bottom;
+  return blockBottom > band.top && blockTop < band.bottom;
 }
 
 function resolveHeaderFooterFloatingTableVisualTop(

@@ -284,6 +284,35 @@ describe("calculateHeaderFooterVisualBounds", () => {
 
     expect(bounds).toEqual({ visualTop: 0, visualBottom: 12 });
   });
+
+  test("ignores floating images whose top touches the page bottom edge", () => {
+    const blocks: FlowBlock[] = [
+      {
+        kind: "paragraph",
+        id: "edge",
+        runs: [
+          {
+            kind: "image",
+            src: "edge.png",
+            width: 100,
+            height: 80,
+            position: {
+              vertical: { relativeTo: "page", posOffset: 7_620_000 },
+            },
+          },
+        ],
+      },
+    ];
+
+    const bounds = calculateHeaderFooterVisualBounds(
+      blocks,
+      [{ kind: "paragraph", lines: [], totalHeight: 12 }],
+      12,
+      metrics,
+    );
+
+    expect(bounds).toEqual({ visualTop: 0, visualBottom: 12 });
+  });
 });
 
 describe("calculateHeaderFooterMarginPushBounds", () => {
