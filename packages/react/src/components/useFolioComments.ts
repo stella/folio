@@ -28,6 +28,14 @@ type UseFolioCommentsOptions = {
   anchorPositions: Map<string, number>;
   /** Editor content root used to locate comment-marked run nodes. */
   editorContentRef: RefObject<HTMLElement | null>;
+  /**
+   * Controlled comments array. When provided, thread metadata is read from
+   * this prop and every mutation routes through `onCommentsChange` (e.g. Yjs
+   * comment sync in collaboration backends).
+   */
+  commentsProp?: Comment[] | undefined;
+  /** Fires whenever the comments array changes (controlled and uncontrolled). */
+  onCommentsChange?: ((comments: Comment[]) => void) | undefined;
 };
 
 export function useFolioComments({
@@ -35,14 +43,39 @@ export function useFolioComments({
   autoOpenReviewSidebar,
   anchorPositions,
   editorContentRef,
+  commentsProp,
+  onCommentsChange,
 }: UseFolioCommentsOptions) {
   const [showCommentsSidebar, setShowCommentsSidebar] = useState(false);
   const [visibleCommentAuthors, setVisibleCommentAuthors] = useState<Set<string> | null>(null);
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
+  const [internalComments, setInternalComments] = useState<Comment[]>([]);
+  const isControlledComments = commentsProp !== undefined;
+  const comments = isControlledComments ? commentsProp : internalComments;
+
   const commentsDirtyRef = useRef(false);
-  const commentsRef = useRef<Comment[]>([]);
+  const commentsRef = useRef(comments);
   commentsRef.current = comments;
+  const onCommentsChangeRef = useRef(onCommentsChange);
+  onCommentsChangeRef.current = onCommentsChange;
+
+  const setComments = useCallback(
+    (next: Comment[] | ((prev: Comment[]) => Comment[])) => {
+      const resolved =
+        typeof next === "function"
+          ? (next as (prev: Comment[]) => Comment[])(commentsRef.current)
+          : next;
+      if (resolved === commentsRef.current) {
+        return;
+      }
+      if (!isControlledComments) {
+        commentsRef.current = resolved;
+        setInternalComments(resolved);
+      }
+      onCommentsChangeRef.current?.(resolved);
+    },
+    [isControlledComments],
+  );
 
   const [isAddingComment, setIsAddingComment] = useState(false);
   const [commentSelectionRange, setCommentSelectionRange] = useState<{
@@ -59,10 +92,10 @@ export function useFolioComments({
     to: number;
   } | null>(null);
 
-  // Extract comments from document model on initial load
+  // Extract comments from document model on initial load (uncontrolled only).
   const commentsLoadedRef = useRef(false);
   useEffect(() => {
-    if (commentsLoadedRef.current) {
+    if (isControlledComments || commentsLoadedRef.current) {
       return;
     }
     if (!doc) {
@@ -78,7 +111,7 @@ export function useFolioComments({
       }
       commentsLoadedRef.current = true;
     }
-  }, [autoOpenReviewSidebar, doc]);
+  }, [autoOpenReviewSidebar, doc, isControlledComments, setComments]);
 
   const commentAuthors = useMemo(() => {
     const seen = new Set<string>();
@@ -193,6 +226,7 @@ export function useFolioComments({
   return {
     comments,
     setComments,
+    isControlledComments,
     commentsRef,
     commentsDirtyRef,
     commentsLoadedRef,
