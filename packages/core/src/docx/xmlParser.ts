@@ -718,14 +718,16 @@ export function parseTableMeasurementValue(
     return undefined;
   }
 
-  if (widthType === "pct" && raw.endsWith("%")) {
-    const pct = Number.parseFloat(raw.slice(0, -1));
+  const trimmed = raw.trim();
+
+  if (widthType === "pct" && trimmed.endsWith("%")) {
+    const pct = Number.parseFloat(trimmed.slice(0, -1));
     if (!Number.isNaN(pct)) {
       return Math.round(pct * 50);
     }
   }
 
-  const num = Number.parseInt(raw, 10);
+  const num = Number.parseInt(trimmed, 10);
   return Number.isNaN(num) ? undefined : num;
 }
 

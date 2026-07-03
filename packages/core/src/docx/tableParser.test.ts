@@ -23,6 +23,7 @@ describe("parseTableMeasurement", () => {
   test("normalizes percent-suffixed pct widths to 50ths-of-percent", () => {
     expect(tblW("100%")).toEqual({ value: 5000, type: "pct" });
     expect(tblW("50%")).toEqual({ value: 2500, type: "pct" });
+    expect(tblW(" 100% ")).toEqual({ value: 5000, type: "pct" });
   });
 
   test("keeps canonical pct integers unchanged", () => {
