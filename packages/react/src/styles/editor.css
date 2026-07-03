@@ -50,6 +50,12 @@
 
   --doc-selection: rgba(37, 99, 235, 0.25);
   --doc-selection-dark-bg: rgba(96, 165, 250, 0.4);
+
+  /* Template block-directive rail/marker hue families: loops read violet,
+     conditions read teal, so a rail's kind is legible before its label. Base
+     hues; overlay CSS mixes them with transparent for the translucent tint. */
+  --doc-tmpl-loop: #7c3aed;
+  --doc-tmpl-cond: #0d9488;
   --doc-find-highlight: rgba(250, 204, 21, 0.5);
   --doc-find-current: rgba(249, 115, 22, 0.6);
   --doc-image-selection: var(--doc-link);
@@ -71,6 +77,10 @@
 .folio-root.dark {
   --doc-link: #60a5fa;
   --doc-selection: rgba(96, 165, 250, 0.3);
+  /* Lift the rail/marker hues on dark canvas so the translucent tint keeps
+     the same perceived contrast (mirrors --doc-link's dark flip). */
+  --doc-tmpl-loop: #a78bfa;
+  --doc-tmpl-cond: #2dd4bf;
 }
 
 .hf-options-button {
@@ -976,24 +986,61 @@
   background: color-mix(in srgb, #0000ff 42%, transparent);
 }
 
-/* Clause slots, numbering markers, and block-directive lines sit a touch
-   softer than fields. */
+/* Clause slots and numbering markers sit a touch softer than fields, still in
+   the blue field family. */
 .folio-template-directive--clause,
 .folio-template-directive--num,
-.folio-template-directive--ref,
-.folio-template-directive--if,
-.folio-template-directive--elseif,
-.folio-template-directive--else,
-.folio-template-directive--endif,
-.folio-template-directive--each,
-.folio-template-directive--endeach {
+.folio-template-directive--ref {
   background: color-mix(in srgb, #0000ff 24%, transparent);
 }
 
+/* Condition directives (if / elseif / else / endif) tint teal, matching their
+   rail, so a marker's role is legible at the chip. */
+.folio-template-directive--if,
+.folio-template-directive--elseif,
+.folio-template-directive--else,
+.folio-template-directive--endif {
+  background: color-mix(in srgb, var(--doc-tmpl-cond) 26%, transparent);
+}
+
+/* Loop directives (each / endeach) tint violet, matching their rail. */
+.folio-template-directive--each,
+.folio-template-directive--endeach {
+  background: color-mix(in srgb, var(--doc-tmpl-loop) 26%, transparent);
+}
+
+/* Left gutter rail spanning a block opener→closer. Kind sets the hue (loop vs
+   condition); nesting depth sets the horizontal offset (inline, in the overlay).
+   pointer-events:auto only on the thin rail — it lives in the left margin, clear
+   of the text column, so hover works without intercepting caret/selection. */
 .folio-template-band-rail {
   position: absolute;
   border-radius: 2px;
-  background: color-mix(in srgb, #0000ff 50%, transparent);
+  pointer-events: auto;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.folio-template-band-rail--each {
+  background: color-mix(in srgb, var(--doc-tmpl-loop) 52%, transparent);
+}
+
+.folio-template-band-rail--if {
+  background: color-mix(in srgb, var(--doc-tmpl-cond) 52%, transparent);
+}
+
+/* Hover intensifies one rail so a single block is easy to trace end-to-end.
+   Pure CSS: alpha bump + a hairline glow that widens the rail without shifting
+   layout (no JS event plumbing). */
+.folio-template-band-rail--each:hover {
+  background: color-mix(in srgb, var(--doc-tmpl-loop) 88%, transparent);
+  box-shadow: 0 0 0 0.75px color-mix(in srgb, var(--doc-tmpl-loop) 45%, transparent);
+}
+
+.folio-template-band-rail--if:hover {
+  background: color-mix(in srgb, var(--doc-tmpl-cond) 88%, transparent);
+  box-shadow: 0 0 0 0.75px color-mix(in srgb, var(--doc-tmpl-cond) 45%, transparent);
 }
 
 /* ── Template fill preview ─────────────────────────────────────────────

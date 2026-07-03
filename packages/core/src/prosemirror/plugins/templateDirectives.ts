@@ -73,6 +73,44 @@ const directiveExpr = (meta: MarkerMeta): string => {
   }
 };
 
+/** Block-directive openers ({{#if}}, {{#each}}) that start a gutter-rail band. */
+const BLOCK_OPENER_KINDS = new Set<DirectiveKind>(["if", "each"]);
+/** Block-directive closers ({{/if}}, {{/each}}) that end a gutter-rail band. */
+const BLOCK_CLOSER_KINDS = new Set<DirectiveKind>(["endif", "endeach"]);
+
+/**
+ * Nesting depth (0-based) of every block-directive opener, derived purely from
+ * the scanned ranges by containment: walk the block openers/closers in document
+ * order with a stack, and record each opener's depth as the stack size before it
+ * is pushed. Only `block:true` if/each pairs participate (inline markers resolve
+ * within a paragraph and get no rail). Unbalanced markers are tolerated: a closer
+ * with no open opener is ignored, and any still-open openers keep their depth.
+ *
+ * Keyed by the opener's `from` PM position, which is unique per marker, so the
+ * overlay can look a band's depth up from its opener range. This is a pure
+ * function of the ranges (no layout), hence unit-testable in isolation; the
+ * overlay caps the *visual* indentation separately.
+ */
+export const computeBlockDepths = (ranges: readonly DirectiveRange[]): Map<number, number> => {
+  const depths = new Map<number, number>();
+  let openCount = 0;
+  const ordered = ranges
+    .filter((r) => r.block && (BLOCK_OPENER_KINDS.has(r.kind) || BLOCK_CLOSER_KINDS.has(r.kind)))
+    .slice()
+    .sort((a, b) => a.from - b.from);
+  for (const range of ordered) {
+    if (BLOCK_OPENER_KINDS.has(range.kind)) {
+      depths.set(range.from, openCount);
+      openCount += 1;
+      continue;
+    }
+    if (openCount > 0) {
+      openCount -= 1;
+    }
+  }
+  return depths;
+};
+
 export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
   const ranges: DirectiveRange[] = [];
 
