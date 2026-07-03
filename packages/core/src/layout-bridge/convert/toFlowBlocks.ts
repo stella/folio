@@ -1758,6 +1758,7 @@ function convertParagraph(
     id: nextBlockId(),
     runs,
     attrs,
+    ...(pmAttrs.paraId ? { paraId: pmAttrs.paraId } : {}),
     ...(bookmarkNames && bookmarkNames.length > 0 ? { bookmarks: bookmarkNames } : {}),
     pmStart: startPos,
     pmEnd: startPos + node.nodeSize,

@@ -450,6 +450,8 @@ export type ParagraphAttrs = {
 export type ParagraphBlock = {
   kind: "paragraph";
   id: BlockId;
+  /** Stable Word `w14:paraId` / PM `paraId`, when available. */
+  paraId?: string;
   runs: Run[];
   attrs?: ParagraphAttrs;
   /** Names of bookmarks anchored to this paragraph; used to map a bookmark to

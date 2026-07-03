@@ -41,6 +41,7 @@ import { applyFolioAIEditOperations, createFolioAIEditSnapshot } from "@stll/fol
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
+import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 // ProseMirror editor
 import {
   TextSelection,
@@ -2791,6 +2792,8 @@ export function DocxEditor({
       scrollToPage: (pageNumber: number) => {
         pagedEditorRef.current?.scrollToPage(pageNumber);
       },
+      scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) =>
+        pagedEditorRef.current?.scrollToParaId(paraId, options) ?? false,
       openPrintPreview: handleDirectPrint,
       print: handleDirectPrint,
       loadDocument: loadParsedDocument,

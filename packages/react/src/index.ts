@@ -1,9 +1,6 @@
 export { DocxEditor } from "./components/DocxEditor";
-export type {
-  DocxEditorCollaboration,
-  DocxEditorProps,
-  DocxEditorRef,
-} from "./components/DocxEditor.props";
+export type { DocxEditorCollaboration, DocxEditorProps, DocxEditorRef } from "./components/DocxEditor.props";
+export type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 export type { EditorMode } from "./components/hooks/useEditorMode";
 // Custom-font prop types: `fontFamilies` (picker list) + `fonts` (FontFace registration).
 export type { FontOption } from "./components/ui/FontPicker";

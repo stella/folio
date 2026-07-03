@@ -17,6 +17,17 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(second).toEqual(first);
   });
 
+  test("carries stable PM paraId onto paragraph blocks", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "1A2B3C4D" }, [schema.text("Locate me")]),
+    ]);
+    const para = toFlowBlocks(doc)[0];
+    expect(para?.kind).toBe("paragraph");
+    if (para?.kind === "paragraph") {
+      expect(para.paraId).toBe("1A2B3C4D");
+    }
+  });
+
   test("rejects malformed paragraph attrs at the layout boundary", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { lineSpacing: "240" }, [schema.text("Invalid paragraph")]),

@@ -122,6 +122,10 @@ import {
   scrollPagesToPmPosition,
 } from "@stll/folio-core/paged-layout/scrollToPmPosition";
 import {
+  flashParagraphFragmentsByParaId,
+  type ScrollToParaIdOptions,
+} from "@stll/folio-core/paged-layout/paragraphFlash";
+import {
   DEFAULT_PAGE_HEIGHT_PX,
   getMargins,
   getPageSize,
@@ -132,6 +136,7 @@ import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInse
 import { getTransactionDirtyRange } from "@stll/folio-core/paged-layout/transactionDirtyRange";
 // Table commands (for quick-action insert buttons)
 import { addRowBelow, addColumnRight } from "@stll/folio-core/prosemirror";
+import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
 import {
   expectFontFamilyMarkAttrs,
   expectImageAttrs,
@@ -373,6 +378,11 @@ export type PagedEditorRef = {
   scrollToPosition: (pmPos: number) => void;
   /** Scroll the visible pages to bring a page into view. */
   scrollToPage: (pageNumber: number) => void;
+  /**
+   * Scroll the paginated view to the paragraph with the given Word `w14:paraId`.
+   * Returns whether a matching paragraph exists in the ProseMirror document.
+   */
+  scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean;
   /** Resolve the page number (1-indexed) that contains the given PM position,
    *  or null if no layout is available yet. Works for unrendered pages too via
    *  the page shell map. */
@@ -3426,6 +3436,43 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
     [layout, scrollToPositionImpl],
   );
 
+  const scrollToParaIdImpl = useCallback(
+    (paraId: string, options?: ScrollToParaIdOptions): boolean => {
+      const state = hiddenPMRef.current?.getState();
+      if (!state) {
+        return false;
+      }
+      const startPos = findStartPosForParaId(state.doc, paraId);
+      if (startPos == null || startPos < 0) {
+        return false;
+      }
+      scrollToPositionImpl(startPos);
+      const flashPara = (): void => {
+        if (!options?.highlight) {
+          return;
+        }
+        const pages = pagesContainerRef.current;
+        if (!pages) {
+          return;
+        }
+        flashParagraphFragmentsByParaId(pages, paraId, options.highlight);
+      };
+      flashPara();
+      requestAnimationFrame(() => {
+        flashPara();
+        const targetNode = state.doc.nodeAt(startPos);
+        const inner =
+          targetNode?.isTextblock === true
+            ? Math.min(startPos + 1 + targetNode.content.size, state.doc.content.size)
+            : Math.min(startPos + 1, state.doc.content.size);
+        hiddenPMRef.current?.setSelection(inner);
+        hiddenPMRef.current?.focus();
+      });
+      return true;
+    },
+    [scrollToPositionImpl],
+  );
+
   const focusHiddenEditor = useCallback(() => {
     if (readOnly) {
       containerRef.current?.focus({ preventScroll: true });
@@ -5746,6 +5793,7 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
       },
       scrollToPosition: scrollToPositionImpl,
       scrollToPage: scrollToPageImpl,
+      scrollToParaId: scrollToParaIdImpl,
       getPageNumberForPmPos(pmPos) {
         const container = pagesContainerRef.current;
         if (!container) {
@@ -5804,7 +5852,7 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
         return bestNumber;
       },
     }),
-    [ensureHiddenEditorView, folioEditor, scrollToPageImpl, scrollToPositionImpl],
+    [ensureHiddenEditorView, folioEditor, scrollToPageImpl, scrollToParaIdImpl, scrollToPositionImpl],
   );
 
   useEffect(() => {

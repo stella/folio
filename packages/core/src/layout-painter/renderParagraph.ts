@@ -2101,6 +2101,9 @@ export function renderParagraphFragment(
 
   // Store block and fragment metadata
   fragmentEl.dataset["blockId"] = String(fragment.blockId);
+  if (block.paraId) {
+    fragmentEl.dataset["paraId"] = block.paraId;
+  }
   fragmentEl.dataset["fromLine"] = String(fragment.fromLine);
   fragmentEl.dataset["toLine"] = String(fragment.toLine);
 

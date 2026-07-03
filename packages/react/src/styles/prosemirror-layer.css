@@ -620,6 +620,20 @@
   cursor: text;
 }
 
+.layout-paragraph.folio-paragraph-flash {
+  animation: folio-paragraph-flash-fade var(--folio-paragraph-flash-duration, 1200ms) ease-out
+    both;
+}
+
+@keyframes folio-paragraph-flash-fade {
+  from {
+    box-shadow: inset 0 0 0 9999px var(--folio-paragraph-flash-color, rgba(255, 235, 59, 0.55));
+  }
+  to {
+    box-shadow: inset 0 0 0 9999px transparent;
+  }
+}
+
 /* Header/footer areas — double-click hint */
 .layout-page-header,
 .layout-page-footer {

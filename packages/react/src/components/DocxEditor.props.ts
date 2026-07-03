@@ -27,6 +27,7 @@ import type {
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import type { Document, SdtProperties, Theme, TabStop } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
+import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 import type { FontDefinition } from "../paged-editor/hostFonts";
 import type { PagedEditorRef } from "../paged-editor/PagedEditor";
 import type { FolioUIComponents } from "../ui/folio-ui";
@@ -335,6 +336,11 @@ export type DocxEditorRef = {
   getTotalPages: () => number;
   /** Scroll to a specific page */
   scrollToPage: (pageNumber: number) => void;
+  /**
+   * Scroll the paginated view to the paragraph with the given Word `w14:paraId`.
+   * Pass `options.highlight` to briefly flash it in a custom color.
+   */
+  scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean;
   /** Open print preview */
   openPrintPreview: () => void;
   /** Print the document directly */
