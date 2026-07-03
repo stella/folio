@@ -34,6 +34,7 @@ import { getListMarkerInlineWidth } from "./listMarkerWidth";
 import { buildRunFontStyle, ptToPx } from "./measureHelpers";
 import { getFontMetrics, measureRun, measureTextWidth } from "./measureProvider";
 import type { FontMetrics, FontStyle } from "./measureTypes";
+import { findWordBreaks, isBreakChar } from "./lineBreaks";
 
 export { clampFloatingWrapMargins } from "./clampFloatingWrapMargins";
 export type { FloatingImageZone } from "./floatingZones";
@@ -432,28 +433,6 @@ function measureDecimalPrefixWidthAfterTab(
     return 0;
   }
   return measureTextWidth(text.slice(0, decimalIndex), runToFontStyle(firstRun));
-}
-
-/**
- * Find word break points in text
- * Returns array of indices where words end (after space/punctuation)
- */
-function findWordBreaks(text: string): number[] {
-  const breaks: number[] = [];
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    // Break after space or certain punctuation
-    if (char === " " || char === "-" || char === "\t") {
-      breaks.push(i + 1);
-    }
-  }
-
-  return breaks;
-}
-
-function isBreakChar(char: string | undefined): boolean {
-  return char === " " || char === "-" || char === "\t";
 }
 
 function isSpaceOrTab(char: string | undefined): boolean {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ParagraphBlock, Run } from "../types";
-import { smallCapsAwareCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
+import { smallCapsAwareCharWidth, withFakeTextMeasure, fixedCharWidth } from "./__tests__/fakeTextMeasure";
 import { hashParagraphBlock } from "./cache";
 import { buildFontString } from "./measureHelpers";
 import { clampFloatingWrapMargins, getRunCharWidths, measureParagraph } from "./measureParagraph";
@@ -927,6 +927,55 @@ describe("all-caps paragraph measurement", () => {
     });
 
     expect(minchoHash).not.toBe(gothicHash);
+  });
+});
+
+describe("CJK line breaking", () => {
+  test("fills the remaining width on a line before wrapping CJK characters", () => {
+    withFakeTextMeasure(() => {
+      const block: ParagraphBlock = {
+        kind: "paragraph",
+        id: "cjk-wrap",
+        pmStart: 0,
+        pmEnd: 8,
+        runs: [
+          { kind: "text", text: "AAAA" },
+          { kind: "text", text: "一二三四", eastAsiaFontFamily: "MS Mincho" },
+        ],
+      };
+
+      const measure = measureParagraph(block, 50);
+
+      expect(measure.lines).toHaveLength(2);
+      expect(measure.lines[0]?.toRun).toBe(1);
+      expect(measure.lines[0]?.toChar).toBe(1);
+      expect(measure.lines[1]?.fromRun).toBe(1);
+      expect(measure.lines[1]?.fromChar).toBe(1);
+      expect(measure.lines[1]?.toChar).toBe(4);
+    }, { charWidth: fixedCharWidth(10) });
+  });
+
+  test("does not wrap preceding Latin text when the next CJK character does not fit", () => {
+    withFakeTextMeasure(() => {
+      const block: ParagraphBlock = {
+        kind: "paragraph",
+        id: "cjk-wrap-boundary",
+        pmStart: 0,
+        pmEnd: 8,
+        runs: [
+          { kind: "text", text: "AAAA" },
+          { kind: "text", text: "一二三四", eastAsiaFontFamily: "MS Mincho" },
+        ],
+      };
+
+      const measure = measureParagraph(block, 45);
+
+      expect(measure.lines).toHaveLength(2);
+      expect(measure.lines[0]?.toRun).toBe(0);
+      expect(measure.lines[0]?.toChar).toBe(4);
+      expect(measure.lines[1]?.fromRun).toBe(1);
+      expect(measure.lines[1]?.fromChar).toBe(0);
+    }, { charWidth: fixedCharWidth(10) });
   });
 });
 
