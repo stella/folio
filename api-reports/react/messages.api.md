@@ -5,7 +5,7 @@
 ```ts
 
 // @public (undocumented)
-export const FOLIO_LOCALES: readonly ["en", "de", "fr", "es", "cs", "ar", "et", "hu", "lt", "lv", "pl", "pt-BR", "sk"];
+export const FOLIO_LOCALES: readonly ["en", "de", "fr", "es", "cs", "ar", "et", "he", "hi", "hu", "lt", "lv", "pl", "pt-BR", "sk", "tr", "zh-CN"];
 
 // @public (undocumented)
 export type FolioLocale = (typeof FOLIO_LOCALES)[number];
