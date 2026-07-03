@@ -131,6 +131,73 @@ export const measureContentLeft = (pagesContainer: HTMLElement, zoom: number): n
 };
 
 /**
+ * One page's body-content vertical extent in container space. `.layout-page-content`
+ * is inset by the page margins, so its box excludes the header/footer and the
+ * inter-page gap — exactly the region a gutter rail is allowed to paint over.
+ */
+export type PageContentBand = {
+  /** 0-based page index (from `data-page-number` minus one). */
+  pageIndex: number;
+  /** Top of the body content area, container space. */
+  top: number;
+  /** Bottom of the body content area, container space. */
+  bottom: number;
+};
+
+/**
+ * Left-margin geometry the block-directive rails need in one measurement pass:
+ * the text-column left edge (rail anchor), the usable left-margin width (gutter
+ * budget), and each page's body-content band (so a rail can be clipped per page
+ * instead of running across page breaks). Measured O(pages), never per-range.
+ */
+export type DirectiveGutterGeometry = {
+  /** Text-column left edge, container space. Rails anchor here. */
+  contentLeft: number;
+  /** Usable left-margin width: `contentLeft - pageLeftEdge`. Drives the budget. */
+  marginWidth: number;
+  /** Per-page body-content vertical bands, in document order. */
+  pageBands: PageContentBand[];
+};
+
+export const measureDirectiveGutter = (
+  pagesContainer: HTMLElement,
+  zoom: number,
+): DirectiveGutterGeometry | null => {
+  const overlay = pagesContainer.parentElement?.querySelector('[data-testid="selection-overlay"]');
+  const pages = pagesContainer.querySelectorAll<HTMLElement>(".layout-page");
+  if (!overlay || pages.length === 0) {
+    return null;
+  }
+  const overlayRect = overlay.getBoundingClientRect();
+  const pageBands: PageContentBand[] = [];
+  let contentLeft: number | null = null;
+  let marginWidth: number | null = null;
+  for (const [domIndex, page] of pages.entries()) {
+    const contentEl = page.querySelector<HTMLElement>(".layout-page-content");
+    if (!contentEl) {
+      continue;
+    }
+    const pageNumberRaw = page.dataset["pageNumber"];
+    const pageIndex = pageNumberRaw ? Number(pageNumberRaw) - 1 : domIndex;
+    const contentRect = contentEl.getBoundingClientRect();
+    pageBands.push({
+      pageIndex,
+      top: (contentRect.top - overlayRect.top) / zoom,
+      bottom: (contentRect.bottom - overlayRect.top) / zoom,
+    });
+    if (contentLeft === null) {
+      const pageRect = page.getBoundingClientRect();
+      contentLeft = (contentRect.left - overlayRect.left) / zoom;
+      marginWidth = Math.max(0, (contentRect.left - pageRect.left) / zoom);
+    }
+  }
+  if (contentLeft === null || marginWidth === null) {
+    return null;
+  }
+  return { contentLeft, marginWidth, pageBands };
+};
+
+/**
  * Computed text style of the painted run at a PM position. Overlays
  * that paint substituted text over the pages (template fill preview,
  * AI suggestion replacement) copy these so the injected text matches

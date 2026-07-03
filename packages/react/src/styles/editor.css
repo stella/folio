@@ -1009,10 +1009,34 @@
   background: color-mix(in srgb, var(--doc-tmpl-loop) 26%, transparent);
 }
 
-/* Left gutter rail spanning a block opener→closer. Kind sets the hue (loop vs
-   condition); nesting depth sets the horizontal offset (inline, in the overlay).
-   pointer-events:auto only on the thin rail — it lives in the left margin, clear
-   of the text column, so hover works without intercepting caret/selection. */
+/* Whole-line block directive chips are hover targets for the paired affordance
+   (hovering a chip lights its twin + rail; closers carry a title hint). They
+   still sit in the text column, so keep the tint faint and only these — inline
+   and field chips stay pointer-events:none so the caret drops through them. */
+.folio-template-directive--block {
+  pointer-events: auto;
+  transition: background-color 120ms ease;
+}
+
+/* Chip emphasis mirrors the rail: brighten the twin chips of the active pair. */
+.folio-template-directive--if.folio-template-directive--active,
+.folio-template-directive--elseif.folio-template-directive--active,
+.folio-template-directive--else.folio-template-directive--active,
+.folio-template-directive--endif.folio-template-directive--active {
+  background: color-mix(in srgb, var(--doc-tmpl-cond) 44%, transparent);
+}
+
+.folio-template-directive--each.folio-template-directive--active,
+.folio-template-directive--endeach.folio-template-directive--active {
+  background: color-mix(in srgb, var(--doc-tmpl-loop) 44%, transparent);
+}
+
+/* Left-margin gutter rail spanning a block opener→closer, one segment per page.
+   Kind sets the hue (loop vs condition); depth sets the horizontal offset and
+   page clipping happen in the overlay. Quiet by default: rails render faint so a
+   deeply nested document is not crowded with loud lines. pointer-events:auto
+   only on the thin rail — it lives in the left margin, clear of the text column,
+   so hover works without intercepting caret/selection. */
 .folio-template-band-rail {
   position: absolute;
   border-radius: 2px;
@@ -1023,23 +1047,23 @@
 }
 
 .folio-template-band-rail--each {
-  background: color-mix(in srgb, var(--doc-tmpl-loop) 52%, transparent);
+  background: color-mix(in srgb, var(--doc-tmpl-loop) 22%, transparent);
 }
 
 .folio-template-band-rail--if {
-  background: color-mix(in srgb, var(--doc-tmpl-cond) 52%, transparent);
+  background: color-mix(in srgb, var(--doc-tmpl-cond) 22%, transparent);
 }
 
-/* Hover intensifies one rail so a single block is easy to trace end-to-end.
-   Pure CSS: alpha bump + a hairline glow that widens the rail without shifting
-   layout (no JS event plumbing). */
-.folio-template-band-rail--each:hover {
-  background: color-mix(in srgb, var(--doc-tmpl-loop) 88%, transparent);
+/* Loud on intent: the innermost block around the caret, or the block whose rail
+   or chip is hovered, gets full strength plus a hairline glow that widens the
+   rail without shifting layout — so one block is easy to trace end-to-end. */
+.folio-template-band-rail--each.folio-template-band-rail--active {
+  background: color-mix(in srgb, var(--doc-tmpl-loop) 90%, transparent);
   box-shadow: 0 0 0 0.75px color-mix(in srgb, var(--doc-tmpl-loop) 45%, transparent);
 }
 
-.folio-template-band-rail--if:hover {
-  background: color-mix(in srgb, var(--doc-tmpl-cond) 88%, transparent);
+.folio-template-band-rail--if.folio-template-band-rail--active {
+  background: color-mix(in srgb, var(--doc-tmpl-cond) 90%, transparent);
   box-shadow: 0 0 0 0.75px color-mix(in srgb, var(--doc-tmpl-cond) 45%, transparent);
 }
 

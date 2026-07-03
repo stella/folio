@@ -112,7 +112,8 @@ import type { DirtyRange } from "@stll/folio-core/paged-layout/incrementalMeasur
 import { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
 import {
   collectRunFontsAtPmPositions,
-  measureContentLeft,
+  type DirectiveGutterGeometry,
+  measureDirectiveGutter,
   projectRangesToRects,
 } from "@stll/folio-core/paged-layout/rangeProjection";
 import { isReadOnlyEditKey } from "@stll/folio-core/paged-layout/readOnlyEditAttempt";
@@ -1789,7 +1790,10 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
   const [autocompleteText, setAutocompleteText] = useState<string>("");
   const [autocompleteIsStreaming, setAutocompleteIsStreaming] = useState<boolean>(false);
   const [directiveRectGroups, setDirectiveRectGroups] = useState<DirectiveRectGroup[]>([]);
-  const [directiveContentLeft, setDirectiveContentLeft] = useState<number | null>(null);
+  const [directiveGutter, setDirectiveGutter] = useState<DirectiveGutterGeometry | null>(null);
+  // Caret/selection head PM position, kept only while a template document has
+  // block directives — drives the innermost-block rail emphasis in the overlay.
+  const [directiveCaretPos, setDirectiveCaretPos] = useState<number | null>(null);
   const directivesRef = useRef<readonly DirectiveRange[]>([]);
   const directivesOverlayRequestSeqRef = useRef(0);
   // Template fill preview — the hidden editor's plugin keeps marker↔value
@@ -2401,6 +2405,13 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
       selectionOverlayRequestSeqRef.current = requestSeq;
       const isCurrentRequest = () => selectionOverlayRequestSeqRef.current === requestSeq;
 
+      // Feed the template-directives overlay the caret head so it can emphasise
+      // the innermost block around it. Gated on there being directives at all,
+      // so a plain (non-template) document pays no extra re-render per keystroke.
+      if (directivesRef.current.length > 0) {
+        setDirectiveCaretPos(state.selection.head);
+      }
+
       // Always notify selection change (for toolbar sync) even if layout not ready
       // Use ref to avoid infinite loops when callback is unstable
       onSelectionChangeRef.current?.(from, to);
@@ -2894,10 +2905,10 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
     const pagesContainer = pagesContainerRef.current;
     if (ranges.length === 0 || !pagesContainer) {
       setDirectiveRectGroups([]);
-      setDirectiveContentLeft(null);
+      setDirectiveGutter(null);
       return;
     }
-    setDirectiveContentLeft(measureContentLeft(pagesContainer, zoom));
+    setDirectiveGutter(measureDirectiveGutter(pagesContainer, zoom));
     void (async () => {
       const projected = await projectRangesToRects(ranges, {
         pagesContainer,
@@ -6016,8 +6027,9 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
               the directives plugin isn't installed. */}
           {showTemplateDirectives && (
             <TemplateDirectivesOverlay
-              contentLeft={directiveContentLeft}
+              gutter={directiveGutter}
               groups={directiveRectGroups}
+              caretPos={directiveCaretPos}
             />
           )}
 
