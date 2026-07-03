@@ -5,12 +5,16 @@ import en from "./messages/en.json";
 import es from "./messages/es.json";
 import et from "./messages/et.json";
 import fr from "./messages/fr.json";
+import he from "./messages/he.json";
+import hi from "./messages/hi.json";
 import hu from "./messages/hu.json";
 import lt from "./messages/lt.json";
 import lv from "./messages/lv.json";
 import pl from "./messages/pl.json";
 import ptBR from "./messages/pt-BR.json";
 import sk from "./messages/sk.json";
+import tr from "./messages/tr.json";
+import zhCN from "./messages/zh-CN.json";
 
 // folio bundles its own UI translations: the editor reads the `folio.*`
 // namespace via `useTranslations("folio")`, and a consumer merges this catalog
@@ -26,12 +30,16 @@ export const FOLIO_LOCALES = [
   "cs",
   "ar",
   "et",
+  "he",
+  "hi",
   "hu",
   "lt",
   "lv",
   "pl",
   "pt-BR",
   "sk",
+  "tr",
+  "zh-CN",
 ] as const;
 
 export type FolioLocale = (typeof FOLIO_LOCALES)[number];
@@ -59,12 +67,16 @@ const CATALOGS: Record<FolioLocale, Widen<typeof en>> = {
   cs,
   ar,
   et,
+  he,
+  hi,
   hu,
   lt,
   lv,
   pl,
   "pt-BR": ptBR,
   sk,
+  tr,
+  "zh-CN": zhCN,
 };
 
 const FOLIO_LOCALE_SET = new Set<string>(FOLIO_LOCALES);

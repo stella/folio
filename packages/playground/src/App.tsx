@@ -19,7 +19,7 @@ const ZOOM_INITIAL = 1;
 const DEFAULT_LOCALE = "en";
 // Only Arabic in the bundled set needs RTL; flip the shell so the editor chrome
 // (built on logical CSS properties) mirrors.
-const RTL_LOCALES = new Set<string>(["ar"]);
+const RTL_LOCALES = new Set<string>(["ar", "he"]);
 
 const languageLabel = (locale: string): string => {
   const name = new Intl.DisplayNames([locale], { type: "language" }).of(

@@ -125,9 +125,10 @@ export function Editor({ docx, locale }: { docx: ArrayBuffer; locale: string }) 
 - `FOLIO_LOCALES` — the bundled locales as a readonly tuple (also a `FolioLocale`
   type and an `isFolioLocale` guard).
 
-Bundled locales: `en`, `de`, `fr`, `es`, `cs`, `ar`, `et`, `hu`, `lt`, `lv`,
-`pl`, `pt-BR`, `sk`. Arabic (`ar`) is right-to-left: set `dir="rtl"` on a
-container around the editor for that locale.
+Bundled locales: `en`, `de`, `fr`, `es`, `cs`, `ar`, `et`, `he`, `hi`, `hu`,
+`lt`, `lv`, `pl`, `pt-BR`, `sk`, `tr`, `zh-CN`. Arabic (`ar`) and Hebrew
+(`he`) are right-to-left: set `dir="rtl"` on a container around the editor for
+those locales.
 
 **Merging with your own app messages.** folio owns exactly one top-level
 namespace (`folio.*`), so a shallow spread merges cleanly with your app's other
