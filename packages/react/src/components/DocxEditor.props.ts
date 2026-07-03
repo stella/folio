@@ -26,6 +26,7 @@ import type {
   TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import type { Document, SdtProperties, Theme, TabStop } from "@stll/folio-core/types/document";
+import type { Comment } from "@stll/folio-core/types/content";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import type { FontDefinition } from "../paged-editor/hostFonts";
 import type { PagedEditorRef } from "../paged-editor/PagedEditor";
@@ -207,6 +208,15 @@ export type DocxEditorProps = {
   onModeChange?: (mode: EditorMode) => void;
   /** Callback when a readonly user action would mutate the document. */
   onReadonlyEditAttempt?: () => void;
+  /**
+   * Controlled comments array. When provided, the editor reads comment thread
+   * metadata from this prop and emits every change through `onCommentsChange`.
+   * Use with collaboration backends (Yjs, etc.) so comment threads sync across
+   * peers; PM carries range markers, thread metadata lives outside the doc.
+   */
+  comments?: Comment[];
+  /** Fires whenever the comments array changes (controlled and uncontrolled). */
+  onCommentsChange?: (comments: Comment[]) => void;
   /** Callback with the parsed document's editing compatibility report. */
   onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
   /**

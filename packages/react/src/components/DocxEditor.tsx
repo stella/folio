@@ -473,6 +473,8 @@ export function DocxEditor({
   onSlashMenuKeyAction,
   customContextMenuItems,
   onCustomContextAction,
+  comments: commentsProp,
+  onCommentsChange,
   collaboration,
   featureFlags,
   onSelectiveSaveTripwire,
@@ -891,6 +893,8 @@ export function DocxEditor({
     autoOpenReviewSidebar,
     anchorPositions,
     editorContentRef,
+    commentsProp,
+    onCommentsChange,
   });
   // Cache style resolver to avoid recreating on every selection change
   const styleResolverCacheRef = useRef<{

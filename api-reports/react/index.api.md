@@ -38,6 +38,7 @@ import { Checkbox } from '@base-ui/react/checkbox';
 import { clearAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { clearTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ColorValue } from '@stll/folio-core/types/document';
+import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComponentProps } from 'react';
 import { ComponentType } from 'react';
 import { consumeTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
@@ -342,7 +343,9 @@ export type DocxEditorProps = {
     onPaste?: () => void; /** Editor mode: 'editing' (direct edits), 'suggesting' (track changes), or 'viewing' (read-only). Default: 'editing' */
     mode?: EditorMode; /** Callback when the editing mode changes */
     onModeChange?: (mode: EditorMode) => void; /** Callback when a readonly user action would mutate the document. */
-    onReadonlyEditAttempt?: () => void; /** Callback with the parsed document's editing compatibility report. */
+    onReadonlyEditAttempt?: () => void;
+    comments?: Comment_2[]; /** Fires whenever the comments array changes (controlled and uncontrolled). */
+    onCommentsChange?: (comments: Comment_2[]) => void; /** Callback with the parsed document's editing compatibility report. */
     onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
     onEditorViewReady?: (view: EditorView | null) => void; /** Yjs-backed collaboration owner. Experimental and opt-in. */
     collaboration?: DocxEditorCollaboration | undefined;
