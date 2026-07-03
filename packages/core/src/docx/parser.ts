@@ -421,6 +421,12 @@ export class DocxParseError extends TaggedError("DocxParseError")<{
 /**
  * Build media file map from raw content and relationships
  */
+function copyBytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
 async function buildMediaMap(
   raw: RawDocxContent,
   _rels: RelationshipMap,
@@ -466,13 +472,7 @@ async function buildMediaMap(
         filename,
         mimeType,
         data,
-        dataUrl: mediaToDataUrl(
-          raster.bytes.buffer.slice(
-            raster.bytes.byteOffset,
-            raster.bytes.byteOffset + raster.bytes.byteLength,
-          ),
-          raster.mimeType,
-        ),
+        dataUrl: mediaToDataUrl(copyBytesToArrayBuffer(raster.bytes), raster.mimeType),
       };
       media.set(path, mediaFile);
       const normalizedPath = path.replace(/^word\//u, "");
