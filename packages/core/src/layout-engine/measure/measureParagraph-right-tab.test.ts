@@ -101,4 +101,41 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
       expect(Math.abs((line?.width ?? 0) - painterLineWidth)).toBeLessThanOrEqual(0.5);
     });
   });
+
+  test("right tab reserves rotated inline image bbox width in following width", () => {
+    withFakeTextMeasure(() => {
+      const block = {
+        kind: "paragraph" as const,
+        id: "tab-rotated-inline",
+        runs: [
+          { kind: "text" as const, text: "Title", fontSize: 11 },
+          { kind: "tab" as const },
+          {
+            kind: "image" as const,
+            src: "img.png",
+            width: 40,
+            height: 20,
+            rotation: 90,
+          },
+        ],
+        attrs: {
+          tabs: [{ val: "end" as const, pos: 5000 }],
+        },
+      };
+
+      const measure = measureParagraph(block, 400);
+      const line = measure.lines.at(0);
+      expect(line).toBeDefined();
+
+      const titleWidth = 25;
+      const followingWidth = 20;
+      const tabResult = calculateTabWidth(titleWidth, {
+        explicitStops: [{ val: "end", pos: 5000 }],
+      }, {
+        followingWidth,
+      });
+      const painterLineWidth = titleWidth + tabResult.width + followingWidth;
+      expect(Math.abs((line?.width ?? 0) - painterLineWidth)).toBeLessThanOrEqual(0.5);
+    });
+  });
 });
