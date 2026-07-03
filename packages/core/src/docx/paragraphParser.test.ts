@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseParagraph } from "./paragraphParser";
+import { getParagraphText, parseParagraph } from "./paragraphParser";
 import type { XmlElement } from "./xmlParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -450,5 +450,22 @@ describe("parseParagraph complex field formatting (#909)", () => {
     }
     expect(field.formatting?.color).toEqual({ rgb: "FF0000" });
     expect(field.formatting?.fontSize).toBe(28);
+  });
+});
+
+describe("parseParagraph smartTag wrapper", () => {
+  test("recurses into w:smartTag instead of dropping wrapped runs", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:smartTag w:uri="urn:schemas-microsoft-com:office:smarttags" w:element="City">
+          <w:r><w:t>SMARTTAG-CITY</w:t></w:r>
+        </w:smartTag>
+        <w:r><w:t xml:space="preserve">, STATE</w:t></w:r>
+      </w:p>
+    `);
+
+    const text = getParagraphText(paragraph);
+    expect(text).toContain("SMARTTAG-CITY");
+    expect(text).toContain(", STATE");
   });
 });
