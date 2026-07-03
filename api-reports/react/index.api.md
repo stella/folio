@@ -291,6 +291,13 @@ export type DocxEditorCollaboration = {
     yXmlFragment: XmlFragment;
 };
 
+// @public
+export type DocxEditorHandle = EditorHandle & {
+    setZoom: (zoom: number) => void; /** Scroll the visible pages to a raw ProseMirror document position. */
+    scrollToPosition: (pmPos: number) => void; /** Scroll the visible pages to a 1-indexed page number. */
+    scrollToPage: (pageNumber: number) => void;
+};
+
 // @public (undocumented)
 export type DocxEditorProps = {
     documentBuffer?: DocxInput | null; /** Pre-parsed document (alternative to documentBuffer) */
@@ -423,6 +430,14 @@ export type DocxEditorRef = {
         keepContent?: boolean;
         force?: boolean;
     }) => boolean;
+};
+
+// @public
+export type EditorHandle = {
+    save: () => Promise<Blob | null>; /** Get the current parsed document model. */
+    getDocument: () => Document_2 | null; /** Focus the editor. */
+    focus: () => void; /** Unmount the editor and clean up. */
+    destroy: () => void;
 };
 
 export { EditorMode }
@@ -572,6 +587,14 @@ export type OutlineItem = {
 export function parseZoom(zoomString: string): number | null;
 
 export { PositionalText }
+
+// @public
+export const renderAsync: (input: DocxInput, container: HTMLElement, options?: RenderAsyncOptions) => Promise<DocxEditorHandle>;
+
+// @public
+export type RenderAsyncOptions = Omit<DocxEditorProps, "documentBuffer" | "document"> & {
+    locale?: string;
+};
 
 export { resetTemplateSlashQuery }
 
