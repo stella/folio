@@ -1,4 +1,10 @@
 export { DocxEditor } from "./components/DocxEditor";
+export {
+  renderAsync,
+  type DocxEditorHandle,
+  type EditorHandle,
+  type RenderAsyncOptions,
+} from "./renderAsync";
 export type { DocxEditorCollaboration, DocxEditorProps, DocxEditorRef } from "./components/DocxEditor.props";
 export type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 export type { EditorMode } from "./components/hooks/useEditorMode";
