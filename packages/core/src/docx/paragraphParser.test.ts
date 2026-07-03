@@ -452,3 +452,24 @@ describe("parseParagraph complex field formatting (#909)", () => {
     expect(field.formatting?.fontSize).toBe(28);
   });
 });
+
+describe("parseParagraph smartTag wrapper", () => {
+  test("recurses into w:smartTag instead of dropping wrapped runs", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:smartTag w:uri="urn:schemas-microsoft-com:office:smarttags" w:element="City">
+          <w:r><w:t>SMARTTAG-CITY</w:t></w:r>
+        </w:smartTag>
+        <w:r><w:t xml:space="preserve">, STATE</w:t></w:r>
+      </w:p>
+    `);
+
+    const text = paragraph.content
+      .flatMap((item) => (item.type === "run" ? item.content : []))
+      .filter((part) => part.type === "text")
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .join("");
+    expect(text).toContain("SMARTTAG-CITY");
+    expect(text).toContain(", STATE");
+  });
+});

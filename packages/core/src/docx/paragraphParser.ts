@@ -1532,8 +1532,23 @@ function parseParagraphContents(
         break;
       }
 
-      case "smartTag":
+      case "smartTag": {
+        // w:smartTag is a transparent inline wrapper (legacy Word smart-tag
+        // recognizer markup). Its children are ordinary paragraph content;
+        // recurse so the wrapped runs are not dropped.
+        const inner = parseParagraphContents(
+          child,
+          styles,
+          theme,
+          null,
+          rels,
+          media,
+          trackedContext,
+          inScopeXmlns,
+        );
+        contents.push(...inner);
         break;
+      }
 
       case "moveFromRangeStart": {
         const id = Number.parseInt(getAttribute(child, "w", "id") ?? "0", 10);
