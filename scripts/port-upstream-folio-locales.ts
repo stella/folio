@@ -51,6 +51,8 @@ const setNested = (obj: Nested, path: string, value: string): void => {
   }
 };
 
+const [upstreamLocalePath, folioOutPath] = process.argv.slice(2);
+
 if (!upstreamLocalePath || !folioOutPath) {
   console.error(
     "Usage: bun scripts/port-upstream-folio-locales.ts <upstream-locale.json> <folio-out.json>",
@@ -59,7 +61,7 @@ if (!upstreamLocalePath || !folioOutPath) {
 }
 
 const folioEnPath = "packages/react/src/i18n/messages/en.json";
-const upstreamEnPath = "/tmp/docx-editor-upstream/packages/i18n/en.json";
+const upstreamEnPath = upstreamLocalePath.replace(/[^/]+$/, "en.json");
 
 const folioEn = JSON.parse(readFileSync(folioEnPath, "utf8")) as { folio: Nested };
 const upstreamEn = JSON.parse(readFileSync(upstreamEnPath, "utf8")) as Nested;
@@ -85,10 +87,7 @@ for (const [folioKey, english] of folioFlat) {
   const upstreamKey = enValueToUpstreamKey.get(english);
   const translated =
     upstreamKey !== undefined ? upstreamLocaleFlat.get(upstreamKey) : undefined;
-  if (translated !== undefined && translated !== english) {
-    setNested(out, folioKey, translated);
-    matched++;
-  } else if (translated !== undefined) {
+  if (translated !== undefined) {
     setNested(out, folioKey, translated);
     matched++;
   } else {
