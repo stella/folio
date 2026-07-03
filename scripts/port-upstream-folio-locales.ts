@@ -82,7 +82,6 @@ let matched = 0;
 let fallback = 0;
 
 for (const [folioKey, english] of folioFlat) {
-  const relativeKey = folioKey.replace(/^folio\./, "");
   const upstreamKey = enValueToUpstreamKey.get(english);
   const translated =
     upstreamKey !== undefined ? upstreamLocaleFlat.get(upstreamKey) : undefined;
