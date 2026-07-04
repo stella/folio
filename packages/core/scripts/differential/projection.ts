@@ -1,11 +1,11 @@
 /**
  * Structural projection of a folio-parsed Document into a normalised JSON
  * shape that can be compared against the equivalent projection produced
- * by an external OOXML parser (currently python-docx). The two
+ * by an external OOXML parser (python-docx and Open XML SDK). The
  * projections are intentionally narrow: they only cover fields that both
  * sides expose and that map cleanly across parser ASTs.
  *
- * Adding a field here means: extend the python projector in the same
+ * Adding a field here means: extend each reference projector in the same
  * directory in lockstep, and update README.md.
  */
 

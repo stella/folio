@@ -90,7 +90,7 @@ jobs:
         run: bun run test:interactions
 
   differential:
-    name: Differential parser parity (folio vs python-docx)
+    name: Differential parser parity (folio vs python-docx + Open XML SDK)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -99,12 +99,19 @@ jobs:
         with:
           bun-version-file: "package.json"
 
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: "8.0.x"
+
       - run: bun install --frozen-lockfile
 
-      - name: Install python-docx (the differential reference parser)
+      - name: Install python-docx (differential reference parser)
         run: python3 -m pip install --break-system-packages python-docx
 
-      # DIFFERENTIAL_REQUIRED turns a missing python-docx into a failure rather
+      - name: Build Open XML SDK differential projector
+        run: dotnet build packages/core/scripts/differential/dotnet -c Release
+
+      # DIFFERENTIAL_REQUIRED turns a missing reference into a failure rather
       # than a skip, so the full-corpus parity gate cannot silently pass.
       - name: Differential parity (full corpus)
         run: bun run test:differential
