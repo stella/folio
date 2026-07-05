@@ -10,4 +10,7 @@ export {
   type StyleEngineCacheStats,
   type StyleEngineOptions,
 } from "./styleEngine";
-export type { ResolvedParagraphStyle } from "../prosemirror/styles/styleResolver";
+export type {
+  ResolvedParagraphStyle,
+  TableCellParagraphSpacingOverlay,
+} from "../prosemirror/styles/styleResolver";

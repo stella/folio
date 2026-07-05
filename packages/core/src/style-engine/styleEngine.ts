@@ -16,7 +16,11 @@
  * one at a time.
  */
 
-import type { ResolvedParagraphStyle, StyleResolver } from "../prosemirror/styles/styleResolver";
+import type {
+  ResolvedParagraphStyle,
+  StyleResolver,
+  TableCellParagraphSpacingOverlay,
+} from "../prosemirror/styles/styleResolver";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import type { DocDefaults, Style, StyleDefinitions, TextFormatting } from "../types/document";
 
@@ -86,6 +90,22 @@ export type StyleEngine = {
    */
   resolveParagraphStyle: (styleId: string | undefined | null) => ResolvedParagraphStyle;
   /**
+   * Resolve the paragraph cascade for a paragraph inside a table cell,
+   * layering the enclosing table style's paragraph-spacing fields between
+   * docDefaults and the paragraph's own style chain — see
+   * {@link StyleResolver.resolveParagraphStyleInTable}.
+   *
+   * Pass the *same* `tableParagraphOverlay` object reference for every
+   * paragraph governed by the same table style region (folio's table
+   * conversion already computes it once per region) — the cache below keys
+   * on object identity, so a fresh object per call defeats memoization.
+   * Returned object is cached and must not be mutated.
+   */
+  resolveParagraphStyleInTable: (
+    styleId: string | undefined | null,
+    tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
+  ) => ResolvedParagraphStyle;
+  /**
    * Resolve a run/character style with docDefaults applied.
    * Returns `undefined` when the cascade yields nothing.
    */
@@ -126,6 +146,16 @@ export function createStyleEngine(
   const paragraphCache = new Map<string, Cached<ResolvedParagraphStyle>>();
   const runCache = new Map<string, Cached<TextFormatting | undefined>>();
   const ownPropsCache = new Map<string, Cached<TextFormatting | undefined>>();
+  // Keyed by the overlay object's identity (not its contents) since table
+  // conversion computes one overlay object per style region and reuses it
+  // across every cell/paragraph in that region — see the interface doc
+  // comment on `resolveParagraphStyleInTable`. A `let` (not `const`) so
+  // `invalidate()` can drop every entry without a `WeakMap.clear()`, which
+  // doesn't exist.
+  let tableOverlayCache = new WeakMap<
+    TableCellParagraphSpacingOverlay,
+    Map<string, Cached<ResolvedParagraphStyle>>
+  >();
 
   let hits = 0;
   let misses = 0;
@@ -146,6 +176,24 @@ export function createStyleEngine(
     return value;
   };
 
+  const memoizeInTable = (
+    styleId: string | undefined | null,
+    tableParagraphOverlay: TableCellParagraphSpacingOverlay,
+  ): ResolvedParagraphStyle => {
+    if (!cacheEnabled) {
+      misses += 1;
+      return resolver.resolveParagraphStyleInTable(styleId, tableParagraphOverlay);
+    }
+    let overlayCache = tableOverlayCache.get(tableParagraphOverlay);
+    if (!overlayCache) {
+      overlayCache = new Map();
+      tableOverlayCache.set(tableParagraphOverlay, overlayCache);
+    }
+    return memoize(overlayCache, cacheKey(styleId), () =>
+      resolver.resolveParagraphStyleInTable(styleId, tableParagraphOverlay),
+    );
+  };
+
   return {
     getStyle: (styleId) => resolver.getStyle(styleId),
     hasStyle: (styleId) => resolver.hasStyle(styleId),
@@ -158,6 +206,12 @@ export function createStyleEngine(
 
     resolveParagraphStyle: (styleId) =>
       memoize(paragraphCache, cacheKey(styleId), () => resolver.resolveParagraphStyle(styleId)),
+    resolveParagraphStyleInTable: (styleId, tableParagraphOverlay) =>
+      tableParagraphOverlay === undefined
+        ? memoize(paragraphCache, cacheKey(styleId), () =>
+            resolver.resolveParagraphStyleInTable(styleId, undefined),
+          )
+        : memoizeInTable(styleId, tableParagraphOverlay),
     resolveRunStyle: (styleId) =>
       memoize(runCache, cacheKey(styleId), () => resolver.resolveRunStyle(styleId)),
     getRunStyleOwnProperties: (styleId) =>
@@ -167,12 +221,19 @@ export function createStyleEngine(
       paragraphCache.clear();
       runCache.clear();
       ownPropsCache.clear();
+      // WeakMap has no `.clear()` — drop the whole map so stale per-overlay
+      // caches from a previous style resolution can't leak forward.
+      tableOverlayCache = new WeakMap();
       hits = 0;
       misses = 0;
     },
     stats: () => ({
       hits,
       misses,
+      // Table-overlay entries live in a WeakMap keyed by overlay object
+      // identity and aren't enumerable, so they're intentionally excluded
+      // from this count — it undercounts total cache size whenever
+      // resolveParagraphStyleInTable has been used with an overlay.
       size: paragraphCache.size + runCache.size + ownPropsCache.size,
     }),
   };

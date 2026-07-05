@@ -8,6 +8,11 @@
  * 3. Style chain (basedOn inheritance - already resolved by styleParser)
  * 4. Inline properties
  *
+ * For paragraphs inside a table cell, `resolveParagraphStyleInTable` inserts
+ * an additional layer between docDefaults and the Normal/style chain: the
+ * enclosing table style's own paragraph-spacing (`w:pPr`). See its doc
+ * comment for the full cascade order.
+ *
  * Based on ECMA-376 style cascade rules.
  */
 
@@ -30,6 +35,26 @@ export type ResolvedParagraphStyle = {
   /** Default run formatting from the style */
   runFormatting?: TextFormatting;
 };
+
+/**
+ * Paragraph-spacing fields sourced from the table style enclosing a cell
+ * paragraph: the table style's own `w:pPr`, then the applicable
+ * `w:tblStylePr` conditional region's `w:pPr` layered on top (already merged
+ * by the caller — see `resolveTableBaseStyle`/`resolveTableStyleConditional`
+ * in toProseDoc.ts).
+ *
+ * Deliberately narrower than the full {@link ParagraphFormatting}: this is
+ * the layer-2 overlay described on {@link StyleResolver.resolveParagraphStyleInTable}
+ * and is scoped to the spacing fields responsible for folio's table-row
+ * height bug (table styles like Word's `TableGrid` zero these out relative
+ * to `docDefaults`). Alignment, indentation, borders, etc. are out of scope
+ * here — applying the whole `pPr` would risk regressing unrelated cell
+ * layout that isn't part of this fix.
+ */
+export type TableCellParagraphSpacingOverlay = Pick<
+  ParagraphFormatting,
+  "spaceBefore" | "spaceAfter" | "lineSpacing" | "lineSpacingRule" | "contextualSpacing"
+>;
 
 /**
  * Word's default-template Normal style, used as a last-resort fallback for a
@@ -120,9 +145,47 @@ export class StyleResolver {
    * @returns Resolved paragraph and run formatting
    */
   resolveParagraphStyle(styleId: string | undefined | null): ResolvedParagraphStyle {
+    return this.resolveParagraphStyleCascade(styleId, undefined);
+  }
+
+  /**
+   * Resolve paragraph style properties for a paragraph inside a table cell,
+   * layering the enclosing table style's paragraph-spacing fields into the
+   * cascade between docDefaults and the paragraph's own style chain.
+   *
+   * Per ECMA-376 §17.7.2, a cell paragraph's properties resolve in this
+   * order (later wins):
+   *   1. docDefaults (`w:pPrDefault`)
+   *   2. the enclosing table style's `w:pPr` (`tableParagraphOverlay`, here)
+   *   3. the paragraph's own style chain (`w:pStyle` + `basedOn` ancestors)
+   *   4. direct formatting on the paragraph (`w:pPr`)
+   *
+   * Layer 4 is applied by the caller (`paragraphFormattingToAttrs`), which
+   * already prefers the paragraph's direct formatting over this method's
+   * result. Layer 3 is applied below, after the overlay, so an explicit
+   * paragraph style still wins over the table for any field it sets.
+   *
+   * @param styleId - The paragraph's style ID (e.g., 'Heading1', 'Normal')
+   * @param tableParagraphOverlay - Paragraph-spacing fields from the
+   *   enclosing table style (base `pPr` merged with the applicable
+   *   conditional region), or `undefined` when the paragraph isn't in a
+   *   table cell, the table has no style, or the style sets no spacing.
+   * @returns Resolved paragraph and run formatting
+   */
+  resolveParagraphStyleInTable(
+    styleId: string | undefined | null,
+    tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
+  ): ResolvedParagraphStyle {
+    return this.resolveParagraphStyleCascade(styleId, tableParagraphOverlay);
+  }
+
+  private resolveParagraphStyleCascade(
+    styleId: string | undefined | null,
+    tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
+  ): ResolvedParagraphStyle {
     const result: ResolvedParagraphStyle = {};
 
-    // Start with document defaults
+    // Layer 1: document defaults
     if (this.docDefaults?.pPr) {
       result.paragraphFormatting = { ...this.docDefaults.pPr };
     }
@@ -130,7 +193,16 @@ export class StyleResolver {
       result.runFormatting = { ...this.docDefaults.rPr };
     }
 
-    // If no styleId, apply Normal style (if exists)
+    // Layer 2: enclosing table style's paragraph spacing (cell paragraphs
+    // only — undefined for everything else, a no-op here).
+    if (tableParagraphOverlay) {
+      const merged = mergeParagraphFormatting(result.paragraphFormatting, tableParagraphOverlay);
+      if (merged !== undefined) {
+        result.paragraphFormatting = merged;
+      }
+    }
+
+    // Layer 3: the paragraph's own style chain (Normal when styleId is absent)
     if (!styleId) {
       if (this.defaultParagraphStyle) {
         this.mergeStyleIntoResult(result, this.defaultParagraphStyle);

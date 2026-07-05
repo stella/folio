@@ -594,3 +594,136 @@ describe("toFlowBlocks style cascade", () => {
     }
   });
 });
+
+describe("table style paragraph spacing cascade (cell paragraphs)", () => {
+  // Mirrors the real-world TableNormal -> TableGrid cascade: docDefaults
+  // give every paragraph 200-twip space-after and 1.15x (276) line spacing;
+  // TableGrid (based on TableNormal) zeroes both out for its cells. Per
+  // ECMA-376 §17.7.2 the table style's own `w:pPr` sits between docDefaults
+  // and the paragraph's style chain/direct formatting — see
+  // `resolveParagraphStyleInTable` in styleResolver.ts.
+  const styles: StyleDefinitions = {
+    docDefaults: {
+      pPr: { spaceAfter: 200, lineSpacing: 276, lineSpacingRule: "auto" },
+    },
+    styles: [
+      {
+        styleId: "TableNormal",
+        type: "table",
+        name: "Table Normal",
+      },
+      {
+        styleId: "TableGrid",
+        type: "table",
+        name: "Table Grid",
+        basedOn: "TableNormal",
+        pPr: { spaceAfter: 0, lineSpacing: 240, lineSpacingRule: "auto" },
+      },
+      {
+        styleId: "CellStyle",
+        type: "paragraph",
+        name: "Cell Style",
+        pPr: { spaceAfter: 100 },
+      },
+    ],
+  };
+
+  function buildDocument(): Document {
+    const table: Table = {
+      type: "table",
+      formatting: { styleId: "TableGrid" },
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              // (a) No pStyle, no direct pPr — must resolve to the table
+              // style's spacing, not docDefaults. This is the bug.
+              type: "tableCell",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "run", content: [{ type: "text", text: "no style" }] }],
+                },
+              ],
+            },
+            {
+              // (b) Explicit paragraph style sets its own space-after — the
+              // style must win over the table overlay for that field.
+              type: "tableCell",
+              content: [
+                {
+                  type: "paragraph",
+                  formatting: { styleId: "CellStyle" },
+                  content: [{ type: "run", content: [{ type: "text", text: "styled" }] }],
+                },
+              ],
+            },
+            {
+              // (c) Direct pPr spacing — must win over the table overlay
+              // (and over any style).
+              type: "tableCell",
+              content: [
+                {
+                  type: "paragraph",
+                  formatting: { spaceAfter: 50 },
+                  content: [{ type: "run", content: [{ type: "text", text: "direct" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const baselineParagraph: Paragraph = {
+      type: "paragraph",
+      content: [{ type: "run", content: [{ type: "text", text: "outside the table" }] }],
+    };
+    return {
+      package: {
+        document: { content: [baselineParagraph, table] },
+        styles,
+      },
+    };
+  }
+
+  test("cell paragraph with no style and no direct pPr resolves to the table style's spacing", () => {
+    const pmDoc = toProseDoc(buildDocument(), { styles });
+    const table = pmDoc.content.child(1);
+    const cell = table.content.child(0).content.child(0);
+    const paragraph = cell.content.child(0);
+
+    expect(paragraph.attrs["spaceAfter"]).toBe(0);
+    expect(paragraph.attrs["lineSpacing"]).toBe(240);
+    expect(paragraph.attrs["lineSpacingRule"]).toBe("auto");
+  });
+
+  test("an explicit paragraph style still wins over the table overlay", () => {
+    const pmDoc = toProseDoc(buildDocument(), { styles });
+    const table = pmDoc.content.child(1);
+    const cell = table.content.child(0).content.child(1);
+    const paragraph = cell.content.child(0);
+
+    // The style only sets spaceAfter — it wins for that field...
+    expect(paragraph.attrs["spaceAfter"]).toBe(100);
+    // ...but the table overlay still supplies fields the style leaves unset.
+    expect(paragraph.attrs["lineSpacing"]).toBe(240);
+  });
+
+  test("direct paragraph formatting wins over both the table overlay and any style", () => {
+    const pmDoc = toProseDoc(buildDocument(), { styles });
+    const table = pmDoc.content.child(1);
+    const cell = table.content.child(0).content.child(2);
+    const paragraph = cell.content.child(0);
+
+    expect(paragraph.attrs["spaceAfter"]).toBe(50);
+  });
+
+  test("a non-table paragraph is unaffected and still resolves to docDefaults", () => {
+    const pmDoc = toProseDoc(buildDocument(), { styles });
+    const baselineParagraph = pmDoc.content.child(0);
+
+    expect(baselineParagraph.attrs["spaceAfter"]).toBe(200);
+    expect(baselineParagraph.attrs["lineSpacing"]).toBe(276);
+  });
+});

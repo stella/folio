@@ -15,12 +15,13 @@
 import type { MarkType, Node as PMNode } from "prosemirror-model";
 
 import { createStyleEngine } from "../../style-engine";
-import type { StyleEngine } from "../../style-engine";
+import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
 import type {
   BlockContent,
   BlockSdt,
   Document,
   Paragraph,
+  ParagraphFormatting,
   Run,
   TextFormatting,
   RunContent,
@@ -46,6 +47,7 @@ import type {
   Theme,
 } from "../../types/document";
 import { resolveColor } from "../../utils/colorResolver";
+import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { emuToPixels } from "../../utils/units";
 import { setAutospacingBaseValue } from "../autospacingBase";
@@ -193,8 +195,9 @@ function convertParagraph(
   styleResolver: StyleEngine | null,
   activeCommentIds?: Set<number>,
   extraRunFormatting?: TextFormatting,
+  tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
 ): PMNode {
-  const attrs = paragraphFormattingToAttrs(paragraph, styleResolver);
+  const attrs = paragraphFormattingToAttrs(paragraph, styleResolver, tableParagraphOverlay);
   const inlineNodes: PMNode[] = [];
   let inlineOffset = 0;
   let bookmarksArr: { id: number; name: string }[] | undefined;
@@ -423,6 +426,7 @@ function canCarryTrackedRunMark(node: PMNode, markType: MarkType): boolean {
 function paragraphFormattingToAttrs(
   paragraph: Paragraph,
   styleResolver: StyleEngine | null,
+  tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
 ): ParagraphAttrs {
   const formatting = paragraph.formatting;
   const styleId = formatting?.styleId;
@@ -515,10 +519,13 @@ function paragraphFormattingToAttrs(
     }
   };
 
-  // If we have a style resolver, resolve the style and get base properties
+  // If we have a style resolver, resolve the style and get base properties.
+  // Cell paragraphs (`tableParagraphOverlay` set) layer the enclosing table
+  // style's paragraph-spacing fields in between docDefaults and this
+  // paragraph's own style chain — see resolveParagraphStyleInTable.
   let stylePpr: Paragraph["formatting"] | undefined;
   if (styleResolver) {
-    const resolved = styleResolver.resolveParagraphStyle(styleId);
+    const resolved = styleResolver.resolveParagraphStyleInTable(styleId, tableParagraphOverlay);
     stylePpr = resolved.paragraphFormatting;
 
     // Apply style-based values as defaults (inline overrides)
@@ -638,13 +645,56 @@ function paragraphFormattingToAttrs(
 // ============================================================================
 
 /**
+ * A table style's (or one of its `w:tblStylePr` conditional regions')
+ * contribution to cell formatting: cell properties, run defaults, and — for
+ * the table-row-height fix — the paragraph-spacing overlay described on
+ * {@link TableCellParagraphSpacingOverlay}.
+ */
+type TableConditionalStyle = {
+  tcPr?: TableCellFormatting;
+  rPr?: TextFormatting;
+  pPr?: TableCellParagraphSpacingOverlay;
+};
+
+/**
+ * Pick the paragraph-spacing fields out of a table style's (or conditional
+ * region's) `w:pPr` for use as the cell-paragraph cascade overlay. Narrower
+ * than the full `ParagraphFormatting` bag — see
+ * {@link TableCellParagraphSpacingOverlay}.
+ */
+function extractTableParagraphSpacingOverlay(
+  pPr: ParagraphFormatting | undefined,
+): TableCellParagraphSpacingOverlay | undefined {
+  if (!pPr) {
+    return undefined;
+  }
+  const overlay: TableCellParagraphSpacingOverlay = {};
+  if (pPr.spaceBefore !== undefined) {
+    overlay.spaceBefore = pPr.spaceBefore;
+  }
+  if (pPr.spaceAfter !== undefined) {
+    overlay.spaceAfter = pPr.spaceAfter;
+  }
+  if (pPr.lineSpacing !== undefined) {
+    overlay.lineSpacing = pPr.lineSpacing;
+  }
+  if (pPr.lineSpacingRule !== undefined) {
+    overlay.lineSpacingRule = pPr.lineSpacingRule;
+  }
+  if (pPr.contextualSpacing !== undefined) {
+    overlay.contextualSpacing = pPr.contextualSpacing;
+  }
+  return Object.keys(overlay).length > 0 ? overlay : undefined;
+}
+
+/**
  * Resolve table style conditional formatting
  */
 function resolveTableStyleConditional(
   styleResolver: StyleEngine | null,
   tableStyleId: string | undefined,
   conditionType: string,
-): { tcPr?: TableCellFormatting; rPr?: TextFormatting } | undefined {
+): TableConditionalStyle | undefined {
   if (!styleResolver || !tableStyleId) {
     return undefined;
   }
@@ -666,13 +716,17 @@ function resolveTableStyleConditional(
     ? resolveTextFormatting(conditional.rPr, styleResolver)
     : undefined;
   const mergedRunProps = mergeTextFormatting(runPropsFromPpr, resolvedRpr);
+  const paragraphSpacingOverlay = extractTableParagraphSpacingOverlay(conditional.pPr);
 
-  const result: { tcPr?: TableCellFormatting; rPr?: TextFormatting } = {};
+  const result: TableConditionalStyle = {};
   if (conditional.tcPr) {
     result.tcPr = conditional.tcPr;
   }
   if (mergedRunProps) {
     result.rPr = mergedRunProps;
+  }
+  if (paragraphSpacingOverlay) {
+    result.pPr = paragraphSpacingOverlay;
   }
   return result;
 }
@@ -680,7 +734,7 @@ function resolveTableStyleConditional(
 function resolveTableBaseStyle(
   styleResolver: StyleEngine | null,
   tableStyleId: string | undefined,
-): { tcPr?: TableCellFormatting; rPr?: TextFormatting } | undefined {
+): TableConditionalStyle | undefined {
   if (!styleResolver || !tableStyleId) {
     return undefined;
   }
@@ -695,21 +749,25 @@ function resolveTableBaseStyle(
     : undefined;
   const resolvedRpr = style.rPr ? resolveTextFormatting(style.rPr, styleResolver) : undefined;
   const mergedRunProps = mergeTextFormatting(runPropsFromPpr, resolvedRpr);
+  const paragraphSpacingOverlay = extractTableParagraphSpacingOverlay(style.pPr);
 
-  const result: { tcPr?: TableCellFormatting; rPr?: TextFormatting } = {};
+  const result: TableConditionalStyle = {};
   if (style.tcPr) {
     result.tcPr = style.tcPr;
   }
   if (mergedRunProps) {
     result.rPr = mergedRunProps;
   }
-  return result.tcPr || result.rPr ? result : undefined;
+  if (paragraphSpacingOverlay) {
+    result.pPr = paragraphSpacingOverlay;
+  }
+  return result.tcPr || result.rPr || result.pPr ? result : undefined;
 }
 
 function mergeConditionalStyles(
-  base?: { tcPr?: TableCellFormatting; rPr?: TextFormatting },
-  override?: { tcPr?: TableCellFormatting; rPr?: TextFormatting },
-): { tcPr?: TableCellFormatting; rPr?: TextFormatting } | undefined {
+  base?: TableConditionalStyle,
+  override?: TableConditionalStyle,
+): TableConditionalStyle | undefined {
   if (!base && !override) {
     return undefined;
   }
@@ -720,7 +778,7 @@ function mergeConditionalStyles(
     return base;
   }
 
-  const merged: { tcPr?: TableCellFormatting; rPr?: TextFormatting } = {};
+  const merged: TableConditionalStyle = {};
 
   const baseTcPr = base.tcPr;
   const overrideTcPr = override.tcPr;
@@ -757,6 +815,14 @@ function mergeConditionalStyles(
   const mergedRPr = mergeTextFormatting(base.rPr, override.rPr);
   if (mergedRPr) {
     merged.rPr = mergedRPr;
+  }
+
+  // `override` (a more specific conditional region, e.g. firstRow) wins per
+  // field over `base` (e.g. the table's wholeTable region or base style),
+  // matching the tcPr/rPr merges above — see extractTableParagraphSpacingOverlay.
+  const mergedPPr = mergeParagraphFormatting(base.pPr, override.pPr);
+  if (mergedPPr) {
+    merged.pPr = mergedPPr;
   }
 
   return merged;
@@ -1108,21 +1174,20 @@ function convertTable(
     attrs._originalFormatting = table.formatting;
   }
 
-  type CondStyle = { tcPr?: TableCellFormatting; rPr?: TextFormatting };
   const conditionalStyles: {
-    wholeTable?: CondStyle;
-    firstRow?: CondStyle;
-    lastRow?: CondStyle;
-    firstCol?: CondStyle;
-    lastCol?: CondStyle;
-    band1Horz?: CondStyle;
-    band2Horz?: CondStyle;
-    band1Vert?: CondStyle;
-    band2Vert?: CondStyle;
-    nwCell?: CondStyle;
-    neCell?: CondStyle;
-    swCell?: CondStyle;
-    seCell?: CondStyle;
+    wholeTable?: TableConditionalStyle;
+    firstRow?: TableConditionalStyle;
+    lastRow?: TableConditionalStyle;
+    firstCol?: TableConditionalStyle;
+    lastCol?: TableConditionalStyle;
+    band1Horz?: TableConditionalStyle;
+    band2Horz?: TableConditionalStyle;
+    band1Vert?: TableConditionalStyle;
+    band2Vert?: TableConditionalStyle;
+    nwCell?: TableConditionalStyle;
+    neCell?: TableConditionalStyle;
+    swCell?: TableConditionalStyle;
+    seCell?: TableConditionalStyle;
   } = {};
   const setCS = (key: keyof typeof conditionalStyles, type: string): void => {
     const val = resolveTableStyleConditional(styleResolver, conditionalTableStyleId, type);
@@ -1224,21 +1289,21 @@ function convertTableRow(
   columnWidths?: number[],
   totalWidth?: number,
   conditionalStyles?: {
-    wholeTable?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    firstRow?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    lastRow?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    firstCol?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    lastCol?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    band1Horz?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    band2Horz?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    band1Vert?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    band2Vert?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    nwCell?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    neCell?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    swCell?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
-    seCell?: { tcPr?: TableCellFormatting; rPr?: TextFormatting };
+    wholeTable?: TableConditionalStyle;
+    firstRow?: TableConditionalStyle;
+    lastRow?: TableConditionalStyle;
+    firstCol?: TableConditionalStyle;
+    lastCol?: TableConditionalStyle;
+    band1Horz?: TableConditionalStyle;
+    band2Horz?: TableConditionalStyle;
+    band1Vert?: TableConditionalStyle;
+    band2Vert?: TableConditionalStyle;
+    nwCell?: TableConditionalStyle;
+    neCell?: TableConditionalStyle;
+    swCell?: TableConditionalStyle;
+    seCell?: TableConditionalStyle;
   },
-  rowBandStyle?: { tcPr?: TableCellFormatting; rPr?: TextFormatting },
+  rowBandStyle?: TableConditionalStyle,
   bandingEnabledV?: boolean,
   tableLook?: TableLook,
   tableBorders?: TableBorders,
@@ -1336,7 +1401,7 @@ function convertTableRow(
     const cellIsLastCol = cellCnf?.lastColumn ?? isLastCol;
 
     // Determine vertical banding style based on column index
-    let vertBandStyle: { tcPr?: TableCellFormatting; rPr?: TextFormatting } | undefined;
+    let vertBandStyle: TableConditionalStyle | undefined;
     if (bandingEnabledV) {
       const firstColOffset = tableLook?.firstColumn ? 1 : 0;
       const bandColIndex = colIndex - colspan - firstColOffset;
@@ -1509,7 +1574,7 @@ function convertTableCell(
   styleResolver: StyleEngine | null,
   isHeader: boolean,
   gridWidthPercent?: number,
-  conditionalStyle?: { tcPr?: TableCellFormatting; rPr?: TextFormatting },
+  conditionalStyle?: TableConditionalStyle,
   tableBorders?: TableBorders,
   isFirstRow?: boolean,
   isLastRow?: boolean,
@@ -1642,7 +1707,9 @@ function convertTableCell(
   const contentNodes: PMNode[] = [];
   for (const content of cell.content) {
     if (content.type === "paragraph") {
-      contentNodes.push(convertParagraph(content, styleResolver, undefined, conditionalStyle?.rPr));
+      contentNodes.push(
+        convertParagraph(content, styleResolver, undefined, conditionalStyle?.rPr, conditionalStyle?.pPr),
+      );
     } else {
       // Nested tables - recursively convert
       contentNodes.push(convertTable(content, styleResolver, theme));
