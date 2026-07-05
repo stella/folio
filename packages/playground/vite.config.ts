@@ -50,8 +50,20 @@ function serveFixtures(): Plugin {
 export default defineConfig({
   plugins: [tailwindcss(), react(), serveFixtures()],
   root: playgroundRoot,
+  // When launched by the parity harness (which sets FOLIO_PLAYGROUND_PORT),
+  // serve the workspace packages as live source instead of pre-bundling them
+  // into `.vite/deps`. Vite's dep-optimizer caches the bundled snapshot on
+  // disk and does NOT re-bundle when workspace source changes, so a fresh
+  // server would otherwise still serve stale `@stll/folio-core` — silently
+  // making the parity feedback loop measure old layout code. Excluding keeps
+  // every parity run current. Normal manual dev keeps pre-bundling for speed.
+  ...(process.env["FOLIO_PLAYGROUND_PORT"]
+    ? { optimizeDeps: { exclude: ["@stll/folio-core", "@stll/folio-react"] } }
+    : {}),
   server: {
-    port: 4200,
+    // Default 4200 for manual dev; the parity harness overrides this per
+    // worktree via FOLIO_PLAYGROUND_PORT so parallel worktrees don't collide.
+    port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200,
     strictPort: true,
     open: false,
   },

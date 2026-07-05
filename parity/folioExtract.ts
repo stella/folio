@@ -23,6 +23,7 @@ import {
   CACHE_DIR,
   FIXTURES_DIR,
   PLAYGROUND_DEV_COMMAND,
+  PLAYGROUND_PORT,
   PLAYGROUND_URL,
   PX_TO_PT,
   REPO_ROOT,
@@ -236,6 +237,37 @@ const killProcessTree = async (rootPid: number): Promise<void> => {
   }
 };
 
+/**
+ * Kill whatever is LISTENING on `port` — the reliable, port-scoped way to
+ * clear a leftover playground server before starting a fresh one.
+ *
+ * This is deliberately NOT `pkill -f vite`: that pattern-kill hits EVERY Vite
+ * process on the machine, so it silently murders the dev servers of other
+ * git worktrees / other sessions (observed clobbering an unrelated worktree's
+ * server). `lsof -tiTCP:<port>` targets exactly the one server on our own
+ * per-worktree port and nothing else.
+ */
+const killByPort = async (port: number): Promise<void> => {
+  const lsof = Bun.spawn(["lsof", `-tiTCP:${port}`, "-sTCP:LISTEN"], {
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  const out = (await new Response(lsof.stdout).text()).trim();
+  await lsof.exited;
+  if (out.length === 0) return;
+  for (const token of out.split("\n")) {
+    const pid = Number.parseInt(token.trim(), 10);
+    if (!Number.isFinite(pid)) continue;
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // Already gone — fine.
+    }
+  }
+  // Give the OS a moment to release the port before we rebind it.
+  await Bun.sleep(SERVER_POLL_INTERVAL_MS);
+};
+
 /** Poll (page count, total line count) until unchanged across 2 consecutive
  * polls (i.e. 3 identical samples in a row), capped at STABILITY_MAX_MS. Not
  * an error to time out here — the caller's final settle delay is the backstop. */
@@ -408,15 +440,27 @@ const stagedFixtureName = (sha256: string): string =>
   `${TMP_FIXTURE_PREFIX}${sha256.slice(0, 12)}.docx`;
 
 export const createFolioExtractor = async (
-  opts: { headless?: boolean } = {},
+  opts: { headless?: boolean; reuseServer?: boolean } = {},
 ): Promise<FolioExtractor> => {
   const headless = opts.headless ?? true;
+  // Default to a FRESH server so the feedback loop always reflects this
+  // worktree's current source. Reusing a server risks measuring stale code:
+  // under Vite `strictPort`, a leftover server on the port means a new `dev`
+  // fails to bind and the OLD one keeps serving — which silently produced
+  // wrong geometry until diagnosed. `reuseServer: true` opts into reuse for
+  // speed when you know the running server is current.
+  const reuseServer = opts.reuseServer ?? false;
 
   let serverProcess: ReturnType<typeof Bun.spawn> | null = null;
-  const serverAlreadyUp = await probeServer(PLAYGROUND_URL, SERVER_PROBE_TIMEOUT_MS);
+  const serverAlreadyUp = reuseServer && (await probeServer(PLAYGROUND_URL, SERVER_PROBE_TIMEOUT_MS));
   if (!serverAlreadyUp) {
+    // Clear any leftover server on OUR per-worktree port (see killByPort:
+    // port-scoped, so other worktrees' servers are untouched), then start
+    // fresh, telling the playground which port to bind via env.
+    await killByPort(PLAYGROUND_PORT);
     serverProcess = Bun.spawn(PLAYGROUND_DEV_COMMAND, {
       cwd: REPO_ROOT,
+      env: { ...process.env, FOLIO_PLAYGROUND_PORT: String(PLAYGROUND_PORT) },
       stdin: "ignore",
       stdout: "ignore",
       stderr: "ignore",
@@ -427,7 +471,7 @@ export const createFolioExtractor = async (
       SERVER_POLL_INTERVAL_MS,
     );
     if (!ready) {
-      await killProcessTree(serverProcess.pid);
+      await killByPort(PLAYGROUND_PORT);
       throw new FolioExtractError(
         `playground dev server did not become ready at ${PLAYGROUND_URL} within ${SERVER_START_TIMEOUT_MS}ms`,
       );
@@ -528,7 +572,11 @@ export const createFolioExtractor = async (
     await context.close();
     await browser.close();
     if (startedServer && serverProcess) {
+      // Kill the process tree we spawned, then sweep the port as a backstop:
+      // Vite's grandchild can outlive the tree walk, and killByPort guarantees
+      // nothing is left holding our per-worktree port for the next run.
       await killProcessTree(serverProcess.pid);
+      await killByPort(PLAYGROUND_PORT);
     }
   };
 

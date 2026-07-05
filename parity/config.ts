@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import type { ComparisonTolerances } from "./types";
 
@@ -15,7 +16,22 @@ export const FIXTURES_DIR = path.join(REPO_ROOT, "tests", "visual", "fixtures");
  * playground can load arbitrary inputs; gitignored and always cleaned up. */
 export const TMP_FIXTURE_PREFIX = "parity-tmp-";
 
-export const PLAYGROUND_URL = "http://localhost:4200";
+/**
+ * Playground dev-server port, derived deterministically from the worktree path
+ * so parallel git worktrees never collide on one shared port. The old fixed
+ * 4200 meant a parity run in worktree A could silently reuse (or fail to
+ * displace, under Vite `strictPort`) a stale server started by worktree B —
+ * making folio geometry reflect the wrong source. A per-worktree port keeps
+ * each worktree's feedback loop isolated and current.
+ */
+const PORT_BASE = 4200;
+const PORT_SPAN = 400;
+export const PLAYGROUND_PORT =
+  PORT_BASE +
+  (Number.parseInt(createHash("sha256").update(REPO_ROOT).digest("hex").slice(0, 8), 16) % PORT_SPAN);
+export const PLAYGROUND_URL = `http://localhost:${PLAYGROUND_PORT}`;
+/** The dev server reads its port from `FOLIO_PLAYGROUND_PORT` (see the
+ * playground `vite.config.ts`); folioExtract sets it when spawning. */
 export const PLAYGROUND_DEV_COMMAND = ["bun", "--filter", "@stll/playground", "dev"];
 
 /** Default corpus scanned when the CLI gets no explicit paths. */
