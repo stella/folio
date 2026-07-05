@@ -40,3 +40,29 @@ export function normalizeFontFamilies(
 function isDev(): boolean {
   return typeof process !== "undefined" && process.env?.["NODE_ENV"] !== "production";
 }
+
+/**
+ * Drop fonts whose names already appear in `existingNames` (case-insensitive),
+ * also deduping the input. Used by the toolbar's font picker to render the
+ * "Document fonts" group without repeating a font the built-in list covers.
+ *
+ * Ported from the upstream core util `utils/documentPickerFonts.ts`; folio-core
+ * has no equivalent, so it lives with the Vue adapter's font helpers.
+ */
+export function excludeFontsByName(
+  fonts: readonly FontOption[] | undefined,
+  existingNames: Iterable<string>,
+): FontOption[] {
+  if (!fonts || fonts.length === 0) return [];
+  const existing = new Set<string>();
+  for (const name of existingNames) existing.add(name.trim().toLowerCase());
+  const seen = new Set<string>();
+  const out: FontOption[] = [];
+  for (const f of fonts) {
+    const key = f.name.trim().toLowerCase();
+    if (existing.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
+  }
+  return out;
+}

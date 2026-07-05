@@ -192,7 +192,9 @@ export type ColorPickerMode = 'text' | 'highlight' | 'border';
 const props = withDefaults(
   defineProps<{
     mode: ColorPickerMode;
-    value?: ColorValue | string;
+    // `| undefined` so callers may pass a possibly-absent selected color under
+    // exactOptionalPropertyTypes (e.g. the toolbar's `currentTextColorHex`).
+    value?: ColorValue | string | undefined;
     theme?: Theme | null;
     disabled?: boolean;
     className?: string;
