@@ -2,27 +2,31 @@
  * Vue port of packages/react/src/hooks/useClipboard.ts. Wraps the
  * framework-agnostic clipboard helpers in core.
  *
- * PORT-BLOCKED (copy/cut + DOM selection extraction): upstream's copy/cut
- * surface depends on `@stll/folio-core` APIs that are absent from our fork:
- *   - `managers/ClipboardManager` — `ClipboardSelection`, `getSelectionRuns`,
- *     `createSelectionFromDOM` (our core has no ClipboardManager, so there is
- *     no DOM-run-extraction primitive to build `copy`/`cut` on),
- *   - a `theme` field on `copyRuns`'s options (our `ClipboardOptions` only
- *     exposes `includeFormatting`/`cleanWordFormatting`/`onError`), and
- *   - a `Theme` value/type export from the core root.
- * `copyRuns`/`runsToClipboardContent` themselves DO exist, but the selection
- * capture they consume does not, so the copy/cut half is omitted rather than
- * fabricated. Only the paste path (which uses the available `parseClipboardHtml`)
- * is ported below. Restore `copy`/`cut` once a DOM-run-extraction API lands in
- * core.
+ * The copy/cut path is wired to our fork's `managers/ClipboardManager`
+ * (`getSelectionRuns` / `createSelectionFromDOM` / `ClipboardSelection`),
+ * which supplies the DOM-run extraction the copy path consumes. The paste
+ * path uses `parseClipboardHtml`. NB: our `copyRuns` options expose
+ * `onError` only (no `theme`), so the upstream `theme` option is dropped.
  */
 import { ref, type Ref } from "vue";
 import {
+  copyRuns,
   parseClipboardHtml,
+  runsToClipboardContent,
   type ParsedClipboardContent,
 } from "@stll/folio-core/utils/clipboard";
+import {
+  getSelectionRuns,
+  createSelectionFromDOM,
+  type ClipboardSelection,
+} from "@stll/folio-core/managers/ClipboardManager";
+
+export { getSelectionRuns, createSelectionFromDOM, runsToClipboardContent };
+export type { ClipboardSelection };
 
 export interface UseClipboardOptions {
+  onCopy?: (selection: ClipboardSelection) => void;
+  onCut?: (selection: ClipboardSelection) => void;
   onPaste?: (content: ParsedClipboardContent, asPlainText: boolean) => void;
   cleanWordFormatting?: boolean;
   editable?: boolean;
@@ -30,16 +34,44 @@ export interface UseClipboardOptions {
 }
 
 export interface UseClipboardReturn {
+  copy: (selection: ClipboardSelection) => Promise<boolean>;
+  cut: (selection: ClipboardSelection) => Promise<boolean>;
   paste: (asPlainText?: boolean) => Promise<ParsedClipboardContent | null>;
   isProcessing: Ref<boolean>;
   lastPastedContent: Ref<ParsedClipboardContent | null>;
 }
 
 export function useClipboard(options: UseClipboardOptions = {}): UseClipboardReturn {
-  const { onPaste, cleanWordFormatting = true, editable = true, onError } = options;
+  const { onCopy, onCut, onPaste, cleanWordFormatting = true, editable = true, onError } = options;
 
   const isProcessing = ref(false);
   const lastPastedContent = ref<ParsedClipboardContent | null>(null);
+
+  const copyOptions = onError ? { onError } : {};
+
+  async function copy(selection: ClipboardSelection): Promise<boolean> {
+    if (isProcessing.value) return false;
+    isProcessing.value = true;
+    try {
+      const ok = await copyRuns(selection.runs, copyOptions);
+      if (ok) onCopy?.(selection);
+      return ok;
+    } finally {
+      isProcessing.value = false;
+    }
+  }
+
+  async function cut(selection: ClipboardSelection): Promise<boolean> {
+    if (isProcessing.value || !editable) return false;
+    isProcessing.value = true;
+    try {
+      const ok = await copyRuns(selection.runs, copyOptions);
+      if (ok) onCut?.(selection);
+      return ok;
+    } finally {
+      isProcessing.value = false;
+    }
+  }
 
   async function paste(asPlainText = false): Promise<ParsedClipboardContent | null> {
     if (isProcessing.value || !editable) return null;
@@ -73,6 +105,8 @@ export function useClipboard(options: UseClipboardOptions = {}): UseClipboardRet
   }
 
   return {
+    copy,
+    cut,
     paste,
     isProcessing,
     lastPastedContent,
