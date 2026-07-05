@@ -7,8 +7,13 @@
 
 import { calculateTabWidth, pixelsToTwips } from "../../prosemirror/utils/tabCalculator";
 import type { TabContext } from "../../prosemirror/utils/tabCalculator";
-import { DEFAULT_SINGLE_LINE_RATIO } from "../../utils/fontResolver";
+import {
+  CJK_FALLBACK_FONT_FAMILY,
+  DEFAULT_SINGLE_LINE_RATIO,
+  isCjkFont,
+} from "../../utils/fontResolver";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
+import { hasCjk } from "../../utils/scriptSegments";
 import { measuredLineAdvance } from "../lineFlow";
 import type {
   ParagraphBlock,
@@ -127,6 +132,36 @@ type LineState = {
  */
 function runToFontStyle(run: TextRun | TabRun | FieldRun | MathRun): FontStyle {
   return buildRunFontStyle(run, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
+}
+
+/**
+ * Line-HEIGHT style for a text run. Word derives a CJK line's height from an
+ * East-Asian face, not the run's ascii font: real documents routinely put CJK
+ * glyphs in runs whose ascii/eastAsia fonts are Latin (e.g. `w:eastAsia`
+ * "Century"), and Word font-links those glyphs to the default East-Asian face
+ * and uses its taller single-line height (≈1.303 vs the ≈1.15 Latin default).
+ *
+ * When the run holds CJK text, swap `fontFamily` to the face whose
+ * `singleLineRatio` Word would actually use: the run's `w:eastAsia` font when
+ * it is a real CJK face, the run's own ascii font when THAT is a CJK face, or
+ * `CJK_FALLBACK_FONT_FAMILY` otherwise. Non-CJK runs return `baseStyle`
+ * unchanged, so Latin-only documents are unaffected by construction.
+ *
+ * The result feeds `updateMaxFont` (line height) ONLY — width measurement
+ * keeps the base style so wrapping is untouched.
+ */
+function cjkLineHeightStyle(run: TextRun, baseStyle: FontStyle): FontStyle {
+  if (!run.text || !hasCjk(run.text)) {
+    return baseStyle;
+  }
+  const eastAsia = baseStyle.eastAsiaFontFamily;
+  if (eastAsia !== undefined && isCjkFont(eastAsia)) {
+    return { ...baseStyle, fontFamily: eastAsia };
+  }
+  if (isCjkFont(baseStyle.fontFamily ?? DEFAULT_FONT_FAMILY)) {
+    return baseStyle;
+  }
+  return { ...baseStyle, fontFamily: CJK_FALLBACK_FONT_FAMILY };
 }
 
 /**
@@ -941,6 +976,21 @@ export function measureParagraph(
     if (!currentLine.maxFontMetrics || fontSize > currentLine.maxFontSize) {
       currentLine.maxFontSize = fontSize;
       currentLine.maxFontMetrics = getFontMetrics(style);
+      return;
+    }
+    // Same-size tie: an East-Asian face carries a taller single-line ratio
+    // than a Latin face at the same font size, and Word sizes a mixed line to
+    // its tallest run — so a CJK line-height style must be able to raise the
+    // metrics even when it does not raise the font size (Latin run first, CJK
+    // run after, both at the body size is the common Japanese-document case).
+    // Gated on the candidate being a CJK face so Latin-only lines keep the
+    // existing first-run-wins tie behaviour bit-for-bit.
+    if (fontSize !== currentLine.maxFontSize || !isCjkFont(style.fontFamily ?? "")) {
+      return;
+    }
+    const metrics = getFontMetrics(style);
+    if (metrics.singleLineRatio > currentLine.maxFontMetrics.singleLineRatio) {
+      currentLine.maxFontMetrics = metrics;
     }
   };
 
@@ -995,7 +1045,10 @@ export function measureParagraph(
       }).width;
 
       const lineRightEdgeX =
-        indentLeft + (isFirstLine ? firstLineOffset + markerInlineWidth : 0) + currentLine.availableWidth + currentLine.leftOffset;
+        indentLeft +
+        (isFirstLine ? firstLineOffset + markerInlineWidth : 0) +
+        currentLine.availableWidth +
+        currentLine.leftOffset;
       if (
         !hasFollowingTabOnLine(runs, runIndex) &&
         (tabWidth > 0 || followingWidth > 0) &&
@@ -1179,8 +1232,11 @@ export function measureParagraph(
       const textRun = run as TextRun;
       const text = textRun.text;
       const style = runToFontStyle(textRun);
+      // Line height comes from the CJK-aware style; width measurement below
+      // keeps `style` so wrapping is unchanged.
+      const lineHeightStyle = cjkLineHeightStyle(textRun, style);
 
-      updateMaxFont(style);
+      updateMaxFont(lineHeightStyle);
 
       if (!text || text.length === 0) {
         // Empty text run, just update position
@@ -1229,7 +1285,7 @@ export function measureParagraph(
             if (bestEnd === 0) {
               if (currentLine.width > 0) {
                 startNewLine(runIndex, charIndex + chunkStart);
-                updateMaxFont(style);
+                updateMaxFont(lineHeightStyle);
                 continue;
               }
               bestEnd = 1;
@@ -1246,7 +1302,7 @@ export function measureParagraph(
             chunkStart = chunkEnd;
             if (chunkStart < word.length) {
               startNewLine(runIndex, charIndex + chunkStart);
-              updateMaxFont(style);
+              updateMaxFont(lineHeightStyle);
             }
           }
 
@@ -1276,7 +1332,7 @@ export function measureParagraph(
           // Word doesn't fit, start new line
           startNewLine(runIndex, charIndex);
           // Re-apply font metrics to the new line (startNewLine resets maxFontSize)
-          updateMaxFont(style);
+          updateMaxFont(lineHeightStyle);
         }
 
         // Add word to current line

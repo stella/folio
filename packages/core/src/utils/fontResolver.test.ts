@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { getResolvedData } from "../layout-engine/measure/measureHelpers";
-import { getGoogleFontEquivalent, resolveFontFamily } from "./fontResolver";
+import {
+  CJK_FALLBACK_FONT_FAMILY,
+  getGoogleFontEquivalent,
+  isCjkFont,
+  resolveFontFamily,
+} from "./fontResolver";
 
 describe("fontResolver — single-line ratios are derived from real hhea metrics", () => {
   // Expected ratios computed by hand from each font's real `hhea` table:
@@ -72,6 +77,84 @@ describe("fontResolver — unverified legacy fonts are left unchanged", () => {
   for (const [font, unchangedRatio] of legacyCases) {
     test(`${font} keeps its legacy ratio`, () => {
       expect(resolveFontFamily(font).singleLineRatio).toBeCloseTo(unchangedRatio, 4);
+    });
+  }
+});
+
+describe("fontResolver — Japanese Mincho/Gothic carry the measured East-Asian line height", () => {
+  // Word font-links CJK glyphs to the default East-Asian face and uses its
+  // taller single-line height; measured against real Word on a non-grid
+  // Japanese document (10.5pt body → 13.68pt line pitch ≈ 1.303×). The value
+  // is approximate for the CJK long tail (Yu Mincho renders ≈1.60 when
+  // actually installed); these families all share the MS Mincho/Gothic default.
+  const measuredJpFaces = [
+    "MS Mincho",
+    "MS Gothic",
+    "ＭＳ 明朝",
+    "ＭＳ Ｐ明朝",
+    "ＭＳ ゴシック",
+    "ＭＳ Ｐゴシック",
+    // Romanized/native aliases sharing the MS Mincho/Gothic entries.
+    "Yu Mincho",
+    "Yu Gothic",
+    "游明朝",
+    "游ゴシック",
+    "Meiryo",
+  ];
+
+  for (const face of measuredJpFaces) {
+    test(`${face} → 1.303`, () => {
+      expect(resolveFontFamily(face).singleLineRatio).toBeCloseTo(1.303, 4);
+    });
+  }
+
+  test("the CJK line-height fallback family resolves to the measured ratio via getResolvedData", () => {
+    // measureParagraph resolves the fallback through getResolvedData, so the
+    // constant must land on the measured 1.303 entry through that path too.
+    expect(getResolvedData(CJK_FALLBACK_FONT_FAMILY).singleLineRatio).toBeCloseTo(1.303, 4);
+  });
+
+  test("the CJK long tail keeps the default ratio until measured", () => {
+    for (const face of ["SimSun", "SimHei", "宋体", "Malgun Gothic", "바탕"]) {
+      expect(resolveFontFamily(face).singleLineRatio).toBeCloseTo(1.15, 4);
+    }
+  });
+});
+
+describe("fontResolver — isCjkFont classifies East-Asian faces", () => {
+  // True only for mapped CJK entries (direct or via romanized alias); Latin
+  // faces and unmapped families are false so the measurer falls back to
+  // CJK_FALLBACK_FONT_FAMILY for them.
+  const cjkFaces = [
+    "MS Mincho",
+    "ms gothic",
+    "ＭＳ Ｐ明朝",
+    "SimSun",
+    "宋体",
+    "微軟正黑體",
+    "Malgun Gothic",
+    "굴림",
+    "Yu Mincho",
+    "Meiryo",
+  ];
+  const nonCjkFaces = [
+    "Arial",
+    "Century",
+    "Calibri",
+    "Times New Roman",
+    "Garamond",
+    "Unknown Face",
+  ];
+
+  for (const face of cjkFaces) {
+    test(`${face} is CJK`, () => {
+      expect(isCjkFont(face)).toBe(true);
+    });
+  }
+
+  for (const face of nonCjkFaces) {
+    test(`${face} is not CJK`, () => {
+      expect(isCjkFont(face)).toBe(false);
     });
   }
 });

@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ParagraphBlock, Run } from "../types";
-import { smallCapsAwareCharWidth, withFakeTextMeasure, fixedCharWidth } from "./__tests__/fakeTextMeasure";
+import {
+  smallCapsAwareCharWidth,
+  withFakeTextMeasure,
+  fixedCharWidth,
+} from "./__tests__/fakeTextMeasure";
 import { hashParagraphBlock } from "./cache";
 import { buildFontString } from "./measureHelpers";
 import { clampFloatingWrapMargins, getRunCharWidths, measureParagraph } from "./measureParagraph";
@@ -932,50 +936,164 @@ describe("all-caps paragraph measurement", () => {
 
 describe("CJK line breaking", () => {
   test("fills the remaining width on a line before wrapping CJK characters", () => {
-    withFakeTextMeasure(() => {
-      const block: ParagraphBlock = {
-        kind: "paragraph",
-        id: "cjk-wrap",
-        pmStart: 0,
-        pmEnd: 8,
-        runs: [
-          { kind: "text", text: "AAAA" },
-          { kind: "text", text: "一二三四", eastAsiaFontFamily: "MS Mincho" },
-        ],
-      };
+    withFakeTextMeasure(
+      () => {
+        const block: ParagraphBlock = {
+          kind: "paragraph",
+          id: "cjk-wrap",
+          pmStart: 0,
+          pmEnd: 8,
+          runs: [
+            { kind: "text", text: "AAAA" },
+            { kind: "text", text: "一二三四", eastAsiaFontFamily: "MS Mincho" },
+          ],
+        };
 
-      const measure = measureParagraph(block, 50);
+        const measure = measureParagraph(block, 50);
 
-      expect(measure.lines).toHaveLength(2);
-      expect(measure.lines[0]?.toRun).toBe(1);
-      expect(measure.lines[0]?.toChar).toBe(1);
-      expect(measure.lines[1]?.fromRun).toBe(1);
-      expect(measure.lines[1]?.fromChar).toBe(1);
-      expect(measure.lines[1]?.toChar).toBe(4);
-    }, { charWidth: fixedCharWidth(10) });
+        expect(measure.lines).toHaveLength(2);
+        expect(measure.lines[0]?.toRun).toBe(1);
+        expect(measure.lines[0]?.toChar).toBe(1);
+        expect(measure.lines[1]?.fromRun).toBe(1);
+        expect(measure.lines[1]?.fromChar).toBe(1);
+        expect(measure.lines[1]?.toChar).toBe(4);
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
   });
 
   test("does not wrap preceding Latin text when the next CJK character does not fit", () => {
+    withFakeTextMeasure(
+      () => {
+        const block: ParagraphBlock = {
+          kind: "paragraph",
+          id: "cjk-wrap-boundary",
+          pmStart: 0,
+          pmEnd: 8,
+          runs: [
+            { kind: "text", text: "AAAA" },
+            { kind: "text", text: "一二三四", eastAsiaFontFamily: "MS Mincho" },
+          ],
+        };
+
+        const measure = measureParagraph(block, 45);
+
+        expect(measure.lines).toHaveLength(2);
+        expect(measure.lines[0]?.toRun).toBe(0);
+        expect(measure.lines[0]?.toChar).toBe(4);
+        expect(measure.lines[1]?.fromRun).toBe(1);
+        expect(measure.lines[1]?.fromChar).toBe(0);
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+  });
+});
+
+describe("CJK line height", () => {
+  // Word derives a CJK line's height from an East-Asian face, not the run's
+  // ascii font: runs whose ascii/eastAsia fonts are Latin (common in real
+  // Japanese documents, e.g. w:eastAsia="Century") still render at the default
+  // East-Asian face's ≈1.303 single-line ratio, not the Latin ≈1.15. All
+  // fixtures use the default 11pt size; no explicit spacing, so
+  // lineHeight = fontSizePx × singleLineRatio.
+  const fontSizePx = 11 * PT_TO_PX;
+  const latinLineHeight = fontSizePx * 1.15; // unmapped "Century" → default ratio
+  const cjkLineHeight = fontSizePx * 1.303; // measured East-Asian ratio
+
+  const firstLineHeight = (runs: Run[]): number => {
+    const measure = measureParagraph(
+      { kind: "paragraph", id: "cjk-height", pmStart: 0, pmEnd: 1, runs },
+      600,
+    );
+    return measure.lines[0]?.lineHeight ?? 0;
+  };
+
+  test("CJK text with a Latin eastAsia font uses the East-Asian fallback ratio", () => {
     withFakeTextMeasure(() => {
-      const block: ParagraphBlock = {
-        kind: "paragraph",
-        id: "cjk-wrap-boundary",
-        pmStart: 0,
-        pmEnd: 8,
-        runs: [
-          { kind: "text", text: "AAAA" },
-          { kind: "text", text: "一二三四", eastAsiaFontFamily: "MS Mincho" },
-        ],
-      };
+      const lineHeight = firstLineHeight([
+        {
+          kind: "text",
+          text: "秘密保持契約",
+          fontFamily: "Century",
+          eastAsiaFontFamily: "Century",
+        },
+      ]);
 
-      const measure = measureParagraph(block, 45);
+      expect(lineHeight).toBeCloseTo(cjkLineHeight, 2);
+    }, fakeMeasure);
+  });
 
-      expect(measure.lines).toHaveLength(2);
-      expect(measure.lines[0]?.toRun).toBe(0);
-      expect(measure.lines[0]?.toChar).toBe(4);
-      expect(measure.lines[1]?.fromRun).toBe(1);
-      expect(measure.lines[1]?.fromChar).toBe(0);
-    }, { charWidth: fixedCharWidth(10) });
+  test("CJK text with no eastAsia font uses the East-Asian fallback ratio", () => {
+    withFakeTextMeasure(() => {
+      const lineHeight = firstLineHeight([
+        { kind: "text", text: "秘密保持契約", fontFamily: "Century" },
+      ]);
+
+      expect(lineHeight).toBeCloseTo(cjkLineHeight, 2);
+    }, fakeMeasure);
+  });
+
+  test("CJK text with a real CJK eastAsia font uses that font's own ratio", () => {
+    withFakeTextMeasure(() => {
+      // SimSun keeps the 1.15 default ratio — landing there (not at the 1.303
+      // fallback) proves the eastAsia face itself supplied the line height.
+      const simsunHeight = firstLineHeight([
+        { kind: "text", text: "保密协议", fontFamily: "Century", eastAsiaFontFamily: "SimSun" },
+      ]);
+      const minchoHeight = firstLineHeight([
+        {
+          kind: "text",
+          text: "秘密保持契約",
+          fontFamily: "Century",
+          eastAsiaFontFamily: "MS Mincho",
+        },
+      ]);
+
+      expect(simsunHeight).toBeCloseTo(fontSizePx * 1.15, 2);
+      expect(minchoHeight).toBeCloseTo(cjkLineHeight, 2);
+    }, fakeMeasure);
+  });
+
+  test("pure Latin runs keep the ascii font's ratio", () => {
+    withFakeTextMeasure(() => {
+      const lineHeight = firstLineHeight([
+        {
+          kind: "text",
+          text: "Confidential Agreement",
+          fontFamily: "Century",
+          eastAsiaFontFamily: "Century",
+        },
+      ]);
+
+      expect(lineHeight).toBeCloseTo(latinLineHeight, 2);
+    }, fakeMeasure);
+  });
+
+  test("mixed Latin + CJK line takes the taller CJK height, in either run order", () => {
+    withFakeTextMeasure(() => {
+      const latinFirst = firstLineHeight([
+        { kind: "text", text: "Article 1 ", fontFamily: "Century" },
+        { kind: "text", text: "秘密保持", fontFamily: "Century", eastAsiaFontFamily: "Century" },
+      ]);
+      const cjkFirst = firstLineHeight([
+        { kind: "text", text: "秘密保持", fontFamily: "Century", eastAsiaFontFamily: "Century" },
+        { kind: "text", text: " (Confidentiality)", fontFamily: "Century" },
+      ]);
+
+      expect(latinFirst).toBeCloseTo(cjkLineHeight, 2);
+      expect(cjkFirst).toBeCloseTo(cjkLineHeight, 2);
+    }, fakeMeasure);
+  });
+
+  test("a larger Latin font still dominates a smaller CJK run (size precedence preserved)", () => {
+    withFakeTextMeasure(() => {
+      const lineHeight = firstLineHeight([
+        { kind: "text", text: "Heading ", fontFamily: "Century", fontSize: 16 },
+        { kind: "text", text: "見出し", fontFamily: "Century", fontSize: 11 },
+      ]);
+
+      expect(lineHeight).toBeCloseTo(16 * PT_TO_PX * 1.15, 2);
+    }, fakeMeasure);
   });
 });
 

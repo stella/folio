@@ -57,6 +57,10 @@ export const DEFAULT_SINGLE_LINE_RATIO = 1.15;
  *   have not yet re-measured against real Word output. `note` records why.
  *   Do not add new "legacy" entries without a reason; prefer measuring the
  *   font's `hhea` table instead.
+ * - `"measured"`: a ratio measured directly against real Word rendering when
+ *   the `hhea` formula does not apply (East-Asian faces: Word derives their
+ *   line height from font linking, not the declared font's own `hhea` table).
+ *   `note` records the measurement context.
  *
  * Discriminated union so a future edit cannot silently drop the line gap by
  * hand-writing a decimal in its place — every verified font's ratio must
@@ -70,7 +74,8 @@ type FontLineHeight =
       hheaLineGap: number;
       unitsPerEm: number;
     }
-  | { source: "legacy"; ratio: number; note: string };
+  | { source: "legacy"; ratio: number; note: string }
+  | { source: "measured"; ratio: number; note: string };
 
 /**
  * Single-line height ratio (single-line height ÷ font size) for a
@@ -88,17 +93,35 @@ type FontLineHeight =
  * correct or add a font, edit its `hhea*`/`unitsPerEm` metric fields, never the
  * resulting ratio.
  *
- * CJK fonts are intentionally left on `DEFAULT_SINGLE_LINE_RATIO`: Word's
+ * Most CJK fonts are intentionally left on `DEFAULT_SINGLE_LINE_RATIO`: Word's
  * East-Asian line height is not the run font's hhea ratio (it derives from the
  * paragraph's `w:eastAsia` slot and East-Asian grid layout, not the ascii
- * font), so a single per-font constant cannot capture it correctly. Getting CJK
- * right needs dedicated East-Asian layout work, not a transcribed number here.
+ * font), so a single per-font constant cannot capture it correctly. The
+ * Japanese Mincho/Gothic entries carry a `"measured"` ratio instead — see
+ * `JP_MEASURED_LINE_HEIGHT`.
  */
 const singleLineRatioOf = (lineHeight: FontLineHeight): number =>
   lineHeight.source === "hhea"
     ? (lineHeight.hheaAscent - lineHeight.hheaDescent + lineHeight.hheaLineGap) /
       lineHeight.unitsPerEm
     : lineHeight.ratio;
+
+/**
+ * Word's East-Asian single-line height for the Japanese Mincho/Gothic faces,
+ * measured against real Word output on a NON-grid Japanese document
+ * (10.5pt body renders at 13.68pt line pitch → 13.68 / 10.5 ≈ 1.303). Word
+ * font-links CJK glyphs to the OS default East-Asian face and takes THAT
+ * face's height, so the declared font's own `hhea` table is not the source of
+ * truth here; a section with a `w:docGrid` line grid would override this value
+ * entirely (out of scope). The ratio is approximate for the CJK long tail
+ * (e.g. Yu Mincho renders taller, ≈1.60, when actually installed); it matches
+ * the common MS Mincho/Gothic default.
+ */
+const JP_MEASURED_LINE_HEIGHT: FontLineHeight = {
+  source: "measured",
+  ratio: 1.303,
+  note: "Measured against real Word: 10.5pt Japanese body, non-grid section, renders at 13.68pt line pitch.",
+};
 
 /**
  * Mapping of common DOCX fonts to Google Fonts equivalents
@@ -336,7 +359,7 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
     googleFont: "Noto Serif JP",
     category: "serif",
     fallbackStack: ["MS Mincho", "Noto Serif JP", "serif"],
-    singleLineRatio: DEFAULT_SINGLE_LINE_RATIO,
+    singleLineRatio: singleLineRatioOf(JP_MEASURED_LINE_HEIGHT),
   },
   // Native Japanese typeface names as they appear in `theme1.xml`'s
   // `<a:font script="Jpan">` entries (full-width "ＭＳ"). Office stores these
@@ -347,31 +370,31 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
     googleFont: "Noto Serif JP",
     category: "serif",
     fallbackStack: ["MS Mincho", "ＭＳ 明朝", "Noto Serif JP", "serif"],
-    singleLineRatio: DEFAULT_SINGLE_LINE_RATIO,
+    singleLineRatio: singleLineRatioOf(JP_MEASURED_LINE_HEIGHT),
   },
   "ｍｓ ｐ明朝": {
     googleFont: "Noto Serif JP",
     category: "serif",
     fallbackStack: ["MS PMincho", "ＭＳ Ｐ明朝", "Noto Serif JP", "serif"],
-    singleLineRatio: DEFAULT_SINGLE_LINE_RATIO,
+    singleLineRatio: singleLineRatioOf(JP_MEASURED_LINE_HEIGHT),
   },
   "ms gothic": {
     googleFont: "Noto Sans JP",
     category: "sans-serif",
     fallbackStack: ["MS Gothic", "Noto Sans JP", "sans-serif"],
-    singleLineRatio: DEFAULT_SINGLE_LINE_RATIO,
+    singleLineRatio: singleLineRatioOf(JP_MEASURED_LINE_HEIGHT),
   },
   "ｍｓ ゴシック": {
     googleFont: "Noto Sans JP",
     category: "sans-serif",
     fallbackStack: ["MS Gothic", "ＭＳ ゴシック", "Noto Sans JP", "sans-serif"],
-    singleLineRatio: DEFAULT_SINGLE_LINE_RATIO,
+    singleLineRatio: singleLineRatioOf(JP_MEASURED_LINE_HEIGHT),
   },
   "ｍｓ ｐゴシック": {
     googleFont: "Noto Sans JP",
     category: "sans-serif",
     fallbackStack: ["MS PGothic", "ＭＳ Ｐゴシック", "Noto Sans JP", "sans-serif"],
-    singleLineRatio: DEFAULT_SINGLE_LINE_RATIO,
+    singleLineRatio: singleLineRatioOf(JP_MEASURED_LINE_HEIGHT),
   },
   simhei: {
     googleFont: "Noto Sans SC",
@@ -595,6 +618,48 @@ const CJK_FONT_ALIASES: Record<string, string> = {
   "yu mincho": "ms mincho",
   游明朝: "ms mincho",
 };
+
+/**
+ * The Noto families every CJK entry in `FONT_MAPPINGS` maps to. A mapping
+ * whose `googleFont` is one of these is an East-Asian face; this is the single
+ * classification source for `isCjkFont`, kept as an explicit set (not a name
+ * heuristic) so a future non-Noto CJK mapping must extend it deliberately.
+ */
+const CJK_NOTO_FAMILIES: ReadonlySet<string> = new Set([
+  "Noto Serif JP",
+  "Noto Sans JP",
+  "Noto Serif SC",
+  "Noto Sans SC",
+  "Noto Serif TC",
+  "Noto Sans TC",
+  "Noto Serif KR",
+  "Noto Sans KR",
+]);
+
+/**
+ * True when `family` is a known East-Asian (CJK) typeface — a direct
+ * `FONT_MAPPINGS` CJK entry or a romanized alias of one. Used by the measurer
+ * to decide whether a run's `w:eastAsia` font can supply the line height for
+ * CJK text, or whether Word would font-link to a default East-Asian face
+ * instead (see `CJK_FALLBACK_FONT_FAMILY`). Unmapped families return false:
+ * we cannot know their metrics, so the caller falls back.
+ */
+export function isCjkFont(family: string): boolean {
+  const normalizedName = family.trim().toLowerCase();
+  const mapping = FONT_MAPPINGS[CJK_FONT_ALIASES[normalizedName] ?? normalizedName];
+  return mapping !== undefined && CJK_NOTO_FAMILIES.has(mapping.googleFont);
+}
+
+/**
+ * Font family whose `singleLineRatio` stands in for Word's default East-Asian
+ * face when a CJK-text run declares no usable CJK font (its `w:eastAsia` slot
+ * is absent or names a Latin face like "Century"). Word font-links those
+ * glyphs to the OS default East-Asian font and takes THAT face's taller line
+ * height; MS Mincho carries the measured ratio for it
+ * (`JP_MEASURED_LINE_HEIGHT`, ≈1.303). Line-height resolution only — never
+ * used for width measurement or painting.
+ */
+export const CJK_FALLBACK_FONT_FAMILY = "MS Mincho";
 
 /**
  * Resolve a DOCX font name to a Google Font and CSS fallback stack
