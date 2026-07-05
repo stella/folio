@@ -322,6 +322,30 @@ export function resolveColor(
  * @param highlight - Highlight color name (e.g., "yellow", "cyan")
  * @returns CSS color string or empty string for "none"
  */
+/**
+ * Resolve a `ColorValue` to a bare 6-digit hex string (no leading `#`), or
+ * `undefined` for an `auto`/absent color. Theme colors resolve through the
+ * document theme; explicit `rgb` values are upper-cased. Used by adapters that
+ * need a normalized hex (e.g. comparing a cell fill against a swatch).
+ */
+export function resolveColorToHex(
+  color: ColorValue | undefined | null,
+  theme: Theme | null | undefined,
+): string | undefined {
+  if (!color || color.auto) return undefined;
+
+  if (color.themeColor && theme) {
+    // resolveColor always returns `#XXXXXX`; drop the `#`.
+    return resolveColor(color, theme).slice(1);
+  }
+
+  if (color.rgb && color.rgb !== "auto") {
+    return color.rgb.toUpperCase().replace(/^#/, "");
+  }
+
+  return undefined;
+}
+
 export function resolveHighlightColor(highlight: string | undefined): string {
   if (!highlight || highlight === "none") {
     return "";

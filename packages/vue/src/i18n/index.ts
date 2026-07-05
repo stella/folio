@@ -32,6 +32,16 @@ export const defaultLocale = "en";
 // their `t(...)` calls beyond the catalog keys themselves.
 export type FolioTranslator = ReturnType<typeof createFolioTranslator>;
 
+/**
+ * Call signature folio's SFCs use: a namespaced `folio.*` key path plus
+ * optional ICU values, returning the localized string. The underlying
+ * `FolioTranslator` types its key parameter from the catalog literal, which the
+ * `createTranslator` overloads collapse to `never` for a widened message type;
+ * folio's components address keys as plain paths (matching `presets.ts`), so the
+ * public binding exposes this string-keyed signature.
+ */
+export type TranslateFn = (key: string, values?: Record<string, unknown>) => string;
+
 const createFolioTranslator = (locale: string) =>
   createTranslator({ locale, messages: getFolioMessages(locale), namespace: "folio" });
 
@@ -57,17 +67,14 @@ export const provideLocale = (locale: MaybeRefOrGetter<string> = defaultLocale):
  * Access folio's translator. Returns `{ t }` where `t("key")` looks up the
  * `folio` namespace of the active locale's catalog.
  */
-export const useTranslation = (): { t: FolioTranslator } => {
+export const useTranslation = (): { t: TranslateFn } => {
   const translator = inject(TRANSLATOR_KEY, fallbackTranslator);
   // Unwrap the computed into a stable callable so call sites use `t("key")`
   // without touching `.value`.
-  const t = ((key: string, values?: Record<string, unknown>) =>
+  const t: TranslateFn = (key, values) =>
     // SAFETY: use-intl's translator is callable with (key, values); the cast
     // narrows the broad overload set to the shape folio's SFCs use.
-    (translator.value as (k: string, v?: Record<string, unknown>) => string)(
-      key,
-      values,
-    )) as FolioTranslator;
+    (translator.value as (k: string, v?: Record<string, unknown>) => string)(key, values);
   return { t };
 };
 
