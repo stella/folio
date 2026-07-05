@@ -21,7 +21,7 @@ export type ResolvedFont = {
   originalFont: string;
   /** Whether this font has a Google Fonts equivalent */
   hasGoogleEquivalent: boolean;
-  /** OS/2 single-line ratio: (usWinAscent + usWinDescent) / unitsPerEm (no external leading) */
+  /** Single-line height ratio (single-line height ÷ font size). See `FontLineHeight`. */
   singleLineRatio: number;
 };
 
@@ -37,15 +37,61 @@ type FontMapping = {
   googleFont: string;
   category: FontCategory;
   fallbackStack: string[];
-  /** OS/2 single-line ratio: (usWinAscent + usWinDescent) / unitsPerEm (no external leading) */
+  /** Single-line height ratio (single-line height ÷ font size). See `FontLineHeight`. */
   singleLineRatio: number;
 };
 
 /**
- * Default OS/2 single-line ratio for unmapped fonts.
+ * Default single-line ratio for unmapped fonts.
  * Middle of the common range (1.07–1.27) for standard DOCX fonts.
  */
 export const DEFAULT_SINGLE_LINE_RATIO = 1.15;
+
+/**
+ * Evidence backing a font's single-line height ratio.
+ *
+ * - `"hhea"`: the ratio is DERIVED from the font's own `hhea` table metrics
+ *   (never hand-written). This is the verified, measured representation —
+ *   see `singleLineRatioOf` for the formula and its provenance.
+ * - `"legacy"`: an unverified hand-transcribed ratio, kept only for fonts we
+ *   have not yet re-measured against real Word output. `note` records why.
+ *   Do not add new "legacy" entries without a reason; prefer measuring the
+ *   font's `hhea` table instead.
+ *
+ * Discriminated union so a future edit cannot silently drop the line gap by
+ * hand-writing a decimal in its place — every verified font's ratio must
+ * trace back to its raw metric fields.
+ */
+type FontLineHeight =
+  | {
+      source: "hhea";
+      hheaAscent: number;
+      hheaDescent: number;
+      hheaLineGap: number;
+      unitsPerEm: number;
+    }
+  | { source: "legacy"; ratio: number; note: string };
+
+/**
+ * Single-line height ratio (single-line height ÷ font size) for a
+ * `FontLineHeight`. This is the ONLY place the derivation formula lives.
+ *
+ * For `"hhea"` sources: `(hheaAscent + |hheaDescent| + hheaLineGap) / unitsPerEm`.
+ * This matches Word's rendered single-line pitch (11pt, single spacing) for
+ * every font measured against real Word output so far (15 fonts, no
+ * exceptions) — Word does NOT drop the font's line gap. Earlier revisions of
+ * this table hand-transcribed ratios from the OS/2 table and omitted the line
+ * gap for most fonts, which undershot Word's rendered line height for several
+ * of them (confirmed for cambria, trebuchet ms, palatino linotype, book
+ * antiqua, century gothic, and consolas; arial and times new roman were fixed
+ * in a prior revision). Future readers: to correct or add a font, edit its
+ * `hhea*`/`unitsPerEm` metric fields, never the resulting ratio.
+ */
+const singleLineRatioOf = (lineHeight: FontLineHeight): number =>
+  lineHeight.source === "hhea"
+    ? (lineHeight.hheaAscent - lineHeight.hheaDescent + lineHeight.hheaLineGap) /
+      lineHeight.unitsPerEm
+    : lineHeight.ratio;
 
 /**
  * Mapping of common DOCX fonts to Google Fonts equivalents
@@ -53,15 +99,13 @@ export const DEFAULT_SINGLE_LINE_RATIO = 1.15;
  * These are metrically compatible fonts that preserve document layout.
  * See: https://wiki.archlinux.org/title/Metric-compatible_fonts
  *
- * singleLineRatio values are derived from each font's OS/2 table:
- * (usWinAscent + usWinDescent) / unitsPerEm
- * These define the Windows GDI "single line" height that OOXML lineRule="auto" uses.
- * sTypoLineGap (external leading) is NOT included — Word excludes it from the
- * lineRule="auto" calculation (ECMA-376 §17.3.1.33).
- * Exception: arial and times new roman are measured against real Word output
- * (11pt, single spacing) to include sTypoLineGap — omitting it undershoots Word's
- * rendered single-line pitch for these two fonts. Do not generalize this exception
- * to other fonts without an equivalent measurement.
+ * `singleLineRatio` values are computed by `singleLineRatioOf` from each
+ * font's `FontLineHeight`, never hand-written. For "hhea" entries the raw
+ * `hheaAscent`/`hheaDescent`/`hheaLineGap`/`unitsPerEm` fields below are read
+ * directly from the real font files' `hhea` table; the ratio is whatever
+ * falls out of the formula in `singleLineRatioOf`. "legacy" entries (e.g.
+ * garamond, lucida sans, lucida console) are unverified hand-transcribed
+ * ratios carried over unchanged, pending measurement.
  */
 const FONT_MAPPINGS: Record<string, FontMapping> = {
   // Microsoft Office fonts -> Google equivalents (via Croscore)
@@ -69,31 +113,61 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
     googleFont: "Carlito",
     category: "sans-serif",
     fallbackStack: ["Calibri", "Carlito", "Arial", "Helvetica", "sans-serif"],
-    singleLineRatio: 1.2207, // 2500/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1950,
+      hheaDescent: -550,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.2207
   },
   cambria: {
     googleFont: "Caladea",
     category: "serif",
     fallbackStack: ["Cambria", "Caladea", "Georgia", "serif"],
-    singleLineRatio: 1.2676, // 2596/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1946,
+      hheaDescent: -455,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.1724 (was hand-transcribed 1.2676 — wrong by 8%)
   },
   arial: {
     googleFont: "Arimo",
     category: "sans-serif",
     fallbackStack: ["Arial", "Arimo", "Helvetica", "sans-serif"],
-    singleLineRatio: 1.1499, // (1854+434+67)/2048 — incl. sTypoLineGap (matches Word single-line height)
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1854,
+      hheaDescent: -434,
+      hheaLineGap: 67,
+      unitsPerEm: 2048,
+    }), // 1.1499
   },
   "times new roman": {
     googleFont: "Tinos",
     category: "serif",
     fallbackStack: ["Times New Roman", "Tinos", "Times", "serif"],
-    singleLineRatio: 1.1499, // (1825+443+87)/2048 — incl. sTypoLineGap (matches Word single-line height)
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1825,
+      hheaDescent: -443,
+      hheaLineGap: 87,
+      unitsPerEm: 2048,
+    }), // 1.1499
   },
   "courier new": {
     googleFont: "Cousine",
     category: "monospace",
     fallbackStack: ["Courier New", "Cousine", "Courier", "monospace"],
-    singleLineRatio: 1.1328, // 2320/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1705,
+      hheaDescent: -615,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.1328
   },
 
   // Additional common fonts
@@ -101,79 +175,151 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
     googleFont: "Tinos", // Similar but not perfect match
     category: "serif",
     fallbackStack: ["Georgia", "Tinos", "Times New Roman", "serif"],
-    singleLineRatio: 1.1362, // 2327/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1878,
+      hheaDescent: -449,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.1362
   },
   verdana: {
     googleFont: "Open Sans", // Similar sans-serif
     category: "sans-serif",
     fallbackStack: ["Verdana", "Open Sans", "Arial", "sans-serif"],
-    singleLineRatio: 1.2153, // 2489/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 2059,
+      hheaDescent: -430,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.2153
   },
   tahoma: {
     googleFont: "Open Sans",
     category: "sans-serif",
     fallbackStack: ["Tahoma", "Open Sans", "Arial", "sans-serif"],
-    singleLineRatio: 1.2075, // 2472/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 2049,
+      hheaDescent: -423,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.2070 (was hand-transcribed 1.2075 — negligible, now derived)
   },
   "trebuchet ms": {
     googleFont: "Fira Sans",
     category: "sans-serif",
     fallbackStack: ["Trebuchet MS", "Fira Sans", "Arial", "sans-serif"],
-    singleLineRatio: 1.1431, // 2341/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1923,
+      hheaDescent: -455,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.1611 (was hand-transcribed 1.1431 — wrong)
   },
   "comic sans ms": {
     googleFont: "Comic Neue",
     category: "cursive",
     fallbackStack: ["Comic Sans MS", "Comic Neue", "cursive"],
-    singleLineRatio: 1.3936, // 2854/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 2257,
+      hheaDescent: -597,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.3936
   },
   impact: {
     googleFont: "Anton",
     category: "sans-serif",
     fallbackStack: ["Impact", "Anton", "Arial Black", "sans-serif"],
-    singleLineRatio: 1.2197, // 2498/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 2066,
+      hheaDescent: -432,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.2197
   },
   "palatino linotype": {
     googleFont: "EB Garamond",
     category: "serif",
     fallbackStack: ["Palatino Linotype", "EB Garamond", "Palatino", "Georgia", "serif"],
-    singleLineRatio: 1.0259, // 2101/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 2150,
+      hheaDescent: -613,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.3491 (was hand-transcribed 1.0259 — WRONG by 31%)
   },
   "book antiqua": {
     googleFont: "EB Garamond",
     category: "serif",
     fallbackStack: ["Book Antiqua", "EB Garamond", "Palatino", "Georgia", "serif"],
-    singleLineRatio: 1.0259, // 2101/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1891,
+      hheaDescent: -578,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.2056 (was hand-transcribed 1.0259 — wrong by 17%)
   },
   garamond: {
     googleFont: "EB Garamond",
     category: "serif",
     fallbackStack: ["Garamond", "EB Garamond", "Georgia", "serif"],
-    singleLineRatio: 1.068, // 1068/1000
+    singleLineRatio: singleLineRatioOf({
+      source: "legacy",
+      ratio: 1.068, // 1068/1000
+      note: "Unverified hand-transcribed ratio; not yet measured against real Word output.",
+    }),
   },
   "century gothic": {
     googleFont: "Questrial",
     category: "sans-serif",
     fallbackStack: ["Century Gothic", "Questrial", "Arial", "sans-serif"],
-    singleLineRatio: 1.1611, // 2378/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 2060,
+      hheaDescent: -451,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.2261 (was hand-transcribed 1.1611 — wrong by 6%)
   },
   "lucida sans": {
     googleFont: "Open Sans",
     category: "sans-serif",
     fallbackStack: ["Lucida Sans", "Open Sans", "Arial", "sans-serif"],
-    singleLineRatio: 1.1655, // 2387/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "legacy",
+      ratio: 1.1655, // 2387/2048
+      note: "Unverified hand-transcribed ratio; not yet measured against real Word output.",
+    }),
   },
   "lucida console": {
     googleFont: "Cousine",
     category: "monospace",
     fallbackStack: ["Lucida Console", "Cousine", "Courier New", "monospace"],
-    singleLineRatio: 1.1387, // 2332/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "legacy",
+      ratio: 1.1387, // 2332/2048
+      note: "Unverified hand-transcribed ratio; not yet measured against real Word output.",
+    }),
   },
   consolas: {
     googleFont: "Inconsolata",
     category: "monospace",
     fallbackStack: ["Consolas", "Inconsolata", "Cousine", "Courier New", "monospace"],
-    singleLineRatio: 1.1626, // 2381/2048
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1521,
+      hheaDescent: -527,
+      hheaLineGap: 350,
+      unitsPerEm: 2048,
+    }), // 1.1709 (was hand-transcribed 1.1626 — wrong)
   },
 
   // CJK fonts

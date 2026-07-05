@@ -1,6 +1,78 @@
 import { describe, expect, test } from "bun:test";
 
+import { getResolvedData } from "../layout-engine/measure/measureHelpers";
 import { getGoogleFontEquivalent, resolveFontFamily } from "./fontResolver";
+
+describe("fontResolver — single-line ratios are derived from real hhea metrics", () => {
+  // Expected ratios computed by hand from each font's real `hhea` table:
+  // (hheaAscent + |hheaDescent| + hheaLineGap) / unitsPerEm. Measured against
+  // real Word rendering (11pt, single spacing) for every font in this table.
+  // This locks the facts driving FONT_MAPPINGS — a future edit that
+  // hand-writes a different decimal into the table will fail here.
+  const verifiedRatios: [font: string, expectedRatio: number][] = [
+    ["arial", 1.1499],
+    ["times new roman", 1.1499],
+    ["calibri", 1.2207],
+    ["cambria", 1.1724],
+    ["georgia", 1.1362],
+    ["verdana", 1.2153],
+    ["tahoma", 1.207],
+    ["trebuchet ms", 1.1611],
+    ["courier new", 1.1328],
+    ["consolas", 1.1709],
+    ["comic sans ms", 1.3936],
+    ["impact", 1.2197],
+    ["palatino linotype", 1.3491],
+    ["book antiqua", 1.2056],
+    ["century gothic", 1.2261],
+  ];
+
+  for (const [font, expectedRatio] of verifiedRatios) {
+    test(`${font} → ${expectedRatio}`, () => {
+      expect(resolveFontFamily(font).singleLineRatio).toBeCloseTo(expectedRatio, 4);
+    });
+  }
+});
+
+describe("fontResolver — previously wrong ratios are corrected and reach consumers", () => {
+  // These fonts hand-transcribed a ratio that dropped or mis-stated the line
+  // gap; the corrected values come from the real hhea metrics above. Assert
+  // through `getResolvedData` (the layout engine's public resolution path,
+  // also used by `measureContainer.ts`) to prove the fix reaches consumers,
+  // not just the raw `resolveFontFamily` call.
+  const correctedCases: [font: string, correctedRatio: number][] = [
+    ["cambria", 1.1724], // was hand-transcribed 1.2676 — wrong by 8%
+    ["palatino linotype", 1.3491], // was hand-transcribed 1.0259 — wrong by 31%
+    ["arial", 1.1499], // fixed in a prior revision; still exercised here
+    ["book antiqua", 1.2056], // was hand-transcribed 1.0259 — wrong by 17%
+    ["century gothic", 1.2261], // was hand-transcribed 1.1611 — wrong by 6%
+    ["trebuchet ms", 1.1611], // was hand-transcribed 1.1431 — wrong
+    ["consolas", 1.1709], // was hand-transcribed 1.1626 — wrong
+  ];
+
+  for (const [font, correctedRatio] of correctedCases) {
+    test(`${font} resolves to the corrected ratio via getResolvedData`, () => {
+      expect(getResolvedData(font).singleLineRatio).toBeCloseTo(correctedRatio, 4);
+    });
+  }
+});
+
+describe("fontResolver — unverified legacy fonts are left unchanged", () => {
+  // garamond, lucida sans, and lucida console have not been measured against
+  // real Word output; their hand-transcribed ratios must stay exactly as they
+  // were before this refactor introduced the hhea-derived table.
+  const legacyCases: [font: string, unchangedRatio: number][] = [
+    ["garamond", 1.068],
+    ["lucida sans", 1.1655],
+    ["lucida console", 1.1387],
+  ];
+
+  for (const [font, unchangedRatio] of legacyCases) {
+    test(`${font} keeps its legacy ratio`, () => {
+      expect(resolveFontFamily(font).singleLineRatio).toBeCloseTo(unchangedRatio, 4);
+    });
+  }
+});
 
 describe("fontResolver — native CJK theme typefaces map to matched Noto fonts", () => {
   // The names `applyThemeFontLang` writes into the empty `<a:ea>` slot are the

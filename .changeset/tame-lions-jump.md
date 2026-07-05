@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-fix(core): include font line gap in Arial/Times New Roman single-line height
+fix(core): derive single-line height from real font hhea metrics (corrects Cambria, Palatino, Arial, Times, and 4 more)
