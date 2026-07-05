@@ -22,7 +22,7 @@ const WHITESPACE_REGEX = /\s/;
 /**
  * Check if a character is a word character
  */
-export function isWordCharacter(char: string): boolean {
+export function isWordCharacter(char: string | undefined): boolean {
   if (!char || char.length === 0) return false;
   return WORD_CHAR_REGEX.test(char);
 }
@@ -30,7 +30,7 @@ export function isWordCharacter(char: string): boolean {
 /**
  * Check if a character is whitespace
  */
-export function isWhitespace(char: string): boolean {
+export function isWhitespace(char: string | undefined): boolean {
   if (!char || char.length === 0) return false;
   return WHITESPACE_REGEX.test(char);
 }
@@ -94,14 +94,14 @@ export function getWordAt(text: string, position: number): string {
 /**
  * Word selection result
  */
-export interface WordSelectionResult {
+export type WordSelectionResult = {
   /** The selected word */
   word: string;
   /** Start index in the text (inclusive) */
   startIndex: number;
   /** End index in the text (exclusive) */
   endIndex: number;
-}
+};
 
 /**
  * Find the word at a position and return detailed info

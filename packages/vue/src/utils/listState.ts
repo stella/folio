@@ -7,12 +7,12 @@
 
 export type ListType = "bullet" | "numbered" | "none";
 
-export interface ListState {
+export type ListState = {
   type: ListType;
   level: number;
   isInList: boolean;
-  numId?: number;
-}
+  numId?: number | undefined;
+};
 
 export function createDefaultListState(): ListState {
   return { type: "none", level: 0, isInList: false };

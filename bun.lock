@@ -120,6 +120,8 @@
       "dependencies": {
         "@stll/folio-core": "workspace:^",
         "better-result": "2.9.2",
+        "use-intl": "^4.13.0",
+        "yjs": "^13.6.31",
       },
       "devDependencies": {
         "@tailwindcss/cli": "4.3.1",

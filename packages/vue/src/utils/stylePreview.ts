@@ -28,15 +28,15 @@ export interface StylePreviewProps {
  * fields). Adapters add their own localized label on top of `name`.
  * @public
  */
-export interface ResolvedStyleOption {
+export type ResolvedStyleOption = {
   styleId: string;
   name: string;
   priority: number;
-  fontSize?: number;
-  bold?: boolean;
-  italic?: boolean;
-  color?: string;
-}
+  fontSize?: number | undefined;
+  bold?: boolean | undefined;
+  italic?: boolean | undefined;
+  color?: string | undefined;
+};
 
 /** Dropdown preview sizes (px) for well-known styles, matching Google Docs. @public */
 export const STYLE_PREVIEW_SIZES: Record<string, number> = {
@@ -72,10 +72,10 @@ export const HEADING_COLOR = "#4a6c8c";
  */
 export function getStylePreviewProps(input: {
   styleId: string;
-  fontSize?: number;
-  bold?: boolean;
-  italic?: boolean;
-  color?: string;
+  fontSize?: number | undefined;
+  bold?: boolean | undefined;
+  italic?: boolean | undefined;
+  color?: string | undefined;
 }): StylePreviewProps {
   const known = STYLE_PREVIEW_SIZES[input.styleId];
   const fontSize = known

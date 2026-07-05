@@ -63,7 +63,9 @@ export function getAvatarColor(name: string): string {
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  // Modulo the non-empty palette length always yields a valid index; the `??`
+  // literal satisfies noUncheckedIndexedAccess without a cast.
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? "#888888";
 }
 
 export function truncateText(text: string, maxLength = 50): string {
