@@ -58,6 +58,10 @@ export const DEFAULT_SINGLE_LINE_RATIO = 1.15;
  * These define the Windows GDI "single line" height that OOXML lineRule="auto" uses.
  * sTypoLineGap (external leading) is NOT included — Word excludes it from the
  * lineRule="auto" calculation (ECMA-376 §17.3.1.33).
+ * Exception: arial and times new roman are measured against real Word output
+ * (11pt, single spacing) to include sTypoLineGap — omitting it undershoots Word's
+ * rendered single-line pitch for these two fonts. Do not generalize this exception
+ * to other fonts without an equivalent measurement.
  */
 const FONT_MAPPINGS: Record<string, FontMapping> = {
   // Microsoft Office fonts -> Google equivalents (via Croscore)
@@ -77,13 +81,13 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
     googleFont: "Arimo",
     category: "sans-serif",
     fallbackStack: ["Arial", "Arimo", "Helvetica", "sans-serif"],
-    singleLineRatio: 1.1172, // (1854+434)/2048 — no sTypoLineGap
+    singleLineRatio: 1.1499, // (1854+434+67)/2048 — incl. sTypoLineGap (matches Word single-line height)
   },
   "times new roman": {
     googleFont: "Tinos",
     category: "serif",
     fallbackStack: ["Times New Roman", "Tinos", "Times", "serif"],
-    singleLineRatio: 1.1074, // (1825+443)/2048 — no sTypoLineGap
+    singleLineRatio: 1.1499, // (1825+443+87)/2048 — incl. sTypoLineGap (matches Word single-line height)
   },
   "courier new": {
     googleFont: "Cousine",
