@@ -34,7 +34,6 @@ export default defineConfig({
         ui: resolve(__dirname, "src/ui.ts"),
         composables: resolve(__dirname, "src/composables/index.ts"),
         dialogs: resolve(__dirname, "src/components/dialogs/index.ts"),
-        "plugin-api": resolve(__dirname, "src/plugin-api/index.ts"),
         styles: resolve(__dirname, "src/styles/index.ts"),
       },
       formats: ["es", "cjs"],
