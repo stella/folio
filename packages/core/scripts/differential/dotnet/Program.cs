@@ -341,6 +341,6 @@ internal static class StructuralProjector
 
     private static bool Matches(
         OpenXmlElement element,
-        IEnumerable<(string LocalName, string NamespaceUri)> tags
-    ) => tags.Any(tag => IsTag(element, tag.LocalName, tag.NamespaceUri));
+        HashSet<(string LocalName, string NamespaceUri)> tags
+    ) => tags.Contains((element.LocalName, element.NamespaceUri));
 }
