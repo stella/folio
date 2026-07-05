@@ -147,4 +147,37 @@ describe("computeBlockDepths", () => {
 
     expect(depths.get(10)).toBe(0);
   });
+
+  test("kind-aware: a stray {{/each}} does not shrink a foreign block's depth", () => {
+    // {{#if}} {{/each}}(stray, no open each) {{#each}} {{/if}}
+    // A blind open/close counter decrements on the stray {{/each}} and pulls the
+    // nested {{#each}} back to depth 0; kind-aware matching leaves it at depth 1.
+    const ranges: DirectiveRange[] = [
+      blockRange(0, "if"),
+      blockRange(10, "endeach"), // stray: no open each to close
+      blockRange(20, "each"),
+      blockRange(30, "endif"),
+    ];
+
+    const depths = computeBlockDepths(ranges);
+
+    expect(depths.get(0)).toBe(0); // outer if
+    expect(depths.get(20)).toBe(1); // each is still nested inside the open if
+  });
+
+  test("kind-aware: interleaved if/each closers keep opener depths intact", () => {
+    // {{#if}} {{#each}} {{/if}} {{/each}} (crossed nesting): the {{/if}} closes the
+    // if and discards the improperly-nested each, but recorded depths do not shift.
+    const ranges: DirectiveRange[] = [
+      blockRange(0, "if"),
+      blockRange(10, "each"),
+      blockRange(20, "endif"),
+      blockRange(30, "endeach"),
+    ];
+
+    const depths = computeBlockDepths(ranges);
+
+    expect(depths.get(0)).toBe(0);
+    expect(depths.get(10)).toBe(1);
+  });
 });

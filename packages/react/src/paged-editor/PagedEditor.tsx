@@ -5857,7 +5857,13 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
         return bestNumber;
       },
     }),
-    [ensureHiddenEditorView, folioEditor, scrollToPageImpl, scrollToParaIdImpl, scrollToPositionImpl],
+    [
+      ensureHiddenEditorView,
+      folioEditor,
+      scrollToPageImpl,
+      scrollToParaIdImpl,
+      scrollToPositionImpl,
+    ],
   );
 
   useEffect(() => {
@@ -6030,6 +6036,7 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
               gutter={directiveGutter}
               groups={directiveRectGroups}
               caretPos={directiveCaretPos}
+              ranges={directivesRef.current}
             />
           )}
 

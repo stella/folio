@@ -163,6 +163,12 @@ export const measureDirectiveGutter = (
   pagesContainer: HTMLElement,
   zoom: number,
 ): DirectiveGutterGeometry | null => {
+  // Every measurement below divides by `zoom`; a zero/negative factor (seen
+  // transiently before the viewport settles, guarded the same way in the caret
+  // path) would yield Infinity/NaN geometry. Suppress the rails until it is sane.
+  if (zoom <= 0) {
+    return null;
+  }
   const overlay = pagesContainer.parentElement?.querySelector('[data-testid="selection-overlay"]');
   const pages = pagesContainer.querySelectorAll<HTMLElement>(".layout-page");
   if (!overlay || pages.length === 0) {

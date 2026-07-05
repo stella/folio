@@ -137,6 +137,50 @@ describe("pairBlockRanges", () => {
     expect(pairings).toHaveLength(1);
     expect(pairings[0]).toMatchObject({ blockId: 10, openerExpr: "kept" });
   });
+
+  test("carries the nesting depth from the same walk", () => {
+    // {{#each}} > {{#if}} ... {{/if}} {{/each}}: depth rides on the pairing so the
+    // rail's indentation and its opener→closer span can never diverge.
+    const pairings = pairBlockRanges([
+      blockRange(0, "each", "items"),
+      blockRange(10, "if", "cond"),
+      blockRange(20, "endif"),
+      blockRange(30, "endeach"),
+    ]);
+
+    expect(pairings.find((p) => p.kind === "if")?.depth).toBe(1);
+    expect(pairings.find((p) => p.kind === "each")?.depth).toBe(0);
+  });
+
+  test("kind-aware: a {{/if}} pairs with its {{#if}}, not an intervening {{#each}}", () => {
+    // {{#if}} {{#each}} {{/if}} {{/each}} (crossed nesting). Blind popping would
+    // pair the {{/if}} with the {{#each}} (an each-kind band) and the {{/each}}
+    // with the {{#if}}. Kind-aware matching closes the if correctly and drops the
+    // improperly-nested each rather than mislabelling a band.
+    const pairings = pairBlockRanges([
+      blockRange(0, "if", "A"),
+      blockRange(10, "each", "B"),
+      blockRange(20, "endif"),
+      blockRange(30, "endeach"),
+    ]);
+
+    expect(pairings).toHaveLength(1);
+    expect(pairings[0]).toMatchObject({
+      blockId: 0,
+      kind: "if",
+      openerFrom: 0,
+      closerFrom: 20,
+      openerExpr: "A",
+    });
+  });
+
+  test("kind-aware: a {{/if}} never closes an {{#each}}", () => {
+    // {{#each}} {{/if}}: mismatched families must not pair (would be an each-kind
+    // band closed by a /if). Blind popping paired them; kind-aware drops both.
+    const pairings = pairBlockRanges([blockRange(0, "each", "B"), blockRange(10, "endif")]);
+
+    expect(pairings).toHaveLength(0);
+  });
 });
 
 describe("closerHintLabel", () => {

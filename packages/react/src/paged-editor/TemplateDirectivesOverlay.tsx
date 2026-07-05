@@ -27,10 +27,9 @@ import type {
   DirectiveGutterGeometry,
   PageContentBand,
 } from "@stll/folio-core/paged-layout/rangeProjection";
-import {
-  computeBlockDepths,
-  type DirectiveKind,
-  type DirectiveRange,
+import type {
+  DirectiveKind,
+  DirectiveRange,
 } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 
 export type DirectiveRectGroup = {
@@ -50,6 +49,13 @@ export type TemplateDirectivesOverlayProps = {
    * containing it is emphasised (the "loud on caret" half of the interaction).
    */
   caretPos: number | null;
+  /**
+   * Full list of scanned directive ranges in the document. Pairing and nesting
+   * depth are derived from this authoritative list (not from `groups`, which is
+   * the projected/visible subset), so depth and pairing always reflect what the
+   * document actually contains even while pages are off-screen or unprojected.
+   */
+  ranges: readonly DirectiveRange[];
 };
 
 const overlayStyles: CSSProperties = {
@@ -140,6 +146,12 @@ export type BlockPairing = {
   /** Stable block id: the opener's `from` PM position. */
   blockId: number;
   kind: BandKind;
+  /**
+   * 0-based nesting depth of the opener, recorded during the same pairing walk
+   * (stack size at push time). Sharing one walk with the pairing guarantees the
+   * rail's depth and its opener→closer span can never disagree.
+   */
+  depth: number;
   openerFrom: number;
   closerFrom: number;
   /** Exclusive PM end of the closer marker (band bottom / caret containment). */
@@ -148,11 +160,18 @@ export type BlockPairing = {
   openerExpr: string;
 };
 
+/** One open block awaiting its closer, plus the depth captured when it was pushed. */
+type OpenBlock = { range: DirectiveRange; depth: number };
+
 /**
- * Pair block openers with their closers via a stack (same walk as
- * {@link computeBlockDepths}), so both chips of a pair share a `blockId` and the
- * rail knows its opener→closer PM span. Inline (block:false) and unbalanced
- * markers are dropped. Pure function of the ranges, unit-tested in isolation.
+ * Pair block openers with their closers via a kind-aware stack, so both chips of
+ * a pair share a `blockId`, the rail knows its opener→closer PM span, and each
+ * pairing carries the `depth` recorded in this very walk (never a second,
+ * possibly-divergent depth pass). A closer matches the nearest opener of the same
+ * family ({{/if}} ⇒ {{#if}}, {{/each}} ⇒ {{#each}}) and drops any still-open
+ * openers nested above it; a closer with no matching opener is ignored. This keeps
+ * a mid-edit / unbalanced template from pairing a {{/if}} with an {{#each}}.
+ * Inline (block:false) markers are excluded. Pure function of the ranges.
  */
 export const pairBlockRanges = (ranges: readonly DirectiveRange[]): BlockPairing[] => {
   const blocks = ranges
@@ -161,23 +180,35 @@ export const pairBlockRanges = (ranges: readonly DirectiveRange[]): BlockPairing
     .sort((a, b) => a.from - b.from);
 
   const pairings: BlockPairing[] = [];
-  const stack: DirectiveRange[] = [];
+  const stack: OpenBlock[] = [];
   for (const range of blocks) {
     if (BLOCK_OPENERS.has(range.kind)) {
-      stack.push(range);
+      stack.push({ range, depth: stack.length });
       continue;
     }
-    const opener = stack.pop();
-    if (!opener) {
+    const wantOpener: DirectiveKind = range.kind === "endif" ? "if" : "each";
+    let matched: OpenBlock | undefined;
+    let matchIdx = -1;
+    for (let i = stack.length - 1; i >= 0; i -= 1) {
+      const entry = stack[i];
+      if (entry?.range.kind === wantOpener) {
+        matched = entry;
+        matchIdx = i;
+        break;
+      }
+    }
+    if (!matched) {
       continue;
     }
+    stack.length = matchIdx;
     pairings.push({
-      blockId: opener.from,
-      kind: bandKindOf(opener.kind),
-      openerFrom: opener.from,
+      blockId: matched.range.from,
+      kind: bandKindOf(matched.range.kind),
+      depth: matched.depth,
+      openerFrom: matched.range.from,
       closerFrom: range.from,
       closerTo: range.to,
-      openerExpr: opener.expr,
+      openerExpr: matched.range.expr,
     });
   }
   return pairings;
@@ -220,16 +251,17 @@ type RailBand = {
 };
 
 /**
- * Assemble the per-page rail segments for every balanced block: pair the ranges,
- * look up opener/closer rects by `from`, place the rail by its budgeted depth,
- * and clip its span to each page. O(ranges); all geometry comes from the props.
+ * Assemble the per-page rail segments for every balanced block: look up
+ * opener/closer rects by `from`, place the rail by the pairing's own budgeted
+ * depth, and clip its span to each page. Depth comes from the pairing (same walk
+ * that matched opener→closer), so a rail's indentation and its span always agree.
+ * O(pairings); all geometry comes from the props.
  */
 const computeRailBands = (
   pairings: readonly BlockPairing[],
   groups: DirectiveRectGroup[],
   gutter: DirectiveGutterGeometry,
 ): RailBand[] => {
-  const depths = computeBlockDepths(groups.map((g) => g.range));
   const groupByFrom = new Map(groups.map((group) => [group.range.from, group]));
 
   const bands: RailBand[] = [];
@@ -239,7 +271,6 @@ const computeRailBands = (
     if (!openerRect || !closerRect) {
       continue;
     }
-    const depth = depths.get(pairing.openerFrom) ?? 0;
     const segments = segmentBandByPages(
       { top: openerRect.y, bottom: closerRect.y + closerRect.height },
       gutter.pageBands,
@@ -250,7 +281,7 @@ const computeRailBands = (
     bands.push({
       blockId: pairing.blockId,
       kind: pairing.kind,
-      railX: railXForDepth(depth, gutter.contentLeft, gutter.marginWidth),
+      railX: railXForDepth(pairing.depth, gutter.contentLeft, gutter.marginWidth),
       segments,
     });
   }
@@ -269,6 +300,7 @@ export const TemplateDirectivesOverlay = ({
   groups,
   gutter,
   caretPos,
+  ranges,
 }: TemplateDirectivesOverlayProps) => {
   const [hoveredBlockId, setHoveredBlockId] = useState<number | null>(null);
 
@@ -276,7 +308,10 @@ export const TemplateDirectivesOverlay = ({
     return null;
   }
 
-  const pairings = pairBlockRanges(groups.map((g) => g.range));
+  // Pair over the full scanned `ranges` (the authoritative document list), not
+  // the projected `groups` subset, so pairing/depth reflect the whole document;
+  // `groups` only supplies rect geometry, looked up by `from` in computeRailBands.
+  const pairings = pairBlockRanges(ranges);
   const railBands = gutter ? computeRailBands(pairings, groups, gutter) : [];
 
   // Block id for every opener/closer chip (both share the opener's id) and the
