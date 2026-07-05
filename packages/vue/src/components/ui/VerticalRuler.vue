@@ -169,11 +169,9 @@ function markerStyle(top: number): CSSProperties {
 function triangleStyle(type: MarkerType): CSSProperties {
   const isActive = dragging.value === type;
   const isHovered = hovered.value === type;
-  const color = isActive
-    ? 'var(--doc-primary-hover)'
-    : isHovered
-      ? 'var(--doc-primary)'
-      : 'var(--doc-primary)';
+  let color = 'var(--doc-primary)';
+  if (isActive) color = 'var(--doc-primary-hover)';
+  else if (isHovered) color = 'var(--doc-primary)';
   return {
     position: 'absolute',
     top: '0px',

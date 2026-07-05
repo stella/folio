@@ -24,7 +24,7 @@ import {
 export { getSelectionRuns, createSelectionFromDOM, runsToClipboardContent };
 export type { ClipboardSelection };
 
-export interface UseClipboardOptions {
+export type UseClipboardOptions = {
   onCopy?: (selection: ClipboardSelection) => void;
   onCut?: (selection: ClipboardSelection) => void;
   onPaste?: (content: ParsedClipboardContent, asPlainText: boolean) => void;
@@ -33,7 +33,7 @@ export interface UseClipboardOptions {
   onError?: (error: Error) => void;
 }
 
-export interface UseClipboardReturn {
+export type UseClipboardReturn = {
   copy: (selection: ClipboardSelection) => Promise<boolean>;
   cut: (selection: ClipboardSelection) => Promise<boolean>;
   paste: (asPlainText?: boolean) => Promise<ParsedClipboardContent | null>;

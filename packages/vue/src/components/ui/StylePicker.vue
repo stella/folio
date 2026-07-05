@@ -26,7 +26,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-export interface StyleOption {
+export type StyleOption = {
   styleId: string;
   name: string;
   fontSize?: number;

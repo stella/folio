@@ -11,7 +11,7 @@ import type { WrapType } from "@stll/folio-core/docx/wrapTypes";
 
 type ImageAttrsCssFloat = "left" | "right" | "none" | null;
 
-export interface ImageContextMenuState {
+export type ImageContextMenuState = {
   open: boolean;
   position: { x: number; y: number };
   pmPos: number;
@@ -26,7 +26,7 @@ export interface ImageContextMenuState {
  * the items the same way Word does (Cut/Copy/Paste then divider then
  * Delete).
  */
-export interface ImageContextMenuTextAction {
+export type ImageContextMenuTextAction = {
   action: string;
   label: string;
   shortcut?: string;

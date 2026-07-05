@@ -9,7 +9,7 @@
 
 const ISSUE_URL = "https://github.com/stella/folio/issues/new";
 
-export interface ReportIssueEnv {
+export type ReportIssueEnv = {
   userAgent?: string;
   viewport?: { width: number; height: number };
   pageUrl?: string;

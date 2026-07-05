@@ -61,12 +61,12 @@ import ImagePropertiesDialog from "../dialogs/ImagePropertiesDialog.vue";
 import InsertSymbolDialog from "../dialogs/InsertSymbolDialog.vue";
 import PageSetupDialog from "../dialogs/PageSetupDialog.vue";
 
-interface BookmarkOption {
+type BookmarkOption = {
   name: string;
   label?: string;
 }
 
-interface HyperlinkSubmitPayload {
+type HyperlinkSubmitPayload = {
   url?: string;
   bookmark?: string;
   displayText: string;

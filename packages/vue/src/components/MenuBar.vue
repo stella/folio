@@ -57,7 +57,7 @@ import { computed, defineComponent, type PropType, type SlotsType } from 'vue';
 import { useTranslation } from '../i18n';
 import MaterialSymbol from './ui/MaterialSymbol.vue';
 
-interface MenuItem {
+type MenuItem = {
   icon?: string;
   label: string;
   shortcut?: string;
@@ -68,7 +68,7 @@ interface MenuItem {
   /** When true, the item shows a right-chevron and opens the `#submenu` slot on hover. */
   submenu?: boolean;
 }
-interface MenuSeparator {
+type MenuSeparator = {
   type: 'separator';
 }
 type MenuEntry = MenuItem | MenuSeparator;

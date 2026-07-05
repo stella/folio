@@ -521,7 +521,7 @@ type ImageTransformAction = 'rotateCW' | 'rotateCCW' | 'flipH' | 'flipV';
  * an image node. Drives the wrap dropdown's active-value math
  * (e.g. `displayMode === 'float'`) and the "Image properties" button.
  */
-export interface ImageToolbarContext {
+export type ImageToolbarContext = {
   wrapType: string;
   displayMode: string;
   cssFloat: string | null;

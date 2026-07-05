@@ -21,7 +21,7 @@ import type { Document } from "@stll/folio-core/types/document";
 
 type DocxBufferInput = ArrayBuffer | Uint8Array | Blob | File;
 
-interface ReadDocxResult {
+type ReadDocxResult = {
   buffer: ArrayBuffer;
   name: string;
 }
@@ -37,7 +37,7 @@ async function readDocxFileFromInput(event: Event): Promise<ReadDocxResult | nul
   return { buffer: await file.arrayBuffer(), name: file.name };
 }
 
-export interface UseFileIOOptions {
+export type UseFileIOOptions = {
   /** From useDocxEditor — loads a .docx buffer into the editor. */
   loadBuffer: (buffer: DocxBufferInput) => Promise<void>;
   /**

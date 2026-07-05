@@ -35,7 +35,7 @@ export {
   isAutoSaveSupported,
 };
 
-export interface UseAutoSaveOptions {
+export type UseAutoSaveOptions = {
   /** localStorage key (default: 'docx-editor-autosave') */
   storageKey?: string;
   /** Auto-save interval in ms (default: 30000) */
@@ -56,7 +56,7 @@ export interface UseAutoSaveOptions {
   debounceDelay?: number;
 }
 
-export interface UseAutoSaveReturn {
+export type UseAutoSaveReturn = {
   status: Ref<AutoSaveStatus>;
   lastSaveTime: Ref<Date | null>;
   save: () => boolean;

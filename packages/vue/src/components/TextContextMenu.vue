@@ -59,7 +59,7 @@ import { ref, computed, watch, nextTick, type CSSProperties } from "vue";
 import { useTranslation } from "../i18n";
 import { useDocxPortalClass } from "../composables/usePortalClass";
 
-export interface ContextMenuItem {
+export type ContextMenuItem = {
   id: string;
   label: string;
   action: string;

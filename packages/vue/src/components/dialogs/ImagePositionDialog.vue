@@ -109,7 +109,7 @@ import { useTranslation } from '../../i18n';
 
 const { t } = useTranslation();
 
-export interface ImagePositionData {
+export type ImagePositionData = {
   horizontal?: { relativeTo?: string; posOffset?: number; align?: string };
   vertical?: { relativeTo?: string; posOffset?: number; align?: string };
   distTop?: number;

@@ -139,22 +139,22 @@ function getHeaderFooterRefsFromSectionProperties(props: SectionProperties): Pag
   if (props.titlePg !== undefined) {
     refs.titlePg = props.titlePg;
   }
-  for (const ref of props.headerReferences ?? []) {
-    if (ref.type === "default") {
-      refs.headerDefault = ref.rId;
-    } else if (ref.type === "first") {
-      refs.headerFirst = ref.rId;
+  for (const hfRef of props.headerReferences ?? []) {
+    if (hfRef.type === "default") {
+      refs.headerDefault = hfRef.rId;
+    } else if (hfRef.type === "first") {
+      refs.headerFirst = hfRef.rId;
     } else {
-      refs.headerEven = ref.rId;
+      refs.headerEven = hfRef.rId;
     }
   }
-  for (const ref of props.footerReferences ?? []) {
-    if (ref.type === "default") {
-      refs.footerDefault = ref.rId;
-    } else if (ref.type === "first") {
-      refs.footerFirst = ref.rId;
+  for (const hfRef of props.footerReferences ?? []) {
+    if (hfRef.type === "default") {
+      refs.footerDefault = hfRef.rId;
+    } else if (hfRef.type === "first") {
+      refs.footerFirst = hfRef.rId;
     } else {
-      refs.footerEven = ref.rId;
+      refs.footerEven = hfRef.rId;
     }
   }
   return refs;
@@ -218,20 +218,20 @@ function resolveHeaderFooters(
 
   let headerRId: string | null = null;
   let firstHeaderRId: string | null = null;
-  for (const ref of sectionProps.headerReferences ?? []) {
-    if (ref.type === "default") {
-      headerRId = ref.rId;
-    } else if (ref.type === "first") {
-      firstHeaderRId = ref.rId;
+  for (const hfRef of sectionProps.headerReferences ?? []) {
+    if (hfRef.type === "default") {
+      headerRId = hfRef.rId;
+    } else if (hfRef.type === "first") {
+      firstHeaderRId = hfRef.rId;
     }
   }
   let footerRId: string | null = null;
   let firstFooterRId: string | null = null;
-  for (const ref of sectionProps.footerReferences ?? []) {
-    if (ref.type === "default") {
-      footerRId = ref.rId;
-    } else if (ref.type === "first") {
-      firstFooterRId = ref.rId;
+  for (const hfRef of sectionProps.footerReferences ?? []) {
+    if (hfRef.type === "default") {
+      footerRId = hfRef.rId;
+    } else if (hfRef.type === "first") {
+      firstFooterRId = hfRef.rId;
     }
   }
 
@@ -389,7 +389,7 @@ function documentFontsAreLoaded(): boolean {
 // COMPOSABLE
 // ============================================================================
 
-export interface UseDocxEditorOptions {
+export type UseDocxEditorOptions = {
   /** Container element that hosts the off-screen ProseMirror editor. */
   hiddenContainer: Ref<HTMLElement | null>;
   /** Container element the paginated pages are painted into. */
@@ -425,7 +425,7 @@ export interface UseDocxEditorOptions {
   onReadOnlyEditAttempt?: () => void;
 }
 
-export interface UseDocxEditorReturn {
+export type UseDocxEditorReturn = {
   /** The headless controller (imperative API + layout access + events). */
   editor: FolioEditor;
   /** Off-screen ProseMirror EditorView, or null before mount. */

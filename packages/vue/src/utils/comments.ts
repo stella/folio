@@ -80,7 +80,7 @@ export function truncateText(text: string, maxLength = 50): string {
  *
  * @public
  */
-export interface TrackedChangeEntry {
+export type TrackedChangeEntry = {
   /**
    * Revision shape. Inline shapes (`insertion`, `deletion`, `replacement`)
    * wrap text runs; the rest are structural revisions on node attrs.

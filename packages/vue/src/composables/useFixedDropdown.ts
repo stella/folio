@@ -8,14 +8,14 @@
  */
 import { ref, watch, onScopeDispose, type Ref, type CSSProperties } from "vue";
 
-export interface UseFixedDropdownOptions {
+export type UseFixedDropdownOptions = {
   isOpen: Ref<boolean>;
   onClose: () => void;
   /** 'left' aligns dropdown left edge to trigger, 'right' aligns right edge. */
   align?: "left" | "right";
 }
 
-export interface UseFixedDropdownReturn {
+export type UseFixedDropdownReturn = {
   containerRef: Ref<HTMLElement | null>;
   dropdownRef: Ref<HTMLElement | null>;
   dropdownStyle: Ref<CSSProperties>;

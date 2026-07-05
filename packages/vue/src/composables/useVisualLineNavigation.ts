@@ -14,7 +14,7 @@ import {
 } from "@stll/folio-core/prosemirror/utils/visualLineNavigation";
 import type { EditorView } from "prosemirror-view";
 
-export interface UseVisualLineNavigationReturn {
+export type UseVisualLineNavigationReturn = {
   state: ReturnType<typeof createVisualLineState>;
   getCaretClientX: (pmPos: number) => number | null;
   findLineElementAtPosition: (pmPos: number) => HTMLElement | null;

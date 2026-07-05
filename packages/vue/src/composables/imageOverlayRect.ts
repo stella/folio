@@ -3,7 +3,7 @@
  * component so the scrollbar-gutter handling can be unit-tested without a DOM.
  */
 
-export interface OverlayRectInputs {
+export type OverlayRectInputs = {
   /** `image.getBoundingClientRect()` (viewport coords). */
   imageRect: { left: number; top: number; width: number; height: number };
   /** `offsetParent.getBoundingClientRect()` (the scroll container, viewport coords). */
@@ -16,7 +16,7 @@ export interface OverlayRectInputs {
   zoom: number;
 }
 
-export interface OverlayRect {
+export type OverlayRect = {
   left: number;
   top: number;
   width: number;

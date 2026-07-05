@@ -9,7 +9,7 @@
 
 import { onMounted, onBeforeUnmount, type Ref } from "vue";
 
-export interface UseKeyboardShortcutsOptions {
+export type UseKeyboardShortcutsOptions = {
   showKeyboardShortcuts: Ref<boolean>;
   showFindReplace: Ref<boolean>;
   showHyperlink: Ref<boolean>;

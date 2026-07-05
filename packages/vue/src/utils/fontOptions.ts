@@ -4,7 +4,7 @@
  * @public
  */
 
-export interface FontOption {
+export type FontOption = {
   name: string;
   fontFamily: string;
   category?: "sans-serif" | "serif" | "monospace" | "other";

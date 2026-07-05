@@ -35,7 +35,7 @@ function getSelectedText(): string {
   return window.getSelection()?.toString() ?? "";
 }
 
-export interface UseSelectionHighlightOptions {
+export type UseSelectionHighlightOptions = {
   containerRef: Ref<HTMLElement | null>;
   enabled?: boolean;
   config?: SelectionHighlightConfig;
@@ -44,7 +44,7 @@ export interface UseSelectionHighlightOptions {
   onSelectionChange?: (hasSelection: boolean, text: string) => void;
 }
 
-export interface UseSelectionHighlightReturn {
+export type UseSelectionHighlightReturn = {
   hasSelection: ComputedRef<boolean>;
   selectedText: ComputedRef<string>;
   highlightRects: ComputedRef<HighlightRect[]>;

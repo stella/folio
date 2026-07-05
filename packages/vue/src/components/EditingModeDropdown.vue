@@ -80,7 +80,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', mode: EditorMode): void;
 }>();
 
-interface ModeOption {
+type ModeOption = {
   value: EditorMode;
   labelKey: TranslationKey;
   icon: string;

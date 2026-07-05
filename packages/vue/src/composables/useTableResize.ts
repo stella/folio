@@ -28,7 +28,7 @@ import {
   MIN_ROW_HEIGHT_TWIPS,
 } from "@stll/folio-core/prosemirror/tableResize";
 
-interface ColumnResizeState {
+type ColumnResizeState = {
   active: boolean;
   startX: number;
   handle: HTMLElement | null;
@@ -37,7 +37,7 @@ interface ColumnResizeState {
   origWidths: { left: number; right: number };
 }
 
-interface RowResizeState {
+type RowResizeState = {
   active: boolean;
   startY: number;
   handle: HTMLElement | null;
@@ -47,7 +47,7 @@ interface RowResizeState {
   origHeight: number;
 }
 
-interface RightEdgeResizeState {
+type RightEdgeResizeState = {
   active: boolean;
   startX: number;
   handle: HTMLElement | null;
@@ -56,7 +56,7 @@ interface RightEdgeResizeState {
   origWidth: number;
 }
 
-export interface UseTableResizeReturn {
+export type UseTableResizeReturn = {
   tryStartResize: (e: MouseEvent, view: EditorView) => boolean;
   install: () => () => void;
   isResizing: () => boolean;

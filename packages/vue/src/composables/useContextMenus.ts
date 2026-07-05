@@ -58,7 +58,7 @@ function readCssFloat(value: unknown): CssFloat {
   return value === "left" || value === "right" || value === "none" ? value : null;
 }
 
-export interface TextContextMenuState {
+export type TextContextMenuState = {
   isOpen: boolean;
   position: { x: number; y: number };
   hasSelection: boolean;
@@ -68,7 +68,7 @@ export interface TextContextMenuState {
   canSplitCell: boolean;
 }
 
-export interface UseContextMenusOptions {
+export type UseContextMenusOptions = {
   editorView: Ref<EditorView | null>;
   selectedImage: ShallowRef<ImageSelectionInfo | null>;
   zoom: Ref<number>;
@@ -79,7 +79,7 @@ export interface UseContextMenusOptions {
   resolvePos: (clientX: number, clientY: number) => number | null;
 }
 
-export interface UseContextMenusReturn {
+export type UseContextMenusReturn = {
   contextMenu: Ref<TextContextMenuState>;
   imageContextMenu: Ref<ImageContextMenuState | null>;
   imageContextMenuTextActions: ComputedRef<ImageContextMenuTextAction[]>;

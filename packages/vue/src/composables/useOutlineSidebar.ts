@@ -12,7 +12,7 @@ import { TextSelection } from "prosemirror-state";
 import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 
-export interface UseOutlineSidebarOptions {
+export type UseOutlineSidebarOptions = {
   editorView: Ref<EditorView | null>;
   showOutline: Ref<boolean>;
   showSidebar: Ref<boolean>;

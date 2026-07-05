@@ -17,7 +17,7 @@ import {
   removeTabStop,
 } from "@stll/folio-core/prosemirror/commands/paragraph";
 
-export interface UsePageSetupControlsOptions {
+export type UsePageSetupControlsOptions = {
   editorView: Ref<EditorView | null>;
   getDocument: () => Document | null;
   readOnly: Ref<boolean>;

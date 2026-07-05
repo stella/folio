@@ -28,20 +28,20 @@ import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
 
 type CommandFactory = (...args: readonly unknown[]) => Command;
 
-export interface UseImageActionsOptions {
+export type UseImageActionsOptions = {
   editorView: Ref<EditorView | null>;
   zoom: Ref<number>;
   stateTick: Ref<number>;
   getCommands: () => Record<string, CommandFactory>;
 }
 
-export interface ImageToolbarContext {
+export type ImageToolbarContext = {
   wrapType: string;
   displayMode: string;
   cssFloat: string | null;
 }
 
-export interface UseImageActionsReturn {
+export type UseImageActionsReturn = {
   selectedImage: ShallowRef<ImageSelectionInfo | null>;
   imageInteracting: Ref<boolean>;
   imageToolbarContext: ComputedRef<ImageToolbarContext | null>;

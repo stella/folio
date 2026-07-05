@@ -22,7 +22,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-export interface LineSpacingOption {
+export type LineSpacingOption = {
   label: string;
   value: number;
   twipsValue: number;

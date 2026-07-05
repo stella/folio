@@ -15,7 +15,7 @@ const MAX_ZOOM = 2.0;
 const ZOOM_STEP = 0.1;
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
-export interface UseZoomReturn {
+export type UseZoomReturn = {
   zoom: Ref<number>;
   zoomPercent: ComputedRef<number>;
   isMinZoom: ComputedRef<boolean>;

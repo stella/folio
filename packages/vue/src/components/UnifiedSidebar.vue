@@ -103,12 +103,12 @@ import { SIDEBAR_DOCUMENT_SHIFT, SIDEBAR_WIDTH } from "../utils/sidebarConstants
 // `composables/useCommentSidebarItems` `CommentSidebarItem` shape, so the
 // template dispatch and `resolveItemPositions` stay typed. Extends
 // `ResolvableSidebarItem` so the layout pass accepts it directly.
-interface CommentSidebarItem extends ResolvableSidebarItem {
+type CommentSidebarItem = {
   kind: "add-comment" | "comment" | "tracked-change";
   comment?: Comment;
   replies?: Comment[];
   change?: TrackedChangeEntry;
-}
+} & ResolvableSidebarItem
 
 const props = defineProps<{
   isOpen: boolean;

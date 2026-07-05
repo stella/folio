@@ -15,7 +15,7 @@ import type { Style } from "@stll/folio-core/types/document";
  * Inline preview style for a paragraph-style dropdown item.
  * @public
  */
-export interface StylePreviewProps {
+export type StylePreviewProps = {
   fontSize: string;
   lineHeight: string;
   fontWeight?: "bold";

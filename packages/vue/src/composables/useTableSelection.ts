@@ -29,7 +29,7 @@ import {
 } from "@stll/folio-core/managers/TableSelectionManager";
 import type { CellCoordinates } from "@stll/folio-core/managers/types";
 
-export interface UseTableSelectionReturn {
+export type UseTableSelectionReturn = {
   selectedCell: Ref<CellCoordinates | null>;
   handleCellClick: (tableIndex: number, rowIndex: number, columnIndex: number) => void;
   handleClickTarget: (target: EventTarget | null, container?: HTMLElement | null) => void;

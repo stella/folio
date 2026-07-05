@@ -25,7 +25,7 @@ import { openReportIssue } from "../utils/reportIssue";
  */
 type CommandFactory = (...args: readonly unknown[]) => Command;
 
-export interface UseMenuActionsOptions {
+export type UseMenuActionsOptions = {
   editorView: Ref<EditorView | null>;
   getCommands: () => Record<string, CommandFactory>;
   docxInputRef: Ref<HTMLInputElement | null>;

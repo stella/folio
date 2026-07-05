@@ -12,7 +12,7 @@ import { computed, type ComputedRef, type Ref } from "vue";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { TrackedChangeEntry } from "./useTrackedChanges";
 
-export interface CommentSidebarItem {
+export type CommentSidebarItem = {
   id: string;
   anchorPos: number;
   anchorKey?: string;
@@ -26,7 +26,7 @@ export interface CommentSidebarItem {
   change?: TrackedChangeEntry;
 }
 
-export interface UseCommentSidebarItemsOptions {
+export type UseCommentSidebarItemsOptions = {
   comments: Ref<Comment[]>;
   trackedChanges: Ref<TrackedChangeEntry[]>;
   showResolved?: Ref<boolean>;

@@ -76,7 +76,7 @@ type AIAction =
   | "custom";
 
 /** Minimal placeholder for the upstream `SelectionContext` payload. */
-interface SelectionContext {
+type SelectionContext = {
   text: string;
 }
 

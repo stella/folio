@@ -113,13 +113,13 @@ const activeCategory = ref('Common');
 const selectedSymbol = ref('');
 const recentSymbols = ref<string[]>([]);
 
-interface SymbolEntry {
+type SymbolEntry = {
   char: string;
   name: string;
   category: string;
 }
 
-interface SymbolCategory {
+type SymbolCategory = {
   name: string;
   nameKey: string;
   symbols: { char: string; name: string }[];

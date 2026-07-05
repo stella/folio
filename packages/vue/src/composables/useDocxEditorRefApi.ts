@@ -28,7 +28,7 @@ import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
 import type { DocxEditorRef } from "../components/DocxEditor/types";
 
-export interface UseDocxEditorRefApiOptions {
+export type UseDocxEditorRefApiOptions = {
   /** Headless controller handle (imperative API + events; Seam 6). */
   editor: FolioEditor;
   /** Off-screen ProseMirror EditorView, or null before mount. */

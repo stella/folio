@@ -57,7 +57,7 @@ const { t } = useTranslation();
 
 type TableJustification = 'left' | 'center' | 'right';
 
-export interface TableProperties {
+export type TableProperties = {
   width?: number | null;
   widthType?: string | null;
   justification?: TableJustification | null;

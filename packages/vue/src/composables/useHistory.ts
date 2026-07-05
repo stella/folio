@@ -13,7 +13,7 @@ import { computed, type ComputedRef, type Ref } from "vue";
 import type { EditorView } from "prosemirror-view";
 import { undo, redo, undoDepth, redoDepth } from "prosemirror-history";
 
-export interface UseHistoryReturn {
+export type UseHistoryReturn = {
   canUndo: ComputedRef<boolean>;
   canRedo: ComputedRef<boolean>;
   undo: () => boolean;

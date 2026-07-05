@@ -16,13 +16,13 @@ import {
 import type { Style } from "@stll/folio-core/types/document";
 import { paragraphStyles, type TranslationKey } from "../components/Toolbar/presets";
 
-export interface ResolvedStyle {
+export type ResolvedStyle = {
   id: string;
   label: string;
   previewStyle: StylePreviewProps;
 }
 
-export interface UseParagraphStyleOptionsReturn {
+export type UseParagraphStyleOptionsReturn = {
   resolvedParagraphStyles: ComputedRef<ResolvedStyle[]>;
   currentStyleLabel: ComputedRef<string>;
 }

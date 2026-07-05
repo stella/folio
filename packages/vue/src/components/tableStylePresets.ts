@@ -6,13 +6,13 @@
  */
 import type { CSSProperties } from 'vue';
 
-export interface TableStyleBorder {
+export type TableStyleBorder = {
   style: string;
   size?: number;
   color?: { rgb: string };
 }
 
-export interface TableStylePreset {
+export type TableStylePreset = {
   id: string;
   name: string;
   /** Table-level borders */
@@ -282,6 +282,22 @@ function borderToCSS(border?: TableStyleBorder | null): string {
 }
 
 /**
+ * Resolve one cell-edge border to CSS: a conditional border wins if present
+ * (including an explicit `null`), otherwise the inside border is used between
+ * cells and the outer border is used at the grid edge.
+ */
+function resolveEdgeBorder(
+  condBorder: TableStyleBorder | null | undefined,
+  useInside: boolean,
+  insideBorder: TableStyleBorder | undefined,
+  outerBorder: TableStyleBorder | undefined
+): string {
+  if (condBorder !== undefined) return borderToCSS(condBorder);
+  if (useInside) return borderToCSS(insideBorder ?? outerBorder);
+  return borderToCSS(outerBorder);
+}
+
+/**
  * Build the per-cell inline styles for a small preview grid of the given
  * preset. Shared by TableStyleGallery and InsertTableDialog so the preview
  * rendering stays in one place.
@@ -333,30 +349,10 @@ export function getPreviewCells(
         height: '10px',
         boxSizing: 'border-box',
         backgroundColor: cond?.backgroundColor ?? 'transparent',
-        borderTop:
-          condBorders?.top !== undefined
-            ? borderToCSS(condBorders.top)
-            : r > 0
-              ? borderToCSS(tb?.insideH ?? tb?.top)
-              : borderToCSS(tb?.top),
-        borderBottom:
-          condBorders?.bottom !== undefined
-            ? borderToCSS(condBorders.bottom)
-            : r < rows - 1
-              ? borderToCSS(tb?.insideH ?? tb?.bottom)
-              : borderToCSS(tb?.bottom),
-        borderLeft:
-          condBorders?.left !== undefined
-            ? borderToCSS(condBorders.left)
-            : c > 0
-              ? borderToCSS(tb?.insideV ?? tb?.left)
-              : borderToCSS(tb?.left),
-        borderRight:
-          condBorders?.right !== undefined
-            ? borderToCSS(condBorders.right)
-            : c < cols - 1
-              ? borderToCSS(tb?.insideV ?? tb?.right)
-              : borderToCSS(tb?.right),
+        borderTop: resolveEdgeBorder(condBorders?.top, r > 0, tb?.insideH, tb?.top),
+        borderBottom: resolveEdgeBorder(condBorders?.bottom, r < rows - 1, tb?.insideH, tb?.bottom),
+        borderLeft: resolveEdgeBorder(condBorders?.left, c > 0, tb?.insideV, tb?.left),
+        borderRight: resolveEdgeBorder(condBorders?.right, c < cols - 1, tb?.insideV, tb?.right),
       };
       cells.push(style);
     }

@@ -49,7 +49,7 @@ import type {
 import TextContextMenu from "../TextContextMenu.vue";
 
 /** Text/table context-menu state (locally declared until useContextMenus ports). */
-interface TextContextMenuState {
+type TextContextMenuState = {
   isOpen: boolean;
   position: { x: number; y: number };
   hasSelection: boolean;

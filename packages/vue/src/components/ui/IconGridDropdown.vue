@@ -45,7 +45,7 @@ import { ref } from 'vue';
 import MaterialSymbol from './MaterialSymbol.vue';
 import Popover from './Popover.vue';
 
-export interface IconGridOption<V extends string = string> {
+export type IconGridOption<V extends string = string> = {
   value: V;
   label: string;
   iconName: string;

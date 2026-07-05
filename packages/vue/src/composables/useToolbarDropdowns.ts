@@ -10,7 +10,7 @@
 
 import { ref, computed, onMounted, onBeforeUnmount, type Ref, type CSSProperties } from "vue";
 
-export interface UseToolbarDropdownsOptions {
+export type UseToolbarDropdownsOptions = {
   zoom: Ref<HTMLElement | null>;
   style: Ref<HTMLElement | null>;
   font: Ref<HTMLElement | null>;

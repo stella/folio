@@ -12,7 +12,7 @@
 import { ref, type Ref, type ComputedRef } from "vue";
 import { fontSizePresets } from "../components/Toolbar/presets";
 
-export interface UseToolbarFontSizeReturn {
+export type UseToolbarFontSizeReturn = {
   onSizeFocus: () => void;
   onSizeInput: () => void;
   commitFontSize: (e: Event) => void;

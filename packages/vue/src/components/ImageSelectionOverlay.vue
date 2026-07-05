@@ -685,7 +685,7 @@ function commitDragMove(clientX: number, clientY: number) {
       }
     }
     if (!contentEl) {
-      const lastPage = pages[pages.length - 1];
+      const lastPage = pages.item(pages.length - 1);
       contentEl = lastPage ? lastPage.querySelector<HTMLElement>('.layout-page-content') : null;
     }
     if (!contentEl) return;

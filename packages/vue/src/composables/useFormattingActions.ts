@@ -32,7 +32,7 @@ import {
   insertSectionBreakContinuous,
 } from "@stll/folio-core/prosemirror/commands/sectionBreak";
 
-export interface UseFormattingActionsOptions {
+export type UseFormattingActionsOptions = {
   editorView: Ref<EditorView | null>;
   /**
    * The view interactive toolbar formatting should target. While a header or

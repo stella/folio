@@ -12,7 +12,7 @@
 import { MIN_CARD_GAP } from "../../utils/sidebarConstants";
 
 /** Minimal shape the layout pass needs from a sidebar item. */
-export interface ResolvableSidebarItem {
+export type ResolvableSidebarItem = {
   id: string;
   anchorPos: number;
   anchorKey?: string;
@@ -21,7 +21,7 @@ export interface ResolvableSidebarItem {
   estimatedHeight?: number;
 }
 
-export interface ResolvedPosition<T extends ResolvableSidebarItem = ResolvableSidebarItem> {
+export type ResolvedPosition<T extends ResolvableSidebarItem = ResolvableSidebarItem> = {
   item: T;
   y: number;
 }

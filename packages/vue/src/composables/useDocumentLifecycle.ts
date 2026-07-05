@@ -9,7 +9,7 @@ import { watch, onMounted, nextTick, type Ref } from "vue";
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
-export interface UseDocumentLifecycleOptions {
+export type UseDocumentLifecycleOptions = {
   documentBuffer: () => DocxInput | null;
   document: () => Document | null;
   loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;

@@ -113,7 +113,7 @@ function syncDecorations(
   overlay.replaceChildren(fragment);
 }
 
-interface CollectedDecoration {
+type CollectedDecoration = {
   decoration: Decoration;
   from: number;
   to: number;
@@ -176,7 +176,7 @@ function getDecorationAttrs(decoration: Decoration): Record<string, string> | nu
 // PORT-BLOCKED stub — see the file header. A no-op RenderedDomContext so the
 // component type-checks and mounts; it paints nothing until core's plugin-api
 // (createRenderedDomContext) is ported.
-interface RenderedDomContextStub {
+type RenderedDomContextStub = {
   getContainerOffset(): { x: number; y: number };
   getCoordinatesForPosition(pos: number): { x: number; y: number; height: number } | null;
   getRectsForRange(

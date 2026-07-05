@@ -49,7 +49,7 @@ defineEmits<{
   (e: 'marker-click', commentId: number): void;
 }>();
 
-interface Marker {
+type Marker = {
   comment: Comment;
   isResolved: boolean;
   y: number;

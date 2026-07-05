@@ -12,13 +12,13 @@ import { onScopeDispose, type Ref } from "vue";
 import { findVerticalScrollParent } from "@stll/folio-core/utils/findVerticalScrollParent";
 import { AUTO_SCROLL_EDGE_ZONE as EDGE_ZONE, computeAutoScrollDelta } from "../utils/autoScroll";
 
-export interface DragAutoScrollOptions {
+export type DragAutoScrollOptions = {
   pagesContainer: Ref<HTMLElement | null>;
   /** Called during auto-scroll to extend the selection at the current mouse position. */
   onScrollExtendSelection: (clientX: number, clientY: number) => void;
 }
 
-export interface UseDragAutoScrollReturn {
+export type UseDragAutoScrollReturn = {
   updateMousePosition: (clientX: number, clientY: number) => void;
   stopAutoScroll: () => void;
 }

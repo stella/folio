@@ -22,12 +22,12 @@ export type { HyperlinkPopupData };
 
 type CommandFactory = (...args: readonly unknown[]) => Command;
 
-export interface UseHyperlinkManagementOptions {
+export type UseHyperlinkManagementOptions = {
   editorView: Ref<EditorView | null>;
   getCommands: () => Record<string, CommandFactory>;
 }
 
-export interface HyperlinkSubmitData {
+export type HyperlinkSubmitData = {
   url?: string;
   bookmark?: string;
   displayText: string;

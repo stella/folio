@@ -43,27 +43,27 @@ type TableResizeApi = {
   isResizing: Ref<boolean>;
 };
 
-export interface TableInsertButton {
+export type TableInsertButton = {
   type: "row" | "column";
   x: number;
   y: number;
   cellPmPos: number;
 }
 
-export interface HfEditState {
+export type HfEditState = {
   position: "header" | "footer";
   rId: string | null;
   headerFooter: HeaderFooter | null;
   targetRect: { top: number; left: number; width: number; height: number } | null;
 }
 
-export interface ScrollPageInfo {
+export type ScrollPageInfo = {
   currentPage: number;
   totalPages: number;
   visible: boolean;
 }
 
-export interface UsePagesPointerOptions {
+export type UsePagesPointerOptions = {
   editorView: Ref<EditorView | null>;
   pagesRef: Ref<HTMLElement | null>;
   pagesViewportRef: Ref<HTMLElement | null>;
@@ -98,7 +98,7 @@ export interface UsePagesPointerOptions {
 
 const MULTI_CLICK_DELAY = 500;
 
-export interface UsePagesPointerReturn {
+export type UsePagesPointerReturn = {
   tableInsertButton: Ref<TableInsertButton | null>;
   hfEdit: ShallowRef<HfEditState | null>;
   scrollPageInfo: Ref<ScrollPageInfo>;

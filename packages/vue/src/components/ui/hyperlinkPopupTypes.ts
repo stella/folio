@@ -6,7 +6,7 @@
  * wildcard shim, which doesn't carry named type exports.
  */
 
-export interface HyperlinkPopupData {
+export type HyperlinkPopupData = {
   href: string;
   displayText: string;
   tooltip?: string;

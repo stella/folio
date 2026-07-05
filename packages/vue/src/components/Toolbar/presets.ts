@@ -36,7 +36,7 @@ export const defaultFonts: FontOption[] = [
 
 export const fontSizePresets = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
 
-export interface ParagraphStylePreset {
+export type ParagraphStylePreset = {
   id: string;
   /** Fallback label used if the i18n key resolves to nothing. */
   label: string;
@@ -55,7 +55,7 @@ export const paragraphStyles: ParagraphStylePreset[] = [
   { id: "Heading3", label: "Heading 3", nameKey: "styles.heading3" },
 ];
 
-export interface LineSpacingPreset {
+export type LineSpacingPreset = {
   /** Fallback label; localized presets carry a `labelKey` instead. */
   label: string;
   labelKey?: TranslationKey;

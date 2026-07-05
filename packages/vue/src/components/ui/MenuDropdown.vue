@@ -59,7 +59,7 @@ import { ref } from 'vue';
 import MaterialSymbol from './MaterialSymbol.vue';
 import Popover from './Popover.vue';
 
-export interface MenuItem {
+export type MenuItem = {
   icon?: string;
   label: string;
   shortcut?: string;
@@ -70,7 +70,7 @@ export interface MenuItem {
   /** When true, the item shows a right-chevron and opens the `#submenu` slot on hover. */
   submenu?: boolean;
 }
-export interface MenuSeparator {
+export type MenuSeparator = {
   type: 'separator';
 }
 export type MenuEntry = MenuItem | MenuSeparator;

@@ -10,7 +10,7 @@
  */
 
 /** Highlight rectangle representing a selected region, in pixels. */
-export interface HighlightRect {
+export type HighlightRect = {
   left: number;
   top: number;
   width: number;
@@ -18,7 +18,7 @@ export interface HighlightRect {
 }
 
 /** Selection highlight configuration. */
-export interface SelectionHighlightConfig {
+export type SelectionHighlightConfig = {
   /** Background color for selection. */
   backgroundColor: string;
   /** Optional border color for selection. */

@@ -272,6 +272,26 @@ function isSelectedCell(value: ColorValue | string | undefined, cellHex: string)
   return resolved === cellHex.toUpperCase();
 }
 
+function defaultPickedColor(mode: ColorPickerMode): ColorValue | string {
+  if (mode === 'highlight') return 'FFFF00';
+  if (mode === 'border') return { rgb: '000000' };
+  return { rgb: 'FF0000' };
+}
+
+function defaultTitleForMode(mode: ColorPickerMode): string {
+  if (mode === 'text') return t('fontColor');
+  // TODO(i18n): formattingBar.highlightColor not in catalog
+  if (mode === 'highlight') return t('formattingBar.highlightColor');
+  // TODO(i18n): table.borderColor not in catalog
+  return t('table.borderColor');
+}
+
+function defaultIconForMode(mode: ColorPickerMode): string {
+  if (mode === 'text') return 'format_color_text';
+  if (mode === 'highlight') return 'ink_highlighter';
+  return 'border_color';
+}
+
 // ── Reactive state ──────────────────────────────────────────────────────────
 
 const isOpen = ref(false);
@@ -282,12 +302,7 @@ const panelRef = ref<HTMLElement | null>(null);
 // Word-style "last picked" color used by the apply half — red for text,
 // yellow for highlight, black for border until the user picks something.
 const pickedColor = ref<ColorValue | string>(
-  props.defaultColor ??
-    (props.mode === 'highlight'
-      ? 'FFFF00'
-      : props.mode === 'border'
-        ? { rgb: '000000' }
-        : { rgb: 'FF0000' })
+  props.defaultColor ?? defaultPickedColor(props.mode)
 );
 
 const matrix = computed(() => generateThemeTintShadeMatrix(props.theme?.colorScheme ?? null));
@@ -298,25 +313,9 @@ const flatMatrix = computed(() =>
 const resolvedColor = computed(() => resolveCurrentColor(props.value));
 const swatchColor = computed(() => resolveCurrentColor(pickedColor.value));
 
-const defaultTitle = computed(() =>
-  props.mode === 'text'
-    ? t('fontColor')
-    : props.mode === 'highlight'
-      ? // TODO(i18n): formattingBar.highlightColor not in catalog
-        t('formattingBar.highlightColor')
-      : // TODO(i18n): table.borderColor not in catalog
-        t('table.borderColor')
-);
+const defaultTitle = computed(() => defaultTitleForMode(props.mode));
 
-const resolvedIcon = computed(
-  () =>
-    props.icon ??
-    (props.mode === 'text'
-      ? 'format_color_text'
-      : props.mode === 'highlight'
-        ? 'ink_highlighter'
-        : 'border_color')
-);
+const resolvedIcon = computed(() => props.icon ?? defaultIconForMode(props.mode));
 
 // Keep the custom-hex input in sync with the current value.
 watch(
