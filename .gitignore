@@ -11,3 +11,7 @@ blob-report/
 
 # Rust cross-language benchmark build artifacts
 benchmarks/cross-language/rust/target/
+
+# Word rendering parity engine artifacts
+parity/report/
+tests/visual/fixtures/parity-tmp-*
