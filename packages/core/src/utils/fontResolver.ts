@@ -82,10 +82,17 @@ type FontLineHeight =
  * exceptions) — Word does NOT drop the font's line gap. Earlier revisions of
  * this table hand-transcribed ratios from the OS/2 table and omitted the line
  * gap for most fonts, which undershot Word's rendered line height for several
- * of them (confirmed for cambria, trebuchet ms, palatino linotype, book
- * antiqua, century gothic, and consolas; arial and times new roman were fixed
- * in a prior revision). Future readers: to correct or add a font, edit its
- * `hhea*`/`unitsPerEm` metric fields, never the resulting ratio.
+ * of them (confirmed against real Word for cambria, trebuchet ms, palatino
+ * linotype, book antiqua, century gothic, consolas, and lucida console; arial
+ * and times new roman were fixed in a prior revision). Future readers: to
+ * correct or add a font, edit its `hhea*`/`unitsPerEm` metric fields, never the
+ * resulting ratio.
+ *
+ * CJK fonts are intentionally left on `DEFAULT_SINGLE_LINE_RATIO`: Word's
+ * East-Asian line height is not the run font's hhea ratio (it derives from the
+ * paragraph's `w:eastAsia` slot and East-Asian grid layout, not the ascii
+ * font), so a single per-font constant cannot capture it correctly. Getting CJK
+ * right needs dedicated East-Asian layout work, not a transcribed number here.
  */
 const singleLineRatioOf = (lineHeight: FontLineHeight): number =>
   lineHeight.source === "hhea"
@@ -304,10 +311,12 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
     category: "monospace",
     fallbackStack: ["Lucida Console", "Cousine", "Courier New", "monospace"],
     singleLineRatio: singleLineRatioOf({
-      source: "legacy",
-      ratio: 1.1387, // 2332/2048
-      note: "Unverified hand-transcribed ratio; not yet measured against real Word output.",
-    }),
+      source: "hhea",
+      hheaAscent: 1616,
+      hheaDescent: -432,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.0000 (was hand-transcribed 1.1387 — wrong; Word renders single-spaced Lucida Console at 1.0×)
   },
   consolas: {
     googleFont: "Inconsolata",
