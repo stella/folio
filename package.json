@@ -19,7 +19,7 @@
   "type": "module",
   "scripts": {
     "clean": "git clean -xdf packages/*/dist .cache .turbo node_modules",
-    "build": "bun --filter '@stll/folio-core' build && bun --filter '@stll/folio-react' build",
+    "build": "bun --filter '@stll/folio-core' build && bun --filter '@stll/folio-react' build && bun --filter '@stll/folio-vue' build",
     "build:core": "bun --filter '@stll/folio-core' build",
     "build:react": "bun --filter '@stll/folio-react' build",
     "typecheck": "bun --filter '*' typecheck",
