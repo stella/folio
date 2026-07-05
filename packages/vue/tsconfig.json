@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "types": ["vite/client"]
+  },
+  "include": ["src", "scripts", "types"],
+  "exclude": ["node_modules", "dist"]
+}

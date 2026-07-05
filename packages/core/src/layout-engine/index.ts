@@ -1293,3 +1293,4 @@ export {
   getEffectiveColumns,
 } from "./section-breaks";
 export type { SectionState, BreakDecision } from "./section-breaks";
+export { assertExhaustiveFlowBlock, findPageIndexContainingPmPos } from "./pmPageIndex";

@@ -3363,6 +3363,40 @@ function populatePageShell(
 }
 
 /**
+ * Force every virtualized page shell in `container` to be fully rendered.
+ *
+ * Virtualization keeps off-screen pages as empty shells, so cloning the pages
+ * container for print (or any DOM snapshot) yields blank pages past the visible
+ * band. Callers that need every page populated — print, export-to-HTML, pdf
+ * snapshot — should call this first.
+ *
+ * No-op for small documents (rendered eagerly) or containers that were never
+ * managed by `renderPages`. Returns the number of shells populated by this
+ * call (useful for tests).
+ *
+ * Ported from eigenpal/docx-editor `layout-painter/renderPage/virtualization.ts`.
+ */
+export function renderAllPagesNow(container: HTMLElement): number {
+  const pc = container as PageContainer;
+  const state = pc.__pageRenderState;
+  if (!state) {
+    return 0;
+  }
+
+  const { pageStates, totalPages, currentOptions, pageDataMap } = state;
+  let populated = 0;
+  for (const { element } of pageStates) {
+    const data = pageDataMap.get(element);
+    if (!data || data.rendered) {
+      continue;
+    }
+    populatePageShell(element, pageDataMap, totalPages, currentOptions);
+    populated++;
+  }
+  return populated;
+}
+
+/**
  * Surgically replace only the content area of a rendered page shell.
  * Preserves header/footer elements to avoid blinking.
  */

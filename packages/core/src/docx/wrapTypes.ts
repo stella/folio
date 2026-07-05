@@ -7,6 +7,21 @@
  * which wrap around it.
  */
 
+/**
+ * OOXML text-wrap variants for a drawing anchor (`wp:inline` vs the
+ * `wp:wrap*` elements). `inline` keeps the object in the text run; every other
+ * variant takes it out of inline flow. Mirrors the eigenpal docx-editor union
+ * so adapters share one wrap vocabulary.
+ */
+export type WrapType =
+  | "inline"
+  | "square"
+  | "tight"
+  | "through"
+  | "topAndBottom"
+  | "behind"
+  | "inFront";
+
 const FLOATING_WRAP_TYPES = new Set([
   "square",
   "tight",

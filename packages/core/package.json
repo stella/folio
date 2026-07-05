@@ -36,7 +36,9 @@
     "./prosemirror": "./src/prosemirror/index.ts",
     "./prosemirror/attrs": "./src/prosemirror/attrs/index.ts",
     "./prosemirror/conversion": "./src/prosemirror/conversion/index.ts",
+    "./prosemirror/extensions": "./src/prosemirror/extensions/index.ts",
     "./prosemirror/schema": "./src/prosemirror/schema/index.ts",
+    "./docx": "./src/docx/index.ts",
     "./*": "./src/*.ts"
   },
   "publishConfig": {

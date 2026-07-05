@@ -1,4 +1,4 @@
-import type FolioMessages from "./messages/messages.gen";
+import type FolioMessages from "@stll/folio-core/i18n/messages/messages.gen";
 
 // Type folio's own UI translations against the generated English catalog. With
 // this augmentation `useTranslations("folio")` and every `t("key")` call in
