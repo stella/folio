@@ -563,6 +563,7 @@ export class StyleResolver {
     getTableStyles(): import__stll_docx_core_model.Style[];
     hasStyle(styleId: string): boolean;
     resolveParagraphStyle(styleId: string | undefined | null): ResolvedParagraphStyle;
+    resolveParagraphStyleInTable(styleId: string | undefined | null, tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined): ResolvedParagraphStyle;
     resolveRunStyle(styleId: string | undefined | null): import__stll_docx_core_model.TextFormatting | undefined;
 }
 
