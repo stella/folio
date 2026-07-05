@@ -31,6 +31,9 @@ import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 // `EditorMode` is owned by core's `EditorModeManager`.
 import type { EditorMode } from "@stll/folio-core/managers/EditorModeManager";
+// Re-exported so chrome SFCs (e.g. EditingModeDropdown.vue) can import the mode
+// union from the adapter's own type surface rather than reaching into core.
+export type { EditorMode };
 import type { DocumentLoadState } from "@stll/folio-core/managers/DocumentLoaderManager";
 
 import type { FolioUIComponents } from "../../ui/folio-ui";
