@@ -24,7 +24,7 @@ import { Subscribable } from "./Subscribable";
 export type AutoSaveStatus = "idle" | "saving" | "saved" | "error";
 
 /** Configuration for {@link AutoSaveManager}. */
-export interface AutoSaveManagerOptions {
+export type AutoSaveManagerOptions = {
   /** Storage key for localStorage (default: 'docx-editor-autosave'). */
   storageKey?: string;
   /** Save interval in milliseconds (default: 30000 - 30 seconds). */
@@ -44,7 +44,7 @@ export interface AutoSaveManagerOptions {
 }
 
 /** Saved document data structure. */
-export interface SavedDocumentData {
+export type SavedDocumentData = {
   /** The document. */
   document: Document;
   /** When the document was saved (ISO string). */
@@ -56,7 +56,7 @@ export interface SavedDocumentData {
 }
 
 /** AutoSaveManager snapshot for UI consumption. */
-export interface AutoSaveSnapshot {
+export type AutoSaveSnapshot = {
   status: AutoSaveStatus;
   lastSaveTime: Date | null;
   hasRecoveryData: boolean;

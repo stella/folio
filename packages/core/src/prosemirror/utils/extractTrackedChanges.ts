@@ -21,7 +21,7 @@ import type { Mark } from "prosemirror-model";
  *
  * @public
  */
-export interface TrackedChangeEntry {
+export type TrackedChangeEntry = {
   /**
    * Revision shape. Inline shapes (`insertion`, `deletion`, `replacement`)
    * wrap text runs; the rest are structural revisions on node attrs.
@@ -112,7 +112,7 @@ export interface TrackedChangeEntry {
  *
  * @public
  */
-export interface TrackedChangesResult {
+export type TrackedChangesResult = {
   /** Tracked-change entries, sorted by document position, with adjacent same-revision entries merged. */
   entries: TrackedChangeEntry[];
   /**
@@ -352,7 +352,9 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
           }
         | null
         | undefined;
-      const sharedAttr = firstIns ? "trIns" : firstDel ? "trDel" : null;
+      let sharedAttr: "trIns" | "trDel" | null = null;
+      if (firstIns) sharedAttr = "trIns";
+      else if (firstDel) sharedAttr = "trDel";
       if (sharedAttr) {
         const sharedRev = (firstIns ?? firstDel) as {
           revisionId: number;
@@ -418,11 +420,10 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
     // an inserted picture shows up in the sidebar like inserted text. Atoms
     // have no `.text`, so label them by node type (alt text when present).
     if (!node.isInline) return;
-    const inlineText = node.isText
-      ? node.text || ""
-      : node.type.name === "image"
-        ? (node.attrs["alt"] as string) || "image"
-        : node.type.name;
+    let inlineText: string;
+    if (node.isText) inlineText = node.text || "";
+    else if (node.type.name === "image") inlineText = (node.attrs["alt"] as string) || "image";
+    else inlineText = node.type.name;
     let tcMark: Mark | null = null;
     for (const mark of node.marks) {
       if (mark.type === insertionType || mark.type === deletionType) {

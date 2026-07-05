@@ -13,7 +13,7 @@ import type { Node as ProseMirrorNode } from "prosemirror-model";
 import { extractTrackedChanges } from "./utils/extractTrackedChanges";
 
 /** A resolved PM position range — half-open `[from, to)` in PM coordinates. */
-export interface PmRange {
+export type PmRange = {
   from: number;
   to: number;
 }

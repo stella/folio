@@ -18,7 +18,7 @@ import type { Comment } from "../types/content";
 /** Sentinel ID for a comment that hasn't been persisted yet (anchored to selection). */
 export const PENDING_COMMENT_ID = -1;
 
-export interface CommentIdAllocator {
+export type CommentIdAllocator = {
   /** Allocate the next ID and advance the counter. */
   next(): number;
   /**

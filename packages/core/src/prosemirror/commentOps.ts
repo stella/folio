@@ -34,7 +34,7 @@ export function createComment(
   };
 }
 
-export interface AddCommentOptions {
+export type AddCommentOptions = {
   paraId: string;
   text: string;
   author: string;
@@ -78,7 +78,7 @@ export function addCommentToRange(
   return comment;
 }
 
-export interface ProposeChangeOptions {
+export type ProposeChangeOptions = {
   paraId: string;
   search: string;
   replaceWith: string;

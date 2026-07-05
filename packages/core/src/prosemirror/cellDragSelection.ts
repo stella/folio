@@ -59,7 +59,7 @@ export function applyCellSelection(
  * Per-gesture state machine for cell-drag selection. Create one per pointer
  * handler; drive it from mousedown/mousemove/mouseup.
  */
-export interface CellDragTracker {
+export type CellDragTracker = {
   /** mousedown: record the cell under the press (or null when outside a table). */
   begin(cellPos: number | null): void;
   /**

@@ -18,7 +18,7 @@ export const MIN_CELL_WIDTH_TWIPS = 300;
 /** Minimum row height (~0.14"). */
 export const MIN_ROW_HEIGHT_TWIPS = 200;
 
-interface FoundTable {
+type FoundTable = {
   node: PMNode;
   /** PM doc position of the table node (its `before(d)`) */
   tablePos: number;

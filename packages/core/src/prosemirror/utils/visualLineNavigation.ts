@@ -18,7 +18,7 @@ import { findVerticalScrollParent } from "../../utils/findVerticalScrollParent";
 const CONTENT_LINE_SELECTOR = ".layout-page-content .layout-line";
 
 /** @internal */
-export interface VisualLineState {
+export type VisualLineState = {
   stickyX: number | null;
   lastVisualLineIndex: number;
 }

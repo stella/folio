@@ -19,7 +19,7 @@ import type { Run, TextFormatting } from "../types/document";
 // ============================================================================
 
 /** Selection data for clipboard operations. */
-export interface ClipboardSelection {
+export type ClipboardSelection = {
   text: string;
   runs: Run[];
   startParagraphIndex: number;
