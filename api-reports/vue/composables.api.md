@@ -24,6 +24,7 @@ import { ParsedClipboardContent } from '@stll/folio-core/utils/clipboard';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Ref } from 'vue';
 import { runsToClipboardContent } from '@stll/folio-core/utils/clipboard';
+import { TrackedChangeEntry } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
 import { TrackedChangesResult } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
 
 export { ClipboardSelection }
@@ -42,19 +43,7 @@ export { getSelectionRuns }
 
 export { runsToClipboardContent }
 
-// @public
-export type TrackedChangeEntry = {
-    type: "insertion" | "deletion" | "replacement" | "paragraphMarkInsertion" | "paragraphMarkDeletion" | "paragraphPropertiesChanged" | "rowInserted" | "rowDeleted" | "rowPropertiesChanged" | "cellInserted" | "cellDeleted" | "cellMerged" | "cellPropertiesChanged" | "tableInserted" | "tableDeleted" | "tablePropertiesChanged";
-    text: string;
-    deletedText?: string;
-    author: string;
-    date?: string;
-    from: number;
-    to: number;
-    revisionId: number;
-    insertionRevisionId?: number;
-    coalescedRevisionIds?: number[];
-};
+export { TrackedChangeEntry }
 
 export { TrackedChangesResult }
 
