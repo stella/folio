@@ -74,8 +74,12 @@
   "ref": {
     "comment": "DocxEditorRef parity. Both adapters declare an identical DocxEditorRef type surface (Vue's assembled object `satisfies DocxEditorRef`). `paired` members have a real implementation in useDocxEditorRefApi.ts; `deferredInVue` members are stubbed to a constant (null / false / [] / no-op) with a PORT-BLOCKED note in that file, pending the backing composable/component.",
     "paired": [
+      "acceptAIEditOperation",
+      "applyAIEditOperations",
+      "createAIEditSnapshot",
       "ensureEditorView",
       "focus",
+      "getContentControls",
       "getCurrentPage",
       "getDocument",
       "getEditor",
@@ -86,26 +90,22 @@
       "openPrintPreview",
       "print",
       "redo",
+      "rejectAIEditOperation",
+      "removeContentControl",
       "save",
+      "scrollToAIEditOperation",
+      "scrollToBlock",
+      "scrollToContentControl",
       "scrollToPage",
       "scrollToParaId",
+      "setContentControlContent",
+      "setContentControlValue",
       "setZoom",
       "undo"
     ],
     "deferredInVue": {
-      "acceptAIEditOperation": "AI-edit surface is not ported; stubbed to return false.",
-      "applyAIEditOperations": "AI-edit surface is not ported; stubbed to an empty apply result.",
-      "createAIEditSnapshot": "AI-edit surface is not ported; stubbed to return null.",
-      "getContentControls": "Content-control ref methods need transaction wrappers over folio-core/content-controls; stubbed to [].",
       "getEditorRef": "Requires the Vue PagedEditor component, not ported; stubbed to return null.",
-      "hasPendingChanges": "Requires PM-serialized-vs-live tracking the Vue pipeline does not surface; stubbed to false.",
-      "rejectAIEditOperation": "AI-edit surface is not ported; stubbed to return false.",
-      "removeContentControl": "Content-control mutation is not ported; stubbed to return false.",
-      "scrollToAIEditOperation": "AI-edit surface is not ported; stubbed to return false.",
-      "scrollToBlock": "Block-scroll navigation is not ported; stubbed to return false.",
-      "scrollToContentControl": "Content-control navigation is not ported; stubbed to return false.",
-      "setContentControlContent": "Content-control mutation is not ported; stubbed to return false.",
-      "setContentControlValue": "Content-control mutation is not ported; stubbed to return false."
+      "hasPendingChanges": "Requires PM-serialized-vs-live tracking the Vue pipeline does not surface; stubbed to false."
     }
   }
 }
