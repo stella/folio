@@ -10,22 +10,15 @@
   passes the current `value` and reacts to `@change`.
 -->
 <template>
-  <select
+  <Select
     class="docx-zoom-control"
     :class="[{ 'docx-zoom-control--compact': compact }, className]"
     :value="selectValue"
+    :items="selectItems"
     :disabled="disabled"
     aria-label="Zoom level"
-    @change="onChange"
-  >
-    <!-- A near-preset float has no matching <option>, so surface it as a
-         transient option (e.g. "97%") that stays selected until the next
-         preset is picked. -->
-    <option v-if="!matchingLevel" :value="selectValue">{{ displayLabel }}</option>
-    <option v-for="level in resolvedLevels" :key="level.value" :value="String(level.value)">
-      {{ level.label }}
-    </option>
-  </select>
+    @change="onSelectChange"
+  />
 </template>
 
 <script lang="ts">
@@ -43,6 +36,12 @@ const DEFAULT_ZOOM_LEVELS: ZoomLevel[] = [
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useFolioUI } from "../../ui/folio-ui";
+import type { FolioSelectItem } from "../../ui/folio-ui";
+
+// Resolve Select from the FolioUI injection provider so a host override
+// takes effect here too (previously a native `<select>`).
+const { Select } = useFolioUI();
 
 const props = withDefaults(defineProps<ZoomControlProps>(), {
   value: 1,
@@ -70,9 +69,21 @@ const selectValue = computed(() =>
   matchingLevel.value ? String(matchingLevel.value.value) : String(props.value),
 );
 
-function onChange(e: Event) {
-  if (!(e.target instanceof HTMLSelectElement)) return;
-  const zoom = Number.parseFloat(e.target.value);
+// A near-preset float has no matching preset, so surface it as a transient
+// item (e.g. "97%") that stays selected until the next preset is picked.
+const selectItems = computed<FolioSelectItem[]>(() => {
+  const items = resolvedLevels.value.map((level) => ({
+    value: String(level.value),
+    label: level.label,
+  }));
+  if (!matchingLevel.value) {
+    items.unshift({ value: selectValue.value, label: displayLabel.value });
+  }
+  return items;
+});
+
+function onSelectChange(value: string) {
+  const zoom = Number.parseFloat(value);
   if (!Number.isNaN(zoom)) emit("change", zoom);
 }
 </script>

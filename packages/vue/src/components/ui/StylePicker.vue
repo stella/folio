@@ -5,27 +5,26 @@
   <select> rather than radix-vue.
 -->
 <template>
-  <select
+  <Select
     class="docx-style-picker"
     :value="value ?? 'Normal'"
+    :items="selectItems"
     :disabled="disabled"
     :class="className"
     aria-label="Paragraph style"
-    @change="onChange"
-  >
-    <option
-      v-for="s in resolvedStyles"
-      :key="s.styleId"
-      :value="s.styleId"
-    >
-      {{ s.name }}
-    </option>
-  </select>
+    @change="onSelectChange"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { StyleOption } from './StylePicker.types';
+import { useFolioUI } from '../../ui/folio-ui';
+import type { FolioSelectItem } from '../../ui/folio-ui';
+
+// Resolve Select from the FolioUI injection provider so a host override
+// takes effect here too (previously a native `<select>`).
+const { Select } = useFolioUI();
 
 const props = withDefaults(
   defineProps<{
@@ -52,9 +51,12 @@ const DEFAULT_STYLES: StyleOption[] = [
 
 const resolvedStyles = computed(() => props.styles ?? DEFAULT_STYLES);
 
-function onChange(e: Event) {
-  if (!(e.target instanceof HTMLSelectElement)) return;
-  emit('change', e.target.value);
+const selectItems = computed<FolioSelectItem[]>(() =>
+  resolvedStyles.value.map((s) => ({ value: s.styleId, label: s.name }))
+);
+
+function onSelectChange(value: string) {
+  emit('change', value);
 }
 </script>
 
