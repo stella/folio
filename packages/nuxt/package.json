@@ -48,7 +48,7 @@
   },
   "scripts": {
     "build": "nuxt-module-build build",
-    "prepack": "nuxt-module-build build",
+    "prepack": "bun run build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
