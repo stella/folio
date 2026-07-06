@@ -25,15 +25,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-
-export type StyleOption = {
-  styleId: string;
-  name: string;
-  fontSize?: number;
-  bold?: boolean;
-  italic?: boolean;
-  color?: string;
-}
+import type { StyleOption } from './StylePicker.types';
 
 const props = withDefaults(
   defineProps<{

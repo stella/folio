@@ -43,8 +43,7 @@
 import { ref, computed } from 'vue';
 import MaterialSymbol from './MaterialSymbol.vue';
 import Popover from './Popover.vue';
-
-export type ParagraphAlignment = 'left' | 'center' | 'right' | 'both';
+import type { ParagraphAlignment } from './AlignmentButtons.types';
 
 const props = withDefaults(
   defineProps<{

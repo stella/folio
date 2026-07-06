@@ -81,7 +81,6 @@ import { FolioBlockId } from '@stll/folio-core/types/block-id';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { default as FormattingBar } from './components/FormattingBar.vue';
-import { FormattingBarProps } from './components/FormattingBar.vue';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getAnonymizationMatches } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { getAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -141,8 +140,6 @@ import { VNodeChild } from 'vue';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
 import { XmlFragment } from 'yjs';
 import { default as ZoomControl } from './components/ui/ZoomControl.vue';
-import { ZoomControlProps } from './components/ui/ZoomControl.vue';
-import { ZoomLevel } from './components/ui/ZoomControl.vue';
 
 export { AcceptAutocompleteResult }
 
@@ -461,7 +458,20 @@ export type FontOption = {
 
 export { FormattingBar }
 
-export { FormattingBarProps }
+// @public (undocumented)
+export type FormattingBarProps = {
+    currentFormatting?: SelectionFormatting;
+    disabled?: boolean;
+    canUndo?: boolean;
+    canRedo?: boolean;
+    className?: string;
+    showStylePicker?: boolean;
+    showTextColorPicker?: boolean;
+    showAlignmentButtons?: boolean;
+    showListButtons?: boolean;
+    documentStyles?: StyleOption[];
+    theme?: Theme | null;
+};
 
 export { fromMarkdown }
 
@@ -579,8 +589,19 @@ export { WordDiffSegment }
 
 export { ZoomControl }
 
-export { ZoomControlProps }
+// @public (undocumented)
+export type ZoomControlProps = {
+    value?: number;
+    levels?: ZoomLevel[];
+    disabled?: boolean;
+    className?: string;
+    compact?: boolean;
+};
 
-export { ZoomLevel }
+// @public
+export type ZoomLevel = {
+    value: number;
+    label: string;
+};
 
 ```

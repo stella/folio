@@ -29,22 +29,7 @@
 </template>
 
 <script lang="ts">
-/** A single zoom preset: `value` is a scale factor (1 = 100%). */
-export type ZoomLevel = {
-  value: number;
-  label: string;
-};
-
-export type ZoomControlProps = {
-  /** Current zoom (1 = 100%). */
-  value?: number;
-  /** Override the preset levels offered in the dropdown. */
-  levels?: ZoomLevel[];
-  disabled?: boolean;
-  className?: string;
-  /** Render the trigger at the smaller toolbar-chrome size. */
-  compact?: boolean;
-};
+import type { ZoomLevel, ZoomControlProps } from "./ZoomControl.types";
 
 const DEFAULT_ZOOM_LEVELS: ZoomLevel[] = [
   { value: 0.5, label: "50%" },
