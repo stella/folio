@@ -51,7 +51,7 @@
         :disabled="item.disabled"
         @mousedown.prevent="onAction(item.action)"
       >
-        <span v-if="item.icon" class="ctx-menu__icon"><component :is="renderNode(item.icon)" /></span>
+        <span v-if="item.icon" class="ctx-menu__icon"><VNodeRenderer :node="item.icon" /></span>
         <span class="ctx-menu__label">{{ item.label }}</span>
         <span v-if="item.shortcut" class="ctx-menu__shortcut">{{ item.shortcut }}</span>
       </button>
@@ -60,7 +60,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, type CSSProperties, type VNodeChild } from "vue";
+import {
+  ref,
+  computed,
+  watch,
+  nextTick,
+  type CSSProperties,
+  type FunctionalComponent,
+  type VNodeChild,
+} from "vue";
 import { useTranslation } from "../i18n";
 import { useDocxPortalClass } from "../composables/usePortalClass";
 
@@ -100,11 +108,13 @@ const props = defineProps<{
   customItems?: readonly CustomTextMenuItem[];
 }>();
 
-// Wrap a VNodeChild as a functional component so `<component :is>` can render
-// an arbitrary host-supplied icon node.
-function renderNode(node: VNodeChild): () => VNodeChild {
-  return () => node;
-}
+// Stable functional component that renders an arbitrary host-supplied icon
+// node. Declared once (not a fresh `() => node` wrapper per render) so its
+// component identity stays constant and Vue patches in place instead of
+// remounting the icon on every menu re-render. `props: ["node"]` consumes
+// `node` as a prop rather than forwarding it as a DOM attribute.
+const VNodeRenderer: FunctionalComponent<{ node: VNodeChild }> = ({ node }) => node;
+VNodeRenderer.props = ["node"];
 
 const emit = defineEmits<{
   (e: "close"): void;

@@ -121,13 +121,13 @@
     <div v-if="parseError" class="docx-editor-vue__error">{{ parseError }}</div>
     <div v-else-if="!isReady && hasDocumentInput" class="docx-editor-vue__loading">
       <slot name="loading-indicator">
-        <component :is="renderNode(loadingIndicator)" v-if="loadingIndicator" />
-        <template v-else>Loading…</template>
+        <VNodeRenderer v-if="loadingIndicator" :node="loadingIndicator" />
+        <template v-else>{{ t("loadingDocument") }}</template>
       </slot>
     </div>
     <div v-else-if="!isReady && !hasDocumentInput" class="docx-editor-vue__placeholder">
       <slot name="placeholder">
-        <component :is="renderNode(placeholder)" v-if="placeholder" />
+        <VNodeRenderer v-if="placeholder" :node="placeholder" />
         <template v-else>No document loaded</template>
       </slot>
     </div>
@@ -307,7 +307,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type VNodeChild } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch,
+  type FunctionalComponent,
+  type VNodeChild,
+} from "vue";
 
 import {
   extractSelectionState,
@@ -358,7 +367,7 @@ import { useTableResize } from "../composables/useTableResize";
 import { useTrackedChanges } from "../composables/useTrackedChanges";
 import { useZoom } from "../composables/useZoom";
 import type { FontOption } from "../utils/fontOptions";
-import { provideLocale } from "../i18n";
+import { provideLocale, useTranslation } from "../i18n";
 
 const props = withDefaults(defineProps<DocxEditorProps>(), {
   documentBuffer: null,
@@ -394,11 +403,16 @@ provideDocxPortalClass(isDark);
 const editorMode = ref<EditorMode>(props.mode);
 const readOnly = computed(() => props.readOnly || editorMode.value === "viewing");
 
-// Render a host-supplied VNodeChild prop (placeholder / loadingIndicator) via
-// `<component :is>`: wrap it as a functional component.
-function renderNode(node: VNodeChild): () => VNodeChild {
-  return () => node;
-}
+const { t } = useTranslation();
+
+// Stable functional component that renders a host-supplied VNodeChild
+// (placeholder / loadingIndicator). Declaring it once — rather than minting a
+// fresh `() => node` wrapper per render — keeps a constant component identity,
+// so Vue patches the node in place instead of remounting the subtree on every
+// reactive tick (each `stateTick` bump). `props: ["node"]` consumes `node` as a
+// prop so it is not forwarded as a stray DOM attribute.
+const VNodeRenderer: FunctionalComponent<{ node: VNodeChild }> = ({ node }) => node;
+VNodeRenderer.props = ["node"];
 
 // Whether the host supplied a document to load. Drives the loading-vs-placeholder
 // split while `isReady` is false (mirrors React's history.state gate).
@@ -561,7 +575,10 @@ const {
   clearOverlay: () => {},
   setPmSelection,
   resolvePos,
-  customContextMenuItems: () => props.customContextMenuItems,
+  // Host `custom:` entries perform edits, so drop them in read-only mode —
+  // mirrors React, whose context-menu builder returns only copy/selectAll when
+  // readOnly and never surfaces the custom list.
+  customContextMenuItems: () => (readOnly.value ? undefined : props.customContextMenuItems),
   onCustomContextAction: (id, range) => props.onCustomContextAction?.(id, range),
 });
 
@@ -734,8 +751,10 @@ function handleInsertTOCAction(): void {
 
 // Page-setup + ruler edit handlers. The margin / indent / tab-stop handlers feed
 // the horizontal + vertical rulers (showRuler); the page-setup dialog reuses
-// handlePageSetupApply. PORT-BLOCKED: the composable's host-change emit is not
-// re-routed yet (the onChange prop already fires via the pipeline writeback).
+// handlePageSetupApply. Margin / page-size writes mutate section properties
+// directly (no PM transaction), so they notify the host through `onChange` here;
+// indent / tab-stop edits dispatch PM commands and already notify via the
+// transaction pipeline.
 const {
   handlePageSetupApply,
   handleLeftMarginChange,
@@ -752,7 +771,11 @@ const {
   readOnly,
   stateTick,
   reLayout,
-  emit: () => {},
+  onChange: (doc) => {
+    props.onChange?.(doc);
+    emit("change", doc);
+    emit("update:document", doc);
+  },
 });
 
 // Paragraph indent snapshot for the horizontal ruler's indent handles. Derived
@@ -881,6 +904,9 @@ function applyInitialScrollTop(): void {
 
 watch(isReady, (ready) => {
   if (!ready) {
+    // Document unloaded/swapped: re-arm the one-shot so `initialScrollTop` is
+    // applied to the next document too, not just the first.
+    initialScrollAppliedRef.value = false;
     return;
   }
   // Populate the sidebar from comments embedded in the loaded document

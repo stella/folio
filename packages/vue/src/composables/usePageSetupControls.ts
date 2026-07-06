@@ -23,7 +23,13 @@ export type UsePageSetupControlsOptions = {
   readOnly: Ref<boolean>;
   stateTick: Ref<number>;
   reLayout: () => void;
-  emit: (event: string, ...args: unknown[]) => void;
+  /**
+   * Notified after a direct section-properties write (margins, page size,
+   * orientation) so the host's `onChange` fires. These writes bypass the PM
+   * transaction pipeline, so this is their only change signal; ruler indent /
+   * tab-stop edits dispatch PM commands and notify via the pipeline instead.
+   */
+  onChange: (doc: Document) => void;
 }
 
 type MarginProperty = "marginLeft" | "marginRight" | "marginTop" | "marginBottom";
@@ -36,7 +42,7 @@ export function usePageSetupControls(opts: UsePageSetupControlsOptions) {
     doc.package.document.finalSectionProperties = { ...existing, ...sp };
     opts.stateTick.value++;
     opts.reLayout();
-    opts.emit("change", doc);
+    opts.onChange(doc);
   }
 
   function applyMarginChange(property: MarginProperty, twips: number) {
