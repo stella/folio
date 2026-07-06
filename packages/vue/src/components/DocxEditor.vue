@@ -31,9 +31,11 @@
    - Comment lifecycle/management (add/reply/resolve): `useCommentManagement` is
      absent, so the sidebar renders comments/tracked changes but its mutation
      emits are inert; document comment extraction is not ported either.
-   - Header/footer inline editing, decoration/anonymization overlays, rulers,
-     and the title-bar menu (`MenuBar` primitives are stubbed): not ported, so
-     those chrome affordances stay inert.
+   - Header/footer inline editing, decoration/anonymization overlays, and
+     rulers: not ported, so those chrome affordances stay inert. The title-bar
+     MenuBar is wired (File/Format/Insert/Help), including the insert flow
+     (image/table/page-break/TOC via host props or core view-level helpers);
+     the watermark item stays inert (no watermark dialog ported).
 -->
 <template>
   <div
@@ -46,6 +48,7 @@
   >
     <div class="docx-editor-vue__toolbar-shell">
       <DocxEditorMenuBar
+        :show-table-insert="props.showTableInsert !== false"
         @rename="(name: string) => emit('rename', name)"
         @menu-action="handleMenuAction"
         @insert-table="handleMenuTableInsert"
@@ -72,7 +75,7 @@
         @find-replace="showFindReplace = true"
         @insert-link="showHyperlink = true"
         @insert-symbol="showInsertSymbol = true"
-        @insert-page-break="handleInsertPageBreak"
+        @insert-page-break="handleInsertPageBreakAction"
         @page-setup="showPageSetup = true"
         @toggle-outline="showOutline = !showOutline"
         @apply-style="handleApplyStyle"
@@ -229,7 +232,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 
-import { extractSelectionState } from "@stll/folio-core/prosemirror";
+import {
+  extractSelectionState,
+  insertImageFromFile,
+  insertPageBreakInView,
+  insertTableInView,
+  insertTableOfContentsInView,
+} from "@stll/folio-core/prosemirror";
 import { twipsToPixels } from "@stll/folio-core/paged-layout/sectionGeometry";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document, SectionProperties, Style } from "@stll/folio-core/types/document";
@@ -493,10 +502,80 @@ const pagesContainerStyle = computed(() => ({
 }));
 
 // ---- Feature handlers ----------------------------------------------------
-const { handleApplyStyle, handleInsertSymbol, handleInsertPageBreak } = useFormattingActions({
+const {
+  handleApplyStyle,
+  handleInsertSymbol,
+  handleInsertSectionBreakNextPage,
+  handleInsertSectionBreakContinuous,
+} = useFormattingActions({
   editorView,
   getDocument,
 });
+
+// Insert flow: prefer the host `onInsert*` prop when provided, otherwise fall
+// back to the core view-level helpers (mirrors the contract documented on
+// DocxEditorProps). Both the title-bar MenuBar and the toolbar drive these.
+function handleInsertImageAction(): void {
+  if (props.onInsertImage) {
+    props.onInsertImage();
+    return;
+  }
+  const view = editorView.value;
+  if (!view) {
+    return;
+  }
+  // No host handler: open the OS file picker and insert directly, matching
+  // React's `insertImageFromFile` flow (no intermediate dialog).
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (file) {
+      void insertImageFromFile(view, file, () => view.focus());
+    }
+  });
+  input.click();
+}
+
+function handleInsertTableAction(rows: number, cols: number): void {
+  if (props.onInsertTable) {
+    props.onInsertTable(rows, cols);
+    return;
+  }
+  const view = editorView.value;
+  if (!view) {
+    return;
+  }
+  insertTableInView(view, rows, cols);
+  view.focus();
+}
+
+function handleInsertPageBreakAction(): void {
+  if (props.onInsertPageBreak) {
+    props.onInsertPageBreak();
+    return;
+  }
+  const view = editorView.value;
+  if (!view) {
+    return;
+  }
+  insertPageBreakInView(view);
+  view.focus();
+}
+
+function handleInsertTOCAction(): void {
+  if (props.onInsertTOC) {
+    props.onInsertTOC();
+    return;
+  }
+  const view = editorView.value;
+  if (!view) {
+    return;
+  }
+  insertTableOfContentsInView(view);
+  view.focus();
+}
 
 // PORT-BLOCKED: usePageSetupControls emits host notifications we do not re-route yet.
 const { handlePageSetupApply } = usePageSetupControls({
@@ -538,14 +617,32 @@ function handleMenuAction(action: string): void {
     case "toggleSidebar":
       showSidebar.value = !showSidebar.value;
       break;
+    case "insertImage":
+      handleInsertImageAction();
+      break;
+    case "insertPageBreak":
+      handleInsertPageBreakAction();
+      break;
+    case "insertSectionBreakNextPage":
+      handleInsertSectionBreakNextPage();
+      break;
+    case "insertSectionBreakContinuous":
+      handleInsertSectionBreakContinuous();
+      break;
+    case "insertTOC":
+      handleInsertTOCAction();
+      break;
     default:
       break;
   }
   emit("menu-action", action);
 }
 
-// PORT-BLOCKED: menu-driven table insertion needs a command wrapper, not ported.
-function handleMenuTableInsert(_rows: number, _cols: number): void {}
+// Insert > Table (menu grid picker) routes through the shared insert handler so
+// it honors the host `onInsertTable` prop or falls back to the core helper.
+function handleMenuTableInsert(rows: number, cols: number): void {
+  handleInsertTableAction(rows, cols);
+}
 
 // ---- Loading + lifecycle -------------------------------------------------
 const sidebarAutoOpenedRef = ref(false);
