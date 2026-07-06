@@ -23,6 +23,11 @@ import type { EditorView } from "prosemirror-view";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
+import {
+  findParagraphFragmentsByParaId,
+  flashParagraphElements,
+} from "@stll/folio-core/paged-layout/paragraphFlash";
+import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
@@ -51,6 +56,8 @@ export type UseDocxEditorRefApiOptions = {
   loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;
   /** Optional host hook for print. */
   onPrint?: (() => void) | undefined;
+  /** Optional host hook fired with the serialized `.docx` bytes after `save()`. */
+  onSave?: ((buffer: ArrayBuffer) => void) | undefined;
 }
 
 export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
@@ -63,7 +70,30 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   async function save(): Promise<ArrayBuffer | null> {
     const blob = await opts.save();
-    return blob ? await blob.arrayBuffer() : null;
+    if (!blob) {
+      return null;
+    }
+    const buffer = await blob.arrayBuffer();
+    // Mirror React's handleSave: notify the host with the serialized bytes.
+    opts.onSave?.(buffer);
+    return buffer;
+  }
+
+  function scrollToParaId(paraId: string, options?: ScrollToParaIdOptions): boolean {
+    const root = opts.pagesRef.value;
+    if (!root) {
+      return false;
+    }
+    const fragments = findParagraphFragmentsByParaId(root, paraId);
+    const first = fragments.at(0);
+    if (!first) {
+      return false;
+    }
+    first.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (options?.highlight) {
+      flashParagraphElements(fragments, options.highlight);
+    }
+    return true;
   }
 
   function getZoom(): number {
@@ -119,9 +149,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     getCurrentPage,
     getTotalPages,
     scrollToPage,
-    // PORT-BLOCKED: scrollToParaId needs a pages-pointer scroll helper
-    // (scrollVisiblePositionIntoView), not ported.
-    scrollToParaId: () => false,
+    scrollToParaId,
     openPrintPreview: () => print(),
     print,
     loadDocument: opts.loadDocument,

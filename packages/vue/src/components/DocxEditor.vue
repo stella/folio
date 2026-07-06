@@ -17,14 +17,23 @@
    4. Passes `readOnly` / `mode` / `author` / `documentKey` and the callback props
       through to the pipeline.
 
+  Wired composables: pointer interactions (`usePagesPointer`: multi-click,
+  drag-select, table quick-insert, hyperlink popup, page indicator), image
+  actions + selection overlay (`useImageActions`), right-click menus
+  (`useContextMenus`), hyperlink management (`useHyperlinkManagement`), the
+  comment/tracked-change sidebar (`useTrackedChanges` + `useCommentSidebarItems`
+  inside `UnifiedSidebar`), and the table context toolbar (`TableToolbar`).
+
   PORT-BLOCKED (fork has not ported the backing composable/component yet):
    - externalPlugins / i18n-locale props: not on the fork's `DocxEditorProps`, so
      `externalPlugins` is `[]` and the locale defaults to `en`.
    - colorMode prop + useColorMode: dark mode is fixed light here.
-   - Comment lifecycle/management, image actions, context menus, header/footer
-     editing, decoration overlay, hyperlink management, rulers: the composables
-     are absent, so the sidebar/outline/context-menu chrome renders as empty
-     shells and hyperlink/menu-table actions are no-ops.
+   - Comment lifecycle/management (add/reply/resolve): `useCommentManagement` is
+     absent, so the sidebar renders comments/tracked changes but its mutation
+     emits are inert; document comment extraction is not ported either.
+   - Header/footer inline editing, decoration/anonymization overlays, rulers,
+     and the title-bar menu (`MenuBar` primitives are stubbed): not ported, so
+     those chrome affordances stay inert.
 -->
 <template>
   <div
@@ -57,7 +66,7 @@
         :show-zoom-control="showZoomControl"
         :editor-mode="editorMode"
         :comments-sidebar-open="showSidebar"
-        :image-context="null"
+        :image-context="imageToolbarContext"
         :theme="theme ?? null"
         v-bind="toolbarDynamicProps"
         @find-replace="showFindReplace = true"
@@ -73,7 +82,17 @@
         @toggle-sidebar="showSidebar = !showSidebar"
         @mode-change="setEditorMode"
         @image-properties="showImageProperties = true"
+        @image-wrap-type="handleToolbarImageWrap"
+        @image-transform="handleImageTransform"
       >
+        <template #table-context>
+          <TableToolbar
+            :view="editorView"
+            :get-commands="getCommands"
+            :state-tick="stateTick"
+            :theme="theme ?? null"
+          />
+        </template>
         <template v-if="$slots['toolbar-extra']" #toolbar-extra>
           <slot name="toolbar-extra" />
         </template>
@@ -88,11 +107,11 @@
       v-model:show-page-setup="showPageSetup"
       :view="editorView"
       :bookmarks="bookmarks"
-      :selected-image-pm-pos="null"
+      :selected-image-pm-pos="selectedImage?.pmPos ?? null"
       :section-properties="currentSectionProps"
       @insert-symbol="handleInsertSymbol"
-      @hyperlink-submit="() => {}"
-      @hyperlink-remove="() => {}"
+      @hyperlink-submit="handleHyperlinkSubmit"
+      @hyperlink-remove="handleHyperlinkRemove"
       @page-setup-apply="handlePageSetupApply"
     />
 
@@ -103,13 +122,52 @@
 
     <div class="docx-editor-vue__editor-scroll">
       <div class="docx-editor-vue__editor-area">
-        <div ref="pagesViewportRef" class="docx-editor-vue__pages-viewport" @wheel="handleZoomWheel">
+        <div
+          ref="pagesViewportRef"
+          class="docx-editor-vue__pages-viewport"
+          @wheel="handleWheelZoomGated"
+          @mousedown="handlePagesMouseDown"
+          @mousemove="handlePagesMouseMove"
+          @click="handlePagesClick"
+          @contextmenu.prevent="handleContextMenu"
+        >
           <div
             class="docx-editor-vue__editor-content-wrapper"
             :style="{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: '100%' }"
           >
             <div ref="pagesRef" class="docx-editor-vue__pages paged-editor__pages" :style="pagesContainerStyle" />
           </div>
+
+          <ImageSelectionOverlay
+            :image-info="selectedImage"
+            :zoom="zoom"
+            :view="editorView"
+            @deselect="selectedImage = null"
+            @interact-start="imageInteracting = true"
+            @interact-end="imageInteracting = false"
+            @context-menu="handleSelectedImageContextMenu"
+          />
+
+          <HyperlinkPopup
+            :data="hyperlinkPopupData"
+            :read-only="readOnly"
+            @navigate="handleHyperlinkPopupNavigate"
+            @copy="handleHyperlinkPopupCopy"
+            @edit="handleHyperlinkPopupEdit"
+            @remove="handleHyperlinkPopupRemove"
+            @close="hyperlinkPopupData = null"
+          />
+
+          <button
+            v-if="tableInsertButton"
+            type="button"
+            class="docx-editor-vue__table-insert-btn"
+            :style="{ left: tableInsertButton.x + 'px', top: tableInsertButton.y + 'px' }"
+            :aria-label="tableInsertButton.type === 'row' ? 'Insert row' : 'Insert column'"
+            @mousedown="handleTableInsertClick"
+          >
+            +
+          </button>
 
           <CommentMarginMarkers
             :comments="comments"
@@ -158,10 +216,10 @@
       :context-menu="contextMenu"
       :image-context-menu="imageContextMenu"
       :image-context-menu-text-actions="imageContextMenuTextActions"
-      :can-open-image-properties="false"
-      @context-menu-action="() => {}"
+      :can-open-image-properties="selectedImage !== null"
+      @context-menu-action="handleContextMenuAction"
       @close-context-menu="contextMenu.isOpen = false"
-      @image-wrap-select="() => {}"
+      @image-wrap-select="handleImageWrapSelect"
       @close-image-context-menu="imageContextMenu = null"
       @open-image-properties="showImageProperties = true"
     />
@@ -183,19 +241,26 @@ import DocxEditorDialogs from "./DocxEditor/DocxEditorDialogs.vue";
 import DocxEditorMenuBar from "./DocxEditor/DocxEditorMenuBar.vue";
 import DocxEditorOverlays from "./DocxEditor/DocxEditorOverlays.vue";
 import type { DocxEditorProps, EditorMode } from "./DocxEditor/types";
-import type { ImageContextMenuState, ImageContextMenuTextAction } from "./imageContextMenuTypes";
+import ImageSelectionOverlay from "./ImageSelectionOverlay.vue";
 import OutlineToggleButton from "./OutlineToggleButton.vue";
 import PageIndicator from "./PageIndicator.vue";
 import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
 import Toolbar from "./Toolbar.vue";
+import HyperlinkPopup from "./ui/HyperlinkPopup.vue";
+import TableToolbar from "./ui/TableToolbar.vue";
 import UnifiedSidebar from "./UnifiedSidebar.vue";
 
+import { useContextMenus } from "../composables/useContextMenus";
 import { useDocumentLifecycle } from "../composables/useDocumentLifecycle";
 import { useDocxEditor } from "../composables/useDocxEditor";
 import { useDocxEditorRefApi } from "../composables/useDocxEditorRefApi";
 import { useFormattingActions } from "../composables/useFormattingActions";
+import { useHyperlinkManagement } from "../composables/useHyperlinkManagement";
+import { useImageActions } from "../composables/useImageActions";
 import { usePageSetupControls } from "../composables/usePageSetupControls";
+import { usePagesPointer } from "../composables/usePagesPointer";
 import { provideDocxPortalClass } from "../composables/usePortalClass";
+import { useTableResize } from "../composables/useTableResize";
 import { useZoom } from "../composables/useZoom";
 import type { FontOption } from "../utils/fontOptions";
 import { provideLocale } from "../i18n";
@@ -249,28 +314,23 @@ const showSidebar = ref(false);
 const activeSidebarItem = ref<string | null>(null);
 const bookmarks = shallowRef<{ name: string; label?: string }[]>([]);
 
-// Comment / tracked-change / outline payloads stay empty until the comment and
-// outline composables are ported (PORT-BLOCKED).
-const comments = shallowRef<Comment[]>([]);
-const trackedChanges = shallowRef<TrackedChangeEntry[]>([]);
+// Controlled comments (props.comments) render in the sidebar; document comment
+// extraction + lifecycle management are not ported (PORT-BLOCKED). Outline
+// headings stay empty until the outline composable is ported.
+const comments = computed<Comment[]>(() => props.comments ?? []);
 const outlineHeadings = shallowRef<HeadingInfo[]>([]);
-
-// PORT-BLOCKED: useContextMenus is absent — drive the overlay cluster with a
-// static closed state so it renders (nothing) and typechecks.
-const contextMenu = ref({
-  isOpen: false,
-  position: { x: 0, y: 0 },
-  hasSelection: false,
-  inTable: false,
-  onImage: false,
-  canMergeCells: false,
-  canSplitCell: false,
-});
-const imageContextMenu = ref<ImageContextMenuState | null>(null);
-const imageContextMenuTextActions: ImageContextMenuTextAction[] = [];
 
 const { zoom, zoomPercent, isMinZoom, isMaxZoom, setZoom, zoomIn, zoomOut, handleWheel: handleZoomWheel, ZOOM_PRESETS } =
   useZoom(props.initialZoom);
+
+// Ctrl/Cmd+wheel + trackpad-pinch zoom, gated on the `enableWheelZoom` prop
+// (default enabled, matching React). Consulted here so the flag is honored.
+function handleWheelZoomGated(event: WheelEvent): void {
+  if (props.enableWheelZoom === false) {
+    return;
+  }
+  handleZoomWheel(event);
+}
 
 // ---- Pipeline -----------------------------------------------------------
 const {
@@ -311,6 +371,89 @@ const {
   onReadOnlyEditAttempt: () => props.onReadonlyEditAttempt?.(),
 });
 
+// ---- Feature composables (order: image → hyperlink → pointer → context) --
+const {
+  selectedImage,
+  imageInteracting,
+  imageToolbarContext,
+  handleToolbarImageWrap,
+  handleImageTransform,
+} = useImageActions({ editorView, zoom, stateTick, getCommands });
+
+const {
+  hyperlinkPopupData,
+  handleHyperlinkSubmit,
+  handleHyperlinkRemove,
+  handleHyperlinkPopupNavigate,
+  handleHyperlinkPopupEdit,
+  handleHyperlinkPopupRemove,
+} = useHyperlinkManagement({ editorView, getCommands });
+
+const tableResize = useTableResize();
+
+// Pages-area pointer gestures. Header/footer double-click is intentionally
+// omitted: the fork has no inline HF editor or persistent HF PMs, so the HF
+// `emit` (change) path and its handlers stay unused here.
+const {
+  tableInsertButton,
+  scrollPageInfo,
+  resolvePos,
+  setPmSelection,
+  handlePagesMouseDown,
+  handlePagesMouseMove,
+  handlePagesClick,
+  handleTableInsertClick,
+} = usePagesPointer({
+  editorView,
+  pagesRef,
+  pagesViewportRef,
+  selectedImage,
+  imageInteracting,
+  hyperlinkPopupData,
+  readOnly,
+  zoom,
+  layout,
+  tableResize: {
+    tryStartResize: tableResize.tryStartResize,
+    isResizing: computed(() => tableResize.isResizing()),
+  },
+  getCommands,
+  getDocument,
+  reLayout,
+  emit: () => {},
+  clearOverlay: () => {},
+});
+
+const {
+  contextMenu,
+  imageContextMenu,
+  imageContextMenuTextActions,
+  handleContextMenu,
+  handleSelectedImageContextMenu,
+  handleImageWrapSelect,
+  handleContextMenuAction,
+} = useContextMenus({
+  editorView,
+  selectedImage,
+  zoom,
+  showImageProperties,
+  getCommands,
+  clearOverlay: () => {},
+  setPmSelection,
+  resolvePos,
+});
+
+// Tracked-change sidebar cards stay deferred: the fork's Vue
+// `TrackedChangeEntry` (utils/comments) is a stricter copy than core's
+// `extractTrackedChanges` output (required vs optional fields), so feeding the
+// extractor needs a type reconciliation not in scope this wave.
+const trackedChanges = shallowRef<TrackedChangeEntry[]>([]);
+
+function handleHyperlinkPopupCopy(href: string): void {
+  void navigator.clipboard?.writeText(href);
+  hyperlinkPopupData.value = null;
+}
+
 // ---- Document-derived computed refs -------------------------------------
 const currentSectionProps = computed<SectionProperties | null>(() => {
   void stateTick.value;
@@ -342,12 +485,6 @@ const toolbarDynamicProps = computed(() => {
 const pageWidthPx = computed(() => twipsToPixels(currentSectionProps.value?.pageWidth ?? 12240) * zoom.value);
 
 const resolvedCommentIds = computed(() => new Set<number>());
-
-const scrollPageInfo = computed(() => ({
-  currentPage: 1,
-  totalPages: layout.value?.pages.length ?? 0,
-  visible: false,
-}));
 
 const pagesContainerStyle = computed(() => ({
   transform: zoom.value === 1 ? undefined : `scale(${zoom.value})`,
@@ -453,10 +590,13 @@ onMounted(() => {
   const offLayout = editor.on("layoutComplete", () => {
     stateTick.value++;
   });
+  // Global mousemove/mouseup listeners for table column/row/edge resize.
+  const cleanupTableResize = tableResize.install();
   onBeforeUnmount(() => {
     offSelection();
     offDoc();
     offLayout();
+    cleanupTableResize();
   });
 });
 
@@ -475,6 +615,7 @@ const { exposed } = useDocxEditorRefApi({
   loadDocument,
   loadDocumentBuffer: loadBuffer,
   onPrint: props.onPrint,
+  onSave: props.onSave,
 });
 defineExpose(exposed);
 </script>
@@ -514,6 +655,28 @@ defineExpose(exposed);
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+.docx-editor-vue__table-insert-btn {
+  position: absolute;
+  z-index: 6;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--doc-primary, #1a73e8);
+  border-radius: 50%;
+  background: var(--doc-surface, #fff);
+  color: var(--doc-primary, #1a73e8);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.docx-editor-vue__table-insert-btn:hover {
+  background: var(--doc-primary, #1a73e8);
+  color: var(--doc-on-primary, #fff);
 }
 .docx-editor-vue__error {
   padding: 12px;

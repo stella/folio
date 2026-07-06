@@ -7,12 +7,9 @@
   the layout-painter hasn't finished rendering yet) — cards still
   show up rather than going invisible.
 
-  PORT-BLOCKED: `../composables/useCommentSidebarItems` is not yet ported,
-  so the single source of truth for the item list is stubbed to an empty
-  computed below (`items`). The sidebar compiles and lays out correctly but
-  renders no cards until that composable lands; swap the stub for the real
-  `useCommentSidebarItems({ comments, trackedChanges, ... })` call at that
-  point (the wiring, props, and template dispatch are already in place).
+  The single source of truth for the item list is
+  `useCommentSidebarItems({ comments, trackedChanges, ... })`, fed from this
+  component's props; the template dispatches each item to the matching card.
 -->
 <template>
   <!-- Dynamic style boost for the focused/expanded item — same
@@ -85,30 +82,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, type CSSProperties } from "vue";
+import { ref, computed, toRef, watch, onMounted, onBeforeUnmount, type CSSProperties } from "vue";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
 import CommentCard from "./sidebar/CommentCard.vue";
 import ResolvedCommentMarker from "./sidebar/ResolvedCommentMarker.vue";
 import TrackedChangeCard from "./sidebar/TrackedChangeCard.vue";
 import AddCommentCard from "./sidebar/AddCommentCard.vue";
-import {
-  resolveItemPositions,
-  type ResolvableSidebarItem,
-} from "./sidebar/resolveItemPositions";
+import { resolveItemPositions } from "./sidebar/resolveItemPositions";
+import { useCommentSidebarItems } from "../composables/useCommentSidebarItems";
 
 import { SIDEBAR_DOCUMENT_SHIFT, SIDEBAR_WIDTH } from "../utils/sidebarConstants";
-
-// PORT-BLOCKED: local mirror of the not-yet-ported
-// `composables/useCommentSidebarItems` `CommentSidebarItem` shape, so the
-// template dispatch and `resolveItemPositions` stay typed. Extends
-// `ResolvableSidebarItem` so the layout pass accepts it directly.
-type CommentSidebarItem = {
-  kind: "add-comment" | "comment" | "tracked-change";
-  comment?: Comment;
-  replies?: Comment[];
-  change?: TrackedChangeEntry;
-} & ResolvableSidebarItem
 
 const props = defineProps<{
   isOpen: boolean;
@@ -176,11 +160,16 @@ function onSidebarMouseDown(e: MouseEvent) {
   }
 }
 
-// PORT-BLOCKED: `useCommentSidebarItems` is not yet ported. Stubbed to an
-// empty list so the sidebar compiles; the props (`comments`,
-// `trackedChanges`, `showResolved`, `isAddingComment`, `addCommentYPosition`)
-// are kept on the component API for the eventual real composable call.
-const items = computed<CommentSidebarItem[]>(() => []);
+// Single source of truth: derive the flat sidebar item list from comments +
+// tracked changes. `resolveItemPositions` and the template dispatch below
+// consume the same list.
+const items = useCommentSidebarItems({
+  comments: toRef(props, "comments"),
+  trackedChanges: toRef(props, "trackedChanges"),
+  showResolved: computed(() => props.showResolved ?? false),
+  isAddingComment: computed(() => props.isAddingComment ?? false),
+  addCommentYPosition: computed(() => props.addCommentYPosition ?? null),
+});
 
 // Resolved Y per item id. Recomputed on tick changes (manual recompute,
 // ResizeObserver firing, watch on items length). Falls back to stacked
