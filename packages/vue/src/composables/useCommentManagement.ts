@@ -90,7 +90,10 @@ export function useCommentManagement(
     if (isControlled.value) return;
     const bodyComments = options.getDocument()?.package.document.comments;
     seedCommentAllocator(allocator, bodyComments, options.editorView.value);
-    if (bodyComments && bodyComments.length > 0) setComments(bodyComments);
+    // Reset to the loaded document's comments (empty when it has none) so a
+    // document swap does not leak the previous document's comments into the
+    // sidebar. Matches React, which clears comments on document reset.
+    setComments(bodyComments && bodyComments.length > 0 ? bodyComments : []);
   }
 
   function handleReply(parentId: number, text: string): void {

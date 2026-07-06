@@ -12,7 +12,6 @@
 import { Selection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { PENDING_COMMENT_ID } from "@stll/folio-core/prosemirror/commentIdAllocator";
-import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 
 export type CommentMarkRange = {
   from: number;
@@ -108,36 +107,4 @@ export function removePendingCommentMarkRange(view: EditorView, range: CommentMa
       commentMark.create({ commentId: PENDING_COMMENT_ID }),
     ),
   );
-}
-
-const FALLBACK_TOP_OFFSET = 80;
-
-/**
- * Y position (relative to `scrollContainer`) of the painted element covering
- * PM position `pmPos`, using the same `data-pm-start`/`data-pm-end` anchors the
- * React adapter reads. Returns null when no anchor covers the position yet.
- */
-export function findSelectionYPosition(
-  scrollContainer: HTMLElement | null,
-  pagesContainer: HTMLElement | null,
-  pmPos: number,
-): number | null {
-  if (!scrollContainer || !pagesContainer) return null;
-  for (const el of findBodyPmAnchors(pagesContainer)) {
-    const pmStart = Number(el.dataset["pmStart"]);
-    const pmEnd = Number(el.dataset["pmEnd"]);
-    if (pmPos >= pmStart && pmPos <= pmEnd) {
-      return (
-        el.getBoundingClientRect().top -
-        scrollContainer.getBoundingClientRect().top +
-        scrollContainer.scrollTop
-      );
-    }
-  }
-  return null;
-}
-
-export function getFallbackCommentYPosition(scrollContainer: HTMLElement | null): number {
-  if (!scrollContainer) return FALLBACK_TOP_OFFSET;
-  return scrollContainer.scrollTop + Math.max(FALLBACK_TOP_OFFSET, scrollContainer.clientHeight / 3);
 }
