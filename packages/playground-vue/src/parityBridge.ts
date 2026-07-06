@@ -1,4 +1,4 @@
-import { insertTableInView } from "@stll/folio-vue";
+import { insertTableInView, setAnonymizationTermsMeta } from "@stll/folio-vue";
 import type { DocxEditorRef } from "@stll/folio-vue";
 
 /**
@@ -30,6 +30,10 @@ export type FolioParityBridge = {
   countCommentAnchors: () => number;
   /** Block count of the AI-edit snapshot over the live doc (0 with no live view). */
   aiSnapshotBlockCount: () => number;
+  /** Push an anonymization term matching the first word. Returns whether one was pushed. */
+  anonymizeFirstWord: () => boolean;
+  /** Count painted anonymization highlight rects in the overlay. */
+  countAnonymizationRects: () => number;
   /** Serialize to DOCX and return the byte length (0 on failure). */
   save: () => Promise<number>;
 };
@@ -137,6 +141,36 @@ export function buildParityBridge(getRef: () => DocxEditorRef | null): FolioPari
     countCommentAnchors: () =>
       document.querySelectorAll(".paged-editor__pages [data-comment-id]").length,
     aiSnapshotBlockCount: () => getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
+    anonymizeFirstWord: () => {
+      const view = liveView();
+      if (!view) {
+        return false;
+      }
+      let word: string | null = null;
+      view.state.doc.descendants((node) => {
+        if (word) {
+          return false;
+        }
+        if (!node.isText || !node.text) {
+          return true;
+        }
+        const candidate = node.text.trimStart().split(/\s+/)[0];
+        if (candidate) {
+          word = candidate;
+          return false;
+        }
+        return true;
+      });
+      if (!word) {
+        return false;
+      }
+      const { key, payload } = setAnonymizationTermsMeta([{ canonical: word, label: "person" }]);
+      view.dispatch(view.state.tr.setMeta(key, payload));
+      return true;
+    },
+    countAnonymizationRects: () =>
+      document.querySelectorAll("[data-folio-anonymization-overlay] .folio-anonymization-term")
+        .length,
     save: async () => {
       const buffer = await (getRef()?.save() ?? Promise.resolve(null));
       return buffer?.byteLength ?? 0;
