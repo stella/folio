@@ -164,7 +164,8 @@ const probeServer = async (url: string, timeoutMs: number): Promise<boolean> => 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal });
+    await res.body?.cancel();
     return true;
   } catch {
     return false;

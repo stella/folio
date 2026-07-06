@@ -23,8 +23,14 @@ export const textSimilarity = (a: string, b: string): number => {
 const levenshtein = (a: string, b: string): number => {
   if (a.length === 0) return b.length;
   if (b.length === 0) return a.length;
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  let curr: number[] = Array.from({ length: b.length + 1 }, () => 0);
+  // Two-row DP over Int32Array to avoid boxed-number arrays: this runs inside
+  // alignFull's O(n²) loop (up to millions of calls), so per-call allocation
+  // and GC pressure dominate. Typed arrays reuse a flat backing buffer.
+  let prev = new Int32Array(b.length + 1);
+  let curr = new Int32Array(b.length + 1);
+  for (let i = 0; i <= b.length; i++) {
+    prev[i] = i;
+  }
   for (let i = 1; i <= a.length; i++) {
     curr[0] = i;
     for (let j = 1; j <= b.length; j++) {

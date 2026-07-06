@@ -169,6 +169,10 @@ const mergeBoxes = (a: LineBox, b: LineBox): LineBox => {
   const xPt = Math.min(a.xPt, b.xPt);
   const yPt = Math.min(a.yPt, b.yPt);
   const text = `${left.text} ${right.text}`;
+  // Prefer the left box's font, but fall back to the right box's so font
+  // metadata is not discarded when only the right side carries it.
+  const fontName = left.fontName ?? right.fontName;
+  const fontSizePt = left.fontSizePt ?? right.fontSizePt;
   return {
     text,
     normText: normalizeLineText(text),
@@ -177,8 +181,8 @@ const mergeBoxes = (a: LineBox, b: LineBox): LineBox => {
     widthPt: Math.max(a.xPt + a.widthPt, b.xPt + b.widthPt) - xPt,
     heightPt: Math.max(a.yPt + a.heightPt, b.yPt + b.heightPt) - yPt,
     region: left.region,
-    ...(left.fontName !== undefined ? { fontName: left.fontName } : {}),
-    ...(left.fontSizePt !== undefined ? { fontSizePt: left.fontSizePt } : {}),
+    ...(fontName !== undefined ? { fontName } : {}),
+    ...(fontSizePt !== undefined ? { fontSizePt } : {}),
   };
 };
 

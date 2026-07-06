@@ -26,8 +26,15 @@ const CHAR_RE = /<char\b([^>]*)\/>/g;
 /** Extract a double-quoted attribute value by name, XML-entity-decoded.
  * `(?:^|\s)` anchors on a preceding boundary so e.g. `name="c"` never matches
  * a substring of a longer attribute name (`color`, `src`, ...). */
+const attrRegexCache = new Map<string, RegExp>();
+
 const extractAttr = (attrsSource: string, attrName: string): string | null => {
-  const match = new RegExp(`(?:^|\\s)${attrName}="([^"]*)"`).exec(attrsSource);
+  let regex = attrRegexCache.get(attrName);
+  if (regex === undefined) {
+    regex = new RegExp(`(?:^|\\s)${attrName}="([^"]*)"`);
+    attrRegexCache.set(attrName, regex);
+  }
+  const match = regex.exec(attrsSource);
   if (!match) return null;
   return decodeXmlEntities(match[1] ?? "");
 };

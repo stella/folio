@@ -55,23 +55,28 @@ export const getWordVersion = async (): Promise<string | null> => {
 
   const proc = Bun.spawn(["osascript", "-e", GET_WORD_VERSION_SCRIPT], {
     stdout: "pipe",
-    stderr: "pipe",
+    stderr: "ignore",
   });
+  // Drain stdout before checking the exit code: on a non-zero exit the pipe
+  // would otherwise be left unconsumed, leaking its file descriptor.
+  const stdout = (await new Response(proc.stdout).text()).trim();
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
     cachedWordVersion = null;
     return cachedWordVersion;
   }
-  const stdout = (await new Response(proc.stdout).text()).trim();
   cachedWordVersion = stdout === "" ? null : stdout;
   return cachedWordVersion;
 };
 
 /** `mutool -v` prints its version to stderr, not stdout. */
 const getMutoolVersion = async (): Promise<string> => {
-  const proc = Bun.spawn(["mutool", "-v"], { stdout: "pipe", stderr: "pipe" });
+  // `mutool -v` only writes to stderr; ignore stdout so its pipe fd is not
+  // left open and leaked.
+  const proc = Bun.spawn(["mutool", "-v"], { stdout: "ignore", stderr: "pipe" });
+  const stderr = await new Response(proc.stderr).text();
   await proc.exited;
-  return (await new Response(proc.stderr).text()).trim();
+  return stderr.trim();
 };
 
 const sha256OfFile = async (filePath: string): Promise<string> => {
