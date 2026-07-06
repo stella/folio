@@ -1,0 +1,273 @@
+/**
+ * Tool-execution tests: argument validation (unknown tool, missing/wrong-type
+ * args, unsupported capability), then a full happy path against a real
+ * `FolioDocxReviewer` built from a docx fixture, exercising the reviewer
+ * bridge exactly as a host app would.
+ */
+
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { FolioDocxReviewer } from "@stll/folio-core/server";
+
+import { createReviewerBridge } from "./bridges/reviewer";
+import { executeFolioToolCall } from "./execute";
+import { FOLIO_AGENT_TOOL_NAMES } from "./types";
+import type { FolioAgentBlock, FolioAgentComment, FolioToolCallResult } from "./types";
+
+// Reuses the same corpus fixture `packages/core/src/ai-edits/headless.test.ts`
+// builds its reviewer round-trip tests against.
+const FIXTURE = path.join(
+  import.meta.dir,
+  "../../core/src/docx/__tests__/__fixtures__/corpus/authored-empty-paragraph.docx",
+);
+
+const readFixture = (): ArrayBuffer => {
+  const bytes = readFileSync(FIXTURE);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+};
+
+const expectOk = (result: FolioToolCallResult): unknown => {
+  if (!result.ok) {
+    throw new Error(`expected ok:true, got error: ${result.error}`);
+  }
+  return result.result;
+};
+
+const expectError = (result: FolioToolCallResult): string => {
+  if (result.ok) {
+    throw new Error("expected ok:false, got a result");
+  }
+  return result.error;
+};
+
+describe("executeFolioToolCall: argument validation", () => {
+  test("unknown tool name is rejected with the valid tool list", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    const result = executeFolioToolCall("not_a_real_tool", {}, bridge);
+    const error = expectError(result);
+    expect(error).toContain("not_a_real_tool");
+    expect(error).toContain("read_document");
+  });
+
+  test("missing required argument is rejected", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    const result = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, {}, bridge);
+    expect(expectError(result)).toContain("query");
+  });
+
+  test("wrong-type argument is rejected", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    const result = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.findText,
+      { query: "Heading", matchCase: "yes" },
+      bridge,
+    );
+    expect(expectError(result)).toContain("matchCase");
+  });
+
+  test("unsupported capability on the headless reviewer bridge reports a plain-language error", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    const result = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readPage, { page: 1 }, bridge);
+    const error = expectError(result);
+    expect(error).toContain("read_page");
+  });
+
+  test("read_selection and scroll_to_block are also unsupported on the reviewer bridge", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    expect(expectError(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readSelection, {}, bridge))).toContain(
+      "read_selection",
+    );
+    expect(
+      expectError(
+        executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.scrollToBlock, { blockId: "x" }, bridge),
+      ),
+    ).toContain("scroll_to_block");
+  });
+});
+
+describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", () => {
+  test("read_document -> find_text -> suggest_changes -> read_changes -> add_comment -> read_comments -> reply_comment -> resolve_comment", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), { author: "AI Reviewer" });
+    const bridge = createReviewerBridge(reviewer);
+
+    // read_document
+    const blocks = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge),
+    ) as FolioAgentBlock[];
+    expect(blocks.length).toBeGreaterThan(0);
+    const heading = blocks.find((block) => block.text.includes("Heading"));
+    if (!heading) {
+      throw new Error("expected a block containing 'Heading'");
+    }
+
+    // find_text
+    const matches = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, { query: "heading" }, bridge),
+    ) as { blockId: string; occurrenceInBlock: number; context: string }[];
+    expect(matches.some((match) => match.blockId === heading.blockId)).toBe(true);
+
+    // suggest_changes: replaceInBlock
+    const suggestResult = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        {
+          operations: [
+            { type: "replaceInBlock", blockId: heading.blockId, find: "Heading", replace: "Intro" },
+          ],
+        },
+        bridge,
+      ),
+    ) as { applied: { id: string }[]; skipped: { id: string; reason: string }[] };
+    expect(suggestResult.applied).toHaveLength(1);
+    expect(suggestResult.applied[0]?.id).toBe("op-1");
+    expect(suggestResult.skipped).toEqual([]);
+
+    // read_changes: the replace is now a pending tracked change
+    const changes = expectOk(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readChanges, {}, bridge)) as {
+      type: string;
+      blockId: string | null;
+    }[];
+    expect(changes.length).toBeGreaterThanOrEqual(2);
+    expect(changes.some((change) => change.type === "insertion")).toBe(true);
+    expect(changes.some((change) => change.type === "deletion")).toBe(true);
+
+    // add_comment
+    const addCommentResult = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.addComment,
+        { blockId: heading.blockId, text: "Please clarify." },
+        bridge,
+      ),
+    ) as { applied: { id: string }[]; skipped: unknown[] };
+    expect(addCommentResult.applied).toHaveLength(1);
+    expect(addCommentResult.skipped).toEqual([]);
+
+    // read_comments
+    const comments = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, {}, bridge),
+    ) as FolioAgentComment[];
+    expect(comments).toHaveLength(1);
+    const comment = comments[0];
+    if (!comment) {
+      throw new Error("expected a comment");
+    }
+    expect(comment.text).toBe("Please clarify.");
+    expect(comment.resolved).toBe(false);
+
+    // reply_comment
+    const replyResult = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.replyComment,
+        { commentId: comment.id, text: "Clarifying now." },
+        bridge,
+      ),
+    ) as { replied: boolean };
+    expect(replyResult.replied).toBe(true);
+
+    const afterReply = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, {}, bridge),
+    ) as FolioAgentComment[];
+    expect(afterReply[0]?.replies).toHaveLength(1);
+    expect(afterReply[0]?.replies[0]?.text).toBe("Clarifying now.");
+
+    // reply_comment against an unknown id fails cleanly
+    expect(
+      expectError(
+        executeFolioToolCall(
+          FOLIO_AGENT_TOOL_NAMES.replyComment,
+          { commentId: "999999", text: "orphan" },
+          bridge,
+        ),
+      ),
+    ).toContain("999999");
+
+    // resolve_comment
+    const resolveResult = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.resolveComment, { commentId: comment.id }, bridge),
+    ) as { resolved: boolean };
+    expect(resolveResult.resolved).toBe(true);
+
+    const afterResolve = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, { filter: "resolved" }, bridge),
+    ) as FolioAgentComment[];
+    expect(afterResolve).toHaveLength(1);
+    const afterResolveOpen = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, { filter: "open" }, bridge),
+    ) as FolioAgentComment[];
+    expect(afterResolveOpen).toHaveLength(0);
+  });
+
+  test("suggest_changes reports a plain-language skip reason for a missing block", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    const result = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        {
+          operations: [
+            { id: "custom-1", type: "replaceInBlock", blockId: "no-such-block", find: "x", replace: "y" },
+          ],
+        },
+        bridge,
+      ),
+    ) as { applied: unknown[]; skipped: { id: string; reason: string }[] };
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]?.id).toBe("custom-1");
+    expect(result.skipped[0]?.reason).toContain("re-read the document");
+  });
+
+  test("suggest_changes rejects an empty operations array", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    const result = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.suggestChanges, { operations: [] }, bridge);
+    expect(expectError(result)).toContain("empty");
+  });
+});
+
+describe("find_text edge cases", () => {
+  test("multiple occurrences in one block increment occurrenceInBlock, matching is case-insensitive by default", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    // Apply an edit that guarantees a repeated substring inside a single block.
+    const blocks = reviewer.snapshot().blocks;
+    const target = blocks.find((block) => block.text.includes("Heading"));
+    if (!target) {
+      throw new Error("expected a block containing 'Heading'");
+    }
+    reviewer.applyOperations(
+      [{ id: "r1", type: "replaceBlock", blockId: target.id, text: "repeat repeat REPEAT" }],
+      { mode: "direct" },
+    );
+
+    const matches = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, { query: "repeat" }, bridge),
+    ) as { blockId: string; occurrenceInBlock: number; context: string }[];
+    expect(matches).toHaveLength(3);
+    expect(matches.map((match) => match.occurrenceInBlock)).toEqual([0, 1, 2]);
+
+    const caseSensitive = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.findText,
+        { query: "repeat", matchCase: true },
+        bridge,
+      ),
+    ) as unknown[];
+    expect(caseSensitive).toHaveLength(2);
+  });
+});

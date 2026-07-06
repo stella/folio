@@ -33,6 +33,13 @@
         "use-intl": "^4.13.0",
       },
     },
+    "packages/agents": {
+      "name": "@stll/folio-agents",
+      "version": "0.0.0",
+      "dependencies": {
+        "@stll/folio-core": "workspace:^",
+      },
+    },
     "packages/core": {
       "name": "@stll/folio-core",
       "version": "0.2.0",
@@ -827,6 +834,8 @@
     "@stll/docx-core": ["@stll/docx-core@0.1.0", "", { "dependencies": { "better-result": "2.9.2", "jszip": "3.10.1" } }, "sha512-2HwX3YrKEdBy3WL6yXZdJtA+NBagbTuVwDo4es1w85wI776qfIKdH9xJINxt9mzo8xFpEBewcym+mH42Z6NriA=="],
 
     "@stll/docx-utils": ["@stll/docx-utils@0.1.0", "", { "dependencies": { "jszip": "3.10.1" } }, "sha512-WUvo0qD8VQa2Ojl4cYSEZCXKTVMqJ9bB+SSx3muo/uHTYSicC3wcwQZd4iZsiRpa2diPC8Sn1O72q7PRhL3K+A=="],
+
+    "@stll/folio-agents": ["@stll/folio-agents@workspace:packages/agents"],
 
     "@stll/folio-core": ["@stll/folio-core@workspace:packages/core"],
 

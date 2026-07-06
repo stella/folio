@@ -1,0 +1,217 @@
+import { FOLIO_AGENT_TOOL_NAMES } from "./types";
+import type { FolioAgentToolDefinition } from "./types";
+
+const suggestChangesOperationSchema = {
+  type: "object",
+  properties: {
+    id: {
+      type: "string",
+      description: "Optional caller-supplied operation id, echoed back in `applied`/`skipped`. Auto-generated (op-1, op-2, …) when omitted.",
+    },
+    type: {
+      type: "string",
+      enum: ["replaceInBlock", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock"],
+      description: "The kind of edit to make.",
+    },
+    blockId: {
+      type: "string",
+      description: "The block to edit, from `read_document` or `find_text`.",
+    },
+    find: {
+      type: "string",
+      description: "Required for `replaceInBlock`: the exact text to find within the block.",
+    },
+    replace: {
+      type: "string",
+      description: "Required for `replaceInBlock`: the text to replace `find` with.",
+    },
+    text: {
+      type: "string",
+      description:
+        "Required for `insertAfterBlock` / `insertBeforeBlock` / `replaceBlock`: the text to insert or replace the block with.",
+    },
+    comment: {
+      type: "string",
+      description: "Optional comment explaining this edit, attached to the affected text.",
+    },
+  },
+  required: ["type", "blockId"],
+  additionalProperties: false,
+} as const;
+
+/**
+ * The tools this package exposes, described for an LLM. Every tool that reads
+ * or mutates the document expects `blockId` values that came from
+ * `read_document` or `find_text` in THIS conversation — block ids are not
+ * guessable and change whenever the document's structure changes. Every
+ * mutation (`add_comment`, `suggest_changes`) becomes a tracked change or
+ * comment pending human review; nothing is silently finalized.
+ */
+export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.readDocument,
+    description:
+      "Read the full document body as a list of blocks (paragraphs, headings, list items). Call this first, " +
+      "or whenever you need fresh block ids after a mutation — block ids from a stale read may no longer resolve.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.findText,
+    description:
+      "Search the document body for a text string and return every match with its block id, which occurrence " +
+      "within that block it is, and surrounding context. Use this to locate the blockId for a known phrase " +
+      "instead of reading the whole document.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Non-empty text to search for." },
+        matchCase: {
+          type: "boolean",
+          description: "Case-sensitive match. Defaults to false (case-insensitive).",
+        },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.readComments,
+    description:
+      "Read comment threads in the document, each with its author, text, resolved status, anchored block, and " +
+      "replies. Filter to unresolved (\"open\") comments to see what still needs attention.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter: {
+          type: "string",
+          enum: ["all", "open", "resolved"],
+          description: "Which comments to return. Defaults to \"all\".",
+        },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.readChanges,
+    description:
+      "Read pending tracked changes (insertions and deletions) awaiting human review. Use this to see the effect " +
+      "of edits already suggested via `suggest_changes` before proposing more.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.addComment,
+    description:
+      "Attach a comment to a block, optionally quoting the specific text it is about. The comment is added " +
+      "immediately (comments are not tracked changes) but the underlying text is left untouched — use this for " +
+      "notes/questions, and `suggest_changes` for edits.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        blockId: { type: "string", description: "The block to comment on, from `read_document` or `find_text`." },
+        quote: { type: "string", description: "Optional exact text within the block this comment is about." },
+        text: { type: "string", description: "The comment body." },
+      },
+      required: ["blockId", "text"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+    description:
+      "Propose one or more edits as tracked changes for a human to accept or reject — nothing is applied " +
+      "directly to the visible text. Each operation needs a blockId from `read_document` or `find_text`; if the " +
+      "document changed since that read, re-read it and retry with fresh ids (a skip reason will say so).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        operations: {
+          type: "array",
+          items: suggestChangesOperationSchema,
+          description: "The edits to propose, applied in order.",
+        },
+      },
+      required: ["operations"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.replyComment,
+    description: "Reply to an existing comment thread, referenced by the id from `read_comments`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        commentId: { type: "string", description: "The comment id from `read_comments`." },
+        text: { type: "string", description: "The reply body." },
+      },
+      required: ["commentId", "text"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.resolveComment,
+    description: "Mark a comment thread resolved, or pass `reopen: true` to reopen a previously resolved one.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        commentId: { type: "string", description: "The comment id from `read_comments`." },
+        reopen: { type: "boolean", description: "Reopen an already-resolved thread instead of resolving it." },
+      },
+      required: ["commentId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.readPage,
+    description:
+      "Read the plain text of one page (1-based) as currently paginated in the live editor. Only available when " +
+      "the document is open in a live, paginated editor surface — not on a headless document.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        page: { type: "number", description: "1-based page number." },
+      },
+      required: ["page"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.readSelection,
+    description:
+      "Read the user's current text selection in the live editor, as plain text. Only available on a live editor " +
+      "surface with an active selection.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.scrollToBlock,
+    description:
+      "Scroll the live editor to the given block and select it, so the user can see what you are discussing. " +
+      "Only available on a live editor surface.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        blockId: { type: "string", description: "The block to scroll to, from `read_document` or `find_text`." },
+      },
+      required: ["blockId"],
+      additionalProperties: false,
+    },
+  },
+];
+
+/** The tool definitions this package exposes. Same array as {@link FOLIO_AGENT_TOOLS}, as a function for symmetry with the other providers. */
+export const getFolioToolDefinitions = (): FolioAgentToolDefinition[] => FOLIO_AGENT_TOOLS;
