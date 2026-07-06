@@ -108,6 +108,7 @@ export type UseDocxEditorReturn = {
     editorView: Ref<EditorView | null>;
     editorState: Ref<EditorState | null>;
     isReady: Ref<boolean>;
+    isDirty: Ref<boolean>;
     parseError: Ref<string | null>;
     layout: Ref<Layout | null>;
     blocks: Ref<FlowBlock[]>;

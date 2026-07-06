@@ -99,6 +99,7 @@
       "getEditor",
       "getTotalPages",
       "getZoom",
+      "hasPendingChanges",
       "loadDocument",
       "loadDocumentBuffer",
       "openPrintPreview",
@@ -117,9 +118,11 @@
       "setZoom",
       "undo"
     ],
+    "pairedNotes": {
+      "hasPendingChanges": "Both wired, same set/clear points, different-idiom implementation. React derives it live each call from the ParagraphChangeTracker plugin (getChangedParagraphIds/hasStructuralChanges/hasUntrackedChanges) OR-ed with commentsDirtyRef, and clears the tracker after each successful save. Vue cannot read the tracker for this because it deliberately leaves the tracker uncleared across saves (the tracker is the selective-save baseline; see the featureFlags props note) and re-editing an already-tracked paragraph would not grow the set, so a tracker read could never go false after save. Instead Vue tracks two boolean flags with the same set/clear points as React's underlying signals: `isDirty` in useDocxEditor (set on every doc-changing transaction — the same signal that drives the writeback/onChange; cleared on a successful save() and on document load/swap) and `commentsDirty` in useCommentManagement (set on every user comment mutation add/reply/resolve/unresolve/delete; cleared on document load via seedFromDocument and on a successful save via the ref API's save wrapper). useDocxEditorRefApi returns `isDirty || commentsDirty` (false before the view mounts, matching React's no-view guard). Net semantics match: pending after typing or a comment edit, clean after save or load. Housekeeping transactions (paraId allocation, auto-bidi) only run as appendTransactions to a real user edit or imperatively at initial-state build (never through the runtime transaction handler on a plain load), so they never set isDirty spuriously."
+    },
     "deferredInVue": {
-      "getEditorRef": "Requires the Vue PagedEditor component, not ported; stubbed to return null.",
-      "hasPendingChanges": "Requires PM-serialized-vs-live tracking the Vue pipeline does not surface; stubbed to false."
+      "getEditorRef": "Requires the Vue PagedEditor component, not ported; stubbed to return null."
     }
   }
 }

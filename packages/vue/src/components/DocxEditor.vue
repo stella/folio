@@ -589,6 +589,7 @@ const {
   editorView,
   editorState,
   isReady,
+  isDirty,
   parseError,
   layout,
   blocks,
@@ -1176,6 +1177,13 @@ onMounted(() => {
 const { exposed } = useDocxEditorRefApi({
   editor,
   editorView,
+  // Doc-dirty flag (any doc-changing transaction; cleared on save + load) and
+  // comment-list dirty flag together back `hasPendingChanges`, mirroring React's
+  // ParagraphChangeTracker signals OR-ed with commentsDirtyRef. The ref API's
+  // save wrapper clears the comment flag; useDocxEditor clears the doc flag.
+  isDirty,
+  commentsDirty: commentManagement.commentsDirty,
+  clearCommentsDirty: commentManagement.clearCommentsDirty,
   layout,
   pagesRef,
   pagesViewportRef,
