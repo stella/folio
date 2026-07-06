@@ -285,6 +285,7 @@ const props = withDefaults(defineProps<DocxEditorProps>(), {
   initialZoom: 1,
   showOutline: false,
   className: "",
+  showTableInsert: true,
 });
 
 const emit = defineEmits<{
@@ -529,12 +530,18 @@ function handleInsertImageAction(): void {
   const input = document.createElement("input");
   input.type = "file";
   input.accept = "image/*";
+  input.style.display = "none";
   input.addEventListener("change", () => {
     const file = input.files?.[0];
     if (file) {
       void insertImageFromFile(view, file, () => view.focus());
     }
+    // Some browsers (iOS Safari, restricted iframes) require the input to be
+    // connected to the DOM for `.click()` to open the picker; mirror React's
+    // mounted hidden input by attaching it, then clean up after selection.
+    input.remove();
   });
+  document.body.appendChild(input);
   input.click();
 }
 
