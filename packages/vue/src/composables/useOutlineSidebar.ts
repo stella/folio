@@ -29,15 +29,33 @@ export type UseOutlineSidebarOptions = {
 }
 
 export function useOutlineSidebar(opts: UseOutlineSidebarOptions) {
+  function recomputeHeadings() {
+    const view = opts.editorView.value;
+    if (view) {
+      opts.outlineHeadings.value = collectHeadings(view.state.doc);
+    }
+  }
+
   function handleToggleOutline() {
     if (!opts.showOutline.value) {
-      // Opening: collect headings
-      const view = opts.editorView.value;
-      if (view) {
-        opts.outlineHeadings.value = collectHeadings(view.state.doc);
-      }
+      // Opening: collect headings so the panel isn't stale from before the
+      // panel existed (or from before the doc-change recompute below fired).
+      recomputeHeadings();
     }
     opts.showOutline.value = !opts.showOutline.value;
+  }
+
+  /**
+   * Re-collect headings after a document change, but only while the outline
+   * panel is open — a closed panel re-collects lazily on next open via
+   * `handleToggleOutline`. Mirrors React's doc-change-triggered heading
+   * recompute (`DocxEditor.tsx`'s `handleDocumentChange`, gated on
+   * `showOutlineRef.current`).
+   */
+  function recomputeHeadingsIfOpen() {
+    if (opts.showOutline.value) {
+      recomputeHeadings();
+    }
   }
 
   function handleOutlineNavigate(pmPos: number) {
@@ -79,5 +97,6 @@ export function useOutlineSidebar(opts: UseOutlineSidebarOptions) {
     handleOutlineNavigate,
     handleToggleSidebar,
     handleEditorScrollMouseDown,
+    recomputeHeadingsIfOpen,
   };
 }
