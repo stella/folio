@@ -56,7 +56,7 @@ import TableMoreDropdown from './TableMoreDropdown.vue';
  */
 type CommandFactory = (...args: readonly unknown[]) => Command;
 
-/** Border preset the (unported) `TableBorderPicker` emits. */
+/** Border preset `TableBorderPicker` emits. */
 type TableBorderPreset =
   | 'all'
   | 'none'
@@ -70,7 +70,7 @@ type TableBorderPreset =
   | 'right';
 
 /**
- * Action string the (unported) `TableMoreDropdown` emits. Kept as a widened
+ * Action string `TableMoreDropdown` emits. Kept as a widened
  * string so unmapped actions fall through to `exec(action)` directly, matching
  * upstream behaviour.
  */

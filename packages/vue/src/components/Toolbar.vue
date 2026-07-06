@@ -518,7 +518,7 @@ import { useTranslation } from '../i18n';
  */
 type CommandFactory = (...args: readonly unknown[]) => Command;
 
-/** Rotate/flip actions the (not-yet-ported) transform dropdown would emit. */
+/** Rotate/flip actions the transform dropdown emits. */
 type ImageTransformAction = 'rotateCW' | 'rotateCCW' | 'flipH' | 'flipV';
 
 /**
