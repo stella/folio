@@ -9,6 +9,7 @@
     "function-calling",
     "llm",
     "ooxml",
+    "tanstack-intent",
     "tools",
     "word"
   ],
@@ -23,6 +24,10 @@
     "url": "https://github.com/stella/folio.git",
     "directory": "packages/agents"
   },
+  "files": [
+    "src",
+    "skills"
+  ],
   "type": "module",
   "sideEffects": false,
   "exports": {

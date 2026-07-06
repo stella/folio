@@ -105,7 +105,9 @@ if (typeof root !== "object") {
 pkg.exports = distExports;
 pkg.main = root.import;
 pkg.types = root.types;
-pkg.files = ["dist", "README.md", "LICENSE", "NOTICE.md"];
+// "skills" ships TanStack Intent agent skills (skills/*/SKILL.md) for packages
+// that have them; pack ignores entries that do not exist in a given package.
+pkg.files = ["dist", "skills", "README.md", "LICENSE", "NOTICE.md"];
 
 await Bun.write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 console.log(`prepared ${pkg.name}@${pkg.version} for publish (exports -> dist)`);
