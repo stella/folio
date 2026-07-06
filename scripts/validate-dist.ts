@@ -1,13 +1,22 @@
 #!/usr/bin/env bun
 // Clean-room validation that the *published* shape of a folio package works.
 //
-// Usage: `bun scripts/validate-dist.ts <core|react>`
+// Usage: `bun scripts/validate-dist.ts <core|react|vue>`
 //
 // For the named package it builds, transforms its package.json to the dist
 // shape exactly like the publish workflow (`prepare-publish.ts`), packs a
 // tarball with `bun pm pack` (which rewrites `workspace:` / `catalog:`
 // protocols to concrete versions), then installs that tarball into a throwaway
 // project OUTSIDE the monorepo and runs the package's checks against it.
+//
+// vue already ships dist-shaped exports in-repo, so the prepare-publish
+// transform is skipped for it (it only understands core/react's `./src/*.ts`
+// string exports). Its type check runs under `bundler` resolution only — the
+// resolution Vite/Nuxt consumers use — because vite-plugin-dts emits
+// extensionless relative re-exports that a node16/nodenext consumer rejects (a
+// pre-existing vue build gap). nuxt is a Nuxt module (a different dist shape:
+// `module.mjs` + `types.d.mts`) and is validated by its own `nuxt-module-build`
+// step, not here.
 //
 //   core  — 4 checks:
 //     1. Runtime  — ESM `import` of `.`, `/markdown`, `/server`, and a `./*`
@@ -49,8 +58,8 @@ const prepareScript = path.join(repoRoot, "scripts", "prepare-publish.ts");
 const tscBin = path.join(repoRoot, "node_modules", ".bin", "tsc");
 
 const target = process.argv[2];
-if (target !== "core" && target !== "react") {
-  panic("usage: bun scripts/validate-dist.ts <core|react>");
+if (target !== "core" && target !== "react" && target !== "vue") {
+  panic("usage: bun scripts/validate-dist.ts <core|react|vue>");
 }
 
 type CheckResult = { name: string; ok: boolean; detail: string };
@@ -62,7 +71,13 @@ const record = (name: string, ok: boolean, detail: string): void => {
 
 // Build a package, transform its package.json to the dist shape (reversibly),
 // pack a tarball into `destDir`, and return the tarball path.
-const buildAndPack = async (pkgDir: string, destDir: string): Promise<string> => {
+//
+// `prepare` runs `prepare-publish.ts` (source `./src/*.ts` exports -> dist).
+// Skip it for packages that already ship dist-shaped exports in-repo
+// (@stll/folio-vue): prepare-publish only understands `./src/*` string exports
+// and panics on their `{ types, import }` objects. `bun pm pack` still rewrites
+// their `workspace:` deps to concrete versions, so no transform is needed.
+const buildAndPack = async (pkgDir: string, destDir: string, prepare: boolean): Promise<string> => {
   const name = path.basename(pkgDir);
   console.log(`→ building @stll/folio-${name}`);
   await $`bun run build`.cwd(pkgDir).quiet();
@@ -70,8 +85,10 @@ const buildAndPack = async (pkgDir: string, destDir: string): Promise<string> =>
   const pkgJsonPath = path.join(pkgDir, "package.json");
   const original = await readFile(pkgJsonPath, "utf-8");
   try {
-    console.log(`→ transforming @stll/folio-${name} package.json to dist shape`);
-    await $`bun ${prepareScript} ${pkgDir}`.quiet();
+    if (prepare) {
+      console.log(`→ transforming @stll/folio-${name} package.json to dist shape`);
+      await $`bun ${prepareScript} ${pkgDir}`.quiet();
+    }
     console.log(`→ packing @stll/folio-${name} tarball`);
     await $`bun pm pack --destination ${destDir}`.cwd(pkgDir).quiet();
   } finally {
@@ -84,23 +101,31 @@ const buildAndPack = async (pkgDir: string, destDir: string): Promise<string> =>
     : panic(`validate-dist: bun pm pack produced no tarball for ${name}`);
 };
 
-const coreDir = path.join(repoRoot, "packages", "core");
-const reactDir = path.join(repoRoot, "packages", "react");
+const dirs: Record<string, string> = {
+  core: path.join(repoRoot, "packages", "core"),
+  react: path.join(repoRoot, "packages", "react"),
+  vue: path.join(repoRoot, "packages", "vue"),
+};
+const coreDir = dirs.core;
 
 const packDir = await mkdtemp(path.join(tmpdir(), "folio-pack-"));
 const corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
 const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-"));
 
-const pkgDir = target === "core" ? coreDir : reactDir;
+// core/react carry source-shaped exports that prepare-publish rewrites; vue
+// already ships dist-shaped exports (skip the transform).
+const needsPrepare = target !== "vue";
+const pkgDir = dirs[target];
 const pkgName = `@stll/folio-${target}`;
-const tarball = await buildAndPack(pkgDir, packDir);
+const tarball = await buildAndPack(pkgDir, packDir, needsPrepare);
 
-// react depends on @stll/folio-core; pack it too so the clean room resolves it
-// npm-style (no workspace leak). An `overrides` entry pins react's transitive
-// dependency to this exact tarball, since the package is not yet on a registry.
+// react and vue both depend on @stll/folio-core; pack it too so the clean room
+// resolves it npm-style (no workspace leak). An `overrides` entry pins the
+// transitive dependency to this exact tarball, since the package is not yet on
+// a registry.
 let coreTarball: string | null = null;
-if (target === "react") {
-  coreTarball = await buildAndPack(coreDir, corePackDir);
+if (target === "react" || target === "vue") {
+  coreTarball = await buildAndPack(coreDir, corePackDir, true);
 }
 
 console.log(`→ installing tarball into ${consumerDir}`);
@@ -118,18 +143,30 @@ await writeFile(
   `${JSON.stringify(consumerPkg, null, 2)}\n`,
 );
 
-const installArgs =
-  target === "core"
-    ? [tarball]
-    : [
-        tarball,
-        coreTarball as string,
-        "react@^19",
-        "react-dom@^19",
-        "use-intl@^4",
-        "@types/react@^19",
-        "@types/react-dom@^19",
-      ];
+const installArgs: string[] = [tarball];
+if (target === "react") {
+  if (!coreTarball) panic("validate-dist: react needs a @stll/folio-core tarball");
+  installArgs.push(
+    coreTarball,
+    "react@^19",
+    "react-dom@^19",
+    "use-intl@^4",
+    "@types/react@^19",
+    "@types/react-dom@^19",
+  );
+}
+if (target === "vue") {
+  if (!coreTarball) panic("validate-dist: vue needs a @stll/folio-core tarball");
+  installArgs.push(
+    coreTarball,
+    "vue@^3",
+    "prosemirror-history@^1",
+    "prosemirror-model@^1",
+    "prosemirror-state@^1",
+    "prosemirror-tables@^1",
+    "prosemirror-view@^1",
+  );
+}
 await $`bun add ${installArgs}`.cwd(consumerDir).quiet();
 
 const installedDir = path.join(consumerDir, "node_modules", "@stll", `folio-${target}`);
@@ -152,6 +189,10 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
   react: {
     "@stll/folio-react": ["DocxEditor", "FolioUIProvider", "FormattingBar", "createDocx"],
     "@stll/folio-react/messages": ["getFolioMessages", "FOLIO_LOCALES", "isFolioLocale"],
+  },
+  vue: {
+    "@stll/folio-vue": ["DocxEditor", "createDocx", "useWheelZoom", "i18nPlugin"],
+    "@stll/folio-vue/composables": ["useDocxEditor", "useZoom", "useWheelZoom"],
   },
 };
 
@@ -200,9 +241,8 @@ record(
 );
 
 // --- Check 2: types resolve under node16 AND bundler ------------------------
-const consumerTs =
-  target === "core"
-    ? `
+const consumerTsByTarget: Record<string, string> = {
+  core: `
 import { createEmptyDocument, createDocx, type Document } from "@stll/folio-core";
 import { fromMarkdown, toMarkdown, type MarkdownOptions } from "@stll/folio-core/markdown";
 import { deriveBlockId, type FolioBlockId } from "@stll/folio-core/server";
@@ -210,14 +250,24 @@ import { isFolioBlockId } from "@stll/folio-core/types/block-id";
 
 export const used = [createEmptyDocument, createDocx, fromMarkdown, toMarkdown, deriveBlockId, isFolioBlockId];
 export type Surface = [Document, MarkdownOptions, FolioBlockId];
-`
-    : `
+`,
+  react: `
 import { DocxEditor, FolioUIProvider, createDocx, type DocxEditorProps } from "@stll/folio-react";
 import { getFolioMessages, type FolioMessages } from "@stll/folio-react/messages";
 
 export const used = [DocxEditor, FolioUIProvider, createDocx, getFolioMessages];
 export type Surface = [DocxEditorProps, FolioMessages];
-`;
+`,
+  vue: `
+import { DocxEditor, createDocx, type DocxEditorProps } from "@stll/folio-vue";
+import { useDocxEditor, useZoom } from "@stll/folio-vue/composables";
+
+export const used = [DocxEditor, createDocx, useDocxEditor, useZoom];
+export type Surface = [DocxEditorProps];
+`,
+};
+const consumerTs =
+  consumerTsByTarget[target] ?? panic(`validate-dist: no consumer.ts for ${target}`);
 await writeFile(path.join(consumerDir, "consumer.ts"), consumerTs);
 
 const baseCompilerOptions = {
@@ -232,8 +282,18 @@ const tsconfigs: Record<string, { module: string; moduleResolution: string }> = 
   node16: { module: "node16", moduleResolution: "node16" },
   bundler: { module: "preserve", moduleResolution: "bundler" },
 };
+// vue's declarations come from vite-plugin-dts, which emits extensionless
+// relative re-exports (`export * from './useZoom'`). Those resolve under
+// `bundler` (what Vite/Nuxt consumers use) but not under node16/nodenext ESM,
+// which requires explicit `.js` specifiers. Vue/Nuxt consumers use bundler
+// resolution, so check that here; node16-clean declarations are a pre-existing
+// vue build gap tracked separately. core/react (tsdown) stay checked in both.
+const typeCheckModes =
+  target === "vue"
+    ? Object.entries(tsconfigs).filter(([mode]) => mode === "bundler")
+    : Object.entries(tsconfigs);
 const typeChecks = await Promise.all(
-  Object.entries(tsconfigs).map(async ([mode, opts]) => {
+  typeCheckModes.map(async ([mode, opts]) => {
     const file = path.join(consumerDir, `tsconfig.${mode}.json`);
     await writeFile(
       file,
@@ -371,6 +431,42 @@ if (target === "react") {
   }
 }
 
+// --- Check 3 (vue only): bundled stylesheet ---------------------------------
+// The vue adapter ships a single `dist/folio-vue.css` (the `./editor.css`
+// export). Assert it is present, parses, and carries the editor's document +
+// chrome rules — a minimal but real check that the packed CSS is usable.
+if (target === "vue") {
+  const cssPath = path.join(installedDist, "folio-vue.css");
+  if (!existsSync(cssPath)) {
+    record("css: dist/folio-vue.css present", false, "missing from tarball");
+  } else {
+    const css = await readFile(cssPath, "utf-8");
+    const requiredRules = [".ep-root", ".basic-toolbar"];
+    const missingRules = requiredRules.filter((r) => !css.includes(r));
+
+    let parses = true;
+    let parseDetail = "";
+    try {
+      transform({ filename: "folio-vue.css", code: Buffer.from(css), minify: false });
+    } catch (error) {
+      parses = false;
+      parseDetail = error instanceof Error ? error.message : String(error);
+    }
+
+    const ok = css.length > 5_000 && parses && missingRules.length === 0;
+    const detail = ok
+      ? `${(css.length / 1024).toFixed(1)} kB, editor rules present`
+      : [
+          css.length <= 5_000 && `too small (${css.length}B)`,
+          !parses && `invalid CSS: ${parseDetail}`,
+          missingRules.length > 0 && `missing rules: ${missingRules.join(", ")}`,
+        ]
+          .filter(Boolean)
+          .join("; ");
+    record("css: bundled folio-vue.css present and valid", ok, detail);
+  }
+}
+
 // --- Check 4: externals not bundled into the JS -----------------------------
 // Recurse: @stll/folio-core ships a source-mirrored dist tree, so the dep
 // imports live in nested modules, not only at the dist root.
@@ -392,19 +488,24 @@ const reactSentinels = [
 ];
 const leaked = reactSentinels.filter((s) => allJs.includes(s));
 // Each external must appear only as an import specifier, never bundled.
-const expectedExternals =
-  target === "core"
-    ? ["prosemirror-state", "prosemirror-model", "jszip"]
-    : ["react", "react-dom", "react/jsx-runtime", "@stll/folio-core", "prosemirror-view"];
+const externalsByTarget: Record<string, string[]> = {
+  core: ["prosemirror-state", "prosemirror-model", "jszip"],
+  react: ["react", "react-dom", "react/jsx-runtime", "@stll/folio-core", "prosemirror-view"],
+  vue: ["vue", "@stll/folio-core", "prosemirror-history", "prosemirror-state"],
+};
+const expectedExternals = externalsByTarget[target] ?? [];
 const notExternalized = expectedExternals.filter(
   (p) => !new RegExp(`["']${p.replace(/\//gu, "\\/")}(?:/[^"']*)?["']`, "u").test(allJs),
 );
 const dataFontInlined = /["']data:font|["']data:application\/font/u.test(allJs);
 const externalOk = leaked.length === 0 && notExternalized.length === 0 && !dataFontInlined;
+const externalLabels: Record<string, string> = {
+  core: "external: React never bundled; deps stay external",
+  react: "external: React / ProseMirror / @stll/folio-core not bundled into JS",
+  vue: "external: Vue / ProseMirror / @stll/folio-core not bundled into JS",
+};
 record(
-  target === "core"
-    ? "external: React never bundled; deps stay external"
-    : "external: React / ProseMirror / @stll/folio-core not bundled into JS",
+  externalLabels[target] ?? "external: declared externals not bundled into JS",
   externalOk,
   externalOk
     ? `${expectedExternals.length} externals imported by specifier; no bundled internals`
@@ -429,7 +530,10 @@ if (target === "react") {
     record("css: standalone.css utility coverage", false, "standalone.css missing from tarball");
   } else {
     const standaloneCss = await readFile(standalonePath, "utf-8");
-    const { candidates, uncovered } = findUncoveredUtilities({ jsFiles: jsContents, standaloneCss });
+    const { candidates, uncovered } = findUncoveredUtilities({
+      jsFiles: jsContents,
+      standaloneCss,
+    });
     record(
       "css: standalone.css covers every utility used in dist JS",
       uncovered.length === 0,
@@ -486,8 +590,7 @@ if (target === "react") {
       ? "getFolioMessages / FolioMessages surface exposed; no source-JSON import"
       : [
           jsonImports.length > 0 && `imports source JSON: ${jsonImports.join(", ")}`,
-          !declaresSurface &&
-            "neither declares nor re-exports FolioMessages / getFolioMessages",
+          !declaresSurface && "neither declares nor re-exports FolioMessages / getFolioMessages",
         ]
           .filter(Boolean)
           .join("; ");

@@ -1,9 +1,10 @@
 name: Publish
 
 # Publishes the folio packages to npm with SLSA provenance via OIDC trusted
-# publishing (no long-lived NPM_TOKEN). The monorepo ships two packages:
-# @stll/folio-core (headless engine) and @stll/folio-react (React editor, which
-# depends on the core). Both are released by this workflow as a matrix.
+# publishing (no long-lived NPM_TOKEN). The monorepo ships four packages:
+# @stll/folio-core (headless engine), @stll/folio-react (React editor),
+# @stll/folio-vue (Vue editor), and @stll/folio-nuxt (Nuxt module wrapping the
+# Vue editor). All are released by this workflow as a matrix.
 #
 # Least privilege: packing and publishing are separate jobs. The `pack` job runs
 # the untrusted build (bun install, build, prepare-publish, bun pm pack) with NO
@@ -11,15 +12,24 @@ name: Publish
 # credential. Only the `publish` job — which downloads the prebuilt tarballs and
 # runs the hardened action — is granted id-token: write.
 #
-# Dependency order: @stll/folio-core publishes before @stll/folio-react, since
-# react's published package.json pins `@stll/folio-core@^0.1.0` (bun pm pack
-# rewrites the `workspace:^` protocol to the concrete version). The publish job
-# runs the matrix with `max-parallel: 1` in core→react order.
+# Dependency order: @stll/folio-core publishes before @stll/folio-react and
+# @stll/folio-vue (both pin `@stll/folio-core` via `workspace:^`, which bun pm
+# pack rewrites to the concrete version), and @stll/folio-vue before
+# @stll/folio-nuxt (nuxt pins `@stll/folio-vue`). The publish job runs the matrix
+# with `max-parallel: 1` in core → react → vue → nuxt order.
+#
+# @stll/folio-vue and @stll/folio-nuxt ship dist-shaped `exports` in-repo, so the
+# pack job skips the prepare-publish source->dist transform for them (it only
+# understands core/react's `./src/*.ts` string exports); bun pm pack still
+# rewrites their `workspace:` deps to concrete versions.
 #
 # Prerequisite (one-time, by a maintainer on npmjs.com): configure an npm
 # "trusted publisher" for EACH package pointing at this repository and this
 # workflow file. The hardened action refuses to fall back to token auth, so the
-# first publish of a package fails until its trusted publisher exists.
+# first publish of a package fails until its trusted publisher exists. NOTE:
+# @stll/folio-vue and @stll/folio-nuxt still need their trusted-publisher / OIDC
+# entries created on npm before their publish jobs can succeed — a manual npm-side
+# step, done once per package.
 #
 # Auto-release: a version bump to either package.json merged to main publishes
 # that version. The hardened action is idempotent: it skips a name@version
@@ -43,6 +53,8 @@ on:
     paths:
       - packages/core/package.json
       - packages/react/package.json
+      - packages/vue/package.json
+      - packages/nuxt/package.json
   workflow_dispatch:
     inputs:
       publish:
@@ -60,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pkg: [core, react]
+        pkg: [core, react, vue, nuxt]
     permissions:
       contents: read # deliberately NO id-token: untrusted build scripts run here
     steps:
@@ -87,7 +99,14 @@ jobs:
           # `workspace:` / `catalog:` dependency protocols to concrete versions
           # in the published package.json (react's `@stll/folio-core` dep).
           bun --filter "@stll/folio-${PKG}" build
-          bun scripts/prepare-publish.ts "packages/${PKG}"
+          # core/react carry source-shaped exports (./src/*.ts) that
+          # prepare-publish rewrites to dist; vue/nuxt already ship dist-shaped
+          # exports, so skip the transform (it panics on their { types, import }
+          # objects). bun pm pack still rewrites their workspace: deps below.
+          case "${PKG}" in
+            core|react) bun scripts/prepare-publish.ts "packages/${PKG}" ;;
+            *) echo "skip prepare-publish for ${PKG} (already dist-shaped)" ;;
+          esac
           mkdir -p "${GITHUB_WORKSPACE}/release-artifacts"
           ( cd "packages/${PKG}" && bun pm pack --destination "${GITHUB_WORKSPACE}/release-artifacts" )
           sha256sum release-artifacts/*.tgz >> "release-artifacts/SHA256SUMS-${PKG}"
@@ -109,11 +128,12 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish) }}
     runs-on: ubuntu-latest
     strategy:
-      # core before react: react's published dep on @stll/folio-core must already
-      # exist on the registry for downstream installs.
+      # Ordered so every package's published deps already exist on the registry
+      # for downstream installs: core before react/vue (both dep on core), and
+      # vue before nuxt (nuxt deps on vue).
       max-parallel: 1
       matrix:
-        pkg: [core, react]
+        pkg: [core, react, vue, nuxt]
     permissions:
       # contents: write cuts the per-version GitHub Release below. Safe to grant
       # alongside id-token here: this job runs no untrusted build scripts (they

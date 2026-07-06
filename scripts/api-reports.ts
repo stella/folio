@@ -40,6 +40,7 @@ const repoRoot = path.resolve(import.meta.dir, "..");
 const PACKAGES: PackageTarget[] = [
   { slug: "core", name: "@stll/folio-core", root: path.join(repoRoot, "packages/core") },
   { slug: "react", name: "@stll/folio-react", root: path.join(repoRoot, "packages/react") },
+  { slug: "vue", name: "@stll/folio-vue", root: path.join(repoRoot, "packages/vue") },
 ];
 
 type Entry = { key: string; slug: string; dts: string };
@@ -70,6 +71,19 @@ const resolveDts = (packageRoot: string, subpath: string, srcPath: string): stri
   return null;
 };
 
+// Read the built `.d.ts` a conditional-export object names in its `types`
+// condition. Some packages (@stll/folio-vue) ship dist-shaped exports in-repo —
+// `{ types, import, require }` objects pointing straight at `dist/**` — instead
+// of the `./src/*.ts` strings that `prepare-publish.ts` rewrites at publish
+// time. For those, `types` already is the artifact to snapshot.
+const distTypesFromExport = (target: unknown): string | null => {
+  if (typeof target === "object" && target !== null && "types" in target) {
+    const { types } = target;
+    return typeof types === "string" ? types : null;
+  }
+  return null;
+};
+
 // Turn a package's `exports` map into snapshot entries. Excluded, by design:
 //   - `./package.json`            metadata, not a type surface
 //   - subpath patterns (`./*`)    a wildcard passthrough to arbitrary internal
@@ -84,16 +98,32 @@ const entriesFor = (pkg: PackageTarget): { entries: Entry[]; missing: string[] }
   const missing: string[] = [];
   for (const [key, srcPath] of Object.entries(pkgJson.exports)) {
     if (key === "./package.json" || key.includes("*")) continue;
-    // In-repo exports are plain `./src/*.ts` strings; `prepare-publish.ts`
-    // panics on any other shape at publish time. Fail loudly here too, so a
-    // future refactor to conditional-exports objects breaks this gate visibly
-    // instead of silently dropping entries from the snapshot.
+
+    // Dist-shaped conditional-export object (@stll/folio-vue): the built .d.ts
+    // is named directly in `types`, so snapshot it as-is.
+    const distTypes = distTypesFromExport(srcPath);
+    if (distTypes) {
+      const rel = distTypes.replace(/^\.\//u, "");
+      if (existsSync(path.join(pkg.root, rel))) {
+        entries.push({ key, slug: slugForKey(key), dts: rel });
+      } else {
+        missing.push(`${key} (${distTypes})`);
+      }
+      continue;
+    }
+
+    // Otherwise the in-repo export is a plain `./src/*.ts` string (core/react),
+    // which `prepare-publish.ts` rewrites to dist at publish time, or a bundled
+    // asset. Anything else (a conditional-export object with no `types`) is a
+    // shape neither gate understands: fail loudly instead of silently dropping
+    // it from the snapshot.
     if (typeof srcPath !== "string") {
       console.error(
-        `${pkg.name}: export "${key}" is not a plain source-path string ` +
-          `(got ${JSON.stringify(srcPath)}).\n` +
-          `In-repo exports must point at ./src/*.ts (see scripts/prepare-publish.ts); ` +
-          `teach scripts/api-reports.ts about the new shape before changing this.`,
+        `${pkg.name}: export "${key}" is not a plain source-path string or a ` +
+          `conditional-export object with a "types" condition (got ${JSON.stringify(srcPath)}).\n` +
+          `In-repo exports must point at ./src/*.ts (see scripts/prepare-publish.ts) ` +
+          `or a dist-shaped { types, import } object; teach scripts/api-reports.ts ` +
+          `about the new shape before changing this.`,
       );
       process.exit(1);
     }
