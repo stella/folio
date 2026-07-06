@@ -7,9 +7,13 @@
 import { default as AddCommentCard } from './components/sidebar/AddCommentCard.vue';
 import { default as AlignmentButtons } from './components/ui/AlignmentButtons.vue';
 import { default as Button } from './components/ui/Button.vue';
+import { default as Checkbox } from './components/ui/Checkbox.vue';
 import { default as ColorPicker } from './components/ui/ColorPicker.vue';
 import { default as CommentCard } from './components/sidebar/CommentCard.vue';
 import { default as CommentMarginMarkers } from './components/CommentMarginMarkers.vue';
+import { Component } from 'vue';
+import { default as DatePickerPopover } from './components/ui/DatePickerPopover.vue';
+import { default as Dialog } from './components/ui/Dialog.vue';
 import { default as DocumentName } from './components/DocumentName.vue';
 import { default as EditingModeDropdown } from './components/EditingModeDropdown.vue';
 import { default as EditorToolbar } from './components/EditorToolbar.vue';
@@ -24,18 +28,21 @@ import { default as ImagePositionDialog } from './components/dialogs/ImagePositi
 import { default as ImagePropertiesDialog } from './components/dialogs/ImagePropertiesDialog.vue';
 import { default as ImageTransformDropdown } from './components/ui/ImageTransformDropdown.vue';
 import { default as ImageWrapDropdown } from './components/ui/ImageWrapDropdown.vue';
+import { default as Input } from './components/ui/Input.vue';
 import { default as InsertSymbolDialog } from './components/dialogs/InsertSymbolDialog.vue';
 import { default as InsertTableDialog } from './components/dialogs/InsertTableDialog.vue';
 import { default as LineSpacingPicker } from './components/ui/LineSpacingPicker.vue';
 import { default as ListButtons } from './components/ui/ListButtons.vue';
 import { default as MenuBar } from './components/MenuBar.vue';
 import { default as MenuDropdown } from './components/ui/MenuDropdown.vue';
+import { default as OutlineRail } from './components/ui/OutlineRail.vue';
 import { default as PageSetupDialog } from './components/dialogs/PageSetupDialog.vue';
 import { default as Popover } from './components/ui/Popover.vue';
 import { default as PrintButton } from './components/PrintButton.vue';
 import { default as ReplyInput } from './components/sidebar/ReplyInput.vue';
 import { default as ReplyThread } from './components/sidebar/ReplyThread.vue';
 import { default as ResolvedCommentMarker } from './components/sidebar/ResolvedCommentMarker.vue';
+import { default as Select } from './components/ui/Select.vue';
 import { default as StylePicker } from './components/ui/StylePicker.vue';
 import { default as TableBorderColorPicker } from './components/ui/TableBorderColorPicker.vue';
 import { default as TableBorderPicker } from './components/ui/TableBorderPicker.vue';
@@ -65,11 +72,20 @@ export const CARD_STYLE_COLLAPSED: CSSProperties;
 // @public (undocumented)
 export const CARD_STYLE_EXPANDED: CSSProperties;
 
+export { Checkbox }
+
 export { ColorPicker }
 
 export { CommentCard }
 
 export { CommentMarginMarkers }
+
+export { DatePickerPopover }
+
+// @public (undocumented)
+export const DEFAULT_COMPONENTS: FolioUIComponents;
+
+export { Dialog }
 
 export { DocumentName }
 
@@ -78,6 +94,95 @@ export { EditingModeDropdown }
 export { EditorToolbar }
 
 export { FindReplaceDialog }
+
+// @public
+export type FolioCheckboxProps = {
+    checked?: boolean;
+    className?: string;
+};
+
+// @public
+export type FolioColorPickerProps = {
+    mode: "text" | "highlight" | "border";
+    value?: string | undefined;
+    disabled?: boolean;
+    className?: string;
+};
+
+// @public
+export type FolioDatePickerPopoverProps = {
+    value: string | Date | null;
+    clearLabel?: string;
+    defaultOpen?: boolean;
+    showIcon?: boolean;
+};
+
+// @public
+export type FolioDialogProps = {
+    open: boolean;
+    ariaLabel?: string;
+    className?: string;
+    backdropClass?: string;
+    closeOnBackdrop?: boolean;
+};
+
+// @public
+export type FolioInputProps = {
+    className?: string;
+    size?: "sm" | "default" | "lg";
+};
+
+// @public
+export type FolioMenuItem = {
+    type?: "item";
+    label: string;
+    onSelect?: () => void;
+    disabled?: boolean;
+    shortcut?: string;
+};
+
+// @public (undocumented)
+export type FolioMenuProps = {
+    label: string;
+    items: ReadonlyArray<FolioMenuItem | {
+        type: "separator";
+    }>;
+};
+
+// @public
+export type FolioOutlineRailProps = {
+    items: OutlineItem[];
+    getScrollContainer: () => HTMLElement | null;
+    resolvePct?: (id: string, container: HTMLElement) => number | null;
+    onJump: (id: string, container: HTMLElement) => void;
+    activeId?: string | null;
+    topOffset?: number;
+    panelWidth?: number;
+    ariaLabel?: string;
+};
+
+// @public
+export type FolioPopoverProps = {
+    open: boolean;
+    placement?: "bottom-left" | "bottom-right" | "top-left" | "top-right";
+    closeOnScroll?: boolean;
+};
+
+// @public
+export type FolioSelectItem = {
+    value: string;
+    label: string;
+    disabled?: boolean;
+};
+
+// @public
+export type FolioSelectProps = {
+    value?: string;
+    items: FolioSelectItem[];
+    disabled?: boolean;
+    placeholder?: string;
+    className?: string;
+};
 
 export { FontPicker }
 
@@ -99,6 +204,8 @@ export { ImageTransformDropdown }
 
 export { ImageWrapDropdown }
 
+export { Input }
+
 export { InsertSymbolDialog }
 
 export { InsertTableDialog }
@@ -111,17 +218,27 @@ export { MenuBar }
 
 export { MenuDropdown }
 
+export { OutlineRail }
+
 export { PageSetupDialog }
 
 export { Popover }
 
 export { PrintButton }
 
+// @public
+export function provideFolioUI(components?: Partial<FolioUIComponents>): void;
+
 export { ReplyInput }
 
 export { ReplyThread }
 
 export { ResolvedCommentMarker }
+
+// @public
+export function resolveFolioComponents(components?: Partial<FolioUIComponents>): FolioUIComponents;
+
+export { Select }
 
 export { StylePicker }
 
@@ -152,6 +269,9 @@ export { Toolbar }
 export { TrackedChangeCard }
 
 export { UnifiedSidebar }
+
+// @public
+export function useFolioUI(): FolioUIComponents;
 
 export { VerticalRuler }
 

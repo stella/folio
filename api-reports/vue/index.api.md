@@ -466,9 +466,15 @@ export type FolioButtonProps = {
 // @public
 export type FolioUIComponents = {
     Button: Component;
-    ColorPicker: Component;
-    Popover: Component;
+    Dialog: Component;
+    Select: Component;
     Menu: Component;
+    Popover: Component;
+    Input: Component;
+    Checkbox: Component;
+    ColorPicker: Component;
+    DatePickerPopover: Component;
+    OutlineRail: Component;
 };
 
 // @public
