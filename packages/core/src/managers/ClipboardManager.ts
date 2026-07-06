@@ -81,7 +81,10 @@ export function extractFormattingFromElement(element: HTMLElement): TextFormatti
   }
 
   // Underline / strikethrough
-  const textDecoration = style.textDecoration || style.textDecorationLine;
+  // `textDecoration` can resolve to `undefined` when both the shorthand and the
+  // `textDecorationLine` longhand are empty/unset (JSDOM and some browsers).
+  // Fall back to "" so `.includes()` never runs on `undefined`.
+  const textDecoration = style.textDecoration || style.textDecorationLine || "";
   if (textDecoration.includes("underline")) {
     formatting.underline = { style: "single" };
   }

@@ -196,6 +196,7 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
       }> | null;
       if (Array.isArray(pPrChange)) {
         for (const entry of pPrChange) {
+          if (!entry?.info || typeof entry.info.id !== "number") continue;
           raw.push({
             type: "paragraphPropertiesChanged",
             text: node.textContent || "",

@@ -55,9 +55,12 @@ function insertSectionBreakAtCursor(breakType: InsertableSectionBreak): Command 
         cursorPos = tr.mapping.map($from.pos);
       } else {
         // Not in a textblock — insert a section-ending empty paragraph here.
+        // Place the cursor *inside* the new paragraph (pos + 1). Mapping
+        // `$from.pos` would land on a block boundary, which is not a valid
+        // `TextSelection` position and would throw.
         const pos = $from.pos;
         tr.insert(pos, paragraphType.create({ sectionBreakType: breakType }));
-        cursorPos = tr.mapping.map($from.pos);
+        cursorPos = pos + 1;
       }
 
       tr.setSelection(TextSelection.create(tr.doc, cursorPos));
