@@ -99,7 +99,7 @@ export type UseDocxEditorOptions = {
     onEditorViewReady?: (view: EditorView | null) => void;
     onReadOnlyEditAttempt?: () => void;
     featureFlags?: MaybeRefOrGetter<FolioSelectiveSaveFlags | undefined>;
-    onSelectiveSaveTripwire?: (result: TripwireResult) => void;
+    onSelectiveSaveTripwire?: ((result: TripwireResult) => void) | undefined;
 };
 
 // @public (undocumented)

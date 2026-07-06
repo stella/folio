@@ -470,7 +470,7 @@ export type UseDocxEditorOptions = {
    * {@link FolioSelectiveSaveFlags.selectiveSaveTripwire} is on. Observability
    * only — never blocks or poisons the save. Mirrors React's callback.
    */
-  onSelectiveSaveTripwire?: (result: TripwireResult) => void;
+  onSelectiveSaveTripwire?: ((result: TripwireResult) => void) | undefined;
 }
 
 export type UseDocxEditorReturn = {
@@ -963,12 +963,18 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       return null;
     }
 
+    // Snapshot the editor state once, before any awaited dynamic imports, so
+    // the document we serialize and the selective-save change signals are all
+    // read from the same snapshot. A later `view.state` read could pick up an
+    // edit that landed mid-save and diff against the wrong baseline.
+    const state = view.state;
+
     const { resolveSelectiveSaveFlags } = await import(
       "@stll/folio-core/docx/selectiveSaveFlags"
     );
     const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
 
-    const updatedDoc = fromProseDoc(view.state.doc, base);
+    const updatedDoc = fromProseDoc(state.doc, base);
     const baselineBuffer = updatedDoc.originalBuffer ?? null;
 
     // The tripwire observes the selective path independently of the user-visible
@@ -981,7 +987,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     let selectiveBuffer: ArrayBuffer | null = null;
     if (shouldAttemptSelective && baselineBuffer) {
       const { attemptSelectiveSave } = await import("@stll/folio-core/docx/selectiveSave");
-      const state = view.state;
       selectiveBuffer = await attemptSelectiveSave(updatedDoc, baselineBuffer, {
         changedParaIds: getChangedParagraphIds(state),
         structuralChange: hasStructuralChanges(state),
