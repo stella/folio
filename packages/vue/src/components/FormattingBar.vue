@@ -146,11 +146,16 @@
 import { computed } from "vue";
 import MaterialSymbol from "./ui/MaterialSymbol.vue";
 import StylePicker from "./ui/StylePicker.vue";
-import ColorPicker from "./ui/ColorPicker.vue";
 import AlignmentButtons from "./ui/AlignmentButtons.vue";
 import ListButtons from "./ui/ListButtons.vue";
 import { createDefaultListState } from "../utils/listState";
 import { useTranslation } from "../i18n";
+import { useFolioUI } from "../ui/folio-ui";
+
+// Resolve ColorPicker from the FolioUI injection provider so a host
+// `components.ColorPicker` override renders here; falls back to the package
+// default (ui/ColorPicker.vue) when rendered outside a provider.
+const { ColorPicker } = useFolioUI();
 import type { ColorValue } from "@stll/folio-core/types/document";
 import type { ListState } from "../utils/listState";
 import type { ParagraphAlignment } from "./ui/AlignmentButtons.types";

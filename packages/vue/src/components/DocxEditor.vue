@@ -403,6 +403,7 @@ import { useTrackedChanges } from "../composables/useTrackedChanges";
 import { useZoom } from "../composables/useZoom";
 import type { FontOption } from "../utils/fontOptions";
 import { provideLocale, useTranslation } from "../i18n";
+import { provideFolioUI } from "../ui/folio-ui";
 
 const props = withDefaults(defineProps<DocxEditorProps>(), {
   documentBuffer: null,
@@ -431,6 +432,11 @@ const emit = defineEmits<{
 
 // PORT-BLOCKED: no i18n/locale prop on the fork's DocxEditorProps yet — default to `en`.
 provideLocale();
+// Provide the consumer's UI-injection overrides (or the built-in defaults) to
+// the chrome subtree. Descendant chrome (Toolbar, FormattingBar) resolves the
+// injected primitives via `useFolioUI`, so `components.ColorPicker` etc. take
+// effect. Provided once at setup; the prop is not expected to change identity.
+provideFolioUI(props.components);
 // PORT-BLOCKED: no colorMode prop; share a fixed-light token scope with teleported chrome.
 const isDark = ref(false);
 provideDocxPortalClass(isDark);
