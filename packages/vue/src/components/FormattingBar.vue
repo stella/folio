@@ -32,7 +32,7 @@
         :disabled="disabled || !canUndo"
         :title="t('undoShortcut')"
         :aria-label="t('undo')"
-        @mousedown.prevent="$emit('undo')"
+        @mousedown.prevent="emit('undo')"
       >
         <MaterialSymbol name="undo" :size="18" />
       </button>
@@ -42,7 +42,7 @@
         :disabled="disabled || !canRedo"
         :title="t('redoShortcut')"
         :aria-label="t('redo')"
-        @mousedown.prevent="$emit('redo')"
+        @mousedown.prevent="emit('redo')"
       >
         <MaterialSymbol name="redo" :size="18" />
       </button>
@@ -245,6 +245,10 @@ function onTextColor(color: ColorValue | string) {
   transition:
     background-color 0.1s ease,
     color 0.1s ease;
+}
+.docx-formatting-bar__btn:focus-visible {
+  outline: 2px solid var(--doc-primary);
+  outline-offset: 2px;
 }
 .docx-formatting-bar__btn:hover:not(:disabled) {
   background: var(--doc-primary-light);
