@@ -4,6 +4,7 @@
 
 ```ts
 
+import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
 import { ClipboardSelection } from '@stll/folio-core/managers/ClipboardManager';
 import { CommandMap } from '@stll/folio-core/prosemirror/extensions/types';
@@ -16,14 +17,18 @@ import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { extractTrackedChanges } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
+import { FlowBlock } from '@stll/folio-core/layout-engine/types';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { getSelectionRuns } from '@stll/folio-core/managers/ClipboardManager';
 import { Layout } from '@stll/folio-core/layout-engine/types';
 import { MaybeRefOrGetter } from 'vue';
+import { Measure } from '@stll/folio-core/layout-engine/types';
 import { ParsedClipboardContent } from '@stll/folio-core/utils/clipboard';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Ref } from 'vue';
 import { runsToClipboardContent } from '@stll/folio-core/utils/clipboard';
+import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
+import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TrackedChangeEntry } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
 import { TrackedChangesResult } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
 
@@ -82,6 +87,10 @@ export type UseDocxEditorOptions = {
     editorMode?: MaybeRefOrGetter<"editing" | "suggesting" | "viewing">;
     author?: MaybeRefOrGetter<string>;
     externalPlugins?: Plugin_2[];
+    onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
+    showTemplateDirectives?: MaybeRefOrGetter<boolean | undefined>;
+    onSlashMenuChange?: (state: TemplateSlashMenuState) => void;
+    onSlashMenuKeyAction?: (action: TemplateSlashMenuKeyAction) => boolean;
     onChange?: (doc: Document_2) => void;
     onError?: (error: Error) => void;
     onSelectionUpdate?: (state: EditorState) => void;
@@ -97,6 +106,8 @@ export type UseDocxEditorReturn = {
     isReady: Ref<boolean>;
     parseError: Ref<string | null>;
     layout: Ref<Layout | null>;
+    blocks: Ref<FlowBlock[]>;
+    measures: Ref<Measure[]>;
     loadBuffer: (buffer: DocxInput) => Promise<void>;
     loadDocument: (doc: Document_2) => void;
     save: () => Promise<Blob | null>;
