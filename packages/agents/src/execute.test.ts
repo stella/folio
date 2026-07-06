@@ -195,6 +195,19 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
       ),
     ).toContain("999999");
 
+    // reply_comment with a malformed id (digits plus trailing junk) is
+    // rejected outright rather than truncated to the leading digits and
+    // matched against a real comment.
+    expect(
+      expectError(
+        executeFolioToolCall(
+          FOLIO_AGENT_TOOL_NAMES.replyComment,
+          { commentId: `${comment.id}abc`, text: "orphan" },
+          bridge,
+        ),
+      ),
+    ).toContain(`${comment.id}abc`);
+
     // resolve_comment
     const resolveResult = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.resolveComment, { commentId: comment.id }, bridge),

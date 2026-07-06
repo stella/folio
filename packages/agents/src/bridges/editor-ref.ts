@@ -51,6 +51,16 @@ const toAgentCommentReply = (reply: Comment): FolioAgentCommentReply => ({
   text: replyPlainText(reply),
 });
 
+/**
+ * Parse a tool-supplied comment id into the numeric `Comment.id` this bridge
+ * matches against, rejecting anything but a bare non-negative integer.
+ * `Number.parseInt` alone would silently accept trailing junk (`"12abc"` ->
+ * `12`), which could reply to or resolve the wrong comment on malformed tool
+ * input.
+ */
+const parseCommentId = (commentId: string): number | null =>
+  /^\d+$/.test(commentId) ? Number.parseInt(commentId, 10) : null;
+
 /** A host-state `Comment`'s plain text, its paragraphs joined by newlines (mirrors `FolioDocxReviewer`'s reading). */
 const replyPlainText = (comment: Comment): string =>
   comment.content.map(paragraphPlainText).join("\n");
@@ -140,8 +150,8 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
     // Not resolvable from `DocxEditorRef` alone — see KNOWN LIMITATIONS above.
     getChanges: (): FolioAgentChange[] => [],
     replyToComment: (commentId, text) => {
-      const parentId = Number.parseInt(commentId, 10);
-      if (Number.isNaN(parentId)) {
+      const parentId = parseCommentId(commentId);
+      if (parentId === null) {
         return false;
       }
       const comments = getComments();
@@ -153,8 +163,8 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
       return true;
     },
     resolveComment: (commentId, resolved) => {
-      const targetId = Number.parseInt(commentId, 10);
-      if (Number.isNaN(targetId)) {
+      const targetId = parseCommentId(commentId);
+      if (targetId === null) {
         return false;
       }
       const comments = getComments();

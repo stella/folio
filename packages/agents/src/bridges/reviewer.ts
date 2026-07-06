@@ -40,6 +40,15 @@ const toAgentChange = (change: FolioReviewChange): FolioAgentChange => ({
 });
 
 /**
+ * Parse a tool-supplied comment id into the numeric id `FolioDocxReviewer`
+ * expects, rejecting anything but a bare non-negative integer. `Number.
+ * parseInt` alone would silently accept trailing junk (`"12abc"` -> `12`),
+ * which could reply to the wrong comment thread on malformed tool input.
+ */
+const parseCommentId = (commentId: string): number | null =>
+  /^\d+$/.test(commentId) ? Number.parseInt(commentId, 10) : null;
+
+/**
  * Build a {@link FolioAgentBridge} over a headless {@link FolioDocxReviewer}
  * (`@stll/folio-core/server`). No optional capability members are
  * implemented: a headless document has no live page/selection/scroll
@@ -59,8 +68,8 @@ export const createReviewerBridge = (
     getComments: () => reviewer.getComments().map(toAgentComment),
     getChanges: () => reviewer.getChanges().map(toAgentChange),
     replyToComment: (commentId, text) => {
-      const parentId = Number.parseInt(commentId, 10);
-      if (Number.isNaN(parentId)) {
+      const parentId = parseCommentId(commentId);
+      if (parentId === null) {
         return false;
       }
       return reviewer.replyTo(parentId, { text }) !== null;
