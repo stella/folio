@@ -46,7 +46,11 @@ export function collectNamedExports(entryPath, visited = new Set()) {
       hasExport(node) &&
       node.name
     ) {
-      exports.add(node.name.text);
+      // `export default function Foo()` / `export default class Bar` binds as
+      // `default`, not the declaration identifier.
+      const isDefault =
+        node.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword) ?? false;
+      exports.add(isDefault ? "default" : node.name.text);
     } else if (ts.isExportAssignment(node)) {
       exports.add("default");
     } else if (ts.isExportDeclaration(node)) {
@@ -55,6 +59,9 @@ export function collectNamedExports(entryPath, visited = new Set()) {
         for (const el of node.exportClause.elements) {
           exports.add(el.name.text);
         }
+      } else if (node.exportClause && ts.isNamespaceExport(node.exportClause)) {
+        // export * as ns from '...'
+        exports.add(node.exportClause.name.text);
       } else if (!node.exportClause && node.moduleSpecifier) {
         // export * from '...'
         const spec = node.moduleSpecifier.text;
