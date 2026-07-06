@@ -25,6 +25,18 @@ describe("resolveFolioComponents", () => {
     expect(resolved.Button).toBe(DEFAULT_COMPONENTS.Button);
     expect(resolved.Popover).toBe(DEFAULT_COMPONENTS.Popover);
     expect(resolved.Menu).toBe(DEFAULT_COMPONENTS.Menu);
+    expect(resolved.Dialog).toBe(DEFAULT_COMPONENTS.Dialog);
+    expect(resolved.Select).toBe(DEFAULT_COMPONENTS.Select);
+    expect(resolved.Input).toBe(DEFAULT_COMPONENTS.Input);
+    expect(resolved.Checkbox).toBe(DEFAULT_COMPONENTS.Checkbox);
+    expect(resolved.DatePickerPopover).toBe(DEFAULT_COMPONENTS.DatePickerPopover);
+    expect(resolved.OutlineRail).toBe(DEFAULT_COMPONENTS.OutlineRail);
+  });
+
+  test("the full ten-primitive contract has a distinct default per key", () => {
+    const keys = Object.keys(DEFAULT_COMPONENTS);
+    expect(keys.length).toBe(10);
+    expect(new Set(Object.values(DEFAULT_COMPONENTS)).size).toBe(10);
   });
 
   test("resolution does not mutate the shared defaults object", () => {

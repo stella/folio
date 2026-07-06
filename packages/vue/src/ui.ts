@@ -81,3 +81,34 @@ export { default as VerticalRuler } from "./components/ui/VerticalRuler.vue";
 
 // ─── CARDS / STYLES ─────────────────────────────────────────────────────────
 export { CARD_STYLE_COLLAPSED, CARD_STYLE_EXPANDED } from "./components/sidebar/cardStyles";
+
+// ─── UI-INJECTION DEFAULTS + CONTRACT ───────────────────────────────────────
+// The default primitives `DocxEditor`'s `components` prop resolves to when a
+// host doesn't override them (see ui/folio-ui.ts's `FolioUIComponents`).
+// Button/ColorPicker/Popover/Menu are already exported above (they also
+// double as standalone chrome); the remaining six are exported here.
+export { default as Dialog } from "./components/ui/Dialog.vue";
+export { default as Select } from "./components/ui/Select.vue";
+export { default as Input } from "./components/ui/Input.vue";
+export { default as Checkbox } from "./components/ui/Checkbox.vue";
+export { default as DatePickerPopover } from "./components/ui/DatePickerPopover.vue";
+export { default as OutlineRail } from "./components/ui/OutlineRail.vue";
+export {
+  DEFAULT_COMPONENTS,
+  provideFolioUI,
+  resolveFolioComponents,
+  useFolioUI,
+} from "./ui/folio-ui";
+export type {
+  FolioCheckboxProps,
+  FolioColorPickerProps,
+  FolioDatePickerPopoverProps,
+  FolioDialogProps,
+  FolioInputProps,
+  FolioMenuItem,
+  FolioMenuProps,
+  FolioOutlineRailProps,
+  FolioPopoverProps,
+  FolioSelectItem,
+  FolioSelectProps,
+} from "./ui/folio-ui";

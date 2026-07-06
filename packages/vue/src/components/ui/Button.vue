@@ -8,6 +8,7 @@
 -->
 <template>
   <button
+    type="button"
     :class="buttonClass"
     :disabled="disabled"
     @click="$emit('click', $event)"
@@ -26,7 +27,7 @@ export type ButtonVariant =
   | 'secondary'
   | 'ghost'
   | 'link';
-export type ButtonSize = 'default' | 'sm' | 'lg' | 'icon' | 'icon-sm';
+export type ButtonSize = 'default' | 'sm' | 'lg' | 'icon' | 'icon-sm' | 'xs' | 'icon-xs';
 
 const props = withDefaults(
   defineProps<{
@@ -56,6 +57,11 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
   lg: 'h-11 rounded-md px-8',
   icon: 'h-9 w-9',
   'icon-sm': 'h-7 w-7',
+  // Match the sizing the built-in React default's `.folio-default-button--xs`
+  // / `--icon-xs` CSS uses (editor.css), rounded to the nearest Tailwind scale
+  // step: h-7/px-2/text-xs and a 7x7 icon square.
+  xs: 'h-7 rounded-md px-2 text-xs',
+  'icon-xs': 'h-7 w-7',
 };
 const BASE =
   'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50';
