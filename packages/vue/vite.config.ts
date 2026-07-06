@@ -35,6 +35,7 @@ export default defineConfig({
         composables: resolve(__dirname, "src/composables/index.ts"),
         dialogs: resolve(__dirname, "src/components/dialogs/index.ts"),
         styles: resolve(__dirname, "src/styles/index.ts"),
+        messages: resolve(__dirname, "src/i18n/messages.ts"),
       },
       formats: ["es", "cjs"],
       fileName: (format, entryName) => `${entryName}.${format === "es" ? "js" : "cjs"}`,
