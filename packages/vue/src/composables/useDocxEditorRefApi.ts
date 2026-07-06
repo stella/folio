@@ -9,17 +9,20 @@
  * so any drift from the React contract is a typecheck error here rather than a
  * runtime surprise at the call site.
  *
- * PORT-BLOCKED: several ref methods depend on adapter surfaces the fork has not
- * ported yet (comment/AI-edit/content-control composables, the Vue PagedEditor,
- * a `scrollVisiblePositionIntoView` from a pages-pointer composable). Those are
- * stubbed to a sensible default (null / false / empty) with a per-method note.
- * The assembled object still `satisfies DocxEditorRef`.
+ * PORT-BLOCKED: a few ref methods still depend on adapter surfaces the fork has
+ * not ported yet (`hasPendingChanges` needs PM-serialized-vs-live tracking;
+ * `getEditorRef` needs the Vue PagedEditor component). Those stay stubbed to a
+ * sensible default (null / false) with a per-method note. The AI-edit and
+ * content-control methods are wired over folio-core directly, mirroring the
+ * React adapter. The assembled object `satisfies DocxEditorRef`.
  */
 
 import type { Ref } from "vue";
 
+import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { applyFolioAIEditOperations, createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
@@ -28,10 +31,25 @@ import {
   flashParagraphElements,
 } from "@stll/folio-core/paged-layout/paragraphFlash";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
+import {
+  acceptAIEditRevision,
+  findAIEditRevisionRange,
+  rejectAIEditRevision,
+} from "@stll/folio-core/prosemirror/commands/comments";
+import {
+  blockSdtAttrsToSdtProperties,
+  findBlockSdtMatch,
+  findBlockSdtMatches,
+  removeContentControlTr,
+  setContentControlContentTr,
+  setContentControlValueTr,
+} from "@stll/folio-core/prosemirror/commands/contentControls";
+import { setContentControlContentBlocksTr } from "@stll/folio-core/prosemirror/commands/contentControlsBlockFill";
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
 import type { DocxEditorRef } from "../components/DocxEditor/types";
+import { clampRangeToDocSize, resolveFolioAIBlockRange } from "../utils/aiEditRange";
 
 export type UseDocxEditorRefApiOptions = {
   /** Headless controller handle (imperative API + events; Seam 6). */
@@ -46,6 +64,20 @@ export type UseDocxEditorRefApiOptions = {
   pagesViewportRef: Ref<HTMLElement | null>;
   /** Current zoom factor (1 = 100%). */
   zoom: Ref<number>;
+  /**
+   * Scroll the pages viewport so a PM document position is visible (from
+   * usePagesPointer). Backs the AI-edit / content-control scroll methods, the
+   * Vue analogue of React's `PagedEditorRef.scrollToPosition`.
+   */
+  scrollVisiblePositionIntoView: (pmPos: number) => void;
+  /** Editor author, used as the default operation author for AI edits. */
+  author: () => string;
+  /**
+   * Mint a comment for an AI-edit operation that carries comment text, append
+   * it to the thread list, and return its id (mirrors React's `createCommentId`
+   * closure over the comment manager). Wired from useCommentManagement.
+   */
+  createAIEditComment: (text: string) => number;
   // Action handles from useDocxEditor.
   focus: () => void;
   getDocument: () => Document | null;
@@ -157,23 +189,158 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     // The fork's controller ensureView() takes no focus argument yet; the
     // { focus } option is accepted for React parity but ignored (PORT-BLOCKED).
     ensureEditorView: () => opts.editor.ensureView(),
-    // PORT-BLOCKED: AI-edit surface (snapshot/apply/accept/reject/scroll) needs
-    // the folio-core ai-edits bridge wired through a composable; not ported.
-    createAIEditSnapshot: () => null,
-    applyAIEditOperations: () => ({ applied: [], skipped: [] }),
-    acceptAIEditOperation: () => false,
-    rejectAIEditOperation: () => false,
+    createAIEditSnapshot: () => {
+      const view = opts.editorView.value;
+      return view ? createFolioAIEditSnapshot(view.state.doc) : null;
+    },
+    applyAIEditOperations: ({
+      snapshot,
+      operations,
+      mode = "tracked-changes",
+      author: operationAuthor = opts.author(),
+    }) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return {
+          applied: [],
+          skipped: operations.map((operation) => ({
+            id: operation.id,
+            reason: "unsupportedBlock",
+          })),
+        };
+      }
+      return applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations,
+        mode,
+        author: operationAuthor,
+        createCommentId: opts.createAIEditComment,
+      });
+    },
+    acceptAIEditOperation: (revisionIds) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      return acceptAIEditRevision(revisionIds)(view.state, view.dispatch);
+    },
+    rejectAIEditOperation: (revisionIds) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      return rejectAIEditRevision(revisionIds)(view.state, view.dispatch);
+    },
     undo: () => opts.editor.undo(),
     redo: () => opts.editor.redo(),
-    scrollToAIEditOperation: () => false,
-    scrollToBlock: () => false,
-    // PORT-BLOCKED: content-control ref methods need transaction wrappers over
-    // folio-core/content-controls; not ported.
-    getContentControls: () => [],
-    scrollToContentControl: () => false,
-    setContentControlContent: () => false,
-    setContentControlValue: () => false,
-    removeContentControl: () => false,
+    scrollToAIEditOperation: (revisionIds) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      const range = findAIEditRevisionRange(view.state, revisionIds);
+      if (!range) {
+        return false;
+      }
+      // `TextSelection.between` clamps to the nearest valid inline position;
+      // `create` throws when from/to land on a block boundary, which is exactly
+      // what happens for marks that wrap an entire paragraph.
+      // `clampRangeToDocSize` guards against a revision range whose endpoints
+      // fell past the doc end after concurrent edits.
+      const { from, to } = clampRangeToDocSize(view.state.doc.content.size, range);
+      const $from = view.state.doc.resolve(from);
+      const $to = view.state.doc.resolve(to);
+      view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+      requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
+      return true;
+    },
+    scrollToBlock: (blockId, snapshot) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      // ParaId-backed ids resolve against the live document so queued
+      // suggestions still navigate correctly after earlier accepts insert or
+      // delete paragraphs above them. `seq-*` fallback ids keep using the
+      // snapshot the AI saw.
+      const range = resolveFolioAIBlockRange({ blockId, doc: view.state.doc, snapshot });
+      if (range === null) {
+        return false;
+      }
+      const { from, to } = range;
+      const $from = view.state.doc.resolve(from);
+      const $to = view.state.doc.resolve(to);
+      view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+      requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
+      return true;
+    },
+    getContentControls: (filter = {}) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return [];
+      }
+      return findBlockSdtMatches(view.state.doc, filter).map((match) => ({
+        properties: blockSdtAttrsToSdtProperties(match.node),
+        path: match.path,
+        pmPos: match.pos,
+      }));
+    },
+    scrollToContentControl: (filter) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      const match = findBlockSdtMatch(view.state.doc, filter);
+      if (!match) {
+        return false;
+      }
+      // Place selection just inside the SDT (after its opening token).
+      const inside = match.pos + 1;
+      const $pos = view.state.doc.resolve(inside);
+      view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)));
+      requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(inside));
+      return true;
+    },
+    setContentControlContent: (filter, input, options = {}) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      const tr =
+        typeof input === "string"
+          ? setContentControlContentTr(view.state, filter, input, options)
+          : setContentControlContentBlocksTr(view.state, filter, input, options);
+      if (!tr) {
+        return false;
+      }
+      view.dispatch(tr);
+      return true;
+    },
+    setContentControlValue: (filter, input, options = {}) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      const tr = setContentControlValueTr(view.state, filter, input, options);
+      if (!tr) {
+        return false;
+      }
+      view.dispatch(tr);
+      return true;
+    },
+    removeContentControl: (filter, options = {}) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      const tr = removeContentControlTr(view.state, filter, options);
+      if (!tr) {
+        return false;
+      }
+      view.dispatch(tr);
+      return true;
+    },
   } satisfies DocxEditorRef;
 
   return { exposed };

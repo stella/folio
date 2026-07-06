@@ -439,6 +439,7 @@ const {
   scrollPageInfo,
   resolvePos,
   setPmSelection,
+  scrollVisiblePositionIntoView,
   handlePagesMouseDown,
   handlePagesMouseMove,
   handlePagesClick,
@@ -782,6 +783,16 @@ const { exposed } = useDocxEditorRefApi({
   pagesRef,
   pagesViewportRef,
   zoom,
+  scrollVisiblePositionIntoView,
+  author: () => props.author,
+  // Mirror React's applyAIEditOperations comment closure: mint the comment,
+  // append it to the thread list, and hand back its id for the tracked-change
+  // mark that references it.
+  createAIEditComment: (text) => {
+    const comment = commentManagement.createComment(text);
+    commentManagement.pushComment(comment);
+    return comment.id;
+  },
   focus,
   getDocument,
   setZoom,
