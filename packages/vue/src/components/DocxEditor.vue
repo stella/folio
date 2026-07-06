@@ -96,8 +96,10 @@
             :theme="theme ?? null"
           />
         </template>
-        <template v-if="$slots['toolbar-extra']" #toolbar-extra>
-          <slot name="toolbar-extra" />
+        <template v-if="$slots['toolbar-extra'] || toolbarExtra" #toolbar-extra>
+          <slot name="toolbar-extra">
+            <VNodeRenderer v-if="toolbarExtra" :node="toolbarExtra" />
+          </slot>
         </template>
       </Toolbar>
     </div>
@@ -119,7 +121,7 @@
     />
 
     <div v-if="parseError" class="docx-editor-vue__error">{{ parseError }}</div>
-    <div v-else-if="!isReady && hasDocumentInput" class="docx-editor-vue__loading">
+    <div v-else-if="showLoadingIndicator" class="docx-editor-vue__loading">
       <slot name="loading-indicator">
         <VNodeRenderer v-if="loadingIndicator" :node="loadingIndicator" />
         <template v-else>{{ t("loadingDocument") }}</template>
@@ -184,9 +186,18 @@
         >
           <div
             class="docx-editor-vue__editor-content-wrapper"
-            :style="{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: '100%' }"
+            :style="{
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: '100%',
+            }"
           >
-            <div ref="pagesRef" class="docx-editor-vue__pages paged-editor__pages" :style="pagesContainerStyle" />
+            <div
+              ref="pagesRef"
+              class="docx-editor-vue__pages paged-editor__pages"
+              :style="pagesContainerStyle"
+            />
 
             <!-- Decoration origin: the coordinate anchor core's range projection
                  looks up (`[data-testid="selection-overlay"]`) and the container
@@ -360,6 +371,10 @@ import {
 } from "@stll/folio-core/prosemirror";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
+import {
+  clearAllCaches,
+  resetCanvasContext,
+} from "@stll/folio-core/layout-bridge/engine/measuring";
 import { onFontsLoaded } from "@stll/folio-core/utils/fontLoader";
 import { twipsToPixels } from "@stll/folio-core/paged-layout/sectionGeometry";
 import type { Comment } from "@stll/folio-core/types/content";
@@ -402,6 +417,7 @@ import { useTableResize } from "../composables/useTableResize";
 import { useTrackedChanges } from "../composables/useTrackedChanges";
 import { useZoom } from "../composables/useZoom";
 import type { FontOption } from "../utils/fontOptions";
+import { loadHostFontFaces, removeFontFaces } from "../utils/hostFonts";
 import { provideLocale, useTranslation } from "../i18n";
 import { provideFolioUI } from "../ui/folio-ui";
 
@@ -459,6 +475,13 @@ VNodeRenderer.props = ["node"];
 // split while `isReady` is false (mirrors React's history.state gate).
 const hasDocumentInput = computed(() => props.documentBuffer != null || props.document != null);
 
+// True once a document has painted at least once — the Vue analogue of React's
+// truthy `history.state`. Gates `preserveDocumentWhileLoading`: a swap tears the
+// PM view down (isReady flips false) but the previous pages stay painted in
+// `pagesRef` until the new layout runs, so suppressing the loading interstitial
+// keeps the prior document visible until the next paint replaces it.
+const hasRenderedDocumentOnce = ref(false);
+
 // ---- Template refs (paint targets) --------------------------------------
 const hiddenPmRef = ref<HTMLElement | null>(null);
 const pagesRef = ref<HTMLElement | null>(null);
@@ -485,8 +508,17 @@ const bookmarks = shallowRef<{ name: string; label?: string }[]>([]);
 // Outline headings stay empty until the outline composable is ported.
 const outlineHeadings = shallowRef<HeadingInfo[]>([]);
 
-const { zoom, zoomPercent, isMinZoom, isMaxZoom, setZoom, zoomIn, zoomOut, handleWheel: handleZoomWheel, ZOOM_PRESETS } =
-  useZoom(props.initialZoom);
+const {
+  zoom,
+  zoomPercent,
+  isMinZoom,
+  isMaxZoom,
+  setZoom,
+  zoomIn,
+  zoomOut,
+  handleWheel: handleZoomWheel,
+  ZOOM_PRESETS,
+} = useZoom(props.initialZoom);
 
 // Ctrl/Cmd+wheel + trackpad-pinch zoom, gated on the `enableWheelZoom` prop
 // (default enabled, matching React). Consulted here so the flag is honored.
@@ -552,6 +584,64 @@ const {
   onEditorViewReady: (view) => props.onEditorViewReady?.(view),
   onReadOnlyEditAttempt: () => props.onReadonlyEditAttempt?.(),
 });
+
+// Show the loading interstitial while a document is loading, EXCEPT when the host
+// opted into `preserveDocumentWhileLoading` and a prior document is already
+// painted — then the swap is seamless (previous paint stays up). Mirrors React's
+// `status === "loading" && (!preserveDocumentWhileLoading || !history.state)`.
+const showLoadingIndicator = computed(
+  () =>
+    !isReady.value &&
+    hasDocumentInput.value &&
+    !(props.preserveDocumentWhileLoading === true && hasRenderedDocumentOnce.value),
+);
+
+// Host custom font faces (the `fonts` prop). Register on mount + whenever the
+// prop identity changes, then re-measure so metrics reflect the new faces — a
+// face registered after the first layout would otherwise keep its fallback
+// metrics until the next edit. The cleanup unregisters the faces and re-measures
+// their absence. Mirrors React PagedEditor's hostFonts effect (same best-effort
+// FontFace path + font-ready re-layout).
+function remeasureForFontChange(): void {
+  const view = editorView.value;
+  if (!view) {
+    return;
+  }
+  resetCanvasContext();
+  clearAllCaches();
+  reLayout();
+}
+
+watch(
+  () => props.fonts,
+  (fonts, _prev, onCleanup) => {
+    if (!fonts || fonts.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    let registered: FontFace[] = [];
+    void loadHostFontFaces(fonts).then((faces) => {
+      if (cancelled) {
+        removeFontFaces(faces);
+        return;
+      }
+      registered = faces;
+      if (faces.length === 0) {
+        return;
+      }
+      remeasureForFontChange();
+    });
+    onCleanup(() => {
+      cancelled = true;
+      if (registered.length === 0) {
+        return;
+      }
+      removeFontFaces(registered);
+      remeasureForFontChange();
+    });
+  },
+  { immediate: true },
+);
 
 // ---- Feature composables (order: image → hyperlink → pointer → context) --
 const {
@@ -703,7 +793,9 @@ const toolbarDynamicProps = computed(() => {
   return dynamic;
 });
 
-const pageWidthPx = computed(() => twipsToPixels(currentSectionProps.value?.pageWidth ?? 12240) * zoom.value);
+const pageWidthPx = computed(
+  () => twipsToPixels(currentSectionProps.value?.pageWidth ?? 12240) * zoom.value,
+);
 
 const resolvedCommentIds = computed(() => {
   const ids = new Set<number>();
@@ -959,6 +1051,10 @@ watch(isReady, (ready) => {
     initialScrollAppliedRef.value = false;
     return;
   }
+  // Mark that a document has painted, so a later `preserveDocumentWhileLoading`
+  // swap keeps the prior pages visible instead of flashing the loading state.
+  hasRenderedDocumentOnce.value = true;
+
   // Populate the sidebar from comments embedded in the loaded document
   // (uncontrolled only); controlled hosts own the array via `comments`.
   commentManagement.seedFromDocument();
