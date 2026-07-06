@@ -14,15 +14,21 @@
       <span class="find-replace-dialog__title">{{
         replaceMode ? t('findReplace.findAndReplace') : t('findReplace.find')
       }}</span>
-      <button class="find-replace-dialog__close" @click="close" :title="t('findReplace.close')">
+      <FolioButton
+        class="find-replace-dialog__close"
+        variant="ghost"
+        size="icon-xs"
+        @click="close"
+        :title="t('findReplace.close')"
+      >
         ✕
-      </button>
+      </FolioButton>
     </div>
 
     <div class="find-replace-dialog__body">
       <!-- Search row -->
       <div class="find-replace-dialog__row">
-        <input
+        <FolioInput
           ref="searchInputRef"
           v-model="searchText"
           class="find-replace-dialog__input"
@@ -32,45 +38,85 @@
           @input="performSearch"
         />
         <span class="find-replace-dialog__count">{{ matchCountText }}</span>
-        <button :title="t('findReplace.previous')" @mousedown.prevent="findPrevious">▲</button>
-        <button :title="t('findReplace.next')" @mousedown.prevent="findNext">▼</button>
+        <FolioButton
+          variant="ghost"
+          size="icon-xs"
+          :title="t('findReplace.previous')"
+          @mousedown.prevent="findPrevious"
+          >▲</FolioButton
+        >
+        <FolioButton
+          variant="ghost"
+          size="icon-xs"
+          :title="t('findReplace.next')"
+          @mousedown.prevent="findNext"
+          >▼</FolioButton
+        >
       </div>
 
       <!-- Options row -->
       <div class="find-replace-dialog__options">
         <label>
-          <input type="checkbox" v-model="matchCase" @change="performSearch" />
+          <FolioCheckbox
+            :checked="matchCase"
+            @update:checked="
+              (v: boolean) => {
+                matchCase = v;
+                performSearch();
+              }
+            "
+          />
           {{ t('findReplace.matchCase') }}
         </label>
         <label>
-          <input type="checkbox" v-model="matchWholeWord" @change="performSearch" />
+          <FolioCheckbox
+            :checked="matchWholeWord"
+            @update:checked="
+              (v: boolean) => {
+                matchWholeWord = v;
+                performSearch();
+              }
+            "
+          />
           {{ t('findReplace.wholeWords') }}
         </label>
-        <button
+        <FolioButton
           class="find-replace-dialog__toggle"
+          variant="ghost"
+          size="xs"
           :class="{ active: replaceMode }"
           @mousedown.prevent="replaceMode = !replaceMode"
           :title="t('dialogs.findReplace.toggleReplace')"
         >
           ↔ {{ t('dialogs.findReplace.replaceButton') }}
-        </button>
+        </FolioButton>
       </div>
 
       <!-- Replace row -->
       <div v-if="replaceMode" class="find-replace-dialog__row">
-        <input
+        <FolioInput
           v-model="replaceText"
           class="find-replace-dialog__input"
           :placeholder="t('findReplace.replacePlaceholder')"
           :aria-label="t('findReplace.replaceText')"
           @keydown.enter.prevent="handleReplace"
         />
-        <button :title="t('findReplace.replaceCurrent')" @mousedown.prevent="handleReplace">
+        <FolioButton
+          variant="ghost"
+          size="xs"
+          :title="t('findReplace.replaceCurrent')"
+          @mousedown.prevent="handleReplace"
+        >
           {{ t('dialogs.findReplace.replaceButton') }}
-        </button>
-        <button :title="t('findReplace.replaceAll')" @mousedown.prevent="handleReplaceAll">
+        </FolioButton>
+        <FolioButton
+          variant="ghost"
+          size="xs"
+          :title="t('findReplace.replaceAll')"
+          @mousedown.prevent="handleReplaceAll"
+        >
           {{ t('findReplace.replaceAll') }}
-        </button>
+        </FolioButton>
       </div>
     </div>
   </div>
@@ -81,8 +127,14 @@ import { ref, watch, nextTick, computed } from 'vue';
 import type { EditorView } from 'prosemirror-view';
 import { TextSelection } from 'prosemirror-state';
 import { useTranslation } from '../../i18n';
+import { useFolioUI } from '../../ui/folio-ui';
 
 const { t } = useTranslation();
+
+// Resolve Button/Input/Checkbox from the FolioUI injection provider so a host
+// override takes effect here too (previously static markup — this dialog is a
+// floating panel, not a modal, so it does not use the Dialog primitive).
+const { Button: FolioButton, Input: FolioInput, Checkbox: FolioCheckbox } = useFolioUI();
 
 const props = defineProps<{
   isOpen: boolean;
