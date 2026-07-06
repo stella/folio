@@ -15,6 +15,7 @@
         :document-buffer="documentBuffer"
         author="Folio User"
         :show-toolbar="true"
+        :show-ruler="true"
         :initial-zoom="1"
       />
     </main>
