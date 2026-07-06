@@ -55,6 +55,7 @@
       "showMarginGuides",
       "showOutline",
       "showPrintButton",
+      "showReviewControls",
       "showRuler",
       "showTableInsert",
       "showTemplateDirectives",
@@ -67,13 +68,13 @@
     "deferredInVue": {
       "collaboration": "Yjs collaboration owner is not threaded through the Vue pipeline yet.",
       "components": "Partially wired: DocxEditor.vue calls provideFolioUI(components) and the ColorPicker override resolves in the toolbar/formatting-bar chrome, but the remaining primitives are not yet threaded (Button/Popover/Menu chrome consumers still import statically; Dialog/Select/Input/Checkbox/DatePickerPopover/OutlineRail have no Vue default to inject), so it is not full parity with React's 10-primitive override surface.",
-      "showHeaderFooterEditing": "Header/footer inline editing is not ported to Vue.",
-      "showReviewControls": "REAL GAP: React's DocxEditor renders review controls (track-changes toggle + markup display-mode selector) gated by this flag via FormattingBar `priorityExtra` (DocxEditor.tsx `toolbarPriorityExtra = !showReviewControls ? null : (...)`). The Vue toolbar renders no such controls, so there is nothing to gate; not paired because React's behavior is not matched."
+      "showHeaderFooterEditing": "Header/footer inline editing is not ported to Vue."
     },
     "pairedNotes": {
       "showMarginGuides": "No-op in both. React's DocxEditor destructures this as `_showMarginGuides = false` (underscore-prefixed, never read) and renders no margin-guide overlay anywhere; Vue declares it and likewise renders none. Verified: only occurrence in React src is the unused destructure in DocxEditor.tsx.",
       "marginGuideColor": "No-op in both. Pairs with showMarginGuides; React's DocxEditor destructures `_marginGuideColor` (underscore-prefixed, never read), so no color is ever applied; Vue matches. Verified: only occurrence in React src is the unused destructure.",
       "showPrintButton": "No-op in both. React's classic `Toolbar` component reads this flag, but `DocxEditor` renders `FormattingBar` (not `Toolbar`) and never passes `showPrintButton`; FormattingBar has no print button, so no toolbar print button is rendered regardless of the flag. Vue's Toolbar likewise renders none (print is driven from the menu bar / Cmd+P). Verified: `showPrintButton` appears only in Toolbar.tsx/toolbarPrimitives.tsx (the unmounted classic toolbar), never in DocxEditor.tsx or FormattingBar.tsx.",
+      "showReviewControls": "Both wired. React gates its `toolbarPriorityExtra` (a track-changes toggle flipping editing<->suggesting via `toggleTrackChanges`, plus a markup display-mode `StSelect` calling `setDisplayMode`) on this flag; `displayMode` drives the `folio-root--<mode>` root class that the editor.css tracked-change rules key off. Vue's Toolbar renders ReviewControls.vue (same track-changes toggle + display-mode selector) gated on `showReviewControls` (default true), the toggle emits through `setEditorMode(toggledTrackChangesMode(...))` into the same core `setSuggestionMode` path, and the selector sets a local `displayMode` that DocxEditor.vue applies as the identical `folio-root--<mode>` class, with the same tracked-change display CSS ported verbatim into a non-scoped style block. Divergence: Vue additionally keeps its EditingModeDropdown (a Vue-only three-mode editing/suggesting/viewing picker React lacks), so `viewing` stays reachable there; the toggle itself only flips editing<->suggesting, matching React exactly. Vue holds `displayMode` in a local ref rather than core's EditorModeManager (which React binds via useEditorMode), same observable behavior.",
       "onCopy": "No-op in both. React's DocxEditor destructures `onCopy: _onCopy` (underscore-prefixed, never called); there is no `useClipboard` hook in the React package. Vue's DocxEditor.vue does not thread the prop either (its `useClipboard` composable is standalone and unused by the editor). The line-3972 `onCopy` in React is HyperlinkPopup's own copy-link-href prop, unrelated to DocxEditorProps.onCopy.",
       "onCut": "No-op in both. React's DocxEditor destructures `onCut: _onCut` (never called); Vue's DocxEditor.vue does not thread it. Same verification as onCopy.",
       "onPaste": "No-op in both. React's DocxEditor destructures `onPaste: _onPaste` (never called); Vue's DocxEditor.vue does not thread it. Same verification as onCopy.",
