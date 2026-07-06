@@ -28,6 +28,8 @@ export type FolioParityBridge = {
   commentFirstWord: () => boolean;
   /** Count painted `[data-comment-id]` anchors in the pages (shared painter attr). */
   countCommentAnchors: () => number;
+  /** Block count of the AI-edit snapshot over the live doc (0 with no live view). */
+  aiSnapshotBlockCount: () => number;
   /** Serialize to DOCX and return the byte length (0 on failure). */
   save: () => Promise<number>;
 };
@@ -134,6 +136,7 @@ export function buildParityBridge(getRef: () => DocxEditorRef | null): FolioPari
     },
     countCommentAnchors: () =>
       document.querySelectorAll(".paged-editor__pages [data-comment-id]").length,
+    aiSnapshotBlockCount: () => getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
     save: async () => {
       const buffer = await (getRef()?.save() ?? Promise.resolve(null));
       return buffer?.byteLength ?? 0;

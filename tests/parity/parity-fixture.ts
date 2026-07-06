@@ -24,6 +24,7 @@ type FolioParityBridge = {
   countTables: () => number;
   commentFirstWord: () => boolean;
   countCommentAnchors: () => number;
+  aiSnapshotBlockCount: () => number;
   save: () => Promise<number>;
 };
 
