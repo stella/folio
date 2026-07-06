@@ -38,6 +38,9 @@ import { buildPositionalText } from '@stll/folio-core/ai-suggestions/text-positi
 import { clearAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { clearTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { Comment as Comment_2 } from '@stll/folio-core/types/content';
+import { Component } from 'vue';
+import { ComponentOptionsMixin } from 'vue';
+import { ComponentProvideOptions } from 'vue';
 import { ComputedRef } from 'vue';
 import { consumeTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ContentControlFilter } from '@stll/folio-core/content-controls';
@@ -49,6 +52,7 @@ import { createFolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { CSSProperties } from 'vue';
 import { DEFAULT_AI_SUGGESTION_PRESETS } from '@stll/folio-core/ai-suggestions/types';
 import { DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
+import { DefineComponent } from 'vue';
 import { deriveBlockId } from '@stll/folio-core/types/block-id';
 import { DeriveBlockIdInput } from '@stll/folio-core/types/block-id';
 import { diffWordSegments } from '@stll/folio-core/ai-edits';
@@ -61,6 +65,7 @@ import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
+import { ExtractPropTypes } from 'vue';
 import { finishAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { FolioAIBlock } from '@stll/folio-core/ai-edits';
 import { FolioAIBlockAnchor } from '@stll/folio-core/ai-edits';
@@ -106,7 +111,10 @@ import { MaybeRefOrGetter } from 'vue';
 import { normalizeFolioAIBlockText } from '@stll/folio-core/ai-edits';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
+import { PublicProps } from 'vue';
 import { Ref } from 'vue';
+import { RendererElement } from 'vue';
+import { RendererNode } from 'vue';
 import { resetTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { ResolvedAnchor } from '@stll/folio-core/ai-suggestions/conflict';
 import { resolveSuggestionAnchor } from '@stll/folio-core/ai-suggestions/conflict';
@@ -136,6 +144,7 @@ import { toMarkdown } from '@stll/folio-core/markdown';
 import { toMarkdownResult } from '@stll/folio-core/markdown';
 import { Transaction } from 'prosemirror-state';
 import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
+import { VNode } from 'vue';
 import { VNodeChild } from 'vue';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
 import { XmlFragment } from 'yjs';
@@ -204,6 +213,13 @@ export { buildPositionalText }
 export { clearAutocompleteSuggestion }
 
 export { clearTemplateSlashMenu }
+
+// @public
+export type ColorPreset = {
+    label: string;
+    value: string;
+    color?: string;
+};
 
 export { consumeTemplateSlashQuery }
 
@@ -440,7 +456,37 @@ export { FolioAISignatureParty }
 export { FolioBlockId }
 
 // @public
-export type FolioUIComponents = Record<string, unknown>;
+export type FolioButtonProps = {
+    variant?: "default" | "ghost";
+    size?: "sm" | "xs" | "icon-xs";
+    disabled?: boolean;
+    className?: string;
+};
+
+// @public
+export type FolioUIComponents = {
+    Button: Component;
+    ColorPicker: Component;
+    Popover: Component;
+    Menu: Component;
+};
+
+// @public
+export const FolioUIProvider: DefineComponent<ExtractPropTypes<    {
+components: {
+type: () => Partial<FolioUIComponents> | undefined;
+default: undefined;
+};
+}>, () => VNode<RendererNode, RendererElement, {
+[key: string]: any;
+}>[] | undefined, {}, {}, {}, ComponentOptionsMixin, ComponentOptionsMixin, {}, string, PublicProps, Readonly<ExtractPropTypes<    {
+components: {
+type: () => Partial<FolioUIComponents> | undefined;
+default: undefined;
+};
+}>> & Readonly<{}>, {
+components: Partial<FolioUIComponents> | undefined;
+}, {}, {}, {}, string, ComponentProvideOptions, true, {}, any>;
 
 // @public
 export type FontDefinition = {
@@ -519,6 +565,15 @@ export { MarkdownOptions }
 export { MarkdownResult }
 
 export { normalizeFolioAIBlockText }
+
+// @public
+export type OutlineItem = {
+    id: string;
+    label: string;
+    level: number;
+    meta?: string;
+    color?: string;
+};
 
 export { PositionalText }
 

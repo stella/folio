@@ -489,7 +489,6 @@ import {
 import { clearFormatting } from '@stll/folio-core/prosemirror/commands/formatting';
 import type { ColorValue, Theme, Style } from '@stll/folio-core/types/document';
 import MaterialSymbol from './ui/MaterialSymbol.vue';
-import ColorPicker from './ui/ColorPicker.vue';
 import ImageWrapDropdown from './ui/ImageWrapDropdown.vue';
 import ImageTransformDropdown from './ui/ImageTransformDropdown.vue';
 import EditingModeDropdown from './EditingModeDropdown.vue';
@@ -510,6 +509,12 @@ import { useToolbarDropdowns } from '../composables/useToolbarDropdowns';
 import { useToolbarFontSize } from '../composables/useToolbarFontSize';
 import { useParagraphStyleOptions } from '../composables/useParagraphStyleOptions';
 import { useTranslation } from '../i18n';
+import { useFolioUI } from '../ui/folio-ui';
+
+// Resolve the ColorPicker primitive from the FolioUI injection provider so a
+// host `components.ColorPicker` override renders here; falls back to the
+// package default (ui/ColorPicker.vue) when rendered outside DocxEditor.
+const { ColorPicker } = useFolioUI();
 
 /**
  * A toolbar command factory: called with whatever arguments the specific

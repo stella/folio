@@ -55,7 +55,7 @@
     ],
     "deferredInVue": {
       "collaboration": "Yjs collaboration owner is not threaded through the Vue pipeline yet.",
-      "components": "Consumer UI-injection map (FolioUIComponents) is not consumed by the Vue chrome yet.",
+      "components": "Partially wired: DocxEditor.vue calls provideFolioUI(components) and the ColorPicker override resolves in the toolbar/formatting-bar chrome, but the remaining primitives are not yet threaded (Button/Popover/Menu chrome consumers still import statically; Dialog/Select/Input/Checkbox/DatePickerPopover/OutlineRail have no Vue default to inject), so it is not full parity with React's 10-primitive override surface.",
       "featureFlags": "Selective-save feature flags are not plumbed into the Vue save path.",
       "fonts": "Host FontFace registration (registerFontFace / getDocumentFontSet, React's hostFonts) is not ported to the Vue pipeline; custom faces are not injected.",
       "marginGuideColor": "Pairs with showMarginGuides; React declares both but renders no margin guides (unused, underscore-prefixed), so there is nothing to mirror.",

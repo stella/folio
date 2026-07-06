@@ -39,10 +39,17 @@ export type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragr
 export type { FontOption } from "./utils/fontOptions";
 export type { FontDefinition } from "./components/DocxEditor/types";
 // Consumer UI-injection contract (mirrors React's `FolioUIComponents`). The Vue
-// injectable-component map is a placeholder until Phase E; ColorPreset,
-// FolioButtonProps, OutlineItem, and the FolioUIProvider component have no Vue
-// equivalent yet (see the parity report).
-export type { FolioUIComponents } from "./ui/folio-ui";
+// adapter injects overrides through `DocxEditor`'s `components` prop; the chrome
+// resolves primitives via the FolioUI provider. `FolioUIProvider` is a Vue
+// component (defined in the `.ts` module so Nuxt's `tsc` typecheck resolves the
+// named export). See the parity report for the primitives without a Vue default.
+export { FolioUIProvider } from "./ui/folio-ui";
+export type {
+  ColorPreset,
+  FolioButtonProps,
+  FolioUIComponents,
+  OutlineItem,
+} from "./ui/folio-ui";
 
 // i18n runtime (Vue-specific — React consumes `use-intl` directly). Locale-string
 // types live in the shared catalog; import them from `@stll/folio-core` if needed.
