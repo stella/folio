@@ -23,10 +23,6 @@ no React equivalent.
 
 Known Vue gaps (React-only chrome/components not yet ported to Vue):
 
-- `FolioUIProvider` — React UI-injection provider; the Vue map is a placeholder.
-- `ColorPreset` — React folio-ui type; no Vue equivalent yet.
-- `FolioButtonProps` — React folio-ui type; no Vue equivalent yet.
-- `OutlineItem` — React folio-ui type; no Vue equivalent yet.
 - `AutocompleteCaretOverlay` — React overlay component; no Vue equivalent yet.
 - `AutocompleteCaretOverlayProps` — type for the React-only overlay.
 - `AutocompleteCaretRect` — type for the React-only overlay.
