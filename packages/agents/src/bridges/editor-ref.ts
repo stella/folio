@@ -114,7 +114,11 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
       const repliesByParent = new Map<number, Comment[]>();
       const topLevel: Comment[] = [];
       for (const comment of comments) {
-        if (comment.parentId === undefined) {
+        // `parentId` is typed `number | undefined`, but hosts that round-trip
+        // comments through JSON (or Word-imported state) can hand back
+        // `parentId: null` for a top-level comment; treat both as "no parent"
+        // (see `getCommentParentId` in packages/react/commentsHelpers.ts).
+        if (comment.parentId == null) {
           topLevel.push(comment);
           continue;
         }

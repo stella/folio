@@ -168,22 +168,21 @@ const pairByExactText = (base: readonly IndexedBlock[], revised: readonly Indexe
   if (exceedsLcsBudget(m, n)) {
     return [];
   }
-  const dp: number[][] = Array.from({ length: m + 1 }, () =>
-    Array.from<number>({ length: n + 1 }).fill(0),
-  );
+  // A single flat Int32Array (indexed `i * (n + 1) + j`) instead of `m + 1`
+  // separately-allocated rows: one contiguous allocation instead of thousands
+  // of small ones, which matters once `m` and `n` approach the budget above.
+  const stride = n + 1;
+  const dp = new Int32Array((m + 1) * stride);
   for (let i = m - 1; i >= 0; i--) {
+    const rowOffset = i * stride;
+    const nextRowOffset = (i + 1) * stride;
     for (let j = n - 1; j >= 0; j--) {
-      const row = dp[i];
-      const nextRow = dp[i + 1];
-      if (!row || !nextRow) {
-        continue;
-      }
       const baseText = base[i]?.block.text;
       const revisedText = revised[j]?.block.text;
-      row[j] =
+      dp[rowOffset + j] =
         baseText === revisedText
-          ? (nextRow[j + 1] ?? 0) + 1
-          : Math.max(nextRow[j] ?? 0, row[j + 1] ?? 0);
+          ? (dp[nextRowOffset + j + 1] ?? 0) + 1
+          : Math.max(dp[nextRowOffset + j] ?? 0, dp[rowOffset + j + 1] ?? 0);
     }
   }
 
@@ -202,8 +201,8 @@ const pairByExactText = (base: readonly IndexedBlock[], revised: readonly Indexe
       j++;
       continue;
     }
-    const down = dp[i + 1]?.[j] ?? 0;
-    const right = dp[i]?.[j + 1] ?? 0;
+    const down = dp[(i + 1) * stride + j] ?? 0;
+    const right = dp[i * stride + j + 1] ?? 0;
     if (down >= right) {
       i++;
     } else {
