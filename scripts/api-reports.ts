@@ -40,6 +40,7 @@ const repoRoot = path.resolve(import.meta.dir, "..");
 const PACKAGES: PackageTarget[] = [
   { slug: "core", name: "@stll/folio-core", root: path.join(repoRoot, "packages/core") },
   { slug: "react", name: "@stll/folio-react", root: path.join(repoRoot, "packages/react") },
+  { slug: "agents", name: "@stll/folio-agents", root: path.join(repoRoot, "packages/agents") },
   { slug: "vue", name: "@stll/folio-vue", root: path.join(repoRoot, "packages/vue") },
 ];
 
