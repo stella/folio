@@ -4,22 +4,8 @@
 
 ```ts
 
-// @public (undocumented)
-export const FOLIO_LOCALES: readonly ["en", "de", "fr", "es", "cs", "ar", "et", "he", "hi", "hu", "lt", "lv", "pl", "pt-BR", "sk", "tr", "zh-CN"];
 
-// @public (undocumented)
-export type FolioLocale = (typeof FOLIO_LOCALES)[number];
-
-// @public (undocumented)
-export type FolioMessages = {
-    folio: FolioMessageTree;
-};
-
-// @public (undocumented)
-export const getFolioMessages: (locale: string) => FolioMessages;
-
-// @public (undocumented)
-export const isFolioLocale: (locale: string) => locale is FolioLocale;
+export * from "@stll/folio-core/i18n/messages";
 
 // (No @packageDocumentation comment for this package)
 

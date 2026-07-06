@@ -17,6 +17,9 @@ export function applyContextualSpacing(blocks: FlowBlock[]): void;
 export function applyPendingToActive(state: SectionState): SectionState;
 
 // @public
+export function assertExhaustiveFlowBlock(block: never, site: string): never;
+
+// @public
 export type BlockId = string | number;
 
 // @public
@@ -152,6 +155,9 @@ export type FieldRun = RunFormatting & {
     pmStart?: number;
     pmEnd?: number;
 };
+
+// @public
+export function findPageIndexContainingPmPos(layout: Layout, pmPos: number): number | null;
 
 // @public
 export type FloatingTablePosition = {
