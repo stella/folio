@@ -19,6 +19,10 @@
   "type": "module",
   "scripts": {
     "clean": "git clean -xdf packages/*/dist .cache .turbo node_modules",
+    "check:parity-contract": "node scripts/check-parity-contract.mjs",
+    "check:export-parity": "node scripts/check-export-parity.mjs",
+    "test:e2e:vue": "bunx playwright test --project=vue",
+    "test:e2e:parity": "bunx playwright test --project=parity",
     "build": "bun --filter '@stll/folio-core' build && bun --filter '@stll/folio-react' build && bun --filter '@stll/folio-vue' build",
     "build:core": "bun --filter '@stll/folio-core' build",
     "build:react": "bun --filter '@stll/folio-react' build",

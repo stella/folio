@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "types": ["vite/client"],
+    "paths": {
+      // The `@stll/folio-vue` `.` export resolves to `dist` (a build artifact).
+      // Point the type layer at source so this playground typechecks without a
+      // prior `bun run build:vue`, mirroring the vite alias in vite.config.ts.
+      "@stll/folio-vue": ["../vue/src/index.ts"]
+    }
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
