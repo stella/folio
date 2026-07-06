@@ -19,6 +19,7 @@ import { EditorView } from 'prosemirror-view';
 import { extractTrackedChanges } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
 import { FlowBlock } from '@stll/folio-core/layout-engine/types';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
+import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { getSelectionRuns } from '@stll/folio-core/managers/ClipboardManager';
 import { Layout } from '@stll/folio-core/layout-engine/types';
 import { MaybeRefOrGetter } from 'vue';
@@ -31,6 +32,7 @@ import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins
 import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TrackedChangeEntry } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
 import { TrackedChangesResult } from '@stll/folio-core/prosemirror/utils/extractTrackedChanges';
+import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
 
 export { ClipboardSelection }
 
@@ -96,6 +98,8 @@ export type UseDocxEditorOptions = {
     onSelectionUpdate?: (state: EditorState) => void;
     onEditorViewReady?: (view: EditorView | null) => void;
     onReadOnlyEditAttempt?: () => void;
+    featureFlags?: MaybeRefOrGetter<FolioSelectiveSaveFlags | undefined>;
+    onSelectiveSaveTripwire?: (result: TripwireResult) => void;
 };
 
 // @public (undocumented)
@@ -110,7 +114,9 @@ export type UseDocxEditorReturn = {
     measures: Ref<Measure[]>;
     loadBuffer: (buffer: DocxInput) => Promise<void>;
     loadDocument: (doc: Document_2) => void;
-    save: () => Promise<Blob | null>;
+    save: (options?: {
+        selective?: boolean;
+    }) => Promise<Blob | null>;
     getDocument: () => Document_2 | null;
     setDocument: (doc: Document_2) => void;
     getCommands: () => CommandMap;
