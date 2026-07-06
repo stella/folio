@@ -53,8 +53,13 @@
 import { computed } from 'vue';
 import { useTranslation } from '../i18n';
 import MaterialSymbol from './ui/MaterialSymbol.vue';
-import MenuDropdown, { type MenuEntry } from './ui/MenuDropdown.vue';
+import type { MenuEntry } from './ui/MenuDropdown.vue';
 import TableGridInline from './ui/TableGridInline.vue';
+import { useFolioUI } from '../ui/folio-ui';
+
+// Resolve Menu from the FolioUI injection provider so a host override takes
+// effect here too (previously a static import of MenuDropdown.vue).
+const { Menu: MenuDropdown } = useFolioUI();
 
 const props = withDefaults(
   defineProps<{ showFileOpen?: boolean; showHelpMenu?: boolean; showTableInsert?: boolean }>(),

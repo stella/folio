@@ -14,7 +14,7 @@
   <Popover
     :open="isOpen"
     placement="bottom-right"
-    @update:open="(v) => (isOpen = v)"
+    @update:open="(v: boolean) => (isOpen = v)"
     @close="isOpen = false"
   >
     <template #trigger="{ toggle }">
@@ -62,15 +62,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import MaterialSymbol from './ui/MaterialSymbol.vue';
-import Popover from './ui/Popover.vue';
 import type { EditorMode } from './DocxEditor/types';
 import { useTranslation } from '../i18n';
+import { useFolioUI } from '../ui/folio-ui';
 
 // folio's `useTranslation().t` accepts a namespaced key path as a plain string
 // (upstream typed these against `@eigenpal/docx-editor-i18n`'s `TranslationKey`).
 type TranslationKey = string;
 
 const { t } = useTranslation();
+
+// Resolve Popover from the FolioUI injection provider so a host override
+// takes effect here too (previously a static import).
+const { Popover } = useFolioUI();
 
 const props = defineProps<{
   modelValue: EditorMode;

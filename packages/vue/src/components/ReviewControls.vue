@@ -36,7 +36,7 @@
     <Popover
       :open="isOpen"
       placement="bottom-right"
-      @update:open="(v) => (isOpen = v)"
+      @update:open="(v: boolean) => (isOpen = v)"
       @close="isOpen = false"
     >
       <template #trigger="{ toggle }">
@@ -81,10 +81,14 @@ import { computed, ref } from 'vue';
 import { DISPLAY_MODES } from '@stll/folio-core/managers/EditorModeManager';
 import type { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
 import MaterialSymbol from './ui/MaterialSymbol.vue';
-import Popover from './ui/Popover.vue';
 import { useTranslation } from '../i18n';
+import { useFolioUI } from '../ui/folio-ui';
 
 const { t } = useTranslation();
+
+// Resolve Popover from the FolioUI injection provider so a host override
+// takes effect here too (previously a static import).
+const { Popover } = useFolioUI();
 
 const props = withDefaults(
   defineProps<{

@@ -17,7 +17,7 @@
   <Popover
     :open="isOpen"
     placement="bottom-right"
-    @update:open="(v) => (isOpen = v)"
+    @update:open="(v: boolean) => (isOpen = v)"
     @close="isOpen = false"
   >
     <template #trigger="{ toggle }">
@@ -290,8 +290,12 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue';
 import MaterialSymbol from './MaterialSymbol.vue';
-import Popover from './Popover.vue';
 import { useTranslation } from '../../i18n';
+import { useFolioUI } from '../../ui/folio-ui';
+
+// Resolve Popover from the FolioUI injection provider so a host override
+// takes effect here too (previously a static import).
+const { Popover } = useFolioUI();
 
 export type TableAction =
   | 'addRowAbove'

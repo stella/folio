@@ -5,7 +5,7 @@
   Popover.
 -->
 <template>
-  <Popover :open="isOpen" @update:open="(v) => (isOpen = v)" @close="onClose">
+  <Popover :open="isOpen" @update:open="(v: boolean) => (isOpen = v)" @close="onClose">
     <template #trigger="{ toggle }">
       <button
         type="button"
@@ -43,7 +43,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import MaterialSymbol from './MaterialSymbol.vue';
-import Popover from './Popover.vue';
+import { useFolioUI } from '../../ui/folio-ui';
+
+// Resolve Popover from the FolioUI injection provider so a host override
+// takes effect here too (previously a static import).
+const { Popover } = useFolioUI();
 
 const props = withDefaults(
   defineProps<{
