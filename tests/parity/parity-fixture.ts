@@ -20,6 +20,8 @@ type FolioParityBridge = {
   getDocumentText: () => string;
   insertText: (text: string) => boolean;
   boldFirstWord: () => boolean;
+  insertTable: (rows: number, cols: number) => boolean;
+  countTables: () => number;
   save: () => Promise<number>;
 };
 

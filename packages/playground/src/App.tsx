@@ -62,6 +62,10 @@ export type FolioParityBridge = {
   insertText: (text: string) => boolean;
   /** Bold the first word of the document. Returns whether the mark applied. */
   boldFirstWord: () => boolean;
+  /** Insert a rows×cols table at the selection (core helper). Returns success. */
+  insertTable: (rows: number, cols: number) => boolean;
+  /** Count `table` nodes in the live document (0 with no live view). */
+  countTables: () => number;
   /** Serialize to DOCX and return the byte length (0 on failure). */
   save: () => Promise<number>;
 };
@@ -113,6 +117,26 @@ function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridg
       const { from, to } = range;
       view.dispatch(view.state.tr.addMark(from, to, boldType.create()));
       return view.state.doc.rangeHasMark(from, to, boldType);
+    },
+    insertTable: (rows, cols) => {
+      const view = liveView();
+      if (!view) {
+        return false;
+      }
+      return insertTableInView(view, rows, cols);
+    },
+    countTables: () => {
+      const view = liveView();
+      if (!view) {
+        return 0;
+      }
+      let count = 0;
+      view.state.doc.descendants((node) => {
+        if (node.type.name === "table") {
+          count += 1;
+        }
+      });
+      return count;
     },
     save: async () => {
       const buffer = await (getRef()?.save() ?? Promise.resolve(null));
