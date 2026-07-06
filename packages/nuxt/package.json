@@ -1,0 +1,72 @@
+{
+  "name": "@stll/folio-nuxt",
+  "version": "0.1.0",
+  "description": "Nuxt 3 & 4 module for folio: auto-imports an SSR-safe <DocxEditor> component built on @stll/folio-vue and ProseMirror.",
+  "keywords": [
+    "docx",
+    "editor",
+    "nuxt",
+    "nuxt-module",
+    "ooxml",
+    "prosemirror",
+    "vue",
+    "word",
+    "wysiwyg"
+  ],
+  "homepage": "https://github.com/stella/folio",
+  "bugs": {
+    "url": "https://github.com/stella/folio/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "STLL",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stella/folio.git",
+    "directory": "packages/nuxt"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/module.mjs",
+  "types": "./dist/types.d.mts",
+  "typesVersions": {
+    "*": {
+      ".": [
+        "./dist/types.d.mts"
+      ]
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/types.d.mts",
+      "import": "./dist/module.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "nuxt-module-build build",
+    "prepack": "nuxt-module-build build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nuxt/kit": "^3.14.0 || ^4.0.0",
+    "@stll/folio-vue": "workspace:^",
+    "prosemirror-history": "^1.4.0",
+    "prosemirror-model": "^1.19.4",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-tables": "^1.8.5",
+    "prosemirror-view": "^1.41.6"
+  },
+  "devDependencies": {
+    "@nuxt/module-builder": "^1.0.0",
+    "@nuxt/schema": "^4.0.0",
+    "nuxt": "^3.14.0 || ^4.0.0",
+    "vue": "^3.5.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.3.0"
+  }
+}
