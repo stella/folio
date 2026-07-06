@@ -187,6 +187,39 @@
             :style="{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: '100%' }"
           >
             <div ref="pagesRef" class="docx-editor-vue__pages paged-editor__pages" :style="pagesContainerStyle" />
+
+            <!-- Decoration origin: the coordinate anchor core's range projection
+                 looks up (`[data-testid="selection-overlay"]`) and the container
+                 the projected (unscaled) rects are painted into. Sibling of the
+                 pages so the projection resolves it via `pagesContainer.parentElement`. -->
+            <div
+              data-testid="selection-overlay"
+              class="docx-editor-vue__decoration-origin"
+              aria-hidden="true"
+            >
+              <AnonymizationRectsOverlay
+                :get-view="() => editorView"
+                :get-pages-container="() => pagesRef"
+                :editor-state="editorState"
+                :zoom="zoom"
+                :layout="layout"
+                :blocks="blocks"
+                :measures="measures"
+                :on-term-click="props.onAnonymizationTermClick"
+                :selected-canonical="props.selectedAnonymizationCanonical"
+                :selection-seq="props.anonymizationSelectionSeq"
+              />
+              <TemplateDirectivesOverlay
+                v-if="props.showTemplateDirectives"
+                :get-view="() => editorView"
+                :get-pages-container="() => pagesRef"
+                :editor-state="editorState"
+                :zoom="zoom"
+                :layout="layout"
+                :blocks="blocks"
+                :measures="measures"
+              />
+            </div>
           </div>
 
           <ImageSelectionOverlay
@@ -333,6 +366,7 @@ import type { Comment } from "@stll/folio-core/types/content";
 import type { Document, SectionProperties, Style } from "@stll/folio-core/types/document";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 
+import AnonymizationRectsOverlay from "./AnonymizationRectsOverlay.vue";
 import CommentMarginMarkers from "./CommentMarginMarkers.vue";
 import DocumentOutline from "./DocumentOutline.vue";
 import DocxEditorDialogs from "./DocxEditor/DocxEditorDialogs.vue";
@@ -342,6 +376,7 @@ import type { DocxEditorProps, EditorMode } from "./DocxEditor/types";
 import ImageSelectionOverlay from "./ImageSelectionOverlay.vue";
 import OutlineToggleButton from "./OutlineToggleButton.vue";
 import PageIndicator from "./PageIndicator.vue";
+import TemplateDirectivesOverlay from "./TemplateDirectivesOverlay.vue";
 import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
 import Toolbar from "./Toolbar.vue";
 import HorizontalRuler from "./ui/HorizontalRuler.vue";
@@ -460,9 +495,12 @@ function handleWheelZoomGated(event: WheelEvent): void {
 const {
   editor,
   editorView,
+  editorState,
   isReady,
   parseError,
   layout,
+  blocks,
+  measures,
   loadBuffer,
   loadDocument,
   save,
@@ -479,6 +517,12 @@ const {
   documentKey: () => props.documentKey,
   // PORT-BLOCKED: no externalPlugins prop on the fork's DocxEditorProps yet.
   externalPlugins: [],
+  // Anonymization highlights + template directives are driven by the overlay
+  // components below; these thread the plugin callbacks and the directive gate.
+  onAnonymizationMatchesChange: (matches) => props.onAnonymizationMatchesChange?.(matches),
+  showTemplateDirectives: () => props.showTemplateDirectives,
+  onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
+  onSlashMenuKeyAction: (action) => props.onSlashMenuKeyAction?.(action) ?? false,
   onChange: (doc) => {
     props.onChange?.(doc);
     emit("change", doc);
@@ -1027,6 +1071,19 @@ defineExpose(exposed);
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+/* Coordinate anchor + paint surface for the decoration overlays (anonymization,
+   template directives). Covers the content wrapper so its top-left matches the
+   projection origin; unscaled (the pages carry the zoom transform, the overlays
+   multiply coordinates back by zoom themselves). */
+.docx-editor-vue__decoration-origin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
 }
 .docx-editor-vue__table-insert-btn {
   position: absolute;

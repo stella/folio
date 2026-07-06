@@ -58,9 +58,11 @@ import {
 } from "@stll/folio-core/layout-bridge/convert/headerFooterLayout";
 import type { ColumnLayout } from "@stll/folio-core/layout-engine";
 import type {
+  FlowBlock,
   FootnoteContent,
   HeaderFooterContent,
   Layout,
+  Measure,
   PageHeaderFooterRefs,
 } from "@stll/folio-core/layout-engine/types";
 import { LayoutPainter } from "@stll/folio-core/layout-painter";
@@ -80,7 +82,16 @@ import {
   createSuggestionModePlugin,
   setSuggestionMode,
 } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
+import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
+import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
+import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
+import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import type { TemplatePreviewEntry } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
+import type {
+  TemplateSlashMenuKeyAction,
+  TemplateSlashMenuState,
+} from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
+import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import type { Footnote } from "@stll/folio-core/types/content";
 import type {
   Document,
@@ -413,6 +424,24 @@ export type UseDocxEditorOptions = {
   author?: MaybeRefOrGetter<string>;
   /** External ProseMirror plugins supplied by the host app. */
   externalPlugins?: Plugin[];
+  /**
+   * Fires with the anonymization decoration plugin's current match list on
+   * mount, term push, and every doc edit. The anonymization plugin is always
+   * installed (inert until terms are pushed via `setAnonymizationTermsMeta`),
+   * mirroring the React adapter.
+   */
+  onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
+  /**
+   * Install the template-directive + slash-menu plugins so `{{...}}` markers are
+   * scanned and the `/` trigger is active. Reactive: toggling reconfigures the
+   * live view's plugin set. Off for ordinary documents; on for the template
+   * editor. Mirrors React's `showTemplateDirectives` plugin gate.
+   */
+  showTemplateDirectives?: MaybeRefOrGetter<boolean | undefined>;
+  /** Fires when the slash-menu trigger opens, its query changes, or it closes. */
+  onSlashMenuChange?: (state: TemplateSlashMenuState) => void;
+  /** Resolves a navigation/commit key while the slash menu is open. */
+  onSlashMenuKeyAction?: (action: TemplateSlashMenuKeyAction) => boolean;
   /** Callback on document change (debounced PM → Document model conversion). */
   onChange?: (doc: Document) => void;
   /** Callback on parse / layout / lifecycle error. */
@@ -438,6 +467,10 @@ export type UseDocxEditorReturn = {
   parseError: Ref<string | null>;
   /** Computed page layout, or null before first paint. */
   layout: Ref<Layout | null>;
+  /** Flow blocks from the latest layout pass — the range-projection fallback. */
+  blocks: Ref<FlowBlock[]>;
+  /** Measures from the latest layout pass — the range-projection fallback. */
+  measures: Ref<Measure[]>;
   /** Load a DOCX from a binary buffer / Blob / File. */
   loadBuffer: (buffer: DocxInput) => Promise<void>;
   /** Load an already-parsed `Document` directly. */
@@ -468,6 +501,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     editorMode,
     author,
     externalPlugins = [],
+    onAnonymizationMatchesChange,
+    showTemplateDirectives,
+    onSlashMenuChange,
+    onSlashMenuKeyAction,
     onChange,
     onError,
     onSelectionUpdate,
@@ -482,6 +519,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const editorView = shallowRef<EditorView | null>(null);
   const editorState = shallowRef<EditorState | null>(null);
   const layout = shallowRef<Layout | null>(null);
+  // Latest flow blocks + measures — the range-projection fallback (off-screen /
+  // not-yet-painted ranges) needs them; the primary DOM-rect path does not.
+  const blocks = shallowRef<FlowBlock[]>([]);
+  const measures = shallowRef<Measure[]>([]);
   const isReady = ref(false);
   const parseError = ref<string | null>(null);
 
@@ -497,6 +538,38 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // manager installs it on every (re)created state.
   const suggestionPlugin = createSuggestionModePlugin(false);
 
+  // Anonymization-term highlights. Always installed (inert until the host pushes
+  // terms via `setAnonymizationTermsMeta`), matching React. The callback is read
+  // through the stable closure below so the plugin identity never changes.
+  const anonymizationPlugin = createAnonymizationDecorationsPlugin({
+    onMatchesChange: (matches) => onAnonymizationMatchesChange?.(matches),
+  });
+  // Template-directive scan + slash-menu trigger. Installed only when
+  // `showTemplateDirectives` is on (see `buildExternalPlugins` /
+  // `syncTemplatePlugins`). Preview plugin is inert until values are pushed.
+  const templateDirectivesPlugin = createTemplateDirectivesPlugin();
+  const templateSlashMenu = templateSlashMenuPlugin({
+    onChange: (state) => onSlashMenuChange?.(state),
+    onKeyAction: (action) => onSlashMenuKeyAction?.(action) ?? false,
+  });
+  const templatePreviewPlugin = createTemplatePreviewValuesPlugin();
+
+  const templatePluginsEnabled = (): boolean => toValue(showTemplateDirectives) === true;
+
+  // Plugin list installed on every (re)created hidden-editor state. Anonymization
+  // + preview are always present; the template directive/slash-menu pair is gated
+  // on `showTemplateDirectives`. The host's `externalPlugins` lead, matching the
+  // React adapter's ordering (host plugins before feature decorations).
+  function buildExternalPlugins(): Plugin[] {
+    return [
+      suggestionPlugin,
+      ...externalPlugins,
+      anonymizationPlugin,
+      ...(templatePluginsEnabled() ? [templateDirectivesPlugin, templateSlashMenu] : []),
+      templatePreviewPlugin,
+    ];
+  }
+
   const emitter = createFolioEditorEmitter();
   const syncCoordinator = new LayoutSelectionGate();
   const session = createLayoutSession();
@@ -507,6 +580,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   function applyOutcome(outcome: LayoutOutcome): void {
     if (outcome.layout) {
       layout.value = outcome.layout;
+    }
+    if (outcome.blocks) {
+      blocks.value = outcome.blocks;
+    }
+    if (outcome.measures) {
+      measures.value = outcome.measures;
     }
     if (outcome.blockLookup) {
       painter.setBlockLookup(outcome.blockLookup);
@@ -643,7 +722,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getDocument: () => docModel.value,
     getStyles: () => docModel.value?.package.styles ?? null,
     getExtensionManager: () => extensionManager,
-    getExternalPlugins: () => [suggestionPlugin, ...externalPlugins],
+    getExternalPlugins: buildExternalPlugins,
     getCollaboration: () => undefined,
     getCollaborationModules: () => null,
     getPrecomputedInitialState: () => null,
@@ -739,6 +818,35 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     () => manager.syncEditable(),
   );
 
+  // Live-toggle the template directive/slash-menu pair without tearing the view
+  // down: add or remove the two known plugin instances via `reconfigure`, so
+  // history and selection survive the toggle. Mirrors React swapping its
+  // `editorPlugins` array when `showTemplateDirectives` flips.
+  function syncTemplatePlugins(view: EditorView): void {
+    const enabled = templatePluginsEnabled();
+    const installed = view.state.plugins.includes(templateDirectivesPlugin);
+    if (enabled === installed) {
+      return;
+    }
+    const without = view.state.plugins.filter(
+      (plugin) => plugin !== templateDirectivesPlugin && plugin !== templateSlashMenu,
+    );
+    const plugins = enabled
+      ? [templateDirectivesPlugin, templateSlashMenu, ...without]
+      : without;
+    view.updateState(view.state.reconfigure({ plugins }));
+  }
+
+  watch(
+    () => templatePluginsEnabled(),
+    () => {
+      const view = editorView.value;
+      if (view) {
+        syncTemplatePlugins(view);
+      }
+    },
+  );
+
   // ---- View lifecycle -----------------------------------------------------
 
   function mountView(): void {
@@ -776,7 +884,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
         document: model,
         styles: model.package.styles ?? null,
         manager: extensionManager,
-        externalPlugins: [suggestionPlugin, ...externalPlugins],
+        externalPlugins: buildExternalPlugins(),
         collaborationModules: null,
         reason: "mount",
       });
@@ -884,6 +992,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     isReady,
     parseError,
     layout,
+    blocks,
+    measures,
     loadBuffer,
     loadDocument,
     save,
