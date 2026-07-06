@@ -5,6 +5,12 @@
     "alignCenter": "Keskele",
     "alignLeft": "Joonda vasakule",
     "alignRight": "Joonda paremale",
+    "alignment": {
+      "alignLeftShortcut": "Ctrl+L",
+      "alignRightShortcut": "Ctrl+R",
+      "centerShortcut": "Ctrl+E",
+      "justifyShortcut": "Ctrl+J"
+    },
     "alignmentGroup": "Joondus",
     "bold": "Paks",
     "boldShortcut": "Paks (Ctrl+B)",
@@ -13,6 +19,26 @@
     "checkingDocxEditTitle": "Dokumendi kontrollimine",
     "clearDate": "Tühjenda kuupäev",
     "clipboardReadFailed": "Lõikelauda ei õnnestunud lugeda. Kontrollige lõikelaua õigusi ja proovige uuesti.",
+    "colorPicker": {
+      "ariaLabel": "{type} picker",
+      "automatic": "Automatic",
+      "colors": {
+        "blue": "Blue",
+        "darkBlue": "Dark Blue",
+        "darkRed": "Dark Red",
+        "green": "Green",
+        "lightBlue": "Light Blue",
+        "lightGreen": "Light Green",
+        "orange": "Orange",
+        "purple": "Purple",
+        "red": "Red",
+        "yellow": "Yellow"
+      },
+      "customColor": "Custom Color",
+      "noColor": "No color",
+      "standardColors": "Standard Colors",
+      "themeColors": "Theme Colors"
+    },
     "comment": "Kommenteeri",
     "comments": {
       "addPlaceholder": "Lisa kommentaar…",
@@ -26,17 +52,220 @@
       "unknownAuthor": "Tundmatu",
       "visibility": "Kommentaarid"
     },
+    "common": {
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "closeDialog": "Close",
+      "insert": "Insert",
+      "px": "px",
+      "update": "Update"
+    },
     "contentControlDateAriaLabel": "Vali kuupäev",
     "contentControlDropdownAriaLabel": "Rippmenüü valikud",
     "contentControlDropdownNoOptions": "Valikuid pole",
+    "contextMenu": {
+      "copy": "Copy",
+      "copyShortcut": "Ctrl+C",
+      "cut": "Cut",
+      "cutShortcut": "Ctrl+X",
+      "delete": "Delete",
+      "deleteShortcut": "Del",
+      "paste": "Paste",
+      "pastePlainTextShortcut": "Ctrl+Shift+V",
+      "pasteShortcut": "Ctrl+V",
+      "selectAllShortcut": "Ctrl+A"
+    },
     "copy": "Kopeeri",
     "copyLink": "Kopeeri link",
     "cut": "Lõika",
+    "decreaseFontSize": "Decrease font size",
     "decreaseIndent": "Vähenda taanet",
     "delete": "Kustuta",
     "deleteColumn": "Kustuta veerg",
     "deleteRow": "Kustuta rida",
     "deleted": "Kustutatud",
+    "dialogs": {
+      "findReplace": {
+        "matchesFound": "{total} matches found",
+        "replaceButton": "Replace",
+        "toggleReplace": "Toggle replace"
+      },
+      "footnoteProperties": {
+        "endnotePositions": {
+          "endOfDocument": "End of document",
+          "endOfSection": "End of section"
+        },
+        "endnotes": "Endnotes",
+        "footnotePositions": {
+          "belowText": "Below text",
+          "bottomOfPage": "Bottom of page"
+        },
+        "footnotes": "Footnotes",
+        "formats": {
+          "decimal": "1, 2, 3, ...",
+          "lowerAlpha": "a, b, c, ...",
+          "lowerRoman": "i, ii, iii, ...",
+          "symbols": "*, †, ‡, ...",
+          "upperAlpha": "A, B, C, ...",
+          "upperRoman": "I, II, III, ..."
+        },
+        "numberFormat": "Number format",
+        "numbering": "Numbering",
+        "numberingOptions": {
+          "continuous": "Continuous",
+          "restartPage": "Restart each page",
+          "restartSection": "Restart each section"
+        },
+        "position": "Position",
+        "startAt": "Start at",
+        "title": "Footnote & Endnote Properties"
+      },
+      "hyperlink": {
+        "bookmarkLabel": "Bookmark",
+        "bookmarkPlaceholder": "Select a bookmark",
+        "displayTextHint": "Defaults to the selected text",
+        "displayTextLabel": "Display text",
+        "displayTextPlaceholder": "Text to display",
+        "invalidUrl": "Enter a valid URL",
+        "removeLink": "Remove link",
+        "tabBookmark": "Bookmark",
+        "tabWebAddress": "Web address",
+        "titleEdit": "Edit hyperlink",
+        "titleInsert": "Insert hyperlink",
+        "tooltipLabel": "Tooltip",
+        "tooltipPlaceholder": "Optional tooltip text",
+        "urlHint": "Include a full web address, or a mailto: / tel: link",
+        "urlLabel": "URL",
+        "urlPlaceholder": "https://example.com",
+        "urlRequired": "Enter a URL"
+      },
+      "imagePosition": {
+        "align": "Align",
+        "alignOptions": {
+          "bottom": "Bottom",
+          "center": "Center",
+          "left": "Left",
+          "right": "Right",
+          "top": "Top"
+        },
+        "alignment": "Alignment",
+        "horizontal": "Horizontal",
+        "offset": "Offset",
+        "offsetPx": "Offset (px)",
+        "relativeOptions": {
+          "character": "Character",
+          "column": "Column",
+          "line": "Line",
+          "margin": "Margin",
+          "page": "Page",
+          "paragraph": "Paragraph"
+        },
+        "relativeTo": "Relative to",
+        "title": "Image Position",
+        "vertical": "Vertical"
+      },
+      "imageProperties": {
+        "altText": "Alt Text",
+        "altTextPlaceholder": "Describe this image for accessibility...",
+        "border": "Border",
+        "borderStyles": {
+          "dashed": "Dashed",
+          "dotted": "Dotted",
+          "double": "Double",
+          "solid": "Solid"
+        },
+        "color": "Color",
+        "dimensions": "Dimensions",
+        "heightLabel": "Height",
+        "lockAspectRatio": "Lock aspect ratio",
+        "style": "Style",
+        "textWrapping": "Text wrapping",
+        "title": "Image Properties",
+        "width": "Width",
+        "widthLabel": "Width",
+        "wrapOptions": {
+          "behind": "Behind text",
+          "inFront": "In front of text",
+          "inline": "In line with text",
+          "topAndBottom": "Top and bottom",
+          "wrapLeft": "Wrap left",
+          "wrapRight": "Wrap right"
+        }
+      },
+      "insertSymbol": {
+        "categories": {
+          "arrows": "Arrows",
+          "common": "Common",
+          "currency": "Currency",
+          "greek": "Greek",
+          "math": "Math",
+          "shapes": "Shapes"
+        },
+        "noResults": "No symbols found for \"{query}\"",
+        "noResultsEmpty": "No symbols in this category",
+        "recent": "Recent",
+        "searchPlaceholder": "Search symbols...",
+        "title": "Insert symbol"
+      },
+      "insertTable": {
+        "autofit": "Autofit",
+        "columnWidthLabel": "Column width",
+        "columnsLabel": "Columns",
+        "fixedWidth": "Fixed width",
+        "hoverToSelect": "Hover to select table size",
+        "insertButton": "Insert",
+        "orSpecifySize": "Or specify size",
+        "rowsLabel": "Rows",
+        "sizeSelector": "Table size selector",
+        "style": "Style",
+        "tableSize": "{cols} × {rows} table",
+        "title": "Insert table",
+        "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+      },
+      "pageSetup": {
+        "bottom": "Bottom",
+        "custom": "Custom",
+        "landscape": "Landscape",
+        "left": "Left",
+        "margins": "Margins",
+        "orientation": "Orientation",
+        "pageSize": "Page Size",
+        "pageSizes": {
+          "a3": "A3",
+          "a4": "A4",
+          "a5": "A5",
+          "b5": "B5",
+          "executive": "Executive",
+          "legal": "Legal",
+          "letter": "Letter"
+        },
+        "portrait": "Portrait",
+        "right": "Right",
+        "sizeLabel": "Size",
+        "title": "Page Setup",
+        "top": "Top"
+      },
+      "tableProperties": {
+        "alignOptions": {
+          "center": "Center",
+          "left": "Left",
+          "right": "Right"
+        },
+        "alignmentLabel": "Alignment",
+        "title": "Table Properties",
+        "units": {
+          "fiftiethsPercent": "(50ths of %)",
+          "twips": "tw"
+        },
+        "widthLabel": "Width",
+        "widthType": "Width type",
+        "widthTypes": {
+          "auto": "Auto",
+          "fixed": "Fixed (twips)",
+          "percentage": "Percentage"
+        }
+      }
+    },
     "discardChanges": "Loobu",
     "dismiss": "Sulge",
     "displayText": "Kuvatav tekst",
@@ -51,6 +280,15 @@
     "editPermissionDenied": "Sul pole õigust seda dokumenti muuta.",
     "editSaveFailedTitle": "DOCX-i ei saanud salvestada",
     "editSessionTakenOver": "See muutmisseanss võeti mujal üle.",
+    "editor": {
+      "editing": "Editing",
+      "editingDescription": "Edit the document directly",
+      "showDocumentOutline": "Document outline",
+      "suggesting": "Suggesting",
+      "suggestingDescription": "Edits become tracked suggestions",
+      "viewing": "Viewing",
+      "viewingDescription": "Read or print the final document"
+    },
     "findReplace": {
       "close": "Sulge otsing",
       "find": "Leia",
@@ -71,14 +309,74 @@
       "wholeWords": "Terved sõnad"
     },
     "finishEditing": "Lõpeta muutmine",
+    "font": {
+      "documentFonts": "Document Fonts",
+      "monospace": "Monospace",
+      "other": "Other",
+      "sansSerif": "Sans Serif",
+      "selectAriaLabel": "Select font",
+      "serif": "Serif"
+    },
     "fontColor": "Fondi värv",
     "fontGroup": "Fondid",
     "fontSize": "Fondi suurus",
     "formatPainter": "Vormingupintsel",
     "formatPainterShortcut": "Vormingupintsel (Ctrl+Shift+C)",
+    "formattingBar": {
+      "clearFormatting": "Clear formatting",
+      "commentsAndChanges": "Comments & Changes",
+      "highlightColor": "Highlight color",
+      "imageProperties": "Image Properties",
+      "imagePropertiesShortcut": "Image Properties",
+      "insertLink": "Insert link",
+      "insertLinkShortcut": "Insert link (Ctrl+K)",
+      "strikethrough": "Strikethrough",
+      "subscript": "Subscript",
+      "subscriptShortcut": "Subscript (Ctrl+=)",
+      "superscript": "Superscript",
+      "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+    },
     "formattingToolbar": "Vormindusriba",
     "hideDetails": "Peida üksikasjad",
     "historyGroup": "Ajalugu",
+    "imageOverlay": {
+      "deleteImage": "Delete image",
+      "replaceImage": "Replace image",
+      "rotate": "Rotate"
+    },
+    "imageTransform": {
+      "flipHorizontal": "Flip horizontal",
+      "flipVertical": "Flip vertical",
+      "rotateClockwise": "Rotate clockwise",
+      "rotateCounterClockwise": "Rotate counterclockwise",
+      "tooltip": "Rotate or flip"
+    },
+    "imageWrap": {
+      "behindText": "Behind text",
+      "floatLeft": "Wrap left",
+      "floatRight": "Wrap right",
+      "inFrontOfText": "In front of text",
+      "inline": "In line with text",
+      "menu": {
+        "ariaLabel": "Image wrap options",
+        "behindText": "Behind text",
+        "imageProperties": "Image Properties",
+        "inFrontOfText": "In front of text",
+        "inLineWithText": "In line with text",
+        "squareLeft": "Square (left)",
+        "squareRight": "Square (right)"
+      },
+      "menuDesc": {
+        "behindText": "Place the image behind the text so it does not affect text position.",
+        "inFrontOfText": "Place the image in front of the text, overlapping it.",
+        "inLineWithText": "Move the image with the surrounding text, like a text character.",
+        "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+        "squareRight": "Text wraps around the image on the left; the image sits on the right."
+      },
+      "tooltipPrefix": "Wrap text: {label}",
+      "topAndBottom": "Top and bottom"
+    },
+    "increaseFontSize": "Increase font size",
     "increaseIndent": "Suurenda taanet",
     "insertColumnLeft": "Lisa veerg vasakule",
     "insertColumnRight": "Lisa veerg paremale",
@@ -93,6 +391,11 @@
     "italic": "Kaldkiri",
     "italicShortcut": "Kaldkiri (Ctrl+I)",
     "justify": "Rööpjoonda",
+    "lineSpacing": {
+      "double": "Double",
+      "label": "Line spacing",
+      "single": "Single"
+    },
     "listFormatting": "Loendi vormindus",
     "listsGroup": "Loendid",
     "loadingDocument": "Dokumendi laadimine...",
@@ -118,6 +421,21 @@
     "rejectChange": "Lükka muudatus tagasi",
     "removeLink": "Eemalda link",
     "renderErrorDescription": "Selle komponendi kuvamisel tekkis viga. Proovige uuesti või võtke ühendust toega, kui probleem püsib.",
+    "revisions": {
+      "cellDeleted": "Cell deleted",
+      "cellInserted": "Cell inserted",
+      "cellMerged": "Cells merged",
+      "cellPropertiesChanged": "Cell formatting changed",
+      "paragraphMarkDeleted": "Paragraph mark deleted",
+      "paragraphMarkInserted": "Paragraph mark inserted",
+      "paragraphPropertiesChanged": "Paragraph formatting changed",
+      "rowDeleted": "Row deleted",
+      "rowInserted": "Row inserted",
+      "rowPropertiesChanged": "Row formatting changed",
+      "tableDeleted": "Table deleted",
+      "tableInserted": "Table inserted",
+      "tablePropertiesChanged": "Table formatting changed"
+    },
     "ruler": {
       "bottomMargin": "Alaveeris",
       "firstLineIndent": "Esimese rea taane",
@@ -138,14 +456,107 @@
     "selectAll": "Vali kõik",
     "showDetails": "Näita üksikasju",
     "somethingWentWrong": "Midagi läks valesti",
+    "styles": {
+      "heading1": "Heading 1",
+      "heading2": "Heading 2",
+      "heading3": "Heading 3",
+      "normalText": "Normal",
+      "selectAriaLabel": "Select paragraph style",
+      "subtitle": "Subtitle",
+      "title": "Title"
+    },
     "synced": "Sünkroonitud",
     "syncing": "Sünkroonimine",
+    "table": {
+      "borderColor": "Border color",
+      "cellFillColor": "Cell fill color",
+      "deleteTable": "Delete table",
+      "mergeCells": "Merge cells",
+      "selectTable": "Select table",
+      "splitCell": "Split cell",
+      "styles": {
+        "gridTable1Light": "Grid Table 1 Light",
+        "gridTable4Accent1": "Grid Table 4 Accent 1",
+        "gridTable4Accent5": "Grid Table 4 Accent 5",
+        "gridTable4Accent6": "Grid Table 4 Accent 6",
+        "gridTable5Dark": "Grid Table 5 Dark",
+        "gridTableLight": "Grid Table Light",
+        "listTable3Accent2": "List Table 3 Accent 2",
+        "listTable4Accent3": "List Table 4 Accent 3",
+        "normalTable": "Normal Table",
+        "plainTable1": "Plain Table 1",
+        "plainTable2": "Plain Table 2",
+        "plainTable3": "Plain Table 3",
+        "plainTable4": "Plain Table 4",
+        "tableGrid": "Table Grid"
+      }
+    },
+    "tableAdvanced": {
+      "alignTableCenter": "Center table",
+      "alignTableLeft": "Align table left",
+      "alignTableRight": "Align table right",
+      "autoFit": "Autofit",
+      "bottom": "Bottom",
+      "cellMargins": "Cell margins",
+      "distributeColumns": "Distribute columns",
+      "height": "Height",
+      "heightRules": {
+        "atLeast": "At least",
+        "auto": "Auto",
+        "exact": "Exactly"
+      },
+      "middle": "Middle",
+      "rowHeight": "Row height",
+      "rule": "Rule",
+      "tableAlignment": "Table alignment",
+      "tableOptions": "Table options",
+      "tableOptionsMenu": "Table options menu",
+      "tableProperties": "Table properties",
+      "textDirections": {
+        "horizontal": "Horizontal",
+        "verticalLR": "Vertical (bottom to top)",
+        "verticalRL": "Vertical (top to bottom)"
+      },
+      "toggleHeaderRow": "Toggle header row",
+      "toggleNoWrap": "Toggle no wrap",
+      "top": "Top",
+      "verticalAlignment": "Vertical alignment"
+    },
     "tableBordersAll": "Kõik äärised",
     "tableBordersNone": "Ääristeta",
     "textDirection": "Teksti suund",
     "textEditingMenu": "Tekstiredigeerimise menüü",
     "textFormattingGroup": "Teksti vormindus",
     "toggleTrackChanges": "Lülita muudatuste jälgimine",
+    "toolbar": {
+      "break": "Break",
+      "file": "File",
+      "findReplace": "Find and replace",
+      "findReplaceShortcut": "Ctrl+F",
+      "format": "Format",
+      "help": "Help",
+      "image": "Image",
+      "insert": "Insert",
+      "leftToRight": "Left to Right",
+      "open": "Open",
+      "openShortcut": "Ctrl+O",
+      "pageBreak": "Page Break",
+      "pageSetup": "Page Setup",
+      "reportIssue": "Report Issue",
+      "rightToLeft": "Right to Left",
+      "save": "Save",
+      "saveShortcut": "Ctrl+S",
+      "sectionBreakContinuous": "Section Break (Continuous)",
+      "sectionBreakNextPage": "Section Break (Next Page)",
+      "table": "Table",
+      "tableOfContents": "Table of Contents",
+      "watermark": "Watermark"
+    },
+    "trackedChanges": {
+      "replaced": "Replaced",
+      "unknown": "Unknown",
+      "with": "with"
+    },
     "trackingOff": "Jälgimine: väljas",
     "trackingOn": "Jälgimine: sees",
     "tryAgain": "Proovi uuesti",
@@ -158,6 +569,14 @@
     "unsupportedDocxEditDescription": "See DOCX sisaldab struktuure, mida Folio ei suuda turvaliselt ümber kirjutada. Faili rikkumise vältimiseks laadi see alla ja muuda Wordis.",
     "unsupportedDocxEditTitle": "Muutmine on blokeeritud",
     "viewGroup": "Vaade",
+    "viewer": {
+      "pageIndicator": "Page {current} of {total}"
+    },
+    "zoom": {
+      "zoomIn": "Zoom in",
+      "zoomLevel": "Zoom level",
+      "zoomOut": "Zoom out"
+    },
     "zoomGroup": "Suum"
   }
 }

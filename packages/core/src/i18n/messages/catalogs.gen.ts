@@ -14,6 +14,12 @@ export const CATALOGS = {
       "alignCenter": "Center",
       "alignLeft": "Align Left",
       "alignRight": "Align Right",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Alignment",
       "bold": "Bold",
       "boldShortcut": "Bold (Ctrl+B)",
@@ -22,6 +28,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Checking document",
       "clearDate": "Clear date",
       "clipboardReadFailed": "Couldn't read the clipboard. Check clipboard permissions and try again.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Comment",
       "comments": {
         "addPlaceholder": "Add a comment...",
@@ -35,17 +61,220 @@ export const CATALOGS = {
         "unknownAuthor": "Unknown",
         "visibility": "Comments"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Pick a date",
       "contentControlDropdownAriaLabel": "Dropdown options",
       "contentControlDropdownNoOptions": "No options",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Copy",
       "copyLink": "Copy link",
       "cut": "Cut",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Decrease Indent",
       "delete": "Delete",
       "deleteColumn": "Delete column",
       "deleteRow": "Delete row",
       "deleted": "Deleted",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Discard",
       "dismiss": "Dismiss",
       "displayText": "Display text",
@@ -60,6 +289,15 @@ export const CATALOGS = {
       "editPermissionDenied": "You do not have permission to edit this document.",
       "editSaveFailedTitle": "Could not save DOCX",
       "editSessionTakenOver": "Another tab, window, or device opened this document for editing, so this session was released. Unsaved local changes are preserved — reopen the doc to continue.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Close search",
         "find": "Find",
@@ -80,14 +318,74 @@ export const CATALOGS = {
         "wholeWords": "Whole words"
       },
       "finishEditing": "Finish editing",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Font color",
       "fontGroup": "Font",
       "fontSize": "Font size",
       "formatPainter": "Format Painter",
       "formatPainterShortcut": "Format Painter (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Formatting toolbar",
       "hideDetails": "Hide details",
       "historyGroup": "History",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Increase Indent",
       "insertColumnLeft": "Insert column left",
       "insertColumnRight": "Insert column right",
@@ -102,6 +400,11 @@ export const CATALOGS = {
       "italic": "Italic",
       "italicShortcut": "Italic (Ctrl+I)",
       "justify": "Justify",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "List formatting",
       "listsGroup": "Lists",
       "loadingDocument": "Loading document...",
@@ -127,6 +430,21 @@ export const CATALOGS = {
       "rejectChange": "Reject Change",
       "removeLink": "Remove link",
       "renderErrorDescription": "Something went wrong showing this part of the document. Reload the page — if it keeps happening, let us know.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Bottom margin",
         "firstLineIndent": "First line indent",
@@ -147,14 +465,107 @@ export const CATALOGS = {
       "selectAll": "Select all",
       "showDetails": "Show details",
       "somethingWentWrong": "Something went wrong",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Synced",
       "syncing": "Syncing",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "All borders",
       "tableBordersNone": "No borders",
       "textDirection": "Text direction",
       "textEditingMenu": "Text editing menu",
       "textFormattingGroup": "Text formatting",
       "toggleTrackChanges": "Toggle Track Changes",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Tracking: Off",
       "trackingOn": "Tracking: On",
       "tryAgain": "Try Again",
@@ -167,6 +578,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "This DOCX contains structures Folio cannot safely rewrite. To avoid corrupting the file, download it and edit it in Word.",
       "unsupportedDocxEditTitle": "Editing blocked",
       "viewGroup": "View",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Zoom"
     }
   },
@@ -177,6 +596,12 @@ export const CATALOGS = {
       "alignCenter": "Zentriert",
       "alignLeft": "Linksbündig",
       "alignRight": "Rechtsbündig",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Ausrichtung",
       "bold": "Fett",
       "boldShortcut": "Fett (Strg+B)",
@@ -185,6 +610,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Dokument wird geprüft",
       "clearDate": "Datum löschen",
       "clipboardReadFailed": "Zwischenablage konnte nicht gelesen werden. Prüfen Sie die Berechtigungen für die Zwischenablage und versuchen Sie es erneut.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Kommentar",
       "comments": {
         "addPlaceholder": "Kommentar hinzufügen...",
@@ -198,17 +643,220 @@ export const CATALOGS = {
         "unknownAuthor": "Unbekannt",
         "visibility": "Kommentare"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Datum auswählen",
       "contentControlDropdownAriaLabel": "Dropdown-Optionen",
       "contentControlDropdownNoOptions": "Keine Optionen",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Kopieren",
       "copyLink": "Link kopieren",
       "cut": "Ausschneiden",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Einzug verkleinern",
       "delete": "Löschen",
       "deleteColumn": "Spalte löschen",
       "deleteRow": "Zeile löschen",
       "deleted": "Gelöscht",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Verwerfen",
       "dismiss": "Schließen",
       "displayText": "Anzeigetext",
@@ -223,6 +871,15 @@ export const CATALOGS = {
       "editPermissionDenied": "Sie haben keine Berechtigung, dieses Dokument zu bearbeiten.",
       "editSaveFailedTitle": "DOCX-Datei konnte nicht gespeichert werden",
       "editSessionTakenOver": "Diese Bearbeitungssitzung wurde an anderer Stelle übernommen.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Suche schließen",
         "find": "Suchen",
@@ -243,14 +900,74 @@ export const CATALOGS = {
         "wholeWords": "Ganze Wörter"
       },
       "finishEditing": "Bearbeitung beenden",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Schriftfarbe",
       "fontGroup": "Schriftart",
       "fontSize": "Schriftgröße",
       "formatPainter": "Format übertragen",
       "formatPainterShortcut": "Format übertragen (Strg+Umschalt+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Formatierungsleiste",
       "hideDetails": "Details ausblenden",
       "historyGroup": "Verlauf",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Einzug vergrößern",
       "insertColumnLeft": "Spalte links einfügen",
       "insertColumnRight": "Spalte rechts einfügen",
@@ -265,6 +982,11 @@ export const CATALOGS = {
       "italic": "Kursiv",
       "italicShortcut": "Kursiv (Strg+I)",
       "justify": "Blocksatz",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Listenformatierung",
       "listsGroup": "Listen",
       "loadingDocument": "Dokument wird geladen…",
@@ -290,6 +1012,21 @@ export const CATALOGS = {
       "rejectChange": "Änderung ablehnen",
       "removeLink": "Link entfernen",
       "renderErrorDescription": "Beim Rendern dieser Komponente ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut oder wenden Sie sich an den Support, falls das Problem weiterhin besteht.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Unterer Rand",
         "firstLineIndent": "Erstzeileneinzug",
@@ -310,14 +1047,107 @@ export const CATALOGS = {
       "selectAll": "Alle auswählen",
       "showDetails": "Details anzeigen",
       "somethingWentWrong": "Etwas ist schiefgelaufen",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Synchronisiert",
       "syncing": "Wird synchronisiert",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Alle Rahmenlinien",
       "tableBordersNone": "Keine Rahmenlinien",
       "textDirection": "Textrichtung",
       "textEditingMenu": "Textbearbeitungsmenü",
       "textFormattingGroup": "Textformatierung",
       "toggleTrackChanges": "Änderungsnachverfolgung umschalten",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Nachverfolgung: Aus",
       "trackingOn": "Nachverfolgung: Ein",
       "tryAgain": "Erneut versuchen",
@@ -330,6 +1160,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "Diese DOCX enthält Strukturen, die Folio nicht sicher umschreiben kann. Laden Sie sie herunter und bearbeiten Sie sie in Word, um eine Beschädigung der Datei zu vermeiden.",
       "unsupportedDocxEditTitle": "Bearbeitung gesperrt",
       "viewGroup": "Ansicht",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Zoomstufe"
     }
   },
@@ -340,6 +1178,12 @@ export const CATALOGS = {
       "alignCenter": "Centrer",
       "alignLeft": "Aligner à gauche",
       "alignRight": "Aligner à droite",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Alignement",
       "bold": "Gras",
       "boldShortcut": "Gras (Ctrl+B)",
@@ -348,6 +1192,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Vérification du document",
       "clearDate": "Effacer la date",
       "clipboardReadFailed": "Impossible de lire le presse-papiers. Vérifiez les autorisations du presse-papiers et réessayez.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Commenter",
       "comments": {
         "addPlaceholder": "Ajouter un commentaire...",
@@ -361,17 +1225,220 @@ export const CATALOGS = {
         "unknownAuthor": "Inconnu",
         "visibility": "Commentaires"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Choisir une date",
       "contentControlDropdownAriaLabel": "Options de la liste déroulante",
       "contentControlDropdownNoOptions": "Aucune option",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Copier",
       "copyLink": "Copier le lien",
       "cut": "Couper",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Diminuer le retrait",
       "delete": "Supprimer",
       "deleteColumn": "Supprimer la colonne",
       "deleteRow": "Supprimer la ligne",
       "deleted": "Supprimé",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Abandonner",
       "dismiss": "Ignorer",
       "displayText": "Texte affiché",
@@ -386,6 +1453,15 @@ export const CATALOGS = {
       "editPermissionDenied": "Vous n’avez pas l’autorisation de modifier ce document.",
       "editSaveFailedTitle": "Impossible d’enregistrer le DOCX",
       "editSessionTakenOver": "Cette session de modification a été reprise ailleurs.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Fermer la recherche",
         "find": "Rechercher",
@@ -406,14 +1482,74 @@ export const CATALOGS = {
         "wholeWords": "Mots entiers"
       },
       "finishEditing": "Terminer la modification",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Couleur de police",
       "fontGroup": "Police",
       "fontSize": "Taille de police",
       "formatPainter": "Reproduire la mise en forme",
       "formatPainterShortcut": "Reproduire la mise en forme (Ctrl+Maj+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Barre d’outils de mise en forme",
       "hideDetails": "Masquer les détails",
       "historyGroup": "Historique",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Augmenter le retrait",
       "insertColumnLeft": "Insérer une colonne à gauche",
       "insertColumnRight": "Insérer une colonne à droite",
@@ -428,6 +1564,11 @@ export const CATALOGS = {
       "italic": "Italique",
       "italicShortcut": "Italique (Ctrl+I)",
       "justify": "Justifier",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Mise en forme des listes",
       "listsGroup": "Listes",
       "loadingDocument": "Chargement du document...",
@@ -453,6 +1594,21 @@ export const CATALOGS = {
       "rejectChange": "Rejeter la modification",
       "removeLink": "Supprimer le lien",
       "renderErrorDescription": "Une erreur s'est produite lors du rendu de ce composant. Réessayez ou contactez le support si le problème persiste.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Marge inférieure",
         "firstLineIndent": "Retrait de première ligne",
@@ -473,14 +1629,107 @@ export const CATALOGS = {
       "selectAll": "Tout sélectionner",
       "showDetails": "Afficher les détails",
       "somethingWentWrong": "Une erreur s’est produite",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Synchronisé",
       "syncing": "Synchronisation",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Toutes les bordures",
       "tableBordersNone": "Aucune bordure",
       "textDirection": "Sens du texte",
       "textEditingMenu": "Menu d’édition de texte",
       "textFormattingGroup": "Mise en forme du texte",
       "toggleTrackChanges": "Activer le suivi des modifications",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Suivi : désactivé",
       "trackingOn": "Suivi : activé",
       "tryAgain": "Réessayer",
@@ -493,6 +1742,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "Ce fichier DOCX contient des structures que Folio ne peut pas réécrire sans risque. Pour éviter de corrompre le fichier, téléchargez-le et modifiez-le dans Word.",
       "unsupportedDocxEditTitle": "Modification bloquée",
       "viewGroup": "Affichage",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Niveau de zoom"
     }
   },
@@ -503,6 +1760,12 @@ export const CATALOGS = {
       "alignCenter": "Centrar",
       "alignLeft": "Alinear a la izquierda",
       "alignRight": "Alinear a la derecha",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Alineación",
       "bold": "Negrita",
       "boldShortcut": "Negrita (Ctrl+B)",
@@ -511,6 +1774,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Comprobando el documento",
       "clearDate": "Borrar fecha",
       "clipboardReadFailed": "No se pudo leer el portapapeles. Comprueba los permisos del portapapeles e inténtalo de nuevo.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Comentario",
       "comments": {
         "addPlaceholder": "Añadir comentario...",
@@ -524,17 +1807,220 @@ export const CATALOGS = {
         "unknownAuthor": "Desconocido",
         "visibility": "Comentarios"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Elegir una fecha",
       "contentControlDropdownAriaLabel": "Opciones desplegables",
       "contentControlDropdownNoOptions": "Sin opciones",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Copiar",
       "copyLink": "Copiar enlace",
       "cut": "Cortar",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Reducir sangría",
       "delete": "Eliminar",
       "deleteColumn": "Eliminar columna",
       "deleteRow": "Eliminar fila",
       "deleted": "Eliminado",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Descartar",
       "dismiss": "Descartar",
       "displayText": "Texto mostrado",
@@ -549,6 +2035,15 @@ export const CATALOGS = {
       "editPermissionDenied": "No tienes permiso para editar este documento.",
       "editSaveFailedTitle": "No se pudo guardar el DOCX",
       "editSessionTakenOver": "Esta sesión de edición se tomó en otro lugar.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Cerrar búsqueda",
         "find": "Buscar",
@@ -569,14 +2064,74 @@ export const CATALOGS = {
         "wholeWords": "Palabras completas"
       },
       "finishEditing": "Terminar edición",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Color de fuente",
       "fontGroup": "Fuente",
       "fontSize": "Tamaño de fuente",
       "formatPainter": "Copiar formato",
       "formatPainterShortcut": "Copiar formato (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Barra de formato",
       "hideDetails": "Ocultar detalles",
       "historyGroup": "Historial",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Aumentar sangría",
       "insertColumnLeft": "Insertar columna a la izquierda",
       "insertColumnRight": "Insertar columna a la derecha",
@@ -591,6 +2146,11 @@ export const CATALOGS = {
       "italic": "Cursiva",
       "italicShortcut": "Cursiva (Ctrl+I)",
       "justify": "Justificar",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Formato de lista",
       "listsGroup": "Listas",
       "loadingDocument": "Cargando el documento…",
@@ -616,6 +2176,21 @@ export const CATALOGS = {
       "rejectChange": "Rechazar cambio",
       "removeLink": "Eliminar enlace",
       "renderErrorDescription": "Se produjo un error al renderizar este componente. Inténtalo de nuevo o contacta con soporte si el problema persiste.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Margen inferior",
         "firstLineIndent": "Sangría de primera línea",
@@ -636,14 +2211,107 @@ export const CATALOGS = {
       "selectAll": "Seleccionar todo",
       "showDetails": "Mostrar detalles",
       "somethingWentWrong": "Algo salió mal",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Sincronizado",
       "syncing": "Sincronizando",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Todos los bordes",
       "tableBordersNone": "Sin bordes",
       "textDirection": "Dirección del texto",
       "textEditingMenu": "Menú de edición de texto",
       "textFormattingGroup": "Formato de texto",
       "toggleTrackChanges": "Activar o desactivar el control de cambios",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Control de cambios: desactivado",
       "trackingOn": "Control de cambios: activado",
       "tryAgain": "Reintentar",
@@ -656,6 +2324,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "Este DOCX contiene estructuras que Folio no puede reescribir de forma segura. Para no dañar el archivo, descárgalo y edítalo en Word.",
       "unsupportedDocxEditTitle": "Edición bloqueada",
       "viewGroup": "Vista",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Nivel de zoom"
     }
   },
@@ -666,6 +2342,12 @@ export const CATALOGS = {
       "alignCenter": "Na střed",
       "alignLeft": "Vlevo",
       "alignRight": "Vpravo",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Zarovnání",
       "bold": "Tučné",
       "boldShortcut": "Tučné (Ctrl+B)",
@@ -674,6 +2356,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Kontrola dokumentu",
       "clearDate": "Vymazat datum",
       "clipboardReadFailed": "Nepodařilo se přečíst schránku. Zkontrolujte oprávnění ke schránce a zkuste to znovu.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Komentář",
       "comments": {
         "addPlaceholder": "Přidat komentář...",
@@ -687,17 +2389,220 @@ export const CATALOGS = {
         "unknownAuthor": "Neznámý",
         "visibility": "Komentáře"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Vyberte datum",
       "contentControlDropdownAriaLabel": "Možnosti rozbalovací nabídky",
       "contentControlDropdownNoOptions": "Žádné možnosti",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Kopírovat",
       "copyLink": "Kopírovat odkaz",
       "cut": "Vyjmout",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Zmenšit odsazení",
       "delete": "Smazat",
       "deleteColumn": "Smazat sloupec",
       "deleteRow": "Smazat řádek",
       "deleted": "Smazáno",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Zahodit",
       "dismiss": "Zavřít",
       "displayText": "Zobrazovaný text",
@@ -712,6 +2617,15 @@ export const CATALOGS = {
       "editPermissionDenied": "Nemáte oprávnění tento dokument upravovat.",
       "editSaveFailedTitle": "DOCX se nepodařilo uložit",
       "editSessionTakenOver": "Tento dokument byl otevřen k úpravám v jiné kartě, okně nebo zařízení, takže byla tato relace ukončena. Neuložené místní změny zůstávají zachovány — otevřete dokument znovu a pokračujte.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Zavřít hledání",
         "find": "Najít",
@@ -732,14 +2646,74 @@ export const CATALOGS = {
         "wholeWords": "Celá slova"
       },
       "finishEditing": "Ukončit editaci",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Barva písma",
       "fontGroup": "Písmo",
       "fontSize": "Velikost písma",
       "formatPainter": "Kopírovat formát",
       "formatPainterShortcut": "Kopírovat formát (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Panel formátování",
       "hideDetails": "Skrýt podrobnosti",
       "historyGroup": "Historie",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Zvětšit odsazení",
       "insertColumnLeft": "Vložit sloupec vlevo",
       "insertColumnRight": "Vložit sloupec vpravo",
@@ -754,6 +2728,11 @@ export const CATALOGS = {
       "italic": "Kurzíva",
       "italicShortcut": "Kurzíva (Ctrl+I)",
       "justify": "Zarovnat do bloku",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Formátování seznamu",
       "listsGroup": "Seznamy",
       "loadingDocument": "Načítání dokumentu…",
@@ -779,6 +2758,21 @@ export const CATALOGS = {
       "rejectChange": "Odmítnout změnu",
       "removeLink": "Odebrat odkaz",
       "renderErrorDescription": "Při vykreslování této komponenty došlo k chybě. Zkuste to znovu nebo kontaktujte podporu, pokud problém přetrvává.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Dolní okraj",
         "firstLineIndent": "Odsazení prvního řádku",
@@ -799,14 +2793,107 @@ export const CATALOGS = {
       "selectAll": "Vybrat vše",
       "showDetails": "Zobrazit podrobnosti",
       "somethingWentWrong": "Něco se pokazilo",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Synchronizováno",
       "syncing": "Synchronizuji",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Všechna ohraničení",
       "tableBordersNone": "Bez ohraničení",
       "textDirection": "Směr textu",
       "textEditingMenu": "Nabídka úprav textu",
       "textFormattingGroup": "Formátování textu",
       "toggleTrackChanges": "Přepnout sledování změn",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Sledování: Vypnuto",
       "trackingOn": "Sledování: Zapnuto",
       "tryAgain": "Zkusit znovu",
@@ -819,6 +2906,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "Tento DOCX obsahuje struktury, které Folio neumí bezpečně přepsat. Aby se soubor nepoškodil, stáhněte ho a upravte ve Wordu.",
       "unsupportedDocxEditTitle": "Úpravy zablokovány",
       "viewGroup": "Zobrazení",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Přiblížení"
     }
   },
@@ -829,6 +2924,12 @@ export const CATALOGS = {
       "alignCenter": "توسيط",
       "alignLeft": "محاذاة إلى اليسار",
       "alignRight": "محاذاة إلى اليمين",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "المحاذاة",
       "bold": "عريض",
       "boldShortcut": "عريض (Ctrl+B)",
@@ -837,6 +2938,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "جارٍ فحص المستند",
       "clearDate": "مسح التاريخ",
       "clipboardReadFailed": "تعذّرت قراءة الحافظة. تحقّق من أذونات الحافظة وحاول مرة أخرى.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "تعليق",
       "comments": {
         "addPlaceholder": "أضف تعليقًا...",
@@ -850,17 +2971,220 @@ export const CATALOGS = {
         "unknownAuthor": "غير معروف",
         "visibility": "التعليقات"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "اختر تاريخًا",
       "contentControlDropdownAriaLabel": "خيارات القائمة المنسدلة",
       "contentControlDropdownNoOptions": "لا توجد خيارات",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "نسخ",
       "copyLink": "نسخ الرابط",
       "cut": "قص",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "إنقاص المسافة البادئة",
       "delete": "حذف",
       "deleteColumn": "حذف العمود",
       "deleteRow": "حذف الصف",
       "deleted": "محذوف",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "تجاهل",
       "dismiss": "تجاهل",
       "displayText": "النص المعروض",
@@ -875,6 +3199,15 @@ export const CATALOGS = {
       "editPermissionDenied": "ليس لديك إذن لتعديل هذا المستند.",
       "editSaveFailedTitle": "تعذّر حفظ ملف DOCX",
       "editSessionTakenOver": "فتح علامة تبويب أو نافذة أو جهاز آخر هذا المستند للتعديل، لذا تم تحرير هذه الجلسة. تم الحفاظ على التغييرات المحلية غير المحفوظة؛ أعد فتح المستند للمتابعة.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "إغلاق البحث",
         "find": "بحث",
@@ -895,14 +3228,74 @@ export const CATALOGS = {
         "wholeWords": "الكلمات الكاملة"
       },
       "finishEditing": "إنهاء التعديل",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "لون الخط",
       "fontGroup": "الخط",
       "fontSize": "حجم الخط",
       "formatPainter": "نسخ التنسيق",
       "formatPainterShortcut": "نسخ التنسيق (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "شريط أدوات التنسيق",
       "hideDetails": "إخفاء التفاصيل",
       "historyGroup": "السجل",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "زيادة المسافة البادئة",
       "insertColumnLeft": "إدراج عمود إلى اليسار",
       "insertColumnRight": "إدراج عمود إلى اليمين",
@@ -917,6 +3310,11 @@ export const CATALOGS = {
       "italic": "مائل",
       "italicShortcut": "مائل (Ctrl+I)",
       "justify": "ضبط",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "تنسيق القائمة",
       "listsGroup": "القوائم",
       "loadingDocument": "جارٍ تحميل المستند...",
@@ -942,6 +3340,21 @@ export const CATALOGS = {
       "rejectChange": "رفض التغيير",
       "removeLink": "إزالة الرابط",
       "renderErrorDescription": "حدث خطأ ما أثناء عرض هذا الجزء من المستند. أعد تحميل الصفحة، وإذا استمر الأمر فأخبرنا بذلك.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "الهامش السفلي",
         "firstLineIndent": "المسافة البادئة للسطر الأول",
@@ -962,14 +3375,107 @@ export const CATALOGS = {
       "selectAll": "تحديد الكل",
       "showDetails": "إظهار التفاصيل",
       "somethingWentWrong": "حدث خطأ ما",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "تمت المزامنة",
       "syncing": "جارٍ المزامنة",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "كل الحدود",
       "tableBordersNone": "بلا حدود",
       "textDirection": "اتجاه النص",
       "textEditingMenu": "قائمة تحرير النص",
       "textFormattingGroup": "تنسيق النص",
       "toggleTrackChanges": "تبديل تعقّب التغييرات",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "التعقّب: مُعطّل",
       "trackingOn": "التعقّب: مُفعّل",
       "tryAgain": "حاول مرة أخرى",
@@ -982,6 +3488,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "يحتوي ملف DOCX هذا على بِنى لا يستطيع Folio إعادة كتابتها بأمان. لتجنّب إتلاف الملف، نزّله وعدّله في Word.",
       "unsupportedDocxEditTitle": "التعديل محظور",
       "viewGroup": "عرض",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "تكبير/تصغير"
     }
   },
@@ -992,6 +3506,12 @@ export const CATALOGS = {
       "alignCenter": "Keskele",
       "alignLeft": "Joonda vasakule",
       "alignRight": "Joonda paremale",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Joondus",
       "bold": "Paks",
       "boldShortcut": "Paks (Ctrl+B)",
@@ -1000,6 +3520,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Dokumendi kontrollimine",
       "clearDate": "Tühjenda kuupäev",
       "clipboardReadFailed": "Lõikelauda ei õnnestunud lugeda. Kontrollige lõikelaua õigusi ja proovige uuesti.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Kommenteeri",
       "comments": {
         "addPlaceholder": "Lisa kommentaar…",
@@ -1013,17 +3553,220 @@ export const CATALOGS = {
         "unknownAuthor": "Tundmatu",
         "visibility": "Kommentaarid"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Vali kuupäev",
       "contentControlDropdownAriaLabel": "Rippmenüü valikud",
       "contentControlDropdownNoOptions": "Valikuid pole",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Kopeeri",
       "copyLink": "Kopeeri link",
       "cut": "Lõika",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Vähenda taanet",
       "delete": "Kustuta",
       "deleteColumn": "Kustuta veerg",
       "deleteRow": "Kustuta rida",
       "deleted": "Kustutatud",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Loobu",
       "dismiss": "Sulge",
       "displayText": "Kuvatav tekst",
@@ -1038,6 +3781,15 @@ export const CATALOGS = {
       "editPermissionDenied": "Sul pole õigust seda dokumenti muuta.",
       "editSaveFailedTitle": "DOCX-i ei saanud salvestada",
       "editSessionTakenOver": "See muutmisseanss võeti mujal üle.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Sulge otsing",
         "find": "Leia",
@@ -1058,14 +3810,74 @@ export const CATALOGS = {
         "wholeWords": "Terved sõnad"
       },
       "finishEditing": "Lõpeta muutmine",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Fondi värv",
       "fontGroup": "Fondid",
       "fontSize": "Fondi suurus",
       "formatPainter": "Vormingupintsel",
       "formatPainterShortcut": "Vormingupintsel (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Vormindusriba",
       "hideDetails": "Peida üksikasjad",
       "historyGroup": "Ajalugu",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Suurenda taanet",
       "insertColumnLeft": "Lisa veerg vasakule",
       "insertColumnRight": "Lisa veerg paremale",
@@ -1080,6 +3892,11 @@ export const CATALOGS = {
       "italic": "Kaldkiri",
       "italicShortcut": "Kaldkiri (Ctrl+I)",
       "justify": "Rööpjoonda",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Loendi vormindus",
       "listsGroup": "Loendid",
       "loadingDocument": "Dokumendi laadimine...",
@@ -1105,6 +3922,21 @@ export const CATALOGS = {
       "rejectChange": "Lükka muudatus tagasi",
       "removeLink": "Eemalda link",
       "renderErrorDescription": "Selle komponendi kuvamisel tekkis viga. Proovige uuesti või võtke ühendust toega, kui probleem püsib.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Alaveeris",
         "firstLineIndent": "Esimese rea taane",
@@ -1125,14 +3957,107 @@ export const CATALOGS = {
       "selectAll": "Vali kõik",
       "showDetails": "Näita üksikasju",
       "somethingWentWrong": "Midagi läks valesti",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Sünkroonitud",
       "syncing": "Sünkroonimine",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Kõik äärised",
       "tableBordersNone": "Ääristeta",
       "textDirection": "Teksti suund",
       "textEditingMenu": "Tekstiredigeerimise menüü",
       "textFormattingGroup": "Teksti vormindus",
       "toggleTrackChanges": "Lülita muudatuste jälgimine",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Jälgimine: väljas",
       "trackingOn": "Jälgimine: sees",
       "tryAgain": "Proovi uuesti",
@@ -1145,6 +4070,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "See DOCX sisaldab struktuure, mida Folio ei suuda turvaliselt ümber kirjutada. Faili rikkumise vältimiseks laadi see alla ja muuda Wordis.",
       "unsupportedDocxEditTitle": "Muutmine on blokeeritud",
       "viewGroup": "Vaade",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Suum"
     }
   },
@@ -1155,6 +4088,12 @@ export const CATALOGS = {
       "alignCenter": "יישור למרכז",
       "alignLeft": "יישור לשמאל",
       "alignRight": "יישור לימין",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "יישור טקסט",
       "bold": "הדגש",
       "boldShortcut": "הדגש (Ctrl+B)",
@@ -1163,6 +4102,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Checking document",
       "clearDate": "Clear date",
       "clipboardReadFailed": "Couldn't read the clipboard. Check clipboard permissions and try again.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "הערה",
       "comments": {
         "addPlaceholder": "הוסף תגובה...",
@@ -1176,17 +4135,220 @@ export const CATALOGS = {
         "unknownAuthor": "לא ידוע",
         "visibility": "Comments"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Pick a date",
       "contentControlDropdownAriaLabel": "Dropdown options",
       "contentControlDropdownNoOptions": "No options",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "העתק",
       "copyLink": "העתק קישור",
       "cut": "גזור",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "הקטן הזחה",
       "delete": "מחיקה",
       "deleteColumn": "מחק עמודה",
       "deleteRow": "מחק שורה",
       "deleted": "נמחק",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Discard",
       "dismiss": "סגירה",
       "displayText": "טקסט לתצוגה",
@@ -1201,6 +4363,15 @@ export const CATALOGS = {
       "editPermissionDenied": "You do not have permission to edit this document.",
       "editSaveFailedTitle": "Could not save DOCX",
       "editSessionTakenOver": "Another tab, window, or device opened this document for editing, so this session was released. Unsaved local changes are preserved — reopen the doc to continue.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Close search",
         "find": "חפש",
@@ -1221,14 +4392,74 @@ export const CATALOGS = {
         "wholeWords": "חיפוש לפי מילה שלמה"
       },
       "finishEditing": "Finish editing",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Font color",
       "fontGroup": "גופן",
       "fontSize": "גודל גופן",
       "formatPainter": "Format Painter",
       "formatPainterShortcut": "Format Painter (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "סרגל כלים לעיצוב",
       "hideDetails": "הסתר פרטים",
       "historyGroup": "היסטוריה",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "הגדל הזחה",
       "insertColumnLeft": "הוסף עמודה שמאלה",
       "insertColumnRight": "הוסף עמודה ימינה",
@@ -1243,6 +4474,11 @@ export const CATALOGS = {
       "italic": "הטה",
       "italicShortcut": "הטה (Ctrl+I)",
       "justify": "יישור מלא",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "עיצוב רשימה",
       "listsGroup": "Lists",
       "loadingDocument": "טוען מסמך...",
@@ -1268,6 +4504,21 @@ export const CATALOGS = {
       "rejectChange": "Reject Change",
       "removeLink": "הסר קישור",
       "renderErrorDescription": "Something went wrong showing this part of the document. Reload the page — if it keeps happening, let us know.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "שוליים תחתונים",
         "firstLineIndent": "כניסת שורה ראשונה",
@@ -1288,14 +4539,107 @@ export const CATALOGS = {
       "selectAll": "Select all",
       "showDetails": "הצג פרטים",
       "somethingWentWrong": "משהו השתבש",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Synced",
       "syncing": "Syncing",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "כל המסגרות",
       "tableBordersNone": "ללא מסגרות",
       "textDirection": "כיוון טקסט",
       "textEditingMenu": "תפריט עריכת טקסט",
       "textFormattingGroup": "עיצוב טקסט",
       "toggleTrackChanges": "Toggle Track Changes",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Tracking: Off",
       "trackingOn": "Tracking: On",
       "tryAgain": "נסה שוב",
@@ -1308,6 +4652,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "This DOCX contains structures Folio cannot safely rewrite. To avoid corrupting the file, download it and edit it in Word.",
       "unsupportedDocxEditTitle": "Editing blocked",
       "viewGroup": "תצוגה",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "זום"
     }
   },
@@ -1318,6 +4670,12 @@ export const CATALOGS = {
       "alignCenter": "केंद्रित करें",
       "alignLeft": "बाएं संरेखित करें",
       "alignRight": "दाएं संरेखित करें",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "संरेखण",
       "bold": "बोल्ड",
       "boldShortcut": "बोल्ड (Ctrl+B)",
@@ -1326,6 +4684,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Checking document",
       "clearDate": "Clear date",
       "clipboardReadFailed": "Couldn't read the clipboard. Check clipboard permissions and try again.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "टिप्पणी",
       "comments": {
         "addPlaceholder": "एक टिप्पणी जोड़ें...",
@@ -1339,17 +4717,220 @@ export const CATALOGS = {
         "unknownAuthor": "अज्ञात",
         "visibility": "Comments"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Pick a date",
       "contentControlDropdownAriaLabel": "Dropdown options",
       "contentControlDropdownNoOptions": "No options",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "कॉपी करें",
       "copyLink": "लिंक कॉपी करें",
       "cut": "काटें",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "इंडेंट कम करें",
       "delete": "हटाएं",
       "deleteColumn": "स्तंभ हटाएं",
       "deleteRow": "पंक्ति हटाएं",
       "deleted": "हटाया गया",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Discard",
       "dismiss": "खारिज करें",
       "displayText": "दिखाया जाने वाला टेक्स्ट",
@@ -1364,6 +4945,15 @@ export const CATALOGS = {
       "editPermissionDenied": "You do not have permission to edit this document.",
       "editSaveFailedTitle": "Could not save DOCX",
       "editSessionTakenOver": "Another tab, window, or device opened this document for editing, so this session was released. Unsaved local changes are preserved — reopen the doc to continue.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Close search",
         "find": "खोजें",
@@ -1384,14 +4974,74 @@ export const CATALOGS = {
         "wholeWords": "पूरा शब्द"
       },
       "finishEditing": "Finish editing",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Font color",
       "fontGroup": "फ़ॉन्ट",
       "fontSize": "फ़ॉन्ट का आकार",
       "formatPainter": "Format Painter",
       "formatPainterShortcut": "Format Painter (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "प्रारूपण टूलबार",
       "hideDetails": "विवरण छिपाएं",
       "historyGroup": "इतिहास",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "इंडेंट बढ़ाएं",
       "insertColumnLeft": "स्तंभ बाईं ओर डालें",
       "insertColumnRight": "स्तंभ दाईं ओर डालें",
@@ -1406,6 +5056,11 @@ export const CATALOGS = {
       "italic": "इटैलिक",
       "italicShortcut": "इटैलिक (Ctrl+I)",
       "justify": "दोनों ओर संरेखित करें",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "सूची प्रारूपण",
       "listsGroup": "Lists",
       "loadingDocument": "दस्तावेज़ लोड हो रहा है...",
@@ -1431,6 +5086,21 @@ export const CATALOGS = {
       "rejectChange": "Reject Change",
       "removeLink": "लिंक हटाएं",
       "renderErrorDescription": "Something went wrong showing this part of the document. Reload the page — if it keeps happening, let us know.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "तल मार्जिन",
         "firstLineIndent": "पहली लाइन का इंडेंट",
@@ -1451,14 +5121,107 @@ export const CATALOGS = {
       "selectAll": "Select all",
       "showDetails": "विवरण दिखाएं",
       "somethingWentWrong": "कुछ गलत हो गया",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Synced",
       "syncing": "Syncing",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "सभी बॉर्डर",
       "tableBordersNone": "कोई बॉर्डर नहीं",
       "textDirection": "टेक्स्ट की दिशा",
       "textEditingMenu": "टेक्स्ट संपादन मेनू",
       "textFormattingGroup": "टेक्स्ट प्रारूपण",
       "toggleTrackChanges": "Toggle Track Changes",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Tracking: Off",
       "trackingOn": "Tracking: On",
       "tryAgain": "पुनः प्रयास करें",
@@ -1471,6 +5234,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "This DOCX contains structures Folio cannot safely rewrite. To avoid corrupting the file, download it and edit it in Word.",
       "unsupportedDocxEditTitle": "Editing blocked",
       "viewGroup": "देखें",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "ज़ूम"
     }
   },
@@ -1481,6 +5252,12 @@ export const CATALOGS = {
       "alignCenter": "Középre",
       "alignLeft": "Balra igazítás",
       "alignRight": "Jobbra igazítás",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Igazítás",
       "bold": "Félkövér",
       "boldShortcut": "Félkövér (Ctrl+B)",
@@ -1489,6 +5266,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Dokumentum ellenőrzése",
       "clearDate": "Dátum törlése",
       "clipboardReadFailed": "A vágólap nem olvasható. Ellenőrizze a vágólap engedélyeit, és próbálja újra.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Megjegyzés",
       "comments": {
         "addPlaceholder": "Megjegyzés hozzáadása…",
@@ -1502,17 +5299,220 @@ export const CATALOGS = {
         "unknownAuthor": "Ismeretlen",
         "visibility": "Megjegyzések"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Dátum kiválasztása",
       "contentControlDropdownAriaLabel": "Legördülő lehetőségek",
       "contentControlDropdownNoOptions": "Nincsenek lehetőségek",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Másolás",
       "copyLink": "Hivatkozás másolása",
       "cut": "Kivágás",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Behúzás csökkentése",
       "delete": "Törlés",
       "deleteColumn": "Oszlop törlése",
       "deleteRow": "Sor törlése",
       "deleted": "Törölve",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Elvetés",
       "dismiss": "Elvetés",
       "displayText": "Megjelenített szöveg",
@@ -1527,6 +5527,15 @@ export const CATALOGS = {
       "editPermissionDenied": "Nincs jogosultsága a dokumentum szerkesztéséhez.",
       "editSaveFailedTitle": "A DOCX nem menthető",
       "editSessionTakenOver": "Ezt a szerkesztési munkamenetet máshol vették át.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Keresés bezárása",
         "find": "Keresés",
@@ -1547,14 +5556,74 @@ export const CATALOGS = {
         "wholeWords": "Csak ép szavak"
       },
       "finishEditing": "Szerkesztés befejezése",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Betűszín",
       "fontGroup": "Betűtípus",
       "fontSize": "Betűméret",
       "formatPainter": "Formátummásoló",
       "formatPainterShortcut": "Formátummásoló (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Formázási eszköztár",
       "hideDetails": "Részletek elrejtése",
       "historyGroup": "Előzmények",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Behúzás növelése",
       "insertColumnLeft": "Oszlop beszúrása balra",
       "insertColumnRight": "Oszlop beszúrása jobbra",
@@ -1569,6 +5638,11 @@ export const CATALOGS = {
       "italic": "Dőlt",
       "italicShortcut": "Dőlt (Ctrl+I)",
       "justify": "Sorkizárás",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Listaformázás",
       "listsGroup": "Listák",
       "loadingDocument": "Dokumentum betöltése…",
@@ -1594,6 +5668,21 @@ export const CATALOGS = {
       "rejectChange": "Módosítás elutasítása",
       "removeLink": "Hivatkozás eltávolítása",
       "renderErrorDescription": "Hiba történt az összetevő megjelenítése közben. Próbálja újra, vagy forduljon az ügyfélszolgálathoz, ha a probléma továbbra is fennáll.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Alsó margó",
         "firstLineIndent": "Első sor behúzása",
@@ -1614,14 +5703,107 @@ export const CATALOGS = {
       "selectAll": "Összes kijelölése",
       "showDetails": "Részletek megjelenítése",
       "somethingWentWrong": "Hiba történt",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Szinkronizálva",
       "syncing": "Szinkronizálás",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Minden szegély",
       "tableBordersNone": "Nincs szegély",
       "textDirection": "Szövegirány",
       "textEditingMenu": "Szövegszerkesztő menü",
       "textFormattingGroup": "Szövegformázás",
       "toggleTrackChanges": "Korrektúra be- és kikapcsolása",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Korrektúra: ki",
       "trackingOn": "Korrektúra: be",
       "tryAgain": "Újrapróbálás",
@@ -1634,6 +5816,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "Ez a DOCX olyan szerkezeteket tartalmaz, amelyeket a Folio nem tud biztonságosan átírni. A fájl sérülésének elkerülése érdekében töltse le, és szerkessze Wordben.",
       "unsupportedDocxEditTitle": "A szerkesztés letiltva",
       "viewGroup": "Nézet",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Nagyítás"
     }
   },
@@ -1644,6 +5834,12 @@ export const CATALOGS = {
       "alignCenter": "Centruoti",
       "alignLeft": "Lygiuoti kairėje",
       "alignRight": "Lygiuoti dešinėje",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Lygiuotė",
       "bold": "Paryškintasis",
       "boldShortcut": "Paryškintasis (Ctrl+B)",
@@ -1652,6 +5848,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Tikrinamas dokumentas",
       "clearDate": "Išvalyti datą",
       "clipboardReadFailed": "Nepavyko nuskaityti iškarpinės. Patikrinkite iškarpinės leidimus ir bandykite dar kartą.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Komentaras",
       "comments": {
         "addPlaceholder": "Pridėti komentarą…",
@@ -1665,17 +5881,220 @@ export const CATALOGS = {
         "unknownAuthor": "Nežinomas",
         "visibility": "Komentarai"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Pasirinkite datą",
       "contentControlDropdownAriaLabel": "Išskleidžiamojo sąrašo parinktys",
       "contentControlDropdownNoOptions": "Parinkčių nėra",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Kopijuoti",
       "copyLink": "Kopijuoti nuorodą",
       "cut": "Iškirpti",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Sumažinti įtrauką",
       "delete": "Ištrinti",
       "deleteColumn": "Ištrinti stulpelį",
       "deleteRow": "Ištrinti eilutę",
       "deleted": "Ištrinta",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Atmesti",
       "dismiss": "Atmesti",
       "displayText": "Rodomas tekstas",
@@ -1690,6 +6109,15 @@ export const CATALOGS = {
       "editPermissionDenied": "Neturite teisės redaguoti šio dokumento.",
       "editSaveFailedTitle": "Nepavyko išsaugoti DOCX",
       "editSessionTakenOver": "Ši redagavimo sesija buvo perimta kitur.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Uždaryti paiešką",
         "find": "Ieškoti",
@@ -1710,14 +6138,74 @@ export const CATALOGS = {
         "wholeWords": "Visi žodžiai"
       },
       "finishEditing": "Baigti redagavimą",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Šrifto spalva",
       "fontGroup": "Šriftas",
       "fontSize": "Šrifto dydis",
       "formatPainter": "Formato kopijavimas",
       "formatPainterShortcut": "Formato kopijavimas (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Formatavimo įrankių juosta",
       "hideDetails": "Slėpti detales",
       "historyGroup": "Istorija",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Padidinti įtrauką",
       "insertColumnLeft": "Įterpti stulpelį kairėje",
       "insertColumnRight": "Įterpti stulpelį dešinėje",
@@ -1732,6 +6220,11 @@ export const CATALOGS = {
       "italic": "Kursyvas",
       "italicShortcut": "Kursyvas (Ctrl+I)",
       "justify": "Lygiuoti abipus",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Sąrašo formatavimas",
       "listsGroup": "Sąrašai",
       "loadingDocument": "Įkeliamas dokumentas…",
@@ -1757,6 +6250,21 @@ export const CATALOGS = {
       "rejectChange": "Atmesti keitimą",
       "removeLink": "Pašalinti nuorodą",
       "renderErrorDescription": "Atvaizduojant šį komponentą įvyko klaida. Bandykite dar kartą arba susisiekite su pagalba, jei problema kartojasi.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Apatinė paraštė",
         "firstLineIndent": "Pirmosios eilutės įtrauka",
@@ -1777,14 +6285,107 @@ export const CATALOGS = {
       "selectAll": "Pasirinkti visus",
       "showDetails": "Rodyti detales",
       "somethingWentWrong": "Kažkas nepavyko",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Sinchronizuota",
       "syncing": "Sinchronizuojama",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Visos kraštinės",
       "tableBordersNone": "Be kraštinių",
       "textDirection": "Teksto kryptis",
       "textEditingMenu": "Teksto redagavimo meniu",
       "textFormattingGroup": "Teksto formatavimas",
       "toggleTrackChanges": "Perjungti keitimų sekimą",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Sekimas: išjungtas",
       "trackingOn": "Sekimas: įjungtas",
       "tryAgain": "Bandyti dar kartą",
@@ -1797,6 +6398,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "Šiame DOCX yra struktūrų, kurių Folio negali saugiai perrašyti. Kad failas nesugadintumėte, atsisiųskite jį ir redaguokite programoje Word.",
       "unsupportedDocxEditTitle": "Redagavimas užblokuotas",
       "viewGroup": "Rodinys",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Mastelis"
     }
   },
@@ -1807,6 +6416,12 @@ export const CATALOGS = {
       "alignCenter": "Centrēt",
       "alignLeft": "Līdzināt pa kreisi",
       "alignRight": "Līdzināt pa labi",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Līdzinājums",
       "bold": "Treknraksts",
       "boldShortcut": "Treknraksts (Ctrl+B)",
@@ -1815,6 +6430,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Pārbauda dokumentu",
       "clearDate": "Notīrīt datumu",
       "clipboardReadFailed": "Neizdevās nolasīt starpliktuvi. Pārbaudiet starpliktuves atļaujas un mēģiniet vēlreiz.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Komentārs",
       "comments": {
         "addPlaceholder": "Pievienot komentāru…",
@@ -1828,17 +6463,220 @@ export const CATALOGS = {
         "unknownAuthor": "Nezināms",
         "visibility": "Komentāri"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Izvēlieties datumu",
       "contentControlDropdownAriaLabel": "Nolaižamā saraksta opcijas",
       "contentControlDropdownNoOptions": "Nav opciju",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Kopēt",
       "copyLink": "Kopēt saiti",
       "cut": "Izgriezt",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Samazināt atkāpi",
       "delete": "Dzēst",
       "deleteColumn": "Dzēst kolonnu",
       "deleteRow": "Dzēst rindu",
       "deleted": "Dzēsts",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Atmest",
       "dismiss": "Aizvērt",
       "displayText": "Attēlojamais teksts",
@@ -1853,6 +6691,15 @@ export const CATALOGS = {
       "editPermissionDenied": "Jums nav tiesību rediģēt šo dokumentu.",
       "editSaveFailedTitle": "Neizdevās saglabāt DOCX",
       "editSessionTakenOver": "Šo rediģēšanas sesiju pārņēma citur.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Aizvērt meklēšanu",
         "find": "Meklēt",
@@ -1873,14 +6720,74 @@ export const CATALOGS = {
         "wholeWords": "Veseli vārdi"
       },
       "finishEditing": "Beigt rediģēšanu",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Fonta krāsa",
       "fontGroup": "Fonts",
       "fontSize": "Fonta lielums",
       "formatPainter": "Formāta otiņa",
       "formatPainterShortcut": "Formāta otiņa (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Formatēšanas rīkjosla",
       "hideDetails": "Slēpt detaļas",
       "historyGroup": "Vēsture",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Palielināt atkāpi",
       "insertColumnLeft": "Ievietot kolonnu pa kreisi",
       "insertColumnRight": "Ievietot kolonnu pa labi",
@@ -1895,6 +6802,11 @@ export const CATALOGS = {
       "italic": "Slīpraksts",
       "italicShortcut": "Slīpraksts (Ctrl+I)",
       "justify": "Izlīdzināt abās malās",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Saraksta formatēšana",
       "listsGroup": "Saraksti",
       "loadingDocument": "Ielādē dokumentu…",
@@ -1920,6 +6832,21 @@ export const CATALOGS = {
       "rejectChange": "Noraidīt izmaiņu",
       "removeLink": "Noņemt saiti",
       "renderErrorDescription": "Renderējot šo komponentu, radās kļūda. Mēģiniet vēlreiz vai sazinieties ar atbalstu, ja problēma atkārtojas.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Apakšējā mala",
         "firstLineIndent": "Pirmās rindas atkāpe",
@@ -1940,14 +6867,107 @@ export const CATALOGS = {
       "selectAll": "Atlasīt visus",
       "showDetails": "Rādīt detaļas",
       "somethingWentWrong": "Kaut kas nogāja greizi",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Sinhronizēts",
       "syncing": "Sinhronizē",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Visas apmales",
       "tableBordersNone": "Bez apmalēm",
       "textDirection": "Teksta virziens",
       "textEditingMenu": "Teksta rediģēšanas izvēlne",
       "textFormattingGroup": "Teksta formatēšana",
       "toggleTrackChanges": "Pārslēgt izmaiņu izsekošanu",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Izsekošana: izslēgta",
       "trackingOn": "Izsekošana: ieslēgta",
       "tryAgain": "Mēģināt vēlreiz",
@@ -1960,6 +6980,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "Šajā DOCX failā ir struktūras, ko Folio nevar droši pārrakstīt. Lai nesabojātu failu, lejupielādējiet to un rediģējiet programmā Word.",
       "unsupportedDocxEditTitle": "Rediģēšana bloķēta",
       "viewGroup": "Skats",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Tālummaiņa"
     }
   },
@@ -1970,6 +6998,12 @@ export const CATALOGS = {
       "alignCenter": "Wyśrodkuj",
       "alignLeft": "Wyrównaj do lewej",
       "alignRight": "Wyrównaj do prawej",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Wyrównanie",
       "bold": "Pogrubienie",
       "boldShortcut": "Pogrubienie (Ctrl+B)",
@@ -1978,6 +7012,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Sprawdzanie dokumentu",
       "clearDate": "Wyczyść datę",
       "clipboardReadFailed": "Nie udało się odczytać schowka. Sprawdź uprawnienia do schowka i spróbuj ponownie.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Komentarz",
       "comments": {
         "addPlaceholder": "Dodaj komentarz...",
@@ -1991,17 +7045,220 @@ export const CATALOGS = {
         "unknownAuthor": "Nieznany",
         "visibility": "Komentarze"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Wybierz datę",
       "contentControlDropdownAriaLabel": "Opcje listy rozwijanej",
       "contentControlDropdownNoOptions": "Brak opcji",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Kopiuj",
       "copyLink": "Kopiuj link",
       "cut": "Wytnij",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Zmniejsz wcięcie",
       "delete": "Usuń",
       "deleteColumn": "Usuń kolumnę",
       "deleteRow": "Usuń wiersz",
       "deleted": "Usunięto",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Odrzuć",
       "dismiss": "Odrzuć",
       "displayText": "Tekst wyświetlany",
@@ -2016,6 +7273,15 @@ export const CATALOGS = {
       "editPermissionDenied": "Nie masz uprawnień do edycji tego dokumentu.",
       "editSaveFailedTitle": "Nie udało się zapisać pliku DOCX",
       "editSessionTakenOver": "Ta sesja edycji została przejęta gdzie indziej.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Zamknij wyszukiwanie",
         "find": "Znajdź",
@@ -2036,14 +7302,74 @@ export const CATALOGS = {
         "wholeWords": "Całe słowa"
       },
       "finishEditing": "Zakończ edycję",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Kolor czcionki",
       "fontGroup": "Czcionka",
       "fontSize": "Rozmiar czcionki",
       "formatPainter": "Malarz formatów",
       "formatPainterShortcut": "Malarz formatów (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Pasek formatowania",
       "hideDetails": "Ukryj szczegóły",
       "historyGroup": "Historia",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Zwiększ wcięcie",
       "insertColumnLeft": "Wstaw kolumnę z lewej",
       "insertColumnRight": "Wstaw kolumnę z prawej",
@@ -2058,6 +7384,11 @@ export const CATALOGS = {
       "italic": "Kursywa",
       "italicShortcut": "Kursywa (Ctrl+I)",
       "justify": "Wyjustuj",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Formatowanie listy",
       "listsGroup": "Listy",
       "loadingDocument": "Ładowanie dokumentu...",
@@ -2083,6 +7414,21 @@ export const CATALOGS = {
       "rejectChange": "Odrzuć zmianę",
       "removeLink": "Usuń link",
       "renderErrorDescription": "Wystąpił błąd podczas renderowania tego komponentu. Spróbuj ponownie albo skontaktuj się z pomocą techniczną, jeśli problem będzie się powtarzał.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Margines dolny",
         "firstLineIndent": "Wcięcie pierwszego wiersza",
@@ -2103,14 +7449,107 @@ export const CATALOGS = {
       "selectAll": "Zaznacz wszystkie",
       "showDetails": "Pokaż szczegóły",
       "somethingWentWrong": "Coś poszło nie tak",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Zsynchronizowano",
       "syncing": "Synchronizowanie",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Wszystkie krawędzie",
       "tableBordersNone": "Bez krawędzi",
       "textDirection": "Kierunek tekstu",
       "textEditingMenu": "Menu edycji tekstu",
       "textFormattingGroup": "Formatowanie tekstu",
       "toggleTrackChanges": "Włącz/wyłącz śledzenie zmian",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Śledzenie: wyłączone",
       "trackingOn": "Śledzenie: włączone",
       "tryAgain": "Spróbuj ponownie",
@@ -2123,6 +7562,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "Ten plik DOCX zawiera struktury, których Folio nie może bezpiecznie przepisać. Aby nie uszkodzić pliku, pobierz go i edytuj w programie Word.",
       "unsupportedDocxEditTitle": "Edycja zablokowana",
       "viewGroup": "Widok",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Powiększenie"
     }
   },
@@ -2133,6 +7580,12 @@ export const CATALOGS = {
       "alignCenter": "Centro",
       "alignLeft": "Alinhar à esquerda",
       "alignRight": "Alinhar à direita",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Alinhamento",
       "bold": "Negrito",
       "boldShortcut": "Negrito (Ctrl+B)",
@@ -2141,6 +7594,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Verificando documento",
       "clearDate": "Limpar data",
       "clipboardReadFailed": "Não foi possível ler a área de transferência. Verifique as permissões da área de transferência e tente novamente.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Comentário",
       "comments": {
         "addPlaceholder": "Adicione um comentário...",
@@ -2154,17 +7627,220 @@ export const CATALOGS = {
         "unknownAuthor": "Desconhecido",
         "visibility": "Comentários"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Escolher uma data",
       "contentControlDropdownAriaLabel": "Opções da lista suspensa",
       "contentControlDropdownNoOptions": "Nenhuma opção",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Copiar",
       "copyLink": "Copiar link",
       "cut": "Cortar",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Diminuir recuo",
       "delete": "Excluir",
       "deleteColumn": "Excluir coluna",
       "deleteRow": "Excluir linha",
       "deleted": "Excluído",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Descartar",
       "dismiss": "Fechar",
       "displayText": "Exibir texto",
@@ -2179,6 +7855,15 @@ export const CATALOGS = {
       "editPermissionDenied": "Você não tem permissão para editar este documento.",
       "editSaveFailedTitle": "Não foi possível salvar DOCX",
       "editSessionTakenOver": "Esta sessão de edição foi assumida em outro lugar.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Fechar pesquisa",
         "find": "Localizar",
@@ -2199,14 +7884,74 @@ export const CATALOGS = {
         "wholeWords": "Palavras inteiras"
       },
       "finishEditing": "Concluir a edição",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Cor da fonte",
       "fontGroup": "Fonte",
       "fontSize": "Tamanho da fonte",
       "formatPainter": "Pincel de Formatação",
       "formatPainterShortcut": "Pincel de Formatação (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Barra de ferramentas de formatação",
       "hideDetails": "Ocultar detalhes",
       "historyGroup": "Histórico",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Aumentar recuo",
       "insertColumnLeft": "Inserir coluna à esquerda",
       "insertColumnRight": "Inserir coluna à direita",
@@ -2221,6 +7966,11 @@ export const CATALOGS = {
       "italic": "Itálico",
       "italicShortcut": "Itálico (Ctrl+I)",
       "justify": "Justificar",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Formatação de lista",
       "listsGroup": "Listas",
       "loadingDocument": "Carregando documento...",
@@ -2246,6 +7996,21 @@ export const CATALOGS = {
       "rejectChange": "Rejeitar alteração",
       "removeLink": "Remover link",
       "renderErrorDescription": "Ocorreu um erro ao renderizar este componente. Tente novamente ou entre em contato com o suporte se o problema persistir.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Margem inferior",
         "firstLineIndent": "Recuo da primeira linha",
@@ -2266,14 +8031,107 @@ export const CATALOGS = {
       "selectAll": "Selecionar tudo",
       "showDetails": "Mostrar detalhes",
       "somethingWentWrong": "Algo deu errado",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Sincronizado",
       "syncing": "Sincronizando",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Todas as bordas",
       "tableBordersNone": "Sem bordas",
       "textDirection": "Direção do texto",
       "textEditingMenu": "Menu de edição de texto",
       "textFormattingGroup": "Formatação de texto",
       "toggleTrackChanges": "Alternar controle de alterações",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Controle: desativado",
       "trackingOn": "Controle: ativado",
       "tryAgain": "Tente novamente",
@@ -2286,6 +8144,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "Este DOCX contém estruturas que o Folio não pode reescrever com segurança. Para evitar corromper o arquivo, baixe-o e edite-o no Word.",
       "unsupportedDocxEditTitle": "Edição bloqueada",
       "viewGroup": "Exibir",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Nível de zoom"
     }
   },
@@ -2296,6 +8162,12 @@ export const CATALOGS = {
       "alignCenter": "Na stred",
       "alignLeft": "Zarovnať doľava",
       "alignRight": "Zarovnať doprava",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Zarovnanie",
       "bold": "Tučné",
       "boldShortcut": "Tučné (Ctrl+B)",
@@ -2304,6 +8176,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Kontrola dokumentu",
       "clearDate": "Vymazať dátum",
       "clipboardReadFailed": "Nepodarilo sa prečítať schránku. Skontrolujte povolenia schránky a skúste to znova.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Komentár",
       "comments": {
         "addPlaceholder": "Pridať komentár...",
@@ -2317,17 +8209,220 @@ export const CATALOGS = {
         "unknownAuthor": "Neznámy",
         "visibility": "Komentáre"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Vyberte dátum",
       "contentControlDropdownAriaLabel": "Možnosti rozbaľovacieho zoznamu",
       "contentControlDropdownNoOptions": "Žiadne možnosti",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Kopírovať",
       "copyLink": "Kopírovať odkaz",
       "cut": "Vystrihnúť",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Zmenšiť odsadenie",
       "delete": "Vymazať",
       "deleteColumn": "Vymazať stĺpec",
       "deleteRow": "Vymazať riadok",
       "deleted": "Odstránené",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Zahodiť",
       "dismiss": "Zavrieť",
       "displayText": "Zobrazený text",
@@ -2342,6 +8437,15 @@ export const CATALOGS = {
       "editPermissionDenied": "Nemáte oprávnenie upravovať tento dokument.",
       "editSaveFailedTitle": "DOCX sa nepodarilo uložiť",
       "editSessionTakenOver": "Túto reláciu úprav prevzalo iné okno.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Zavrieť hľadanie",
         "find": "Nájsť",
@@ -2362,14 +8466,74 @@ export const CATALOGS = {
         "wholeWords": "Celé slová"
       },
       "finishEditing": "Ukončiť úpravy",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Farba písma",
       "fontGroup": "Písmo",
       "fontSize": "Veľkosť písma",
       "formatPainter": "Kopírovať formát",
       "formatPainterShortcut": "Kopírovať formát (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Panel formátovania",
       "hideDetails": "Skryť detaily",
       "historyGroup": "História",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Zväčšiť odsadenie",
       "insertColumnLeft": "Vložiť stĺpec vľavo",
       "insertColumnRight": "Vložiť stĺpec vpravo",
@@ -2384,6 +8548,11 @@ export const CATALOGS = {
       "italic": "Kurzíva",
       "italicShortcut": "Kurzíva (Ctrl+I)",
       "justify": "Zarovnať do bloku",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Formátovanie zoznamu",
       "listsGroup": "Zoznamy",
       "loadingDocument": "Načitávanie dokumentu...",
@@ -2409,6 +8578,21 @@ export const CATALOGS = {
       "rejectChange": "Odmietnuť zmenu",
       "removeLink": "Odstrániť odkaz",
       "renderErrorDescription": "Pri vykresľovaní tejto komponenty došlo k chybe. Skúste to znova alebo kontaktujte podporu, ak problém pretrváva.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Dolný okraj",
         "firstLineIndent": "Odsadenie prvého riadka",
@@ -2429,14 +8613,107 @@ export const CATALOGS = {
       "selectAll": "Vybrať všetko",
       "showDetails": "Zobraziť detaily",
       "somethingWentWrong": "Niečo sa pokazilo",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Synchronizované",
       "syncing": "Synchronizuje sa",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Všetky orámovania",
       "tableBordersNone": "Bez orámovania",
       "textDirection": "Smer textu",
       "textEditingMenu": "Menu úprav textu",
       "textFormattingGroup": "Formátovanie textu",
       "toggleTrackChanges": "Prepnúť sledovanie zmien",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Sledovanie: vypnuté",
       "trackingOn": "Sledovanie: zapnuté",
       "tryAgain": "Skúsiť znova",
@@ -2449,6 +8726,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "Tento DOCX obsahuje štruktúry, ktoré Folio nedokáže bezpečne prepísať. Aby sa súbor nepoškodil, stiahnite ho a upravte vo Worde.",
       "unsupportedDocxEditTitle": "Úpravy zablokované",
       "viewGroup": "Zobraziť",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Priblíženie"
     }
   },
@@ -2459,6 +8744,12 @@ export const CATALOGS = {
       "alignCenter": "Ortala",
       "alignLeft": "Sola hizala",
       "alignRight": "Sağa hizala",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "Hizalama",
       "bold": "Kalın",
       "boldShortcut": "Kalın (Ctrl+B)",
@@ -2467,6 +8758,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Checking document",
       "clearDate": "Clear date",
       "clipboardReadFailed": "Couldn't read the clipboard. Check clipboard permissions and try again.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "Yorum",
       "comments": {
         "addPlaceholder": "Yorum ekle...",
@@ -2480,17 +8791,220 @@ export const CATALOGS = {
         "unknownAuthor": "Bilinmiyor",
         "visibility": "Comments"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Pick a date",
       "contentControlDropdownAriaLabel": "Dropdown options",
       "contentControlDropdownNoOptions": "No options",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "Kopyala",
       "copyLink": "Bağlantıyı kopyala",
       "cut": "Kes",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "Girintiyi azalt",
       "delete": "Sil",
       "deleteColumn": "Sütunu sil",
       "deleteRow": "Satırı sil",
       "deleted": "Silindi",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Discard",
       "dismiss": "Kapat",
       "displayText": "Görüntülenen metin",
@@ -2505,6 +9019,15 @@ export const CATALOGS = {
       "editPermissionDenied": "You do not have permission to edit this document.",
       "editSaveFailedTitle": "Could not save DOCX",
       "editSessionTakenOver": "Another tab, window, or device opened this document for editing, so this session was released. Unsaved local changes are preserved — reopen the doc to continue.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Close search",
         "find": "Bul",
@@ -2525,14 +9048,74 @@ export const CATALOGS = {
         "wholeWords": "Tam sözcük"
       },
       "finishEditing": "Finish editing",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Font color",
       "fontGroup": "Yazı tipi",
       "fontSize": "Yazı tipi boyutu",
       "formatPainter": "Format Painter",
       "formatPainterShortcut": "Format Painter (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "Biçimlendirme araç çubuğu",
       "hideDetails": "Ayrıntıları gizle",
       "historyGroup": "Geçmiş",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "Girintiyi artır",
       "insertColumnLeft": "Sola sütun ekle",
       "insertColumnRight": "Sağa sütun ekle",
@@ -2547,6 +9130,11 @@ export const CATALOGS = {
       "italic": "Eğik",
       "italicShortcut": "Eğik (Ctrl+I)",
       "justify": "İki yana yasla",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "Liste biçimlendirme",
       "listsGroup": "Lists",
       "loadingDocument": "Belge yükleniyor...",
@@ -2572,6 +9160,21 @@ export const CATALOGS = {
       "rejectChange": "Reject Change",
       "removeLink": "Bağlantıyı kaldır",
       "renderErrorDescription": "Something went wrong showing this part of the document. Reload the page — if it keeps happening, let us know.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "Alt kenar boşluğu",
         "firstLineIndent": "İlk satır girintisi",
@@ -2592,14 +9195,107 @@ export const CATALOGS = {
       "selectAll": "Select all",
       "showDetails": "Ayrıntıları göster",
       "somethingWentWrong": "Bir şeyler ters gitti",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Synced",
       "syncing": "Syncing",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "Tüm kenarlıklar",
       "tableBordersNone": "Kenarlık yok",
       "textDirection": "Metin yönü",
       "textEditingMenu": "Metin düzenleme menüsü",
       "textFormattingGroup": "Metin biçimlendirme",
       "toggleTrackChanges": "Toggle Track Changes",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Tracking: Off",
       "trackingOn": "Tracking: On",
       "tryAgain": "Tekrar dene",
@@ -2612,6 +9308,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "This DOCX contains structures Folio cannot safely rewrite. To avoid corrupting the file, download it and edit it in Word.",
       "unsupportedDocxEditTitle": "Editing blocked",
       "viewGroup": "Görünüm",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "Yakınlaştırma"
     }
   },
@@ -2622,6 +9326,12 @@ export const CATALOGS = {
       "alignCenter": "居中",
       "alignLeft": "左对齐",
       "alignRight": "右对齐",
+      "alignment": {
+        "alignLeftShortcut": "Ctrl+L",
+        "alignRightShortcut": "Ctrl+R",
+        "centerShortcut": "Ctrl+E",
+        "justifyShortcut": "Ctrl+J"
+      },
       "alignmentGroup": "对齐",
       "bold": "加粗",
       "boldShortcut": "加粗(Ctrl+B)",
@@ -2630,6 +9340,26 @@ export const CATALOGS = {
       "checkingDocxEditTitle": "Checking document",
       "clearDate": "Clear date",
       "clipboardReadFailed": "Couldn't read the clipboard. Check clipboard permissions and try again.",
+      "colorPicker": {
+        "ariaLabel": "{type} picker",
+        "automatic": "Automatic",
+        "colors": {
+          "blue": "Blue",
+          "darkBlue": "Dark Blue",
+          "darkRed": "Dark Red",
+          "green": "Green",
+          "lightBlue": "Light Blue",
+          "lightGreen": "Light Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "yellow": "Yellow"
+        },
+        "customColor": "Custom Color",
+        "noColor": "No color",
+        "standardColors": "Standard Colors",
+        "themeColors": "Theme Colors"
+      },
       "comment": "批注",
       "comments": {
         "addPlaceholder": "添加批注",
@@ -2643,17 +9373,220 @@ export const CATALOGS = {
         "unknownAuthor": "未知",
         "visibility": "Comments"
       },
+      "common": {
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "closeDialog": "Close",
+        "insert": "Insert",
+        "px": "px",
+        "update": "Update"
+      },
       "contentControlDateAriaLabel": "Pick a date",
       "contentControlDropdownAriaLabel": "Dropdown options",
       "contentControlDropdownNoOptions": "No options",
+      "contextMenu": {
+        "copy": "Copy",
+        "copyShortcut": "Ctrl+C",
+        "cut": "Cut",
+        "cutShortcut": "Ctrl+X",
+        "delete": "Delete",
+        "deleteShortcut": "Del",
+        "paste": "Paste",
+        "pastePlainTextShortcut": "Ctrl+Shift+V",
+        "pasteShortcut": "Ctrl+V",
+        "selectAllShortcut": "Ctrl+A"
+      },
       "copy": "复制",
       "copyLink": "复制链接",
       "cut": "剪切",
+      "decreaseFontSize": "Decrease font size",
       "decreaseIndent": "减少缩进",
       "delete": "删除",
       "deleteColumn": "删除列",
       "deleteRow": "删除行",
       "deleted": "删除",
+      "dialogs": {
+        "findReplace": {
+          "matchesFound": "{total} matches found",
+          "replaceButton": "Replace",
+          "toggleReplace": "Toggle replace"
+        },
+        "footnoteProperties": {
+          "endnotePositions": {
+            "endOfDocument": "End of document",
+            "endOfSection": "End of section"
+          },
+          "endnotes": "Endnotes",
+          "footnotePositions": {
+            "belowText": "Below text",
+            "bottomOfPage": "Bottom of page"
+          },
+          "footnotes": "Footnotes",
+          "formats": {
+            "decimal": "1, 2, 3, ...",
+            "lowerAlpha": "a, b, c, ...",
+            "lowerRoman": "i, ii, iii, ...",
+            "symbols": "*, †, ‡, ...",
+            "upperAlpha": "A, B, C, ...",
+            "upperRoman": "I, II, III, ..."
+          },
+          "numberFormat": "Number format",
+          "numbering": "Numbering",
+          "numberingOptions": {
+            "continuous": "Continuous",
+            "restartPage": "Restart each page",
+            "restartSection": "Restart each section"
+          },
+          "position": "Position",
+          "startAt": "Start at",
+          "title": "Footnote & Endnote Properties"
+        },
+        "hyperlink": {
+          "bookmarkLabel": "Bookmark",
+          "bookmarkPlaceholder": "Select a bookmark",
+          "displayTextHint": "Defaults to the selected text",
+          "displayTextLabel": "Display text",
+          "displayTextPlaceholder": "Text to display",
+          "invalidUrl": "Enter a valid URL",
+          "removeLink": "Remove link",
+          "tabBookmark": "Bookmark",
+          "tabWebAddress": "Web address",
+          "titleEdit": "Edit hyperlink",
+          "titleInsert": "Insert hyperlink",
+          "tooltipLabel": "Tooltip",
+          "tooltipPlaceholder": "Optional tooltip text",
+          "urlHint": "Include a full web address, or a mailto: / tel: link",
+          "urlLabel": "URL",
+          "urlPlaceholder": "https://example.com",
+          "urlRequired": "Enter a URL"
+        },
+        "imagePosition": {
+          "align": "Align",
+          "alignOptions": {
+            "bottom": "Bottom",
+            "center": "Center",
+            "left": "Left",
+            "right": "Right",
+            "top": "Top"
+          },
+          "alignment": "Alignment",
+          "horizontal": "Horizontal",
+          "offset": "Offset",
+          "offsetPx": "Offset (px)",
+          "relativeOptions": {
+            "character": "Character",
+            "column": "Column",
+            "line": "Line",
+            "margin": "Margin",
+            "page": "Page",
+            "paragraph": "Paragraph"
+          },
+          "relativeTo": "Relative to",
+          "title": "Image Position",
+          "vertical": "Vertical"
+        },
+        "imageProperties": {
+          "altText": "Alt Text",
+          "altTextPlaceholder": "Describe this image for accessibility...",
+          "border": "Border",
+          "borderStyles": {
+            "dashed": "Dashed",
+            "dotted": "Dotted",
+            "double": "Double",
+            "solid": "Solid"
+          },
+          "color": "Color",
+          "dimensions": "Dimensions",
+          "heightLabel": "Height",
+          "lockAspectRatio": "Lock aspect ratio",
+          "style": "Style",
+          "textWrapping": "Text wrapping",
+          "title": "Image Properties",
+          "width": "Width",
+          "widthLabel": "Width",
+          "wrapOptions": {
+            "behind": "Behind text",
+            "inFront": "In front of text",
+            "inline": "In line with text",
+            "topAndBottom": "Top and bottom",
+            "wrapLeft": "Wrap left",
+            "wrapRight": "Wrap right"
+          }
+        },
+        "insertSymbol": {
+          "categories": {
+            "arrows": "Arrows",
+            "common": "Common",
+            "currency": "Currency",
+            "greek": "Greek",
+            "math": "Math",
+            "shapes": "Shapes"
+          },
+          "noResults": "No symbols found for \"{query}\"",
+          "noResultsEmpty": "No symbols in this category",
+          "recent": "Recent",
+          "searchPlaceholder": "Search symbols...",
+          "title": "Insert symbol"
+        },
+        "insertTable": {
+          "autofit": "Autofit",
+          "columnWidthLabel": "Column width",
+          "columnsLabel": "Columns",
+          "fixedWidth": "Fixed width",
+          "hoverToSelect": "Hover to select table size",
+          "insertButton": "Insert",
+          "orSpecifySize": "Or specify size",
+          "rowsLabel": "Rows",
+          "sizeSelector": "Table size selector",
+          "style": "Style",
+          "tableSize": "{cols} × {rows} table",
+          "title": "Insert table",
+          "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
+        },
+        "pageSetup": {
+          "bottom": "Bottom",
+          "custom": "Custom",
+          "landscape": "Landscape",
+          "left": "Left",
+          "margins": "Margins",
+          "orientation": "Orientation",
+          "pageSize": "Page Size",
+          "pageSizes": {
+            "a3": "A3",
+            "a4": "A4",
+            "a5": "A5",
+            "b5": "B5",
+            "executive": "Executive",
+            "legal": "Legal",
+            "letter": "Letter"
+          },
+          "portrait": "Portrait",
+          "right": "Right",
+          "sizeLabel": "Size",
+          "title": "Page Setup",
+          "top": "Top"
+        },
+        "tableProperties": {
+          "alignOptions": {
+            "center": "Center",
+            "left": "Left",
+            "right": "Right"
+          },
+          "alignmentLabel": "Alignment",
+          "title": "Table Properties",
+          "units": {
+            "fiftiethsPercent": "(50ths of %)",
+            "twips": "tw"
+          },
+          "widthLabel": "Width",
+          "widthType": "Width type",
+          "widthTypes": {
+            "auto": "Auto",
+            "fixed": "Fixed (twips)",
+            "percentage": "Percentage"
+          }
+        }
+      },
       "discardChanges": "Discard",
       "dismiss": "忽略",
       "displayText": "显示文本",
@@ -2668,6 +9601,15 @@ export const CATALOGS = {
       "editPermissionDenied": "You do not have permission to edit this document.",
       "editSaveFailedTitle": "Could not save DOCX",
       "editSessionTakenOver": "Another tab, window, or device opened this document for editing, so this session was released. Unsaved local changes are preserved — reopen the doc to continue.",
+      "editor": {
+        "editing": "Editing",
+        "editingDescription": "Edit the document directly",
+        "showDocumentOutline": "Document outline",
+        "suggesting": "Suggesting",
+        "suggestingDescription": "Edits become tracked suggestions",
+        "viewing": "Viewing",
+        "viewingDescription": "Read or print the final document"
+      },
       "findReplace": {
         "close": "Close search",
         "find": "查找",
@@ -2688,14 +9630,74 @@ export const CATALOGS = {
         "wholeWords": "全字匹配"
       },
       "finishEditing": "Finish editing",
+      "font": {
+        "documentFonts": "Document Fonts",
+        "monospace": "Monospace",
+        "other": "Other",
+        "sansSerif": "Sans Serif",
+        "selectAriaLabel": "Select font",
+        "serif": "Serif"
+      },
       "fontColor": "Font color",
       "fontGroup": "字体",
       "fontSize": "字号",
       "formatPainter": "Format Painter",
       "formatPainterShortcut": "Format Painter (Ctrl+Shift+C)",
+      "formattingBar": {
+        "clearFormatting": "Clear formatting",
+        "commentsAndChanges": "Comments & Changes",
+        "highlightColor": "Highlight color",
+        "imageProperties": "Image Properties",
+        "imagePropertiesShortcut": "Image Properties",
+        "insertLink": "Insert link",
+        "insertLinkShortcut": "Insert link (Ctrl+K)",
+        "strikethrough": "Strikethrough",
+        "subscript": "Subscript",
+        "subscriptShortcut": "Subscript (Ctrl+=)",
+        "superscript": "Superscript",
+        "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
+      },
       "formattingToolbar": "格式工具栏",
       "hideDetails": "隐藏详情",
       "historyGroup": "历史记录",
+      "imageOverlay": {
+        "deleteImage": "Delete image",
+        "replaceImage": "Replace image",
+        "rotate": "Rotate"
+      },
+      "imageTransform": {
+        "flipHorizontal": "Flip horizontal",
+        "flipVertical": "Flip vertical",
+        "rotateClockwise": "Rotate clockwise",
+        "rotateCounterClockwise": "Rotate counterclockwise",
+        "tooltip": "Rotate or flip"
+      },
+      "imageWrap": {
+        "behindText": "Behind text",
+        "floatLeft": "Wrap left",
+        "floatRight": "Wrap right",
+        "inFrontOfText": "In front of text",
+        "inline": "In line with text",
+        "menu": {
+          "ariaLabel": "Image wrap options",
+          "behindText": "Behind text",
+          "imageProperties": "Image Properties",
+          "inFrontOfText": "In front of text",
+          "inLineWithText": "In line with text",
+          "squareLeft": "Square (left)",
+          "squareRight": "Square (right)"
+        },
+        "menuDesc": {
+          "behindText": "Place the image behind the text so it does not affect text position.",
+          "inFrontOfText": "Place the image in front of the text, overlapping it.",
+          "inLineWithText": "Move the image with the surrounding text, like a text character.",
+          "squareLeft": "Text wraps around the image on the right; the image sits on the left.",
+          "squareRight": "Text wraps around the image on the left; the image sits on the right."
+        },
+        "tooltipPrefix": "Wrap text: {label}",
+        "topAndBottom": "Top and bottom"
+      },
+      "increaseFontSize": "Increase font size",
       "increaseIndent": "增加缩进",
       "insertColumnLeft": "在左侧插入列",
       "insertColumnRight": "在右侧插入列",
@@ -2710,6 +9712,11 @@ export const CATALOGS = {
       "italic": "倾斜",
       "italicShortcut": "倾斜(Ctrl+I)",
       "justify": "两端对齐",
+      "lineSpacing": {
+        "double": "Double",
+        "label": "Line spacing",
+        "single": "Single"
+      },
       "listFormatting": "列表格式",
       "listsGroup": "Lists",
       "loadingDocument": "正在加载文档...",
@@ -2735,6 +9742,21 @@ export const CATALOGS = {
       "rejectChange": "Reject Change",
       "removeLink": "删除链接",
       "renderErrorDescription": "Something went wrong showing this part of the document. Reload the page — if it keeps happening, let us know.",
+      "revisions": {
+        "cellDeleted": "Cell deleted",
+        "cellInserted": "Cell inserted",
+        "cellMerged": "Cells merged",
+        "cellPropertiesChanged": "Cell formatting changed",
+        "paragraphMarkDeleted": "Paragraph mark deleted",
+        "paragraphMarkInserted": "Paragraph mark inserted",
+        "paragraphPropertiesChanged": "Paragraph formatting changed",
+        "rowDeleted": "Row deleted",
+        "rowInserted": "Row inserted",
+        "rowPropertiesChanged": "Row formatting changed",
+        "tableDeleted": "Table deleted",
+        "tableInserted": "Table inserted",
+        "tablePropertiesChanged": "Table formatting changed"
+      },
       "ruler": {
         "bottomMargin": "下边距",
         "firstLineIndent": "首行缩进",
@@ -2755,14 +9777,107 @@ export const CATALOGS = {
       "selectAll": "Select all",
       "showDetails": "显示详情",
       "somethingWentWrong": "发生错误",
+      "styles": {
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "normalText": "Normal",
+        "selectAriaLabel": "Select paragraph style",
+        "subtitle": "Subtitle",
+        "title": "Title"
+      },
       "synced": "Synced",
       "syncing": "Syncing",
+      "table": {
+        "borderColor": "Border color",
+        "cellFillColor": "Cell fill color",
+        "deleteTable": "Delete table",
+        "mergeCells": "Merge cells",
+        "selectTable": "Select table",
+        "splitCell": "Split cell",
+        "styles": {
+          "gridTable1Light": "Grid Table 1 Light",
+          "gridTable4Accent1": "Grid Table 4 Accent 1",
+          "gridTable4Accent5": "Grid Table 4 Accent 5",
+          "gridTable4Accent6": "Grid Table 4 Accent 6",
+          "gridTable5Dark": "Grid Table 5 Dark",
+          "gridTableLight": "Grid Table Light",
+          "listTable3Accent2": "List Table 3 Accent 2",
+          "listTable4Accent3": "List Table 4 Accent 3",
+          "normalTable": "Normal Table",
+          "plainTable1": "Plain Table 1",
+          "plainTable2": "Plain Table 2",
+          "plainTable3": "Plain Table 3",
+          "plainTable4": "Plain Table 4",
+          "tableGrid": "Table Grid"
+        }
+      },
+      "tableAdvanced": {
+        "alignTableCenter": "Center table",
+        "alignTableLeft": "Align table left",
+        "alignTableRight": "Align table right",
+        "autoFit": "Autofit",
+        "bottom": "Bottom",
+        "cellMargins": "Cell margins",
+        "distributeColumns": "Distribute columns",
+        "height": "Height",
+        "heightRules": {
+          "atLeast": "At least",
+          "auto": "Auto",
+          "exact": "Exactly"
+        },
+        "middle": "Middle",
+        "rowHeight": "Row height",
+        "rule": "Rule",
+        "tableAlignment": "Table alignment",
+        "tableOptions": "Table options",
+        "tableOptionsMenu": "Table options menu",
+        "tableProperties": "Table properties",
+        "textDirections": {
+          "horizontal": "Horizontal",
+          "verticalLR": "Vertical (bottom to top)",
+          "verticalRL": "Vertical (top to bottom)"
+        },
+        "toggleHeaderRow": "Toggle header row",
+        "toggleNoWrap": "Toggle no wrap",
+        "top": "Top",
+        "verticalAlignment": "Vertical alignment"
+      },
       "tableBordersAll": "所有框线",
       "tableBordersNone": "无框线",
       "textDirection": "文本方向",
       "textEditingMenu": "文本编辑菜单",
       "textFormattingGroup": "文本格式",
       "toggleTrackChanges": "Toggle Track Changes",
+      "toolbar": {
+        "break": "Break",
+        "file": "File",
+        "findReplace": "Find and replace",
+        "findReplaceShortcut": "Ctrl+F",
+        "format": "Format",
+        "help": "Help",
+        "image": "Image",
+        "insert": "Insert",
+        "leftToRight": "Left to Right",
+        "open": "Open",
+        "openShortcut": "Ctrl+O",
+        "pageBreak": "Page Break",
+        "pageSetup": "Page Setup",
+        "reportIssue": "Report Issue",
+        "rightToLeft": "Right to Left",
+        "save": "Save",
+        "saveShortcut": "Ctrl+S",
+        "sectionBreakContinuous": "Section Break (Continuous)",
+        "sectionBreakNextPage": "Section Break (Next Page)",
+        "table": "Table",
+        "tableOfContents": "Table of Contents",
+        "watermark": "Watermark"
+      },
+      "trackedChanges": {
+        "replaced": "Replaced",
+        "unknown": "Unknown",
+        "with": "with"
+      },
       "trackingOff": "Tracking: Off",
       "trackingOn": "Tracking: On",
       "tryAgain": "请重试",
@@ -2775,6 +9890,14 @@ export const CATALOGS = {
       "unsupportedDocxEditDescription": "This DOCX contains structures Folio cannot safely rewrite. To avoid corrupting the file, download it and edit it in Word.",
       "unsupportedDocxEditTitle": "Editing blocked",
       "viewGroup": "视图",
+      "viewer": {
+        "pageIndicator": "Page {current} of {total}"
+      },
+      "zoom": {
+        "zoomIn": "Zoom in",
+        "zoomLevel": "Zoom level",
+        "zoomOut": "Zoom out"
+      },
       "zoomGroup": "缩放"
     }
   },
