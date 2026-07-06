@@ -80,6 +80,7 @@ import { FolioAISignatureParty } from '@stll/folio-core/ai-edits';
 import { FolioBlockId } from '@stll/folio-core/types/block-id';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
+import { default as FormattingBar } from './components/FormattingBar.vue';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getAnonymizationMatches } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { getAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -138,6 +139,7 @@ import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
 import { VNodeChild } from 'vue';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
 import { XmlFragment } from 'yjs';
+import { default as ZoomControl } from './components/ui/ZoomControl.vue';
 
 export { AcceptAutocompleteResult }
 
@@ -454,6 +456,23 @@ export type FontOption = {
     category?: "sans-serif" | "serif" | "monospace" | "other";
 };
 
+export { FormattingBar }
+
+// @public (undocumented)
+export type FormattingBarProps = {
+    currentFormatting?: SelectionFormatting;
+    disabled?: boolean;
+    canUndo?: boolean;
+    canRedo?: boolean;
+    className?: string;
+    showStylePicker?: boolean;
+    showTextColorPicker?: boolean;
+    showAlignmentButtons?: boolean;
+    showListButtons?: boolean;
+    documentStyles?: StyleOption[];
+    theme?: Theme | null;
+};
+
 export { fromMarkdown }
 
 export { getAnonymizationMatches }
@@ -567,5 +586,22 @@ export const useTranslation: () => {
 export function useWheelZoom(initialZoom?: number): UseZoomReturn;
 
 export { WordDiffSegment }
+
+export { ZoomControl }
+
+// @public (undocumented)
+export type ZoomControlProps = {
+    value?: number;
+    levels?: ZoomLevel[];
+    disabled?: boolean;
+    className?: string;
+    compact?: boolean;
+};
+
+// @public
+export type ZoomLevel = {
+    value: number;
+    label: string;
+};
 
 ```

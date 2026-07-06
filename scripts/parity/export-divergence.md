@@ -23,11 +23,6 @@ no React equivalent.
 
 Known Vue gaps (React-only chrome/components not yet ported to Vue):
 
-- `FormattingBar` — React chrome component; no Vue equivalent yet.
-- `FormattingBarProps` — type for the React-only FormattingBar.
-- `ZoomControl` — React chrome component; no Vue equivalent yet.
-- `ZoomControlProps` — type for the React-only ZoomControl.
-- `ZoomLevel` — type for the React-only ZoomControl.
 - `FolioUIProvider` — React UI-injection provider; the Vue map is a placeholder.
 - `ColorPreset` — React folio-ui type; no Vue equivalent yet.
 - `FolioButtonProps` — React folio-ui type; no Vue equivalent yet.
