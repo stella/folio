@@ -1,0 +1,22 @@
+# @stll/folio-vue
+
+## 0.2.0
+
+### Minor Changes
+
+- [#57](https://github.com/stella/folio/pull/57) [`c40cb00`](https://github.com/stella/folio/commit/c40cb00390db3abf109c3764645a87451fb6a249) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add `@stll/folio-vue`, a Vue 3 editor adapter over `@stll/folio-core` that tracks
+  the `@stll/folio-react` editor contract (`DocxEditor`, `DocxEditorProps`,
+  `DocxEditorRef`, `renderAsync`).
+
+  To share one framework-neutral base across adapters, the folio UI translation
+  catalog moves into `@stll/folio-core/i18n/messages` (the React `messages` subpath
+  re-exports it, so `@stll/folio-react/messages` is unchanged). Core also gains the
+  helpers the adapters build on: `ClipboardManager`, `AutoSaveManager`,
+  `resolveColorToHex`, the `WrapType` union, `docx` + `prosemirror/extensions`
+  barrels, and a set of ported editor-engine helpers (comment/section-break/table/
+  image commands, tracked-change extraction, visual-line navigation, image layout).
+
+### Patch Changes
+
+- Updated dependencies [[`98022a7`](https://github.com/stella/folio/commit/98022a7873188b42e406b689dd5c4c9b33bb98b8), [`444c11b`](https://github.com/stella/folio/commit/444c11b6c165864bbea59e4ed54c498d1b6fa02e), [`98022a7`](https://github.com/stella/folio/commit/98022a7873188b42e406b689dd5c4c9b33bb98b8), [`e44ba30`](https://github.com/stella/folio/commit/e44ba300c0978b9e2836bafcfe84cd06491e87bf), [`c40cb00`](https://github.com/stella/folio/commit/c40cb00390db3abf109c3764645a87451fb6a249)]:
+  - @stll/folio-core@0.2.0
