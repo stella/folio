@@ -1,11 +1,10 @@
 <!--
   Insert Table dialog — ported from the upstream docx-editor Vue adapter.
 
-  PORT-BLOCKED: upstream imported `TableStyleGallery` (../ui/TableStyleGallery.vue)
-  and `rememberedTableSize` (../insertTableState); neither is ported into this fork
-  yet. The preset-style gallery is omitted (the `styleId` emitted stays null) and
-  the remembered table size is stubbed with a module-local default. Restore the
-  gallery + shared remembered-size state once those modules land.
+  Composes the preset-style gallery (`TableStyleGallery`) and shares the
+  last-used dimensions through the module-level `rememberedTableSize`
+  (../insertTableState) so the dialog reopens with the previous size and can
+  emit a picked `styleId`.
 
   TODO(i18n): all `dialogs.insertTable.*` and `common.*` keys are kept verbatim; the
   folio catalog has no equivalents yet.
@@ -102,7 +101,11 @@
           </label>
         </fieldset>
 
-        <!-- PORT-BLOCKED: preset table-style gallery (TableStyleGallery) omitted. -->
+        <!-- Preset table-style gallery -->
+        <div class="dialog__separator">
+          <span>{{ t('dialogs.insertTable.style') }}</span>
+        </div>
+        <TableStyleGallery :current-style-id="styleId" @apply="(id: string) => (styleId = id)" />
       </div>
       <div class="dialog__footer">
         <button class="dialog__btn" @mousedown.prevent="close">{{ t('common.cancel') }}</button>
@@ -121,13 +124,10 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useTranslation } from '../../i18n';
+import TableStyleGallery from '../ui/TableStyleGallery.vue';
+import { rememberedTableSize } from '../insertTableState';
 
 const { t } = useTranslation();
-
-// PORT-BLOCKED stub: shared `rememberedTableSize` (../insertTableState) is not
-// ported yet. A module-local object preserves the "remember last size" behaviour
-// within a single mounted dialog instance; swap for the shared module when ported.
-const rememberedTableSize = { rows: 3, cols: 3 };
 
 const props = defineProps<{ isOpen: boolean }>();
 const emit = defineEmits<{
@@ -150,7 +150,7 @@ const hoverCol = ref(0);
 const rowsInput = ref<number | string>(rememberedTableSize.rows);
 const colsInput = ref<number | string>(rememberedTableSize.cols);
 const widthMode = ref<'fixed' | 'autofit'>('fixed');
-// PORT-BLOCKED: no style gallery, so no style can be picked; always emit null.
+// Selected preset style from the gallery; null = plain grid table.
 const styleId = ref<string | null>(null);
 
 // Re-seed the manual inputs from the remembered values whenever the dialog opens.

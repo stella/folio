@@ -18,11 +18,10 @@
   `alignCenter`, `fontSize.label` -> `fontSize`). Upstream keys kept verbatim
   where absent — do not invent catalog entries.
 
-  PORT-BLOCKED: the image-context group's wrap/transform dropdowns
-  (`ImageWrapDropdown` / `ImageTransformDropdown`, which depend on the
-  not-yet-ported `IconGridDropdown`) are omitted; the `image-wrap-type` /
-  `image-transform` emits and `imageContext` prop are preserved so the host
-  contract is stable, and the "Image properties" button is kept.
+  The image-context group's wrap/transform dropdowns (`ImageWrapDropdown` /
+  `ImageTransformDropdown`, built on `IconGridDropdown`) render when a
+  NodeSelection lands on an image; they drive the `image-wrap-type` /
+  `image-transform` emits the host routes into `useImageActions`.
 -->
 <template>
   <div class="basic-toolbar" v-if="view">
@@ -440,14 +439,18 @@
     </button>
 
     <!-- 15.5 Image context group — visible only when a NodeSelection lands on
-         an image node.
-         PORT-BLOCKED: the wrap-mode + transform (rotate/flip) dropdowns
-         (ImageWrapDropdown / ImageTransformDropdown -> IconGridDropdown) are
-         not ported yet, so only the image-properties tune button renders. The
-         `image-wrap-type` / `image-transform` emits stay declared for the host
-         contract. -->
+         an image node. The wrap-mode + transform (rotate/flip) dropdowns feed
+         the `image-wrap-type` / `image-transform` emits the host routes into
+         `useImageActions`; the tune button opens image properties. -->
     <template v-if="imageContext">
       <span class="divider" />
+      <ImageWrapDropdown
+        :image-context="imageContext"
+        @change="(wrapType: string) => $emit('image-wrap-type', wrapType)"
+      />
+      <ImageTransformDropdown
+        @transform="(action: ImageTransformAction) => $emit('image-transform', action)"
+      />
       <button
         :title="t('formattingBar.imagePropertiesShortcut')"
         :aria-label="t('formattingBar.imageProperties')"
@@ -487,6 +490,8 @@ import { clearFormatting } from '@stll/folio-core/prosemirror/commands/formattin
 import type { ColorValue, Theme, Style } from '@stll/folio-core/types/document';
 import MaterialSymbol from './ui/MaterialSymbol.vue';
 import ColorPicker from './ui/ColorPicker.vue';
+import ImageWrapDropdown from './ui/ImageWrapDropdown.vue';
+import ImageTransformDropdown from './ui/ImageTransformDropdown.vue';
 import EditingModeDropdown from './EditingModeDropdown.vue';
 import type { EditorMode } from './DocxEditor/types';
 import {

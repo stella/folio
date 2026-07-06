@@ -5,21 +5,36 @@
   `TableExtension`. A local `borderSpec` reactive holds the active
   style/width/color so subsequent preset clicks pick them up.
 
-  PORT-BLOCKED: the five picker children this toolbar composes
-  (`TableBorderPicker`, `TableBorderColorPicker`, `TableBorderWidthPicker`,
-  `TableCellFillPicker`, `TableMoreDropdown`) are not ported yet, and the last
-  pulls in a deep sub-tree (`TableStyleGallery`, `TableGridPicker`,
-  `tableStylePresets`, ...). To keep this file compiling and the command-
-  routing rewiring intact, the pickers are omitted from the template and the
-  routers are surfaced via `defineExpose` so a host (or a future picker port)
-  can drive them. `TableBorderPreset` / `TableAction` are declared locally to
-  mirror the (unported) child emit contracts.
+  Composes the five picker children (`TableBorderPicker`,
+  `TableBorderColorPicker`, `TableBorderWidthPicker`, `TableCellFillPicker`,
+  `TableMoreDropdown` — the last pulling in `TableStyleGallery` /
+  `TableGridPicker` / `tableStylePresets`) and routes their emits into the PM
+  commands registered by `TableExtension`. The routers stay surfaced via
+  `defineExpose` for host-driven use. `TableBorderPreset` / `TableAction` are
+  declared locally to mirror the child emit contracts.
 -->
 <template>
   <template v-if="isInTable">
     <span class="divider" />
-    <!-- PORT-BLOCKED: table border/fill/more picker children not ported;
-         see the file header. Command routers are available via defineExpose. -->
+    <TableBorderPicker @change="onBorderPreset" />
+    <TableBorderColorPicker
+      :theme="theme ?? null"
+      v-bind="borderColorValueBind"
+      @change="onBorderColor"
+    />
+    <TableBorderWidthPicker @change="onBorderWidth" />
+    <TableCellFillPicker :theme="theme ?? null" @change="onCellFill" />
+    <TableMoreDropdown
+      :can-split="canSplit"
+      :can-merge="canMerge"
+      :row-count="rowCount"
+      :column-count="columnCount"
+      :current-justification="currentJustification"
+      @action="onMoreAction"
+      @cell-margins="onCellMargins"
+      @cell-text-direction="onCellTextDirection"
+      @row-height="onRowHeight"
+    />
   </template>
 </template>
 
@@ -29,6 +44,11 @@ import type { EditorView } from 'prosemirror-view';
 import type { Command, Transaction } from 'prosemirror-state';
 import { getTableContext } from '@stll/folio-core/prosemirror/extensions/nodes/TableExtension';
 import type { Theme } from '@stll/folio-core/types/document';
+import TableBorderPicker from './TableBorderPicker.vue';
+import TableBorderColorPicker from './TableBorderColorPicker.vue';
+import TableBorderWidthPicker from './TableBorderWidthPicker.vue';
+import TableCellFillPicker from './TableCellFillPicker.vue';
+import TableMoreDropdown from './TableMoreDropdown.vue';
 
 /**
  * A toolbar command factory: called with whatever arguments the specific
@@ -95,6 +115,22 @@ const canSplit = computed(() => {
   }
   return false;
 });
+
+// Current cell border color (RGB hex, no #) for the color picker's active
+// swatch. Only the literal-rgb ColorValue shape resolves without theme lookup.
+const currentBorderColorHex = computed<string | undefined>(() => {
+  const c = tableCtx.value?.cellBorderColor;
+  if (c && typeof c === 'object' && 'rgb' in c && typeof c.rgb === 'string') {
+    return c.rgb;
+  }
+  return undefined;
+});
+
+// Omit `value` entirely (not `undefined`) under exactOptionalPropertyTypes so
+// an absent border color drops the key rather than passing an explicit undefined.
+const borderColorValueBind = computed<{ value?: string }>(() =>
+  currentBorderColorHex.value !== undefined ? { value: currentBorderColorHex.value } : {}
+);
 
 const canMerge = computed(() => !!tableCtx.value?.hasMultiCellSelection);
 const rowCount = computed(() => tableCtx.value?.rowCount ?? 0);
