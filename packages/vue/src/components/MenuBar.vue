@@ -99,6 +99,12 @@ const fileItems = computed<MenuEntry[]>(() => {
       onClick: act('save'),
     },
     { type: 'separator' },
+    {
+      label: t('toolbar.findReplace'),
+      shortcut: t('toolbar.findReplaceShortcut'),
+      onClick: act('findReplace'),
+    },
+    { type: 'separator' },
     { icon: 'settings', label: t('toolbar.pageSetup'), onClick: act('pageSetup') }
   );
   return items;

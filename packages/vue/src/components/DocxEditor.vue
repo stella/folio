@@ -427,6 +427,7 @@ import { useDocxEditorRefApi } from "../composables/useDocxEditorRefApi";
 import { useFormattingActions } from "../composables/useFormattingActions";
 import { useHyperlinkManagement } from "../composables/useHyperlinkManagement";
 import { useImageActions } from "../composables/useImageActions";
+import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
 import { useOutlineSidebar } from "../composables/useOutlineSidebar";
 import { usePageSetupControls } from "../composables/usePageSetupControls";
 import { usePagesPointer } from "../composables/usePagesPointer";
@@ -557,6 +558,9 @@ const rulerVisible = computed(() => props.showRuler ?? false);
 const stateTick = ref(0);
 const showFindReplace = ref(false);
 const showHyperlink = ref(false);
+// PORT-BLOCKED: no KeyboardShortcutsDialog component ported yet, so F1 / Ctrl+/
+// toggle inert local state (mirrors the colorMode / externalPlugins stubs above).
+const showKeyboardShortcuts = ref(false);
 const showInsertSymbol = ref(false);
 const showImageProperties = ref(false);
 const showPageSetup = ref(false);
@@ -578,6 +582,7 @@ const {
   zoomIn,
   zoomOut,
   handleWheel: handleZoomWheel,
+  handleKeyDown: handleZoomKeyDown,
   ZOOM_PRESETS,
 } = useZoom(props.initialZoom);
 
@@ -589,6 +594,19 @@ function handleWheelZoomGated(event: WheelEvent): void {
   }
   handleZoomWheel(event);
 }
+
+// Global keyboard shortcuts (F1 keyboard-shortcuts dialog, Ctrl+=/-/0 zoom,
+// Ctrl+F/H find-replace, Ctrl+K hyperlink, Ctrl+/ shortcuts toggle). Installs
+// its own window-level listener on mount and tears it down on unmount, so no
+// further wiring is needed here. Mirrors React's Cmd/Ctrl+F find-open path
+// (`useKeyboardShortcuts` in `packages/react/src/components/hooks`), extended
+// with the Vue adapter's additional shortcuts.
+useKeyboardShortcuts({
+  showKeyboardShortcuts,
+  showFindReplace,
+  showHyperlink,
+  handleZoomKeyDown,
+});
 
 // ---- Pipeline -----------------------------------------------------------
 const {
