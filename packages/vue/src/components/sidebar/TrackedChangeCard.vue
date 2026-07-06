@@ -4,19 +4,9 @@
   insertion/deletion/replacement formatting, accept/reject icon
   buttons in expanded state.
 
-  TODO(i18n): folio's flat `folio.*` catalog has no key for these
-  upstream paths, so they are kept verbatim (resolve to the key string
-  at runtime until a catalog entry lands):
-    trackedChanges.replaced, trackedChanges.with, trackedChanges.unknown,
-    revisions.paragraphMarkInserted, revisions.paragraphMarkDeleted,
-    revisions.paragraphPropertiesChanged, revisions.rowInserted,
-    revisions.rowDeleted, revisions.rowPropertiesChanged,
-    revisions.cellInserted, revisions.cellDeleted, revisions.cellMerged,
-    revisions.cellPropertiesChanged, revisions.tablePropertiesChanged,
-    revisions.tableInserted, revisions.tableDeleted.
-  Remapped to existing flat keys: common.accept -> acceptChange,
-  common.reject -> rejectChange, trackedChanges.added -> inserted,
-  trackedChanges.deleted -> deleted.
+  Some labels remap to existing flat catalog keys: common.accept ->
+  acceptChange, common.reject -> rejectChange, trackedChanges.added ->
+  inserted, trackedChanges.deleted -> deleted.
 -->
 <template>
   <div
@@ -155,7 +145,6 @@ const emit = defineEmits<{
   (e: "reply", revisionId: number, text: string): void;
 }>();
 
-// TODO(i18n): trackedChanges.unknown has no flat catalog key; kept verbatim.
 const authorName = computed(() => props.change.author || t("trackedChanges.unknown"));
 
 // Dispatch by `revisionId` whenever the host wired the by-id channel.

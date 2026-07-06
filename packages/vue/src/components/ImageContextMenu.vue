@@ -10,12 +10,6 @@
   style of the React version. Keyboard navigation (arrow keys / Enter) is
   intentionally left for a follow-up — Esc / click-outside / option click
   are wired the same way as TextContextMenu.vue.
-
-  TODO(i18n): folio's flat `folio.*` catalog has no key for the
-  `imageWrap.*` paths used here (imageWrap.menu.ariaLabel,
-  imageWrap.menu.imageProperties, imageWrap.menu.<i18nLabelKey>,
-  imageWrap.menuDesc.<i18nDescKey>); they are kept verbatim and resolve
-  to the key string at runtime until catalog entries land.
 -->
 <template>
   <Teleport to="body">

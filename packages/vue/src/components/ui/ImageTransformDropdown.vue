@@ -1,11 +1,6 @@
 <!--
   Vue port of packages/react/src/components/ui/ImageTransformDropdown.tsx —
   rotate CW / CCW / flip H / flip V via IconGridDropdown.
-
-  TODO(i18n): every `imageTransform.*` key below is absent from folio's flat
-  `folio` catalog (`packages/core/src/i18n/messages/en.json`); kept verbatim
-  (not invented) so `t(...)` currently returns the raw key path until entries
-  land.
 -->
 <template>
   <IconGridDropdown

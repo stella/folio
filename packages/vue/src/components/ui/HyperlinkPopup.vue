@@ -5,11 +5,8 @@
   inputs + Apply button. Same colour palette + same anchor
   positioning as React.
 
-  TODO(i18n): `common.apply` is not in folio's flat `folio` catalog
-  (`@stll/folio-core/i18n/messages/en.json`); `t('common.apply')` falls back
-  to the key path until it is added. The other keys remap to the flat catalog
-  (`copyLink` / `editLink` / `removeLink` / `displayText`). Upstream keys kept
-  verbatim where absent — do not invent catalog entries.
+  Some labels remap to existing flat catalog keys: `copyLink` / `editLink` /
+  `removeLink` / `displayText`.
 -->
 <template>
   <div

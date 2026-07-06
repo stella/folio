@@ -1,8 +1,5 @@
 <!--
   Hyperlink (insert / edit) dialog — ported from the upstream docx-editor Vue adapter.
-
-  TODO(i18n): all `dialogs.hyperlink.*` and `common.*` keys are kept verbatim; the
-  folio catalog has no equivalents yet.
 -->
 <template>
   <div v-if="isOpen" class="dialog-overlay" @mousedown.self="close">

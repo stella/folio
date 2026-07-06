@@ -4,11 +4,6 @@
   chevron; click opens a panel with each mode's description. Goes
   compact (icon only) below 1400px to match React's behavior. Close
   behaviour via shared Popover.
-
-  TODO(i18n): the `editor.editing` / `editor.suggesting` / `editor.viewing`
-  keys and their `*Description` variants are not in folio's flat catalog
-  (`@stll/folio-core/i18n/messages/en.json`); `t()` falls back to the key path
-  until they are added. Upstream keys kept verbatim — do not invent entries.
 -->
 <template>
   <Popover

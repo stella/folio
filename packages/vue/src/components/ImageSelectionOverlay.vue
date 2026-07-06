@@ -49,9 +49,6 @@
 </template>
 
 <script setup lang="ts">
-// TODO(i18n): `imageOverlay.rotate` is not in folio's flat catalog
-// (`@stll/folio-core/i18n/messages/en.json`); `t()` falls back to the key path
-// until the entry is added. Upstream key kept verbatim — do not invent one.
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue';
 import type { EditorView } from 'prosemirror-view';
 import { NodeSelection } from 'prosemirror-state';

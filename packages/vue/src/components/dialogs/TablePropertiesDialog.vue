@@ -1,8 +1,5 @@
 <!--
   Table Properties dialog — ported from the upstream docx-editor Vue adapter.
-
-  TODO(i18n): all `dialogs.tableProperties.*` and `common.*` keys are kept verbatim;
-  the folio catalog has no equivalents yet.
 -->
 <template>
   <FolioDialog

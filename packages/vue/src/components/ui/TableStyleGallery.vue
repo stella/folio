@@ -48,9 +48,8 @@ defineEmits<{
 
 const presets = BUILTIN_TABLE_STYLES;
 
-// TODO(i18n): TABLE_STYLE_NAME_KEYS resolves `table.styles.*` keys that are not
-// yet in folio's flat catalog, so `t(key)` currently returns the raw key path;
-// falls back to the English `preset.name` only when no key is mapped at all.
+// TABLE_STYLE_NAME_KEYS resolves `table.styles.*` catalog keys; falls back to
+// the English `preset.name` only when no key is mapped for the preset id.
 function presetName(preset: TableStylePreset): string {
   const key = TABLE_STYLE_NAME_KEYS[preset.id];
   return key ? t(key) : preset.name;

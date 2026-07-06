@@ -1,12 +1,8 @@
 <!--
   Find / Replace dialog — ported from the upstream docx-editor Vue adapter.
 
-  TODO(i18n): the following upstream keys have no folio-catalog equivalent yet and
-  are kept verbatim (resolve to `folio.dialogs.findReplace.*`, currently missing):
-    - dialogs.findReplace.toggleReplace
-    - dialogs.findReplace.replaceButton
-    - dialogs.findReplace.matchesFound
-  Every other key is remapped to the folio `findReplace.*` catalog.
+  Most labels remap to the folio `findReplace.*` catalog; the replace-specific
+  ones resolve `dialogs.findReplace.*`.
 -->
 <template>
   <div v-if="isOpen" class="find-replace-dialog" @mousedown.stop @keydown.stop>

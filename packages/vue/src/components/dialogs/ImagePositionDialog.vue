@@ -1,9 +1,7 @@
 <!--
   Image Position dialog — ported from the upstream docx-editor Vue adapter.
-
-  TODO(i18n): all `dialogs.imagePosition.*` and `common.*` keys are kept verbatim;
-  the folio catalog has no equivalents yet. The two "Mode" labels and the
-  "Distance from text (px)" legend were hard-coded English in upstream and remain so.
+  The two "Mode" labels and the "Distance from text (px)" legend were
+  hard-coded English in upstream and remain so.
 -->
 <template>
   <FolioDialog

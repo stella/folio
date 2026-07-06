@@ -10,9 +10,6 @@
 </template>
 
 <script setup lang="ts">
-// TODO(i18n): `viewer.pageIndicator` is not in folio's flat catalog
-// (`@stll/folio-core/i18n/messages/en.json`); `t()` falls back to the key path
-// until the entry is added. Upstream key kept verbatim — do not invent one.
 import { useTranslation } from '../i18n';
 
 defineProps<{

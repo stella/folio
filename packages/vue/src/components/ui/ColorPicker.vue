@@ -12,10 +12,6 @@
   exported from our core's `utils/colorResolver` (CORE-API-MAP Table 4 lists
   it as a missing PORT). Import kept pointing at the target specifier; the
   selected-cell highlight will not typecheck until that helper lands in core.
-
-  TODO(i18n): the `colorPicker.*`, `formattingBar.highlightColor`,
-  `table.borderColor`, and `common.apply` keys below are not in our
-  `@stll/folio-core` catalog (`en.json`); upstream keys kept verbatim.
 -->
 <template>
   <div ref="containerRef" class="docx-color-picker" :class="className" :style="style">
@@ -79,7 +75,6 @@
     </button>
 
     <!-- Dropdown panel -->
-    <!-- TODO(i18n): colorPicker.* keys below are not in our catalog -->
     <div
       v-if="isOpen && !disabled"
       ref="panelRef"
@@ -218,7 +213,6 @@ const emit = defineEmits<{
 
 const { t } = useTranslation();
 
-// TODO(i18n): colorPicker.colors.* keys are not in our catalog; kept verbatim.
 const STANDARD_COLORS: Array<{ nameKey: string; hex: string }> = [
   { nameKey: 'colorPicker.colors.darkRed', hex: 'C00000' },
   { nameKey: 'colorPicker.colors.red', hex: 'FF0000' },
@@ -280,9 +274,7 @@ function defaultPickedColor(mode: ColorPickerMode): ColorValue | string {
 
 function defaultTitleForMode(mode: ColorPickerMode): string {
   if (mode === 'text') return t('fontColor');
-  // TODO(i18n): formattingBar.highlightColor not in catalog
   if (mode === 'highlight') return t('formattingBar.highlightColor');
-  // TODO(i18n): table.borderColor not in catalog
   return t('table.borderColor');
 }
 

@@ -5,18 +5,10 @@
   the same rail in the same sequence. Rendered by DocxEditor and
   exposed publicly as `Toolbar`.
 
-  TODO(i18n): many labels use upstream key paths absent from folio's flat
-  `folio` catalog (`@stll/folio-core/i18n/messages/en.json`); `t()` returns the
-  key path as a fallback until they are added. Absent namespaces/keys:
-  `zoom.*`, `styles.selectAriaLabel`, `font.selectAriaLabel`,
-  `font.documentFonts|sansSerif|serif|monospace|other`, `fontSize.decrease`,
-  `fontSize.increase`, `formattingBar.strikethrough|insertLink|insertLinkShortcut|
-  superscript|superscriptShortcut|subscript|subscriptShortcut|clearFormatting|
-  commentsAndChanges|imageProperties|imagePropertiesShortcut`,
-  `alignment.*Shortcut`, `lineSpacing.label`. Keys that DO exist are remapped to
-  the flat catalog (e.g. `formattingBar.undo` -> `undo`, `alignment.center` ->
-  `alignCenter`, `fontSize.label` -> `fontSize`). Upstream keys kept verbatim
-  where absent — do not invent catalog entries.
+  Some labels remap to existing flat catalog keys (e.g. `formattingBar.undo` ->
+  `undo`, `alignment.center` -> `alignCenter`, the font-size field label ->
+  `fontSize`, the font-size step buttons -> `decreaseFontSize` /
+  `increaseFontSize`).
 
   The image-context group's wrap/transform dropdowns (`ImageWrapDropdown` /
   `ImageTransformDropdown`, built on `IconGridDropdown`) render when a
@@ -165,7 +157,7 @@
       <button
         class="size-btn"
         @mousedown.prevent="decreaseFontSize"
-        :title="t('fontSize.decrease')"
+        :title="t('decreaseFontSize')"
       >
         −
       </button>
@@ -187,7 +179,7 @@
       <button
         class="size-btn"
         @mousedown.prevent="increaseFontSize"
-        :title="t('fontSize.increase')"
+        :title="t('increaseFontSize')"
       >
         +
       </button>

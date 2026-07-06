@@ -3,9 +3,6 @@
   adapter. Upstream cast every emitted field with `as any`; here the reactive refs
   are typed with the model unions (FootnotePosition, EndnotePosition,
   NoteNumberRestart, NumberFormat) so the emit is structurally sound without casts.
-
-  TODO(i18n): all `dialogs.footnoteProperties.*` and `common.*` keys are kept
-  verbatim; the folio catalog has no equivalents yet.
 -->
 <template>
   <FolioDialog

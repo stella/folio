@@ -247,12 +247,8 @@ export function getBuiltinTableStyle(styleId: string): TableStylePreset | undefi
 }
 
 /**
- * Map from built-in style ID to folio-catalog translation key.
- *
- * TODO(i18n): none of these `table.styles.*` keys exist in folio's flat `folio`
- * catalog (`packages/core/src/i18n/messages/en.json`) yet, so `presetName`
- * currently renders the raw key path rather than a localized name. Kept verbatim
- * (not invented) so the wiring is ready once the catalog gains the entries.
+ * Map from built-in style ID to folio-catalog translation key
+ * (`table.styles.*`, resolved by `presetName` via the folio catalog).
  */
 export const TABLE_STYLE_NAME_KEYS: Record<string, string> = {
   TableNormal: 'table.styles.normalTable',

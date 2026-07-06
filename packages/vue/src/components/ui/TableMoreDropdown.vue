@@ -7,11 +7,9 @@
   core commands (setCellMargins / setRowHeight / setCellTextDirection)
   but had no Vue entry point.
 
-  TODO(i18n): remapped to folio's flat `folio` catalog where an equivalent key
-  exists (insertRow/Column*, deleteRow/Column, textDirection); every remaining
-  `table.*`, `tableAdvanced.*`, and `common.*` key below is absent and kept
-  verbatim (not invented), so `t(...)` returns the raw key path until entries
-  land.
+  Some labels remap to existing flat catalog keys where an equivalent exists
+  (insertRow/Column*, deleteRow/Column, textDirection); the rest resolve
+  `table.*` / `tableAdvanced.*` / `common.*` catalog entries.
 -->
 <template>
   <Popover

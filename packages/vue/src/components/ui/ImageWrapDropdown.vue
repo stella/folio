@@ -1,10 +1,6 @@
 <!--
   Vue port of packages/react/src/components/ui/ImageWrapDropdown.tsx —
   thin wrapper around IconGridDropdown with the 6 image-wrap options.
-
-  TODO(i18n): every `imageWrap.*` key below is absent from folio's flat `folio`
-  catalog (`packages/core/src/i18n/messages/en.json`); kept verbatim (not
-  invented) so `t(...)` currently returns the raw key path until entries land.
 -->
 <template>
   <IconGridDropdown

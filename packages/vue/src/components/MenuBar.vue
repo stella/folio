@@ -6,10 +6,6 @@
 
   Insert > Table is hidden when `showTableInsert` is false, mirroring how React's
   toolbar gates its Insert Table control (FormattingBar `showTableInsert`).
-
-  TODO(i18n): the `toolbar.*` keys used below are not in folio's flat catalog
-  (`@stll/folio-core/i18n/messages/en.json`); `t()` falls back to the key path
-  until they are added. Upstream keys kept verbatim — do not invent entries.
 -->
 <template>
   <div class="menu-bar" role="menubar">

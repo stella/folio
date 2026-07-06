@@ -3,10 +3,6 @@
   a thin wrapper around the advanced <ColorPicker> (mode="highlight",
   fill icon + "No fill" label) that translates its output to the hex
   string the table toolbar expects (empty string = clear fill).
-
-  TODO(i18n): `table.cellFillColor` and `colorPicker.noColor` are absent from
-  folio's flat `folio` catalog (`packages/core/src/i18n/messages/en.json`); kept
-  verbatim (not invented).
 -->
 <template>
   <ColorPicker

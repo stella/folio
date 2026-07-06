@@ -15,10 +15,6 @@
 <script setup lang="ts">
 // Outline toggle — Vue counterpart of React's OutlineToggleButton. Inject-based
 // translation (host calls provideLocale) so the label tracks the user's i18n prop.
-//
-// TODO(i18n): `editor.showDocumentOutline` is not in folio's flat catalog
-// (`@stll/folio-core/i18n/messages/en.json`); `t()` falls back to the key path
-// until the entry is added. Upstream key kept verbatim — do not invent one.
 import { useTranslation } from '../i18n';
 import MaterialSymbol from './ui/MaterialSymbol.vue';
 

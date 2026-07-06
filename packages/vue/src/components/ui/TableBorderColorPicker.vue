@@ -3,9 +3,6 @@
   a thin wrapper around the advanced <ColorPicker> (mode="border") that
   translates its ColorValue output to the hex string the table toolbar
   expects. Same theme-color matrix as the text/highlight pickers.
-
-  TODO(i18n): `table.borderColor` is absent from folio's flat `folio` catalog
-  (`packages/core/src/i18n/messages/en.json`); kept verbatim (not invented).
 -->
 <template>
   <ColorPicker

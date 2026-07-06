@@ -1,9 +1,5 @@
 <!--
   Page Setup dialog — mirrors packages/react/src/components/dialogs/PageSetupDialog.tsx.
-
-  TODO(i18n): all `dialogs.pageSetup.*` and `common.*` keys are kept verbatim; the
-  folio catalog has no equivalents yet (they resolve to `folio.dialogs.pageSetup.*`
-  / `folio.common.*`, currently missing).
 -->
 <template>
   <FolioDialog

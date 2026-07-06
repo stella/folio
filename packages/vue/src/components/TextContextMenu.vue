@@ -3,16 +3,7 @@
   actions). Teleported to <body> and re-scoped with the editor's
   `.ep-root` token class so `var(--doc-*)` resolves.
 
-  TODO(i18n): folio's flat `folio.*` catalog has no key for these
-  upstream paths, so they are kept verbatim (resolve to the key string
-  at runtime until a catalog entry lands):
-    contextMenu.cutShortcut, contextMenu.copyShortcut,
-    contextMenu.pasteShortcut, contextMenu.pastePlainTextShortcut,
-    contextMenu.deleteShortcut, contextMenu.selectAllShortcut,
-    imageOverlay.replaceImage, imageOverlay.deleteImage,
-    imageWrap.menu.imageProperties, table.mergeCells, table.splitCell,
-    table.selectTable, table.deleteTable.
-  Remapped to existing flat keys: contextMenu.cut -> cut,
+  Some labels remap to existing flat catalog keys: contextMenu.cut -> cut,
   contextMenu.copy -> copy, contextMenu.paste -> paste,
   contextMenu.pastePlainText -> pasteUnformatted,
   contextMenu.delete -> delete, contextMenu.selectAll -> selectAll,

@@ -5,9 +5,6 @@
   last-used dimensions through the module-level `rememberedTableSize`
   (../insertTableState) so the dialog reopens with the previous size and can
   emit a picked `styleId`.
-
-  TODO(i18n): all `dialogs.insertTable.*` and `common.*` keys are kept verbatim; the
-  folio catalog has no equivalents yet.
 -->
 <template>
   <div v-if="isOpen" class="dialog-overlay" @mousedown.self="close">
