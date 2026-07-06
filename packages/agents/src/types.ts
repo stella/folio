@@ -60,6 +60,18 @@ export type FolioAgentTextMatch = {
   context: string;
 };
 
+/**
+ * Result of {@link FOLIO_AGENT_TOOL_NAMES.findText}. `matches` is capped at a
+ * fixed limit; when the query has more hits than that, `truncated` is `true`
+ * and `totalMatches` reports the real count so the model knows to narrow the
+ * query instead of assuming it saw everything.
+ */
+export type FolioAgentFindTextResult = {
+  matches: FolioAgentTextMatch[];
+  truncated: boolean;
+  totalMatches: number;
+};
+
 /** One reply within a comment thread. */
 export type FolioAgentCommentReply = {
   id: string;

@@ -15,7 +15,7 @@ import { describe, expect, test } from "bun:test";
 
 import { createDocx, createEmptyDocument, FolioDocxReviewer } from "@stll/folio-core/server";
 
-import { compareDocxVersions, formatVersionDiffForLLM } from "./compare";
+import { compareDocxVersions, exceedsLcsBudget, formatVersionDiffForLLM } from "./compare";
 import type { FolioAgentBlockDiff } from "./compare";
 
 type ParagraphSpec = { text: string; paraId?: string };
@@ -185,6 +185,18 @@ describe("formatVersionDiffForLLM", () => {
     expect(lines).toContain("~ [00000002] modified: Beta [-paragraph.-]{+clause.+}");
     expect(lines).toContain("- [00000003] deleted: Gamma paragraph.");
     expect(lines).toContain("+ [00000006] added: Epsilon paragraph.");
+  });
+});
+
+describe("exceedsLcsBudget: pass 2's LCS cell-budget guard", () => {
+  test("flags unpaired-block counts whose product would exceed the LCS cell budget (4,000,000)", () => {
+    // A degenerate/adversarial document with no w14:paraIds can leave
+    // thousands of blocks unpaired on both sides; this guard is what stops
+    // pairByExactText from allocating an O(m*n) table for it. Exercise the
+    // predicate directly rather than constructing a multi-million-block
+    // fixture, which would make this test slow for no extra coverage.
+    expect(exceedsLcsBudget(2000, 2000)).toBe(false); // exactly at budget: 4,000,000 cells
+    expect(exceedsLcsBudget(2001, 2001)).toBe(true); // just over budget: 4,004,001 cells
   });
 });
 

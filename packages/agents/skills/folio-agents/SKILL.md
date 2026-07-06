@@ -92,6 +92,14 @@ throwing.
   compose the five primitives, or extend `@stll/folio-core`'s ai-edits engine
   itself if a document needs a structural operation this package doesn't
   expose.
+- **Untrusted documents:** `read_document`, `read_comments`, `read_changes`,
+  and `find_text` return document content verbatim, so a `.docx` from an
+  untrusted party can inject prompt instructions straight into the model's
+  context via its text — hosts should treat any document-derived tool result
+  as untrusted model input. Mutations stay safe regardless: `suggest_changes`
+  and `add_comment` only ever produce tracked changes or comments pending
+  human review, so an injected instruction can propose an edit, never apply
+  one.
 
 ## Summarizing what changed
 

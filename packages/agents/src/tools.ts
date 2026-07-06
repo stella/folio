@@ -19,20 +19,20 @@ const suggestChangesOperationSchema = {
     },
     find: {
       type: "string",
-      description: "Required for `replaceInBlock`: the exact text to find within the block.",
+      description: "Required for `replaceInBlock`: the exact text to find within the block, up to 100,000 characters.",
     },
     replace: {
       type: "string",
-      description: "Required for `replaceInBlock`: the text to replace `find` with.",
+      description: "Required for `replaceInBlock`: the text to replace `find` with, up to 100,000 characters.",
     },
     text: {
       type: "string",
       description:
-        "Required for `insertAfterBlock` / `insertBeforeBlock` / `replaceBlock`: the text to insert or replace the block with.",
+        "Required for `insertAfterBlock` / `insertBeforeBlock` / `replaceBlock`: the text to insert or replace the block with, up to 100,000 characters.",
     },
     comment: {
       type: "string",
-      description: "Optional comment explaining this edit, attached to the affected text.",
+      description: "Optional comment explaining this edit, attached to the affected text, up to 100,000 characters.",
     },
   },
   required: ["type", "blockId"],
@@ -63,13 +63,18 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
   {
     name: FOLIO_AGENT_TOOL_NAMES.findText,
     description:
-      "Search the document body for a text string and return every match with its block id, which occurrence " +
-      "within that block it is, and surrounding context. Use this to locate the blockId for a known phrase " +
-      "instead of reading the whole document.",
+      "Search the document body for a text string and return `{ matches, truncated, totalMatches }`, where each " +
+      "match has its block id, which occurrence within that block it is, and surrounding context. `matches` is " +
+      "capped at 200 entries; `truncated` is true and `totalMatches` reports the real count when there were " +
+      "more — narrow the query instead of assuming you saw every hit. Use this to locate the blockId for a " +
+      "known phrase instead of reading the whole document.",
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "Non-empty text to search for." },
+        query: {
+          type: "string",
+          description: "Non-empty text to search for, up to 1,000 characters.",
+        },
         matchCase: {
           type: "boolean",
           description: "Case-sensitive match. Defaults to false (case-insensitive).",
@@ -114,13 +119,16 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     description:
       "Attach a comment to a block, optionally quoting the specific text it is about. The comment is added " +
       "immediately (comments are not tracked changes) but the underlying text is left untouched — use this for " +
-      "notes/questions, and `suggest_changes` for edits.",
+      "notes/questions, and `suggest_changes` for edits. `text` and `quote` are each capped at 100,000 characters.",
     inputSchema: {
       type: "object",
       properties: {
         blockId: { type: "string", description: "The block to comment on, from `read_document` or `find_text`." },
-        quote: { type: "string", description: "Optional exact text within the block this comment is about." },
-        text: { type: "string", description: "The comment body." },
+        quote: {
+          type: "string",
+          description: "Optional exact text within the block this comment is about, up to 100,000 characters.",
+        },
+        text: { type: "string", description: "The comment body, up to 100,000 characters." },
       },
       required: ["blockId", "text"],
       additionalProperties: false,
@@ -131,14 +139,16 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     description:
       "Propose one or more edits as tracked changes for a human to accept or reject — nothing is applied " +
       "directly to the visible text. Each operation needs a blockId from `read_document` or `find_text`; if the " +
-      "document changed since that read, re-read it and retry with fresh ids (a skip reason will say so).",
+      "document changed since that read, re-read it and retry with fresh ids (a skip reason will say so). At " +
+      "most 50 operations per call — batch larger edits across multiple calls. Each `find` / `replace` / " +
+      "`text` / `comment` string is capped at 100,000 characters.",
     inputSchema: {
       type: "object",
       properties: {
         operations: {
           type: "array",
+          description: "The edits to propose, applied in order. At most 50 per call.",
           items: suggestChangesOperationSchema,
-          description: "The edits to propose, applied in order.",
         },
       },
       required: ["operations"],
@@ -147,12 +157,14 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
   },
   {
     name: FOLIO_AGENT_TOOL_NAMES.replyComment,
-    description: "Reply to an existing comment thread, referenced by the id from `read_comments`.",
+    description:
+      "Reply to an existing comment thread, referenced by the id from `read_comments`. `text` is capped at " +
+      "100,000 characters.",
     inputSchema: {
       type: "object",
       properties: {
         commentId: { type: "string", description: "The comment id from `read_comments`." },
-        text: { type: "string", description: "The reply body." },
+        text: { type: "string", description: "The reply body, up to 100,000 characters." },
       },
       required: ["commentId", "text"],
       additionalProperties: false,

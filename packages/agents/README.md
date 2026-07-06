@@ -38,6 +38,17 @@ never guess them. `suggest_changes` reports a plain-language reason when an
 operation is skipped (e.g. the block changed since it was last read), so the
 model can re-read and retry.
 
+### Untrusted documents
+
+`read_document`, `read_comments`, `read_changes`, and `find_text` return
+document content verbatim. If a `.docx` comes from an untrusted party, its
+text can carry prompt-injection payloads straight into the model's context —
+treat any document-derived tool result as untrusted model input, the same way
+you would treat a fetched web page. Mutations stay safe by design regardless:
+`suggest_changes` and `add_comment` land as tracked changes or comments
+pending human review, so an injected instruction can propose an edit but
+cannot silently apply one.
+
 ## Headless quickstart
 
 ```ts

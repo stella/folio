@@ -14,7 +14,7 @@ import { FolioDocxReviewer } from "@stll/folio-core/server";
 import { createReviewerBridge } from "./bridges/reviewer";
 import { executeFolioToolCall } from "./execute";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
-import type { FolioAgentBlock, FolioAgentComment, FolioToolCallResult } from "./types";
+import type { FolioAgentBlock, FolioAgentComment, FolioAgentFindTextResult, FolioToolCallResult } from "./types";
 
 // Reuses the same corpus fixture `packages/core/src/ai-edits/headless.test.ts`
 // builds its reviewer round-trip tests against.
@@ -113,10 +113,12 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     }
 
     // find_text
-    const matches = expectOk(
+    const findTextResult = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, { query: "heading" }, bridge),
-    ) as { blockId: string; occurrenceInBlock: number; context: string }[];
-    expect(matches.some((match) => match.blockId === heading.blockId)).toBe(true);
+    ) as FolioAgentFindTextResult;
+    expect(findTextResult.truncated).toBe(false);
+    expect(findTextResult.totalMatches).toBe(findTextResult.matches.length);
+    expect(findTextResult.matches.some((match) => match.blockId === heading.blockId)).toBe(true);
 
     // suggest_changes: replaceInBlock
     const suggestResult = expectOk(
@@ -237,6 +239,98 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     const result = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.suggestChanges, { operations: [] }, bridge);
     expect(expectError(result)).toContain("empty");
   });
+
+  test("suggest_changes rejects an operations array over the per-call cap", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    const operations = Array.from({ length: 51 }, (_, i) => ({
+      type: "replaceInBlock",
+      blockId: `block-${i}`,
+      find: "x",
+      replace: "y",
+    }));
+    const result = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.suggestChanges, { operations }, bridge);
+    expect(expectError(result)).toContain("50-operation limit");
+  });
+
+  test("suggest_changes rejects find/replace/text/comment strings over the length cap", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+    const tooLong = "x".repeat(100_001);
+
+    const findTooLong = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+      { operations: [{ type: "replaceInBlock", blockId: "b1", find: tooLong, replace: "y" }] },
+      bridge,
+    );
+    expect(expectError(findTooLong)).toContain("100,000-character limit");
+
+    const replaceTooLong = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+      { operations: [{ type: "replaceInBlock", blockId: "b1", find: "x", replace: tooLong }] },
+      bridge,
+    );
+    expect(expectError(replaceTooLong)).toContain("100,000-character limit");
+
+    const textTooLong = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+      { operations: [{ type: "replaceBlock", blockId: "b1", text: tooLong }] },
+      bridge,
+    );
+    expect(expectError(textTooLong)).toContain("100,000-character limit");
+
+    const commentTooLong = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+      { operations: [{ type: "deleteBlock", blockId: "b1", comment: tooLong }] },
+      bridge,
+    );
+    expect(expectError(commentTooLong)).toContain("100,000-character limit");
+  });
+
+  test("add_comment rejects text/quote over the length cap", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+    const tooLong = "x".repeat(100_001);
+    const blocks = reviewer.snapshot().blocks;
+    const target = blocks[0];
+    if (!target) {
+      throw new Error("expected at least one block");
+    }
+
+    expect(
+      expectError(
+        executeFolioToolCall(
+          FOLIO_AGENT_TOOL_NAMES.addComment,
+          { blockId: target.id, text: tooLong },
+          bridge,
+        ),
+      ),
+    ).toContain("100,000-character limit");
+
+    expect(
+      expectError(
+        executeFolioToolCall(
+          FOLIO_AGENT_TOOL_NAMES.addComment,
+          { blockId: target.id, text: "fine", quote: tooLong },
+          bridge,
+        ),
+      ),
+    ).toContain("100,000-character limit");
+  });
+
+  test("reply_comment rejects text over the length cap", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+    const tooLong = "x".repeat(100_001);
+
+    const result = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.replyComment,
+      { commentId: "1", text: tooLong },
+      bridge,
+    );
+    expect(expectError(result)).toContain("100,000-character limit");
+  });
 });
 
 describe("find_text edge cases", () => {
@@ -255,11 +349,13 @@ describe("find_text edge cases", () => {
       { mode: "direct" },
     );
 
-    const matches = expectOk(
+    const findTextResult = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, { query: "repeat" }, bridge),
-    ) as { blockId: string; occurrenceInBlock: number; context: string }[];
-    expect(matches).toHaveLength(3);
-    expect(matches.map((match) => match.occurrenceInBlock)).toEqual([0, 1, 2]);
+    ) as FolioAgentFindTextResult;
+    expect(findTextResult.matches).toHaveLength(3);
+    expect(findTextResult.truncated).toBe(false);
+    expect(findTextResult.totalMatches).toBe(3);
+    expect(findTextResult.matches.map((match) => match.occurrenceInBlock)).toEqual([0, 1, 2]);
 
     const caseSensitive = expectOk(
       executeFolioToolCall(
@@ -267,7 +363,43 @@ describe("find_text edge cases", () => {
         { query: "repeat", matchCase: true },
         bridge,
       ),
-    ) as unknown[];
-    expect(caseSensitive).toHaveLength(2);
+    ) as FolioAgentFindTextResult;
+    expect(caseSensitive.matches).toHaveLength(2);
+    expect(caseSensitive.totalMatches).toBe(2);
+  });
+
+  test("query over the length cap is rejected", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    const result = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.findText,
+      { query: "a".repeat(1_001) },
+      bridge,
+    );
+    expect(expectError(result)).toContain("1,000-character limit");
+  });
+
+  test("matches beyond the cap are reported as truncated with an accurate totalMatches", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    const blocks = reviewer.snapshot().blocks;
+    const target = blocks[0];
+    if (!target) {
+      throw new Error("expected at least one block");
+    }
+    // 250 occurrences of "x" in one block, over the 200-match cap.
+    reviewer.applyOperations(
+      [{ id: "r1", type: "replaceBlock", blockId: target.id, text: "x ".repeat(250) }],
+      { mode: "direct" },
+    );
+
+    const result = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, { query: "x" }, bridge),
+    ) as FolioAgentFindTextResult;
+    expect(result.matches).toHaveLength(200);
+    expect(result.truncated).toBe(true);
+    expect(result.totalMatches).toBe(250);
   });
 });

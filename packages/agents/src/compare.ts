@@ -33,7 +33,11 @@
  *      through to pass 2.
  * 2. **Exact-text pairing.** An order-preserving LCS over remaining blocks,
  *    matched by exact text equality. This is what recovers same-text blocks
- *    that pass 1 missed because a fallback id shifted with the ordinal.
+ *    that pass 1 missed because a fallback id shifted with the ordinal. Its
+ *    O(m·n) table is skipped ({@link exceedsLcsBudget}) once the unpaired
+ *    counts on both sides would exceed a fixed cell budget, so a document
+ *    with few/no stable ids can't force a quadratic-sized allocation; those
+ *    blocks fall through to pass 3 instead.
  * 3. **Positional fallback.** Whatever a monotonicity filter leaves
  *    unpaired is split into the gaps between anchored pairs (pass 1 + 2,
  *    time-ordered); within each gap the shorter side is zipped positionally
@@ -138,11 +142,30 @@ const pairByStableId = (base: readonly FolioAIBlock[], revised: readonly FolioAI
   return longestIncreasingByRevisedIndex(candidates);
 };
 
+/**
+ * Cell budget for pass 2's O(m·n) exact-text LCS table (`dp` below allocates
+ * `(m + 1) * (n + 1)` numbers). A document with no `w14:paraId`s — or an
+ * adversarial one crafted to defeat pass 1 — can leave thousands of blocks
+ * unpaired on both sides; without a cap, `pairByExactText` would allocate a
+ * quadratic-sized table for it. Past this budget, {@link exceedsLcsBudget}
+ * makes pass 2 back off entirely so alignment falls through to pass 3's
+ * linear positional zip instead — pairing is less precise for these
+ * degenerate inputs, but memory use stays bounded.
+ */
+const MAX_LCS_CELLS = 4_000_000;
+
+/** True when an `unpairedBaseCount * unpairedRevisedCount` LCS table would exceed {@link MAX_LCS_CELLS}. */
+export const exceedsLcsBudget = (unpairedBaseCount: number, unpairedRevisedCount: number): boolean =>
+  unpairedBaseCount * unpairedRevisedCount > MAX_LCS_CELLS;
+
 /** Pass 2: order-preserving LCS by exact text equality over the blocks pass 1 left unpaired. */
 const pairByExactText = (base: readonly IndexedBlock[], revised: readonly IndexedBlock[]): BlockPair[] => {
   const m = base.length;
   const n = revised.length;
   if (m === 0 || n === 0) {
+    return [];
+  }
+  if (exceedsLcsBudget(m, n)) {
     return [];
   }
   const dp: number[][] = Array.from({ length: m + 1 }, () =>
