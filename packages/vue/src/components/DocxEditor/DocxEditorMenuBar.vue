@@ -24,6 +24,7 @@
       <MenuBar
         :show-file-open="showFileOpen"
         :show-help-menu="showHelpMenu"
+        :show-table-insert="showTableInsert"
         @action="(action: string) => emit('menu-action', action)"
         @insert-table="(rows: number, cols: number) => emit('insert-table', rows, cols)"
       />
@@ -45,6 +46,8 @@ withDefaults(
     documentNameEditable?: boolean;
     showFileOpen?: boolean;
     showHelpMenu?: boolean;
+    /** Gates the Insert > Table menu item (mirrors the toolbar's showTableInsert). */
+    showTableInsert?: boolean;
   }>(),
   {
     showMenuBar: true,
@@ -52,6 +55,7 @@ withDefaults(
     documentNameEditable: true,
     showFileOpen: true,
     showHelpMenu: true,
+    showTableInsert: true,
   },
 );
 
