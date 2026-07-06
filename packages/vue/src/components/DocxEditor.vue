@@ -335,6 +335,7 @@
         <DocumentOutline
           :is-open="showOutline"
           :headings="outlineHeadings"
+          :get-scroll-container="() => pagesRef"
           @close="showOutline = false"
           @navigate="() => {}"
         />

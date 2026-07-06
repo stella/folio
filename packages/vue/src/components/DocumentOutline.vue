@@ -27,15 +27,13 @@
     </div>
     <div class="doc-outline__body">
       <div v-if="headings.length === 0" class="doc-outline__empty">No headings found</div>
-      <button
-        v-for="(h, i) in headings"
-        :key="i"
-        class="doc-outline__item"
-        :style="{ paddingLeft: 8 + (h.level - minLevel) * 16 + 'px' }"
-        @mousedown.prevent="$emit('navigate', h.pmPos)"
-      >
-        {{ h.text || '(untitled)' }}
-      </button>
+      <OutlineRail
+        v-else
+        :items="items"
+        :get-scroll-container="getScrollContainer ?? (() => null)"
+        :on-jump="handleJump"
+        aria-label="Document outline"
+      />
     </div>
   </nav>
 </template>
@@ -44,6 +42,8 @@
 import { computed } from "vue";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import MaterialSymbol from "./ui/MaterialSymbol.vue";
+import type { OutlineItem } from "../ui/folio-ui";
+import { useFolioUI } from "../ui/folio-ui";
 
 const props = withDefaults(
   defineProps<{
@@ -53,9 +53,19 @@ const props = withDefaults(
     leftOffset?: number;
     /** Top anchor (px); host bumps it past the sticky ruler row when shown. */
     topPx?: number;
+    /** Getter for the scroll container, forwarded to the injected OutlineRail's
+     *  `onJump` callback; DocxEditor.vue passes `() => pagesRef` (the same
+     *  getter idiom `DecorationLayer.vue`'s `getPagesContainer` uses — Vue's
+     *  template compiler auto-unwraps a bare ref, even inside an inline arrow
+     *  function, so the getter reads the current element at click-time
+     *  instead of passing the ref object across the prop boundary). Optional
+     *  so the component still renders standalone. */
+    getScrollContainer?: () => HTMLElement | null;
   }>(),
   { leftOffset: 12, topPx: 24 },
 );
+
+const { OutlineRail } = useFolioUI();
 
 // Indent relative to the shallowest heading present (mirrors React) so a doc
 // whose top sections are Heading 2 doesn't carry a phantom first-level indent.
@@ -63,10 +73,22 @@ const minLevel = computed(() =>
   props.headings.length ? Math.min(...props.headings.map((h) => h.level)) : 0,
 );
 
-defineEmits<{
+const items = computed<OutlineItem[]>(() =>
+  props.headings.map((h) => ({
+    id: String(h.pmPos),
+    label: h.text || "(untitled)",
+    level: h.level - minLevel.value,
+  })),
+);
+
+const emit = defineEmits<{
   (e: "close"): void;
   (e: "navigate", pmPos: number): void;
 }>();
+
+function handleJump(id: string) {
+  emit("navigate", Number(id));
+}
 </script>
 
 <style scoped>
@@ -136,23 +158,5 @@ defineEmits<{
   color: var(--doc-text-subtle);
   font-size: 13px;
   line-height: 20px;
-}
-.doc-outline__item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 6px 12px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--doc-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  border-radius: 4px;
-}
-.doc-outline__item:hover {
-  background: var(--doc-shadow-subtle);
 }
 </style>
