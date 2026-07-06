@@ -22,16 +22,33 @@ export default defineConfig({
   // state) from the screenshot baselines (env-specific). CI runs only
   // `--project=interactions` so cross-machine font rendering can't make it
   // flaky; the screenshot baselines stay a local/manual concern.
+  //
+  // The `parity` project runs the cross-adapter specs in `tests/parity` against
+  // both the React (4200) and Vue (4201) playgrounds; `vue` runs only the Vue
+  // fork of each parity spec.
   projects: [
     { name: "interactions", testMatch: /(?:interactions|editing-flows)\.spec\.ts/u },
     { name: "rendering", testMatch: /rendering\.spec\.ts/u },
     { name: "performance", testMatch: /editing-performance\.spec\.ts/u },
+    { name: "parity", testDir: "./tests/parity" },
+    { name: "vue", testDir: "./tests/parity", grep: /\[vue\]/u },
   ],
-  // Start the playground dev server automatically (reused if already running).
-  webServer: {
-    command: "bun --filter @stll/playground dev",
-    url: "http://localhost:4200",
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  // Start both playground dev servers automatically (reused if already running).
+  // The React server backs the visual/interaction suites; the Vue server backs
+  // the parity project. Both boot for any run — `reuseExistingServer` keeps a
+  // manually-started dev server in place.
+  webServer: [
+    {
+      command: "bun --filter @stll/playground dev",
+      url: "http://localhost:4200",
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      command: "bun --filter @stll/playground-vue dev",
+      url: "http://localhost:4201",
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+  ],
 });
