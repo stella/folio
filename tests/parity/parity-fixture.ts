@@ -29,6 +29,8 @@ type FolioParityBridge = {
   countAnonymizationRects: () => number;
   save: () => Promise<number>;
   hasPendingChanges: () => boolean;
+  insertTextViaPagedEditorRef: (text: string) => boolean;
+  getPageNumberForSelection: () => number;
 };
 
 declare global {

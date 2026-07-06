@@ -81,6 +81,17 @@ export type FolioParityBridge = {
   save: () => Promise<number>;
   /** Whether the live editor has edits not yet serialized by save(). */
   hasPendingChanges: () => boolean;
+  /**
+   * Insert text through `getEditorRef().dispatch` (the nested `PagedEditorRef`
+   * handle), not the raw ProseMirror `view.dispatch` the other insert methods
+   * use. Exercises the Vue-synthesized ref's `dispatch` method end-to-end.
+   */
+  insertTextViaPagedEditorRef: (text: string) => boolean;
+  /**
+   * Page number (1-indexed) containing the current selection anchor, resolved
+   * through `getEditorRef().getPageNumberForPmPos`. 0 with no live view/layout.
+   */
+  getPageNumberForSelection: () => number;
 };
 
 function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridge {
@@ -221,6 +232,24 @@ function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridg
       return buffer?.byteLength ?? 0;
     },
     hasPendingChanges: () => getRef()?.hasPendingChanges() ?? false,
+    insertTextViaPagedEditorRef: (text) => {
+      const pagedRef = getRef()?.getEditorRef();
+      const view = pagedRef?.getView();
+      if (!pagedRef || !view) {
+        return false;
+      }
+      const { state } = view;
+      pagedRef.dispatch(state.tr.insertText(text, state.selection.from, state.selection.to));
+      return true;
+    },
+    getPageNumberForSelection: () => {
+      const pagedRef = getRef()?.getEditorRef();
+      const view = pagedRef?.getView();
+      if (!pagedRef || !view) {
+        return 0;
+      }
+      return pagedRef.getPageNumberForPmPos(view.state.selection.from) ?? 0;
+    },
   };
 }
 
