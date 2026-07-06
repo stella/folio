@@ -117,7 +117,7 @@ export type UseDocxEditorRefApiOptions = {
   onPrint?: (() => void) | undefined;
   /** Optional host hook fired with the serialized `.docx` bytes after `save()`. */
   onSave?: ((buffer: ArrayBuffer) => void) | undefined;
-}
+};
 
 export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   exposed: DocxEditorRef;
@@ -161,6 +161,57 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   function getZoom(): number {
     return opts.zoom.value;
+  }
+
+  // Synthesized from the same primitives useDocxEditor/useDocxEditorRefApi
+  // already hold — see the module docblock. Every method below reads through
+  // `opts`/`layout.value` at call time, so the assembled handle itself is
+  // static; cache it instead of re-allocating the object and its 20+ closures
+  // on every getEditorRef() call. Always returns a live handle (the Vue shell
+  // has no "editor not yet mounted" state distinct from a null editorView,
+  // which every method below already guards against).
+  let pagedEditorRef: PagedEditorRef | null = null;
+
+  function getEditorRef(): PagedEditorRef {
+    pagedEditorRef ??= {
+      getEditor: () => opts.editor,
+      getDocument: () => opts.editor.getDocument(),
+      getState: () => opts.editor.getState(),
+      getView: () => opts.editor.getView(),
+      // PORT-BLOCKED: no persistent hidden header/footer EditorView to look up
+      // by rId yet. useDocxEditor's layout pipeline always calls
+      // runLayoutPipelineCompute with `hfPMs: null` (see HfPmsHandle there),
+      // so header/footer content is rendered straight from the document model
+      // rather than a live PM view. Returns null until that lands.
+      getHfView: () => null,
+      // The fork's controller ensureView() takes no focus argument yet; the
+      // { focus } option is accepted for React parity but ignored, matching
+      // ensureEditorView above (PORT-BLOCKED).
+      ensureView: () => opts.editor.ensureView(),
+      focus: () => opts.editor.focus(),
+      blur: () => opts.editor.blur(),
+      isFocused: () => opts.editor.isFocused(),
+      dispatch: (tr: Transaction) => opts.editor.dispatch(tr),
+      undo: () => opts.editor.undo(),
+      redo: () => opts.editor.redo(),
+      canUndo: () => opts.editor.canUndo(),
+      canRedo: () => opts.editor.canRedo(),
+      setSelection: (anchor: number, head?: number) => opts.editor.setSelection(anchor, head),
+      getLayout: () => opts.editor.getLayout(),
+      relayout: () => opts.editor.relayout(),
+      scrollToPosition: (pmPos: number) => opts.scrollVisiblePositionIntoView(pmPos),
+      scrollToPage,
+      scrollToParaId,
+      getPageNumberForPmPos: (pmPos: number) => {
+        const currentLayout = opts.layout.value;
+        if (!currentLayout) {
+          return null;
+        }
+        const pageIndex = findPageIndexContainingPmPos(currentLayout, pmPos);
+        return pageIndex == null ? null : pageIndex + 1;
+      },
+    };
+    return pagedEditorRef;
   }
 
   function getTotalPages(): number {
@@ -212,48 +263,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       }
       return opts.isDirty.value || opts.commentsDirty.value;
     },
-    // Synthesized from the same primitives useDocxEditor/useDocxEditorRefApi
-    // already hold — see the module docblock. Always returns a live handle
-    // (the Vue shell has no "editor not yet mounted" state distinct from a
-    // null editorView, which every method below already guards against).
-    getEditorRef: (): PagedEditorRef => ({
-      getEditor: () => opts.editor,
-      getDocument: () => opts.editor.getDocument(),
-      getState: () => opts.editor.getState(),
-      getView: () => opts.editor.getView(),
-      // PORT-BLOCKED: no persistent hidden header/footer EditorView to look up
-      // by rId yet. useDocxEditor's layout pipeline always calls
-      // runLayoutPipelineCompute with `hfPMs: null` (see HfPmsHandle there),
-      // so header/footer content is rendered straight from the document model
-      // rather than a live PM view. Returns null until that lands.
-      getHfView: () => null,
-      // The fork's controller ensureView() takes no focus argument yet; the
-      // { focus } option is accepted for React parity but ignored, matching
-      // ensureEditorView above (PORT-BLOCKED).
-      ensureView: () => opts.editor.ensureView(),
-      focus: () => opts.editor.focus(),
-      blur: () => opts.editor.blur(),
-      isFocused: () => opts.editor.isFocused(),
-      dispatch: (tr: Transaction) => opts.editor.dispatch(tr),
-      undo: () => opts.editor.undo(),
-      redo: () => opts.editor.redo(),
-      canUndo: () => opts.editor.canUndo(),
-      canRedo: () => opts.editor.canRedo(),
-      setSelection: (anchor: number, head?: number) => opts.editor.setSelection(anchor, head),
-      getLayout: () => opts.editor.getLayout(),
-      relayout: () => opts.editor.relayout(),
-      scrollToPosition: (pmPos: number) => opts.scrollVisiblePositionIntoView(pmPos),
-      scrollToPage,
-      scrollToParaId,
-      getPageNumberForPmPos: (pmPos: number) => {
-        const currentLayout = opts.layout.value;
-        if (!currentLayout) {
-          return null;
-        }
-        const pageIndex = findPageIndexContainingPmPos(currentLayout, pmPos);
-        return pageIndex == null ? null : pageIndex + 1;
-      },
-    }),
+    getEditorRef,
     getEditor: () => opts.editor,
     // Threads `options.selective` into useDocxEditor.save (selective-save gate).
     save,
