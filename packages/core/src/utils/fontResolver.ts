@@ -83,7 +83,7 @@ type FontLineHeight =
  *
  * For `"hhea"` sources: `(hheaAscent + |hheaDescent| + hheaLineGap) / unitsPerEm`.
  * This matches Word's rendered single-line pitch (11pt, single spacing) for
- * every font measured against real Word output so far (15 fonts, no
+ * every font measured against real Word output so far (16 fonts, no
  * exceptions) — Word does NOT drop the font's line gap. Earlier revisions of
  * this table hand-transcribed ratios from the OS/2 table and omitted the line
  * gap for most fonts, which undershot Word's rendered line height for several
