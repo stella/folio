@@ -6,6 +6,12 @@ export type {
 export { createEditorRefBridge } from "./bridges/editor-ref";
 export type { CreateReviewerBridgeOptions } from "./bridges/reviewer";
 export { createReviewerBridge } from "./bridges/reviewer";
+export type {
+  FolioAgentBlockDiff,
+  FolioAgentVersionDiff,
+  FolioAgentVersionDiffSegment,
+} from "./compare";
+export { compareDocxVersions, formatVersionDiffForLLM } from "./compare";
 export { executeFolioToolCall } from "./execute";
 export type {
   AnthropicToolDefinition,

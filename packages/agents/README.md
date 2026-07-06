@@ -83,6 +83,48 @@ entries carry no `blockId` / `quote` (no ref-level anchor lookup). `read_page`
 and `read_selection` are unsupported on either bridge shipped here — see
 `src/bridges/editor-ref.ts` for details.
 
+## Summarizing changes
+
+Two different questions come up under "what changed":
+
+**1. Pending tracked changes in one document** — what a human reviewer would
+see as redlines right now. Use the `read_changes` tool (or
+`reviewer.getChanges()` directly) and hand the insertions/deletions to the
+model:
+
+```ts
+const changes = reviewer.getChanges();
+const prompt = `Summarize these pending edits for a reviewer:\n${changes
+  .map((c) => `${c.type === "insertion" ? "+" : "-"} [${c.blockId}] ${c.text}`)
+  .join("\n")}`;
+```
+
+**2. Between two saved versions** — what changed across two `.docx` buffers,
+independent of whether either one has any tracked changes at all. Use
+`compareDocxVersions` + `formatVersionDiffForLLM`:
+
+```ts
+import { compareDocxVersions, formatVersionDiffForLLM } from "@stll/folio-agents";
+
+const diff = await compareDocxVersions(previousVersionBuffer, currentVersionBuffer);
+const prompt = `Summarize what changed between these two document versions:\n${formatVersionDiffForLLM(diff)}`;
+// -> feed `prompt` to your model as a normal user/system message.
+```
+
+Both recipes compare the AS-ACCEPTED view of a document: any tracked changes
+already pending in a buffer count as already applied before the comparison
+runs (`compareDocxVersions` parses each buffer through the same
+`FolioDocxReviewer` snapshot `read_document` uses). Diffing two versions that
+each have their own uncommitted redlines still produces a clean, readable diff
+instead of raw markup noise.
+
+`compareDocxVersions` ships as a plain async function, not a tool definition:
+a model can describe a tool call, but it can't attach two document buffers to
+one — buffers aren't JSON-serializable tool arguments a model could produce.
+The natural shape is a host-side tool keyed by version identifiers instead
+(e.g. a server tool the model calls with two stored version ids, which your
+backend resolves to buffers, diffs, and returns the formatted text for).
+
 ## TanStack AI
 
 TanStack AI's `toolDefinition` accepts a raw JSON Schema object as
