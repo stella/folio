@@ -48,6 +48,8 @@ import type { LayoutScheduler } from "@stll/folio-core/controller/layoutSchedule
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
+import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
+import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
 import type {
   ConvertHeaderFooterOptions,
   HeaderFooterMetrics,
@@ -76,6 +78,11 @@ import {
 import { getTransactionDirtyRange } from "@stll/folio-core/paged-layout/transactionDirtyRange";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
+import {
+  getChangedParagraphIds,
+  hasStructuralChanges,
+  hasUntrackedChanges,
+} from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
 import type { CommandMap } from "@stll/folio-core/prosemirror/extensions/types";
 import {
@@ -452,6 +459,18 @@ export type UseDocxEditorOptions = {
   onEditorViewReady?: (view: EditorView | null) => void;
   /** Callback when a read-only user action would mutate the document. */
   onReadOnlyEditAttempt?: () => void;
+  /**
+   * Operational flags for the save path. Selective save and its tripwire mode
+   * are off by default; hosts opt in once their rollout pipeline is ready.
+   * Reactive — read fresh on each `save()`. Mirrors React's `featureFlags`.
+   */
+  featureFlags?: MaybeRefOrGetter<FolioSelectiveSaveFlags | undefined>;
+  /**
+   * Fired with the structured selective-vs-full comparison after a save when
+   * {@link FolioSelectiveSaveFlags.selectiveSaveTripwire} is on. Observability
+   * only — never blocks or poisons the save. Mirrors React's callback.
+   */
+  onSelectiveSaveTripwire?: (result: TripwireResult) => void;
 }
 
 export type UseDocxEditorReturn = {
@@ -476,7 +495,7 @@ export type UseDocxEditorReturn = {
   /** Load an already-parsed `Document` directly. */
   loadDocument: (doc: Document) => void;
   /** Serialize the current document to a DOCX blob. */
-  save: () => Promise<Blob | null>;
+  save: (options?: { selective?: boolean }) => Promise<Blob | null>;
   /** Snapshot the current document model. */
   getDocument: () => Document | null;
   /** Publish a fresh Document object (e.g. after HF materialisation). */
@@ -510,6 +529,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     onSelectionUpdate,
     onEditorViewReady,
     onReadOnlyEditAttempt,
+    featureFlags,
+    onSelectiveSaveTripwire,
   } = options;
 
   // ---- Reactive state -----------------------------------------------------
@@ -935,17 +956,68 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   // ---- Public API ---------------------------------------------------------
 
-  async function save(): Promise<Blob | null> {
+  async function save(saveOptions?: { selective?: boolean }): Promise<Blob | null> {
     const view = editorView.value;
     const base = docModel.value;
     if (!view || !base) {
       return null;
     }
-    const { repackDocx, createDocx } = await import("@stll/folio-core/docx/rezip");
+
+    const { resolveSelectiveSaveFlags } = await import(
+      "@stll/folio-core/docx/selectiveSaveFlags"
+    );
+    const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
+
     const updatedDoc = fromProseDoc(view.state.doc, base);
-    const buffer = updatedDoc.originalBuffer
-      ? await repackDocx(updatedDoc)
-      : await createDocx(updatedDoc);
+    const baselineBuffer = updatedDoc.originalBuffer ?? null;
+
+    // The tripwire observes the selective path independently of the user-visible
+    // save mode. Only `useSelectiveForSave` is allowed to pick the returned bytes.
+    const useSelectiveForSave = flags.selectiveSave && saveOptions?.selective !== false;
+    const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
+
+    const { repackDocx, createDocx } = await import("@stll/folio-core/docx/rezip");
+
+    let selectiveBuffer: ArrayBuffer | null = null;
+    if (shouldAttemptSelective && baselineBuffer) {
+      const { attemptSelectiveSave } = await import("@stll/folio-core/docx/selectiveSave");
+      const state = view.state;
+      selectiveBuffer = await attemptSelectiveSave(updatedDoc, baselineBuffer, {
+        changedParaIds: getChangedParagraphIds(state),
+        structuralChange: hasStructuralChanges(state),
+        hasUntrackedChanges: hasUntrackedChanges(state),
+        maxBytes: flags.selectiveSaveMaxBytes,
+      });
+    }
+
+    let buffer: ArrayBuffer | null = useSelectiveForSave ? selectiveBuffer : null;
+    let fullBuffer: ArrayBuffer | null = null;
+
+    if (!buffer) {
+      // No original buffer means a from-scratch document — build one via createDocx.
+      fullBuffer = baselineBuffer ? await repackDocx(updatedDoc) : await createDocx(updatedDoc);
+      buffer = fullBuffer;
+    } else if (flags.selectiveSaveTripwire) {
+      try {
+        fullBuffer = await repackDocx(updatedDoc);
+      } catch {
+        // Tripwire-only full repack failures must never poison a successful
+        // selective save.
+      }
+    }
+
+    if (flags.selectiveSaveTripwire && fullBuffer && onSelectiveSaveTripwire) {
+      // The comparison itself never blocks the save path.
+      try {
+        const { compareSelectiveVsFull } = await import(
+          "@stll/folio-core/docx/selectiveSaveTripwire"
+        );
+        onSelectiveSaveTripwire(await compareSelectiveVsFull(selectiveBuffer, fullBuffer));
+      } catch {
+        // Comparison failures must never poison the save path.
+      }
+    }
+
     return new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });

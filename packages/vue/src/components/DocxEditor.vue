@@ -597,6 +597,10 @@ const {
   },
   onEditorViewReady: (view) => props.onEditorViewReady?.(view),
   onReadOnlyEditAttempt: () => props.onReadonlyEditAttempt?.(),
+  // Selective-save feature flags + tripwire observability, mirroring React's
+  // DocxEditor save path. Read fresh on each save() so prop updates are honored.
+  featureFlags: () => props.featureFlags,
+  onSelectiveSaveTripwire: (result) => props.onSelectiveSaveTripwire?.(result),
 });
 
 // Show the loading interstitial while a document is loading, EXCEPT when the host

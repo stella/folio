@@ -83,7 +83,7 @@ export type UseDocxEditorRefApiOptions = {
   getDocument: () => Document | null;
   setZoom: (zoom: number) => void;
   /** useDocxEditor.save returns a Blob; the ref surface exposes an ArrayBuffer. */
-  save: () => Promise<Blob | null>;
+  save: (options?: { selective?: boolean }) => Promise<Blob | null>;
   loadDocument: (doc: Document) => void;
   loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;
   /** Optional host hook for print. */
@@ -100,8 +100,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     window.print();
   }
 
-  async function save(): Promise<ArrayBuffer | null> {
-    const blob = await opts.save();
+  async function save(options?: { selective?: boolean }): Promise<ArrayBuffer | null> {
+    const blob = await opts.save(options);
     if (!blob) {
       return null;
     }
@@ -173,7 +173,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     // PORT-BLOCKED: getEditorRef needs the Vue PagedEditor component, not ported.
     getEditorRef: () => null,
     getEditor: () => opts.editor,
-    // options.selective is ignored until selective save is wired (PORT-BLOCKED).
+    // Threads `options.selective` into useDocxEditor.save (selective-save gate).
     save,
     setZoom: opts.setZoom,
     getZoom,
