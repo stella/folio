@@ -66,6 +66,10 @@ export type FolioParityBridge = {
   insertTable: (rows: number, cols: number) => boolean;
   /** Count `table` nodes in the live document (0 with no live view). */
   countTables: () => number;
+  /** Comment-mark the first word via the shared core schema. Returns success. */
+  commentFirstWord: () => boolean;
+  /** Count painted `[data-comment-id]` anchors in the pages (shared painter attr). */
+  countCommentAnchors: () => number;
   /** Serialize to DOCX and return the byte length (0 on failure). */
   save: () => Promise<number>;
 };
@@ -138,6 +142,40 @@ function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridg
       });
       return count;
     },
+    commentFirstWord: () => {
+      const view = liveView();
+      if (!view) {
+        return false;
+      }
+      const commentType = view.state.schema.marks["comment"];
+      if (!commentType) {
+        return false;
+      }
+      let range: { from: number; to: number } | null = null;
+      view.state.doc.descendants((node, pos) => {
+        if (range) {
+          return false;
+        }
+        if (!node.isText || !node.text) {
+          return true;
+        }
+        const leading = node.text.length - node.text.trimStart().length;
+        const word = node.text.slice(leading).split(/\s+/)[0];
+        if (!word) {
+          return true;
+        }
+        range = { from: pos + leading, to: pos + leading + word.length };
+        return false;
+      });
+      if (!range) {
+        return false;
+      }
+      const { from, to } = range;
+      view.dispatch(view.state.tr.addMark(from, to, commentType.create({ commentId: 424242 })));
+      return view.state.doc.rangeHasMark(from, to, commentType);
+    },
+    countCommentAnchors: () =>
+      document.querySelectorAll(".paged-editor__pages [data-comment-id]").length,
     save: async () => {
       const buffer = await (getRef()?.save() ?? Promise.resolve(null));
       return buffer?.byteLength ?? 0;

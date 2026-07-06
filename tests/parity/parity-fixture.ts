@@ -22,6 +22,8 @@ type FolioParityBridge = {
   boldFirstWord: () => boolean;
   insertTable: (rows: number, cols: number) => boolean;
   countTables: () => number;
+  commentFirstWord: () => boolean;
+  countCommentAnchors: () => number;
   save: () => Promise<number>;
 };
 
