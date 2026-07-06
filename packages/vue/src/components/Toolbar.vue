@@ -465,7 +465,22 @@
          inside this pill instead of a separate row. -->
     <slot name="table-context" />
 
-    <!-- 17. Editing-mode dropdown — flows inline after the comments
+    <!-- 17. Review controls — track-changes toggle + markup display-mode
+         selector, gated on `showReviewControls` (mirrors React's
+         `toolbarPriorityExtra`). Flows inline before the editing-mode
+         dropdown with a divider. -->
+    <template v-if="showReviewControls">
+      <span class="divider" />
+      <ReviewControls
+        :track-changes-on="trackChangesOn"
+        :display-mode="displayMode"
+        :read-only="readOnly"
+        @toggle-track-changes="$emit('toggle-track-changes')"
+        @update:display-mode="(m: DisplayMode) => $emit('update:display-mode', m)"
+      />
+    </template>
+
+    <!-- 18. Editing-mode dropdown — flows inline after the comments
          button with a divider before it. -->
     <span class="divider" />
     <EditingModeDropdown
@@ -492,7 +507,9 @@ import MaterialSymbol from './ui/MaterialSymbol.vue';
 import ImageWrapDropdown from './ui/ImageWrapDropdown.vue';
 import ImageTransformDropdown from './ui/ImageTransformDropdown.vue';
 import EditingModeDropdown from './EditingModeDropdown.vue';
+import ReviewControls from './ReviewControls.vue';
 import type { EditorMode } from './DocxEditor/types';
+import type { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
 import {
   normalizeFontFamilies,
   excludeFontsByName,
@@ -551,6 +568,16 @@ const props = withDefaults(
   zoomPresets?: number[];
   showZoomControl?: boolean;
   editorMode?: EditorMode;
+  /** Whether to render the review controls (track-changes toggle + markup
+      display-mode selector). Mirrors React's `showReviewControls` gate. */
+  showReviewControls?: boolean;
+  /** Whether track-changes (suggesting mode) is active — drives the toggle's
+      pressed state and label. */
+  trackChangesOn?: boolean;
+  /** Current markup display mode — drives the display-mode selector's label. */
+  displayMode?: DisplayMode;
+  /** Whether the editor is read-only — disables the track-changes toggle. */
+  readOnly?: boolean;
   /** Whether the comments sidebar is currently open — drives the
       active state on the comments toolbar button. */
   commentsSidebarOpen?: boolean;
@@ -575,7 +602,17 @@ const props = withDefaults(
   // Defaults for the container-level props let this render as an inert empty
   // rail when unconfigured (e.g. the EditorToolbar default `#toolbar` slot
   // forwarding `$attrs`); Toolbar already `v-if="view"` gates its content.
-  { view: null, stateTick: 0, getCommands: () => ({}) }
+  // `showReviewControls` defaults off here — DocxEditor.vue owns the
+  // documented `default: true` and always passes the resolved value.
+  {
+    view: null,
+    stateTick: 0,
+    getCommands: () => ({}),
+    showReviewControls: false,
+    trackChangesOn: false,
+    displayMode: 'all-markup',
+    readOnly: false,
+  }
 );
 
 const { t } = useTranslation();
@@ -596,6 +633,8 @@ const emit = defineEmits<{
   (e: 'toggle-sidebar'): void;
   (e: 'apply-style', styleId: string): void;
   (e: 'mode-change', mode: EditorMode): void;
+  (e: 'toggle-track-changes'): void;
+  (e: 'update:display-mode', mode: DisplayMode): void;
   (e: 'image-wrap-type', wrapType: string): void;
   (e: 'image-properties'): void;
   (e: 'image-transform', action: ImageTransformAction): void;

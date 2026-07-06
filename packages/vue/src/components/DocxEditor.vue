@@ -42,6 +42,7 @@
     :class="[
       'docx-editor-vue ep-root paged-editor',
       className,
+      displayModeClass,
       { 'paged-editor--readonly': readOnly },
     ]"
     :style="style"
@@ -68,6 +69,10 @@
         :zoom-presets="ZOOM_PRESETS"
         :show-zoom-control="showZoomControl"
         :editor-mode="editorMode"
+        :show-review-controls="showReviewControls"
+        :track-changes-on="trackChangesOn"
+        :display-mode="displayMode"
+        :read-only="readOnly"
         :comments-sidebar-open="showSidebar"
         :image-context="imageToolbarContext"
         :theme="theme ?? null"
@@ -84,6 +89,8 @@
         @zoom-set="setZoom"
         @toggle-sidebar="showSidebar = !showSidebar"
         @mode-change="setEditorMode"
+        @toggle-track-changes="toggleTrackChanges"
+        @update:display-mode="setDisplayMode"
         @image-properties="showImageProperties = true"
         @image-wrap-type="handleToolbarImageWrap"
         @image-transform="handleImageTransform"
@@ -388,6 +395,11 @@ import DocxEditorDialogs from "./DocxEditor/DocxEditorDialogs.vue";
 import DocxEditorMenuBar from "./DocxEditor/DocxEditorMenuBar.vue";
 import DocxEditorOverlays from "./DocxEditor/DocxEditorOverlays.vue";
 import type { DocxEditorProps, EditorMode } from "./DocxEditor/types";
+import {
+  isTrackChangesMode,
+  toggledTrackChangesMode,
+} from "@stll/folio-core/managers/EditorModeManager";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import ImageSelectionOverlay from "./ImageSelectionOverlay.vue";
 import OutlineToggleButton from "./OutlineToggleButton.vue";
 import PageIndicator from "./PageIndicator.vue";
@@ -426,6 +438,7 @@ const props = withDefaults(defineProps<DocxEditorProps>(), {
   document: null,
   showToolbar: true,
   showZoomControl: true,
+  showReviewControls: true,
   readOnly: false,
   author: "User",
   mode: "editing",
@@ -459,6 +472,33 @@ provideDocxPortalClass(isDark);
 
 const editorMode = ref<EditorMode>(props.mode);
 const readOnly = computed(() => props.readOnly || editorMode.value === "viewing");
+
+// Review controls (mirrors React's `useEditorMode` display state + toggle):
+//  - `showReviewControls` gates the toolbar's track-changes toggle + markup
+//    display-mode selector (documented default: true).
+//  - `trackChangesOn` derives from the editing mode (suggesting === on).
+//  - `displayMode` is independent local state controlling how tracked changes
+//    render; the host applies the `folio-root--<mode>` class, exactly as React.
+// Documented default (true) is supplied via `withDefaults`; Vue's boolean-prop
+// casting resolves an absent boolean to `false`, so the default must live there
+// rather than a `?? true` fallback (which the cast would pre-empt).
+const showReviewControls = computed(() => props.showReviewControls);
+const trackChangesOn = computed(() => isTrackChangesMode(editorMode.value));
+const displayMode = ref<DisplayMode>("all-markup");
+
+function toggleTrackChanges(): void {
+  setEditorMode(toggledTrackChangesMode(editorMode.value));
+}
+
+function setDisplayMode(mode: DisplayMode): void {
+  displayMode.value = mode;
+}
+
+// Root modifier class driving the tracked-change display CSS (mirrors React's
+// `folio-root--<mode>`). `all-markup` is the default render, so it adds no class.
+const displayModeClass = computed(() =>
+  displayMode.value === "all-markup" ? "" : `folio-root--${displayMode.value}`
+);
 
 const { t } = useTranslation();
 
@@ -1282,5 +1322,50 @@ defineExpose(exposed);
   left: 0;
   top: 0;
   z-index: 20;
+}
+</style>
+
+<!--
+  Track-changes display modes. Non-scoped: the `.docx-insertion` /
+  `.docx-deletion` spans are painted by ProseMirror's `toDOM` (with inline
+  author-color styles), so they never carry this SFC's scope attribute; these
+  overrides must be global to win against the inline styles via `!important`.
+  Ported verbatim from packages/react/src/styles/editor.css so both adapters
+  render each display mode identically.
+
+  All Markup: default — per-author colored underline / strikethrough (inline)
+  No Markup: hide change styling, show final result
+  Original: hide insertions, show deletions as normal text
+  Simple Markup: hide inline marks, show clean text
+-->
+<style>
+/* --- No Markup: show accepted result without change marks --- */
+.folio-root--no-markup .docx-insertion {
+  color: inherit !important;
+  text-decoration: none !important;
+  background: none !important;
+}
+.folio-root--no-markup .docx-deletion {
+  display: none !important;
+}
+
+/* --- Original: show pre-change state --- */
+.folio-root--original .docx-insertion {
+  display: none !important;
+}
+.folio-root--original .docx-deletion {
+  color: inherit !important;
+  text-decoration: none !important;
+  background: none !important;
+}
+
+/* --- Simple Markup: clean text (hide inline marks) --- */
+.folio-root--simple-markup .docx-insertion {
+  color: inherit !important;
+  text-decoration: none !important;
+  background: none !important;
+}
+.folio-root--simple-markup .docx-deletion {
+  display: none !important;
 }
 </style>
