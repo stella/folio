@@ -42,11 +42,16 @@
         :key="item.id || i"
         :class="[
           'ctx-menu__item',
-          { 'ctx-menu__item--disabled': item.disabled, 'ctx-menu__item--divider': item.divider },
+          {
+            'ctx-menu__item--disabled': item.disabled,
+            'ctx-menu__item--divider': item.divider,
+            'ctx-menu__item--emphasis': item.emphasis,
+          },
         ]"
         :disabled="item.disabled"
         @mousedown.prevent="onAction(item.action)"
       >
+        <span v-if="item.icon" class="ctx-menu__icon"><component :is="renderNode(item.icon)" /></span>
         <span class="ctx-menu__label">{{ item.label }}</span>
         <span v-if="item.shortcut" class="ctx-menu__shortcut">{{ item.shortcut }}</span>
       </button>
@@ -55,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, type CSSProperties } from "vue";
+import { ref, computed, watch, nextTick, type CSSProperties, type VNodeChild } from "vue";
 import { useTranslation } from "../i18n";
 import { useDocxPortalClass } from "../composables/usePortalClass";
 
@@ -66,6 +71,17 @@ export type ContextMenuItem = {
   shortcut?: string;
   disabled?: boolean;
   divider?: boolean;
+  /** Host-injected primary action — rendered slightly bolder. */
+  emphasis?: boolean;
+  /** Optional leading icon (host `customContextMenuItems` entries). */
+  icon?: VNodeChild;
+}
+
+/** Host-injected menu entry, already filtered by `requiresSelection`. */
+export type CustomTextMenuItem = {
+  id: string;
+  label: string;
+  icon?: VNodeChild;
 }
 
 const props = defineProps<{
@@ -80,7 +96,15 @@ const props = defineProps<{
   // cell (prosemirror-tables' splitCell no-ops if it can't split).
   canMergeCells?: boolean;
   canSplitCell?: boolean;
+  /** Host-provided entries that lead the menu (already selection-filtered). */
+  customItems?: readonly CustomTextMenuItem[];
 }>();
+
+// Wrap a VNodeChild as a functional component so `<component :is>` can render
+// an arbitrary host-supplied icon node.
+function renderNode(node: VNodeChild): () => VNodeChild {
+  return () => node;
+}
 
 const emit = defineEmits<{
   (e: "close"): void;
@@ -98,7 +122,25 @@ const MENU_ITEM_HEIGHT = 32;
 const MARGIN = 10;
 
 const visibleItems = computed<ContextMenuItem[]>(() => {
-  const items: ContextMenuItem[] = [
+  const items: ContextMenuItem[] = [];
+
+  // Host-provided entries lead the menu (emphasized), with a divider after the
+  // last one. Mirrors React's DocxEditor `custom:` menu build.
+  const custom = props.customItems ?? [];
+  for (const [index, item] of custom.entries()) {
+    items.push({
+      id: `custom-${item.id}`,
+      label: item.label,
+      action: `custom:${item.id}`,
+      emphasis: true,
+      ...(item.icon === undefined ? {} : { icon: item.icon }),
+    });
+    if (index === custom.length - 1) {
+      items.push({ id: "div-custom", label: "", action: "", divider: true });
+    }
+  }
+
+  items.push(
     {
       id: "cut",
       label: t("cut"),
@@ -141,7 +183,7 @@ const visibleItems = computed<ContextMenuItem[]>(() => {
       action: "selectAll",
       shortcut: t("contextMenu.selectAllShortcut"),
     },
-  ];
+  );
 
   if (props.onImage && props.isEditable) {
     items.push(
@@ -282,6 +324,14 @@ watch(
   background: var(--doc-border);
   cursor: default;
   pointer-events: none;
+}
+.ctx-menu__item--emphasis {
+  font-weight: 600;
+}
+.ctx-menu__icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
 }
 .ctx-menu__label {
   flex: 1;

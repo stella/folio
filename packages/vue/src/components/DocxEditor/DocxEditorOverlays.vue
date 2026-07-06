@@ -23,6 +23,7 @@
     :on-image="contextMenu.onImage"
     :can-merge-cells="contextMenu.canMergeCells"
     :can-split-cell="contextMenu.canSplitCell"
+    :custom-items="customTextMenuItems"
     @action="(action: string) => emit('context-menu-action', action)"
     @close="emit('close-context-menu')"
   />
@@ -47,8 +48,9 @@ import type {
   ImageContextMenuTextAction,
 } from "../imageContextMenuTypes";
 import TextContextMenu from "../TextContextMenu.vue";
+import type { CustomTextMenuItem } from "../TextContextMenu.vue";
 
-/** Text/table context-menu state (locally declared until useContextMenus ports). */
+/** Text/table context-menu state (mirrors useContextMenus `TextContextMenuState`). */
 type TextContextMenuState = {
   isOpen: boolean;
   position: { x: number; y: number };
@@ -65,6 +67,8 @@ defineProps<{
   imageContextMenu: ImageContextMenuState | null;
   imageContextMenuTextActions: ImageContextMenuTextAction[];
   canOpenImageProperties: boolean;
+  /** Host-injected menu entries leading the text menu. */
+  customTextMenuItems: readonly CustomTextMenuItem[];
 }>();
 
 const emit = defineEmits<{

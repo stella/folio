@@ -10,7 +10,7 @@
  * the still-in-parent pointer wiring.
  */
 
-import { computed, ref, type ComputedRef, type Ref, type ShallowRef } from "vue";
+import { computed, ref, type ComputedRef, type Ref, type ShallowRef, type VNodeChild } from "vue";
 import { TextSelection, NodeSelection, type Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import {
@@ -68,6 +68,18 @@ export type TextContextMenuState = {
   canSplitCell: boolean;
 }
 
+/**
+ * One host-provided context-menu entry (the `customContextMenuItems` prop).
+ * Structural mirror of React's `DocxEditorProps.customContextMenuItems` items;
+ * `icon` is a Vue `VNodeChild` rather than a React node.
+ */
+export type CustomContextMenuItem = {
+  id: string;
+  label: string;
+  requiresSelection?: boolean;
+  icon?: VNodeChild;
+}
+
 export type UseContextMenusOptions = {
   editorView: Ref<EditorView | null>;
   selectedImage: ShallowRef<ImageSelectionInfo | null>;
@@ -77,12 +89,22 @@ export type UseContextMenusOptions = {
   clearOverlay: () => void;
   setPmSelection: (anchor: number, head?: number) => void;
   resolvePos: (clientX: number, clientY: number) => number | null;
+  /** Host-injected menu entries, appended after the built-ins (lead the menu). */
+  customContextMenuItems?: () => readonly CustomContextMenuItem[] | undefined;
+  /**
+   * Fires with the item id (menu-namespace stripped) and the selection range
+   * captured when the menu opened. Right-click can collapse the live PM
+   * selection, so the captured range is preferred when non-empty.
+   */
+  onCustomContextAction?: (id: string, selectionRange: { from: number; to: number }) => void;
 }
 
 export type UseContextMenusReturn = {
   contextMenu: Ref<TextContextMenuState>;
   imageContextMenu: Ref<ImageContextMenuState | null>;
   imageContextMenuTextActions: ComputedRef<ImageContextMenuTextAction[]>;
+  /** Host items to lead the text menu, already filtered by `requiresSelection`. */
+  customTextMenuItems: ComputedRef<CustomContextMenuItem[]>;
   handleContextMenu: (event: MouseEvent) => void;
   handleSelectedImageContextMenu: (event: MouseEvent) => void;
   handleImageWrapSelect: (target: ImageLayoutTarget) => void;
@@ -105,6 +127,19 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
   // Image-specific right-click menu — shows wrap-mode options instead of the
   // generic text menu when the user right-clicks a rendered image.
   const imageContextMenu = ref<ImageContextMenuState | null>(null);
+
+  // Selection range captured when the text menu opens. Right-click can collapse
+  // the live PM selection, so `custom:` actions resolve against this snapshot
+  // (preferring it when non-empty) rather than the post-click selection.
+  const capturedSelectionRange = ref<{ from: number; to: number }>({ from: 0, to: 0 });
+
+  // Host menu entries to lead the text menu, filtered by `requiresSelection`
+  // against the current selection (mirrors React's DocxEditor menu build).
+  const customTextMenuItems = computed<CustomContextMenuItem[]>(() =>
+    (opts.customContextMenuItems?.() ?? []).filter(
+      (item) => !item.requiresSelection || contextMenu.value.hasSelection,
+    ),
+  );
 
   // Cut / Copy / Paste / Delete items appended below the layout choices in
   // the image context menu so users don't have to flip menus to do
@@ -206,7 +241,11 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
     }
 
     const tableCtx = getTableContext(view.state);
-    const { empty } = view.state.selection;
+    const { empty, from, to } = view.state.selection;
+
+    // Snapshot the (post-caret-move) selection so a host `custom:` action can
+    // recover the range even if the click collapsed it.
+    capturedSelectionRange.value = { from, to };
 
     // Right-clicking outside an image clears any open image context menu
     // — otherwise the image menu can stay visible while TextContextMenu
@@ -259,6 +298,20 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
     const view = opts.editorView.value;
     if (!view) return;
     const cmds = opts.getCommands();
+
+    // Host-injected entries carry a `custom:` namespace. Resolve the range from
+    // the captured snapshot (preferred when non-empty), otherwise the live
+    // selection — mirrors React's DocxEditor `custom:` branch.
+    if (action.startsWith("custom:")) {
+      const captured = capturedSelectionRange.value;
+      const range =
+        captured.from !== captured.to
+          ? captured
+          : { from: view.state.selection.from, to: view.state.selection.to };
+      opts.onCustomContextAction?.(action.slice("custom:".length), range);
+      view.focus();
+      return;
+    }
 
     switch (action) {
       case "cut":
@@ -354,6 +407,7 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
     contextMenu,
     imageContextMenu,
     imageContextMenuTextActions,
+    customTextMenuItems,
     handleContextMenu,
     handleSelectedImageContextMenu,
     handleImageWrapSelect,
