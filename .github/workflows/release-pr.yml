@@ -20,16 +20,31 @@ concurrency:
   group: release-pr-${{ github.ref }}
   cancel-in-progress: true
 
+# The default GITHUB_TOKEN cannot open PRs ("GitHub Actions is not permitted to
+# create or approve pull requests"), so the branch push and PR are done with an
+# app token (stella-provenance-updater, via the org CHANGELOG_APP_* secrets — the
+# same app the org's npm-version-finalize workflow uses). The workflow token here
+# stays read-only; all writes go through the app token.
 permissions:
-  contents: write # push the changeset-release/main branch and its commits
-  pull-requests: write # open / update the Version Packages PR
+  contents: read
 
 jobs:
   version:
     name: Maintain Version Packages PR
     runs-on: ubuntu-latest
     steps:
+      - name: Mint stella-provenance-updater token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.CHANGELOG_APP_ID }}
+          private-key: ${{ secrets.CHANGELOG_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Persist the app token so the changesets branch push authenticates as
+          # the app (not the unusable default GITHUB_TOKEN).
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -48,4 +63,4 @@ jobs:
           commit: "chore: version packages"
           # No `publish:` input: this action only maintains the version PR.
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
