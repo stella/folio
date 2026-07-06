@@ -1,0 +1,50 @@
+{
+  "name": "@stll/folio-agents",
+  "version": "0.0.0",
+  "description": "Framework-neutral LLM tool layer over folio's ai-edits engine: function-calling tools so an agent can read and mutate .docx documents through @stll/folio-core.",
+  "keywords": [
+    "agent",
+    "ai",
+    "docx",
+    "function-calling",
+    "llm",
+    "ooxml",
+    "tanstack-intent",
+    "tools",
+    "word"
+  ],
+  "homepage": "https://github.com/stella/folio",
+  "bugs": {
+    "url": "https://github.com/stella/folio/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "STLL",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stella/folio.git",
+    "directory": "packages/agents"
+  },
+  "files": [
+    "src",
+    "skills"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsdown",
+    "prepack": "bun run build",
+    "pack:dry-run": "bun pm pack --dry-run",
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "@stll/folio-core": "workspace:^"
+  }
+}

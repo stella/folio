@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Clean-room validation that the *published* shape of a folio package works.
 //
-// Usage: `bun scripts/validate-dist.ts <core|react|vue>`
+// Usage: `bun scripts/validate-dist.ts <core|react|agents|vue>`
 //
 // For the named package it builds, transforms its package.json to the dist
 // shape exactly like the publish workflow (`prepare-publish.ts`), packs a
@@ -10,13 +10,13 @@
 // project OUTSIDE the monorepo and runs the package's checks against it.
 //
 // vue already ships dist-shaped exports in-repo, so the prepare-publish
-// transform is skipped for it (it only understands core/react's `./src/*.ts`
-// string exports). Its type check runs under `bundler` resolution only — the
-// resolution Vite/Nuxt consumers use — because vite-plugin-dts emits
-// extensionless relative re-exports that a node16/nodenext consumer rejects (a
-// pre-existing vue build gap). nuxt is a Nuxt module (a different dist shape:
-// `module.mjs` + `types.d.mts`) and is validated by its own `nuxt-module-build`
-// step, not here.
+// transform is skipped for it (it only understands core/react/agents's
+// `./src/*.ts` string exports). Its type check runs under `bundler` resolution
+// only — the resolution Vite/Nuxt consumers use — because vite-plugin-dts
+// emits extensionless relative re-exports that a node16/nodenext consumer
+// rejects (a pre-existing vue build gap). nuxt is a Nuxt module (a different
+// dist shape: `module.mjs` + `types.d.mts`) and is validated by its own
+// `nuxt-module-build` step, not here.
 //
 //   core  — 4 checks:
 //     1. Runtime  — ESM `import` of `.`, `/markdown`, `/server`, and a `./*`
@@ -40,6 +40,18 @@
 //                   `getFolioMessages` and never imports a `./messages/*.json`
 //                   source file (dist inlines the JSON, ships no JSON).
 //
+//   agents — 3 checks (no CSS, no messages subpath — a headless tool-schema
+//   library over @stll/folio-core):
+//     1. Runtime  — ESM `import` of `@stll/folio-agents` resolves, including
+//                   its transitive `@stll/folio-core` import (installed from a
+//                   sibling tarball, npm-style), and exposes
+//                   `getFolioToolDefinitions`, `executeFolioToolCall`,
+//                   `toAnthropicTools`, `toOpenAITools`, `createReviewerBridge`,
+//                   `createEditorRefBridge`, and `FOLIO_AGENT_TOOLS`.
+//     2. Types    — node16 + bundler.
+//     3. External — `@stll/folio-core` is imported as an external, never
+//                   bundled into the JS.
+//
 // Exits non-zero on any failure. Run via `bun run validate-dist:<pkg>`.
 
 import { panic } from "better-result";
@@ -58,8 +70,8 @@ const prepareScript = path.join(repoRoot, "scripts", "prepare-publish.ts");
 const tscBin = path.join(repoRoot, "node_modules", ".bin", "tsc");
 
 const target = process.argv[2];
-if (target !== "core" && target !== "react" && target !== "vue") {
-  panic("usage: bun scripts/validate-dist.ts <core|react|vue>");
+if (target !== "core" && target !== "react" && target !== "agents" && target !== "vue") {
+  panic("usage: bun scripts/validate-dist.ts <core|react|agents|vue>");
 }
 
 type CheckResult = { name: string; ok: boolean; detail: string };
@@ -104,6 +116,7 @@ const buildAndPack = async (pkgDir: string, destDir: string, prepare: boolean): 
 const dirs: Record<string, string> = {
   core: path.join(repoRoot, "packages", "core"),
   react: path.join(repoRoot, "packages", "react"),
+  agents: path.join(repoRoot, "packages", "agents"),
   vue: path.join(repoRoot, "packages", "vue"),
 };
 const coreDir = dirs.core;
@@ -112,19 +125,19 @@ const packDir = await mkdtemp(path.join(tmpdir(), "folio-pack-"));
 const corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
 const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-"));
 
-// core/react carry source-shaped exports that prepare-publish rewrites; vue
-// already ships dist-shaped exports (skip the transform).
+// core/react/agents carry source-shaped exports that prepare-publish
+// rewrites; vue already ships dist-shaped exports (skip the transform).
 const needsPrepare = target !== "vue";
 const pkgDir = dirs[target];
 const pkgName = `@stll/folio-${target}`;
 const tarball = await buildAndPack(pkgDir, packDir, needsPrepare);
 
-// react and vue both depend on @stll/folio-core; pack it too so the clean room
-// resolves it npm-style (no workspace leak). An `overrides` entry pins the
-// transitive dependency to this exact tarball, since the package is not yet on
-// a registry.
+// react, agents, and vue all depend on @stll/folio-core; pack it too so the
+// clean room resolves it npm-style (no workspace leak). An `overrides` entry
+// pins the transitive dependency to this exact tarball, since the package is
+// not yet on a registry.
 let coreTarball: string | null = null;
-if (target === "react" || target === "vue") {
+if (target === "react" || target === "agents" || target === "vue") {
   coreTarball = await buildAndPack(coreDir, corePackDir, true);
 }
 
@@ -154,6 +167,10 @@ if (target === "react") {
     "@types/react@^19",
     "@types/react-dom@^19",
   );
+}
+if (target === "agents") {
+  if (!coreTarball) panic("validate-dist: agents needs a @stll/folio-core tarball");
+  installArgs.push(coreTarball);
 }
 if (target === "vue") {
   if (!coreTarball) panic("validate-dist: vue needs a @stll/folio-core tarball");
@@ -189,6 +206,17 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
   react: {
     "@stll/folio-react": ["DocxEditor", "FolioUIProvider", "FormattingBar", "createDocx"],
     "@stll/folio-react/messages": ["getFolioMessages", "FOLIO_LOCALES", "isFolioLocale"],
+  },
+  agents: {
+    "@stll/folio-agents": [
+      "getFolioToolDefinitions",
+      "executeFolioToolCall",
+      "toAnthropicTools",
+      "toOpenAITools",
+      "createReviewerBridge",
+      "createEditorRefBridge",
+      "FOLIO_AGENT_TOOLS",
+    ],
   },
   vue: {
     "@stll/folio-vue": ["DocxEditor", "createDocx", "useWheelZoom", "i18nPlugin"],
@@ -258,6 +286,27 @@ import { getFolioMessages, type FolioMessages } from "@stll/folio-react/messages
 export const used = [DocxEditor, FolioUIProvider, createDocx, getFolioMessages];
 export type Surface = [DocxEditorProps, FolioMessages];
 `,
+  agents: `
+import {
+  getFolioToolDefinitions,
+  executeFolioToolCall,
+  toAnthropicTools,
+  toOpenAITools,
+  createReviewerBridge,
+  createEditorRefBridge,
+  FOLIO_AGENT_TOOLS,
+} from "@stll/folio-agents";
+
+export const used = [
+  getFolioToolDefinitions,
+  executeFolioToolCall,
+  toAnthropicTools,
+  toOpenAITools,
+  createReviewerBridge,
+  createEditorRefBridge,
+  FOLIO_AGENT_TOOLS,
+];
+`,
   vue: `
 import { DocxEditor, createDocx, type DocxEditorProps } from "@stll/folio-vue";
 import { useDocxEditor, useZoom } from "@stll/folio-vue/composables";
@@ -287,7 +336,7 @@ const tsconfigs: Record<string, { module: string; moduleResolution: string }> = 
 // `bundler` (what Vite/Nuxt consumers use) but not under node16/nodenext ESM,
 // which requires explicit `.js` specifiers. Vue/Nuxt consumers use bundler
 // resolution, so check that here; node16-clean declarations are a pre-existing
-// vue build gap tracked separately. core/react (tsdown) stay checked in both.
+// vue build gap tracked separately. core/react/agents (tsdown) stay checked in both.
 const typeCheckModes =
   target === "vue"
     ? Object.entries(tsconfigs).filter(([mode]) => mode === "bundler")
@@ -491,6 +540,7 @@ const leaked = reactSentinels.filter((s) => allJs.includes(s));
 const externalsByTarget: Record<string, string[]> = {
   core: ["prosemirror-state", "prosemirror-model", "jszip"],
   react: ["react", "react-dom", "react/jsx-runtime", "@stll/folio-core", "prosemirror-view"],
+  agents: ["@stll/folio-core"],
   vue: ["vue", "@stll/folio-core", "prosemirror-history", "prosemirror-state"],
 };
 const expectedExternals = externalsByTarget[target] ?? [];
@@ -502,6 +552,7 @@ const externalOk = leaked.length === 0 && notExternalized.length === 0 && !dataF
 const externalLabels: Record<string, string> = {
   core: "external: React never bundled; deps stay external",
   react: "external: React / ProseMirror / @stll/folio-core not bundled into JS",
+  agents: "external: @stll/folio-core not bundled into JS",
   vue: "external: Vue / ProseMirror / @stll/folio-core not bundled into JS",
 };
 record(

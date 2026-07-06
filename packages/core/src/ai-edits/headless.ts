@@ -290,6 +290,15 @@ export class FolioDocxReviewer {
   private readonly originalBuffer: ArrayBuffer;
   private state: EditorState;
   private readonly createdComments: Comment[] = [];
+  /**
+   * Resolved-state overrides recorded by {@link resolveComment}, keyed by
+   * comment id. Applied on read ({@link getComments}) and on write
+   * ({@link toDocument}) rather than mutating the parsed `Comment` objects in
+   * place, matching how the parser/serializer treat `Comment` as immutable
+   * (`commentParser.ts` replaces array slots via spread; the serializer
+   * types its inputs `readonly Comment[]`).
+   */
+  private readonly resolvedOverrides = new Map<number, boolean>();
 
   private constructor(args: {
     baseDocument: Document;
@@ -467,10 +476,10 @@ export class FolioDocxReviewer {
    * (nested tracked changes, hyperlinks) is out of scope.
    */
   getComments(filter?: FolioReviewCommentFilter): FolioReviewComment[] {
-    const definitions = [
+    const definitions = this.withResolvedOverrides([
       ...(this.baseDocument.package.document.comments ?? []),
       ...this.createdComments,
-    ];
+    ]);
     if (definitions.length === 0) {
       return [];
     }
@@ -547,6 +556,32 @@ export class FolioDocxReviewer {
   }
 
   /**
+   * Mark a comment thread resolved, or reopen a previously resolved one. Pass
+   * the id from {@link getComments} / {@link FolioReviewComment.id}. Applies
+   * only to the target comment id, not cascaded to its replies: Word keys the
+   * resolved marker off the comment's own `w15:commentEx` entry
+   * (`commentSerializer.ts`'s `buildCommentExtendedEntries` reads only
+   * `comment.done` for the id it is building an entry for), so resolving the
+   * thread root is sufficient and reply entries need no `done` flag of their
+   * own. On {@link toBuffer} the state is written to `commentsExtended.xml`
+   * (`w15:done`) through the same channel `replyTo`-created comments use.
+   * Returns `false` when no comment with that id exists.
+   */
+  resolveComment(commentId: string, options: { resolved?: boolean } = {}): boolean {
+    const resolved = options.resolved ?? true;
+    const existing = [
+      ...(this.baseDocument.package.document.comments ?? []),
+      ...this.createdComments,
+    ];
+    const target = existing.find((comment) => String(comment.id) === commentId);
+    if (!target) {
+      return false;
+    }
+    this.resolvedOverrides.set(target.id, resolved);
+    return true;
+  }
+
+  /**
    * Accept an existing tracked change, keeping its text and dropping the
    * redline. Pass a {@link FolioReviewChange} from {@link getChanges} or its
    * revision id. Reuses the editor's own accept command headlessly, so the
@@ -588,11 +623,11 @@ export class FolioDocxReviewer {
   /** The current document model with edits merged back in. */
   toDocument(): Document {
     const document = updateDocumentContent(this.baseDocument, this.state.doc);
-    if (this.createdComments.length > 0) {
-      document.package.document.comments = [
+    if (this.createdComments.length > 0 || this.resolvedOverrides.size > 0) {
+      document.package.document.comments = this.withResolvedOverrides([
         ...(document.package.document.comments ?? []),
         ...this.createdComments,
-      ];
+      ]);
     }
     return document;
   }
@@ -662,6 +697,17 @@ export class FolioDocxReviewer {
       starts.set(anchor.from, anchor.id);
     }
     return starts;
+  }
+
+  /** Apply any {@link resolveComment} overrides recorded for these comments. */
+  private withResolvedOverrides(comments: readonly Comment[]): Comment[] {
+    if (this.resolvedOverrides.size === 0) {
+      return [...comments];
+    }
+    return comments.map((comment) => {
+      const override = this.resolvedOverrides.get(comment.id);
+      return override === undefined ? comment : { ...comment, done: override };
+    });
   }
 
   /** Map each anchored comment id to its anchored text and containing block id. */

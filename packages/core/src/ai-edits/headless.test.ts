@@ -445,6 +445,51 @@ describe("headless docx review discovery + resolve", () => {
     expect(reviewer.replyTo(9999, { text: "orphan" })).toBeNull();
   });
 
+  test("resolveComment marks a thread resolved, round-trips, and can reopen it", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    reviewer.applyOperations([
+      { id: "c1", type: "commentOnBlock", blockId: target.id, comment: { text: "Please check." } },
+    ]);
+    const comment = reviewer.getComments()[0];
+    expect(comment).toBeDefined();
+    if (!comment) {
+      return;
+    }
+    expect(comment.done).toBe(false);
+
+    // Resolving an unknown id is refused.
+    expect(reviewer.resolveComment("9999")).toBe(false);
+
+    expect(reviewer.resolveComment(String(comment.id))).toBe(true);
+    expect(reviewer.getComments()[0]?.done).toBe(true);
+
+    // Survives a save + re-parse via commentsExtended.xml's `w15:done`.
+    const saved = await reviewer.toBuffer();
+    const extended = await partText(saved, "word/commentsExtended.xml");
+    expect(extended).toContain('w15:done="1"');
+    const reparsed = await parseDocx(saved, { preloadFonts: false });
+    const savedComment = (reparsed.package.document.comments ?? []).find(
+      (c) => c.id === comment.id,
+    );
+    expect(savedComment?.done).toBe(true);
+
+    const reopenedReviewer = await FolioDocxReviewer.fromBuffer(saved, { author: "AI Reviewer" });
+    expect(reopenedReviewer.getComments()[0]?.done).toBe(true);
+    expect(reopenedReviewer.resolveComment(String(comment.id), { resolved: false })).toBe(true);
+    expect(reopenedReviewer.getComments()[0]?.done).toBe(false);
+
+    const reopenedSaved = await reopenedReviewer.toBuffer();
+    const reopenedExtended = await partText(reopenedSaved, "word/commentsExtended.xml");
+    expect(reopenedExtended).toContain('w15:done="0"');
+    const reopenedReparsed = await parseDocx(reopenedSaved, { preloadFonts: false });
+    const reopenedSavedComment = (reopenedReparsed.package.document.comments ?? []).find(
+      (c) => c.id === comment.id,
+    );
+    expect(reopenedSavedComment?.done).toBe(false);
+  });
+
   test("ops from one parse's snapshot resolve on a separate parse of a paraId-less doc", async () => {
     // The raw corpus fixture ships without `w14:paraId`s. Two independent
     // parses must mint identical block ids so ops built against the first

@@ -183,6 +183,9 @@ export class FolioDocxReviewer {
     rejectAll(): number;
     rejectChange(target: FolioReviewChange | number): boolean;
     replyTo(target: FolioReviewComment | number, input: FolioReviewReplyInput): FolioReviewCommentReply | null;
+    resolveComment(commentId: string, options?: {
+        resolved?: boolean;
+    }): boolean;
     snapshot(): FolioAIEditSnapshot;
     toBuffer(): Promise<ArrayBuffer>;
     toDocument(): import__stll_docx_core_model.Document;

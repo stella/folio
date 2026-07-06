@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 // CI gate: a PR that edits the published source of @stll/folio-core,
-// @stll/folio-react, @stll/folio-vue, or @stll/folio-nuxt must ship a changeset
-// (`.changeset/*.md`) so the change gets a version bump + changelog entry, OR
-// an explicit empty changeset (`bunx changeset --empty`) to record on purpose
-// that no release is needed.
+// @stll/folio-react, @stll/folio-agents, @stll/folio-vue, or @stll/folio-nuxt
+// must ship a changeset (`.changeset/*.md`) so the change gets a version bump
+// + changelog entry, OR an explicit empty changeset (`bunx changeset --empty`)
+// to record on purpose that no release is needed.
 //
-// Scoped to `packages/{core,react,vue,nuxt}/src` deliberately: it ignores
-// tests, docs, and config, and it passes the bot's "Version Packages" PR — that
-// PR consumes changesets and bumps package.json, but never touches src, so it
-// needs none.
+// Scoped to `packages/{core,react,agents,vue,nuxt}/src` deliberately: it
+// ignores tests, docs, and config, and it passes the bot's "Version Packages"
+// PR — that PR consumes changesets and bumps package.json, but never touches
+// src, so it needs none.
 //
 // Compares the branch against its merge base with the base branch (three-dot
 // diff), so it only inspects what this PR introduces. Override the base ref
@@ -17,7 +17,7 @@
 import { $ } from "bun";
 
 const BASE = process.env.CHANGESET_BASE_REF ?? "origin/main";
-const SRC_RE = /^packages\/(?:core|react|vue|nuxt)\/src\//;
+const SRC_RE = /^packages\/(?:core|react|agents|vue|nuxt)\/src\//;
 // Any `.changeset/*.md` except the folder's own README is a changeset entry
 // (an empty changeset produced by `bunx changeset --empty` counts too).
 const CHANGESET_RE = /^\.changeset\/(?!README\.md$)[^/]+\.md$/;
@@ -52,7 +52,7 @@ const diff = async (filter: string): Promise<string[]> => {
 // release-relevant change (removing an export is a release too).
 const srcChanged = (await diff("ACMRD")).some((file) => SRC_RE.test(file));
 if (!srcChanged) {
-  console.log("changeset check: no packages/{core,react,vue,nuxt}/src changes; skipping.");
+  console.log("changeset check: no packages/{core,react,agents,vue,nuxt}/src changes; skipping.");
   process.exit(0);
 }
 
@@ -68,7 +68,7 @@ console.error(
   [
     "Missing changeset.",
     "",
-    "This PR edits packages/{core,react,vue,nuxt}/src (published source)",
+    "This PR edits packages/{core,react,agents,vue,nuxt}/src (published source)",
     "but adds no changeset. Add one so the change gets a version bump and a",
     "changelog entry:",
     "",
