@@ -79,6 +79,8 @@ export type FolioParityBridge = {
   countAnonymizationRects: () => number;
   /** Serialize to DOCX and return the byte length (0 on failure). */
   save: () => Promise<number>;
+  /** Whether the live editor has edits not yet serialized by save(). */
+  hasPendingChanges: () => boolean;
 };
 
 function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridge {
@@ -218,6 +220,7 @@ function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridg
       const buffer = await (getRef()?.save() ?? Promise.resolve(null));
       return buffer?.byteLength ?? 0;
     },
+    hasPendingChanges: () => getRef()?.hasPendingChanges() ?? false,
   };
 }
 

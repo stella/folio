@@ -28,6 +28,7 @@ type FolioParityBridge = {
   anonymizeFirstWord: () => boolean;
   countAnonymizationRects: () => number;
   save: () => Promise<number>;
+  hasPendingChanges: () => boolean;
 };
 
 declare global {
