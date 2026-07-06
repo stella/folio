@@ -170,6 +170,9 @@ function scrollSelectedIntoView(): void {
 watch(
   () => [props.selectedCanonical, props.selectionSeq],
   () => scrollSelectedIntoView(),
+  // Query the DOM after the overlay has (re)rendered, matching the React
+  // adapter's post-commit `useEffect` timing.
+  { flush: "post" },
 );
 
 // ---- Document-level click hit-test --------------------------------------

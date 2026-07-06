@@ -287,14 +287,14 @@ async function project(): Promise<void> {
     return;
   }
   const scanned = getTemplateDirectives(state);
-  ranges.value = scanned;
-  caretPos.value = scanned.length > 0 ? state.selection.head : null;
   if (scanned.length === 0) {
+    ranges.value = [];
     projectedGroups.value = [];
     gutter.value = null;
+    caretPos.value = null;
     return;
   }
-  gutter.value = measureDirectiveGutter(pagesContainer, props.zoom);
+  const nextGutter = measureDirectiveGutter(pagesContainer, props.zoom);
   const projected = await projectRangesToRects<DirectiveRange>(scanned, {
     pagesContainer,
     zoom: props.zoom,
@@ -305,6 +305,12 @@ async function project(): Promise<void> {
   if (seq !== requestSeq) {
     return;
   }
+  // Commit all reactive state together after the sequence guard so a superseded
+  // run cannot leave ranges/gutter ahead of the projected groups (which would
+  // flash inconsistent rail bands via the derived computeds).
+  ranges.value = scanned;
+  caretPos.value = state.selection.head;
+  gutter.value = nextGutter;
   projectedGroups.value = projected;
 }
 

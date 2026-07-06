@@ -828,12 +828,17 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     if (enabled === installed) {
       return;
     }
-    const without = view.state.plugins.filter(
+    const plugins = view.state.plugins.filter(
       (plugin) => plugin !== templateDirectivesPlugin && plugin !== templateSlashMenu,
     );
-    const plugins = enabled
-      ? [templateDirectivesPlugin, templateSlashMenu, ...without]
-      : without;
+    if (enabled) {
+      // Insert at the same position as `buildExternalPlugins` (right before the
+      // preview plugin) so ProseMirror prop precedence is identical whether the
+      // pair was toggled live or installed on a fresh/reloaded view.
+      const previewIndex = plugins.indexOf(templatePreviewPlugin);
+      const insertAt = previewIndex === -1 ? plugins.length : previewIndex;
+      plugins.splice(insertAt, 0, templateDirectivesPlugin, templateSlashMenu);
+    }
     view.updateState(view.state.reconfigure({ plugins }));
   }
 
