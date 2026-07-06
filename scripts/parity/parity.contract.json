@@ -13,6 +13,7 @@
       "documentBuffer",
       "documentKey",
       "enableWheelZoom",
+      "featureFlags",
       "fontFamilies",
       "fonts",
       "initialScrollTop",
@@ -43,6 +44,7 @@
       "onScrollTopChange",
       "onSelectionChange",
       "onSelectionTextChange",
+      "onSelectiveSaveTripwire",
       "onSlashMenuChange",
       "onSlashMenuKeyAction",
       "placeholder",
@@ -65,8 +67,6 @@
     "deferredInVue": {
       "collaboration": "Yjs collaboration owner is not threaded through the Vue pipeline yet.",
       "components": "Partially wired: DocxEditor.vue calls provideFolioUI(components) and the ColorPicker override resolves in the toolbar/formatting-bar chrome, but the remaining primitives are not yet threaded (Button/Popover/Menu chrome consumers still import statically; Dialog/Select/Input/Checkbox/DatePickerPopover/OutlineRail have no Vue default to inject), so it is not full parity with React's 10-primitive override surface.",
-      "featureFlags": "Selective-save feature flags are not plumbed into the Vue save path.",
-      "onSelectiveSaveTripwire": "Selective-save tripwire observability is not plumbed into the Vue save path.",
       "showHeaderFooterEditing": "Header/footer inline editing is not ported to Vue.",
       "showReviewControls": "REAL GAP: React's DocxEditor renders review controls (track-changes toggle + markup display-mode selector) gated by this flag via FormattingBar `priorityExtra` (DocxEditor.tsx `toolbarPriorityExtra = !showReviewControls ? null : (...)`). The Vue toolbar renders no such controls, so there is nothing to gate; not paired because React's behavior is not matched."
     },
@@ -79,7 +79,9 @@
       "onPaste": "No-op in both. React's DocxEditor destructures `onPaste: _onPaste` (never called); Vue's DocxEditor.vue does not thread it. Same verification as onCopy.",
       "toolbarExtra": "Different-idiom match, both wired. React renders the `toolbarExtra` ReactNode as FormattingBar children (`toolbarChildren = toolbarExtra ?? null`). Vue renders the `toolbarExtra` VNodeChild prop into the toolbar's `#toolbar-extra` outlet via VNodeRenderer, with a host-provided `#toolbar-extra` slot taking precedence. Same capability (inject custom toolbar content); the prop is now functional in Vue, not just the slot.",
       "preserveDocumentWhileLoading": "Both wired. React skips its loading early-return when the flag is set and a document already loaded (`status === 'loading' && (!preserveDocumentWhileLoading || !history.state)`), keeping the prior document mounted. Vue suppresses the loading interstitial when `preserveDocumentWhileLoading && hasRenderedDocumentOnce`; the previous pages stay painted in `pagesRef` (the swap tears down the PM view but does not clear the paint) until the new layout replaces them.",
-      "fonts": "Both wired. React registers host FontFace entries via paged-editor/hostFonts + a font-ready re-layout. Vue ports the same DOM-only FontFace path (packages/vue/src/utils/hostFonts.ts) and registers on mount / prop change in DocxEditor.vue, then re-measures (resetCanvasContext + clearAllCaches + reLayout), unregistering on change/unmount — mirroring React's hostFonts effect."
+      "fonts": "Both wired. React registers host FontFace entries via paged-editor/hostFonts + a font-ready re-layout. Vue ports the same DOM-only FontFace path (packages/vue/src/utils/hostFonts.ts) and registers on mount / prop change in DocxEditor.vue, then re-measures (resetCanvasContext + clearAllCaches + reLayout), unregistering on change/unmount — mirroring React's hostFonts effect.",
+      "featureFlags": "Both wired. React resolves the flags in handleSave (resolveSelectiveSaveFlags), and when selectiveSave is on runs attemptSelectiveSave(doc, baselineBuffer, { changedParaIds, structuralChange, hasUntrackedChanges, maxBytes }) with a full-repack fallback. Vue threads props.featureFlags into useDocxEditor via a getter and its save() runs the identical branch: resolveSelectiveSaveFlags(toValue(featureFlags)), the same shouldAttemptSelective/useSelectiveForSave gates, attemptSelectiveSave with the same ParagraphChangeTracker inputs (getChangedParagraphIds/hasStructuralChanges/hasUntrackedChanges from the shared StarterKit extension), and falls back to repackDocx (or createDocx for from-scratch docs with no originalBuffer). Divergence: React re-baselines originalBufferRef and clears tracked changes after each save; Vue keeps the original buffer as the selective baseline and does not clear, so every save diffs the full change set against the original — functionally correct output, just non-incremental across repeated saves.",
+      "onSelectiveSaveTripwire": "Both wired. When flags.selectiveSaveTripwire is on, React computes both selective and full buffers and fires onSelectiveSaveTripwire(compareSelectiveVsFull(selective, full)); the comparison is wrapped so it never poisons the save. Vue's save() mirrors this exactly (same tripwire-only full-repack, same compareSelectiveVsFull call, same swallow-on-error guards) and invokes props.onSelectiveSaveTripwire threaded through useDocxEditor. Timing divergence: React fires onSave then the tripwire; Vue fires the tripwire at the end of the core save() (after the bytes are produced) and onSave at the ref-API boundary once save() resolves, so the tripwire fires just before onSave. Both fire only after a successful save and neither blocks it."
     }
   },
   "ref": {
