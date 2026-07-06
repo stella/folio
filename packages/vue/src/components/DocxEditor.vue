@@ -187,13 +187,41 @@
             :comments="comments"
             :tracked-changes="trackedChanges"
             :show-resolved="true"
+            :is-adding-comment="commentLifecycle.isAddingComment.value"
+            :add-comment-y-position="commentLifecycle.addCommentYPosition.value"
             :pages-container="pagesRef"
             :page-width-px="pageWidthPx"
             :zoom="zoom"
             :active-item-id="activeSidebarItem"
             @close="showSidebar = false"
             @update:active-item-id="(id: string | null) => (activeSidebarItem = id)"
+            @add-comment="commentLifecycle.handleAddComment"
+            @cancel-add-comment="commentLifecycle.handleCancelAddComment"
+            @comment-reply="commentManagement.handleReply"
+            @comment-resolve="commentManagement.handleResolve"
+            @comment-unresolve="commentManagement.handleUnresolve"
+            @comment-delete="commentManagement.handleDelete"
+            @accept-change="commentManagement.handleAcceptChange"
+            @reject-change="commentManagement.handleRejectChange"
+            @accept-change-by-id="commentManagement.handleAcceptChangeById"
+            @reject-change-by-id="commentManagement.handleRejectChangeById"
+            @tracked-change-reply="commentManagement.handleTrackedChangeReply"
           />
+
+          <button
+            v-if="commentLifecycle.floatingCommentButton.value && !readOnly"
+            type="button"
+            class="docx-editor-vue__add-comment-btn"
+            :style="{
+              top: commentLifecycle.floatingCommentButton.value.top + 'px',
+              left: commentLifecycle.floatingCommentButton.value.left + 'px',
+            }"
+            aria-label="Add comment"
+            title="Add comment"
+            @mousedown.prevent.stop="commentLifecycle.startAddComment"
+          >
+            <MaterialSymbol name="add_comment" :size="18" />
+          </button>
         </div>
 
         <OutlineToggleButton v-if="!showOutline" :left-offset="12" @toggle="showOutline = true" />
@@ -256,9 +284,12 @@ import PageIndicator from "./PageIndicator.vue";
 import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
 import Toolbar from "./Toolbar.vue";
 import HyperlinkPopup from "./ui/HyperlinkPopup.vue";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
 import TableToolbar from "./ui/TableToolbar.vue";
 import UnifiedSidebar from "./UnifiedSidebar.vue";
 
+import { useCommentLifecycle } from "../composables/useCommentLifecycle";
+import { useCommentManagement } from "../composables/useCommentManagement";
 import { useContextMenus } from "../composables/useContextMenus";
 import { useDocumentLifecycle } from "../composables/useDocumentLifecycle";
 import { useDocxEditor } from "../composables/useDocxEditor";
@@ -270,6 +301,7 @@ import { usePageSetupControls } from "../composables/usePageSetupControls";
 import { usePagesPointer } from "../composables/usePagesPointer";
 import { provideDocxPortalClass } from "../composables/usePortalClass";
 import { useTableResize } from "../composables/useTableResize";
+import { useTrackedChanges } from "../composables/useTrackedChanges";
 import { useZoom } from "../composables/useZoom";
 import type { FontOption } from "../utils/fontOptions";
 import { provideLocale } from "../i18n";
@@ -296,6 +328,7 @@ const emit = defineEmits<{
   (e: "rename", name: string): void;
   (e: "menu-action", action: string): void;
   (e: "mode-change", mode: EditorMode): void;
+  (e: "comments-change", comments: Comment[]): void;
 }>();
 
 // PORT-BLOCKED: no i18n/locale prop on the fork's DocxEditorProps yet — default to `en`.
@@ -324,10 +357,7 @@ const showSidebar = ref(false);
 const activeSidebarItem = ref<string | null>(null);
 const bookmarks = shallowRef<{ name: string; label?: string }[]>([]);
 
-// Controlled comments (props.comments) render in the sidebar; document comment
-// extraction + lifecycle management are not ported (PORT-BLOCKED). Outline
-// headings stay empty until the outline composable is ported.
-const comments = computed<Comment[]>(() => props.comments ?? []);
+// Outline headings stay empty until the outline composable is ported.
 const outlineHeadings = shallowRef<HeadingInfo[]>([]);
 
 const { zoom, zoomPercent, isMinZoom, isMaxZoom, setZoom, zoomIn, zoomOut, handleWheel: handleZoomWheel, ZOOM_PRESETS } =
@@ -453,11 +483,43 @@ const {
   resolvePos,
 });
 
-// Tracked-change sidebar cards stay deferred: the fork's Vue
-// `TrackedChangeEntry` (utils/comments) is a stricter copy than core's
-// `extractTrackedChanges` output (required vs optional fields), so feeding the
-// extractor needs a type reconciliation not in scope this wave.
-const trackedChanges = shallowRef<TrackedChangeEntry[]>([]);
+// Tracked-change sidebar cards: derive entries from the live editor state via
+// core's extractTrackedChanges, re-running whenever a transaction bumps
+// stateTick. `entries` is core's TrackedChangeEntry, which the sidebar's
+// (re-exported) type now matches exactly, so no reconciliation is needed.
+const trackedChangesResult = useTrackedChanges(editorView, stateTick);
+const trackedChanges = computed<TrackedChangeEntry[]>(() => trackedChangesResult.value.entries);
+
+// Comment thread state + mutation handlers (add/reply/resolve/accept/reject),
+// wired to core's comment ops. `onCommentsChange` fans out to the host prop and
+// the Vue-idiomatic `comments-change` emit.
+const commentManagement = useCommentManagement({
+  editorView,
+  getDocument,
+  author: () => props.author,
+  commentsProp: () => props.comments,
+  onCommentsChange: (next) => {
+    props.onCommentsChange?.(next);
+    emit("comments-change", next);
+  },
+  reLayout,
+});
+const comments = commentManagement.comments;
+
+// Interactive add-comment flow: floating button, pending highlight, submit.
+const commentLifecycle = useCommentLifecycle({
+  editorView,
+  pagesViewport: pagesViewportRef,
+  pagesContainer: pagesRef,
+  readOnly,
+  createComment: commentManagement.createComment,
+  pushComment: commentManagement.pushComment,
+  reLayout,
+  showSidebar,
+  setActiveSidebarItem: (id) => {
+    activeSidebarItem.value = id;
+  },
+});
 
 function handleHyperlinkPopupCopy(href: string): void {
   void navigator.clipboard?.writeText(href);
@@ -494,7 +556,11 @@ const toolbarDynamicProps = computed(() => {
 
 const pageWidthPx = computed(() => twipsToPixels(currentSectionProps.value?.pageWidth ?? 12240) * zoom.value);
 
-const resolvedCommentIds = computed(() => new Set<number>());
+const resolvedCommentIds = computed(() => {
+  const ids = new Set<number>();
+  for (const comment of comments.value) if (comment.done) ids.add(comment.id);
+  return ids;
+});
 
 const pagesContainerStyle = computed(() => ({
   transform: zoom.value === 1 ? undefined : `scale(${zoom.value})`,
@@ -679,6 +745,9 @@ watch(
 
 watch(isReady, (ready) => {
   if (ready) {
+    // Populate the sidebar from comments embedded in the loaded document
+    // (uncontrolled only); controlled hosts own the array via `comments`.
+    commentManagement.seedFromDocument();
     emit("ready");
   }
 });
@@ -687,6 +756,7 @@ watch(isReady, (ready) => {
 onMounted(() => {
   const offSelection = editor.on("selectionChange", () => {
     stateTick.value++;
+    commentLifecycle.updateFloatingButton();
   });
   const offDoc = editor.on("docChange", () => {
     stateTick.value++;
@@ -781,6 +851,26 @@ defineExpose(exposed);
 .docx-editor-vue__table-insert-btn:hover {
   background: var(--doc-primary, #1a73e8);
   color: var(--doc-on-primary, #fff);
+}
+.docx-editor-vue__add-comment-btn {
+  position: absolute;
+  z-index: 50;
+  transform: translate(-50%, -50%);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--doc-border, #dadce0);
+  border-radius: 6px;
+  background: var(--doc-page, #fff);
+  color: var(--doc-text-muted, #5f6368);
+  cursor: pointer;
+}
+.docx-editor-vue__add-comment-btn:hover {
+  background: var(--doc-shadow-subtle, #f1f3f4);
+  color: var(--doc-primary, #1a73e8);
 }
 .docx-editor-vue__error {
   padding: 12px;
