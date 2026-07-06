@@ -7,12 +7,17 @@ import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragr
 import type { Document } from "@stll/folio-core/types/document";
 
 /**
- * Imperative handle exposed by the Vue paged editor sub-component.
+ * Imperative handle exposed by `DocxEditorRef.getEditorRef()`.
  *
  * Structurally mirrors the React package's `PagedEditorRef`
- * (`packages/react/src/paged-editor/PagedEditor.tsx`). The Vue PagedEditor
- * component itself is not ported yet; this type defines the contract so
- * `DocxEditorRef.getEditorRef()` can return it.
+ * (`packages/react/src/paged-editor/PagedEditor.tsx`). The Vue package has no
+ * ported `PagedEditor` sub-component to source a handle from, so
+ * `useDocxEditorRefApi.ts` synthesizes one from the primitives it already
+ * holds (the headless `FolioEditor` controller, `editorView`, `layout`, and
+ * the pages-scroll helpers) rather than tearing a component ref off a
+ * component that does not exist. `getHfView` is the one method with no
+ * backing implementation yet (no persistent hidden header/footer PM view in
+ * Vue) and stays a documented no-op; see its call site for the exact reason.
  *
  * TODO(vue): re-home to the Vue PagedEditor component when it lands.
  */

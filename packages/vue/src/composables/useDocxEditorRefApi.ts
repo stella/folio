@@ -9,19 +9,26 @@
  * so any drift from the React contract is a typecheck error here rather than a
  * runtime surprise at the call site.
  *
- * PORT-BLOCKED: one ref method still depends on an adapter surface the fork has
- * not ported yet (`getEditorRef` needs the Vue PagedEditor component). It stays
- * stubbed to a sensible default (null) with a per-method note. The AI-edit and
- * content-control methods are wired over folio-core directly, mirroring the
- * React adapter. `hasPendingChanges` is wired from the doc-dirty flag
- * (`useDocxEditor`) OR-ed with the comment-list dirty flag
- * (`useCommentManagement`); see its per-method note. The assembled object
- * `satisfies DocxEditorRef`.
+ * `getEditorRef()` synthesizes a `PagedEditorRef`-shaped handle from the same
+ * primitives (the Vue package has no ported `PagedEditor` component to source
+ * one from). Most of its surface maps straight onto the headless `FolioEditor`
+ * controller (`opts.editor`), which already implements the hidden-editor
+ * imperative API 1:1 with React's `PagedEditorRef`; the scroll/page methods
+ * reuse this file's own `scrollToPage` / `scrollToParaId` /
+ * `scrollVisiblePositionIntoView`. `getHfView` stays a documented no-op:
+ * `useDocxEditor`'s layout pipeline always passes `hfPMs: null`, so there is no
+ * persistent hidden header/footer `EditorView` to look up by `rId` yet
+ * (PORT-BLOCKED, see that method's note). The AI-edit and content-control
+ * methods are wired over folio-core directly, mirroring the React adapter.
+ * `hasPendingChanges` is wired from the doc-dirty flag (`useDocxEditor`) OR-ed
+ * with the comment-list dirty flag (`useCommentManagement`); see its
+ * per-method note. The assembled object `satisfies DocxEditorRef`.
  */
 
 import type { Ref } from "vue";
 
 import { TextSelection } from "prosemirror-state";
+import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { applyFolioAIEditOperations, createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits";
@@ -51,6 +58,7 @@ import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
 import type { DocxEditorRef } from "../components/DocxEditor/types";
+import type { PagedEditorRef } from "../components/DocxEditor/pagedEditorRef";
 import { clampRangeToDocSize, resolveFolioAIBlockRange } from "../utils/aiEditRange";
 
 export type UseDocxEditorRefApiOptions = {
@@ -204,8 +212,48 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       }
       return opts.isDirty.value || opts.commentsDirty.value;
     },
-    // PORT-BLOCKED: getEditorRef needs the Vue PagedEditor component, not ported.
-    getEditorRef: () => null,
+    // Synthesized from the same primitives useDocxEditor/useDocxEditorRefApi
+    // already hold — see the module docblock. Always returns a live handle
+    // (the Vue shell has no "editor not yet mounted" state distinct from a
+    // null editorView, which every method below already guards against).
+    getEditorRef: (): PagedEditorRef => ({
+      getEditor: () => opts.editor,
+      getDocument: () => opts.editor.getDocument(),
+      getState: () => opts.editor.getState(),
+      getView: () => opts.editor.getView(),
+      // PORT-BLOCKED: no persistent hidden header/footer EditorView to look up
+      // by rId yet. useDocxEditor's layout pipeline always calls
+      // runLayoutPipelineCompute with `hfPMs: null` (see HfPmsHandle there),
+      // so header/footer content is rendered straight from the document model
+      // rather than a live PM view. Returns null until that lands.
+      getHfView: () => null,
+      // The fork's controller ensureView() takes no focus argument yet; the
+      // { focus } option is accepted for React parity but ignored, matching
+      // ensureEditorView above (PORT-BLOCKED).
+      ensureView: () => opts.editor.ensureView(),
+      focus: () => opts.editor.focus(),
+      blur: () => opts.editor.blur(),
+      isFocused: () => opts.editor.isFocused(),
+      dispatch: (tr: Transaction) => opts.editor.dispatch(tr),
+      undo: () => opts.editor.undo(),
+      redo: () => opts.editor.redo(),
+      canUndo: () => opts.editor.canUndo(),
+      canRedo: () => opts.editor.canRedo(),
+      setSelection: (anchor: number, head?: number) => opts.editor.setSelection(anchor, head),
+      getLayout: () => opts.editor.getLayout(),
+      relayout: () => opts.editor.relayout(),
+      scrollToPosition: (pmPos: number) => opts.scrollVisiblePositionIntoView(pmPos),
+      scrollToPage,
+      scrollToParaId,
+      getPageNumberForPmPos: (pmPos: number) => {
+        const currentLayout = opts.layout.value;
+        if (!currentLayout) {
+          return null;
+        }
+        const pageIndex = findPageIndexContainingPmPos(currentLayout, pmPos);
+        return pageIndex == null ? null : pageIndex + 1;
+      },
+    }),
     getEditor: () => opts.editor,
     // Threads `options.selective` into useDocxEditor.save (selective-save gate).
     save,
