@@ -1,20 +1,13 @@
-import ar from "./messages/ar.json";
-import cs from "./messages/cs.json";
-import de from "./messages/de.json";
-import en from "./messages/en.json";
-import es from "./messages/es.json";
-import et from "./messages/et.json";
-import fr from "./messages/fr.json";
-import he from "./messages/he.json";
-import hi from "./messages/hi.json";
-import hu from "./messages/hu.json";
-import lt from "./messages/lt.json";
-import lv from "./messages/lv.json";
-import pl from "./messages/pl.json";
-import ptBR from "./messages/pt-BR.json";
-import sk from "./messages/sk.json";
-import tr from "./messages/tr.json";
-import zhCN from "./messages/zh-CN.json";
+// The per-locale catalogs are inlined into a generated TS module rather than
+// imported as raw `./messages/*.json`. Core's tsdown `unbundle: true` build
+// mirrors every imported `.json` to a per-locale `dist/i18n/messages/<locale>.js`
+// module, for which rolldown emits a malformed
+// `export { <locale>_default as default, folio }` (the `folio` named binding is
+// never declared). That breaks any downstream bundler processing core's dist.
+// Importing from `catalogs.gen.ts` keeps `.json` out of the build graph, so no
+// per-locale `.js` is emitted. The `*.json` files remain the source of truth the
+// i18n tooling reads; run `bun scripts/i18n-catalogs-gen.ts` to regenerate.
+import { CATALOGS as GENERATED_CATALOGS } from "./messages/catalogs.gen";
 
 // folio bundles its own UI translations: the editor reads the `folio.*`
 // namespace via `useTranslations("folio")`, and a consumer merges this catalog
@@ -44,12 +37,12 @@ export const FOLIO_LOCALES = [
 
 export type FolioLocale = (typeof FOLIO_LOCALES)[number];
 
-// The exported type is self-contained: it references neither `typeof en` nor
-// any locale JSON, so the emitted `messages.d.ts` carries no `./messages/*.json`
-// import. dist inlines the JSON into the JS chunk and ships no JSON files, so
-// such an import would be unresolvable for a published TypeScript consumer of
-// `@stll/folio-react/messages` (Codex #11). The contract is just a mergeable
-// single-namespace message object.
+// The exported type is self-contained: it references neither the generated
+// catalog nor any locale JSON, so the emitted `messages.d.ts` carries no
+// `./messages/*.json` import. dist inlines the JSON into the JS chunk and ships
+// no JSON files, so such an import would be unresolvable for a published
+// TypeScript consumer of `@stll/folio-react/messages` (Codex #11). The contract
+// is just a mergeable single-namespace message object.
 type FolioMessageTree = { [key: string]: string | FolioMessageTree };
 export type FolioMessages = { folio: FolioMessageTree };
 
@@ -59,25 +52,8 @@ export type FolioMessages = { folio: FolioMessageTree };
 // makes the 13 translated catalogs assignable to one shared type.
 type Widen<T> = { [K in keyof T]: T[K] extends string ? string : Widen<T[K]> };
 
-const CATALOGS: Record<FolioLocale, Widen<typeof en>> = {
-  en,
-  de,
-  fr,
-  es,
-  cs,
-  ar,
-  et,
-  he,
-  hi,
-  hu,
-  lt,
-  lv,
-  pl,
-  "pt-BR": ptBR,
-  sk,
-  tr,
-  "zh-CN": zhCN,
-};
+const CATALOGS: Record<FolioLocale, Widen<(typeof GENERATED_CATALOGS)["en"]>> =
+  GENERATED_CATALOGS;
 
 const FOLIO_LOCALE_SET = new Set<string>(FOLIO_LOCALES);
 

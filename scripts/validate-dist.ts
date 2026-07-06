@@ -470,13 +470,24 @@ if (target === "react") {
     // `./messages/*.json` import in the published declaration is unresolvable
     // for a TS consumer of `@stll/folio-react/messages`.
     const jsonImports = dts.match(/["'][^"']*messages\/[^"']*\.json["']/gu) ?? [];
-    const declaresSurface = dts.includes("FolioMessages") && dts.includes("getFolioMessages");
+    // The i18n surface now lives in `@stll/folio-core`; the react subpath either
+    // declares the names itself or re-exports them wholesale from core (which
+    // the clean room installs, so `export * from "@stll/folio-core/i18n/messages"`
+    // resolves for a consumer). The runtime and tsc checks above already exercise
+    // `getFolioMessages` / `FolioMessages` through this re-export; here we just
+    // guard that the declaration exposes the surface with no source-JSON import.
+    const declaresNames = dts.includes("FolioMessages") && dts.includes("getFolioMessages");
+    const reexportsCore = /export\s*\*\s*from\s*["']@stll\/folio-core\/i18n\/messages["']/u.test(
+      dts,
+    );
+    const declaresSurface = declaresNames || reexportsCore;
     const ok = jsonImports.length === 0 && declaresSurface;
     const detail = ok
-      ? "FolioMessages / getFolioMessages self-contained; no source-JSON import"
+      ? "getFolioMessages / FolioMessages surface exposed; no source-JSON import"
       : [
           jsonImports.length > 0 && `imports source JSON: ${jsonImports.join(", ")}`,
-          !declaresSurface && "missing FolioMessages / getFolioMessages declarations",
+          !declaresSurface &&
+            "neither declares nor re-exports FolioMessages / getFolioMessages",
         ]
           .filter(Boolean)
           .join("; ");
