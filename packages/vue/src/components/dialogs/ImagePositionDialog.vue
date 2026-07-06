@@ -6,8 +6,12 @@
   "Distance from text (px)" legend were hard-coded English in upstream and remain so.
 -->
 <template>
-  <div v-if="isOpen" class="ipd-overlay" @mousedown.self="$emit('close')">
-    <div class="ipd-dialog" @keydown.escape="$emit('close')">
+  <FolioDialog
+    :open="isOpen"
+    :aria-label="t('dialogs.imagePosition.title')"
+    :style="{ width: '420px', maxWidth: '90vw' }"
+    @close="$emit('close')"
+  >
       <div class="ipd-dialog__header">{{ t('dialogs.imagePosition.title') }}</div>
 
       <div class="ipd-dialog__body">
@@ -99,15 +103,19 @@
         <button class="ipd-btn" @click="$emit('close')">{{ t('common.cancel') }}</button>
         <button class="ipd-btn ipd-btn--primary" @click="apply">{{ t('common.apply') }}</button>
       </div>
-    </div>
-  </div>
+  </FolioDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { useTranslation } from '../../i18n';
+import { useFolioUI } from '../../ui/folio-ui';
 
 const { t } = useTranslation();
+
+// Resolve Dialog from the FolioUI injection provider so a host override
+// takes effect here too (previously a hand-rolled overlay + dialog div pair).
+const { Dialog: FolioDialog } = useFolioUI();
 
 export type ImagePositionData = {
   horizontal?: { relativeTo?: string; posOffset?: number; align?: string };
@@ -190,8 +198,10 @@ function apply() {
 </script>
 
 <style scoped>
-.ipd-overlay { position: fixed; inset: 0; background: var(--doc-overlay); display: flex; align-items: center; justify-content: center; z-index: 10000; }
-.ipd-dialog { background: var(--doc-surface); border-radius: 8px; box-shadow: 0 4px 20px var(--doc-shadow); width: 420px; max-width: 90vw; }
+/* The overlay + dialog box (background, border, shadow, centering) now come
+   from the injected Dialog primitive (see the `<FolioDialog>` usage above);
+   its width constraints are passed as an inline `:style` since Vue's scoped
+   CSS can't reach into a child component's own template nodes. */
 .ipd-dialog__header { padding: 16px 20px 12px; border-bottom: 1px solid var(--doc-border); font-size: 16px; font-weight: 600; color: var(--doc-text); }
 .ipd-dialog__body { padding: 12px 20px; display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; }
 .ipd-dialog__footer { padding: 12px 20px 16px; border-top: 1px solid var(--doc-border); display: flex; justify-content: flex-end; gap: 8px; }

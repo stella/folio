@@ -5,8 +5,13 @@
   the folio catalog has no equivalents yet.
 -->
 <template>
-  <div v-if="isOpen" class="tpd-overlay" @mousedown.self="$emit('close')">
-    <div class="tpd-dialog" @keydown.escape="$emit('close')" @keydown.enter="apply">
+  <FolioDialog
+    :open="isOpen"
+    :aria-label="t('dialogs.tableProperties.title')"
+    :style="{ minWidth: '360px', maxWidth: '440px', width: '100%' }"
+    @close="$emit('close')"
+    @keydown.enter="apply"
+  >
       <div class="tpd-dialog__header">{{ t('dialogs.tableProperties.title') }}</div>
       <div class="tpd-dialog__body">
         <div class="tpd-row">
@@ -45,15 +50,19 @@
         <button class="tpd-btn" @click="$emit('close')">{{ t('common.cancel') }}</button>
         <button class="tpd-btn tpd-btn--primary" @click="apply">{{ t('common.apply') }}</button>
       </div>
-    </div>
-  </div>
+  </FolioDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { useTranslation } from '../../i18n';
+import { useFolioUI } from '../../ui/folio-ui';
 
 const { t } = useTranslation();
+
+// Resolve Dialog from the FolioUI injection provider so a host override
+// takes effect here too (previously a hand-rolled overlay + dialog div pair).
+const { Dialog: FolioDialog } = useFolioUI();
 
 type TableJustification = 'left' | 'center' | 'right';
 
@@ -103,8 +112,10 @@ function apply() {
 </script>
 
 <style scoped>
-.tpd-overlay { position: fixed; inset: 0; background: var(--doc-overlay); display: flex; align-items: center; justify-content: center; z-index: 10000; }
-.tpd-dialog { background: var(--doc-surface); border-radius: 8px; box-shadow: 0 4px 20px var(--doc-shadow); min-width: 360px; max-width: 440px; width: 100%; }
+/* The overlay + dialog box (background, border, shadow, centering) now come
+   from the injected Dialog primitive (see the `<FolioDialog>` usage above);
+   its width constraints are passed as an inline `:style` since Vue's scoped
+   CSS can't reach into a child component's own template nodes. */
 .tpd-dialog__header { padding: 16px 20px 12px; border-bottom: 1px solid var(--doc-border); font-size: 16px; font-weight: 600; color: var(--doc-text); }
 .tpd-dialog__body { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
 .tpd-dialog__footer { padding: 12px 20px 16px; border-top: 1px solid var(--doc-border); display: flex; justify-content: flex-end; gap: 8px; }

@@ -8,8 +8,12 @@
   verbatim; the folio catalog has no equivalents yet.
 -->
 <template>
-  <div v-if="isOpen" class="fnpd-overlay" @mousedown.self="$emit('close')">
-    <div class="fnpd-dialog" @keydown.escape="$emit('close')">
+  <FolioDialog
+    :open="isOpen"
+    :aria-label="t('dialogs.footnoteProperties.title')"
+    :style="{ width: '440px', maxWidth: '90vw' }"
+    @close="$emit('close')"
+  >
       <div class="fnpd-dialog__header">{{ t('dialogs.footnoteProperties.title') }}</div>
 
       <div class="fnpd-dialog__body">
@@ -99,8 +103,7 @@
         <button class="fnpd-btn" @click="$emit('close')">{{ t('common.cancel') }}</button>
         <button class="fnpd-btn fnpd-btn--primary" @click="apply">{{ t('common.apply') }}</button>
       </div>
-    </div>
-  </div>
+  </FolioDialog>
 </template>
 
 <script setup lang="ts">
@@ -114,8 +117,13 @@ import type {
 } from '@stll/folio-core/types/content';
 import type { NumberFormat } from '@stll/folio-core/types/document';
 import { useTranslation } from '../../i18n';
+import { useFolioUI } from '../../ui/folio-ui';
 
 const { t } = useTranslation();
+
+// Resolve Dialog from the FolioUI injection provider so a host override
+// takes effect here too (previously a hand-rolled overlay + dialog div pair).
+const { Dialog: FolioDialog } = useFolioUI();
 
 const props = defineProps<{
   isOpen: boolean;
@@ -182,22 +190,10 @@ function apply() {
 </script>
 
 <style scoped>
-.fnpd-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--doc-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-}
-.fnpd-dialog {
-  background: var(--doc-surface);
-  border-radius: 8px;
-  box-shadow: 0 4px 20px var(--doc-shadow);
-  width: 440px;
-  max-width: 90vw;
-}
+/* The overlay + dialog box (background, border, shadow, centering) now come
+   from the injected Dialog primitive (see the `<FolioDialog>` usage above);
+   its width constraints are passed as an inline `:style` since Vue's scoped
+   CSS can't reach into a child component's own template nodes. */
 .fnpd-dialog__header {
   padding: 16px 20px 12px;
   border-bottom: 1px solid var(--doc-border);

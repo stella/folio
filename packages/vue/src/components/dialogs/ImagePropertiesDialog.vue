@@ -5,8 +5,12 @@
   the folio catalog has no equivalents yet.
 -->
 <template>
-  <div v-if="isOpen" class="dialog-overlay" @mousedown.self="close">
-    <div class="dialog" @mousedown.stop @keydown.stop>
+  <FolioDialog
+    :open="isOpen"
+    :aria-label="t('dialogs.imageProperties.title')"
+    :style="{ minWidth: '400px', maxWidth: '90vw' }"
+    @close="close"
+  >
       <div class="dialog__header">
         <span class="dialog__title">{{ t('dialogs.imageProperties.title') }}</span>
         <button class="dialog__close" :aria-label="t('common.closeDialog')" @click="close">
@@ -121,16 +125,20 @@
           </button>
         </div>
       </div>
-    </div>
-  </div>
+  </FolioDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import type { EditorView } from 'prosemirror-view';
 import { useTranslation } from '../../i18n';
+import { useFolioUI } from '../../ui/folio-ui';
 
 const { t } = useTranslation();
+
+// Resolve Dialog from the FolioUI injection provider so a host override
+// takes effect here too (previously a hand-rolled overlay + dialog div pair).
+const { Dialog: FolioDialog } = useFolioUI();
 
 const props = defineProps<{
   isOpen: boolean;
@@ -277,22 +285,15 @@ function apply() {
 </script>
 
 <style scoped>
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--doc-overlay);
-  z-index: 300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.dialog {
-  background: var(--doc-surface);
-  border-radius: 8px;
-  box-shadow: 0 8px 30px var(--doc-shadow);
-  min-width: 400px;
-  max-width: 90vw;
-}
+/* The overlay + dialog box (background, border, shadow, centering) now come
+   from the injected Dialog primitive (see the `<FolioDialog>` usage above);
+   its width constraints are passed as an inline `:style` since Vue's scoped
+   CSS can't reach into a child component's own template nodes. Divergence:
+   the default's shadow/z-index (0 4px 20px / 10000) differ slightly from
+   this dialog's old bespoke 0 8px 30px / 300 — a pre-existing inconsistency
+   with the other 4 dialogs, now unified. Escape now also closes this dialog
+   (previously `@keydown.stop` blocked it — the only one of the 5 without
+   Escape-to-close; the shared default fixes that inconsistency too). */
 .dialog__header {
   display: flex;
   align-items: center;

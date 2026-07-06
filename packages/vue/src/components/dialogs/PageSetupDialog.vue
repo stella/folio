@@ -6,9 +6,14 @@
   / `folio.common.*`, currently missing).
 -->
 <template>
-  <div v-if="isOpen" class="ps-overlay" @mousedown.self="close" @keydown="onKeydown">
-    <div class="ps-dialog" role="dialog" :aria-label="t('dialogs.pageSetup.title')" @mousedown.stop>
-      <div class="ps-header">{{ t('dialogs.pageSetup.title') }}</div>
+  <FolioDialog
+    :open="isOpen"
+    :aria-label="t('dialogs.pageSetup.title')"
+    :style="{ minWidth: '400px', maxWidth: '480px', width: '100%', margin: '20px' }"
+    @close="close"
+    @keydown.enter="apply"
+  >
+    <div class="ps-header">{{ t('dialogs.pageSetup.title') }}</div>
 
       <div class="ps-body">
         <!-- Page size -->
@@ -93,8 +98,7 @@
           {{ t('common.apply') }}
         </button>
       </div>
-    </div>
-  </div>
+  </FolioDialog>
 </template>
 
 <script setup lang="ts">
@@ -102,8 +106,13 @@ import { ref, computed, watch } from 'vue';
 import type { SectionProperties } from '@stll/folio-core/types/document';
 import { TWIPS_PER_INCH } from '@stll/folio-core/utils/units';
 import { useTranslation } from '../../i18n';
+import { useFolioUI } from '../../ui/folio-ui';
 
 const { t } = useTranslation();
+
+// Resolve Dialog from the FolioUI injection provider so a host override
+// takes effect here too (previously a hand-rolled overlay + dialog div pair).
+const { Dialog: FolioDialog } = useFolioUI();
 
 type Orientation = 'portrait' | 'landscape';
 
@@ -214,32 +223,15 @@ function apply() {
   });
   close();
 }
-
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') close();
-  if (e.key === 'Enter') apply();
-}
 </script>
 
 <style scoped>
-.ps-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--doc-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-}
-.ps-dialog {
-  background: var(--doc-surface);
-  border-radius: 8px;
-  box-shadow: 0 4px 20px var(--doc-shadow);
-  min-width: 400px;
-  max-width: 480px;
-  width: 100%;
-  margin: 20px;
-}
+/* The overlay + dialog box (background, border, shadow, centering) now come
+   from the injected Dialog primitive (see the `<FolioDialog>` usage above);
+   its width constraints are passed as an inline `:style` since Vue's scoped
+   CSS can't reach into a child component's own template nodes (the popup/
+   backdrop divs are Dialog's, not this component's — only slotted content
+   below keeps this file's scope). */
 .ps-header {
   padding: 16px 20px 12px;
   border-bottom: 1px solid var(--doc-border);
