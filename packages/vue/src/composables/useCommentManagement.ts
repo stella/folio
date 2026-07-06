@@ -40,6 +40,17 @@ export type UseCommentManagementOptions = {
 
 export type UseCommentManagementReturn = {
   comments: ComputedRef<Comment[]>;
+  /**
+   * True when the comment thread list has user mutations not yet serialized by
+   * `save()`. Mirrors React's `commentsDirtyRef`: comment edits (add / reply /
+   * resolve / unresolve / delete) do not touch the PM document, so they are
+   * invisible to the doc-dirty flag; this surfaces them. Set on every user
+   * comment mutation, cleared on document load (`seedFromDocument`) and on a
+   * successful save (`clearCommentsDirty`).
+   */
+  commentsDirty: ComputedRef<boolean>;
+  /** Clear {@link commentsDirty} after a successful save. */
+  clearCommentsDirty: () => void;
   /** Build a comment with a freshly-allocated, collision-seeded id. */
   createComment: (text: string, parentId?: number) => Comment;
   /** Append a comment and emit the change. */
@@ -64,6 +75,19 @@ export function useCommentManagement(
 ): UseCommentManagementReturn {
   const allocator = createCommentIdAllocator();
   const internalComments = ref<Comment[]>([]);
+  // Dirty flag for comment-only edits (see the return type doc). Not set inside
+  // `setComments`, which is also the load-seed path — only the user-driven
+  // mutation handlers below mark it, matching React (where the low-level comment
+  // setter is clean and only `replaceComments` sets `commentsDirtyRef`).
+  const commentsDirty = ref(false);
+
+  function markCommentsDirty(): void {
+    commentsDirty.value = true;
+  }
+
+  function clearCommentsDirty(): void {
+    commentsDirty.value = false;
+  }
 
   const isControlled = computed(() => options.commentsProp() !== undefined);
   const comments = computed<Comment[]>(() =>
@@ -76,6 +100,7 @@ export function useCommentManagement(
   }
 
   function pushComment(comment: Comment): void {
+    markCommentsDirty();
     setComments([...comments.value, comment]);
   }
 
@@ -87,6 +112,11 @@ export function useCommentManagement(
   }
 
   function seedFromDocument(): void {
+    // A document load/swap is a clean baseline: the seeded comments came from the
+    // just-loaded file, so nothing is pending (mirrors React clearing
+    // `commentsDirtyRef` on document reset). Cleared unconditionally so a
+    // controlled host's swap resets the flag too.
+    clearCommentsDirty();
     if (isControlled.value) return;
     const bodyComments = options.getDocument()?.package.document.comments;
     seedCommentAllocator(allocator, bodyComments, options.editorView.value);
@@ -101,10 +131,12 @@ export function useCommentManagement(
   }
 
   function handleResolve(commentId: number): void {
+    markCommentsDirty();
     setComments(comments.value.map((c) => (c.id === commentId ? { ...c, done: true } : c)));
   }
 
   function handleUnresolve(commentId: number): void {
+    markCommentsDirty();
     setComments(comments.value.map((c) => (c.id === commentId ? { ...c, done: false } : c)));
   }
 
@@ -112,6 +144,7 @@ export function useCommentManagement(
     // Drop the comment and any direct replies threaded under it (matches React's
     // onCommentDelete). The orphaned comment mark left in the doc is pruned at
     // save time.
+    markCommentsDirty();
     setComments(comments.value.filter((c) => c.id !== commentId && c.parentId !== commentId));
   }
 
@@ -150,6 +183,8 @@ export function useCommentManagement(
 
   return {
     comments,
+    commentsDirty: computed(() => commentsDirty.value),
+    clearCommentsDirty,
     createComment,
     pushComment,
     setComments,

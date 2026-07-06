@@ -9,12 +9,14 @@
  * so any drift from the React contract is a typecheck error here rather than a
  * runtime surprise at the call site.
  *
- * PORT-BLOCKED: a few ref methods still depend on adapter surfaces the fork has
- * not ported yet (`hasPendingChanges` needs PM-serialized-vs-live tracking;
- * `getEditorRef` needs the Vue PagedEditor component). Those stay stubbed to a
- * sensible default (null / false) with a per-method note. The AI-edit and
+ * PORT-BLOCKED: one ref method still depends on an adapter surface the fork has
+ * not ported yet (`getEditorRef` needs the Vue PagedEditor component). It stays
+ * stubbed to a sensible default (null) with a per-method note. The AI-edit and
  * content-control methods are wired over folio-core directly, mirroring the
- * React adapter. The assembled object `satisfies DocxEditorRef`.
+ * React adapter. `hasPendingChanges` is wired from the doc-dirty flag
+ * (`useDocxEditor`) OR-ed with the comment-list dirty flag
+ * (`useCommentManagement`); see its per-method note. The assembled object
+ * `satisfies DocxEditorRef`.
  */
 
 import type { Ref } from "vue";
@@ -56,6 +58,23 @@ export type UseDocxEditorRefApiOptions = {
   editor: FolioEditor;
   /** Off-screen ProseMirror EditorView, or null before mount. */
   editorView: Ref<EditorView | null>;
+  /**
+   * Doc-dirty flag from useDocxEditor: live PM edits not yet serialized. Backs
+   * the doc side of `hasPendingChanges` (React's ParagraphChangeTracker signals).
+   */
+  isDirty: Readonly<Ref<boolean>>;
+  /**
+   * Comment-list dirty flag from useCommentManagement: comment mutations not yet
+   * serialized. Backs the comment side of `hasPendingChanges` (React's
+   * `commentsDirtyRef`).
+   */
+  commentsDirty: Readonly<Ref<boolean>>;
+  /**
+   * Clear {@link commentsDirty} after a successful save. Called from the `save`
+   * wrapper below — the single public save entry point — so the comment flag is
+   * reset alongside useDocxEditor's doc-dirty flag, mirroring React's handleSave.
+   */
+  clearCommentsDirty: () => void;
   /** Computed page layout, or null before first paint. */
   layout: Ref<Layout | null>;
   /** Painted pages container (the `HTMLDivElement` the painter writes into). */
@@ -106,6 +125,10 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       return null;
     }
     const buffer = await blob.arrayBuffer();
+    // Save succeeded: clear the comment-list dirty flag (useDocxEditor already
+    // cleared the doc-dirty flag when it produced the bytes). Mirrors React's
+    // handleSave resetting commentsDirtyRef.
+    opts.clearCommentsDirty();
     // Mirror React's handleSave: notify the host with the serialized bytes.
     opts.onSave?.(buffer);
     return buffer;
@@ -167,9 +190,20 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   const exposed = {
     getDocument: opts.getDocument,
-    // PORT-BLOCKED: hasPendingChanges needs the PM-serialized-vs-live tracking
-    // the React shell keeps; useDocxEditor does not surface it yet.
-    hasPendingChanges: () => false,
+    // React derives this live from the ParagraphChangeTracker plugin
+    // (getChangedParagraphIds/hasStructuralChanges/hasUntrackedChanges) OR-ed
+    // with commentsDirtyRef, clearing the tracker on save. Vue keeps the tracker
+    // uncleared across saves (it is the selective-save baseline), so instead of
+    // reading the tracker we track two flags with the same set/clear points as
+    // React: `isDirty` (any doc-changing transaction; cleared on save + load) and
+    // `commentsDirty` (any comment mutation; cleared on save + load). Same net
+    // semantics: pending edits after typing/comment changes, clean after save.
+    hasPendingChanges: () => {
+      if (!opts.editorView.value) {
+        return false;
+      }
+      return opts.isDirty.value || opts.commentsDirty.value;
+    },
     // PORT-BLOCKED: getEditorRef needs the Vue PagedEditor component, not ported.
     getEditorRef: () => null,
     getEditor: () => opts.editor,

@@ -482,6 +482,13 @@ export type UseDocxEditorReturn = {
   editorState: Ref<EditorState | null>;
   /** True once the hidden view is mounted and a document is loaded. */
   isReady: Ref<boolean>;
+  /**
+   * True when the live PM state has doc edits not yet serialized by `save()`.
+   * Set on every doc-changing transaction, cleared on a successful save and on
+   * document load/swap. Backs the ref API's `hasPendingChanges` (OR-ed with the
+   * comment-list dirty flag).
+   */
+  isDirty: Ref<boolean>;
   /** Last parse error message, or null if the most recent load succeeded. */
   parseError: Ref<string | null>;
   /** Computed page layout, or null before first paint. */
@@ -546,6 +553,14 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const measures = shallowRef<Measure[]>([]);
   const isReady = ref(false);
   const parseError = ref<string | null>(null);
+  // "Live PM state has edits not yet serialized" flag, the Vue analogue of the
+  // signals React derives from the ParagraphChangeTracker in `hasPendingChanges`.
+  // Set on every doc-changing transaction (the same signal that drives the
+  // debounced writeback/`onChange`) and cleared on a successful `save()` and on
+  // document load/swap. Vue keeps the change tracker uncleared across saves (it
+  // is the selective-save baseline; see the featureFlags parity note), so this
+  // flag — not the tracker — is what surfaces pending edits to the ref API.
+  const isDirty = ref(false);
 
   // ---- Long-lived controller singletons -----------------------------------
   // One ExtensionManager owns the schema + plugins + commands for the body view.
@@ -775,6 +790,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   function handleTransaction(transaction: Transaction, newState: EditorState): void {
     editorState.value = newState;
     if (transaction.docChanged) {
+      isDirty.value = true;
       syncCoordinator.incrementStateSeq();
       scheduler.schedule(newState, getTransactionDirtyRange(transaction));
       scheduleDocumentChangeNotification();
@@ -885,6 +901,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // A new document is a truly external swap. Rather than rely on the manager's
     // metadata-signature heuristic (which can skip a same-metadata reload), tear
     // the view down and rebuild it so the seed state + initial layout run fresh.
+    // The freshly loaded document has no unsaved edits yet (mirrors React
+    // clearing its dirty signals on document reset).
+    isDirty.value = false;
     scheduler.dispose();
     manager.destroyView();
     manager.ensureView();
@@ -1023,6 +1042,14 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       }
     }
 
+    // The bytes are produced: the live doc state is now serialized, so no doc
+    // edits are pending. Mirrors React's handleSave clearing the change tracker.
+    // (The tracker itself is intentionally left uncleared — it is the
+    // selective-save baseline; see the featureFlags parity note.) The comment-
+    // list dirty flag lives in useCommentManagement and is cleared by the ref
+    // API's save wrapper, the single public save entry point.
+    isDirty.value = false;
+
     return new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
@@ -1072,6 +1099,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     editorView,
     editorState,
     isReady,
+    isDirty,
     parseError,
     layout,
     blocks,
