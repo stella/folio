@@ -82,6 +82,19 @@
         "vite": "8.0.16",
       },
     },
+    "packages/playground-vue": {
+      "name": "@stll/playground-vue",
+      "version": "0.0.0",
+      "dependencies": {
+        "@stll/folio-vue": "workspace:*",
+        "vue": "^3.5.39",
+      },
+      "devDependencies": {
+        "@vitejs/plugin-vue": "^6.0.7",
+        "vite": "8.0.16",
+        "vue-tsc": "^3.3.6",
+      },
+    },
     "packages/react": {
       "name": "@stll/folio-react",
       "version": "0.2.0",
@@ -504,6 +517,8 @@
     "@stll/oxlint-config": ["@stll/oxlint-config@0.3.0", "", { "peerDependencies": { "oxlint": ">=1.66.0", "oxlint-tsgolint": ">=0.23.0" } }, "sha512-kT4jS/0mgMejp5LUrQ7joHljyphqQr2kk2zGyuJGiJqFz7pHnp9lPJw5WmDyoOqEC34+jkHh0vPeNcZIEiXhog=="],
 
     "@stll/playground": ["@stll/playground@workspace:packages/playground"],
+
+    "@stll/playground-vue": ["@stll/playground-vue@workspace:packages/playground-vue"],
 
     "@stll/template-conditions": ["@stll/template-conditions@0.1.0", "", { "dependencies": { "@stll/conditions": "^0.1.0", "better-result": "2.9.2" } }, "sha512-GkgzEDiSqpzG3GexlOfVXHgYiQSME8osQIZ645F9ooQbvDcsTVX5YVpfvmPwe3EOhRol6WjEyO2t/39+hNvQsg=="],
 
