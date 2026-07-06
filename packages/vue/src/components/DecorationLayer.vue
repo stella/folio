@@ -13,7 +13,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { EditorState } from 'prosemirror-state';
-import type { Decoration, EditorView } from 'prosemirror-view';
+import type { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 import type { LayoutSelectionGate } from '@stll/folio-core/paged-layout/LayoutSelectionGate';
 
 const props = defineProps<{
@@ -126,7 +126,14 @@ function collectDecorations(state: EditorState): CollectedDecoration[] {
     if (!decorationsFn) continue;
     const source = decorationsFn.call(plugin, state);
     if (!source) continue;
-    source.forEachSet((set) => {
+    // A `DecorationSource` walks down to its leaf `DecorationSet`s via
+    // `forEachSet`. This overlay is a PORT-BLOCKED stub (see file header): read
+    // the traversal reflectively and skip the source rather than throw if a
+    // future/leaner prosemirror-view drops the method. The stub renders nothing
+    // regardless, so failing soft here keeps it from crashing the editor.
+    const forEachSet = readField(source, 'forEachSet');
+    if (typeof forEachSet !== 'function') continue;
+    forEachSet.call(source, (set: DecorationSet) => {
       set.find().forEach((decoration) => {
         const spec = readField(decoration, 'spec');
         if (typeof spec === 'object' && spec !== null && readField(spec, 'noOverlay')) return;
