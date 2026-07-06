@@ -80,6 +80,8 @@ import { FolioAISignatureParty } from '@stll/folio-core/ai-edits';
 import { FolioBlockId } from '@stll/folio-core/types/block-id';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
+import { default as FormattingBar } from './components/FormattingBar.vue';
+import { FormattingBarProps } from './components/FormattingBar.vue';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getAnonymizationMatches } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { getAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -138,6 +140,9 @@ import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
 import { VNodeChild } from 'vue';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
 import { XmlFragment } from 'yjs';
+import { default as ZoomControl } from './components/ui/ZoomControl.vue';
+import { ZoomControlProps } from './components/ui/ZoomControl.vue';
+import { ZoomLevel } from './components/ui/ZoomControl.vue';
 
 export { AcceptAutocompleteResult }
 
@@ -454,6 +459,10 @@ export type FontOption = {
     category?: "sans-serif" | "serif" | "monospace" | "other";
 };
 
+export { FormattingBar }
+
+export { FormattingBarProps }
+
 export { fromMarkdown }
 
 export { getAnonymizationMatches }
@@ -567,5 +576,11 @@ export const useTranslation: () => {
 export function useWheelZoom(initialZoom?: number): UseZoomReturn;
 
 export { WordDiffSegment }
+
+export { ZoomControl }
+
+export { ZoomControlProps }
+
+export { ZoomLevel }
 
 ```

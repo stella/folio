@@ -16,6 +16,14 @@
 
 // ─── Editor component + imperative API (Vue-specific) ───────────────────────
 export { default as DocxEditor } from "./components/DocxEditor.vue";
+// Standalone chrome components (mirror React's index): a host can render these
+// outside DocxEditor. Both are controlled — they own no editor view.
+export { default as FormattingBar, type FormattingBarProps } from "./components/FormattingBar.vue";
+export {
+  default as ZoomControl,
+  type ZoomControlProps,
+  type ZoomLevel,
+} from "./components/ui/ZoomControl.vue";
 export {
   renderAsync,
   type DocxEditorHandle,
