@@ -475,12 +475,26 @@ VNodeRenderer.props = ["node"];
 // split while `isReady` is false (mirrors React's history.state gate).
 const hasDocumentInput = computed(() => props.documentBuffer != null || props.document != null);
 
-// True once a document has painted at least once — the Vue analogue of React's
-// truthy `history.state`. Gates `preserveDocumentWhileLoading`: a swap tears the
-// PM view down (isReady flips false) but the previous pages stay painted in
-// `pagesRef` until the new layout runs, so suppressing the loading interstitial
-// keeps the prior document visible until the next paint replaces it.
+// True while a document is currently present (painted) — the Vue analogue of
+// React's truthy `history.state`, which tracks the *current* document, not a
+// permanent "ever rendered" latch. Gates `preserveDocumentWhileLoading`: a swap
+// tears the PM view down (isReady flips false) but the previous pages stay
+// painted in `pagesRef` until the new layout runs, so suppressing the loading
+// interstitial keeps the prior document visible until the next paint replaces
+// it. Set true once a document paints; cleared on explicit unload (below) so a
+// later reload shows the loading indicator again, exactly as React does when
+// `history.state` returns to null.
 const hasRenderedDocumentOnce = ref(false);
+
+// Mirror React's `history.state` going null on unload: when the host clears the
+// document, drop the "currently present" flag so the next load is not treated
+// as a seamless swap (which would suppress the loading indicator and blank the
+// screen — no prior paint survives an unload).
+watch(hasDocumentInput, (hasInput) => {
+  if (!hasInput) {
+    hasRenderedDocumentOnce.value = false;
+  }
+});
 
 // ---- Template refs (paint targets) --------------------------------------
 const hiddenPmRef = ref<HTMLElement | null>(null);
