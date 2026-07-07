@@ -1,5 +1,20 @@
 # @stll/folio-react
 
+## 0.5.0
+
+### Minor Changes
+
+- [#83](https://github.com/stella/folio/pull/83) [`2965019`](https://github.com/stella/folio/commit/2965019bcb330439baabee5789757827eab757eb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Support React 18 alongside React 19.
+
+- [#84](https://github.com/stella/folio/pull/84) [`135116d`](https://github.com/stella/folio/commit/135116d9f09fb322b9f95754791bc3b54f637c0d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add an Eigenpal compatibility entrypoint for migration codemods.
+
+### Patch Changes
+
+- [#82](https://github.com/stella/folio/pull/82) [`59fac3d`](https://github.com/stella/folio/commit/59fac3d8c57c786db0681e46cb4bb51f4c292992) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Fix `FormattingBar` overflow collapse: the secondary control group (font, color, alignment, lists) now collapses into the "More" popover based on live measurement of the toolbar's actual content width (via `ResizeObserver`), instead of a fixed bar-width breakpoint that ignored host `priorityExtra`/`inlineExtra` width and could leave controls scrolled out of view with no visible affordance; the "More" trigger is now rendered outside the scrollable region so it can never scroll away. Also fixes the zoom control and font-size picker truncating their labels, normalizes the alignment/list active-state affordance and icon sizes to match bold/italic/underline.
+
+- Updated dependencies [[`135116d`](https://github.com/stella/folio/commit/135116d9f09fb322b9f95754791bc3b54f637c0d)]:
+  - @stll/folio-core@0.3.1
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.3.1
+
+### Patch Changes
+
+- [#84](https://github.com/stella/folio/pull/84) [`135116d`](https://github.com/stella/folio/commit/135116d9f09fb322b9f95754791bc3b54f637c0d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add an Eigenpal core compatibility entrypoint and support the legacy Google Fonts toggle.
+
 ## 0.3.0
 
 ### Minor Changes
