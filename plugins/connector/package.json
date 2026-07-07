@@ -1,0 +1,49 @@
+{
+  "name": "@stll/folio-connector-remarkable",
+  "version": "0.1.0",
+  "description": "reMarkable cloud connector for folio: list, upload, download, and organize documents on a reMarkable tablet via the cloud API.",
+  "keywords": [
+    "connector",
+    "docx",
+    "e-ink",
+    "folio",
+    "remarkable",
+    "sync",
+    "tablet"
+  ],
+  "homepage": "https://github.com/stella/folio",
+  "bugs": {
+    "url": "https://github.com/stella/folio/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "STLL",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stella/folio.git",
+    "directory": "plugins/connector"
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsdown",
+    "prepack": "bun run build",
+    "pack:dry-run": "bun pm pack --dry-run",
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "better-result": "2.9.2",
+    "rmapi-js": "^11.0.0"
+  }
+}

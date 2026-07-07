@@ -14,7 +14,8 @@
     "url": "https://github.com/stella/folio.git"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "plugins/*"
   ],
   "type": "module",
   "scripts": {
@@ -32,8 +33,8 @@
     "typegen": "bun scripts/i18n-typegen.ts packages/core/src/i18n/messages",
     "check:i18n": "bun scripts/i18n-typegen.ts packages/core/src/i18n/messages --check && bun scripts/i18n-check.ts packages/core/src/i18n/messages",
     "codemod:eigenpal": "bun scripts/migrate-eigenpal.ts",
-    "lint": "bun --bun oxlint -c oxlint.config.ts packages scripts test benchmarks parity",
-    "lint:fix": "bun --bun oxlint -c oxlint.config.ts --fix packages scripts test benchmarks parity",
+    "lint": "bun --bun oxlint -c oxlint.config.ts packages plugins scripts test benchmarks parity",
+    "lint:fix": "bun --bun oxlint -c oxlint.config.ts --fix packages plugins scripts test benchmarks parity",
     "format": "oxfmt .",
     "sync-ai": "bash scripts/sync-ai-skills.sh",
     "test:packaged-consumer": "bun scripts/packaged-consumer-build.ts",
