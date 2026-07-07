@@ -19,8 +19,9 @@ import {
   useLayoutEffect,
   useMemo,
   useImperativeHandle,
+  forwardRef,
 } from "react";
-import type { CSSProperties, Ref } from "react";
+import type { CSSProperties } from "react";
 
 import {
   CheckIcon,
@@ -421,8 +422,7 @@ function areActiveTrackedChangesEqual(
 /**
  * DocxEditor - Complete DOCX editor component
  */
-export function DocxEditor({
-  ref,
+export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function DocxEditor({
   documentBuffer,
   document: initialDocument,
   documentKey,
@@ -486,7 +486,7 @@ export function DocxEditor({
   collaboration,
   featureFlags,
   onSelectiveSaveTripwire,
-}: DocxEditorProps & { ref?: Ref<DocxEditorRef> }) {
+}: DocxEditorProps, ref) {
   const t = useTranslations("folio");
 
   // Surface a failed clipboard read behind the "paste without formatting"
@@ -4091,7 +4091,7 @@ export function DocxEditor({
       </ErrorProvider>
     </FolioUIProvider>
   );
-}
+});
 
 // ============================================================================
 // EXPORTS

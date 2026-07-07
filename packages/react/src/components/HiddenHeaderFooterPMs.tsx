@@ -21,8 +21,8 @@
  * Document changes through history.
  */
 
-import { memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
-import type { CSSProperties, Ref } from "react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import type { CSSProperties } from "react";
 
 import { EditorState } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
@@ -72,7 +72,6 @@ export type HiddenHeaderFooterPMsRef = {
 };
 
 export type HiddenHeaderFooterPMsProps = {
-  ref?: Ref<HiddenHeaderFooterPMsRef>;
   /** Loaded document — its `package.headers`/`.footers` drives slot enumeration. */
   document: Document | null;
   /** Document styles, threaded into `headerFooterToProseDoc` for style resolution. */
@@ -207,7 +206,7 @@ const HOST_STYLES: CSSProperties = {
 // =============================================================================
 
 export const HiddenHeaderFooterPMs = memo(
-  ({ document, styles, theme, onTransaction, ref }: HiddenHeaderFooterPMsProps) => {
+  forwardRef<HiddenHeaderFooterPMsRef, HiddenHeaderFooterPMsProps>(function HiddenHeaderFooterPMs({ document, styles, theme, onTransaction }, ref) {
     // Stable callback ref so re-renders don't recreate every EditorView.
     const onTransactionRef = useRef(onTransaction);
     onTransactionRef.current = onTransaction;
@@ -365,7 +364,7 @@ export const HiddenHeaderFooterPMs = memo(
     );
 
     return <div ref={hostRef} style={HOST_STYLES} />;
-  },
+  }),
 );
 
 HiddenHeaderFooterPMs.displayName = "HiddenHeaderFooterPMs";

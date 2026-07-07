@@ -22,8 +22,9 @@ import {
   useCallback,
   useImperativeHandle,
   useState,
+  forwardRef,
 } from "react";
-import type { CSSProperties, Ref } from "react";
+import type { CSSProperties } from "react";
 
 import { panic } from "better-result";
 import type { Transaction, Command, Plugin, EditorState } from "prosemirror-state";
@@ -193,11 +194,8 @@ const HIDDEN_HOST_STYLES: CSSProperties = {
 /**
  * HiddenProseMirror - Off-screen ProseMirror editor for keyboard input
  */
-export function HiddenProseMirror(
-  props: HiddenProseMirrorProps & { ref?: Ref<HiddenProseMirrorRef> },
-) {
+export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMirrorProps>(function HiddenProseMirror(props, ref) {
   const {
-    ref,
     document,
     documentKey,
     styles,
@@ -431,4 +429,4 @@ export function HiddenProseMirror(
       />
     </div>
   );
-}
+});

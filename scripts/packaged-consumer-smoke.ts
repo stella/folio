@@ -22,16 +22,20 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  REACT_PEER_MAJORS,
   buildAndPack,
   consumerSrc,
   coreDir,
+  reactPeerInstallArgs,
   reactDir,
   repoRoot,
+  type ReactPeerMajor,
   writeConsumerPackageJson,
 } from "./packaged-consumer-lib";
 
-const PREVIEW_PORT = 4300;
-const PREVIEW_URL = `http://localhost:${PREVIEW_PORT}`;
+const previewPortForReactMajor = (reactMajor: ReactPeerMajor): number => 4300 + Number(reactMajor);
+const previewUrlForReactMajor = (reactMajor: ReactPeerMajor): string =>
+  `http://localhost:${previewPortForReactMajor(reactMajor)}`;
 
 // Poll the preview server until it answers or the deadline passes.
 const waitForServer = async (url: string, timeoutMs: number): Promise<boolean> => {
@@ -69,95 +73,119 @@ const dumpLog = async (label: string, logPath: string): Promise<void> => {
 };
 
 let failure: string | null = null;
-let succeeded = false;
 
 let corePackDir = "";
 let reactPackDir = "";
-let consumerDir = "";
-let previewStdoutPath = "";
-let previewStderrPath = "";
-let preview: ReturnType<typeof Bun.spawn> | null = null;
+const consumerDirs: string[] = [];
 try {
   corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
   reactPackDir = await mkdtemp(path.join(tmpdir(), "folio-react-pack-"));
-  consumerDir = await mkdtemp(path.join(tmpdir(), "folio-packaged-consumer-smoke-"));
 
   const coreTarball = await buildAndPack(coreDir, corePackDir);
   const reactTarball = await buildAndPack(reactDir, reactPackDir);
 
-  // Stage the checked-in consumer OUT of the monorepo so no workspace linkage
-  // leaks in. The runtime build needs index.html, the runtime config, the app
-  // source, and the served fixture.
-  console.log(`→ staging runtime consumer in ${consumerDir}`);
-  await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
-  await cp(path.join(consumerSrc, "public"), path.join(consumerDir, "public"), { recursive: true });
-  await cp(path.join(consumerSrc, "index.html"), path.join(consumerDir, "index.html"));
-  await cp(
-    path.join(consumerSrc, "vite.runtime.config.ts"),
-    path.join(consumerDir, "vite.runtime.config.ts"),
-  );
-  await writeConsumerPackageJson(consumerDir, coreTarball);
+  const runSmoke = async (reactMajor: ReactPeerMajor): Promise<void> => {
+    let succeeded = false;
+    let previewStdoutPath = "";
+    let previewStderrPath = "";
+    let preview: ReturnType<typeof Bun.spawn> | null = null;
+    const consumerDir = await mkdtemp(
+      path.join(tmpdir(), `folio-packaged-consumer-smoke-r${reactMajor}-`),
+    );
+    consumerDirs.push(consumerDir);
+    const previewUrl = previewUrlForReactMajor(reactMajor);
+    const previewPort = previewPortForReactMajor(reactMajor);
 
-  console.log("→ installing tarballs + peers");
-  await $`bun add ${reactTarball} ${coreTarball} react@^19 react-dom@^19 use-intl@^4 vite@^8 @vitejs/plugin-react@^6 @types/react@^19 @types/react-dom@^19`
-    .cwd(consumerDir)
-    .quiet();
+    try {
+      // Stage the checked-in consumer OUT of the monorepo so no workspace linkage
+      // leaks in. The runtime build needs index.html, the runtime config, the app
+      // source, and the served fixture.
+      console.log(`→ staging React ${reactMajor} runtime consumer in ${consumerDir}`);
+      await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
+      await cp(path.join(consumerSrc, "public"), path.join(consumerDir, "public"), {
+        recursive: true,
+      });
+      await cp(path.join(consumerSrc, "index.html"), path.join(consumerDir, "index.html"));
+      await cp(
+        path.join(consumerSrc, "vite.runtime.config.ts"),
+        path.join(consumerDir, "vite.runtime.config.ts"),
+      );
+      await writeConsumerPackageJson(consumerDir, coreTarball);
 
-  console.log("→ production SPA build over the packed tarballs");
-  const build = await $`bun x vite build --config vite.runtime.config.ts`
-    .cwd(consumerDir)
-    .nothrow();
-  if (build.exitCode !== 0) {
-    console.error(build.stderr.toString() || build.stdout.toString());
-    throw new Error("packaged-consumer-smoke: production vite build FAILED against the tarballs.");
-  }
+      console.log(`→ installing tarballs + React ${reactMajor} peers`);
+      await $`bun add ${reactTarball} ${coreTarball} ${reactPeerInstallArgs(reactMajor)} use-intl@^4 vite@^8 @vitejs/plugin-react@^6`
+        .cwd(consumerDir)
+        .quiet();
 
-  console.log(`→ serving the built app on ${PREVIEW_URL}`);
-  // Redirect the server's stdio to files rather than piping: an unread pipe
-  // blocks the child once the OS buffer fills, and the files double as CI
-  // debugging output — they are dumped below whenever the smoke fails.
-  previewStdoutPath = path.join(consumerDir, "vite-preview.stdout.log");
-  previewStderrPath = path.join(consumerDir, "vite-preview.stderr.log");
-  preview = Bun.spawn(
-    [
-      "bun",
-      "x",
-      "vite",
-      "preview",
-      "--config",
-      "vite.runtime.config.ts",
-      "--port",
-      `${PREVIEW_PORT}`,
-    ],
-    {
-      cwd: consumerDir,
-      stdout: Bun.file(previewStdoutPath),
-      stderr: Bun.file(previewStderrPath),
-    },
-  );
-  if (!(await waitForServer(PREVIEW_URL, 30_000))) {
-    throw new Error(`packaged-consumer-smoke: preview server never came up on ${PREVIEW_URL}.`);
-  }
+      console.log(`→ production SPA build over the packed tarballs (React ${reactMajor})`);
+      const build = await $`bun x vite build --config vite.runtime.config.ts`
+        .cwd(consumerDir)
+        .nothrow();
+      if (build.exitCode !== 0) {
+        console.error(build.stderr.toString() || build.stdout.toString());
+        throw new Error(
+          `packaged-consumer-smoke: React ${reactMajor} production vite build FAILED against the tarballs.`,
+        );
+      }
 
-  console.log("→ running the runtime smoke (Playwright chromium)");
-  const smoke = await $`bun x playwright test --config playwright.smoke.config.ts`
-    .cwd(repoRoot)
-    .env({ ...process.env, PLAYWRIGHT_BASE_URL: PREVIEW_URL })
-    .nothrow();
-  if (smoke.exitCode === 0) {
-    succeeded = true;
-  } else {
-    failure = "\n✗ packaged-consumer-smoke: the runtime smoke FAILED against the served tarballs.";
+      console.log(`→ serving the React ${reactMajor} built app on ${previewUrl}`);
+      // Redirect the server's stdio to files rather than piping: an unread pipe
+      // blocks the child once the OS buffer fills, and the files double as CI
+      // debugging output; they are dumped below whenever the smoke fails.
+      previewStdoutPath = path.join(consumerDir, "vite-preview.stdout.log");
+      previewStderrPath = path.join(consumerDir, "vite-preview.stderr.log");
+      preview = Bun.spawn(
+        [
+          "bun",
+          "x",
+          "vite",
+          "preview",
+          "--config",
+          "vite.runtime.config.ts",
+          "--port",
+          `${previewPort}`,
+        ],
+        {
+          cwd: consumerDir,
+          stdout: Bun.file(previewStdoutPath),
+          stderr: Bun.file(previewStderrPath),
+        },
+      );
+      if (!(await waitForServer(previewUrl, 30_000))) {
+        throw new Error(
+          `packaged-consumer-smoke: React ${reactMajor} preview server never came up on ${previewUrl}.`,
+        );
+      }
+
+      console.log(`→ running the React ${reactMajor} runtime smoke (Playwright chromium)`);
+      const smoke = await $`bun x playwright test --config playwright.smoke.config.ts`
+        .cwd(repoRoot)
+        .env({ ...process.env, PLAYWRIGHT_BASE_URL: previewUrl })
+        .nothrow();
+      if (smoke.exitCode === 0) {
+        succeeded = true;
+        return;
+      }
+      failure = `\n✗ packaged-consumer-smoke: the React ${reactMajor} runtime smoke FAILED against the served tarballs.`;
+    } finally {
+      preview?.kill();
+      // On any failure (assertion or thrown step), surface the preview server's
+      // captured output for CI debugging before the staging dir is removed.
+      if (!succeeded) {
+        await dumpLog("vite preview stdout", previewStdoutPath);
+        await dumpLog("vite preview stderr", previewStderrPath);
+      }
+    }
+  };
+
+  for (const reactMajor of REACT_PEER_MAJORS) {
+    await runSmoke(reactMajor);
+    if (failure !== null) {
+      break;
+    }
   }
 } finally {
-  preview?.kill();
-  // On any failure (assertion or thrown step), surface the preview server's
-  // captured output for CI debugging before the staging dir is removed.
-  if (!succeeded) {
-    await dumpLog("vite preview stdout", previewStdoutPath);
-    await dumpLog("vite preview stderr", previewStderrPath);
-  }
-  for (const dir of [corePackDir, reactPackDir, consumerDir]) {
+  for (const dir of [corePackDir, reactPackDir, ...consumerDirs]) {
     if (dir !== "") {
       await rm(dir, { recursive: true, force: true });
     }
@@ -169,4 +197,6 @@ if (failure !== null) {
   process.exit(1);
 }
 
-console.log("\n✓ packaged-consumer-smoke: the served build ran clean (worker + catalog verified).");
+console.log(
+  "\n✓ packaged-consumer-smoke: React 18 and 19 served builds ran clean (worker + catalog verified).",
+);

@@ -48,7 +48,7 @@ layout engine, DOCX ↔ Markdown), depend on `@stll/folio-core` directly.
 
 ## Peer dependencies
 
-`react` ^19 · `react-dom` ^19 · `use-intl` >=4
+`react` ^18 or ^19 · `react-dom` ^18 or ^19 · `use-intl` >=4
 
 ## Acknowledgements
 

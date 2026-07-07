@@ -79,7 +79,13 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: |
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
+          bunx playwright install --with-deps chromium
 
       # Behaviour specs only (assert document content + editor state). The
       # screenshot baselines (rendering.spec) and perf budgets
@@ -139,7 +145,13 @@ jobs:
         run: bun run test:packaged-consumer
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: |
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
+          bunx playwright install --with-deps chromium
 
       # Runtime half of the same gate: serve the built consumer and drive it in a
       # browser. Catches failures the build cannot see — a worker that resolves at

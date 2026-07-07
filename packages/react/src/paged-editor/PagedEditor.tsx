@@ -22,8 +22,9 @@ import React, {
   useLayoutEffect,
   useMemo,
   useImperativeHandle,
+  forwardRef,
 } from "react";
-import type { CSSProperties, Ref } from "react";
+import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
@@ -1634,9 +1635,8 @@ function buildFootnoteRenderItems(
 /**
  * PagedEditor - Main paginated editing component.
  */
-export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef> }) {
+export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(function PagedEditor(props, ref) {
   const {
-    ref,
     document,
     documentKey,
     fonts: hostFonts,
@@ -6149,4 +6149,4 @@ export function PagedEditor(props: PagedEditorProps & { ref?: Ref<PagedEditorRef
       {sidebarOverlay}
     </div>
   );
-}
+});

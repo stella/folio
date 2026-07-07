@@ -19,8 +19,8 @@
  * methods now delegate to the active HF PM via `getActiveView`.
  */
 
-import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { CSSProperties, Ref } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 
 import { redo, undo } from "prosemirror-history";
 import type { EditorView } from "prosemirror-view";
@@ -100,17 +100,14 @@ const labelStyle: CSSProperties = {
 // COMPONENT
 // ============================================================================
 
-export function InlineHeaderFooterEditor({
-  ref,
+export const InlineHeaderFooterEditor = forwardRef<InlineHeaderFooterEditorRef, InlineHeaderFooterEditorProps>(function InlineHeaderFooterEditor({
   position,
   targetElement,
   parentElement,
   getActiveView,
   onClose,
   onRemove,
-}: InlineHeaderFooterEditorProps & {
-  ref?: Ref<InlineHeaderFooterEditorRef>;
-}) {
+}: InlineHeaderFooterEditorProps, ref) {
   const [showOptions, setShowOptions] = useState(false);
   const optionsRef = useRef<HTMLDivElement>(null);
 
@@ -294,7 +291,7 @@ export function InlineHeaderFooterEditor({
       )}
     </div>
   );
-}
+});
 
 // ============================================================================
 // OPTIONS MENU SUB-COMPONENT

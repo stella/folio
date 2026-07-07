@@ -84,6 +84,7 @@ import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
+import { ForwardRefExoticComponent } from 'react';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getAnonymizationMatches } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { getAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -114,7 +115,6 @@ import { Popover } from '@base-ui/react/popover';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
 import React$1 from 'react';
 import { ReactNode } from 'react';
-import { Ref } from 'react';
 import { RefAttributes } from 'react';
 import { RefObject } from 'react';
 import { resetTemplateSlashQuery } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
@@ -275,9 +275,7 @@ export { Document_2 as Document }
 export { DocxCompatibility }
 
 // @public
-export function DocxEditor(input: DocxEditorProps & {
-    ref?: Ref<DocxEditorRef>;
-}): JSX.Element;
+export const DocxEditor: ForwardRefExoticComponent<DocxEditorProps & RefAttributes<DocxEditorRef>>;
 
 // @public (undocumented)
 export type DocxEditorCollaboration = {

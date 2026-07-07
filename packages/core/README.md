@@ -12,8 +12,8 @@ changes, and footnotes.
 
 There is **no React** in the import graph, so the core runs on a server or under
 any framework. The React editor lives in
-[`@stll/folio-react`](https://www.npmjs.com/package/@stll/folio-react); a Vue or
-Tauri adapter could build on this same core.
+[`@stll/folio-react`](https://www.npmjs.com/package/@stll/folio-react), and the
+Vue editor lives in [`@stll/folio-vue`](https://www.npmjs.com/package/@stll/folio-vue).
 
 Part of [stella](https://github.com/stella/stella), an open-source legal workspace.
 
