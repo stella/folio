@@ -4,29 +4,43 @@
 
 # folio
 
-A Word-document editor for the browser. It opens a `.docx`, lets you edit
-it, and writes a `.docx` back — preserving pagination, tables, headers and
-footers, tracked changes, and footnotes.
+A framework-neutral DOCX engine and browser editor toolkit. It opens a `.docx`,
+lets you edit it, and writes a `.docx` back — preserving pagination, tables,
+headers and footers, tracked changes, and footnotes.
 
-The OOXML parser, document model, and page-layout engine are React-free, so they
-run on a server or under any framework. The React editor is one layer on top.
+The OOXML parser, document model, and page-layout engine are framework-neutral,
+so they run on a server or under any UI adapter. The React and Vue editors are
+thin layers on top, with a Nuxt module for Vue/Nuxt apps and an agent-tooling
+package for document review workflows.
 
 Part of [stella](https://github.com/stella/stella), an open-source legal workspace.
 
 ## Packages
 
-This is a [bun](https://bun.sh) workspace monorepo with two published packages:
+This is a [bun](https://bun.sh) workspace monorepo with these published packages:
 
-| Package                                 | What it is                                                                                                                                                                                        |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@stll/folio-core`](./packages/core)   | the headless, framework-neutral core — OOXML parsing, the document model, the ProseMirror integration, and the layout engine; no React in the import graph, so non-React adapters can build on it |
-| [`@stll/folio-react`](./packages/react) | the React editor and its components, built on `@stll/folio-core`                                                                                                                                  |
+| Package                                 | What it is                                                                                                                                                                                             |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`@stll/folio-core`](./packages/core)   | the headless, framework-neutral core — OOXML parsing, the document model, the ProseMirror integration, and the layout engine; no framework UI in the import graph                                     |
+| [`@stll/folio-react`](./packages/react) | the React editor and its components, built on `@stll/folio-core`                                                                                                                                       |
+| [`@stll/folio-vue`](./packages/vue)     | the Vue 3 editor and composables, built on the same core and layout engine                                                                                                                             |
+| [`@stll/folio-nuxt`](./packages/nuxt)   | a Nuxt 3/4 module that registers the Vue editor safely for Nuxt apps                                                                                                                                   |
+| [`@stll/folio-agents`](./packages/agents) | framework-neutral LLM tool definitions and executors for reading `.docx` documents and proposing tracked changes or comments through `@stll/folio-core`                                             |
 
 ## Install
 
 ```sh
 # the React editor (pulls in @stll/folio-core)
 bun add @stll/folio-react react react-dom use-intl
+
+# the Vue editor
+bun add @stll/folio-vue vue
+
+# Nuxt integration
+bun add @stll/folio-nuxt
+
+# agent/review tooling
+bun add @stll/folio-agents
 
 # or just the headless engine
 bun add @stll/folio-core
@@ -147,20 +161,20 @@ language switcher you can use to preview every bundled locale.
 
 ```sh
 bun install
-bun run build       # builds both packages (core first)
+bun run build       # builds all published packages
 bun run typecheck
-bun run test        # unit suite for both packages
+bun run test        # unit suites across the workspace
 bun run lint
-bun run validate-dist   # clean-room publish-shape validation for both packages
+bun run validate-dist   # clean-room publish-shape validation for published packages
 ```
 
 ## Releasing
 
 Releases are driven by [Changesets](https://github.com/changesets/changesets).
-The two packages are versioned independently.
+The published packages are versioned independently.
 
-**Every PR that edits `packages/core/src` or `packages/react/src` must add a
-changeset.** CI enforces this (`bun run changeset:check`):
+**Every PR that edits published package source under `packages/{core,react,agents,vue,nuxt}/src`
+must add a changeset.** CI enforces this (`bun run changeset:check`):
 
 ```sh
 bunx changeset          # pick packages + bump level, write a summary
@@ -182,8 +196,8 @@ How a version reaches npm:
    pending changesets — bumping the affected `package.json` versions, updating
    changelogs, and re-syncing `bun.lock`.
 3. Merging that PR lands the version bumps on `main`, which trips
-   `publish.yml`'s `packages/{core,react}/package.json` path filter and runs the
-   hardened OIDC publish + GitHub Release for the bumped package(s).
+   `publish.yml`'s package path filter and runs the hardened OIDC publish +
+   GitHub Release for the bumped package(s).
 
 Changesets never publishes; `publish.yml` is the sole publish mechanism.
 

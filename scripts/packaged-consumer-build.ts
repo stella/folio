@@ -29,10 +29,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  REACT_PEER_MAJORS,
   buildAndPack,
   consumerSrc,
   coreDir,
+  reactPeerInstallArgs,
   reactDir,
+  type ReactPeerMajor,
   writeConsumerPackageJson,
 } from "./packaged-consumer-lib";
 
@@ -41,51 +44,69 @@ import {
 // be skipped — the exact leak this structure exists to prevent. Any thrown
 // error still propagates (Bun exits non-zero on it) after cleanup runs.
 let failure: string | null = null;
-let workerChunk: string | undefined;
+const workerChunks: string[] = [];
 
 let corePackDir = "";
 let reactPackDir = "";
-let consumerDir = "";
+const consumerDirs: string[] = [];
 try {
   corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
   reactPackDir = await mkdtemp(path.join(tmpdir(), "folio-react-pack-"));
-  consumerDir = await mkdtemp(path.join(tmpdir(), "folio-packaged-consumer-"));
 
   const coreTarball = await buildAndPack(coreDir, corePackDir);
   const reactTarball = await buildAndPack(reactDir, reactPackDir);
 
-  // Copy the checked-in consumer app out of the monorepo so no workspace
-  // linkage leaks in; install the packed artifacts npm-style.
-  console.log(`→ staging consumer in ${consumerDir}`);
-  await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
-  await cp(path.join(consumerSrc, "vite.config.ts"), path.join(consumerDir, "vite.config.ts"));
+  const runBuild = async (reactMajor: ReactPeerMajor): Promise<void> => {
+    const consumerDir = await mkdtemp(
+      path.join(tmpdir(), `folio-packaged-consumer-r${reactMajor}-`),
+    );
+    consumerDirs.push(consumerDir);
 
-  await writeConsumerPackageJson(consumerDir, coreTarball);
+    // Copy the checked-in consumer app out of the monorepo so no workspace
+    // linkage leaks in; install the packed artifacts npm-style.
+    console.log(`→ staging React ${reactMajor} consumer in ${consumerDir}`);
+    await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
+    await cp(path.join(consumerSrc, "vite.config.ts"), path.join(consumerDir, "vite.config.ts"));
 
-  console.log("→ installing tarballs + peers");
-  await $`bun add ${reactTarball} ${coreTarball} react@^19 react-dom@^19 use-intl@^4 vite@^8 @types/react@^19 @types/react-dom@^19`
-    .cwd(consumerDir)
-    .quiet();
+    await writeConsumerPackageJson(consumerDir, coreTarball);
 
-  console.log("→ production vite build over the packed tarballs");
-  const build = await $`bun x vite build`.cwd(consumerDir).nothrow();
-  if (build.exitCode === 0) {
+    console.log(`→ installing tarballs + React ${reactMajor} peers`);
+    await $`bun add ${reactTarball} ${coreTarball} ${reactPeerInstallArgs(reactMajor)} use-intl@^4 vite@^8`
+      .cwd(consumerDir)
+      .quiet();
+
+    console.log(`→ production vite build over the packed tarballs (React ${reactMajor})`);
+    const build = await $`bun x vite build`.cwd(consumerDir).nothrow();
+    if (build.exitCode !== 0) {
+      console.error(build.stderr.toString() || build.stdout.toString());
+      failure = `\n✗ packaged-consumer: React ${reactMajor} production vite build FAILED against the packed tarballs.`;
+      return;
+    }
+
     // The worker must have resolved and emitted its own chunk; otherwise the
     // URL target silently vanished (e.g. externalized away) and the gate would
     // be moot.
     const distFiles = await readdir(path.join(consumerDir, "dist"), { recursive: true });
-    workerChunk = distFiles.find((f) => f.includes("font-metrics.worker") && f.endsWith(".js"));
+    const workerChunk = distFiles.find(
+      (f) => f.includes("font-metrics.worker") && f.endsWith(".js"),
+    );
     if (!workerChunk) {
-      failure = `✗ packaged-consumer: build produced no worker chunk. dist: ${distFiles.join(", ")}`;
+      failure = `✗ packaged-consumer: React ${reactMajor} build produced no worker chunk. dist: ${distFiles.join(", ")}`;
+      return;
     }
-  } else {
-    console.error(build.stderr.toString() || build.stdout.toString());
-    failure = "\n✗ packaged-consumer: production vite build FAILED against the packed tarballs.";
+    workerChunks.push(`React ${reactMajor}: ${workerChunk}`);
+  };
+
+  for (const reactMajor of REACT_PEER_MAJORS) {
+    await runBuild(reactMajor);
+    if (failure !== null) {
+      break;
+    }
   }
 } finally {
   // `rm` with `force` tolerates a dir that was never created (empty string is
   // guarded); cleanup runs on success, on failure, and on a thrown step.
-  for (const dir of [corePackDir, reactPackDir, consumerDir]) {
+  for (const dir of [corePackDir, reactPackDir, ...consumerDirs]) {
     if (dir !== "") {
       await rm(dir, { recursive: true, force: true });
     }
@@ -98,5 +119,5 @@ if (failure !== null) {
 }
 
 console.log(
-  `\n✓ packaged-consumer: production vite build succeeded; worker chunk emitted (${workerChunk}).`,
+  `\n✓ packaged-consumer: production vite build succeeded for React 18 and 19; worker chunks emitted (${workerChunks.join(", ")}).`,
 );

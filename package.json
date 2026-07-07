@@ -2,7 +2,7 @@
   "name": "@stll/folio-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "folio monorepo: @stll/folio-core (headless .docx engine) + @stll/folio-react (React editor).",
+  "description": "folio monorepo: framework-neutral DOCX engine, React/Vue editors, Nuxt module, and agent tooling.",
   "homepage": "https://github.com/stella/folio",
   "bugs": {
     "url": "https://github.com/stella/folio/issues"

@@ -23,6 +23,16 @@ export const coreDir = path.join(repoRoot, "packages", "core");
 export const reactDir = path.join(repoRoot, "packages", "react");
 export const consumerSrc = path.join(repoRoot, "test", "packaged-consumer");
 
+export const REACT_PEER_MAJORS = ["18", "19"] as const;
+export type ReactPeerMajor = (typeof REACT_PEER_MAJORS)[number];
+
+export const reactPeerInstallArgs = (major: ReactPeerMajor): string[] => [
+  `react@^${major}`,
+  `react-dom@^${major}`,
+  `@types/react@^${major}`,
+  `@types/react-dom@^${major}`,
+];
+
 // Build a package, transform its package.json to the published dist shape
 // (reversibly), pack a tarball into destDir, and return the tarball path.
 export const buildAndPack = async (pkgDir: string, destDir: string): Promise<string> => {

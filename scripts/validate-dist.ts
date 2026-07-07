@@ -63,6 +63,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { scanDistUrlTargets } from "./dist-url-targets";
+import {
+  REACT_PEER_MAJORS,
+  reactPeerInstallArgs,
+  type ReactPeerMajor,
+} from "./packaged-consumer-lib";
 import { findUncoveredUtilities } from "./standalone-css-coverage";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
@@ -159,14 +164,7 @@ await writeFile(
 const installArgs: string[] = [tarball];
 if (target === "react") {
   if (!coreTarball) panic("validate-dist: react needs a @stll/folio-core tarball");
-  installArgs.push(
-    coreTarball,
-    "react@^19",
-    "react-dom@^19",
-    "use-intl@^4",
-    "@types/react@^19",
-    "@types/react-dom@^19",
-  );
+  installArgs.push(coreTarball, ...reactPeerInstallArgs("19"), "use-intl@^4");
 }
 if (target === "agents") {
   if (!coreTarball) panic("validate-dist: agents needs a @stll/folio-core tarball");
@@ -343,32 +341,42 @@ const typeCheckModes =
   target === "vue"
     ? Object.entries(tsconfigs).filter(([mode]) => mode === "bundler")
     : Object.entries(tsconfigs);
-const typeChecks = await Promise.all(
-  typeCheckModes.map(async ([mode, opts]) => {
-    const file = path.join(consumerDir, `tsconfig.${mode}.json`);
-    await writeFile(
-      file,
-      `${JSON.stringify(
-        {
-          compilerOptions: { ...baseCompilerOptions, ...opts },
-          files: ["consumer.ts"],
-        },
-        null,
-        2,
-      )}\n`,
-    );
-    const tc = await $`${tscBin} -p ${file}`.cwd(consumerDir).nothrow().quiet();
-    return { mode, tc };
-  }),
-);
-for (const { mode, tc } of typeChecks) {
-  record(
-    `types: tsc --noEmit (moduleResolution: ${mode})`,
-    tc.exitCode === 0,
-    tc.exitCode === 0
-      ? "consumer typechecks against published .d.ts"
-      : `${tc.stdout.toString().trim()}${tc.stderr.toString().trim()}`.slice(0, 400),
+const typeCheckReactMajors: (ReactPeerMajor | null)[] =
+  target === "react" ? [...REACT_PEER_MAJORS] : [null];
+for (const reactMajor of typeCheckReactMajors) {
+  if (reactMajor !== null) {
+    await $`bun add ${reactPeerInstallArgs(reactMajor)}`.cwd(consumerDir).quiet();
+  }
+
+  const typeChecks = await Promise.all(
+    typeCheckModes.map(async ([mode, opts]) => {
+      const reactSuffix = reactMajor === null ? "" : `.react-${reactMajor}`;
+      const file = path.join(consumerDir, `tsconfig.${mode}${reactSuffix}.json`);
+      await writeFile(
+        file,
+        `${JSON.stringify(
+          {
+            compilerOptions: { ...baseCompilerOptions, ...opts },
+            files: ["consumer.ts"],
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      const tc = await $`${tscBin} -p ${file}`.cwd(consumerDir).nothrow().quiet();
+      return { mode, tc };
+    }),
   );
+  for (const { mode, tc } of typeChecks) {
+    const reactLabel = reactMajor === null ? "" : `, React ${reactMajor} types`;
+    record(
+      `types: tsc --noEmit (moduleResolution: ${mode}${reactLabel})`,
+      tc.exitCode === 0,
+      tc.exitCode === 0
+        ? "consumer typechecks against published .d.ts"
+        : `${tc.stdout.toString().trim()}${tc.stderr.toString().trim()}`.slice(0, 400),
+    );
+  }
 }
 
 // --- Check 3 (react only): bundled stylesheet -------------------------------
