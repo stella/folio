@@ -677,6 +677,14 @@ const withArabicFallback = (stack: string): string =>
     ? stack.replace(TRAILING_GENERIC, `, ${ARABIC_FALLBACK}, $<generic>`)
     : `${stack}, ${ARABIC_FALLBACK}`;
 
+let googleFontsEnabled = true;
+
+export const setGoogleFontsEnabled = (enabled: boolean): void => {
+  googleFontsEnabled = enabled;
+};
+
+export const getGoogleFontsEnabled = (): boolean => googleFontsEnabled;
+
 export function resolveFontFamily(docxFontName: string): ResolvedFont {
   const normalizedName = docxFontName.trim().toLowerCase();
 
@@ -693,10 +701,10 @@ export function resolveFontFamily(docxFontName: string): ResolvedFont {
         ? [docxFontName, ...mapping.fallbackStack]
         : mapping.fallbackStack;
     return {
-      googleFont: mapping.googleFont,
+      googleFont: googleFontsEnabled ? mapping.googleFont : null,
       cssFallback: withArabicFallback(fallbackStack.map(quoteFontName).join(", ")),
       originalFont: docxFontName,
-      hasGoogleEquivalent: true,
+      hasGoogleEquivalent: googleFontsEnabled,
       singleLineRatio: mapping.singleLineRatio,
     };
   }
@@ -844,6 +852,11 @@ export function getGoogleFontEquivalent(docxFontName: string): string | null {
  * @returns true if there's a Google Fonts equivalent
  */
 export function hasGoogleFontEquivalent(docxFontName: string): boolean {
+  if (!googleFontsEnabled) {
+    return false;
+  }
+
   const normalizedName = docxFontName.trim().toLowerCase();
-  return normalizedName in FONT_MAPPINGS;
+  const aliasTarget = CJK_FONT_ALIASES[normalizedName];
+  return (aliasTarget ?? normalizedName) in FONT_MAPPINGS;
 }

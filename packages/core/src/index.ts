@@ -149,3 +149,4 @@ export {
   type EmbeddedFont,
   type EmbeddedFontParts,
 } from "./fonts/embeddedFonts";
+export { getGoogleFontsEnabled, setGoogleFontsEnabled } from "./utils/fontResolver";

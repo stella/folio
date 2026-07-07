@@ -4,8 +4,12 @@ import { getResolvedData } from "../layout-engine/measure/measureHelpers";
 import {
   CJK_FALLBACK_FONT_FAMILY,
   getGoogleFontEquivalent,
+  getGoogleFontsEnabled,
+  getGoogleFontsToLoad,
+  hasGoogleFontEquivalent,
   isCjkFont,
   resolveFontFamily,
+  setGoogleFontsEnabled,
 } from "./fontResolver";
 
 describe("fontResolver — single-line ratios are derived from real hhea metrics", () => {
@@ -199,6 +203,27 @@ describe("fontResolver — native CJK theme typefaces map to matched Noto fonts"
   }
 });
 
+describe("fontResolver — Google Fonts compatibility toggle", () => {
+  test("suppresses Google font equivalents without changing local fallback stacks", () => {
+    const before = getGoogleFontsEnabled();
+    setGoogleFontsEnabled(false);
+
+    try {
+      const resolved = resolveFontFamily("Calibri");
+
+      expect(getGoogleFontsEnabled()).toBe(false);
+      expect(resolved.googleFont).toBeNull();
+      expect(resolved.hasGoogleEquivalent).toBe(false);
+      expect(resolved.cssFallback).toContain("Carlito");
+      expect(getGoogleFontEquivalent("Calibri")).toBeNull();
+      expect(hasGoogleFontEquivalent("Calibri")).toBe(false);
+      expect(getGoogleFontsToLoad(["Calibri", "Cambria"])).toEqual([]);
+    } finally {
+      setGoogleFontsEnabled(before);
+    }
+  });
+});
+
 describe("fontResolver — romanized CJK aliases resolve to the native entry", () => {
   // Word writes the romanized name in run `rFonts`; it must land on the same
   // Noto family + serif/sans category as the native theme name.
@@ -224,6 +249,7 @@ describe("fontResolver — romanized CJK aliases resolve to the native entry", (
       // which is what the serif/sans split must preserve.
       const isSerif = /Noto Serif/u.test(resolved.googleFont ?? "");
       expect(isSerif).toBe(category === "serif");
+      expect(hasGoogleFontEquivalent(name)).toBe(true);
     });
   }
 });

@@ -31,6 +31,7 @@
     "test:property": "bun --filter '*' test:property",
     "typegen": "bun scripts/i18n-typegen.ts packages/core/src/i18n/messages",
     "check:i18n": "bun scripts/i18n-typegen.ts packages/core/src/i18n/messages --check && bun scripts/i18n-check.ts packages/core/src/i18n/messages",
+    "codemod:eigenpal": "bun scripts/migrate-eigenpal.ts",
     "lint": "bun --bun oxlint -c oxlint.config.ts packages scripts test benchmarks parity",
     "lint:fix": "bun --bun oxlint -c oxlint.config.ts --fix packages scripts test benchmarks parity",
     "format": "oxfmt .",

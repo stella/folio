@@ -13,6 +13,7 @@ React ships a standalone CSS bundle; the Vue adapter exposes its advanced
 surfaces (UI primitives, composables, dialogs) as dedicated subpaths that have
 no React equivalent.
 
+- `./compat/eigenpal` — React-only migration entrypoint for archived Eigenpal users.
 - `./standalone.css` — React-only standalone stylesheet.
 - `./ui` — Vue-only UI-primitive subpath.
 - `./composables` — Vue-only composables subpath (React ships hooks from root).

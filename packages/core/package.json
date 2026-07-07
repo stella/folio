@@ -30,6 +30,7 @@
     "./server": "./src/server.ts",
     "./ai-edits": "./src/ai-edits/index.ts",
     "./content-controls": "./src/content-controls/index.ts",
+    "./compat/eigenpal": "./src/compat/eigenpal.ts",
     "./layout-engine": "./src/layout-engine/index.ts",
     "./layout-painter": "./src/layout-painter/index.ts",
     "./layout-bridge/engine/measuring": "./src/layout-bridge/engine/measuring/index.ts",
