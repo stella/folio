@@ -144,11 +144,11 @@ export function FormattingBar(props: FormattingBarProps) {
   // controls (and the secondary group when it fits inline); `primaryRef`
   // wraps only the always-visible primary controls so its natural width can
   // be measured independent of whether the secondary group is shown.
-  // `secondaryRef` wraps the secondary group only while it is rendered
-  // inline; its last-measured width is cached in `secondaryWidthRef` so the
-  // collapse decision still has a number to compare against once the group
-  // moves into the overflow popover (its width is effectively constant: the
-  // group is all fixed-size icon controls, no localized text driving it).
+  // `secondaryRef` wraps the inline separator plus secondary group while it is
+  // rendered inline. Its last-measured width is cached in `secondaryWidthRef`,
+  // so the collapse decision still has a number to compare against once the
+  // group moves into the overflow popover (its width is effectively constant:
+  // the group is all fixed-size icon controls, no localized text driving it).
   const scrollRef = useRef<HTMLDivElement>(null);
   const primaryRef = useRef<HTMLDivElement>(null);
   const secondaryRef = useRef<HTMLDivElement>(null);
@@ -469,8 +469,8 @@ export function FormattingBar(props: FormattingBarProps) {
   // between "too narrow to fit inline" and "narrow enough to show the ⋯
   // fallback" with no affordance in between.
   //
-  // `useLayoutEffect` (not `useEffect`) so the very first measurement — and
-  // any correction it makes to the optimistic initial state — happens
+  // `useLayoutEffect` (not `useEffect`) so the very first measurement, and
+  // any correction it makes to the optimistic initial state, happens
   // before the browser paints, avoiding a flash of overflowing content.
   useLayoutEffect(() => {
     if (inline) {
@@ -490,7 +490,11 @@ export function FormattingBar(props: FormattingBarProps) {
         secondaryWidthRef.current = secondaryEl.offsetWidth;
       }
       const available = scrollEl.clientWidth;
-      const required = primaryEl.offsetWidth + secondaryWidthRef.current;
+      const scrollGap = Number.parseFloat(getComputedStyle(scrollEl).columnGap);
+      const required =
+        primaryEl.offsetWidth +
+        secondaryWidthRef.current +
+        (Number.isFinite(scrollGap) ? scrollGap : 0);
       const fits = required <= available + OVERFLOW_EPSILON_PX;
       setShowSecondaryInline((current) => (current === fits ? current : fits));
     };
@@ -792,12 +796,10 @@ export function FormattingBar(props: FormattingBarProps) {
         </div>
 
         {showSecondaryInline && (
-          <>
+          <div ref={secondaryRef} className="flex shrink-0 items-center gap-0.5">
             <ToolbarSeparator />
-            <div ref={secondaryRef} className="flex shrink-0 items-center gap-0.5">
-              {secondaryControls}
-            </div>
-          </>
+            <div className="flex shrink-0 items-center gap-0.5">{secondaryControls}</div>
+          </div>
         )}
       </div>
 

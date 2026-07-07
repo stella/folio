@@ -47,7 +47,7 @@ async function mountFixture(page: Page, fixture: string): Promise<void> {
  * Click a toolbar button by its accessible name. The font/color/alignment/
  * list group collapses behind the "More formatting" overflow trigger
  * whenever the bar is too narrow to show it inline (measured live against
- * the toolbar's actual content, not a fixed viewport breakpoint) — open that
+ * the toolbar's actual content, not a fixed viewport breakpoint); open that
  * popover first when the button is not already on screen.
  */
 async function clickToolbarButton(page: Page, name: string): Promise<void> {
