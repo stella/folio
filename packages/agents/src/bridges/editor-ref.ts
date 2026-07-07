@@ -4,17 +4,26 @@ import type {
   FolioAIEditOperation,
   FolioAIEditSnapshot,
 } from "@stll/folio-core/server";
+import type { FolioCommentAnchor, FolioReviewChange } from "@stll/folio-core/ai-edits";
 import { createReply } from "@stll/folio-core/docx/replyToComment";
 import type { Comment } from "@stll/folio-core/types/content";
 
 import type { FolioAgentBridge } from "../bridge";
 import type { FolioAgentChange, FolioAgentComment, FolioAgentCommentReply } from "../types";
+import { toAgentChange } from "./shared";
 
 /**
  * Minimal structural slice of `DocxEditorRef` (`packages/react`) this bridge
  * drives — declared locally per AGENTS.md's react-free-core rule (agents
  * stays framework-neutral; it may not import a React-package type), covering
  * ONLY the members actually called below.
+ *
+ * The read-surface members (`getTrackedChanges`, `getCommentAnchors`,
+ * `getSelectionText`, `getPageText`) are OPTIONAL here even though the
+ * current `DocxEditorRef` always implements them: a ref built against an
+ * older `@stll/folio-react` (before these methods existed) still
+ * structurally satisfies this type, and `createEditorRefBridge` below falls
+ * back to the pre-existing degraded behavior for each one it does not find.
  */
 export type FolioAgentEditorRefLike = {
   /** `DocxEditorRef.createAIEditSnapshot`. `null` before the editor view mounts. */
@@ -30,6 +39,31 @@ export type FolioAgentEditorRefLike = {
   scrollToBlock(blockId: string, snapshot?: FolioAIEditSnapshot): boolean;
   /** `DocxEditorRef.getTotalPages`. */
   getTotalPages(): number;
+  /**
+   * `DocxEditorRef.getTrackedChanges`. When present, `getChanges()` maps its
+   * output to {@link FolioAgentChange} (same mapping as the reviewer
+   * bridge's); when absent, `getChanges()` returns `[]`.
+   */
+  getTrackedChanges?(): FolioReviewChange[];
+  /**
+   * `DocxEditorRef.getCommentAnchors`. When present, `getComments()` merges
+   * each anchor's `blockId` / `quote` into the matching host-state comment
+   * by `commentId`; when absent, those fields stay `null` / `""`.
+   */
+  getCommentAnchors?(): FolioCommentAnchor[];
+  /**
+   * `DocxEditorRef.getSelectionText`. The bridge exposes `getSelectionText`
+   * only when this is present, so `read_selection` reports an
+   * unsupported-capability error on a ref that lacks it.
+   */
+  getSelectionText?(): string;
+  /**
+   * `DocxEditorRef.getPageText`. The bridge exposes `getPageText` only when
+   * this is present, so `read_page` reports an unsupported-capability error
+   * on a ref that lacks it. See {@link createEditorRefBridge} for how a
+   * `null` return (page in range, layout not yet computed) is handled.
+   */
+  getPageText?(page: number): string | null;
 };
 
 /** Options for {@link createEditorRefBridge}. */
@@ -89,19 +123,20 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
  * read and write that state directly — the same pair the host already passes
  * to `DocxEditor`.
  *
- * KNOWN LIMITATIONS (structural gaps in `DocxEditorRef`'s current surface,
- * not bugs here):
- * - `getChanges()` always returns `[]`. Tracked changes are read from
- *   ProseMirror mark attributes (`FolioDocxReviewer.getChanges` walks
- *   `state.doc`), which `DocxEditorRef` does not expose; there is no ref
- *   method to enumerate them from outside the editor.
- * - Comment entries have no `blockId` or `quote`: those come from resolving
- *   each comment's anchor against the live ProseMirror document, which
- *   likewise has no ref-level accessor. Both are set to `null` / `""`.
- * - `read_page` and `read_selection` are unsupported: `DocxEditorRef` has no
- *   `getPageText` / `getSelectionText` equivalent (only `scrollToBlock` and
- *   `getTotalPages`), so those bridge members are omitted entirely and the
- *   corresponding tools report an unsupported-capability error.
+ * KNOWN LIMITATIONS (only apply to a `ref` that predates the read-surface
+ * additions below; the current `DocxEditorRef` implements all four):
+ * - `getChanges()` returns `[]` when `ref.getTrackedChanges` is absent, since
+ *   there is then no ref-level way to enumerate tracked changes from
+ *   ProseMirror mark attributes.
+ * - Comment entries fall back to `blockId: null` / `quote: ""` when
+ *   `ref.getCommentAnchors` is absent, since there is then no ref-level way
+ *   to resolve a comment's anchor against the live ProseMirror document.
+ * - `read_page` / `read_selection` report an unsupported-capability error
+ *   when `ref.getPageText` / `ref.getSelectionText` are absent: this bridge
+ *   omits the corresponding `getPageText` / `getSelectionText` member
+ *   entirely rather than implementing it as a no-op, which is what tells
+ *   `executeFolioToolCall` to report the tool as unsupported instead of
+ *   throwing.
  */
 export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): FolioAgentBridge => {
   const { ref, author, getComments, setComments } = options;
@@ -115,12 +150,19 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
     return snapshot;
   };
 
-  return {
+  const bridge: FolioAgentBridge = {
     snapshot: requireSnapshot,
     applyOperations: (operations) =>
       ref.applyAIEditOperations({ snapshot: requireSnapshot(), operations, mode, author }),
     getComments: (): FolioAgentComment[] => {
       const comments = getComments();
+      const anchors = ref.getCommentAnchors?.();
+      const anchorByCommentId = new Map<number, FolioCommentAnchor>();
+      if (anchors) {
+        for (const anchor of anchors) {
+          anchorByCommentId.set(anchor.commentId, anchor);
+        }
+      }
       const repliesByParent = new Map<number, Comment[]>();
       const topLevel: Comment[] = [];
       for (const comment of comments) {
@@ -136,19 +178,25 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
         siblings.push(comment);
         repliesByParent.set(comment.parentId, siblings);
       }
-      return topLevel.map((comment) => ({
-        id: String(comment.id),
-        author: comment.author,
-        text: replyPlainText(comment),
-        resolved: comment.done ?? false,
-        // Not resolvable from host state alone — see KNOWN LIMITATIONS above.
-        blockId: null,
-        quote: "",
-        replies: (repliesByParent.get(comment.id) ?? []).map(toAgentCommentReply),
-      }));
+      return topLevel.map((comment) => {
+        const anchor = anchorByCommentId.get(comment.id);
+        return {
+          id: String(comment.id),
+          author: comment.author,
+          text: replyPlainText(comment),
+          resolved: comment.done ?? false,
+          // Merged from `ref.getCommentAnchors()` when the ref provides it;
+          // `null` / `""` on an older ref — see KNOWN LIMITATIONS above.
+          blockId: anchor?.blockId ?? null,
+          quote: anchor?.quote ?? "",
+          replies: (repliesByParent.get(comment.id) ?? []).map(toAgentCommentReply),
+        };
+      });
     },
-    // Not resolvable from `DocxEditorRef` alone — see KNOWN LIMITATIONS above.
-    getChanges: (): FolioAgentChange[] => [],
+    getChanges: (): FolioAgentChange[] => {
+      const changes = ref.getTrackedChanges?.();
+      return changes ? changes.map(toAgentChange) : [];
+    },
     replyToComment: (commentId, text) => {
       const parentId = parseCommentId(commentId);
       if (parentId === null) {
@@ -185,4 +233,23 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
     scrollToBlock: (blockId) => ref.scrollToBlock(blockId),
     getPageCount: () => ref.getTotalPages(),
   };
+
+  const getSelectionText = ref.getSelectionText;
+  if (getSelectionText) {
+    bridge.getSelectionText = () => getSelectionText();
+  }
+
+  const getPageText = ref.getPageText;
+  if (getPageText) {
+    // `ref.getPageText` returns `null` when the page number is in range but
+    // its layout has not been computed yet (a transient render-timing gap,
+    // not an error) — `read_page` in execute.ts already rejects a page
+    // number beyond `getPageCount()` before ever calling this, so a `null`
+    // here means "not rendered yet", not "out of range". Map it to `""`: an
+    // empty page string is a safe, retryable degrade for a model mid tool
+    // call, instead of throwing out of a call it has no way to recover from.
+    bridge.getPageText = (page) => getPageText(page) ?? "";
+  }
+
+  return bridge;
 };

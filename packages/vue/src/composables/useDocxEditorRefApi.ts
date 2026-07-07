@@ -31,7 +31,12 @@ import { TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { applyFolioAIEditOperations, createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits";
+import {
+  applyFolioAIEditOperations,
+  createFolioAIEditSnapshot,
+  getCommentAnchorsFromDoc,
+  getTrackedChangesFromDoc,
+} from "@stll/folio-core/ai-edits";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
@@ -40,6 +45,7 @@ import {
   flashParagraphElements,
 } from "@stll/folio-core/paged-layout/paragraphFlash";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
+import { getSelectedText } from "@stll/folio-core/prosemirror";
 import {
   acceptAIEditRevision,
   findAIEditRevisionRange,
@@ -60,6 +66,7 @@ import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import type { DocxEditorRef } from "../components/DocxEditor/types";
 import type { PagedEditorRef } from "../components/DocxEditor/pagedEditorRef";
 import { clampRangeToDocSize, resolveFolioAIBlockRange } from "../utils/aiEditRange";
+import { getPageTextFromLayout } from "../utils/pageText";
 
 export type UseDocxEditorRefApiOptions = {
   /** Headless controller handle (imperative API + events; Seam 6). */
@@ -366,6 +373,25 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
       requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
       return true;
+    },
+    getTrackedChanges: () => {
+      const view = opts.editorView.value;
+      return view ? getTrackedChangesFromDoc(view.state.doc) : [];
+    },
+    getCommentAnchors: () => {
+      const view = opts.editorView.value;
+      return view ? getCommentAnchorsFromDoc(view.state.doc) : [];
+    },
+    getSelectionText: () => {
+      const view = opts.editorView.value;
+      return view ? getSelectedText(view.state) : "";
+    },
+    getPageText: (page) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return null;
+      }
+      return getPageTextFromLayout(opts.layout.value, view.state.doc, page);
     },
     getContentControls: (filter = {}) => {
       const view = opts.editorView.value;

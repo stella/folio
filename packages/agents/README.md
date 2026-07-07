@@ -18,19 +18,19 @@ bun add @stll/folio-agents
 
 ## Tools
 
-| Tool              | What it does                                                                     |
-| ----------------- | --------------------------------------------------------------------------------- |
-| `read_document`    | Read the document body as `{ blockId, kind, text }` blocks                        |
-| `find_text`        | Search block text for a string; returns block id, occurrence, and context per match |
-| `read_comments`    | Read comment threads (author, text, resolved, anchored block, replies)            |
-| `read_changes`     | Read pending tracked changes (insertions/deletions) awaiting review               |
-| `add_comment`      | Attach a comment to a block, optionally quoting specific text                     |
-| `suggest_changes`  | Propose `replaceInBlock` / `insertAfterBlock` / `insertBeforeBlock` / `replaceBlock` / `deleteBlock` edits as tracked changes |
-| `reply_comment`    | Reply to a comment thread                                                         |
-| `resolve_comment`  | Resolve or reopen a comment thread                                                |
-| `read_page`        | Read a page's plain text (live editor only)                                       |
-| `read_selection`   | Read the current text selection (live editor only)                                |
-| `scroll_to_block`  | Scroll the live editor to a block (live editor only)                              |
+| Tool              | What it does                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `read_document`   | Read the document body as `{ blockId, kind, text }` blocks                                                                    |
+| `find_text`       | Search block text for a string; returns block id, occurrence, and context per match                                           |
+| `read_comments`   | Read comment threads (author, text, resolved, anchored block, replies)                                                        |
+| `read_changes`    | Read pending tracked changes (insertions/deletions) awaiting review                                                           |
+| `add_comment`     | Attach a comment to a block, optionally quoting specific text                                                                 |
+| `suggest_changes` | Propose `replaceInBlock` / `insertAfterBlock` / `insertBeforeBlock` / `replaceBlock` / `deleteBlock` edits as tracked changes |
+| `reply_comment`   | Reply to a comment thread                                                                                                     |
+| `resolve_comment` | Resolve or reopen a comment thread                                                                                            |
+| `read_page`       | Read a page's plain text (live editor only)                                                                                   |
+| `read_selection`  | Read the current text selection (live editor only)                                                                            |
+| `scroll_to_block` | Scroll the live editor to a block (live editor only)                                                                          |
 
 Block ids and comment ids always come from a prior tool call
 (`read_document`, `find_text`, `read_comments`) within the same conversation —
@@ -88,11 +88,40 @@ const bridge = createEditorRefBridge({
 const result = executeFolioToolCall("suggest_changes", { operations: [...] }, bridge);
 ```
 
-The editor-ref bridge has known gaps versus the headless one: `read_changes`
-always returns `[]` (no ref-level API enumerates tracked changes), and comment
-entries carry no `blockId` / `quote` (no ref-level anchor lookup). `read_page`
-and `read_selection` are unsupported on either bridge shipped here — see
-`src/bridges/editor-ref.ts` for details.
+On a `DocxEditorRef` that implements the read surface (`getTrackedChanges`,
+`getCommentAnchors`, `getSelectionText`, `getPageText`), the editor-ref bridge
+has full parity with the headless one: `read_changes` returns real tracked
+changes, comment entries carry a resolved `blockId` / `quote`, and `read_page`
+/ `read_selection` work against the live view. Against an older ref that
+predates those methods, the bridge degrades per-member: `read_changes`
+returns `[]`, comment entries fall back to `blockId: null` / `quote: ""`, and
+`read_page` / `read_selection` report an unsupported-capability error — see
+`src/bridges/editor-ref.ts` for the exact fallback per method.
+
+### Host-managed review queue
+
+A host with its own review-queue UX (its own place to store proposed edits
+pending approval, distinct from folio's tracked-changes redlines) can validate
+a model's `suggest_changes` / `add_comment` tool-call arguments with the same
+canonical rules `executeFolioToolCall` uses, without applying them through a
+bridge at all:
+
+```ts
+import { parseSuggestChangesInput } from "@stll/folio-agents";
+
+const parsed = parseSuggestChangesInput(toolInput);
+if (!parsed.ok) {
+  // Feed `parsed.error` back to the model as the tool result, same as
+  // executeFolioToolCall would.
+} else {
+  // `parsed.operations` is FolioAIEditOperation[] — route it into your own
+  // review queue instead of bridge.applyOperations(...).
+  reviewQueue.enqueue(parsed.operations);
+}
+```
+
+`parseAddCommentInput` is the equivalent for `add_comment`, returning
+`{ ok: true; operation }` on success.
 
 ## Summarizing changes
 

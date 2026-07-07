@@ -1,6 +1,12 @@
-import type { FolioAIBlock, FolioAIComment, FolioAIEditOperation } from "@stll/folio-core/server";
+import type { FolioAIBlock } from "@stll/folio-core/server";
 
 import type { FolioAgentBridge } from "./bridge";
+import {
+  explainTextTooLong,
+  MAX_OPERATION_TEXT_LENGTH,
+  parseAddCommentInput,
+  parseSuggestChangesInput,
+} from "./parse";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
   FolioAgentApplyOperationsSummary,
@@ -21,22 +27,9 @@ const fail = (error: string): FolioToolCallResult => ({ ok: false, error });
 
 const VALID_TOOL_NAMES: readonly string[] = Object.values(FOLIO_AGENT_TOOL_NAMES);
 
-/**
- * Hard caps on `suggest_changes` / `add_comment` / `reply_comment` input
- * size. Without these, a single tool call could ask the bridge to apply an
- * unbounded number of operations, or push an arbitrarily large string into
- * the tracked-changes engine, in one shot.
- */
-const MAX_OPERATIONS_PER_CALL = 50;
-const MAX_OPERATION_TEXT_LENGTH = 100_000;
-
 /** `find_text` requires a short `query` and caps how much of a large match set it returns in one call. */
 const MAX_QUERY_LENGTH = 1_000;
 const MAX_FIND_MATCHES = 200;
-
-/** Plain-language error for a string argument over {@link MAX_OPERATION_TEXT_LENGTH}. */
-const explainTextTooLong = (label: string, length: number): string =>
-  `${label} is ${length.toLocaleString()} characters, over the ${MAX_OPERATION_TEXT_LENGTH.toLocaleString()}-character limit; shorten it or split it into multiple operations.`;
 
 /**
  * Execute one tool call against a {@link FolioAgentBridge}. Every EXPECTED
@@ -114,7 +107,11 @@ const CONTEXT_RADIUS = 40;
 /** All matches for `query`, capped at {@link MAX_FIND_MATCHES}; `totalMatches` still counts every occurrence. */
 type FindTextMatches = { matches: FolioAgentTextMatch[]; totalMatches: number };
 
-const findTextMatches = (blocks: FolioAIBlock[], query: string, matchCase: boolean): FindTextMatches => {
+const findTextMatches = (
+  blocks: FolioAIBlock[],
+  query: string,
+  matchCase: boolean,
+): FindTextMatches => {
   const matches: FolioAgentTextMatch[] = [];
   let totalMatches = 0;
   const needle = matchCase ? query : query.toLowerCase();
@@ -221,153 +218,26 @@ const summarizeApplyResult = (result: {
   skipped: { id: string; reason: string }[];
 }): FolioAgentApplyOperationsSummary => ({
   applied: result.applied.map((entry) => ({ id: entry.id })),
-  skipped: result.skipped.map((entry) => ({ id: entry.id, reason: explainSkipReason(entry.reason) })),
+  skipped: result.skipped.map((entry) => ({
+    id: entry.id,
+    reason: explainSkipReason(entry.reason),
+  })),
 });
 
 const addComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
-  if (!isPlainObject(args)) {
-    return fail("add_comment expects an object with `blockId` and `text` strings.");
+  const parsed = parseAddCommentInput(args);
+  if (!parsed.ok) {
+    return fail(parsed.error);
   }
-  const blockId = args["blockId"];
-  const quote = args["quote"];
-  const text = args["text"];
-  if (!isNonEmptyString(blockId)) {
-    return fail("add_comment requires a non-empty string `blockId`.");
-  }
-  if (!isNonEmptyString(text)) {
-    return fail("add_comment requires a non-empty string `text`.");
-  }
-  if (text.length > MAX_OPERATION_TEXT_LENGTH) {
-    return fail(explainTextTooLong("add_comment's `text`", text.length));
-  }
-  if (quote !== undefined && typeof quote !== "string") {
-    return fail("add_comment's `quote` must be a string when provided.");
-  }
-  if (typeof quote === "string" && quote.length > MAX_OPERATION_TEXT_LENGTH) {
-    return fail(explainTextTooLong("add_comment's `quote`", quote.length));
-  }
-
-  const comment: FolioAIComment = { text };
-  const operation: FolioAIEditOperation = {
-    id: "comment-1",
-    type: "commentOnBlock",
-    blockId,
-    comment,
-    ...(quote !== undefined ? { quote } : {}),
-  };
-  return ok(summarizeApplyResult(bridge.applyOperations([operation])));
-};
-
-const OPERATION_TYPES =
-  "replaceInBlock, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock";
-
-type SuggestedOperationType =
-  | "replaceInBlock"
-  | "insertAfterBlock"
-  | "insertBeforeBlock"
-  | "replaceBlock"
-  | "deleteBlock";
-
-const isOperationType = (value: unknown): value is SuggestedOperationType =>
-  value === "replaceInBlock" ||
-  value === "insertAfterBlock" ||
-  value === "insertBeforeBlock" ||
-  value === "replaceBlock" ||
-  value === "deleteBlock";
-
-/** Validate + map one `suggest_changes` operation, or return a plain-language error string. */
-const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperation | string => {
-  if (!isPlainObject(raw)) {
-    return `operations[${index}] must be an object.`;
-  }
-  const type = raw["type"];
-  const blockId = raw["blockId"];
-  const id = raw["id"];
-  const comment = raw["comment"];
-
-  if (!isOperationType(type)) {
-    return `operations[${index}].type must be one of ${OPERATION_TYPES}.`;
-  }
-  if (!isNonEmptyString(blockId)) {
-    return `operations[${index}].blockId must be a non-empty string.`;
-  }
-  if (id !== undefined && !isNonEmptyString(id)) {
-    return `operations[${index}].id must be a non-empty string when provided.`;
-  }
-  if (comment !== undefined && typeof comment !== "string") {
-    return `operations[${index}].comment must be a string when provided.`;
-  }
-  if (typeof comment === "string" && comment.length > MAX_OPERATION_TEXT_LENGTH) {
-    return explainTextTooLong(`operations[${index}].comment`, comment.length);
-  }
-  const opId = isNonEmptyString(id) ? id : `op-${index + 1}`;
-  const commentField = typeof comment === "string" ? { comment: { text: comment } } : {};
-
-  if (type === "replaceInBlock") {
-    const find = raw["find"];
-    const replace = raw["replace"];
-    if (!isNonEmptyString(find)) {
-      return `operations[${index}] (replaceInBlock) requires a non-empty string \`find\`.`;
-    }
-    if (find.length > MAX_OPERATION_TEXT_LENGTH) {
-      return explainTextTooLong(`operations[${index}] (replaceInBlock) \`find\``, find.length);
-    }
-    if (typeof replace !== "string") {
-      return `operations[${index}] (replaceInBlock) requires a string \`replace\`.`;
-    }
-    if (replace.length > MAX_OPERATION_TEXT_LENGTH) {
-      return explainTextTooLong(`operations[${index}] (replaceInBlock) \`replace\``, replace.length);
-    }
-    return { id: opId, type, blockId, find, replace, ...commentField };
-  }
-  if (type === "insertAfterBlock" || type === "insertBeforeBlock") {
-    const text = raw["text"];
-    if (!isNonEmptyString(text)) {
-      return `operations[${index}] (${type}) requires a non-empty string \`text\`.`;
-    }
-    if (text.length > MAX_OPERATION_TEXT_LENGTH) {
-      return explainTextTooLong(`operations[${index}] (${type}) \`text\``, text.length);
-    }
-    return { id: opId, type, blockId, text, ...commentField };
-  }
-  if (type === "replaceBlock") {
-    const text = raw["text"];
-    if (!isNonEmptyString(text)) {
-      return "operations[" + index + "] (replaceBlock) requires a non-empty string `text`.";
-    }
-    if (text.length > MAX_OPERATION_TEXT_LENGTH) {
-      return explainTextTooLong(`operations[${index}] (replaceBlock) \`text\``, text.length);
-    }
-    return { id: opId, type, blockId, text, ...commentField };
-  }
-  // deleteBlock
-  return { id: opId, type, blockId, ...commentField };
+  return ok(summarizeApplyResult(bridge.applyOperations([parsed.operation])));
 };
 
 const suggestChanges = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
-  if (!isPlainObject(args) || !Array.isArray(args["operations"])) {
-    return fail("suggest_changes requires an `operations` array.");
+  const parsed = parseSuggestChangesInput(args);
+  if (!parsed.ok) {
+    return fail(parsed.error);
   }
-  const rawOperations = args["operations"];
-  if (rawOperations.length === 0) {
-    return fail("suggest_changes' `operations` array must not be empty.");
-  }
-  if (rawOperations.length > MAX_OPERATIONS_PER_CALL) {
-    return fail(
-      `suggest_changes' \`operations\` array has ${rawOperations.length.toLocaleString()} entries, over the ${MAX_OPERATIONS_PER_CALL}-operation limit; batch it across multiple suggest_changes calls.`,
-    );
-  }
-
-  const operations: FolioAIEditOperation[] = [];
-  for (const [index, raw] of rawOperations.entries()) {
-    const built = buildSuggestedOperation(raw, index);
-    if (typeof built === "string") {
-      return fail(built);
-    }
-    operations.push(built);
-  }
-
-  return ok(summarizeApplyResult(bridge.applyOperations(operations)));
+  return ok(summarizeApplyResult(bridge.applyOperations(parsed.operations)));
 };
 
 const replyComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {

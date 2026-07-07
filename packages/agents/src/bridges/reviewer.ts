@@ -1,13 +1,13 @@
 import type {
   FolioAIEditApplyMode,
   FolioDocxReviewer,
-  FolioReviewChange,
   FolioReviewComment,
   FolioReviewCommentReply,
 } from "@stll/folio-core/server";
 
 import type { FolioAgentBridge } from "../bridge";
-import type { FolioAgentChange, FolioAgentComment, FolioAgentCommentReply } from "../types";
+import type { FolioAgentComment, FolioAgentCommentReply } from "../types";
+import { toAgentChange } from "./shared";
 
 /** Options for {@link createReviewerBridge}. */
 export type CreateReviewerBridgeOptions = {
@@ -29,14 +29,6 @@ const toAgentComment = (comment: FolioReviewComment): FolioAgentComment => ({
   blockId: comment.blockId,
   quote: comment.anchoredText,
   replies: comment.replies.map(toAgentCommentReply),
-});
-
-const toAgentChange = (change: FolioReviewChange): FolioAgentChange => ({
-  id: String(change.id),
-  type: change.type,
-  author: change.author,
-  text: change.text,
-  blockId: change.blockId,
 });
 
 /**

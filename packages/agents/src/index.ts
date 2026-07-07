@@ -1,8 +1,5 @@
 export type { FolioAgentBridge } from "./bridge";
-export type {
-  CreateEditorRefBridgeOptions,
-  FolioAgentEditorRefLike,
-} from "./bridges/editor-ref";
+export type { CreateEditorRefBridgeOptions, FolioAgentEditorRefLike } from "./bridges/editor-ref";
 export { createEditorRefBridge } from "./bridges/editor-ref";
 export type { CreateReviewerBridgeOptions } from "./bridges/reviewer";
 export { createReviewerBridge } from "./bridges/reviewer";
@@ -13,10 +10,9 @@ export type {
 } from "./compare";
 export { compareDocxVersions, formatVersionDiffForLLM } from "./compare";
 export { executeFolioToolCall } from "./execute";
-export type {
-  AnthropicToolDefinition,
-  OpenAIToolDefinition,
-} from "./providers";
+export type { ParseAddCommentResult, ParseSuggestChangesResult } from "./parse";
+export { parseAddCommentInput, parseSuggestChangesInput } from "./parse";
+export type { AnthropicToolDefinition, OpenAIToolDefinition } from "./providers";
 export { toAnthropicTools, toOpenAITools } from "./providers";
 export { FOLIO_AGENT_TOOLS, getFolioToolDefinitions } from "./tools";
 export type {

@@ -57,19 +57,36 @@ Two are shipped:
   on the ref, hence the `getComments` / `setComments` pair (the same ones the
   host already passes to `DocxEditor`).
 
-The editor-ref bridge has real capability gaps versus the headless one, not
-bugs: `read_changes` always returns `[]` (no ref-level API enumerates tracked
-changes from ProseMirror mark attributes), and comment entries carry
-`blockId: null` / `quote: ""` (no ref-level anchor-resolution accessor). If
-you're wiring tools for a live-editor host, do not register `read_changes` or
-rely on comment anchors from that bridge until the ref surface grows — either
-omit the tool from the model's tool list, or tell the model in its system
-prompt that those fields are unavailable there. `read_page` and
-`read_selection` are unsupported on both bridges shipped here (see
-`src/bridges/editor-ref.ts` for the exact gap list); a bridge simply omits an
-optional capability member, and `executeFolioToolCall` reports the
-corresponding tool call as an unsupported-capability error rather than
-throwing.
+The editor-ref bridge's capability now depends on what the underlying
+`DocxEditorRef` implements. Against a ref with the read surface
+(`getTrackedChanges`, `getCommentAnchors`, `getSelectionText`, `getPageText`),
+it has full parity with the headless one: `read_changes` returns real tracked
+changes, comment entries carry a resolved `blockId` / `quote`, and `read_page`
+/ `read_selection` work against the live view. Against an older ref that
+predates those methods, each falls back independently: `read_changes` returns
+`[]`, comment entries keep `blockId: null` / `quote: ""`, and `read_page` /
+`read_selection` report an unsupported-capability error (see
+`src/bridges/editor-ref.ts` for the exact per-method fallback). A bridge
+omits an optional capability member entirely rather than implementing it as a
+no-op, and `executeFolioToolCall` reports the corresponding tool call as
+unsupported rather than throwing — this is how the headless reviewer bridge
+signals `read_page` / `read_selection` / `scroll_to_block` as unsupported too,
+since a headless document has no live page/selection/scroll surface at all.
+
+## Host-managed review queue
+
+A host that already has its own review-queue UX — its own place to store a
+model's proposed edits pending approval, separate from folio's
+tracked-changes redlines — can skip `executeFolioToolCall` for
+`suggest_changes` / `add_comment` and instead validate the model's tool-call
+arguments directly with `parseSuggestChangesInput` / `parseAddCommentInput`.
+These are the exact same validation rules `executeFolioToolCall` runs
+(argument shape, the 50-operation cap, the 100,000-character text caps),
+factored out so both the host's path and folio's own executor agree on what a
+valid `suggest_changes` / `add_comment` call looks like. On success they
+return the parsed `FolioAIEditOperation`(s) to route into the host's own
+queue; on failure they return the same plain-language `error` string meant to
+go straight back to the model.
 
 ## Ground rules for the model
 

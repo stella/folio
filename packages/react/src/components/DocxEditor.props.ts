@@ -9,6 +9,8 @@ import type {
   FolioAIEditApplyResult,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
+  FolioCommentAnchor,
+  FolioReviewChange,
 } from "@stll/folio-core/ai-edits";
 import type {
   ContentControlFilter,
@@ -424,6 +426,33 @@ export type DocxEditorRef = {
    * a fresh-from-live-doc snapshot.
    */
   scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean;
+
+  // -------------------------------------------------------------------------
+  // Read surface (agents, review tooling)
+  // -------------------------------------------------------------------------
+
+  /**
+   * The tracked changes (insertions and deletions) present in the live
+   * document, read from the current ProseMirror `state.doc`. Empty array
+   * before the editor view mounts.
+   */
+  getTrackedChanges: () => FolioReviewChange[];
+  /**
+   * The comment anchors present in the live document, read from the current
+   * ProseMirror `state.doc`. Empty array before the editor view mounts.
+   */
+  getCommentAnchors: () => FolioCommentAnchor[];
+  /**
+   * The plain text of the current selection, or `""` when the editor has no
+   * view or the selection is collapsed.
+   */
+  getSelectionText: () => string;
+  /**
+   * The plain text of a single rendered page (1-based), joining each of its
+   * layout fragments with a newline. Returns `null` when the page number is
+   * out of range or the layout hasn't been computed yet.
+   */
+  getPageText: (page: number) => string | null;
 
   // -------------------------------------------------------------------------
   // Block-level content controls (w:sdt)

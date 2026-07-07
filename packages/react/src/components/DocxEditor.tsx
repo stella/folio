@@ -37,7 +37,12 @@ import type { Mark } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { useTranslations } from "use-intl";
 
-import { applyFolioAIEditOperations, createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits";
+import {
+  applyFolioAIEditOperations,
+  createFolioAIEditSnapshot,
+  getCommentAnchorsFromDoc,
+  getTrackedChangesFromDoc,
+} from "@stll/folio-core/ai-edits";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
@@ -109,6 +114,7 @@ import {
   setCellFillColor,
   setTableBorderColor,
   setTableBorderWidth,
+  getSelectedText,
 } from "@stll/folio-core/prosemirror";
 import type { SelectionState, TableContextInfo } from "@stll/folio-core/prosemirror";
 import {
@@ -183,6 +189,7 @@ import { FolioUIProvider, DEFAULT_COMPONENTS } from "../ui/folio-ui";
 import { containedHandler } from "../utils/contained-handler";
 import { clampRangeToDocSize, resolveFolioAIBlockRange } from "./aiEditRange";
 import { resolveCommentCreationRange } from "./commentAnchors";
+import { getPageTextFromLayout } from "./pageText";
 import {
   EMPTY_ANCHOR_POSITIONS,
   PENDING_COMMENT_ID,
@@ -2932,6 +2939,26 @@ export function DocxEditor({
           pagedEditorRef.current?.scrollToPosition(from);
         });
         return true;
+      },
+      getTrackedChanges: () => {
+        const view = pagedEditorRef.current?.getView();
+        return view ? getTrackedChangesFromDoc(view.state.doc) : [];
+      },
+      getCommentAnchors: () => {
+        const view = pagedEditorRef.current?.getView();
+        return view ? getCommentAnchorsFromDoc(view.state.doc) : [];
+      },
+      getSelectionText: () => {
+        const view = pagedEditorRef.current?.getView();
+        return view ? getSelectedText(view.state) : "";
+      },
+      getPageText: (page: number) => {
+        const view = pagedEditorRef.current?.getView();
+        if (!view) {
+          return null;
+        }
+        const layout = pagedEditorRef.current?.getEditor()?.getLayout() ?? null;
+        return getPageTextFromLayout(layout, view.state.doc, page);
       },
       getContentControls: (filter = {}) => {
         const view = pagedEditorRef.current?.getView();

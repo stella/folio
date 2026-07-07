@@ -216,6 +216,8 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "createReviewerBridge",
       "createEditorRefBridge",
       "FOLIO_AGENT_TOOLS",
+      "parseSuggestChangesInput",
+      "parseAddCommentInput",
     ],
   },
   vue: {
