@@ -93,7 +93,7 @@ export function ZoomControl({
           compact ? "text-xs" : "text-sm",
           className,
         )}
-        style={{ width: compact ? 55 : 70, height: compact ? 28 : 32 }}
+        style={{ width: compact ? 76 : 80, height: compact ? 28 : 32 }}
       >
         <SelectValue placeholder="100%">{displayLabel}</SelectValue>
       </SelectTrigger>

@@ -2,13 +2,17 @@
  * FormattingBar — clean, minimal toolbar for legal document editing.
  *
  * Controls (left to right):
- * Undo Redo | Style ▾ | B I U | A▾ | ≡▾ 1. • ◁ ▷
+ * Undo Redo | Style ▾ | [host priorityExtra] | B I U [Format Painter] | Insert |
+ * Font A▾ size Color | Alignment ¶ | Lists ◁ ▷ | ⋯ More (when collapsed) |
+ * [host extras: ruler, zoom, ...]
  *
- * Everything else (font, size, strikethrough, highlight, comments,
- * editing mode) is accessible via keyboard shortcuts or host app chrome.
+ * The font/color/alignment/list group collapses behind a "⋯ More" popover
+ * whenever the bar is too narrow to show it inline (measured live, not a
+ * fixed breakpoint); everything not shown here is still reachable via
+ * keyboard shortcuts or host app chrome.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import {
@@ -46,7 +50,9 @@ import { StylePicker } from "./ui/StylePicker";
 import { ZoomControl } from "./ui/ZoomControl";
 
 const ICON_SIZE = 16;
-const INLINE_SECONDARY_CONTROLS_MIN_WIDTH = 760;
+/** Buffer added to the measured content width before deciding it overflows,
+ * absorbing sub-pixel rounding so the collapse decision does not flap. */
+const OVERFLOW_EPSILON_PX = 1;
 
 /** Default grid the Insert Table button requests (the toolbar has no size picker). */
 const DEFAULT_TABLE_ROWS = 2;
@@ -134,7 +140,23 @@ export function FormattingBar(props: FormattingBarProps) {
   const ColorPicker = folioUI.ColorPicker;
   const t = useTranslations("folio");
   const barRef = useRef<HTMLDivElement>(null);
-  const [showSecondaryInline, setShowSecondaryInline] = useState(false);
+  // `scrollRef` is the horizontally-scrollable region holding the primary
+  // controls (and the secondary group when it fits inline); `primaryRef`
+  // wraps only the always-visible primary controls so its natural width can
+  // be measured independent of whether the secondary group is shown.
+  // `secondaryRef` wraps the secondary group only while it is rendered
+  // inline; its last-measured width is cached in `secondaryWidthRef` so the
+  // collapse decision still has a number to compare against once the group
+  // moves into the overflow popover (its width is effectively constant: the
+  // group is all fixed-size icon controls, no localized text driving it).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const primaryRef = useRef<HTMLDivElement>(null);
+  const secondaryRef = useRef<HTMLDivElement>(null);
+  const secondaryWidthRef = useRef(0);
+  // Start optimistic (assume the secondary group fits): the layout effect
+  // below measures and corrects this before the first paint, so a narrow
+  // initial width never flashes overflowing content.
+  const [showSecondaryInline, setShowSecondaryInline] = useState(true);
 
   const handleFormat = useCallback(
     (action: FormattingAction) => {
@@ -437,26 +459,54 @@ export function FormattingBar(props: FormattingBarProps) {
     editorRef,
   ]);
 
-  useEffect(() => {
-    const bar = barRef.current;
-    if (!bar || inline) {
-      setShowSecondaryInline(inline);
+  // Decide whether the secondary group (font, color, alignment, lists) fits
+  // inline by comparing the scroll container's real available width
+  // (`clientWidth`, which already accounts for host `priorityExtra` and the
+  // right-side host extras taking their share of the bar) against the
+  // measured natural width of the primary controls plus the secondary
+  // group. This replaces a fixed bar-width breakpoint, which ignored
+  // however much room `priorityExtra` actually consumed and left a gap
+  // between "too narrow to fit inline" and "narrow enough to show the ⋯
+  // fallback" with no affordance in between.
+  //
+  // `useLayoutEffect` (not `useEffect`) so the very first measurement — and
+  // any correction it makes to the optimistic initial state — happens
+  // before the browser paints, avoiding a flash of overflowing content.
+  useLayoutEffect(() => {
+    if (inline) {
+      setShowSecondaryInline(true);
+      return undefined;
+    }
+
+    const scrollEl = scrollRef.current;
+    const primaryEl = primaryRef.current;
+    if (!scrollEl || !primaryEl) {
       return undefined;
     }
 
     const update = () => {
-      const shouldShow = bar.getBoundingClientRect().width >= INLINE_SECONDARY_CONTROLS_MIN_WIDTH;
-      setShowSecondaryInline((current) => (current === shouldShow ? current : shouldShow));
+      const secondaryEl = secondaryRef.current;
+      if (secondaryEl) {
+        secondaryWidthRef.current = secondaryEl.offsetWidth;
+      }
+      const available = scrollEl.clientWidth;
+      const required = primaryEl.offsetWidth + secondaryWidthRef.current;
+      const fits = required <= available + OVERFLOW_EPSILON_PX;
+      setShowSecondaryInline((current) => (current === fits ? current : fits));
     };
 
     update();
     const observer = new ResizeObserver(update);
-    observer.observe(bar);
+    observer.observe(scrollEl);
+    observer.observe(primaryEl);
+    if (secondaryRef.current) {
+      observer.observe(secondaryRef.current);
+    }
 
     return () => {
       observer.disconnect();
     };
-  }, [inline]);
+  }, [inline, showSecondaryInline]);
 
   const handleBarMouseDown = useCallback((e: React.MouseEvent) => {
     if (!(e.target instanceof HTMLElement)) {
@@ -493,7 +543,7 @@ export function FormattingBar(props: FormattingBarProps) {
             }
             onChange={handleFontSizeChange}
             disabled={disabled}
-            placeholder={t("fontSize")}
+            ariaLabel={t("fontSize")}
           />
         )}
         {showTextColorPicker && (
@@ -585,182 +635,200 @@ export function FormattingBar(props: FormattingBarProps) {
       onMouseDown={inline ? undefined : containedHandler(barRef, handleBarMouseDown)}
       onMouseUp={inline ? undefined : containedHandler(barRef, handleBarMouseUp)}
     >
-      {/* Formatting controls */}
-      <div className="flex min-w-0 flex-1 [scrollbar-width:none] items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-x-contain [&::-webkit-scrollbar]:hidden">
-        {/* Undo / Redo */}
-        <ToolbarGroup className="gap-0" label={t("historyGroup")}>
-          <ToolbarButton
-            className="h-8 w-7 rounded-e-none disabled:opacity-[0.35]"
-            onClick={handleUndo}
-            disabled={disabled || !canUndo}
-            title={t("undoShortcut")}
-            ariaLabel={t("undo")}
-          >
-            <Undo2Icon size={ICON_SIZE} />
-          </ToolbarButton>
-          <ToolbarButton
-            className="h-8 w-7 rounded-s-none disabled:opacity-[0.35]"
-            onClick={handleRedo}
-            disabled={disabled || !canRedo}
-            title={t("redoShortcut")}
-            ariaLabel={t("redo")}
-          >
-            <Redo2Icon size={ICON_SIZE} />
-          </ToolbarButton>
-        </ToolbarGroup>
-
-        <ToolbarSeparator />
-
-        {/* Paragraph style gallery */}
-        {showStylePicker && (
-          <>
-            <StylePicker
-              value={currentFormatting.styleId || "Normal"}
-              onChange={handleStyleChange}
-              styles={documentStyles}
-              theme={theme}
-              disabled={disabled}
-              displayLabel={stylePickerLabel}
-              displayLabelStyle={stylePickerLabelStyle}
-              className="shrink-0"
-              width="clamp(112px, 15vw, 140px)"
-            />
-            <ToolbarSeparator />
-          </>
-        )}
-
-        {priorityExtra && (
-          <>
-            {priorityExtra}
-            <ToolbarSeparator />
-          </>
-        )}
-
-        {/* Bold, Italic, Underline */}
-        <ToolbarGroup label={t("textFormattingGroup")}>
-          <ToolbarButton
-            onClick={() => handleFormat("bold")}
-            active={currentFormatting.bold}
-            disabled={disabled}
-            title={t("boldShortcut")}
-            ariaLabel={t("bold")}
-          >
-            <BoldIcon size={ICON_SIZE} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => handleFormat("italic")}
-            active={currentFormatting.italic}
-            disabled={disabled}
-            title={t("italicShortcut")}
-            ariaLabel={t("italic")}
-          >
-            <ItalicIcon size={ICON_SIZE} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => handleFormat("underline")}
-            active={currentFormatting.underline}
-            disabled={disabled}
-            title={t("underlineShortcut")}
-            ariaLabel={t("underline")}
-          >
-            <UnderlineIcon size={ICON_SIZE} />
-          </ToolbarButton>
-          {showFormatPainter && onFormatPainter && (
+      {/* Formatting controls: horizontally scrollable when the primary
+          controls alone still overflow (the secondary group never scrolls —
+          it either shows inline here or collapses into the ⋯ popover below). */}
+      <div
+        ref={scrollRef}
+        className="flex min-w-0 flex-1 [scrollbar-width:none] items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-x-contain [&::-webkit-scrollbar]:hidden"
+      >
+        {/* Primary controls: always visible; wrapped so their combined
+            natural width can be measured independent of the secondary
+            group (see the layout effect above). */}
+        <div ref={primaryRef} className="flex shrink-0 items-center gap-0.5">
+          {/* Undo / Redo */}
+          <ToolbarGroup className="gap-0" label={t("historyGroup")}>
             <ToolbarButton
-              onClick={handleFormatPainterClick}
-              onDoubleClick={handleFormatPainterDoubleClick}
-              active={formatPainterActive}
-              disabled={disabled}
-              title={t("formatPainterShortcut")}
-              ariaLabel={t("formatPainter")}
-              testId="toolbar-format-painter"
+              className="h-8 w-7 rounded-e-none disabled:opacity-[0.35]"
+              onClick={handleUndo}
+              disabled={disabled || !canUndo}
+              title={t("undoShortcut")}
+              ariaLabel={t("undo")}
             >
-              <PaintbrushIcon size={ICON_SIZE} />
+              <Undo2Icon size={ICON_SIZE} />
             </ToolbarButton>
+            <ToolbarButton
+              className="h-8 w-7 rounded-s-none disabled:opacity-[0.35]"
+              onClick={handleRedo}
+              disabled={disabled || !canRedo}
+              title={t("redoShortcut")}
+              ariaLabel={t("redo")}
+            >
+              <Redo2Icon size={ICON_SIZE} />
+            </ToolbarButton>
+          </ToolbarGroup>
+
+          <ToolbarSeparator />
+
+          {/* Paragraph style gallery */}
+          {showStylePicker && (
+            <>
+              <StylePicker
+                value={currentFormatting.styleId || "Normal"}
+                onChange={handleStyleChange}
+                styles={documentStyles}
+                theme={theme}
+                disabled={disabled}
+                displayLabel={stylePickerLabel}
+                displayLabelStyle={stylePickerLabelStyle}
+                className="shrink-0"
+                width="clamp(112px, 15vw, 140px)"
+              />
+              <ToolbarSeparator />
+            </>
           )}
-        </ToolbarGroup>
 
-        {/* Insert group — each control is opt-in: it renders only when its
-            handler (and flag, for tables) is provided by the consumer. */}
-        {hasInsertControls && (
-          <>
-            <ToolbarSeparator />
-            <ToolbarGroup label={t("insertGroup")}>
-              {onInsertImage && (
-                <ToolbarButton
-                  onClick={handleInsertImage}
-                  disabled={disabled}
-                  title={t("insertImage")}
-                  ariaLabel={t("insertImage")}
-                >
-                  <ImageIcon size={ICON_SIZE} />
-                </ToolbarButton>
-              )}
-              {showTableButton && (
-                <ToolbarButton
-                  onClick={handleInsertTable}
-                  disabled={disabled}
-                  title={t("insertTable")}
-                  ariaLabel={t("insertTable")}
-                  testId="toolbar-insert-table"
-                >
-                  <TableIcon size={ICON_SIZE} />
-                </ToolbarButton>
-              )}
-              {onInsertPageBreak && (
-                <ToolbarButton
-                  onClick={handleInsertPageBreak}
-                  disabled={disabled}
-                  title={t("insertPageBreak")}
-                  ariaLabel={t("insertPageBreak")}
-                >
-                  <SeparatorHorizontalIcon size={ICON_SIZE} />
-                </ToolbarButton>
-              )}
-              {onInsertTOC && (
-                <ToolbarButton
-                  onClick={handleInsertTOC}
-                  disabled={disabled}
-                  title={t("insertTableOfContents")}
-                  ariaLabel={t("insertTableOfContents")}
-                >
-                  <TableOfContentsIcon size={ICON_SIZE} />
-                </ToolbarButton>
-              )}
-            </ToolbarGroup>
-          </>
-        )}
+          {priorityExtra && (
+            <>
+              {priorityExtra}
+              <ToolbarSeparator />
+            </>
+          )}
 
-        {showSecondaryInline ? (
-          <>
-            <ToolbarSeparator />
-            {secondaryControls}
-          </>
-        ) : (
-          <>
-            <ToolbarSeparator />
-            <Menu>
-              <MenuTrigger
-                render={
-                  <button
-                    type="button"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--doc-text-muted)] transition-colors duration-100 hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)]"
-                    aria-label={t("moreFormatting")}
-                    title={t("moreFormatting")}
-                  />
-                }
+          {/* Bold, Italic, Underline */}
+          <ToolbarGroup label={t("textFormattingGroup")}>
+            <ToolbarButton
+              onClick={() => handleFormat("bold")}
+              active={currentFormatting.bold}
+              disabled={disabled}
+              title={t("boldShortcut")}
+              ariaLabel={t("bold")}
+            >
+              <BoldIcon size={ICON_SIZE} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => handleFormat("italic")}
+              active={currentFormatting.italic}
+              disabled={disabled}
+              title={t("italicShortcut")}
+              ariaLabel={t("italic")}
+            >
+              <ItalicIcon size={ICON_SIZE} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => handleFormat("underline")}
+              active={currentFormatting.underline}
+              disabled={disabled}
+              title={t("underlineShortcut")}
+              ariaLabel={t("underline")}
+            >
+              <UnderlineIcon size={ICON_SIZE} />
+            </ToolbarButton>
+            {showFormatPainter && onFormatPainter && (
+              <ToolbarButton
+                onClick={handleFormatPainterClick}
+                onDoubleClick={handleFormatPainterDoubleClick}
+                active={formatPainterActive}
+                disabled={disabled}
+                title={t("formatPainterShortcut")}
+                ariaLabel={t("formatPainter")}
+                testId="toolbar-format-painter"
               >
-                <MoreHorizontalIcon size={ICON_SIZE} />
-              </MenuTrigger>
-              <MenuPopup align="end" className="max-w-[min(520px,calc(100vw-24px))]">
-                <div className="flex w-[min(480px,calc(100vw-48px))] flex-wrap items-center gap-1 p-1">
-                  {secondaryControls}
-                </div>
-              </MenuPopup>
-            </Menu>
+                <PaintbrushIcon size={ICON_SIZE} />
+              </ToolbarButton>
+            )}
+          </ToolbarGroup>
+
+          {/* Insert group — each control is opt-in: it renders only when its
+            handler (and flag, for tables) is provided by the consumer. */}
+          {hasInsertControls && (
+            <>
+              <ToolbarSeparator />
+              <ToolbarGroup label={t("insertGroup")}>
+                {onInsertImage && (
+                  <ToolbarButton
+                    onClick={handleInsertImage}
+                    disabled={disabled}
+                    title={t("insertImage")}
+                    ariaLabel={t("insertImage")}
+                  >
+                    <ImageIcon size={ICON_SIZE} />
+                  </ToolbarButton>
+                )}
+                {showTableButton && (
+                  <ToolbarButton
+                    onClick={handleInsertTable}
+                    disabled={disabled}
+                    title={t("insertTable")}
+                    ariaLabel={t("insertTable")}
+                    testId="toolbar-insert-table"
+                  >
+                    <TableIcon size={ICON_SIZE} />
+                  </ToolbarButton>
+                )}
+                {onInsertPageBreak && (
+                  <ToolbarButton
+                    onClick={handleInsertPageBreak}
+                    disabled={disabled}
+                    title={t("insertPageBreak")}
+                    ariaLabel={t("insertPageBreak")}
+                  >
+                    <SeparatorHorizontalIcon size={ICON_SIZE} />
+                  </ToolbarButton>
+                )}
+                {onInsertTOC && (
+                  <ToolbarButton
+                    onClick={handleInsertTOC}
+                    disabled={disabled}
+                    title={t("insertTableOfContents")}
+                    ariaLabel={t("insertTableOfContents")}
+                  >
+                    <TableOfContentsIcon size={ICON_SIZE} />
+                  </ToolbarButton>
+                )}
+              </ToolbarGroup>
+            </>
+          )}
+        </div>
+
+        {showSecondaryInline && (
+          <>
+            <ToolbarSeparator />
+            <div ref={secondaryRef} className="flex shrink-0 items-center gap-0.5">
+              {secondaryControls}
+            </div>
           </>
         )}
       </div>
+
+      {/* Overflow trigger for the secondary (font, color, alignment, lists)
+          group: a sibling of the scrollable region above, not a child of it,
+          so it is pinned in place and can never be scrolled out of view.
+          Rendered only when that group has been measured to not fit inline. */}
+      {!showSecondaryInline && (
+        <>
+          <ToolbarSeparator />
+          <Menu>
+            <MenuTrigger
+              render={
+                <button
+                  type="button"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--doc-text-muted)] transition-colors duration-100 hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)]"
+                  aria-label={t("moreFormatting")}
+                  title={t("moreFormatting")}
+                />
+              }
+            >
+              <MoreHorizontalIcon size={ICON_SIZE} />
+            </MenuTrigger>
+            <MenuPopup align="end" className="max-w-[min(520px,calc(100vw-24px))]">
+              <div className="flex w-[min(480px,calc(100vw-48px))] flex-wrap items-center gap-1 p-1">
+                {secondaryControls}
+              </div>
+            </MenuPopup>
+          </Menu>
+        </>
+      )}
 
       {/* Host extras (zoom, track changes, etc.) */}
       <div className="ms-auto flex shrink-0 items-center gap-1">

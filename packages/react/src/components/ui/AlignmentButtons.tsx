@@ -26,7 +26,7 @@ export type AlignmentButtonsProps = {
   style?: CSSProperties;
 };
 
-const ICON_SIZE = 18;
+const ICON_SIZE = 16;
 
 const OPTIONS = [
   {
@@ -101,7 +101,7 @@ export function AlignmentButtons({
                 className={cn(
                   "flex size-8 items-center justify-center rounded transition-colors",
                   value === opt.value
-                    ? "bg-[var(--doc-primary-light)] text-[var(--doc-primary)]"
+                    ? "bg-[var(--doc-primary-light)] text-[var(--doc-text)]"
                     : "text-[var(--doc-text)] hover:bg-[var(--doc-primary-light)]",
                 )}
                 data-testid={`alignment-${opt.value}`}

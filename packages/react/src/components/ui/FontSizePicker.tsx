@@ -17,7 +17,14 @@ export type FontSizePickerProps = {
   /** Override the default size list. Values in points. */
   sizes?: number[] | undefined;
   disabled?: boolean | undefined;
+  /**
+   * Text shown only while no size is selected. Keep this short (or empty):
+   * the trigger is narrow and a long localized word truncates to a
+   * near-illegible ellipsis. Prefer `ariaLabel` for the descriptive name.
+   */
   placeholder?: string | undefined;
+  /** Accessible name for the trigger (does not affect the visible label). */
+  ariaLabel?: string | undefined;
   width?: number | string | undefined;
 };
 
@@ -39,6 +46,7 @@ export function FontSizePicker({
   sizes,
   disabled = false,
   placeholder = "",
+  ariaLabel,
   width = 56,
 }: FontSizePickerProps) {
   const {
@@ -67,6 +75,7 @@ export function FontSizePicker({
       disabled={disabled}
     >
       <SelectTrigger
+        aria-label={ariaLabel}
         size="sm"
         className="min-h-0 min-w-0 border-transparent bg-transparent text-sm text-[var(--doc-text-muted)] tabular-nums shadow-none hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)] data-[pressed]:bg-[var(--doc-primary-light)]"
         style={{

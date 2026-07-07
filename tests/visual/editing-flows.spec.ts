@@ -43,6 +43,22 @@ async function mountFixture(page: Page, fixture: string): Promise<void> {
   await page.waitForTimeout(250);
 }
 
+/**
+ * Click a toolbar button by its accessible name. The font/color/alignment/
+ * list group collapses behind the "More formatting" overflow trigger
+ * whenever the bar is too narrow to show it inline (measured live against
+ * the toolbar's actual content, not a fixed viewport breakpoint) — open that
+ * popover first when the button is not already on screen.
+ */
+async function clickToolbarButton(page: Page, name: string): Promise<void> {
+  const button = page.getByRole("button", { name });
+  const visible = await button.isVisible().catch(() => false);
+  if (!visible) {
+    await page.getByRole("button", { name: "More formatting" }).click();
+  }
+  await button.click();
+}
+
 /** Live body ProseMirror document text. */
 function bodyText(page: Page): Promise<string> {
   return page.evaluate(
@@ -333,15 +349,15 @@ test.describe("lists", () => {
     await page.locator(".layout-paragraph").first().click();
 
     // Bullet list applies numbering id 1 to the caret paragraph.
-    await page.getByRole("button", { name: "Bullet List" }).click();
+    await clickToolbarButton(page, "Bullet List");
     await expect.poll(() => caretParagraphNumId(page)).toBe(1);
 
     // Switching to a numbered list moves it to a distinct numbering id (2).
-    await page.getByRole("button", { name: "Numbered List" }).click();
+    await clickToolbarButton(page, "Numbered List");
     await expect.poll(() => caretParagraphNumId(page)).toBe(2);
 
     // Clicking the already-active numbered-list button clears list formatting.
-    await page.getByRole("button", { name: "Numbered List" }).click();
+    await clickToolbarButton(page, "Numbered List");
     await expect.poll(() => caretParagraphNumId(page)).toBeNull();
   });
 });

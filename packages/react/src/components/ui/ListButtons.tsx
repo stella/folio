@@ -34,15 +34,15 @@ export const createDefaultListState = (): ListState => ({
   isInList: false,
 });
 
-const ICON_SIZE = 20;
+const ICON_SIZE = 16;
 
 const btnCls = (active: boolean, disabled: boolean, compact: boolean) =>
   cn(
     "flex items-center justify-center rounded transition-colors",
     compact ? "size-7" : "size-8",
     active
-      ? "bg-[var(--doc-primary-light)] text-[var(--doc-primary)]"
-      : "text-[var(--doc-text-muted)] hover:bg-[var(--doc-bg-hover)]",
+      ? "bg-[var(--doc-primary-light)] text-[var(--doc-text)]"
+      : "text-[var(--doc-text-muted)] hover:bg-[var(--doc-primary-light)]",
     disabled &&
       "cursor-not-allowed text-[var(--doc-text-subtle)] opacity-[0.16] disabled:hover:bg-transparent disabled:hover:text-[var(--doc-text-subtle)]",
   );
