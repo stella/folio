@@ -126,14 +126,14 @@ export function transformSource(file: string, input: string): TransformResult {
   let changed = false;
   const text = input.replace(
     /(?<quote>["'])(?<specifier>@eigenpal\/(?:docx-editor-(?:react|vue|core|agents|i18n)|nuxt-docx-editor)(?:\/[^"']*)?)(\k<quote>)/gu,
-    (match, quote: string, specifier: string) => {
+    (match, quote: string, specifier: string, _closingQuote: string, offset: number) => {
       const replacement = SAFE_SPECIFIER_REPLACEMENTS.get(specifier);
       if (replacement) {
         changed = true;
         return `${quote}${replacement}${quote}`;
       }
 
-      addManualFinding(findings, file, input, specifier);
+      addManualFinding(findings, file, input, specifier, offset);
       return match;
     },
   );
@@ -185,12 +185,12 @@ function transformPackageJson(file: string, input: string): TransformResult {
       json[section] = nextDeps;
     }
 
-    if ("@eigenpal/docx-editor-i18n" in nextDeps) {
+    if ("@eigenpal/docx-editor-i18n" in deps) {
       findings.push({
         file,
         line: lineOf(input, "@eigenpal/docx-editor-i18n"),
         message:
-          "@eigenpal/docx-editor-i18n has no package-name replacement. Use @stll/folio-react/messages or @stll/folio-vue/messages.",
+          "@eigenpal/docx-editor-i18n dependency was rewritten for React compatibility. Review direct locale imports and use @stll/folio-react/messages or @stll/folio-vue/messages where needed.",
       });
     }
   }
@@ -206,14 +206,20 @@ function transformPackageJson(file: string, input: string): TransformResult {
   };
 }
 
-function addManualFinding(findings: Finding[], file: string, input: string, specifier: string) {
+function addManualFinding(
+  findings: Finding[],
+  file: string,
+  input: string,
+  specifier: string,
+  offset: number,
+) {
   for (const [pattern, message] of MANUAL_SPECIFIER_MESSAGES) {
     if (!pattern.test(specifier)) {
       continue;
     }
     const finding = {
       file,
-      line: lineOf(input, specifier),
+      line: lineOf(input, specifier, offset),
       message: `${specifier}: ${message}`,
     };
     if (!findings.some((existing) => isSameFinding(existing, finding))) {
@@ -227,8 +233,8 @@ function isSameFinding(left: Finding, right: Finding): boolean {
   return left.file === right.file && left.line === right.line && left.message === right.message;
 }
 
-function lineOf(input: string, needle: string): number {
-  const index = input.indexOf(needle);
+function lineOf(input: string, needle: string, offset?: number): number {
+  const index = offset ?? input.indexOf(needle);
   if (index === -1) {
     return 1;
   }
@@ -240,7 +246,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function collectFiles(inputPath: string): Promise<string[]> {
-  const info = await stat(inputPath);
+  let info;
+  try {
+    info = await stat(inputPath);
+  } catch (error) {
+    console.warn(
+      `Skipping ${inputPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return [];
+  }
+
   if (info.isFile()) {
     return shouldScanFile(inputPath) ? [inputPath] : [];
   }

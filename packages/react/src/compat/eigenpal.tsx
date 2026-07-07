@@ -88,14 +88,14 @@ export const locales: Record<LocaleCode, LegacyTranslations> = {
   "zh-CN": zhCN,
 };
 
-export const LocaleProvider = ({ children, i18n, locale }: LocaleProviderProps) => (
-  <IntlProvider
-    locale={resolveLocale(locale, i18n)}
-    messages={getFolioMessages(resolveLocale(locale, i18n))}
-  >
-    {children}
-  </IntlProvider>
-);
+export const LocaleProvider = ({ children, i18n, locale }: LocaleProviderProps) => {
+  const resolvedLocale = resolveLocale(locale, i18n);
+  return (
+    <IntlProvider locale={resolvedLocale} messages={getFolioMessages(resolvedLocale)}>
+      {children}
+    </IntlProvider>
+  );
+};
 
 export const useTranslation = (): { t: TFunction } => {
   const t = useTranslations("folio");

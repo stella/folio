@@ -114,6 +114,7 @@ import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Popover } from '@base-ui/react/popover';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
 import React$1 from 'react';
+import { default as React_2 } from 'react';
 import { ReactNode } from 'react';
 import { RefAttributes } from 'react';
 import { RefObject } from 'react';
@@ -195,7 +196,7 @@ export { ApplyResult }
 export { applySuggestions }
 
 // @public (undocumented)
-export const AutocompleteCaretOverlay: (input: AutocompleteCaretOverlayProps) => React$1.JSX.Element | null;
+export const AutocompleteCaretOverlay: (input: AutocompleteCaretOverlayProps) => React_2.JSX.Element | null;
 
 // @public (undocumented)
 export type AutocompleteCaretOverlayProps = {
@@ -521,7 +522,7 @@ export type FontOption = {
 };
 
 // @public (undocumented)
-export function FormattingBar(props: FormattingBarProps): React$1.JSX.Element;
+export function FormattingBar(props: FormattingBarProps): React_2.JSX.Element;
 
 // @public (undocumented)
 export type FormattingBarProps = {

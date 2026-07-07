@@ -64,6 +64,19 @@ import en from "@eigenpal/docx-editor-i18n/en";
     ]);
   });
 
+  test("reports repeated incompatible subpaths at their own lines", () => {
+    const input = `
+import { first } from "@eigenpal/docx-editor-react/plugin-api";
+
+import { second } from "@eigenpal/docx-editor-react/plugin-api";
+`;
+
+    const result = transformSource("src/plugins.ts", input);
+
+    expect(result.changed).toBe(false);
+    expect(result.findings.map((finding) => finding.line)).toEqual([2, 4]);
+  });
+
   test("rewrites package.json dependency names to installable folio ranges", () => {
     const input = `${JSON.stringify(
       {
@@ -89,7 +102,12 @@ import en from "@eigenpal/docx-editor-i18n/en";
     expect(parsed.devDependencies["@stll/folio-nuxt"]).toBe("latest");
     expect(parsed.dependencies["@eigenpal/docx-editor-react"]).toBeUndefined();
     expect(parsed.dependencies["@eigenpal/docx-editor-i18n"]).toBeUndefined();
-    expect(result.findings).toEqual([]);
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        line: 5,
+        message: expect.stringContaining("@eigenpal/docx-editor-i18n"),
+      }),
+    ]);
   });
 
   test("rewrites Eigenpal specifiers in non-package JSON config files", () => {
