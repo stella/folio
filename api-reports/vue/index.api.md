@@ -83,7 +83,9 @@ import { FolioAIEditSkipReason } from '@stll/folio-core/ai-edits';
 import { FolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { FolioAISignatureParty } from '@stll/folio-core/ai-edits';
 import { FolioBlockId } from '@stll/folio-core/types/block-id';
+import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
+import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { default as FormattingBar } from './components/FormattingBar.vue';
 import { fromMarkdown } from '@stll/folio-core/markdown';
@@ -393,6 +395,10 @@ export type DocxEditorRef = {
     redo: () => boolean;
     scrollToAIEditOperation: (revisionIds: number | readonly number[]) => boolean;
     scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean;
+    getTrackedChanges: () => FolioReviewChange[];
+    getCommentAnchors: () => FolioCommentAnchor[];
+    getSelectionText: () => string;
+    getPageText: (page: number) => string | null;
     getContentControls: (filter?: ContentControlFilter) => {
         properties: SdtProperties;
         path: number[];
