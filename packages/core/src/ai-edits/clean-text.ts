@@ -1,4 +1,4 @@
-import type { Node as PMNode } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 
 /**
  * "Post-tracked-changes" view of a textblock: the string the user
@@ -24,6 +24,8 @@ export type CleanBlockText = {
 };
 
 const DELETION_MARK = "deletion";
+const INSERTION_MARK = "insertion";
+const COMMENT_MARK = "comment";
 
 export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): CleanBlockText => {
   let text = "";
@@ -50,4 +52,101 @@ export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): Clean
   });
   offsets.push(lastEnd);
   return { text, offsets };
+};
+
+/**
+ * A "redline-aware" view of a textblock: the same left-to-right traversal as
+ * {@link buildCleanBlockText}, but every tracked change and comment anchor is
+ * rendered inline with a simple tag rather than being flattened away:
+ *
+ * - `<ins author="…">text</ins>` for insertion-marked runs,
+ * - `<del author="…">text</del>` for deletion-marked runs (tracked moves
+ *   surface as plain ins/del, since a move carries the same marks),
+ * - `<comment id="N">quoted text</comment>` for comment-anchored runs.
+ *
+ * Nested annotations (e.g. an inserted run that is also commented) nest their
+ * tags in a stable `comment > ins > del` order. Text content and attribute
+ * values are XML-escaped so the tags stay unambiguous when embedded in a
+ * prompt. Adjacent runs sharing the same annotation coalesce into one tag.
+ *
+ * This is the view a consumer embeds when it wants the model to reason about
+ * the redline itself, in contrast to {@link buildCleanBlockText}'s
+ * post-tracked-changes view.
+ */
+export const buildAnnotatedBlockText = (blockNode: PMNode): string => {
+  const segments: { annotation: RunAnnotation; text: string }[] = [];
+  blockNode.descendants((node) => {
+    if (!node.isText || node.text === undefined) {
+      return true;
+    }
+    const annotation = annotationOf(node.marks);
+    const previous = segments.at(-1);
+    if (previous && sameAnnotation(previous.annotation, annotation)) {
+      previous.text += node.text;
+      return false;
+    }
+    segments.push({ annotation, text: node.text });
+    return false;
+  });
+  return segments.map(renderAnnotatedSegment).join("");
+};
+
+type RunAnnotation = {
+  commentId: number | null;
+  insertionAuthor: string | null;
+  deletionAuthor: string | null;
+};
+
+const authorOf = (attrs: Mark["attrs"]): string => {
+  const author = attrs["author"];
+  return typeof author === "string" ? author : "";
+};
+
+const annotationOf = (marks: readonly Mark[]): RunAnnotation => {
+  let commentId: number | null = null;
+  let insertionAuthor: string | null = null;
+  let deletionAuthor: string | null = null;
+  for (const mark of marks) {
+    if (mark.type.name === COMMENT_MARK) {
+      const id = mark.attrs["commentId"];
+      if (typeof id === "number") {
+        commentId = id;
+      }
+    } else if (mark.type.name === INSERTION_MARK) {
+      insertionAuthor = authorOf(mark.attrs);
+    } else if (mark.type.name === DELETION_MARK) {
+      deletionAuthor = authorOf(mark.attrs);
+    }
+  }
+  return { commentId, insertionAuthor, deletionAuthor };
+};
+
+const sameAnnotation = (a: RunAnnotation, b: RunAnnotation): boolean =>
+  a.commentId === b.commentId &&
+  a.insertionAuthor === b.insertionAuthor &&
+  a.deletionAuthor === b.deletionAuthor;
+
+const escapeText = (text: string): string =>
+  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+
+const escapeAttr = (value: string): string => escapeText(value).replaceAll('"', "&quot;");
+
+const renderAnnotatedSegment = ({
+  annotation,
+  text,
+}: {
+  annotation: RunAnnotation;
+  text: string;
+}): string => {
+  let inner = escapeText(text);
+  if (annotation.deletionAuthor !== null) {
+    inner = `<del author="${escapeAttr(annotation.deletionAuthor)}">${inner}</del>`;
+  }
+  if (annotation.insertionAuthor !== null) {
+    inner = `<ins author="${escapeAttr(annotation.insertionAuthor)}">${inner}</ins>`;
+  }
+  if (annotation.commentId !== null) {
+    inner = `<comment id="${annotation.commentId}">${inner}</comment>`;
+  }
+  return inner;
 };

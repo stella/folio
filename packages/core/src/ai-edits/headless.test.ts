@@ -512,3 +512,89 @@ describe("headless docx review discovery + resolve", () => {
     expect(outXml).toContain("Intro paragraph.");
   });
 });
+
+describe("headless docx review annotated read surface", () => {
+  test("getContentAsText({ annotated }) inlines redline + comment tags; default stays clean", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const blocks = reviewer.snapshot().blocks;
+    reviewer.applyOperations([
+      {
+        id: "t1",
+        type: "replaceInBlock",
+        blockId: findBlock(blocks, "Heading").id,
+        find: "Heading",
+        replace: "Intro",
+      },
+      {
+        id: "c1",
+        type: "commentOnBlock",
+        blockId: findBlock(blocks, "Trailing").id,
+        comment: { text: "Check this clause." },
+      },
+    ]);
+
+    const annotated = reviewer.getContentAsText({ annotated: true });
+    // Tracked replace surfaces as a deletion of the old word and an insertion
+    // of the new one, both attributed to the reviewer's author.
+    expect(annotated).toContain('<ins author="AI Reviewer">Intro</ins>');
+    expect(annotated).toContain('<del author="AI Reviewer">Heading</del>');
+    // The comment anchor wraps its block text with its allocated id.
+    expect(annotated).toMatch(/<comment id="\d+">[^<]*Trailing paragraph\.[^<]*<\/comment>/u);
+
+    // Default (clean) output flattens tracked changes and carries no tags.
+    const clean = reviewer.getContentAsText();
+    expect(clean).not.toContain("<ins ");
+    expect(clean).not.toContain("<del ");
+    expect(clean).not.toContain("<comment ");
+    expect(clean).toContain("Intro paragraph.");
+  });
+});
+
+const NOTES_FIXTURE = path.join(
+  import.meta.dir,
+  "../../../../tests/visual/fixtures/docx-editor-demo.docx",
+);
+
+/**
+ * The demo fixture already carries a header + footer with real text, but its
+ * `footnotes.xml` holds only separator notes. Splice in one normal footnote so
+ * the notes read surface has a header, a footer, and a footnote to report.
+ */
+const readNotesFixture = async (): Promise<ArrayBuffer> => {
+  const bytes = readFileSync(NOTES_FIXTURE);
+  const src = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const zip = await JSZip.loadAsync(src);
+  const footnotesFile = zip.file("word/footnotes.xml");
+  if (!footnotesFile) {
+    throw new Error("fixture missing word/footnotes.xml");
+  }
+  const footnotesXml = await footnotesFile.async("text");
+  const injected = footnotesXml.replace(
+    "</w:footnotes>",
+    '<w:footnote w:id="2"><w:p><w:r><w:t>Injected footnote body text.</w:t></w:r></w:p></w:footnote></w:footnotes>',
+  );
+  zip.file("word/footnotes.xml", injected);
+  return zip.generateAsync({ type: "arraybuffer" });
+};
+
+describe("headless docx review notes read surface", () => {
+  test("getNotesAsText surfaces header, footer, and footnote text with labels", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await readNotesFixture());
+    const notes = reviewer.getNotesAsText();
+
+    expect(notes).toContain(
+      "[header default] Docx Editor: Project Charter & Contributor Agreement",
+    );
+    expect(notes).toContain("[footer default]");
+    expect(notes).toContain("[footnote #2] Injected footnote body text.");
+    // Body content is not folded into the notes surface.
+    expect(notes).not.toContain("[endnote");
+  });
+
+  test("getNotesAsText is empty for a document without headers/footers or notes", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    expect(reviewer.getNotesAsText()).toBe("");
+  });
+});

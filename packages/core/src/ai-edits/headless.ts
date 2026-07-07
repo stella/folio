@@ -26,6 +26,13 @@ import type { Transaction } from "prosemirror-state";
 
 import { createReply } from "../docx/replyToComment";
 import { attemptSelectiveSave } from "../docx/selectiveSave";
+import { getHeaderFooterText } from "../docx/headerFooterParser";
+import {
+  getEndnoteText,
+  getFootnoteText,
+  isSeparatorEndnote,
+  isSeparatorFootnote,
+} from "../docx/footnoteParser";
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import {
@@ -44,10 +51,17 @@ import {
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
-import type { Document } from "../types/document";
+import type { Document, HeaderFooter } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
 import { applyFolioAIEditOperations } from "./apply";
-import { createFolioAIEditSnapshot } from "./snapshot";
+import { buildAnnotatedBlockText } from "./clean-text";
+import {
+  getCommentAnchorsFromDoc,
+  getTrackedChangesFromDoc,
+  type FolioReviewChange,
+  type FolioReviewChangeKind,
+} from "./read";
+import { createFolioAIEditSnapshot, normalizeFolioAIBlockText } from "./snapshot";
 import type {
   FolioAIBlock,
   FolioAIEditApplyMode,
@@ -154,30 +168,21 @@ export type FolioApplyOperationsOptions = {
   snapshot?: FolioAIEditSnapshot;
 };
 
-export type FolioReviewChangeKind = "insertion" | "deletion";
-
-/** A tracked change (insertion or deletion) discovered in the document body. */
-export type FolioReviewChange = {
+/** Options for {@link FolioDocxReviewer.getContentAsText}. */
+export type FolioGetContentAsTextOptions = {
   /**
-   * The tracked-change revision id — the OOXML `w:id` carried on the
-   * insertion / deletion mark. Pass it (or the whole change) to
-   * {@link FolioDocxReviewer.acceptChange} / `rejectChange`. A replace produces
-   * two changes (a deletion side and an insertion side) with distinct ids.
+   * Render tracked changes and comment anchors inline as `<ins>` / `<del>` /
+   * `<comment>` tags instead of the default flattened, post-tracked-changes
+   * text. (default: `false`)
    */
-  id: number;
-  type: FolioReviewChangeKind;
-  author: string;
-  /** ISO date the change was authored, or `null` when the source omitted it. */
-  date: string | null;
-  /** Inserted text for insertions, removed text for deletions. */
-  text: string;
-  /**
-   * Stable id of the containing body block (Word `w14:paraId` or `seq-NNNN`),
-   * matching {@link FolioDocxReviewer.getContent}. `null` when the change sits
-   * in a block with no surviving visible text, which has no snapshot block.
-   */
-  blockId: string | null;
+  annotated?: boolean;
 };
+
+// The change shape and its pure reader now live in `./read` so a live editor
+// can produce the same `FolioReviewChange[]` from its own doc; the reviewer
+// delegates to `getTrackedChangesFromDoc` and re-exports the types here so its
+// public surface is unchanged.
+export type { FolioReviewChange, FolioReviewChangeKind } from "./read";
 
 /** Filter for {@link FolioDocxReviewer.getChanges}. */
 export type FolioReviewChangeFilter = {
@@ -228,16 +233,18 @@ export type FolioReviewCommentFilter = {
  * for headings and the list marker for list items, so a model can copy the
  * block id straight back into an operation.
  */
-const formatBlockForLLM = (block: FolioAIBlock): string => {
+const formatBlockLine = (block: FolioAIBlock, text: string): string => {
   const label = `[${block.id}]`;
   if (block.kind === "heading") {
-    return `${label} (h${headingLevel(block)}) ${block.text}`;
+    return `${label} (h${headingLevel(block)}) ${text}`;
   }
   if (block.kind === "listItem") {
-    return `${label} ${block.displayLabel ?? "•"} ${block.text}`;
+    return `${label} ${block.displayLabel ?? "•"} ${text}`;
   }
-  return `${label} ${block.text}`;
+  return `${label} ${text}`;
 };
+
+const formatBlockForLLM = (block: FolioAIBlock): string => formatBlockLine(block, block.text);
 
 const headingLevel = (block: FolioAIBlock): number => {
   const digits = /(\d+)/u.exec(block.styleId ?? block.displayLabel ?? "")?.[1];
@@ -398,9 +405,81 @@ export class FolioDocxReviewer {
    * The body as LLM-ready plain text: one line per block, each prefixed with
    * its stable block id (`[<blockId>] text`). Copyable verbatim into a prompt
    * without JSON quote-escaping.
+   *
+   * With `{ annotated: true }` each block's text is rendered redline-aware:
+   * tracked insertions/deletions and comment anchors appear inline as
+   * `<ins>` / `<del>` / `<comment>` tags (see {@link buildAnnotatedBlockText})
+   * for prompt-embedding parity with a live editor's redline view. The default
+   * (clean) output flattens tracked changes and is unchanged.
    */
-  getContentAsText(): string {
-    return this.getContent().map(formatBlockForLLM).join("\n");
+  getContentAsText(options: FolioGetContentAsTextOptions = {}): string {
+    if (!options.annotated) {
+      return this.getContent().map(formatBlockForLLM).join("\n");
+    }
+    const snapshot = this.snapshot();
+    const startById = new Map<string, number>();
+    for (const anchor of Object.values(snapshot.anchors)) {
+      startById.set(anchor.id, anchor.from);
+    }
+    return snapshot.blocks
+      .map((block) => {
+        const from = startById.get(block.id);
+        const node = from === undefined ? null : this.state.doc.nodeAt(from);
+        const text = node ? buildAnnotatedBlockText(node) : block.text;
+        return formatBlockLine(block, text);
+      })
+      .join("\n");
+  }
+
+  /**
+   * Header / footer and footnote / endnote text as labeled, LLM-ready lines,
+   * one per non-empty part: `[header default] …`, `[footer default] …`,
+   * `[footnote #N] …`, `[endnote #N] …`. Read-only — note bodies are outside
+   * the reviewer's body-only apply scope, so this reflects the parsed source.
+   * Empty parts and separator notes are omitted.
+   */
+  getNotesAsText(): string {
+    const pkg = this.baseDocument.package;
+    const lines: string[] = [];
+
+    const pushHeaderFooter = (
+      map: Map<string, HeaderFooter> | undefined,
+      label: "header" | "footer",
+    ) => {
+      if (!map) {
+        return;
+      }
+      for (const hf of map.values()) {
+        const text = normalizeFolioAIBlockText(getHeaderFooterText(hf));
+        if (text.length > 0) {
+          lines.push(`[${label} ${hf.hdrFtrType}] ${text}`);
+        }
+      }
+    };
+
+    pushHeaderFooter(pkg.headers, "header");
+    pushHeaderFooter(pkg.footers, "footer");
+
+    for (const footnote of pkg.footnotes ?? []) {
+      if (isSeparatorFootnote(footnote)) {
+        continue;
+      }
+      const text = normalizeFolioAIBlockText(getFootnoteText(footnote));
+      if (text.length > 0) {
+        lines.push(`[footnote #${footnote.id}] ${text}`);
+      }
+    }
+    for (const endnote of pkg.endnotes ?? []) {
+      if (isSeparatorEndnote(endnote)) {
+        continue;
+      }
+      const text = normalizeFolioAIBlockText(getEndnoteText(endnote));
+      if (text.length > 0) {
+        lines.push(`[endnote #${endnote.id}] ${text}`);
+      }
+    }
+
+    return lines.join("\n");
   }
 
   /**
@@ -410,55 +489,7 @@ export class FolioDocxReviewer {
    * against. Runs of one revision within a block fold into a single entry.
    */
   getChanges(filter?: FolioReviewChangeFilter): FolioReviewChange[] {
-    const insertionType = this.state.schema.marks["insertion"];
-    const deletionType = this.state.schema.marks["deletion"];
-    const blockStarts = this.blockStartIds();
-    const grouped = new Map<string, FolioReviewChange>();
-    let currentBlockId: string | null = null;
-
-    this.state.doc.descendants((node, pos) => {
-      if (node.isTextblock) {
-        currentBlockId = blockStarts.get(pos) ?? null;
-        return true;
-      }
-      if (!node.isInline || node.text === undefined) {
-        return undefined;
-      }
-      const text = node.text;
-      for (const mark of node.marks) {
-        if (typeof mark.attrs["revisionId"] !== "number") {
-          continue;
-        }
-        let kind: FolioReviewChangeKind;
-        if (mark.type === insertionType) {
-          kind = "insertion";
-        } else if (mark.type === deletionType) {
-          kind = "deletion";
-        } else {
-          continue;
-        }
-        const revisionId = mark.attrs["revisionId"];
-        const key = `${currentBlockId ?? ""}:${kind}:${revisionId}`;
-        const existing = grouped.get(key);
-        if (existing) {
-          existing.text += text;
-          continue;
-        }
-        const author = mark.attrs["author"];
-        const date = mark.attrs["date"];
-        grouped.set(key, {
-          id: revisionId,
-          type: kind,
-          author: typeof author === "string" ? author : "",
-          date: typeof date === "string" ? date : null,
-          text,
-          blockId: currentBlockId,
-        });
-      }
-      return undefined;
-    });
-
-    const changes = [...grouped.values()];
+    const changes = getTrackedChangesFromDoc(this.state.doc);
     if (!filter) {
       return changes;
     }
@@ -690,15 +721,6 @@ export class FolioDocxReviewer {
     return count;
   }
 
-  /** Map each snapshot block's start position to its stable id. */
-  private blockStartIds(): Map<number, string> {
-    const starts = new Map<number, string>();
-    for (const anchor of Object.values(this.snapshot().anchors)) {
-      starts.set(anchor.from, anchor.id);
-    }
-    return starts;
-  }
-
   /** Apply any {@link resolveComment} overrides recorded for these comments. */
   private withResolvedOverrides(comments: readonly Comment[]): Comment[] {
     if (this.resolvedOverrides.size === 0) {
@@ -712,39 +734,10 @@ export class FolioDocxReviewer {
 
   /** Map each anchored comment id to its anchored text and containing block id. */
   private commentAnchors(): Map<number, { text: string; blockId: string | null }> {
-    const commentType = this.state.schema.marks["comment"];
     const anchors = new Map<number, { text: string; blockId: string | null }>();
-    if (!commentType) {
-      return anchors;
+    for (const anchor of getCommentAnchorsFromDoc(this.state.doc)) {
+      anchors.set(anchor.commentId, { text: anchor.quote, blockId: anchor.blockId });
     }
-    const blockStarts = this.blockStartIds();
-    let currentBlockId: string | null = null;
-
-    this.state.doc.descendants((node, pos) => {
-      if (node.isTextblock) {
-        currentBlockId = blockStarts.get(pos) ?? null;
-        return true;
-      }
-      if (!node.isInline || node.text === undefined) {
-        return undefined;
-      }
-      const text = node.text;
-      for (const mark of node.marks) {
-        if (mark.type !== commentType || typeof mark.attrs["commentId"] !== "number") {
-          continue;
-        }
-        const commentId = mark.attrs["commentId"];
-        const existing = anchors.get(commentId);
-        if (!existing) {
-          anchors.set(commentId, { text, blockId: currentBlockId });
-          continue;
-        }
-        existing.text += text;
-        existing.blockId ??= currentBlockId;
-      }
-      return undefined;
-    });
-
     return anchors;
   }
 

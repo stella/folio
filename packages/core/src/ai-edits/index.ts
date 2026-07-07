@@ -1,4 +1,12 @@
 export { applyFolioAIEditOperations, type FolioAIEditView } from "./apply";
+export { buildAnnotatedBlockText } from "./clean-text";
+export {
+  getCommentAnchorsFromDoc,
+  getTrackedChangesFromDoc,
+  type FolioCommentAnchor,
+  type FolioReviewChange,
+  type FolioReviewChangeKind,
+} from "./read";
 export {
   createFolioAIEditSnapshot,
   hashFolioAIBlockText,
