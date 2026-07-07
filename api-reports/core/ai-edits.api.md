@@ -11,6 +11,9 @@ import { Transaction } from 'prosemirror-state';
 // @public (undocumented)
 export const applyFolioAIEditOperations: (input: ApplyFolioAIEditOperationsOptions) => FolioAIEditApplyResult;
 
+// @public
+export const buildAnnotatedBlockText: (blockNode: Node_2) => string;
+
 // @public (undocumented)
 export const createFolioAIEditSnapshot: (doc: Node_2) => FolioAIEditSnapshot;
 
@@ -164,7 +167,33 @@ export type FolioAISignatureParty = {
 };
 
 // @public
+export type FolioCommentAnchor = {
+    commentId: number; /** Stable id of the anchored body block, or `null` when the anchor is absent. */
+    blockId: string | null; /** The document text the comment is anchored to. */
+    quote: string;
+};
+
+// @public
+export type FolioReviewChange = {
+    id: number;
+    type: FolioReviewChangeKind;
+    author: string; /** ISO date the change was authored, or `null` when the source omitted it. */
+    date: string | null; /** Inserted text for insertions, removed text for deletions. */
+    text: string;
+    blockId: string | null;
+};
+
+// @public (undocumented)
+export type FolioReviewChangeKind = "insertion" | "deletion";
+
+// @public
+export const getCommentAnchorsFromDoc: (doc: Node_2) => FolioCommentAnchor[];
+
+// @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
+
+// @public
+export const getTrackedChangesFromDoc: (doc: Node_2) => FolioReviewChange[];
 
 // @public (undocumented)
 export const hashFolioAIBlockText: (text: string) => string;

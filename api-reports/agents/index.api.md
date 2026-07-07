@@ -9,7 +9,9 @@ import { FolioAIEditApplyMode } from '@stll/folio-core/server';
 import { FolioAIEditApplyResult } from '@stll/folio-core/server';
 import { FolioAIEditOperation } from '@stll/folio-core/server';
 import { FolioAIEditSnapshot } from '@stll/folio-core/server';
+import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocxReviewer } from '@stll/folio-core/server';
+import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
 
 // @public
@@ -154,6 +156,10 @@ export type FolioAgentEditorRefLike = {
     }): FolioAIEditApplyResult; /** `DocxEditorRef.scrollToBlock`. */
     scrollToBlock(blockId: string, snapshot?: FolioAIEditSnapshot): boolean; /** `DocxEditorRef.getTotalPages`. */
     getTotalPages(): number;
+    getTrackedChanges?(): FolioReviewChange[];
+    getCommentAnchors?(): FolioCommentAnchor[];
+    getSelectionText?(): string;
+    getPageText?(page: number): string | null;
 };
 
 // @public
@@ -210,6 +216,30 @@ export type OpenAIToolDefinition = {
         description: string;
         parameters: Record<string, unknown>;
     };
+};
+
+// @public
+export const parseAddCommentInput: (args: unknown) => ParseAddCommentResult;
+
+// @public
+export type ParseAddCommentResult = {
+    ok: true;
+    operation: FolioAIEditOperation;
+} | {
+    ok: false;
+    error: string;
+};
+
+// @public
+export const parseSuggestChangesInput: (args: unknown) => ParseSuggestChangesResult;
+
+// @public
+export type ParseSuggestChangesResult = {
+    ok: true;
+    operations: FolioAIEditOperation[];
+} | {
+    ok: false;
+    error: string;
 };
 
 // @public

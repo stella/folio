@@ -179,7 +179,8 @@ export class FolioDocxReviewer {
     getChanges(filter?: FolioReviewChangeFilter): FolioReviewChange[];
     getComments(filter?: FolioReviewCommentFilter): FolioReviewComment[];
     getContent(): FolioAIBlock[];
-    getContentAsText(): string;
+    getContentAsText(options?: FolioGetContentAsTextOptions): string;
+    getNotesAsText(): string;
     rejectAll(): number;
     rejectChange(target: FolioReviewChange | number): boolean;
     replyTo(target: FolioReviewComment | number, input: FolioReviewReplyInput): FolioReviewCommentReply | null;
