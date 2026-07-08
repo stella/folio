@@ -4,32 +4,43 @@
 
 ```ts
 
-import { default as FindReplaceDialog } from './FindReplaceDialog.vue';
-import { default as FootnotePropertiesDialog } from './FootnotePropertiesDialog.vue';
-import { default as HyperlinkDialog } from './HyperlinkDialog.vue';
-import { default as ImagePositionDialog } from './ImagePositionDialog.vue';
-import { default as ImagePropertiesDialog } from './ImagePropertiesDialog.vue';
-import { default as InsertSymbolDialog } from './InsertSymbolDialog.vue';
-import { default as InsertTableDialog } from './InsertTableDialog.vue';
-import { default as PageSetupDialog } from './PageSetupDialog.vue';
-import { default as TablePropertiesDialog } from './TablePropertiesDialog.vue';
+// @public
+export const FindReplaceDialog: any;
 
-export { FindReplaceDialog }
+// @public (undocumented)
+export const FootnotePropertiesDialog: any;
 
-export { FootnotePropertiesDialog }
+// @public (undocumented)
+export const HyperlinkDialog: any;
 
-export { HyperlinkDialog }
+// @public (undocumented)
+export const ImagePositionDialog: any;
 
-export { ImagePositionDialog }
+// @public (undocumented)
+export const ImagePropertiesDialog: any;
 
-export { ImagePropertiesDialog }
+// @public (undocumented)
+export const InsertImageDialog: any;
 
-export { InsertSymbolDialog }
+// @public (undocumented)
+export const InsertSymbolDialog: any;
 
-export { InsertTableDialog }
+// @public (undocumented)
+export const InsertTableDialog: any;
 
-export { PageSetupDialog }
+// @public (undocumented)
+export const PageSetupDialog: any;
 
-export { TablePropertiesDialog }
+// @public (undocumented)
+export const PasteSpecialDialog: any;
+
+// @public (undocumented)
+export const SplitCellDialog: any;
+
+// @public (undocumented)
+export const TablePropertiesDialog: any;
+
+// @public (undocumented)
+export const WatermarkDialog: any;
 
 ```

@@ -124,10 +124,9 @@ const canApply = computed(
 );
 
 watch(
-  () => props.isOpen,
-  (open) => {
+  [() => props.isOpen, () => props.currentWatermark],
+  ([open, watermark]) => {
     if (!open) return;
-    const watermark = props.currentWatermark;
     if (!watermark) {
       mode.value = "text";
       text.value = "CONFIDENTIAL";
@@ -184,7 +183,7 @@ function apply() {
     imageRId: imageRId.value.trim(),
     ...(imageTarget.value.trim() ? { imageTarget: imageTarget.value.trim() } : {}),
     ...(imageTarget.value.trim() ? { imageTargetExternal: imageTargetExternal.value } : {}),
-    scale: clampPercent(scalePercent.value) / 100,
+    scale: clampScalePercent(scalePercent.value) / 100,
     washout: washout.value,
   });
   emit("close");
@@ -192,6 +191,10 @@ function apply() {
 
 function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
+}
+
+function clampScalePercent(value: number): number {
+  return Math.min(300, Math.max(1, value));
 }
 
 function stripHash(value: string): string {

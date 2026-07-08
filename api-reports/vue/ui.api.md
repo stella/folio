@@ -29,6 +29,7 @@ import { default as ImagePropertiesDialog } from './components/dialogs/ImageProp
 import { default as ImageTransformDropdown } from './components/ui/ImageTransformDropdown.vue';
 import { default as ImageWrapDropdown } from './components/ui/ImageWrapDropdown.vue';
 import { default as Input } from './components/ui/Input.vue';
+import { default as InsertImageDialog } from './components/dialogs/InsertImageDialog.vue';
 import { default as InsertSymbolDialog } from './components/dialogs/InsertSymbolDialog.vue';
 import { default as InsertTableDialog } from './components/dialogs/InsertTableDialog.vue';
 import { default as LineSpacingPicker } from './components/ui/LineSpacingPicker.vue';
@@ -37,12 +38,14 @@ import { default as MenuBar } from './components/MenuBar.vue';
 import { default as MenuDropdown } from './components/ui/MenuDropdown.vue';
 import { default as OutlineRail } from './components/ui/OutlineRail.vue';
 import { default as PageSetupDialog } from './components/dialogs/PageSetupDialog.vue';
+import { default as PasteSpecialDialog } from './components/dialogs/PasteSpecialDialog.vue';
 import { default as Popover } from './components/ui/Popover.vue';
 import { default as PrintButton } from './components/PrintButton.vue';
 import { default as ReplyInput } from './components/sidebar/ReplyInput.vue';
 import { default as ReplyThread } from './components/sidebar/ReplyThread.vue';
 import { default as ResolvedCommentMarker } from './components/sidebar/ResolvedCommentMarker.vue';
 import { default as Select } from './components/ui/Select.vue';
+import { default as SplitCellDialog } from './components/dialogs/SplitCellDialog.vue';
 import { default as StylePicker } from './components/ui/StylePicker.vue';
 import { default as TableBorderColorPicker } from './components/ui/TableBorderColorPicker.vue';
 import { default as TableBorderPicker } from './components/ui/TableBorderPicker.vue';
@@ -59,6 +62,7 @@ import { default as Toolbar } from './components/Toolbar.vue';
 import { default as TrackedChangeCard } from './components/sidebar/TrackedChangeCard.vue';
 import { default as UnifiedSidebar } from './components/UnifiedSidebar.vue';
 import { default as VerticalRuler } from './components/ui/VerticalRuler.vue';
+import { default as WatermarkDialog } from './components/dialogs/WatermarkDialog.vue';
 
 export { AddCommentCard }
 
@@ -206,6 +210,8 @@ export { ImageWrapDropdown }
 
 export { Input }
 
+export { InsertImageDialog }
+
 export { InsertSymbolDialog }
 
 export { InsertTableDialog }
@@ -221,6 +227,8 @@ export { MenuDropdown }
 export { OutlineRail }
 
 export { PageSetupDialog }
+
+export { PasteSpecialDialog }
 
 export { Popover }
 
@@ -239,6 +247,8 @@ export { ResolvedCommentMarker }
 export function resolveFolioComponents(components?: Partial<FolioUIComponents>): FolioUIComponents;
 
 export { Select }
+
+export { SplitCellDialog }
 
 export { StylePicker }
 
@@ -274,5 +284,7 @@ export { UnifiedSidebar }
 export function useFolioUI(): FolioUIComponents;
 
 export { VerticalRuler }
+
+export { WatermarkDialog }
 
 ```

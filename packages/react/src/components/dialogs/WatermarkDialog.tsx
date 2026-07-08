@@ -131,7 +131,7 @@ export function WatermarkDialog({
       imageRId: imageRId.trim(),
       ...(imageTarget.trim() ? { imageTarget: imageTarget.trim() } : {}),
       ...(imageTarget.trim() ? { imageTargetExternal } : {}),
-      scale: clampPercent(scalePercent) / 100,
+      scale: clampScalePercent(scalePercent) / 100,
       washout,
     });
     onClose();
@@ -305,6 +305,10 @@ function toWatermarkMode(value: string): WatermarkMode {
 
 function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
+}
+
+function clampScalePercent(value: number): number {
+  return Math.min(300, Math.max(1, value));
 }
 
 function stripHash(value: string): string {

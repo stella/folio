@@ -91,6 +91,7 @@ import { default as FormattingBar } from './components/FormattingBar.vue';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getAnonymizationMatches } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { getAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
+import { getDocumentWatermark } from '@stll/folio-core/watermark';
 import { getFolioCaretViewportRect } from '@stll/folio-core/paged-layout/selectionViewportRect';
 import { getFolioParaIdFromBlockId } from '@stll/folio-core/types/block-id';
 import { getFolioSelectionViewportRect } from '@stll/folio-core/paged-layout/selectionViewportRect';
@@ -111,6 +112,7 @@ import { MarkdownOptions } from '@stll/folio-core/markdown';
 import { MarkdownResult } from '@stll/folio-core/markdown';
 import { MaybeRefOrGetter } from 'vue';
 import { normalizeFolioAIBlockText } from '@stll/folio-core/ai-edits';
+import { PictureWatermark } from '@stll/folio-core/watermark';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
 import { PublicProps } from 'vue';
@@ -131,6 +133,7 @@ import { setAISuggestionsMeta } from '@stll/folio-core/prosemirror/plugins/aiSug
 import { setAnonymizationTermsMeta } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { SetContentControlContentInput } from '@stll/folio-core/content-controls';
 import { SetContentControlValueInput } from '@stll/folio-core/content-controls';
+import { setDocumentWatermark } from '@stll/folio-core/watermark';
 import { setFocusedSuggestionMeta } from '@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations';
 import { setTemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { shouldTriggerAutocomplete } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -141,6 +144,7 @@ import { TemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/temp
 import { templateSlashMenuKey } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
+import { TextWatermark } from '@stll/folio-core/watermark';
 import { Theme } from '@stll/folio-core/types/document';
 import { toMarkdown } from '@stll/folio-core/markdown';
 import { toMarkdownResult } from '@stll/folio-core/markdown';
@@ -148,6 +152,7 @@ import { Transaction } from 'prosemirror-state';
 import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
 import { VNode } from 'vue';
 import { VNodeChild } from 'vue';
+import { Watermark } from '@stll/folio-core/watermark';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
 import { XmlFragment } from 'yjs';
 import { default as ZoomControl } from './components/ui/ZoomControl.vue';
@@ -428,6 +433,9 @@ export type EditorHandle = {
 
 export { EditorMode }
 
+// @public
+export const FindReplaceDialog: any;
+
 export { finishAutocompleteSuggestion }
 
 export { FolioAIBlock }
@@ -515,6 +523,9 @@ export type FontOption = {
     category?: "sans-serif" | "serif" | "monospace" | "other";
 };
 
+// @public (undocumented)
+export const FootnotePropertiesDialog: any;
+
 export { FormattingBar }
 
 // @public (undocumented)
@@ -538,6 +549,8 @@ export { getAnonymizationMatches }
 
 export { getAutocompleteSuggestion }
 
+export { getDocumentWatermark }
+
 export { getFolioCaretViewportRect }
 
 export { getFolioParaIdFromBlockId }
@@ -550,6 +563,9 @@ export { getTemplateSlashMenu }
 
 export { hashFolioAIBlockText }
 
+// @public (undocumented)
+export const HyperlinkDialog: any;
+
 // @public
 export const i18nPlugin: {
     install(app: App, locale?: MaybeRefOrGetter<string>): void;
@@ -557,11 +573,26 @@ export const i18nPlugin: {
 
 export { ImageMeta }
 
+// @public (undocumented)
+export const ImagePositionDialog: any;
+
+// @public (undocumented)
+export const ImagePropertiesDialog: any;
+
 export { ImageRef }
+
+// @public (undocumented)
+export const InsertImageDialog: any;
 
 export { insertImageFromFile }
 
 export { insertPageBreakInView }
+
+// @public (undocumented)
+export const InsertSymbolDialog: any;
+
+// @public (undocumented)
+export const InsertTableDialog: any;
 
 export { insertTableInView }
 
@@ -587,6 +618,14 @@ export type OutlineItem = {
     meta?: string;
     color?: string;
 };
+
+// @public (undocumented)
+export const PageSetupDialog: any;
+
+// @public (undocumented)
+export const PasteSpecialDialog: any;
+
+export { PictureWatermark }
 
 export { PositionalText }
 
@@ -621,13 +660,21 @@ export { setAISuggestionsMeta }
 
 export { setAnonymizationTermsMeta }
 
+export { setDocumentWatermark }
+
 export { setFocusedSuggestionMeta }
 
 export { setTemplatePreviewValues }
 
 export { shouldTriggerAutocomplete }
 
+// @public (undocumented)
+export const SplitCellDialog: any;
+
 export { startAutocompleteSuggestion }
+
+// @public (undocumented)
+export const TablePropertiesDialog: any;
 
 export { TemplatePreviewSpan }
 
@@ -641,6 +688,8 @@ export { TemplateSlashMenuKeyAction }
 
 export { TemplateSlashMenuState }
 
+export { TextWatermark }
+
 export { toMarkdown }
 
 export { toMarkdownResult }
@@ -652,6 +701,11 @@ export const useTranslation: () => {
 
 // @public (undocumented)
 export function useWheelZoom(initialZoom?: number): UseZoomReturn;
+
+export { Watermark }
+
+// @public (undocumented)
+export const WatermarkDialog: any;
 
 export { WordDiffSegment }
 

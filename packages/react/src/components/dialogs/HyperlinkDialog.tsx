@@ -130,7 +130,7 @@ export function HyperlinkDialog({
           </DialogTitle>
 
           <div className={DIALOG_BODY_CLASS}>
-            {bookmarks.length > 0 && (
+            {(bookmarks.length > 0 || targetType === "bookmark") && (
               <label className="flex flex-col gap-1" htmlFor={fieldIds.targetType}>
                 <span className={DIALOG_LABEL_CLASS}>Link to</span>
                 <select
