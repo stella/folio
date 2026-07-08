@@ -151,7 +151,7 @@ describe("measureTableBlock row height", () => {
     }, fakeMeasure);
   });
 
-  test("image-only table cell paragraphs reserve the measured line box", () => {
+  test("image-only table cell paragraphs use the image visual height", () => {
     withFakeTextMeasure(() => {
       const table: TableBlock = {
         kind: "table",
@@ -198,7 +198,7 @@ describe("measureTableBlock row height", () => {
         throw new Error("Expected paragraph measure");
       }
       expect(paragraph.totalHeight).toBeGreaterThan(40);
-      expect(cell?.height).toBeGreaterThan(40);
+      expect(cell?.height).toBe(40);
       expect(cell?.height).toBeLessThan(paragraph.totalHeight);
       expect(row?.height).toBe(cell?.height);
     }, fakeMeasure);

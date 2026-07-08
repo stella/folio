@@ -959,7 +959,7 @@ const EMPTY_SEQ_VALUES: ReadonlyMap<number, number> = new Map();
  */
 function resolveFieldText(run: FieldRun, context: RenderContext | undefined): string {
   const fallback = run.fallback ?? "";
-  if (run.fieldType === "OTHER") {
+  if (run.fieldType === "OTHER" && run.pmStart === undefined) {
     return fallback;
   }
   if (!context) {

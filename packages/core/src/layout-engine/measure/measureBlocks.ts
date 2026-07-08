@@ -149,8 +149,7 @@ export function measureTableCellBlockVisualHeight(block: FlowBlock, blockMeasure
   if (inlineImageRuns.length === 1) {
     const spacingBefore = paragraphBlock.attrs?.spacing?.before ?? 0;
     const spacingAfter = paragraphBlock.attrs?.spacing?.after ?? 0;
-    const descent = paragraphMeasure.lines.at(0)?.descent ?? 0;
-    return spacingBefore + maxImageHeight + descent + spacingAfter;
+    return spacingBefore + maxImageHeight + spacingAfter;
   }
   const spacingBefore = paragraphBlock.attrs?.spacing?.before ?? 0;
   const spacingAfter = paragraphBlock.attrs?.spacing?.after ?? 0;
@@ -293,6 +292,11 @@ export function measureTableBlock(
     const sourceRow = tableBlock.rows[rowIdx];
     if (sourceRow?.hidden) {
       row.height = 0;
+      row.cells = sourceRow.cells.map(() => ({
+        blocks: [],
+        width: 0,
+        height: 0,
+      }));
       continue;
     }
     const sourceRowCells = tableBlock.rows[rowIdx]?.cells;

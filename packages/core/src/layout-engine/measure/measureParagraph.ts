@@ -722,13 +722,6 @@ export function measureParagraph(
 
   const lines: MeasuredLine[] = [];
 
-  const lineWidthTolerance = (): number => {
-    if (!isJustifiedParagraph) {
-      return WIDTH_TOLERANCE;
-    }
-    return Math.max(WIDTH_TOLERANCE, currentLine.availableWidth * JUSTIFY_SHRINK_TOLERANCE_RATIO);
-  };
-
   // Handle empty paragraph
   if (runs.length === 0) {
     if (attrs?.suppressEmptyParagraphHeight) {
@@ -1273,7 +1266,9 @@ export function measureParagraph(
         // Extract word (includes trailing space if present)
         const word = text.slice(charIndex, nextBreak);
         const wordWidth = measureTextWidth(word, style);
-        const widthTolerance = lineWidthTolerance();
+        const widthTolerance = isJustifiedParagraph
+          ? Math.max(WIDTH_TOLERANCE, currentLine.availableWidth * JUSTIFY_SHRINK_TOLERANCE_RATIO)
+          : WIDTH_TOLERANCE;
 
         // If the word itself is longer than a line, hard-break by characters.
         // Use substring measurement (not char-by-char accumulation) to preserve
