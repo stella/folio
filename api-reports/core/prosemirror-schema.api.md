@@ -220,7 +220,8 @@ export type ParagraphAttrs = {
     pageBreakBefore?: boolean; /** Word's cached rendered-page-break marker; preserved for round-trip only. */
     renderedPageBreakBefore?: boolean;
     keepNext?: boolean;
-    keepLines?: boolean; /** Contextual spacing — suppress space between same-style paragraphs */
+    keepLines?: boolean;
+    widowControl?: boolean; /** Contextual spacing — suppress space between same-style paragraphs */
     contextualSpacing?: boolean;
     defaultTextFormatting?: import__stll_docx_core_model.TextFormatting;
     sectionBreakType?: "nextPage" | "continuous" | "oddPage" | "evenPage";
