@@ -63,6 +63,7 @@ import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
+import { EndnoteProperties } from '@stll/folio-core/types/document';
 import { finishAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { FolioAIBlock } from '@stll/folio-core/ai-edits';
 import { FolioAIBlockAnchor } from '@stll/folio-core/ai-edits';
@@ -84,10 +85,12 @@ import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
+import { FootnoteProperties } from '@stll/folio-core/types/document';
 import { ForwardRefExoticComponent } from 'react';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getAnonymizationMatches } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { getAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
+import { getDocumentWatermark } from '@stll/folio-core/watermark';
 import { getFolioCaretViewportRect } from '@stll/folio-core/paged-layout/selectionViewportRect';
 import { getFolioParaIdFromBlockId } from '@stll/folio-core/types/block-id';
 import { getFolioSelectionViewportRect } from '@stll/folio-core/paged-layout/selectionViewportRect';
@@ -110,6 +113,7 @@ import { MarkdownResult } from '@stll/folio-core/markdown';
 import { Menu } from '@base-ui/react/menu';
 import { normalizeFolioAIBlockText } from '@stll/folio-core/ai-edits';
 import { ParagraphAlignment } from '@stll/folio-core/types/document';
+import { PictureWatermark } from '@stll/folio-core/watermark';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { Popover } from '@base-ui/react/popover';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
@@ -125,6 +129,7 @@ import { scanDirectives } from '@stll/folio-core/prosemirror/plugins/templateDir
 import { scrollFolioPositionIntoView } from '@stll/folio-core/paged-layout/scrollToPmPosition';
 import { ScrollToParaIdOptions } from '@stll/folio-core/paged-layout/paragraphFlash';
 import { SdtProperties } from '@stll/folio-core/types/document';
+import { SectionProperties } from '@stll/folio-core/types/document';
 import { Select } from '@base-ui/react/select';
 import { SelectionState } from '@stll/folio-core/prosemirror';
 import { setActiveCitationMeta } from '@stll/folio-core/prosemirror/plugins/aiCitationDecorations';
@@ -133,6 +138,7 @@ import { setAISuggestionsMeta } from '@stll/folio-core/prosemirror/plugins/aiSug
 import { setAnonymizationTermsMeta } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
 import { SetContentControlContentInput } from '@stll/folio-core/content-controls';
 import { SetContentControlValueInput } from '@stll/folio-core/content-controls';
+import { setDocumentWatermark } from '@stll/folio-core/watermark';
 import { setFocusedSuggestionMeta } from '@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations';
 import { setTemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { shouldTriggerAutocomplete } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -145,11 +151,13 @@ import { TemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/temp
 import { templateSlashMenuKey } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
+import { TextWatermark } from '@stll/folio-core/watermark';
 import { Theme } from '@stll/folio-core/types/document';
 import { toMarkdown } from '@stll/folio-core/markdown';
 import { toMarkdownResult } from '@stll/folio-core/markdown';
 import { Transaction } from 'prosemirror-state';
 import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
+import { Watermark } from '@stll/folio-core/watermark';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
 import { XmlFragment } from 'yjs';
 
@@ -448,6 +456,27 @@ export type EditorHandle = {
 
 export { EditorMode }
 
+// @public
+export function FindReplaceDialog(input: FindReplaceDialogProps): React_2.ReactElement | null;
+
+// @public
+export type FindReplaceDialogProps = {
+    isOpen: boolean; /** Callback when dialog is closed */
+    onClose: () => void; /** Callback when searching for text */
+    onFind: (searchText: string, options: FindOptions) => FindResult | null; /** Callback when navigating to next match */
+    onFindNext: () => FindMatch | null; /** Callback when navigating to previous match */
+    onFindPrevious: () => FindMatch | null; /** Callback when replacing current match */
+    onReplace: (replaceText: string) => boolean; /** Callback when replacing all matches */
+    onReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => number; /** Callback to highlight matches in document */
+    onHighlightMatches?: (matches: FindMatch[]) => void; /** Callback to clear highlights */
+    onClearHighlights?: () => void; /** Initial search text (e.g., from selected text) */
+    initialSearchText?: string; /** Whether to start in replace mode */
+    replaceMode?: boolean; /** Current match result (from external state) */
+    currentResult?: FindResult | null; /** Additional CSS class */
+    className?: string; /** Additional inline styles */
+    style?: CSSProperties;
+};
+
 export { finishAutocompleteSuggestion }
 
 export { FolioAIBlock }
@@ -523,6 +552,18 @@ export type FontOption = {
 };
 
 // @public (undocumented)
+export function FootnotePropertiesDialog(input: FootnotePropertiesDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type FootnotePropertiesDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onApply: (footnoteProps: FootnoteProperties, endnoteProps: EndnoteProperties) => void;
+    footnotePr?: FootnoteProperties;
+    endnotePr?: EndnoteProperties;
+};
+
+// @public (undocumented)
 export function FormattingBar(props: FormattingBarProps): React_2.JSX.Element;
 
 // @public (undocumented)
@@ -544,6 +585,8 @@ export { getAnonymizationMatches }
 
 export { getAutocompleteSuggestion }
 
+export { getDocumentWatermark }
+
 export { getFolioCaretViewportRect }
 
 export { getFolioParaIdFromBlockId }
@@ -556,17 +599,138 @@ export { getTemplateSlashMenu }
 
 export { hashFolioAIBlockText }
 
+// @public (undocumented)
+export type HyperlinkBookmarkOption = {
+    name: string;
+    label?: string;
+};
+
+// @public (undocumented)
+export function HyperlinkDialog(input: HyperlinkDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type HyperlinkDialogData = {
+    href: string;
+    displayText: string;
+    tooltip?: string;
+};
+
+// @public (undocumented)
+export type HyperlinkDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (data: HyperlinkDialogData) => void;
+    onRemove?: () => void;
+    currentData?: Partial<HyperlinkDialogData>;
+    selectedText?: string;
+    bookmarks?: readonly HyperlinkBookmarkOption[];
+};
+
 export { ImageMeta }
 
+// @public
+export type ImagePositionData = {
+    horizontal?: {
+        relativeTo?: string;
+        posOffset?: number;
+        align?: string;
+    };
+    vertical?: {
+        relativeTo?: string;
+        posOffset?: number;
+        align?: string;
+    };
+    distTop?: number;
+    distBottom?: number;
+    distLeft?: number;
+    distRight?: number;
+};
+
+// @public (undocumented)
+export function ImagePositionDialog(input: ImagePositionDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type ImagePositionDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onApply: (data: ImagePositionData) => void;
+    currentData?: ImagePositionData;
+};
+
+// @public
+export type ImagePropertiesData = {
+    alt?: string;
+    borderWidth?: number;
+    borderColor?: string;
+    borderStyle?: string;
+};
+
+// @public (undocumented)
+export function ImagePropertiesDialog(input: ImagePropertiesDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type ImagePropertiesDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onApply: (data: ImagePropertiesData) => void;
+    currentData?: ImagePropertiesData;
+};
+
 export { ImageRef }
+
+// @public (undocumented)
+export function InsertImageDialog(input: InsertImageDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type InsertImageDialogData = {
+    file: File;
+    alt?: string;
+    width?: number;
+    height?: number;
+};
+
+// @public (undocumented)
+export type InsertImageDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onInsert: (data: InsertImageDialogData) => void;
+    accept?: string;
+};
 
 export { insertImageFromFile }
 
 export { insertPageBreakInView }
 
+// @public (undocumented)
+export function InsertTableDialog(input: InsertTableDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type InsertTableDialogData = {
+    rows: number;
+    columns: number;
+    autofit: boolean;
+    styleId?: string;
+};
+
+// @public (undocumented)
+export type InsertTableDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onInsert: (data: InsertTableDialogData) => void;
+    defaultRows?: number;
+    defaultColumns?: number;
+    styleOptions?: readonly InsertTableStyleOption[];
+};
+
 export { insertTableInView }
 
 export { insertTableOfContentsInView }
+
+// @public (undocumented)
+export type InsertTableStyleOption = {
+    id: string;
+    name: string;
+};
 
 export { isFolioBlockId }
 
@@ -589,8 +753,35 @@ export type OutlineItem = {
     color?: string;
 };
 
+// @public (undocumented)
+export function PageSetupDialog(input: PageSetupDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type PageSetupDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onApply: (props: Partial<SectionProperties>) => void;
+    currentProps?: SectionProperties;
+};
+
 // @public
 export function parseZoom(zoomString: string): number | null;
+
+// @public (undocumented)
+export function PasteSpecialDialog(input: PasteSpecialDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type PasteSpecialDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onPaste: (mode: PasteSpecialMode) => void;
+    defaultMode?: PasteSpecialMode;
+};
+
+// @public (undocumented)
+export type PasteSpecialMode = "keepFormatting" | "mergeFormatting" | "plainText";
+
+export { PictureWatermark }
 
 export { PositionalText }
 
@@ -622,13 +813,56 @@ export { setAISuggestionsMeta }
 
 export { setAnonymizationTermsMeta }
 
+export { setDocumentWatermark }
+
 export { setFocusedSuggestionMeta }
 
 export { setTemplatePreviewValues }
 
 export { shouldTriggerAutocomplete }
 
+// @public (undocumented)
+export function SplitCellDialog(input: SplitCellDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type SplitCellDialogData = {
+    rows: number;
+    columns: number;
+    mergeBeforeSplit: boolean;
+};
+
+// @public (undocumented)
+export type SplitCellDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onSplit: (data: SplitCellDialogData) => void;
+    defaultRows?: number;
+    defaultColumns?: number;
+};
+
 export { startAutocompleteSuggestion }
+
+// @public
+export type TableProperties = {
+    width?: number | null;
+    widthType?: string | null;
+    justification?: "left" | "center" | "right" | null;
+};
+
+// @public (undocumented)
+export function TablePropertiesDialog(input: TablePropertiesDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type TablePropertiesDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onApply: (props: TableProperties) => void;
+    currentProps?: {
+        width?: number;
+        widthType?: string;
+        justification?: string;
+    };
+};
 
 export { TemplatePreviewSpan }
 
@@ -641,6 +875,8 @@ export { templateSlashMenuKey }
 export { TemplateSlashMenuKeyAction }
 
 export { TemplateSlashMenuState }
+
+export { TextWatermark }
 
 export { toMarkdown }
 
@@ -677,6 +913,19 @@ export type UseWheelZoomReturn = {
     zoomPercent: number; /** Wheel event handler (for manual attachment) */
     handleWheel: (event: WheelEvent) => void; /** Keyboard event handler (for manual attachment) */
     handleKeyDown: (event: KeyboardEvent) => void;
+};
+
+export { Watermark }
+
+// @public (undocumented)
+export function WatermarkDialog(input: WatermarkDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type WatermarkDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onApply: (watermark: Watermark | undefined) => void;
+    currentWatermark?: Watermark;
 };
 
 export { WordDiffSegment }

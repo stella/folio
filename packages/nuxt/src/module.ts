@@ -16,6 +16,7 @@ import { addComponent, addImports, createResolver, defineNuxtModule } from "@nux
 import type { NuxtModule } from "@nuxt/schema";
 
 const COMPOSABLES_SUBPATH = "@stll/folio-vue/composables";
+const DIALOGS_SUBPATH = "@stll/folio-vue/dialogs";
 const STYLES_SUBPATH = "@stll/folio-vue/editor.css";
 
 // Public composables re-exported by `@stll/folio-vue/composables`. Kept as a
@@ -36,6 +37,25 @@ const VUE_COMPOSABLES = [
   "useVisualLineNavigation",
   "useWheelZoom",
   "useZoom",
+] as const;
+
+// Public dialog components re-exported by `@stll/folio-vue/dialogs`. Register
+// them as client components because their dialog primitive teleports to
+// `document.body`.
+const VUE_DIALOG_COMPONENTS = [
+  "FindReplaceDialog",
+  "FootnotePropertiesDialog",
+  "HyperlinkDialog",
+  "ImagePositionDialog",
+  "ImagePropertiesDialog",
+  "InsertImageDialog",
+  "InsertSymbolDialog",
+  "InsertTableDialog",
+  "PageSetupDialog",
+  "PasteSpecialDialog",
+  "SplitCellDialog",
+  "TablePropertiesDialog",
+  "WatermarkDialog",
 ] as const;
 
 /**
@@ -95,6 +115,15 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
       filePath: resolver.resolve("./runtime/components/DocxEditor"),
       mode: "client",
     });
+
+    for (const name of VUE_DIALOG_COMPONENTS) {
+      addComponent({
+        name: `${options.prefix}${name}`,
+        export: name,
+        filePath: DIALOGS_SUBPATH,
+        mode: "client",
+      });
+    }
 
     // Auto-import the Vue composables (useDocxEditor, useZoom, ...) so they need
     // no manual import in Nuxt.

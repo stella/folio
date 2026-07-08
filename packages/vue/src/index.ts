@@ -20,6 +20,21 @@ export { default as DocxEditor } from "./components/DocxEditor.vue";
 // outside DocxEditor. Both are controlled — they own no editor view.
 export { default as FormattingBar } from "./components/FormattingBar.vue";
 export type { FormattingBarProps } from "./components/FormattingBar.types";
+export {
+  FindReplaceDialog,
+  FootnotePropertiesDialog,
+  HyperlinkDialog,
+  ImagePositionDialog,
+  ImagePropertiesDialog,
+  InsertImageDialog,
+  InsertSymbolDialog,
+  InsertTableDialog,
+  PageSetupDialog,
+  PasteSpecialDialog,
+  SplitCellDialog,
+  TablePropertiesDialog,
+  WatermarkDialog,
+} from "./components/dialogs";
 export { default as ZoomControl } from "./components/ui/ZoomControl.vue";
 export type { ZoomControlProps, ZoomLevel } from "./components/ui/ZoomControl.types";
 export {
@@ -44,12 +59,7 @@ export type { FontDefinition } from "./components/DocxEditor/types";
 // component (defined in the `.ts` module so Nuxt's `tsc` typecheck resolves the
 // named export). See the parity report for the primitives without a Vue default.
 export { FolioUIProvider } from "./ui/folio-ui";
-export type {
-  ColorPreset,
-  FolioButtonProps,
-  FolioUIComponents,
-  OutlineItem,
-} from "./ui/folio-ui";
+export type { ColorPreset, FolioButtonProps, FolioUIComponents, OutlineItem } from "./ui/folio-ui";
 
 // i18n runtime (Vue-specific — React consumes `use-intl` directly). Locale-string
 // types live in the shared catalog; import them from `@stll/folio-core` if needed.
@@ -66,6 +76,13 @@ export {
   insertTableInView,
   insertTableOfContentsInView,
 } from "@stll/folio-core/prosemirror";
+export {
+  getDocumentWatermark,
+  setDocumentWatermark,
+  type PictureWatermark,
+  type TextWatermark,
+  type Watermark,
+} from "@stll/folio-core/watermark";
 
 // ─── Framework-neutral core re-exports (identical to React's index) ─────────
 export {
