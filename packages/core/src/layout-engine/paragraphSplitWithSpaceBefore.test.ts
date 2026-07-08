@@ -63,6 +63,33 @@ function makePara(
 }
 
 describe("paragraph split with spaceBefore", () => {
+  test("widow control avoids leaving one trailing line on the next page", () => {
+    const layoutOptions: LayoutOptions = {
+      pageSize: { w: 600, h: 50 },
+      margins: MARGINS,
+      pageGap: 0,
+    };
+
+    const first = makePara(0, "filler", { after: 0 }, 1, 15);
+    const second = makePara(1, "widowControlled", { before: 0 }, 4, 10);
+
+    const layout = layoutDocument(
+      [first.block, second.block],
+      [first.measure, second.measure],
+      layoutOptions,
+    );
+
+    const page1Second = layout.pages[0]!.fragments.find(
+      (f) => f.kind === "paragraph" && f.blockId === 1,
+    );
+    const page2Second = layout.pages[1]!.fragments.find(
+      (f) => f.kind === "paragraph" && f.blockId === 1,
+    );
+
+    expect(page1Second).toMatchObject({ fromLine: 0, toLine: 2 });
+    expect(page2Second).toMatchObject({ fromLine: 2, toLine: 4 });
+  });
+
   test("multi-line paragraph splits at page boundary and fills page-end space", () => {
     // Page content area = 200 px. First paragraph fills 180 px, leaving
     // 20 px below it. Second paragraph has spaceBefore=10 and 5 lines of

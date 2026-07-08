@@ -663,7 +663,7 @@ function isStyleSourcedNumPr(attrs: ParagraphAttrs): boolean {
 // "inherit", dropping the user's decision on save. Branch on `== null` so every
 // toggle routed through here preserves `false`. (Direction is handled
 // separately via the `direction` discriminated union, not this helper.)
-type BooleanToggleKey = "pageBreakBefore";
+type BooleanToggleKey = "pageBreakBefore" | "widowControl";
 
 function assignBooleanToggle(
   result: ParagraphFormatting,
@@ -765,6 +765,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
       }
     }
     assignBooleanToggle(result, attrs, orig, "pageBreakBefore");
+    assignBooleanToggle(result, attrs, orig, "widowControl");
     if (attrs.spacingExplicit !== orig.spacingExplicit) {
       if (attrs.spacingExplicit) {
         result.spacingExplicit = attrs.spacingExplicit;
@@ -813,7 +814,8 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     // Tri-state toggles: an explicit `false` is meaningful formatting and must
     // keep the paragraph from short-circuiting to "no formatting".
     bidi != null ||
-    attrs.pageBreakBefore != null;
+    attrs.pageBreakBefore != null ||
+    attrs.widowControl != null;
 
   if (!hasFormatting) {
     return undefined;
@@ -884,6 +886,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   }
   if (attrs.pageBreakBefore != null) {
     f.pageBreakBefore = attrs.pageBreakBefore;
+  }
+  if (attrs.widowControl != null) {
+    f.widowControl = attrs.widowControl;
   }
   return f;
 }

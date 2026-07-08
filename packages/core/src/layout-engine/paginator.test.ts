@@ -88,6 +88,18 @@ describe("paginator forcePageBreak", () => {
 });
 
 describe("paginator block spacing", () => {
+  test("collapses adjacent paragraph spacing to the larger side", () => {
+    const paginator = createPaginator({
+      pageSize: { w: 100, h: 100 },
+      margins: { top: 10, right: 10, bottom: 10, left: 10 },
+    });
+
+    paginator.addFragment({ kind: "paragraph" } as never, 10, 0, 20);
+    const result = paginator.addFragment({ kind: "paragraph" } as never, 10, 10, 0);
+
+    expect(result.y).toBe(40);
+  });
+
   test("does not carry trailing spacing to the top of a new page", () => {
     const paginator = createPaginator({
       pageSize: { w: 100, h: 100 },
@@ -113,5 +125,4 @@ describe("paginator block spacing", () => {
     expect(paginator.pages.length).toBe(2);
     expect(result.y).toBe(15);
   });
-
 });

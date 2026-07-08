@@ -1034,9 +1034,9 @@ describe("Layout Engine - Contextual Spacing", () => {
     const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
     const frags = layout.pages[0].fragments;
-    // Gap = spaceAfter + spaceBefore = 18 (Word-style additive spacing)
+    // Gap = max(spaceAfter, spaceBefore) = 13 (Word-style collapsed spacing)
     const gap = frags[1].y - (frags[0].y + frags[0].height);
-    expect(gap).toBe(18);
+    expect(gap).toBe(13);
   });
 
   test("does NOT suppress spacing when styles differ", () => {
@@ -1062,9 +1062,9 @@ describe("Layout Engine - Contextual Spacing", () => {
 
     const frags = layout.pages[0].fragments;
     // Different styles — spacing should NOT be suppressed
-    // gap = spaceAfter + spaceBefore = 18
+    // gap = max(spaceAfter, spaceBefore) = 13
     const gap = frags[1].y - (frags[0].y + frags[0].height);
-    expect(gap).toBe(18);
+    expect(gap).toBe(13);
   });
 
   test("does NOT suppress when only one paragraph has contextualSpacing", () => {
@@ -1089,9 +1089,9 @@ describe("Layout Engine - Contextual Spacing", () => {
     const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
     const frags = layout.pages[0].fragments;
-    // gap = spaceAfter + spaceBefore = 18
+    // gap = max(spaceAfter, spaceBefore) = 13
     const gap = frags[1].y - (frags[0].y + frags[0].height);
-    expect(gap).toBe(18);
+    expect(gap).toBe(13);
   });
 
   test("suppresses spacing in a chain of 3+ same-style paragraphs", () => {
@@ -1170,18 +1170,18 @@ describe("Layout Engine - Contextual Spacing", () => {
     expect(frags.length).toBe(4);
 
     // Gap between Normal and Bullet 1 — Normal has no contextualSpacing, so
-    // gap = spaceAfter + spaceBefore = 18
+    // gap = max(spaceAfter, spaceBefore) = 13
     const gap0to1 = frags[1].y - (frags[0].y + frags[0].height);
-    expect(gap0to1).toBe(18);
+    expect(gap0to1).toBe(13);
 
     // Gap between Bullet 1 and Bullet 2 — both contextual, same style → suppressed
     const gap1to2 = frags[2].y - (frags[1].y + frags[1].height);
     expect(gap1to2).toBe(0);
 
     // Gap between Bullet 2 and Normal 2 — Normal 2 has no contextualSpacing
-    // gap = spaceAfter + spaceBefore = 18
+    // gap = max(spaceAfter, spaceBefore) = 13
     const gap2to3 = frags[3].y - (frags[2].y + frags[2].height);
-    expect(gap2to3).toBe(18);
+    expect(gap2to3).toBe(13);
   });
 
   test("does NOT suppress when styleId is undefined", () => {
@@ -1207,8 +1207,8 @@ describe("Layout Engine - Contextual Spacing", () => {
 
     const frags = layout.pages[0].fragments;
     // Without styleId, contextual spacing should NOT be applied
-    // gap = spaceAfter + spaceBefore = 15
+    // gap = max(spaceAfter, spaceBefore) = 10
     const gap = frags[1].y - (frags[0].y + frags[0].height);
-    expect(gap).toBe(15);
+    expect(gap).toBe(10);
   });
 });

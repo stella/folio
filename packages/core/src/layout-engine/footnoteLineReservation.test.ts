@@ -31,7 +31,7 @@ function makePara(
     kind: "paragraph",
     id,
     runs,
-    attrs: {},
+    attrs: { widowControl: false },
     pmStart: 1,
     pmEnd: 100,
   };

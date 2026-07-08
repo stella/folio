@@ -53,6 +53,9 @@ const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing 
 // Prevents premature line breaks due to measurement rounding
 const WIDTH_TOLERANCE = 0.5;
 const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
+const JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO = 0.025;
+const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
+const ALL_CAPS_RATIO_THRESHOLD = 0.8;
 
 /**
  * Find the longest prefix of `text` that fits within `maxWidth` pixels.
@@ -509,6 +512,40 @@ function isSpaceOrTab(char: string | undefined): boolean {
   return char === " " || char === "\t";
 }
 
+function uppercaseLetterRatio(text: string): number {
+  let letters = 0;
+  let uppercase = 0;
+  for (const char of text) {
+    const lower = char.toLocaleLowerCase();
+    const upper = char.toLocaleUpperCase();
+    if (lower === upper) {
+      continue;
+    }
+    letters++;
+    if (char === upper) {
+      uppercase++;
+    }
+  }
+  return letters === 0 ? 0 : uppercase / letters;
+}
+
+function justifyShrinkToleranceRatio(block: ParagraphBlock): number {
+  const hasTabStops = (block.attrs?.tabs?.length ?? 0) > 0;
+  const hasTabRuns = block.runs.some(isTabRun);
+  if (hasTabStops || hasTabRuns) {
+    return (block.attrs?.indent?.firstLine ?? 0) === 0
+      ? JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO
+      : JUSTIFY_SHRINK_TOLERANCE_RATIO;
+  }
+
+  const text = block.runs.map((run) => (isTextRun(run) ? run.text : "")).join("");
+  if (uppercaseLetterRatio(text) > ALL_CAPS_RATIO_THRESHOLD) {
+    return JUSTIFY_SHRINK_TOLERANCE_RATIO;
+  }
+
+  return JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO;
+}
+
 function trimTrailingSpacesAndTabs(text: string): string {
   let end = text.length;
   while (end > 0) {
@@ -638,6 +675,7 @@ export function measureParagraph(
   const attrs = block.attrs;
   const spacing = attrs?.spacing;
   const isJustifiedParagraph = attrs?.alignment === "justify";
+  const justifyToleranceRatio = justifyShrinkToleranceRatio(block);
 
   // Floating image support
   const floatingZones = options?.floatingZones;
@@ -1276,7 +1314,7 @@ export function measureParagraph(
         const word = text.slice(charIndex, nextBreak);
         const wordWidth = measureTextWidth(word, style);
         const widthTolerance = isJustifiedParagraph
-          ? Math.max(WIDTH_TOLERANCE, currentLine.availableWidth * JUSTIFY_SHRINK_TOLERANCE_RATIO)
+          ? Math.max(WIDTH_TOLERANCE, currentLine.availableWidth * justifyToleranceRatio)
           : WIDTH_TOLERANCE;
 
         // If the word itself is longer than a line, hard-break by characters.

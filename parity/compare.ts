@@ -112,6 +112,7 @@ const ROW_OVERLAP_RATIO = 0.5;
  * and tabbed legal clauses can leave ~23pt between the marker and text; table
  * cells sit farther apart (>25pt) and must stay separate. */
 const ROW_MERGE_GAP_PT = 24;
+const MARKER_ROW_MERGE_GAP_PT = 36;
 
 /** Clusters boxes into visual rows (>= ROW_OVERLAP_RATIO vertical overlap),
  * then merges row neighbours within ROW_MERGE_GAP_PT of each other into a
@@ -139,7 +140,7 @@ export const mergeVisualRows = (lines: LineBox[]): LineBox[] => {
     let current = row[0];
     if (!current) continue;
     for (const next of row.slice(1)) {
-      if (horizontalGap(current, next) <= ROW_MERGE_GAP_PT) {
+      if (shouldMergeRowBoxes(current, next)) {
         current = mergeBoxes(current, next);
         continue;
       }
@@ -149,6 +150,19 @@ export const mergeVisualRows = (lines: LineBox[]): LineBox[] => {
     merged.push(current);
   }
   return merged;
+};
+
+const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
+  const gap = horizontalGap(current, next);
+  if (gap <= ROW_MERGE_GAP_PT) {
+    return true;
+  }
+  return isStandaloneListMarker(current.text) && gap <= MARKER_ROW_MERGE_GAP_PT;
+};
+
+const isStandaloneListMarker = (text: string): boolean => {
+  const normalized = normalizeLineText(text);
+  return /^((\([A-Za-z0-9ivxlcdm]+\))|([A-Za-z0-9ivxlcdm]+[.)])|[•·])$/iu.test(normalized);
 };
 
 const isSameVisualRow = (a: LineBox, b: LineBox): boolean => {

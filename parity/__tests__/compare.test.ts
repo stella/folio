@@ -57,6 +57,22 @@ describe("compareGeoms", () => {
     expect(merged).toHaveLength(2);
   });
 
+  test("merges standalone list markers with their body across marker-sized gaps", () => {
+    const merged = mergeVisualRows([
+      makeLine({ text: "(i)", xPt: 108, yPt: 100, widthPt: 10.4, heightPt: 12 }),
+      makeLine({
+        text: "Junior to payment",
+        xPt: 144,
+        yPt: 100,
+        widthPt: 90,
+        heightPt: 12,
+      }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.normText).toBe(normalizeLineText("(i) Junior to payment"));
+  });
+
   test("identical docs score 1 with zero divergences and zero median offset", () => {
     const pages = [
       makePage({

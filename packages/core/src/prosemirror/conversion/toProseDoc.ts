@@ -570,6 +570,7 @@ function paragraphFormattingToAttrs(
     set("pageBreakBefore", formatting?.pageBreakBefore ?? stylePpr?.pageBreakBefore);
     set("keepNext", formatting?.keepNext ?? stylePpr?.keepNext);
     set("keepLines", formatting?.keepLines ?? stylePpr?.keepLines);
+    set("widowControl", formatting?.widowControl ?? stylePpr?.widowControl);
     set("contextualSpacing", formatting?.contextualSpacing ?? stylePpr?.contextualSpacing);
     // Run-in heading (`<w:specVanish/>` on the paragraph mark) — see
     // ParagraphAttrs.runInWithNext.
@@ -615,6 +616,7 @@ function paragraphFormattingToAttrs(
     set("pageBreakBefore", formatting?.pageBreakBefore);
     set("keepNext", formatting?.keepNext);
     set("keepLines", formatting?.keepLines);
+    set("widowControl", formatting?.widowControl);
     set("runInWithNext", formatting?.runInWithNext);
 
     // Outline level
@@ -1728,7 +1730,13 @@ function convertTableCell(
   for (const content of cell.content) {
     if (content.type === "paragraph") {
       contentNodes.push(
-        convertParagraph(content, styleResolver, undefined, conditionalStyle?.rPr, conditionalStyle?.pPr),
+        convertParagraph(
+          content,
+          styleResolver,
+          undefined,
+          conditionalStyle?.rPr,
+          conditionalStyle?.pPr,
+        ),
       );
     } else {
       // Nested tables - recursively convert

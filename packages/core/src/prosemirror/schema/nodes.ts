@@ -149,6 +149,7 @@ export type ParagraphAttrs = {
   renderedPageBreakBefore?: boolean;
   keepNext?: boolean;
   keepLines?: boolean;
+  widowControl?: boolean;
   /** Contextual spacing — suppress space between same-style paragraphs */
   contextualSpacing?: boolean;
 
