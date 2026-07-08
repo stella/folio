@@ -79,6 +79,72 @@ function findFieldOrTextEls(lineEl: FakeElement): FakeElement[] {
 }
 
 describe("renderLine right-tab flex anchor", () => {
+  test("does NOT clamp a leading left tab to fit following text at the right edge", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "leading-left-tab",
+      runs: [{ kind: "tab" }, { kind: "text", text: "wide trailing text" }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 1,
+      toChar: 18,
+      width: 150,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 150,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [{ val: "start", pos: 1500 }],
+      leftIndentPx: 0,
+      lineRightEdgePx: 150,
+    }) as unknown as FakeElement;
+
+    const tabEl = findTabEl(lineEl);
+    expect(tabEl?.style["width"]).toBe("100px");
+  });
+
+  test("clamps a non-leading left tab when tabbed label text would overshoot", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "label-left-tab",
+      runs: [
+        { kind: "text", text: "(a)" },
+        { kind: "tab" },
+        { kind: "text", text: "wide trailing text" },
+      ],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 18,
+      width: 150,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 150,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [{ val: "start", pos: 1500 }],
+      leftIndentPx: 0,
+      lineRightEdgePx: 150,
+    }) as unknown as FakeElement;
+
+    const tabEl = findTabEl(lineEl);
+    expect(tabEl?.style["width"]).toBe("3px");
+  });
+
   // TOC1-style line: title text + right-aligned tab + page-number field.
   // Tab stop sits at the line's right edge; with no trailing tab and a tab
   // alignment of "end", the painter must promote the line to flex layout.

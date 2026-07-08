@@ -525,7 +525,7 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
         }
         flushSegment();
 
-        if (segments.length > 1) {
+        if (segments.length > 0) {
           const splitLines = [];
           for (const segment of segments) {
             const segmentRect = rectFor(segment);

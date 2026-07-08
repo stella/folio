@@ -109,9 +109,9 @@ const stripSpaces = (text: string): string => text.replaceAll(" ", "");
 const ROW_OVERLAP_RATIO = 0.5;
 /** Maximum horizontal gap (pt) between same-row boxes that still merges them.
  * Word emits list markers as separate ink boxes ~10pt left of the item text,
- * while folio inlines the marker into the line; table cells sit far apart
- * (>25pt) and must stay separate. */
-const ROW_MERGE_GAP_PT = 18;
+ * and tabbed legal clauses can leave ~23pt between the marker and text; table
+ * cells sit farther apart (>25pt) and must stay separate. */
+const ROW_MERGE_GAP_PT = 24;
 
 /** Clusters boxes into visual rows (>= ROW_OVERLAP_RATIO vertical overlap),
  * then merges row neighbours within ROW_MERGE_GAP_PT of each other into a

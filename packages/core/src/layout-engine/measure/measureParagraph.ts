@@ -52,7 +52,7 @@ const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing 
 // Floating-point tolerance for line breaking (0.5px)
 // Prevents premature line breaks due to measurement rounding
 const WIDTH_TOLERANCE = 0.5;
-const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.012;
+const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
 
 /**
  * Find the longest prefix of `text` that fits within `maxWidth` pixels.
@@ -457,6 +457,13 @@ function hasFollowingTabOnLine(runs: Run[], tabIndex: number): boolean {
     }
   }
   return false;
+}
+
+function canClampTabToRightEdge(alignment: string, currentLineWidth: number): boolean {
+  if (alignment === "start" || alignment === "default") {
+    return currentLineWidth > WIDTH_TOLERANCE;
+  }
+  return true;
 }
 
 /**
@@ -1041,10 +1048,11 @@ export function measureParagraph(
         ...(attrs?.tabs !== undefined ? { explicitStops: attrs.tabs } : {}),
         leftIndent: pixelsToTwips(indentLeft),
       };
-      let tabWidth = calculateTabWidth(contentX, tabContext, {
+      const tabResult = calculateTabWidth(contentX, tabContext, {
         followingWidth,
         decimalPrefixWidth,
-      }).width;
+      });
+      let tabWidth = tabResult.width;
 
       const lineRightEdgeX =
         indentLeft +
@@ -1053,6 +1061,7 @@ export function measureParagraph(
         currentLine.leftOffset;
       if (
         !hasFollowingTabOnLine(runs, runIndex) &&
+        canClampTabToRightEdge(tabResult.alignment, currentLine.width) &&
         (tabWidth > 0 || followingWidth > 0) &&
         contentX + tabWidth + followingWidth > lineRightEdgeX + WIDTH_TOLERANCE
       ) {

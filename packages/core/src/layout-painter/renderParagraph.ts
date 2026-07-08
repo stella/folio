@@ -626,6 +626,13 @@ function renderTabRun(run: TabRun, doc: Document, width: number, leader?: string
   return span;
 }
 
+function canClampTabToRightEdge(alignment: string, hasPriorRenderedContent: boolean): boolean {
+  if (alignment === "start" || alignment === "default") {
+    return hasPriorRenderedContent;
+  }
+  return true;
+}
+
 function applyTabUnderline(element: HTMLElement, run: TabRun): void {
   if (!run.underline) {
     return;
@@ -1895,6 +1902,7 @@ export function renderLine(
       let tabWidth = tabResult.width;
       if (
         lineRightEdgeX !== undefined &&
+        canClampTabToRightEdge(tabResult.alignment, i > 0) &&
         currentX + tabWidth + followingWidthForCheck > lineRightEdgeX
       ) {
         tabWidth = Math.max(1, lineRightEdgeX - currentX - followingWidthForCheck);
