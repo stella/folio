@@ -1,12 +1,17 @@
 /**
  * Decrypt password-protected OOXML before ZIP extraction.
+ *
+ * Implementation is derived from [MS-OFFCRYPTO] and [MS-CFB] only.
+ *
+ * @see https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-offcrypto/
  */
 
-import { decryptAgilePackage } from "./agileDecryptor";
-import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./detectContainer";
+import { decryptAgileEncryptedPackage } from "./agileDecryption";
+import { readEncryptedPackageStreams } from "./compoundFile";
+import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./containerFormat";
+import { toArrayBuffer } from "./cryptoBytes";
+import { parseAgileEncryptionInfo } from "./encryptionInfo";
 import { DOCX_ENCRYPTION_ERROR_CODES, DocxEncryptionError } from "./errors";
-import { extractEncryptionStreams } from "./oleReader";
-import { parseEncryptionInfo } from "./parseEncryptionInfo";
 
 export type DecryptDocxOptions = {
   /** Password for Agile-encrypted .docx files (Office 2010+). */
@@ -20,11 +25,8 @@ export type DecryptDocxResult = {
   wasEncrypted: boolean;
 };
 
-const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-
-const validateDecryptedZip = (data: Uint8Array): void => {
-  if (detectDocxContainerType(data) !== DOCX_CONTAINER_TYPES.ZIP) {
+const assertZipPayload = (bytes: Uint8Array): void => {
+  if (detectDocxContainerType(bytes) !== DOCX_CONTAINER_TYPES.ZIP) {
     throw new DocxEncryptionError({
       code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
       message: "Decrypted output is not a valid ZIP archive — the file may be corrupt",
@@ -45,13 +47,13 @@ export const decryptDocxIfNeeded = async (
   options: DecryptDocxOptions = {},
 ): Promise<DecryptDocxResult> => {
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-  const containerType = detectDocxContainerType(bytes);
+  const container = detectDocxContainerType(bytes);
 
-  if (containerType === DOCX_CONTAINER_TYPES.ZIP) {
+  if (container === DOCX_CONTAINER_TYPES.ZIP) {
     return { data: toArrayBuffer(bytes), wasEncrypted: false };
   }
 
-  if (containerType !== DOCX_CONTAINER_TYPES.CFB) {
+  if (container !== DOCX_CONTAINER_TYPES.CFB) {
     throw new DocxEncryptionError({
       code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
       message: "Unrecognized file format — expected a .docx (ZIP) or encrypted .docx (OLE/CFB)",
@@ -65,17 +67,29 @@ export const decryptDocxIfNeeded = async (
     });
   }
 
-  const streams = extractEncryptionStreams(bytes);
-  const { params } = parseEncryptionInfo(streams.encryptionInfo);
-  const decryptedZip = await decryptAgilePackage(options.password, params, streams.encryptedPackage);
-  validateDecryptedZip(decryptedZip);
+  let streams;
+  try {
+    streams = readEncryptedPackageStreams(bytes);
+  } catch (cause) {
+    throw new DocxEncryptionError({
+      code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
+      message: "Failed to read encrypted OOXML streams",
+      cause,
+    });
+  }
+
+  const descriptor = parseAgileEncryptionInfo(streams.encryptionInfo);
+  const decryptedZip = await decryptAgileEncryptedPackage(
+    options.password,
+    descriptor.material,
+    streams.encryptedPackage,
+  );
+  assertZipPayload(decryptedZip);
 
   return { data: toArrayBuffer(decryptedZip), wasEncrypted: true };
 };
 
-/**
- * Open a `.docx` buffer for parsing: decrypt when encrypted, then return the ZIP bytes.
- */
+/** Open a `.docx` buffer for parsing: decrypt when encrypted, then return the ZIP bytes. */
 export const openDocxBuffer = async (
   data: ArrayBuffer | Uint8Array,
   options: DecryptDocxOptions = {},

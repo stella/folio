@@ -26,8 +26,8 @@
 
 import JSZip from "jszip";
 
-import { openDocxBuffer } from "./encryption/decryptDocx";
-import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/detectContainer";
+import { openDocxBuffer } from "./encryption/openEncryptedDocx";
+import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/containerFormat";
 
 export class DocxSecurityError extends Error {
   constructor(message: string) {

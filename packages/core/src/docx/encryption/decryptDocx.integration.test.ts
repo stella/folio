@@ -13,7 +13,7 @@ import JSZip from "jszip";
 
 import { parseDocx } from "../parser";
 import { DOCX_ENCRYPTION_ERROR_CODES, DocxEncryptionError } from "./errors";
-import { decryptDocxIfNeeded } from "./decryptDocx";
+import { decryptDocxIfNeeded } from "./openEncryptedDocx";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = join(__dirname, "fixtures", "encrypted-agile-example.docx");
