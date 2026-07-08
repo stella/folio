@@ -86,6 +86,7 @@ export type UseDocxEditorOptions = {
     readOnly?: MaybeRefOrGetter<boolean>;
     pageGap?: number;
     documentKey?: MaybeRefOrGetter<string | undefined>;
+    password?: MaybeRefOrGetter<string | undefined>;
     editorMode?: MaybeRefOrGetter<"editing" | "suggesting" | "viewing">;
     author?: MaybeRefOrGetter<string>;
     externalPlugins?: Plugin_2[];

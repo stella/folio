@@ -282,6 +282,7 @@ export type DocxEditorHandle = EditorHandle & {
 // @public (undocumented)
 export type DocxEditorProps = {
     documentBuffer?: DocxInput | null;
+    password?: string | undefined;
     document?: Document_2 | null;
     documentKey?: string;
     onSave?: (buffer: ArrayBuffer) => void;

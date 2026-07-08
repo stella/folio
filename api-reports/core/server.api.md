@@ -194,7 +194,8 @@ export class FolioDocxReviewer {
 
 // @public
 export type FolioDocxReviewerOptions = {
-    author?: string;
+    author?: string; /** Password for Agile-encrypted .docx files (Office 2010+). */
+    password?: string | undefined;
 };
 
 // @public

@@ -5,9 +5,44 @@
 ```ts
 
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
+import { TaggedErrorClass } from 'better-result';
+
+// @public
+export const decryptDocxIfNeeded: (data: ArrayBuffer | Uint8Array, options?: DecryptDocxOptions) => Promise<DecryptDocxResult>;
+
+// @public
+export type DecryptDocxOptions = {
+    password?: string | undefined;
+};
+
+// @public (undocumented)
+export type DecryptDocxResult = {
+    data: ArrayBuffer; /** True when the input was an encrypted CFB container and decryption ran. */
+    wasEncrypted: boolean;
+};
+
+// @public
+export const DOCX_ENCRYPTION_ERROR_CODES: {
+    readonly PASSWORD_REQUIRED: "DOCX_PASSWORD_REQUIRED";
+    readonly PASSWORD_INVALID: "DOCX_PASSWORD_INVALID";
+    readonly ENCRYPTION_UNSUPPORTED: "DOCX_ENCRYPTION_UNSUPPORTED";
+    readonly DECRYPTION_FAILED: "DOCX_DECRYPTION_FAILED";
+};
+
+// @public (undocumented)
+export class DocxEncryptionError extends DocxEncryptionError_base {}
+
+// @public (undocumented)
+export type DocxEncryptionErrorCode = (typeof DOCX_ENCRYPTION_ERROR_CODES)[keyof typeof DOCX_ENCRYPTION_ERROR_CODES];
 
 // @public (undocumented)
 export function getCachedNumberingMap(definitions: import__stll_docx_core_model.NumberingDefinitions): NumberingMap;
+
+// @public (undocumented)
+export const isDocxEncryptionError: (error: unknown) => error is DocxEncryptionError;
+
+// @public
+export const openDocxBuffer: (data: ArrayBuffer | Uint8Array, options?: DecryptDocxOptions) => Promise<ArrayBuffer>;
 
 // (No @packageDocumentation comment for this package)
 

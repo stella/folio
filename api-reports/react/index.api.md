@@ -301,7 +301,8 @@ export type DocxEditorHandle = EditorHandle & {
 
 // @public (undocumented)
 export type DocxEditorProps = {
-    documentBuffer?: DocxInput | null; /** Pre-parsed document (alternative to documentBuffer) */
+    documentBuffer?: DocxInput | null; /** Password for Agile-encrypted .docx files (Office 2010+). */
+    password?: string | undefined; /** Pre-parsed document (alternative to documentBuffer) */
     document?: Document_2 | null;
     documentKey?: string; /** Callback when document is saved */
     onSave?: (buffer: ArrayBuffer) => void; /** Author name used for comments and track changes */
