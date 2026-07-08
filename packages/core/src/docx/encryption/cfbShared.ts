@@ -56,5 +56,11 @@ export const readUint64LE = (view: DataView, offset: number): bigint => {
 
 const utf16Decoder = new TextDecoder("utf-16le");
 
-export const decodeUtf16Le = (bytes: Uint8Array): string =>
-  utf16Decoder.decode(bytes).replace(/\u0000+$/g, "");
+export const decodeUtf16Le = (bytes: Uint8Array): string => {
+  const decoded = utf16Decoder.decode(bytes);
+  let end = decoded.length;
+  while (end > 0 && decoded.charCodeAt(end - 1) === 0) {
+    end--;
+  }
+  return decoded.slice(0, end);
+};
