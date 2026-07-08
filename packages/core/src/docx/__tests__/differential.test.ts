@@ -30,6 +30,8 @@ import {
 } from "../../../scripts/differential/diff";
 
 const REQUIRED = process.env.DIFFERENTIAL_REQUIRED === "1";
+const PYTHON_DOCX_TIMEOUT_MS = 5_000;
+const OPEN_XML_SDK_TIMEOUT_MS = 15_000;
 
 // The corpus: the parser fixtures plus the visual fixtures (repo root).
 const FIXTURE_DIRS = [
@@ -54,6 +56,8 @@ const referenceSetupHints: Record<DifferentialReference, string> = {
 
 for (const reference of DIFFERENTIAL_REFERENCES) {
   const isAvailable = referenceAvailability[reference];
+  const fixtureTimeoutMs =
+    reference === "open-xml-sdk" ? OPEN_XML_SDK_TIMEOUT_MS : PYTHON_DOCX_TIMEOUT_MS;
 
   describe(`differential parser harness (folio vs ${reference})`, () => {
     if (!isAvailable()) {
@@ -85,7 +89,7 @@ for (const reference of DIFFERENTIAL_REFERENCES) {
           );
         }
         expect(result.ok).toBe(true);
-      });
+      }, fixtureTimeoutMs);
     }
   });
 }
