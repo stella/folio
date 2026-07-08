@@ -545,7 +545,7 @@ describe("header and footer rendering", () => {
     ).toBe("0.62");
   });
 
-  test("resolves even headers and footers from the section page number", () => {
+  test("ignores even footers unless odd/even headers are enabled", () => {
     const pageOptions = {};
     const applied = applySectionHeaderFooterOptions(
       {
@@ -570,6 +570,35 @@ describe("header and footer rendering", () => {
     expect(applied).toBe(true);
     expect(pageOptions).toEqual({
       footerContent: headerFooterTextContent("Default footer"),
+    });
+  });
+
+  test("resolves even footers from the section page number when enabled", () => {
+    const pageOptions = {};
+    const applied = applySectionHeaderFooterOptions(
+      {
+        ...page,
+        number: 2,
+        sectionPageNumber: 2,
+        headerFooterRefs: {
+          evenAndOddHeaders: true,
+          footerDefault: "default-footer",
+          footerEven: "even-footer",
+        },
+        fragments: [],
+      },
+      pageOptions,
+      {
+        footerContentByRId: new Map([
+          ["default-footer", headerFooterTextContent("Default footer")],
+          ["even-footer", headerFooterTextContent("Even footer")],
+        ]),
+      },
+    );
+
+    expect(applied).toBe(true);
+    expect(pageOptions).toEqual({
+      footerContent: headerFooterTextContent("Even footer"),
     });
   });
 

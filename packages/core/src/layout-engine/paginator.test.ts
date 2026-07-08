@@ -113,4 +113,5 @@ describe("paginator block spacing", () => {
     expect(paginator.pages.length).toBe(2);
     expect(result.y).toBe(15);
   });
+
 });

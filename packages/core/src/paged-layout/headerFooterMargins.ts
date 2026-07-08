@@ -183,6 +183,7 @@ export type HeaderFooterExtenderContent = Omit<
 
 type ExtendSectionBreakMarginsInput = {
   content: HeaderFooterExtenderContent;
+  sectionContent?: HeaderFooterExtenderContent[] | undefined;
   /** Body page size and effective margins — the inheritance seed. */
   bodyPageSize: { w: number; h: number };
   bodyMargins: PageMargins;
@@ -203,16 +204,21 @@ type ExtendSectionBreakMarginsInput = {
  */
 export function extendSectionBreakMargins(
   sectionBreaks: SectionBreakBlock[],
-  { content, bodyPageSize, bodyMargins, warn }: ExtendSectionBreakMarginsInput,
+  { content, sectionContent, bodyPageSize, bodyMargins, warn }: ExtendSectionBreakMarginsInput,
 ): void {
   let pageSize = bodyPageSize;
   let margins = bodyMargins;
-  for (const sb of sectionBreaks) {
+  for (let index = 0; index < sectionBreaks.length; index++) {
+    const sb = sectionBreaks[index];
+    if (!sb) {
+      continue;
+    }
     if (!sb.pageSize && !sb.margins) {
       continue;
     }
     pageSize = sb.pageSize ?? pageSize;
-    margins = computeHeaderFooterMarginExtender({ ...content, pageSize, warn })(
+    const targetSectionContent = sectionContent?.[index + 1] ?? content;
+    margins = computeHeaderFooterMarginExtender({ ...targetSectionContent, pageSize, warn })(
       sb.margins ?? margins,
     );
     sb.margins = margins;

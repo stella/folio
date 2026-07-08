@@ -522,6 +522,7 @@ export type TableRow = {
   height?: number;
   heightRule?: "auto" | "atLeast" | "exact";
   isHeader?: boolean;
+  hidden?: boolean;
 };
 
 /**
@@ -619,6 +620,7 @@ export type SectionBreakBlock = {
 
 export type PageHeaderFooterRefs = {
   titlePg?: boolean;
+  evenAndOddHeaders?: boolean;
   headerDefault?: string;
   headerFirst?: string;
   headerEven?: string;

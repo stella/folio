@@ -9,6 +9,8 @@ export const normalizeLineText = (text: string): string =>
   text
     .normalize("NFC")
     .replace(/[­​-‍﻿]/gu, "")
+    .replace(/\uf0e3/gu, "ã")
+    .replace(/\s*\.{3,}\s*/gu, " … ")
     .replace(/\s+/gu, " ")
     .trim();
 

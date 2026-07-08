@@ -561,6 +561,8 @@ export type TableRowAttrs = {
   heightRule?: NonNullable<TableRowFormatting["heightRule"]>;
   /** Is header row */
   isHeader?: boolean;
+  /** Whether the row is hidden (`w:hidden`) */
+  hidden?: boolean;
   /** Original row formatting from DOCX for lossless round-trip serialization */
   _originalFormatting?: TableRowFormatting;
 };

@@ -314,6 +314,26 @@ describe("measureParagraph cross-run line breaking", () => {
       expect(lineStartsAtRun(lines, 2)).toBe(false);
     }, fakeMeasure);
   });
+
+  test("allows justified lines to keep a slightly overfull word", () => {
+    withFakeTextMeasure(() => {
+      const text = "alpha beta gamma delta";
+      const runs: Run[] = [{ kind: "text", text }];
+      const tightWidth = width(text) - 0.8;
+
+      const leftMeasure = measureParagraph(paragraph(runs), tightWidth);
+      const justifiedMeasure = measureParagraph(
+        {
+          ...paragraph(runs),
+          attrs: { alignment: "justify" },
+        },
+        tightWidth,
+      );
+
+      expect(leftMeasure.lines).toHaveLength(2);
+      expect(justifiedMeasure.lines).toHaveLength(1);
+    }, fakeMeasure);
+  });
 });
 
 describe("inline image paragraph measurement", () => {

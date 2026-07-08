@@ -334,6 +334,7 @@ const tableRowSpec: NodeSpec = {
     height: { default: null },
     heightRule: { default: null },
     isHeader: { default: false },
+    hidden: { default: false },
     _originalFormatting: { default: null },
   },
   parseDOM: [{ tag: "tr" }],
@@ -344,6 +345,9 @@ const tableRowSpec: NodeSpec = {
     if (typeof attrs.height === "number") {
       const heightPx = Math.round((attrs.height / 20) * 1.333);
       domAttrs["style"] = `height: ${heightPx}px`;
+    }
+    if (attrs.hidden) {
+      domAttrs["style"] = `${domAttrs["style"] ? `${domAttrs["style"]}; ` : ""}display: none`;
     }
 
     return ["tr", domAttrs, 0];

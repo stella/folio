@@ -21,6 +21,7 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
   const verifiedRatios: [font: string, expectedRatio: number][] = [
     ["arial", 1.1499],
     ["times new roman", 1.1499],
+    ["cg times", 1.1499],
     ["calibri", 1.2207],
     ["cambria", 1.1724],
     ["georgia", 1.1362],
@@ -42,6 +43,17 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
       expect(resolveFontFamily(font).singleLineRatio).toBeCloseTo(expectedRatio, 4);
     });
   }
+});
+
+describe("fontResolver — legacy Times-compatible faces", () => {
+  test("CG Times uses Times New Roman metrics and CSS fallback", () => {
+    const resolved = resolveFontFamily("CG Times");
+
+    expect(resolved.originalFont).toBe("CG Times");
+    expect(resolved.googleFont).toBe("Tinos");
+    expect(resolved.cssFallback.startsWith('"Times New Roman", Tinos')).toBe(true);
+    expect(getResolvedData("CG Times").singleLineRatio).toBeCloseTo(1.1499, 4);
+  });
 });
 
 describe("fontResolver — previously wrong ratios are corrected and reach consumers", () => {

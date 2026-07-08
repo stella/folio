@@ -514,7 +514,7 @@ function layoutParagraph(
         footnoteHeightById,
       );
       const firstLineHeight = measuredLineAdvance(firstLine) + firstLineRefs.height;
-      const collapsedLead = Math.max(spaceBefore, state.trailingSpacing);
+      const collapsedLead = spaceBefore + state.trailingSpacing;
       const columnCapacity = state.contentBottom - state.topMargin;
       if (
         collapsedLead + firstLineHeight > availableHeight &&
@@ -542,12 +542,11 @@ function layoutParagraph(
     // paragraphs with multi-line content didn't split — they jumped the
     // page boundary, leaving a chunk of empty space above.
     //
-    // `addFragment` collapses `spaceBefore` with the previous block's trailing
-    // spacing (`max(spaceBefore, trailingSpacing)`), so the fit loop must
-    // reserve the same collapsed amount; otherwise a large preceding
-    // `spaceAfter` repeats the same over-count (eigenpal/docx-editor#782).
+    // `addFragment` composes `spaceBefore` with the previous block's trailing
+    // spacing, so the fit loop must reserve the same amount; otherwise a large
+    // preceding `spaceAfter` repeats the same over-count (eigenpal/docx-editor#782).
     const firstFragmentSpaceBefore =
-      currentLineIndex === 0 ? Math.max(spaceBefore, state.trailingSpacing) : 0;
+      currentLineIndex === 0 ? spaceBefore + state.trailingSpacing : 0;
 
     for (let j = currentLineIndex; j < lines.length; j++) {
       const line = lines[j]!; // SAFETY: j < lines.length

@@ -11,6 +11,7 @@ import path from "node:path";
 
 import { CACHE_DIR } from "./config";
 import { parseStextXml } from "./stextParse";
+import { normalizeLineText } from "./textNorm";
 import type { DocGeom } from "./types";
 
 const WORD_APP_PATH = "/Applications/Microsoft Word.app";
@@ -215,7 +216,14 @@ const readCachedGeom = async (geomPath: string, absDocxPath: string): Promise<Do
   const file = Bun.file(geomPath);
   if (!(await file.exists())) return null;
   const geom = (await file.json()) as DocGeom;
-  return { ...geom, file: absDocxPath };
+  return {
+    ...geom,
+    file: absDocxPath,
+    pages: geom.pages.map((page) => ({
+      ...page,
+      lines: page.lines.map((line) => ({ ...line, normText: normalizeLineText(line.text) })),
+    })),
+  };
 };
 
 /** Word ground truth for `docxPath`: exports via Word, extracts geometry via
@@ -288,9 +296,23 @@ const pageNumberOfPngName = (filename: string): number => {
   return match?.[1] === undefined ? 0 : Number(match[1]);
 };
 
-const renderPagePngs = async (pdfPath: string, pagesDir: string): Promise<void> => {
+const renderPagePngs = async (
+  pdfPath: string,
+  pagesDir: string,
+  options: { maxPages?: number } = {},
+): Promise<void> => {
+  const pageRange = options.maxPages === undefined ? [] : [`1-${options.maxPages}`];
   const proc = Bun.spawn(
-    ["mutool", "draw", "-r", String(PNG_DPI), "-o", path.join(pagesDir, "p%d.png"), pdfPath],
+    [
+      "mutool",
+      "draw",
+      "-r",
+      String(PNG_DPI),
+      "-o",
+      path.join(pagesDir, "p%d.png"),
+      pdfPath,
+      ...pageRange,
+    ],
     { stdout: "pipe", stderr: "pipe" },
   );
   const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
@@ -305,7 +327,10 @@ const renderPagePngs = async (pdfPath: string, pagesDir: string): Promise<void> 
 /** Absolute paths of the cached per-page PNGs for `docxPath`, in page order,
  * rendering them from the cached `word.pdf` (via `getWordTruth`, if needed)
  * at 96dpi on first use. */
-export const getWordPagePngs = async (docxPath: string): Promise<string[]> => {
+export const getWordPagePngs = async (
+  docxPath: string,
+  options: { maxPages?: number } = {},
+): Promise<string[]> => {
   const absDocxPath = path.resolve(docxPath);
   const sha256 = await sha256OfFile(absDocxPath);
   const dir = cacheDirFor(sha256);
@@ -319,8 +344,12 @@ export const getWordPagePngs = async (docxPath: string): Promise<string[]> => {
   await mkdir(pagesDir, { recursive: true });
 
   const existing = await listPagePngs(pagesDir);
-  if (existing.length > 0) return existing;
+  if (options.maxPages !== undefined && existing.length >= options.maxPages) {
+    return existing.slice(0, options.maxPages);
+  }
+  if (options.maxPages === undefined && existing.length > 0) return existing;
 
-  await renderPagePngs(pdfPath, pagesDir);
-  return await listPagePngs(pagesDir);
+  await renderPagePngs(pdfPath, pagesDir, options);
+  const rendered = await listPagePngs(pagesDir);
+  return options.maxPages === undefined ? rendered : rendered.slice(0, options.maxPages);
 };

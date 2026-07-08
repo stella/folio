@@ -2301,7 +2301,7 @@ export function applySectionHeaderFooterOptions(
   const isFirstSectionPage = page.sectionPageNumber === 1;
   const useFirst = refs.titlePg === true && isFirstSectionPage;
   const sectionPageNumber = page.sectionPageNumber ?? page.number;
-  const useEven = sectionPageNumber % 2 === 0;
+  const useEven = refs.evenAndOddHeaders === true && sectionPageNumber % 2 === 0;
 
   const headerRId = (() => {
     if (useFirst) {

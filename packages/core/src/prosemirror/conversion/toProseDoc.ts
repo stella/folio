@@ -75,7 +75,12 @@ export type ToProseDocOptions = {
   theme?: Theme | null;
 };
 
-type RunFormattingResolver = (formatting: TextFormatting | undefined) => TextFormatting | undefined;
+type RunFormattingResolver = (
+  formatting: TextFormatting | undefined,
+  fieldType?: string,
+) => TextFormatting | undefined;
+
+const TOC_STYLE_ID = /^TOC\d*$/iu;
 
 /**
  * Convert a Document to a ProseMirror document
@@ -198,6 +203,7 @@ function convertParagraph(
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
 ): PMNode {
   const attrs = paragraphFormattingToAttrs(paragraph, styleResolver, tableParagraphOverlay);
+  const isTocParagraph = TOC_STYLE_ID.test(paragraph.formatting?.styleId ?? "");
   const inlineNodes: PMNode[] = [];
   let inlineOffset = 0;
   let bookmarksArr: { id: number; name: string }[] | undefined;
@@ -237,9 +243,10 @@ function convertParagraph(
   // (highlight, shading) to body runs — they paint the pilcrow alone. Strip
   // them off the inheritance path so a `<w:pPr><w:rPr><w:highlight/></w:rPr>`
   // used to mark just the paragraph glyph doesn't bleed onto every run.
-  const inheritableParagraphRunFormatting = paragraphRunFormatting
-    ? stripParagraphMarkOnlyFormatting(paragraphRunFormatting)
-    : undefined;
+  let inheritableParagraphRunFormatting: TextFormatting | undefined;
+  if (paragraphRunFormatting && !isTocParagraph) {
+    inheritableParagraphRunFormatting = stripParagraphMarkOnlyFormatting(paragraphRunFormatting);
+  }
   const baseRunFormatting = mergeTextFormatting(styleRunFormatting, extraRunFormatting);
   const defaultRunFormatting = mergeTextFormatting(
     baseRunFormatting,
@@ -247,7 +254,13 @@ function convertParagraph(
   );
   const getInheritedRunFormatting = (
     formatting: TextFormatting | undefined,
+    fieldType?: string,
   ): TextFormatting | undefined => {
+    if (fieldType === "TOC") {
+      return hasDirectRunFormatting(formatting)
+        ? suppressParagraphMarkFormatting(baseRunFormatting, undefined, formatting)
+        : baseRunFormatting;
+    }
     if (!hasDirectRunFormatting(formatting)) {
       return defaultRunFormatting;
     }
@@ -571,7 +584,9 @@ function paragraphFormattingToAttrs(
 
     set(
       "defaultTextFormatting",
-      resolveParagraphDefaultTextFormatting(styleId, formatting, styleResolver),
+      resolveParagraphDefaultTextFormatting(styleId, formatting, styleResolver, {
+        includeParagraphMarkRunProperties: !TOC_STYLE_ID.test(styleId ?? ""),
+      }),
     );
 
     // If style defines numPr but inline doesn't, use style's numPr
@@ -838,7 +853,7 @@ function hasDirectRunFormatting(formatting: TextFormatting | undefined): boolean
 }
 
 function stripParagraphMarkOnlyFormatting(formatting: TextFormatting): TextFormatting | undefined {
-  const { highlight: _h, shading: _s, ...rest } = formatting;
+  const { allCaps: _ac, highlight: _h, shading: _s, smallCaps: _sc, ...rest } = formatting;
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
@@ -917,6 +932,7 @@ function resolveParagraphDefaultTextFormatting(
   styleId: string | undefined,
   formatting: Paragraph["formatting"] | undefined,
   styleResolver: StyleEngine,
+  options: { includeParagraphMarkRunProperties?: boolean } = {},
 ): TextFormatting | undefined {
   const style = styleId
     ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
@@ -928,7 +944,8 @@ function resolveParagraphDefaultTextFormatting(
   // the run properties and then overwrites the paragraph style's font
   // (e.g. FootnoteText's Times New Roman) with the docDefault Calibri when
   // merged into the cascade below.
-  const rawParagraphMarkRpr = formatting?.runProperties;
+  const rawParagraphMarkRpr =
+    options.includeParagraphMarkRunProperties === false ? undefined : formatting?.runProperties;
   const characterStyleRpr =
     rawParagraphMarkRpr?.styleId !== undefined
       ? styleResolver.getRunStyleOwnProperties(rawParagraphMarkRpr.styleId)
@@ -1330,6 +1347,9 @@ function convertTableRow(
   }
   if (row.formatting?.heightRule) {
     attrs.heightRule = row.formatting.heightRule;
+  }
+  if (row.formatting?.hidden) {
+    attrs.hidden = true;
   }
   if (row.formatting) {
     attrs._originalFormatting = row.formatting;
@@ -1770,7 +1790,7 @@ function convertField(
   // styled only by a `w:rStyle` (e.g. a PAGE/REF field) keeps its style-derived
   // marks, so the save-side `w:rStyle` reconciliation does not treat the field
   // as diverging and strip the link (eigenpal/docx-editor#833).
-  const inheritedFormatting = getInheritedRunFormatting(fieldFormatting);
+  const inheritedFormatting = getInheritedRunFormatting(fieldFormatting, field.fieldType);
   const { marks } = buildRunMarks(fieldFormatting, inheritedFormatting, styleResolver);
 
   return schema.node(

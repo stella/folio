@@ -41,8 +41,12 @@ export class FolioExtractError extends Error {
 
 export type FolioExtraction = { geom: DocGeom; screenshotPaths: string[] };
 
+export type FolioExtractOptions = {
+  maxPages?: number;
+};
+
 export type FolioExtractor = {
-  extract: (docxPath: string) => Promise<FolioExtraction>;
+  extract: (docxPath: string, options?: FolioExtractOptions) => Promise<FolioExtraction>;
   close: () => Promise<void>;
 };
 
@@ -55,6 +59,7 @@ const SERVER_PROBE_TIMEOUT_MS = 2000;
 const SERVER_START_TIMEOUT_MS = 90_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 
+const PLAYGROUND_NAVIGATION_TIMEOUT_MS = 120_000;
 const EDITOR_RENDER_TIMEOUT_MS = 20_000;
 const STABILITY_POLL_INTERVAL_MS = 250;
 const STABILITY_MAX_MS = 15_000;
@@ -322,6 +327,25 @@ const waitForEditorLayout = async (page: Page): Promise<void> => {
   await page.waitForTimeout(STABILITY_SETTLE_MS);
 };
 
+const installCleanScreenshotStyle = async (page: Page): Promise<void> => {
+  await page.addStyleTag({
+    content: `
+      .pg-collab-header,
+      [class*="toolbar" i],
+      [class*="ruler" i],
+      [style*="position: fixed"],
+      [style*="position: sticky"] {
+        visibility: hidden !important;
+      }
+
+      .layout-page,
+      .layout-page * {
+        visibility: visible !important;
+      }
+    `,
+  });
+};
+
 /** One `.layout-page` element's identity, listed before any scrolling so the
  * per-page extraction loop below knows what to visit and in what order. */
 type PageMeta = { domIndex: number; pageNumber: number };
@@ -368,7 +392,164 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
     const pageNumber = Number.isFinite(dataPageNumber) ? dataPageNumber : idx + 1;
 
     const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
-    const lines = lineEls.map((lineEl) => {
+    const lines = lineEls.flatMap((lineEl) => {
+      const rectFor = (segmentEls: HTMLElement[]): DOMRect | null => {
+        let inkLeft = Number.POSITIVE_INFINITY;
+        let inkTop = Number.POSITIVE_INFINITY;
+        let inkRight = Number.NEGATIVE_INFINITY;
+        let inkBottom = Number.NEGATIVE_INFINITY;
+        for (const segmentEl of segmentEls) {
+          const segmentRect = segmentEl.getBoundingClientRect();
+          if (segmentRect.width <= 0 || segmentRect.height <= 0) continue;
+          inkLeft = Math.min(inkLeft, segmentRect.left);
+          inkTop = Math.min(inkTop, segmentRect.top);
+          inkRight = Math.max(inkRight, segmentRect.right);
+          inkBottom = Math.max(inkBottom, segmentRect.bottom);
+        }
+        return inkRight > inkLeft && inkBottom > inkTop
+          ? new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop)
+          : null;
+      };
+      const textRectFor = (segmentEls: HTMLElement[]): DOMRect | null => {
+        let inkLeft = Number.POSITIVE_INFINITY;
+        let inkTop = Number.POSITIVE_INFINITY;
+        let inkRight = Number.NEGATIVE_INFINITY;
+        let inkBottom = Number.NEGATIVE_INFINITY;
+        for (const segmentEl of segmentEls) {
+          const range = document.createRange();
+          range.selectNodeContents(segmentEl);
+          const segmentRect = range.getBoundingClientRect();
+          range.detach();
+          if (segmentRect.width <= 0 || segmentRect.height <= 0) continue;
+          inkLeft = Math.min(inkLeft, segmentRect.left);
+          inkTop = Math.min(inkTop, segmentRect.top);
+          inkRight = Math.max(inkRight, segmentRect.right);
+          inkBottom = Math.max(inkBottom, segmentRect.bottom);
+        }
+        return inkRight > inkLeft && inkBottom > inkTop
+          ? new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop)
+          : null;
+      };
+
+      const region = (() => {
+        if (lineEl.closest(".layout-page-header")) {
+          return "header";
+        }
+        if (lineEl.closest(".layout-page-footer")) {
+          return "footer";
+        }
+        return "body";
+      })();
+
+      const fontFrom = (sourceEl: HTMLElement | null) => {
+        if (!sourceEl) return {};
+        const computed = getComputedStyle(sourceEl);
+        const parsedSize = Number.parseFloat(computed.fontSize);
+        return {
+          fontFamilyRaw: computed.fontFamily,
+          ...(Number.isFinite(parsedSize) ? { fontSizePx: parsedSize } : {}),
+        };
+      };
+      const textFor = (sourceEl: HTMLElement): string => {
+        const text = sourceEl.textContent ?? "";
+        const computed = getComputedStyle(sourceEl);
+        if (
+          computed.textTransform === "uppercase" ||
+          computed.fontVariant.includes("small-caps")
+        ) {
+          return text.toLocaleUpperCase();
+        }
+        return text;
+      };
+
+      const toRawLine = (text: string, rect: DOMRect, sourceEl: HTMLElement | null) => ({
+        text,
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        region,
+        ...fontFrom(sourceEl),
+      });
+
+      const markerEls = Array.from(lineEl.querySelectorAll(".layout-list-marker")) as HTMLElement[];
+      const runEls = Array.from(lineEl.querySelectorAll(".layout-run")) as HTMLElement[];
+      if (markerEls.length > 0 && runEls.length > 0) {
+        const markerRect = textRectFor(markerEls) ?? rectFor(markerEls);
+        const runsRect = rectFor(runEls);
+        const splitLines = [];
+        if (markerRect) {
+          splitLines.push(
+            toRawLine(
+              markerEls.map((markerEl) => textFor(markerEl)).join(""),
+              markerRect,
+              markerEls[0] ?? null,
+            ),
+          );
+        }
+        if (runsRect) {
+          splitLines.push(
+            toRawLine(runEls.map((runEl) => textFor(runEl)).join(""), runsRect, runEls[0] ?? null),
+          );
+        }
+        if (splitLines.length > 0) {
+          return splitLines;
+        }
+      }
+
+      const visualRunEls = Array.from(lineEl.children).filter(
+        (child): child is HTMLElement =>
+          child instanceof HTMLElement && child.classList.contains("layout-run"),
+      );
+      if (visualRunEls.some((runEl) => runEl.classList.contains("layout-run-tab"))) {
+        const segments: HTMLElement[][] = [];
+        let currentSegment: HTMLElement[] = [];
+        const flushSegment = () => {
+          if (currentSegment.length === 0) {
+            return;
+          }
+          segments.push(currentSegment);
+          currentSegment = [];
+        };
+
+        for (const runEl of visualRunEls) {
+          if (!runEl.classList.contains("layout-run-tab")) {
+            currentSegment.push(runEl);
+            continue;
+          }
+
+          const tabText = (runEl.textContent ?? "").replace(/[­​-‍﻿\s]/gu, "");
+          if (tabText.length > 0) {
+            currentSegment.push(runEl);
+            continue;
+          }
+
+          flushSegment();
+        }
+        flushSegment();
+
+        if (segments.length > 1) {
+          const splitLines = [];
+          for (const segment of segments) {
+            const segmentRect = rectFor(segment);
+            if (!segmentRect) {
+              continue;
+            }
+            const sourceEl =
+              segment.find((segmentEl) => !segmentEl.classList.contains("layout-run-tab")) ??
+              segment[0] ??
+              null;
+            splitLines.push(
+              toRawLine(
+                segment.map((segmentEl) => textFor(segmentEl)).join(""),
+                segmentRect,
+                sourceEl,
+              ),
+            );
+          }
+          if (splitLines.length > 0) {
+            return splitLines;
+          }
+        }
+      }
+
       // The `.layout-line` box spans the full column width regardless of where
       // the text ink actually sits (centered/right-aligned lines, table cells),
       // while the Word-side extractor reports glyph-ink bounds. Use the union
@@ -394,32 +575,14 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
       if (inkRight > inkLeft && inkBottom > inkTop) {
         rect = new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop);
       }
-      let region: "header" | "footer" | "body" = "body";
-      if (lineEl.closest(".layout-page-header")) {
-        region = "header";
-      } else if (lineEl.closest(".layout-page-footer")) {
-        region = "footer";
-      }
 
       const runEl = lineEl.querySelector(".layout-run");
-      let fontFamilyRaw: string | undefined;
-      let fontSizePx: number | undefined;
-      if (runEl) {
-        const computed = getComputedStyle(runEl);
-        fontFamilyRaw = computed.fontFamily;
-        const parsedSize = Number.parseFloat(computed.fontSize);
-        if (Number.isFinite(parsedSize)) {
-          fontSizePx = parsedSize;
-        }
-      }
 
-      return {
-        text: lineEl.textContent ?? "",
-        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-        region,
-        ...(fontFamilyRaw !== undefined ? { fontFamilyRaw } : {}),
-        ...(fontSizePx !== undefined ? { fontSizePx } : {}),
-      };
+      const text =
+        segmentEls.length > 0
+          ? segmentEls.map((segmentEl) => textFor(segmentEl)).join("")
+          : textFor(lineEl);
+      return [toRawLine(text, rect, runEl)];
     });
 
     return {
@@ -501,7 +664,10 @@ export const createFolioExtractor = async (
   });
   const page = await context.newPage();
 
-  const extract = async (docxPath: string): Promise<FolioExtraction> => {
+  const extract = async (
+    docxPath: string,
+    options: FolioExtractOptions = {},
+  ): Promise<FolioExtraction> => {
     const absoluteDocxPath = path.resolve(docxPath);
     const docxBuffer = await fs.readFile(absoluteDocxPath);
     const sha256 = createHash("sha256").update(docxBuffer).digest("hex");
@@ -512,6 +678,7 @@ export const createFolioExtractor = async (
     try {
       await page.goto(`${PLAYGROUND_URL}/?file=${encodeURIComponent(stagedName)}`, {
         waitUntil: "domcontentloaded",
+        timeout: PLAYGROUND_NAVIGATION_TIMEOUT_MS,
       });
       await waitForEditorLayout(page);
 
@@ -519,6 +686,9 @@ export const createFolioExtractor = async (
       if (pageMeta.length === 0) {
         throw new FolioExtractError(`folio rendered zero pages for ${absoluteDocxPath}`);
       }
+      await installCleanScreenshotStyle(page);
+      const pagesToExtract =
+        options.maxPages === undefined ? pageMeta : pageMeta.slice(0, options.maxPages);
 
       // Large documents virtualize: pages scroll into (and back out of) a
       // populated state as an IntersectionObserver crosses them, so each
@@ -530,7 +700,7 @@ export const createFolioExtractor = async (
       await fs.mkdir(screenshotDir, { recursive: true });
       const rawPages: RawPage[] = [];
       const screenshotPaths: string[] = [];
-      for (const { domIndex, pageNumber } of pageMeta) {
+      for (const { domIndex, pageNumber } of pagesToExtract) {
         const locator = page.locator(PAGE_SELECTOR).nth(domIndex);
         await locator.scrollIntoViewIfNeeded();
         await waitForLayoutStability(page);

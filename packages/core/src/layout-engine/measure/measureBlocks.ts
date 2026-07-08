@@ -146,6 +146,12 @@ export function measureTableCellBlockVisualHeight(block: FlowBlock, blockMeasure
   for (const run of inlineImageRuns) {
     maxImageHeight = Math.max(maxImageHeight, run.height);
   }
+  if (inlineImageRuns.length === 1) {
+    const spacingBefore = paragraphBlock.attrs?.spacing?.before ?? 0;
+    const spacingAfter = paragraphBlock.attrs?.spacing?.after ?? 0;
+    const descent = paragraphMeasure.lines.at(0)?.descent ?? 0;
+    return spacingBefore + maxImageHeight + descent + spacingAfter;
+  }
   const spacingBefore = paragraphBlock.attrs?.spacing?.before ?? 0;
   const spacingAfter = paragraphBlock.attrs?.spacing?.after ?? 0;
 
@@ -284,6 +290,11 @@ export function measureTableBlock(
   // Calculate cell heights, respecting explicit row height rules
   for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
     const row = rows[rowIdx]!; // SAFETY: rowIdx < rows.length
+    const sourceRow = tableBlock.rows[rowIdx];
+    if (sourceRow?.hidden) {
+      row.height = 0;
+      continue;
+    }
     const sourceRowCells = tableBlock.rows[rowIdx]?.cells;
     // Take the max over per-cell totals (content + padding + vertical borders),
     // not the sum of an independent content-max and border-max: those two maxes
@@ -314,7 +325,6 @@ export function measureTableBlock(
     }
 
     // Apply heightRule from the source row
-    const sourceRow = tableBlock.rows[rowIdx];
     const explicitHeight = sourceRow?.height;
     const heightRule = sourceRow?.heightRule;
 

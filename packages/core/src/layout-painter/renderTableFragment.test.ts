@@ -71,6 +71,17 @@ function findRows(element: FakeElement): FakeElement[] {
   return matches;
 }
 
+function findByClass(element: FakeElement, className: string): FakeElement[] {
+  const matches: FakeElement[] = [];
+  if (element.className.split(" ").includes(className)) {
+    matches.push(element);
+  }
+  for (const child of element.children) {
+    matches.push(...findByClass(child, className));
+  }
+  return matches;
+}
+
 function buildHeaderContinuation(): {
   fragment: TableFragment;
   block: TableBlock;
@@ -192,5 +203,77 @@ describe("renderTableFragment clipped header continuations", () => {
     expect(headerRow?.style["top"]).toBe("0px");
     expect(bodyRow?.style["top"]).toBe("-40px");
     expect(clipElement).toBeDefined();
+  });
+});
+
+describe("renderTableFragment cell paragraph spacing", () => {
+  test("reserves measured paragraph spacing inside table cells", () => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      rows: [
+        {
+          id: "row",
+          cells: [
+            {
+              id: "cell",
+              blocks: [
+                {
+                  kind: "paragraph",
+                  id: "para",
+                  attrs: { spacing: { before: 6, after: 12 } },
+                  runs: [{ kind: "text", text: "Cell text" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      columnWidths: [100],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [
+            {
+              blocks: [
+                {
+                  kind: "paragraph",
+                  lines: [],
+                  totalHeight: 30,
+                },
+              ],
+              width: 100,
+              height: 30,
+            },
+          ],
+          height: 30,
+        },
+      ],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 30,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "tbl",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 30,
+      fromRow: 0,
+      toRow: 1,
+    };
+
+    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+
+    const paragraph = findByClass(tableEl, "layout-paragraph").at(0);
+
+    expect(paragraph?.style["height"]).toBe("30px");
+    expect(paragraph?.style["paddingTop"]).toBe("6px");
+    expect(paragraph?.style["boxSizing"]).toBe("border-box");
   });
 });

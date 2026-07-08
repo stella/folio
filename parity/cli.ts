@@ -6,15 +6,17 @@
  *   bun parity/cli.ts                          # full default corpus, HTML report
  *   bun parity/cli.ts path/to/file.docx        # one document
  *   bun parity/cli.ts some/dir --json          # machine-readable output
+ *   bun parity/cli.ts path/to/file.docx --output parity.json
  *   bun parity/cli.ts --refresh-truth          # ignore cached Word exports
  *   bun parity/cli.ts --headed                 # show the folio browser window
  *   bun parity/cli.ts --no-report              # skip writing the HTML report
+ *   bun parity/cli.ts path/to/file.docx --max-pages 20
  *
  * Ground truth requires Microsoft Word for Mac plus `mutool`
  * (`brew install mupdf-tools`); the CLI exits 2 with a clear message when
  * either is missing, mirroring the differential-test skip ergonomics.
  */
-import { stat } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { DEFAULT_CORPUS_DIRS } from "./config";
@@ -31,7 +33,13 @@ import { compareGeoms } from "./compare";
 import { writeHtmlReport } from "./report";
 import type { DocAssets } from "./report";
 import { getWordPagePngs, getWordTruth, getWordVersion, isWordAvailable } from "./wordTruth";
-import type { CorpusReport, Divergence, DivergenceKind, FeatureAttributedResult } from "./types";
+import type {
+  CorpusReport,
+  Divergence,
+  DivergenceKind,
+  DocGeom,
+  FeatureAttributedResult,
+} from "./types";
 
 const EXIT_OK = 0;
 const EXIT_DIVERGENT = 1;
@@ -49,10 +57,12 @@ type CliFlags = {
   refreshTruth: boolean;
   headed: boolean;
   noReport: boolean;
+  outputPath?: string;
+  maxPages?: number;
   paths: string[];
 };
 
-const parseArgs = (argv: string[]): CliFlags => {
+export const parseArgs = (argv: string[]): CliFlags => {
   const flags: CliFlags = {
     json: false,
     refreshTruth: false,
@@ -60,7 +70,8 @@ const parseArgs = (argv: string[]): CliFlags => {
     noReport: false,
     paths: [],
   };
-  for (const arg of argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
     if (arg === "--json") {
       flags.json = true;
     } else if (arg === "--refresh-truth") {
@@ -69,12 +80,37 @@ const parseArgs = (argv: string[]): CliFlags => {
       flags.headed = true;
     } else if (arg === "--no-report") {
       flags.noReport = true;
+    } else if (arg === "--output") {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error("--output requires a file path");
+      }
+      flags.outputPath = value;
+      i += 1;
+    } else if (arg === "--max-pages") {
+      const value = argv[i + 1];
+      const maxPages = value === undefined ? Number.NaN : Number.parseInt(value, 10);
+      if (!Number.isInteger(maxPages) || maxPages <= 0) {
+        throw new Error("--max-pages requires a positive integer");
+      }
+      flags.maxPages = maxPages;
+      i += 1;
     } else {
       flags.paths.push(arg);
     }
   }
   return flags;
 };
+
+const limitGeomPages = (geom: DocGeom, maxPages: number | undefined): DocGeom => {
+  if (maxPages === undefined) {
+    return geom;
+  }
+  return { ...geom, pages: geom.pages.slice(0, maxPages) };
+};
+
+const limitPaths = (paths: string[], maxPages: number | undefined): string[] =>
+  maxPages === undefined ? paths : paths.slice(0, maxPages);
 
 const isDirectory = async (candidate: string): Promise<boolean> => {
   try {
@@ -154,7 +190,10 @@ const runPipeline = async (docs: string[], flags: CliFlags): Promise<PipelineOut
 
       try {
         // oxlint-disable-next-line no-await-in-loop -- Word is a single-instance app; docs are exported one at a time
-        const wordGeom = await getWordTruth(doc, { refresh: flags.refreshTruth });
+        const wordGeom = limitGeomPages(
+          await getWordTruth(doc, { refresh: flags.refreshTruth }),
+          flags.maxPages,
+        );
 
         if (!extractor) {
           // oxlint-disable-next-line no-await-in-loop -- created lazily on first use, before any folio extraction
@@ -163,7 +202,7 @@ const runPipeline = async (docs: string[], flags: CliFlags): Promise<PipelineOut
 
         process.stderr.write("folio… ");
         // oxlint-disable-next-line no-await-in-loop -- the extractor shares one browser page across docs
-        const folio = await extractor.extract(doc);
+        const folio = await extractor.extract(doc, { maxPages: flags.maxPages });
 
         const result = compareGeoms(wordGeom, folio.geom);
 
@@ -180,7 +219,10 @@ const runPipeline = async (docs: string[], flags: CliFlags): Promise<PipelineOut
         const attributed = attributeDivergences(result, docFeatures);
 
         // oxlint-disable-next-line no-await-in-loop -- sequential per-doc pipeline
-        const wordPagePngs = await getWordPagePngs(doc);
+        const wordPagePngs = limitPaths(
+          await getWordPagePngs(doc, { maxPages: flags.maxPages }),
+          flags.maxPages,
+        );
 
         results.push(attributed);
         paragraphsByDoc.push(docFeatures.paragraphs);
@@ -273,6 +315,13 @@ const isFullyClean = (report: CorpusReport, failures: DocFailure[]): boolean =>
     (result) => result.score === PERFECT_SCORE && result.divergences.length === 0,
   );
 
+const writeJsonReport = async (report: CorpusReport, outputPath: string): Promise<string> => {
+  const resolved = path.resolve(outputPath);
+  await mkdir(path.dirname(resolved), { recursive: true });
+  await Bun.write(resolved, `${JSON.stringify(report, null, 2)}\n`);
+  return resolved;
+};
+
 const main = async (argv: string[]): Promise<number> => {
   const flags = parseArgs(argv);
 
@@ -303,9 +352,14 @@ const main = async (argv: string[]): Promise<number> => {
     clusters,
   };
 
-  if (flags.json) {
+  if (flags.outputPath) {
+    const outputPath = await writeJsonReport(report, flags.outputPath);
+    console.error(`JSON: ${outputPath}`);
+  }
+
+  if (flags.json && !flags.outputPath) {
     console.log(JSON.stringify(report, null, 2));
-  } else {
+  } else if (!flags.json) {
     printHumanSummary(report, failures);
   }
 

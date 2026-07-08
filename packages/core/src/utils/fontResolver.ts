@@ -187,6 +187,18 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
       unitsPerEm: 2048,
     }), // 1.1499
   },
+  "cg times": {
+    googleFont: "Tinos",
+    category: "serif",
+    fallbackStack: ["Times New Roman", "Tinos", "Times", "serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1825,
+      hheaDescent: -443,
+      hheaLineGap: 87,
+      unitsPerEm: 2048,
+    }), // Metric-compatible Times New Roman substitute used by Word/LibreOffice.
+  },
   "courier new": {
     googleFont: "Cousine",
     category: "monospace",

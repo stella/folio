@@ -908,22 +908,29 @@ function getSectionHeaderFooterRefs(
   if (!body) {
     return undefined;
   }
+  const documentEvenAndOddHeaders = documentModel.package.settings?.evenAndOddHeaders === true;
   const sections = body.sections;
   if (sections && sections.length > 0) {
-    return sections.map((section) => getHeaderFooterRefsFromSectionProperties(section.properties));
+    return sections.map((section) =>
+      getHeaderFooterRefsFromSectionProperties(section.properties, documentEvenAndOddHeaders),
+    );
   }
   const finalProps = body.finalSectionProperties;
   if (!finalProps) {
     return undefined;
   }
-  return [getHeaderFooterRefsFromSectionProperties(finalProps)];
+  return [getHeaderFooterRefsFromSectionProperties(finalProps, documentEvenAndOddHeaders)];
 }
 
-function getHeaderFooterRefsFromSectionProperties(props: SectionProperties): PageHeaderFooterRefs {
+function getHeaderFooterRefsFromSectionProperties(
+  props: SectionProperties,
+  documentEvenAndOddHeaders: boolean,
+): PageHeaderFooterRefs {
   const refs: PageHeaderFooterRefs = {};
   if (props.titlePg !== undefined) {
     refs.titlePg = props.titlePg;
   }
+  refs.evenAndOddHeaders = props.evenAndOddHeaders ?? documentEvenAndOddHeaders;
   for (const ref of props.headerReferences ?? []) {
     if (ref.type === "default") {
       refs.headerDefault = ref.rId;

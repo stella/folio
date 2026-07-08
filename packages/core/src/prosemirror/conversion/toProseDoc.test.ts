@@ -116,6 +116,70 @@ describe("toProseDoc", () => {
     expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(20);
   });
 
+  test("does not inherit paragraph mark all-caps onto visible text", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                runProperties: {
+                  allCaps: true,
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: {
+                    italic: true,
+                  },
+                  content: [{ type: "text", text: "mandated lead arranger" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document);
+    const text = doc.firstChild?.firstChild;
+
+    expect(text?.marks.some((mark) => mark.type.name === "allCaps")).toBe(false);
+    expect(text?.marks.some((mark) => mark.type.name === "italic")).toBe(true);
+  });
+
+  test("preserves explicit run-level all-caps", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  formatting: {
+                    allCaps: true,
+                    italic: true,
+                  },
+                  content: [{ type: "text", text: "mandated lead arranger" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document);
+    const text = doc.firstChild?.firstChild;
+
+    expect(text?.marks.some((mark) => mark.type.name === "allCaps")).toBe(true);
+    expect(text?.marks.some((mark) => mark.type.name === "italic")).toBe(true);
+  });
+
   test("preserves direct run marks on tab nodes", () => {
     const document: Document = {
       package: {
@@ -636,6 +700,70 @@ describe("toProseDoc", () => {
     expect(field?.attrs.instruction).toBe(' MERGEFIELD "Client Name" \\* MERGEFORMAT ');
     expect(field?.attrs.displayText).toBe("Acme s.r.o.");
     expect(field?.attrs.fieldKind).toBe("simple");
+  });
+
+  test("does not apply TOC paragraph-mark font defaults to field result text", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          styles: [
+            {
+              styleId: "Normal",
+              type: "paragraph",
+              default: true,
+              rPr: {
+                fontFamily: { ascii: "CG Times", hAnsi: "CG Times" },
+              },
+            },
+            {
+              styleId: "TOC1",
+              type: "paragraph",
+              basedOn: "Normal",
+              rPr: {
+                fontFamily: { ascii: "CG Times", hAnsi: "CG Times" },
+              },
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                styleId: "TOC1",
+                runProperties: {
+                  fontFamily: { ascii: "Calibri", hAnsi: "Calibri" },
+                },
+              },
+              content: [
+                {
+                  type: "complexField",
+                  fieldType: "TOC",
+                  instruction: ' TOC \\o "1-1" ',
+                  fieldResult: [
+                    {
+                      type: "run",
+                      formatting: {},
+                      content: [{ type: "text", text: "Definitions and Interpretation" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+    const paragraph = doc.firstChild;
+    const field = paragraph?.firstChild;
+    const fieldFont = field?.marks.find((mark) => mark.type.name === "fontFamily");
+    const defaultTextFormatting = paragraph?.attrs.defaultTextFormatting;
+
+    expect(field?.type.name).toBe("field");
+    expect(fieldFont?.attrs.ascii).toBe("CG Times");
+    expect(defaultTextFormatting?.fontFamily?.ascii).toBe("CG Times");
   });
 
   test("converts inline content controls without synthetic marks", () => {
