@@ -2567,12 +2567,19 @@ function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatting | u
         delete result.header;
       }
     }
+    if (attrs.hidden !== (orig.hidden ?? undefined)) {
+      if (attrs.hidden) {
+        result.hidden = attrs.hidden;
+      } else {
+        delete result.hidden;
+      }
+    }
 
     return result;
   }
 
   // Fallback: reconstruct formatting from individual attrs
-  const hasFormatting = attrs.height || attrs.isHeader;
+  const hasFormatting = attrs.height || attrs.isHeader || attrs.hidden;
 
   if (!hasFormatting) {
     return undefined;
@@ -2587,6 +2594,9 @@ function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatting | u
   }
   if (attrs.isHeader) {
     f.header = attrs.isHeader;
+  }
+  if (attrs.hidden) {
+    f.hidden = attrs.hidden;
   }
   return f;
 }

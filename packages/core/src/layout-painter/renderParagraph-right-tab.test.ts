@@ -218,6 +218,43 @@ describe("renderLine right-tab flex anchor", () => {
 
     expect(lineEl.dataset["flexLine"]).toBeUndefined();
   });
+
+  test("uses cached fallback text for non-live fields even with render context", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "cached-pageref",
+      runs: [
+        {
+          kind: "field",
+          fieldType: "OTHER",
+          instruction: " PAGEREF _Toc1 \\h ",
+          fallback: "2",
+        },
+      ],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 1,
+      width: 7,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 600,
+      context: {
+        pageNumber: 1,
+        totalPages: 10,
+        section: "body",
+        bookmarkPages: new Map([["_Toc1", 6]]),
+      },
+    }) as unknown as FakeElement;
+
+    expect(findFieldOrTextEls(lineEl).at(0)?.textContent).toBe("2");
+  });
 });
 
 describe("renderTabRun leader rendering", () => {

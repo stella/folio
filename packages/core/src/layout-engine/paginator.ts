@@ -333,8 +333,10 @@ export function createPaginator(options: PaginatorOptions) {
     const initialState = getCurrentState();
     const initialColumnIndex = initialState.columnIndex;
 
-    // Collapse space before with trailing spacing from previous block
-    const effectiveSpaceBefore = Math.max(spaceBefore, initialState.trailingSpacing);
+    // Word composes adjacent paragraph spacing additively: the previous
+    // paragraph's `spaceAfter` and the next paragraph's `spaceBefore` both
+    // contribute to the inter-paragraph gap.
+    const effectiveSpaceBefore = spaceBefore + initialState.trailingSpacing;
     const totalHeight = effectiveSpaceBefore + height;
 
     // Ensure we have space

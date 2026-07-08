@@ -158,6 +158,12 @@ function renderCellContent(
       );
 
       fragEl.style.position = "relative";
+      fragEl.style.boxSizing = "border-box";
+      fragEl.style.height = `${paragraphMeasure.totalHeight}px`;
+      const spaceBefore = paragraphBlock.attrs?.spacing?.before ?? 0;
+      if (spaceBefore > 0) {
+        fragEl.style.paddingTop = `${spaceBefore}px`;
+      }
       contentEl.append(fragEl);
       cumulativeY += paragraphMeasure.totalHeight;
     } else if (block?.kind === "table" && measure?.kind === "table") {
@@ -232,6 +238,10 @@ function renderNestedTable(
     const rowMeasure = measure.rows[rowIndex];
 
     if (!row || !rowMeasure) {
+      continue;
+    }
+    if (row.hidden) {
+      y += rowMeasure.height;
       continue;
     }
 
@@ -655,6 +665,10 @@ export function renderTableFragment(
       if (!hdrRow || !hdrRowMeasure) {
         continue;
       }
+      if (hdrRow.hidden) {
+        y += hdrRowMeasure.height;
+        continue;
+      }
 
       const rowEl = renderTableRow(
         hdrRow,
@@ -701,6 +715,10 @@ export function renderTableFragment(
     if (!row || !rowMeasure) {
       continue;
     }
+    if (row.hidden) {
+      y += rowMeasure.height;
+      continue;
+    }
 
     // First content row in a continuation fragment with headers should draw top border
     const isFirstRowInFragment =
@@ -730,6 +748,9 @@ export function renderTableFragment(
   // Add row resize handles at each row boundary (between consecutive rows)
   let handleY = 0;
   for (let rowIdx = fragment.fromRow; rowIdx < fragment.toRow; rowIdx++) {
+    if (block.rows[rowIdx]?.hidden) {
+      continue;
+    }
     handleY += measure.rows[rowIdx]?.height ?? 0;
 
     // Don't add a handle after the last row in this fragment (unless it's the table's last row — that's the bottom edge)

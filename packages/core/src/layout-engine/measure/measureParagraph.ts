@@ -52,6 +52,7 @@ const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing 
 // Floating-point tolerance for line breaking (0.5px)
 // Prevents premature line breaks due to measurement rounding
 const WIDTH_TOLERANCE = 0.5;
+const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.012;
 
 /**
  * Find the longest prefix of `text` that fits within `maxWidth` pixels.
@@ -629,6 +630,7 @@ export function measureParagraph(
   const runs = block.runs;
   const attrs = block.attrs;
   const spacing = attrs?.spacing;
+  const isJustifiedParagraph = attrs?.alignment === "justify";
 
   // Floating image support
   const floatingZones = options?.floatingZones;
@@ -1264,12 +1266,15 @@ export function measureParagraph(
         // Extract word (includes trailing space if present)
         const word = text.slice(charIndex, nextBreak);
         const wordWidth = measureTextWidth(word, style);
+        const widthTolerance = isJustifiedParagraph
+          ? Math.max(WIDTH_TOLERANCE, currentLine.availableWidth * JUSTIFY_SHRINK_TOLERANCE_RATIO)
+          : WIDTH_TOLERANCE;
 
         // If the word itself is longer than a line, hard-break by characters.
         // Use substring measurement (not char-by-char accumulation) to preserve
         // kerning accuracy. Char-by-char accumulation overestimates width by
         // ~1-2px per line due to lost kerning, causing extra wraps in narrow cells.
-        if (wordWidth > currentLine.availableWidth + WIDTH_TOLERANCE) {
+        if (wordWidth > currentLine.availableWidth + widthTolerance) {
           // Long word that needs hard-breaking. DON'T start a new line first —
           // fill the remaining space on the current line with as many characters
           // as possible. This prevents wasting a full line when a small run
@@ -1322,12 +1327,12 @@ export function measureParagraph(
             : 0;
         const glueWidth =
           rawGlueWidth > 0 &&
-          wordWidth + rawGlueWidth <= getPostWrapAvailableWidth() + WIDTH_TOLERANCE
+          wordWidth + rawGlueWidth <= getPostWrapAvailableWidth() + widthTolerance
             ? rawGlueWidth
             : 0;
         if (
           currentLine.width > 0 &&
-          currentLine.width + wordWidth + glueWidth > currentLine.availableWidth + WIDTH_TOLERANCE
+          currentLine.width + wordWidth + glueWidth > currentLine.availableWidth + widthTolerance
         ) {
           // Word doesn't fit, start new line
           startNewLine(runIndex, charIndex);

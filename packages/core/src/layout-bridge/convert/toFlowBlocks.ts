@@ -1988,6 +1988,9 @@ function convertTableRow(
   if (attrs.isHeader) {
     row.isHeader = attrs.isHeader;
   }
+  if (attrs.hidden) {
+    row.hidden = attrs.hidden;
+  }
   return row;
 }
 

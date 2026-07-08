@@ -371,6 +371,27 @@ export function runLayoutPipeline<THfPMs>(
       firstPageHeaderContent: firstPageHeaderForRender,
       firstPageFooterContent: firstPageFooterForRender,
     };
+    const buildSectionHfExtenderContent = (): typeof hfExtenderContent[] | undefined => {
+      if (!sectionHeaderFooterRefs) {
+        return undefined;
+      }
+      return sectionHeaderFooterRefs.map((refs) => ({
+        headerContent: pickSectionHeaderFooterContent(
+          headerContentByRId,
+          refs.headerDefault,
+          refs.evenAndOddHeaders === true ? refs.headerEven : undefined,
+        ),
+        footerContent: pickSectionHeaderFooterContent(
+          footerContentByRId,
+          refs.footerDefault,
+          refs.evenAndOddHeaders === true ? refs.footerEven : undefined,
+        ),
+        firstPageHeaderContent:
+          refs.titlePg === true ? headerContentByRId?.get(refs.headerFirst ?? "") : undefined,
+        firstPageFooterContent:
+          refs.titlePg === true ? footerContentByRId?.get(refs.footerFirst ?? "") : undefined,
+      }));
+    };
     const hfWarn = (msg: string): void => {
       // eslint-disable-next-line no-console -- standalone editor package has no logger in scope
       console.warn(`[PagedEditor] ${msg}`);
@@ -426,6 +447,7 @@ export function runLayoutPipeline<THfPMs>(
       // section. (Eigenpal #400.)
       extendSectionBreakMargins(sectionBreaks, {
         content,
+        sectionContent: buildSectionHfExtenderContent(),
         bodyPageSize: pageSize,
         bodyMargins,
         warn: hfWarn,
@@ -951,4 +973,28 @@ export function runLayoutPipeline<THfPMs>(
   syncCoordinator.onLayoutComplete(currentEpoch);
 
   return outcome;
+}
+
+function pickSectionHeaderFooterContent(
+  byRId: ReadonlyMap<string, HeaderFooterContent> | undefined,
+  defaultRId: string | undefined,
+  evenRId: string | undefined,
+): HeaderFooterContent | undefined {
+  const defaultContent = defaultRId ? byRId?.get(defaultRId) : undefined;
+  const evenContent = evenRId ? byRId?.get(evenRId) : undefined;
+  if (!defaultContent) {
+    return evenContent;
+  }
+  if (!evenContent) {
+    return defaultContent;
+  }
+  return headerFooterMarginPushHeight(evenContent) > headerFooterMarginPushHeight(defaultContent)
+    ? evenContent
+    : defaultContent;
+}
+
+function headerFooterMarginPushHeight(content: HeaderFooterContent): number {
+  const bottom = content.marginPushBottom ?? content.visualBottom ?? content.height;
+  const top = content.marginPushTop ?? content.visualTop ?? 0;
+  return Math.max(bottom - top, content.height);
 }

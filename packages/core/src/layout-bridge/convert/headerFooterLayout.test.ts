@@ -620,6 +620,42 @@ describe("header/footer layout conversion", () => {
     expect((blocks[1] as ParagraphBlock).attrs?.suppressEmptyParagraphHeight).toBeUndefined();
     expect((blocks[4] as ParagraphBlock).attrs?.suppressEmptyParagraphHeight).toBe(true);
   });
+
+  test("keeps top-level footer trailing empty paragraph height for bottom anchoring", () => {
+    const blocks = normalizeHeaderFooterMeasureBlocks(
+      [table(), emptyParagraph({ id: "trailing-footer" })],
+      "footer",
+    );
+
+    expect((blocks[1] as ParagraphBlock).attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+  });
+
+  test("excludes canonical trailing empty paragraph from header/footer margin push", () => {
+    const blocks = [table(), emptyParagraph({ id: "trailing-footer" })];
+    const bounds = calculateHeaderFooterMarginPushBounds(
+      blocks,
+      [tableMeasure(24), { kind: "paragraph", lines: [], totalHeight: 12 }],
+      36,
+      { ...metrics, section: "footer" },
+    );
+
+    expect(bounds).toEqual({ top: 0, bottom: 24 });
+  });
+
+  test("treats an empty text run as canonical trailing empty paragraph for margin push", () => {
+    const blocks = [
+      table(),
+      paragraph({ id: "trailing-footer", runs: [{ kind: "text", text: "" }] }),
+    ];
+    const bounds = calculateHeaderFooterMarginPushBounds(
+      blocks,
+      [tableMeasure(24), { kind: "paragraph", lines: [], totalHeight: 12 }],
+      36,
+      { ...metrics, section: "footer" },
+    );
+
+    expect(bounds).toEqual({ top: 0, bottom: 24 });
+  });
 });
 
 describe("convertHeaderFooterPmDocToContent", () => {

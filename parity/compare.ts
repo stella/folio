@@ -447,6 +447,17 @@ const reconcileGap = ({
     const folioConcat = normalizeLineText(
       folioIdxs.map((idx) => folioFlat[idx]?.line.normText ?? "").join(" "),
     );
+    if (
+      wordIdxs.length === 1 &&
+      folioIdxs.length === 1 &&
+      stripSpaces(wordConcat) === stripSpaces(folioConcat)
+    ) {
+      const wordIdx = wordIdxs[0];
+      const folioIdx = folioIdxs[0];
+      if (wordIdx !== undefined && folioIdx !== undefined) {
+        return [{ kind: "match", wordIdx, folioIdx }];
+      }
+    }
     if (textSimilarity(wordConcat, folioConcat) >= CONCAT_THRESHOLD) {
       return [{ kind: "line-break", wordIdxs, folioIdxs }];
     }

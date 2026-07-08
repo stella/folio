@@ -958,8 +958,12 @@ const EMPTY_SEQ_VALUES: ReadonlyMap<number, number> = new Map();
  * Returns the cached fallback when no render context is available.
  */
 function resolveFieldText(run: FieldRun, context: RenderContext | undefined): string {
+  const fallback = run.fallback ?? "";
+  if (run.fieldType === "OTHER" && run.pmStart === undefined) {
+    return fallback;
+  }
   if (!context) {
-    return run.fallback ?? "";
+    return fallback;
   }
   const fieldContext: FieldContext = {
     pageNumber: context.pageNumber,
@@ -971,7 +975,7 @@ function resolveFieldText(run: FieldRun, context: RenderContext | undefined): st
     ...(context.sectionPages === undefined ? {} : { sectionPages: context.sectionPages }),
   };
   return evaluateFieldInstruction(run.instruction || run.fieldType, fieldContext, {
-    fallback: run.fallback ?? "",
+    fallback,
     ...(run.pmStart === undefined ? {} : { instanceId: run.pmStart }),
     ...(run.fldLock ? { locked: true } : {}),
   });

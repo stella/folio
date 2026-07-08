@@ -403,6 +403,7 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
     TABLE_ROW_HEIGHT_RULE_VALUES,
   );
   optionalBoolean(attrs, "isHeader", "tableRow.attrs.isHeader", issues);
+  optionalBoolean(attrs, "hidden", "tableRow.attrs.hidden", issues);
   optionalRecord(attrs, "_originalFormatting", "tableRow.attrs._originalFormatting", issues);
 
   return attrsResult(attrs, issues);

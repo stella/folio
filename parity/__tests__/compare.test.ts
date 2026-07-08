@@ -134,6 +134,27 @@ describe("compareGeoms", () => {
     ).toBe(false);
   });
 
+  test("a normalized 1-to-1 gap is treated as a match, not a line-break", () => {
+    const word = makeDoc("word", [
+      makePage({
+        lines: [
+          makeLine({ text: "1.", xPt: 10 }),
+          makeLine({ text: "Definitions ................ 2", xPt: 40 }),
+        ],
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: [makeLine({ text: "1.", xPt: 10 }), makeLine({ text: "Definitions … 2", xPt: 40 })],
+      }),
+    ]);
+
+    const result = compareGeoms(word, folio);
+
+    expect(result.divergences).toEqual([]);
+    expect(result.score).toBe(1);
+  });
+
   test("an extra folio page with a shifted line reports page-count and pagination", () => {
     const word = makeDoc("word", [
       makePage({

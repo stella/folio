@@ -9,7 +9,8 @@
  *   HF.content -> headerFooterToProseDoc -> toFlowBlocks
  *     -> normalizeHeaderFooterMeasureBlocks (measure copy: drops floats and
  *        style-inherited spacing the renderer zeroes anyway, marks the
- *        canonical trailing-empty-paragraph-after-table as zero-height)
+ *        canonical trailing-empty-paragraph-after-table as zero-height in
+ *        headers)
  *     -> measureBlocks (caller-supplied)
  *     -> HeaderFooterContent (blocks, measures, height, visualTop/Bottom)
  *
@@ -65,17 +66,16 @@ export type HeaderFooterMetrics = {
 //    spacing via `spacingExplicit.before` / `.after`; anything not flagged
 //    was inherited and is zeroed for measurement.
 //
-// 3. Zero trailing empty paragraph after a table (#381). OOXML requires a
+// 3. Zero trailing empty paragraph after a table in headers (#381). OOXML requires a
 //    trailing block-level element after the last `<w:tbl>` in any block
 //    container, including `<w:hdr>` / `<w:ftr>`. Word renders that empty
-//    paragraph as a zero-height anchor when it has no runs AND no authored
-//    visual content (no paragraph borders, no explicit spacing). Marking
-//    its measure with `suppressEmptyParagraphHeight` keeps the BLOCK so
-//    click-to-position into the empty space below the table places the
-//    cursor in the trailing paragraph (matching Word) but the measure
-//    returns zero height. Empty paragraphs with authored `pBdr` or
-//    explicit spacing are NOT suppressed — they exist for their visual
-//    side effect, not just as a structural anchor.
+//    paragraph as a zero-height anchor in headers when it has no runs AND no
+//    authored visual content (no paragraph borders, no explicit spacing).
+//    Footers are bottom-anchored, so the same invisible paragraph still
+//    contributes to the footer flow height: it moves the visible table upward
+//    while not painting visible text. Empty paragraphs with authored `pBdr` or
+//    explicit spacing are NOT suppressed — they exist for their visual side
+//    effect, not just as a structural anchor.
 
 function isAnchoredImageRun(run: Run): boolean {
   if (run.kind !== "image") {
@@ -110,11 +110,21 @@ function hasAuthoredVisualContent(block: FlowBlock): boolean {
   return false;
 }
 
-export function normalizeHeaderFooterMeasureBlocks(blocks: FlowBlock[]): FlowBlock[] {
-  return normalizeFlowBlockArray(blocks);
+export function normalizeHeaderFooterMeasureBlocks(
+  blocks: FlowBlock[],
+  section: HeaderFooterMetrics["section"] = "header",
+): FlowBlock[] {
+  return normalizeFlowBlockArray(blocks, { suppressTrailingEmptyAfterTable: section === "header" });
 }
 
-function normalizeFlowBlockArray(blocks: FlowBlock[]): FlowBlock[] {
+type HeaderFooterMeasureNormalization = {
+  suppressTrailingEmptyAfterTable: boolean;
+};
+
+function normalizeFlowBlockArray(
+  blocks: FlowBlock[],
+  normalization: HeaderFooterMeasureNormalization,
+): FlowBlock[] {
   // Only the *canonical trailing* OOXML paragraph after the LAST block
   // qualifies for height suppression. Empty paragraphs used as authored
   // spacers in the middle of an HF (e.g. `[table, blank, paragraph,
@@ -122,7 +132,7 @@ function normalizeFlowBlockArray(blocks: FlowBlock[]): FlowBlock[] {
   // collapsed.
   const trailingEmptyAfterTable = new Set<number>();
   const lastIndex = blocks.length - 1;
-  if (lastIndex > 0) {
+  if (normalization.suppressTrailingEmptyAfterTable && lastIndex > 0) {
     const cur = blocks[lastIndex];
     const prev = blocks[lastIndex - 1];
     if (
@@ -186,12 +196,33 @@ function normalizeFlowBlockArray(blocks: FlowBlock[]): FlowBlock[] {
   });
 }
 
+function isCanonicalTrailingEmptyParagraphAfterTable(blocks: FlowBlock[], index: number): boolean {
+  const cur = blocks[index];
+  const prev = blocks[index - 1];
+  return (
+    index === blocks.length - 1 &&
+    prev?.kind === "table" &&
+    cur?.kind === "paragraph" &&
+    isVisuallyEmptyParagraph(cur) &&
+    !hasAuthoredVisualContent(cur)
+  );
+}
+
+function isVisuallyEmptyParagraph(block: FlowBlock): boolean {
+  if (block.kind !== "paragraph") {
+    return false;
+  }
+  return block.runs.every((run) => run.kind === "text" && run.text.trim().length === 0);
+}
+
 function normalizeTableBlock(block: TableBlock): TableBlock {
   const blockState = { changed: false };
   const rows = block.rows.map((row) => {
     const rowState = { changed: false };
     const cells = row.cells.map((cell) => {
-      const normalizedBlocks = normalizeFlowBlockArray(cell.blocks);
+      const normalizedBlocks = normalizeFlowBlockArray(cell.blocks, {
+        suppressTrailingEmptyAfterTable: true,
+      });
       const cellChanged = normalizedBlocks.some(
         (normalizedBlock, idx) => normalizedBlock !== cell.blocks[idx],
       );
@@ -389,7 +420,6 @@ export function calculateHeaderFooterVisualBounds(
     if (!block || !measure) {
       continue;
     }
-
     if (block.kind === "paragraph" && measure.kind === "paragraph") {
       const paragraphStartY = cursorY;
       const paragraphBottomY = paragraphStartY + measure.totalHeight;
@@ -510,6 +540,9 @@ export function calculateHeaderFooterMarginPushBounds(
     const block = blocks[i];
     const measure = measures[i];
     if (!block || !measure) {
+      continue;
+    }
+    if (isCanonicalTrailingEmptyParagraphAfterTable(blocks, i)) {
       continue;
     }
 
@@ -693,7 +726,7 @@ function finalizeHeaderFooterContent(
     return undefined;
   }
 
-  const blocksForMeasure = normalizeHeaderFooterMeasureBlocks(blocks);
+  const blocksForMeasure = normalizeHeaderFooterMeasureBlocks(blocks, metrics.section);
   const measures = options.measureBlocks(blocksForMeasure, contentWidth);
   let flowHeight = 0;
   for (let i = 0; i < measures.length; i++) {

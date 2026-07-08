@@ -121,6 +121,88 @@ describe("measureTableBlock row height", () => {
       expect(row.height).toBeLessThan(summedMaxes);
     }, fakeMeasure);
   });
+
+  test("hidden rows remain addressable but contribute zero height", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [120],
+        rows: [
+          {
+            id: "visible",
+            cells: [{ id: "a", blocks: [para("p1", "visible")] }],
+          },
+          {
+            id: "hidden",
+            hidden: true,
+            height: 40,
+            cells: [{ id: "b", blocks: [para("p2", "hidden but measured as absent")] }],
+          },
+        ],
+      };
+
+      const measure = measureTableBlock(table, 120);
+
+      expect(measure.rows).toHaveLength(2);
+      expect(measure.rows[0]?.height).toBeGreaterThan(0);
+      expect(measure.rows[1]?.height).toBe(0);
+      expect(measure.totalHeight).toBe(measure.rows[0]?.height);
+    }, fakeMeasure);
+  });
+
+  test("image-only table cell paragraphs use the image visual height", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [240],
+        rows: [
+          {
+            id: "logo-row",
+            cells: [
+              {
+                id: "logo-cell",
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                blocks: [
+                  {
+                    kind: "paragraph",
+                    id: "logo",
+                    runs: [
+                      {
+                        kind: "image",
+                        src: "data:image/png;base64,",
+                        width: 80,
+                        height: 40,
+                      },
+                    ],
+                    attrs: {
+                      defaultFontFamily: "Calibri",
+                      defaultFontSize: 11,
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      const measure = measureTableBlock(table, 240);
+      const row = measure.rows[0];
+      const cell = row?.cells[0];
+      const paragraph = cell?.blocks[0];
+
+      expect(paragraph?.kind).toBe("paragraph");
+      if (paragraph?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measure");
+      }
+      expect(paragraph.totalHeight).toBeGreaterThan(40);
+      expect(cell?.height).toBe(40);
+      expect(cell?.height).toBeLessThan(paragraph.totalHeight);
+      expect(row?.height).toBe(cell?.height);
+    }, fakeMeasure);
+  });
 });
 
 describe("measureBlocks error instrumentation", () => {
