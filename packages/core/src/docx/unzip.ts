@@ -26,6 +26,9 @@
 
 import JSZip from "jszip";
 
+import { openDocxBuffer } from "./encryption/decryptDocx";
+import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/detectContainer";
+
 export class DocxSecurityError extends Error {
   constructor(message: string) {
     super(message);
@@ -76,9 +79,13 @@ const DEFAULT_UNZIP_LIMITS: DocxUnzipLimits = {
   allowedMediaMimeTypes: DEFAULT_ALLOWED_MEDIA_MIME_TYPES,
 };
 
-type PartialDocxUnzipLimits = Partial<Omit<DocxUnzipLimits, "allowedMediaMimeTypes">> & {
+export type DocxUnzipOptions = Partial<Omit<DocxUnzipLimits, "allowedMediaMimeTypes">> & {
   allowedMediaMimeTypes?: Iterable<string>;
+  /** Password for Agile-encrypted .docx files (Office 2010+). */
+  password?: string | undefined;
 };
+
+type PartialDocxUnzipLimits = DocxUnzipOptions;
 
 type ZipEntryWithMetadata = {
   _data?: {
@@ -167,6 +174,9 @@ export type RawDocxContent = {
   // Non-fatal extraction warnings. The original ZIP remains available for
   // round-trip preservation when optional payloads are skipped.
   warnings: string[];
+
+  /** True when the input was a password-protected CFB container. */
+  wasEncrypted: boolean;
 };
 
 /**
@@ -177,14 +187,20 @@ export type RawDocxContent = {
  */
 export async function unzipDocx(
   buffer: ArrayBuffer,
-  options: PartialDocxUnzipLimits = {},
+  options: DocxUnzipOptions = {},
 ): Promise<RawDocxContent> {
   const limits = createUnzipLimits(options);
   if (buffer.byteLength > limits.maxInputBytes) {
     throw new DocxSecurityError("DOCX file exceeds the maximum allowed size");
   }
 
-  const loaded = await loadDocxZip(buffer, limits.maxFiles);
+  const zipBuffer = await openDocxBuffer(buffer, { password: options.password });
+  if (zipBuffer.byteLength > limits.maxInputBytes) {
+    throw new DocxSecurityError("DOCX file exceeds the maximum allowed size");
+  }
+
+  const wasEncrypted = detectDocxContainerType(buffer) === DOCX_CONTAINER_TYPES.CFB;
+  const loaded = await loadDocxZip(zipBuffer, limits.maxFiles);
   if (loaded.buffer.byteLength > limits.maxInputBytes) {
     throw new DocxSecurityError("DOCX file exceeds the maximum allowed size");
   }
@@ -223,6 +239,7 @@ export async function unzipDocx(
     originalZip: zip,
     originalBuffer: loaded.buffer,
     warnings: [],
+    wasEncrypted,
   };
 
   let totalUncompressedBytes = 0;

@@ -28,6 +28,8 @@ type UseDocumentLoaderParams = {
   documentBuffer: DocxInput | null | undefined;
   /** Pre-parsed document (alternative to documentBuffer). */
   initialDocument: Document | null | undefined;
+  /** Password for Agile-encrypted .docx files (Office 2010+). */
+  password?: string | undefined;
   /** History instance — used to reset/push document state. */
   history: UseHistoryReturn<Document | null>;
   /** Called when an unrecoverable parse error occurs. */
@@ -46,7 +48,7 @@ type UseDocumentLoaderParams = {
 
 type UseDocumentLoaderReturn = {
   /** Parse and load a raw DOCX buffer. */
-  loadBuffer: (buffer: DocxInput) => Promise<void>;
+  loadBuffer: (buffer: DocxInput, options?: { password?: string | undefined }) => Promise<void>;
   /** Load a pre-parsed Document. */
   loadParsedDocument: (doc: Document) => void;
   /** Reset internal + UI state for a fresh document. */
@@ -62,6 +64,7 @@ type UseDocumentLoaderReturn = {
 export const useDocumentLoader = ({
   documentBuffer,
   initialDocument,
+  password,
   history,
   onError,
   onCompatibilityChange,
@@ -112,15 +115,19 @@ export const useDocumentLoader = ({
       return;
     }
 
-    void api.loadBuffer(source.buffer);
-  }, [documentBuffer, initialDocument, api]);
+    void api.loadBuffer(source.buffer, { password });
+  }, [documentBuffer, initialDocument, password, api]);
 
-  // Keep original buffer for save/export.
+  // Keep decrypted ZIP bytes for save/export (falls back to the raw prop buffer).
   useEffect(() => {
-    if (documentBuffer) {
-      originalBufferRef.current = documentBuffer instanceof ArrayBuffer ? documentBuffer : null;
+    if (history.state?.originalBuffer) {
+      originalBufferRef.current = history.state.originalBuffer;
+      return;
     }
-  }, [documentBuffer]);
+    if (documentBuffer instanceof ArrayBuffer) {
+      originalBufferRef.current = documentBuffer;
+    }
+  }, [history.state, documentBuffer]);
 
   return {
     loadBuffer: api.loadBuffer,

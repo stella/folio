@@ -154,6 +154,8 @@ const ensureDeterministicParaIdsInState = (state: EditorState): EditorState => {
 export type FolioDocxReviewerOptions = {
   /** Default author for tracked changes and comments. (default: `"AI"`) */
   author?: string;
+  /** Password for Agile-encrypted .docx files (Office 2010+). */
+  password?: string | undefined;
 };
 
 /** Options for {@link FolioDocxReviewer.applyOperations}. */
@@ -327,6 +329,7 @@ export class FolioDocxReviewer {
     const baseDocument = await parseDocx(buffer, {
       detectVariables: false,
       preloadFonts: false,
+      password: options.password,
     });
     // Same plugin set the live editor mounts: the change tracker feeds the
     // selective-save key set, and the paraId allocator hands freshly inserted
@@ -344,7 +347,7 @@ export class FolioDocxReviewer {
     );
     return new FolioDocxReviewer({
       baseDocument,
-      originalBuffer: buffer,
+      originalBuffer: baseDocument.originalBuffer ?? buffer,
       state,
       author: options.author ?? "AI",
     });

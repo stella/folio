@@ -83,6 +83,8 @@ export type ActiveTrackedChangeInfo = {
 export type DocxEditorProps = {
   /** Document data — ArrayBuffer, Uint8Array, Blob, or File */
   documentBuffer?: DocxInput | null;
+  /** Password for Agile-encrypted .docx files (Office 2010+). */
+  password?: string | undefined;
   /** Pre-parsed document (alternative to documentBuffer) */
   document?: Document | null;
   /**

@@ -424,6 +424,7 @@ function areActiveTrackedChangesEqual(
  */
 export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function DocxEditor({
   documentBuffer,
+  password,
   document: initialDocument,
   documentKey,
   onSave,
@@ -1097,6 +1098,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const { loadBuffer, loadParsedDocument, originalBufferRef } = useDocumentLoader({
     documentBuffer: documentBuffer ?? null,
     initialDocument: initialDocument ?? null,
+    password,
     history,
     onError,
     onCompatibilityChange,

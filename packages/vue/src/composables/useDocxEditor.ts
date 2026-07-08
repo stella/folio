@@ -422,6 +422,8 @@ export type UseDocxEditorOptions = {
    * detection. Reactive.
    */
   documentKey?: MaybeRefOrGetter<string | undefined>;
+  /** Password for Agile-encrypted .docx files (Office 2010+). Reactive. */
+  password?: MaybeRefOrGetter<string | undefined>;
   /**
    * Editor mode. `'suggesting'` activates the mounted suggestion-mode plugin so
    * typed text becomes tracked changes. Reactive — flip at runtime.
@@ -524,6 +526,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     readOnly = false,
     pageGap = DEFAULT_PAGE_GAP,
     documentKey,
+    password,
     editorMode,
     author,
     externalPlugins = [],
@@ -957,7 +960,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     parseError.value = null;
     isReady.value = false;
     try {
-      const doc = await parseDocx(buffer);
+      const doc = await parseDocx(buffer, { password: toValue(password) });
       docModel.value = doc;
       remountForNewDocument();
     } catch (err) {

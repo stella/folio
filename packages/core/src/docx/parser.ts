@@ -57,8 +57,9 @@ import { parseStylesPackage } from "./styleParser";
 import type { StyleMap } from "./styleParser";
 import { applyThemeFontLang, parseTheme } from "./themeParser";
 import { normalizeTrackedMoveRanges } from "./trackedMoveRangeNormalization";
+import { DocxEncryptionError } from "./encryption/errors";
 import { unzipDocx, getMediaMimeType, mediaToDataUrl } from "./unzip";
-import type { DocxUnzipLimits, RawDocxContent } from "./unzip";
+import type { DocxUnzipOptions, RawDocxContent } from "./unzip";
 
 // ============================================================================
 // PROGRESS CALLBACK
@@ -93,10 +94,10 @@ export type ParseOptions = {
   parseNotes?: boolean;
   /** Whether to detect template variables (default: true) */
   detectVariables?: boolean;
+  /** Password for Agile-encrypted .docx files (Office 2010+). */
+  password?: string | undefined;
   /** Security limits for DOCX ZIP extraction */
-  unzipLimits?: Partial<Omit<DocxUnzipLimits, "allowedMediaMimeTypes">> & {
-    allowedMediaMimeTypes?: Iterable<string>;
-  };
+  unzipLimits?: DocxUnzipOptions;
   /** Optional async hook to override display URLs for non-browser media. */
   mediaResolver?: MediaResolver;
 };
@@ -123,6 +124,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     parseHeadersFooters = true,
     parseNotes = true,
     detectVariables = true,
+    password,
     unzipLimits,
     mediaResolver,
   } = options;
@@ -138,7 +140,14 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     // STAGE 1: Unzip DOCX package (0-10%)
     // ========================================================================
     onProgress("Extracting DOCX...", 0);
-    const raw = await timeStageAsync("unzip", () => unzipDocx(buffer, unzipLimits));
+    const raw = await timeStageAsync("unzip", () =>
+      unzipDocx(buffer, { ...unzipLimits, password }),
+    );
+    if (raw.wasEncrypted) {
+      warnings.push(
+        "Document was opened from password-protected storage; saving writes an unencrypted .docx file.",
+      );
+    }
     warnings.push(...raw.warnings);
     onProgress("Extracted DOCX", 10);
 
@@ -399,6 +408,9 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     onProgress("Complete", 100);
     return document;
   } catch (error) {
+    if (error instanceof DocxEncryptionError) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     throw new DocxParseError({
       message: `Failed to parse DOCX: ${message}`,

@@ -84,7 +84,7 @@ export class DocumentLoaderManager {
    * the result (and any error) when a newer load started while this one was in
    * flight.
    */
-  async loadBuffer(buffer: DocxInput): Promise<void> {
+  async loadBuffer(buffer: DocxInput, options: { password?: string | undefined } = {}): Promise<void> {
     const { history, onError, setDocumentLoadState } = this.callbacks;
     const generation = ++this.loadGeneration;
     const hasLoadedDocument = history.state !== null;
@@ -95,7 +95,11 @@ export class DocumentLoaderManager {
     try {
       // Skip blocking font preload during parsing; fonts load asynchronously
       // in loadParsedDocument after the first render.
-      const doc = await parseDocx(buffer, { detectVariables: false, preloadFonts: false });
+      const doc = await parseDocx(buffer, {
+        detectVariables: false,
+        preloadFonts: false,
+        password: options.password,
+      });
       if (this.loadGeneration !== generation) {
         return;
       }

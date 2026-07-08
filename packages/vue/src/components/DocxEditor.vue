@@ -632,6 +632,7 @@ const {
   readOnly,
   editorMode,
   author: () => props.author,
+  password: () => props.password,
   documentKey: () => props.documentKey,
   // PORT-BLOCKED: no externalPlugins prop on the fork's DocxEditorProps yet.
   externalPlugins: [],
