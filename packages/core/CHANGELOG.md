@@ -1,5 +1,19 @@
 # @stll/folio-core
 
+## 0.4.0
+
+### Minor Changes
+
+- [#90](https://github.com/stella/folio/pull/90) [`b637aa4`](https://github.com/stella/folio/commit/b637aa44b5f6705affa859c037af96b38df4360d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Support opening Agile-encrypted password-protected DOCX files.
+
+### Patch Changes
+
+- [#88](https://github.com/stella/folio/pull/88) [`989999c`](https://github.com/stella/folio/commit/989999cc3629c434a36b16bffee8cba8eb2171b4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Fix hidden table row layout, table-cell paragraph spacing, cached field rendering, TOC font inheritance, paragraph-mark caps handling, and parity diagnostics for imported document parity.
+
+- [#93](https://github.com/stella/folio/pull/93) [`63731b6`](https://github.com/stella/folio/commit/63731b61e9be9601adf52a6faceaa7cd1ee9fbc4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Improve Word parity for legal-template tabs, justified shrink, paragraph spacing collapse, and widow-controlled splits.
+
+- [#91](https://github.com/stella/folio/pull/91) [`521879e`](https://github.com/stella/folio/commit/521879e5b3db5c91e8a68dec0de14e31cc964557) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose the headless watermark API as a public package subpath.
+
 ## 0.3.1
 
 ### Patch Changes

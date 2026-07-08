@@ -1,5 +1,16 @@
 # @stll/folio-nuxt
 
+## 0.3.0
+
+### Minor Changes
+
+- [#91](https://github.com/stella/folio/pull/91) [`521879e`](https://github.com/stella/folio/commit/521879e5b3db5c91e8a68dec0de14e31cc964557) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add Vue dialog parity for watermark, insert image, paste special, and split cell workflows, and auto-register Vue dialogs in Nuxt.
+
+### Patch Changes
+
+- Updated dependencies [[`521879e`](https://github.com/stella/folio/commit/521879e5b3db5c91e8a68dec0de14e31cc964557)]:
+  - @stll/folio-vue@0.4.0
+
 ## 0.2.0
 
 ### Minor Changes
