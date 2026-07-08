@@ -3,11 +3,13 @@ import { describe, expect, test } from "bun:test";
 import { parseArgs } from "../cli";
 
 describe("parity CLI args", () => {
-  test("parses --help without treating it as an input document", () => {
-    const flags = parseArgs(["--help"]);
+  test("parses --help and -h without treating them as input documents", () => {
+    for (const arg of ["--help", "-h"]) {
+      const flags = parseArgs([arg]);
 
-    expect(flags.help).toBe(true);
-    expect(flags.paths).toEqual([]);
+      expect(flags.help).toBe(true);
+      expect(flags.paths).toEqual([]);
+    }
   });
 
   test("parses an explicit JSON output path without treating it as an input document", () => {
