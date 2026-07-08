@@ -576,6 +576,10 @@ function layoutParagraph(
     if (hasWidowControl(block)) {
       const remainingAfter = lines.length - (currentLineIndex + fittingLines);
       if (fittingLines > 1 && remainingAfter === 1) {
+        if (currentLineIndex === 0 && fittingLines === 2 && state.cursorY !== state.topMargin) {
+          paginator.forceColumnBreak();
+          continue;
+        }
         fittingLines -= 1;
         forceBreakAfterFragment = true;
         linesHeight = 0;

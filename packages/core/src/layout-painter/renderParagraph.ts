@@ -1302,7 +1302,7 @@ function countShrinkableSpaces(runs: Run[]): number {
   let count = 0;
   for (const run of runs) {
     if (isTextRun(run)) {
-      for (const char of run.text) {
+      for (const char of run.text ?? "") {
         if (char === " ") count++;
       }
     } else if (isFieldRun(run)) {
@@ -1310,7 +1310,7 @@ function countShrinkableSpaces(runs: Run[]): number {
         if (char === " ") count++;
       }
     } else if (isMathRun(run)) {
-      for (const char of run.plainText) {
+      for (const char of run.plainText ?? "") {
         if (char === " ") count++;
       }
     }

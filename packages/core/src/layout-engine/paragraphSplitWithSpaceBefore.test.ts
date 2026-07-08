@@ -90,6 +90,33 @@ describe("paragraph split with spaceBefore", () => {
     expect(page2Second).toMatchObject({ fromLine: 2, toLine: 4 });
   });
 
+  test("widow control moves a three-line paragraph instead of leaving one orphan line", () => {
+    const layoutOptions: LayoutOptions = {
+      pageSize: { w: 600, h: 30 },
+      margins: MARGINS,
+      pageGap: 0,
+    };
+
+    const first = makePara(0, "filler", { after: 0 }, 1, 10);
+    const second = makePara(1, "threeLineWidowControlled", { before: 0 }, 3, 10);
+
+    const layout = layoutDocument(
+      [first.block, second.block],
+      [first.measure, second.measure],
+      layoutOptions,
+    );
+
+    const page1Second = layout.pages[0]!.fragments.find(
+      (f) => f.kind === "paragraph" && f.blockId === 1,
+    );
+    const page2Second = layout.pages[1]!.fragments.find(
+      (f) => f.kind === "paragraph" && f.blockId === 1,
+    );
+
+    expect(page1Second).toBeUndefined();
+    expect(page2Second).toMatchObject({ fromLine: 0, toLine: 3 });
+  });
+
   test("multi-line paragraph splits at page boundary and fills page-end space", () => {
     // Page content area = 200 px. First paragraph fills 180 px, leaving
     // 20 px below it. Second paragraph has spaceBefore=10 and 5 lines of

@@ -538,7 +538,7 @@ function justifyShrinkToleranceRatio(block: ParagraphBlock): number {
       : JUSTIFY_SHRINK_TOLERANCE_RATIO;
   }
 
-  const text = block.runs.map((run) => (isTextRun(run) ? run.text : "")).join("");
+  const text = block.runs.map((run) => (isTextRun(run) ? (run.text ?? "") : "")).join("");
   if (uppercaseLetterRatio(text) > ALL_CAPS_RATIO_THRESHOLD) {
     return JUSTIFY_SHRINK_TOLERANCE_RATIO;
   }
