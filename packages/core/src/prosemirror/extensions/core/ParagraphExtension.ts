@@ -353,6 +353,7 @@ const paragraphNodeSpec: NodeSpec = {
     renderedPageBreakBefore: { default: null },
     keepNext: { default: null },
     keepLines: { default: null },
+    widowControl: { default: null },
     contextualSpacing: { default: null },
     runInWithNext: { default: null },
     defaultTextFormatting: { default: null },

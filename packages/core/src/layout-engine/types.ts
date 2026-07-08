@@ -382,6 +382,7 @@ export type ParagraphAttrs = {
   indent?: ParagraphIndent;
   keepNext?: boolean;
   keepLines?: boolean;
+  widowControl?: boolean;
   pageBreakBefore?: boolean;
   styleId?: string;
   contextualSpacing?: boolean;

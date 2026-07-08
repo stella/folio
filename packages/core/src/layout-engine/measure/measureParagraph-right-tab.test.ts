@@ -11,6 +11,48 @@ import { measureParagraph } from "./measureParagraph";
 // such content via `calculateTabWidth`, so the wrap fired in the measurer
 // but not in the painter. See eigenpal #576.
 describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
+  test("leading left tab does not shrink to make following text fit the line", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "leading-left-tab-wrap",
+          runs: [{ kind: "tab" }, { kind: "text", text: "abcdefghijklmno", fontSize: 11 }],
+          attrs: {
+            tabs: [{ val: "start", pos: 1500 }],
+          },
+        },
+        150,
+      );
+
+      expect(measure.lines).toHaveLength(2);
+      expect(measure.lines[0]?.toRun).toBe(0);
+      expect(measure.lines[1]?.fromRun).toBe(1);
+    });
+  });
+
+  test("non-leading left tab may shrink to keep tabbed label text on the line", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "label-left-tab",
+          runs: [
+            { kind: "text", text: "(a)", fontSize: 11 },
+            { kind: "tab" },
+            { kind: "text", text: "abcdefghijklmno", fontSize: 11 },
+          ],
+          attrs: {
+            tabs: [{ val: "start", pos: 1500 }],
+          },
+        },
+        150,
+      );
+
+      expect(measure.lines).toHaveLength(1);
+    });
+  });
+
   test("right tab followed by short text does not wrap", () => {
     withFakeTextMeasure(() => {
       // Right tab stop at 5000 twips ≈ 333.33px. With the bug, the measurer

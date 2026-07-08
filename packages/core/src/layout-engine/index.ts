@@ -125,6 +125,10 @@ function getSpacingAfter(block: ParagraphBlock): number {
   return value;
 }
 
+function hasWidowControl(block: ParagraphBlock): boolean {
+  return block.attrs?.widowControl !== false;
+}
+
 /**
  * Apply contextual spacing suppression (OOXML §17.3.1.9).
  *
@@ -514,7 +518,7 @@ function layoutParagraph(
         footnoteHeightById,
       );
       const firstLineHeight = measuredLineAdvance(firstLine) + firstLineRefs.height;
-      const collapsedLead = spaceBefore + state.trailingSpacing;
+      const collapsedLead = Math.max(spaceBefore, state.trailingSpacing);
       const columnCapacity = state.contentBottom - state.topMargin;
       if (
         collapsedLead + firstLineHeight > availableHeight &&
@@ -537,16 +541,16 @@ function layoutParagraph(
     // only when `j === currentLineIndex`; subsequent lines compared bare
     // line totals against the full available height. That let the loop
     // claim more lines than would actually fit, then `addFragment` (which
-    // correctly sums `spaceBefore + linesHeight`) refused the placement
+    // correctly reserves collapsed spacing + line height) refused the placement
     // and bumped the *whole* fragment to the next page. Result: page-end
     // paragraphs with multi-line content didn't split — they jumped the
     // page boundary, leaving a chunk of empty space above.
     //
-    // `addFragment` composes `spaceBefore` with the previous block's trailing
+    // `addFragment` collapses `spaceBefore` with the previous block's trailing
     // spacing, so the fit loop must reserve the same amount; otherwise a large
     // preceding `spaceAfter` repeats the same over-count (eigenpal/docx-editor#782).
     const firstFragmentSpaceBefore =
-      currentLineIndex === 0 ? spaceBefore + state.trailingSpacing : 0;
+      currentLineIndex === 0 ? Math.max(spaceBefore, state.trailingSpacing) : 0;
 
     for (let j = currentLineIndex; j < lines.length; j++) {
       const line = lines[j]!; // SAFETY: j < lines.length
@@ -565,6 +569,31 @@ function layoutParagraph(
         fittingLines++;
       } else {
         break;
+      }
+    }
+
+    let forceBreakAfterFragment = false;
+    if (hasWidowControl(block)) {
+      const remainingAfter = lines.length - (currentLineIndex + fittingLines);
+      if (fittingLines > 1 && remainingAfter === 1) {
+        if (currentLineIndex === 0 && fittingLines === 2 && state.cursorY !== state.topMargin) {
+          paginator.forceColumnBreak();
+          continue;
+        }
+        fittingLines -= 1;
+        forceBreakAfterFragment = true;
+        linesHeight = 0;
+        linesFnHeight = 0;
+        linesFnIds.length = 0;
+        for (let j = currentLineIndex; j < currentLineIndex + fittingLines; j++) {
+          const line = lines[j]!; // SAFETY: j is within adjusted fitting range
+          linesHeight += measuredLineAdvance(line);
+          const lineRefs = getLineFootnoteRefs(block, line.fromRun, line.toRun, footnoteHeightById);
+          linesFnHeight += lineRefs.height;
+          for (const id of lineRefs.ids) {
+            linesFnIds.push(id);
+          }
+        }
       }
     }
 
@@ -651,7 +680,11 @@ function layoutParagraph(
 
     // If more lines remain, advance to next column/page
     if (currentLineIndex < lines.length) {
-      paginator.ensureFits(measuredLineAdvance(lines[currentLineIndex]!)); // SAFETY: guarded by length check
+      if (forceBreakAfterFragment) {
+        paginator.forceColumnBreak();
+      } else {
+        paginator.ensureFits(measuredLineAdvance(lines[currentLineIndex]!)); // SAFETY: guarded by length check
+      }
     }
   }
 }

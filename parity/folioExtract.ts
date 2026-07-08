@@ -41,12 +41,44 @@ export class FolioExtractError extends Error {
 
 export type FolioExtraction = { geom: DocGeom; screenshotPaths: string[] };
 
+export type FolioSpanInspection = {
+  text: string;
+  className: string;
+  rect: RawRect;
+  pmStart?: number;
+  pmEnd?: number;
+  fontFamilyRaw?: string;
+  fontSizePx?: number;
+  fontWeight?: string;
+  fontStyle?: string;
+  textTransform?: string;
+};
+
+export type FolioLineInspection = {
+  index: number;
+  text: string;
+  rect: RawRect;
+  region: Region;
+  spans: FolioSpanInspection[];
+};
+
+export type FolioPageInspection = {
+  pageNumber: number;
+  domIndex: number;
+  pageRect: RawRect;
+  offsetWidth: number;
+  offsetHeight: number;
+  zoomFactor: number;
+  lines: FolioLineInspection[];
+};
+
 export type FolioExtractOptions = {
   maxPages?: number;
 };
 
 export type FolioExtractor = {
   extract: (docxPath: string, options?: FolioExtractOptions) => Promise<FolioExtraction>;
+  inspectPage: (docxPath: string, pageNumber: number) => Promise<FolioPageInspection>;
   close: () => Promise<void>;
 };
 
@@ -453,10 +485,7 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
       const textFor = (sourceEl: HTMLElement): string => {
         const text = sourceEl.textContent ?? "";
         const computed = getComputedStyle(sourceEl);
-        if (
-          computed.textTransform === "uppercase" ||
-          computed.fontVariant.includes("small-caps")
-        ) {
+        if (computed.textTransform === "uppercase" || computed.fontVariant.includes("small-caps")) {
           return text.toLocaleUpperCase();
         }
         return text;
@@ -525,7 +554,7 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
         }
         flushSegment();
 
-        if (segments.length > 1) {
+        if (segments.length > 0) {
           const splitLines = [];
           for (const segment of segments) {
             const segmentRect = rectFor(segment);
@@ -600,6 +629,83 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
     };
   }, domIndex);
 
+const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspection> =>
+  page.evaluate<FolioPageInspection, number>((idx) => {
+    const pageEls = Array.from(document.querySelectorAll(".layout-page")) as HTMLElement[];
+    const el = pageEls[idx];
+    if (!el) {
+      throw new Error(`layout-page at domIndex ${idx} disappeared`);
+    }
+
+    const toRawRect = (rect: DOMRect) => ({
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    });
+    const numberAttr = Number(el.dataset["pageNumber"]);
+    const pageNumber = Number.isFinite(numberAttr) ? numberAttr : idx + 1;
+    const pageRect = el.getBoundingClientRect();
+    const zoomFactor =
+      Number.isFinite(pageRect.width) && pageRect.width > 0 ? el.offsetWidth / pageRect.width : 1;
+
+    const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
+    const lines = lineEls.map((lineEl, lineIndex) => {
+      const region = (() => {
+        if (lineEl.closest(".layout-page-header")) {
+          return "header";
+        }
+        if (lineEl.closest(".layout-page-footer")) {
+          return "footer";
+        }
+        return "body";
+      })();
+
+      const spanEls = Array.from(
+        lineEl.querySelectorAll(".layout-run, .layout-list-marker"),
+      ) as HTMLElement[];
+      const spans = spanEls.map((spanEl) => {
+        const computed = getComputedStyle(spanEl);
+        const pmStart = Number(spanEl.dataset["pmStart"]);
+        const pmEnd = Number(spanEl.dataset["pmEnd"]);
+        const fontSizePx = Number.parseFloat(computed.fontSize);
+        return {
+          text: spanEl.textContent ?? "",
+          className: spanEl.className,
+          rect: toRawRect(spanEl.getBoundingClientRect()),
+          ...(Number.isFinite(pmStart) ? { pmStart } : {}),
+          ...(Number.isFinite(pmEnd) ? { pmEnd } : {}),
+          fontFamilyRaw: computed.fontFamily,
+          ...(Number.isFinite(fontSizePx) ? { fontSizePx } : {}),
+          fontWeight: computed.fontWeight,
+          fontStyle: computed.fontStyle,
+          textTransform: computed.textTransform,
+        };
+      });
+
+      return {
+        index: lineIndex + 1,
+        text:
+          spanEls.length > 0
+            ? spanEls.map((spanEl) => spanEl.textContent ?? "").join("")
+            : (lineEl.textContent ?? ""),
+        rect: toRawRect(lineEl.getBoundingClientRect()),
+        region,
+        spans,
+      };
+    });
+
+    return {
+      pageNumber,
+      domIndex: idx,
+      pageRect: toRawRect(pageRect),
+      offsetWidth: el.offsetWidth,
+      offsetHeight: el.offsetHeight,
+      zoomFactor,
+      lines,
+    };
+  }, domIndex);
+
 const stagedFixtureName = (sha256: string): string =>
   `${TMP_FIXTURE_PREFIX}${sha256.slice(0, 12)}.docx`;
 
@@ -616,7 +722,8 @@ export const createFolioExtractor = async (
   const reuseServer = opts.reuseServer ?? false;
 
   let serverProcess: ReturnType<typeof Bun.spawn> | null = null;
-  const serverAlreadyUp = reuseServer && (await probeServer(PLAYGROUND_URL, SERVER_PROBE_TIMEOUT_MS));
+  const serverAlreadyUp =
+    reuseServer && (await probeServer(PLAYGROUND_URL, SERVER_PROBE_TIMEOUT_MS));
   if (!serverAlreadyUp) {
     // Clear any leftover server on OUR per-worktree port (see killByPort:
     // port-scoped, so other worktrees' servers are untouched), then start
@@ -739,6 +846,43 @@ export const createFolioExtractor = async (
     }
   };
 
+  const inspectPage = async (
+    docxPath: string,
+    pageNumber: number,
+  ): Promise<FolioPageInspection> => {
+    const absoluteDocxPath = path.resolve(docxPath);
+    const docxBuffer = await fs.readFile(absoluteDocxPath);
+    const sha256 = createHash("sha256").update(docxBuffer).digest("hex");
+    const stagedName = stagedFixtureName(sha256);
+    const stagedPath = path.join(FIXTURES_DIR, stagedName);
+
+    await fs.copyFile(absoluteDocxPath, stagedPath);
+    try {
+      await page.goto(`${PLAYGROUND_URL}/?file=${encodeURIComponent(stagedName)}`, {
+        waitUntil: "domcontentloaded",
+        timeout: PLAYGROUND_NAVIGATION_TIMEOUT_MS,
+      });
+      await waitForEditorLayout(page);
+
+      const pageMeta = await listPageMeta(page);
+      const target = pageMeta.find((meta) => meta.pageNumber === pageNumber);
+      if (!target) {
+        throw new FolioExtractError(
+          `folio did not render page ${pageNumber} for ${absoluteDocxPath}`,
+        );
+      }
+
+      const locator = page.locator(PAGE_SELECTOR).nth(target.domIndex);
+      await locator.scrollIntoViewIfNeeded();
+      await waitForLayoutStability(page);
+      await page.waitForTimeout(STABILITY_SETTLE_MS);
+
+      return await inspectSinglePage(page, target.domIndex);
+    } finally {
+      await fs.unlink(stagedPath).catch(() => {});
+    }
+  };
+
   const close = async (): Promise<void> => {
     await context.close();
     await browser.close();
@@ -751,5 +895,5 @@ export const createFolioExtractor = async (
     }
   };
 
-  return { extract, close };
+  return { extract, inspectPage, close };
 };

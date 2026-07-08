@@ -1538,6 +1538,9 @@ function convertParagraphAttrs(
   if (pmAttrs.keepLines) {
     attrs.keepLines = true;
   }
+  if (pmAttrs.widowControl === false) {
+    attrs.widowControl = false;
+  }
   if (pmAttrs.contextualSpacing) {
     attrs.contextualSpacing = true;
   }

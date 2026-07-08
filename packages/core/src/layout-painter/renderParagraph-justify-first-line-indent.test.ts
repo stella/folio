@@ -9,7 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { clearTextWidthCache } from "../layout-engine/measure/cache";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import type { ParagraphBlock, ParagraphFragment, ParagraphMeasure } from "../layout-engine/types";
-import { renderParagraphFragment } from "./renderParagraph";
+import { renderLine, renderParagraphFragment } from "./renderParagraph";
 
 function createFakeStyle(): Record<string, string> {
   const store: Record<string, string> = {};
@@ -147,5 +147,36 @@ describe("Issue #868 — justify first line to full content width on indented pa
     expect(firstLineEl.style.width).toBe("400px");
     expect(firstLineEl.style.textIndent).toBe("30px");
     expect(firstLineEl.style.textAlign).toBe("justify");
+  });
+
+  test("overfull justified lines use negative word spacing instead of browser expansion", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-overfull",
+      runs: [{ kind: "text", text: "alpha beta gamma" }],
+      attrs: { alignment: "justify" },
+    };
+    const line = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 16,
+      width: 110,
+      ascent: 10,
+      descent: 3,
+      lineHeight: 14,
+    };
+
+    const lineEl = renderLine(block, line, "justify", fakeDocument, {
+      availableWidth: 100,
+      isLastLine: false,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+    });
+
+    expect(lineEl.style.width).toBe("100px");
+    expect(lineEl.style.textAlign).toBe("left");
+    expect(lineEl.style.textAlignLast).toBe("auto");
+    expect(lineEl.style.wordSpacing).toBe("-5px");
   });
 });

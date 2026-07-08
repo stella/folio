@@ -626,6 +626,13 @@ function renderTabRun(run: TabRun, doc: Document, width: number, leader?: string
   return span;
 }
 
+function canClampTabToRightEdge(alignment: string, hasPriorRenderedContent: boolean): boolean {
+  if (alignment === "start" || alignment === "default") {
+    return hasPriorRenderedContent;
+  }
+  return true;
+}
+
 function applyTabUnderline(element: HTMLElement, run: TabRun): void {
   if (!run.underline) {
     return;
@@ -1291,6 +1298,26 @@ type RenderLineOptions = {
  */
 const RIGHT_EDGE_EPSILON_PX = 0.5;
 
+function countShrinkableSpaces(runs: Run[]): number {
+  let count = 0;
+  for (const run of runs) {
+    if (isTextRun(run)) {
+      for (const char of run.text ?? "") {
+        if (char === " ") count++;
+      }
+    } else if (isFieldRun(run)) {
+      for (const char of run.fallback ?? "") {
+        if (char === " ") count++;
+      }
+    } else if (isMathRun(run)) {
+      for (const char of run.plainText ?? "") {
+        if (char === " ") count++;
+      }
+    }
+  }
+  return count;
+}
+
 /**
  * Build a TextMeasureStyle from a TextRun or FieldRun's relevant fields.
  */
@@ -1687,11 +1714,19 @@ export function renderLine(
     const shouldJustify = !options.isLastLine || options.paragraphEndsWithLineBreak;
 
     if (shouldJustify) {
-      // Use CSS text-align: justify with text-align-last: justify
-      // This forces the browser to justify even single-line blocks
-      lineEl.style.textAlign = "justify";
-      lineEl.style.textAlignLast = "justify";
-      // Set explicit width so browser knows how wide to justify to
+      const overfullPx = line.width - options.availableWidth;
+      const shrinkableSpaces = countShrinkableSpaces(runsForLine);
+      if (overfullPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
+        lineEl.style.textAlign = "left";
+        lineEl.style.textAlignLast = "auto";
+        lineEl.style.wordSpacing = `${-overfullPx / shrinkableSpaces}px`;
+      } else {
+        // Use CSS text-align: justify with text-align-last: justify
+        // This forces the browser to justify even single-line blocks
+        lineEl.style.textAlign = "justify";
+        lineEl.style.textAlignLast = "justify";
+      }
+      // Set explicit width so browser knows how wide to justify/compress to.
       lineEl.style.width = `${options.availableWidth}px`;
     }
   }
@@ -1895,6 +1930,7 @@ export function renderLine(
       let tabWidth = tabResult.width;
       if (
         lineRightEdgeX !== undefined &&
+        canClampTabToRightEdge(tabResult.alignment, i > 0) &&
         currentX + tabWidth + followingWidthForCheck > lineRightEdgeX
       ) {
         tabWidth = Math.max(1, lineRightEdgeX - currentX - followingWidthForCheck);

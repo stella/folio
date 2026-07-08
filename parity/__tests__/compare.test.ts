@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { compareGeoms } from "../compare";
+import { compareGeoms, mergeVisualRows } from "../compare";
 import { DEFAULT_TOLERANCES } from "../config";
 import { normalizeLineText } from "../textNorm";
 import type { DocGeom, LineBox, PageGeom } from "../types";
@@ -30,6 +30,49 @@ const makeDoc = (source: "word" | "folio", pages: PageGeom[]): DocGeom => ({
 });
 
 describe("compareGeoms", () => {
+  test("merges tabbed legal markers on the same visual row", () => {
+    const merged = mergeVisualRows([
+      makeLine({ text: "(b)", xPt: 90, yPt: 100, widthPt: 12.8, heightPt: 12 }),
+      makeLine({
+        text: "Liquidity Event. If there is a Liquidity Event",
+        xPt: 126,
+        yPt: 100,
+        widthPt: 250,
+        heightPt: 12,
+      }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.normText).toBe(
+      normalizeLineText("(b) Liquidity Event. If there is a Liquidity Event"),
+    );
+  });
+
+  test("keeps wider same-row columns separate", () => {
+    const merged = mergeVisualRows([
+      makeLine({ text: "Left cell", xPt: 90, yPt: 100, widthPt: 40, heightPt: 12 }),
+      makeLine({ text: "Right cell", xPt: 155, yPt: 100, widthPt: 60, heightPt: 12 }),
+    ]);
+
+    expect(merged).toHaveLength(2);
+  });
+
+  test("merges standalone list markers with their body across marker-sized gaps", () => {
+    const merged = mergeVisualRows([
+      makeLine({ text: "(i)", xPt: 108, yPt: 100, widthPt: 10.4, heightPt: 12 }),
+      makeLine({
+        text: "Junior to payment",
+        xPt: 144,
+        yPt: 100,
+        widthPt: 90,
+        heightPt: 12,
+      }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.normText).toBe(normalizeLineText("(i) Junior to payment"));
+  });
+
   test("identical docs score 1 with zero divergences and zero median offset", () => {
     const pages = [
       makePage({

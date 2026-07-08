@@ -59,6 +59,7 @@ function splitParagraph(): ParagraphBlock {
     ],
     pmStart: 9,
     pmEnd: 30,
+    attrs: { widowControl: false },
   };
 }
 
@@ -76,6 +77,7 @@ function singleRunSplitParagraph(): ParagraphBlock {
     ],
     pmStart: 9,
     pmEnd: 41,
+    attrs: { widowControl: false },
   };
 }
 

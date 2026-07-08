@@ -336,6 +336,106 @@ describe("measureParagraph cross-run line breaking", () => {
   });
 });
 
+describe("measureParagraph justified shrink tolerance", () => {
+  const fractionalWidth = (char: string): number => (char === "b" ? 0.6 : 1);
+  const text = `${"a".repeat(99)} bbb`;
+
+  test("allows normal justified prose to use Word-style shrink before wrapping", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-prose-shrink",
+            runs: [{ kind: "text", text }],
+            attrs: { alignment: "justify" },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(1);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
+
+  test("keeps first-line tabbed legal prose on the conservative shrink tolerance", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-tabbed-first-line",
+            runs: [{ kind: "text", text }],
+            attrs: {
+              alignment: "justify",
+              indent: { firstLine: 48 },
+              tabs: [{ val: "start", pos: 360 }],
+            },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
+
+  test("keeps literal-tab first-line legal prose on the conservative shrink tolerance", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-literal-tabbed-first-line",
+            runs: [{ kind: "text", text: "x" }, { kind: "tab" }, { kind: "text", text }],
+            attrs: {
+              alignment: "justify",
+              indent: { firstLine: 48 },
+            },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
+
+  test("allows hanging tabbed justified prose a small additional shrink", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-hanging-tab",
+            runs: [{ kind: "text", text }],
+            attrs: {
+              alignment: "justify",
+              indent: { firstLine: 0 },
+              tabs: [{ val: "start", pos: 360 }],
+            },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(1);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
+});
+
 describe("inline image paragraph measurement", () => {
   test("image-only line reserves descender room above and below image", () => {
     const imageHeight = 29;
