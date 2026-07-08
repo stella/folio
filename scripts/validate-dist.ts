@@ -203,6 +203,14 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
   },
   react: {
     "@stll/folio-react": ["DocxEditor", "FolioUIProvider", "FormattingBar", "createDocx"],
+    "@stll/folio-react/dialogs": [
+      "WatermarkDialog",
+      "HyperlinkDialog",
+      "InsertTableDialog",
+      "InsertImageDialog",
+      "PasteSpecialDialog",
+      "SplitCellDialog",
+    ],
     "@stll/folio-react/messages": ["getFolioMessages", "FOLIO_LOCALES", "isFolioLocale"],
   },
   agents: {
@@ -221,6 +229,14 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
   vue: {
     "@stll/folio-vue": ["DocxEditor", "createDocx", "useWheelZoom", "i18nPlugin"],
     "@stll/folio-vue/composables": ["useDocxEditor", "useZoom", "useWheelZoom"],
+    "@stll/folio-vue/dialogs": [
+      "WatermarkDialog",
+      "HyperlinkDialog",
+      "InsertTableDialog",
+      "InsertImageDialog",
+      "PasteSpecialDialog",
+      "SplitCellDialog",
+    ],
   },
 };
 

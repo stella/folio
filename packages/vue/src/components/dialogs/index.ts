@@ -14,12 +14,32 @@
  * @public
  */
 
-export { default as FindReplaceDialog } from './FindReplaceDialog.vue';
-export { default as FootnotePropertiesDialog } from './FootnotePropertiesDialog.vue';
-export { default as HyperlinkDialog } from './HyperlinkDialog.vue';
-export { default as ImagePositionDialog } from './ImagePositionDialog.vue';
-export { default as ImagePropertiesDialog } from './ImagePropertiesDialog.vue';
-export { default as InsertSymbolDialog } from './InsertSymbolDialog.vue';
-export { default as InsertTableDialog } from './InsertTableDialog.vue';
-export { default as PageSetupDialog } from './PageSetupDialog.vue';
-export { default as TablePropertiesDialog } from './TablePropertiesDialog.vue';
+import type { Component } from "vue";
+
+import FindReplaceDialogComponent from "./FindReplaceDialog.vue";
+import FootnotePropertiesDialogComponent from "./FootnotePropertiesDialog.vue";
+import HyperlinkDialogComponent from "./HyperlinkDialog.vue";
+import ImagePositionDialogComponent from "./ImagePositionDialog.vue";
+import ImagePropertiesDialogComponent from "./ImagePropertiesDialog.vue";
+import InsertImageDialogComponent from "./InsertImageDialog.vue";
+import InsertSymbolDialogComponent from "./InsertSymbolDialog.vue";
+import InsertTableDialogComponent from "./InsertTableDialog.vue";
+import PageSetupDialogComponent from "./PageSetupDialog.vue";
+import PasteSpecialDialogComponent from "./PasteSpecialDialog.vue";
+import SplitCellDialogComponent from "./SplitCellDialog.vue";
+import TablePropertiesDialogComponent from "./TablePropertiesDialog.vue";
+import WatermarkDialogComponent from "./WatermarkDialog.vue";
+
+export const FindReplaceDialog: Component = FindReplaceDialogComponent;
+export const FootnotePropertiesDialog: Component = FootnotePropertiesDialogComponent;
+export const HyperlinkDialog: Component = HyperlinkDialogComponent;
+export const ImagePositionDialog: Component = ImagePositionDialogComponent;
+export const ImagePropertiesDialog: Component = ImagePropertiesDialogComponent;
+export const InsertImageDialog: Component = InsertImageDialogComponent;
+export const InsertSymbolDialog: Component = InsertSymbolDialogComponent;
+export const InsertTableDialog: Component = InsertTableDialogComponent;
+export const PageSetupDialog: Component = PageSetupDialogComponent;
+export const PasteSpecialDialog: Component = PasteSpecialDialogComponent;
+export const SplitCellDialog: Component = SplitCellDialogComponent;
+export const TablePropertiesDialog: Component = TablePropertiesDialogComponent;
+export const WatermarkDialog: Component = WatermarkDialogComponent;

@@ -5,7 +5,11 @@ export {
   type EditorHandle,
   type RenderAsyncOptions,
 } from "./renderAsync";
-export type { DocxEditorCollaboration, DocxEditorProps, DocxEditorRef } from "./components/DocxEditor.props";
+export type {
+  DocxEditorCollaboration,
+  DocxEditorProps,
+  DocxEditorRef,
+} from "./components/DocxEditor.props";
 export type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 export type { EditorMode } from "./components/hooks/useEditorMode";
 // Custom-font prop types: `fontFamilies` (picker list) + `fonts` (FontFace registration).
@@ -16,6 +20,42 @@ export type { ColorPreset, FolioButtonProps, FolioUIComponents, OutlineItem } fr
 // it in this provider to inject their own UI components.
 export { FolioUIProvider } from "./ui/folio-ui";
 export { FormattingBar, type FormattingBarProps } from "./components/FormattingBar";
+export {
+  FindReplaceDialog,
+  FootnotePropertiesDialog,
+  HyperlinkDialog,
+  ImagePositionDialog,
+  ImagePropertiesDialog,
+  InsertImageDialog,
+  InsertTableDialog,
+  PageSetupDialog,
+  PasteSpecialDialog,
+  SplitCellDialog,
+  TablePropertiesDialog,
+  WatermarkDialog,
+  type FindReplaceDialogProps,
+  type FootnotePropertiesDialogProps,
+  type HyperlinkBookmarkOption,
+  type HyperlinkDialogData,
+  type HyperlinkDialogProps,
+  type ImagePositionData,
+  type ImagePositionDialogProps,
+  type ImagePropertiesData,
+  type ImagePropertiesDialogProps,
+  type InsertImageDialogData,
+  type InsertImageDialogProps,
+  type InsertTableDialogData,
+  type InsertTableDialogProps,
+  type InsertTableStyleOption,
+  type PageSetupDialogProps,
+  type PasteSpecialDialogProps,
+  type PasteSpecialMode,
+  type SplitCellDialogData,
+  type SplitCellDialogProps,
+  type TableProperties,
+  type TablePropertiesDialogProps,
+  type WatermarkDialogProps,
+} from "./dialogs";
 // View-level insert operations — consumers wire these into the toolbar's
 // `onInsert*` handlers (the Insert group renders only when a handler is passed).
 export {
@@ -24,6 +64,13 @@ export {
   insertTableInView,
   insertTableOfContentsInView,
 } from "@stll/folio-core/prosemirror";
+export {
+  getDocumentWatermark,
+  setDocumentWatermark,
+  type PictureWatermark,
+  type TextWatermark,
+  type Watermark,
+} from "@stll/folio-core/watermark";
 export { ZoomControl, type ZoomControlProps, type ZoomLevel } from "./components/ui/ZoomControl";
 export {
   clampZoom,

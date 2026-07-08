@@ -4,9 +4,9 @@
  * UI entry point — toolbar primitives, pickers, table/image controls, sidebar
  * cards, and dialogs. Mirrors `packages/react/src/ui.ts` (and upstream's Vue
  * `ui.ts`), limited to the components the fork has ported. Components without a
- * Vue equivalent yet (ResponsiveToolbar, ZoomControl, Tooltip, LoadingIndicator,
+ * Vue equivalent yet (ResponsiveToolbar, Tooltip, LoadingIndicator,
  * TableInsertButtons, TableMergeButton, UnsavedIndicator, PrintPreview, and the
- * InsertImage / KeyboardShortcuts / PasteSpecial / SplitCell dialogs) are omitted.
+ * KeyboardShortcuts dialog) are omitted.
  *
  * @example
  * ```ts
@@ -67,12 +67,16 @@ export { default as CommentMarginMarkers } from "./components/CommentMarginMarke
 export { default as FindReplaceDialog } from "./components/dialogs/FindReplaceDialog.vue";
 export { default as FootnotePropertiesDialog } from "./components/dialogs/FootnotePropertiesDialog.vue";
 export { default as HyperlinkDialog } from "./components/dialogs/HyperlinkDialog.vue";
+export { default as InsertImageDialog } from "./components/dialogs/InsertImageDialog.vue";
 export { default as ImagePositionDialog } from "./components/dialogs/ImagePositionDialog.vue";
 export { default as ImagePropertiesDialog } from "./components/dialogs/ImagePropertiesDialog.vue";
 export { default as InsertSymbolDialog } from "./components/dialogs/InsertSymbolDialog.vue";
 export { default as InsertTableDialog } from "./components/dialogs/InsertTableDialog.vue";
 export { default as PageSetupDialog } from "./components/dialogs/PageSetupDialog.vue";
+export { default as PasteSpecialDialog } from "./components/dialogs/PasteSpecialDialog.vue";
+export { default as SplitCellDialog } from "./components/dialogs/SplitCellDialog.vue";
 export { default as TablePropertiesDialog } from "./components/dialogs/TablePropertiesDialog.vue";
+export { default as WatermarkDialog } from "./components/dialogs/WatermarkDialog.vue";
 
 // ─── MISC ───────────────────────────────────────────────────────────────────
 export { default as PrintButton } from "./components/PrintButton.vue";

@@ -30,6 +30,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./compat/eigenpal": "./src/compat/eigenpal.tsx",
+    "./dialogs": "./src/dialogs.ts",
     "./messages": "./src/i18n/messages.ts",
     "./editor.css": "./src/styles/editor.css",
     "./standalone.css": "./src/styles/standalone.css"

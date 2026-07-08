@@ -25,6 +25,7 @@ const stripCssImports = (): Plugin => ({
 const entry = {
   index: "src/index.ts",
   "compat/eigenpal": "src/compat/eigenpal.tsx",
+  dialogs: "src/dialogs.ts",
   // Bundled UI translations, exported at `@stll/folio-react/messages`. The 13
   // locale JSONs are inlined into this chunk; prepare-publish maps it to
   // `./dist/messages.js`.
