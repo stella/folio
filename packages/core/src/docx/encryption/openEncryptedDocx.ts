@@ -60,7 +60,7 @@ export const decryptDocxIfNeeded = async (
     });
   }
 
-  if (!options.password) {
+  if (options.password == null) {
     throw new DocxEncryptionError({
       code: DOCX_ENCRYPTION_ERROR_CODES.PASSWORD_REQUIRED,
       message: "This document is password-protected. A password is required to open it.",

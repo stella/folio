@@ -90,11 +90,7 @@ const decryptAesCbc = async (
   const pkcs7PadPlaintext = new Uint8Array(blockSize);
   pkcs7PadPlaintext.fill(blockSize);
   const syntheticPadding = new Uint8Array(
-    await subtle.encrypt(
-      { name: "AES-CBC", iv: toArrayBuffer(lastBlock) },
-      key,
-      pkcs7PadPlaintext,
-    ),
+    await subtle.encrypt({ name: "AES-CBC", iv: toArrayBuffer(lastBlock) }, key, pkcs7PadPlaintext),
   ).subarray(0, blockSize);
 
   const paddedCiphertext = new Uint8Array(ciphertext.length + blockSize);
@@ -142,7 +138,10 @@ const segmentIv = async (
   hashName: string,
   blockBytes: number,
 ): Promise<Uint8Array> => {
-  const hashed = await digest(webHashName(hashName), joinBytes([packageSalt, writeUint32Le(segmentIndex)]));
+  const hashed = await digest(
+    webHashName(hashName),
+    joinBytes([packageSalt, writeUint32Le(segmentIndex)]),
+  );
   return hashed.subarray(0, blockBytes);
 };
 
@@ -271,11 +270,19 @@ const decryptEncryptedPackage = async (
     });
   }
 
-  const plaintextSize =
-    encryptedPackage[0]! |
-    (encryptedPackage[1]! << 8) |
-    (encryptedPackage[2]! << 16) |
-    ((encryptedPackage[3]! << 24) >>> 0);
+  const sizeView = new DataView(
+    encryptedPackage.buffer,
+    encryptedPackage.byteOffset,
+    PACKAGE_PLAINTEXT_SIZE_BYTES,
+  );
+  const plaintextSizeBig = sizeView.getBigUint64(0, true);
+  if (plaintextSizeBig > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new DocxEncryptionError({
+      code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
+      message: "EncryptedPackage plaintext size exceeds JavaScript's safe integer range",
+    });
+  }
+  const plaintextSize = Number(plaintextSizeBig);
 
   const ciphertext = encryptedPackage.subarray(PACKAGE_PLAINTEXT_SIZE_BYTES);
   const segmentCount = Math.ceil(ciphertext.length / PACKAGE_SEGMENT_BYTES);
@@ -294,7 +301,14 @@ const decryptEncryptedPackage = async (
     segments.push(await decryptAesCbc(intermediateKey, iv, chunk));
   }
 
-  return joinBytes(segments).subarray(0, plaintextSize);
+  const plaintext = joinBytes(segments);
+  if (plaintextSize > plaintext.length) {
+    throw new DocxEncryptionError({
+      code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
+      message: "EncryptedPackage plaintext size exceeds decrypted payload length",
+    });
+  }
+  return plaintext.subarray(0, plaintextSize);
 };
 
 export const decryptAgileEncryptedPackage = async (

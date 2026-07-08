@@ -72,7 +72,10 @@ const parseAttributes = (tag: string): Record<string, string> => {
     return attrs;
   }
   while (i < tag.length) {
-    while (i < tag.length && (tag[i] === " " || tag[i] === "\n" || tag[i] === "\r" || tag[i] === "\t")) {
+    while (
+      i < tag.length &&
+      (tag[i] === " " || tag[i] === "\n" || tag[i] === "\r" || tag[i] === "\t")
+    ) {
       i++;
     }
     const nameStart = i;
@@ -84,13 +87,17 @@ const parseAttributes = (tag: string): Record<string, string> => {
     }
     const name = tag.slice(nameStart, i).trim();
     i++;
-    if (tag[i] !== '"') {
+    const quote = tag[i];
+    if (quote !== '"' && quote !== "'") {
       break;
     }
     i++;
     const valueStart = i;
-    while (i < tag.length && tag[i] !== '"') {
+    while (i < tag.length && tag[i] !== quote) {
       i++;
+    }
+    if (i >= tag.length) {
+      break;
     }
     attrs[name] = tag.slice(valueStart, i);
     i++;
@@ -98,11 +105,7 @@ const parseAttributes = (tag: string): Record<string, string> => {
   return attrs;
 };
 
-const requireAttr = (
-  attrs: Record<string, string>,
-  name: string,
-  element: string,
-): string => {
+const requireAttr = (attrs: Record<string, string>, name: string, element: string): string => {
   const value = attrs[name];
   if (value === undefined) {
     throw new DocxEncryptionError({
@@ -156,7 +159,11 @@ const parseAgileXml = (xmlBytes: Uint8Array): AgileKeyMaterial => {
     passwordHash: requireAttr(encryptedKey, "hashAlgorithm", "encryptedKey"),
     passwordKeyBits: requireInt(encryptedKey, "keyBits", "encryptedKey"),
     passwordBlockBytes: requireInt(encryptedKey, "blockSize", "encryptedKey"),
-    encryptedVerifierInput: requireBase64(encryptedKey, "encryptedVerifierHashInput", "encryptedKey"),
+    encryptedVerifierInput: requireBase64(
+      encryptedKey,
+      "encryptedVerifierHashInput",
+      "encryptedKey",
+    ),
     encryptedVerifierDigest: requireBase64(
       encryptedKey,
       "encryptedVerifierHashValue",
@@ -194,7 +201,8 @@ export const parseAgileEncryptionInfo = (stream: Uint8Array): AgileEncryptionDes
   if (version <= 0x0002) {
     throw new DocxEncryptionError({
       code: DOCX_ENCRYPTION_ERROR_CODES.ENCRYPTION_UNSUPPORTED,
-      message: "Legacy RC4 encryption is not supported. Only Agile Encryption (Office 2010+) is supported.",
+      message:
+        "Legacy RC4 encryption is not supported. Only Agile Encryption (Office 2010+) is supported.",
     });
   }
 
