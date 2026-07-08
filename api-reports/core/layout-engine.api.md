@@ -494,6 +494,7 @@ export type PageBreakMeasure = {
 // @public (undocumented)
 export type PageHeaderFooterRefs = {
     titlePg?: boolean;
+    evenAndOddHeaders?: boolean;
     headerDefault?: string;
     headerFirst?: string;
     headerEven?: string;
@@ -838,6 +839,7 @@ export type TableRow = {
     height?: number;
     heightRule?: "auto" | "atLeast" | "exact";
     isHeader?: boolean;
+    hidden?: boolean;
 };
 
 // @public

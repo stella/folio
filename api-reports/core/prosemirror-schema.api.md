@@ -374,7 +374,8 @@ export type TableCellAttrs = {
 export type TableRowAttrs = {
     height?: number; /** Height rule ('auto', 'exact', 'atLeast') */
     heightRule?: NonNullable<import__stll_docx_core_model.TableRowFormatting["heightRule"]>; /** Is header row */
-    isHeader?: boolean; /** Original row formatting from DOCX for lossless round-trip serialization */
+    isHeader?: boolean; /** Whether the row is hidden (`w:hidden`) */
+    hidden?: boolean; /** Original row formatting from DOCX for lossless round-trip serialization */
     _originalFormatting?: import__stll_docx_core_model.TableRowFormatting;
 };
 
