@@ -199,9 +199,10 @@ jobs:
         # skipped), the tag already exists and we skip.
         env:
           GH_TOKEN: ${{ github.token }}
-          # The job downloads only the tarball artifact (no checkout), so gh
-          # cannot infer the repository from a git remote; pass it explicitly.
+          # The job does not check out the repository, so gh cannot infer the
+          # repository from a git remote; pass it explicitly.
           GH_REPO: ${{ github.repository }}
+          PKG: ${{ matrix.pkg }}
           TAG: ${{ steps.tarball.outputs.tag }}
           NAME: ${{ steps.tarball.outputs.name }}
           VERSION: ${{ steps.tarball.outputs.version }}
@@ -213,7 +214,37 @@ jobs:
             echo "::notice::Release ${TAG} already exists; skipping."
             exit 0
           fi
+          changelog="${RUNNER_TEMP}/CHANGELOG.md"
+          notes="${RUNNER_TEMP}/release-notes.md"
+          gh api "repos/${GH_REPO}/contents/packages/${PKG}/CHANGELOG.md?ref=${GITHUB_SHA}" \
+            --jq '.content' | base64 -d > "${changelog}"
+          # shellcheck disable=SC2016 # Keep JavaScript template literals intact.
+          node -e '
+          const fs = require("node:fs");
+
+          const [changelogPath, version, name, notesPath] = process.argv.slice(1);
+          const lines = fs.readFileSync(changelogPath, "utf8").split(/\r?\n/);
+          const heading = `## ${version}`;
+          const start = lines.findIndex((line) => line.trim() === heading);
+
+          if (start === -1) {
+            throw new Error(`Missing ${heading} section in ${changelogPath}`);
+          }
+
+          const next = lines.findIndex(
+            (line, index) => index > start && line.startsWith("## "),
+          );
+          const sectionLines = lines.slice(start + 1, next === -1 ? undefined : next);
+          const section = sectionLines.join("\n").trim();
+
+          if (!section) {
+            throw new Error(`Empty ${heading} section in ${changelogPath}`);
+          }
+
+          const provenance = `\`${name}@${version}\` published to npm via OIDC trusted publishing with SLSA provenance. The attached tarball is the exact artifact published to the registry.`;
+          fs.writeFileSync(notesPath, `${section}\n\n---\n\n${provenance}\n`);
+          ' "${changelog}" "${VERSION}" "${NAME}" "${notes}"
           gh release create "${TAG}" "${TARBALL}" \
             --target "${GITHUB_SHA}" \
             --title "${NAME}@${VERSION}" \
-            --notes "\`${NAME}@${VERSION}\` published to npm via OIDC trusted publishing with SLSA provenance. The attached tarball is the exact artifact published to the registry."
+            --notes-file "${notes}"
