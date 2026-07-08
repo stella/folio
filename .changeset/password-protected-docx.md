@@ -1,1 +1,5 @@
-feat(core): support password-protected .docx open (Agile encryption)
+---
+"@stll/folio-core": minor
+---
+
+Support opening Agile-encrypted password-protected DOCX files.
