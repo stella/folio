@@ -5,6 +5,7 @@
  * Usage:
  *   bun parity/cli.ts                          # full default corpus, HTML report
  *   bun parity/cli.ts path/to/file.docx        # one document
+ *   bun parity/cli.ts --help                   # print usage
  *   bun parity/cli.ts some/dir --json          # machine-readable output
  *   bun parity/cli.ts path/to/file.docx --output parity.json
  *   bun parity/cli.ts --refresh-truth          # ignore cached Word exports
@@ -53,6 +54,7 @@ const DOCX_GLOB = "**/*.docx";
 const isRealDocxName = (name: string): boolean => !name.startsWith("~$") && !name.startsWith(".");
 
 type CliFlags = {
+  help: boolean;
   json: boolean;
   refreshTruth: boolean;
   headed: boolean;
@@ -64,6 +66,7 @@ type CliFlags = {
 
 export const parseArgs = (argv: string[]): CliFlags => {
   const flags: CliFlags = {
+    help: false,
     json: false,
     refreshTruth: false,
     headed: false,
@@ -72,7 +75,9 @@ export const parseArgs = (argv: string[]): CliFlags => {
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--json") {
+    if (arg === "--help" || arg === "-h") {
+      flags.help = true;
+    } else if (arg === "--json") {
       flags.json = true;
     } else if (arg === "--refresh-truth") {
       flags.refreshTruth = true;
@@ -101,6 +106,25 @@ export const parseArgs = (argv: string[]): CliFlags => {
   }
   return flags;
 };
+
+const HELP_TEXT = `Word rendering parity engine
+
+Usage:
+  bun parity/cli.ts [doc-or-dir ...] [options]
+
+Options:
+  -h, --help           Print this help and exit.
+  --json               Print the machine-readable report to stdout.
+  --output <path>      Write the JSON report to a file.
+  --max-pages <n>      Compare only the first n pages.
+  --refresh-truth      Re-render Word ground truth instead of using cache.
+  --headed             Show the Folio browser window.
+  --no-report          Skip writing the HTML report.
+
+Examples:
+  bun parity/cli.ts path/to/file.docx --max-pages 20
+  bun parity/cli.ts some/dir --json --output /tmp/parity.json
+`;
 
 const limitGeomPages = (geom: DocGeom, maxPages: number | undefined): DocGeom => {
   if (maxPages === undefined) {
@@ -324,6 +348,11 @@ const writeJsonReport = async (report: CorpusReport, outputPath: string): Promis
 
 const main = async (argv: string[]): Promise<number> => {
   const flags = parseArgs(argv);
+
+  if (flags.help) {
+    console.log(HELP_TEXT);
+    return EXIT_OK;
+  }
 
   if (!(await isWordAvailable())) {
     console.error(
