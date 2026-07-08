@@ -1,9 +1,6 @@
 import { TaggedError } from "better-result";
 
-/**
- * Machine-readable codes for password-protected OOXML failures.
- * Aligns with SuperDoc / Document API naming for integrator parity.
- */
+/** Machine-readable codes for password-protected OOXML failures. */
 export const DOCX_ENCRYPTION_ERROR_CODES = {
   PASSWORD_REQUIRED: "DOCX_PASSWORD_REQUIRED",
   PASSWORD_INVALID: "DOCX_PASSWORD_INVALID",

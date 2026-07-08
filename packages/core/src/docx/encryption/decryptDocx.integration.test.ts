@@ -1,3 +1,10 @@
+/**
+ * Integration tests for Agile-encrypted .docx open.
+ *
+ * Fixture `encrypted-agile-example.docx` is the `example_password.docx` file from the
+ * MIT-licensed msoffcrypto-tool test corpus (password: `Password1234_`).
+ * @see https://github.com/nolze/msoffcrypto-tool/tree/master/tests/inputs
+ */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,8 +16,8 @@ import { DOCX_ENCRYPTION_ERROR_CODES, DocxEncryptionError } from "./errors";
 import { decryptDocxIfNeeded } from "./decryptDocx";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const FIXTURE_PATH = join(__dirname, "fixtures", "encrypted-hello.docx");
-const CORRECT_PASSWORD = "test123";
+const FIXTURE_PATH = join(__dirname, "fixtures", "encrypted-agile-example.docx");
+const CORRECT_PASSWORD = "Password1234_";
 
 const loadFixture = (): Uint8Array => new Uint8Array(readFileSync(FIXTURE_PATH));
 
@@ -65,6 +72,6 @@ describe("decryptDocxIfNeeded — encrypted fixture integration", () => {
 
     const zip = await JSZip.loadAsync(doc.originalBuffer!);
     const documentXml = await zip.file("word/document.xml")!.async("text");
-    expect(documentXml).toContain("Hello, encrypted world!");
+    expect(documentXml).toContain("Lorem ipsum");
   }, 30_000);
 });
