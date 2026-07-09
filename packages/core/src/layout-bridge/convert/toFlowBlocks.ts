@@ -976,8 +976,8 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
     if (child.type.name === "image") {
       const attrs = expectImageAttrs(child);
       const constrained = constrainImageToPage(
-        attrs.width || 100,
-        attrs.height || 100,
+        attrs.width ?? 100,
+        attrs.height ?? 100,
         _options.pageContentHeight,
       );
       // Lift tracked-change marks off the image node so an inserted/deleted
@@ -2156,8 +2156,8 @@ function convertImage(node: PMNode, startPos: number, pageContentHeight?: number
   const shouldAnchor = wrapType === "behind" || wrapType === "inFront";
 
   const constrained = constrainImageToPage(
-    attrs.width || 100,
-    attrs.height || 100,
+    attrs.width ?? 100,
+    attrs.height ?? 100,
     pageContentHeight,
   );
 

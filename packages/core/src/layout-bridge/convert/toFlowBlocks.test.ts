@@ -1100,10 +1100,48 @@ describe("toFlowBlocks list numbering", () => {
 // Regression guard for the eigenpal #424 opacity render pipeline. PR #517
 // review (gemini-code-assist) flagged that `attrs.opacity !== undefined` in
 // buildImageRun allowed the PM schema's null default to leak into
-// ImageRun.opacity (typed `number | undefined`). The bridge now gates with
-// `!= null`; these tests pin the contract for inline images, which is the
-// only path the schema permits (images are inline-only in PM).
-describe("toFlowBlocks image opacity null-default leak", () => {
+// ImageRun.opacity (typed `number | undefined`). Inline image attributes also
+// carry rounded OOXML dimensions, where zero is a valid subpixel result rather
+// than an absent value that should receive the default size.
+describe("toFlowBlocks image attribute normalization", () => {
+  test("preserves zero-sized inline image dimensions", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.nodes.image.create({
+          src: "media/subpixel-placeholder.png",
+          width: 1,
+          height: 0,
+        }),
+      ]),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph block");
+    }
+    const imageRun = paragraph.runs.find((run) => run.kind === "image");
+
+    expect(imageRun?.height).toBe(0);
+  });
+
+  test("preserves zero-sized standalone image dimensions", () => {
+    const image = schema.nodes.image.create({
+      src: "media/subpixel-placeholder.png",
+      width: 1,
+      height: 0,
+    });
+    // The schema currently declares images inline-only, but the layout bridge
+    // retains a standalone-image conversion path for structural callers.
+    const doc = schema.topNodeType.create(null, [image]);
+
+    const block = toFlowBlocks(doc).at(0);
+
+    expect(block?.kind).toBe("image");
+    if (block?.kind === "image") {
+      expect(block.height).toBe(0);
+    }
+  });
+
   test("drops PM null default for inline image opacity (ImageRun)", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
