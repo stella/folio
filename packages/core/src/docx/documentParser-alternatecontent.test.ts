@@ -35,6 +35,45 @@ const textBoxDrawingXml = (text: string) => `
   </w:drawing>`;
 
 describe("parseDocumentBody — AlternateContent text boxes", () => {
+  test("renders a wpg Choice as SVG while preserving the complete alternate content", () => {
+    const body = parseDocumentBody(`${XML_DECLARATION}
+<w:document
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+  xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+  <w:body><w:p><w:r><mc:AlternateContent>
+    <mc:Choice Requires="wpg"><w:drawing><wp:anchor behindDoc="1">
+      <wp:extent cx="1000000" cy="500000"/><wp:wrapTopAndBottom/>
+      <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"><wpg:wgp>
+        <wps:wsp><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1000000" cy="500000"/></a:xfrm><a:prstGeom prst="rect"/><a:solidFill><a:srgbClr val="DBEDF3"/></a:solidFill></wps:spPr></wps:wsp>
+      </wpg:wgp></a:graphicData></a:graphic>
+    </wp:anchor></w:drawing></mc:Choice>
+    <mc:Fallback><w:pict/></mc:Fallback>
+  </mc:AlternateContent></w:r></w:p></w:body>
+</w:document>`);
+
+    const paragraph = body.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    const drawing = paragraph.content
+      .filter((content) => content.type === "run")
+      .flatMap((run) => run.content)
+      .find((content) => content.type === "drawing");
+
+    expect(drawing?.type).toBe("drawing");
+    if (drawing?.type !== "drawing") {
+      throw new Error("Expected grouped drawing");
+    }
+    expect(drawing.image.mimeType).toBe("image/svg+xml");
+    expect(drawing.image.src).toStartWith("data:image/svg+xml");
+    expect(drawing.rawXml).toContain("<mc:AlternateContent");
+    expect(drawing.rawXml).toContain("<mc:Fallback>");
+  });
+
   test("extracts text-box drawings wrapped in mc:AlternateContent", () => {
     const body = parseDocumentBody(`${XML_DECLARATION}
 <w:document

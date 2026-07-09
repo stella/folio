@@ -415,6 +415,57 @@ test.describe("image", () => {
   test.skip("resizing a selected image updates its dimensions", () => {});
 });
 
+test.describe("rendered page-break hints", () => {
+  test("cached hints paginate without duplicating structural breaks", async ({ page }) => {
+    await mountFixture(page, "sample.docx");
+
+    const replaceDocument = async (
+      mode: "hintAfterContent" | "hintAfterBreak" | "explicitAndHintAfterBreak",
+    ) => {
+      await page.evaluate((nextMode) => {
+        const view = globalThis.__folioPlayground
+          ?.getEditorRef()
+          ?.getEditorRef()
+          ?.getView();
+        if (!view) {
+          throw new Error("Editor view unavailable");
+        }
+        const { schema } = view.state;
+        const first = schema.node("paragraph", null, [schema.text("First page")]);
+        const attrs = {
+          renderedPageBreakBefore: true,
+          pageBreakBefore: nextMode === "explicitAndHintAfterBreak",
+        };
+        const hinted = schema.node("paragraph", attrs, [schema.text("Hinted paragraph")]);
+        const nodes =
+          nextMode === "hintAfterContent"
+            ? [first, hinted]
+            : [first, schema.node("pageBreak"), hinted];
+        view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, nodes));
+      }, mode);
+    };
+
+    const waitForPages = async (count: number) => {
+      await page.waitForFunction(
+        (expected) => document.querySelectorAll(".layout-page").length === expected,
+        count,
+      );
+    };
+
+    await replaceDocument("hintAfterContent");
+    await waitForPages(2);
+
+    await replaceDocument("hintAfterBreak");
+    await waitForPages(2);
+
+    await replaceDocument("explicitAndHintAfterBreak");
+    await waitForPages(3);
+    await expect(
+      page.locator(".layout-page").nth(1).locator(".layout-page-content .layout-line"),
+    ).toHaveCount(0);
+  });
+});
+
 test.describe("zoom", () => {
   test("setZoom updates getZoom and scales the rendered page", async ({ page }) => {
     await mountFixture(page, "sample.docx");
