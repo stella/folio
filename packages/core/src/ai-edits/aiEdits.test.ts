@@ -1470,7 +1470,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "op-1", reason: "unsupportedBlock" }]);
+    expect(result.skipped).toEqual([{ id: "op-1", reason: "unsupportedMode" }]);
     expect(view.state.doc.childCount).toBe(1);
   });
 
@@ -1492,7 +1492,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "op-1", reason: "unsupportedBlock" }]);
+    expect(result.skipped).toEqual([{ id: "op-1", reason: "unsupportedMode" }]);
     expect(view.state.doc.childCount).toBe(1);
   });
 

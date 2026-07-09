@@ -536,7 +536,7 @@ export const applyFolioAIEditOperations = ({
         ) {
           skipped.push({
             id: item.operation.id,
-            reason: "unsupportedBlock",
+            reason: "unsupportedMode",
           });
           continue;
         }
@@ -597,7 +597,7 @@ export const applyFolioAIEditOperations = ({
         if (mode === "tracked-changes") {
           skipped.push({
             id: item.operation.id,
-            reason: "unsupportedBlock",
+            reason: "unsupportedMode",
           });
           continue;
         }

@@ -178,7 +178,7 @@ export type FolioAIEditSkippedOperation = {
 };
 
 // @public (undocumented)
-export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "emptyOperation"
+export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "emptyOperation"
 /**
 * The operation would not change the document — find equals
 * replace, or replaceBlock's `text` matches the live block.

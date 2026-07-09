@@ -265,6 +265,41 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     expect(result.skipped[0]?.reason).toContain("re-read the document");
   });
 
+  test("suggest_changes explains an unsupported mutation mode", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewerBridge = createReviewerBridge(reviewer);
+    const bridge = {
+      ...reviewerBridge,
+      applyDocumentOperations: (
+        batch: Parameters<typeof reviewerBridge.applyDocumentOperations>[0],
+      ) => ({
+        version: batch.version,
+        applied: [],
+        skipped: batch.operations.map(({ id }) => ({ id, reason: "unsupportedMode" as const })),
+      }),
+    };
+
+    const result = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        {
+          operations: [
+            {
+              id: "custom-1",
+              type: "replaceInBlock",
+              blockId: "seq-0001",
+              find: "x",
+              replace: "y",
+            },
+          ],
+        },
+        bridge,
+      ),
+    ) as { skipped: { reason: string }[] };
+
+    expect(result.skipped[0]?.reason).toContain("mutation mode");
+  });
+
   test("suggest_changes rejects an empty operations array", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const bridge = createReviewerBridge(reviewer);

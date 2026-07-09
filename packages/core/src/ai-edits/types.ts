@@ -140,6 +140,7 @@ export type FolioAIEditSkipReason =
   | "ambiguousFind"
   | "missingFind"
   | "unsupportedBlock"
+  | "unsupportedMode"
   | "emptyOperation"
   /**
    * The operation would not change the document — find equals

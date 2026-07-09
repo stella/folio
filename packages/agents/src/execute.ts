@@ -208,6 +208,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "unsupportedBlock") {
     return "this block kind does not support this operation.";
   }
+  if (reason === "unsupportedMode") {
+    return "this operation does not support the requested mutation mode; inspect document operation capabilities and retry with a supported mode.";
+  }
   if (reason === "emptyOperation") {
     return "this operation has no effect; nothing to apply.";
   }
