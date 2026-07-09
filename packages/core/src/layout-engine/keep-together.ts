@@ -5,7 +5,7 @@
  * (keep all lines together) properties that affect pagination.
  */
 
-import type { FlowBlock, ParagraphBlock, Measure, ParagraphMeasure } from "./types";
+import type { FlowBlock, ParagraphBlock, Measure } from "./types";
 
 /**
  * A chain of consecutive keepNext paragraphs.
@@ -117,9 +117,13 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
 }
 
 /**
- * Calculate the total height needed to keep a chain together.
+ * Calculate the height needed to keep the chain's first paragraph with the
+ * first line of its successor.
  *
- * Includes all chain members plus the first line of the anchor paragraph.
+ * `keepNext` prevents a break between paragraphs; it does not imply
+ * `keepLines`. A later chain member may therefore split across pages. Reserving
+ * every line of every member moves otherwise splittable legal clauses as one
+ * oversized unit.
  */
 export function calculateChainHeight(
   chain: KeepNextChain,
@@ -128,39 +132,26 @@ export function calculateChainHeight(
 ): number {
   let totalHeight = 0;
 
-  // Sum heights of all chain members
-  for (const memberIndex of chain.memberIndices) {
-    const block = blocks[memberIndex];
-    const measure = measures[memberIndex];
-
-    if (!block || !measure || block.kind !== "paragraph" || measure.kind !== "paragraph") {
-      continue;
-    }
-
-    const para = block as ParagraphBlock;
-    const paraMeasure = measure as ParagraphMeasure;
-
-    // Add spacing before (simplified - could be more sophisticated with collapse)
-    const spacingBefore = para.attrs?.spacing?.before ?? 0;
-    totalHeight += spacingBefore;
-
-    // Add paragraph height
-    totalHeight += paraMeasure.totalHeight;
-
-    // Add spacing after
-    const spacingAfter = para.attrs?.spacing?.after ?? 0;
-    totalHeight += spacingAfter;
+  const firstMemberIndex = chain.memberIndices.at(0);
+  if (firstMemberIndex === undefined) {
+    return 0;
+  }
+  const firstBlock = blocks[firstMemberIndex];
+  const firstMeasure = measures[firstMemberIndex];
+  if (firstBlock?.kind !== "paragraph" || firstMeasure?.kind !== "paragraph") {
+    return 0;
   }
 
-  // Add first line height of anchor (if any)
-  if (chain.anchorIndex !== -1) {
-    const anchorMeasure = measures[chain.anchorIndex];
-    if (anchorMeasure?.kind === "paragraph") {
-      const anchorPara = anchorMeasure as ParagraphMeasure;
-      if (anchorPara.lines.length > 0) {
-        // SAFETY: length > 0 guarantees index 0 exists
-        totalHeight += anchorPara.lines[0]!.lineHeight;
-      }
+  totalHeight += firstBlock.attrs?.spacing?.before ?? 0;
+  totalHeight += firstMeasure.totalHeight;
+  totalHeight += firstBlock.attrs?.spacing?.after ?? 0;
+
+  const successorIndex = chain.memberIndices.at(1) ?? chain.anchorIndex;
+  const successorMeasure = successorIndex === -1 ? undefined : measures[successorIndex];
+  if (successorMeasure?.kind === "paragraph") {
+    const firstSuccessorLine = successorMeasure.lines.at(0);
+    if (firstSuccessorLine) {
+      totalHeight += firstSuccessorLine.lineHeight;
     }
   }
 

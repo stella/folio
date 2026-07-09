@@ -626,9 +626,14 @@ function renderTabRun(run: TabRun, doc: Document, width: number, leader?: string
   return span;
 }
 
-function canClampTabToRightEdge(alignment: string, hasPriorRenderedContent: boolean): boolean {
+function canClampTabToRightEdge(
+  alignment: string,
+  hasPriorRenderedContent: boolean,
+  hasPriorTab: boolean,
+  isLastLine: boolean,
+): boolean {
   if (alignment === "start" || alignment === "default") {
-    return hasPriorRenderedContent;
+    return hasPriorRenderedContent && (hasPriorTab || isLastLine);
   }
   return true;
 }
@@ -1930,7 +1935,12 @@ export function renderLine(
       let tabWidth = tabResult.width;
       if (
         lineRightEdgeX !== undefined &&
-        canClampTabToRightEdge(tabResult.alignment, i > 0) &&
+        canClampTabToRightEdge(
+          tabResult.alignment,
+          i > 0,
+          runsForLine.slice(0, i).some(isTabRun),
+          options?.isLastLine === true,
+        ) &&
         currentX + tabWidth + followingWidthForCheck > lineRightEdgeX
       ) {
         tabWidth = Math.max(1, lineRightEdgeX - currentX - followingWidthForCheck);

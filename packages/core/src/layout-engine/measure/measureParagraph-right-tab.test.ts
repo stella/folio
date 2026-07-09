@@ -53,6 +53,30 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
     });
   });
 
+  test("non-leading left tab keeps its stop before multi-line prose", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "multi-line-label-left-tab",
+          runs: [
+            { kind: "text", text: "(i)", fontSize: 11 },
+            { kind: "tab" },
+            { kind: "text", text: "word ".repeat(12), fontSize: 11 },
+          ],
+          attrs: {
+            tabs: [{ val: "start", pos: 1500 }],
+          },
+        },
+        150,
+      );
+
+      expect(measure.lines.length).toBeGreaterThan(1);
+      expect(measure.lines[0]?.toRun).toBe(2);
+      expect(measure.lines[0]?.width).toBeGreaterThan(100);
+    });
+  });
+
   test("right tab followed by short text does not wrap", () => {
     withFakeTextMeasure(() => {
       // Right tab stop at 5000 twips ≈ 333.33px. With the bug, the measurer
@@ -171,11 +195,15 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
 
       const titleWidth = 25;
       const followingWidth = 20;
-      const tabResult = calculateTabWidth(titleWidth, {
-        explicitStops: [{ val: "end", pos: 5000 }],
-      }, {
-        followingWidth,
-      });
+      const tabResult = calculateTabWidth(
+        titleWidth,
+        {
+          explicitStops: [{ val: "end", pos: 5000 }],
+        },
+        {
+          followingWidth,
+        },
+      );
       const painterLineWidth = titleWidth + tabResult.width + followingWidth;
       expect(Math.abs((line?.width ?? 0) - painterLineWidth)).toBeLessThanOrEqual(0.5);
     });
