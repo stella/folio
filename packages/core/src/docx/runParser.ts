@@ -41,6 +41,7 @@ import type {
   MediaFile,
   ShapeContent,
 } from "../types/document";
+import { parseGroupDrawing } from "./groupDrawingParser";
 import { parseImage } from "./imageParser";
 import {
   EmphasisMarkSchema,
@@ -816,6 +817,10 @@ function parseDrawingContent(
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
 ): DrawingContent | ShapeContent | null {
+  const groupImage = parseGroupDrawing(element);
+  if (groupImage) {
+    return { type: "drawing", image: groupImage, rawXml: elementToXml(element) };
+  }
   if (shouldPreserveRawShapeDrawing(element)) {
     return {
       type: "drawing",
@@ -1002,7 +1007,10 @@ function parseRunContents(
               // Keep package-referenced drawings even when the browser cannot render
               // the media. The serializer must preserve the relationship reference.
               if (innerDrawing) {
-                if (innerDrawing.type === "drawing" && !innerDrawing.image.src) {
+                if (
+                  innerDrawing.type === "drawing" &&
+                  (innerDrawing.rawXml !== undefined || !innerDrawing.image.src)
+                ) {
                   innerDrawing.rawXml = elementToXml(child);
                 }
                 contents.push(innerDrawing);
