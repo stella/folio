@@ -283,6 +283,7 @@ export function layoutDocument(
   // Pre-compute keepNext chains for pagination decisions
   const keepNextChains = computeKeepNextChains(blocks);
   const midChainIndices = getMidChainIndices(keepNextChains);
+  let renderedPageBreakTarget = 1;
 
   // Process each block, tracking section break index with a counter (O(1) per break)
   let sectionIdx = 0;
@@ -297,11 +298,21 @@ export function layoutDocument(
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
 
-    // A cached Word pagination marker is advisory: honor it unless another
-    // structural break already opened an empty page for the paragraph.
+    // Cached Word pagination markers are advisory physical-page targets. Each
+    // marker advances the minimum page number by one; natural reflow or a
+    // structural break may already have reached that page, in which case the
+    // marker must not create an additional blank or shifted page.
+    const hasRenderedPageBreak =
+      block.kind === "paragraph" && block.attrs?.renderedPageBreakBefore === true;
+    if (hasRenderedPageBreak) {
+      renderedPageBreakTarget += 1;
+    }
     if (hasPageBreakBefore(block)) {
       paginator.forcePageBreak();
-    } else if (block.kind === "paragraph" && block.attrs?.renderedPageBreakBefore) {
+    } else if (
+      hasRenderedPageBreak &&
+      paginator.getCurrentState().page.number < renderedPageBreakTarget
+    ) {
       paginator.forcePageBreak({ coalesceBlankPage: true });
     }
 
