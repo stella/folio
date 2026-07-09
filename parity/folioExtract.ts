@@ -443,6 +443,11 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
     const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
     const lines = lineEls.flatMap((lineEl) => {
       const segmentInkRect = (segmentEl: HTMLElement): DOMRect | null => {
+        if (segmentEl.querySelector("img, svg, canvas, video")) {
+          const rect = segmentEl.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 ? rect : null;
+        }
+
         const walker = document.createTreeWalker(segmentEl, NodeFilter.SHOW_TEXT);
         let firstNode: Text | null = null;
         let firstOffset = 0;
@@ -478,10 +483,6 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
           }
         }
 
-        if (segmentEl.querySelector("img, svg, canvas, video")) {
-          const rect = segmentEl.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0 ? rect : null;
-        }
         return null;
       };
       const rectFor = (segmentEls: HTMLElement[]): DOMRect | null => {
