@@ -1011,7 +1011,7 @@ function parseRunContents(
                   innerDrawing.type === "drawing" &&
                   (innerDrawing.rawXml !== undefined || !innerDrawing.image.src)
                 ) {
-                  innerDrawing.rawXml = elementToXml(cloneWithXmlnsDeclarations(child, rootXmlns));
+                  innerDrawing.rawXml = elementToXml(child);
                 }
                 contents.push(innerDrawing);
               }
