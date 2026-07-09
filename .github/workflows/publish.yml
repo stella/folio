@@ -219,10 +219,14 @@ jobs:
           gh api "repos/${GH_REPO}/contents/packages/${PKG}/CHANGELOG.md?ref=${GITHUB_SHA}" \
             --jq '.content' | base64 -d > "${changelog}"
           # shellcheck disable=SC2016 # Keep JavaScript template literals intact.
-          node -e '
+          CHANGELOG_PATH="${changelog}" NOTES_PATH="${notes}" node -e '
           const fs = require("node:fs");
 
-          const [changelogPath, version, name, notesPath] = process.argv.slice(1);
+          const { CHANGELOG_PATH: changelogPath, NAME: name, NOTES_PATH: notesPath, VERSION: version } = process.env;
+          if (!changelogPath || !name || !notesPath || !version) {
+            throw new Error("Missing release note generation environment variables");
+          }
+
           const lines = fs.readFileSync(changelogPath, "utf8").split(/\r?\n/);
           const heading = `## ${version}`;
           const start = lines.findIndex((line) => line.trim() === heading);
@@ -243,7 +247,7 @@ jobs:
 
           const provenance = `\`${name}@${version}\` published to npm via OIDC trusted publishing with SLSA provenance. The attached tarball is the exact artifact published to the registry.`;
           fs.writeFileSync(notesPath, `${section}\n\n---\n\n${provenance}\n`);
-          ' "${changelog}" "${VERSION}" "${NAME}" "${notes}"
+          '
           gh release create "${TAG}" "${TARBALL}" \
             --target "${GITHUB_SHA}" \
             --title "${NAME}@${VERSION}" \
