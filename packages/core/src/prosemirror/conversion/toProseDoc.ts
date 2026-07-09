@@ -885,6 +885,13 @@ function suppressParagraphMarkFormatting(
   if (paragraphMark.underline !== undefined && direct?.underline === undefined) {
     result.underline = { style: "none" };
   }
+  if (paragraphMark.spacing !== undefined && direct?.spacing === undefined) {
+    // A directly formatted run suppresses paragraph-mark character spacing in
+    // Word. Preserve any real style-level spacing; otherwise emit an explicit
+    // zero so the paragraph's defaultTextFormatting cannot leak back into the
+    // run when the PM document is converted to layout blocks.
+    result.spacing ??= 0;
+  }
 
   return Object.keys(result).length > 0 ? result : undefined;
 }

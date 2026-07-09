@@ -151,6 +151,20 @@ describe("toFlowBlocks run-level OOXML marks", () => {
     expect(run.kerningMinPt).toBeUndefined();
   });
 
+  test("explicit zero spacing suppresses paragraph-default character spacing", () => {
+    const mark = schema.marks.characterSpacing?.create({ spacing: 0 });
+    if (!mark) {
+      throw new Error("characterSpacing mark is unavailable");
+    }
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { defaultTextFormatting: { spacing: -60 } }, [
+        schema.text("Signature name", [mark]),
+      ]),
+    ]);
+
+    expect(firstRun(toFlowBlocks(doc, {})).letterSpacing).toBeUndefined();
+  });
+
   test("propagates rtl mark to run formatting", () => {
     // eigenpal #424 (gap 10) — the painter needs `rtl` on the flow run to
     // emit `dir="rtl"`; without this case the PM mark would survive the

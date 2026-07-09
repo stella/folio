@@ -496,7 +496,7 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
 
       case "characterSpacing": {
         const attrs = expectCharacterSpacingMarkAttrs(mark);
-        if (attrs.spacing !== undefined && attrs.spacing !== 0) {
+        if (attrs.spacing !== undefined) {
           formatting.letterSpacing = twipsToPixels(attrs.spacing);
         }
         if (attrs.position !== undefined && attrs.position !== 0) {
@@ -665,10 +665,14 @@ function markDefaultBlackTextColorSource(
 }
 
 function mergeRunFormatting(paraDefaults: RunFormatting, formatting: RunFormatting): RunFormatting {
-  return {
+  const merged = {
     ...paraDefaults,
     ...markDefaultBlackTextColorSource(formatting, paraDefaults),
   };
+  if (merged.letterSpacing === 0) {
+    delete merged.letterSpacing;
+  }
+  return merged;
 }
 
 function applyRunFormattingOverrides(

@@ -290,6 +290,39 @@ describe("toProseDoc", () => {
     );
   });
 
+  test("does not leak paragraph mark character spacing onto a directly formatted run", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                runProperties: { spacing: -60 },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: { boldCs: true },
+                  content: [{ type: "text", text: "Signature name" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document);
+    const paragraph = doc.firstChild;
+    const text = paragraph?.firstChild;
+
+    expect(paragraph?.attrs.defaultTextFormatting.spacing).toBe(-60);
+    expect(text?.marks.find((mark) => mark.type.name === "characterSpacing")?.attrs.spacing).toBe(
+      0,
+    );
+  });
+
   test("applies oneNDA table style run properties before direct run properties", () => {
     const document: Document = {
       package: {
