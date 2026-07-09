@@ -304,6 +304,9 @@ export const getFolioDocumentOperationCapabilities: () => FolioDocumentOperation
 // @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
 
+// @public (undocumented)
+export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
+
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
 
@@ -312,6 +315,9 @@ export const isSequentialFolioBlockId: (id: string) => boolean;
 
 // @public (undocumented)
 export const isSupportedFolioDocumentOperationVersion: (value: unknown) => value is typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+
+// @public (undocumented)
+export const parseFolioDocumentOperationBatch: (value: unknown) => FolioDocumentOperationBatch;
 
 // @public
 export const replyToComment: (doc: import__stll_docx_core_model.Document, parentCommentId: number, input: CreateCommentReplyInput) => import__stll_docx_core_model.Comment | null;
