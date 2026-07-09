@@ -38,12 +38,12 @@ export type FolioDocumentOperationCapabilities = {
   readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
 
-const DOCUMENT_OPERATION_CAPABILITIES: FolioDocumentOperationCapabilities = Object.freeze({
+const DOCUMENT_OPERATION_CAPABILITIES = Object.freeze({
   version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   operationTypes: FOLIO_DOCUMENT_OPERATION_TYPES,
   modes: FOLIO_DOCUMENT_OPERATION_MODES,
   stories: FOLIO_DOCUMENT_OPERATION_STORIES,
-});
+} as const satisfies FolioDocumentOperationCapabilities);
 
 export const getFolioDocumentOperationCapabilities = (): FolioDocumentOperationCapabilities =>
   DOCUMENT_OPERATION_CAPABILITIES;
