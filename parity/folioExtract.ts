@@ -443,7 +443,10 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
     const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
     const lines = lineEls.flatMap((lineEl) => {
       const segmentInkRect = (segmentEl: HTMLElement): DOMRect | null => {
-        if (segmentEl.querySelector("img, svg, canvas, video")) {
+        if (
+          segmentEl.matches("img, svg, canvas, video") ||
+          segmentEl.querySelector("img, svg, canvas, video")
+        ) {
           const rect = segmentEl.getBoundingClientRect();
           return rect.width > 0 && rect.height > 0 ? rect : null;
         }
