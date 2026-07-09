@@ -434,6 +434,62 @@ describe("measureParagraph justified shrink tolerance", () => {
       },
     );
   });
+
+  test("uses the literal-tab continuation tolerance after the first line", () => {
+    const continuationText = `${"a".repeat(101)}c`;
+    const continuationWidth = (char: string): number => (char === "c" ? 0.65 : 1);
+
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-tabbed-continuation",
+            runs: [
+              { kind: "text", text: "x" },
+              { kind: "tab" },
+              { kind: "lineBreak" },
+              { kind: "text", text: continuationText },
+            ],
+            attrs: {
+              alignment: "justify",
+              indent: { firstLine: 48 },
+            },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: continuationWidth,
+      },
+    );
+  });
+
+  test("keeps justified list items on the conservative shrink tolerance", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-item",
+            runs: [{ kind: "text", text }],
+            attrs: {
+              alignment: "justify",
+              listMarker: "•",
+            },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
 });
 
 describe("inline image paragraph measurement", () => {

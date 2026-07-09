@@ -145,6 +145,41 @@ describe("renderLine right-tab flex anchor", () => {
     expect(tabEl?.style["width"]).toBe("3px");
   });
 
+  test("does not clamp a non-leading left tab on a non-final line", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "multi-line-label-left-tab",
+      runs: [
+        { kind: "text", text: "(i)" },
+        { kind: "tab" },
+        { kind: "text", text: "wide trailing text" },
+      ],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 18,
+      width: 150,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 150,
+      isLastLine: false,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [{ val: "start", pos: 1500 }],
+      leftIndentPx: 0,
+      lineRightEdgePx: 150,
+    }) as unknown as FakeElement;
+
+    const tabEl = findTabEl(lineEl);
+    expect(tabEl?.style["width"]).toBe("79px");
+  });
+
   // TOC1-style line: title text + right-aligned tab + page-number field.
   // Tab stop sits at the line's right edge; with no trailing tab and a tab
   // alignment of "end", the painter must promote the line to flex layout.

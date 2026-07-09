@@ -151,6 +151,74 @@ describe("compareGeoms", () => {
     expect(result.score).toBeCloseTo(2 / 3);
   });
 
+  test("absorbs each page's extractor offset independently", () => {
+    const word = makeDoc("word", [
+      makePage({
+        number: 1,
+        lines: [
+          makeLine({ text: "Page one A", yPt: 72 }),
+          makeLine({ text: "Page one B", yPt: 90 }),
+        ],
+      }),
+      makePage({
+        number: 2,
+        lines: [
+          makeLine({ text: "Page two A", yPt: 72 }),
+          makeLine({ text: "Page two B", yPt: 90 }),
+        ],
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        number: 1,
+        lines: [
+          makeLine({ text: "Page one A", yPt: 69 }),
+          makeLine({ text: "Page one B", yPt: 87 }),
+        ],
+      }),
+      makePage({
+        number: 2,
+        lines: [
+          makeLine({ text: "Page two A", yPt: 84 }),
+          makeLine({ text: "Page two B", yPt: 102 }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(word, folio);
+
+    expect(result.divergences.filter((divergence) => divergence.kind === "y-drift")).toEqual([]);
+    expect(result.score).toBe(1);
+    expect(result.medianYOffsetPt).toBeCloseTo(4.5);
+  });
+
+  test("uses Folio regions to absorb header and body extractor offsets independently", () => {
+    const word = makeDoc("word", [
+      makePage({
+        lines: [
+          makeLine({ text: "Header", yPt: 20 }),
+          makeLine({ text: "Body A", yPt: 72 }),
+          makeLine({ text: "Body B", yPt: 90 }),
+        ],
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({ text: "Header", region: "header", yPt: 17 }),
+          makeLine({ text: "Body A", region: "body", yPt: 84 }),
+          makeLine({ text: "Body B", region: "body", yPt: 102 }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(word, folio);
+
+    expect(result.divergences.filter((divergence) => divergence.kind === "y-drift")).toEqual([]);
+    expect(result.score).toBe(1);
+    expect(result.medianYOffsetPt).toBeCloseTo(4.5);
+  });
+
   test("a Word line split into two folio lines reconciles as a single line-break", () => {
     const word = makeDoc("word", [
       makePage({ lines: [makeLine({ text: "The quick brown fox jumps" })] }),

@@ -53,6 +53,7 @@ const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing 
 // Prevents premature line breaks due to measurement rounding
 const WIDTH_TOLERANCE = 0.5;
 const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
+const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
 const JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO = 0.025;
 const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
 const ALL_CAPS_RATIO_THRESHOLD = 0.8;
@@ -462,9 +463,28 @@ function hasFollowingTabOnLine(runs: Run[], tabIndex: number): boolean {
   return false;
 }
 
-function canClampTabToRightEdge(alignment: string, currentLineWidth: number): boolean {
+function hasPriorTabOnLine(runs: Run[], tabIndex: number): boolean {
+  for (let i = tabIndex - 1; i >= 0; i--) {
+    const prior = runs[i];
+    if (!prior || isLineBreakRun(prior) || (isImageRun(prior) && isBlockLayoutImageRun(prior))) {
+      break;
+    }
+    if (isTabRun(prior)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function canClampTabToRightEdge(
+  alignment: string,
+  currentLineWidth: number,
+  hasPriorTab: boolean,
+  followingWidth: number,
+  availableWidth: number,
+): boolean {
   if (alignment === "start" || alignment === "default") {
-    return currentLineWidth > WIDTH_TOLERANCE;
+    return currentLineWidth > WIDTH_TOLERANCE && (hasPriorTab || followingWidth <= availableWidth);
   }
   return true;
 }
@@ -529,10 +549,16 @@ function uppercaseLetterRatio(text: string): number {
   return letters === 0 ? 0 : uppercase / letters;
 }
 
-function justifyShrinkToleranceRatio(block: ParagraphBlock): number {
+function justifyShrinkToleranceRatio(block: ParagraphBlock, isFirstLine: boolean): number {
+  if (block.attrs?.listMarker !== undefined) {
+    return JUSTIFY_SHRINK_TOLERANCE_RATIO;
+  }
   const hasTabStops = (block.attrs?.tabs?.length ?? 0) > 0;
   const hasTabRuns = block.runs.some(isTabRun);
-  if (hasTabStops || hasTabRuns) {
+  if (!isFirstLine && hasTabRuns && !hasTabStops) {
+    return JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO;
+  }
+  if ((isFirstLine || hasTabStops) && (hasTabStops || hasTabRuns)) {
     return (block.attrs?.indent?.firstLine ?? 0) === 0
       ? JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO
       : JUSTIFY_SHRINK_TOLERANCE_RATIO;
@@ -675,7 +701,6 @@ export function measureParagraph(
   const attrs = block.attrs;
   const spacing = attrs?.spacing;
   const isJustifiedParagraph = attrs?.alignment === "justify";
-  const justifyToleranceRatio = justifyShrinkToleranceRatio(block);
 
   // Floating image support
   const floatingZones = options?.floatingZones;
@@ -1099,7 +1124,13 @@ export function measureParagraph(
         currentLine.leftOffset;
       if (
         !hasFollowingTabOnLine(runs, runIndex) &&
-        canClampTabToRightEdge(tabResult.alignment, currentLine.width) &&
+        canClampTabToRightEdge(
+          tabResult.alignment,
+          currentLine.width,
+          hasPriorTabOnLine(runs, runIndex),
+          followingWidth,
+          currentLine.availableWidth,
+        ) &&
         (tabWidth > 0 || followingWidth > 0) &&
         contentX + tabWidth + followingWidth > lineRightEdgeX + WIDTH_TOLERANCE
       ) {
@@ -1314,7 +1345,10 @@ export function measureParagraph(
         const word = text.slice(charIndex, nextBreak);
         const wordWidth = measureTextWidth(word, style);
         const widthTolerance = isJustifiedParagraph
-          ? Math.max(WIDTH_TOLERANCE, currentLine.availableWidth * justifyToleranceRatio)
+          ? Math.max(
+              WIDTH_TOLERANCE,
+              currentLine.availableWidth * justifyShrinkToleranceRatio(block, lines.length === 0),
+            )
           : WIDTH_TOLERANCE;
 
         // If the word itself is longer than a line, hard-break by characters.

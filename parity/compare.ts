@@ -69,14 +69,15 @@ export const compareGeoms = (
   const matches = resolved.filter(
     (item): item is Extract<ResolvedItem, { kind: "match" }> => item.kind === "match",
   );
-  const medianYOffsetPt = median(samePageYDeltas(matches, wordFlat, folioFlat));
+  const medianYOffsetsByPageRegion = pageRegionMedianYOffsets(matches, wordFlat, folioFlat);
+  const medianYOffsetPt = median([...medianYOffsetsByPageRegion.values()]);
 
   const { orderedDivergences, matchedGeomPass } = diffMatches({
     resolved,
     wordFlat,
     folioFlat,
     tolerances,
-    medianYOffsetPt,
+    medianYOffsetsByPageRegion,
   });
   divergences.push(...orderedDivergences);
 
@@ -482,18 +483,28 @@ const reconcileGap = ({
   ];
 };
 
-const samePageYDeltas = (
+const pageRegionKey = (page: number, region: LineBox["region"]): string =>
+  `${page}:${region ?? "unknown"}`;
+
+const matchedPageRegionKey = (word: FlatLine, folio: FlatLine): string =>
+  pageRegionKey(word.page, folio.line.region);
+
+const pageRegionMedianYOffsets = (
   matches: Extract<ResolvedItem, { kind: "match" }>[],
   wordFlat: FlatLine[],
   folioFlat: FlatLine[],
-): number[] => {
-  const deltas: number[] = [];
+): Map<string, number> => {
+  const deltasByPageRegion = new Map<string, number[]>();
   for (const m of matches) {
     const w = wordFlat[m.wordIdx];
     const f = folioFlat[m.folioIdx];
-    if (w && f && w.page === f.page) deltas.push(f.line.yPt - w.line.yPt);
+    if (!w || !f || w.page !== f.page) continue;
+    const key = matchedPageRegionKey(w, f);
+    const deltas = deltasByPageRegion.get(key) ?? [];
+    deltas.push(f.line.yPt - w.line.yPt);
+    deltasByPageRegion.set(key, deltas);
   }
-  return deltas;
+  return new Map([...deltasByPageRegion].map(([key, deltas]) => [key, median(deltas)]));
 };
 
 const median = (values: number[]): number => {
@@ -513,7 +524,7 @@ type DiffMatchesOptions = {
   wordFlat: FlatLine[];
   folioFlat: FlatLine[];
   tolerances: ComparisonTolerances;
-  medianYOffsetPt: number;
+  medianYOffsetsByPageRegion: ReadonlyMap<string, number>;
 };
 
 const diffMatches = ({
@@ -521,7 +532,7 @@ const diffMatches = ({
   wordFlat,
   folioFlat,
   tolerances,
-  medianYOffsetPt,
+  medianYOffsetsByPageRegion,
 }: DiffMatchesOptions): DiffMatchesResult => {
   const orderedDivergences: Divergence[] = [];
   let matchedGeomPass = 0;
@@ -574,7 +585,12 @@ const diffMatches = ({
 
       let yDelta: number | null = null;
       if (samePage) {
-        yDelta = checkYDrift(w.line, f.line, medianYOffsetPt, tolerances);
+        yDelta = checkYDrift(
+          w.line,
+          f.line,
+          medianYOffsetsByPageRegion.get(matchedPageRegionKey(w, f)) ?? 0,
+          tolerances,
+        );
         if (yDelta !== null) {
           orderedDivergences.push({
             kind: "y-drift",
