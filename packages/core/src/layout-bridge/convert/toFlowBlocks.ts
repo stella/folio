@@ -1761,6 +1761,17 @@ function convertParagraph(
     options.originalListSeenNumIds,
   );
   const defaultTextFormatting = pmAttrs.defaultTextFormatting as TextFormatting | undefined;
+  if (runs.length === 0) {
+    const paragraphMarkFormatting = pmAttrs._originalFormatting?.runProperties;
+    if (paragraphMarkFormatting?.fontSize !== undefined) {
+      attrs.defaultFontSize = paragraphMarkFormatting.fontSize / 2;
+    }
+    const paragraphMarkFontFamily =
+      paragraphMarkFormatting?.fontFamily?.ascii ?? paragraphMarkFormatting?.fontFamily?.hAnsi;
+    if (paragraphMarkFontFamily) {
+      attrs.defaultFontFamily = paragraphMarkFontFamily;
+    }
+  }
   if (runs.length === 0 && defaultTextFormatting?.hidden === true) {
     attrs.suppressEmptyParagraphHeight = true;
     if (attrs.listMarker !== undefined) {
