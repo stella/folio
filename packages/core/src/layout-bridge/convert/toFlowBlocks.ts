@@ -1757,6 +1757,13 @@ function convertParagraph(
     options.originalListAbstractCounters,
     options.originalListSeenNumIds,
   );
+  const defaultTextFormatting = pmAttrs.defaultTextFormatting as TextFormatting | undefined;
+  if (runs.length === 0 && defaultTextFormatting?.hidden === true) {
+    attrs.suppressEmptyParagraphHeight = true;
+    if (attrs.listMarker !== undefined) {
+      attrs.listMarkerHidden = true;
+    }
+  }
 
   const bookmarkNames = pmAttrs.bookmarks?.map((b) => b.name);
 

@@ -231,6 +231,25 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.spacingExplicit?.after).toBe(true);
   });
 
+  test("suppresses empty hidden list paragraphs and their markers", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          defaultTextFormatting: { hidden: true },
+          listMarker: "1.",
+          listIsBullet: false,
+        },
+        [],
+      ),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.attrs?.suppressEmptyParagraphHeight).toBe(true);
+    expect(paragraph?.attrs?.listMarkerHidden).toBe(true);
+  });
+
   test("preserves explicit automatic line spacing", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { lineSpacing: 240, lineSpacingRule: "auto" }, [
