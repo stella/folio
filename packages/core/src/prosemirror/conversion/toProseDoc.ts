@@ -868,7 +868,10 @@ function suppressParagraphMarkFormatting(
     return base;
   }
 
-  const result: TextFormatting = { ...base };
+  const result: TextFormatting = {
+    ...base,
+    ...paragraphMark,
+  };
   suppressBooleanParagraphMark(result, paragraphMark, direct, "bold");
   suppressBooleanParagraphMark(result, paragraphMark, direct, "italic");
   suppressBooleanParagraphMark(result, paragraphMark, direct, "strike");
@@ -890,7 +893,7 @@ function suppressParagraphMarkFormatting(
     // Word. Preserve any real style-level spacing; otherwise emit an explicit
     // zero so the paragraph's defaultTextFormatting cannot leak back into the
     // run when the PM document is converted to layout blocks.
-    result.spacing ??= 0;
+    result.spacing = 0;
   }
 
   return Object.keys(result).length > 0 ? result : undefined;

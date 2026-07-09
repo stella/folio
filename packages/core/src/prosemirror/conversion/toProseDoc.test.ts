@@ -116,6 +116,40 @@ describe("toProseDoc", () => {
     expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(20);
   });
 
+  test("keeps paragraph font size when a run only overrides the font family", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                runProperties: {
+                  fontSize: 16,
+                  fontFamily: { ascii: "Arial Narrow", hAnsi: "Arial Narrow" },
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: {
+                    fontFamily: { ascii: "Arial Narrow", hAnsi: "Arial Narrow" },
+                  },
+                  content: [{ type: "text", text: " " }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document);
+    const text = doc.firstChild?.firstChild;
+
+    expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(16);
+  });
+
   test("does not inherit paragraph mark all-caps onto visible text", () => {
     const document: Document = {
       package: {
