@@ -9,6 +9,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { FolioAIEditApplyResult, FolioAIEditSnapshot } from "@stll/folio-core/server";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
 import type { FolioCommentAnchor, FolioReviewChange } from "@stll/folio-core/ai-edits";
 import type { Comment } from "@stll/folio-core/types/content";
 
@@ -23,6 +24,65 @@ const baseRef = (): FolioAgentEditorRefLike => ({
   applyAIEditOperations: () => EMPTY_APPLY_RESULT,
   scrollToBlock: () => true,
   getTotalPages: () => 3,
+});
+
+describe("createEditorRefBridge: document operations", () => {
+  test("delegates a versioned batch to a current editor ref", () => {
+    let receivedVersion: number | undefined;
+    const ref: FolioAgentEditorRefLike = {
+      ...baseRef(),
+      applyDocumentOperations: ({ batch }) => {
+        receivedVersion = batch.version;
+        return { version: batch.version, applied: [], skipped: [] };
+      },
+    };
+    const bridge = createEditorRefBridge({
+      ref,
+      author: "AI",
+      getComments: () => [],
+      setComments: () => {},
+    });
+
+    const result = bridge.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      operations: [],
+    });
+
+    expect(receivedVersion).toBe(FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION);
+    expect(result.version).toBe(FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION);
+  });
+
+  test("preserves the versioned result when adapting an older editor ref", () => {
+    const bridge = createEditorRefBridge({
+      ref: baseRef(),
+      author: "AI",
+      getComments: () => [],
+      setComments: () => {},
+    });
+
+    const result = bridge.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      operations: [],
+    });
+
+    expect(result).toEqual({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      ...EMPTY_APPLY_RESULT,
+    });
+  });
+
+  test("rejects unsupported serialized versions before using a legacy ref", () => {
+    const bridge = createEditorRefBridge({
+      ref: baseRef(),
+      author: "AI",
+      getComments: () => [],
+      setComments: () => {},
+    });
+
+    expect(() =>
+      Reflect.apply(bridge.applyDocumentOperations, bridge, [{ version: 2, operations: [] }]),
+    ).toThrow("Unsupported document operation contract version.");
+  });
 });
 
 const makeComment = (id: number, parentId?: number): Comment => ({

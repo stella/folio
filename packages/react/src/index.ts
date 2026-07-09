@@ -6,6 +6,7 @@ export {
   type RenderAsyncOptions,
 } from "./renderAsync";
 export type {
+  DocxEditorApplyDocumentOperationsOptions,
   DocxEditorCollaboration,
   DocxEditorProps,
   DocxEditorRef,

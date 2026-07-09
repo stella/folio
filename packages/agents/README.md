@@ -115,7 +115,7 @@ if (!parsed.ok) {
   // executeFolioToolCall would.
 } else {
   // `parsed.operations` is FolioAIEditOperation[] — route it into your own
-  // review queue instead of bridge.applyOperations(...).
+  // review queue instead of bridge.applyDocumentOperations(...).
   reviewQueue.enqueue(parsed.operations);
 }
 ```

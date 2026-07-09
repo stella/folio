@@ -26,6 +26,8 @@ import { FolioAIEditApplyResult } from '@stll/folio-core/ai-edits';
 import { FolioAIEditOperation } from '@stll/folio-core/ai-edits';
 import { FolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
+import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
+import { FolioDocumentOperationResult } from '@stll/folio-core/server';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
@@ -124,7 +126,8 @@ export type DocxEditorRef = {
     ensureEditorView: (options?: {
         focus?: boolean;
     }) => void; /** Create the block snapshot that an external AI editor should reference. */
-    createAIEditSnapshot: () => FolioAIEditSnapshot | null; /** Apply AI-authored operations against a previously created block snapshot. */
+    createAIEditSnapshot: () => FolioAIEditSnapshot | null; /** Apply a versioned document-operation batch against a previously created block snapshot. */
+    applyDocumentOperations: (options: DocxEditorApplyDocumentOperationsOptions) => FolioDocumentOperationResult; /** Apply AI-authored operations against a previously created block snapshot. */
     applyAIEditOperations: (options: {
         snapshot: FolioAIEditSnapshot;
         operations: FolioAIEditOperation[];
