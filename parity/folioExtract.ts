@@ -41,6 +41,21 @@ export class FolioExtractError extends Error {
 
 export type FolioExtraction = { geom: DocGeom; screenshotPaths: string[] };
 
+const MEANINGFUL_INK_CHARACTER = /[^\s\u00ad\u200b-\u200d\ufeff]/u;
+
+/** Character offsets whose glyphs should contribute to a line's ink bounds. */
+export const meaningfulTextRange = (text: string): { start: number; end: number } | null => {
+  const first = text.search(MEANINGFUL_INK_CHARACTER);
+  if (first < 0) {
+    return null;
+  }
+  let end = text.length;
+  while (end > first && !MEANINGFUL_INK_CHARACTER.test(text[end - 1] ?? "")) {
+    end -= 1;
+  }
+  return { start: first, end };
+};
+
 export type FolioSpanInspection = {
   text: string;
   className: string;
@@ -412,7 +427,9 @@ const listPageMeta = (page: Page): Promise<PageMeta[]> =>
  * read an empty/stale shell.
  */
 const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
-  page.evaluate<RawPage, number>((idx) => {
+  page.evaluate<RawPage, { domIndex: number; meaningfulInkPattern: string }>((input) => {
+    const { domIndex: idx, meaningfulInkPattern } = input;
+    const meaningfulInkCharacter = new RegExp(meaningfulInkPattern, "u");
     const pageEls = Array.from(document.querySelectorAll(".layout-page")) as HTMLElement[];
     const el = pageEls[idx];
     if (!el) {
@@ -425,14 +442,56 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
 
     const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
     const lines = lineEls.flatMap((lineEl) => {
+      const segmentInkRect = (segmentEl: HTMLElement): DOMRect | null => {
+        const walker = document.createTreeWalker(segmentEl, NodeFilter.SHOW_TEXT);
+        let firstNode: Text | null = null;
+        let firstOffset = 0;
+        let lastNode: Text | null = null;
+        let lastOffset = 0;
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const textNode = node as Text;
+          const value = textNode.data;
+          const start = value.search(meaningfulInkCharacter);
+          if (start < 0) {
+            continue;
+          }
+          let end = value.length;
+          while (end > start && !meaningfulInkCharacter.test(value[end - 1] ?? "")) {
+            end -= 1;
+          }
+          firstNode ??= textNode;
+          if (firstNode === textNode) {
+            firstOffset = start;
+          }
+          lastNode = textNode;
+          lastOffset = end;
+        }
+
+        if (firstNode && lastNode) {
+          const range = document.createRange();
+          range.setStart(firstNode, firstOffset);
+          range.setEnd(lastNode, lastOffset);
+          const rect = range.getBoundingClientRect();
+          range.detach();
+          if (rect.width > 0 && rect.height > 0) {
+            return rect;
+          }
+        }
+
+        if (segmentEl.querySelector("img, svg, canvas, video")) {
+          const rect = segmentEl.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 ? rect : null;
+        }
+        return null;
+      };
       const rectFor = (segmentEls: HTMLElement[]): DOMRect | null => {
         let inkLeft = Number.POSITIVE_INFINITY;
         let inkTop = Number.POSITIVE_INFINITY;
         let inkRight = Number.NEGATIVE_INFINITY;
         let inkBottom = Number.NEGATIVE_INFINITY;
         for (const segmentEl of segmentEls) {
-          const segmentRect = segmentEl.getBoundingClientRect();
-          if (segmentRect.width <= 0 || segmentRect.height <= 0) continue;
+          const segmentRect = segmentInkRect(segmentEl);
+          if (!segmentRect) continue;
           inkLeft = Math.min(inkLeft, segmentRect.left);
           inkTop = Math.min(inkTop, segmentRect.top);
           inkRight = Math.max(inkRight, segmentRect.right);
@@ -442,27 +501,6 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
           ? new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop)
           : null;
       };
-      const textRectFor = (segmentEls: HTMLElement[]): DOMRect | null => {
-        let inkLeft = Number.POSITIVE_INFINITY;
-        let inkTop = Number.POSITIVE_INFINITY;
-        let inkRight = Number.NEGATIVE_INFINITY;
-        let inkBottom = Number.NEGATIVE_INFINITY;
-        for (const segmentEl of segmentEls) {
-          const range = document.createRange();
-          range.selectNodeContents(segmentEl);
-          const segmentRect = range.getBoundingClientRect();
-          range.detach();
-          if (segmentRect.width <= 0 || segmentRect.height <= 0) continue;
-          inkLeft = Math.min(inkLeft, segmentRect.left);
-          inkTop = Math.min(inkTop, segmentRect.top);
-          inkRight = Math.max(inkRight, segmentRect.right);
-          inkBottom = Math.max(inkBottom, segmentRect.bottom);
-        }
-        return inkRight > inkLeft && inkBottom > inkTop
-          ? new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop)
-          : null;
-      };
-
       const region = (() => {
         if (lineEl.closest(".layout-page-header")) {
           return "header";
@@ -501,7 +539,7 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
       const markerEls = Array.from(lineEl.querySelectorAll(".layout-list-marker")) as HTMLElement[];
       const runEls = Array.from(lineEl.querySelectorAll(".layout-run")) as HTMLElement[];
       if (markerEls.length > 0 && runEls.length > 0) {
-        const markerRect = textRectFor(markerEls) ?? rectFor(markerEls);
+        const markerRect = rectFor(markerEls);
         const runsRect = rectFor(runEls);
         const splitLines = [];
         if (markerRect) {
@@ -594,8 +632,8 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
       let inkRight = Number.NEGATIVE_INFINITY;
       let inkBottom = Number.NEGATIVE_INFINITY;
       for (const segmentEl of segmentEls) {
-        const segmentRect = segmentEl.getBoundingClientRect();
-        if (segmentRect.width <= 0 || segmentRect.height <= 0) continue;
+        const segmentRect = segmentInkRect(segmentEl);
+        if (!segmentRect) continue;
         inkLeft = Math.min(inkLeft, segmentRect.left);
         inkTop = Math.min(inkTop, segmentRect.top);
         inkRight = Math.max(inkRight, segmentRect.right);
@@ -627,7 +665,7 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
       offsetHeight: el.offsetHeight,
       lines,
     };
-  }, domIndex);
+  }, { domIndex, meaningfulInkPattern: MEANINGFUL_INK_CHARACTER.source });
 
 const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspection> =>
   page.evaluate<FolioPageInspection, number>((idx) => {

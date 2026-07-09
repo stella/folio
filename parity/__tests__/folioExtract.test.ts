@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { PX_TO_PT } from "../config";
-import { computeZoomFactor, parseFirstFontFamily, toPageGeom } from "../folioExtract";
+import {
+  computeZoomFactor,
+  meaningfulTextRange,
+  parseFirstFontFamily,
+  toPageGeom,
+} from "../folioExtract";
 import type { RawLine, RawPage } from "../folioExtract";
 
 const rect = (left: number, top: number, width: number, height: number) => ({
@@ -23,6 +28,16 @@ const makeRawPage = (overrides: Partial<RawPage> & Pick<RawPage, "lines">): RawP
   offsetWidth: 816,
   offsetHeight: 1056,
   ...overrides,
+});
+
+describe("meaningfulTextRange", () => {
+  test("excludes surrounding whitespace and invisible controls from ink bounds", () => {
+    expect(meaningfulTextRange("   \u00ad\u200bč. NPU-450/74723/2025 \t")).toEqual({
+      start: 5,
+      end: 26,
+    });
+    expect(meaningfulTextRange(" \t\u00ad\u200b")).toBeNull();
+  });
 });
 
 describe("computeZoomFactor", () => {
