@@ -563,6 +563,9 @@ export type ImageRef = {
     virtualPath: string;
 } & ImageMeta;
 
+// @public (undocumented)
+export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
+
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
 
@@ -594,6 +597,9 @@ export type MarkdownResult = {
 
 // @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;
+
+// @public (undocumented)
+export const parseFolioDocumentOperationBatch: (value: unknown) => FolioDocumentOperationBatch;
 
 // @public (undocumented)
 export type PositionalText = {

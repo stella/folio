@@ -258,10 +258,16 @@ export const getTrackedChangesFromDoc: (doc: Node_2) => FolioReviewChange[];
 export const hashFolioAIBlockText: (text: string) => string;
 
 // @public (undocumented)
+export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
+
+// @public (undocumented)
 export const isSupportedFolioDocumentOperationVersion: (value: unknown) => value is typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
 // @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;
+
+// @public (undocumented)
+export const parseFolioDocumentOperationBatch: (value: unknown) => FolioDocumentOperationBatch;
 
 // @public (undocumented)
 export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}
