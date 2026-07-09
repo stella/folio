@@ -1,5 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
+const reactPlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
+
 export default defineConfig({
   testDir: "./tests/visual",
   timeout: 30_000,
@@ -11,7 +13,7 @@ export default defineConfig({
     },
   },
   use: {
-    baseURL: "http://localhost:4200",
+    baseURL: `http://localhost:${reactPlaygroundPort}`,
     browserName: "chromium",
     viewport: { width: 1280, height: 900 },
     // Consistent rendering across machines
@@ -40,12 +42,12 @@ export default defineConfig({
   webServer: [
     {
       command: "bun --filter @stll/playground dev",
-      url: "http://localhost:4200",
+      url: `http://localhost:${reactPlaygroundPort}`,
       reuseExistingServer: true,
       timeout: 120_000,
     },
     {
-      command: "bun --filter @stll/playground-vue dev",
+      command: "FOLIO_PLAYGROUND_PORT=4201 bun --filter @stll/playground-vue dev",
       url: "http://localhost:4201",
       reuseExistingServer: true,
       timeout: 120_000,

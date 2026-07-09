@@ -16,10 +16,11 @@ import { parseDocx as folioParse } from "@stll/folio-core/docx/parser";
 import mammoth from "mammoth";
 import { Bench } from "tinybench";
 
+import { MICRO_BENCH_OPTIONS } from "./config";
 import { FIXTURES, fixtureLabel, freshArrayBuffer, freshBuffer } from "./fixtures";
 
 export function parseBench(): Bench {
-  const bench = withCodSpeed(new Bench());
+  const bench = withCodSpeed(new Bench(MICRO_BENCH_OPTIONS));
 
   for (const fixture of FIXTURES) {
     const label = fixtureLabel(fixture);

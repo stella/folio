@@ -29,5 +29,25 @@ for (const group of GROUPS) {
   const bench = await group.make();
   await bench.run();
   console.log(`\n=== ${group.name} ===`);
-  console.table(bench.table());
+  console.table(
+    bench.tasks.map((task) => {
+      const { result } = task;
+      if (result.state !== "completed") {
+        return { benchmark: task.name, state: result.state };
+      }
+      const samples = result.latency.samples ?? [];
+      const p95Index = Math.max(0, Math.ceil(samples.length * 0.95) - 1);
+      return {
+        benchmark: task.name,
+        "median ms": round(result.latency.p50),
+        "p95 ms": round(samples.at(p95Index) ?? result.latency.p99),
+        samples: result.latency.samplesCount,
+        state: result.state,
+      };
+    }),
+  );
+}
+
+function round(value: number): number {
+  return Number(value.toFixed(3));
 }

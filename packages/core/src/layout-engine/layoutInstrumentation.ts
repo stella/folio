@@ -14,7 +14,10 @@ export type HiddenEditorStateReason = "external-document" | "mount";
 
 export type HiddenEditorPhase = "editor-state" | "editor-view" | "to-prose-doc" | "update-state";
 
+export type DocumentLoadPhase = "docx-parse";
+
 export type LayoutInstrumentation = {
+  onDocumentLoadPhase?: (event: { durationMs: number; phase: DocumentLoadPhase }) => void;
   onHiddenEditorPhase?: (event: {
     durationMs: number;
     phase: HiddenEditorPhase;
@@ -23,6 +26,7 @@ export type LayoutInstrumentation = {
   onHiddenEditorStateCreate?: (event: { reason: HiddenEditorStateReason }) => void;
   onLayoutComplete?: (event: { reason: LayoutRunReason }) => void;
   onLayoutError?: (event: { message: string; reason: LayoutRunReason }) => void;
+  onLayoutStart?: (event: { reason: LayoutRunReason }) => void;
   onLayoutPhase?: (event: {
     durationMs: number;
     phase: LayoutPhase;
@@ -65,6 +69,10 @@ export function recordLayoutComplete(reason: LayoutRunReason = "manual"): void {
   globalThis.__folioLayoutInstrumentation?.onLayoutComplete?.({ reason });
 }
 
+export function recordLayoutStart(reason: LayoutRunReason): void {
+  globalThis.__folioLayoutInstrumentation?.onLayoutStart?.({ reason });
+}
+
 export function recordLayoutError(reason: LayoutRunReason, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   globalThis.__folioLayoutInstrumentation?.onLayoutError?.({
@@ -100,5 +108,12 @@ export function recordHiddenEditorPhase(
     durationMs,
     phase,
     reason,
+  });
+}
+
+export function recordDocumentLoadPhase(phase: DocumentLoadPhase, durationMs: number): void {
+  globalThis.__folioLayoutInstrumentation?.onDocumentLoadPhase?.({
+    durationMs,
+    phase,
   });
 }

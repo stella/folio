@@ -13,6 +13,7 @@
 import { inspectDocxCompatibility } from "../docx/compatibility";
 import type { DocxCompatibility } from "../docx/compatibility";
 import { parseDocx } from "../docx/parser";
+import { recordDocumentLoadPhase } from "../layout-engine/layoutInstrumentation";
 import type { Document } from "../types/document";
 import { resetAuthorColors } from "../utils/authorColors";
 import type { DocxInput } from "../utils/docxInput";
@@ -84,7 +85,10 @@ export class DocumentLoaderManager {
    * the result (and any error) when a newer load started while this one was in
    * flight.
    */
-  async loadBuffer(buffer: DocxInput, options: { password?: string | undefined } = {}): Promise<void> {
+  async loadBuffer(
+    buffer: DocxInput,
+    options: { password?: string | undefined } = {},
+  ): Promise<void> {
     const { history, onError, setDocumentLoadState } = this.callbacks;
     const generation = ++this.loadGeneration;
     const hasLoadedDocument = history.state !== null;
@@ -95,11 +99,17 @@ export class DocumentLoaderManager {
     try {
       // Skip blocking font preload during parsing; fonts load asynchronously
       // in loadParsedDocument after the first render.
-      const doc = await parseDocx(buffer, {
-        detectVariables: false,
-        preloadFonts: false,
-        password: options.password,
-      });
+      const parseStartedAt = performance.now();
+      let doc: Document;
+      try {
+        doc = await parseDocx(buffer, {
+          detectVariables: false,
+          preloadFonts: false,
+          password: options.password,
+        });
+      } finally {
+        recordDocumentLoadPhase("docx-parse", performance.now() - parseStartedAt);
+      }
       if (this.loadGeneration !== generation) {
         return;
       }

@@ -29,6 +29,7 @@ import {
   recordLayoutComplete,
   recordLayoutError,
   recordLayoutPhase,
+  recordLayoutStart,
 } from "../layout-engine/layoutInstrumentation";
 import type { LayoutPhase, LayoutRunReason } from "../layout-engine/layoutInstrumentation";
 import {
@@ -228,6 +229,7 @@ export function runLayoutPipeline<THfPMs>(
   const currentEpoch = syncCoordinator.getStateSeq();
 
   // Signal layout is starting
+  recordLayoutStart(reason);
   syncCoordinator.onLayoutStart();
 
   try {

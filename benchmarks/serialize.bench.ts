@@ -14,10 +14,11 @@ import { createDocx as folioCreate } from "@stll/folio-core";
 import { parseDocx as folioParse } from "@stll/folio-core/docx/parser";
 import { Bench } from "tinybench";
 
+import { MICRO_BENCH_OPTIONS } from "./config";
 import { FIXTURES, fixtureLabel, freshArrayBuffer } from "./fixtures";
 
 export async function serializeBench(): Promise<Bench> {
-  const bench = withCodSpeed(new Bench());
+  const bench = withCodSpeed(new Bench(MICRO_BENCH_OPTIONS));
 
   for (const fixture of FIXTURES) {
     const label = fixtureLabel(fixture);

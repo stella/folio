@@ -9,10 +9,11 @@ import { parseDocx as folioParse } from "@stll/folio-core/docx/parser";
 import { fromMarkdown, toMarkdown } from "@stll/folio-core/markdown";
 import { Bench } from "tinybench";
 
+import { MICRO_BENCH_OPTIONS } from "./config";
 import { FIXTURES, fixtureLabel, freshArrayBuffer } from "./fixtures";
 
 export async function markdownBench(): Promise<Bench> {
-  const bench = withCodSpeed(new Bench());
+  const bench = withCodSpeed(new Bench(MICRO_BENCH_OPTIONS));
 
   for (const fixture of FIXTURES) {
     const label = fixtureLabel(fixture);
