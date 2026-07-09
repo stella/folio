@@ -38,7 +38,14 @@ function installFixtureMiddleware(
       return;
     }
     const requested = req.url.slice(FIXTURE_PREFIX.length).split("?")[0] ?? "";
-    const name = decodeURIComponent(requested);
+    let name: string;
+    try {
+      name = decodeURIComponent(requested);
+    } catch {
+      res.statusCode = 400;
+      res.end("Invalid fixture path");
+      return;
+    }
     if (!name || name.includes("/") || name.includes("..")) {
       res.statusCode = 400;
       res.end("Invalid fixture path");
