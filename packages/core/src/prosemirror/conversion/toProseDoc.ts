@@ -248,10 +248,13 @@ function convertParagraph(
     inheritableParagraphRunFormatting = stripParagraphMarkOnlyFormatting(paragraphRunFormatting);
   }
   const baseRunFormatting = mergeTextFormatting(styleRunFormatting, extraRunFormatting);
-  const defaultRunFormatting = mergeTextFormatting(
-    baseRunFormatting,
-    inheritableParagraphRunFormatting,
-  );
+  // With a named paragraph style, w:pPr/w:rPr formats the paragraph mark and
+  // only fills gaps in the style's body-run defaults. Style-less generated
+  // documents use the paragraph mark as their highest-precedence run default.
+  const paragraphMarkPrecedesStyle = paragraph.formatting?.styleId !== undefined;
+  const defaultRunFormatting = paragraphMarkPrecedesStyle
+    ? mergeTextFormatting(inheritableParagraphRunFormatting, baseRunFormatting)
+    : mergeTextFormatting(baseRunFormatting, inheritableParagraphRunFormatting);
   const getInheritedRunFormatting = (
     formatting: TextFormatting | undefined,
     fieldType?: string,
@@ -268,6 +271,7 @@ function convertParagraph(
       baseRunFormatting,
       inheritableParagraphRunFormatting,
       formatting,
+      paragraphMarkPrecedesStyle,
     );
   };
   const emitTrackedChange = (
@@ -863,15 +867,16 @@ function suppressParagraphMarkFormatting(
   base: TextFormatting | undefined,
   paragraphMark: TextFormatting | undefined,
   direct: TextFormatting | undefined,
+  paragraphMarkPrecedesStyle = false,
 ): TextFormatting | undefined {
   if (!paragraphMark) {
     return base;
   }
 
-  const result: TextFormatting = {
-    ...base,
-    ...paragraphMark,
-  };
+  const result =
+    (paragraphMarkPrecedesStyle
+      ? mergeTextFormatting(paragraphMark, base)
+      : mergeTextFormatting(base, paragraphMark)) ?? {};
   suppressBooleanParagraphMark(result, paragraphMark, direct, "bold");
   suppressBooleanParagraphMark(result, paragraphMark, direct, "italic");
   suppressBooleanParagraphMark(result, paragraphMark, direct, "strike");
@@ -968,16 +973,16 @@ function resolveParagraphDefaultTextFormatting(
       )
     : undefined;
 
-  return mergeTextFormatting(
+  const bodyRunDefaults = mergeTextFormatting(
     mergeTextFormatting(
-      mergeTextFormatting(
-        styleResolver.getDocDefaults()?.rPr,
-        styleResolver.getDefaultCharacterStyle()?.rPr,
-      ),
-      paragraphStyleRpr,
+      styleResolver.getDocDefaults()?.rPr,
+      styleResolver.getDefaultCharacterStyle()?.rPr,
     ),
-    paragraphRunProperties,
+    paragraphStyleRpr,
   );
+  return styleId === undefined
+    ? mergeTextFormatting(bodyRunDefaults, paragraphRunProperties)
+    : mergeTextFormatting(paragraphRunProperties, bodyRunDefaults);
 }
 
 /**

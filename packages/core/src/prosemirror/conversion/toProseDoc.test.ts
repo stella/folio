@@ -150,6 +150,77 @@ describe("toProseDoc", () => {
     expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(16);
   });
 
+  test("keeps named paragraph style fonts ahead of paragraph-mark formatting", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                styleId: "Header",
+                runProperties: {
+                  fontSize: 11,
+                  fontFamily: { ascii: "Calibri", hAnsi: "Calibri" },
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: {},
+                  content: [{ type: "text", text: "   " }],
+                },
+                {
+                  type: "run",
+                  formatting: {
+                    fontSize: 11,
+                    fontFamily: { ascii: "Calibri", hAnsi: "Calibri" },
+                  },
+                  content: [{ type: "text", text: "reference" }],
+                },
+              ],
+            },
+          ],
+        },
+        styles: {
+          styles: [
+            {
+              styleId: "Normal",
+              type: "paragraph",
+              default: true,
+              rPr: {
+                fontSize: 12,
+                fontFamily: { ascii: "Times New Roman", hAnsi: "Times New Roman" },
+              },
+            },
+            {
+              styleId: "Header",
+              type: "paragraph",
+              basedOn: "Normal",
+              rPr: {
+                fontSize: 12,
+                fontFamily: { ascii: "Times New Roman", hAnsi: "Times New Roman" },
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+    const spaces = doc.firstChild?.firstChild;
+    const reference = doc.firstChild?.maybeChild(1);
+
+    expect(spaces?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(12);
+    expect(spaces?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe(
+      "Times New Roman",
+    );
+    expect(reference?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(11);
+    expect(reference?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe(
+      "Calibri",
+    );
+  });
+
   test("does not inherit paragraph mark all-caps onto visible text", () => {
     const document: Document = {
       package: {
