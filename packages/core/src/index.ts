@@ -62,11 +62,13 @@ export {
   assertSupportedFolioDocumentOperationVersion,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
+  FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
   FOLIO_DOCUMENT_OPERATION_STORIES,
   FOLIO_DOCUMENT_OPERATION_TYPES,
   getFolioDocumentOperationCapabilities,
   InvalidFolioDocumentOperationBatchError,
   isSupportedFolioDocumentOperationVersion,
+  isFolioDocumentOperationModeSupported,
   parseFolioDocumentOperationBatch,
   UnsupportedFolioDocumentOperationVersionError,
   type ApplyFolioDocumentOperationsOptions,
@@ -74,6 +76,7 @@ export {
   type FolioDocumentOperationBatch,
   type FolioDocumentOperationCapabilities,
   type FolioDocumentOperationMode,
+  type FolioDocumentOperationType,
   type FolioDocumentOperationResult,
 } from "./ai-edits";
 export {

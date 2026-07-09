@@ -32,11 +32,30 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES = Object.freeze(["main"] as const)
 
 export type FolioDocumentOperation = FolioAIEditOperation;
 export type FolioDocumentOperationMode = FolioAIEditApplyMode;
+export type FolioDocumentOperationType = FolioDocumentOperation["type"];
+
+const DIRECT_AND_TRACKED_MODES = FOLIO_DOCUMENT_OPERATION_MODES;
+const DIRECT_ONLY_MODES = Object.freeze([
+  "direct",
+] as const satisfies readonly FolioDocumentOperationMode[]);
+
+export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
+  replaceInBlock: DIRECT_AND_TRACKED_MODES,
+  insertAfterBlock: DIRECT_AND_TRACKED_MODES,
+  insertBeforeBlock: DIRECT_AND_TRACKED_MODES,
+  replaceBlock: DIRECT_AND_TRACKED_MODES,
+  deleteBlock: DIRECT_AND_TRACKED_MODES,
+  commentOnBlock: DIRECT_AND_TRACKED_MODES,
+  insertSignatureTable: DIRECT_ONLY_MODES,
+} as const satisfies Readonly<
+  Record<FolioDocumentOperationType, readonly FolioDocumentOperationMode[]>
+>);
 
 export type FolioDocumentOperationCapabilities = {
   readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   readonly operationTypes: typeof FOLIO_DOCUMENT_OPERATION_TYPES;
   readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
+  readonly modesByOperationType: typeof FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE;
   readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
 
@@ -44,11 +63,28 @@ const DOCUMENT_OPERATION_CAPABILITIES = Object.freeze({
   version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   operationTypes: FOLIO_DOCUMENT_OPERATION_TYPES,
   modes: FOLIO_DOCUMENT_OPERATION_MODES,
+  modesByOperationType: FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
   stories: FOLIO_DOCUMENT_OPERATION_STORIES,
 } as const satisfies FolioDocumentOperationCapabilities);
 
 export const getFolioDocumentOperationCapabilities = (): FolioDocumentOperationCapabilities =>
   DOCUMENT_OPERATION_CAPABILITIES;
+
+const includesDocumentOperationMode = (
+  supportedModes: readonly FolioDocumentOperationMode[],
+  mode: FolioDocumentOperationMode,
+): boolean => supportedModes.includes(mode);
+
+export const isFolioDocumentOperationModeSupported = (
+  operationType: FolioDocumentOperationType,
+  mode: FolioDocumentOperationMode,
+): boolean => {
+  const supportedModes = FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE[operationType];
+  if (supportedModes === undefined) {
+    return false;
+  }
+  return includesDocumentOperationMode(supportedModes, mode);
+};
 
 export const isSupportedFolioDocumentOperationVersion = (
   value: unknown,

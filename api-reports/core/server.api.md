@@ -68,6 +68,17 @@ export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION: 1;
 export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-changes"];
 
 // @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
+    readonly replaceInBlock: readonly ["direct", "tracked-changes"];
+    readonly insertAfterBlock: readonly ["direct", "tracked-changes"];
+    readonly insertBeforeBlock: readonly ["direct", "tracked-changes"];
+    readonly replaceBlock: readonly ["direct", "tracked-changes"];
+    readonly deleteBlock: readonly ["direct", "tracked-changes"];
+    readonly commentOnBlock: readonly ["direct", "tracked-changes"];
+    readonly insertSignatureTable: readonly ["direct"];
+}>;
+
+// @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
 
 // @public (undocumented)
@@ -203,6 +214,7 @@ export type FolioDocumentOperationCapabilities = {
     readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
     readonly operationTypes: typeof FOLIO_DOCUMENT_OPERATION_TYPES;
     readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
+    readonly modesByOperationType: typeof FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE;
     readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
 
@@ -215,6 +227,9 @@ export type FolioDocumentOperationResult = {
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
 };
+
+// @public (undocumented)
+export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
 // @public
 export class FolioDocxReviewer {
@@ -309,6 +324,9 @@ export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumen
 
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
+
+// @public (undocumented)
+export const isFolioDocumentOperationModeSupported: (operationType: FolioDocumentOperationType, mode: FolioDocumentOperationMode) => boolean;
 
 // @public (undocumented)
 export const isSequentialFolioBlockId: (id: string) => boolean;

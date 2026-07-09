@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import {
   assertSupportedFolioDocumentOperationVersion,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
   getFolioDocumentOperationCapabilities,
+  isFolioDocumentOperationModeSupported,
   InvalidFolioDocumentOperationBatchError,
   isSupportedFolioDocumentOperationVersion,
   parseFolioDocumentOperationBatch,
@@ -24,8 +26,31 @@ describe("document operation contract", () => {
         "insertSignatureTable",
       ],
       modes: ["direct", "tracked-changes"],
+      modesByOperationType: {
+        replaceInBlock: ["direct", "tracked-changes"],
+        insertAfterBlock: ["direct", "tracked-changes"],
+        insertBeforeBlock: ["direct", "tracked-changes"],
+        replaceBlock: ["direct", "tracked-changes"],
+        deleteBlock: ["direct", "tracked-changes"],
+        commentOnBlock: ["direct", "tracked-changes"],
+        insertSignatureTable: ["direct"],
+      },
       stories: ["main"],
     });
+  });
+
+  test("reports mode support for each operation type", () => {
+    expect(isFolioDocumentOperationModeSupported("replaceInBlock", "tracked-changes")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("insertSignatureTable", "direct")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("insertSignatureTable", "tracked-changes")).toBe(
+      false,
+    );
+    expect(
+      Reflect.apply(isFolioDocumentOperationModeSupported, null, ["unknownOperation", "direct"]),
+    ).toBe(false);
+    expect(Object.keys(FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE)).toEqual(
+      getFolioDocumentOperationCapabilities().operationTypes,
+    );
   });
 
   test("checks untyped contract versions at a serialization boundary", () => {
