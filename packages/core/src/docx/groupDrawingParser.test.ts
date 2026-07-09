@@ -23,6 +23,7 @@ describe("parseGroupDrawing", () => {
                   <a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="500000"/></a:xfrm>
                   <a:custGeom><a:pathLst><a:path w="2000000" h="500000"><a:moveTo><a:pt x="0" y="0"/></a:moveTo><a:lnTo><a:pt x="2000000" y="500000"/></a:lnTo></a:path></a:pathLst></a:custGeom>
                   <a:solidFill><a:srgbClr val="DBEDF3"/></a:solidFill>
+                  <a:ln><a:solidFill><a:srgbClr val="123456"/></a:solidFill></a:ln>
                 </wps:spPr>
               </wps:wsp>
               <wps:wsp>
@@ -45,7 +46,9 @@ describe("parseGroupDrawing", () => {
     expect(image?.src).toStartWith("data:image/svg+xml");
     const svg = decodeURIComponent(image?.src?.split(",").at(1) ?? "");
     expect(svg).toContain('<path d="M 0 0 L 2000000 500000"');
+    expect(svg).toContain('stroke="#123456" stroke-width="9525"');
     expect(svg).toContain("A &amp; B");
     expect(svg).not.toContain("A & B");
+    expect(svg).not.toContain('<rect width="2000000" height="1000000" fill="#FFFFFF"');
   });
 });

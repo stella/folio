@@ -15,6 +15,7 @@ import type { XmlElement } from "./xmlParser";
 const HEX_COLOR = /^[0-9A-Fa-f]{6}$/u;
 const DEFAULT_TEXT_COLOR = "000000";
 const DEFAULT_FONT_HALF_POINTS = 22;
+const DEFAULT_LINE_WIDTH_EMU = 9_525;
 const HALF_POINT_TO_EMU = 6_350;
 const MAX_GROUP_SHAPES = 256;
 const MAX_PATH_COMMANDS = 10_000;
@@ -137,7 +138,9 @@ const renderGeometry = (wsp: XmlElement): string => {
   const fill = colorFrom(spPr, "none");
   const line = findChildByLocalName(spPr, "ln");
   const stroke = colorFrom(line, "none");
-  const strokeWidth = numericAttr(line, "w");
+  const strokeWidth = line
+    ? (parseNumericAttribute(line, null, "w") ?? DEFAULT_LINE_WIDTH_EMU)
+    : 0;
   const paths = findAllDeep(findChildByLocalName(spPr, "custGeom"), "a", "path");
   if (paths.length === 0) {
     return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fill === "none" ? "none" : `#${fill}`}" stroke="${stroke === "none" ? "none" : `#${stroke}`}" stroke-width="${strokeWidth}"/>`;
@@ -191,7 +194,7 @@ const createSvg = (group: XmlElement, width: number, height: number): string => 
       findChildByLocalName(wsp, "txbx") ? renderTextBox(wsp) : renderGeometry(wsp),
     )
     .join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${emuToPixels(width)}" height="${emuToPixels(height)}"><rect width="${width}" height="${height}" fill="#FFFFFF"/>${content}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${emuToPixels(width)}" height="${emuToPixels(height)}">${content}</svg>`;
 };
 
 /** Parse a WordprocessingGroup drawing into a safe SVG-backed image preview. */
