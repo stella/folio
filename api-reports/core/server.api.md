@@ -5,6 +5,7 @@
 ```ts
 
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
+import { TaggedErrorClass } from 'better-result';
 
 // @public
 export const applyFolioAIEditsToBuffer: (buffer: ArrayBuffer, operations: FolioAIEditOperation[], options?: ApplyFolioAIEditsToBufferOptions) => Promise<ApplyFolioAIEditsToBufferResult>;
@@ -20,6 +21,9 @@ export type ApplyFolioAIEditsToBufferOptions = {
 export type ApplyFolioAIEditsToBufferResult = FolioAIEditApplyResult & {
     buffer: ArrayBuffer;
 };
+
+// @public (undocumented)
+export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
 // @public (undocumented)
 export type CreateCommentReplyInput = {
@@ -56,6 +60,18 @@ export type DeriveBlockIdInput = {
     index: number;
     taken: ReadonlySet<string>;
 };
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION: 1;
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-changes"];
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -159,6 +175,9 @@ export type FolioAIEditSnapshot = {
 };
 
 // @public
+export type FolioApplyDocumentOperationsOptions = Omit<FolioApplyOperationsOptions, "mode">;
+
+// @public
 export type FolioApplyOperationsOptions = {
     mode?: FolioAIEditApplyMode;
     snapshot?: FolioAIEditSnapshot;
@@ -169,10 +188,39 @@ export type FolioBlockId = string & {
     readonly __brand: "folio.blockId";
 };
 
+// @public (undocumented)
+export type FolioDocumentOperation = FolioAIEditOperation;
+
+// @public (undocumented)
+export type FolioDocumentOperationBatch = {
+    readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    operations: FolioDocumentOperation[];
+    mode?: FolioDocumentOperationMode;
+};
+
+// @public (undocumented)
+export type FolioDocumentOperationCapabilities = {
+    readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    readonly operationTypes: typeof FOLIO_DOCUMENT_OPERATION_TYPES;
+    readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
+    readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
+};
+
+// @public (undocumented)
+export type FolioDocumentOperationMode = FolioAIEditApplyMode;
+
+// @public (undocumented)
+export type FolioDocumentOperationResult = {
+    version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    applied: FolioAIEditAppliedOperation[];
+    skipped: FolioAIEditSkippedOperation[];
+};
+
 // @public
 export class FolioDocxReviewer {
     acceptAll(): number;
     acceptChange(target: FolioReviewChange | number): boolean;
+    applyDocumentOperations(batch: FolioDocumentOperationBatch, options?: FolioApplyDocumentOperationsOptions): FolioDocumentOperationResult;
     applyOperations(operations: FolioAIEditOperation[], options?: FolioApplyOperationsOptions): FolioAIEditApplyResult;
     readonly author: string;
     static fromBuffer(buffer: ArrayBuffer, options?: FolioDocxReviewerOptions): Promise<FolioDocxReviewer>;
@@ -250,6 +298,9 @@ export type FolioReviewReplyInput = {
     initials?: string;
 };
 
+// @public (undocumented)
+export const getFolioDocumentOperationCapabilities: () => FolioDocumentOperationCapabilities;
+
 // @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
 
@@ -259,8 +310,14 @@ export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
 // @public (undocumented)
 export const isSequentialFolioBlockId: (id: string) => boolean;
 
+// @public (undocumented)
+export const isSupportedFolioDocumentOperationVersion: (value: unknown) => value is typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+
 // @public
 export const replyToComment: (doc: import__stll_docx_core_model.Document, parentCommentId: number, input: CreateCommentReplyInput) => import__stll_docx_core_model.Comment | null;
+
+// @public (undocumented)
+export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}
 
 // (No @packageDocumentation comment for this package)
 

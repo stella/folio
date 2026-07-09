@@ -12,6 +12,7 @@ import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
+import { TaggedErrorClass } from 'better-result';
 import { Transaction } from 'prosemirror-state';
 
 // @public (undocumented)
@@ -152,6 +153,18 @@ export const appendAutocompleteToken: (tr: Transaction, requestId: string, delta
 export const applyFolioAIEditOperations: (input: ApplyFolioAIEditOperationsOptions) => FolioAIEditApplyResult;
 
 // @public (undocumented)
+export const applyFolioDocumentOperations: (input: ApplyFolioDocumentOperationsOptions) => FolioDocumentOperationResult;
+
+// @public (undocumented)
+export type ApplyFolioDocumentOperationsOptions = {
+    view: FolioAIEditView;
+    snapshot: FolioAIEditSnapshot;
+    batch: FolioDocumentOperationBatch;
+    author?: string;
+    createCommentId?: (text: string) => number;
+};
+
+// @public (undocumented)
 export type ApplyResult = {
     applied: string[];
     stale: string[];
@@ -159,6 +172,9 @@ export type ApplyResult = {
 
 // @public (undocumented)
 export function applySuggestions(options: ApplyOptions): ApplyResult;
+
+// @public (undocumented)
+export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
 // @public (undocumented)
 export const autocompleteSuggestionKey: PluginKey<AutocompleteSuggestionPluginState>;
@@ -310,6 +326,18 @@ export function extractEmbeddedFonts(buffer: ArrayBuffer): Promise<EmbeddedFont[
 export const finishAutocompleteSuggestion: (tr: Transaction, requestId: string) => Transaction;
 
 // @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION: 1;
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-changes"];
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
+
+// @public (undocumented)
 export type FolioAIBlock = {
     id: string;
     kind: FolioAIBlockKind;
@@ -454,6 +482,34 @@ export type FolioBlockId = string & {
     readonly __brand: "folio.blockId";
 };
 
+// @public (undocumented)
+export type FolioDocumentOperation = FolioAIEditOperation;
+
+// @public (undocumented)
+export type FolioDocumentOperationBatch = {
+    readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    operations: FolioDocumentOperation[];
+    mode?: FolioDocumentOperationMode;
+};
+
+// @public (undocumented)
+export type FolioDocumentOperationCapabilities = {
+    readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    readonly operationTypes: typeof FOLIO_DOCUMENT_OPERATION_TYPES;
+    readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
+    readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
+};
+
+// @public (undocumented)
+export type FolioDocumentOperationMode = FolioAIEditApplyMode;
+
+// @public (undocumented)
+export type FolioDocumentOperationResult = {
+    version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    applied: FolioAIEditAppliedOperation[];
+    skipped: FolioAIEditSkippedOperation[];
+};
+
 // @public
 export function fromMarkdown(markdown: string): import__stll_docx_core_model.Document;
 
@@ -468,6 +524,9 @@ export function getEmbeddedFontFaces(parts: EmbeddedFontParts): EmbeddedFont[];
 
 // @public
 export const getFolioCaretViewportRect: (view: EditorView) => DOMRect | null;
+
+// @public (undocumented)
+export const getFolioDocumentOperationCapabilities: () => FolioDocumentOperationCapabilities;
 
 // @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
@@ -512,6 +571,9 @@ export const isSequentialFolioBlockId: (id: string) => boolean;
 
 // @public (undocumented)
 export function isSuggestionStale(doc: Node_2, suggestion: AISuggestion): boolean;
+
+// @public (undocumented)
+export const isSupportedFolioDocumentOperationVersion: (value: unknown) => value is typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
 // @public
 export type MarkdownOptions = {
@@ -656,6 +718,9 @@ export function toMarkdown(doc: import__stll_docx_core_model.Document, opts?: Ma
 
 // @public
 export function toMarkdownResult(doc: import__stll_docx_core_model.Document, opts?: MarkdownOptions): MarkdownResult;
+
+// @public (undocumented)
+export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}
 
 // @public
 export type WordDiffSegment = {

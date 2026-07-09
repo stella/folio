@@ -32,3 +32,20 @@ export type {
   FolioAIEditSnapshot,
   FolioAISignatureParty,
 } from "./types";
+export {
+  applyFolioDocumentOperations,
+  assertSupportedFolioDocumentOperationVersion,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FOLIO_DOCUMENT_OPERATION_MODES,
+  FOLIO_DOCUMENT_OPERATION_STORIES,
+  FOLIO_DOCUMENT_OPERATION_TYPES,
+  getFolioDocumentOperationCapabilities,
+  isSupportedFolioDocumentOperationVersion,
+  UnsupportedFolioDocumentOperationVersionError,
+  type ApplyFolioDocumentOperationsOptions,
+  type FolioDocumentOperation,
+  type FolioDocumentOperationBatch,
+  type FolioDocumentOperationCapabilities,
+  type FolioDocumentOperationMode,
+  type FolioDocumentOperationResult,
+} from "../document-operations";

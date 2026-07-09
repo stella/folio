@@ -6,10 +6,26 @@
 
 import { EditorState } from 'prosemirror-state';
 import { Node as Node_2 } from 'prosemirror-model';
+import { TaggedErrorClass } from 'better-result';
 import { Transaction } from 'prosemirror-state';
 
 // @public (undocumented)
 export const applyFolioAIEditOperations: (input: ApplyFolioAIEditOperationsOptions) => FolioAIEditApplyResult;
+
+// @public (undocumented)
+export const applyFolioDocumentOperations: (input: ApplyFolioDocumentOperationsOptions) => FolioDocumentOperationResult;
+
+// @public (undocumented)
+export type ApplyFolioDocumentOperationsOptions = {
+    view: FolioAIEditView;
+    snapshot: FolioAIEditSnapshot;
+    batch: FolioDocumentOperationBatch;
+    author?: string;
+    createCommentId?: (text: string) => number;
+};
+
+// @public (undocumented)
+export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
 // @public
 export const buildAnnotatedBlockText: (blockNode: Node_2) => string;
@@ -19,6 +35,18 @@ export const createFolioAIEditSnapshot: (doc: Node_2) => FolioAIEditSnapshot;
 
 // @public (undocumented)
 export const diffWordSegments: (before: string, after: string) => WordDiffSegment[];
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION: 1;
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-changes"];
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -173,6 +201,34 @@ export type FolioCommentAnchor = {
     quote: string;
 };
 
+// @public (undocumented)
+export type FolioDocumentOperation = FolioAIEditOperation;
+
+// @public (undocumented)
+export type FolioDocumentOperationBatch = {
+    readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    operations: FolioDocumentOperation[];
+    mode?: FolioDocumentOperationMode;
+};
+
+// @public (undocumented)
+export type FolioDocumentOperationCapabilities = {
+    readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    readonly operationTypes: typeof FOLIO_DOCUMENT_OPERATION_TYPES;
+    readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
+    readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
+};
+
+// @public (undocumented)
+export type FolioDocumentOperationMode = FolioAIEditApplyMode;
+
+// @public (undocumented)
+export type FolioDocumentOperationResult = {
+    version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    applied: FolioAIEditAppliedOperation[];
+    skipped: FolioAIEditSkippedOperation[];
+};
+
 // @public
 export type FolioReviewChange = {
     id: number;
@@ -189,6 +245,9 @@ export type FolioReviewChangeKind = "insertion" | "deletion";
 // @public
 export const getCommentAnchorsFromDoc: (doc: Node_2) => FolioCommentAnchor[];
 
+// @public (undocumented)
+export const getFolioDocumentOperationCapabilities: () => FolioDocumentOperationCapabilities;
+
 // @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
 
@@ -199,7 +258,13 @@ export const getTrackedChangesFromDoc: (doc: Node_2) => FolioReviewChange[];
 export const hashFolioAIBlockText: (text: string) => string;
 
 // @public (undocumented)
+export const isSupportedFolioDocumentOperationVersion: (value: unknown) => value is typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+
+// @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;
+
+// @public (undocumented)
+export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}
 
 // @public
 export type WordDiffSegment = {

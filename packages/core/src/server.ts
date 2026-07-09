@@ -33,6 +33,7 @@ export {
   type ApplyFolioAIEditsToBufferOptions,
   type ApplyFolioAIEditsToBufferResult,
   type FolioApplyOperationsOptions,
+  type FolioApplyDocumentOperationsOptions,
   type FolioDocxReviewerOptions,
   type FolioReviewChange,
   type FolioReviewChangeFilter,
@@ -48,3 +49,18 @@ export type {
   FolioAIEditApplyResult,
   FolioAIEditOperation,
 } from "./ai-edits/types";
+export {
+  assertSupportedFolioDocumentOperationVersion,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FOLIO_DOCUMENT_OPERATION_MODES,
+  FOLIO_DOCUMENT_OPERATION_STORIES,
+  FOLIO_DOCUMENT_OPERATION_TYPES,
+  getFolioDocumentOperationCapabilities,
+  isSupportedFolioDocumentOperationVersion,
+  UnsupportedFolioDocumentOperationVersionError,
+  type FolioDocumentOperation,
+  type FolioDocumentOperationBatch,
+  type FolioDocumentOperationCapabilities,
+  type FolioDocumentOperationMode,
+  type FolioDocumentOperationResult,
+} from "./document-operations";

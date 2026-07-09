@@ -53,7 +53,12 @@ import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
 import type { Document, HeaderFooter } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
-import { applyFolioAIEditOperations } from "./apply";
+import {
+  applyFolioDocumentOperations,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperationBatch,
+  type FolioDocumentOperationResult,
+} from "../document-operations";
 import { buildAnnotatedBlockText } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
@@ -169,6 +174,9 @@ export type FolioApplyOperationsOptions = {
    */
   snapshot?: FolioAIEditSnapshot;
 };
+
+/** Options for {@link FolioDocxReviewer.applyDocumentOperations}. */
+export type FolioApplyDocumentOperationsOptions = Omit<FolioApplyOperationsOptions, "mode">;
 
 /** Options for {@link FolioDocxReviewer.getContentAsText}. */
 export type FolioGetContentAsTextOptions = {
@@ -370,7 +378,29 @@ export class FolioDocxReviewer {
     operations: FolioAIEditOperation[],
     options: FolioApplyOperationsOptions = {},
   ): FolioAIEditApplyResult {
-    const snapshot = options.snapshot ?? this.snapshot();
+    const { applied, skipped } = this.applyDocumentOperations(
+      {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        operations,
+        mode: options.mode ?? "tracked-changes",
+      },
+      {
+        ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
+      },
+    );
+    return { applied, skipped };
+  }
+
+  /**
+   * Apply a versioned document-operation batch against the current state.
+   * This is the contract entry point for serialized callers; the legacy
+   * {@link applyOperations} method delegates here so both APIs keep identical
+   * edit semantics.
+   */
+  applyDocumentOperations(
+    batch: FolioDocumentOperationBatch,
+    options: FolioApplyDocumentOperationsOptions = {},
+  ): FolioDocumentOperationResult {
     const view = {
       state: this.state,
       dispatch: (transaction: Transaction) => {
@@ -378,11 +408,10 @@ export class FolioDocxReviewer {
       },
     };
 
-    const result = applyFolioAIEditOperations({
+    const result = applyFolioDocumentOperations({
       view,
-      snapshot,
-      operations,
-      mode: options.mode ?? "tracked-changes",
+      snapshot: options.snapshot ?? this.snapshot(),
+      batch,
       author: this.author,
       createCommentId: (text) => {
         const comment = createReviewerComment(text, this.author);
