@@ -151,6 +151,31 @@ describe("headless docx review round-trip", () => {
     );
   });
 
+  test("applyDocumentOperations executes a versioned tracked-change batch", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      operations: [
+        {
+          id: "v1",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
+      mode: "tracked-changes",
+    });
+
+    expect(result.version).toBe(1);
+    expect(result.applied.map(({ id }) => id)).toEqual(["v1"]);
+    expect(result.skipped).toEqual([]);
+    expect(await partText(await reviewer.toBuffer(), "word/document.xml")).toContain("<w:ins ");
+  });
+
   test("insertAfterBlock (direct) adds a sibling paragraph, no tracked marks", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
