@@ -299,10 +299,10 @@ export function layoutDocument(
 
     // A cached Word pagination marker is advisory: honor it unless another
     // structural break already opened an empty page for the paragraph.
-    if (block.kind === "paragraph" && block.attrs?.renderedPageBreakBefore) {
-      paginator.forcePageBreak({ coalesceBlankPage: true });
-    } else if (hasPageBreakBefore(block)) {
+    if (hasPageBreakBefore(block)) {
       paginator.forcePageBreak();
+    } else if (block.kind === "paragraph" && block.attrs?.renderedPageBreakBefore) {
+      paginator.forcePageBreak({ coalesceBlankPage: true });
     }
 
     // Handle keepNext chains - if this is a chain start, check if chain fits

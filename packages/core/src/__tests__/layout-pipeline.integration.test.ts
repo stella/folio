@@ -346,6 +346,28 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages.length).toBe(2);
       expect(layout.pages[1].fragments[0].blockId).toBe(1);
     });
+
+    test("explicit pageBreakBefore takes priority over a rendered page break hint", () => {
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Before break", 1),
+        { kind: "pageBreak", id: 1, pmStart: 15, pmEnd: 16 },
+        {
+          ...makeParagraphBlock(2, "After intentional blank page", 17),
+          attrs: { pageBreakBefore: true, renderedPageBreakBefore: true },
+        },
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)]),
+        { kind: "pageBreak" },
+        makeParagraphMeasure([makeLine(0, 0, 0, 16, 90, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages.length).toBe(3);
+      expect(layout.pages[1].fragments).toEqual([]);
+      expect(layout.pages[2].fragments[0].blockId).toBe(2);
+    });
   });
 
   describe("paragraph splitting across pages", () => {
