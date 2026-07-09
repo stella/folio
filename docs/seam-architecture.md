@@ -2,12 +2,11 @@
 
 Target architecture for folio: a layered set of packages joined by explicit,
 typed seams, so that the same engine powers multiple framework adapters
-(React, Vue), multiple hosts (web, desktop, server), a future Rust core, headless
-agentic editing, and — eventually — additional OOXML formats (pptx, xlsx) as
-parallel verticals over a shared substrate.
+(React, Vue), multiple hosts (web, server), and headless document editing.
 
-This doc defines the seams. It is the north star for the phased migration in
-[Phased path](#phased-path); we are not there yet.
+This doc defines the technical seams. The higher-level ownership and
+interoperability contract is defined in
+[DOCX platform boundary](./docx-platform.md).
 
 ## Principle
 
@@ -21,24 +20,24 @@ typed contract.
 
 From most-portable (bottom) to most-framework-specific (top).
 
-| Layer           | Owns                                                                                                                                                                           | Profile                                  |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `model`         | Pure data shapes: `Document`, `Layout`, `FlowBlock`, `Measure`, content types, ids                                                                                             | Language-agnostic (→ Rust serde)         |
-| `engine`        | Pure compute: OOXML read/write, `Document→FlowBlocks`, pagination/line-break, markdown, pure transforms (fields, content-controls, watermark, style resolution), AI diff/apply | **Rust target.** No DOM, no PM, no React |
-| `document`      | Editable model: PM schema, plugins, commands, extensions, `Document↔ProseMirror`                                                                                               | JS forever (ProseMirror is JS)           |
-| `render-dom`    | Paint `Layout`→DOM, hit-testing, span mapping, scroll, overlay geometry; the canvas measure provider                                                                           | JS forever, **framework-agnostic DOM**   |
-| `controller`    | Headless orchestration: layout loop, incremental measure, hidden PM view, selection/scroll; imperative API + events                                                            | Framework-agnostic JS                    |
-| `react` / `vue` | Thin: lifecycle, event wiring, chrome (toolbar/menus/dialogs)                                                                                                                  | Per-framework                            |
+| Layer           | Owns                                                                                                                                                                           | Profile                                |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
+| `model`         | Pure data shapes: `Document`, `Layout`, `FlowBlock`, `Measure`, content types, ids                                                                                             | Serializable data                      |
+| `engine`        | Pure compute: OOXML read/write, `Document→FlowBlocks`, pagination/line-break, markdown, pure transforms (fields, content-controls, watermark, style resolution), AI diff/apply | No DOM, no PM, no React                |
+| `document`      | Editable model: PM schema, plugins, commands, extensions, `Document↔ProseMirror`                                                                                               | JS forever (ProseMirror is JS)         |
+| `render-dom`    | Paint `Layout`→DOM, hit-testing, span mapping, scroll, overlay geometry; the canvas measure provider                                                                           | JS forever, **framework-agnostic DOM** |
+| `controller`    | Headless orchestration: layout loop, incremental measure, hidden PM view, selection/scroll; imperative API + events                                                            | Framework-agnostic JS                  |
+| `react` / `vue` | Thin: lifecycle, event wiring, chrome (toolbar/menus/dialogs)                                                                                                                  | Per-framework                          |
 
 `layout-bridge` today **conflates** two concerns: pure `Document→FlowBlocks`
 (belongs in `engine`) and DOM hit-testing (belongs in `render-dom`). Splitting
-it is part of the migration (P3).
+these concerns requires explicit engine, document, and render boundaries.
 
 ## The seams (the contracts)
 
 Everything crosses these; nothing reaches around them.
 
-### Seam 1 — `MeasureProvider` (the Rust linchpin)
+### Seam 1 — `MeasureProvider`
 
 The engine must not know _how_ text is measured.
 
@@ -57,19 +56,18 @@ type MeasureRequest = {
 type FontMetrics = { ascent: number; descent: number; lineHeight: number };
 ```
 
-Browser supplies a canvas-backed impl; Rust supplies a `rustybuzz`/`fontdb`
-impl; a headless/server path supplies either. This single inversion makes the
-layout engine pure and Rust-portable, and lets us swap measurement backends.
+The browser supplies a canvas-backed implementation; a headless/server path
+supplies an appropriate implementation for its environment. This inversion
+makes the layout engine pure and lets us test or swap measurement backends.
 
 > Note: this seam already half-exists as `layout-engine/measure/measureWorkerProtocol.ts`
 > (a serializable `MeasureRequestEntry[] → width[]` contract fulfilled by a
-> stateless worker). P2 generalizes it into `MeasureProvider`.
+> stateless worker). `MeasureProvider` generalizes that contract.
 
 ### Seam 2 — the data lingua franca
 
 `Document`, `Layout`, `FlowBlock`, `Measure` are pure serializable types in
-`model`. They are the FFI payload (Rust mirrors them as serde structs). No
-behavior.
+`model`. They are serializable payloads with no behavior.
 
 ### Seam 3 — `Document ↔ ProseMirror`
 
@@ -90,16 +88,16 @@ to optionally carry positioned-glyph data so Phase-B shaping is additive.
 interface FolioHost {
   measureProvider: MeasureProvider;
   loadFont(spec: FontSpec): Promise<FontResource>;
-  readFile?(path: string): Promise<Uint8Array>; // desktop; absent on web
+  readFile?(path: string): Promise<Uint8Array>; // absent on the web
   writeFile?(path: string, bytes: Uint8Array): Promise<void>;
   schedule(cb: () => void): void; // raf vs immediate
 }
 ```
 
-Web, Tauri/Electrobun, and Node each provide a different host. The engine and
-controller stay identical across web/desktop/server.
+Browser and Node runtimes provide different hosts. The engine and controller
+stay identical across supported environments.
 
-### Seam 6 — `FolioEditor` (headless API + events; the Vue/desktop linchpin)
+### Seam 6 — `FolioEditor` (headless API + events; the adapter linchpin)
 
 ```ts
 interface FolioEditor {
@@ -147,82 +145,22 @@ Seam 1 is the linchpin and the hardest part, because of a fidelity fork:
 
 - **Phase A:** provider returns advance _widths_; engine breaks lines; the
   painter still emits text as DOM and lets the browser shape glyphs. Cheap, but
-  Rust-measured widths can drift from browser rendering.
+  provider-measured widths can drift from browser rendering.
 - **Phase B:** provider returns _positioned glyphs_; painter blits them; the
-  browser does no text layout. Fully deterministic and Rust-owned, and the only
-  honest path for Arabic/RTL/complex-script fidelity (shaping, not just width).
-  Bigger painter change.
+  browser does no text layout. Fully deterministic, and the only honest path
+  for Arabic/RTL/complex-script fidelity (shaping, not just width). Bigger
+  painter change.
 
 Design `Layout` to carry optional glyph positions from day one so B is additive.
 Fonts must be provisioned identically to `measure` and `paint` (same fallback
 chain) or layout drifts — a sub-problem of Seam 5.
 
-## Incremental layout & async transport (desktop)
+## Incremental layout & async transport
 
 Don't re-serialize the whole `Document` per keystroke. Model the
 controller↔engine contract as a stateful `LayoutSession` (which holds cached
 measures and the previous layout, fed dirty ranges). Make its methods
 **async-tolerant** (promise-returning) from the start: in the browser a
-WASM/worker call is effectively in-process, but on desktop the engine may live
-across a Tauri IPC or napi boundary, or off the UI thread. An async interface
-preserves that option at
-no cost to the JS path.
-
-## Multi-format substrate (docx, pptx, …)
-
-docx and pptx share the OOXML container (zip / `[Content_Types].xml` / `.rels` /
-parts), DrawingML (shapes, images, charts, text-in-shapes), and theme/fonts.
-They diverge at the model (flowing WordprocessingML vs spatial PresentationML),
-layout (pagination/reflow vs fixed slide canvas with in-shape autofit), and
-editing (PM flow vs shape canvas). So formats are **parallel verticals over a
-shared substrate**, not a fork:
-
-```
-@folio/ooxml    container (zip/parts/rels), DrawingML, theme/fonts   [shared]
-@folio/measure  text shaping/measure seam                            [shared]
-@folio/host     capabilities                                         [shared]
-   |- docx: model(Document)     + engine(flow/paginate) + render(pages)  + PM-flow editing
-   '- pptx: model(Presentation) + engine(slide layout)  + render(canvas) + shape editing
-```
-
-The `MeasureProvider`, `FolioHost`, the WASM/native build, the controller/event
-pattern, and the agentic op pattern are all format-agnostic. If pptx is a real
-goal, draw the `@folio/ooxml` substrate boundary while carving the docx seams
-(P1–P3) so it is shared by construction.
-
-## Phased path
-
-Each phase ships in the monorepo, CI-checked. P1–P4 are pure TS refactors that
-also improve the current product (testability, clarity); you can stop after any
-phase with a strictly better codebase.
-
-- **P0 (done, #884):** React-free core (`no-react-in-core` rule + arch test),
-  headless `@stll/folio/core` entry, `paged-layout` moved into core.
-- **P1 (done, #887) — model seam:** `core/model.ts` lingua-franca barrel + the
-  `model-is-pure-data` lint rule. Physical `types/`→`model/` relocation (~246
-  imports) deferred to P5.
-- **P2 (done, #887) — measurement seam:** `MeasureProvider` (P2a) + the layout
-  engine's import graph made canvas-free (P2b). Headless-testable, Rust-ready.
-- **P4 (next) — extract the headless `controller`:** pull orchestration (layout
-  loop, incremental measure, hidden PM view, selection/scroll) out of
-  `paged-editor` into a framework-agnostic controller with an imperative API +
-  events. The React adapter becomes a thin wrapper. This is the Vue/desktop
-  linchpin and is self-contained.
-- **P5 — package the boundaries (incl. the bridge split):** form the `engine` /
-  `document` / `render-dom` packages and dissolve `layout-bridge` into them. The
-  bridge split (originally "P3") folds in here: the bridge is a cohesive
-  PM→FlowBlocks→measure cluster, so cleanly separating its pure-compute,
-  PM-conversion, and DOM pieces only works once those three packages exist as
-  homes — doing it earlier would mean throwaway intermediate dirs. The
-  standalone-repo extraction also happens here.
-- **P6 — `@folio/vue`:** small if P4–P5 are right.
-- **P7 — Rust port (profiled):** `docx` I/O first (no font stack), then layout
-  (with a Rust measure provider).
-
-## Status
-
-P0, P1, and P2 are merged (#884, #886, #887): the React-free core, the model
-seam, and the fully-inverted measurement seam are in. **P4 (the headless
-controller) is next** — it's self-contained and is the Vue/desktop enabler. The
-bridge split folded into P5 (see P5 above) because cleanly separating that
-cluster requires the engine/document/render-dom package homes that P5 creates.
+worker call is effectively in-process, but another host may run the engine
+across a process boundary or off the UI thread. An async interface preserves
+that option at little cost to the direct path.

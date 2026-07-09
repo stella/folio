@@ -13,17 +13,21 @@ packages build on top of it.
 
 Part of [stella](https://github.com/stella/stella), an open-source legal workspace.
 
+See [DOCX platform boundary](./docs/docx-platform.md) for what belongs in folio
+and how editors, headless tools, agents, and hosts share one document model and
+operation contract.
+
 ## Packages
 
 This is a [Bun](https://bun.sh) workspace with these published packages:
 
-| Package                                   | Use it for                                                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------------------- |
-| [`@stll/folio-core`](./packages/core)     | OOXML parsing, document model, ProseMirror integration, and page layout               |
-| [`@stll/folio-react`](./packages/react)   | A React editor UI built on `@stll/folio-core`                                         |
-| [`@stll/folio-vue`](./packages/vue)       | A Vue 3 editor and composables                                                        |
-| [`@stll/folio-nuxt`](./packages/nuxt)     | Nuxt 3/4 registration for the Vue editor                                              |
-| [`@stll/folio-agents`](./packages/agents) | Document review tools for reading `.docx` files and proposing comments or changes     |
+| Package                                   | Use it for                                                                        |
+| ----------------------------------------- | --------------------------------------------------------------------------------- |
+| [`@stll/folio-core`](./packages/core)     | OOXML parsing, document model, ProseMirror integration, and page layout           |
+| [`@stll/folio-react`](./packages/react)   | A React editor UI built on `@stll/folio-core`                                     |
+| [`@stll/folio-vue`](./packages/vue)       | A Vue 3 editor and composables                                                    |
+| [`@stll/folio-nuxt`](./packages/nuxt)     | Nuxt 3/4 registration for the Vue editor                                          |
+| [`@stll/folio-agents`](./packages/agents) | Document review tools for reading `.docx` files and proposing comments or changes |
 
 ## Install
 
