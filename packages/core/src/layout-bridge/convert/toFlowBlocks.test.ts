@@ -5,6 +5,17 @@ import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  test("preserves Word rendered-page-break hints for layout", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { renderedPageBreakBefore: true }, [schema.text("Next page")]),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    expect(paragraph?.attrs?.renderedPageBreakBefore).toBe(true);
+  });
+
   test("assigns stable block ids for repeated conversions of the same document", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("First paragraph")]),

@@ -555,6 +555,7 @@ export type ParagraphAttrs = {
     keepLines?: boolean;
     widowControl?: boolean;
     pageBreakBefore?: boolean;
+    renderedPageBreakBefore?: boolean;
     styleId?: string;
     contextualSpacing?: boolean;
     runInWithNext?: boolean; /** Right-to-left paragraph direction */

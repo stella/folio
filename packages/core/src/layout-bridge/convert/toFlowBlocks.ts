@@ -1536,6 +1536,9 @@ function convertParagraphAttrs(
   if (pmAttrs.pageBreakBefore) {
     attrs.pageBreakBefore = true;
   }
+  if (pmAttrs.renderedPageBreakBefore) {
+    attrs.renderedPageBreakBefore = true;
+  }
   if (pmAttrs.keepNext) {
     attrs.keepNext = true;
   }

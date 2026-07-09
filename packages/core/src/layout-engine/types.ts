@@ -384,6 +384,8 @@ export type ParagraphAttrs = {
   keepLines?: boolean;
   widowControl?: boolean;
   pageBreakBefore?: boolean;
+  /** Word's cached pagination hint (`w:lastRenderedPageBreak`). */
+  renderedPageBreakBefore?: boolean;
   styleId?: string;
   contextualSpacing?: boolean;
   /**

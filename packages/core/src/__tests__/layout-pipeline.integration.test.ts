@@ -306,6 +306,46 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[1].fragments).toEqual([]);
       expect(layout.pages[2].fragments[0].blockId).toBe(2);
     });
+
+    test("rendered page break reuses a page opened by a structural break", () => {
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Before break", 1),
+        { kind: "pageBreak", id: 1, pmStart: 15, pmEnd: 16 },
+        {
+          ...makeParagraphBlock(2, "Cached next page", 17),
+          attrs: { renderedPageBreakBefore: true },
+        },
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)]),
+        { kind: "pageBreak" },
+        makeParagraphMeasure([makeLine(0, 0, 0, 16, 90, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages.length).toBe(2);
+      expect(layout.pages[1].fragments[0].blockId).toBe(2);
+    });
+
+    test("rendered page break starts a new page after content", () => {
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Before break", 1),
+        {
+          ...makeParagraphBlock(1, "Cached next page", 15),
+          attrs: { renderedPageBreakBefore: true },
+        },
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 16, 90, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages.length).toBe(2);
+      expect(layout.pages[1].fragments[0].blockId).toBe(1);
+    });
   });
 
   describe("paragraph splitting across pages", () => {
