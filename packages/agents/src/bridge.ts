@@ -1,7 +1,7 @@
 import type {
-  FolioAIEditApplyResult,
-  FolioAIEditOperation,
   FolioAIEditSnapshot,
+  FolioDocumentOperationBatch,
+  FolioDocumentOperationResult,
 } from "@stll/folio-core/server";
 
 import type { FolioAgentChange, FolioAgentComment } from "./types";
@@ -23,11 +23,10 @@ export type FolioAgentBridge = {
   /** Snapshot the current document into AI-facing blocks + anchors. */
   snapshot(): FolioAIEditSnapshot;
   /**
-   * Apply operations against the current document. The bridge decides mode
-   * (tracked-changes by default) and author internally — callers only supply
-   * the operations.
+   * Apply a versioned operation batch against the current document. The
+   * bridge decides mode (tracked-changes by default) and author internally.
    */
-  applyOperations(operations: FolioAIEditOperation[]): FolioAIEditApplyResult;
+  applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult;
   /** The comment threads present in the document. */
   getComments(): FolioAgentComment[];
   /** The pending tracked changes (insertions/deletions) present in the document. */

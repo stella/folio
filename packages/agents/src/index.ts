@@ -1,5 +1,9 @@
 export type { FolioAgentBridge } from "./bridge";
-export type { CreateEditorRefBridgeOptions, FolioAgentEditorRefLike } from "./bridges/editor-ref";
+export type {
+  CreateEditorRefBridgeOptions,
+  FolioAgentEditorApplyDocumentOperationsOptions,
+  FolioAgentEditorRefLike,
+} from "./bridges/editor-ref";
 export { createEditorRefBridge } from "./bridges/editor-ref";
 export type { CreateReviewerBridgeOptions } from "./bridges/reviewer";
 export { createReviewerBridge } from "./bridges/reviewer";

@@ -1,3 +1,5 @@
+import type { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
+
 /**
  * Provider-neutral tool-layer types. `FolioAgentToolDefinition` describes a
  * tool the same way every model provider ends up wanting it described (name +
@@ -20,7 +22,8 @@ export const FOLIO_AGENT_TOOL_NAMES = {
   scrollToBlock: "scroll_to_block",
 } as const;
 
-export type FolioAgentToolName = (typeof FOLIO_AGENT_TOOL_NAMES)[keyof typeof FOLIO_AGENT_TOOL_NAMES];
+export type FolioAgentToolName =
+  (typeof FOLIO_AGENT_TOOL_NAMES)[keyof typeof FOLIO_AGENT_TOOL_NAMES];
 
 /**
  * A provider-neutral tool definition: name, an LLM-facing description (when to
@@ -110,6 +113,7 @@ export type FolioAgentCommentFilter = "all" | "open" | "resolved";
 
 /** Result of {@link FOLIO_AGENT_TOOL_NAMES.addComment} / `suggest_changes`. */
 export type FolioAgentApplyOperationsSummary = {
+  version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   applied: { id: string }[];
   skipped: { id: string; reason: string }[];
 };

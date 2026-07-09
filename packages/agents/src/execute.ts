@@ -1,4 +1,8 @@
-import type { FolioAIBlock } from "@stll/folio-core/server";
+import {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioAIBlock,
+  type FolioDocumentOperation,
+} from "@stll/folio-core/server";
 
 import type { FolioAgentBridge } from "./bridge";
 import {
@@ -214,9 +218,11 @@ const explainSkipReason = (reason: string): string => {
 };
 
 const summarizeApplyResult = (result: {
+  version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   applied: { id: string }[];
   skipped: { id: string; reason: string }[];
 }): FolioAgentApplyOperationsSummary => ({
+  version: result.version,
   applied: result.applied.map((entry) => ({ id: entry.id })),
   skipped: result.skipped.map((entry) => ({
     id: entry.id,
@@ -224,12 +230,23 @@ const summarizeApplyResult = (result: {
   })),
 });
 
+const applyOperations = (
+  bridge: FolioAgentBridge,
+  operations: FolioDocumentOperation[],
+): FolioAgentApplyOperationsSummary =>
+  summarizeApplyResult(
+    bridge.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      operations,
+    }),
+  );
+
 const addComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
   const parsed = parseAddCommentInput(args);
   if (!parsed.ok) {
     return fail(parsed.error);
   }
-  return ok(summarizeApplyResult(bridge.applyOperations([parsed.operation])));
+  return ok(applyOperations(bridge, [parsed.operation]));
 };
 
 const suggestChanges = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
@@ -237,7 +254,7 @@ const suggestChanges = (args: unknown, bridge: FolioAgentBridge): FolioToolCallR
   if (!parsed.ok) {
     return fail(parsed.error);
   }
-  return ok(summarizeApplyResult(bridge.applyOperations(parsed.operations)));
+  return ok(applyOperations(bridge, parsed.operations));
 };
 
 const replyComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {

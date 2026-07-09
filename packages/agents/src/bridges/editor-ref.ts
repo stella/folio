@@ -3,6 +3,12 @@ import type {
   FolioAIEditApplyResult,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
+  FolioDocumentOperationBatch,
+  FolioDocumentOperationResult,
+} from "@stll/folio-core/server";
+import {
+  assertSupportedFolioDocumentOperationVersion,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
 } from "@stll/folio-core/server";
 import type { FolioCommentAnchor, FolioReviewChange } from "@stll/folio-core/ai-edits";
 import { createReply } from "@stll/folio-core/docx/replyToComment";
@@ -11,6 +17,12 @@ import type { Comment } from "@stll/folio-core/types/content";
 import type { FolioAgentBridge } from "../bridge";
 import type { FolioAgentChange, FolioAgentComment, FolioAgentCommentReply } from "../types";
 import { toAgentChange } from "./shared";
+
+export type FolioAgentEditorApplyDocumentOperationsOptions = {
+  snapshot: FolioAIEditSnapshot;
+  batch: FolioDocumentOperationBatch;
+  author?: string;
+};
 
 /**
  * Minimal structural slice of `DocxEditorRef` (`packages/react`) this bridge
@@ -35,6 +47,10 @@ export type FolioAgentEditorRefLike = {
     mode?: FolioAIEditApplyMode;
     author?: string;
   }): FolioAIEditApplyResult;
+  /** `DocxEditorRef.applyDocumentOperations`, when available on newer refs. */
+  applyDocumentOperations?(
+    options: FolioAgentEditorApplyDocumentOperationsOptions,
+  ): FolioDocumentOperationResult;
   /** `DocxEditorRef.scrollToBlock`. */
   scrollToBlock(blockId: string, snapshot?: FolioAIEditSnapshot): boolean;
   /** `DocxEditorRef.getTotalPages`. */
@@ -152,8 +168,23 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
 
   const bridge: FolioAgentBridge = {
     snapshot: requireSnapshot,
-    applyOperations: (operations) =>
-      ref.applyAIEditOperations({ snapshot: requireSnapshot(), operations, mode, author }),
+    applyDocumentOperations: (batch) => {
+      assertSupportedFolioDocumentOperationVersion(batch.version);
+      const snapshot = requireSnapshot();
+      const versionedBatch = { ...batch, mode };
+      if (ref.applyDocumentOperations) {
+        return ref.applyDocumentOperations({ snapshot, batch: versionedBatch, author });
+      }
+      return {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        ...ref.applyAIEditOperations({
+          snapshot,
+          operations: versionedBatch.operations,
+          mode: versionedBatch.mode,
+          author,
+        }),
+      };
+    },
     getComments: (): FolioAgentComment[] => {
       const comments = getComments();
       const anchors = ref.getCommentAnchors?.();

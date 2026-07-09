@@ -5,11 +5,14 @@
 ```ts
 
 import { Comment as Comment_2 } from '@stll/folio-core/types/content';
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from '@stll/folio-core/server';
 import { FolioAIEditApplyMode } from '@stll/folio-core/server';
 import { FolioAIEditApplyResult } from '@stll/folio-core/server';
 import { FolioAIEditOperation } from '@stll/folio-core/server';
 import { FolioAIEditSnapshot } from '@stll/folio-core/server';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
+import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
+import { FolioDocumentOperationResult } from '@stll/folio-core/server';
 import { FolioDocxReviewer } from '@stll/folio-core/server';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
@@ -67,6 +70,7 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[];
 
 // @public
 export type FolioAgentApplyOperationsSummary = {
+    version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
     applied: {
         id: string;
     }[];
@@ -104,7 +108,7 @@ export type FolioAgentBlockDiff = {
 // @public
 export type FolioAgentBridge = {
     snapshot(): FolioAIEditSnapshot;
-    applyOperations(operations: FolioAIEditOperation[]): FolioAIEditApplyResult; /** The comment threads present in the document. */
+    applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult; /** The comment threads present in the document. */
     getComments(): FolioAgentComment[]; /** The pending tracked changes (insertions/deletions) present in the document. */
     getChanges(): FolioAgentChange[]; /** Reply to a comment thread. Returns `false` when the target comment does not exist. */
     replyToComment(commentId: string, text: string): boolean; /** Mark a comment thread resolved or reopen it. Returns `false` when the target comment does not exist. */
@@ -145,6 +149,13 @@ export type FolioAgentCommentReply = {
     text: string;
 };
 
+// @public (undocumented)
+export type FolioAgentEditorApplyDocumentOperationsOptions = {
+    snapshot: FolioAIEditSnapshot;
+    batch: FolioDocumentOperationBatch;
+    author?: string;
+};
+
 // @public
 export type FolioAgentEditorRefLike = {
     createAIEditSnapshot(): FolioAIEditSnapshot | null; /** `DocxEditorRef.applyAIEditOperations`. */
@@ -153,7 +164,8 @@ export type FolioAgentEditorRefLike = {
         operations: FolioAIEditOperation[];
         mode?: FolioAIEditApplyMode;
         author?: string;
-    }): FolioAIEditApplyResult; /** `DocxEditorRef.scrollToBlock`. */
+    }): FolioAIEditApplyResult; /** `DocxEditorRef.applyDocumentOperations`, when available on newer refs. */
+    applyDocumentOperations?(options: FolioAgentEditorApplyDocumentOperationsOptions): FolioDocumentOperationResult; /** `DocxEditorRef.scrollToBlock`. */
     scrollToBlock(blockId: string, snapshot?: FolioAIEditSnapshot): boolean; /** `DocxEditorRef.getTotalPages`. */
     getTotalPages(): number;
     getTrackedChanges?(): FolioReviewChange[];

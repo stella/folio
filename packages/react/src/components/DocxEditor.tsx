@@ -39,8 +39,10 @@ import type { EditorView } from "prosemirror-view";
 import { useTranslations } from "use-intl";
 
 import {
-  applyFolioAIEditOperations,
+  applyFolioDocumentOperations,
+  assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   getCommentAnchorsFromDoc,
   getTrackedChangesFromDoc,
 } from "@stll/folio-core/ai-edits";
@@ -2818,6 +2820,39 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const view = pagedEditorRef.current?.getView();
         return view ? createFolioAIEditSnapshot(view.state.doc) : null;
       },
+      applyDocumentOperations: ({ snapshot, batch, author: operationAuthor = author }) => {
+        assertSupportedFolioDocumentOperationVersion(batch.version);
+        const view = pagedEditorRef.current?.getView();
+        if (!view) {
+          return {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            applied: [],
+            skipped: batch.operations.map((operation) => ({
+              id: operation.id,
+              reason: "unsupportedBlock",
+            })),
+          };
+        }
+
+        const createdComments: Comment[] = [];
+        const result = applyFolioDocumentOperations({
+          view,
+          snapshot,
+          batch,
+          author: operationAuthor,
+          createCommentId: (text) => {
+            const comment = createComment(text, operationAuthor);
+            createdComments.push(comment);
+            return comment.id;
+          },
+        });
+
+        if (createdComments.length > 0) {
+          updateComments((currentComments) => [...currentComments, ...createdComments]);
+        }
+
+        return result;
+      },
       applyAIEditOperations: ({
         snapshot,
         operations,
@@ -2836,11 +2871,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
 
         const createdComments: Comment[] = [];
-        const result = applyFolioAIEditOperations({
+        const { applied, skipped } = applyFolioDocumentOperations({
           view,
           snapshot,
-          operations,
-          mode,
+          batch: {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            operations,
+            mode,
+          },
           author: operationAuthor,
           createCommentId: (text) => {
             const comment = createComment(text, operationAuthor);
@@ -2853,7 +2891,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           updateComments((currentComments) => [...currentComments, ...createdComments]);
         }
 
-        return result;
+        return { applied, skipped };
       },
       acceptAIEditOperation: (revisionId) => {
         const view = pagedEditorRef.current?.getView();

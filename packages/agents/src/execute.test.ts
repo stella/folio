@@ -14,7 +14,13 @@ import { FolioDocxReviewer } from "@stll/folio-core/server";
 import { createReviewerBridge } from "./bridges/reviewer";
 import { executeFolioToolCall } from "./execute";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
-import type { FolioAgentBlock, FolioAgentComment, FolioAgentFindTextResult, FolioToolCallResult } from "./types";
+import type {
+  FolioAgentApplyOperationsSummary,
+  FolioAgentBlock,
+  FolioAgentComment,
+  FolioAgentFindTextResult,
+  FolioToolCallResult,
+} from "./types";
 
 // Reuses the same corpus fixture `packages/core/src/ai-edits/headless.test.ts`
 // builds its reviewer round-trip tests against.
@@ -86,9 +92,9 @@ describe("executeFolioToolCall: argument validation", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const bridge = createReviewerBridge(reviewer);
 
-    expect(expectError(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readSelection, {}, bridge))).toContain(
-      "read_selection",
-    );
+    expect(
+      expectError(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readSelection, {}, bridge)),
+    ).toContain("read_selection");
     expect(
       expectError(
         executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.scrollToBlock, { blockId: "x" }, bridge),
@@ -131,13 +137,16 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         },
         bridge,
       ),
-    ) as { applied: { id: string }[]; skipped: { id: string; reason: string }[] };
+    ) as FolioAgentApplyOperationsSummary;
+    expect(suggestResult.version).toBe(1);
     expect(suggestResult.applied).toHaveLength(1);
     expect(suggestResult.applied[0]?.id).toBe("op-1");
     expect(suggestResult.skipped).toEqual([]);
 
     // read_changes: the replace is now a pending tracked change
-    const changes = expectOk(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readChanges, {}, bridge)) as {
+    const changes = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readChanges, {}, bridge),
+    ) as {
       type: string;
       blockId: string | null;
     }[];
@@ -152,7 +161,8 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         { blockId: heading.blockId, text: "Please clarify." },
         bridge,
       ),
-    ) as { applied: { id: string }[]; skipped: unknown[] };
+    ) as FolioAgentApplyOperationsSummary;
+    expect(addCommentResult.version).toBe(1);
     expect(addCommentResult.applied).toHaveLength(1);
     expect(addCommentResult.skipped).toEqual([]);
 
@@ -210,7 +220,11 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
 
     // resolve_comment
     const resolveResult = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.resolveComment, { commentId: comment.id }, bridge),
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.resolveComment,
+        { commentId: comment.id },
+        bridge,
+      ),
     ) as { resolved: boolean };
     expect(resolveResult.resolved).toBe(true);
 
@@ -233,7 +247,13 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         FOLIO_AGENT_TOOL_NAMES.suggestChanges,
         {
           operations: [
-            { id: "custom-1", type: "replaceInBlock", blockId: "no-such-block", find: "x", replace: "y" },
+            {
+              id: "custom-1",
+              type: "replaceInBlock",
+              blockId: "no-such-block",
+              find: "x",
+              replace: "y",
+            },
           ],
         },
         bridge,
@@ -249,7 +269,11 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const bridge = createReviewerBridge(reviewer);
 
-    const result = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.suggestChanges, { operations: [] }, bridge);
+    const result = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+      { operations: [] },
+      bridge,
+    );
     expect(expectError(result)).toContain("empty");
   });
 
@@ -263,7 +287,11 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
       find: "x",
       replace: "y",
     }));
-    const result = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.suggestChanges, { operations }, bridge);
+    const result = executeFolioToolCall(
+      FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+      { operations },
+      bridge,
+    );
     expect(expectError(result)).toContain("50-operation limit");
   });
 
