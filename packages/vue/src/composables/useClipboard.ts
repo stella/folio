@@ -31,7 +31,7 @@ export type UseClipboardOptions = {
   cleanWordFormatting?: boolean;
   editable?: boolean;
   onError?: (error: Error) => void;
-}
+};
 
 export type UseClipboardReturn = {
   copy: (selection: ClipboardSelection) => Promise<boolean>;
@@ -39,7 +39,7 @@ export type UseClipboardReturn = {
   paste: (asPlainText?: boolean) => Promise<ParsedClipboardContent | null>;
   isProcessing: Ref<boolean>;
   lastPastedContent: Ref<ParsedClipboardContent | null>;
-}
+};
 
 export function useClipboard(options: UseClipboardOptions = {}): UseClipboardReturn {
   const { onCopy, onCut, onPaste, cleanWordFormatting = true, editable = true, onError } = options;

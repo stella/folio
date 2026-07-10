@@ -55,11 +55,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import MaterialSymbol from './ui/MaterialSymbol.vue';
-import type { EditorMode } from './DocxEditor/types';
-import { useTranslation } from '../i18n';
-import { useFolioUI } from '../ui/folio-ui';
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
+import type { EditorMode } from "./DocxEditor/types";
+import { useTranslation } from "../i18n";
+import { useFolioUI } from "../ui/folio-ui";
 
 // folio's `useTranslation().t` accepts a namespaced key path as a plain string
 // (upstream typed these against `@eigenpal/docx-editor-i18n`'s `TranslationKey`).
@@ -76,7 +76,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', mode: EditorMode): void;
+  (e: "update:modelValue", mode: EditorMode): void;
 }>();
 
 type ModeOption = {
@@ -84,30 +84,30 @@ type ModeOption = {
   labelKey: TranslationKey;
   icon: string;
   descKey: TranslationKey;
-}
+};
 
 // Named so `current` can fall back to it without an index access that
 // `noUncheckedIndexedAccess` would widen to `ModeOption | undefined`.
 const editingMode: ModeOption = {
-  value: 'editing',
-  labelKey: 'editor.editing',
-  icon: 'edit_note',
-  descKey: 'editor.editingDescription',
+  value: "editing",
+  labelKey: "editor.editing",
+  icon: "edit_note",
+  descKey: "editor.editingDescription",
 };
 
 const modes: ModeOption[] = [
   editingMode,
   {
-    value: 'suggesting',
-    labelKey: 'editor.suggesting',
-    icon: 'rate_review',
-    descKey: 'editor.suggestingDescription',
+    value: "suggesting",
+    labelKey: "editor.suggesting",
+    icon: "rate_review",
+    descKey: "editor.suggestingDescription",
   },
   {
-    value: 'viewing',
-    labelKey: 'editor.viewing',
-    icon: 'visibility',
-    descKey: 'editor.viewingDescription',
+    value: "viewing",
+    labelKey: "editor.viewing",
+    icon: "visibility",
+    descKey: "editor.viewingDescription",
   },
 ];
 
@@ -117,7 +117,7 @@ const compact = ref(false);
 const current = computed(() => modes.find((m) => m.value === props.modelValue) ?? editingMode);
 
 function select(mode: EditorMode) {
-  emit('update:modelValue', mode);
+  emit("update:modelValue", mode);
   isOpen.value = false;
 }
 
@@ -126,11 +126,11 @@ function onMqlChange(e: MediaQueryListEvent) {
   compact.value = e.matches;
 }
 onMounted(() => {
-  mql = window.matchMedia('(max-width: 1400px)');
+  mql = window.matchMedia("(max-width: 1400px)");
   compact.value = mql.matches;
-  mql.addEventListener('change', onMqlChange);
+  mql.addEventListener("change", onMqlChange);
 });
-onBeforeUnmount(() => mql?.removeEventListener('change', onMqlChange));
+onBeforeUnmount(() => mql?.removeEventListener("change", onMqlChange));
 </script>
 
 <style scoped>

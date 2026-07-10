@@ -86,7 +86,9 @@
       :style="{ left: tab.px + 'px' }"
       :title="`${tab.label}`"
       @dblclick.prevent="$emit('tab-stop-remove', tab.twips)"
-    >L</div>
+    >
+      L
+    </div>
 
     <!-- Drag tooltip -->
     <div
@@ -100,16 +102,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, type CSSProperties } from 'vue';
-import type { SectionProperties, TabStop } from '@stll/folio-core/types/document';
-import { twipsToPixels, pixelsToTwips } from '@stll/folio-core/utils/units';
+import { ref, computed, onBeforeUnmount, type CSSProperties } from "vue";
+import type { SectionProperties, TabStop } from "@stll/folio-core/types/document";
+import { twipsToPixels, pixelsToTwips } from "@stll/folio-core/utils/units";
 
-type MarkerType =
-  | 'leftMargin'
-  | 'rightMargin'
-  | 'firstLineIndent'
-  | 'leftIndent'
-  | 'rightIndent';
+type MarkerType = "leftMargin" | "rightMargin" | "firstLineIndent" | "leftIndent" | "rightIndent";
 
 const props = withDefaults(
   defineProps<{
@@ -121,7 +118,7 @@ const props = withDefaults(
     hangingIndent?: boolean;
     indentLeft?: number;
     indentRight?: number;
-    unit?: 'inch' | 'cm';
+    unit?: "inch" | "cm";
     tabStops?: TabStop[] | null;
   }>(),
   {
@@ -132,17 +129,17 @@ const props = withDefaults(
     hangingIndent: false,
     indentLeft: 0,
     indentRight: 0,
-    unit: 'inch',
-  }
+    unit: "inch",
+  },
 );
 
 const emit = defineEmits<{
-  (e: 'left-margin-change', twips: number): void;
-  (e: 'right-margin-change', twips: number): void;
-  (e: 'first-line-indent-change', twips: number): void;
-  (e: 'indent-left-change', twips: number): void;
-  (e: 'indent-right-change', twips: number): void;
-  (e: 'tab-stop-remove', twips: number): void;
+  (e: "left-margin-change", twips: number): void;
+  (e: "right-margin-change", twips: number): void;
+  (e: "first-line-indent-change", twips: number): void;
+  (e: "indent-left-change", twips: number): void;
+  (e: "indent-right-change", twips: number): void;
+  (e: "tab-stop-remove", twips: number): void;
 }>();
 
 // Mirror React HorizontalRuler.tsx:50-63
@@ -151,9 +148,9 @@ const DEFAULT_MARGIN_TWIPS = 1440;
 const TWIPS_PER_INCH = 1440;
 const TWIPS_PER_CM = 567;
 const RULER_HEIGHT = 22;
-const INDENT_COLOR = 'var(--doc-primary)';
-const INDENT_HOVER_COLOR = 'var(--doc-primary)';
-const INDENT_ACTIVE_COLOR = 'var(--doc-primary-hover)';
+const INDENT_COLOR = "var(--doc-primary)";
+const INDENT_HOVER_COLOR = "var(--doc-primary)";
+const INDENT_ACTIVE_COLOR = "var(--doc-primary-hover)";
 const TRI_SIZE = 5;
 const TRI_HEIGHT = Math.round(TRI_SIZE * 1.6); // 8
 
@@ -161,7 +158,7 @@ const rulerRef = ref<HTMLElement | null>(null);
 const dragging = ref<MarkerType | null>(null);
 const hovered = ref<MarkerType | null>(null);
 const tooltipX = ref(0);
-const tooltipText = ref('');
+const tooltipText = ref("");
 
 // Wrappers around core's twipsToPixels/pixelsToTwips that fold in the
 // current zoom factor (core helpers are zoom-agnostic).
@@ -176,7 +173,7 @@ const pageWidthTwips = computed(() => props.sectionProps?.pageWidth ?? DEFAULT_P
 const leftMarginTwips = computed(() => props.sectionProps?.marginLeft ?? DEFAULT_MARGIN_TWIPS);
 const rightMarginTwips = computed(() => props.sectionProps?.marginRight ?? DEFAULT_MARGIN_TWIPS);
 const contentTwips = computed(
-  () => pageWidthTwips.value - leftMarginTwips.value - rightMarginTwips.value
+  () => pageWidthTwips.value - leftMarginTwips.value - rightMarginTwips.value,
 );
 
 const pageWidthPx = computed(() => tw2px(pageWidthTwips.value));
@@ -185,48 +182,48 @@ const rightMarginPx = computed(() => tw2px(rightMarginTwips.value));
 const indentLeftPx = computed(() => tw2px(props.indentLeft));
 const indentRightPx = computed(() => tw2px(props.indentRight));
 const effectiveFirstLine = computed(() =>
-  props.hangingIndent ? -props.firstLineIndent : props.firstLineIndent
+  props.hangingIndent ? -props.firstLineIndent : props.firstLineIndent,
 );
 const firstLineIndentPx = computed(() => tw2px(effectiveFirstLine.value));
 
 const leftIndentPosPx = computed(() => leftMarginPx.value + indentLeftPx.value);
 const rightIndentPosPx = computed(
-  () => pageWidthPx.value - rightMarginPx.value - indentRightPx.value
+  () => pageWidthPx.value - rightMarginPx.value - indentRightPx.value,
 );
 const firstLinePosPx = computed(
-  () => leftMarginPx.value + indentLeftPx.value + firstLineIndentPx.value
+  () => leftMarginPx.value + indentLeftPx.value + firstLineIndentPx.value,
 );
 
 const containerStyle = computed<CSSProperties>(() => ({
-  position: 'relative',
-  width: pageWidthPx.value + 'px',
-  height: RULER_HEIGHT + 'px',
-  backgroundColor: 'transparent',
-  overflow: 'visible',
-  userSelect: 'none',
-  cursor: dragging.value ? 'ew-resize' : 'default',
+  position: "relative",
+  width: pageWidthPx.value + "px",
+  height: RULER_HEIGHT + "px",
+  backgroundColor: "transparent",
+  overflow: "visible",
+  userSelect: "none",
+  cursor: dragging.value ? "ew-resize" : "default",
 }));
 
 const leftMarginStyle = computed<CSSProperties>(() => ({
-  position: 'absolute',
+  position: "absolute",
   top: 0,
   left: 0,
-  width: leftMarginPx.value + 'px',
-  height: RULER_HEIGHT + 'px',
-  backgroundColor: 'var(--doc-shadow-subtle)',
-  borderRight: '1px solid var(--doc-shadow-subtle)',
-  cursor: props.editable ? 'ew-resize' : 'default',
+  width: leftMarginPx.value + "px",
+  height: RULER_HEIGHT + "px",
+  backgroundColor: "var(--doc-shadow-subtle)",
+  borderRight: "1px solid var(--doc-shadow-subtle)",
+  cursor: props.editable ? "ew-resize" : "default",
   zIndex: 1,
 }));
 const rightMarginStyle = computed<CSSProperties>(() => ({
-  position: 'absolute',
+  position: "absolute",
   top: 0,
   right: 0,
-  width: rightMarginPx.value + 'px',
-  height: RULER_HEIGHT + 'px',
-  backgroundColor: 'var(--doc-shadow-subtle)',
-  borderLeft: '1px solid var(--doc-shadow-subtle)',
-  cursor: props.editable ? 'ew-resize' : 'default',
+  width: rightMarginPx.value + "px",
+  height: RULER_HEIGHT + "px",
+  backgroundColor: "var(--doc-shadow-subtle)",
+  borderLeft: "1px solid var(--doc-shadow-subtle)",
+  cursor: props.editable ? "ew-resize" : "default",
   zIndex: 1,
 }));
 
@@ -235,7 +232,7 @@ const rightMarginStyle = computed<CSSProperties>(() => ({
 // halves height 4, eighths height 2.
 const ticks = computed(() => {
   const out: { position: number; height: number; label?: string | undefined }[] = [];
-  if (props.unit === 'inch') {
+  if (props.unit === "inch") {
     const eighth = TWIPS_PER_INCH / 8;
     const total = Math.ceil(pageWidthTwips.value / eighth);
     for (let i = 0; i <= total; i++) {
@@ -281,7 +278,7 @@ const tabStopPositions = computed(() => {
 });
 
 function formatValue(twips: number): string {
-  if (props.unit === 'cm') return (twips / TWIPS_PER_CM).toFixed(1) + ' cm';
+  if (props.unit === "cm") return (twips / TWIPS_PER_CM).toFixed(1) + " cm";
   return (twips / TWIPS_PER_INCH).toFixed(2) + '"';
 }
 
@@ -292,45 +289,45 @@ function triColor(marker: MarkerType): string {
 }
 
 function indentContainerStyle(
-  direction: 'up' | 'down',
+  direction: "up" | "down",
   positionPx: number,
-  isDragging: boolean
+  isDragging: boolean,
 ): CSSProperties {
   return {
-    position: 'absolute',
-    left: positionPx - TRI_SIZE + 'px',
-    width: TRI_SIZE * 2 + 'px',
-    height: TRI_HEIGHT + 2 + 'px',
-    cursor: props.editable ? 'ew-resize' : 'default',
+    position: "absolute",
+    left: positionPx - TRI_SIZE + "px",
+    width: TRI_SIZE * 2 + "px",
+    height: TRI_HEIGHT + 2 + "px",
+    cursor: props.editable ? "ew-resize" : "default",
     zIndex: isDragging ? 10 : 4,
-    ...(direction === 'down' ? { top: 0 } : { bottom: 0 }),
+    ...(direction === "down" ? { top: 0 } : { bottom: 0 }),
   };
 }
 
-function triangleStyle(direction: 'up' | 'down', color: string): CSSProperties {
-  if (direction === 'down') {
+function triangleStyle(direction: "up" | "down", color: string): CSSProperties {
+  if (direction === "down") {
     return {
-      position: 'absolute',
-      top: '1px',
+      position: "absolute",
+      top: "1px",
       left: 0,
       width: 0,
       height: 0,
       borderLeft: `${TRI_SIZE}px solid transparent`,
       borderRight: `${TRI_SIZE}px solid transparent`,
       borderTop: `${TRI_HEIGHT}px solid ${color}`,
-      transition: 'border-top-color 0.1s',
+      transition: "border-top-color 0.1s",
     };
   }
   return {
-    position: 'absolute',
-    bottom: '1px',
+    position: "absolute",
+    bottom: "1px",
     left: 0,
     width: 0,
     height: 0,
     borderLeft: `${TRI_SIZE}px solid transparent`,
     borderRight: `${TRI_SIZE}px solid transparent`,
     borderBottom: `${TRI_HEIGHT}px solid ${color}`,
-    transition: 'border-bottom-color 0.1s',
+    transition: "border-bottom-color 0.1s",
   };
 }
 
@@ -342,17 +339,17 @@ let dragStartValue = 0;
 function startDrag(type: MarkerType, event: MouseEvent) {
   if (!props.editable) return;
   dragging.value = type;
-  if (type === 'leftMargin') dragStartValue = leftMarginTwips.value;
-  else if (type === 'rightMargin') dragStartValue = rightMarginTwips.value;
-  else if (type === 'leftIndent') dragStartValue = props.indentLeft;
-  else if (type === 'rightIndent') dragStartValue = props.indentRight;
-  else if (type === 'firstLineIndent') dragStartValue = props.firstLineIndent;
+  if (type === "leftMargin") dragStartValue = leftMarginTwips.value;
+  else if (type === "rightMargin") dragStartValue = rightMarginTwips.value;
+  else if (type === "leftIndent") dragStartValue = props.indentLeft;
+  else if (type === "rightIndent") dragStartValue = props.indentRight;
+  else if (type === "firstLineIndent") dragStartValue = props.firstLineIndent;
 
   tooltipX.value = event.clientX - (rulerRef.value?.getBoundingClientRect().left ?? 0);
   tooltipText.value = formatValue(dragStartValue);
 
-  document.addEventListener('mousemove', handleMove);
-  document.addEventListener('mouseup', handleUp);
+  document.addEventListener("mousemove", handleMove);
+  document.addEventListener("mouseup", handleUp);
 }
 
 function handleMove(e: MouseEvent) {
@@ -369,27 +366,27 @@ function handleMove(e: MouseEvent) {
 
 function handleUp(_e: MouseEvent) {
   dragging.value = null;
-  document.removeEventListener('mousemove', handleMove);
-  document.removeEventListener('mouseup', handleUp);
+  document.removeEventListener("mousemove", handleMove);
+  document.removeEventListener("mouseup", handleUp);
 }
 
 function computeNewValue(marker: MarkerType, positionTwips: number): number {
-  if (marker === 'leftMargin') {
+  if (marker === "leftMargin") {
     const max = pageWidthTwips.value - rightMarginTwips.value - 720;
     return Math.round(Math.max(0, Math.min(positionTwips, max)));
   }
-  if (marker === 'rightMargin') {
+  if (marker === "rightMargin") {
     const fromRight = pageWidthTwips.value - positionTwips;
     const max = pageWidthTwips.value - leftMarginTwips.value - 720;
     return Math.round(Math.max(0, Math.min(fromRight, max)));
   }
-  if (marker === 'firstLineIndent') {
+  if (marker === "firstLineIndent") {
     const base = leftMarginTwips.value + props.indentLeft;
     const indentFromBase = positionTwips - base;
     const max = contentTwips.value - props.indentLeft - props.indentRight - 720;
     return Math.round(Math.max(-props.indentLeft, Math.min(indentFromBase, max)));
   }
-  if (marker === 'leftIndent') {
+  if (marker === "leftIndent") {
     const indentFromMargin = positionTwips - leftMarginTwips.value;
     const max = contentTwips.value - props.indentRight - 720;
     return Math.round(Math.max(0, Math.min(indentFromMargin, max)));
@@ -403,17 +400,27 @@ function computeNewValue(marker: MarkerType, positionTwips: number): number {
 
 function emitChange(marker: MarkerType, value: number) {
   switch (marker) {
-    case 'leftMargin': emit('left-margin-change', value); break;
-    case 'rightMargin': emit('right-margin-change', value); break;
-    case 'firstLineIndent': emit('first-line-indent-change', value); break;
-    case 'leftIndent': emit('indent-left-change', value); break;
-    case 'rightIndent': emit('indent-right-change', value); break;
+    case "leftMargin":
+      emit("left-margin-change", value);
+      break;
+    case "rightMargin":
+      emit("right-margin-change", value);
+      break;
+    case "firstLineIndent":
+      emit("first-line-indent-change", value);
+      break;
+    case "leftIndent":
+      emit("indent-left-change", value);
+      break;
+    case "rightIndent":
+      emit("indent-right-change", value);
+      break;
   }
 }
 
 onBeforeUnmount(() => {
-  document.removeEventListener('mousemove', handleMove);
-  document.removeEventListener('mouseup', handleUp);
+  document.removeEventListener("mousemove", handleMove);
+  document.removeEventListener("mouseup", handleUp);
 });
 </script>
 

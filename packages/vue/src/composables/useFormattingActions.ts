@@ -41,7 +41,7 @@ export type UseFormattingActionsOptions = {
    */
   activeView?: Ref<EditorView | null>;
   getDocument: () => Document | null;
-}
+};
 
 export function useFormattingActions(opts: UseFormattingActionsOptions) {
   const targetView = () => opts.activeView?.value ?? opts.editorView.value;

@@ -29,7 +29,7 @@
     >
       <MaterialSymbol name="edit_note" :size="18" />
       <span class="review-controls__toggle-label">{{
-        trackChangesOn ? t('trackingOn') : t('trackingOff')
+        trackChangesOn ? t("trackingOn") : t("trackingOff")
       }}</span>
     </button>
 
@@ -77,12 +77,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { DISPLAY_MODES } from '@stll/folio-core/managers/EditorModeManager';
-import type { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
-import MaterialSymbol from './ui/MaterialSymbol.vue';
-import { useTranslation } from '../i18n';
-import { useFolioUI } from '../ui/folio-ui';
+import { computed, ref } from "vue";
+import { DISPLAY_MODES } from "@stll/folio-core/managers/EditorModeManager";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
+import { useTranslation } from "../i18n";
+import { useFolioUI } from "../ui/folio-ui";
 
 const { t } = useTranslation();
 
@@ -96,22 +96,22 @@ const props = withDefaults(
     displayMode: DisplayMode;
     readOnly?: boolean;
   }>(),
-  { readOnly: false }
+  { readOnly: false },
 );
 
 const emit = defineEmits<{
-  (e: 'toggle-track-changes'): void;
-  (e: 'update:display-mode', mode: DisplayMode): void;
+  (e: "toggle-track-changes"): void;
+  (e: "update:display-mode", mode: DisplayMode): void;
 }>();
 
 const isOpen = ref(false);
 
 // Catalog keys mirror React's `DISPLAY_MODE_LABELS` (markupView.* namespace).
 const DISPLAY_MODE_LABEL_KEYS: Record<DisplayMode, string> = {
-  'all-markup': 'markupView.allMarkup',
-  'simple-markup': 'markupView.simple',
-  'no-markup': 'markupView.noMarkup',
-  original: 'markupView.original',
+  "all-markup": "markupView.allMarkup",
+  "simple-markup": "markupView.simple",
+  "no-markup": "markupView.noMarkup",
+  original: "markupView.original",
 };
 
 function labelFor(mode: DisplayMode): string {
@@ -121,7 +121,7 @@ function labelFor(mode: DisplayMode): string {
 const currentLabel = computed(() => labelFor(props.displayMode));
 
 function select(mode: DisplayMode): void {
-  emit('update:display-mode', mode);
+  emit("update:display-mode", mode);
   isOpen.value = false;
 }
 </script>

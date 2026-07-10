@@ -24,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import type { FolioSelectItem } from '../../ui/folio-ui';
+import type { FolioSelectItem } from "../../ui/folio-ui";
 
 defineProps<{
   value?: string;
@@ -35,12 +35,12 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'change', value: string): void;
+  (e: "change", value: string): void;
 }>();
 
 function onChange(event: Event) {
   if (!(event.target instanceof HTMLSelectElement)) return;
-  emit('change', event.target.value);
+  emit("change", event.target.value);
 }
 </script>
 

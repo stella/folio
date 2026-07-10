@@ -43,10 +43,7 @@
 import type { ImageLayoutTarget } from "@stll/folio-core/layout-painter/imageLayout";
 
 import ImageContextMenu from "../ImageContextMenu.vue";
-import type {
-  ImageContextMenuState,
-  ImageContextMenuTextAction,
-} from "../imageContextMenuTypes";
+import type { ImageContextMenuState, ImageContextMenuTextAction } from "../imageContextMenuTypes";
 import TextContextMenu from "../TextContextMenu.vue";
 import type { CustomTextMenuItem } from "../TextContextMenu.vue";
 
@@ -59,7 +56,7 @@ type TextContextMenuState = {
   onImage: boolean;
   canMergeCells: boolean;
   canSplitCell: boolean;
-}
+};
 
 defineProps<{
   readOnly: boolean;

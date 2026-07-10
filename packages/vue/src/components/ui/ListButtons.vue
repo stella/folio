@@ -8,7 +8,9 @@
     <button
       type="button"
       class="docx-list-btns__btn"
-      :class="{ 'docx-list-btns__btn--active': listState?.isInList && listState?.type === 'bullet' }"
+      :class="{
+        'docx-list-btns__btn--active': listState?.isInList && listState?.type === 'bullet',
+      }"
       :disabled="disabled"
       title="Bullet list"
       @click.prevent="$emit('bullet-list')"
@@ -18,7 +20,9 @@
     <button
       type="button"
       class="docx-list-btns__btn"
-      :class="{ 'docx-list-btns__btn--active': listState?.isInList && listState?.type === 'numbered' }"
+      :class="{
+        'docx-list-btns__btn--active': listState?.isInList && listState?.type === 'numbered',
+      }"
       :disabled="disabled"
       title="Numbered list"
       @click.prevent="$emit('numbered-list')"
@@ -52,13 +56,13 @@
 // Re-exported for parity with React's ListButtons — consumers wiring list
 // state pull these from the same module as the component. `<script setup>`
 // can't carry re-exports, so they live in a plain block.
-export type { ListState } from '../../utils/listState';
-export { createDefaultListState } from '../../utils/listState';
+export type { ListState } from "../../utils/listState";
+export { createDefaultListState } from "../../utils/listState";
 </script>
 
 <script setup lang="ts">
-import MaterialSymbol from './MaterialSymbol.vue';
-import type { ListState } from '../../utils/listState';
+import MaterialSymbol from "./MaterialSymbol.vue";
+import type { ListState } from "../../utils/listState";
 
 withDefaults(
   defineProps<{
@@ -67,14 +71,14 @@ withDefaults(
     showIndentButtons?: boolean;
     canOutdent?: boolean;
   }>(),
-  { disabled: false, showIndentButtons: true, canOutdent: true }
+  { disabled: false, showIndentButtons: true, canOutdent: true },
 );
 
 defineEmits<{
-  (e: 'bullet-list'): void;
-  (e: 'numbered-list'): void;
-  (e: 'indent'): void;
-  (e: 'outdent'): void;
+  (e: "bullet-list"): void;
+  (e: "numbered-list"): void;
+  (e: "indent"): void;
+  (e: "outdent"): void;
 }>();
 </script>
 

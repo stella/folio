@@ -121,8 +121,10 @@ describe("HistoryManager", () => {
 
   test("satisfies the DocumentLoaderHistory shape", () => {
     const manager = new HistoryManager<{ id: number } | null>(null);
-    const loaderView: { readonly state: { id: number } | null; reset: (doc: { id: number }) => void } =
-      manager;
+    const loaderView: {
+      readonly state: { id: number } | null;
+      reset: (doc: { id: number }) => void;
+    } = manager;
     loaderView.reset({ id: 1 });
     expect(loaderView.state).toEqual({ id: 1 });
   });

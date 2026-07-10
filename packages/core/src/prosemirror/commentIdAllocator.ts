@@ -27,7 +27,7 @@ export type CommentIdAllocator = {
    * collide with already-present IDs.
    */
   seedAbove(maxId: number): void;
-}
+};
 
 /**
  * Create an instance-scoped monotonic comment/revision ID allocator. IDs are

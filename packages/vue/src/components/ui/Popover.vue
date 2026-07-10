@@ -18,13 +18,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, type CSSProperties } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount, type CSSProperties } from "vue";
 
 const props = withDefaults(
   defineProps<{
     open: boolean;
     /** Where the panel sits relative to the trigger. Defaults to bottom-left. */
-    placement?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';
+    placement?: "bottom-left" | "bottom-right" | "top-left" | "top-right";
     /** Extra panel className. */
     panelClass?: string;
     /** Extra panel inline styles. */
@@ -32,50 +32,50 @@ const props = withDefaults(
     /** Close when the user scrolls outside the panel (default true). */
     closeOnScroll?: boolean;
   }>(),
-  { placement: 'bottom-left', closeOnScroll: true }
+  { placement: "bottom-left", closeOnScroll: true },
 );
 
 const emit = defineEmits<{
-  (e: 'close'): void;
-  (e: 'update:open', value: boolean): void;
+  (e: "close"): void;
+  (e: "update:open", value: boolean): void;
 }>();
 
 const rootRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 
 const GAP = 4;
-const positionStyle = ref<CSSProperties>({ position: 'fixed' });
+const positionStyle = ref<CSSProperties>({ position: "fixed" });
 
 function computePosition() {
   const el = rootRef.value;
   if (!el) return;
   const r = el.getBoundingClientRect();
-  const style: CSSProperties = { position: 'fixed' };
-  if (props.placement.startsWith('top')) {
+  const style: CSSProperties = { position: "fixed" };
+  if (props.placement.startsWith("top")) {
     style.bottom = `${Math.round(window.innerHeight - r.top + GAP)}px`;
-    style.top = 'auto';
+    style.top = "auto";
   } else {
     style.top = `${Math.round(r.bottom + GAP)}px`;
-    style.bottom = 'auto';
+    style.bottom = "auto";
   }
-  if (props.placement.endsWith('right')) {
+  if (props.placement.endsWith("right")) {
     style.right = `${Math.round(window.innerWidth - r.right)}px`;
-    style.left = 'auto';
+    style.left = "auto";
   } else {
     style.left = `${Math.round(r.left)}px`;
-    style.right = 'auto';
+    style.right = "auto";
   }
   positionStyle.value = style;
 }
 
 function toggle() {
-  emit('update:open', !props.open);
-  if (props.open) emit('close');
+  emit("update:open", !props.open);
+  if (props.open) emit("close");
 }
 
 function close() {
-  emit('update:open', false);
-  emit('close');
+  emit("update:open", false);
+  emit("close");
 }
 
 function onClickOutside(e: MouseEvent) {
@@ -86,7 +86,7 @@ function onClickOutside(e: MouseEvent) {
   close();
 }
 function onEscape(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.open) close();
+  if (e.key === "Escape" && props.open) close();
 }
 function onScroll(e: Event) {
   // Capture-phase listener: fires for descendant scrolls too. Scrolling
@@ -100,16 +100,16 @@ function onResize() {
 }
 
 function addListeners() {
-  document.addEventListener('mousedown', onClickOutside);
-  document.addEventListener('keydown', onEscape);
-  window.addEventListener('scroll', onScroll, true);
-  window.addEventListener('resize', onResize);
+  document.addEventListener("mousedown", onClickOutside);
+  document.addEventListener("keydown", onEscape);
+  window.addEventListener("scroll", onScroll, true);
+  window.addEventListener("resize", onResize);
 }
 function removeListeners() {
-  document.removeEventListener('mousedown', onClickOutside);
-  document.removeEventListener('keydown', onEscape);
-  window.removeEventListener('scroll', onScroll, true);
-  window.removeEventListener('resize', onResize);
+  document.removeEventListener("mousedown", onClickOutside);
+  document.removeEventListener("keydown", onEscape);
+  window.removeEventListener("scroll", onScroll, true);
+  window.removeEventListener("resize", onResize);
 }
 
 watch(
@@ -121,11 +121,11 @@ watch(
     } else {
       removeListeners();
     }
-  }
+  },
 );
 watch(
   () => props.placement,
-  () => props.open && computePosition()
+  () => props.open && computePosition(),
 );
 
 onMounted(() => {

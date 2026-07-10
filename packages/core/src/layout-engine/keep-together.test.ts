@@ -64,11 +64,7 @@ describe("calculateChainHeight", () => {
       paragraph("heading", true),
       paragraph("anchor"),
     ];
-    const measures: Measure[] = [
-      paragraphMeasure(12),
-      paragraphMeasure(14),
-      paragraphMeasure(16),
-    ];
+    const measures: Measure[] = [paragraphMeasure(12), paragraphMeasure(14), paragraphMeasure(16)];
 
     expect(
       calculateChainHeight(

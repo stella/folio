@@ -8,35 +8,35 @@
       @input="handleInput"
       @blur="handleBlur"
     />
-    <span v-else class="doc-name__text">{{ displayName || 'Untitled document' }}</span>
+    <span v-else class="doc-name__text">{{ displayName || "Untitled document" }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed } from "vue";
 
 const props = withDefaults(
   defineProps<{
     modelValue: string;
     editable?: boolean;
   }>(),
-  { editable: true }
+  { editable: true },
 );
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void;
+  (e: "update:modelValue", value: string): void;
 }>();
 
 const displayName = computed(() => {
-  const name = props.modelValue || '';
-  return name.replace(/\.docx$/i, '');
+  const name = props.modelValue || "";
+  return name.replace(/\.docx$/i, "");
 });
 
 function handleInput(event: Event) {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
   const raw = target.value;
-  emit('update:modelValue', raw.endsWith('.docx') ? raw : raw + '.docx');
+  emit("update:modelValue", raw.endsWith(".docx") ? raw : raw + ".docx");
 }
 
 function handleBlur(event: FocusEvent) {
@@ -44,7 +44,7 @@ function handleBlur(event: FocusEvent) {
   if (!(target instanceof HTMLInputElement)) return;
   const raw = target.value.trim();
   if (!raw) {
-    emit('update:modelValue', 'Untitled document.docx');
+    emit("update:modelValue", "Untitled document.docx");
   }
 }
 </script>
@@ -77,7 +77,9 @@ function handleBlur(event: FocusEvent) {
 }
 .doc-name__input {
   height: 24px;
-  transition: background 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    background 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .doc-name__input:hover {
   background: var(--doc-bg);

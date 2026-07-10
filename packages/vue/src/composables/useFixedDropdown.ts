@@ -13,14 +13,14 @@ export type UseFixedDropdownOptions = {
   onClose: () => void;
   /** 'left' aligns dropdown left edge to trigger, 'right' aligns right edge. */
   align?: "left" | "right";
-}
+};
 
 export type UseFixedDropdownReturn = {
   containerRef: Ref<HTMLElement | null>;
   dropdownRef: Ref<HTMLElement | null>;
   dropdownStyle: Ref<CSSProperties>;
   handleMouseDown: (e: MouseEvent) => void;
-}
+};
 
 export function useFixedDropdown({
   isOpen,

@@ -18,7 +18,7 @@ export type ImageContextMenuState = {
   currentWrapType: WrapType;
   currentCssFloat?: ImageAttrsCssFloat;
   inlinePositionEmu?: { horizontalEmu: number; verticalEmu: number };
-}
+};
 
 /**
  * Item appended below a divider — mirrors the React side
@@ -32,4 +32,4 @@ export type ImageContextMenuTextAction = {
   shortcut?: string;
   disabled?: boolean;
   dividerAfter?: boolean;
-}
+};

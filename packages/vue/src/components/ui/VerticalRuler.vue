@@ -55,25 +55,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, type CSSProperties } from 'vue';
-import type { SectionProperties } from '@stll/folio-core/types/document';
-import { twipsToPixels, pixelsToTwips } from '@stll/folio-core/utils/units';
+import { ref, computed, onBeforeUnmount, type CSSProperties } from "vue";
+import type { SectionProperties } from "@stll/folio-core/types/document";
+import { twipsToPixels, pixelsToTwips } from "@stll/folio-core/utils/units";
 
-type MarkerType = 'topMargin' | 'bottomMargin';
+type MarkerType = "topMargin" | "bottomMargin";
 
 const props = withDefaults(
   defineProps<{
     sectionProps?: SectionProperties | null;
     zoom?: number;
     editable?: boolean;
-    unit?: 'inch' | 'cm';
+    unit?: "inch" | "cm";
   }>(),
-  { zoom: 1, editable: true, unit: 'inch' }
+  { zoom: 1, editable: true, unit: "inch" },
 );
 
 const emit = defineEmits<{
-  (e: 'top-margin-change', twips: number): void;
-  (e: 'bottom-margin-change', twips: number): void;
+  (e: "top-margin-change", twips: number): void;
+  (e: "bottom-margin-change", twips: number): void;
 }>();
 
 const DEFAULT_PAGE_HEIGHT_TWIPS = 15840;
@@ -103,19 +103,19 @@ const topMarginPx = computed(() => tw2px(topMarginTwips.value));
 const bottomMarginPx = computed(() => tw2px(bottomMarginTwips.value));
 
 const containerStyle = computed<CSSProperties>(() => ({
-  position: 'relative',
-  width: RULER_W + 'px',
-  height: pageHeightPx.value + 'px',
-  backgroundColor: 'transparent',
-  overflow: 'visible',
-  userSelect: 'none',
-  cursor: dragging.value ? 'ns-resize' : 'default',
+  position: "relative",
+  width: RULER_W + "px",
+  height: pageHeightPx.value + "px",
+  backgroundColor: "transparent",
+  overflow: "visible",
+  userSelect: "none",
+  cursor: dragging.value ? "ns-resize" : "default",
 }));
 
 // Mirror generateVerticalTicks() from React VerticalRuler.tsx.
 const ticks = computed(() => {
   const out: { position: number; width: number; label?: string | undefined }[] = [];
-  if (props.unit === 'inch') {
+  if (props.unit === "inch") {
     const eighth = TWIPS_PER_INCH / 8;
     const total = Math.ceil(pageHeightTwips.value / eighth);
     for (let i = 0; i <= total; i++) {
@@ -153,12 +153,12 @@ const ticks = computed(() => {
 
 function markerStyle(top: number): CSSProperties {
   return {
-    position: 'absolute',
-    top: top - 5 + 'px',
+    position: "absolute",
+    top: top - 5 + "px",
     right: 0,
-    width: RULER_W + 'px',
-    height: '10px',
-    cursor: props.editable ? 'ns-resize' : 'default',
+    width: RULER_W + "px",
+    height: "10px",
+    cursor: props.editable ? "ns-resize" : "default",
     zIndex: dragging.value === null ? 1 : 10,
   };
 }
@@ -169,19 +169,19 @@ function markerStyle(top: number): CSSProperties {
 function triangleStyle(type: MarkerType): CSSProperties {
   const isActive = dragging.value === type;
   const isHovered = hovered.value === type;
-  let color = 'var(--doc-primary)';
-  if (isActive) color = 'var(--doc-primary-hover)';
-  else if (isHovered) color = 'var(--doc-primary)';
+  let color = "var(--doc-primary)";
+  if (isActive) color = "var(--doc-primary-hover)";
+  else if (isHovered) color = "var(--doc-primary)";
   return {
-    position: 'absolute',
-    top: '0px',
-    right: '2px',
-    width: '0',
-    height: '0',
-    borderTop: '5px solid transparent',
-    borderBottom: '5px solid transparent',
+    position: "absolute",
+    top: "0px",
+    right: "2px",
+    width: "0",
+    height: "0",
+    borderTop: "5px solid transparent",
+    borderBottom: "5px solid transparent",
     borderRight: `8px solid ${color}`,
-    transition: 'border-right-color 0.1s',
+    transition: "border-right-color 0.1s",
   };
 }
 
@@ -192,31 +192,33 @@ function startDrag(type: MarkerType, event: MouseEvent) {
   if (!props.editable) return;
   dragging.value = type;
   dragStartY = event.clientY;
-  dragStartValue = type === 'topMargin' ? topMarginTwips.value : bottomMarginTwips.value;
-  document.addEventListener('mousemove', handleMove);
-  document.addEventListener('mouseup', handleUp);
+  dragStartValue = type === "topMargin" ? topMarginTwips.value : bottomMarginTwips.value;
+  document.addEventListener("mousemove", handleMove);
+  document.addEventListener("mouseup", handleUp);
 }
 
 function handleMove(e: MouseEvent) {
   if (!dragging.value) return;
   const dy = e.clientY - dragStartY;
-  const dTwips = px2tw(dragging.value === 'topMargin' ? dy : -dy);
-  const max = pageHeightTwips.value -
-    (dragging.value === 'topMargin' ? bottomMarginTwips.value : topMarginTwips.value) - 720;
+  const dTwips = px2tw(dragging.value === "topMargin" ? dy : -dy);
+  const max =
+    pageHeightTwips.value -
+    (dragging.value === "topMargin" ? bottomMarginTwips.value : topMarginTwips.value) -
+    720;
   const value = Math.round(Math.max(0, Math.min(dragStartValue + dTwips, max)));
-  if (dragging.value === 'topMargin') emit('top-margin-change', value);
-  else emit('bottom-margin-change', value);
+  if (dragging.value === "topMargin") emit("top-margin-change", value);
+  else emit("bottom-margin-change", value);
 }
 
 function handleUp() {
   dragging.value = null;
-  document.removeEventListener('mousemove', handleMove);
-  document.removeEventListener('mouseup', handleUp);
+  document.removeEventListener("mousemove", handleMove);
+  document.removeEventListener("mouseup", handleUp);
 }
 
 onBeforeUnmount(() => {
-  document.removeEventListener('mousemove', handleMove);
-  document.removeEventListener('mouseup', handleUp);
+  document.removeEventListener("mousemove", handleMove);
+  document.removeEventListener("mouseup", handleUp);
 });
 </script>
 

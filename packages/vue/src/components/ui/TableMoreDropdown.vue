@@ -34,16 +34,16 @@
       <div class="docx-tmore__panel" role="menu" :aria-label="t('tableAdvanced.tableOptionsMenu')">
         <!-- Insert -->
         <button type="button" class="docx-tmore__item" @click.prevent="select('addRowAbove')">
-          <MaterialSymbol name="add" :size="18" /><span>{{ t('insertRowAbove') }}</span>
+          <MaterialSymbol name="add" :size="18" /><span>{{ t("insertRowAbove") }}</span>
         </button>
         <button type="button" class="docx-tmore__item" @click.prevent="select('addRowBelow')">
-          <MaterialSymbol name="add" :size="18" /><span>{{ t('insertRowBelow') }}</span>
+          <MaterialSymbol name="add" :size="18" /><span>{{ t("insertRowBelow") }}</span>
         </button>
         <button type="button" class="docx-tmore__item" @click.prevent="select('addColumnLeft')">
-          <MaterialSymbol name="add" :size="18" /><span>{{ t('insertColumnLeft') }}</span>
+          <MaterialSymbol name="add" :size="18" /><span>{{ t("insertColumnLeft") }}</span>
         </button>
         <button type="button" class="docx-tmore__item" @click.prevent="select('addColumnRight')">
-          <MaterialSymbol name="add" :size="18" /><span>{{ t('insertColumnRight') }}</span>
+          <MaterialSymbol name="add" :size="18" /><span>{{ t("insertColumnRight") }}</span>
         </button>
 
         <div class="docx-tmore__separator" />
@@ -55,7 +55,7 @@
           :disabled="isDisabled('mergeCells')"
           @click.prevent="select('mergeCells')"
         >
-          <MaterialSymbol name="call_merge" :size="18" /><span>{{ t('table.mergeCells') }}</span>
+          <MaterialSymbol name="call_merge" :size="18" /><span>{{ t("table.mergeCells") }}</span>
         </button>
         <button
           type="button"
@@ -63,14 +63,14 @@
           :disabled="isDisabled('splitCell')"
           @click.prevent="select('splitCell')"
         >
-          <MaterialSymbol name="call_split" :size="18" /><span>{{ t('table.splitCell') }}</span>
+          <MaterialSymbol name="call_split" :size="18" /><span>{{ t("table.splitCell") }}</span>
         </button>
 
         <div class="docx-tmore__separator" />
 
         <!-- Select -->
         <button type="button" class="docx-tmore__item" @click.prevent="select('selectTable')">
-          <MaterialSymbol name="select_all" :size="18" /><span>{{ t('table.selectTable') }}</span>
+          <MaterialSymbol name="select_all" :size="18" /><span>{{ t("table.selectTable") }}</span>
         </button>
 
         <div class="docx-tmore__separator" />
@@ -82,7 +82,7 @@
           :disabled="isDisabled('deleteRow')"
           @click.prevent="select('deleteRow')"
         >
-          <MaterialSymbol name="delete" :size="18" /><span>{{ t('deleteRow') }}</span>
+          <MaterialSymbol name="delete" :size="18" /><span>{{ t("deleteRow") }}</span>
         </button>
         <button
           type="button"
@@ -90,20 +90,20 @@
           :disabled="isDisabled('deleteColumn')"
           @click.prevent="select('deleteColumn')"
         >
-          <MaterialSymbol name="delete" :size="18" /><span>{{ t('deleteColumn') }}</span>
+          <MaterialSymbol name="delete" :size="18" /><span>{{ t("deleteColumn") }}</span>
         </button>
         <button
           type="button"
           class="docx-tmore__item docx-tmore__item--danger"
           @click.prevent="select('deleteTable')"
         >
-          <MaterialSymbol name="delete" :size="18" /><span>{{ t('table.deleteTable') }}</span>
+          <MaterialSymbol name="delete" :size="18" /><span>{{ t("table.deleteTable") }}</span>
         </button>
 
         <div class="docx-tmore__separator" />
 
         <!-- Vertical alignment -->
-        <div class="docx-tmore__section-label">{{ t('tableAdvanced.verticalAlignment') }}</div>
+        <div class="docx-tmore__section-label">{{ t("tableAdvanced.verticalAlignment") }}</div>
         <div class="docx-tmore__icon-row">
           <button
             type="button"
@@ -137,7 +137,7 @@
         <div class="docx-tmore__separator" />
 
         <!-- Table alignment -->
-        <div class="docx-tmore__section-label">{{ t('tableAdvanced.tableAlignment') }}</div>
+        <div class="docx-tmore__section-label">{{ t("tableAdvanced.tableAlignment") }}</div>
         <div class="docx-tmore__icon-row">
           <button
             type="button"
@@ -176,13 +176,13 @@
         <!-- Cell margins (expandable) -->
         <button type="button" class="docx-tmore__item" @click.prevent="marginsOpen = !marginsOpen">
           <MaterialSymbol name="padding" :size="18" />
-          <span class="docx-tmore__grow">{{ t('tableAdvanced.cellMargins') }}</span>
+          <span class="docx-tmore__grow">{{ t("tableAdvanced.cellMargins") }}</span>
           <MaterialSymbol :name="marginsOpen ? 'expand_less' : 'expand_more'" :size="18" />
         </button>
         <div v-if="marginsOpen" class="docx-tmore__sub">
           <div class="docx-tmore__margin-grid">
             <label
-              v-for="side in (['top', 'bottom', 'left', 'right'] as const)"
+              v-for="side in ['top', 'bottom', 'left', 'right'] as const"
               :key="side"
               class="docx-tmore__field"
             >
@@ -198,27 +198,27 @@
             </label>
           </div>
           <button type="button" class="docx-tmore__apply" @click.prevent="applyMargins">
-            {{ t('common.apply') }}
+            {{ t("common.apply") }}
           </button>
         </div>
 
         <!-- Row height (expandable) -->
         <button type="button" class="docx-tmore__item" @click.prevent="heightOpen = !heightOpen">
           <MaterialSymbol name="height" :size="18" />
-          <span class="docx-tmore__grow">{{ t('tableAdvanced.rowHeight') }}</span>
+          <span class="docx-tmore__grow">{{ t("tableAdvanced.rowHeight") }}</span>
           <MaterialSymbol :name="heightOpen ? 'expand_less' : 'expand_more'" :size="18" />
         </button>
         <div v-if="heightOpen" class="docx-tmore__sub">
           <label class="docx-tmore__row-field">
-            <span class="docx-tmore__field-label">{{ t('tableAdvanced.rule') }}</span>
+            <span class="docx-tmore__field-label">{{ t("tableAdvanced.rule") }}</span>
             <select v-model="heightRule" class="docx-tmore__select">
-              <option value="auto">{{ t('tableAdvanced.heightRules.auto') }}</option>
-              <option value="atLeast">{{ t('tableAdvanced.heightRules.atLeast') }}</option>
-              <option value="exact">{{ t('tableAdvanced.heightRules.exact') }}</option>
+              <option value="auto">{{ t("tableAdvanced.heightRules.auto") }}</option>
+              <option value="atLeast">{{ t("tableAdvanced.heightRules.atLeast") }}</option>
+              <option value="exact">{{ t("tableAdvanced.heightRules.exact") }}</option>
             </select>
           </label>
           <label v-if="heightRule !== 'auto'" class="docx-tmore__row-field">
-            <span class="docx-tmore__field-label">{{ t('tableAdvanced.height') }}</span>
+            <span class="docx-tmore__field-label">{{ t("tableAdvanced.height") }}</span>
             <input
               type="number"
               min="0"
@@ -229,25 +229,33 @@
             <span class="docx-tmore__unit">tw</span>
           </label>
           <button type="button" class="docx-tmore__apply" @click.prevent="applyHeight">
-            {{ t('common.apply') }}
+            {{ t("common.apply") }}
           </button>
         </div>
 
         <!-- Cell text direction (expandable) -->
         <button type="button" class="docx-tmore__item" @click.prevent="dirOpen = !dirOpen">
           <MaterialSymbol name="text_rotation_none" :size="18" />
-          <span class="docx-tmore__grow">{{ t('textDirection') }}</span>
+          <span class="docx-tmore__grow">{{ t("textDirection") }}</span>
           <MaterialSymbol :name="dirOpen ? 'expand_less' : 'expand_more'" :size="18" />
         </button>
         <div v-if="dirOpen" class="docx-tmore__sub docx-tmore__sub--list">
           <button type="button" class="docx-tmore__sub-item" @click.prevent="applyDirection(null)">
-            {{ t('tableAdvanced.textDirections.horizontal') }}
+            {{ t("tableAdvanced.textDirections.horizontal") }}
           </button>
-          <button type="button" class="docx-tmore__sub-item" @click.prevent="applyDirection('tbRl')">
-            {{ t('tableAdvanced.textDirections.verticalRL') }}
+          <button
+            type="button"
+            class="docx-tmore__sub-item"
+            @click.prevent="applyDirection('tbRl')"
+          >
+            {{ t("tableAdvanced.textDirections.verticalRL") }}
           </button>
-          <button type="button" class="docx-tmore__sub-item" @click.prevent="applyDirection('btLr')">
-            {{ t('tableAdvanced.textDirections.verticalLR') }}
+          <button
+            type="button"
+            class="docx-tmore__sub-item"
+            @click.prevent="applyDirection('btLr')"
+          >
+            {{ t("tableAdvanced.textDirections.verticalLR") }}
           </button>
         </div>
 
@@ -256,20 +264,22 @@
         <!-- Other toggles -->
         <button type="button" class="docx-tmore__item" @click.prevent="select('toggleHeaderRow')">
           <MaterialSymbol name="table_rows" :size="18" /><span>{{
-            t('tableAdvanced.toggleHeaderRow')
+            t("tableAdvanced.toggleHeaderRow")
           }}</span>
         </button>
         <button type="button" class="docx-tmore__item" @click.prevent="select('distributeColumns')">
           <MaterialSymbol name="view_column" :size="18" /><span>{{
-            t('tableAdvanced.distributeColumns')
+            t("tableAdvanced.distributeColumns")
           }}</span>
         </button>
         <button type="button" class="docx-tmore__item" @click.prevent="select('autoFit')">
-          <MaterialSymbol name="fit_width" :size="18" /><span>{{ t('tableAdvanced.autoFit') }}</span>
+          <MaterialSymbol name="fit_width" :size="18" /><span>{{
+            t("tableAdvanced.autoFit")
+          }}</span>
         </button>
         <button type="button" class="docx-tmore__item" @click.prevent="select('toggleNoWrap')">
           <MaterialSymbol name="wrap_text" :size="18" /><span>{{
-            t('tableAdvanced.toggleNoWrap')
+            t("tableAdvanced.toggleNoWrap")
           }}</span>
         </button>
 
@@ -277,7 +287,7 @@
 
         <button type="button" class="docx-tmore__item" @click.prevent="select('tableProperties')">
           <MaterialSymbol name="settings" :size="18" /><span>{{
-            t('tableAdvanced.tableProperties')
+            t("tableAdvanced.tableProperties")
           }}</span>
         </button>
       </div>
@@ -286,39 +296,39 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue';
-import MaterialSymbol from './MaterialSymbol.vue';
-import { useTranslation } from '../../i18n';
-import { useFolioUI } from '../../ui/folio-ui';
+import { ref, reactive, watch } from "vue";
+import MaterialSymbol from "./MaterialSymbol.vue";
+import { useTranslation } from "../../i18n";
+import { useFolioUI } from "../../ui/folio-ui";
 
 // Resolve Popover from the FolioUI injection provider so a host override
 // takes effect here too (previously a static import).
 const { Popover } = useFolioUI();
 
 export type TableAction =
-  | 'addRowAbove'
-  | 'addRowBelow'
-  | 'addColumnLeft'
-  | 'addColumnRight'
-  | 'mergeCells'
-  | 'splitCell'
-  | 'deleteRow'
-  | 'deleteColumn'
-  | 'deleteTable'
-  | 'selectTable'
-  | 'toggleHeaderRow'
-  | 'distributeColumns'
-  | 'autoFit'
-  | 'toggleNoWrap'
-  | 'alignTableLeft'
-  | 'alignTableCenter'
-  | 'alignTableRight'
-  | 'verticalAlignTop'
-  | 'verticalAlignMiddle'
-  | 'verticalAlignBottom'
-  | 'tableProperties';
+  | "addRowAbove"
+  | "addRowBelow"
+  | "addColumnLeft"
+  | "addColumnRight"
+  | "mergeCells"
+  | "splitCell"
+  | "deleteRow"
+  | "deleteColumn"
+  | "deleteTable"
+  | "selectTable"
+  | "toggleHeaderRow"
+  | "distributeColumns"
+  | "autoFit"
+  | "toggleNoWrap"
+  | "alignTableLeft"
+  | "alignTableCenter"
+  | "alignTableRight"
+  | "verticalAlignTop"
+  | "verticalAlignMiddle"
+  | "verticalAlignBottom"
+  | "tableProperties";
 
-type HeightRule = 'auto' | 'atLeast' | 'exact';
+type HeightRule = "auto" | "atLeast" | "exact";
 
 const props = withDefaults(
   defineProps<{
@@ -332,7 +342,7 @@ const props = withDefaults(
     /** Columns in the current table — "Delete column" is disabled at 1. */
     columnCount?: number;
     /** Active table justification, for the align-table active-state. */
-    currentJustification?: 'left' | 'center' | 'right';
+    currentJustification?: "left" | "center" | "right";
   }>(),
   {
     disabled: false,
@@ -340,18 +350,18 @@ const props = withDefaults(
     canMerge: false,
     rowCount: 0,
     columnCount: 0,
-    currentJustification: 'left',
-  }
+    currentJustification: "left",
+  },
 );
 
 const emit = defineEmits<{
-  (e: 'action', action: TableAction): void;
+  (e: "action", action: TableAction): void;
   (
-    e: 'cell-margins',
-    margins: { top?: number; bottom?: number; left?: number; right?: number }
+    e: "cell-margins",
+    margins: { top?: number; bottom?: number; left?: number; right?: number },
   ): void;
-  (e: 'cell-text-direction', direction: string | null): void;
-  (e: 'row-height', value: { height: number | null; rule?: HeightRule }): void;
+  (e: "cell-text-direction", direction: string | null): void;
+  (e: "row-height", value: { height: number | null; rule?: HeightRule }): void;
 }>();
 
 const { t } = useTranslation();
@@ -365,7 +375,7 @@ const heightOpen = ref(false);
 const dirOpen = ref(false);
 const marginValues = reactive({ top: 0, bottom: 0, left: 108, right: 108 });
 const heightValue = ref(0);
-const heightRule = ref<HeightRule>('atLeast');
+const heightRule = ref<HeightRule>("atLeast");
 
 watch(isOpen, (open) => {
   if (!open) {
@@ -377,16 +387,16 @@ watch(isOpen, (open) => {
 
 function isDisabled(action: TableAction): boolean {
   if (props.disabled) return true;
-  if (action === 'splitCell') return !props.canSplit;
-  if (action === 'mergeCells') return !props.canMerge;
-  if (action === 'deleteRow') return (props.rowCount ?? 0) <= 1;
-  if (action === 'deleteColumn') return (props.columnCount ?? 0) <= 1;
+  if (action === "splitCell") return !props.canSplit;
+  if (action === "mergeCells") return !props.canMerge;
+  if (action === "deleteRow") return (props.rowCount ?? 0) <= 1;
+  if (action === "deleteColumn") return (props.columnCount ?? 0) <= 1;
   return false;
 }
 
 function select(action: TableAction) {
   if (isDisabled(action)) return;
-  emit('action', action);
+  emit("action", action);
   isOpen.value = false;
 }
 
@@ -399,7 +409,7 @@ const toTw = (v: unknown): number => {
 };
 
 function applyMargins() {
-  emit('cell-margins', {
+  emit("cell-margins", {
     top: toTw(marginValues.top),
     bottom: toTw(marginValues.bottom),
     left: toTw(marginValues.left),
@@ -410,16 +420,16 @@ function applyMargins() {
 
 function applyHeight() {
   const h = toTw(heightValue.value);
-  if (heightRule.value === 'auto' || h <= 0) {
-    emit('row-height', { height: null });
+  if (heightRule.value === "auto" || h <= 0) {
+    emit("row-height", { height: null });
   } else {
-    emit('row-height', { height: h, rule: heightRule.value });
+    emit("row-height", { height: h, rule: heightRule.value });
   }
   isOpen.value = false;
 }
 
 function applyDirection(direction: string | null) {
-  emit('cell-text-direction', direction);
+  emit("cell-text-direction", direction);
   isOpen.value = false;
 }
 </script>

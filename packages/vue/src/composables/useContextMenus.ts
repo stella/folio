@@ -66,7 +66,7 @@ export type TextContextMenuState = {
   onImage: boolean;
   canMergeCells: boolean;
   canSplitCell: boolean;
-}
+};
 
 /**
  * One host-provided context-menu entry (the `customContextMenuItems` prop).
@@ -78,7 +78,7 @@ export type CustomContextMenuItem = {
   label: string;
   requiresSelection?: boolean;
   icon?: VNodeChild;
-}
+};
 
 export type UseContextMenusOptions = {
   editorView: Ref<EditorView | null>;
@@ -97,7 +97,7 @@ export type UseContextMenusOptions = {
    * selection, so the captured range is preferred when non-empty.
    */
   onCustomContextAction?: (id: string, selectionRange: { from: number; to: number }) => void;
-}
+};
 
 export type UseContextMenusReturn = {
   contextMenu: Ref<TextContextMenuState>;
@@ -109,7 +109,7 @@ export type UseContextMenusReturn = {
   handleSelectedImageContextMenu: (event: MouseEvent) => void;
   handleImageWrapSelect: (target: ImageLayoutTarget) => void;
   handleContextMenuAction: (action: string) => void;
-}
+};
 
 export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusReturn {
   const { t } = useTranslation();

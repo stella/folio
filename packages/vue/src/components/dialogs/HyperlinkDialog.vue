@@ -6,7 +6,7 @@
     <div class="dialog" @mousedown.stop @keydown.stop>
       <div class="dialog__header">
         <span class="dialog__title">{{
-          isEditing ? t('dialogs.hyperlink.titleEdit') : t('dialogs.hyperlink.titleInsert')
+          isEditing ? t("dialogs.hyperlink.titleEdit") : t("dialogs.hyperlink.titleInsert")
         }}</span>
         <button class="dialog__close" :aria-label="t('common.closeDialog')" @click="close">
           ✕
@@ -21,7 +21,7 @@
             :aria-selected="linkType === 'url'"
             @mousedown.prevent="linkType = 'url'"
           >
-            {{ t('dialogs.hyperlink.tabWebAddress') }}
+            {{ t("dialogs.hyperlink.tabWebAddress") }}
           </button>
           <button
             class="link-tab"
@@ -30,12 +30,12 @@
             :aria-selected="linkType === 'bookmark'"
             @mousedown.prevent="linkType = 'bookmark'"
           >
-            {{ t('dialogs.hyperlink.tabBookmark') }}
+            {{ t("dialogs.hyperlink.tabBookmark") }}
           </button>
         </div>
 
         <div v-if="linkType === 'url'" class="field">
-          <label class="field__label">{{ t('dialogs.hyperlink.urlLabel') }}</label>
+          <label class="field__label">{{ t("dialogs.hyperlink.urlLabel") }}</label>
           <input
             ref="urlInputRef"
             v-model="url"
@@ -47,33 +47,33 @@
             @blur="validateUrl"
           />
           <div v-if="touched && urlError" class="field__error">{{ urlError }}</div>
-          <div v-else class="field__hint">{{ t('dialogs.hyperlink.urlHint') }}</div>
+          <div v-else class="field__hint">{{ t("dialogs.hyperlink.urlHint") }}</div>
         </div>
         <div v-else class="field">
-          <label class="field__label">{{ t('dialogs.hyperlink.bookmarkLabel') }}</label>
+          <label class="field__label">{{ t("dialogs.hyperlink.bookmarkLabel") }}</label>
           <select
             ref="bookmarkSelectRef"
             v-model="bookmark"
             class="field__input"
             @keydown.enter.prevent="submit"
           >
-            <option value="">{{ t('dialogs.hyperlink.bookmarkPlaceholder') }}</option>
+            <option value="">{{ t("dialogs.hyperlink.bookmarkPlaceholder") }}</option>
             <option v-for="bm in bookmarks" :key="bm.name" :value="bm.name">
               {{ bm.label || bm.name }}
             </option>
           </select>
         </div>
         <div class="field">
-          <label class="field__label">{{ t('dialogs.hyperlink.displayTextLabel') }}</label>
+          <label class="field__label">{{ t("dialogs.hyperlink.displayTextLabel") }}</label>
           <input
             v-model="displayText"
             class="field__input"
             :placeholder="t('dialogs.hyperlink.displayTextPlaceholder')"
           />
-          <div class="field__hint">{{ t('dialogs.hyperlink.displayTextHint') }}</div>
+          <div class="field__hint">{{ t("dialogs.hyperlink.displayTextHint") }}</div>
         </div>
         <div class="field">
-          <label class="field__label">{{ t('dialogs.hyperlink.tooltipLabel') }}</label>
+          <label class="field__label">{{ t("dialogs.hyperlink.tooltipLabel") }}</label>
           <input
             v-model="tooltip"
             class="field__input"
@@ -86,16 +86,16 @@
             class="dialog__btn dialog__btn--danger"
             @mousedown.prevent="removeLink"
           >
-            {{ t('dialogs.hyperlink.removeLink') }}
+            {{ t("dialogs.hyperlink.removeLink") }}
           </button>
           <div style="flex: 1"></div>
-          <button class="dialog__btn" @click="close">{{ t('common.cancel') }}</button>
+          <button class="dialog__btn" @click="close">{{ t("common.cancel") }}</button>
           <button
             class="dialog__btn dialog__btn--primary"
             @mousedown.prevent="submit"
             :disabled="!canSubmit"
           >
-            {{ isEditing ? t('common.update') : t('common.insert') }}
+            {{ isEditing ? t("common.update") : t("common.insert") }}
           </button>
         </div>
       </div>
@@ -104,9 +104,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue';
-import type { EditorView } from 'prosemirror-view';
-import { useTranslation } from '../../i18n';
+import { computed, ref, watch, nextTick } from "vue";
+import type { EditorView } from "prosemirror-view";
+import { useTranslation } from "../../i18n";
 
 const { t } = useTranslation();
 
@@ -117,43 +117,43 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: "close"): void;
   (
-    e: 'submit',
-    data: { url?: string; bookmark?: string; displayText: string; tooltip: string }
+    e: "submit",
+    data: { url?: string; bookmark?: string; displayText: string; tooltip: string },
   ): void;
-  (e: 'remove'): void;
+  (e: "remove"): void;
 }>();
 
 const urlInputRef = ref<HTMLInputElement | null>(null);
 const bookmarkSelectRef = ref<HTMLSelectElement | null>(null);
-const linkType = ref<'url' | 'bookmark'>('url');
-const url = ref('');
-const bookmark = ref('');
-const displayText = ref('');
-const tooltip = ref('');
+const linkType = ref<"url" | "bookmark">("url");
+const url = ref("");
+const bookmark = ref("");
+const displayText = ref("");
+const tooltip = ref("");
 const isEditing = ref(false);
-const urlError = ref('');
+const urlError = ref("");
 const touched = ref(false);
 
 const bookmarks = computed(() => props.bookmarks ?? []);
 const canSubmit = computed(() => {
-  if (linkType.value === 'bookmark') return !!bookmark.value;
+  if (linkType.value === "bookmark") return !!bookmark.value;
   return !!url.value.trim() && !urlError.value;
 });
 
 watch(url, () => {
-  if (urlError.value) urlError.value = '';
+  if (urlError.value) urlError.value = "";
 });
 
 function isValidUrl(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
-  if (/^(mailto:|tel:)/i.test(trimmed)) return trimmed.replace(/^(mailto:|tel:)/i, '').length > 0;
-  if (/^ftp:\/\//i.test(trimmed)) return trimmed.length > 'ftp://'.length;
+  if (/^(mailto:|tel:)/i.test(trimmed)) return trimmed.replace(/^(mailto:|tel:)/i, "").length > 0;
+  if (/^ftp:\/\//i.test(trimmed)) return trimmed.length > "ftp://".length;
   try {
     const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
   } catch {
     return false;
   }
@@ -174,26 +174,26 @@ watch(
       if (v) {
         const { $from, empty, from, to } = v.state.selection;
         const marks = v.state.storedMarks || $from.marks();
-        const linkMark = marks.find((m) => m.type.name === 'hyperlink');
+        const linkMark = marks.find((m) => m.type.name === "hyperlink");
 
         if (linkMark) {
-          const href = linkMark.attrs['href'] || '';
-          if (href.startsWith('#')) {
-            linkType.value = 'bookmark';
+          const href = linkMark.attrs["href"] || "";
+          if (href.startsWith("#")) {
+            linkType.value = "bookmark";
             bookmark.value = href.slice(1);
-            url.value = '';
+            url.value = "";
           } else {
-            linkType.value = 'url';
+            linkType.value = "url";
             url.value = href;
-            bookmark.value = '';
+            bookmark.value = "";
           }
-          tooltip.value = linkMark.attrs['tooltip'] || '';
+          tooltip.value = linkMark.attrs["tooltip"] || "";
           isEditing.value = true;
         } else {
-          linkType.value = 'url';
-          url.value = '';
-          bookmark.value = '';
-          tooltip.value = '';
+          linkType.value = "url";
+          url.value = "";
+          bookmark.value = "";
+          tooltip.value = "";
           isEditing.value = false;
         }
 
@@ -201,28 +201,28 @@ watch(
         if (!empty) {
           displayText.value = v.state.doc.textBetween(from, to);
         } else {
-          displayText.value = '';
+          displayText.value = "";
         }
       }
 
       await nextTick();
-      if (linkType.value === 'bookmark') bookmarkSelectRef.value?.focus();
+      if (linkType.value === "bookmark") bookmarkSelectRef.value?.focus();
       else urlInputRef.value?.focus();
     } else {
       touched.value = false;
-      urlError.value = '';
+      urlError.value = "";
     }
-  }
+  },
 );
 
 function close() {
-  emit('close');
+  emit("close");
 }
 
 function submit() {
-  if (linkType.value === 'bookmark') {
+  if (linkType.value === "bookmark") {
     if (!bookmark.value) return;
-    emit('submit', {
+    emit("submit", {
       bookmark: bookmark.value,
       displayText: displayText.value,
       tooltip: tooltip.value,
@@ -233,11 +233,11 @@ function submit() {
   touched.value = true;
   if (!isValidUrl(url.value)) {
     urlError.value = url.value.trim()
-      ? t('dialogs.hyperlink.invalidUrl')
-      : t('dialogs.hyperlink.urlRequired');
+      ? t("dialogs.hyperlink.invalidUrl")
+      : t("dialogs.hyperlink.urlRequired");
     return;
   }
-  emit('submit', {
+  emit("submit", {
     url: normalizeUrl(url.value),
     displayText: displayText.value,
     tooltip: tooltip.value,
@@ -246,17 +246,17 @@ function submit() {
 }
 
 function validateUrl() {
-  if (linkType.value !== 'url') return;
+  if (linkType.value !== "url") return;
   touched.value = true;
   if (!url.value.trim()) {
-    urlError.value = '';
+    urlError.value = "";
     return;
   }
-  urlError.value = isValidUrl(url.value) ? '' : t('dialogs.hyperlink.invalidUrl');
+  urlError.value = isValidUrl(url.value) ? "" : t("dialogs.hyperlink.invalidUrl");
 }
 
 function removeLink() {
-  emit('remove');
+  emit("remove");
   close();
 }
 </script>

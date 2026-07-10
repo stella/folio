@@ -17,7 +17,7 @@ export type UseToolbarDropdownsOptions = {
   size: Ref<HTMLElement | null>;
   align: Ref<HTMLElement | null>;
   spacing: Ref<HTMLElement | null>;
-}
+};
 
 export function useToolbarDropdowns(refs: UseToolbarDropdownsOptions) {
   const openDropdown = ref<string | null>(null);

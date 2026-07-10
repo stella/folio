@@ -18,26 +18,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed } from "vue";
 
 const props = withDefaults(
   defineProps<{
     value: string | Date | null;
     defaultOpen?: boolean;
   }>(),
-  { defaultOpen: false }
+  { defaultOpen: false },
 );
 
 const emit = defineEmits<{
-  (e: 'change', value: string | null): void;
+  (e: "change", value: string | null): void;
 }>();
 
 function toISODate(value: string | Date | null): string {
-  if (value === null) return '';
+  if (value === null) return "";
   if (value instanceof Date) {
-    const year = value.getFullYear().toString().padStart(4, '0');
-    const month = (value.getMonth() + 1).toString().padStart(2, '0');
-    const day = value.getDate().toString().padStart(2, '0');
+    const year = value.getFullYear().toString().padStart(4, "0");
+    const month = (value.getMonth() + 1).toString().padStart(2, "0");
+    const day = value.getDate().toString().padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
   return value.length >= 10 ? value.slice(0, 10) : value;
@@ -47,7 +47,7 @@ const isoValue = computed(() => toISODate(props.value));
 
 function onChange(event: Event) {
   if (!(event.target instanceof HTMLInputElement)) return;
-  emit('change', event.target.value || null);
+  emit("change", event.target.value || null);
 }
 </script>
 

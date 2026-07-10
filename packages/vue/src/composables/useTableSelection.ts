@@ -35,7 +35,7 @@ export type UseTableSelectionReturn = {
   handleClickTarget: (target: EventTarget | null, container?: HTMLElement | null) => void;
   clearSelection: () => void;
   isCellSelected: (tableIndex: number, rowIndex: number, columnIndex: number) => boolean;
-}
+};
 
 export function useTableSelection(): UseTableSelectionReturn {
   const manager = new TableSelectionManager();

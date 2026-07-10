@@ -194,239 +194,241 @@ const HIDDEN_HOST_STYLES: CSSProperties = {
 /**
  * HiddenProseMirror - Off-screen ProseMirror editor for keyboard input
  */
-export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMirrorProps>(function HiddenProseMirror(props, ref) {
-  const {
-    document,
-    documentKey,
-    styles,
-    theme: _theme,
-    widthPx = 612, // Default Letter width at 72dpi
-    readOnly = false,
-    onTransaction,
-    onSelectionChange,
-    externalPlugins = EMPTY_EXTERNAL_PLUGINS,
-    collaboration,
-    extensionManager,
-    onEditorViewReady,
-    onEditorViewDestroy,
-    onKeyDown,
-    onReadOnlyEditAttempt,
-    onRemoteSelectionsChange,
-    precomputedInitialState,
-  } = props;
+export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMirrorProps>(
+  function HiddenProseMirror(props, ref) {
+    const {
+      document,
+      documentKey,
+      styles,
+      theme: _theme,
+      widthPx = 612, // Default Letter width at 72dpi
+      readOnly = false,
+      onTransaction,
+      onSelectionChange,
+      externalPlugins = EMPTY_EXTERNAL_PLUGINS,
+      collaboration,
+      extensionManager,
+      onEditorViewReady,
+      onEditorViewDestroy,
+      onKeyDown,
+      onReadOnlyEditAttempt,
+      onRemoteSelectionsChange,
+      precomputedInitialState,
+    } = props;
 
-  const [collaborationModules, setCollaborationModules] = useState<CollaborationModules | null>(
-    null,
-  );
-  const [collaborationModulesError, setCollaborationModulesError] = useState<unknown>(null);
-  const hasCollaboration = collaboration !== undefined;
-
-  // Refs
-  const hostRef = useRef<HTMLDivElement>(null);
-  // Manager-input refs: the framework-agnostic view manager reads these via
-  // accessor functions, so it always sees the current render's value.
-  const readOnlyRef = useRef(readOnly);
-  const documentRef = useRef(document);
-  const documentKeyRef = useRef(documentKey);
-  const stylesRef = useRef(styles);
-  const extensionManagerRef = useRef(extensionManager);
-  const externalPluginsRef = useRef(externalPlugins);
-  const precomputedInitialStateRef = useRef(precomputedInitialState);
-  const collaborationRef = useRef(collaboration);
-  const collaborationModulesRef = useRef(collaborationModules);
-
-  // Store callbacks in refs to avoid dependency array issues that cause infinite loops
-  // when the parent component passes unstable callback references
-  const onTransactionRef = useRef(onTransaction);
-  const onSelectionChangeRef = useRef(onSelectionChange);
-  const onEditorViewReadyRef = useRef(onEditorViewReady);
-  const onEditorViewDestroyRef = useRef(onEditorViewDestroy);
-  const onKeyDownRef = useRef(onKeyDown);
-  const onReadOnlyEditAttemptRef = useRef(onReadOnlyEditAttempt);
-  const onRemoteSelectionsChangeRef = useRef(onRemoteSelectionsChange);
-
-  // Keep refs in sync
-  readOnlyRef.current = readOnly;
-  stylesRef.current = styles;
-  extensionManagerRef.current = extensionManager;
-  externalPluginsRef.current = externalPlugins;
-  precomputedInitialStateRef.current = precomputedInitialState;
-  onTransactionRef.current = onTransaction;
-  onSelectionChangeRef.current = onSelectionChange;
-  onEditorViewReadyRef.current = onEditorViewReady;
-  onEditorViewDestroyRef.current = onEditorViewDestroy;
-  onKeyDownRef.current = onKeyDown;
-  onReadOnlyEditAttemptRef.current = onReadOnlyEditAttempt;
-  onRemoteSelectionsChangeRef.current = onRemoteSelectionsChange;
-  collaborationRef.current = collaboration;
-  collaborationModulesRef.current = collaborationModules;
-
-  // Keep document ref in sync
-  documentRef.current = document;
-  documentKeyRef.current = documentKey;
-
-  // The off-screen EditorView lifecycle (create/destroy, editorProps, and the
-  // external-document / editable sync) lives in the framework-agnostic manager;
-  // this component keeps the input refs and its effects (which decide *when* to
-  // act) and drives the manager through its methods. Created once, like the
-  // layout scheduler in PagedEditor.
-  const managerRef = useRef<HiddenEditorManager | null>(null);
-  if (managerRef.current === null) {
-    managerRef.current = createHiddenEditorManager({
-      getHost: () => hostRef.current,
-      getDocument: () => documentRef.current,
-      getStyles: () => stylesRef.current,
-      getExtensionManager: () => extensionManagerRef.current,
-      getExternalPlugins: () => externalPluginsRef.current,
-      getCollaboration: () => collaborationRef.current,
-      getCollaborationModules: () => collaborationModulesRef.current,
-      getPrecomputedInitialState: () => precomputedInitialStateRef.current,
-      getReadOnly: () => readOnlyRef.current,
-      getDocumentKey: () => documentKeyRef.current,
-      getDocumentContext: () => documentRef.current,
-      onTransaction: (transaction, newState) => onTransactionRef.current?.(transaction, newState),
-      onSelectionChange: (state) => onSelectionChangeRef.current?.(state),
-      onKeyDown: (view, event) => onKeyDownRef.current?.(view, event) ?? false,
-      onReadOnlyEditAttempt: () => onReadOnlyEditAttemptRef.current?.(),
-      onEditorViewReady: (view) => onEditorViewReadyRef.current?.(view),
-      onEditorViewDestroy: () => onEditorViewDestroyRef.current?.(),
-      onRemoteSelectionsChange: (selections) => onRemoteSelectionsChangeRef.current?.(selections),
-    });
-  }
-
-  useEffect(() => {
-    if (!hasCollaboration) {
-      setCollaborationModules(null);
-      setCollaborationModulesError(null);
-      return undefined;
-    }
-
-    let cancelled = false;
-    setCollaborationModulesError(null);
-    void loadCollaborationModules().then(
-      (modules) => {
-        if (!cancelled) {
-          setCollaborationModules(modules);
-          setCollaborationModulesError(null);
-        }
-        return undefined;
-      },
-      (error: unknown) => {
-        if (!cancelled) {
-          setCollaborationModules(null);
-          setCollaborationModulesError(error);
-        }
-        return undefined;
-      },
+    const [collaborationModules, setCollaborationModules] = useState<CollaborationModules | null>(
+      null,
     );
+    const [collaborationModulesError, setCollaborationModulesError] = useState<unknown>(null);
+    const hasCollaboration = collaboration !== undefined;
 
-    return () => {
-      cancelled = true;
-    };
-  }, [hasCollaboration]);
+    // Refs
+    const hostRef = useRef<HTMLDivElement>(null);
+    // Manager-input refs: the framework-agnostic view manager reads these via
+    // accessor functions, so it always sees the current render's value.
+    const readOnlyRef = useRef(readOnly);
+    const documentRef = useRef(document);
+    const documentKeyRef = useRef(documentKey);
+    const stylesRef = useRef(styles);
+    const extensionManagerRef = useRef(extensionManager);
+    const externalPluginsRef = useRef(externalPlugins);
+    const precomputedInitialStateRef = useRef(precomputedInitialState);
+    const collaborationRef = useRef(collaboration);
+    const collaborationModulesRef = useRef(collaborationModules);
 
-  // ========================================================================
-  // EditorView Lifecycle
-  // ========================================================================
+    // Store callbacks in refs to avoid dependency array issues that cause infinite loops
+    // when the parent component passes unstable callback references
+    const onTransactionRef = useRef(onTransaction);
+    const onSelectionChangeRef = useRef(onSelectionChange);
+    const onEditorViewReadyRef = useRef(onEditorViewReady);
+    const onEditorViewDestroyRef = useRef(onEditorViewDestroy);
+    const onKeyDownRef = useRef(onKeyDown);
+    const onReadOnlyEditAttemptRef = useRef(onReadOnlyEditAttempt);
+    const onRemoteSelectionsChangeRef = useRef(onRemoteSelectionsChange);
 
-  useEffect(() => {
-    const awareness = collaboration?.awareness;
-    if (!awareness || !managerRef.current?.getView() || !collaborationModules) {
-      onRemoteSelectionsChangeRef.current?.([]);
-      return undefined;
+    // Keep refs in sync
+    readOnlyRef.current = readOnly;
+    stylesRef.current = styles;
+    extensionManagerRef.current = extensionManager;
+    externalPluginsRef.current = externalPlugins;
+    precomputedInitialStateRef.current = precomputedInitialState;
+    onTransactionRef.current = onTransaction;
+    onSelectionChangeRef.current = onSelectionChange;
+    onEditorViewReadyRef.current = onEditorViewReady;
+    onEditorViewDestroyRef.current = onEditorViewDestroy;
+    onKeyDownRef.current = onKeyDown;
+    onReadOnlyEditAttemptRef.current = onReadOnlyEditAttempt;
+    onRemoteSelectionsChangeRef.current = onRemoteSelectionsChange;
+    collaborationRef.current = collaboration;
+    collaborationModulesRef.current = collaborationModules;
+
+    // Keep document ref in sync
+    documentRef.current = document;
+    documentKeyRef.current = documentKey;
+
+    // The off-screen EditorView lifecycle (create/destroy, editorProps, and the
+    // external-document / editable sync) lives in the framework-agnostic manager;
+    // this component keeps the input refs and its effects (which decide *when* to
+    // act) and drives the manager through its methods. Created once, like the
+    // layout scheduler in PagedEditor.
+    const managerRef = useRef<HiddenEditorManager | null>(null);
+    if (managerRef.current === null) {
+      managerRef.current = createHiddenEditorManager({
+        getHost: () => hostRef.current,
+        getDocument: () => documentRef.current,
+        getStyles: () => stylesRef.current,
+        getExtensionManager: () => extensionManagerRef.current,
+        getExternalPlugins: () => externalPluginsRef.current,
+        getCollaboration: () => collaborationRef.current,
+        getCollaborationModules: () => collaborationModulesRef.current,
+        getPrecomputedInitialState: () => precomputedInitialStateRef.current,
+        getReadOnly: () => readOnlyRef.current,
+        getDocumentKey: () => documentKeyRef.current,
+        getDocumentContext: () => documentRef.current,
+        onTransaction: (transaction, newState) => onTransactionRef.current?.(transaction, newState),
+        onSelectionChange: (state) => onSelectionChangeRef.current?.(state),
+        onKeyDown: (view, event) => onKeyDownRef.current?.(view, event) ?? false,
+        onReadOnlyEditAttempt: () => onReadOnlyEditAttemptRef.current?.(),
+        onEditorViewReady: (view) => onEditorViewReadyRef.current?.(view),
+        onEditorViewDestroy: () => onEditorViewDestroyRef.current?.(),
+        onRemoteSelectionsChange: (selections) => onRemoteSelectionsChangeRef.current?.(selections),
+      });
     }
 
-    const publishRemoteSelections = () => {
-      const view = managerRef.current?.getView();
-      if (!view) {
-        return;
+    useEffect(() => {
+      if (!hasCollaboration) {
+        setCollaborationModules(null);
+        setCollaborationModulesError(null);
+        return undefined;
       }
-      onRemoteSelectionsChangeRef.current?.(
-        collectRemoteSelections(view.state, awareness, collaborationModules),
+
+      let cancelled = false;
+      setCollaborationModulesError(null);
+      void loadCollaborationModules().then(
+        (modules) => {
+          if (!cancelled) {
+            setCollaborationModules(modules);
+            setCollaborationModulesError(null);
+          }
+          return undefined;
+        },
+        (error: unknown) => {
+          if (!cancelled) {
+            setCollaborationModules(null);
+            setCollaborationModulesError(error);
+          }
+          return undefined;
+        },
       );
-    };
 
-    awareness.on("change", publishRemoteSelections);
-    publishRemoteSelections();
+      return () => {
+        cancelled = true;
+      };
+    }, [hasCollaboration]);
 
-    return () => {
-      awareness.off("change", publishRemoteSelections);
-      onRemoteSelectionsChangeRef.current?.([]);
-    };
-  }, [collaboration?.awareness, collaborationModules]);
+    // ========================================================================
+    // EditorView Lifecycle
+    // ========================================================================
 
-  // Stable wrapper so the unmount effect keeps `destroyView` in its dependency
-  // array; the teardown body lives in the manager.
-  const destroyView = useCallback(() => {
-    managerRef.current?.destroyView();
-  }, []);
+    useEffect(() => {
+      const awareness = collaboration?.awareness;
+      if (!awareness || !managerRef.current?.getView() || !collaborationModules) {
+        onRemoteSelectionsChangeRef.current?.([]);
+        return undefined;
+      }
 
-  // Completes a previously-requested-but-deferred creation once a gate clears:
-  // the async collaboration modules load, OR collaboration is cleared entirely
-  // (both unblock tryCreate). Idempotent and gated by `requested` inside the
-  // manager, so it never eagerly creates a view nobody asked for. Runs in the
-  // layout phase (like the former create trigger) so the view exists before the
-  // passive awareness effect above subscribes to remote selections.
-  useLayoutEffect(() => {
-    managerRef.current?.retryViewCreation();
-  }, [collaboration, collaborationModules]);
+      const publishRemoteSelections = () => {
+        const view = managerRef.current?.getView();
+        if (!view) {
+          return;
+        }
+        onRemoteSelectionsChangeRef.current?.(
+          collectRemoteSelections(view.state, awareness, collaborationModules),
+        );
+      };
 
-  useEffect(() => () => destroyView(), [destroyView]);
+      awareness.on("change", publishRemoteSelections);
+      publishRemoteSelections();
 
-  // Update state when document changes externally (e.g., loading a new file).
-  // This should NOT run when the document prop changes due to internal edits
-  // being passed back through the parent component's state; the manager owns
-  // the external-vs-internal comparison.
-  useEffect(() => {
-    managerRef.current?.syncExternalDocument();
-  }, [
-    document,
-    documentKey,
-    styles,
-    extensionManager,
-    externalPlugins,
-    collaboration,
-    collaborationModules,
-  ]);
+      return () => {
+        awareness.off("change", publishRemoteSelections);
+        onRemoteSelectionsChangeRef.current?.([]);
+      };
+    }, [collaboration?.awareness, collaborationModules]);
 
-  // Update editable state
-  useEffect(() => {
-    managerRef.current?.syncEditable();
-  }, [readOnly]);
+    // Stable wrapper so the unmount effect keeps `destroyView` in its dependency
+    // array; the teardown body lives in the manager.
+    const destroyView = useCallback(() => {
+      managerRef.current?.destroyView();
+    }, []);
 
-  // ========================================================================
-  // Imperative Handle
-  // ========================================================================
+    // Completes a previously-requested-but-deferred creation once a gate clears:
+    // the async collaboration modules load, OR collaboration is cleared entirely
+    // (both unblock tryCreate). Idempotent and gated by `requested` inside the
+    // manager, so it never eagerly creates a view nobody asked for. Runs in the
+    // layout phase (like the former create trigger) so the view exists before the
+    // passive awareness effect above subscribes to remote selections.
+    useLayoutEffect(() => {
+      managerRef.current?.retryViewCreation();
+    }, [collaboration, collaborationModules]);
 
-  useImperativeHandle(ref, () => managerRef.current!.api, []);
+    useEffect(() => () => destroyView(), [destroyView]);
 
-  if (hasCollaboration && collaborationModulesError) {
-    let detail = "unknown error";
-    if (collaborationModulesError instanceof Error) {
-      detail = collaborationModulesError.message;
-    } else if (typeof collaborationModulesError === "string") {
-      detail = collaborationModulesError;
+    // Update state when document changes externally (e.g., loading a new file).
+    // This should NOT run when the document prop changes due to internal edits
+    // being passed back through the parent component's state; the manager owns
+    // the external-vs-internal comparison.
+    useEffect(() => {
+      managerRef.current?.syncExternalDocument();
+    }, [
+      document,
+      documentKey,
+      styles,
+      extensionManager,
+      externalPlugins,
+      collaboration,
+      collaborationModules,
+    ]);
+
+    // Update editable state
+    useEffect(() => {
+      managerRef.current?.syncEditable();
+    }, [readOnly]);
+
+    // ========================================================================
+    // Imperative Handle
+    // ========================================================================
+
+    useImperativeHandle(ref, () => managerRef.current!.api, []);
+
+    if (hasCollaboration && collaborationModulesError) {
+      let detail = "unknown error";
+      if (collaborationModulesError instanceof Error) {
+        detail = collaborationModulesError.message;
+      } else if (typeof collaborationModulesError === "string") {
+        detail = collaborationModulesError;
+      }
+      panic(
+        `Failed to load collaboration editor modules. Reload the document to retry. Cause: ${detail}`,
+      );
     }
-    panic(
-      `Failed to load collaboration editor modules. Reload the document to retry. Cause: ${detail}`,
+
+    // ========================================================================
+    // Render
+    // ========================================================================
+
+    return (
+      <div className="paged-editor__hidden-pm-wrapper" style={HIDDEN_WRAPPER_STYLES}>
+        <div
+          ref={hostRef}
+          className="paged-editor__hidden-pm"
+          style={{
+            ...HIDDEN_HOST_STYLES,
+            width: widthPx > 0 ? `${widthPx}px` : undefined,
+          }}
+          // DO NOT set aria-hidden - this editor provides semantic structure
+        />
+      </div>
     );
-  }
-
-  // ========================================================================
-  // Render
-  // ========================================================================
-
-  return (
-    <div className="paged-editor__hidden-pm-wrapper" style={HIDDEN_WRAPPER_STYLES}>
-      <div
-        ref={hostRef}
-        className="paged-editor__hidden-pm"
-        style={{
-          ...HIDDEN_HOST_STYLES,
-          width: widthPx > 0 ? `${widthPx}px` : undefined,
-        }}
-        // DO NOT set aria-hidden - this editor provides semantic structure
-      />
-    </div>
-  );
-});
+  },
+);

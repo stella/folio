@@ -26,7 +26,7 @@ export type UseOutlineSidebarOptions = {
    * (mirrors React's `scrollToPosition`; #930).
    */
   scrollToVisiblePosition: (pmPos: number) => void;
-}
+};
 
 export function useOutlineSidebar(opts: UseOutlineSidebarOptions) {
   function recomputeHeadings() {

@@ -154,11 +154,7 @@
 
     <!-- 5. Font Size: −, value, + -->
     <div class="toolbar-dropdown font-size-group" ref="sizeDropdownRef">
-      <button
-        class="size-btn"
-        @mousedown.prevent="decreaseFontSize"
-        :title="t('decreaseFontSize')"
-      >
+      <button class="size-btn" @mousedown.prevent="decreaseFontSize" :title="t('decreaseFontSize')">
         −
       </button>
       <input
@@ -176,11 +172,7 @@
         @keydown.enter.prevent="commitFontSize($event)"
         @blur="commitFontSize($event)"
       />
-      <button
-        class="size-btn"
-        @mousedown.prevent="increaseFontSize"
-        :title="t('increaseFontSize')"
-      >
+      <button class="size-btn" @mousedown.prevent="increaseFontSize" :title="t('increaseFontSize')">
         +
       </button>
       <div
@@ -485,40 +477,36 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import type { EditorView } from 'prosemirror-view';
-import type { Command, Transaction } from 'prosemirror-state';
-import { undoDepth, redoDepth } from 'prosemirror-history';
+import { ref, computed } from "vue";
+import type { EditorView } from "prosemirror-view";
+import type { Command, Transaction } from "prosemirror-state";
+import { undoDepth, redoDepth } from "prosemirror-history";
 import {
   extractSelectionContext,
   type SelectionContext,
-} from '@stll/folio-core/prosemirror/plugins/selectionTracker';
-import { clearFormatting } from '@stll/folio-core/prosemirror/commands/formatting';
-import type { ColorValue, Theme, Style } from '@stll/folio-core/types/document';
-import MaterialSymbol from './ui/MaterialSymbol.vue';
-import ImageWrapDropdown from './ui/ImageWrapDropdown.vue';
-import ImageTransformDropdown from './ui/ImageTransformDropdown.vue';
-import EditingModeDropdown from './EditingModeDropdown.vue';
-import ReviewControls from './ReviewControls.vue';
-import type { EditorMode } from './DocxEditor/types';
-import type { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
-import {
-  normalizeFontFamilies,
-  excludeFontsByName,
-  type FontOption,
-} from '../utils/fontOptions';
+} from "@stll/folio-core/prosemirror/plugins/selectionTracker";
+import { clearFormatting } from "@stll/folio-core/prosemirror/commands/formatting";
+import type { ColorValue, Theme, Style } from "@stll/folio-core/types/document";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
+import ImageWrapDropdown from "./ui/ImageWrapDropdown.vue";
+import ImageTransformDropdown from "./ui/ImageTransformDropdown.vue";
+import EditingModeDropdown from "./EditingModeDropdown.vue";
+import ReviewControls from "./ReviewControls.vue";
+import type { EditorMode } from "./DocxEditor/types";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import { normalizeFontFamilies, excludeFontsByName, type FontOption } from "../utils/fontOptions";
 import {
   defaultFonts,
   fontSizePresets,
   lineSpacingOptions,
   ZOOM_PRESETS,
   DEFAULT_ZOOM_PERCENT,
-} from './Toolbar/presets';
-import { useToolbarDropdowns } from '../composables/useToolbarDropdowns';
-import { useToolbarFontSize } from '../composables/useToolbarFontSize';
-import { useParagraphStyleOptions } from '../composables/useParagraphStyleOptions';
-import { useTranslation } from '../i18n';
-import { useFolioUI } from '../ui/folio-ui';
+} from "./Toolbar/presets";
+import { useToolbarDropdowns } from "../composables/useToolbarDropdowns";
+import { useToolbarFontSize } from "../composables/useToolbarFontSize";
+import { useParagraphStyleOptions } from "../composables/useParagraphStyleOptions";
+import { useTranslation } from "../i18n";
+import { useFolioUI } from "../ui/folio-ui";
 
 // Resolve the ColorPicker primitive from the FolioUI injection provider so a
 // host `components.ColorPicker` override renders here; falls back to the
@@ -533,7 +521,7 @@ const { ColorPicker } = useFolioUI();
 type CommandFactory = (...args: readonly unknown[]) => Command;
 
 /** Rotate/flip actions the transform dropdown emits. */
-type ImageTransformAction = 'rotateCW' | 'rotateCCW' | 'flipH' | 'flipV';
+type ImageTransformAction = "rotateCW" | "rotateCCW" | "flipH" | "flipV";
 
 /**
  * Image context — populated by the host when a NodeSelection lands on
@@ -544,52 +532,52 @@ export type ImageToolbarContext = {
   wrapType: string;
   displayMode: string;
   cssFloat: string | null;
-}
+};
 
 const props = withDefaults(
   defineProps<{
-  // Optional-with-defaults (see the defaults below) so the EditorToolbar
-  // default `#toolbar` slot can forward `$attrs` without vue-tsc demanding
-  // these statically; `withDefaults` keeps them non-undefined internally.
-  view?: EditorView | null;
-  getCommands?: () => Record<string, CommandFactory>;
-  stateTick?: number;
-  zoomPercent?: number;
-  isMinZoom?: boolean;
-  isMaxZoom?: boolean;
-  zoomPresets?: number[];
-  showZoomControl?: boolean;
-  editorMode?: EditorMode;
-  /** Whether to render the review controls (track-changes toggle + markup
+    // Optional-with-defaults (see the defaults below) so the EditorToolbar
+    // default `#toolbar` slot can forward `$attrs` without vue-tsc demanding
+    // these statically; `withDefaults` keeps them non-undefined internally.
+    view?: EditorView | null;
+    getCommands?: () => Record<string, CommandFactory>;
+    stateTick?: number;
+    zoomPercent?: number;
+    isMinZoom?: boolean;
+    isMaxZoom?: boolean;
+    zoomPresets?: number[];
+    showZoomControl?: boolean;
+    editorMode?: EditorMode;
+    /** Whether to render the review controls (track-changes toggle + markup
       display-mode selector). Mirrors React's `showReviewControls` gate. */
-  showReviewControls?: boolean;
-  /** Whether track-changes (suggesting mode) is active — drives the toggle's
+    showReviewControls?: boolean;
+    /** Whether track-changes (suggesting mode) is active — drives the toggle's
       pressed state and label. */
-  trackChangesOn?: boolean;
-  /** Current markup display mode — drives the display-mode selector's label. */
-  displayMode?: DisplayMode;
-  /** Whether the editor is read-only — disables the track-changes toggle. */
-  readOnly?: boolean;
-  /** Whether the comments sidebar is currently open — drives the
+    trackChangesOn?: boolean;
+    /** Current markup display mode — drives the display-mode selector's label. */
+    displayMode?: DisplayMode;
+    /** Whether the editor is read-only — disables the track-changes toggle. */
+    readOnly?: boolean;
+    /** Whether the comments sidebar is currently open — drives the
       active state on the comments toolbar button. */
-  commentsSidebarOpen?: boolean;
-  /** Image-node selection context — when non-null, the image group
+    commentsSidebarOpen?: boolean;
+    /** Image-node selection context — when non-null, the image group
       (properties button) renders inline inside the pill. */
-  imageContext?: ImageToolbarContext | null;
-  /** Document theme — feeds the color picker's theme-color matrix. */
-  theme?: Theme | null;
-  /** Optional custom font list matching React's `fontFamilies` prop. */
-  fontFamilies?: ReadonlyArray<string | FontOption>;
-  /**
-   * Fonts the loaded document references that the browser can render (embedded
-   * faces + system-resolved). Rendered in a "Document fonts" group, deduped
-   * against `fontFamilies`. Managed by the editor, mirrors React's prop.
-   */
-  documentFonts?: ReadonlyArray<FontOption>;
-  /** Paragraph styles from the loaded document (document.package.styles.styles).
+    imageContext?: ImageToolbarContext | null;
+    /** Document theme — feeds the color picker's theme-color matrix. */
+    theme?: Theme | null;
+    /** Optional custom font list matching React's `fontFamilies` prop. */
+    fontFamilies?: ReadonlyArray<string | FontOption>;
+    /**
+     * Fonts the loaded document references that the browser can render (embedded
+     * faces + system-resolved). Rendered in a "Document fonts" group, deduped
+     * against `fontFamilies`. Managed by the editor, mirrors React's prop.
+     */
+    documentFonts?: ReadonlyArray<FontOption>;
+    /** Paragraph styles from the loaded document (document.package.styles.styles).
       When present, the style picker shows the document's real styles + names,
       matching React's Toolbar `documentStyles` prop. Falls back to presets. */
-  documentStyles?: Style[];
+    documentStyles?: Style[];
   }>(),
   // Defaults for the container-level props let this render as an inert empty
   // rail when unconfigured (e.g. the EditorToolbar default `#toolbar` slot
@@ -602,34 +590,34 @@ const props = withDefaults(
     getCommands: () => ({}),
     showReviewControls: false,
     trackChangesOn: false,
-    displayMode: 'all-markup',
+    displayMode: "all-markup",
     readOnly: false,
-  }
+  },
 );
 
 const { t } = useTranslation();
 
 const emit = defineEmits<{
-  (e: 'find-replace'): void;
-  (e: 'insert-table'): void;
-  (e: 'insert-image'): void;
-  (e: 'insert-link'): void;
-  (e: 'insert-symbol'): void;
-  (e: 'insert-page-break'): void;
-  (e: 'insert-toc'): void;
-  (e: 'page-setup'): void;
-  (e: 'toggle-outline'): void;
-  (e: 'zoom-in'): void;
-  (e: 'zoom-out'): void;
-  (e: 'zoom-set', level: number): void;
-  (e: 'toggle-sidebar'): void;
-  (e: 'apply-style', styleId: string): void;
-  (e: 'mode-change', mode: EditorMode): void;
-  (e: 'toggle-track-changes'): void;
-  (e: 'update:display-mode', mode: DisplayMode): void;
-  (e: 'image-wrap-type', wrapType: string): void;
-  (e: 'image-properties'): void;
-  (e: 'image-transform', action: ImageTransformAction): void;
+  (e: "find-replace"): void;
+  (e: "insert-table"): void;
+  (e: "insert-image"): void;
+  (e: "insert-link"): void;
+  (e: "insert-symbol"): void;
+  (e: "insert-page-break"): void;
+  (e: "insert-toc"): void;
+  (e: "page-setup"): void;
+  (e: "toggle-outline"): void;
+  (e: "zoom-in"): void;
+  (e: "zoom-out"): void;
+  (e: "zoom-set", level: number): void;
+  (e: "toggle-sidebar"): void;
+  (e: "apply-style", styleId: string): void;
+  (e: "mode-change", mode: EditorMode): void;
+  (e: "toggle-track-changes"): void;
+  (e: "update:display-mode", mode: DisplayMode): void;
+  (e: "image-wrap-type", wrapType: string): void;
+  (e: "image-properties"): void;
+  (e: "image-transform", action: ImageTransformAction): void;
 }>();
 
 // =========================================================================
@@ -698,7 +686,7 @@ const ctx = computed<SelectionContext>(() => {
 
 const currentFontFamily = computed(() => {
   const ff = ctx.value.textFormatting.fontFamily;
-  return ff?.ascii || ff?.hAnsi || 'Arial';
+  return ff?.ascii || ff?.hAnsi || "Arial";
 });
 
 const currentFontSize = computed(() => {
@@ -707,26 +695,26 @@ const currentFontSize = computed(() => {
 });
 
 const currentAlignment = computed(() => {
-  return ctx.value.paragraphFormatting.alignment || 'left';
+  return ctx.value.paragraphFormatting.alignment || "left";
 });
 
 const alignIconName = computed(() => {
   switch (currentAlignment.value) {
-    case 'center':
-      return 'format_align_center';
-    case 'right':
-      return 'format_align_right';
-    case 'both':
-      return 'format_align_justify';
+    case "center":
+      return "format_align_center";
+    case "right":
+      return "format_align_right";
+    case "both":
+      return "format_align_justify";
     default:
-      return 'format_align_left';
+      return "format_align_left";
   }
 });
 
 // Style-picker options + current label (see useParagraphStyleOptions).
 const { resolvedParagraphStyles, currentStyleLabel } = useParagraphStyleOptions({
   documentStyles: () => props.documentStyles,
-  currentStyleId: () => ctx.value.paragraphFormatting.styleId || 'Normal',
+  currentStyleId: () => ctx.value.paragraphFormatting.styleId || "Normal",
   t,
 });
 
@@ -759,15 +747,15 @@ const canOutdent = computed(() => {
 // `selectedColor` prop on `<StandardColors>` (ColorPicker.tsx:707).
 const currentTextColorHex = computed<string | undefined>(() => {
   const rgb = ctx.value.textFormatting.color?.rgb;
-  return rgb ? rgb.replace(/^#/, '').toUpperCase() : undefined;
+  return rgb ? rgb.replace(/^#/, "").toUpperCase() : undefined;
 });
 
 // Same for highlight color — React's highlight ColorPicker passes
 // `currentFormatting.highlight` straight through as `selectedColor`.
 const currentHighlightHex = computed<string | undefined>(() => {
   const h = ctx.value.textFormatting.highlight;
-  if (!h || h === 'none') return undefined;
-  return h.replace(/^#/, '').toUpperCase();
+  if (!h || h === "none") return undefined;
+  return h.replace(/^#/, "").toUpperCase();
 });
 
 // =========================================================================
@@ -780,29 +768,29 @@ const normalizedFonts = computed(() => normalizeFontFamilies(props.fontFamilies)
 const docFonts = computed(() =>
   excludeFontsByName(
     props.documentFonts,
-    normalizedFonts.value.map((f) => f.name)
-  )
+    normalizedFonts.value.map((f) => f.name),
+  ),
 );
 const fontGroups = computed(() => [
   {
-    label: t('font.documentFonts'),
+    label: t("font.documentFonts"),
     fonts: docFonts.value,
   },
   {
-    label: t('font.sansSerif'),
-    fonts: normalizedFonts.value.filter((font) => font.category === 'sans-serif'),
+    label: t("font.sansSerif"),
+    fonts: normalizedFonts.value.filter((font) => font.category === "sans-serif"),
   },
   {
-    label: t('font.serif'),
-    fonts: normalizedFonts.value.filter((font) => font.category === 'serif'),
+    label: t("font.serif"),
+    fonts: normalizedFonts.value.filter((font) => font.category === "serif"),
   },
   {
-    label: t('font.monospace'),
-    fonts: normalizedFonts.value.filter((font) => font.category === 'monospace'),
+    label: t("font.monospace"),
+    fonts: normalizedFonts.value.filter((font) => font.category === "monospace"),
   },
   {
-    label: t('font.other'),
-    fonts: normalizedFonts.value.filter((font) => !font.category || font.category === 'other'),
+    label: t("font.other"),
+    fonts: normalizedFonts.value.filter((font) => !font.category || font.category === "other"),
   },
 ]);
 
@@ -816,7 +804,7 @@ function execCommand(name: string, ...args: unknown[]) {
   const cmds = props.getCommands();
   const cmdFactory = cmds[name];
   if (!cmdFactory) {
-    if (typeof console !== 'undefined') console.warn('[Toolbar] command not found:', name);
+    if (typeof console !== "undefined") console.warn("[Toolbar] command not found:", name);
     return;
   }
   const command = cmdFactory(...args);
@@ -830,7 +818,7 @@ function execCommand(name: string, ...args: unknown[]) {
 }
 
 function setFont(fontName: string) {
-  execCommand('setFontFamily', fontName);
+  execCommand("setFontFamily", fontName);
 }
 
 // Font-size box + steppers + preset dropdown (see useToolbarFontSize for the
@@ -845,12 +833,12 @@ const {
 } = useToolbarFontSize({ currentFontSize, openDropdown, recomputeDropdownPos, execCommand });
 
 function onTextColor(color: ColorValue | string) {
-  if (typeof color === 'object' && color.auto) {
-    execCommand('clearTextColor');
+  if (typeof color === "object" && color.auto) {
+    execCommand("clearTextColor");
     return;
   }
   // ColorPicker emits a ColorValue ({ rgb } or themed { themeColor, rgb, themeTint/Shade }).
-  execCommand('setTextColor', typeof color === 'string' ? { rgb: color } : color);
+  execCommand("setTextColor", typeof color === "string" ? { rgb: color } : color);
 }
 
 function handleClearFormatting() {
@@ -862,17 +850,17 @@ function handleClearFormatting() {
 
 function onHighlight(color: ColorValue | string) {
   // Highlight mode always emits a string ('none' or a hex).
-  const value = typeof color === 'string' ? color : (color.rgb ?? 'none');
-  execCommand('setHighlight', value);
+  const value = typeof color === "string" ? color : (color.rgb ?? "none");
+  execCommand("setHighlight", value);
 }
 
 function handleApplyStyle(styleId: string) {
-  emit('apply-style', styleId);
+  emit("apply-style", styleId);
   openDropdown.value = null;
 }
 
 function setLineSpacing(value: number) {
-  execCommand('setLineSpacing', value);
+  execCommand("setLineSpacing", value);
 }
 
 function isCurrentLineSpacing(twips: number): boolean {

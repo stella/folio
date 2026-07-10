@@ -85,8 +85,7 @@ let fallback = 0;
 
 for (const [folioKey, english] of folioFlat) {
   const upstreamKey = enValueToUpstreamKey.get(english);
-  const translated =
-    upstreamKey !== undefined ? upstreamLocaleFlat.get(upstreamKey) : undefined;
+  const translated = upstreamKey !== undefined ? upstreamLocaleFlat.get(upstreamKey) : undefined;
   if (translated !== undefined) {
     setNested(out, folioKey, translated);
     matched++;

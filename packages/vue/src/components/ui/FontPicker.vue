@@ -19,7 +19,9 @@
         :key="f.name"
         :value="f.name"
         :style="showPreview ? { fontFamily: f.fontFamily } : undefined"
-      >{{ f.name }}</option>
+      >
+        {{ f.name }}
+      </option>
     </optgroup>
     <optgroup v-if="groups['serif'].length" label="Serif">
       <option
@@ -27,7 +29,9 @@
         :key="f.name"
         :value="f.name"
         :style="showPreview ? { fontFamily: f.fontFamily } : undefined"
-      >{{ f.name }}</option>
+      >
+        {{ f.name }}
+      </option>
     </optgroup>
     <optgroup v-if="groups['monospace'].length" label="Monospace">
       <option
@@ -35,7 +39,9 @@
         :key="f.name"
         :value="f.name"
         :style="showPreview ? { fontFamily: f.fontFamily } : undefined"
-      >{{ f.name }}</option>
+      >
+        {{ f.name }}
+      </option>
     </optgroup>
     <optgroup v-if="groups['other'].length" label="Other">
       <option
@@ -43,15 +49,17 @@
         :key="f.name"
         :value="f.name"
         :style="showPreview ? { fontFamily: f.fontFamily } : undefined"
-      >{{ f.name }}</option>
+      >
+        {{ f.name }}
+      </option>
     </optgroup>
   </select>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { FontOption } from '../../utils/fontOptions';
-import { getPrimaryFontFamily } from './fontPickerValue';
+import { computed } from "vue";
+import type { FontOption } from "../../utils/fontOptions";
+import { getPrimaryFontFamily } from "./fontPickerValue";
 
 export type { FontOption };
 
@@ -64,37 +72,37 @@ const props = withDefaults(
     placeholder?: string;
     showPreview?: boolean;
   }>(),
-  { disabled: false, placeholder: 'Font', showPreview: true }
+  { disabled: false, placeholder: "Font", showPreview: true },
 );
 
 const emit = defineEmits<{
-  (e: 'change', fontFamily: string): void;
+  (e: "change", fontFamily: string): void;
 }>();
 
 const DEFAULT_FONTS: FontOption[] = [
-  { name: 'Arial', fontFamily: 'Arial, Helvetica, sans-serif', category: 'sans-serif' },
-  { name: 'Calibri', fontFamily: '"Calibri", Arial, sans-serif', category: 'sans-serif' },
-  { name: 'Helvetica', fontFamily: 'Helvetica, Arial, sans-serif', category: 'sans-serif' },
-  { name: 'Verdana', fontFamily: 'Verdana, Geneva, sans-serif', category: 'sans-serif' },
-  { name: 'Open Sans', fontFamily: '"Open Sans", sans-serif', category: 'sans-serif' },
-  { name: 'Roboto', fontFamily: 'Roboto, sans-serif', category: 'sans-serif' },
-  { name: 'Times New Roman', fontFamily: '"Times New Roman", Times, serif', category: 'serif' },
-  { name: 'Georgia', fontFamily: 'Georgia, serif', category: 'serif' },
-  { name: 'Cambria', fontFamily: 'Cambria, Georgia, serif', category: 'serif' },
-  { name: 'Garamond', fontFamily: 'Garamond, serif', category: 'serif' },
-  { name: 'Courier New', fontFamily: '"Courier New", monospace', category: 'monospace' },
-  { name: 'Consolas', fontFamily: 'Consolas, monospace', category: 'monospace' },
+  { name: "Arial", fontFamily: "Arial, Helvetica, sans-serif", category: "sans-serif" },
+  { name: "Calibri", fontFamily: '"Calibri", Arial, sans-serif', category: "sans-serif" },
+  { name: "Helvetica", fontFamily: "Helvetica, Arial, sans-serif", category: "sans-serif" },
+  { name: "Verdana", fontFamily: "Verdana, Geneva, sans-serif", category: "sans-serif" },
+  { name: "Open Sans", fontFamily: '"Open Sans", sans-serif', category: "sans-serif" },
+  { name: "Roboto", fontFamily: "Roboto, sans-serif", category: "sans-serif" },
+  { name: "Times New Roman", fontFamily: '"Times New Roman", Times, serif', category: "serif" },
+  { name: "Georgia", fontFamily: "Georgia, serif", category: "serif" },
+  { name: "Cambria", fontFamily: "Cambria, Georgia, serif", category: "serif" },
+  { name: "Garamond", fontFamily: "Garamond, serif", category: "serif" },
+  { name: "Courier New", fontFamily: '"Courier New", monospace', category: "monospace" },
+  { name: "Consolas", fontFamily: "Consolas, monospace", category: "monospace" },
 ];
 
 const resolvedFonts = computed(() => props.fonts ?? DEFAULT_FONTS);
 const groups = computed(() => {
-  const out: Record<'sans-serif' | 'serif' | 'monospace' | 'other', FontOption[]> = {
-    'sans-serif': [],
+  const out: Record<"sans-serif" | "serif" | "monospace" | "other", FontOption[]> = {
+    "sans-serif": [],
     serif: [],
     monospace: [],
     other: [],
   };
-  for (const f of resolvedFonts.value) out[f.category ?? 'other'].push(f);
+  for (const f of resolvedFonts.value) out[f.category ?? "other"].push(f);
   return out;
 });
 
@@ -106,7 +114,7 @@ const displayValue = computed(() => {
     (f) =>
       f.fontFamily === value ||
       f.name.toLowerCase() === lower ||
-      getPrimaryFontFamily(f.fontFamily).toLowerCase() === lower
+      getPrimaryFontFamily(f.fontFamily).toLowerCase() === lower,
   );
   return m?.name ?? value;
 });
@@ -115,7 +123,7 @@ function onChange(e: Event) {
   if (!(e.target instanceof HTMLSelectElement)) return;
   const name = e.target.value;
   const font = resolvedFonts.value.find((f) => f.name === name);
-  emit('change', font ? getPrimaryFontFamily(font.fontFamily) || font.name : name);
+  emit("change", font ? getPrimaryFontFamily(font.fontFamily) || font.name : name);
 }
 </script>
 

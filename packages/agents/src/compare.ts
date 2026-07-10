@@ -101,7 +101,10 @@ const longestIncreasingByRevisedIndex = (pairs: readonly BlockPair[]): BlockPair
       if (!current || !candidate) {
         continue;
       }
-      if (current.revisedIndex < candidate.revisedIndex && (lengths[j] ?? 0) + 1 > (lengths[i] ?? 0)) {
+      if (
+        current.revisedIndex < candidate.revisedIndex &&
+        (lengths[j] ?? 0) + 1 > (lengths[i] ?? 0)
+      ) {
         lengths[i] = (lengths[j] ?? 0) + 1;
         predecessors[i] = j;
       }
@@ -121,7 +124,10 @@ const longestIncreasingByRevisedIndex = (pairs: readonly BlockPair[]): BlockPair
 };
 
 /** Pass 1: pair blocks with equal, non-`seq-NNNN` ids. See the module doc comment. */
-const pairByStableId = (base: readonly FolioAIBlock[], revised: readonly FolioAIBlock[]): BlockPair[] => {
+const pairByStableId = (
+  base: readonly FolioAIBlock[],
+  revised: readonly FolioAIBlock[],
+): BlockPair[] => {
   const revisedIndexById = new Map<string, number>();
   revised.forEach((block, revisedIndex) => {
     if (isStableBlockId(block.id)) {
@@ -155,11 +161,16 @@ const pairByStableId = (base: readonly FolioAIBlock[], revised: readonly FolioAI
 const MAX_LCS_CELLS = 4_000_000;
 
 /** True when an `unpairedBaseCount * unpairedRevisedCount` LCS table would exceed {@link MAX_LCS_CELLS}. */
-export const exceedsLcsBudget = (unpairedBaseCount: number, unpairedRevisedCount: number): boolean =>
-  unpairedBaseCount * unpairedRevisedCount > MAX_LCS_CELLS;
+export const exceedsLcsBudget = (
+  unpairedBaseCount: number,
+  unpairedRevisedCount: number,
+): boolean => unpairedBaseCount * unpairedRevisedCount > MAX_LCS_CELLS;
 
 /** Pass 2: order-preserving LCS by exact text equality over the blocks pass 1 left unpaired. */
-const pairByExactText = (base: readonly IndexedBlock[], revised: readonly IndexedBlock[]): BlockPair[] => {
+const pairByExactText = (
+  base: readonly IndexedBlock[],
+  revised: readonly IndexedBlock[],
+): BlockPair[] => {
   const m = base.length;
   const n = revised.length;
   if (m === 0 || n === 0) {
@@ -268,7 +279,9 @@ export const compareDocxVersions = async (
   const usedRevisedIndexes = new Set(stableIdAnchors.map((anchor) => anchor.revisedIndex));
 
   const baseRemaining = index(baseBlocks).filter(({ index: i }) => !usedBaseIndexes.has(i));
-  const revisedRemaining = index(revisedBlocks).filter(({ index: i }) => !usedRevisedIndexes.has(i));
+  const revisedRemaining = index(revisedBlocks).filter(
+    ({ index: i }) => !usedRevisedIndexes.has(i),
+  );
   const exactTextAnchors = pairByExactText(baseRemaining, revisedRemaining);
 
   const anchors = longestIncreasingByRevisedIndex(
@@ -279,7 +292,12 @@ export const compareDocxVersions = async (
   const counts = { added: 0, deleted: 0, modified: 0, unchanged: 0 };
 
   /** Pass 3: positionally zip the leftover blocks in one gap between anchors. */
-  const emitGap = (baseFrom: number, baseTo: number, revisedFrom: number, revisedTo: number): void => {
+  const emitGap = (
+    baseFrom: number,
+    baseTo: number,
+    revisedFrom: number,
+    revisedTo: number,
+  ): void => {
     const baseSlice = baseBlocks.slice(baseFrom, baseTo);
     const revisedSlice = revisedBlocks.slice(revisedFrom, revisedTo);
     const pairedCount = Math.min(baseSlice.length, revisedSlice.length);
@@ -308,7 +326,12 @@ export const compareDocxVersions = async (
         continue;
       }
       counts.deleted++;
-      changes.push({ type: "deleted", blockId: baseBlock.id, kind: baseBlock.kind, text: baseBlock.text });
+      changes.push({
+        type: "deleted",
+        blockId: baseBlock.id,
+        kind: baseBlock.kind,
+        text: baseBlock.text,
+      });
     }
     for (let k = pairedCount; k < revisedSlice.length; k++) {
       const revisedBlock = revisedSlice[k];
@@ -316,7 +339,12 @@ export const compareDocxVersions = async (
         continue;
       }
       counts.added++;
-      changes.push({ type: "added", blockId: revisedBlock.id, kind: revisedBlock.kind, text: revisedBlock.text });
+      changes.push({
+        type: "added",
+        blockId: revisedBlock.id,
+        kind: revisedBlock.kind,
+        text: revisedBlock.text,
+      });
     }
   };
 

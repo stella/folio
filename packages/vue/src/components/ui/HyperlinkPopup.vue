@@ -44,11 +44,7 @@
         {{ data.href }}
       </a>
       <span class="docx-hyperlink-popup__sep" />
-      <button
-        class="docx-hyperlink-popup__btn"
-        :title="t('copyLink')"
-        @click.prevent="onCopy"
-      >
+      <button class="docx-hyperlink-popup__btn" :title="t('copyLink')" @click.prevent="onCopy">
         <svg
           width="18"
           height="18"
@@ -135,7 +131,7 @@
           :disabled="!editHref.trim()"
           @click.prevent="saveEdit"
         >
-          {{ t('common.apply') }}
+          {{ t("common.apply") }}
         </button>
       </div>
     </template>
@@ -143,13 +139,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, type CSSProperties } from 'vue';
-import { useTranslation } from '../../i18n';
+import { ref, computed, watch, onBeforeUnmount, type CSSProperties } from "vue";
+import { useTranslation } from "../../i18n";
 
 const { t } = useTranslation();
 
-export type { HyperlinkPopupData } from './hyperlinkPopupTypes';
-import type { HyperlinkPopupData } from './hyperlinkPopupTypes';
+export type { HyperlinkPopupData } from "./hyperlinkPopupTypes";
+import type { HyperlinkPopupData } from "./hyperlinkPopupTypes";
 
 const props = defineProps<{
   data: HyperlinkPopupData | null;
@@ -157,31 +153,31 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'navigate', href: string): void;
-  (e: 'copy', href: string): void;
-  (e: 'edit', displayText: string, href: string): void;
-  (e: 'remove'): void;
-  (e: 'close'): void;
+  (e: "navigate", href: string): void;
+  (e: "copy", href: string): void;
+  (e: "edit", displayText: string, href: string): void;
+  (e: "remove"): void;
+  (e: "close"): void;
 }>();
 
 const isEditing = ref(false);
-const editText = ref('');
-const editHref = ref('');
+const editText = ref("");
+const editHref = ref("");
 const popupRef = ref<HTMLDivElement | null>(null);
 
 // Position comes from props.data.position in container coordinates. With
 // position: absolute inside the pages-viewport, the browser handles scroll
 // repositioning — no JS listeners needed.
 const popupStyle = computed<CSSProperties>(() => ({
-  left: (props.data?.position.left ?? 0) + 'px',
-  top: (props.data?.position.top ?? 0) + 'px',
+  left: (props.data?.position.left ?? 0) + "px",
+  top: (props.data?.position.top ?? 0) + "px",
 }));
 
 watch(
   () => props.data?.href,
   () => {
     isEditing.value = false;
-  }
+  },
 );
 
 let outsideMouseDownListener: ((e: MouseEvent) => void) | null = null;
@@ -193,7 +189,7 @@ function teardownListeners() {
     outsideListenerTimer = null;
   }
   if (outsideMouseDownListener) {
-    document.removeEventListener('mousedown', outsideMouseDownListener);
+    document.removeEventListener("mousedown", outsideMouseDownListener);
     outsideMouseDownListener = null;
   }
 }
@@ -210,16 +206,16 @@ watch(
       const el = popupRef.value;
       const target = e.target;
       if (el && target instanceof Node && !el.contains(target)) {
-        emit('close');
+        emit("close");
       }
     };
     outsideListenerTimer = setTimeout(() => {
       if (outsideMouseDownListener) {
-        document.addEventListener('mousedown', outsideMouseDownListener);
+        document.addEventListener("mousedown", outsideMouseDownListener);
       }
     }, 0);
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 onBeforeUnmount(teardownListeners);
@@ -233,14 +229,14 @@ function startEdit() {
 
 function saveEdit() {
   if (!editHref.value.trim()) return;
-  emit('edit', editText.value, editHref.value);
+  emit("edit", editText.value, editHref.value);
   isEditing.value = false;
 }
 
 function onCopy() {
   if (!props.data) return;
-  emit('copy', props.data.href);
-  if (typeof navigator !== 'undefined' && navigator.clipboard) {
+  emit("copy", props.data.href);
+  if (typeof navigator !== "undefined" && navigator.clipboard) {
     navigator.clipboard.writeText(props.data.href).catch(() => {});
   }
 }
@@ -261,7 +257,7 @@ function onCopy() {
   align-items: center;
   gap: 8px;
   max-width: 400px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
 }
 .docx-hyperlink-popup--edit {

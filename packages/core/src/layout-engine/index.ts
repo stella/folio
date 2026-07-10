@@ -101,7 +101,10 @@ function isEmptyParagraph(block: ParagraphBlock): boolean {
   return r?.kind === "text" && r.text === "";
 }
 
-function pageHasVisibleBodyContent(page: Page, blocksById: ReadonlyMap<string, FlowBlock>): boolean {
+function pageHasVisibleBodyContent(
+  page: Page,
+  blocksById: ReadonlyMap<string, FlowBlock>,
+): boolean {
   for (const fragment of page.fragments) {
     if (fragment.kind !== "paragraph") {
       return true;

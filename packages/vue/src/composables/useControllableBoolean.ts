@@ -17,7 +17,7 @@ import { computed, ref, type WritableComputedRef } from "vue";
 export function useControllableBoolean(
   controlled: () => boolean | undefined,
   onChange?: (value: boolean) => void,
-  defaultValue = false
+  defaultValue = false,
 ): WritableComputedRef<boolean> {
   const internal = ref(defaultValue);
   return computed<boolean>({

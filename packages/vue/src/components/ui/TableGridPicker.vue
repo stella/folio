@@ -30,7 +30,9 @@
             v-for="cell in cells"
             :key="`${cell.r}-${cell.c}`"
             class="docx-table-grid__cell"
-            :class="{ 'docx-table-grid__cell--active': cell.r <= hover.rows && cell.c <= hover.cols }"
+            :class="{
+              'docx-table-grid__cell--active': cell.r <= hover.rows && cell.c <= hover.cols,
+            }"
             @mouseenter="hover = { rows: cell.r, cols: cell.c }"
             @click.prevent="handleInsert(cell.r, cell.c)"
           />
@@ -41,9 +43,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import MaterialSymbol from './MaterialSymbol.vue';
-import { useFolioUI } from '../../ui/folio-ui';
+import { ref, computed } from "vue";
+import MaterialSymbol from "./MaterialSymbol.vue";
+import { useFolioUI } from "../../ui/folio-ui";
 
 // Resolve Popover from the FolioUI injection provider so a host override
 // takes effect here too (previously a static import).
@@ -56,11 +58,11 @@ const props = withDefaults(
     gridColumns?: number;
     tooltip?: string;
   }>(),
-  { disabled: false, gridRows: 5, gridColumns: 5, tooltip: 'Insert table' }
+  { disabled: false, gridRows: 5, gridColumns: 5, tooltip: "Insert table" },
 );
 
 const emit = defineEmits<{
-  (e: 'insert', rows: number, cols: number): void;
+  (e: "insert", rows: number, cols: number): void;
 }>();
 
 const isOpen = ref(false);
@@ -77,7 +79,7 @@ const cells = computed(() => {
 });
 
 function handleInsert(rows: number, cols: number) {
-  emit('insert', rows, cols);
+  emit("insert", rows, cols);
   isOpen.value = false;
 }
 

@@ -55,9 +55,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import MaterialSymbol from './MaterialSymbol.vue';
-import Popover from './Popover.vue';
+import { ref } from "vue";
+import MaterialSymbol from "./MaterialSymbol.vue";
+import Popover from "./Popover.vue";
 
 export type MenuItem = {
   icon?: string;
@@ -69,14 +69,14 @@ export type MenuItem = {
   key?: string;
   /** When true, the item shows a right-chevron and opens the `#submenu` slot on hover. */
   submenu?: boolean;
-}
+};
 export type MenuSeparator = {
-  type: 'separator';
-}
+  type: "separator";
+};
 export type MenuEntry = MenuItem | MenuSeparator;
 
 function isSeparator(entry: MenuEntry): entry is MenuSeparator {
-  return 'type' in entry && entry.type === 'separator';
+  return "type" in entry && entry.type === "separator";
 }
 
 withDefaults(
@@ -88,7 +88,7 @@ withDefaults(
      *  Default `false` — every in-tree caller is a top-level menubar button. */
     showChevron?: boolean;
   }>(),
-  { showChevron: false }
+  { showChevron: false },
 );
 
 const isOpen = ref(false);

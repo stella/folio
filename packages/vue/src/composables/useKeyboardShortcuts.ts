@@ -29,7 +29,7 @@ export type UseKeyboardShortcutsOptions = {
   showFileOpen?: () => boolean | undefined;
   /** Opens the DOCX picker — wired to the same hidden input as File > Open. */
   onOpenDocument?: () => void;
-}
+};
 
 export function useKeyboardShortcuts(opts: UseKeyboardShortcutsOptions) {
   function handleKeyDown(e: KeyboardEvent) {

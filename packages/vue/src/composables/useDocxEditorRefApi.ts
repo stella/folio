@@ -33,7 +33,11 @@ import type { EditorView } from "prosemirror-view";
 
 import {
   applyFolioAIEditOperations,
+  applyFolioDocumentOperations,
+  assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperationStatus,
   getCommentAnchorsFromDoc,
   getTrackedChangesFromDoc,
 } from "@stll/folio-core/ai-edits";
@@ -291,6 +295,34 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     createAIEditSnapshot: () => {
       const view = opts.editorView.value;
       return view ? createFolioAIEditSnapshot(view.state.doc) : null;
+    },
+    applyDocumentOperations: ({ snapshot, batch, author: operationAuthor = opts.author() }) => {
+      assertSupportedFolioDocumentOperationVersion(batch.version);
+      const view = opts.editorView.value;
+      if (!view) {
+        let status: FolioDocumentOperationStatus = "committed";
+        if (batch.dryRun === true) {
+          status = "previewed";
+        } else if (batch.atomic === true) {
+          status = "rejected";
+        }
+        return {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          status,
+          applied: [],
+          skipped: batch.operations.map((operation) => ({
+            id: operation.id,
+            reason: "unsupportedBlock",
+          })),
+        };
+      }
+      return applyFolioDocumentOperations({
+        view,
+        snapshot,
+        batch,
+        author: operationAuthor,
+        createCommentId: opts.createAIEditComment,
+      });
     },
     applyAIEditOperations: ({
       snapshot,

@@ -10,6 +10,8 @@ import type {
   FolioAIEditOperation,
   FolioAIEditSnapshot,
   FolioCommentAnchor,
+  FolioDocumentOperationBatch,
+  FolioDocumentOperationResult,
   FolioReviewChange,
 } from "@stll/folio-core/ai-edits";
 import type {
@@ -27,7 +29,13 @@ import type {
   TemplateSlashMenuKeyAction,
   TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
-import type { Document, ParagraphAlignment, SdtProperties, TabStop, Theme } from "@stll/folio-core/types/document";
+import type {
+  Document,
+  ParagraphAlignment,
+  SdtProperties,
+  TabStop,
+  Theme,
+} from "@stll/folio-core/types/document";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
@@ -328,6 +336,12 @@ export type DocxEditorCollaboration = {
   yXmlFragment: XmlFragment;
 };
 
+export type DocxEditorApplyDocumentOperationsOptions = {
+  snapshot: FolioAIEditSnapshot;
+  batch: FolioDocumentOperationBatch;
+  author?: string;
+};
+
 /**
  * Imperative handle exposed by the DocxEditor component.
  */
@@ -377,6 +391,10 @@ export type DocxEditorRef = {
   ensureEditorView: (options?: { focus?: boolean }) => void;
   /** Create the block snapshot that an external AI editor should reference. */
   createAIEditSnapshot: () => FolioAIEditSnapshot | null;
+  /** Apply a versioned document-operation batch against a previously created block snapshot. */
+  applyDocumentOperations: (
+    options: DocxEditorApplyDocumentOperationsOptions,
+  ) => FolioDocumentOperationResult;
   /** Apply AI-authored operations against a previously created block snapshot. */
   applyAIEditOperations: (options: {
     snapshot: FolioAIEditSnapshot;

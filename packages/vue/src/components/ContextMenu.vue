@@ -78,7 +78,7 @@ type AIAction =
 /** Minimal placeholder for the upstream `SelectionContext` payload. */
 type SelectionContext = {
   text: string;
-}
+};
 
 const DEFAULT_AI_ACTIONS: AIAction[] = [
   "askAI",
@@ -192,7 +192,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 16px var(--doc-shadow);
   min-width: 220px;
   padding: 6px 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
 }
 .docx-context-menu__preview {
@@ -229,7 +229,9 @@ onBeforeUnmount(() => {
   text-align: left;
   width: 100%;
 }
-.docx-context-menu__item:hover { background: var(--doc-bg-hover); }
+.docx-context-menu__item:hover {
+  background: var(--doc-bg-hover);
+}
 .docx-context-menu__icon {
   width: 18px;
   text-align: center;
@@ -249,7 +251,9 @@ onBeforeUnmount(() => {
   font-size: 13px;
   outline: none;
 }
-.docx-context-menu__custom-input:focus { border-color: var(--doc-primary); }
+.docx-context-menu__custom-input:focus {
+  border-color: var(--doc-primary);
+}
 .docx-context-menu__custom-submit {
   padding: 6px 12px;
   font-size: 13px;

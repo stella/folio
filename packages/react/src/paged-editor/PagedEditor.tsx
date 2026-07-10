@@ -1642,415 +1642,442 @@ function buildFootnoteRenderItems(
 /**
  * PagedEditor - Main paginated editing component.
  */
-export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(function PagedEditor(props, ref) {
-  const {
-    document,
-    documentKey,
-    fonts: hostFonts,
-    styles,
-    theme: _theme,
-    sectionProperties,
-    headerContent,
-    footerContent,
-    firstPageHeaderContent,
-    firstPageFooterContent,
-    headerContentRId,
-    footerContentRId,
-    firstPageHeaderContentRId,
-    firstPageFooterContentRId,
-    readOnly = false,
-    pageGap = DEFAULT_PAGE_GAP,
-    zoom = 1,
-    onDocumentChange,
-    onReadOnlyEditAttempt,
-    onSelectionChange,
-    onSelectionTextChange,
-    onEditorViewReady,
-    externalPlugins = EMPTY_PLUGINS,
-    showTemplateDirectives = true,
-    collaboration,
-    extensionManager,
-    onHeaderFooterDoubleClick,
-    hfEditMode,
-    onBodyClick,
-    className,
-    style,
-    commentsSidebarOpen = false,
-    sidebarOverlay,
-    scrollContainerRef: scrollContainerRefProp,
-    onHyperlinkClick,
-    onContextMenu,
-    onAnchorPositionsChange,
-    onTotalPagesChange,
-    anchorPositionMode = "comments-and-revisions",
-    onAnonymizationTermClick,
-    selectedAnonymizationCanonical = null,
-    anonymizationSelectionSeq,
-  } = props;
+export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
+  function PagedEditor(props, ref) {
+    const {
+      document,
+      documentKey,
+      fonts: hostFonts,
+      styles,
+      theme: _theme,
+      sectionProperties,
+      headerContent,
+      footerContent,
+      firstPageHeaderContent,
+      firstPageFooterContent,
+      headerContentRId,
+      footerContentRId,
+      firstPageHeaderContentRId,
+      firstPageFooterContentRId,
+      readOnly = false,
+      pageGap = DEFAULT_PAGE_GAP,
+      zoom = 1,
+      onDocumentChange,
+      onReadOnlyEditAttempt,
+      onSelectionChange,
+      onSelectionTextChange,
+      onEditorViewReady,
+      externalPlugins = EMPTY_PLUGINS,
+      showTemplateDirectives = true,
+      collaboration,
+      extensionManager,
+      onHeaderFooterDoubleClick,
+      hfEditMode,
+      onBodyClick,
+      className,
+      style,
+      commentsSidebarOpen = false,
+      sidebarOverlay,
+      scrollContainerRef: scrollContainerRefProp,
+      onHyperlinkClick,
+      onContextMenu,
+      onAnchorPositionsChange,
+      onTotalPagesChange,
+      anchorPositionMode = "comments-and-revisions",
+      onAnonymizationTermClick,
+      selectedAnonymizationCanonical = null,
+      anonymizationSelectionSeq,
+    } = props;
 
-  // Resolve the scroll container: prefer parent-provided ref, fallback to own container
-  const getScrollContainer = useCallback((): HTMLDivElement | null => {
-    if (scrollContainerRefProp && typeof scrollContainerRefProp === "object") {
-      return (scrollContainerRefProp as React.RefObject<HTMLDivElement | null>).current;
-    }
-    return containerRef.current;
-  }, [scrollContainerRefProp]);
-
-  // Refs
-  const containerRef = useRef<HTMLDivElement>(null);
-  const pagesContainerRef = useRef<HTMLDivElement>(null);
-  // FolioEditor event emitter (Seam 6), declared early so the layout/selection/
-  // doc emission points below can publish to it.
-  const folioEmitterRef = useRef(createFolioEditorEmitter());
-  const hiddenPMRef = useRef<HiddenProseMirrorRef>(null);
-  const hfPMsRef = useRef<HiddenHeaderFooterPMsRef>(null);
-  const painterRef = useRef<LayoutPainter | null>(null);
-
-  // Visual line navigation (ArrowUp/ArrowDown with sticky X)
-  const { handlePMKeyDown } = useVisualLineNavigation({ pagesContainerRef });
-
-  // While the template slash menu is open it captures the navigation keys
-  // (arrows/Enter/Escape) to drive its own highlight + submenu. Visual-line
-  // navigation runs as the hidden view's base `handleKeyDown`, which PM checks
-  // before plugin handlers, so it would otherwise move the caret out of the
-  // trigger and dismiss the menu before the slash plugin ever sees the key.
-  // Defer to the plugin chain (return false) whenever the menu is active.
-  const handleHiddenEditorKeyDown = useCallback(
-    (view: EditorView, event: KeyboardEvent): boolean => {
-      if (getTemplateSlashMenu(view.state).active) {
-        return false;
+    // Resolve the scroll container: prefer parent-provided ref, fallback to own container
+    const getScrollContainer = useCallback((): HTMLDivElement | null => {
+      if (scrollContainerRefProp && typeof scrollContainerRefProp === "object") {
+        return (scrollContainerRefProp as React.RefObject<HTMLDivElement | null>).current;
       }
-      return handlePMKeyDown(view, event);
-    },
-    [handlePMKeyDown],
-  );
+      return containerRef.current;
+    }, [scrollContainerRefProp]);
 
-  // Stable ref for drag-extend callback (avoids circular deps with getPositionFromMouse)
-  // oxlint-disable-next-line eslint/no-empty-function -- no-op placeholder until the real callback is assigned
-  const dragExtendRef = useRef<(cx: number, cy: number) => void>(() => {});
+    // Refs
+    const containerRef = useRef<HTMLDivElement>(null);
+    const pagesContainerRef = useRef<HTMLDivElement>(null);
+    // FolioEditor event emitter (Seam 6), declared early so the layout/selection/
+    // doc emission points below can publish to it.
+    const folioEmitterRef = useRef(createFolioEditorEmitter());
+    const hiddenPMRef = useRef<HiddenProseMirrorRef>(null);
+    const hfPMsRef = useRef<HiddenHeaderFooterPMsRef>(null);
+    const painterRef = useRef<LayoutPainter | null>(null);
 
-  // Store callbacks in refs to avoid infinite re-render loops
-  // when parent passes unstable callback references
-  const onSelectionChangeRef = useRef(onSelectionChange);
-  const onSelectionTextChangeRef = useRef(onSelectionTextChange);
-  const onEditorViewReadyRef = useRef(onEditorViewReady);
-  const onDocumentChangeRef = useRef(onDocumentChange);
-  const onTotalPagesChangeRef = useRef(onTotalPagesChange);
-  const lastTotalPagesRef = useRef<number | null>(null);
+    // Visual line navigation (ArrowUp/ArrowDown with sticky X)
+    const { handlePMKeyDown } = useVisualLineNavigation({ pagesContainerRef });
 
-  // Keep refs in sync with latest props
-  onSelectionChangeRef.current = onSelectionChange;
-  onSelectionTextChangeRef.current = onSelectionTextChange;
-  onEditorViewReadyRef.current = onEditorViewReady;
-  onDocumentChangeRef.current = onDocumentChange;
-  onTotalPagesChangeRef.current = onTotalPagesChange;
+    // While the template slash menu is open it captures the navigation keys
+    // (arrows/Enter/Escape) to drive its own highlight + submenu. Visual-line
+    // navigation runs as the hidden view's base `handleKeyDown`, which PM checks
+    // before plugin handlers, so it would otherwise move the caret out of the
+    // trigger and dismiss the menu before the slash plugin ever sees the key.
+    // Defer to the plugin chain (return false) whenever the menu is active.
+    const handleHiddenEditorKeyDown = useCallback(
+      (view: EditorView, event: KeyboardEvent): boolean => {
+        if (getTemplateSlashMenu(view.state).active) {
+          return false;
+        }
+        return handlePMKeyDown(view, event);
+      },
+      [handlePMKeyDown],
+    );
 
-  // State
-  const [layout, setLayout] = useState<Layout | null>(null);
-  // Mirror `layout` in a ref so the layout pipeline reads the latest page-count
-  // estimate without `layout` in runLayoutPipeline's deps (which would recreate
-  // the callback every layout run and re-fire the effects keyed on its identity).
-  const layoutRef = useRef(layout);
-  layoutRef.current = layout;
-  const [blocks, setBlocks] = useState<FlowBlock[]>([]);
-  const [measures, setMeasures] = useState<Measure[]>([]);
-  // Reactive "has the hidden editor been requested" signal. The manager owns
-  // the actual view creation imperatively (via ensureView); this flag only
-  // drives the pre-hidden initial-layout coordination below.
-  const [shouldCreateHiddenEditorView, setShouldCreateHiddenEditorView] = useState(
-    () => collaboration !== undefined,
-  );
-  const shouldFocusHiddenEditorOnReadyRef = useRef(collaboration !== undefined);
-  const [precomputedInitialState, setPrecomputedInitialState] = useState<EditorState | null>(null);
-  const layoutSessionRef = useRef(createLayoutSession());
-  const precomputedInitialStateRef = useRef<EditorState | null>(null);
-  const precomputedInitialDocumentRef = useRef<Document | null>(null);
-  const preHiddenInitialLayoutDoneRef = useRef(false);
-  const pendingHiddenEditorSelectionRef = useRef<PendingHiddenEditorSelection | null>(null);
-  const queuedInputBeforeHiddenEditorRef = useRef<QueuedHiddenEditorInput[]>([]);
-  const pendingInitialFontReadyLayoutRef = useRef(false);
-  const suppressFontReadyUntilRef = useRef(0);
-  const [isFocused, setIsFocused] = useState(false);
-  const [selectionRects, setSelectionRects] = useState<SelectionRect[]>([]);
-  const [caretPosition, setCaretPosition] = useState<CaretPosition | null>(null);
-  const [anonymizationRectGroups, setAnonymizationRectGroups] = useState<AnonymizationRectGroup[]>(
-    [],
-  );
-  // Plain ref to the latest match list so the recompute effect
-  // doesn't depend on a state setter callback that would trigger
-  // its own re-run.
-  const anonymizationMatchesRef = useRef<readonly AnonymizationMatch[]>([]);
-  const anonymizationOverlayRequestSeqRef = useRef(0);
-  // Autocomplete (inline ghost-text) overlay state. Mirrors the
-  // anonymization pattern: a ref tracks the latest plugin
-  // suggestion, a derived caret-rect lives in state and drives
-  // the overlay. The plugin sits in the hidden editor; the
-  // visible ghost is painted on the paged canvas.
-  const autocompleteSuggestionRef = useRef<AutocompleteSuggestionState>({
-    status: "idle",
-    anchor: null,
-    text: "",
-    requestId: null,
-  });
-  const autocompleteOverlayRequestSeqRef = useRef(0);
-  const [autocompleteCaret, setAutocompleteCaret] = useState<AutocompleteCaretRect | null>(null);
-  const [autocompleteText, setAutocompleteText] = useState<string>("");
-  const [autocompleteIsStreaming, setAutocompleteIsStreaming] = useState<boolean>(false);
-  const [directiveRectGroups, setDirectiveRectGroups] = useState<DirectiveRectGroup[]>([]);
-  const [directiveGutter, setDirectiveGutter] = useState<DirectiveGutterGeometry | null>(null);
-  // Caret/selection head PM position, kept only while a template document has
-  // block directives — drives the innermost-block rail emphasis in the overlay.
-  const [directiveCaretPos, setDirectiveCaretPos] = useState<number | null>(null);
-  const directivesRef = useRef<readonly DirectiveRange[]>([]);
-  const directivesOverlayRequestSeqRef = useRef(0);
-  // Template fill preview — the hidden editor's plugin keeps marker↔value
-  // entries in sync; the layout pipeline substitutes them into the flow
-  // blocks so the painted pages reflow as if the values were the text.
-  // `templatePreviewRef` mirrors the latest plugin state (change detection);
-  // the layout session's `lastTemplatePreview` records what the last pipeline
-  // run actually substituted.
-  const templatePreviewRef = useRef<{
-    entries: readonly TemplatePreviewEntry[];
-    mode: TemplatePreviewValues["mode"];
-  }>({ entries: EMPTY_TEMPLATE_PREVIEW_ENTRIES, mode: "plain" });
-  // AI suggestion review — same pattern for the suggestion list and the
-  // focused suggestion's in-text diff preview.
-  const [aiSuggestionRectGroups, setAiSuggestionRectGroups] = useState<AISuggestionRectGroup[]>([]);
-  const aiSuggestionsRef = useRef<{
-    suggestions: readonly AISuggestion[];
-    focusedId: string | null;
-  }>({ suggestions: EMPTY_AI_SUGGESTIONS, focusedId: null });
-  const aiSuggestionsOverlayRequestSeqRef = useRef(0);
-  const [remoteSelections, setRemoteSelections] = useState<HiddenProseMirrorRemoteSelection[]>([]);
-  const suppressSelectionOverlayRef = useRef(false);
-  const revealSelectionOverlayTimerRef = useRef<number | null>(null);
-  const selectionOverlayRequestSeqRef = useRef(0);
+    // Stable ref for drag-extend callback (avoids circular deps with getPositionFromMouse)
+    // oxlint-disable-next-line eslint/no-empty-function -- no-op placeholder until the real callback is assigned
+    const dragExtendRef = useRef<(cx: number, cy: number) => void>(() => {});
 
-  const validPrecomputedInitialState =
-    precomputedInitialDocumentRef.current === document ? precomputedInitialState : null;
-  precomputedInitialStateRef.current = validPrecomputedInitialState;
+    // Store callbacks in refs to avoid infinite re-render loops
+    // when parent passes unstable callback references
+    const onSelectionChangeRef = useRef(onSelectionChange);
+    const onSelectionTextChangeRef = useRef(onSelectionTextChange);
+    const onEditorViewReadyRef = useRef(onEditorViewReady);
+    const onDocumentChangeRef = useRef(onDocumentChange);
+    const onTotalPagesChangeRef = useRef(onTotalPagesChange);
+    const lastTotalPagesRef = useRef<number | null>(null);
 
-  // Image selection state
-  const [selectedImageInfo, setSelectedImageInfo] = useState<ImageSelectionInfo | null>(null);
-  const isImageInteractingRef = useRef(false);
+    // Keep refs in sync with latest props
+    onSelectionChangeRef.current = onSelectionChange;
+    onSelectionTextChangeRef.current = onSelectionTextChange;
+    onEditorViewReadyRef.current = onEditorViewReady;
+    onDocumentChangeRef.current = onDocumentChange;
+    onTotalPagesChangeRef.current = onTotalPagesChange;
 
-  /** Build ImageSelectionInfo from a DOM element with data-pm-start */
-  const buildImageSelectionInfo = useCallback(
-    (el: HTMLElement, pmPos: number): ImageSelectionInfo => {
-      const imgTagCandidate = el.tagName === "IMG" ? el : el.querySelector("img");
-      const imgTag = imgTagCandidate instanceof HTMLElement ? imgTagCandidate : null;
-      const element = imgTag ?? el;
-      const rect = element.getBoundingClientRect();
-      return {
-        element,
-        pmPos,
-        width: Math.round(rect.width / zoom),
-        height: Math.round(rect.height / zoom),
-      };
-    },
-    [zoom],
-  );
-
-  // Drag selection state
-  const isDraggingRef = useRef(false);
-  const dragAnchorRef = useRef<number | null>(null);
-  // When the drag originated inside a painted HF slot, the anchor lives in
-  // that slot's PM (`hfPMsRef.current.getView(rId)`), not the body PM. The
-  // pointer pipeline reads this on every mousemove + on shift-click extend
-  // so drag-select / shift-extend dispatch on the right surface.
-  const activeHfDragSurfaceRef = useRef<{
-    rId: string;
-    kind: "header" | "footer";
-  } | null>(null);
-  // Same idea for table resize: when the resize handle lives inside an HF
-  // table the commit must dispatch setNodeMarkup on that slot's PM, not on
-  // the body PM. Captured at mousedown, cleared on mouseup.
-  const resizingHfSurfaceRef = useRef<{
-    rId: string;
-    kind: "header" | "footer";
-  } | null>(null);
-
-  const ensureHiddenEditorView = useCallback(
-    ({ focus = true }: EnsureHiddenEditorViewOptions = {}) => {
-      if (focus) {
-        shouldFocusHiddenEditorOnReadyRef.current = true;
-      } else if (!hiddenPMRef.current?.isViewRequested() && !hiddenPMRef.current?.getView()) {
-        shouldFocusHiddenEditorOnReadyRef.current = false;
-      }
-
-      // Creation is synchronous now, so the former `sync`/flushSync path is
-      // gone; the `sync` option is accepted (and ignored) for call-site compat.
-      setShouldCreateHiddenEditorView(true);
-      hiddenPMRef.current?.ensureView();
-    },
-    [],
-  );
-
-  // Eagerly request the hidden editor when collaborating (matches the former
-  // `shouldCreateHiddenEditorView` initial-true for collaboration); the manager
-  // defers the actual creation until the collaboration modules load.
-  useLayoutEffect(() => {
-    if (collaboration !== undefined) {
-      hiddenPMRef.current?.ensureView();
-    }
-  }, [collaboration]);
-
-  const queueHiddenEditorSelection = useCallback(
-    (selection: PendingHiddenEditorSelection) => {
-      pendingHiddenEditorSelectionRef.current = selection;
-      ensureHiddenEditorView();
-    },
-    [ensureHiddenEditorView],
-  );
-
-  const queueHiddenEditorTextInput = useCallback((text: string) => {
-    queuedInputBeforeHiddenEditorRef.current.push({ type: "text", text });
-  }, []);
-
-  const queueHiddenEditorKeyDown = useCallback((event: React.KeyboardEvent) => {
-    queuedInputBeforeHiddenEditorRef.current.push({
-      type: "keydown",
-      eventInit: toDeferredKeyboardEventInit(event),
+    // State
+    const [layout, setLayout] = useState<Layout | null>(null);
+    // Mirror `layout` in a ref so the layout pipeline reads the latest page-count
+    // estimate without `layout` in runLayoutPipeline's deps (which would recreate
+    // the callback every layout run and re-fire the effects keyed on its identity).
+    const layoutRef = useRef(layout);
+    layoutRef.current = layout;
+    const [blocks, setBlocks] = useState<FlowBlock[]>([]);
+    const [measures, setMeasures] = useState<Measure[]>([]);
+    // Reactive "has the hidden editor been requested" signal. The manager owns
+    // the actual view creation imperatively (via ensureView); this flag only
+    // drives the pre-hidden initial-layout coordination below.
+    const [shouldCreateHiddenEditorView, setShouldCreateHiddenEditorView] = useState(
+      () => collaboration !== undefined,
+    );
+    const shouldFocusHiddenEditorOnReadyRef = useRef(collaboration !== undefined);
+    const [precomputedInitialState, setPrecomputedInitialState] = useState<EditorState | null>(
+      null,
+    );
+    const layoutSessionRef = useRef(createLayoutSession());
+    const precomputedInitialStateRef = useRef<EditorState | null>(null);
+    const precomputedInitialDocumentRef = useRef<Document | null>(null);
+    const preHiddenInitialLayoutDoneRef = useRef(false);
+    const pendingHiddenEditorSelectionRef = useRef<PendingHiddenEditorSelection | null>(null);
+    const queuedInputBeforeHiddenEditorRef = useRef<QueuedHiddenEditorInput[]>([]);
+    const pendingInitialFontReadyLayoutRef = useRef(false);
+    const suppressFontReadyUntilRef = useRef(0);
+    const [isFocused, setIsFocused] = useState(false);
+    const [selectionRects, setSelectionRects] = useState<SelectionRect[]>([]);
+    const [caretPosition, setCaretPosition] = useState<CaretPosition | null>(null);
+    const [anonymizationRectGroups, setAnonymizationRectGroups] = useState<
+      AnonymizationRectGroup[]
+    >([]);
+    // Plain ref to the latest match list so the recompute effect
+    // doesn't depend on a state setter callback that would trigger
+    // its own re-run.
+    const anonymizationMatchesRef = useRef<readonly AnonymizationMatch[]>([]);
+    const anonymizationOverlayRequestSeqRef = useRef(0);
+    // Autocomplete (inline ghost-text) overlay state. Mirrors the
+    // anonymization pattern: a ref tracks the latest plugin
+    // suggestion, a derived caret-rect lives in state and drives
+    // the overlay. The plugin sits in the hidden editor; the
+    // visible ghost is painted on the paged canvas.
+    const autocompleteSuggestionRef = useRef<AutocompleteSuggestionState>({
+      status: "idle",
+      anchor: null,
+      text: "",
+      requestId: null,
     });
-  }, []);
+    const autocompleteOverlayRequestSeqRef = useRef(0);
+    const [autocompleteCaret, setAutocompleteCaret] = useState<AutocompleteCaretRect | null>(null);
+    const [autocompleteText, setAutocompleteText] = useState<string>("");
+    const [autocompleteIsStreaming, setAutocompleteIsStreaming] = useState<boolean>(false);
+    const [directiveRectGroups, setDirectiveRectGroups] = useState<DirectiveRectGroup[]>([]);
+    const [directiveGutter, setDirectiveGutter] = useState<DirectiveGutterGeometry | null>(null);
+    // Caret/selection head PM position, kept only while a template document has
+    // block directives — drives the innermost-block rail emphasis in the overlay.
+    const [directiveCaretPos, setDirectiveCaretPos] = useState<number | null>(null);
+    const directivesRef = useRef<readonly DirectiveRange[]>([]);
+    const directivesOverlayRequestSeqRef = useRef(0);
+    // Template fill preview — the hidden editor's plugin keeps marker↔value
+    // entries in sync; the layout pipeline substitutes them into the flow
+    // blocks so the painted pages reflow as if the values were the text.
+    // `templatePreviewRef` mirrors the latest plugin state (change detection);
+    // the layout session's `lastTemplatePreview` records what the last pipeline
+    // run actually substituted.
+    const templatePreviewRef = useRef<{
+      entries: readonly TemplatePreviewEntry[];
+      mode: TemplatePreviewValues["mode"];
+    }>({ entries: EMPTY_TEMPLATE_PREVIEW_ENTRIES, mode: "plain" });
+    // AI suggestion review — same pattern for the suggestion list and the
+    // focused suggestion's in-text diff preview.
+    const [aiSuggestionRectGroups, setAiSuggestionRectGroups] = useState<AISuggestionRectGroup[]>(
+      [],
+    );
+    const aiSuggestionsRef = useRef<{
+      suggestions: readonly AISuggestion[];
+      focusedId: string | null;
+    }>({ suggestions: EMPTY_AI_SUGGESTIONS, focusedId: null });
+    const aiSuggestionsOverlayRequestSeqRef = useRef(0);
+    const [remoteSelections, setRemoteSelections] = useState<HiddenProseMirrorRemoteSelection[]>(
+      [],
+    );
+    const suppressSelectionOverlayRef = useRef(false);
+    const revealSelectionOverlayTimerRef = useRef<number | null>(null);
+    const selectionOverlayRequestSeqRef = useRef(0);
 
-  const applyPendingHiddenEditorInput = useCallback((view: EditorView) => {
-    const pendingSelection = pendingHiddenEditorSelectionRef.current;
-    pendingHiddenEditorSelectionRef.current = null;
+    const validPrecomputedInitialState =
+      precomputedInitialDocumentRef.current === document ? precomputedInitialState : null;
+    precomputedInitialStateRef.current = validPrecomputedInitialState;
 
-    if (pendingSelection?.type === "node") {
-      try {
-        view.dispatch(
-          view.state.tr.setSelection(NodeSelection.create(view.state.doc, pendingSelection.pos)),
-        );
-      } catch {
-        // Fall through to queued text insertion at the current selection.
+    // Image selection state
+    const [selectedImageInfo, setSelectedImageInfo] = useState<ImageSelectionInfo | null>(null);
+    const isImageInteractingRef = useRef(false);
+
+    /** Build ImageSelectionInfo from a DOM element with data-pm-start */
+    const buildImageSelectionInfo = useCallback(
+      (el: HTMLElement, pmPos: number): ImageSelectionInfo => {
+        const imgTagCandidate = el.tagName === "IMG" ? el : el.querySelector("img");
+        const imgTag = imgTagCandidate instanceof HTMLElement ? imgTagCandidate : null;
+        const element = imgTag ?? el;
+        const rect = element.getBoundingClientRect();
+        return {
+          element,
+          pmPos,
+          width: Math.round(rect.width / zoom),
+          height: Math.round(rect.height / zoom),
+        };
+      },
+      [zoom],
+    );
+
+    // Drag selection state
+    const isDraggingRef = useRef(false);
+    const dragAnchorRef = useRef<number | null>(null);
+    // When the drag originated inside a painted HF slot, the anchor lives in
+    // that slot's PM (`hfPMsRef.current.getView(rId)`), not the body PM. The
+    // pointer pipeline reads this on every mousemove + on shift-click extend
+    // so drag-select / shift-extend dispatch on the right surface.
+    const activeHfDragSurfaceRef = useRef<{
+      rId: string;
+      kind: "header" | "footer";
+    } | null>(null);
+    // Same idea for table resize: when the resize handle lives inside an HF
+    // table the commit must dispatch setNodeMarkup on that slot's PM, not on
+    // the body PM. Captured at mousedown, cleared on mouseup.
+    const resizingHfSurfaceRef = useRef<{
+      rId: string;
+      kind: "header" | "footer";
+    } | null>(null);
+
+    const ensureHiddenEditorView = useCallback(
+      ({ focus = true }: EnsureHiddenEditorViewOptions = {}) => {
+        if (focus) {
+          shouldFocusHiddenEditorOnReadyRef.current = true;
+        } else if (!hiddenPMRef.current?.isViewRequested() && !hiddenPMRef.current?.getView()) {
+          shouldFocusHiddenEditorOnReadyRef.current = false;
+        }
+
+        // Creation is synchronous now, so the former `sync`/flushSync path is
+        // gone; the `sync` option is accepted (and ignored) for call-site compat.
+        setShouldCreateHiddenEditorView(true);
+        hiddenPMRef.current?.ensureView();
+      },
+      [],
+    );
+
+    // Eagerly request the hidden editor when collaborating (matches the former
+    // `shouldCreateHiddenEditorView` initial-true for collaboration); the manager
+    // defers the actual creation until the collaboration modules load.
+    useLayoutEffect(() => {
+      if (collaboration !== undefined) {
+        hiddenPMRef.current?.ensureView();
       }
-    }
+    }, [collaboration]);
 
-    if (pendingSelection?.type === "text") {
-      const docEnd = view.state.doc.content.size;
-      const anchor = Math.max(0, Math.min(pendingSelection.anchor, docEnd));
-      const head =
-        pendingSelection.head === undefined
-          ? anchor
-          : Math.max(0, Math.min(pendingSelection.head, docEnd));
-      try {
-        const selection = TextSelection.between(
-          view.state.doc.resolve(anchor),
-          view.state.doc.resolve(head),
-        );
-        view.dispatch(view.state.tr.setSelection(selection));
-      } catch {
-        // Keep the default selection if the cached visual position went stale.
+    const queueHiddenEditorSelection = useCallback(
+      (selection: PendingHiddenEditorSelection) => {
+        pendingHiddenEditorSelectionRef.current = selection;
+        ensureHiddenEditorView();
+      },
+      [ensureHiddenEditorView],
+    );
+
+    const queueHiddenEditorTextInput = useCallback((text: string) => {
+      queuedInputBeforeHiddenEditorRef.current.push({ type: "text", text });
+    }, []);
+
+    const queueHiddenEditorKeyDown = useCallback((event: React.KeyboardEvent) => {
+      queuedInputBeforeHiddenEditorRef.current.push({
+        type: "keydown",
+        eventInit: toDeferredKeyboardEventInit(event),
+      });
+    }, []);
+
+    const applyPendingHiddenEditorInput = useCallback((view: EditorView) => {
+      const pendingSelection = pendingHiddenEditorSelectionRef.current;
+      pendingHiddenEditorSelectionRef.current = null;
+
+      if (pendingSelection?.type === "node") {
+        try {
+          view.dispatch(
+            view.state.tr.setSelection(NodeSelection.create(view.state.doc, pendingSelection.pos)),
+          );
+        } catch {
+          // Fall through to queued text insertion at the current selection.
+        }
       }
-    }
 
-    const queuedInput = queuedInputBeforeHiddenEditorRef.current;
-    if (queuedInput.length === 0) {
-      return;
-    }
-
-    queuedInputBeforeHiddenEditorRef.current = [];
-    for (const input of queuedInput) {
-      if (input.type === "text") {
-        dispatchEditorTextInput(view, input.text);
-        continue;
+      if (pendingSelection?.type === "text") {
+        const docEnd = view.state.doc.content.size;
+        const anchor = Math.max(0, Math.min(pendingSelection.anchor, docEnd));
+        const head =
+          pendingSelection.head === undefined
+            ? anchor
+            : Math.max(0, Math.min(pendingSelection.head, docEnd));
+        try {
+          const selection = TextSelection.between(
+            view.state.doc.resolve(anchor),
+            view.state.doc.resolve(head),
+          );
+          view.dispatch(view.state.tr.setSelection(selection));
+        } catch {
+          // Keep the default selection if the cached visual position went stale.
+        }
       }
 
-      replayDeferredKeyDown(view, input.eventInit);
-    }
-  }, []);
+      const queuedInput = queuedInputBeforeHiddenEditorRef.current;
+      if (queuedInput.length === 0) {
+        return;
+      }
 
-  useEffect(() => {
-    if (collaboration !== undefined) {
-      ensureHiddenEditorView();
-    }
-  }, [collaboration, ensureHiddenEditorView]);
+      queuedInputBeforeHiddenEditorRef.current = [];
+      for (const input of queuedInput) {
+        if (input.type === "text") {
+          dispatchEditorTextInput(view, input.text);
+          continue;
+        }
 
-  // Column resize state
-  const isResizingColumnRef = useRef(false);
-  const resizeStartXRef = useRef(0);
-  const resizeColumnIndexRef = useRef(0);
-  const resizeTablePmStartRef = useRef(0);
-  const resizeOrigWidthsRef = useRef({
-    left: 0,
-    right: 0,
-  });
-  const resizeHandleRef = useRef<HTMLElement | null>(null);
-  const resizeBidiRef = useRef(false);
+        replayDeferredKeyDown(view, input.eventInit);
+      }
+    }, []);
 
-  // Row resize state
-  const isResizingRowRef = useRef(false);
-  const resizeStartYRef = useRef(0);
-  const resizeRowIndexRef = useRef(0);
-  const resizeRowTablePmStartRef = useRef(0);
-  const resizeRowOrigHeightRef = useRef(0); // twips
-  const resizeRowHandleRef = useRef<HTMLElement | null>(null);
-  const resizeRowIsEdgeRef = useRef(false);
+    useEffect(() => {
+      if (collaboration !== undefined) {
+        ensureHiddenEditorView();
+      }
+    }, [collaboration, ensureHiddenEditorView]);
 
-  // Right edge resize state (grows last column only)
-  const isResizingRightEdgeRef = useRef(false);
-  const resizeRightEdgeStartXRef = useRef(0);
-  const resizeRightEdgeColIndexRef = useRef(0);
-  const resizeRightEdgePmStartRef = useRef(0);
-  const resizeRightEdgeOrigWidthRef = useRef(0); // twips
-  const resizeRightEdgeHandleRef = useRef<HTMLElement | null>(null);
+    // Column resize state
+    const isResizingColumnRef = useRef(false);
+    const resizeStartXRef = useRef(0);
+    const resizeColumnIndexRef = useRef(0);
+    const resizeTablePmStartRef = useRef(0);
+    const resizeOrigWidthsRef = useRef({
+      left: 0,
+      right: 0,
+    });
+    const resizeHandleRef = useRef<HTMLElement | null>(null);
+    const resizeBidiRef = useRef(false);
 
-  // Cell selection drag state
-  const isCellDraggingRef = useRef(false);
-  const cellDragAnchorPosRef = useRef<number | null>(null);
-  const cellDragLastPmPosRef = useRef<number | null>(null);
-  const cellDragOverflowXRef = useRef<number | null>(null);
-  // Last text position inside the cell the drag started in. Overflow→whole-cell
-  // escalation is only allowed once the drag actually reaches this position, so
-  // a tiny initial nudge (pmPos hasn't crossed a glyph yet) can't be mistaken
-  // for "dragged past the cell's text".
-  const cellDragContentEndRef = useRef<number | null>(null);
-  const CELL_SELECT_OVERFLOW_PX = 5; // px of continued drag after text selection maxes out
+    // Row resize state
+    const isResizingRowRef = useRef(false);
+    const resizeStartYRef = useRef(0);
+    const resizeRowIndexRef = useRef(0);
+    const resizeRowTablePmStartRef = useRef(0);
+    const resizeRowOrigHeightRef = useRef(0); // twips
+    const resizeRowHandleRef = useRef<HTMLElement | null>(null);
+    const resizeRowIsEdgeRef = useRef(false);
 
-  // Table quick action insert button state
-  type TableInsertButtonState = {
-    type: "row" | "column";
-    /** Pixel position relative to viewport container */
-    x: number;
-    y: number;
-    /** PM position inside target cell (to set selection before dispatching) */
-    cellPmPos: number;
-  };
-  const [tableInsertButton, setTableInsertButton] = useState<TableInsertButtonState | null>(null);
-  const tableInsertHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Right edge resize state (grows last column only)
+    const isResizingRightEdgeRef = useRef(false);
+    const resizeRightEdgeStartXRef = useRef(0);
+    const resizeRightEdgeColIndexRef = useRef(0);
+    const resizeRightEdgePmStartRef = useRef(0);
+    const resizeRightEdgeOrigWidthRef = useRef(0); // twips
+    const resizeRightEdgeHandleRef = useRef<HTMLElement | null>(null);
 
-  const clearTableInsertTimer = useCallback(() => {
-    if (tableInsertHideTimerRef.current) {
-      clearTimeout(tableInsertHideTimerRef.current);
-      tableInsertHideTimerRef.current = null;
-    }
-  }, []);
+    // Cell selection drag state
+    const isCellDraggingRef = useRef(false);
+    const cellDragAnchorPosRef = useRef<number | null>(null);
+    const cellDragLastPmPosRef = useRef<number | null>(null);
+    const cellDragOverflowXRef = useRef<number | null>(null);
+    // Last text position inside the cell the drag started in. Overflow→whole-cell
+    // escalation is only allowed once the drag actually reaches this position, so
+    // a tiny initial nudge (pmPos hasn't crossed a glyph yet) can't be mistaken
+    // for "dragged past the cell's text".
+    const cellDragContentEndRef = useRef<number | null>(null);
+    const CELL_SELECT_OVERFLOW_PX = 5; // px of continued drag after text selection maxes out
 
-  // Cleanup timer on unmount
-  useEffect(
-    () => () => {
+    // Table quick action insert button state
+    type TableInsertButtonState = {
+      type: "row" | "column";
+      /** Pixel position relative to viewport container */
+      x: number;
+      y: number;
+      /** PM position inside target cell (to set selection before dispatching) */
+      cellPmPos: number;
+    };
+    const [tableInsertButton, setTableInsertButton] = useState<TableInsertButtonState | null>(null);
+    const tableInsertHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const clearTableInsertTimer = useCallback(() => {
       if (tableInsertHideTimerRef.current) {
         clearTimeout(tableInsertHideTimerRef.current);
+        tableInsertHideTimerRef.current = null;
       }
-    },
-    [],
-  );
+    }, []);
 
-  // Selection gate - ensures selection renders only when layout is current
-  const syncCoordinator = useMemo(() => new LayoutSelectionGate(), []);
+    // Cleanup timer on unmount
+    useEffect(
+      () => () => {
+        if (tableInsertHideTimerRef.current) {
+          clearTimeout(tableInsertHideTimerRef.current);
+        }
+      },
+      [],
+    );
 
-  // Compute page size and margins
-  const pageSize = useMemo(() => getPageSize(sectionProperties), [sectionProperties]);
-  const margins = useMemo(() => getMargins(sectionProperties), [sectionProperties]);
-  const columns = useMemo(() => getColumns(sectionProperties), [sectionProperties]);
-  const contentWidth = pageSize.w - margins.left - margins.right;
-  const defaultTabStop = document?.package.settings?.defaultTabStop;
-  const sectionHeaderFooterRefs = useMemo(() => getSectionHeaderFooterRefs(document), [document]);
-  const layoutInputSignature = useMemo(
-    () =>
-      buildLayoutInputSignature({
+    // Selection gate - ensures selection renders only when layout is current
+    const syncCoordinator = useMemo(() => new LayoutSelectionGate(), []);
+
+    // Compute page size and margins
+    const pageSize = useMemo(() => getPageSize(sectionProperties), [sectionProperties]);
+    const margins = useMemo(() => getMargins(sectionProperties), [sectionProperties]);
+    const columns = useMemo(() => getColumns(sectionProperties), [sectionProperties]);
+    const contentWidth = pageSize.w - margins.left - margins.right;
+    const defaultTabStop = document?.package.settings?.defaultTabStop;
+    const sectionHeaderFooterRefs = useMemo(() => getSectionHeaderFooterRefs(document), [document]);
+    const layoutInputSignature = useMemo(
+      () =>
+        buildLayoutInputSignature({
+          columns,
+          contentWidth,
+          defaultTabStop,
+          firstPageFooterContent,
+          firstPageHeaderContent,
+          footerContent,
+          headerContent,
+          headerContentRId,
+          footerContentRId,
+          firstPageHeaderContentRId,
+          firstPageFooterContentRId,
+          sectionHeaderFooterRefs,
+          margins,
+          pageGap,
+          pageSize,
+          sectionProperties,
+          styles,
+          theme: _theme,
+        }),
+      [
         columns,
         contentWidth,
         defaultTabStop,
@@ -2068,2683 +2095,2759 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(function
         pageSize,
         sectionProperties,
         styles,
-        theme: _theme,
-      }),
-    [
-      columns,
-      contentWidth,
-      defaultTabStop,
-      firstPageFooterContent,
-      firstPageHeaderContent,
-      footerContent,
-      headerContent,
-      headerContentRId,
-      footerContentRId,
-      firstPageHeaderContentRId,
-      firstPageFooterContentRId,
-      sectionHeaderFooterRefs,
-      margins,
-      pageGap,
-      pageSize,
-      sectionProperties,
-      styles,
-      _theme,
-    ],
-  );
+        _theme,
+      ],
+    );
 
-  // Initialize painter using useMemo to ensure it's ready before first render callbacks
-  const painter = useMemo(
-    () =>
-      new LayoutPainter({
-        pageGap,
-        showShadow: false,
-      }),
-    [pageGap],
-  );
-
-  // Keep ref in sync with memoized painter
-  painterRef.current = painter;
-
-  // =========================================================================
-  // Layout Pipeline
-  // =========================================================================
-
-  /**
-   * Run the full layout pipeline:
-   * 1. Convert PM doc to blocks
-   * 2. Measure blocks
-   * 3. Layout blocks onto pages
-   * 4. Paint pages to DOM
-   */
-  const runLayoutPipeline = useCallback(
-    (
-      state: EditorState,
-      options: {
-        dirtyRange?: DirtyRange;
-        forceFull?: boolean;
-        reason?: LayoutRunReason;
-      } = {},
-    ) => {
-      const outcome = runLayoutPipelineCompute(
-        {
-          contentWidth,
-          columns,
-          pageSize,
-          margins,
+    // Initialize painter using useMemo to ensure it's ready before first render callbacks
+    const painter = useMemo(
+      () =>
+        new LayoutPainter({
           pageGap,
-          syncCoordinator,
-          headerContent,
-          footerContent,
-          firstPageHeaderContent,
-          firstPageFooterContent,
-          headerContentRId,
-          footerContentRId,
-          firstPageHeaderContentRId,
-          firstPageFooterContentRId,
-          sectionHeaderFooterRefs,
-          theme: _theme,
-          sectionProperties,
-          document,
-          defaultTabStop,
-          styles,
-          layout: layoutRef.current,
-          hfPMs: hfPMsRef.current,
-          painter: painterRef.current,
-          pagesContainer: pagesContainerRef.current,
-          session: layoutSessionRef.current,
-          renderHfFromContentOrPm,
-          renderHeaderFooterContentByRId,
-          documentFontsAreLoaded,
-          buildFootnoteRenderItems,
-          describeInvalidHighlightMarks,
-          emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
-        },
-        state,
-        options,
-      );
-      if (outcome.blocks) {
-        setBlocks(outcome.blocks);
-      }
-      if (outcome.measures !== undefined) {
-        setMeasures(outcome.measures);
-      }
-      if (outcome.layout) {
-        setLayout(outcome.layout);
-      }
-      if (outcome.blockLookup) {
-        painterRef.current?.setBlockLookup(outcome.blockLookup);
-      }
-      if (outcome.layout) {
-        // Publish to the ref before emitting so layoutComplete handlers that
-        // call folioEditor.getLayout() observe the layout that just completed
-        // (setLayout is async; the ref mirror otherwise only refreshes on the
-        // next render).
-        layoutRef.current = outcome.layout;
-        folioEmitterRef.current.emit("layoutComplete", outcome.layout);
-      }
-    },
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
-    [
-      contentWidth,
-      columns,
-      pageSize,
-      margins,
-      pageGap,
-      zoom,
-      syncCoordinator,
-      headerContent,
-      footerContent,
-      firstPageHeaderContent,
-      firstPageFooterContent,
-      // HF rIds drive which hidden EditorView the pipeline sources from
-      // AND the `data-rid` stamped on each painted slot. Omitting them
-      // from this dep array let an rId swap between byte-identical
-      // HeaderFooter objects reuse a stale runLayoutPipeline closure
-      // and the painter emitted the previous slot's `data-rid` so
-      // clicks routed to the wrong HF view (Codex #487 P2: 23:21).
-      headerContentRId,
-      footerContentRId,
-      firstPageHeaderContentRId,
-      firstPageFooterContentRId,
-      sectionHeaderFooterRefs,
-      _theme,
-      sectionProperties,
-      document,
-      defaultTabStop,
-      styles,
-    ],
-  );
-  const runLayoutPipelineRef = useRef(runLayoutPipeline);
-  runLayoutPipelineRef.current = runLayoutPipeline;
+          showShadow: false,
+        }),
+      [pageGap],
+    );
 
-  const folioEditorRef = useRef<FolioEditor | null>(null);
-  if (!folioEditorRef.current) {
-    folioEditorRef.current = createFolioEditor({
-      getEditorApi: () => hiddenPMRef.current,
-      getLayout: () => layoutRef.current,
-      runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
-      emitter: folioEmitterRef.current,
-    });
-  }
-  const folioEditor = folioEditorRef.current;
+    // Keep ref in sync with memoized painter
+    painterRef.current = painter;
 
-  // =========================================================================
-  // Coalesced Layout (rAF throttle)
-  // =========================================================================
+    // =========================================================================
+    // Layout Pipeline
+    // =========================================================================
 
-  // The "when to lay out" policy (coalesce a typing burst into one pass, with a
-  // latency cap) lives in the framework-agnostic layout scheduler; this adapter
-  // just feeds it transactions and points it at runLayoutPipeline.
-  const layoutSchedulerRef = useRef<LayoutScheduler<EditorState> | null>(null);
-  if (layoutSchedulerRef.current === null) {
-    layoutSchedulerRef.current = createLayoutScheduler<EditorState>({
-      runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
-      debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
-      leadingFrame: true,
-      maxDelayMs: TRANSACTION_LAYOUT_MAX_DELAY_MS,
-      clock: browserClock,
-    });
-  }
-  const documentChangeNotifyTimerRef = useRef<number | null>(null);
+    /**
+     * Run the full layout pipeline:
+     * 1. Convert PM doc to blocks
+     * 2. Measure blocks
+     * 3. Layout blocks onto pages
+     * 4. Paint pages to DOM
+     */
+    const runLayoutPipeline = useCallback(
+      (
+        state: EditorState,
+        options: {
+          dirtyRange?: DirtyRange;
+          forceFull?: boolean;
+          reason?: LayoutRunReason;
+        } = {},
+      ) => {
+        const outcome = runLayoutPipelineCompute(
+          {
+            contentWidth,
+            columns,
+            pageSize,
+            margins,
+            pageGap,
+            syncCoordinator,
+            headerContent,
+            footerContent,
+            firstPageHeaderContent,
+            firstPageFooterContent,
+            headerContentRId,
+            footerContentRId,
+            firstPageHeaderContentRId,
+            firstPageFooterContentRId,
+            sectionHeaderFooterRefs,
+            theme: _theme,
+            sectionProperties,
+            document,
+            defaultTabStop,
+            styles,
+            layout: layoutRef.current,
+            hfPMs: hfPMsRef.current,
+            painter: painterRef.current,
+            pagesContainer: pagesContainerRef.current,
+            session: layoutSessionRef.current,
+            renderHfFromContentOrPm,
+            renderHeaderFooterContentByRId,
+            documentFontsAreLoaded,
+            buildFootnoteRenderItems,
+            describeInvalidHighlightMarks,
+            emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
+          },
+          state,
+          options,
+        );
+        if (outcome.blocks) {
+          setBlocks(outcome.blocks);
+        }
+        if (outcome.measures !== undefined) {
+          setMeasures(outcome.measures);
+        }
+        if (outcome.layout) {
+          setLayout(outcome.layout);
+        }
+        if (outcome.blockLookup) {
+          painterRef.current?.setBlockLookup(outcome.blockLookup);
+        }
+        if (outcome.layout) {
+          // Publish to the ref before emitting so layoutComplete handlers that
+          // call folioEditor.getLayout() observe the layout that just completed
+          // (setLayout is async; the ref mirror otherwise only refreshes on the
+          // next render).
+          layoutRef.current = outcome.layout;
+          folioEmitterRef.current.emit("layoutComplete", outcome.layout);
+        }
+      },
+      // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
+      [
+        contentWidth,
+        columns,
+        pageSize,
+        margins,
+        pageGap,
+        zoom,
+        syncCoordinator,
+        headerContent,
+        footerContent,
+        firstPageHeaderContent,
+        firstPageFooterContent,
+        // HF rIds drive which hidden EditorView the pipeline sources from
+        // AND the `data-rid` stamped on each painted slot. Omitting them
+        // from this dep array let an rId swap between byte-identical
+        // HeaderFooter objects reuse a stale runLayoutPipeline closure
+        // and the painter emitted the previous slot's `data-rid` so
+        // clicks routed to the wrong HF view (Codex #487 P2: 23:21).
+        headerContentRId,
+        footerContentRId,
+        firstPageHeaderContentRId,
+        firstPageFooterContentRId,
+        sectionHeaderFooterRefs,
+        _theme,
+        sectionProperties,
+        document,
+        defaultTabStop,
+        styles,
+      ],
+    );
+    const runLayoutPipelineRef = useRef(runLayoutPipeline);
+    runLayoutPipelineRef.current = runLayoutPipeline;
 
-  const flushDocumentChangeNotification = useCallback(() => {
-    if (documentChangeNotifyTimerRef.current !== null) {
-      window.clearTimeout(documentChangeNotifyTimerRef.current);
-      documentChangeNotifyTimerRef.current = null;
+    const folioEditorRef = useRef<FolioEditor | null>(null);
+    if (!folioEditorRef.current) {
+      folioEditorRef.current = createFolioEditor({
+        getEditorApi: () => hiddenPMRef.current,
+        getLayout: () => layoutRef.current,
+        runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
+        emitter: folioEmitterRef.current,
+      });
     }
+    const folioEditor = folioEditorRef.current;
 
-    const newDoc = hiddenPMRef.current?.getDocument();
-    if (newDoc) {
-      onDocumentChangeRef.current?.(newDoc);
-      folioEmitterRef.current.emit("docChange", newDoc);
+    // =========================================================================
+    // Coalesced Layout (rAF throttle)
+    // =========================================================================
+
+    // The "when to lay out" policy (coalesce a typing burst into one pass, with a
+    // latency cap) lives in the framework-agnostic layout scheduler; this adapter
+    // just feeds it transactions and points it at runLayoutPipeline.
+    const layoutSchedulerRef = useRef<LayoutScheduler<EditorState> | null>(null);
+    if (layoutSchedulerRef.current === null) {
+      layoutSchedulerRef.current = createLayoutScheduler<EditorState>({
+        runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
+        debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
+        leadingFrame: true,
+        maxDelayMs: TRANSACTION_LAYOUT_MAX_DELAY_MS,
+        clock: browserClock,
+      });
     }
-  }, []);
+    const documentChangeNotifyTimerRef = useRef<number | null>(null);
 
-  const scheduleDocumentChangeNotification = useCallback(() => {
-    if (documentChangeNotifyTimerRef.current !== null) {
-      window.clearTimeout(documentChangeNotifyTimerRef.current);
-    }
-
-    documentChangeNotifyTimerRef.current = window.setTimeout(() => {
-      documentChangeNotifyTimerRef.current = null;
-      flushDocumentChangeNotification();
-    }, DOCUMENT_CHANGE_NOTIFY_DELAY);
-  }, [flushDocumentChangeNotification]);
-
-  // Thin adapter over the framework-agnostic scheduler. Repeated calls in the
-  // coalescing window merge dirty ranges and paint once for the burst.
-  const scheduleLayout = useCallback((state: EditorState, dirtyRange: DirtyRange | null) => {
-    layoutSchedulerRef.current?.schedule(state, dirtyRange);
-  }, []);
-
-  // Clean up the pending layout pass and the doc-change timer on unmount.
-  useEffect(
-    () => () => {
-      layoutSchedulerRef.current?.dispose();
+    const flushDocumentChangeNotification = useCallback(() => {
       if (documentChangeNotifyTimerRef.current !== null) {
         window.clearTimeout(documentChangeNotifyTimerRef.current);
         documentChangeNotifyTimerRef.current = null;
       }
-    },
-    [],
-  );
 
-  /**
-   * Get caret position using DOM-based measurement.
-   * This uses the browser's text rendering to get precise pixel positions.
-   */
-  const getCaretFromDom = useCallback(
-    (pmPos: number, currentZoom: number = 1): CaretPosition | null => {
-      if (!pagesContainerRef.current) {
-        return null;
+      const newDoc = hiddenPMRef.current?.getDocument();
+      if (newDoc) {
+        onDocumentChangeRef.current?.(newDoc);
+        folioEmitterRef.current.emit("docChange", newDoc);
+      }
+    }, []);
+
+    const scheduleDocumentChangeNotification = useCallback(() => {
+      if (documentChangeNotifyTimerRef.current !== null) {
+        window.clearTimeout(documentChangeNotifyTimerRef.current);
       }
 
-      const overlay = pagesContainerRef.current.parentElement?.querySelector(
-        '[data-testid="selection-overlay"]',
-      );
-      if (!overlay) {
-        return null;
-      }
+      documentChangeNotifyTimerRef.current = window.setTimeout(() => {
+        documentChangeNotifyTimerRef.current = null;
+        flushDocumentChangeNotification();
+      }, DOCUMENT_CHANGE_NOTIFY_DELAY);
+    }, [flushDocumentChangeNotification]);
 
-      const overlayRect = overlay.getBoundingClientRect();
+    // Thin adapter over the framework-agnostic scheduler. Repeated calls in the
+    // coalescing window merge dirty ranges and paint once for the burst.
+    const scheduleLayout = useCallback((state: EditorState, dirtyRange: DirtyRange | null) => {
+      layoutSchedulerRef.current?.schedule(state, dirtyRange);
+    }, []);
 
-      // Find spans with PM position data
-      const spans = findBodyPmSpans(pagesContainerRef.current);
+    // Clean up the pending layout pass and the doc-change timer on unmount.
+    useEffect(
+      () => () => {
+        layoutSchedulerRef.current?.dispose();
+        if (documentChangeNotifyTimerRef.current !== null) {
+          window.clearTimeout(documentChangeNotifyTimerRef.current);
+          documentChangeNotifyTimerRef.current = null;
+        }
+      },
+      [],
+    );
 
-      for (const spanEl of spans) {
-        const pmStart = Number(spanEl.dataset["pmStart"]);
-        const pmEnd = Number(spanEl.dataset["pmEnd"]);
+    /**
+     * Get caret position using DOM-based measurement.
+     * This uses the browser's text rendering to get precise pixel positions.
+     */
+    const getCaretFromDom = useCallback(
+      (pmPos: number, currentZoom: number = 1): CaretPosition | null => {
+        if (!pagesContainerRef.current) {
+          return null;
+        }
 
-        // Special handling for tab spans - use exclusive end to avoid boundary conflicts
-        // Tab at [5,6) means position 6 belongs to the next run, not the tab
-        if (spanEl.classList.contains("layout-run-tab")) {
-          if (pmPos >= pmStart && pmPos < pmEnd) {
+        const overlay = pagesContainerRef.current.parentElement?.querySelector(
+          '[data-testid="selection-overlay"]',
+        );
+        if (!overlay) {
+          return null;
+        }
+
+        const overlayRect = overlay.getBoundingClientRect();
+
+        // Find spans with PM position data
+        const spans = findBodyPmSpans(pagesContainerRef.current);
+
+        for (const spanEl of spans) {
+          const pmStart = Number(spanEl.dataset["pmStart"]);
+          const pmEnd = Number(spanEl.dataset["pmEnd"]);
+
+          // Special handling for tab spans - use exclusive end to avoid boundary conflicts
+          // Tab at [5,6) means position 6 belongs to the next run, not the tab
+          if (spanEl.classList.contains("layout-run-tab")) {
+            if (pmPos >= pmStart && pmPos < pmEnd) {
+              const spanRect = spanEl.getBoundingClientRect();
+              return {
+                x: (spanRect.left - overlayRect.left) / currentZoom,
+                y: (spanRect.top - overlayRect.top) / currentZoom,
+                height: getLineHeight(spanEl),
+                pageIndex: getPageIndex(spanEl),
+              };
+            }
+            continue; // Skip to next span
+          }
+
+          if (spanEl.classList.contains("layout-empty-run") && pmPos >= pmStart && pmPos <= pmEnd) {
             const spanRect = spanEl.getBoundingClientRect();
             return {
               x: (spanRect.left - overlayRect.left) / currentZoom,
               y: (spanRect.top - overlayRect.top) / currentZoom,
+              height: getLineHeight(spanEl, Math.max(16, spanRect.height)),
+              pageIndex: getPageIndex(spanEl),
+            };
+          }
+
+          // For text runs, use inclusive range
+          if (
+            pmPos >= pmStart &&
+            pmPos <= pmEnd &&
+            spanEl.firstChild?.nodeType === Node.TEXT_NODE
+          ) {
+            const textNode = spanEl.firstChild as Text;
+            const charIndex = Math.min(pmPos - pmStart, textNode.length);
+
+            // Create a range at the exact character position
+            const ownerDoc = spanEl.ownerDocument;
+            const range = ownerDoc.createRange();
+            range.setStart(textNode, charIndex);
+            range.setEnd(textNode, charIndex);
+
+            const rangeRect = range.getBoundingClientRect();
+            const spanRect = spanEl.getBoundingClientRect();
+            const useSpanStart =
+              charIndex === 0 || (rangeRect.width === 0 && rangeRect.left < spanRect.left);
+            const caretLeft = useSpanStart ? spanRect.left : rangeRect.left;
+            const caretTop = rangeRect.height > 0 && !useSpanStart ? rangeRect.top : spanRect.top;
+
+            return {
+              x: (caretLeft - overlayRect.left) / currentZoom,
+              y: (caretTop - overlayRect.top) / currentZoom,
               height: getLineHeight(spanEl),
               pageIndex: getPageIndex(spanEl),
             };
           }
-          continue; // Skip to next span
-        }
 
-        if (spanEl.classList.contains("layout-empty-run") && pmPos >= pmStart && pmPos <= pmEnd) {
-          const spanRect = spanEl.getBoundingClientRect();
-          return {
-            x: (spanRect.left - overlayRect.left) / currentZoom,
-            y: (spanRect.top - overlayRect.top) / currentZoom,
-            height: getLineHeight(spanEl, Math.max(16, spanRect.height)),
-            pageIndex: getPageIndex(spanEl),
-          };
-        }
-
-        // For text runs, use inclusive range
-        if (pmPos >= pmStart && pmPos <= pmEnd && spanEl.firstChild?.nodeType === Node.TEXT_NODE) {
-          const textNode = spanEl.firstChild as Text;
-          const charIndex = Math.min(pmPos - pmStart, textNode.length);
-
-          // Create a range at the exact character position
-          const ownerDoc = spanEl.ownerDocument;
-          const range = ownerDoc.createRange();
-          range.setStart(textNode, charIndex);
-          range.setEnd(textNode, charIndex);
-
-          const rangeRect = range.getBoundingClientRect();
-          const spanRect = spanEl.getBoundingClientRect();
-          const useSpanStart =
-            charIndex === 0 || (rangeRect.width === 0 && rangeRect.left < spanRect.left);
-          const caretLeft = useSpanStart ? spanRect.left : rangeRect.left;
-          const caretTop = rangeRect.height > 0 && !useSpanStart ? rangeRect.top : spanRect.top;
-
-          return {
-            x: (caretLeft - overlayRect.left) / currentZoom,
-            y: (caretTop - overlayRect.top) / currentZoom,
-            height: getLineHeight(spanEl),
-            pageIndex: getPageIndex(spanEl),
-          };
-        }
-
-        if (pmPos >= pmStart && pmPos <= pmEnd) {
-          const spanRect = spanEl.getBoundingClientRect();
-          return {
-            x: (spanRect.left - overlayRect.left) / currentZoom,
-            y: (spanRect.top - overlayRect.top) / currentZoom,
-            height: getLineHeight(spanEl, Math.max(16, spanRect.height)),
-            pageIndex: getPageIndex(spanEl),
-          };
-        }
-      }
-
-      // Fallback: try to find position in empty paragraphs (they have empty runs)
-      const emptyRuns = findBodyEmptyRuns(pagesContainerRef.current);
-      for (const emptyRun of emptyRuns) {
-        const paragraph = closestHtmlElement(emptyRun, ".layout-paragraph");
-        if (!paragraph) {
-          continue;
-        }
-        const pmStart = Number(paragraph.dataset["pmStart"]);
-        const pmEnd = Number(paragraph.dataset["pmEnd"]);
-
-        if (pmPos >= pmStart && pmPos <= pmEnd) {
-          const runRect = emptyRun.getBoundingClientRect();
-          return {
-            x: (runRect.left - overlayRect.left) / currentZoom,
-            y: (runRect.top - overlayRect.top) / currentZoom,
-            height: getLineHeight(emptyRun),
-            pageIndex: getPageIndex(paragraph),
-          };
-        }
-      }
-
-      return null;
-    },
-    [],
-  );
-
-  /**
-   * Update selection overlay from PM selection.
-   */
-  const updateSelectionOverlay = useCallback(
-    (state: EditorState) => {
-      const { from, to } = state.selection;
-      const requestSeq = selectionOverlayRequestSeqRef.current + 1;
-      selectionOverlayRequestSeqRef.current = requestSeq;
-      const isCurrentRequest = () => selectionOverlayRequestSeqRef.current === requestSeq;
-
-      // Feed the template-directives overlay the caret head so it can emphasise
-      // the innermost block around it. Gated on there being directives at all,
-      // so a plain (non-template) document pays no extra re-render per keystroke.
-      if (directivesRef.current.length > 0) {
-        setDirectiveCaretPos(state.selection.head);
-      }
-
-      // Always notify selection change (for toolbar sync) even if layout not ready
-      // Use ref to avoid infinite loops when callback is unstable
-      onSelectionChangeRef.current?.(from, to);
-      folioEmitterRef.current.emit("selectionChange", { from, to });
-      // `onSelectionTextChange` carries the resolved text
-      // alongside the range so consumers (anonymisation
-      // term prefill, etc.) don't need to hold a reference
-      // to the editor view themselves. `textBetween` with
-      // a single space for both leaf-block and block
-      // separators collapses table cells, paragraphs, and
-      // inline atoms into a single-line phrase.
-      if (onSelectionTextChangeRef.current) {
-        const text = from === to ? "" : state.doc.textBetween(from, to, " ", " ");
-        onSelectionTextChangeRef.current({ from, to, text });
-      }
-
-      if (suppressSelectionOverlayRef.current) {
-        setCaretPosition(null);
-        setSelectionRects([]);
-        return;
-      }
-
-      // Update visual cell selection highlighting on visible layout table cells
-      if (pagesContainerRef.current) {
-        // Clear previous cell highlighting
-        const prevSelected = pagesContainerRef.current.querySelectorAll(
-          ".layout-table-cell-selected",
-        );
-        for (const el of Array.from(prevSelected)) {
-          el.classList.remove("layout-table-cell-selected");
-        }
-
-        // If CellSelection, highlight the corresponding visible cells
-        // Use duck-typing ($anchorCell) instead of instanceof to avoid bundling issues
-        const sel = state.selection as CellSelection;
-        const isCellSel = "$anchorCell" in sel && typeof sel.forEachCell === "function";
-        if (isCellSel) {
-          // Collect ranges [cellStart, cellEnd) for each selected cell
-          const selectedRanges: [number, number][] = [];
-          sel.forEachCell((node, pos) => {
-            selectedRanges.push([pos, pos + node.nodeSize]);
-          });
-
-          // Find visible layout cells whose pmStart falls inside a selected cell range
-          const allCells = htmlQueryAll(pagesContainerRef.current, ".layout-table-cell");
-          for (const cellEl of allCells) {
-            const pmStartAttr = cellEl.dataset["pmStart"];
-            if (pmStartAttr !== undefined) {
-              const pmPos = Number(pmStartAttr);
-              for (const [start, end] of selectedRanges) {
-                if (pmPos >= start && pmPos < end) {
-                  cellEl.classList.add("layout-table-cell-selected");
-                  break;
-                }
-              }
-            }
+          if (pmPos >= pmStart && pmPos <= pmEnd) {
+            const spanRect = spanEl.getBoundingClientRect();
+            return {
+              x: (spanRect.left - overlayRect.left) / currentZoom,
+              y: (spanRect.top - overlayRect.top) / currentZoom,
+              height: getLineHeight(spanEl, Math.max(16, spanRect.height)),
+              pageIndex: getPageIndex(spanEl),
+            };
           }
         }
-      }
 
-      if (!layout || blocks.length === 0) {
-        return;
-      }
+        // Fallback: try to find position in empty paragraphs (they have empty runs)
+        const emptyRuns = findBodyEmptyRuns(pagesContainerRef.current);
+        for (const emptyRun of emptyRuns) {
+          const paragraph = closestHtmlElement(emptyRun, ".layout-paragraph");
+          if (!paragraph) {
+            continue;
+          }
+          const pmStart = Number(paragraph.dataset["pmStart"]);
+          const pmEnd = Number(paragraph.dataset["pmEnd"]);
 
-      // Collapsed selection - show caret
-      if (from === to) {
-        // Use DOM-based caret positioning for accuracy
-        const domCaret = getCaretFromDom(from, zoom);
-        if (domCaret) {
-          setCaretPosition(domCaret);
-        } else {
-          // Fallback to layout-based calculation if DOM not ready
-          const overlay = pagesContainerRef.current?.parentElement?.querySelector(
-            '[data-testid="selection-overlay"]',
+          if (pmPos >= pmStart && pmPos <= pmEnd) {
+            const runRect = emptyRun.getBoundingClientRect();
+            return {
+              x: (runRect.left - overlayRect.left) / currentZoom,
+              y: (runRect.top - overlayRect.top) / currentZoom,
+              height: getLineHeight(emptyRun),
+              pageIndex: getPageIndex(paragraph),
+            };
+          }
+        }
+
+        return null;
+      },
+      [],
+    );
+
+    /**
+     * Update selection overlay from PM selection.
+     */
+    const updateSelectionOverlay = useCallback(
+      (state: EditorState) => {
+        const { from, to } = state.selection;
+        const requestSeq = selectionOverlayRequestSeqRef.current + 1;
+        selectionOverlayRequestSeqRef.current = requestSeq;
+        const isCurrentRequest = () => selectionOverlayRequestSeqRef.current === requestSeq;
+
+        // Feed the template-directives overlay the caret head so it can emphasise
+        // the innermost block around it. Gated on there being directives at all,
+        // so a plain (non-template) document pays no extra re-render per keystroke.
+        if (directivesRef.current.length > 0) {
+          setDirectiveCaretPos(state.selection.head);
+        }
+
+        // Always notify selection change (for toolbar sync) even if layout not ready
+        // Use ref to avoid infinite loops when callback is unstable
+        onSelectionChangeRef.current?.(from, to);
+        folioEmitterRef.current.emit("selectionChange", { from, to });
+        // `onSelectionTextChange` carries the resolved text
+        // alongside the range so consumers (anonymisation
+        // term prefill, etc.) don't need to hold a reference
+        // to the editor view themselves. `textBetween` with
+        // a single space for both leaf-block and block
+        // separators collapses table cells, paragraphs, and
+        // inline atoms into a single-line phrase.
+        if (onSelectionTextChangeRef.current) {
+          const text = from === to ? "" : state.doc.textBetween(from, to, " ", " ");
+          onSelectionTextChangeRef.current({ from, to, text });
+        }
+
+        if (suppressSelectionOverlayRef.current) {
+          setCaretPosition(null);
+          setSelectionRects([]);
+          return;
+        }
+
+        // Update visual cell selection highlighting on visible layout table cells
+        if (pagesContainerRef.current) {
+          // Clear previous cell highlighting
+          const prevSelected = pagesContainerRef.current.querySelectorAll(
+            ".layout-table-cell-selected",
           );
-          const firstPage = pagesContainerRef.current?.querySelector(".layout-page");
-
-          if (overlay && firstPage) {
-            const overlayRect = overlay.getBoundingClientRect();
-            const pageRect = firstPage.getBoundingClientRect();
-            setCaretPosition(null);
-            void loadSelectionGeometry().then(
-              ({ getCaretPosition }) => {
-                if (!isCurrentRequest()) {
-                  return undefined;
-                }
-
-                const caret = getCaretPosition(layout, blocks, measures, from);
-                if (caret) {
-                  setCaretPosition({
-                    ...caret,
-                    x: caret.x + (pageRect.left - overlayRect.left) / zoom,
-                    y: caret.y + (pageRect.top - overlayRect.top) / zoom,
-                  });
-                } else {
-                  setCaretPosition(null);
-                }
-                return undefined;
-              },
-              () => {
-                if (isCurrentRequest()) {
-                  setCaretPosition(null);
-                }
-                return undefined;
-              },
-            );
-          } else {
-            setCaretPosition(null);
+          for (const el of Array.from(prevSelected)) {
+            el.classList.remove("layout-table-cell-selected");
           }
-        }
-        setSelectionRects([]);
-      } else {
-        // Range selection - show highlight rectangles using DOM-based approach
-        const overlay = pagesContainerRef.current?.parentElement?.querySelector(
-          '[data-testid="selection-overlay"]',
-        );
 
-        if (overlay && pagesContainerRef.current) {
-          const overlayRect = overlay.getBoundingClientRect();
-          const domRects: SelectionRect[] = [];
+          // If CellSelection, highlight the corresponding visible cells
+          // Use duck-typing ($anchorCell) instead of instanceof to avoid bundling issues
+          const sel = state.selection as CellSelection;
+          const isCellSel = "$anchorCell" in sel && typeof sel.forEachCell === "function";
+          if (isCellSel) {
+            // Collect ranges [cellStart, cellEnd) for each selected cell
+            const selectedRanges: [number, number][] = [];
+            sel.forEachCell((node, pos) => {
+              selectedRanges.push([pos, pos + node.nodeSize]);
+            });
 
-          // Find spans that intersect with the selection range
-          const spans = findBodyPmSpans(pagesContainerRef.current);
-
-          for (const spanEl of spans) {
-            const pmStart = Number(spanEl.dataset["pmStart"]);
-            const pmEnd = Number(spanEl.dataset["pmEnd"]);
-
-            // Check if this span overlaps with selection
-            if (pmEnd > from && pmStart < to) {
-              // Special handling for tab spans - highlight the full visual width
-              if (spanEl.classList.contains("layout-run-tab")) {
-                const spanRect = spanEl.getBoundingClientRect();
-                domRects.push({
-                  x: (spanRect.left - overlayRect.left) / zoom,
-                  y: (spanRect.top - overlayRect.top) / zoom,
-                  width: spanRect.width / zoom,
-                  height: spanRect.height / zoom,
-                  pageIndex: getPageIndex(spanEl),
-                });
-                continue;
-              }
-
-              // Find the text node — may be a direct child or inside an <a> for hyperlinks
-              let textNode: Text | null = null;
-              if (spanEl.firstChild?.nodeType === Node.TEXT_NODE) {
-                textNode = spanEl.firstChild as Text;
-              } else if (
-                spanEl.firstChild instanceof HTMLElement &&
-                spanEl.firstChild.tagName === "A" &&
-                spanEl.firstChild.firstChild?.nodeType === Node.TEXT_NODE
-              ) {
-                textNode = spanEl.firstChild.firstChild as Text;
-              }
-              if (!textNode) {
-                continue;
-              }
-              const ownerDoc = spanEl.ownerDocument;
-
-              // Calculate the character range within this span
-              const startChar = Math.max(0, from - pmStart);
-              const endChar = Math.min(textNode.length, to - pmStart);
-
-              if (startChar < endChar) {
-                const range = ownerDoc.createRange();
-                range.setStart(textNode, startChar);
-                range.setEnd(textNode, endChar);
-
-                // Get all client rects for this range (handles line wraps)
-                const clientRects = range.getClientRects();
-                const pageIndex = getPageIndex(spanEl);
-                for (const rect of Array.from(clientRects)) {
-                  domRects.push({
-                    x: (rect.left - overlayRect.left) / zoom,
-                    y: (rect.top - overlayRect.top) / zoom,
-                    width: rect.width / zoom,
-                    height: rect.height / zoom,
-                    pageIndex,
-                  });
+            // Find visible layout cells whose pmStart falls inside a selected cell range
+            const allCells = htmlQueryAll(pagesContainerRef.current, ".layout-table-cell");
+            for (const cellEl of allCells) {
+              const pmStartAttr = cellEl.dataset["pmStart"];
+              if (pmStartAttr !== undefined) {
+                const pmPos = Number(pmStartAttr);
+                for (const [start, end] of selectedRanges) {
+                  if (pmPos >= start && pmPos < end) {
+                    cellEl.classList.add("layout-table-cell-selected");
+                    break;
+                  }
                 }
               }
             }
           }
+        }
 
-          if (domRects.length > 0) {
-            setSelectionRects(domRects);
+        if (!layout || blocks.length === 0) {
+          return;
+        }
+
+        // Collapsed selection - show caret
+        if (from === to) {
+          // Use DOM-based caret positioning for accuracy
+          const domCaret = getCaretFromDom(from, zoom);
+          if (domCaret) {
+            setCaretPosition(domCaret);
           } else {
-            // Fallback to layout-based calculation
-            const firstPage = pagesContainerRef.current.querySelector(".layout-page");
-            if (firstPage) {
+            // Fallback to layout-based calculation if DOM not ready
+            const overlay = pagesContainerRef.current?.parentElement?.querySelector(
+              '[data-testid="selection-overlay"]',
+            );
+            const firstPage = pagesContainerRef.current?.querySelector(".layout-page");
+
+            if (overlay && firstPage) {
+              const overlayRect = overlay.getBoundingClientRect();
               const pageRect = firstPage.getBoundingClientRect();
-              const pageOffsetX = (pageRect.left - overlayRect.left) / zoom;
-              const pageOffsetY = (pageRect.top - overlayRect.top) / zoom;
-              setSelectionRects([]);
+              setCaretPosition(null);
               void loadSelectionGeometry().then(
-                ({ selectionToRects }) => {
+                ({ getCaretPosition }) => {
                   if (!isCurrentRequest()) {
                     return undefined;
                   }
 
-                  const rects = selectionToRects(layout, blocks, measures, from, to);
-                  const adjustedRects = rects.map((rect) => ({
-                    height: rect.height,
-                    pageIndex: rect.pageIndex,
-                    width: rect.width,
-                    x: rect.x + pageOffsetX,
-                    y: rect.y + pageOffsetY,
-                  }));
-                  setSelectionRects(adjustedRects);
+                  const caret = getCaretPosition(layout, blocks, measures, from);
+                  if (caret) {
+                    setCaretPosition({
+                      ...caret,
+                      x: caret.x + (pageRect.left - overlayRect.left) / zoom,
+                      y: caret.y + (pageRect.top - overlayRect.top) / zoom,
+                    });
+                  } else {
+                    setCaretPosition(null);
+                  }
                   return undefined;
                 },
                 () => {
                   if (isCurrentRequest()) {
-                    setSelectionRects([]);
+                    setCaretPosition(null);
                   }
                   return undefined;
                 },
               );
             } else {
-              setSelectionRects([]);
+              setCaretPosition(null);
             }
           }
-        } else {
           setSelectionRects([]);
-        }
-        setCaretPosition(null);
-      }
-    },
-    [layout, blocks, measures, getCaretFromDom, zoom],
-    // NOTE: onSelectionChange removed from dependencies - accessed via ref to prevent infinite loops
-  );
-  const updateSelectionOverlayRef = useRef(updateSelectionOverlay);
-  updateSelectionOverlayRef.current = updateSelectionOverlay;
-
-  // Project anonymization match ranges onto container-space
-  // rectangles. Mirrors the SelectionOverlay flow: prefer real
-  // DOM rects from the painted page spans (correct for indents,
-  // tabs, justified text, line wraps) and fall back to the
-  // layout-coord projection only when the DOM spans aren't
-  // mounted yet (initial paint, off-screen pages). The hidden
-  // ProseMirror's spans are not used — they sit at -9999px and
-  // would yield bogus coordinates.
-  const updateAnonymizationOverlay = useCallback(() => {
-    const requestSeq = anonymizationOverlayRequestSeqRef.current + 1;
-    anonymizationOverlayRequestSeqRef.current = requestSeq;
-    const isCurrentRequest = () => anonymizationOverlayRequestSeqRef.current === requestSeq;
-    const matches = anonymizationMatchesRef.current;
-    if (matches.length === 0) {
-      setAnonymizationRectGroups([]);
-      return;
-    }
-    const pagesContainer = pagesContainerRef.current;
-    if (!pagesContainer) {
-      setAnonymizationRectGroups([]);
-      return;
-    }
-    const overlay = pagesContainer.parentElement?.querySelector(
-      '[data-testid="selection-overlay"]',
-    );
-    const firstPage = pagesContainer.querySelector(".layout-page");
-    if (!overlay || !firstPage) {
-      setAnonymizationRectGroups([]);
-      return;
-    }
-    const overlayRect = overlay.getBoundingClientRect();
-    const pageRect = firstPage.getBoundingClientRect();
-    const pageOffsetX = (pageRect.left - overlayRect.left) / zoom;
-    const pageOffsetY = (pageRect.top - overlayRect.top) / zoom;
-    const pmSpans = findBodyPmSpans(pagesContainer);
-    const layoutFallbackMatches: AnonymizationMatch[] = [];
-
-    const rectsForMatch = (
-      match: AnonymizationMatch,
-      from: number,
-      to: number,
-    ): AnonymizationRectGroup["rects"] => {
-      const domRects: AnonymizationRectGroup["rects"] = [];
-      for (const spanEl of pmSpans) {
-        const pmStart = Number(spanEl.dataset["pmStart"]);
-        const pmEnd = Number(spanEl.dataset["pmEnd"]);
-        if (!(pmEnd > from && pmStart < to)) {
-          continue;
-        }
-        if (spanEl.classList.contains("layout-run-tab")) {
-          const spanRect = spanEl.getBoundingClientRect();
-          domRects.push({
-            x: (spanRect.left - overlayRect.left) / zoom,
-            y: (spanRect.top - overlayRect.top) / zoom,
-            width: spanRect.width / zoom,
-            height: spanRect.height / zoom,
-            pageIndex: getPageIndex(spanEl),
-          });
-          continue;
-        }
-        let textNode: Text | null = null;
-        if (spanEl.firstChild?.nodeType === Node.TEXT_NODE) {
-          textNode = spanEl.firstChild as Text;
-        } else if (
-          spanEl.firstChild instanceof HTMLElement &&
-          spanEl.firstChild.tagName === "A" &&
-          spanEl.firstChild.firstChild?.nodeType === Node.TEXT_NODE
-        ) {
-          textNode = spanEl.firstChild.firstChild as Text;
-        }
-        if (!textNode) {
-          continue;
-        }
-        const ownerDoc = spanEl.ownerDocument;
-        const startChar = Math.max(0, from - pmStart);
-        const endChar = Math.min(textNode.length, to - pmStart);
-        if (startChar >= endChar) {
-          continue;
-        }
-        const range = ownerDoc.createRange();
-        range.setStart(textNode, startChar);
-        range.setEnd(textNode, endChar);
-        const pageIndex = getPageIndex(spanEl);
-        for (const rect of Array.from(range.getClientRects())) {
-          domRects.push({
-            x: (rect.left - overlayRect.left) / zoom,
-            y: (rect.top - overlayRect.top) / zoom,
-            width: rect.width / zoom,
-            height: rect.height / zoom,
-            pageIndex,
-          });
-        }
-      }
-      if (domRects.length > 0) {
-        return domRects;
-      }
-      if (!layout || blocks.length === 0) {
-        return [];
-      }
-      layoutFallbackMatches.push(match);
-      return [];
-    };
-
-    const groups: AnonymizationRectGroup[] = [];
-    for (const match of matches) {
-      const rects = rectsForMatch(match, match.from, match.to);
-      if (rects.length > 0) {
-        groups.push({
-          rects,
-          label: match.label,
-          canonical: match.canonical,
-        });
-      }
-    }
-    setAnonymizationRectGroups(groups);
-
-    if (layoutFallbackMatches.length === 0 || !layout || blocks.length === 0) {
-      return;
-    }
-
-    void loadSelectionGeometry().then(
-      ({ selectionToRects }) => {
-        if (!isCurrentRequest()) {
-          return undefined;
-        }
-
-        const fallbackGroups: AnonymizationRectGroup[] = [];
-        for (const match of layoutFallbackMatches) {
-          const rects = selectionToRects(layout, blocks, measures, match.from, match.to).map(
-            (rect) => ({
-              height: rect.height,
-              pageIndex: rect.pageIndex,
-              width: rect.width,
-              x: rect.x + pageOffsetX,
-              y: rect.y + pageOffsetY,
-            }),
+        } else {
+          // Range selection - show highlight rectangles using DOM-based approach
+          const overlay = pagesContainerRef.current?.parentElement?.querySelector(
+            '[data-testid="selection-overlay"]',
           );
-          if (rects.length > 0) {
-            fallbackGroups.push({
-              rects,
-              label: match.label,
-              canonical: match.canonical,
+
+          if (overlay && pagesContainerRef.current) {
+            const overlayRect = overlay.getBoundingClientRect();
+            const domRects: SelectionRect[] = [];
+
+            // Find spans that intersect with the selection range
+            const spans = findBodyPmSpans(pagesContainerRef.current);
+
+            for (const spanEl of spans) {
+              const pmStart = Number(spanEl.dataset["pmStart"]);
+              const pmEnd = Number(spanEl.dataset["pmEnd"]);
+
+              // Check if this span overlaps with selection
+              if (pmEnd > from && pmStart < to) {
+                // Special handling for tab spans - highlight the full visual width
+                if (spanEl.classList.contains("layout-run-tab")) {
+                  const spanRect = spanEl.getBoundingClientRect();
+                  domRects.push({
+                    x: (spanRect.left - overlayRect.left) / zoom,
+                    y: (spanRect.top - overlayRect.top) / zoom,
+                    width: spanRect.width / zoom,
+                    height: spanRect.height / zoom,
+                    pageIndex: getPageIndex(spanEl),
+                  });
+                  continue;
+                }
+
+                // Find the text node — may be a direct child or inside an <a> for hyperlinks
+                let textNode: Text | null = null;
+                if (spanEl.firstChild?.nodeType === Node.TEXT_NODE) {
+                  textNode = spanEl.firstChild as Text;
+                } else if (
+                  spanEl.firstChild instanceof HTMLElement &&
+                  spanEl.firstChild.tagName === "A" &&
+                  spanEl.firstChild.firstChild?.nodeType === Node.TEXT_NODE
+                ) {
+                  textNode = spanEl.firstChild.firstChild as Text;
+                }
+                if (!textNode) {
+                  continue;
+                }
+                const ownerDoc = spanEl.ownerDocument;
+
+                // Calculate the character range within this span
+                const startChar = Math.max(0, from - pmStart);
+                const endChar = Math.min(textNode.length, to - pmStart);
+
+                if (startChar < endChar) {
+                  const range = ownerDoc.createRange();
+                  range.setStart(textNode, startChar);
+                  range.setEnd(textNode, endChar);
+
+                  // Get all client rects for this range (handles line wraps)
+                  const clientRects = range.getClientRects();
+                  const pageIndex = getPageIndex(spanEl);
+                  for (const rect of Array.from(clientRects)) {
+                    domRects.push({
+                      x: (rect.left - overlayRect.left) / zoom,
+                      y: (rect.top - overlayRect.top) / zoom,
+                      width: rect.width / zoom,
+                      height: rect.height / zoom,
+                      pageIndex,
+                    });
+                  }
+                }
+              }
+            }
+
+            if (domRects.length > 0) {
+              setSelectionRects(domRects);
+            } else {
+              // Fallback to layout-based calculation
+              const firstPage = pagesContainerRef.current.querySelector(".layout-page");
+              if (firstPage) {
+                const pageRect = firstPage.getBoundingClientRect();
+                const pageOffsetX = (pageRect.left - overlayRect.left) / zoom;
+                const pageOffsetY = (pageRect.top - overlayRect.top) / zoom;
+                setSelectionRects([]);
+                void loadSelectionGeometry().then(
+                  ({ selectionToRects }) => {
+                    if (!isCurrentRequest()) {
+                      return undefined;
+                    }
+
+                    const rects = selectionToRects(layout, blocks, measures, from, to);
+                    const adjustedRects = rects.map((rect) => ({
+                      height: rect.height,
+                      pageIndex: rect.pageIndex,
+                      width: rect.width,
+                      x: rect.x + pageOffsetX,
+                      y: rect.y + pageOffsetY,
+                    }));
+                    setSelectionRects(adjustedRects);
+                    return undefined;
+                  },
+                  () => {
+                    if (isCurrentRequest()) {
+                      setSelectionRects([]);
+                    }
+                    return undefined;
+                  },
+                );
+              } else {
+                setSelectionRects([]);
+              }
+            }
+          } else {
+            setSelectionRects([]);
+          }
+          setCaretPosition(null);
+        }
+      },
+      [layout, blocks, measures, getCaretFromDom, zoom],
+      // NOTE: onSelectionChange removed from dependencies - accessed via ref to prevent infinite loops
+    );
+    const updateSelectionOverlayRef = useRef(updateSelectionOverlay);
+    updateSelectionOverlayRef.current = updateSelectionOverlay;
+
+    // Project anonymization match ranges onto container-space
+    // rectangles. Mirrors the SelectionOverlay flow: prefer real
+    // DOM rects from the painted page spans (correct for indents,
+    // tabs, justified text, line wraps) and fall back to the
+    // layout-coord projection only when the DOM spans aren't
+    // mounted yet (initial paint, off-screen pages). The hidden
+    // ProseMirror's spans are not used — they sit at -9999px and
+    // would yield bogus coordinates.
+    const updateAnonymizationOverlay = useCallback(() => {
+      const requestSeq = anonymizationOverlayRequestSeqRef.current + 1;
+      anonymizationOverlayRequestSeqRef.current = requestSeq;
+      const isCurrentRequest = () => anonymizationOverlayRequestSeqRef.current === requestSeq;
+      const matches = anonymizationMatchesRef.current;
+      if (matches.length === 0) {
+        setAnonymizationRectGroups([]);
+        return;
+      }
+      const pagesContainer = pagesContainerRef.current;
+      if (!pagesContainer) {
+        setAnonymizationRectGroups([]);
+        return;
+      }
+      const overlay = pagesContainer.parentElement?.querySelector(
+        '[data-testid="selection-overlay"]',
+      );
+      const firstPage = pagesContainer.querySelector(".layout-page");
+      if (!overlay || !firstPage) {
+        setAnonymizationRectGroups([]);
+        return;
+      }
+      const overlayRect = overlay.getBoundingClientRect();
+      const pageRect = firstPage.getBoundingClientRect();
+      const pageOffsetX = (pageRect.left - overlayRect.left) / zoom;
+      const pageOffsetY = (pageRect.top - overlayRect.top) / zoom;
+      const pmSpans = findBodyPmSpans(pagesContainer);
+      const layoutFallbackMatches: AnonymizationMatch[] = [];
+
+      const rectsForMatch = (
+        match: AnonymizationMatch,
+        from: number,
+        to: number,
+      ): AnonymizationRectGroup["rects"] => {
+        const domRects: AnonymizationRectGroup["rects"] = [];
+        for (const spanEl of pmSpans) {
+          const pmStart = Number(spanEl.dataset["pmStart"]);
+          const pmEnd = Number(spanEl.dataset["pmEnd"]);
+          if (!(pmEnd > from && pmStart < to)) {
+            continue;
+          }
+          if (spanEl.classList.contains("layout-run-tab")) {
+            const spanRect = spanEl.getBoundingClientRect();
+            domRects.push({
+              x: (spanRect.left - overlayRect.left) / zoom,
+              y: (spanRect.top - overlayRect.top) / zoom,
+              width: spanRect.width / zoom,
+              height: spanRect.height / zoom,
+              pageIndex: getPageIndex(spanEl),
+            });
+            continue;
+          }
+          let textNode: Text | null = null;
+          if (spanEl.firstChild?.nodeType === Node.TEXT_NODE) {
+            textNode = spanEl.firstChild as Text;
+          } else if (
+            spanEl.firstChild instanceof HTMLElement &&
+            spanEl.firstChild.tagName === "A" &&
+            spanEl.firstChild.firstChild?.nodeType === Node.TEXT_NODE
+          ) {
+            textNode = spanEl.firstChild.firstChild as Text;
+          }
+          if (!textNode) {
+            continue;
+          }
+          const ownerDoc = spanEl.ownerDocument;
+          const startChar = Math.max(0, from - pmStart);
+          const endChar = Math.min(textNode.length, to - pmStart);
+          if (startChar >= endChar) {
+            continue;
+          }
+          const range = ownerDoc.createRange();
+          range.setStart(textNode, startChar);
+          range.setEnd(textNode, endChar);
+          const pageIndex = getPageIndex(spanEl);
+          for (const rect of Array.from(range.getClientRects())) {
+            domRects.push({
+              x: (rect.left - overlayRect.left) / zoom,
+              y: (rect.top - overlayRect.top) / zoom,
+              width: rect.width / zoom,
+              height: rect.height / zoom,
+              pageIndex,
             });
           }
         }
-
-        if (fallbackGroups.length > 0 && isCurrentRequest()) {
-          setAnonymizationRectGroups([...groups, ...fallbackGroups]);
+        if (domRects.length > 0) {
+          return domRects;
         }
-        return undefined;
-      },
-      () => undefined,
-    );
-  }, [layout, blocks, measures, zoom]);
-
-  // Project the autocomplete suggestion's anchor onto container
-  // coordinates so {@link AutocompleteCaretOverlay} can paint the
-  // ghost text at the cursor's pixel position. Pulls from the
-  // ref so this can run from a transaction handler without
-  // re-creating callbacks per render.
-  const updateAutocompleteOverlay = useCallback(() => {
-    const requestSeq = autocompleteOverlayRequestSeqRef.current + 1;
-    autocompleteOverlayRequestSeqRef.current = requestSeq;
-    const current = autocompleteSuggestionRef.current;
-    const isCurrentRequest = () =>
-      autocompleteOverlayRequestSeqRef.current === requestSeq &&
-      autocompleteSuggestionRef.current === current &&
-      current.status !== "idle" &&
-      current.text.length > 0;
-
-    if (current.status === "idle" || current.text.length === 0) {
-      setAutocompleteCaret(null);
-      setAutocompleteText("");
-      setAutocompleteIsStreaming(false);
-      return;
-    }
-    if (!layout || blocks.length === 0) {
-      return;
-    }
-    const anchor = current.anchor;
-    // Caret geometry is in the lazily-loaded selection-geometry chunk (kept out
-    // of the initial Folio bundle), so resolve it the same way the selection
-    // and anchor-position overlays do.
-    void loadSelectionGeometry().then(
-      ({ getCaretPosition }) => {
-        if (!isCurrentRequest()) {
-          return undefined;
+        if (!layout || blocks.length === 0) {
+          return [];
         }
+        layoutFallbackMatches.push(match);
+        return [];
+      };
 
-        const caret = getCaretPosition(layout, blocks, measures, anchor);
-        if (!isCurrentRequest()) {
-          return undefined;
+      const groups: AnonymizationRectGroup[] = [];
+      for (const match of matches) {
+        const rects = rectsForMatch(match, match.from, match.to);
+        if (rects.length > 0) {
+          groups.push({
+            rects,
+            label: match.label,
+            canonical: match.canonical,
+          });
         }
-
-        if (caret === null) {
-          setAutocompleteCaret(null);
-          return undefined;
-        }
-        const pagesContainer = pagesContainerRef.current;
-        const overlay = pagesContainer?.parentElement?.querySelector(
-          '[data-testid="selection-overlay"]',
-        );
-        const firstPage = pagesContainer?.querySelector(".layout-page");
-        if (!overlay || !firstPage) {
-          setAutocompleteCaret(null);
-          return undefined;
-        }
-        const overlayRect = overlay.getBoundingClientRect();
-        const pageRect = firstPage.getBoundingClientRect();
-        const pageOffsetX = (pageRect.left - overlayRect.left) / zoom;
-        const pageOffsetY = (pageRect.top - overlayRect.top) / zoom;
-        if (!isCurrentRequest()) {
-          return undefined;
-        }
-
-        // Bound the ghost text to the caret's page content column so a
-        // multi-line suggestion wraps inside the page instead of running
-        // off the right edge. `caret.x` is page-left relative (same origin
-        // as the page geometry), so the right content boundary is
-        // `size.w - margins.right`; `pageOffsetX` cancels between the two.
-        const caretPage = layout.pages.at(caret.pageIndex);
-        const maxWidth = caretPage
-          ? Math.max(
-              AUTOCOMPLETE_GHOST_MIN_WIDTH,
-              caretPage.size.w - caretPage.margins.right - caret.x,
-            )
-          : undefined;
-
-        setAutocompleteCaret({
-          x: caret.x + pageOffsetX,
-          y: caret.y + pageOffsetY,
-          lineHeight: caret.height,
-          maxWidth,
-        });
-        setAutocompleteText(current.text);
-        setAutocompleteIsStreaming(current.status === "streaming");
-        return undefined;
-      },
-      () => undefined,
-    );
-  }, [layout, blocks, measures, zoom]);
-
-  // Project template-directive ranges (kept in sync by the
-  // templateDirectives plugin) onto container-space rects. Shares
-  // the projection pipeline with anonymization via
-  // `projectRangesToRects`.
-  const updateDirectivesOverlay = useCallback(() => {
-    const requestSeq = directivesOverlayRequestSeqRef.current + 1;
-    directivesOverlayRequestSeqRef.current = requestSeq;
-    // A marker with an active fill-preview value already reads as filled
-    // (orange substituted run); suppress its blue marker tint so filled and
-    // to-be-filled markers are visually disjoint.
-    const previewedStarts = new Set(templatePreviewRef.current.entries.map((entry) => entry.from));
-    const ranges = directivesRef.current.filter(
-      (range) => !(range.kind === "placeholder" && previewedStarts.has(range.from)),
-    );
-    const pagesContainer = pagesContainerRef.current;
-    if (ranges.length === 0 || !pagesContainer) {
-      setDirectiveRectGroups([]);
-      setDirectiveGutter(null);
-      return;
-    }
-    setDirectiveGutter(measureDirectiveGutter(pagesContainer, zoom));
-    void (async () => {
-      const projected = await projectRangesToRects(ranges, {
-        pagesContainer,
-        zoom,
-        layout,
-        blocks,
-        measures,
-      });
-      if (directivesOverlayRequestSeqRef.current === requestSeq) {
-        setDirectiveRectGroups(projected);
       }
-    })();
-  }, [layout, blocks, measures, zoom]);
+      setAnonymizationRectGroups(groups);
 
-  // Project pending AI suggestions (kept in sync by the
-  // aiSuggestionDecorations plugin) onto container-space rects: dotted
-  // severity underlines, plus the focused suggestion's in-text diff
-  // (struck-through original + adjacent replacement text).
-  const updateAISuggestionsOverlay = useCallback(() => {
-    const requestSeq = aiSuggestionsOverlayRequestSeqRef.current + 1;
-    aiSuggestionsOverlayRequestSeqRef.current = requestSeq;
-    const { suggestions, focusedId } = aiSuggestionsRef.current;
-    const pending = suggestions.filter(
-      (suggestion) =>
-        suggestion.status === "pending" &&
-        suggestion.range.from >= 0 &&
-        suggestion.range.to > suggestion.range.from,
-    );
-    const pagesContainer = pagesContainerRef.current;
-    if (pending.length === 0 || !pagesContainer) {
-      setAiSuggestionRectGroups((prev) => (prev.length === 0 ? prev : []));
-      return;
-    }
-    void (async () => {
-      const projected = await projectRangesToRects(
-        pending.map((suggestion) => ({
-          from: suggestion.range.from,
-          to: suggestion.range.to,
-          suggestion,
-        })),
-        { pagesContainer, zoom, layout, blocks, measures },
-      );
-      if (aiSuggestionsOverlayRequestSeqRef.current !== requestSeq) {
+      if (layoutFallbackMatches.length === 0 || !layout || blocks.length === 0) {
         return;
       }
-      const focused = projected.find(({ range }) => range.suggestion.id === focusedId);
-      const fonts = collectRunFontsAtPmPositions(
-        pagesContainer,
-        focused ? [focused.range.from] : [],
-      );
-      setAiSuggestionRectGroups(
-        projected.map(({ range, rects }) => ({
-          suggestion: range.suggestion,
-          rects,
-          focused: range.suggestion.id === focusedId,
-          font: range.suggestion.id === focusedId ? (fonts.get(range.from) ?? null) : null,
-        })),
-      );
-    })();
-  }, [layout, blocks, measures, zoom]);
 
-  const hideSelectionOverlayDuringInput = useCallback(
-    (state: EditorState) => {
-      selectionOverlayRequestSeqRef.current += 1;
-      suppressSelectionOverlayRef.current = true;
-      setCaretPosition(null);
-      setSelectionRects([]);
+      void loadSelectionGeometry().then(
+        ({ selectionToRects }) => {
+          if (!isCurrentRequest()) {
+            return undefined;
+          }
 
-      if (revealSelectionOverlayTimerRef.current !== null) {
-        window.clearTimeout(revealSelectionOverlayTimerRef.current);
-      }
-
-      revealSelectionOverlayTimerRef.current = window.setTimeout(() => {
-        revealSelectionOverlayTimerRef.current = null;
-        suppressSelectionOverlayRef.current = false;
-        updateSelectionOverlay(hiddenPMRef.current?.getState() ?? state);
-      }, SELECTION_REVEAL_AFTER_INPUT_DELAY);
-    },
-    [updateSelectionOverlay],
-  );
-
-  useEffect(
-    () => () => {
-      if (revealSelectionOverlayTimerRef.current !== null) {
-        window.clearTimeout(revealSelectionOverlayTimerRef.current);
-        revealSelectionOverlayTimerRef.current = null;
-      }
-    },
-    [],
-  );
-
-  // =========================================================================
-  // Event Handlers
-  // =========================================================================
-
-  /**
-   * Handle PM transaction - re-layout on content/selection change.
-   */
-  const handleTransaction = useCallback(
-    (transaction: Transaction, newState: EditorState) => {
-      // Keep the anonymization match list mirrored in a ref so the
-      // overlay recompute reads the latest set without depending on
-      // a state setter inside its useCallback closure. We pull off
-      // the plugin's state on every transaction; if the matches
-      // identity changes (term meta or doc edit), schedule a paint.
-      const nextMatches = anonymizationDecorationsKey.getState(newState)?.matches ?? [];
-      const matchesChanged = nextMatches !== anonymizationMatchesRef.current;
-      anonymizationMatchesRef.current = nextMatches;
-      if (matchesChanged) {
-        updateAnonymizationOverlay();
-      }
-
-      // Same pattern for the inline autocomplete suggestion: keep
-      // the ref in sync with every transaction, repaint the
-      // ghost-text overlay when the suggestion changes (token
-      // arrival, accept, dismiss, doc-edit invalidation).
-      const nextSuggestion =
-        autocompleteSuggestionKey.getState(newState)?.suggestion ??
-        autocompleteSuggestionRef.current;
-      if (nextSuggestion !== autocompleteSuggestionRef.current) {
-        autocompleteSuggestionRef.current = nextSuggestion;
-        updateAutocompleteOverlay();
-      }
-
-      const nextDirectives = templateDirectivesKey.getState(newState)?.ranges ?? [];
-      if (nextDirectives !== directivesRef.current) {
-        directivesRef.current = nextDirectives;
-        // On a doc edit the layout is about to reflow; projecting now places
-        // the new ranges against the stale (pre-reflow) layout, so the marker
-        // highlights jitter sideways for a frame. Defer to the post-layout
-        // effect (keyed on `updateDirectivesOverlay`), which re-projects against
-        // the settled layout — the same deferral the selection overlay uses.
-        // Only project inline when ranges change without a doc change (no
-        // reflow pending, so the current layout is already correct).
-        if (!transaction.docChanged) {
-          updateDirectivesOverlay();
-        }
-      }
-
-      // Template fill preview: the substituted values are part of the flow
-      // blocks the painter lays out, so a preview change must re-run the
-      // layout pipeline (doc edits already do via scheduleLayout below).
-      // Value edits invalidate just the affected marker ranges so the
-      // incremental measure path can skip untouched blocks; a mode toggle
-      // restyles every substituted run, so it takes the full pass.
-      const nextPreviewState = templatePreviewValuesKey.getState(newState);
-      const nextPreviewEntries = nextPreviewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES;
-      const nextPreviewMode = nextPreviewState?.preview?.mode ?? "plain";
-      if (
-        nextPreviewEntries !== templatePreviewRef.current.entries ||
-        nextPreviewMode !== templatePreviewRef.current.mode
-      ) {
-        const previousPreview = templatePreviewRef.current;
-        templatePreviewRef.current = {
-          entries: nextPreviewEntries,
-          mode: nextPreviewMode,
-        };
-        if (!transaction.docChanged) {
-          if (nextPreviewMode !== previousPreview.mode) {
-            scheduleLayout(newState, null);
-          } else {
-            const previewDirty = templatePreviewDirtyRange(
-              previousPreview.entries,
-              nextPreviewEntries,
+          const fallbackGroups: AnonymizationRectGroup[] = [];
+          for (const match of layoutFallbackMatches) {
+            const rects = selectionToRects(layout, blocks, measures, match.from, match.to).map(
+              (rect) => ({
+                height: rect.height,
+                pageIndex: rect.pageIndex,
+                width: rect.width,
+                x: rect.x + pageOffsetX,
+                y: rect.y + pageOffsetY,
+              }),
             );
-            if (previewDirty) {
-              scheduleLayout(newState, previewDirty);
+            if (rects.length > 0) {
+              fallbackGroups.push({
+                rects,
+                label: match.label,
+                canonical: match.canonical,
+              });
+            }
+          }
+
+          if (fallbackGroups.length > 0 && isCurrentRequest()) {
+            setAnonymizationRectGroups([...groups, ...fallbackGroups]);
+          }
+          return undefined;
+        },
+        () => undefined,
+      );
+    }, [layout, blocks, measures, zoom]);
+
+    // Project the autocomplete suggestion's anchor onto container
+    // coordinates so {@link AutocompleteCaretOverlay} can paint the
+    // ghost text at the cursor's pixel position. Pulls from the
+    // ref so this can run from a transaction handler without
+    // re-creating callbacks per render.
+    const updateAutocompleteOverlay = useCallback(() => {
+      const requestSeq = autocompleteOverlayRequestSeqRef.current + 1;
+      autocompleteOverlayRequestSeqRef.current = requestSeq;
+      const current = autocompleteSuggestionRef.current;
+      const isCurrentRequest = () =>
+        autocompleteOverlayRequestSeqRef.current === requestSeq &&
+        autocompleteSuggestionRef.current === current &&
+        current.status !== "idle" &&
+        current.text.length > 0;
+
+      if (current.status === "idle" || current.text.length === 0) {
+        setAutocompleteCaret(null);
+        setAutocompleteText("");
+        setAutocompleteIsStreaming(false);
+        return;
+      }
+      if (!layout || blocks.length === 0) {
+        return;
+      }
+      const anchor = current.anchor;
+      // Caret geometry is in the lazily-loaded selection-geometry chunk (kept out
+      // of the initial Folio bundle), so resolve it the same way the selection
+      // and anchor-position overlays do.
+      void loadSelectionGeometry().then(
+        ({ getCaretPosition }) => {
+          if (!isCurrentRequest()) {
+            return undefined;
+          }
+
+          const caret = getCaretPosition(layout, blocks, measures, anchor);
+          if (!isCurrentRequest()) {
+            return undefined;
+          }
+
+          if (caret === null) {
+            setAutocompleteCaret(null);
+            return undefined;
+          }
+          const pagesContainer = pagesContainerRef.current;
+          const overlay = pagesContainer?.parentElement?.querySelector(
+            '[data-testid="selection-overlay"]',
+          );
+          const firstPage = pagesContainer?.querySelector(".layout-page");
+          if (!overlay || !firstPage) {
+            setAutocompleteCaret(null);
+            return undefined;
+          }
+          const overlayRect = overlay.getBoundingClientRect();
+          const pageRect = firstPage.getBoundingClientRect();
+          const pageOffsetX = (pageRect.left - overlayRect.left) / zoom;
+          const pageOffsetY = (pageRect.top - overlayRect.top) / zoom;
+          if (!isCurrentRequest()) {
+            return undefined;
+          }
+
+          // Bound the ghost text to the caret's page content column so a
+          // multi-line suggestion wraps inside the page instead of running
+          // off the right edge. `caret.x` is page-left relative (same origin
+          // as the page geometry), so the right content boundary is
+          // `size.w - margins.right`; `pageOffsetX` cancels between the two.
+          const caretPage = layout.pages.at(caret.pageIndex);
+          const maxWidth = caretPage
+            ? Math.max(
+                AUTOCOMPLETE_GHOST_MIN_WIDTH,
+                caretPage.size.w - caretPage.margins.right - caret.x,
+              )
+            : undefined;
+
+          setAutocompleteCaret({
+            x: caret.x + pageOffsetX,
+            y: caret.y + pageOffsetY,
+            lineHeight: caret.height,
+            maxWidth,
+          });
+          setAutocompleteText(current.text);
+          setAutocompleteIsStreaming(current.status === "streaming");
+          return undefined;
+        },
+        () => undefined,
+      );
+    }, [layout, blocks, measures, zoom]);
+
+    // Project template-directive ranges (kept in sync by the
+    // templateDirectives plugin) onto container-space rects. Shares
+    // the projection pipeline with anonymization via
+    // `projectRangesToRects`.
+    const updateDirectivesOverlay = useCallback(() => {
+      const requestSeq = directivesOverlayRequestSeqRef.current + 1;
+      directivesOverlayRequestSeqRef.current = requestSeq;
+      // A marker with an active fill-preview value already reads as filled
+      // (orange substituted run); suppress its blue marker tint so filled and
+      // to-be-filled markers are visually disjoint.
+      const previewedStarts = new Set(
+        templatePreviewRef.current.entries.map((entry) => entry.from),
+      );
+      const ranges = directivesRef.current.filter(
+        (range) => !(range.kind === "placeholder" && previewedStarts.has(range.from)),
+      );
+      const pagesContainer = pagesContainerRef.current;
+      if (ranges.length === 0 || !pagesContainer) {
+        setDirectiveRectGroups([]);
+        setDirectiveGutter(null);
+        return;
+      }
+      setDirectiveGutter(measureDirectiveGutter(pagesContainer, zoom));
+      void (async () => {
+        const projected = await projectRangesToRects(ranges, {
+          pagesContainer,
+          zoom,
+          layout,
+          blocks,
+          measures,
+        });
+        if (directivesOverlayRequestSeqRef.current === requestSeq) {
+          setDirectiveRectGroups(projected);
+        }
+      })();
+    }, [layout, blocks, measures, zoom]);
+
+    // Project pending AI suggestions (kept in sync by the
+    // aiSuggestionDecorations plugin) onto container-space rects: dotted
+    // severity underlines, plus the focused suggestion's in-text diff
+    // (struck-through original + adjacent replacement text).
+    const updateAISuggestionsOverlay = useCallback(() => {
+      const requestSeq = aiSuggestionsOverlayRequestSeqRef.current + 1;
+      aiSuggestionsOverlayRequestSeqRef.current = requestSeq;
+      const { suggestions, focusedId } = aiSuggestionsRef.current;
+      const pending = suggestions.filter(
+        (suggestion) =>
+          suggestion.status === "pending" &&
+          suggestion.range.from >= 0 &&
+          suggestion.range.to > suggestion.range.from,
+      );
+      const pagesContainer = pagesContainerRef.current;
+      if (pending.length === 0 || !pagesContainer) {
+        setAiSuggestionRectGroups((prev) => (prev.length === 0 ? prev : []));
+        return;
+      }
+      void (async () => {
+        const projected = await projectRangesToRects(
+          pending.map((suggestion) => ({
+            from: suggestion.range.from,
+            to: suggestion.range.to,
+            suggestion,
+          })),
+          { pagesContainer, zoom, layout, blocks, measures },
+        );
+        if (aiSuggestionsOverlayRequestSeqRef.current !== requestSeq) {
+          return;
+        }
+        const focused = projected.find(({ range }) => range.suggestion.id === focusedId);
+        const fonts = collectRunFontsAtPmPositions(
+          pagesContainer,
+          focused ? [focused.range.from] : [],
+        );
+        setAiSuggestionRectGroups(
+          projected.map(({ range, rects }) => ({
+            suggestion: range.suggestion,
+            rects,
+            focused: range.suggestion.id === focusedId,
+            font: range.suggestion.id === focusedId ? (fonts.get(range.from) ?? null) : null,
+          })),
+        );
+      })();
+    }, [layout, blocks, measures, zoom]);
+
+    const hideSelectionOverlayDuringInput = useCallback(
+      (state: EditorState) => {
+        selectionOverlayRequestSeqRef.current += 1;
+        suppressSelectionOverlayRef.current = true;
+        setCaretPosition(null);
+        setSelectionRects([]);
+
+        if (revealSelectionOverlayTimerRef.current !== null) {
+          window.clearTimeout(revealSelectionOverlayTimerRef.current);
+        }
+
+        revealSelectionOverlayTimerRef.current = window.setTimeout(() => {
+          revealSelectionOverlayTimerRef.current = null;
+          suppressSelectionOverlayRef.current = false;
+          updateSelectionOverlay(hiddenPMRef.current?.getState() ?? state);
+        }, SELECTION_REVEAL_AFTER_INPUT_DELAY);
+      },
+      [updateSelectionOverlay],
+    );
+
+    useEffect(
+      () => () => {
+        if (revealSelectionOverlayTimerRef.current !== null) {
+          window.clearTimeout(revealSelectionOverlayTimerRef.current);
+          revealSelectionOverlayTimerRef.current = null;
+        }
+      },
+      [],
+    );
+
+    // =========================================================================
+    // Event Handlers
+    // =========================================================================
+
+    /**
+     * Handle PM transaction - re-layout on content/selection change.
+     */
+    const handleTransaction = useCallback(
+      (transaction: Transaction, newState: EditorState) => {
+        // Keep the anonymization match list mirrored in a ref so the
+        // overlay recompute reads the latest set without depending on
+        // a state setter inside its useCallback closure. We pull off
+        // the plugin's state on every transaction; if the matches
+        // identity changes (term meta or doc edit), schedule a paint.
+        const nextMatches = anonymizationDecorationsKey.getState(newState)?.matches ?? [];
+        const matchesChanged = nextMatches !== anonymizationMatchesRef.current;
+        anonymizationMatchesRef.current = nextMatches;
+        if (matchesChanged) {
+          updateAnonymizationOverlay();
+        }
+
+        // Same pattern for the inline autocomplete suggestion: keep
+        // the ref in sync with every transaction, repaint the
+        // ghost-text overlay when the suggestion changes (token
+        // arrival, accept, dismiss, doc-edit invalidation).
+        const nextSuggestion =
+          autocompleteSuggestionKey.getState(newState)?.suggestion ??
+          autocompleteSuggestionRef.current;
+        if (nextSuggestion !== autocompleteSuggestionRef.current) {
+          autocompleteSuggestionRef.current = nextSuggestion;
+          updateAutocompleteOverlay();
+        }
+
+        const nextDirectives = templateDirectivesKey.getState(newState)?.ranges ?? [];
+        if (nextDirectives !== directivesRef.current) {
+          directivesRef.current = nextDirectives;
+          // On a doc edit the layout is about to reflow; projecting now places
+          // the new ranges against the stale (pre-reflow) layout, so the marker
+          // highlights jitter sideways for a frame. Defer to the post-layout
+          // effect (keyed on `updateDirectivesOverlay`), which re-projects against
+          // the settled layout — the same deferral the selection overlay uses.
+          // Only project inline when ranges change without a doc change (no
+          // reflow pending, so the current layout is already correct).
+          if (!transaction.docChanged) {
+            updateDirectivesOverlay();
+          }
+        }
+
+        // Template fill preview: the substituted values are part of the flow
+        // blocks the painter lays out, so a preview change must re-run the
+        // layout pipeline (doc edits already do via scheduleLayout below).
+        // Value edits invalidate just the affected marker ranges so the
+        // incremental measure path can skip untouched blocks; a mode toggle
+        // restyles every substituted run, so it takes the full pass.
+        const nextPreviewState = templatePreviewValuesKey.getState(newState);
+        const nextPreviewEntries = nextPreviewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES;
+        const nextPreviewMode = nextPreviewState?.preview?.mode ?? "plain";
+        if (
+          nextPreviewEntries !== templatePreviewRef.current.entries ||
+          nextPreviewMode !== templatePreviewRef.current.mode
+        ) {
+          const previousPreview = templatePreviewRef.current;
+          templatePreviewRef.current = {
+            entries: nextPreviewEntries,
+            mode: nextPreviewMode,
+          };
+          if (!transaction.docChanged) {
+            if (nextPreviewMode !== previousPreview.mode) {
+              scheduleLayout(newState, null);
+            } else {
+              const previewDirty = templatePreviewDirtyRange(
+                previousPreview.entries,
+                nextPreviewEntries,
+              );
+              if (previewDirty) {
+                scheduleLayout(newState, previewDirty);
+              }
             }
           }
         }
-      }
 
-      // AI suggestions: the plugin remaps its ranges through doc edits,
-      // so the ref always holds projectable positions.
-      const nextAiState = aiSuggestionDecorationsKey.getState(newState);
-      const nextAiSuggestions = nextAiState?.suggestions ?? EMPTY_AI_SUGGESTIONS;
-      const nextAiFocusedId = nextAiState?.focusedId ?? null;
-      if (
-        nextAiSuggestions !== aiSuggestionsRef.current.suggestions ||
-        nextAiFocusedId !== aiSuggestionsRef.current.focusedId
-      ) {
-        aiSuggestionsRef.current = {
-          suggestions: nextAiSuggestions,
-          focusedId: nextAiFocusedId,
-        };
-        if (!transaction.docChanged) {
-          updateAISuggestionsOverlay();
-        }
-      }
-
-      if (transaction.docChanged) {
-        // Increment state sequence to signal document changed
-        syncCoordinator.incrementStateSeq();
-
-        hideSelectionOverlayDuringInput(newState);
-
-        // Content changed - schedule layout (coalesced via rAF)
-        scheduleLayout(newState, getTransactionDirtyRange(transaction));
-
-        // Convert back to the Folio document model off the keypress path.
-        scheduleDocumentChangeNotification();
-      }
-
-      // Request selection update (will only execute when layout is current)
-      syncCoordinator.requestRender();
-
-      // Only update selection overlay immediately for non-doc-changing transactions
-      // (e.g. arrow keys, clicks). For doc changes, the overlay will be updated
-      // after layout completes via the useEffect([layout]) hook, avoiding cursor
-      // flicker from stale DOM positions.
-      if (!transaction.docChanged) {
-        updateSelectionOverlay(newState);
-      }
-    },
-    [
-      scheduleLayout,
-      scheduleDocumentChangeNotification,
-      hideSelectionOverlayDuringInput,
-      updateSelectionOverlay,
-      updateAnonymizationOverlay,
-      updateAutocompleteOverlay,
-      updateDirectivesOverlay,
-      updateAISuggestionsOverlay,
-      syncCoordinator,
-    ],
-    // NOTE: onDocumentChange removed from dependencies - accessed via ref to prevent infinite loops
-  );
-
-  /**
-   * Handle a transaction on a persistent hidden HF EditorView.
-   *
-   * Two responsibilities:
-   *   1. Mirror the PM doc back into `Document.package.headers/footers[rId].content`
-   *      so the existing save path (which reads `hf.content`) ships the latest
-   *      HF content. Mutating in place matches upstream's pattern and avoids
-   *      churning history on every keystroke (the persistent PM is the
-   *      source of truth while loaded — same model the body PM uses).
-   *   2. Re-run the layout pipeline so the painter repaints with the new
-   *      HF blocks. We reuse the body PM's current state as the layout
-   *      input because `scheduleLayout` derives body blocks from that
-   *      state; the HF blocks are pulled from the HF PM via
-   *      `renderHfFromContentOrPm` on the next layout tick.
-   */
-  const [hfCaretSelection, setHfCaretSelection] = useState<HfCaretSelection | null>(null);
-  // Page number (1-indexed) of the painted slot the user most recently
-  // clicked / dispatched into. Persisted across HF PM transactions so
-  // typing after a click on page 5 keeps the caret on page 5 — without
-  // this, the painter would scope the caret to whichever painted instance
-  // of the rId the lookup found first (page 1) on every subsequent
-  // selection update (Codex #487 P2: 21:28).
-  const activeHfPageNumberRef = useRef<number | null>(null);
-
-  const handleHfPmTransaction = useCallback(
-    (
-      rId: string,
-      kind: "header" | "footer",
-      view: EditorView,
-      docChanged: boolean,
-      selectionChanged: boolean,
-    ) => {
-      // HiddenHeaderFooterPMs writes the new blocks into
-      // package.headers/footers[rId].content in place inside its own
-      // dispatchTransaction, so we only need to nudge the layout pipeline
-      // and update HF caret + toolbar state here.
-      if (docChanged) {
-        // The body HiddenProseMirror view may still be deferred when the
-        // user enters HF editing first (a doc opened without
-        // collaboration that hasn't been clicked into yet). The HF PMs
-        // are mounted unconditionally so an HF transaction can fire
-        // before any body view exists; without a bodyState
-        // `scheduleLayout` was a no-op and the painter never repainted
-        // the in-flight HF edit (Codex #487 P1: 21:59 review). Use the
-        // precomputed initial state when present, otherwise force-create
-        // the view via `ensureHiddenEditorView` so the next read returns
-        // a state.
-        let bodyState = hiddenPMRef.current?.getState();
-        if (!bodyState && precomputedInitialStateRef.current) {
-          bodyState = precomputedInitialStateRef.current;
-        }
-        if (!bodyState) {
-          ensureHiddenEditorView({ sync: true });
-          bodyState = hiddenPMRef.current?.getState();
-        }
-        if (bodyState) {
-          scheduleLayout(bodyState, null);
-        }
-      }
-      if (docChanged || selectionChanged) {
-        const { from, to } = view.state.selection;
-        const pageNumber = activeHfPageNumberRef.current;
-        setHfCaretSelection({
-          rId,
-          kind,
-          from,
-          to,
-          ...(pageNumber !== null ? { pageNumber } : {}),
-        });
-        // Fan the HF PM selection out the same channel the body PM uses
-        // (DocxEditor's onSelectionChange handler then re-reads the
-        // active view via getActiveEditorView and re-syncs FormattingBar
-        // / context state to the HF surface). Without this the toolbar
-        // would freeze on the previous body selection while its actions
-        // dispatch on the HF view.
-        onSelectionChangeRef.current?.(from, to);
-        folioEmitterRef.current.emit("selectionChange", { from, to });
-      }
-    },
-    [scheduleLayout, ensureHiddenEditorView],
-  );
-
-  // Clear HF caret state + cross-surface drag state on any hfEditMode
-  // transition. Without this, dragAnchorRef leftover from the previous
-  // surface lets a Shift-click resolve an anchor in the wrong PM
-  // (e.g. body anchor used as the HF range start, or vice versa) and
-  // produces a nonsense selection.
-  useEffect(() => {
-    if (!hfEditMode) {
-      setHfCaretSelection(null);
-    }
-    dragAnchorRef.current = null;
-    activeHfDragSurfaceRef.current = null;
-    activeHfPageNumberRef.current = null;
-  }, [hfEditMode]);
-
-  /**
-   * Handle selection change from PM.
-   */
-  const handleSelectionChange = useCallback(
-    (state: EditorState) => {
-      // Check if this is an image node selection - suppress text overlay if so
-      const { selection } = state;
-      if (selection instanceof NodeSelection && selection.node.type.name === "image") {
-        // Suppress text selection overlay for image selections
-        setSelectionRects([]);
-        setCaretPosition(null);
-      } else if (syncCoordinator.isSafeToRender()) {
-        // Only update overlay when layout is current. When doc changed,
-        // layout is pending and DOM hasn't been updated yet — updating the
-        // overlay now would position the cursor against stale geometry,
-        // causing it to visibly jump. The overlay will be updated after
-        // layout completes via the useEffect([layout]) hook.
-        updateSelectionOverlay(state);
-      }
-
-      // Defer image selection check until after layout update
-      requestAnimationFrame(() => {
-        const view = hiddenPMRef.current?.getView();
-        if (!view) {
-          setSelectedImageInfo(null);
-          return;
-        }
-        const { selection: sel } = view.state;
-        if (sel instanceof NodeSelection && sel.node.type.name === "image") {
-          const pmPos = sel.from;
-          const imgEl = pagesContainerRef.current
-            ? findBodyPmAnchor(pagesContainerRef.current, pmPos)
-            : null;
-          if (imgEl) {
-            setSelectedImageInfo(buildImageSelectionInfo(imgEl, pmPos));
-            return;
+        // AI suggestions: the plugin remaps its ranges through doc edits,
+        // so the ref always holds projectable positions.
+        const nextAiState = aiSuggestionDecorationsKey.getState(newState);
+        const nextAiSuggestions = nextAiState?.suggestions ?? EMPTY_AI_SUGGESTIONS;
+        const nextAiFocusedId = nextAiState?.focusedId ?? null;
+        if (
+          nextAiSuggestions !== aiSuggestionsRef.current.suggestions ||
+          nextAiFocusedId !== aiSuggestionsRef.current.focusedId
+        ) {
+          aiSuggestionsRef.current = {
+            suggestions: nextAiSuggestions,
+            focusedId: nextAiFocusedId,
+          };
+          if (!transaction.docChanged) {
+            updateAISuggestionsOverlay();
           }
         }
-        if (!isImageInteractingRef.current) {
-          setSelectedImageInfo(null);
+
+        if (transaction.docChanged) {
+          // Increment state sequence to signal document changed
+          syncCoordinator.incrementStateSeq();
+
+          hideSelectionOverlayDuringInput(newState);
+
+          // Content changed - schedule layout (coalesced via rAF)
+          scheduleLayout(newState, getTransactionDirtyRange(transaction));
+
+          // Convert back to the Folio document model off the keypress path.
+          scheduleDocumentChangeNotification();
         }
-      });
-    },
-    [updateSelectionOverlay, buildImageSelectionInfo, syncCoordinator],
-  );
 
-  /**
-   * Get PM position from mouse coordinates using DOM-based detection.
-   * Falls back to geometry-based calculation if DOM mapping fails.
-   */
-  const getPositionFromMouse = useCallback(
-    (clientX: number, clientY: number): number | null => {
-      if (!pagesContainerRef.current || !layout) {
-        return null;
-      }
+        // Request selection update (will only execute when layout is current)
+        syncCoordinator.requestRender();
 
-      // Try DOM-based click mapping first (most accurate)
-      const domPos = clickToPositionDom(pagesContainerRef.current, clientX, clientY, zoom);
-      if (domPos !== null) {
-        return domPos;
-      }
-
-      // Fallback to geometry-based mapping
-      const pageElements = pagesContainerRef.current.querySelectorAll(".layout-page");
-      let clickedPageIndex = -1;
-      let pageRect: DOMRect | null = null;
-
-      for (let i = 0; i < pageElements.length; i++) {
-        const pageEl = pageElements[i]!; // SAFETY: i < pageElements.length
-        const rect = pageEl.getBoundingClientRect();
-        if (
-          clientX >= rect.left &&
-          clientX <= rect.right &&
-          clientY >= rect.top &&
-          clientY <= rect.bottom
-        ) {
-          clickedPageIndex = i;
-          pageRect = rect;
-          break;
+        // Only update selection overlay immediately for non-doc-changing transactions
+        // (e.g. arrow keys, clicks). For doc changes, the overlay will be updated
+        // after layout completes via the useEffect([layout]) hook, avoiding cursor
+        // flicker from stale DOM positions.
+        if (!transaction.docChanged) {
+          updateSelectionOverlay(newState);
         }
+      },
+      [
+        scheduleLayout,
+        scheduleDocumentChangeNotification,
+        hideSelectionOverlayDuringInput,
+        updateSelectionOverlay,
+        updateAnonymizationOverlay,
+        updateAutocompleteOverlay,
+        updateDirectivesOverlay,
+        updateAISuggestionsOverlay,
+        syncCoordinator,
+      ],
+      // NOTE: onDocumentChange removed from dependencies - accessed via ref to prevent infinite loops
+    );
+
+    /**
+     * Handle a transaction on a persistent hidden HF EditorView.
+     *
+     * Two responsibilities:
+     *   1. Mirror the PM doc back into `Document.package.headers/footers[rId].content`
+     *      so the existing save path (which reads `hf.content`) ships the latest
+     *      HF content. Mutating in place matches upstream's pattern and avoids
+     *      churning history on every keystroke (the persistent PM is the
+     *      source of truth while loaded — same model the body PM uses).
+     *   2. Re-run the layout pipeline so the painter repaints with the new
+     *      HF blocks. We reuse the body PM's current state as the layout
+     *      input because `scheduleLayout` derives body blocks from that
+     *      state; the HF blocks are pulled from the HF PM via
+     *      `renderHfFromContentOrPm` on the next layout tick.
+     */
+    const [hfCaretSelection, setHfCaretSelection] = useState<HfCaretSelection | null>(null);
+    // Page number (1-indexed) of the painted slot the user most recently
+    // clicked / dispatched into. Persisted across HF PM transactions so
+    // typing after a click on page 5 keeps the caret on page 5 — without
+    // this, the painter would scope the caret to whichever painted instance
+    // of the rId the lookup found first (page 1) on every subsequent
+    // selection update (Codex #487 P2: 21:28).
+    const activeHfPageNumberRef = useRef<number | null>(null);
+
+    const handleHfPmTransaction = useCallback(
+      (
+        rId: string,
+        kind: "header" | "footer",
+        view: EditorView,
+        docChanged: boolean,
+        selectionChanged: boolean,
+      ) => {
+        // HiddenHeaderFooterPMs writes the new blocks into
+        // package.headers/footers[rId].content in place inside its own
+        // dispatchTransaction, so we only need to nudge the layout pipeline
+        // and update HF caret + toolbar state here.
+        if (docChanged) {
+          // The body HiddenProseMirror view may still be deferred when the
+          // user enters HF editing first (a doc opened without
+          // collaboration that hasn't been clicked into yet). The HF PMs
+          // are mounted unconditionally so an HF transaction can fire
+          // before any body view exists; without a bodyState
+          // `scheduleLayout` was a no-op and the painter never repainted
+          // the in-flight HF edit (Codex #487 P1: 21:59 review). Use the
+          // precomputed initial state when present, otherwise force-create
+          // the view via `ensureHiddenEditorView` so the next read returns
+          // a state.
+          let bodyState = hiddenPMRef.current?.getState();
+          if (!bodyState && precomputedInitialStateRef.current) {
+            bodyState = precomputedInitialStateRef.current;
+          }
+          if (!bodyState) {
+            ensureHiddenEditorView({ sync: true });
+            bodyState = hiddenPMRef.current?.getState();
+          }
+          if (bodyState) {
+            scheduleLayout(bodyState, null);
+          }
+        }
+        if (docChanged || selectionChanged) {
+          const { from, to } = view.state.selection;
+          const pageNumber = activeHfPageNumberRef.current;
+          setHfCaretSelection({
+            rId,
+            kind,
+            from,
+            to,
+            ...(pageNumber !== null ? { pageNumber } : {}),
+          });
+          // Fan the HF PM selection out the same channel the body PM uses
+          // (DocxEditor's onSelectionChange handler then re-reads the
+          // active view via getActiveEditorView and re-syncs FormattingBar
+          // / context state to the HF surface). Without this the toolbar
+          // would freeze on the previous body selection while its actions
+          // dispatch on the HF view.
+          onSelectionChangeRef.current?.(from, to);
+          folioEmitterRef.current.emit("selectionChange", { from, to });
+        }
+      },
+      [scheduleLayout, ensureHiddenEditorView],
+    );
+
+    // Clear HF caret state + cross-surface drag state on any hfEditMode
+    // transition. Without this, dragAnchorRef leftover from the previous
+    // surface lets a Shift-click resolve an anchor in the wrong PM
+    // (e.g. body anchor used as the HF range start, or vice versa) and
+    // produces a nonsense selection.
+    useEffect(() => {
+      if (!hfEditMode) {
+        setHfCaretSelection(null);
       }
+      dragAnchorRef.current = null;
+      activeHfDragSurfaceRef.current = null;
+      activeHfPageNumberRef.current = null;
+    }, [hfEditMode]);
 
-      if (clickedPageIndex < 0 || !pageRect) {
-        return null;
-      }
+    /**
+     * Handle selection change from PM.
+     */
+    const handleSelectionChange = useCallback(
+      (state: EditorState) => {
+        // Check if this is an image node selection - suppress text overlay if so
+        const { selection } = state;
+        if (selection instanceof NodeSelection && selection.node.type.name === "image") {
+          // Suppress text selection overlay for image selections
+          setSelectionRects([]);
+          setCaretPosition(null);
+        } else if (syncCoordinator.isSafeToRender()) {
+          // Only update overlay when layout is current. When doc changed,
+          // layout is pending and DOM hasn't been updated yet — updating the
+          // overlay now would position the cursor against stale geometry,
+          // causing it to visibly jump. The overlay will be updated after
+          // layout completes via the useEffect([layout]) hook.
+          updateSelectionOverlay(state);
+        }
 
-      const pageX = (clientX - pageRect.left) / zoom;
-      const pageY = (clientY - pageRect.top) / zoom;
+        // Defer image selection check until after layout update
+        requestAnimationFrame(() => {
+          const view = hiddenPMRef.current?.getView();
+          if (!view) {
+            setSelectedImageInfo(null);
+            return;
+          }
+          const { selection: sel } = view.state;
+          if (sel instanceof NodeSelection && sel.node.type.name === "image") {
+            const pmPos = sel.from;
+            const imgEl = pagesContainerRef.current
+              ? findBodyPmAnchor(pagesContainerRef.current, pmPos)
+              : null;
+            if (imgEl) {
+              setSelectedImageInfo(buildImageSelectionInfo(imgEl, pmPos));
+              return;
+            }
+          }
+          if (!isImageInteractingRef.current) {
+            setSelectedImageInfo(null);
+          }
+        });
+      },
+      [updateSelectionOverlay, buildImageSelectionInfo, syncCoordinator],
+    );
 
-      const page = layout.pages[clickedPageIndex];
-      if (!page) {
-        return null;
-      }
+    /**
+     * Get PM position from mouse coordinates using DOM-based detection.
+     * Falls back to geometry-based calculation if DOM mapping fails.
+     */
+    const getPositionFromMouse = useCallback(
+      (clientX: number, clientY: number): number | null => {
+        if (!pagesContainerRef.current || !layout) {
+          return null;
+        }
 
-      const pageHit = {
-        pageIndex: clickedPageIndex,
-        page,
-        pageY,
-      };
+        // Try DOM-based click mapping first (most accurate)
+        const domPos = clickToPositionDom(pagesContainerRef.current, clientX, clientY, zoom);
+        if (domPos !== null) {
+          return domPos;
+        }
 
-      const fragmentHit = hitTestFragment(pageHit, blocks, measures, {
-        x: pageX,
-        y: pageY,
-      });
+        // Fallback to geometry-based mapping
+        const pageElements = pagesContainerRef.current.querySelectorAll(".layout-page");
+        let clickedPageIndex = -1;
+        let pageRect: DOMRect | null = null;
 
-      if (!fragmentHit) {
-        return null;
-      }
+        for (let i = 0; i < pageElements.length; i++) {
+          const pageEl = pageElements[i]!; // SAFETY: i < pageElements.length
+          const rect = pageEl.getBoundingClientRect();
+          if (
+            clientX >= rect.left &&
+            clientX <= rect.right &&
+            clientY >= rect.top &&
+            clientY <= rect.bottom
+          ) {
+            clickedPageIndex = i;
+            pageRect = rect;
+            break;
+          }
+        }
 
-      // For table fragments, do cell-level hit testing
-      if (fragmentHit.fragment.kind === "table") {
-        const tableCellHit = hitTestTableCell(pageHit, blocks, measures, {
+        if (clickedPageIndex < 0 || !pageRect) {
+          return null;
+        }
+
+        const pageX = (clientX - pageRect.left) / zoom;
+        const pageY = (clientY - pageRect.top) / zoom;
+
+        const page = layout.pages[clickedPageIndex];
+        if (!page) {
+          return null;
+        }
+
+        const pageHit = {
+          pageIndex: clickedPageIndex,
+          page,
+          pageY,
+        };
+
+        const fragmentHit = hitTestFragment(pageHit, blocks, measures, {
           x: pageX,
           y: pageY,
         });
-        return clickToPosition(fragmentHit, tableCellHit);
-      }
 
-      return clickToPosition(fragmentHit);
-    },
-    [layout, blocks, measures, zoom],
-  );
-
-  /**
-   * Find the table cell position in ProseMirror doc for a given PM position.
-   * Returns the position just inside the cell node, suitable for CellSelection.create().
-   */
-  const findCellPosInDoc = useCallback((doc: PMNode, pmPos: number): number | null => {
-    try {
-      const $pos = doc.resolve(pmPos);
-      for (let d = $pos.depth; d > 0; d--) {
-        const node = $pos.node(d);
-        if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
-          return $pos.before(d);
+        if (!fragmentHit) {
+          return null;
         }
-      }
-    } catch {
-      // Position resolution failed
-    }
-    return null;
-  }, []);
 
-  const findCellPosFromPmPos = useCallback(
-    (pmPos: number): number | null => {
-      const view = hiddenPMRef.current?.getView();
-      if (!view) {
-        return null;
-      }
-      return findCellPosInDoc(view.state.doc, pmPos);
-    },
-    [findCellPosInDoc],
-  );
+        // For table fragments, do cell-level hit testing
+        if (fragmentHit.fragment.kind === "table") {
+          const tableCellHit = hitTestTableCell(pageHit, blocks, measures, {
+            x: pageX,
+            y: pageY,
+          });
+          return clickToPosition(fragmentHit, tableCellHit);
+        }
 
-  /**
-   * Find the closest image element from a click target.
-   * Returns the element with data-pm-start if it's an image, or null.
-   */
-  const findImageElement = useCallback((target: HTMLElement): HTMLElement | null => {
-    const IMAGE_CONTAINER_CLASSES = [
-      "layout-block-image",
-      "layout-image",
-      "layout-page-floating-image",
-    ];
-    const isImageContainer = (el: HTMLElement) =>
-      !!el.dataset["pmStart"] && IMAGE_CONTAINER_CLASSES.some((c) => el.classList.contains(c));
+        return clickToPosition(fragmentHit);
+      },
+      [layout, blocks, measures, zoom],
+    );
 
-    // Inline images: <img class="layout-run layout-run-image" data-pm-start="X">
-    if (target.tagName === "IMG" && target.classList.contains("layout-run-image")) {
-      return target;
-    }
-    // Click on <img> inside a container div, or directly on the container
-    if (
-      target.tagName === "IMG" &&
-      target.parentElement &&
-      isImageContainer(target.parentElement)
-    ) {
-      return target.parentElement;
-    }
-    if (isImageContainer(target)) {
-      return target;
-    }
-    return null;
-  }, []);
-
-  /** Scroll visible pages to a ProseMirror position. */
-  const scrollToPositionImpl = useCallback((pmPos: number) => {
-    const pageContainer = pagesContainerRef.current;
-    if (!pageContainer) {
-      return;
-    }
-    scrollPagesToPmPosition(pageContainer, pmPos);
-  }, []);
-
-  const scrollToPageImpl = useCallback(
-    (pageNumber: number) => {
-      const target = getPageScrollTarget(layout, pageNumber);
-      if (!target) {
-        return;
-      }
-
-      if (target.type === "position") {
-        scrollToPositionImpl(target.pmPos);
-        return;
-      }
-
-      const pageContainer = pagesContainerRef.current;
-      const shell = pageContainer?.querySelector<HTMLElement>(
-        `[data-page-number="${String(target.pageIndex + 1)}"]`,
-      );
-      shell?.scrollIntoView({ block: "center", inline: "nearest" });
-    },
-    [layout, scrollToPositionImpl],
-  );
-
-  const scrollToParaIdImpl = useCallback(
-    (paraId: string, options?: ScrollToParaIdOptions): boolean => {
-      const state = hiddenPMRef.current?.getState();
-      if (!state) {
-        return false;
-      }
-      const startPos = findStartPosForParaId(state.doc, paraId);
-      if (startPos == null || startPos < 0) {
-        return false;
-      }
-      scrollToPositionImpl(startPos);
-      requestAnimationFrame(() => {
-        if (options?.highlight) {
-          const pages = pagesContainerRef.current;
-          if (pages) {
-            flashParagraphFragmentsByParaId(pages, paraId, options.highlight);
+    /**
+     * Find the table cell position in ProseMirror doc for a given PM position.
+     * Returns the position just inside the cell node, suitable for CellSelection.create().
+     */
+    const findCellPosInDoc = useCallback((doc: PMNode, pmPos: number): number | null => {
+      try {
+        const $pos = doc.resolve(pmPos);
+        for (let d = $pos.depth; d > 0; d--) {
+          const node = $pos.node(d);
+          if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+            return $pos.before(d);
           }
         }
-        const targetNode = state.doc.nodeAt(startPos);
-        const inner =
-          targetNode?.isTextblock === true
-            ? Math.min(startPos + 1 + targetNode.content.size, state.doc.content.size)
-            : Math.min(startPos + 1, state.doc.content.size);
-        hiddenPMRef.current?.setSelection(inner);
-        hiddenPMRef.current?.focus();
-      });
-      return true;
-    },
-    [scrollToPositionImpl],
-  );
+      } catch {
+        // Position resolution failed
+      }
+      return null;
+    }, []);
 
-  const focusHiddenEditor = useCallback(() => {
-    if (readOnly) {
-      containerRef.current?.focus({ preventScroll: true });
-      setIsFocused(true);
-      return;
-    }
-
-    if (!hiddenPMRef.current?.getView()) {
-      ensureHiddenEditorView();
-    }
-    hiddenPMRef.current?.focus();
-    setIsFocused(true);
-  }, [ensureHiddenEditorView, readOnly]);
-
-  const startPointerTextSelection = useCallback(
-    (clientX: number, clientY: number) => {
-      const pmPos = getPositionFromMouse(clientX, clientY);
-
-      if (pmPos !== null) {
-        const cellPos = findCellPosFromPmPos(pmPos);
-        cellDragAnchorPosRef.current = cellPos;
-        cellDragContentEndRef.current = null;
-        if (cellPos !== null) {
-          const cellNode = hiddenPMRef.current?.getView()?.state.doc.nodeAt(cellPos);
-          if (cellNode) {
-            // `cellPos` is the cell's `before` position; the last cursor
-            // position inside it is `cellPos + nodeSize - 2` (just before the
-            // cell's closing token and its last child's closing token).
-            cellDragContentEndRef.current = cellPos + cellNode.nodeSize - 2;
-          }
-        }
-        isCellDraggingRef.current = false;
-        cellDragLastPmPosRef.current = null;
-        cellDragOverflowXRef.current = null;
-
-        isDraggingRef.current = true;
-        dragAnchorRef.current = pmPos;
-        if (hiddenPMRef.current?.getView()) {
-          hiddenPMRef.current.setSelection(pmPos);
-        } else {
-          queueHiddenEditorSelection({ type: "text", anchor: pmPos });
-        }
-      } else {
-        cellDragAnchorPosRef.current = null;
-        cellDragContentEndRef.current = null;
-        isCellDraggingRef.current = false;
+    const findCellPosFromPmPos = useCallback(
+      (pmPos: number): number | null => {
         const view = hiddenPMRef.current?.getView();
-        if (view) {
-          const endPos = Math.max(0, view.state.doc.content.size - 1);
-          hiddenPMRef.current?.setSelection(endPos);
-          dragAnchorRef.current = endPos;
-          isDraggingRef.current = true;
-        } else {
-          const docEnd = Math.max(
-            0,
-            (precomputedInitialStateRef.current?.doc.content.size ?? 1) - 1,
-          );
-          queueHiddenEditorSelection({ type: "text", anchor: docEnd });
-          dragAnchorRef.current = docEnd;
-          isDraggingRef.current = true;
+        if (!view) {
+          return null;
         }
+        return findCellPosInDoc(view.state.doc, pmPos);
+      },
+      [findCellPosInDoc],
+    );
+
+    /**
+     * Find the closest image element from a click target.
+     * Returns the element with data-pm-start if it's an image, or null.
+     */
+    const findImageElement = useCallback((target: HTMLElement): HTMLElement | null => {
+      const IMAGE_CONTAINER_CLASSES = [
+        "layout-block-image",
+        "layout-image",
+        "layout-page-floating-image",
+      ];
+      const isImageContainer = (el: HTMLElement) =>
+        !!el.dataset["pmStart"] && IMAGE_CONTAINER_CLASSES.some((c) => el.classList.contains(c));
+
+      // Inline images: <img class="layout-run layout-run-image" data-pm-start="X">
+      if (target.tagName === "IMG" && target.classList.contains("layout-run-image")) {
+        return target;
       }
+      // Click on <img> inside a container div, or directly on the container
+      if (
+        target.tagName === "IMG" &&
+        target.parentElement &&
+        isImageContainer(target.parentElement)
+      ) {
+        return target.parentElement;
+      }
+      if (isImageContainer(target)) {
+        return target;
+      }
+      return null;
+    }, []);
 
-      focusHiddenEditor();
-    },
-    [findCellPosFromPmPos, focusHiddenEditor, getPositionFromMouse, queueHiddenEditorSelection],
-  );
-
-  const copySelectionText = useCallback(() => {
-    const view = hiddenPMRef.current?.getView();
-    if (!view) {
-      return false;
-    }
-
-    const { from, to } = view.state.selection;
-    if (from === to) {
-      return false;
-    }
-
-    const text = view.state.doc.textBetween(from, to, "\n");
-    if (!text) {
-      return false;
-    }
-
-    // eslint-disable-next-line typescript/no-unnecessary-condition -- Clipboard API may be unavailable in older browsers or insecure contexts.
-    if (navigator.clipboard === undefined) {
-      return false;
-    }
-
-    void navigator.clipboard.writeText(text).catch(() => undefined);
-    return false;
-  }, []);
-
-  /**
-   * Handle mousedown on pages - start selection or drag.
-   */
-  const handlePagesMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (!hiddenPMRef.current) {
+    /** Scroll visible pages to a ProseMirror position. */
+    const scrollToPositionImpl = useCallback((pmPos: number) => {
+      const pageContainer = pagesContainerRef.current;
+      if (!pageContainer) {
         return;
       }
+      scrollPagesToPmPosition(pageContainer, pmPos);
+    }, []);
 
-      // Right-click: prevent default to stop Firefox from resetting selection,
-      // but don't process our selection logic
-      if (e.button === 2) {
-        e.preventDefault();
-        return;
-      }
-
-      if (e.button !== 0) {
-        return;
-      } // Only handle left click
-
-      // Hide table insert button on any mousedown
-      setTableInsertButton(null);
-      clearTableInsertTimer();
-
-      const target = e.target instanceof HTMLElement ? e.target : null;
-      if (!target) {
-        return;
-      }
-
-      // Portaled descendants (Dialog, Combobox) are filtered upstream by
-      // `containedHandler(pagesContainerRef, …)` at the JSX site.
-
-      // Prevent default browser navigation for hyperlink clicks,
-      // but let the rest of the handler run for cursor placement and drag selection.
-      // The popup is shown in handlePagesClick (on mouseup) instead.
-      const anchorClosest = target.closest("a[href]");
-      const anchorEl = anchorClosest instanceof HTMLAnchorElement ? anchorClosest : null;
-      if (anchorEl) {
-        e.preventDefault(); // Prevent navigation only
-      }
-
-      // When in HF edit mode, clicks outside header/footer area close the HF editor
-      if (!readOnly && hfEditMode && onBodyClick) {
-        const isInHfArea =
-          findHfSlotForTarget(target) !== null || target.closest(".hf-inline-editor");
-        if (!isInHfArea) {
-          e.preventDefault();
-          e.stopPropagation();
-          onBodyClick();
+    const scrollToPageImpl = useCallback(
+      (pageNumber: number) => {
+        const target = getPageScrollTarget(layout, pageNumber);
+        if (!target) {
           return;
         }
+
+        if (target.type === "position") {
+          scrollToPositionImpl(target.pmPos);
+          return;
+        }
+
+        const pageContainer = pagesContainerRef.current;
+        const shell = pageContainer?.querySelector<HTMLElement>(
+          `[data-page-number="${String(target.pageIndex + 1)}"]`,
+        );
+        shell?.scrollIntoView({ block: "center", inline: "nearest" });
+      },
+      [layout, scrollToPositionImpl],
+    );
+
+    const scrollToParaIdImpl = useCallback(
+      (paraId: string, options?: ScrollToParaIdOptions): boolean => {
+        const state = hiddenPMRef.current?.getState();
+        if (!state) {
+          return false;
+        }
+        const startPos = findStartPosForParaId(state.doc, paraId);
+        if (startPos == null || startPos < 0) {
+          return false;
+        }
+        scrollToPositionImpl(startPos);
+        requestAnimationFrame(() => {
+          if (options?.highlight) {
+            const pages = pagesContainerRef.current;
+            if (pages) {
+              flashParagraphFragmentsByParaId(pages, paraId, options.highlight);
+            }
+          }
+          const targetNode = state.doc.nodeAt(startPos);
+          const inner =
+            targetNode?.isTextblock === true
+              ? Math.min(startPos + 1 + targetNode.content.size, state.doc.content.size)
+              : Math.min(startPos + 1, state.doc.content.size);
+          hiddenPMRef.current?.setSelection(inner);
+          hiddenPMRef.current?.focus();
+        });
+        return true;
+      },
+      [scrollToPositionImpl],
+    );
+
+    const focusHiddenEditor = useCallback(() => {
+      if (readOnly) {
+        containerRef.current?.focus({ preventScroll: true });
+        setIsFocused(true);
+        return;
       }
 
-      // Resize handles must be intercepted BEFORE the HF text-routing
-      // branch — otherwise the table-edge handles painted inside an HF
-      // slot would be treated as a regular HF click and the user could
-      // never start a resize. The resize blocks below resolve the
-      // active surface (body or HF) and read the source columnWidths /
-      // row height from the matching PM.
-      const isResizeHandleTarget =
-        !readOnly &&
-        (target.classList.contains("layout-table-resize-handle") ||
-          target.classList.contains("layout-table-row-resize-handle") ||
-          target.classList.contains("layout-table-edge-handle-bottom") ||
-          target.classList.contains("layout-table-edge-handle-right"));
-      const resizeHfSlot = isResizeHandleTarget ? findHfSlotForTarget(target) : null;
-      const resizeViewForRead: EditorView | null = resizeHfSlot
-        ? (hfPMsRef.current?.getView(resizeHfSlot.rId) ?? null)
-        : hiddenPMRef.current.getView();
+      if (!hiddenPMRef.current?.getView()) {
+        ensureHiddenEditorView();
+      }
+      hiddenPMRef.current?.focus();
+      setIsFocused(true);
+    }, [ensureHiddenEditorView, readOnly]);
 
-      // HF edit mode + click inside a painted HF slot → route to the persistent
-      // hidden HF EditorView. The painter (not PM) is the visible HF renderer,
-      // so we translate the click via clickToPositionDom (which inspects the
-      // painted span's data-pm-start/end markers) and dispatch the resulting
-      // PM position on the matching hidden view. The drag-extend / shift-click
-      // refs are populated here too so subsequent mousemove + handlePagesClick
-      // dispatch on the same surface. Cell drag inside an HF table seeds
-      // cellDragAnchorPosRef with the HF cell position; the mousemove path
-      // dispatches CellSelection on the HF view.
-      //
-      // Image targets are skipped here so the later findImageElement branch
-      // can dispatch NodeSelection.create on the matching HF view —
-      // without this guard the generic text-click flow would silently
-      // shadow the image NodeSelect path (Codex #487 P2, 20:40 review).
-      const isHfImageTarget = !readOnly && hfEditMode && findImageElement(target) !== null;
-      if (!readOnly && hfEditMode && !isResizeHandleTarget && !isHfImageTarget) {
-        const slot = findHfSlotForTarget(target);
-        if (slot) {
-          const hfView = hfPMsRef.current?.getView(slot.rId);
-          if (hfView) {
-            e.preventDefault();
-            // Stop the click from bubbling to `handleContainerMouseDown`.
-            // The painted slot is `.layout-page-header` /
-            // `.layout-page-footer`, which is NOT an `[data-hf-r-id]`
-            // descendant; the existing container guard would miss this
-            // path and `focusHiddenEditor()` would steal focus to the
-            // body editor immediately after we focused the HF view
-            // (Codex #487 P1: 22:16 review).
-            e.stopPropagation();
-            // Slot-scoped mapper so a whitespace click inside the painted
-            // header / footer can't fall through to clickToPositionDom's
-            // body-content nearest-span path (Codex #487 P2: 21:02).
-            const pos = clickToPositionInHfSlot(
-              pagesContainerRef.current ?? slot.element,
-              slot.kind,
-              slot.rId,
-              e.clientX,
-              e.clientY,
-            );
-            if (pos !== null) {
-              const docEnd = hfView.state.doc.content.size;
-              const clamped = Math.max(0, Math.min(pos, docEnd));
-              // Set the page-scope ref BEFORE the dispatch — view.dispatch
-              // synchronously invokes our dispatchTransaction →
-              // handleHfPmTransaction, which reads
-              // activeHfPageNumberRef.current to stamp on the new
-              // HfCaretSelection. If we set it after the dispatch, the
-              // first selection update on this click still records the
-              // previous page and the caret renders on the wrong
-              // painted instance until the next transaction (Codex
-              // #487 P2: 22:27 review).
-              const pageEl = slot.element.closest<HTMLElement>(".layout-page");
-              const pageNumStr = pageEl?.dataset["pageNumber"];
-              activeHfPageNumberRef.current = pageNumStr ? Number.parseInt(pageNumStr, 10) : null;
-              if (e.shiftKey && dragAnchorRef.current !== null) {
-                const $anchor = hfView.state.doc.resolve(
-                  Math.max(0, Math.min(dragAnchorRef.current, docEnd)),
-                );
-                const $head = hfView.state.doc.resolve(clamped);
-                hfView.dispatch(
-                  hfView.state.tr.setSelection(TextSelection.between($anchor, $head)),
-                );
-              } else {
-                const $pos = hfView.state.doc.resolve(clamped);
-                hfView.dispatch(hfView.state.tr.setSelection(TextSelection.near($pos)));
-                dragAnchorRef.current = clamped;
-              }
-              const cellPos = findCellPosInDoc(hfView.state.doc, clamped);
-              cellDragAnchorPosRef.current = cellPos;
-              isDraggingRef.current = true;
-              activeHfDragSurfaceRef.current = {
-                rId: slot.rId,
-                kind: slot.kind,
-              };
+    const startPointerTextSelection = useCallback(
+      (clientX: number, clientY: number) => {
+        const pmPos = getPositionFromMouse(clientX, clientY);
+
+        if (pmPos !== null) {
+          const cellPos = findCellPosFromPmPos(pmPos);
+          cellDragAnchorPosRef.current = cellPos;
+          cellDragContentEndRef.current = null;
+          if (cellPos !== null) {
+            const cellNode = hiddenPMRef.current?.getView()?.state.doc.nodeAt(cellPos);
+            if (cellNode) {
+              // `cellPos` is the cell's `before` position; the last cursor
+              // position inside it is `cellPos + nodeSize - 2` (just before the
+              // cell's closing token and its last child's closing token).
+              cellDragContentEndRef.current = cellPos + cellNode.nodeSize - 2;
             }
-            hfView.focus();
+          }
+          isCellDraggingRef.current = false;
+          cellDragLastPmPosRef.current = null;
+          cellDragOverflowXRef.current = null;
+
+          isDraggingRef.current = true;
+          dragAnchorRef.current = pmPos;
+          if (hiddenPMRef.current?.getView()) {
+            hiddenPMRef.current.setSelection(pmPos);
+          } else {
+            queueHiddenEditorSelection({ type: "text", anchor: pmPos });
+          }
+        } else {
+          cellDragAnchorPosRef.current = null;
+          cellDragContentEndRef.current = null;
+          isCellDraggingRef.current = false;
+          const view = hiddenPMRef.current?.getView();
+          if (view) {
+            const endPos = Math.max(0, view.state.doc.content.size - 1);
+            hiddenPMRef.current?.setSelection(endPos);
+            dragAnchorRef.current = endPos;
+            isDraggingRef.current = true;
+          } else {
+            const docEnd = Math.max(
+              0,
+              (precomputedInitialStateRef.current?.doc.content.size ?? 1) - 1,
+            );
+            queueHiddenEditorSelection({ type: "text", anchor: docEnd });
+            dragAnchorRef.current = docEnd;
+            isDraggingRef.current = true;
+          }
+        }
+
+        focusHiddenEditor();
+      },
+      [findCellPosFromPmPos, focusHiddenEditor, getPositionFromMouse, queueHiddenEditorSelection],
+    );
+
+    const copySelectionText = useCallback(() => {
+      const view = hiddenPMRef.current?.getView();
+      if (!view) {
+        return false;
+      }
+
+      const { from, to } = view.state.selection;
+      if (from === to) {
+        return false;
+      }
+
+      const text = view.state.doc.textBetween(from, to, "\n");
+      if (!text) {
+        return false;
+      }
+
+      // eslint-disable-next-line typescript/no-unnecessary-condition -- Clipboard API may be unavailable in older browsers or insecure contexts.
+      if (navigator.clipboard === undefined) {
+        return false;
+      }
+
+      void navigator.clipboard.writeText(text).catch(() => undefined);
+      return false;
+    }, []);
+
+    /**
+     * Handle mousedown on pages - start selection or drag.
+     */
+    const handlePagesMouseDown = useCallback(
+      (e: React.MouseEvent) => {
+        if (!hiddenPMRef.current) {
+          return;
+        }
+
+        // Right-click: prevent default to stop Firefox from resetting selection,
+        // but don't process our selection logic
+        if (e.button === 2) {
+          e.preventDefault();
+          return;
+        }
+
+        if (e.button !== 0) {
+          return;
+        } // Only handle left click
+
+        // Hide table insert button on any mousedown
+        setTableInsertButton(null);
+        clearTableInsertTimer();
+
+        const target = e.target instanceof HTMLElement ? e.target : null;
+        if (!target) {
+          return;
+        }
+
+        // Portaled descendants (Dialog, Combobox) are filtered upstream by
+        // `containedHandler(pagesContainerRef, …)` at the JSX site.
+
+        // Prevent default browser navigation for hyperlink clicks,
+        // but let the rest of the handler run for cursor placement and drag selection.
+        // The popup is shown in handlePagesClick (on mouseup) instead.
+        const anchorClosest = target.closest("a[href]");
+        const anchorEl = anchorClosest instanceof HTMLAnchorElement ? anchorClosest : null;
+        if (anchorEl) {
+          e.preventDefault(); // Prevent navigation only
+        }
+
+        // When in HF edit mode, clicks outside header/footer area close the HF editor
+        if (!readOnly && hfEditMode && onBodyClick) {
+          const isInHfArea =
+            findHfSlotForTarget(target) !== null || target.closest(".hf-inline-editor");
+          if (!isInHfArea) {
+            e.preventDefault();
+            e.stopPropagation();
+            onBodyClick();
             return;
           }
         }
-      }
 
-      // In normal mode, clicks in header/footer area should place cursor at
-      // start of body content, not inside header/footer (matches Word/Google Docs)
-      if (!readOnly && !hfEditMode) {
-        const isInHfArea = findHfSlotForTarget(target) !== null;
-        if (isInHfArea) {
-          e.preventDefault();
-          // Place cursor at start of body content
-          hiddenPMRef.current.setSelection(0);
-          hiddenPMRef.current.focus();
-          setIsFocused(true);
-          return;
-        }
-      }
+        // Resize handles must be intercepted BEFORE the HF text-routing
+        // branch — otherwise the table-edge handles painted inside an HF
+        // slot would be treated as a regular HF click and the user could
+        // never start a resize. The resize blocks below resolve the
+        // active surface (body or HF) and read the source columnWidths /
+        // row height from the matching PM.
+        const isResizeHandleTarget =
+          !readOnly &&
+          (target.classList.contains("layout-table-resize-handle") ||
+            target.classList.contains("layout-table-row-resize-handle") ||
+            target.classList.contains("layout-table-edge-handle-bottom") ||
+            target.classList.contains("layout-table-edge-handle-right"));
+        const resizeHfSlot = isResizeHandleTarget ? findHfSlotForTarget(target) : null;
+        const resizeViewForRead: EditorView | null = resizeHfSlot
+          ? (hfPMsRef.current?.getView(resizeHfSlot.rId) ?? null)
+          : hiddenPMRef.current.getView();
 
-      // Column resize: intercept clicks on resize handles
-      if (!readOnly && target.classList.contains("layout-table-resize-handle")) {
-        e.preventDefault();
-        e.stopPropagation();
-        isResizingColumnRef.current = true;
-        resizingHfSurfaceRef.current = resizeHfSlot
-          ? { rId: resizeHfSlot.rId, kind: resizeHfSlot.kind }
-          : null;
-        resizeStartXRef.current = e.clientX;
-        resizeHandleRef.current = target;
-        resizeBidiRef.current = target.dataset["bidi"] === "true";
-        target.classList.add("dragging");
-
-        const colIndex = Number.parseInt(target.dataset["columnIndex"] ?? "0", 10);
-        resizeColumnIndexRef.current = colIndex;
-        resizeTablePmStartRef.current = Number.parseInt(target.dataset["tablePmStart"] ?? "0", 10);
-
-        const view = resizeViewForRead;
-        if (view) {
-          const $pos = view.state.doc.resolve(resizeTablePmStartRef.current + 1);
-          for (let d = $pos.depth; d >= 0; d--) {
-            const node = $pos.node(d);
-            if (node.type.name === "table") {
-              const widths = node.attrs["columnWidths"] as number[] | null;
-              if (widths && widths[colIndex] !== undefined && widths[colIndex + 1] !== undefined) {
-                resizeOrigWidthsRef.current = {
-                  left: widths[colIndex]!, // SAFETY: guarded by widths[colIndex] !== undefined check above
-                  right: widths[colIndex + 1]!, // SAFETY: guarded by widths[colIndex + 1] !== undefined check above
+        // HF edit mode + click inside a painted HF slot → route to the persistent
+        // hidden HF EditorView. The painter (not PM) is the visible HF renderer,
+        // so we translate the click via clickToPositionDom (which inspects the
+        // painted span's data-pm-start/end markers) and dispatch the resulting
+        // PM position on the matching hidden view. The drag-extend / shift-click
+        // refs are populated here too so subsequent mousemove + handlePagesClick
+        // dispatch on the same surface. Cell drag inside an HF table seeds
+        // cellDragAnchorPosRef with the HF cell position; the mousemove path
+        // dispatches CellSelection on the HF view.
+        //
+        // Image targets are skipped here so the later findImageElement branch
+        // can dispatch NodeSelection.create on the matching HF view —
+        // without this guard the generic text-click flow would silently
+        // shadow the image NodeSelect path (Codex #487 P2, 20:40 review).
+        const isHfImageTarget = !readOnly && hfEditMode && findImageElement(target) !== null;
+        if (!readOnly && hfEditMode && !isResizeHandleTarget && !isHfImageTarget) {
+          const slot = findHfSlotForTarget(target);
+          if (slot) {
+            const hfView = hfPMsRef.current?.getView(slot.rId);
+            if (hfView) {
+              e.preventDefault();
+              // Stop the click from bubbling to `handleContainerMouseDown`.
+              // The painted slot is `.layout-page-header` /
+              // `.layout-page-footer`, which is NOT an `[data-hf-r-id]`
+              // descendant; the existing container guard would miss this
+              // path and `focusHiddenEditor()` would steal focus to the
+              // body editor immediately after we focused the HF view
+              // (Codex #487 P1: 22:16 review).
+              e.stopPropagation();
+              // Slot-scoped mapper so a whitespace click inside the painted
+              // header / footer can't fall through to clickToPositionDom's
+              // body-content nearest-span path (Codex #487 P2: 21:02).
+              const pos = clickToPositionInHfSlot(
+                pagesContainerRef.current ?? slot.element,
+                slot.kind,
+                slot.rId,
+                e.clientX,
+                e.clientY,
+              );
+              if (pos !== null) {
+                const docEnd = hfView.state.doc.content.size;
+                const clamped = Math.max(0, Math.min(pos, docEnd));
+                // Set the page-scope ref BEFORE the dispatch — view.dispatch
+                // synchronously invokes our dispatchTransaction →
+                // handleHfPmTransaction, which reads
+                // activeHfPageNumberRef.current to stamp on the new
+                // HfCaretSelection. If we set it after the dispatch, the
+                // first selection update on this click still records the
+                // previous page and the caret renders on the wrong
+                // painted instance until the next transaction (Codex
+                // #487 P2: 22:27 review).
+                const pageEl = slot.element.closest<HTMLElement>(".layout-page");
+                const pageNumStr = pageEl?.dataset["pageNumber"];
+                activeHfPageNumberRef.current = pageNumStr ? Number.parseInt(pageNumStr, 10) : null;
+                if (e.shiftKey && dragAnchorRef.current !== null) {
+                  const $anchor = hfView.state.doc.resolve(
+                    Math.max(0, Math.min(dragAnchorRef.current, docEnd)),
+                  );
+                  const $head = hfView.state.doc.resolve(clamped);
+                  hfView.dispatch(
+                    hfView.state.tr.setSelection(TextSelection.between($anchor, $head)),
+                  );
+                } else {
+                  const $pos = hfView.state.doc.resolve(clamped);
+                  hfView.dispatch(hfView.state.tr.setSelection(TextSelection.near($pos)));
+                  dragAnchorRef.current = clamped;
+                }
+                const cellPos = findCellPosInDoc(hfView.state.doc, clamped);
+                cellDragAnchorPosRef.current = cellPos;
+                isDraggingRef.current = true;
+                activeHfDragSurfaceRef.current = {
+                  rId: slot.rId,
+                  kind: slot.kind,
                 };
               }
-              break;
+              hfView.focus();
+              return;
             }
           }
         }
-        return;
-      }
 
-      // Row resize: intercept clicks on row resize handles or bottom edge handle
-      if (
-        !readOnly &&
-        (target.classList.contains("layout-table-row-resize-handle") ||
-          target.classList.contains("layout-table-edge-handle-bottom"))
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        isResizingRowRef.current = true;
-        resizingHfSurfaceRef.current = resizeHfSlot
-          ? { rId: resizeHfSlot.rId, kind: resizeHfSlot.kind }
-          : null;
-        resizeStartYRef.current = e.clientY;
-        resizeRowHandleRef.current = target;
-        resizeRowIsEdgeRef.current = target.dataset["isEdge"] === "bottom";
-        target.classList.add("dragging");
-
-        const rowIndex = Number.parseInt(target.dataset["rowIndex"] ?? "0", 10);
-        resizeRowIndexRef.current = rowIndex;
-        resizeRowTablePmStartRef.current = Number.parseInt(
-          target.dataset["tablePmStart"] ?? "0",
-          10,
-        );
-
-        const view = resizeViewForRead;
-        if (view) {
-          const $pos = view.state.doc.resolve(resizeRowTablePmStartRef.current + 1);
-          for (let d = $pos.depth; d >= 0; d--) {
-            const node = $pos.node(d);
-            if (node.type.name === "table") {
-              if (rowIndex < node.childCount) {
-                const rowNode = node.child(rowIndex);
-                const height = rowNode.attrs["height"] as number | null;
-                if (height) {
-                  resizeRowOrigHeightRef.current = height;
-                } else {
-                  // Estimate from rendered height: find the row element
-                  const tableEl = target.closest(".layout-table");
-                  const rowEl = tableEl?.querySelector(`[data-row-index="${rowIndex}"]`);
-                  const renderedHeight =
-                    rowEl instanceof HTMLElement ? rowEl.getBoundingClientRect().height : 30;
-                  resizeRowOrigHeightRef.current = Math.round(renderedHeight * 15);
-                }
-              }
-              break;
-            }
+        // In normal mode, clicks in header/footer area should place cursor at
+        // start of body content, not inside header/footer (matches Word/Google Docs)
+        if (!readOnly && !hfEditMode) {
+          const isInHfArea = findHfSlotForTarget(target) !== null;
+          if (isInHfArea) {
+            e.preventDefault();
+            // Place cursor at start of body content
+            hiddenPMRef.current.setSelection(0);
+            hiddenPMRef.current.focus();
+            setIsFocused(true);
+            return;
           }
         }
-        return;
-      }
 
-      // Right edge resize: intercept clicks on right edge handle
-      if (!readOnly && target.classList.contains("layout-table-edge-handle-right")) {
-        e.preventDefault();
-        e.stopPropagation();
-        isResizingRightEdgeRef.current = true;
-        resizingHfSurfaceRef.current = resizeHfSlot
-          ? { rId: resizeHfSlot.rId, kind: resizeHfSlot.kind }
-          : null;
-        resizeRightEdgeStartXRef.current = e.clientX;
-        resizeRightEdgeHandleRef.current = target;
-        target.classList.add("dragging");
-
-        const colIndex = Number.parseInt(target.dataset["columnIndex"] ?? "0", 10);
-        resizeRightEdgeColIndexRef.current = colIndex;
-        resizeRightEdgePmStartRef.current = Number.parseInt(
-          target.dataset["tablePmStart"] ?? "0",
-          10,
-        );
-
-        // Get current last column width from ProseMirror doc
-        const view = resizeViewForRead;
-        if (view) {
-          const $pos = view.state.doc.resolve(resizeRightEdgePmStartRef.current + 1);
-          for (let d = $pos.depth; d >= 0; d--) {
-            const node = $pos.node(d);
-            if (node.type.name === "table") {
-              const widths = node.attrs["columnWidths"] as number[] | null;
-              if (widths && widths[colIndex] !== undefined) {
-                resizeRightEdgeOrigWidthRef.current = widths[colIndex];
-              }
-              break;
-            }
-          }
-        }
-        return;
-      }
-
-      // Check if the click target is an image element
-      const imageEl = findImageElement(target);
-      if (!readOnly && imageEl) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const pmStart = imageEl.dataset["pmStart"];
-        if (pmStart !== undefined) {
-          const pos = Number.parseInt(pmStart, 10);
-          // HF edit mode + image inside an HF slot: NodeSelect on the
-          // matching HF PM. Otherwise selection would land on body at
-          // an HF-doc position, which doesn't address a valid node and
-          // silently no-ops (or worse, picks an unrelated body node).
-          const hfSlot = hfEditMode ? findHfSlotForTarget(imageEl) : null;
-          const hfView = hfSlot ? hfPMsRef.current?.getView(hfSlot.rId) : null;
-          if (hfView) {
-            try {
-              hfView.dispatch(
-                hfView.state.tr.setSelection(NodeSelection.create(hfView.state.doc, pos)),
-              );
-            } catch {
-              // Pos didn't address a selectable node — fall back to a
-              // near text selection so the user still gets focus.
-              const $pos = hfView.state.doc.resolve(Math.min(pos, hfView.state.doc.content.size));
-              hfView.dispatch(hfView.state.tr.setSelection(TextSelection.near($pos)));
-            }
-            hfView.focus();
-            // Image selection chrome is body-only today; HF image select
-            // shows browser-default selection ring. Tracked for follow-up.
-          } else {
-            if (hiddenPMRef.current.getView()) {
-              hiddenPMRef.current.setNodeSelection(pos);
-            } else {
-              queueHiddenEditorSelection({ type: "node", pos });
-            }
-            setSelectedImageInfo(buildImageSelectionInfo(imageEl, pos));
-            setSelectionRects([]);
-            setCaretPosition(null);
-            focusHiddenEditor();
-          }
-        }
-        return;
-      }
-
-      // Clicking outside an image clears image selection
-      setSelectedImageInfo(null);
-
-      e.preventDefault(); // Prevent native text selection
-
-      startPointerTextSelection(e.clientX, e.clientY);
-    },
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
-    [
-      getPositionFromMouse,
-      findCellPosFromPmPos,
-      readOnly,
-      hfEditMode,
-      onBodyClick,
-      zoom,
-      onHyperlinkClick,
-      clearTableInsertTimer,
-      focusHiddenEditor,
-      startPointerTextSelection,
-      queueHiddenEditorSelection,
-    ],
-  );
-
-  // Drag auto-scroll: scrolls when dragging near viewport edges
-  const dragAutoScrollCallbackRef = useCallback((cx: number, cy: number) => {
-    dragExtendRef.current(cx, cy);
-  }, []);
-  const { updateMousePosition: updateDragScroll, stopAutoScroll: stopDragAutoScroll } =
-    useDragAutoScroll({
-      pagesContainerRef,
-      onScrollExtendSelection: dragAutoScrollCallbackRef,
-    });
-
-  // Wire up the drag-extend callback after getPositionFromMouse is available
-  dragExtendRef.current = (cx: number, cy: number) => {
-    if (!isDraggingRef.current || dragAnchorRef.current === null) {
-      return;
-    }
-    const hfSurface = activeHfDragSurfaceRef.current;
-    if (hfSurface) {
-      const hfView = hfPMsRef.current?.getView(hfSurface.rId);
-      if (!hfView || !pagesContainerRef.current) {
-        return;
-      }
-      const pmPos = clickToPositionInHfSlot(
-        pagesContainerRef.current,
-        hfSurface.kind,
-        hfSurface.rId,
-        cx,
-        cy,
-      );
-      if (pmPos === null) {
-        return;
-      }
-      const docEnd = hfView.state.doc.content.size;
-      const anchor = Math.max(0, Math.min(dragAnchorRef.current, docEnd));
-      const head = Math.max(0, Math.min(pmPos, docEnd));
-      const $anchor = hfView.state.doc.resolve(anchor);
-      const $head = hfView.state.doc.resolve(head);
-      hfView.dispatch(hfView.state.tr.setSelection(TextSelection.between($anchor, $head)));
-      return;
-    }
-    if (!hiddenPMRef.current) {
-      return;
-    }
-    const pmPos = getPositionFromMouse(cx, cy);
-    if (pmPos === null) {
-      return;
-    }
-    hiddenPMRef.current.setSelection(dragAnchorRef.current, pmPos);
-  };
-
-  /**
-   * Handle mousemove - extend selection during drag.
-   */
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      // Column resize drag
-      if (isResizingColumnRef.current) {
-        e.preventDefault();
-        const delta = e.clientX - resizeStartXRef.current;
-        // Move the handle visually
-        if (resizeHandleRef.current) {
-          const origLeft = Number.parseFloat(resizeHandleRef.current.style.left);
-          resizeHandleRef.current.style.left = `${origLeft + delta}px`;
+        // Column resize: intercept clicks on resize handles
+        if (!readOnly && target.classList.contains("layout-table-resize-handle")) {
+          e.preventDefault();
+          e.stopPropagation();
+          isResizingColumnRef.current = true;
+          resizingHfSurfaceRef.current = resizeHfSlot
+            ? { rId: resizeHfSlot.rId, kind: resizeHfSlot.kind }
+            : null;
           resizeStartXRef.current = e.clientX;
+          resizeHandleRef.current = target;
+          resizeBidiRef.current = target.dataset["bidi"] === "true";
+          target.classList.add("dragging");
 
-          // Update stored widths (convert pixel delta to twips: 1px ≈ 15 twips at 96dpi)
-          const deltaTwips = Math.round(delta * 15);
-          const minWidth = 300; // ~0.2 inches minimum
-          resizeOrigWidthsRef.current = resizeColumnPair(
-            resizeOrigWidthsRef.current.left,
-            resizeOrigWidthsRef.current.right,
-            deltaTwips,
-            resizeBidiRef.current,
-            minWidth,
+          const colIndex = Number.parseInt(target.dataset["columnIndex"] ?? "0", 10);
+          resizeColumnIndexRef.current = colIndex;
+          resizeTablePmStartRef.current = Number.parseInt(
+            target.dataset["tablePmStart"] ?? "0",
+            10,
           );
-        }
-        return;
-      }
 
-      // Row resize drag
-      if (isResizingRowRef.current) {
-        e.preventDefault();
-        const delta = e.clientY - resizeStartYRef.current;
-        if (resizeRowHandleRef.current) {
-          const origTop = Number.parseFloat(resizeRowHandleRef.current.style.top);
-          resizeRowHandleRef.current.style.top = `${origTop + delta}px`;
+          const view = resizeViewForRead;
+          if (view) {
+            const $pos = view.state.doc.resolve(resizeTablePmStartRef.current + 1);
+            for (let d = $pos.depth; d >= 0; d--) {
+              const node = $pos.node(d);
+              if (node.type.name === "table") {
+                const widths = node.attrs["columnWidths"] as number[] | null;
+                if (
+                  widths &&
+                  widths[colIndex] !== undefined &&
+                  widths[colIndex + 1] !== undefined
+                ) {
+                  resizeOrigWidthsRef.current = {
+                    left: widths[colIndex]!, // SAFETY: guarded by widths[colIndex] !== undefined check above
+                    right: widths[colIndex + 1]!, // SAFETY: guarded by widths[colIndex + 1] !== undefined check above
+                  };
+                }
+                break;
+              }
+            }
+          }
+          return;
+        }
+
+        // Row resize: intercept clicks on row resize handles or bottom edge handle
+        if (
+          !readOnly &&
+          (target.classList.contains("layout-table-row-resize-handle") ||
+            target.classList.contains("layout-table-edge-handle-bottom"))
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          isResizingRowRef.current = true;
+          resizingHfSurfaceRef.current = resizeHfSlot
+            ? { rId: resizeHfSlot.rId, kind: resizeHfSlot.kind }
+            : null;
           resizeStartYRef.current = e.clientY;
+          resizeRowHandleRef.current = target;
+          resizeRowIsEdgeRef.current = target.dataset["isEdge"] === "bottom";
+          target.classList.add("dragging");
 
-          // Update stored height (convert pixel delta to twips)
-          const deltaTwips = Math.round(delta * 15);
-          const minHeight = 200; // ~0.14 inches minimum
-          const newHeight = resizeRowOrigHeightRef.current + deltaTwips;
-          if (newHeight >= minHeight) {
-            resizeRowOrigHeightRef.current = newHeight;
+          const rowIndex = Number.parseInt(target.dataset["rowIndex"] ?? "0", 10);
+          resizeRowIndexRef.current = rowIndex;
+          resizeRowTablePmStartRef.current = Number.parseInt(
+            target.dataset["tablePmStart"] ?? "0",
+            10,
+          );
+
+          const view = resizeViewForRead;
+          if (view) {
+            const $pos = view.state.doc.resolve(resizeRowTablePmStartRef.current + 1);
+            for (let d = $pos.depth; d >= 0; d--) {
+              const node = $pos.node(d);
+              if (node.type.name === "table") {
+                if (rowIndex < node.childCount) {
+                  const rowNode = node.child(rowIndex);
+                  const height = rowNode.attrs["height"] as number | null;
+                  if (height) {
+                    resizeRowOrigHeightRef.current = height;
+                  } else {
+                    // Estimate from rendered height: find the row element
+                    const tableEl = target.closest(".layout-table");
+                    const rowEl = tableEl?.querySelector(`[data-row-index="${rowIndex}"]`);
+                    const renderedHeight =
+                      rowEl instanceof HTMLElement ? rowEl.getBoundingClientRect().height : 30;
+                    resizeRowOrigHeightRef.current = Math.round(renderedHeight * 15);
+                  }
+                }
+                break;
+              }
+            }
           }
+          return;
         }
-        return;
-      }
 
-      // Right edge resize drag
-      if (isResizingRightEdgeRef.current) {
-        e.preventDefault();
-        const delta = e.clientX - resizeRightEdgeStartXRef.current;
-        if (resizeRightEdgeHandleRef.current) {
-          const origLeft = Number.parseFloat(resizeRightEdgeHandleRef.current.style.left);
-          resizeRightEdgeHandleRef.current.style.left = `${origLeft + delta}px`;
+        // Right edge resize: intercept clicks on right edge handle
+        if (!readOnly && target.classList.contains("layout-table-edge-handle-right")) {
+          e.preventDefault();
+          e.stopPropagation();
+          isResizingRightEdgeRef.current = true;
+          resizingHfSurfaceRef.current = resizeHfSlot
+            ? { rId: resizeHfSlot.rId, kind: resizeHfSlot.kind }
+            : null;
           resizeRightEdgeStartXRef.current = e.clientX;
+          resizeRightEdgeHandleRef.current = target;
+          target.classList.add("dragging");
 
-          // Update stored width (convert pixel delta to twips)
-          const deltaTwips = Math.round(delta * 15);
-          const minWidth = 300; // ~0.2 inches minimum
-          const newWidth = resizeRightEdgeOrigWidthRef.current + deltaTwips;
-          if (newWidth >= minWidth) {
-            resizeRightEdgeOrigWidthRef.current = newWidth;
+          const colIndex = Number.parseInt(target.dataset["columnIndex"] ?? "0", 10);
+          resizeRightEdgeColIndexRef.current = colIndex;
+          resizeRightEdgePmStartRef.current = Number.parseInt(
+            target.dataset["tablePmStart"] ?? "0",
+            10,
+          );
+
+          // Get current last column width from ProseMirror doc
+          const view = resizeViewForRead;
+          if (view) {
+            const $pos = view.state.doc.resolve(resizeRightEdgePmStartRef.current + 1);
+            for (let d = $pos.depth; d >= 0; d--) {
+              const node = $pos.node(d);
+              if (node.type.name === "table") {
+                const widths = node.attrs["columnWidths"] as number[] | null;
+                if (widths && widths[colIndex] !== undefined) {
+                  resizeRightEdgeOrigWidthRef.current = widths[colIndex];
+                }
+                break;
+              }
+            }
           }
+          return;
         }
-        return;
-      }
 
+        // Check if the click target is an image element
+        const imageEl = findImageElement(target);
+        if (!readOnly && imageEl) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const pmStart = imageEl.dataset["pmStart"];
+          if (pmStart !== undefined) {
+            const pos = Number.parseInt(pmStart, 10);
+            // HF edit mode + image inside an HF slot: NodeSelect on the
+            // matching HF PM. Otherwise selection would land on body at
+            // an HF-doc position, which doesn't address a valid node and
+            // silently no-ops (or worse, picks an unrelated body node).
+            const hfSlot = hfEditMode ? findHfSlotForTarget(imageEl) : null;
+            const hfView = hfSlot ? hfPMsRef.current?.getView(hfSlot.rId) : null;
+            if (hfView) {
+              try {
+                hfView.dispatch(
+                  hfView.state.tr.setSelection(NodeSelection.create(hfView.state.doc, pos)),
+                );
+              } catch {
+                // Pos didn't address a selectable node — fall back to a
+                // near text selection so the user still gets focus.
+                const $pos = hfView.state.doc.resolve(Math.min(pos, hfView.state.doc.content.size));
+                hfView.dispatch(hfView.state.tr.setSelection(TextSelection.near($pos)));
+              }
+              hfView.focus();
+              // Image selection chrome is body-only today; HF image select
+              // shows browser-default selection ring. Tracked for follow-up.
+            } else {
+              if (hiddenPMRef.current.getView()) {
+                hiddenPMRef.current.setNodeSelection(pos);
+              } else {
+                queueHiddenEditorSelection({ type: "node", pos });
+              }
+              setSelectedImageInfo(buildImageSelectionInfo(imageEl, pos));
+              setSelectionRects([]);
+              setCaretPosition(null);
+              focusHiddenEditor();
+            }
+          }
+          return;
+        }
+
+        // Clicking outside an image clears image selection
+        setSelectedImageInfo(null);
+
+        e.preventDefault(); // Prevent native text selection
+
+        startPointerTextSelection(e.clientX, e.clientY);
+      },
+      // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
+      [
+        getPositionFromMouse,
+        findCellPosFromPmPos,
+        readOnly,
+        hfEditMode,
+        onBodyClick,
+        zoom,
+        onHyperlinkClick,
+        clearTableInsertTimer,
+        focusHiddenEditor,
+        startPointerTextSelection,
+        queueHiddenEditorSelection,
+      ],
+    );
+
+    // Drag auto-scroll: scrolls when dragging near viewport edges
+    const dragAutoScrollCallbackRef = useCallback((cx: number, cy: number) => {
+      dragExtendRef.current(cx, cy);
+    }, []);
+    const { updateMousePosition: updateDragScroll, stopAutoScroll: stopDragAutoScroll } =
+      useDragAutoScroll({
+        pagesContainerRef,
+        onScrollExtendSelection: dragAutoScrollCallbackRef,
+      });
+
+    // Wire up the drag-extend callback after getPositionFromMouse is available
+    dragExtendRef.current = (cx: number, cy: number) => {
       if (!isDraggingRef.current || dragAnchorRef.current === null) {
         return;
       }
-      if (!hiddenPMRef.current || !pagesContainerRef.current) {
-        return;
-      }
-
-      // Auto-scroll when dragging near viewport edges
-      updateDragScroll(e.clientX, e.clientY);
-
-      // HF drag: route the rest of the mousemove through the active HF PM.
-      // If the drag started inside an HF table cell, dispatch CellSelection
-      // on the HF view; otherwise dragExtendRef handles text selection.
-      // The painter repaints via the HF caret overlay either way.
-      if (activeHfDragSurfaceRef.current) {
-        const hfSurface = activeHfDragSurfaceRef.current;
+      const hfSurface = activeHfDragSurfaceRef.current;
+      if (hfSurface) {
         const hfView = hfPMsRef.current?.getView(hfSurface.rId);
-        if (hfView && cellDragAnchorPosRef.current !== null) {
-          const hfPos = clickToPositionInHfSlot(
-            pagesContainerRef.current,
-            hfSurface.kind,
-            hfSurface.rId,
-            e.clientX,
-            e.clientY,
-          );
-          if (hfPos !== null) {
-            const currentCellPos = findCellPosInDoc(hfView.state.doc, hfPos);
-            if (currentCellPos !== null) {
-              try {
-                hfView.dispatch(
-                  hfView.state.tr.setSelection(
-                    CellSelection.create(
-                      hfView.state.doc,
-                      cellDragAnchorPosRef.current,
-                      currentCellPos,
-                    ),
-                  ),
-                );
-                isCellDraggingRef.current = true;
-                return;
-              } catch {
-                // Cell positions weren't valid for CellSelection; fall
-                // through to text drag.
-              }
-            }
-          }
+        if (!hfView || !pagesContainerRef.current) {
+          return;
         }
-        dragExtendRef.current(e.clientX, e.clientY);
+        const pmPos = clickToPositionInHfSlot(
+          pagesContainerRef.current,
+          hfSurface.kind,
+          hfSurface.rId,
+          cx,
+          cy,
+        );
+        if (pmPos === null) {
+          return;
+        }
+        const docEnd = hfView.state.doc.content.size;
+        const anchor = Math.max(0, Math.min(dragAnchorRef.current, docEnd));
+        const head = Math.max(0, Math.min(pmPos, docEnd));
+        const $anchor = hfView.state.doc.resolve(anchor);
+        const $head = hfView.state.doc.resolve(head);
+        hfView.dispatch(hfView.state.tr.setSelection(TextSelection.between($anchor, $head)));
         return;
       }
-
-      const pmPos = getPositionFromMouse(e.clientX, e.clientY);
+      if (!hiddenPMRef.current) {
+        return;
+      }
+      const pmPos = getPositionFromMouse(cx, cy);
       if (pmPos === null) {
         return;
       }
-
-      // Dragging in table cells: text selection first, cell selection when crossing boundary
-      if (cellDragAnchorPosRef.current !== null) {
-        // If already in cell-drag mode, continue updating cell selection
-        if (isCellDraggingRef.current) {
-          const currentCellPos = findCellPosFromPmPos(pmPos);
-          if (currentCellPos !== null) {
-            hiddenPMRef.current.setCellSelection(cellDragAnchorPosRef.current, currentCellPos);
-            return;
-          }
-        }
-
-        // Switch to cell selection when drag crosses into a different cell
-        const currentCellPos = findCellPosFromPmPos(pmPos);
-        if (currentCellPos !== null && currentCellPos !== cellDragAnchorPosRef.current) {
-          isCellDraggingRef.current = true;
-          hiddenPMRef.current.setCellSelection(cellDragAnchorPosRef.current, currentCellPos);
-          cellDragOverflowXRef.current = null;
-          return;
-        }
-
-        // Escalate to a whole-cell selection only once the drag has reached the
-        // cell's last text position and the user keeps dragging past it. Gating
-        // on the content end is what separates "dragged past the text"
-        // (intended) from the sub-glyph stickiness at the very start of any drag
-        // (pmPos hasn't advanced to the next character yet) — without it, a <5px
-        // nudge inside a cell grabbed the entire cell.
-        const contentEnd = cellDragContentEndRef.current;
-        const atContentEnd = contentEnd !== null && pmPos >= contentEnd;
-        if (
-          atContentEnd &&
-          cellDragLastPmPosRef.current !== null &&
-          pmPos === cellDragLastPmPosRef.current
-        ) {
-          if (cellDragOverflowXRef.current === null) {
-            cellDragOverflowXRef.current = e.clientX;
-          } else if (
-            Math.abs(e.clientX - cellDragOverflowXRef.current) >= CELL_SELECT_OVERFLOW_PX
-          ) {
-            // Overflow threshold reached — select the entire cell
-            isCellDraggingRef.current = true;
-            hiddenPMRef.current.setCellSelection(
-              cellDragAnchorPosRef.current,
-              cellDragAnchorPosRef.current,
-            );
-            cellDragOverflowXRef.current = null;
-            return;
-          }
-        } else {
-          // Still selecting text within the cell — reset overflow tracking.
-          cellDragOverflowXRef.current = null;
-          cellDragLastPmPosRef.current = pmPos;
-        }
-      }
-
-      // Regular text selection drag (within cell or outside tables)
-      const anchor = dragAnchorRef.current;
-      hiddenPMRef.current.setSelection(anchor, pmPos);
-    },
-    [getPositionFromMouse, findCellPosFromPmPos, findCellPosInDoc, updateDragScroll],
-  );
-
-  /**
-   * Handle mouseup - end drag selection.
-   */
-  const handleMouseUp = useCallback(() => {
-    // Commit column resize
-    if (isResizingColumnRef.current) {
-      isResizingColumnRef.current = false;
-      if (resizeHandleRef.current) {
-        resizeHandleRef.current.classList.remove("dragging");
-        resizeHandleRef.current = null;
-      }
-
-      // Update ProseMirror document with new column widths. Commit on the
-      // HF view if the resize started inside an HF slot, else body.
-      const view =
-        (resizingHfSurfaceRef.current
-          ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
-          : hiddenPMRef.current?.getView()) ?? null;
-      resizingHfSurfaceRef.current = null;
-      if (view) {
-        const pmStart = resizeTablePmStartRef.current;
-        const colIdx = resizeColumnIndexRef.current;
-        const { left: newLeft, right: newRight } = resizeOrigWidthsRef.current;
-
-        // Find the table node and update columnWidths + cell widths
-        const $pos = view.state.doc.resolve(pmStart + 1);
-        for (let d = $pos.depth; d >= 0; d--) {
-          const node = $pos.node(d);
-          if (node.type.name === "table") {
-            const tablePos = $pos.before(d);
-            const tr = view.state.tr;
-            const tableAttrs = expectTableAttrs(node);
-            if (!tableAttrs.columnWidths) {
-              break;
-            }
-            const widths = [...tableAttrs.columnWidths];
-            widths[colIdx] = newLeft;
-            widths[colIdx + 1] = newRight;
-
-            // Update table columnWidths attr
-            tr.setNodeMarkup(tablePos, undefined, mergeTableAttrs(node, { columnWidths: widths }));
-
-            // Update cell width attrs in each row
-            let rowOffset = tablePos + 1;
-            // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-            node.forEach((row) => {
-              let cellOffset = rowOffset + 1;
-              let cellColIdx = 0;
-              // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-              row.forEach((cell) => {
-                const cellAttrs = expectTableCellAttrs(cell);
-                const colspan = cellAttrs.colspan || 1;
-                if (cellColIdx === colIdx || cellColIdx === colIdx + 1) {
-                  const newWidth = cellColIdx === colIdx ? newLeft : newRight;
-                  tr.setNodeMarkup(
-                    tr.mapping.map(cellOffset),
-                    undefined,
-                    mergeTableCellAttrs(cell, {
-                      width: newWidth,
-                      widthType: "dxa",
-                      colwidth: null,
-                    }),
-                  );
-                }
-                cellOffset += cell.nodeSize;
-                cellColIdx += colspan;
-              });
-              rowOffset += row.nodeSize;
-            });
-
-            view.dispatch(tr);
-            break;
-          }
-        }
-      }
-      return;
-    }
-
-    // Commit row resize
-    if (isResizingRowRef.current) {
-      isResizingRowRef.current = false;
-      if (resizeRowHandleRef.current) {
-        resizeRowHandleRef.current.classList.remove("dragging");
-        resizeRowHandleRef.current = null;
-      }
-
-      const view =
-        (resizingHfSurfaceRef.current
-          ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
-          : hiddenPMRef.current?.getView()) ?? null;
-      resizingHfSurfaceRef.current = null;
-      if (view) {
-        const pmStart = resizeRowTablePmStartRef.current;
-        const rowIdx = resizeRowIndexRef.current;
-        const newHeight = resizeRowOrigHeightRef.current;
-
-        const $pos = view.state.doc.resolve(pmStart + 1);
-        for (let d = $pos.depth; d >= 0; d--) {
-          const node = $pos.node(d);
-          if (node.type.name === "table") {
-            const tablePos = $pos.before(d);
-            const tr = view.state.tr;
-
-            // Walk to the target row
-            let rowOffset = tablePos + 1;
-            let idx = 0;
-            // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-            node.forEach((row) => {
-              if (idx === rowIdx) {
-                tr.setNodeMarkup(
-                  tr.mapping.map(rowOffset),
-                  undefined,
-                  mergeTableRowAttrs(row, {
-                    height: newHeight,
-                    heightRule: "atLeast",
-                  }),
-                );
-              }
-              rowOffset += row.nodeSize;
-              idx++;
-            });
-
-            view.dispatch(tr);
-            break;
-          }
-        }
-      }
-      return;
-    }
-
-    // Commit right edge resize
-    if (isResizingRightEdgeRef.current) {
-      isResizingRightEdgeRef.current = false;
-      if (resizeRightEdgeHandleRef.current) {
-        resizeRightEdgeHandleRef.current.classList.remove("dragging");
-        resizeRightEdgeHandleRef.current = null;
-      }
-
-      const view =
-        (resizingHfSurfaceRef.current
-          ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
-          : hiddenPMRef.current?.getView()) ?? null;
-      resizingHfSurfaceRef.current = null;
-      if (view) {
-        const pmStart = resizeRightEdgePmStartRef.current;
-        const colIdx = resizeRightEdgeColIndexRef.current;
-        const newWidth = resizeRightEdgeOrigWidthRef.current;
-
-        const $pos = view.state.doc.resolve(pmStart + 1);
-        for (let d = $pos.depth; d >= 0; d--) {
-          const node = $pos.node(d);
-          if (node.type.name === "table") {
-            const tablePos = $pos.before(d);
-            const tr = view.state.tr;
-
-            // Update columnWidths — only change last column
-            const tableAttrs = expectTableAttrs(node);
-            if (!tableAttrs.columnWidths) {
-              break;
-            }
-            const widths = [...tableAttrs.columnWidths];
-            widths[colIdx] = newWidth;
-
-            tr.setNodeMarkup(tablePos, undefined, mergeTableAttrs(node, { columnWidths: widths }));
-
-            // Update cell width attrs in the last column of each row
-            let rowOffset = tablePos + 1;
-            // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-            node.forEach((row) => {
-              let cellOffset = rowOffset + 1;
-              let cellColIdx = 0;
-              // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
-              row.forEach((cell) => {
-                const cellAttrs = expectTableCellAttrs(cell);
-                const colspan = cellAttrs.colspan || 1;
-                if (cellColIdx === colIdx) {
-                  tr.setNodeMarkup(
-                    tr.mapping.map(cellOffset),
-                    undefined,
-                    mergeTableCellAttrs(cell, {
-                      width: newWidth,
-                      widthType: "dxa",
-                      colwidth: null,
-                    }),
-                  );
-                }
-                cellOffset += cell.nodeSize;
-                cellColIdx += colspan;
-              });
-              rowOffset += row.nodeSize;
-            });
-
-            view.dispatch(tr);
-            break;
-          }
-        }
-      }
-      return;
-    }
-
-    isDraggingRef.current = false;
-    isCellDraggingRef.current = false;
-    cellDragLastPmPosRef.current = null;
-    cellDragOverflowXRef.current = null;
-    cellDragContentEndRef.current = null;
-    activeHfDragSurfaceRef.current = null;
-    stopDragAutoScroll();
-    // Keep dragAnchorRef for potential shift-click extension
-  }, [stopDragAutoScroll]);
-
-  // Add global mouse event listeners for drag selection
-  useEffect(() => {
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      hiddenPMRef.current.setSelection(dragAnchorRef.current, pmPos);
     };
-  }, [handleMouseMove, handleMouseUp]);
 
-  // Mouse back/forward buttons (3 = back, 4 = forward) navigate browser history
-  // by default, which would yank the user out of the document mid-edit. While
-  // this editor is focused, repurpose them as undo / redo and suppress the
-  // navigation. preventDefault on mousedown drives the action; mouseup +
-  // auxclick also preventDefault since which event triggers the navigation
-  // varies across Chromium builds.
-  useEffect(() => {
-    if (readOnly) {
-      return;
-    }
-    const handleHistoryButton = (event: MouseEvent) => {
-      if (event.button !== 3 && event.button !== 4) {
-        return;
-      }
-      if (!hiddenPMRef.current?.isFocused()) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.type !== "mousedown") {
-        return;
-      }
-      if (event.button === 3) {
-        hiddenPMRef.current.undo();
-      } else {
-        hiddenPMRef.current.redo();
-      }
-    };
-    const options = { capture: true } as const;
-    window.addEventListener("mousedown", handleHistoryButton, options);
-    window.addEventListener("mouseup", handleHistoryButton, options);
-    window.addEventListener("auxclick", handleHistoryButton, options);
-    return () => {
-      window.removeEventListener("mousedown", handleHistoryButton, options);
-      window.removeEventListener("mouseup", handleHistoryButton, options);
-      window.removeEventListener("auxclick", handleHistoryButton, options);
-    };
-  }, [readOnly]);
-
-  /**
-   * Handle mousemove on pages to show table row/column insert buttons.
-   * Detects proximity to table row/column boundaries and shows a floating "+" button.
-   */
-  const handlePagesMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      // Skip during drags / resizes
-      if (
-        readOnly ||
-        isDraggingRef.current ||
-        isResizingColumnRef.current ||
-        isResizingRowRef.current ||
-        isResizingRightEdgeRef.current ||
-        isCellDraggingRef.current
-      ) {
-        return;
-      }
-
-      const pagesEl = pagesContainerRef.current;
-      if (!pagesEl) {
-        return;
-      }
-
-      const mouseX = e.clientX;
-      const mouseY = e.clientY;
-
-      // Find the table — either directly under the cursor or nearby (for edge hover)
-      const eventTarget = e.target instanceof HTMLElement ? e.target : null;
-      let tableEl = eventTarget ? closestHtmlElement(eventTarget, ".layout-table") : null;
-      if (!tableEl) {
-        // Mouse may be in the margin area near a table — check all tables
-        const tables = htmlQueryAll(pagesEl, ".layout-table");
-        for (const t of tables) {
-          const r = t.getBoundingClientRect();
-          const nearLeft = mouseX >= r.left - TABLE_INSERT_EDGE_PROXIMITY && mouseX < r.left;
-          const nearTop = mouseY >= r.top - TABLE_INSERT_EDGE_PROXIMITY && mouseY < r.top;
-          const withinX = mouseX >= r.left - TABLE_INSERT_EDGE_PROXIMITY && mouseX <= r.right;
-          const withinY = mouseY >= r.top - TABLE_INSERT_EDGE_PROXIMITY && mouseY <= r.bottom;
-          if ((nearLeft && withinY) || (nearTop && withinX)) {
-            tableEl = t;
-            break;
-          }
-        }
-      }
-
-      if (!tableEl) {
-        setTableInsertButton(null);
-        return;
-      }
-
-      const tableRect = tableEl.getBoundingClientRect();
-
-      const nearLeftEdge =
-        mouseX < tableRect.left + TABLE_INSERT_EDGE_PROXIMITY &&
-        mouseX >= tableRect.left - TABLE_INSERT_EDGE_PROXIMITY;
-      const nearTopEdge =
-        mouseY < tableRect.top + TABLE_INSERT_EDGE_PROXIMITY &&
-        mouseY >= tableRect.top - TABLE_INSERT_EDGE_PROXIMITY;
-
-      if (!nearLeftEdge && !nearTopEdge) {
-        setTableInsertButton(null);
-        return;
-      }
-
-      const rows = tableEl.querySelectorAll(":scope > .layout-table-row");
-      if (rows.length === 0) {
-        setTableInsertButton(null);
-        return;
-      }
-
-      const viewportEl = pagesEl.parentElement;
-      if (!viewportEl) {
-        return;
-      }
-      const viewportRect = viewportEl.getBoundingClientRect();
-
-      /** Extract PM position from a cell element */
-      const getCellPmPos = (el: HTMLElement | null): number =>
-        el ? Number(el.dataset["pmStart"]) || 0 : 0;
-
-      // Show button centered on the hovered row (left edge hover)
-      if (nearLeftEdge) {
-        for (const row of rows) {
-          const rowRect = row.getBoundingClientRect();
-          if (mouseY >= rowRect.top && mouseY <= rowRect.bottom) {
-            const cell = queryHtmlElement(row, ".layout-table-cell");
-            const pmPos = getCellPmPos(cell);
-            if (!pmPos) {
-              break;
-            }
-            const rowCenterY = rowRect.top + rowRect.height / 2;
-            setTableInsertButton({
-              type: "row",
-              x: tableInsertButtonOffset(tableRect.left, viewportRect.left, zoom, 24),
-              y: tableInsertButtonOffset(rowCenterY, viewportRect.top, zoom, 10),
-              cellPmPos: pmPos,
-            });
-            clearTableInsertTimer();
-            return;
-          }
-        }
-      }
-
-      // Show button centered on the hovered column (top edge hover)
-      if (nearTopEdge && rows[0]) {
-        const cells = htmlQueryAll(rows[0], ":scope > .layout-table-cell");
-        for (const cellEl of cells) {
-          const cellRect = cellEl.getBoundingClientRect();
-          if (mouseX >= cellRect.left && mouseX <= cellRect.right) {
-            const pmPos = getCellPmPos(cellEl);
-            if (!pmPos) {
-              break;
-            }
-            const cellCenterX = cellRect.left + cellRect.width / 2;
-            setTableInsertButton({
-              type: "column",
-              x: tableInsertButtonOffset(cellCenterX, viewportRect.left, zoom, 10),
-              y: tableInsertButtonOffset(tableRect.top, viewportRect.top, zoom, 24),
-              cellPmPos: pmPos,
-            });
-            clearTableInsertTimer();
-            return;
-          }
-        }
-      }
-
-      // Not over any row/column — schedule hide with a small delay
-      if (!tableInsertHideTimerRef.current) {
-        tableInsertHideTimerRef.current = setTimeout(() => {
-          setTableInsertButton(null);
-          tableInsertHideTimerRef.current = null;
-        }, TABLE_INSERT_HIDE_DELAY);
-      }
-    },
-    [readOnly, clearTableInsertTimer, zoom],
-  );
-
-  /**
-   * Handle table insert button click — set selection to target cell, then insert.
-   */
-  const handleTableInsertClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!tableInsertButton || !hiddenPMRef.current) {
-        return;
-      }
-
-      const view = hiddenPMRef.current.getView();
-      if (!view) {
-        return;
-      }
-
-      const { type, cellPmPos } = tableInsertButton;
-
-      // Set selection inside the target cell
-      const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, cellPmPos + 1));
-      view.dispatch(tr);
-
-      // Dispatch the appropriate insert command
-      if (type === "row") {
-        addRowBelow(view.state, view.dispatch);
-      } else {
-        addColumnRight(view.state, view.dispatch);
-      }
-
-      setTableInsertButton(null);
-      hiddenPMRef.current.focus();
-    },
-    [tableInsertButton],
-  );
-
-  /**
-   * Handle click on pages container (for double-click word selection).
-   */
-  const handlePagesClick = useCallback(
-    (e: React.MouseEvent) => {
-      const target = e.target instanceof HTMLElement ? e.target : null;
-      if (!target) {
-        return;
-      }
-      // Portaled descendants (Dialog, Combobox) are filtered upstream by
-      // `containedHandler(pagesContainerRef, …)` at the JSX site.
-      // Handle hyperlink clicks (single-click only, not drag-to-select)
-      const anchorClosest = target.closest("a[href]");
-      const anchorEl = anchorClosest instanceof HTMLAnchorElement ? anchorClosest : null;
-      if (anchorEl) {
-        e.preventDefault();
-        const href = anchorEl.getAttribute("href") || "";
-        if (href.startsWith("#")) {
-          // Internal bookmark — navigate within document
-          const bookmarkName = href.slice(1);
-          if (bookmarkName && hiddenPMRef.current) {
-            const view = hiddenPMRef.current.getView();
-            if (view) {
-              const targetPos = { value: null as number | null };
-              view.state.doc.descendants((node, pos) => {
-                if (targetPos.value !== null) {
-                  return false;
-                }
-                if (node.type.name === "paragraph") {
-                  const bookmarks = node.attrs["bookmarks"] as
-                    | { id: number; name: string }[]
-                    | undefined;
-                  if (bookmarks?.some((b) => b.name === bookmarkName)) {
-                    targetPos.value = pos;
-                    return false;
-                  }
-                }
-                return undefined;
-              });
-              if (targetPos.value !== null) {
-                const tp = targetPos.value;
-                scrollToPositionImpl(tp);
-                hiddenPMRef.current.setSelection(tp + 1);
-              }
-            }
-          }
-        } else if (onHyperlinkClick) {
-          // External hyperlink — show popup only if not a drag-to-select.
-          // Check the active surface's selection: when the user is editing
-          // an HF and clicks a link inside that slot, we read HF PM
-          // selection state, not body. Without this fix, a single-click
-          // on an HF hyperlink while a body range was selected would
-          // incorrectly suppress the popup.
-          const hfSlot = hfEditMode ? findHfSlotForTarget(target) : null;
-          const surfaceView =
-            (hfSlot ? hfPMsRef.current?.getView(hfSlot.rId) : null) ??
-            hiddenPMRef.current?.getView();
-          const hasRangeSelection =
-            surfaceView && surfaceView.state.selection.from !== surfaceView.state.selection.to;
-          if (!hasRangeSelection) {
-            const displayText = anchorEl.textContent || "";
-            const tooltip = anchorEl.getAttribute("title") || undefined;
-            const clickData: Parameters<NonNullable<typeof onHyperlinkClick>>[0] = {
-              href,
-              displayText,
-              anchorEl,
-            };
-            if (tooltip) {
-              clickData.tooltip = tooltip;
-            }
-            onHyperlinkClick(clickData);
-          }
-        }
-        // External links: already handled by mousedown, just prevent default
-        return;
-      }
-
-      // Double-click on header/footer area enters editing mode. Gate on
-      // `!hfEditMode` so a double-click *while already editing* falls
-      // through to the active-HF word/paragraph-select branch below
-      // instead of pointlessly re-firing `onHeaderFooterDoubleClick`
-      // (Codex #487 P2: 21:49 review).
-      if (!readOnly && !hfEditMode && e.detail === 2 && onHeaderFooterDoubleClick) {
-        // Kind-only, not `findHfSlotForTarget`: an empty header/footer box has
-        // no `data-rid` yet, so the rId-gated resolver misses it and adding a
-        // header via double-click never fires. Entering edit mode to create one
-        // needs only the kind (the handler mints the part).
-        const slot = findHfSlotKindForTarget(target);
-        if (slot) {
-          const pageEl = closestHtmlElement(target, "[data-page-number]");
-          const pageNum = pageEl ? Number(pageEl.dataset["pageNumber"]) : 1;
-          // Seed the HF caret overlay's page scope so the very first
-          // transaction after entering edit mode draws on the page the
-          // user double-clicked, not the first painted instance of the
-          // shared rId.
-          activeHfPageNumberRef.current = pageNum;
+    /**
+     * Handle mousemove - extend selection during drag.
+     */
+    const handleMouseMove = useCallback(
+      (e: MouseEvent) => {
+        // Column resize drag
+        if (isResizingColumnRef.current) {
           e.preventDefault();
-          e.stopPropagation();
-          onHeaderFooterDoubleClick(slot.kind, pageNum);
+          const delta = e.clientX - resizeStartXRef.current;
+          // Move the handle visually
+          if (resizeHandleRef.current) {
+            const origLeft = Number.parseFloat(resizeHandleRef.current.style.left);
+            resizeHandleRef.current.style.left = `${origLeft + delta}px`;
+            resizeStartXRef.current = e.clientX;
+
+            // Update stored widths (convert pixel delta to twips: 1px ≈ 15 twips at 96dpi)
+            const deltaTwips = Math.round(delta * 15);
+            const minWidth = 300; // ~0.2 inches minimum
+            resizeOrigWidthsRef.current = resizeColumnPair(
+              resizeOrigWidthsRef.current.left,
+              resizeOrigWidthsRef.current.right,
+              deltaTwips,
+              resizeBidiRef.current,
+              minWidth,
+            );
+          }
           return;
         }
-      }
 
-      // Double / triple-click inside an active HF slot routes word /
-      // paragraph selection to the matching hidden HF EditorView instead of
-      // the body PM. We re-resolve the slot from the target so the
-      // selection lands on the right surface even when this handler fires
-      // before any prior HF click set drag state.
-      if (!readOnly && hfEditMode && (e.detail === 2 || e.detail === 3) && hfPMsRef.current) {
-        const slot = findHfSlotForTarget(target);
-        if (slot) {
-          const hfView = hfPMsRef.current.getView(slot.rId);
-          if (hfView) {
-            const pos = clickToPositionInHfSlot(
-              pagesContainerRef.current ?? slot.element,
-              slot.kind,
-              slot.rId,
+        // Row resize drag
+        if (isResizingRowRef.current) {
+          e.preventDefault();
+          const delta = e.clientY - resizeStartYRef.current;
+          if (resizeRowHandleRef.current) {
+            const origTop = Number.parseFloat(resizeRowHandleRef.current.style.top);
+            resizeRowHandleRef.current.style.top = `${origTop + delta}px`;
+            resizeStartYRef.current = e.clientY;
+
+            // Update stored height (convert pixel delta to twips)
+            const deltaTwips = Math.round(delta * 15);
+            const minHeight = 200; // ~0.14 inches minimum
+            const newHeight = resizeRowOrigHeightRef.current + deltaTwips;
+            if (newHeight >= minHeight) {
+              resizeRowOrigHeightRef.current = newHeight;
+            }
+          }
+          return;
+        }
+
+        // Right edge resize drag
+        if (isResizingRightEdgeRef.current) {
+          e.preventDefault();
+          const delta = e.clientX - resizeRightEdgeStartXRef.current;
+          if (resizeRightEdgeHandleRef.current) {
+            const origLeft = Number.parseFloat(resizeRightEdgeHandleRef.current.style.left);
+            resizeRightEdgeHandleRef.current.style.left = `${origLeft + delta}px`;
+            resizeRightEdgeStartXRef.current = e.clientX;
+
+            // Update stored width (convert pixel delta to twips)
+            const deltaTwips = Math.round(delta * 15);
+            const minWidth = 300; // ~0.2 inches minimum
+            const newWidth = resizeRightEdgeOrigWidthRef.current + deltaTwips;
+            if (newWidth >= minWidth) {
+              resizeRightEdgeOrigWidthRef.current = newWidth;
+            }
+          }
+          return;
+        }
+
+        if (!isDraggingRef.current || dragAnchorRef.current === null) {
+          return;
+        }
+        if (!hiddenPMRef.current || !pagesContainerRef.current) {
+          return;
+        }
+
+        // Auto-scroll when dragging near viewport edges
+        updateDragScroll(e.clientX, e.clientY);
+
+        // HF drag: route the rest of the mousemove through the active HF PM.
+        // If the drag started inside an HF table cell, dispatch CellSelection
+        // on the HF view; otherwise dragExtendRef handles text selection.
+        // The painter repaints via the HF caret overlay either way.
+        if (activeHfDragSurfaceRef.current) {
+          const hfSurface = activeHfDragSurfaceRef.current;
+          const hfView = hfPMsRef.current?.getView(hfSurface.rId);
+          if (hfView && cellDragAnchorPosRef.current !== null) {
+            const hfPos = clickToPositionInHfSlot(
+              pagesContainerRef.current,
+              hfSurface.kind,
+              hfSurface.rId,
               e.clientX,
               e.clientY,
             );
-            if (pos !== null) {
-              const docEnd = hfView.state.doc.content.size;
-              const clamped = Math.max(0, Math.min(pos, docEnd));
-              const $pos = hfView.state.doc.resolve(clamped);
+            if (hfPos !== null) {
+              const currentCellPos = findCellPosInDoc(hfView.state.doc, hfPos);
+              if (currentCellPos !== null) {
+                try {
+                  hfView.dispatch(
+                    hfView.state.tr.setSelection(
+                      CellSelection.create(
+                        hfView.state.doc,
+                        cellDragAnchorPosRef.current,
+                        currentCellPos,
+                      ),
+                    ),
+                  );
+                  isCellDraggingRef.current = true;
+                  return;
+                } catch {
+                  // Cell positions weren't valid for CellSelection; fall
+                  // through to text drag.
+                }
+              }
+            }
+          }
+          dragExtendRef.current(e.clientX, e.clientY);
+          return;
+        }
+
+        const pmPos = getPositionFromMouse(e.clientX, e.clientY);
+        if (pmPos === null) {
+          return;
+        }
+
+        // Dragging in table cells: text selection first, cell selection when crossing boundary
+        if (cellDragAnchorPosRef.current !== null) {
+          // If already in cell-drag mode, continue updating cell selection
+          if (isCellDraggingRef.current) {
+            const currentCellPos = findCellPosFromPmPos(pmPos);
+            if (currentCellPos !== null) {
+              hiddenPMRef.current.setCellSelection(cellDragAnchorPosRef.current, currentCellPos);
+              return;
+            }
+          }
+
+          // Switch to cell selection when drag crosses into a different cell
+          const currentCellPos = findCellPosFromPmPos(pmPos);
+          if (currentCellPos !== null && currentCellPos !== cellDragAnchorPosRef.current) {
+            isCellDraggingRef.current = true;
+            hiddenPMRef.current.setCellSelection(cellDragAnchorPosRef.current, currentCellPos);
+            cellDragOverflowXRef.current = null;
+            return;
+          }
+
+          // Escalate to a whole-cell selection only once the drag has reached the
+          // cell's last text position and the user keeps dragging past it. Gating
+          // on the content end is what separates "dragged past the text"
+          // (intended) from the sub-glyph stickiness at the very start of any drag
+          // (pmPos hasn't advanced to the next character yet) — without it, a <5px
+          // nudge inside a cell grabbed the entire cell.
+          const contentEnd = cellDragContentEndRef.current;
+          const atContentEnd = contentEnd !== null && pmPos >= contentEnd;
+          if (
+            atContentEnd &&
+            cellDragLastPmPosRef.current !== null &&
+            pmPos === cellDragLastPmPosRef.current
+          ) {
+            if (cellDragOverflowXRef.current === null) {
+              cellDragOverflowXRef.current = e.clientX;
+            } else if (
+              Math.abs(e.clientX - cellDragOverflowXRef.current) >= CELL_SELECT_OVERFLOW_PX
+            ) {
+              // Overflow threshold reached — select the entire cell
+              isCellDraggingRef.current = true;
+              hiddenPMRef.current.setCellSelection(
+                cellDragAnchorPosRef.current,
+                cellDragAnchorPosRef.current,
+              );
+              cellDragOverflowXRef.current = null;
+              return;
+            }
+          } else {
+            // Still selecting text within the cell — reset overflow tracking.
+            cellDragOverflowXRef.current = null;
+            cellDragLastPmPosRef.current = pmPos;
+          }
+        }
+
+        // Regular text selection drag (within cell or outside tables)
+        const anchor = dragAnchorRef.current;
+        hiddenPMRef.current.setSelection(anchor, pmPos);
+      },
+      [getPositionFromMouse, findCellPosFromPmPos, findCellPosInDoc, updateDragScroll],
+    );
+
+    /**
+     * Handle mouseup - end drag selection.
+     */
+    const handleMouseUp = useCallback(() => {
+      // Commit column resize
+      if (isResizingColumnRef.current) {
+        isResizingColumnRef.current = false;
+        if (resizeHandleRef.current) {
+          resizeHandleRef.current.classList.remove("dragging");
+          resizeHandleRef.current = null;
+        }
+
+        // Update ProseMirror document with new column widths. Commit on the
+        // HF view if the resize started inside an HF slot, else body.
+        const view =
+          (resizingHfSurfaceRef.current
+            ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
+            : hiddenPMRef.current?.getView()) ?? null;
+        resizingHfSurfaceRef.current = null;
+        if (view) {
+          const pmStart = resizeTablePmStartRef.current;
+          const colIdx = resizeColumnIndexRef.current;
+          const { left: newLeft, right: newRight } = resizeOrigWidthsRef.current;
+
+          // Find the table node and update columnWidths + cell widths
+          const $pos = view.state.doc.resolve(pmStart + 1);
+          for (let d = $pos.depth; d >= 0; d--) {
+            const node = $pos.node(d);
+            if (node.type.name === "table") {
+              const tablePos = $pos.before(d);
+              const tr = view.state.tr;
+              const tableAttrs = expectTableAttrs(node);
+              if (!tableAttrs.columnWidths) {
+                break;
+              }
+              const widths = [...tableAttrs.columnWidths];
+              widths[colIdx] = newLeft;
+              widths[colIdx + 1] = newRight;
+
+              // Update table columnWidths attr
+              tr.setNodeMarkup(
+                tablePos,
+                undefined,
+                mergeTableAttrs(node, { columnWidths: widths }),
+              );
+
+              // Update cell width attrs in each row
+              let rowOffset = tablePos + 1;
+              // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
+              node.forEach((row) => {
+                let cellOffset = rowOffset + 1;
+                let cellColIdx = 0;
+                // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
+                row.forEach((cell) => {
+                  const cellAttrs = expectTableCellAttrs(cell);
+                  const colspan = cellAttrs.colspan || 1;
+                  if (cellColIdx === colIdx || cellColIdx === colIdx + 1) {
+                    const newWidth = cellColIdx === colIdx ? newLeft : newRight;
+                    tr.setNodeMarkup(
+                      tr.mapping.map(cellOffset),
+                      undefined,
+                      mergeTableCellAttrs(cell, {
+                        width: newWidth,
+                        widthType: "dxa",
+                        colwidth: null,
+                      }),
+                    );
+                  }
+                  cellOffset += cell.nodeSize;
+                  cellColIdx += colspan;
+                });
+                rowOffset += row.nodeSize;
+              });
+
+              view.dispatch(tr);
+              break;
+            }
+          }
+        }
+        return;
+      }
+
+      // Commit row resize
+      if (isResizingRowRef.current) {
+        isResizingRowRef.current = false;
+        if (resizeRowHandleRef.current) {
+          resizeRowHandleRef.current.classList.remove("dragging");
+          resizeRowHandleRef.current = null;
+        }
+
+        const view =
+          (resizingHfSurfaceRef.current
+            ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
+            : hiddenPMRef.current?.getView()) ?? null;
+        resizingHfSurfaceRef.current = null;
+        if (view) {
+          const pmStart = resizeRowTablePmStartRef.current;
+          const rowIdx = resizeRowIndexRef.current;
+          const newHeight = resizeRowOrigHeightRef.current;
+
+          const $pos = view.state.doc.resolve(pmStart + 1);
+          for (let d = $pos.depth; d >= 0; d--) {
+            const node = $pos.node(d);
+            if (node.type.name === "table") {
+              const tablePos = $pos.before(d);
+              const tr = view.state.tr;
+
+              // Walk to the target row
+              let rowOffset = tablePos + 1;
+              let idx = 0;
+              // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
+              node.forEach((row) => {
+                if (idx === rowIdx) {
+                  tr.setNodeMarkup(
+                    tr.mapping.map(rowOffset),
+                    undefined,
+                    mergeTableRowAttrs(row, {
+                      height: newHeight,
+                      heightRule: "atLeast",
+                    }),
+                  );
+                }
+                rowOffset += row.nodeSize;
+                idx++;
+              });
+
+              view.dispatch(tr);
+              break;
+            }
+          }
+        }
+        return;
+      }
+
+      // Commit right edge resize
+      if (isResizingRightEdgeRef.current) {
+        isResizingRightEdgeRef.current = false;
+        if (resizeRightEdgeHandleRef.current) {
+          resizeRightEdgeHandleRef.current.classList.remove("dragging");
+          resizeRightEdgeHandleRef.current = null;
+        }
+
+        const view =
+          (resizingHfSurfaceRef.current
+            ? hfPMsRef.current?.getView(resizingHfSurfaceRef.current.rId)
+            : hiddenPMRef.current?.getView()) ?? null;
+        resizingHfSurfaceRef.current = null;
+        if (view) {
+          const pmStart = resizeRightEdgePmStartRef.current;
+          const colIdx = resizeRightEdgeColIndexRef.current;
+          const newWidth = resizeRightEdgeOrigWidthRef.current;
+
+          const $pos = view.state.doc.resolve(pmStart + 1);
+          for (let d = $pos.depth; d >= 0; d--) {
+            const node = $pos.node(d);
+            if (node.type.name === "table") {
+              const tablePos = $pos.before(d);
+              const tr = view.state.tr;
+
+              // Update columnWidths — only change last column
+              const tableAttrs = expectTableAttrs(node);
+              if (!tableAttrs.columnWidths) {
+                break;
+              }
+              const widths = [...tableAttrs.columnWidths];
+              widths[colIdx] = newWidth;
+
+              tr.setNodeMarkup(
+                tablePos,
+                undefined,
+                mergeTableAttrs(node, { columnWidths: widths }),
+              );
+
+              // Update cell width attrs in the last column of each row
+              let rowOffset = tablePos + 1;
+              // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
+              node.forEach((row) => {
+                let cellOffset = rowOffset + 1;
+                let cellColIdx = 0;
+                // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node API
+                row.forEach((cell) => {
+                  const cellAttrs = expectTableCellAttrs(cell);
+                  const colspan = cellAttrs.colspan || 1;
+                  if (cellColIdx === colIdx) {
+                    tr.setNodeMarkup(
+                      tr.mapping.map(cellOffset),
+                      undefined,
+                      mergeTableCellAttrs(cell, {
+                        width: newWidth,
+                        widthType: "dxa",
+                        colwidth: null,
+                      }),
+                    );
+                  }
+                  cellOffset += cell.nodeSize;
+                  cellColIdx += colspan;
+                });
+                rowOffset += row.nodeSize;
+              });
+
+              view.dispatch(tr);
+              break;
+            }
+          }
+        }
+        return;
+      }
+
+      isDraggingRef.current = false;
+      isCellDraggingRef.current = false;
+      cellDragLastPmPosRef.current = null;
+      cellDragOverflowXRef.current = null;
+      cellDragContentEndRef.current = null;
+      activeHfDragSurfaceRef.current = null;
+      stopDragAutoScroll();
+      // Keep dragAnchorRef for potential shift-click extension
+    }, [stopDragAutoScroll]);
+
+    // Add global mouse event listeners for drag selection
+    useEffect(() => {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+    }, [handleMouseMove, handleMouseUp]);
+
+    // Mouse back/forward buttons (3 = back, 4 = forward) navigate browser history
+    // by default, which would yank the user out of the document mid-edit. While
+    // this editor is focused, repurpose them as undo / redo and suppress the
+    // navigation. preventDefault on mousedown drives the action; mouseup +
+    // auxclick also preventDefault since which event triggers the navigation
+    // varies across Chromium builds.
+    useEffect(() => {
+      if (readOnly) {
+        return;
+      }
+      const handleHistoryButton = (event: MouseEvent) => {
+        if (event.button !== 3 && event.button !== 4) {
+          return;
+        }
+        if (!hiddenPMRef.current?.isFocused()) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.type !== "mousedown") {
+          return;
+        }
+        if (event.button === 3) {
+          hiddenPMRef.current.undo();
+        } else {
+          hiddenPMRef.current.redo();
+        }
+      };
+      const options = { capture: true } as const;
+      window.addEventListener("mousedown", handleHistoryButton, options);
+      window.addEventListener("mouseup", handleHistoryButton, options);
+      window.addEventListener("auxclick", handleHistoryButton, options);
+      return () => {
+        window.removeEventListener("mousedown", handleHistoryButton, options);
+        window.removeEventListener("mouseup", handleHistoryButton, options);
+        window.removeEventListener("auxclick", handleHistoryButton, options);
+      };
+    }, [readOnly]);
+
+    /**
+     * Handle mousemove on pages to show table row/column insert buttons.
+     * Detects proximity to table row/column boundaries and shows a floating "+" button.
+     */
+    const handlePagesMouseMove = useCallback(
+      (e: React.MouseEvent) => {
+        // Skip during drags / resizes
+        if (
+          readOnly ||
+          isDraggingRef.current ||
+          isResizingColumnRef.current ||
+          isResizingRowRef.current ||
+          isResizingRightEdgeRef.current ||
+          isCellDraggingRef.current
+        ) {
+          return;
+        }
+
+        const pagesEl = pagesContainerRef.current;
+        if (!pagesEl) {
+          return;
+        }
+
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+
+        // Find the table — either directly under the cursor or nearby (for edge hover)
+        const eventTarget = e.target instanceof HTMLElement ? e.target : null;
+        let tableEl = eventTarget ? closestHtmlElement(eventTarget, ".layout-table") : null;
+        if (!tableEl) {
+          // Mouse may be in the margin area near a table — check all tables
+          const tables = htmlQueryAll(pagesEl, ".layout-table");
+          for (const t of tables) {
+            const r = t.getBoundingClientRect();
+            const nearLeft = mouseX >= r.left - TABLE_INSERT_EDGE_PROXIMITY && mouseX < r.left;
+            const nearTop = mouseY >= r.top - TABLE_INSERT_EDGE_PROXIMITY && mouseY < r.top;
+            const withinX = mouseX >= r.left - TABLE_INSERT_EDGE_PROXIMITY && mouseX <= r.right;
+            const withinY = mouseY >= r.top - TABLE_INSERT_EDGE_PROXIMITY && mouseY <= r.bottom;
+            if ((nearLeft && withinY) || (nearTop && withinX)) {
+              tableEl = t;
+              break;
+            }
+          }
+        }
+
+        if (!tableEl) {
+          setTableInsertButton(null);
+          return;
+        }
+
+        const tableRect = tableEl.getBoundingClientRect();
+
+        const nearLeftEdge =
+          mouseX < tableRect.left + TABLE_INSERT_EDGE_PROXIMITY &&
+          mouseX >= tableRect.left - TABLE_INSERT_EDGE_PROXIMITY;
+        const nearTopEdge =
+          mouseY < tableRect.top + TABLE_INSERT_EDGE_PROXIMITY &&
+          mouseY >= tableRect.top - TABLE_INSERT_EDGE_PROXIMITY;
+
+        if (!nearLeftEdge && !nearTopEdge) {
+          setTableInsertButton(null);
+          return;
+        }
+
+        const rows = tableEl.querySelectorAll(":scope > .layout-table-row");
+        if (rows.length === 0) {
+          setTableInsertButton(null);
+          return;
+        }
+
+        const viewportEl = pagesEl.parentElement;
+        if (!viewportEl) {
+          return;
+        }
+        const viewportRect = viewportEl.getBoundingClientRect();
+
+        /** Extract PM position from a cell element */
+        const getCellPmPos = (el: HTMLElement | null): number =>
+          el ? Number(el.dataset["pmStart"]) || 0 : 0;
+
+        // Show button centered on the hovered row (left edge hover)
+        if (nearLeftEdge) {
+          for (const row of rows) {
+            const rowRect = row.getBoundingClientRect();
+            if (mouseY >= rowRect.top && mouseY <= rowRect.bottom) {
+              const cell = queryHtmlElement(row, ".layout-table-cell");
+              const pmPos = getCellPmPos(cell);
+              if (!pmPos) {
+                break;
+              }
+              const rowCenterY = rowRect.top + rowRect.height / 2;
+              setTableInsertButton({
+                type: "row",
+                x: tableInsertButtonOffset(tableRect.left, viewportRect.left, zoom, 24),
+                y: tableInsertButtonOffset(rowCenterY, viewportRect.top, zoom, 10),
+                cellPmPos: pmPos,
+              });
+              clearTableInsertTimer();
+              return;
+            }
+          }
+        }
+
+        // Show button centered on the hovered column (top edge hover)
+        if (nearTopEdge && rows[0]) {
+          const cells = htmlQueryAll(rows[0], ":scope > .layout-table-cell");
+          for (const cellEl of cells) {
+            const cellRect = cellEl.getBoundingClientRect();
+            if (mouseX >= cellRect.left && mouseX <= cellRect.right) {
+              const pmPos = getCellPmPos(cellEl);
+              if (!pmPos) {
+                break;
+              }
+              const cellCenterX = cellRect.left + cellRect.width / 2;
+              setTableInsertButton({
+                type: "column",
+                x: tableInsertButtonOffset(cellCenterX, viewportRect.left, zoom, 10),
+                y: tableInsertButtonOffset(tableRect.top, viewportRect.top, zoom, 24),
+                cellPmPos: pmPos,
+              });
+              clearTableInsertTimer();
+              return;
+            }
+          }
+        }
+
+        // Not over any row/column — schedule hide with a small delay
+        if (!tableInsertHideTimerRef.current) {
+          tableInsertHideTimerRef.current = setTimeout(() => {
+            setTableInsertButton(null);
+            tableInsertHideTimerRef.current = null;
+          }, TABLE_INSERT_HIDE_DELAY);
+        }
+      },
+      [readOnly, clearTableInsertTimer, zoom],
+    );
+
+    /**
+     * Handle table insert button click — set selection to target cell, then insert.
+     */
+    const handleTableInsertClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!tableInsertButton || !hiddenPMRef.current) {
+          return;
+        }
+
+        const view = hiddenPMRef.current.getView();
+        if (!view) {
+          return;
+        }
+
+        const { type, cellPmPos } = tableInsertButton;
+
+        // Set selection inside the target cell
+        const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, cellPmPos + 1));
+        view.dispatch(tr);
+
+        // Dispatch the appropriate insert command
+        if (type === "row") {
+          addRowBelow(view.state, view.dispatch);
+        } else {
+          addColumnRight(view.state, view.dispatch);
+        }
+
+        setTableInsertButton(null);
+        hiddenPMRef.current.focus();
+      },
+      [tableInsertButton],
+    );
+
+    /**
+     * Handle click on pages container (for double-click word selection).
+     */
+    const handlePagesClick = useCallback(
+      (e: React.MouseEvent) => {
+        const target = e.target instanceof HTMLElement ? e.target : null;
+        if (!target) {
+          return;
+        }
+        // Portaled descendants (Dialog, Combobox) are filtered upstream by
+        // `containedHandler(pagesContainerRef, …)` at the JSX site.
+        // Handle hyperlink clicks (single-click only, not drag-to-select)
+        const anchorClosest = target.closest("a[href]");
+        const anchorEl = anchorClosest instanceof HTMLAnchorElement ? anchorClosest : null;
+        if (anchorEl) {
+          e.preventDefault();
+          const href = anchorEl.getAttribute("href") || "";
+          if (href.startsWith("#")) {
+            // Internal bookmark — navigate within document
+            const bookmarkName = href.slice(1);
+            if (bookmarkName && hiddenPMRef.current) {
+              const view = hiddenPMRef.current.getView();
+              if (view) {
+                const targetPos = { value: null as number | null };
+                view.state.doc.descendants((node, pos) => {
+                  if (targetPos.value !== null) {
+                    return false;
+                  }
+                  if (node.type.name === "paragraph") {
+                    const bookmarks = node.attrs["bookmarks"] as
+                      | { id: number; name: string }[]
+                      | undefined;
+                    if (bookmarks?.some((b) => b.name === bookmarkName)) {
+                      targetPos.value = pos;
+                      return false;
+                    }
+                  }
+                  return undefined;
+                });
+                if (targetPos.value !== null) {
+                  const tp = targetPos.value;
+                  scrollToPositionImpl(tp);
+                  hiddenPMRef.current.setSelection(tp + 1);
+                }
+              }
+            }
+          } else if (onHyperlinkClick) {
+            // External hyperlink — show popup only if not a drag-to-select.
+            // Check the active surface's selection: when the user is editing
+            // an HF and clicks a link inside that slot, we read HF PM
+            // selection state, not body. Without this fix, a single-click
+            // on an HF hyperlink while a body range was selected would
+            // incorrectly suppress the popup.
+            const hfSlot = hfEditMode ? findHfSlotForTarget(target) : null;
+            const surfaceView =
+              (hfSlot ? hfPMsRef.current?.getView(hfSlot.rId) : null) ??
+              hiddenPMRef.current?.getView();
+            const hasRangeSelection =
+              surfaceView && surfaceView.state.selection.from !== surfaceView.state.selection.to;
+            if (!hasRangeSelection) {
+              const displayText = anchorEl.textContent || "";
+              const tooltip = anchorEl.getAttribute("title") || undefined;
+              const clickData: Parameters<NonNullable<typeof onHyperlinkClick>>[0] = {
+                href,
+                displayText,
+                anchorEl,
+              };
+              if (tooltip) {
+                clickData.tooltip = tooltip;
+              }
+              onHyperlinkClick(clickData);
+            }
+          }
+          // External links: already handled by mousedown, just prevent default
+          return;
+        }
+
+        // Double-click on header/footer area enters editing mode. Gate on
+        // `!hfEditMode` so a double-click *while already editing* falls
+        // through to the active-HF word/paragraph-select branch below
+        // instead of pointlessly re-firing `onHeaderFooterDoubleClick`
+        // (Codex #487 P2: 21:49 review).
+        if (!readOnly && !hfEditMode && e.detail === 2 && onHeaderFooterDoubleClick) {
+          // Kind-only, not `findHfSlotForTarget`: an empty header/footer box has
+          // no `data-rid` yet, so the rId-gated resolver misses it and adding a
+          // header via double-click never fires. Entering edit mode to create one
+          // needs only the kind (the handler mints the part).
+          const slot = findHfSlotKindForTarget(target);
+          if (slot) {
+            const pageEl = closestHtmlElement(target, "[data-page-number]");
+            const pageNum = pageEl ? Number(pageEl.dataset["pageNumber"]) : 1;
+            // Seed the HF caret overlay's page scope so the very first
+            // transaction after entering edit mode draws on the page the
+            // user double-clicked, not the first painted instance of the
+            // shared rId.
+            activeHfPageNumberRef.current = pageNum;
+            e.preventDefault();
+            e.stopPropagation();
+            onHeaderFooterDoubleClick(slot.kind, pageNum);
+            return;
+          }
+        }
+
+        // Double / triple-click inside an active HF slot routes word /
+        // paragraph selection to the matching hidden HF EditorView instead of
+        // the body PM. We re-resolve the slot from the target so the
+        // selection lands on the right surface even when this handler fires
+        // before any prior HF click set drag state.
+        if (!readOnly && hfEditMode && (e.detail === 2 || e.detail === 3) && hfPMsRef.current) {
+          const slot = findHfSlotForTarget(target);
+          if (slot) {
+            const hfView = hfPMsRef.current.getView(slot.rId);
+            if (hfView) {
+              const pos = clickToPositionInHfSlot(
+                pagesContainerRef.current ?? slot.element,
+                slot.kind,
+                slot.rId,
+                e.clientX,
+                e.clientY,
+              );
+              if (pos !== null) {
+                const docEnd = hfView.state.doc.content.size;
+                const clamped = Math.max(0, Math.min(pos, docEnd));
+                const $pos = hfView.state.doc.resolve(clamped);
+                const parent = $pos.parent;
+                // Set page scope BEFORE the dispatch — view.dispatch
+                // synchronously fires handleHfPmTransaction, which reads
+                // activeHfPageNumberRef.current to stamp the new
+                // HfCaretSelection. Without this, double / triple-click
+                // word / paragraph selection on a later page would
+                // render the highlight on the first matching painted
+                // instance (Codex #487 P2: 23:09 review).
+                const pageEl = slot.element.closest<HTMLElement>(".layout-page");
+                const pageNumStr = pageEl?.dataset["pageNumber"];
+                activeHfPageNumberRef.current = pageNumStr ? Number.parseInt(pageNumStr, 10) : null;
+                if (e.detail === 3) {
+                  const start = $pos.start($pos.depth);
+                  const end = $pos.end($pos.depth);
+                  hfView.dispatch(
+                    hfView.state.tr.setSelection(
+                      TextSelection.create(hfView.state.doc, start, end),
+                    ),
+                  );
+                } else if (parent.isTextblock) {
+                  const pmAlignedParts: string[] = [];
+                  for (let i = 0; i < parent.content.childCount; i++) {
+                    const node = parent.content.child(i);
+                    pmAlignedParts.push(
+                      node.isText ? (node.text ?? "") : " ".repeat(node.nodeSize),
+                    );
+                  }
+                  const pmAlignedText = pmAlignedParts.join("");
+                  const offset = $pos.parentOffset;
+                  let start = offset;
+                  while (
+                    start > 0 &&
+                    /\w/u.test(pmAlignedText[start - 1]!) // SAFETY: start > 0
+                  ) {
+                    start--;
+                  }
+                  let end = offset;
+                  while (
+                    end < pmAlignedText.length &&
+                    /\w/u.test(pmAlignedText[end]!) // SAFETY: end < pmAlignedText.length
+                  ) {
+                    end++;
+                  }
+                  const absStart = $pos.start() + start;
+                  const absEnd = $pos.start() + end;
+                  if (absStart < absEnd) {
+                    hfView.dispatch(
+                      hfView.state.tr.setSelection(
+                        TextSelection.create(hfView.state.doc, absStart, absEnd),
+                      ),
+                    );
+                  }
+                }
+                hfView.focus();
+                e.preventDefault();
+                e.stopPropagation();
+              }
+              return;
+            }
+          }
+        }
+
+        // Double-click: select the word under the cursor. Inside a table this
+        // still selects the word (matching Word / Google Docs), not the whole
+        // cell — cell selection is reachable by dragging across cells.
+        if (e.detail === 2 && hiddenPMRef.current) {
+          const pmPos = getPositionFromMouse(e.clientX, e.clientY);
+          if (pmPos !== null) {
+            const view = hiddenPMRef.current.getView();
+            if (view) {
+              const { doc } = view.state;
+              const $pos = doc.resolve(pmPos);
               const parent = $pos.parent;
-              // Set page scope BEFORE the dispatch — view.dispatch
-              // synchronously fires handleHfPmTransaction, which reads
-              // activeHfPageNumberRef.current to stamp the new
-              // HfCaretSelection. Without this, double / triple-click
-              // word / paragraph selection on a later page would
-              // render the highlight on the first matching painted
-              // instance (Codex #487 P2: 23:09 review).
-              const pageEl = slot.element.closest<HTMLElement>(".layout-page");
-              const pageNumStr = pageEl?.dataset["pageNumber"];
-              activeHfPageNumberRef.current = pageNumStr ? Number.parseInt(pageNumStr, 10) : null;
-              if (e.detail === 3) {
-                const start = $pos.start($pos.depth);
-                const end = $pos.end($pos.depth);
-                hfView.dispatch(
-                  hfView.state.tr.setSelection(TextSelection.create(hfView.state.doc, start, end)),
-                );
-              } else if (parent.isTextblock) {
+
+              // Find word boundaries.
+              if (parent.isTextblock) {
+                // Build a string aligned 1-to-1 with PM
+                // offsets inside the parent. Atom inline
+                // nodes (tab, hard_break, image) take 1 PM
+                // position but don't appear in
+                // `textContent`, so a tab at offset 0 +
+                // text "(a)" + tab at offset 4 + text
+                // "Equity Financing" has parentSize 21
+                // but textContent length 19. Walking
+                // word boundaries on `textContent` and
+                // then writing back via `$pos.start() +
+                // offset` shifts the resulting selection
+                // by one PM position per atom skipped —
+                // double-clicking "Financing" in such a
+                // paragraph selected "y Financin"
+                // instead. Padding atom nodes with a
+                // non-word character keeps every offset
+                // in PM-position space.
                 const pmAlignedParts: string[] = [];
                 for (let i = 0; i < parent.content.childCount; i++) {
                   const node = parent.content.child(i);
@@ -4752,298 +4855,182 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(function
                 }
                 const pmAlignedText = pmAlignedParts.join("");
                 const offset = $pos.parentOffset;
+
+                // A word character is any Unicode letter, number, combining mark
+                // (so decomposed accents stay attached) or underscore. Plain
+                // `\w` — even with the `u` flag — is ASCII-only, so it split
+                // "Gdańsk" at the "ń" and double-click selected just "Gda".
+                const wordChar = /[\p{L}\p{N}\p{M}_]/u;
+
+                // Find word start (go back until whitespace/punctuation)
                 let start = offset;
-                while (
-                  start > 0 &&
-                  /\w/u.test(pmAlignedText[start - 1]!) // SAFETY: start > 0
-                ) {
+                while (start > 0 && wordChar.test(pmAlignedText[start - 1]!)) {
+                  // SAFETY: start > 0
                   start--;
                 }
+
+                // Find word end (go forward until whitespace/punctuation)
                 let end = offset;
-                while (
-                  end < pmAlignedText.length &&
-                  /\w/u.test(pmAlignedText[end]!) // SAFETY: end < pmAlignedText.length
-                ) {
+                while (end < pmAlignedText.length && wordChar.test(pmAlignedText[end]!)) {
+                  // SAFETY: end < pmAlignedText.length
                   end++;
                 }
+
+                // Convert to absolute positions
                 const absStart = $pos.start() + start;
                 const absEnd = $pos.start() + end;
+
                 if (absStart < absEnd) {
-                  hfView.dispatch(
-                    hfView.state.tr.setSelection(
-                      TextSelection.create(hfView.state.doc, absStart, absEnd),
-                    ),
-                  );
+                  hiddenPMRef.current.setSelection(absStart, absEnd);
                 }
               }
-              hfView.focus();
-              e.preventDefault();
-              e.stopPropagation();
             }
-            return;
           }
         }
-      }
+        // Triple-click for paragraph selection
+        if (e.detail === 3 && hiddenPMRef.current) {
+          const pmPos = getPositionFromMouse(e.clientX, e.clientY);
+          if (pmPos !== null) {
+            const view = hiddenPMRef.current.getView();
+            if (view) {
+              const { doc } = view.state;
+              const $pos = doc.resolve(pmPos);
 
-      // Double-click: select the word under the cursor. Inside a table this
-      // still selects the word (matching Word / Google Docs), not the whole
-      // cell — cell selection is reachable by dragging across cells.
-      if (e.detail === 2 && hiddenPMRef.current) {
+              // Find paragraph start and end
+              const paragraphStart = $pos.start($pos.depth);
+              const paragraphEnd = $pos.end($pos.depth);
+
+              hiddenPMRef.current.setSelection(paragraphStart, paragraphEnd);
+            }
+          }
+        }
+      },
+      // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
+      [getPositionFromMouse, onHeaderFooterDoubleClick, onHyperlinkClick, readOnly],
+    );
+
+    /**
+     * Handle right-click on pages — set/preserve selection and show context menu.
+     */
+    const handlePagesContextMenu = useCallback(
+      (e: React.MouseEvent) => {
+        if (!onContextMenu) {
+          return;
+        } // No handler, let browser default
+
+        e.preventDefault();
+
+        // HF edit mode: route the right-click to the matching HF PM so the
+        // context menu reads HF selection state. Without this the menu would
+        // act on body PM state — wrong "has selection" flag and any caret
+        // move on right-click would land in the body.
+        const target = e.target instanceof HTMLElement ? e.target : null;
+        if (!readOnly && hfEditMode && target) {
+          const slot = findHfSlotForTarget(target);
+          if (slot) {
+            const hfView = hfPMsRef.current?.getView(slot.rId);
+            if (hfView) {
+              const { from, to } = hfView.state.selection;
+              const pmPos = clickToPositionInHfSlot(
+                pagesContainerRef.current ?? slot.element,
+                slot.kind,
+                slot.rId,
+                e.clientX,
+                e.clientY,
+              );
+              if (pmPos !== null && (from === to || pmPos < from || pmPos > to)) {
+                const docEnd = hfView.state.doc.content.size;
+                const clamped = Math.max(0, Math.min(pmPos, docEnd));
+                const $pos = hfView.state.doc.resolve(clamped);
+                hfView.dispatch(hfView.state.tr.setSelection(TextSelection.near($pos)));
+                hfView.focus();
+              }
+              const after = hfView.state.selection;
+              onContextMenu({
+                x: e.clientX,
+                y: e.clientY,
+                hasSelection: after.from !== after.to,
+              });
+              return;
+            }
+          }
+        }
+
+        const view = hiddenPMRef.current?.getView();
+        if (!view) {
+          return;
+        }
+
+        const { from, to } = view.state.selection;
         const pmPos = getPositionFromMouse(e.clientX, e.clientY);
-        if (pmPos !== null) {
-          const view = hiddenPMRef.current.getView();
-          if (view) {
-            const { doc } = view.state;
-            const $pos = doc.resolve(pmPos);
-            const parent = $pos.parent;
 
-            // Find word boundaries.
-            if (parent.isTextblock) {
-              // Build a string aligned 1-to-1 with PM
-              // offsets inside the parent. Atom inline
-              // nodes (tab, hard_break, image) take 1 PM
-              // position but don't appear in
-              // `textContent`, so a tab at offset 0 +
-              // text "(a)" + tab at offset 4 + text
-              // "Equity Financing" has parentSize 21
-              // but textContent length 19. Walking
-              // word boundaries on `textContent` and
-              // then writing back via `$pos.start() +
-              // offset` shifts the resulting selection
-              // by one PM position per atom skipped —
-              // double-clicking "Financing" in such a
-              // paragraph selected "y Financin"
-              // instead. Padding atom nodes with a
-              // non-word character keeps every offset
-              // in PM-position space.
-              const pmAlignedParts: string[] = [];
-              for (let i = 0; i < parent.content.childCount; i++) {
-                const node = parent.content.child(i);
-                pmAlignedParts.push(node.isText ? (node.text ?? "") : " ".repeat(node.nodeSize));
-              }
-              const pmAlignedText = pmAlignedParts.join("");
-              const offset = $pos.parentOffset;
-
-              // A word character is any Unicode letter, number, combining mark
-              // (so decomposed accents stay attached) or underscore. Plain
-              // `\w` — even with the `u` flag — is ASCII-only, so it split
-              // "Gdańsk" at the "ń" and double-click selected just "Gda".
-              const wordChar = /[\p{L}\p{N}\p{M}_]/u;
-
-              // Find word start (go back until whitespace/punctuation)
-              let start = offset;
-              while (start > 0 && wordChar.test(pmAlignedText[start - 1]!)) {
-                // SAFETY: start > 0
-                start--;
-              }
-
-              // Find word end (go forward until whitespace/punctuation)
-              let end = offset;
-              while (end < pmAlignedText.length && wordChar.test(pmAlignedText[end]!)) {
-                // SAFETY: end < pmAlignedText.length
-                end++;
-              }
-
-              // Convert to absolute positions
-              const absStart = $pos.start() + start;
-              const absEnd = $pos.start() + end;
-
-              if (absStart < absEnd) {
-                hiddenPMRef.current.setSelection(absStart, absEnd);
-              }
-            }
-          }
+        if (pmPos !== null && (from === to || pmPos < from || pmPos > to)) {
+          hiddenPMRef.current?.setSelection(pmPos);
+          hiddenPMRef.current?.focus();
+          setIsFocused(true);
         }
-      }
-      // Triple-click for paragraph selection
-      if (e.detail === 3 && hiddenPMRef.current) {
-        const pmPos = getPositionFromMouse(e.clientX, e.clientY);
-        if (pmPos !== null) {
-          const view = hiddenPMRef.current.getView();
-          if (view) {
-            const { doc } = view.state;
-            const $pos = doc.resolve(pmPos);
 
-            // Find paragraph start and end
-            const paragraphStart = $pos.start($pos.depth);
-            const paragraphEnd = $pos.end($pos.depth);
+        const updatedState = hiddenPMRef.current?.getState();
+        const hasSelection = updatedState
+          ? updatedState.selection.from !== updatedState.selection.to
+          : false;
 
-            hiddenPMRef.current.setSelection(paragraphStart, paragraphEnd);
-          }
+        onContextMenu({ x: e.clientX, y: e.clientY, hasSelection });
+      },
+      [hfEditMode, onContextMenu, getPositionFromMouse, readOnly],
+    );
+
+    /**
+     * Handle focus on container - redirect to hidden PM.
+     */
+    const handleContainerFocus = useCallback(
+      (e: React.FocusEvent) => {
+        // Don't steal focus from sidebar inputs (textareas, inputs, buttons)
+        if (e.target instanceof HTMLElement && e.target.closest(".docx-comments-sidebar")) {
+          return;
         }
-      }
-    },
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
-    [getPositionFromMouse, onHeaderFooterDoubleClick, onHyperlinkClick, readOnly],
-  );
-
-  /**
-   * Handle right-click on pages — set/preserve selection and show context menu.
-   */
-  const handlePagesContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      if (!onContextMenu) {
-        return;
-      } // No handler, let browser default
-
-      e.preventDefault();
-
-      // HF edit mode: route the right-click to the matching HF PM so the
-      // context menu reads HF selection state. Without this the menu would
-      // act on body PM state — wrong "has selection" flag and any caret
-      // move on right-click would land in the body.
-      const target = e.target instanceof HTMLElement ? e.target : null;
-      if (!readOnly && hfEditMode && target) {
-        const slot = findHfSlotForTarget(target);
-        if (slot) {
-          const hfView = hfPMsRef.current?.getView(slot.rId);
-          if (hfView) {
-            const { from, to } = hfView.state.selection;
-            const pmPos = clickToPositionInHfSlot(
-              pagesContainerRef.current ?? slot.element,
-              slot.kind,
-              slot.rId,
-              e.clientX,
-              e.clientY,
-            );
-            if (pmPos !== null && (from === to || pmPos < from || pmPos > to)) {
-              const docEnd = hfView.state.doc.content.size;
-              const clamped = Math.max(0, Math.min(pmPos, docEnd));
-              const $pos = hfView.state.doc.resolve(clamped);
-              hfView.dispatch(hfView.state.tr.setSelection(TextSelection.near($pos)));
-              hfView.focus();
-            }
-            const after = hfView.state.selection;
-            onContextMenu({
-              x: e.clientX,
-              y: e.clientY,
-              hasSelection: after.from !== after.to,
-            });
-            return;
-          }
+        // Don't steal focus from a persistent hidden HF EditorView. The
+        // HF host marks each view's mount node with `data-hf-r-id`; once
+        // an HF view holds focus, the body PM redirect would immediately
+        // bounce keystrokes off it (Codex #487 P1).
+        if (e.target instanceof HTMLElement && e.target.closest("[data-hf-r-id]")) {
+          return;
         }
-      }
+        // Portaled descendants (Dialog, Combobox) are filtered upstream
+        // by `containedHandler(containerRef, …)` at the JSX site.
+        focusHiddenEditor();
+      },
+      [focusHiddenEditor],
+    );
 
-      const view = hiddenPMRef.current?.getView();
-      if (!view) {
+    /**
+     * Handle blur from container.
+     */
+    const handleContainerBlur = useCallback((e: React.FocusEvent) => {
+      // Check if focus is moving to hidden PM or staying within container
+      const relatedTarget = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
+      if (relatedTarget && containerRef.current?.contains(relatedTarget)) {
+        return; // Focus staying within editor
+      }
+      // Keep selection visible when focus moves to the editor's own
+      // formatting toolbar or dropdown portals. Use `[data-folio-toolbar]`
+      // (not `[role="toolbar"]`) so the AI chat composer — which uses
+      // `role="toolbar"` for accessibility — does NOT count as "still in
+      // the editor" and the caret correctly hides when typing in chat.
+      if (
+        relatedTarget?.closest(
+          '[data-folio-toolbar="true"], [data-radix-popper-content-wrapper], [data-radix-select-content], .docx-table-options-dropdown',
+        )
+      ) {
         return;
       }
+      setIsFocused(false);
+    }, []);
 
-      const { from, to } = view.state.selection;
-      const pmPos = getPositionFromMouse(e.clientX, e.clientY);
-
-      if (pmPos !== null && (from === to || pmPos < from || pmPos > to)) {
-        hiddenPMRef.current?.setSelection(pmPos);
-        hiddenPMRef.current?.focus();
-        setIsFocused(true);
-      }
-
-      const updatedState = hiddenPMRef.current?.getState();
-      const hasSelection = updatedState
-        ? updatedState.selection.from !== updatedState.selection.to
-        : false;
-
-      onContextMenu({ x: e.clientX, y: e.clientY, hasSelection });
-    },
-    [hfEditMode, onContextMenu, getPositionFromMouse, readOnly],
-  );
-
-  /**
-   * Handle focus on container - redirect to hidden PM.
-   */
-  const handleContainerFocus = useCallback(
-    (e: React.FocusEvent) => {
-      // Don't steal focus from sidebar inputs (textareas, inputs, buttons)
-      if (e.target instanceof HTMLElement && e.target.closest(".docx-comments-sidebar")) {
-        return;
-      }
-      // Don't steal focus from a persistent hidden HF EditorView. The
-      // HF host marks each view's mount node with `data-hf-r-id`; once
-      // an HF view holds focus, the body PM redirect would immediately
-      // bounce keystrokes off it (Codex #487 P1).
-      if (e.target instanceof HTMLElement && e.target.closest("[data-hf-r-id]")) {
-        return;
-      }
-      // Portaled descendants (Dialog, Combobox) are filtered upstream
-      // by `containedHandler(containerRef, …)` at the JSX site.
-      focusHiddenEditor();
-    },
-    [focusHiddenEditor],
-  );
-
-  /**
-   * Handle blur from container.
-   */
-  const handleContainerBlur = useCallback((e: React.FocusEvent) => {
-    // Check if focus is moving to hidden PM or staying within container
-    const relatedTarget = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
-    if (relatedTarget && containerRef.current?.contains(relatedTarget)) {
-      return; // Focus staying within editor
-    }
-    // Keep selection visible when focus moves to the editor's own
-    // formatting toolbar or dropdown portals. Use `[data-folio-toolbar]`
-    // (not `[role="toolbar"]`) so the AI chat composer — which uses
-    // `role="toolbar"` for accessibility — does NOT count as "still in
-    // the editor" and the caret correctly hides when typing in chat.
-    if (
-      relatedTarget?.closest(
-        '[data-folio-toolbar="true"], [data-radix-popper-content-wrapper], [data-radix-select-content], .docx-table-options-dropdown',
-      )
-    ) {
-      return;
-    }
-    setIsFocused(false);
-  }, []);
-
-  /**
-   * Handle image resize from the overlay.
-   */
-  const handleImageResize = useCallback((pmPos: number, newWidth: number, newHeight: number) => {
-    const view = hiddenPMRef.current?.getView();
-    if (!view) {
-      return;
-    }
-
-    try {
-      const node = view.state.doc.nodeAt(pmPos);
-      if (!node || node.type.name !== "image") {
-        return;
-      }
-
-      const tr = view.state.tr.setNodeMarkup(
-        pmPos,
-        undefined,
-        mergeImageAttrs(node, { width: newWidth, height: newHeight }),
-      );
-      view.dispatch(tr);
-
-      // Re-select the image after resize
-      hiddenPMRef.current?.setNodeSelection(pmPos);
-    } catch {
-      // Position may have changed during resize
-    }
-  }, []);
-
-  /**
-   * Handle image resize start - prevent text selection during resize.
-   */
-  const handleImageResizeStart = useCallback(() => {
-    isImageInteractingRef.current = true;
-  }, []);
-
-  /**
-   * Handle image resize end.
-   */
-  const handleImageResizeEnd = useCallback(() => {
-    isImageInteractingRef.current = false;
-  }, []);
-
-  /**
-   * Handle image drag-to-move: move image node from its current position
-   * to the drop position determined by mouse coordinates.
-   */
-  const handleImageDragMove = useCallback(
-    (pmPos: number, clientX: number, clientY: number) => {
+    /**
+     * Handle image resize from the overlay.
+     */
+    const handleImageResize = useCallback((pmPos: number, newWidth: number, newHeight: number) => {
       const view = hiddenPMRef.current?.getView();
       if (!view) {
         return;
@@ -5055,1106 +5042,1157 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(function
           return;
         }
 
-        const attrs = expectImageAttrs(node);
-        const isFloating =
-          attrs.displayMode === "float" ||
-          attrs.wrapType === "square" ||
-          attrs.wrapType === "tight" ||
-          attrs.wrapType === "through";
+        const tr = view.state.tr.setNodeMarkup(
+          pmPos,
+          undefined,
+          mergeImageAttrs(node, { width: newWidth, height: newHeight }),
+        );
+        view.dispatch(tr);
 
-        if (isFloating) {
-          // For floating images: update position attributes so the image
-          // moves to the drop point while staying floating.
-          // Find the page under the drop point
-          const pages = pagesContainerRef.current?.querySelectorAll(".layout-page");
-          if (!pages || pages.length === 0) {
+        // Re-select the image after resize
+        hiddenPMRef.current?.setNodeSelection(pmPos);
+      } catch {
+        // Position may have changed during resize
+      }
+    }, []);
+
+    /**
+     * Handle image resize start - prevent text selection during resize.
+     */
+    const handleImageResizeStart = useCallback(() => {
+      isImageInteractingRef.current = true;
+    }, []);
+
+    /**
+     * Handle image resize end.
+     */
+    const handleImageResizeEnd = useCallback(() => {
+      isImageInteractingRef.current = false;
+    }, []);
+
+    /**
+     * Handle image drag-to-move: move image node from its current position
+     * to the drop position determined by mouse coordinates.
+     */
+    const handleImageDragMove = useCallback(
+      (pmPos: number, clientX: number, clientY: number) => {
+        const view = hiddenPMRef.current?.getView();
+        if (!view) {
+          return;
+        }
+
+        try {
+          const node = view.state.doc.nodeAt(pmPos);
+          if (!node || node.type.name !== "image") {
             return;
           }
 
-          let contentEl: HTMLElement | null = null;
-          for (const page of pages) {
-            const rect = page.getBoundingClientRect();
-            if (clientY >= rect.top && clientY <= rect.bottom) {
-              contentEl = queryHtmlElement(page, ".layout-page-content");
-              break;
+          const attrs = expectImageAttrs(node);
+          const isFloating =
+            attrs.displayMode === "float" ||
+            attrs.wrapType === "square" ||
+            attrs.wrapType === "tight" ||
+            attrs.wrapType === "through";
+
+          if (isFloating) {
+            // For floating images: update position attributes so the image
+            // moves to the drop point while staying floating.
+            // Find the page under the drop point
+            const pages = pagesContainerRef.current?.querySelectorAll(".layout-page");
+            if (!pages || pages.length === 0) {
+              return;
+            }
+
+            let contentEl: HTMLElement | null = null;
+            for (const page of pages) {
+              const rect = page.getBoundingClientRect();
+              if (clientY >= rect.top && clientY <= rect.bottom) {
+                contentEl = queryHtmlElement(page, ".layout-page-content");
+                break;
+              }
+            }
+            if (!contentEl) {
+              // Fallback to last page if below all pages
+              const lastPage = Array.from(pages).at(-1);
+              contentEl = lastPage ? queryHtmlElement(lastPage, ".layout-page-content") : null;
+            }
+            if (!contentEl) {
+              return;
+            }
+
+            const contentRect = contentEl.getBoundingClientRect();
+            // Convert drop coordinates to content-area-relative pixels
+            const dropX = (clientX - contentRect.left) / zoom;
+            const dropY = (clientY - contentRect.top) / zoom;
+            // Pixels to EMU: px * 914400 / 96
+            const PIXELS_TO_EMU = 914_400 / 96;
+            const hOffsetEmu = Math.round(dropX * PIXELS_TO_EMU);
+            const vOffsetEmu = Math.round(dropY * PIXELS_TO_EMU);
+
+            const newPosition: ImagePositionAttrs = {
+              horizontal: { posOffset: hOffsetEmu, relativeTo: "margin" },
+              vertical: { posOffset: vOffsetEmu, relativeTo: "margin" },
+            };
+
+            const tr = view.state.tr.setNodeMarkup(
+              pmPos,
+              undefined,
+              mergeImageAttrs(node, { position: newPosition }),
+            );
+            view.dispatch(tr);
+            hiddenPMRef.current?.setNodeSelection(pmPos);
+          } else {
+            // For inline images: move to the drop text position
+            const dropPos = getPositionFromMouse(clientX, clientY);
+            if (dropPos === null) {
+              return;
+            }
+            if (dropPos === pmPos || dropPos === pmPos + 1) {
+              return;
+            }
+
+            let tr = view.state.tr;
+
+            if (dropPos <= pmPos) {
+              tr = tr.delete(pmPos, pmPos + node.nodeSize);
+              tr = tr.insert(dropPos, node);
+              hiddenPMRef.current?.setNodeSelection(dropPos);
+            } else {
+              tr = tr.delete(pmPos, pmPos + node.nodeSize);
+              const adjusted = dropPos - node.nodeSize;
+              tr = tr.insert(Math.min(adjusted, tr.doc.content.size), node);
+              hiddenPMRef.current?.setNodeSelection(Math.min(adjusted, tr.doc.content.size - 1));
+            }
+
+            view.dispatch(tr);
+          }
+        } catch {
+          // Position may be invalid
+        }
+      },
+      [getPositionFromMouse, zoom],
+    );
+
+    const handleImageDragStart = useCallback(() => {
+      isImageInteractingRef.current = true;
+    }, []);
+
+    const handleImageDragEnd = useCallback(() => {
+      isImageInteractingRef.current = false;
+    }, []);
+
+    /**
+     * Handle keyboard events on container.
+     * Most keyboard handling is done by ProseMirror, but we intercept
+     * specific keys for navigation and ensure focus stays on hidden PM.
+     */
+    const handleKeyDown = useCallback(
+      (e: React.KeyboardEvent) => {
+        if (readOnly && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
+          copySelectionText();
+          return;
+        }
+
+        if (readOnly) {
+          if (isReadOnlyEditKey(e)) {
+            onReadOnlyEditAttempt?.();
+            e.preventDefault();
+          }
+          return;
+        }
+
+        // Don't take over keydown events that originated inside a persistent
+        // hidden HF EditorView — the HF PM has its own native handlers, and
+        // the body-PM routing below would steal focus + dispatch into the
+        // body editor (e.g. Space scrolling to the body, the first typed key
+        // landing under the cursor in the document instead of the active
+        // HF). Mirrors the focus / mousedown guards in handleContainerFocus
+        // and handleContainerMouseDown (Codex #487 P1: 21:12 review).
+        if (e.target instanceof HTMLElement && e.target.closest("[data-hf-r-id]")) {
+          return;
+        }
+
+        let view = hiddenPMRef.current?.getView();
+        if (!view) {
+          ensureHiddenEditorView({ sync: true });
+          view = hiddenPMRef.current?.getView();
+
+          if (view) {
+            if (isPlainTextInputEvent(e)) {
+              e.preventDefault();
+              queueHiddenEditorTextInput(e.key);
+              return;
+            }
+
+            if (isDeferredEditorKeyDown(e)) {
+              e.preventDefault();
+              queueHiddenEditorKeyDown(e);
+              return;
             }
           }
-          if (!contentEl) {
-            // Fallback to last page if below all pages
-            const lastPage = Array.from(pages).at(-1);
-            contentEl = lastPage ? queryHtmlElement(lastPage, ".layout-page-content") : null;
-          }
-          if (!contentEl) {
-            return;
-          }
 
-          const contentRect = contentEl.getBoundingClientRect();
-          // Convert drop coordinates to content-area-relative pixels
-          const dropX = (clientX - contentRect.left) / zoom;
-          const dropY = (clientY - contentRect.top) / zoom;
-          // Pixels to EMU: px * 914400 / 96
-          const PIXELS_TO_EMU = 914_400 / 96;
-          const hOffsetEmu = Math.round(dropX * PIXELS_TO_EMU);
-          const vOffsetEmu = Math.round(dropY * PIXELS_TO_EMU);
-
-          const newPosition: ImagePositionAttrs = {
-            horizontal: { posOffset: hOffsetEmu, relativeTo: "margin" },
-            vertical: { posOffset: vOffsetEmu, relativeTo: "margin" },
-          };
-
-          const tr = view.state.tr.setNodeMarkup(
-            pmPos,
-            undefined,
-            mergeImageAttrs(node, { position: newPosition }),
-          );
-          view.dispatch(tr);
-          hiddenPMRef.current?.setNodeSelection(pmPos);
-        } else {
-          // For inline images: move to the drop text position
-          const dropPos = getPositionFromMouse(clientX, clientY);
-          if (dropPos === null) {
-            return;
-          }
-          if (dropPos === pmPos || dropPos === pmPos + 1) {
-            return;
-          }
-
-          let tr = view.state.tr;
-
-          if (dropPos <= pmPos) {
-            tr = tr.delete(pmPos, pmPos + node.nodeSize);
-            tr = tr.insert(dropPos, node);
-            hiddenPMRef.current?.setNodeSelection(dropPos);
-          } else {
-            tr = tr.delete(pmPos, pmPos + node.nodeSize);
-            const adjusted = dropPos - node.nodeSize;
-            tr = tr.insert(Math.min(adjusted, tr.doc.content.size), node);
-            hiddenPMRef.current?.setNodeSelection(Math.min(adjusted, tr.doc.content.size - 1));
-          }
-
-          view.dispatch(tr);
-        }
-      } catch {
-        // Position may be invalid
-      }
-    },
-    [getPositionFromMouse, zoom],
-  );
-
-  const handleImageDragStart = useCallback(() => {
-    isImageInteractingRef.current = true;
-  }, []);
-
-  const handleImageDragEnd = useCallback(() => {
-    isImageInteractingRef.current = false;
-  }, []);
-
-  /**
-   * Handle keyboard events on container.
-   * Most keyboard handling is done by ProseMirror, but we intercept
-   * specific keys for navigation and ensure focus stays on hidden PM.
-   */
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (readOnly && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
-        copySelectionText();
-        return;
-      }
-
-      if (readOnly) {
-        if (isReadOnlyEditKey(e)) {
-          onReadOnlyEditAttempt?.();
-          e.preventDefault();
-        }
-        return;
-      }
-
-      // Don't take over keydown events that originated inside a persistent
-      // hidden HF EditorView — the HF PM has its own native handlers, and
-      // the body-PM routing below would steal focus + dispatch into the
-      // body editor (e.g. Space scrolling to the body, the first typed key
-      // landing under the cursor in the document instead of the active
-      // HF). Mirrors the focus / mousedown guards in handleContainerFocus
-      // and handleContainerMouseDown (Codex #487 P1: 21:12 review).
-      if (e.target instanceof HTMLElement && e.target.closest("[data-hf-r-id]")) {
-        return;
-      }
-
-      let view = hiddenPMRef.current?.getView();
-      if (!view) {
-        ensureHiddenEditorView({ sync: true });
-        view = hiddenPMRef.current?.getView();
-
-        if (view) {
           if (isPlainTextInputEvent(e)) {
-            e.preventDefault();
             queueHiddenEditorTextInput(e.key);
+            e.preventDefault();
             return;
           }
 
           if (isDeferredEditorKeyDown(e)) {
-            e.preventDefault();
             queueHiddenEditorKeyDown(e);
-            return;
+            e.preventDefault();
           }
-        }
-
-        if (isPlainTextInputEvent(e)) {
-          queueHiddenEditorTextInput(e.key);
-          e.preventDefault();
           return;
         }
 
-        if (isDeferredEditorKeyDown(e)) {
-          queueHiddenEditorKeyDown(e);
-          e.preventDefault();
+        if (
+          pendingHiddenEditorSelectionRef.current ||
+          queuedInputBeforeHiddenEditorRef.current.length > 0
+        ) {
+          applyPendingHiddenEditorInput(view);
         }
-        return;
+
+        // Ensure hidden PM is focused if user types
+        if (!hiddenPMRef.current?.isFocused()) {
+          focusHiddenEditor();
+        }
+
+        // Prevent space from scrolling the container - let PM handle it as text input.
+        // During IME composition, let the browser handle space natively to avoid
+        // duplicating the final composed character (e.g., Korean Hangul).
+        if (e.key === " " && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          dispatchEditorTextInput(view, " ");
+          return;
+        }
+
+        // PageUp/PageDown - let container handle scrolling
+        if (["PageUp", "PageDown"].includes(e.key) && !e.metaKey && !e.ctrlKey) {
+          // Let PM handle the cursor movement first
+          // If PM doesn't handle it (at bounds), the container will scroll
+        }
+
+        // Cmd/Ctrl+Home - scroll to top and move cursor to start
+        if (e.key === "Home" && (e.metaKey || e.ctrlKey)) {
+          const sc = getScrollContainer();
+          if (sc) {
+            sc.scrollTop = 0;
+          }
+        }
+
+        // Cmd/Ctrl+End - scroll to bottom and move cursor to end
+        if (e.key === "End" && (e.metaKey || e.ctrlKey)) {
+          const sc = getScrollContainer();
+          if (sc) {
+            sc.scrollTop = sc.scrollHeight;
+          }
+        }
+      },
+      [
+        copySelectionText,
+        applyPendingHiddenEditorInput,
+        ensureHiddenEditorView,
+        focusHiddenEditor,
+        getScrollContainer,
+        onReadOnlyEditAttempt,
+        queueHiddenEditorKeyDown,
+        queueHiddenEditorTextInput,
+        readOnly,
+      ],
+    );
+
+    /**
+     * Handle mousedown on container (outside pages).
+     */
+    const handleContainerMouseDown = useCallback(
+      (e: React.MouseEvent) => {
+        // Don't steal focus from sidebar inputs
+        if (e.target instanceof HTMLElement && e.target.closest(".docx-comments-sidebar")) {
+          return;
+        }
+        // Don't steal focus from the persistent hidden HF EditorView host
+        // — see handleContainerFocus for the same guard rationale.
+        if (e.target instanceof HTMLElement && e.target.closest("[data-hf-r-id]")) {
+          return;
+        }
+        // Focus hidden PM if clicking outside pages area. Wrapped via
+        // `containedHandler(containerRef, …)` at the JSX site to skip
+        // events bubbled in from portaled descendants (Dialog, Combobox).
+        if (!hiddenPMRef.current?.isFocused()) {
+          focusHiddenEditor();
+        }
+      },
+      [focusHiddenEditor],
+    );
+
+    // =========================================================================
+    // Initial Layout
+    // =========================================================================
+
+    useEffect(() => {
+      if (
+        !shouldCreateHiddenEditorView &&
+        preHiddenInitialLayoutDoneRef.current &&
+        precomputedInitialDocumentRef.current !== document
+      ) {
+        preHiddenInitialLayoutDoneRef.current = false;
+        precomputedInitialDocumentRef.current = null;
+        setPrecomputedInitialState(null);
       }
 
       if (
-        pendingHiddenEditorSelectionRef.current ||
-        queuedInputBeforeHiddenEditorRef.current.length > 0
+        shouldCreateHiddenEditorView ||
+        collaboration !== undefined ||
+        preHiddenInitialLayoutDoneRef.current
       ) {
-        applyPendingHiddenEditorInput(view);
+        return undefined;
       }
 
-      // Ensure hidden PM is focused if user types
-      if (!hiddenPMRef.current?.isFocused()) {
-        focusHiddenEditor();
+      if (!document) {
+        ensureHiddenEditorView();
+        return undefined;
       }
 
-      // Prevent space from scrolling the container - let PM handle it as text input.
-      // During IME composition, let the browser handle space natively to avoid
-      // duplicating the final composed character (e.g., Korean Hangul).
-      if (e.key === " " && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) {
-        e.preventDefault();
-        dispatchEditorTextInput(view, " ");
-        return;
-      }
-
-      // PageUp/PageDown - let container handle scrolling
-      if (["PageUp", "PageDown"].includes(e.key) && !e.metaKey && !e.ctrlKey) {
-        // Let PM handle the cursor movement first
-        // If PM doesn't handle it (at bounds), the container will scroll
-      }
-
-      // Cmd/Ctrl+Home - scroll to top and move cursor to start
-      if (e.key === "Home" && (e.metaKey || e.ctrlKey)) {
-        const sc = getScrollContainer();
-        if (sc) {
-          sc.scrollTop = 0;
-        }
-      }
-
-      // Cmd/Ctrl+End - scroll to bottom and move cursor to end
-      if (e.key === "End" && (e.metaKey || e.ctrlKey)) {
-        const sc = getScrollContainer();
-        if (sc) {
-          sc.scrollTop = sc.scrollHeight;
-        }
-      }
-    },
-    [
-      copySelectionText,
-      applyPendingHiddenEditorInput,
-      ensureHiddenEditorView,
-      focusHiddenEditor,
-      getScrollContainer,
-      onReadOnlyEditAttempt,
-      queueHiddenEditorKeyDown,
-      queueHiddenEditorTextInput,
-      readOnly,
-    ],
-  );
-
-  /**
-   * Handle mousedown on container (outside pages).
-   */
-  const handleContainerMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      // Don't steal focus from sidebar inputs
-      if (e.target instanceof HTMLElement && e.target.closest(".docx-comments-sidebar")) {
-        return;
-      }
-      // Don't steal focus from the persistent hidden HF EditorView host
-      // — see handleContainerFocus for the same guard rationale.
-      if (e.target instanceof HTMLElement && e.target.closest("[data-hf-r-id]")) {
-        return;
-      }
-      // Focus hidden PM if clicking outside pages area. Wrapped via
-      // `containedHandler(containerRef, …)` at the JSX site to skip
-      // events bubbled in from portaled descendants (Dialog, Combobox).
-      if (!hiddenPMRef.current?.isFocused()) {
-        focusHiddenEditor();
-      }
-    },
-    [focusHiddenEditor],
-  );
-
-  // =========================================================================
-  // Initial Layout
-  // =========================================================================
-
-  useEffect(() => {
-    if (
-      !shouldCreateHiddenEditorView &&
-      preHiddenInitialLayoutDoneRef.current &&
-      precomputedInitialDocumentRef.current !== document
-    ) {
-      preHiddenInitialLayoutDoneRef.current = false;
-      precomputedInitialDocumentRef.current = null;
-      setPrecomputedInitialState(null);
-    }
-
-    if (
-      shouldCreateHiddenEditorView ||
-      collaboration !== undefined ||
-      preHiddenInitialLayoutDoneRef.current
-    ) {
-      return undefined;
-    }
-
-    if (!document) {
-      ensureHiddenEditorView();
-      return undefined;
-    }
-
-    const initialState = createHiddenEditorState({
-      document,
-      styles,
-      manager: extensionManager,
-      externalPlugins,
-      collaborationModules: null,
-      reason: "mount",
-    });
-    precomputedInitialDocumentRef.current = document;
-    setPrecomputedInitialState(initialState);
-    anonymizationMatchesRef.current =
-      anonymizationDecorationsKey.getState(initialState)?.matches ?? [];
-    directivesRef.current = templateDirectivesKey.getState(initialState)?.ranges ?? [];
-
-    let cancelled = false;
-    pendingInitialFontReadyLayoutRef.current = true;
-    const fontWaitStartedAt = performance.now();
-    const runAfterFontWait = (fontsLoaded: boolean) => {
-      if (cancelled) {
-        return;
-      }
-
-      pendingInitialFontReadyLayoutRef.current = false;
-      preHiddenInitialLayoutDoneRef.current = true;
-      recordLayoutPhase("initial", "initial-fonts", performance.now() - fontWaitStartedAt);
-      resetCanvasContext();
-      clearAllCaches();
-      runLayoutPipeline(initialState, { reason: "initial" });
-      updateSelectionOverlay(initialState);
-      updateAnonymizationOverlay();
-      updateDirectivesOverlay();
-      if (fontsLoaded) {
-        layoutSessionRef.current.usedLoadedFonts = true;
-        suppressFontReadyUntilRef.current = performance.now() + INITIAL_FONT_READY_SUPPRESSION_MS;
-      }
-    };
-
-    void waitForInitialLayoutFonts(document, initialState.doc).then(runAfterFontWait, () =>
-      runAfterFontWait(false),
-    );
-
-    return () => {
-      cancelled = true;
-      pendingInitialFontReadyLayoutRef.current = false;
-    };
-  }, [
-    collaboration,
-    document,
-    ensureHiddenEditorView,
-    extensionManager,
-    externalPlugins,
-    runLayoutPipeline,
-    shouldCreateHiddenEditorView,
-    styles,
-    updateAnonymizationOverlay,
-    updateDirectivesOverlay,
-    updateSelectionOverlay,
-  ]);
-
-  /**
-   * Run initial layout when document or view changes.
-   */
-  const handleEditorViewReady = useCallback(
-    (view: EditorView) => {
-      onEditorViewReadyRef.current?.(view);
+      const initialState = createHiddenEditorState({
+        document,
+        styles,
+        manager: extensionManager,
+        externalPlugins,
+        collaborationModules: null,
+        reason: "mount",
+      });
+      precomputedInitialDocumentRef.current = document;
+      setPrecomputedInitialState(initialState);
       anonymizationMatchesRef.current =
-        anonymizationDecorationsKey.getState(view.state)?.matches ?? [];
-      const initialSuggestion = autocompleteSuggestionKey.getState(view.state)?.suggestion;
-      if (initialSuggestion !== undefined) {
-        autocompleteSuggestionRef.current = initialSuggestion;
-      }
-      updateAutocompleteOverlay();
-      directivesRef.current = templateDirectivesKey.getState(view.state)?.ranges ?? [];
-      const previewState = templatePreviewValuesKey.getState(view.state);
-      templatePreviewRef.current = {
-        entries: previewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES,
-        mode: previewState?.preview?.mode ?? "plain",
-      };
-      const aiState = aiSuggestionDecorationsKey.getState(view.state);
-      aiSuggestionsRef.current = {
-        suggestions: aiState?.suggestions ?? EMPTY_AI_SUGGESTIONS,
-        focusedId: aiState?.focusedId ?? null,
-      };
+        anonymizationDecorationsKey.getState(initialState)?.matches ?? [];
+      directivesRef.current = templateDirectivesKey.getState(initialState)?.ranges ?? [];
 
-      const focusReadyView = () => {
-        if (readOnly || !shouldFocusHiddenEditorOnReadyRef.current) {
-          return;
-        }
-
-        requestAnimationFrame(() => {
-          if (hiddenPMRef.current?.getView() !== view) {
-            return;
-          }
-
-          applyPendingHiddenEditorInput(view);
-          view.focus();
-          setIsFocused(true);
-        });
-      };
-
-      if (layoutSessionRef.current.lastPmDoc?.eq(view.state.doc)) {
-        // The doc is already laid out, but the painted pages may carry a
-        // fill preview the fresh view's plugin no longer holds (or vice
-        // versa) — the substituted values live in the flow blocks, so a
-        // mismatch needs a pipeline re-run, not just overlay repaints.
-        const lastPreview = layoutSessionRef.current.lastTemplatePreview;
-        if (
-          templatePreviewRef.current.mode !== lastPreview.mode ||
-          templatePreviewDirtyRange(lastPreview.entries, templatePreviewRef.current.entries) !==
-            null
-        ) {
-          runLayoutPipeline(view.state, { reason: "manual" });
-        }
-        updateSelectionOverlay(view.state);
-        updateAnonymizationOverlay();
-        updateDirectivesOverlay();
-        updateAISuggestionsOverlay();
-        focusReadyView();
-        return;
-      }
-
-      const runInitialLayout = (currentView: EditorView) => {
-        runLayoutPipeline(currentView.state, { reason: "initial" });
-        updateSelectionOverlay(currentView.state);
-        updateAnonymizationOverlay();
-        updateDirectivesOverlay();
-        updateAISuggestionsOverlay();
-      };
-
+      let cancelled = false;
       pendingInitialFontReadyLayoutRef.current = true;
       const fontWaitStartedAt = performance.now();
       const runAfterFontWait = (fontsLoaded: boolean) => {
-        pendingInitialFontReadyLayoutRef.current = false;
-        const currentView = hiddenPMRef.current?.getView();
-        if (currentView !== view) {
+        if (cancelled) {
           return;
         }
+
+        pendingInitialFontReadyLayoutRef.current = false;
+        preHiddenInitialLayoutDoneRef.current = true;
         recordLayoutPhase("initial", "initial-fonts", performance.now() - fontWaitStartedAt);
         resetCanvasContext();
         clearAllCaches();
-        runInitialLayout(currentView);
+        runLayoutPipeline(initialState, { reason: "initial" });
+        updateSelectionOverlay(initialState);
+        updateAnonymizationOverlay();
+        updateDirectivesOverlay();
         if (fontsLoaded) {
           layoutSessionRef.current.usedLoadedFonts = true;
           suppressFontReadyUntilRef.current = performance.now() + INITIAL_FONT_READY_SUPPRESSION_MS;
         }
       };
-      void waitForInitialLayoutFonts(document, view.state.doc).then(runAfterFontWait, () =>
+
+      void waitForInitialLayoutFonts(document, initialState.doc).then(runAfterFontWait, () =>
         runAfterFontWait(false),
       );
 
-      // Auto-focus the editor so the user can start typing immediately
-      focusReadyView();
-    },
-    [
-      applyPendingHiddenEditorInput,
+      return () => {
+        cancelled = true;
+        pendingInitialFontReadyLayoutRef.current = false;
+      };
+    }, [
+      collaboration,
+      document,
+      ensureHiddenEditorView,
+      extensionManager,
+      externalPlugins,
       runLayoutPipeline,
-      updateSelectionOverlay,
+      shouldCreateHiddenEditorView,
+      styles,
       updateAnonymizationOverlay,
       updateDirectivesOverlay,
-      updateAISuggestionsOverlay,
-      document,
-      updateAutocompleteOverlay,
-      readOnly,
-    ],
-  );
+      updateSelectionOverlay,
+    ]);
 
-  const handleEditorViewDestroy = useCallback(() => {
-    onEditorViewReadyRef.current?.(null);
-  }, []);
+    /**
+     * Run initial layout when document or view changes.
+     */
+    const handleEditorViewReady = useCallback(
+      (view: EditorView) => {
+        onEditorViewReadyRef.current?.(view);
+        anonymizationMatchesRef.current =
+          anonymizationDecorationsKey.getState(view.state)?.matches ?? [];
+        const initialSuggestion = autocompleteSuggestionKey.getState(view.state)?.suggestion;
+        if (initialSuggestion !== undefined) {
+          autocompleteSuggestionRef.current = initialSuggestion;
+        }
+        updateAutocompleteOverlay();
+        directivesRef.current = templateDirectivesKey.getState(view.state)?.ranges ?? [];
+        const previewState = templatePreviewValuesKey.getState(view.state);
+        templatePreviewRef.current = {
+          entries: previewState?.entries ?? EMPTY_TEMPLATE_PREVIEW_ENTRIES,
+          mode: previewState?.preview?.mode ?? "plain",
+        };
+        const aiState = aiSuggestionDecorationsKey.getState(view.state);
+        aiSuggestionsRef.current = {
+          suggestions: aiState?.suggestions ?? EMPTY_AI_SUGGESTIONS,
+          focusedId: aiState?.focusedId ?? null,
+        };
 
-  // Re-paint anonymization overlay whenever a fresh layout lands;
-  // selectionToRects needs the latest layout/blocks/measures to
-  // place rectangles correctly after a doc edit or zoom change.
-  useEffect(() => {
-    updateAnonymizationOverlay();
-  }, [updateAnonymizationOverlay]);
+        const focusReadyView = () => {
+          if (readOnly || !shouldFocusHiddenEditorOnReadyRef.current) {
+            return;
+          }
 
-  // Re-paint the template-directive overlay on every fresh layout
-  // (initial paint, doc edit, zoom) so chips track the markers.
-  useEffect(() => {
-    updateDirectivesOverlay();
-  }, [updateDirectivesOverlay]);
+          requestAnimationFrame(() => {
+            if (hiddenPMRef.current?.getView() !== view) {
+              return;
+            }
 
-  // Re-paint the AI suggestion underlines + focused in-text diff on
-  // every fresh layout.
-  useEffect(() => {
-    updateAISuggestionsOverlay();
-  }, [updateAISuggestionsOverlay]);
+            applyPendingHiddenEditorInput(view);
+            view.focus();
+            setIsFocused(true);
+          });
+        };
 
-  // Compute anchor Y positions for comments/revisions sidebar from the current
-  // layout artifacts. Opening the sidebar or switching anchor modes does not
-  // change page geometry, so this intentionally avoids a full layout pass.
-  useEffect(() => {
-    if (!onAnchorPositionsChange || !layout) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    void loadSelectionGeometry().then(
-      ({ getCaretPosition }) => {
-        if (cancelled) {
-          return undefined;
+        if (layoutSessionRef.current.lastPmDoc?.eq(view.state.doc)) {
+          // The doc is already laid out, but the painted pages may carry a
+          // fill preview the fresh view's plugin no longer holds (or vice
+          // versa) — the substituted values live in the flow blocks, so a
+          // mismatch needs a pipeline re-run, not just overlay repaints.
+          const lastPreview = layoutSessionRef.current.lastTemplatePreview;
+          if (
+            templatePreviewRef.current.mode !== lastPreview.mode ||
+            templatePreviewDirtyRange(lastPreview.entries, templatePreviewRef.current.entries) !==
+              null
+          ) {
+            runLayoutPipeline(view.state, { reason: "manual" });
+          }
+          updateSelectionOverlay(view.state);
+          updateAnonymizationOverlay();
+          updateDirectivesOverlay();
+          updateAISuggestionsOverlay();
+          focusReadyView();
+          return;
         }
 
-        try {
-          const positions = computeAnchorPositions(
-            layoutSessionRef.current.lastEditorState,
-            layout,
-            blocks,
-            measures,
-            pageGap,
-            {
-              includeRevisions: anchorPositionMode === "comments-and-revisions",
-            },
-            getCaretPosition,
-          );
-          onAnchorPositionsChange(positions);
-        } catch {
-          // Keep the previous anchor positions if layout measurement fails.
-        }
-        return undefined;
+        const runInitialLayout = (currentView: EditorView) => {
+          runLayoutPipeline(currentView.state, { reason: "initial" });
+          updateSelectionOverlay(currentView.state);
+          updateAnonymizationOverlay();
+          updateDirectivesOverlay();
+          updateAISuggestionsOverlay();
+        };
+
+        pendingInitialFontReadyLayoutRef.current = true;
+        const fontWaitStartedAt = performance.now();
+        const runAfterFontWait = (fontsLoaded: boolean) => {
+          pendingInitialFontReadyLayoutRef.current = false;
+          const currentView = hiddenPMRef.current?.getView();
+          if (currentView !== view) {
+            return;
+          }
+          recordLayoutPhase("initial", "initial-fonts", performance.now() - fontWaitStartedAt);
+          resetCanvasContext();
+          clearAllCaches();
+          runInitialLayout(currentView);
+          if (fontsLoaded) {
+            layoutSessionRef.current.usedLoadedFonts = true;
+            suppressFontReadyUntilRef.current =
+              performance.now() + INITIAL_FONT_READY_SUPPRESSION_MS;
+          }
+        };
+        void waitForInitialLayoutFonts(document, view.state.doc).then(runAfterFontWait, () =>
+          runAfterFontWait(false),
+        );
+
+        // Auto-focus the editor so the user can start typing immediately
+        focusReadyView();
       },
-      () => undefined,
+      [
+        applyPendingHiddenEditorInput,
+        runLayoutPipeline,
+        updateSelectionOverlay,
+        updateAnonymizationOverlay,
+        updateDirectivesOverlay,
+        updateAISuggestionsOverlay,
+        document,
+        updateAutocompleteOverlay,
+        readOnly,
+      ],
     );
 
-    return () => {
-      cancelled = true;
-    };
-  }, [anchorPositionMode, blocks, layout, measures, onAnchorPositionsChange, pageGap]);
+    const handleEditorViewDestroy = useCallback(() => {
+      onEditorViewReadyRef.current?.(null);
+    }, []);
 
-  // Same dependency on layout for the autocomplete caret — when
-  // pages re-flow (zoom, content edit), the anchor's pixel
-  // position changes and the ghost text needs to move with it.
-  useEffect(() => {
-    updateAutocompleteOverlay();
-  }, [updateAutocompleteOverlay]);
+    // Re-paint anonymization overlay whenever a fresh layout lands;
+    // selectionToRects needs the latest layout/blocks/measures to
+    // place rectangles correctly after a doc edit or zoom change.
+    useEffect(() => {
+      updateAnonymizationOverlay();
+    }, [updateAnonymizationOverlay]);
 
-  // Re-layout when web fonts finish loading to fix measurements that were
-  // computed against fallback fonts during initial render.
-  // Uses FontFaceSet.onloadingdone to detect when new fonts complete loading.
-  useEffect(() => {
-    const fontSet = getDocumentFontSet();
-    if (!fontSet) {
-      return undefined;
-    }
+    // Re-paint the template-directive overlay on every fresh layout
+    // (initial paint, doc edit, zoom) so chips track the markers.
+    useEffect(() => {
+      updateDirectivesOverlay();
+    }, [updateDirectivesOverlay]);
 
-    const handleFontsLoading = () => {
-      if (performance.now() < suppressFontReadyUntilRef.current) {
-        return;
-      }
-      layoutSessionRef.current.usedLoadedFonts = false;
-    };
+    // Re-paint the AI suggestion underlines + focused in-text diff on
+    // every fresh layout.
+    useEffect(() => {
+      updateAISuggestionsOverlay();
+    }, [updateAISuggestionsOverlay]);
 
-    const handleFontsLoaded = () => {
-      if (
-        pendingInitialFontReadyLayoutRef.current ||
-        performance.now() < suppressFontReadyUntilRef.current ||
-        layoutSessionRef.current.usedLoadedFonts
-      ) {
-        return;
+    // Compute anchor Y positions for comments/revisions sidebar from the current
+    // layout artifacts. Opening the sidebar or switching anchor modes does not
+    // change page geometry, so this intentionally avoids a full layout pass.
+    useEffect(() => {
+      if (!onAnchorPositionsChange || !layout) {
+        return undefined;
       }
 
-      const view = hiddenPMRef.current?.getView();
-      if (view) {
-        // Clear all cached measurements — font metrics have changed
+      let cancelled = false;
+      void loadSelectionGeometry().then(
+        ({ getCaretPosition }) => {
+          if (cancelled) {
+            return undefined;
+          }
+
+          try {
+            const positions = computeAnchorPositions(
+              layoutSessionRef.current.lastEditorState,
+              layout,
+              blocks,
+              measures,
+              pageGap,
+              {
+                includeRevisions: anchorPositionMode === "comments-and-revisions",
+              },
+              getCaretPosition,
+            );
+            onAnchorPositionsChange(positions);
+          } catch {
+            // Keep the previous anchor positions if layout measurement fails.
+          }
+          return undefined;
+        },
+        () => undefined,
+      );
+
+      return () => {
+        cancelled = true;
+      };
+    }, [anchorPositionMode, blocks, layout, measures, onAnchorPositionsChange, pageGap]);
+
+    // Same dependency on layout for the autocomplete caret — when
+    // pages re-flow (zoom, content edit), the anchor's pixel
+    // position changes and the ghost text needs to move with it.
+    useEffect(() => {
+      updateAutocompleteOverlay();
+    }, [updateAutocompleteOverlay]);
+
+    // Re-layout when web fonts finish loading to fix measurements that were
+    // computed against fallback fonts during initial render.
+    // Uses FontFaceSet.onloadingdone to detect when new fonts complete loading.
+    useEffect(() => {
+      const fontSet = getDocumentFontSet();
+      if (!fontSet) {
+        return undefined;
+      }
+
+      const handleFontsLoading = () => {
+        if (performance.now() < suppressFontReadyUntilRef.current) {
+          return;
+        }
+        layoutSessionRef.current.usedLoadedFonts = false;
+      };
+
+      const handleFontsLoaded = () => {
+        if (
+          pendingInitialFontReadyLayoutRef.current ||
+          performance.now() < suppressFontReadyUntilRef.current ||
+          layoutSessionRef.current.usedLoadedFonts
+        ) {
+          return;
+        }
+
+        const view = hiddenPMRef.current?.getView();
+        if (view) {
+          // Clear all cached measurements — font metrics have changed
+          resetCanvasContext();
+          clearAllCaches();
+          runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
+          updateSelectionOverlayRef.current(view.state);
+        }
+      };
+
+      // Listen for font loading completion events
+      fontSet.addEventListener("loading", handleFontsLoading);
+      fontSet.addEventListener("loadingdone", handleFontsLoaded);
+      fontSet.addEventListener("loadingerror", handleFontsLoaded);
+      return () => {
+        fontSet.removeEventListener("loading", handleFontsLoading);
+        fontSet.removeEventListener("loadingdone", handleFontsLoaded);
+        fontSet.removeEventListener("loadingerror", handleFontsLoaded);
+      };
+    }, []);
+
+    // Register the document's embedded fonts (obfuscated `word/fonts/*.odttf`) as
+    // `@font-face`s so text renders in its authored fonts instead of fallbacks,
+    // then re-layout once they load so glyph advances use the real metrics. Keyed
+    // on the source buffer: registration happens per loaded document, and the
+    // cleanup unregisters the faces so one document's family cannot bleed into the
+    // next. The 250ms font-ready suppression window can swallow the shared
+    // loadingdone re-layout, so this path relays out explicitly.
+    const embeddedFontBuffer = document?.originalBuffer ?? null;
+    useEffect(() => {
+      if (!embeddedFontBuffer) {
+        return undefined;
+      }
+      let cancelled = false;
+      let registered: FontFace[] = [];
+      void loadEmbeddedFontFaces(embeddedFontBuffer).then((faces) => {
+        if (cancelled) {
+          removeFontFaces(faces);
+          return;
+        }
+        registered = faces;
+        if (faces.length === 0) {
+          return;
+        }
+        const view = hiddenPMRef.current?.getView();
+        if (!view) {
+          return;
+        }
         resetCanvasContext();
         clearAllCaches();
         runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
         updateSelectionOverlayRef.current(view.state);
-      }
-    };
+      });
+      return () => {
+        cancelled = true;
+        removeFontFaces(registered);
+      };
+    }, [embeddedFontBuffer]);
 
-    // Listen for font loading completion events
-    fontSet.addEventListener("loading", handleFontsLoading);
-    fontSet.addEventListener("loadingdone", handleFontsLoaded);
-    fontSet.addEventListener("loadingerror", handleFontsLoaded);
-    return () => {
-      fontSet.removeEventListener("loading", handleFontsLoading);
-      fontSet.removeEventListener("loadingdone", handleFontsLoaded);
-      fontSet.removeEventListener("loadingerror", handleFontsLoaded);
-    };
-  }, []);
-
-  // Register the document's embedded fonts (obfuscated `word/fonts/*.odttf`) as
-  // `@font-face`s so text renders in its authored fonts instead of fallbacks,
-  // then re-layout once they load so glyph advances use the real metrics. Keyed
-  // on the source buffer: registration happens per loaded document, and the
-  // cleanup unregisters the faces so one document's family cannot bleed into the
-  // next. The 250ms font-ready suppression window can swallow the shared
-  // loadingdone re-layout, so this path relays out explicitly.
-  const embeddedFontBuffer = document?.originalBuffer ?? null;
-  useEffect(() => {
-    if (!embeddedFontBuffer) {
-      return undefined;
-    }
-    let cancelled = false;
-    let registered: FontFace[] = [];
-    void loadEmbeddedFontFaces(embeddedFontBuffer).then((faces) => {
-      if (cancelled) {
-        removeFontFaces(faces);
-        return;
+    // Register the host app's custom font faces (the `fonts` prop) on the same
+    // best-effort FontFace path, then re-layout via the identical font-ready tail
+    // as the embedded path above. Without the explicit re-layout, faces supplied
+    // on initial mount register after the first layout has run, so the document
+    // would keep its fallback-font metrics until the next edit. Keyed on the prop
+    // identity; the cleanup unregisters the faces on change / unmount.
+    useEffect(() => {
+      if (!hostFonts || hostFonts.length === 0) {
+        return undefined;
       }
-      registered = faces;
-      if (faces.length === 0) {
+      let cancelled = false;
+      let registered: FontFace[] = [];
+
+      // Drop cached font metrics and re-run layout so measurements reflect the
+      // current faces — or, on the cleanup path, their absence. Shared by the
+      // register and unregister paths so both re-measure identically. No-op when
+      // the view is gone (e.g. during unmount), so it is safe to call in cleanup.
+      const remeasureForFontChange = () => {
+        const view = hiddenPMRef.current?.getView();
+        if (!view) {
+          return;
+        }
+        resetCanvasContext();
+        clearAllCaches();
+        runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
+        updateSelectionOverlayRef.current(view.state);
+      };
+
+      void loadHostFontFaces(hostFonts).then((faces) => {
+        if (cancelled) {
+          removeFontFaces(faces);
+          return;
+        }
+        registered = faces;
+        if (faces.length === 0) {
+          return;
+        }
+        remeasureForFontChange();
+      });
+
+      return () => {
+        cancelled = true;
+        if (registered.length === 0) {
+          return;
+        }
+        // Fonts were cleared or changed: unregister the faces, then re-measure so
+        // the document drops the now-removed custom metrics immediately instead
+        // of keeping them until the next edit.
+        removeFontFaces(registered);
+        remeasureForFontChange();
+      };
+    }, [hostFonts]);
+
+    // Re-layout when non-document layout inputs change (e.g., after HF editor save
+    // or parent-driven page setup/theme updates).
+    // runLayoutPipeline includes these values in its deps, but it
+    // only runs when explicitly called — this effect triggers it.
+    const layoutInputEpochRef = useRef(0);
+    const lastLayoutInputSignatureRef = useRef<string | null>(null);
+    useEffect(() => {
+      // Skip the initial render — handleEditorViewReady already does the first layout
+      if (layoutInputEpochRef.current === 0) {
+        layoutInputEpochRef.current = 1;
+        lastLayoutInputSignatureRef.current = layoutInputSignature;
         return;
       }
       const view = hiddenPMRef.current?.getView();
-      if (!view) {
-        return;
-      }
-      resetCanvasContext();
-      clearAllCaches();
-      runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
-      updateSelectionOverlayRef.current(view.state);
-    });
-    return () => {
-      cancelled = true;
-      removeFontFaces(registered);
-    };
-  }, [embeddedFontBuffer]);
-
-  // Register the host app's custom font faces (the `fonts` prop) on the same
-  // best-effort FontFace path, then re-layout via the identical font-ready tail
-  // as the embedded path above. Without the explicit re-layout, faces supplied
-  // on initial mount register after the first layout has run, so the document
-  // would keep its fallback-font metrics until the next edit. Keyed on the prop
-  // identity; the cleanup unregisters the faces on change / unmount.
-  useEffect(() => {
-    if (!hostFonts || hostFonts.length === 0) {
-      return undefined;
-    }
-    let cancelled = false;
-    let registered: FontFace[] = [];
-
-    // Drop cached font metrics and re-run layout so measurements reflect the
-    // current faces — or, on the cleanup path, their absence. Shared by the
-    // register and unregister paths so both re-measure identically. No-op when
-    // the view is gone (e.g. during unmount), so it is safe to call in cleanup.
-    const remeasureForFontChange = () => {
-      const view = hiddenPMRef.current?.getView();
-      if (!view) {
-        return;
-      }
-      resetCanvasContext();
-      clearAllCaches();
-      runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
-      updateSelectionOverlayRef.current(view.state);
-    };
-
-    void loadHostFontFaces(hostFonts).then((faces) => {
-      if (cancelled) {
-        removeFontFaces(faces);
-        return;
-      }
-      registered = faces;
-      if (faces.length === 0) {
-        return;
-      }
-      remeasureForFontChange();
-    });
-
-    return () => {
-      cancelled = true;
-      if (registered.length === 0) {
-        return;
-      }
-      // Fonts were cleared or changed: unregister the faces, then re-measure so
-      // the document drops the now-removed custom metrics immediately instead
-      // of keeping them until the next edit.
-      removeFontFaces(registered);
-      remeasureForFontChange();
-    };
-  }, [hostFonts]);
-
-  // Re-layout when non-document layout inputs change (e.g., after HF editor save
-  // or parent-driven page setup/theme updates).
-  // runLayoutPipeline includes these values in its deps, but it
-  // only runs when explicitly called — this effect triggers it.
-  const layoutInputEpochRef = useRef(0);
-  const lastLayoutInputSignatureRef = useRef<string | null>(null);
-  useEffect(() => {
-    // Skip the initial render — handleEditorViewReady already does the first layout
-    if (layoutInputEpochRef.current === 0) {
-      layoutInputEpochRef.current = 1;
-      lastLayoutInputSignatureRef.current = layoutInputSignature;
-      return;
-    }
-    const view = hiddenPMRef.current?.getView();
-    if (view) {
-      const layoutInputsChanged = lastLayoutInputSignatureRef.current !== layoutInputSignature;
-      lastLayoutInputSignatureRef.current = layoutInputSignature;
-      if (!layoutInputsChanged && view.state.doc === layoutSessionRef.current.lastPmDoc) {
-        return;
-      }
-      runLayoutPipelineRef.current(view.state, { reason: "layout-input" });
-    }
-  }, [document, layoutInputSignature]);
-
-  // Re-compute selection overlay when the container resizes.
-  // Page elements shift during window resize (centering, scrollbar changes),
-  // causing caret/selection coordinates to become stale.
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      const state = hiddenPMRef.current?.getState();
-      if (state) {
-        updateSelectionOverlay(state);
-      }
-    });
-
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [updateSelectionOverlay]);
-
-  // =========================================================================
-  // Imperative Handle
-  // =========================================================================
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      getEditor() {
-        return folioEditor;
-      },
-      getDocument() {
-        return folioEditor.getDocument();
-      },
-      getState() {
-        return folioEditor.getState();
-      },
-      getView() {
-        return folioEditor.getView();
-      },
-      getHfView(rId: string) {
-        return hfPMsRef.current?.getView(rId) ?? null;
-      },
-      ensureView(options?: { focus?: boolean }) {
-        // Async (no flushSync) so this is safe to call from a consumer's
-        // useEffect during a concurrent render — flushSync inside a
-        // commit-phase effect throws "flushSync was called from inside
-        // a lifecycle method". The state setter still schedules a
-        // re-render that runs createView in the next layout effect;
-        // callers that need the view immediately can poll.
-        ensureHiddenEditorView(options);
-      },
-      focus() {
-        folioEditor.focus();
-        setIsFocused(true);
-      },
-      blur() {
-        folioEditor.blur();
-        setIsFocused(false);
-      },
-      isFocused() {
-        return folioEditor.isFocused();
-      },
-      dispatch(tr: Transaction) {
-        folioEditor.dispatch(tr);
-      },
-      undo() {
-        return folioEditor.undo();
-      },
-      redo() {
-        return folioEditor.redo();
-      },
-      canUndo() {
-        return folioEditor.canUndo();
-      },
-      canRedo() {
-        return folioEditor.canRedo();
-      },
-      setSelection(anchor: number, head?: number) {
-        folioEditor.setSelection(anchor, head);
-      },
-      getLayout() {
-        return folioEditor.getLayout();
-      },
-      relayout() {
-        folioEditor.relayout();
-      },
-      scrollToPosition: scrollToPositionImpl,
-      scrollToPage: scrollToPageImpl,
-      scrollToParaId: scrollToParaIdImpl,
-      getPageNumberForPmPos(pmPos) {
-        const container = pagesContainerRef.current;
-        if (!container) {
-          return null;
+      if (view) {
+        const layoutInputsChanged = lastLayoutInputSignatureRef.current !== layoutInputSignature;
+        lastLayoutInputSignatureRef.current = layoutInputSignature;
+        if (!layoutInputsChanged && view.state.doc === layoutSessionRef.current.lastPmDoc) {
+          return;
         }
-        // Fast path: virtualised docs keep a pm-to-shell map.
-        const hit = findPageShellForPmPos(container, pmPos);
-        if (hit) {
-          const raw = hit.element.dataset["pageNumber"];
-          const parsed = raw === undefined ? Number.NaN : Number(raw);
-          if (Number.isFinite(parsed)) {
-            return parsed;
-          }
+        runLayoutPipelineRef.current(view.state, { reason: "layout-input" });
+      }
+    }, [document, layoutInputSignature]);
+
+    // Re-compute selection overlay when the container resizes.
+    // Page elements shift during window resize (centering, scrollbar changes),
+    // causing caret/selection coordinates to become stale.
+    useEffect(() => {
+      const container = containerRef.current;
+      if (!container) {
+        return;
+      }
+
+      const observer = new ResizeObserver(() => {
+        const state = hiddenPMRef.current?.getState();
+        if (state) {
+          updateSelectionOverlay(state);
         }
-        // Fallback for non-virtualised docs (< 8 pages): every page is in the
-        // DOM eagerly, so scan shells and find the one whose pm range covers
-        // the target.
-        const shells = container.querySelectorAll<HTMLElement>("[data-page-number]");
-        let bestNumber: number | null = null;
-        let bestStart = Number.NEGATIVE_INFINITY;
-        for (const shell of shells) {
-          const anchors = shell.querySelectorAll<HTMLElement>("[data-pm-start]");
-          if (anchors.length === 0) {
-            continue;
+      });
+
+      observer.observe(container);
+      return () => observer.disconnect();
+    }, [updateSelectionOverlay]);
+
+    // =========================================================================
+    // Imperative Handle
+    // =========================================================================
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        getEditor() {
+          return folioEditor;
+        },
+        getDocument() {
+          return folioEditor.getDocument();
+        },
+        getState() {
+          return folioEditor.getState();
+        },
+        getView() {
+          return folioEditor.getView();
+        },
+        getHfView(rId: string) {
+          return hfPMsRef.current?.getView(rId) ?? null;
+        },
+        ensureView(options?: { focus?: boolean }) {
+          // Async (no flushSync) so this is safe to call from a consumer's
+          // useEffect during a concurrent render — flushSync inside a
+          // commit-phase effect throws "flushSync was called from inside
+          // a lifecycle method". The state setter still schedules a
+          // re-render that runs createView in the next layout effect;
+          // callers that need the view immediately can poll.
+          ensureHiddenEditorView(options);
+        },
+        focus() {
+          folioEditor.focus();
+          setIsFocused(true);
+        },
+        blur() {
+          folioEditor.blur();
+          setIsFocused(false);
+        },
+        isFocused() {
+          return folioEditor.isFocused();
+        },
+        dispatch(tr: Transaction) {
+          folioEditor.dispatch(tr);
+        },
+        undo() {
+          return folioEditor.undo();
+        },
+        redo() {
+          return folioEditor.redo();
+        },
+        canUndo() {
+          return folioEditor.canUndo();
+        },
+        canRedo() {
+          return folioEditor.canRedo();
+        },
+        setSelection(anchor: number, head?: number) {
+          folioEditor.setSelection(anchor, head);
+        },
+        getLayout() {
+          return folioEditor.getLayout();
+        },
+        relayout() {
+          folioEditor.relayout();
+        },
+        scrollToPosition: scrollToPositionImpl,
+        scrollToPage: scrollToPageImpl,
+        scrollToParaId: scrollToParaIdImpl,
+        getPageNumberForPmPos(pmPos) {
+          const container = pagesContainerRef.current;
+          if (!container) {
+            return null;
           }
-          let pageStart = Number.POSITIVE_INFINITY;
-          let pageEnd = Number.NEGATIVE_INFINITY;
-          for (const el of anchors) {
-            const pm = Number(el.dataset["pmStart"]);
-            if (!Number.isFinite(pm)) {
+          // Fast path: virtualised docs keep a pm-to-shell map.
+          const hit = findPageShellForPmPos(container, pmPos);
+          if (hit) {
+            const raw = hit.element.dataset["pageNumber"];
+            const parsed = raw === undefined ? Number.NaN : Number(raw);
+            if (Number.isFinite(parsed)) {
+              return parsed;
+            }
+          }
+          // Fallback for non-virtualised docs (< 8 pages): every page is in the
+          // DOM eagerly, so scan shells and find the one whose pm range covers
+          // the target.
+          const shells = container.querySelectorAll<HTMLElement>("[data-page-number]");
+          let bestNumber: number | null = null;
+          let bestStart = Number.NEGATIVE_INFINITY;
+          for (const shell of shells) {
+            const anchors = shell.querySelectorAll<HTMLElement>("[data-pm-start]");
+            if (anchors.length === 0) {
               continue;
             }
-            if (pm < pageStart) {
-              pageStart = pm;
+            let pageStart = Number.POSITIVE_INFINITY;
+            let pageEnd = Number.NEGATIVE_INFINITY;
+            for (const el of anchors) {
+              const pm = Number(el.dataset["pmStart"]);
+              if (!Number.isFinite(pm)) {
+                continue;
+              }
+              if (pm < pageStart) {
+                pageStart = pm;
+              }
+              if (pm > pageEnd) {
+                pageEnd = pm;
+              }
             }
-            if (pm > pageEnd) {
-              pageEnd = pm;
+            if (pageStart === Number.POSITIVE_INFINITY) {
+              continue;
+            }
+            const raw = shell.dataset["pageNumber"];
+            const parsed = raw === undefined ? Number.NaN : Number(raw);
+            if (!Number.isFinite(parsed)) {
+              continue;
+            }
+            if (pageStart <= pmPos && pmPos <= pageEnd) {
+              return parsed;
+            }
+            if (pageStart <= pmPos && pageStart > bestStart) {
+              bestStart = pageStart;
+              bestNumber = parsed;
             }
           }
-          if (pageStart === Number.POSITIVE_INFINITY) {
-            continue;
-          }
-          const raw = shell.dataset["pageNumber"];
-          const parsed = raw === undefined ? Number.NaN : Number(raw);
-          if (!Number.isFinite(parsed)) {
-            continue;
-          }
-          if (pageStart <= pmPos && pmPos <= pageEnd) {
-            return parsed;
-          }
-          if (pageStart <= pmPos && pageStart > bestStart) {
-            bestStart = pageStart;
-            bestNumber = parsed;
-          }
-        }
-        return bestNumber;
-      },
-    }),
-    [
-      ensureHiddenEditorView,
-      folioEditor,
-      scrollToPageImpl,
-      scrollToParaIdImpl,
-      scrollToPositionImpl,
-    ],
-  );
+          return bestNumber;
+        },
+      }),
+      [
+        ensureHiddenEditorView,
+        folioEditor,
+        scrollToPageImpl,
+        scrollToParaIdImpl,
+        scrollToPositionImpl,
+      ],
+    );
 
-  useEffect(() => {
-    if (!layout) {
-      return;
-    }
-
-    const totalPages = layout.pages.length;
-    if (lastTotalPagesRef.current === totalPages) {
-      return;
-    }
-
-    lastTotalPagesRef.current = totalPages;
-    onTotalPagesChangeRef.current?.(totalPages);
-  }, [layout]);
-
-  // Update selection overlay when layout changes
-  // This is needed because handleEditorViewReady calls runLayoutPipeline which
-  // sets layout asynchronously, so updateSelectionOverlay would return early
-  // if layout is still null. This effect ensures we update once layout is ready.
-  useEffect(() => {
-    const state = hiddenPMRef.current?.getState();
-    if (layout && state) {
-      updateSelectionOverlay(state);
-    }
-  }, [layout, updateSelectionOverlay]);
-
-  // =========================================================================
-  // Render
-  // =========================================================================
-
-  // Calculate total height for scroll
-  const totalHeight = useMemo(() => {
-    if (!layout) {
-      return DEFAULT_PAGE_HEIGHT_PX + 48;
-    }
-    const numPages = layout.pages.length;
-    return numPages * pageSize.h + (numPages - 1) * pageGap + 48;
-  }, [layout, pageSize.h, pageGap]);
-  const scaledViewportHeight = Math.max(1, totalHeight * zoom);
-  const scaledViewportWidth = Math.max(
-    1,
-    pageSize.w * zoom + (commentsSidebarOpen ? COMMENTS_SIDEBAR_SCROLL_GUTTER : 0),
-  );
-  const viewportExtentStyle: CSSProperties = {
-    position: "relative",
-    width: `max(100%, ${String(scaledViewportWidth)}px)`,
-    height: scaledViewportHeight,
-    backgroundColor: "transparent",
-    // The page keeps its unscaled width and is shrunk via `transform: scale()`,
-    // which doesn't shrink the layout box — so at zoom < 1 the unscaled page
-    // overflows this extent and creates phantom horizontal scroll. Clip it: the
-    // visible (scaled) page already fits, and at zoom >= 1 the extent is wide
-    // enough that nothing is clipped. `clip` (not `hidden`) avoids forcing a
-    // vertical scroll context.
-    overflowX: "clip",
-  };
-  const scaledViewportStyle: CSSProperties = {
-    ...viewportStyles,
-    position: "absolute",
-    top: 0,
-    left: `max(0px, calc((100% - ${String(scaledViewportWidth)}px) / 2))`,
-    width: pageSize.w,
-    minHeight: totalHeight,
-    transform: (() => {
-      const parts: string[] = [];
-      if (zoom !== 1) {
-        parts.push(`scale(${zoom})`);
+    useEffect(() => {
+      if (!layout) {
+        return;
       }
-      return parts.length > 0 ? parts.join(" ") : undefined;
-    })(),
-    transformOrigin: "top left",
-  };
 
-  return (
-    <div
-      ref={containerRef}
-      className={`folio-root paged-editor ${className ?? ""}`}
-      style={{ ...containerStyles, ...style }}
-      tabIndex={0}
-      role="textbox"
-      aria-multiline
-      onFocus={containedHandler(containerRef, handleContainerFocus)}
-      onBlur={handleContainerBlur}
-      onKeyDown={handleKeyDown}
-      onMouseDown={containedHandler(containerRef, handleContainerMouseDown)}
-    >
-      {/* Persistent off-screen ProseMirror per HF rId — the painter reads
+      const totalPages = layout.pages.length;
+      if (lastTotalPagesRef.current === totalPages) {
+        return;
+      }
+
+      lastTotalPagesRef.current = totalPages;
+      onTotalPagesChangeRef.current?.(totalPages);
+    }, [layout]);
+
+    // Update selection overlay when layout changes
+    // This is needed because handleEditorViewReady calls runLayoutPipeline which
+    // sets layout asynchronously, so updateSelectionOverlay would return early
+    // if layout is still null. This effect ensures we update once layout is ready.
+    useEffect(() => {
+      const state = hiddenPMRef.current?.getState();
+      if (layout && state) {
+        updateSelectionOverlay(state);
+      }
+    }, [layout, updateSelectionOverlay]);
+
+    // =========================================================================
+    // Render
+    // =========================================================================
+
+    // Calculate total height for scroll
+    const totalHeight = useMemo(() => {
+      if (!layout) {
+        return DEFAULT_PAGE_HEIGHT_PX + 48;
+      }
+      const numPages = layout.pages.length;
+      return numPages * pageSize.h + (numPages - 1) * pageGap + 48;
+    }, [layout, pageSize.h, pageGap]);
+    const scaledViewportHeight = Math.max(1, totalHeight * zoom);
+    const scaledViewportWidth = Math.max(
+      1,
+      pageSize.w * zoom + (commentsSidebarOpen ? COMMENTS_SIDEBAR_SCROLL_GUTTER : 0),
+    );
+    const viewportExtentStyle: CSSProperties = {
+      position: "relative",
+      width: `max(100%, ${String(scaledViewportWidth)}px)`,
+      height: scaledViewportHeight,
+      backgroundColor: "transparent",
+      // The page keeps its unscaled width and is shrunk via `transform: scale()`,
+      // which doesn't shrink the layout box — so at zoom < 1 the unscaled page
+      // overflows this extent and creates phantom horizontal scroll. Clip it: the
+      // visible (scaled) page already fits, and at zoom >= 1 the extent is wide
+      // enough that nothing is clipped. `clip` (not `hidden`) avoids forcing a
+      // vertical scroll context.
+      overflowX: "clip",
+    };
+    const scaledViewportStyle: CSSProperties = {
+      ...viewportStyles,
+      position: "absolute",
+      top: 0,
+      left: `max(0px, calc((100% - ${String(scaledViewportWidth)}px) / 2))`,
+      width: pageSize.w,
+      minHeight: totalHeight,
+      transform: (() => {
+        const parts: string[] = [];
+        if (zoom !== 1) {
+          parts.push(`scale(${zoom})`);
+        }
+        return parts.length > 0 ? parts.join(" ") : undefined;
+      })(),
+      transformOrigin: "top left",
+    };
+
+    return (
+      <div
+        ref={containerRef}
+        className={`folio-root paged-editor ${className ?? ""}`}
+        style={{ ...containerStyles, ...style }}
+        tabIndex={0}
+        role="textbox"
+        aria-multiline
+        onFocus={containedHandler(containerRef, handleContainerFocus)}
+        onBlur={handleContainerBlur}
+        onKeyDown={handleKeyDown}
+        onMouseDown={containedHandler(containerRef, handleContainerMouseDown)}
+      >
+        {/* Persistent off-screen ProseMirror per HF rId — the painter reads
           from these views when a slot's view exists (see HF unification port,
           eigenpal#611). Currently shadow instances: the inline overlay still
           owns user input. Switching the layout pipeline to source from these
           views is the next phase. */}
-      <HiddenHeaderFooterPMs
-        ref={hfPMsRef}
-        document={document}
-        onTransaction={handleHfPmTransaction}
-        {...(styles !== undefined ? { styles } : {})}
-        {...(_theme !== undefined ? { theme: _theme } : {})}
-      />
+        <HiddenHeaderFooterPMs
+          ref={hfPMsRef}
+          document={document}
+          onTransaction={handleHfPmTransaction}
+          {...(styles !== undefined ? { styles } : {})}
+          {...(_theme !== undefined ? { theme: _theme } : {})}
+        />
 
-      {/* Hidden ProseMirror for keyboard input */}
-      <HiddenProseMirror
-        ref={hiddenPMRef}
-        document={document}
-        {...(documentKey !== undefined ? { documentKey } : {})}
-        widthPx={contentWidth}
-        precomputedInitialState={validPrecomputedInitialState}
-        readOnly={readOnly}
-        onTransaction={handleTransaction}
-        onSelectionChange={handleSelectionChange}
-        onRemoteSelectionsChange={setRemoteSelections}
-        onEditorViewReady={handleEditorViewReady}
-        onEditorViewDestroy={handleEditorViewDestroy}
-        onKeyDown={handleHiddenEditorKeyDown}
-        {...(styles !== undefined ? { styles } : {})}
-        externalPlugins={externalPlugins}
-        {...(collaboration !== undefined ? { collaboration } : {})}
-        {...(extensionManager !== undefined ? { extensionManager } : {})}
-        {...(onReadOnlyEditAttempt !== undefined ? { onReadOnlyEditAttempt } : {})}
-      />
+        {/* Hidden ProseMirror for keyboard input */}
+        <HiddenProseMirror
+          ref={hiddenPMRef}
+          document={document}
+          {...(documentKey !== undefined ? { documentKey } : {})}
+          widthPx={contentWidth}
+          precomputedInitialState={validPrecomputedInitialState}
+          readOnly={readOnly}
+          onTransaction={handleTransaction}
+          onSelectionChange={handleSelectionChange}
+          onRemoteSelectionsChange={setRemoteSelections}
+          onEditorViewReady={handleEditorViewReady}
+          onEditorViewDestroy={handleEditorViewDestroy}
+          onKeyDown={handleHiddenEditorKeyDown}
+          {...(styles !== undefined ? { styles } : {})}
+          externalPlugins={externalPlugins}
+          {...(collaboration !== undefined ? { collaboration } : {})}
+          {...(extensionManager !== undefined ? { extensionManager } : {})}
+          {...(onReadOnlyEditAttempt !== undefined ? { onReadOnlyEditAttempt } : {})}
+        />
 
-      {/* Viewport for visible pages */}
-      <div className="paged-editor__viewport-extent" style={viewportExtentStyle}>
-        <div className="paged-editor__viewport" style={scaledViewportStyle}>
-          {/* Pages container */}
-          <div
-            ref={pagesContainerRef}
-            className={`${PAGES_CONTAINER_CLASS}${readOnly ? " paged-editor--readonly" : ""}${hfEditMode ? ` paged-editor--hf-editing paged-editor--editing-${hfEditMode}` : ""}`}
-            style={pagesContainerStyles}
-            onMouseDown={containedHandler(pagesContainerRef, handlePagesMouseDown)}
-            onMouseMove={handlePagesMouseMove}
-            onClick={containedHandler(pagesContainerRef, handlePagesClick)}
-            onContextMenu={handlePagesContextMenu}
-            aria-hidden="true" // Visual only, PM provides semantic content
-          />
+        {/* Viewport for visible pages */}
+        <div className="paged-editor__viewport-extent" style={viewportExtentStyle}>
+          <div className="paged-editor__viewport" style={scaledViewportStyle}>
+            {/* Pages container */}
+            <div
+              ref={pagesContainerRef}
+              className={`${PAGES_CONTAINER_CLASS}${readOnly ? " paged-editor--readonly" : ""}${hfEditMode ? ` paged-editor--hf-editing paged-editor--editing-${hfEditMode}` : ""}`}
+              style={pagesContainerStyles}
+              onMouseDown={containedHandler(pagesContainerRef, handlePagesMouseDown)}
+              onMouseMove={handlePagesMouseMove}
+              onClick={containedHandler(pagesContainerRef, handlePagesClick)}
+              onContextMenu={handlePagesContextMenu}
+              aria-hidden="true" // Visual only, PM provides semantic content
+            />
 
-          {/* Anonymization highlights — paints on top of the
+            {/* Anonymization highlights — paints on top of the
                 rendered pages so PII spans the wasm pipeline would
                 redact are visible inline. Always mounted, renders
                 nothing when no terms are pushed. */}
-          <AnonymizationRectsOverlay
-            groups={anonymizationRectGroups}
-            onTermClick={onAnonymizationTermClick}
-            selectedCanonical={selectedAnonymizationCanonical}
-            selectionSeq={anonymizationSelectionSeq}
-          />
+            <AnonymizationRectsOverlay
+              groups={anonymizationRectGroups}
+              onTermClick={onAnonymizationTermClick}
+              selectedCanonical={selectedAnonymizationCanonical}
+              selectionSeq={anonymizationSelectionSeq}
+            />
 
-          {/* Inline autocomplete ghost-text + "stella" caret. The
+            {/* Inline autocomplete ghost-text + "stella" caret. The
               ProseMirror autocomplete plugin lives in the hidden
               editor; this overlay paints its state on top of the
               paged canvas at container coords from
               {@link getCaretPosition}. */}
-          <AutocompleteCaretOverlay
-            caret={autocompleteCaret}
-            text={autocompleteText}
-            isStreaming={autocompleteIsStreaming}
-          />
+            <AutocompleteCaretOverlay
+              caret={autocompleteCaret}
+              text={autocompleteText}
+              isStreaming={autocompleteIsStreaming}
+            />
 
-          {/* AI suggestion review — dotted severity underlines for
+            {/* AI suggestion review — dotted severity underlines for
               pending suggestions plus the focused suggestion's in-text
               diff. Always mounted, renders nothing until the host
               pushes a suggestion list into the hidden editor. */}
-          <AISuggestionRectsOverlay groups={aiSuggestionRectGroups} />
+            <AISuggestionRectsOverlay groups={aiSuggestionRectGroups} />
 
-          {/* Template-directive widgets — rich chips over {{...}}
+            {/* Template-directive widgets — rich chips over {{...}}
               markers in the template editor. Renders nothing when
               the directives plugin isn't installed. */}
-          {showTemplateDirectives && (
-            <TemplateDirectivesOverlay
-              gutter={directiveGutter}
-              groups={directiveRectGroups}
-              caretPos={directiveCaretPos}
-              ranges={directivesRef.current}
-            />
-          )}
+            {showTemplateDirectives && (
+              <TemplateDirectivesOverlay
+                gutter={directiveGutter}
+                groups={directiveRectGroups}
+                caretPos={directiveCaretPos}
+                ranges={directivesRef.current}
+              />
+            )}
 
-          {/* Template fill preview needs no overlay: the layout pipeline
+            {/* Template fill preview needs no overlay: the layout pipeline
               substitutes the typed values into the flow blocks, so the
               painter lays out and paints them (with the accent chip in
               highlighted mode) as part of the pages themselves. */}
 
-          {/* Selection overlay. In HF edit mode the body caret/selection is
+            {/* Selection overlay. In HF edit mode the body caret/selection is
               suppressed so it does not linger beside the HF caret — the
               HfCaretOverlay below owns the caret while a header/footer is
               being edited. */}
-          <SelectionOverlay
-            selectionRects={hfEditMode ? EMPTY_SELECTION_RECTS : selectionRects}
-            caretPosition={hfEditMode ? null : caretPosition}
-            isFocused={isFocused}
-            pageGap={pageGap}
-            markCaretRect
-          />
-          {/* HF caret overlay — draws the caret + selection rects for the
+            <SelectionOverlay
+              selectionRects={hfEditMode ? EMPTY_SELECTION_RECTS : selectionRects}
+              caretPosition={hfEditMode ? null : caretPosition}
+              isFocused={isFocused}
+              pageGap={pageGap}
+              markCaretRect
+            />
+            {/* HF caret overlay — draws the caret + selection rects for the
               focused persistent hidden HF EditorView. Painted DOM is the
               source of truth: we walk findHfPmAnchor markers under
               .layout-page-header[data-rid] / .layout-page-footer[data-rid]
               and project the rects relative to the pages container. The
               `painter:painted` and `hfCaretSelection` change events both
               re-run the lookup. */}
-          {hfCaretSelection && (
-            <HfCaretOverlay
-              selection={hfCaretSelection}
-              pagesContainer={pagesContainerRef.current}
-              zoom={zoom}
-            />
-          )}
-          {layout &&
-            remoteSelections.map((remoteSelection) => (
-              <RemoteSelectionOverlay
-                key={remoteSelection.clientId}
-                blocks={blocks}
-                layout={layout}
-                measures={measures}
+            {hfCaretSelection && (
+              <HfCaretOverlay
+                selection={hfCaretSelection}
                 pagesContainer={pagesContainerRef.current}
-                remoteSelection={remoteSelection}
                 zoom={zoom}
               />
-            ))}
-
-          {/* Image selection overlay */}
-          {!readOnly && (
-            <ImageSelectionOverlay
-              imageInfo={selectedImageInfo}
-              zoom={zoom}
-              isFocused={isFocused}
-              onResize={handleImageResize}
-              onResizeStart={handleImageResizeStart}
-              onResizeEnd={handleImageResizeEnd}
-              onDragMove={handleImageDragMove}
-              onDragStart={handleImageDragStart}
-              onDragEnd={handleImageDragEnd}
-            />
-          )}
-
-          {/* Table quick action insert button */}
-          {tableInsertButton && (
-            <button
-              type="button"
-              onMouseDown={handleTableInsertClick}
-              onMouseEnter={clearTableInsertTimer}
-              onMouseLeave={() => setTableInsertButton(null)}
-              style={{
-                position: "absolute",
-                left: tableInsertButton.x,
-                top: tableInsertButton.y,
-                width: 20,
-                height: 20,
-                borderRadius: "4px",
-                border: "1px solid var(--doc-border, #dadce0)",
-                backgroundColor: "var(--doc-bg, #f8f9fa)",
-                color: "var(--doc-text-muted, #5f6368)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                // Keep this editor overlay below the app's popover/modal layer
-                // (z-50) so it can't bleed through an open popover over a table.
-                zIndex: 40,
-                padding: 0,
-                boxShadow: "none",
-              }}
-              title={
-                tableInsertButton.type === "row" ? "Insert row below" : "Insert column to the right"
-              }
-              aria-label={
-                tableInsertButton.type === "row" ? "Insert row below" : "Insert column to the right"
-              }
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M6 1v10M1 6h10"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
+            )}
+            {layout &&
+              remoteSelections.map((remoteSelection) => (
+                <RemoteSelectionOverlay
+                  key={remoteSelection.clientId}
+                  blocks={blocks}
+                  layout={layout}
+                  measures={measures}
+                  pagesContainer={pagesContainerRef.current}
+                  remoteSelection={remoteSelection}
+                  zoom={zoom}
                 />
-              </svg>
-            </button>
-          )}
-        </div>
-      </div>
+              ))}
 
-      {/* Sidebar overlay — inside scroll container, scrolls with document */}
-      {sidebarOverlay}
-    </div>
-  );
-});
+            {/* Image selection overlay */}
+            {!readOnly && (
+              <ImageSelectionOverlay
+                imageInfo={selectedImageInfo}
+                zoom={zoom}
+                isFocused={isFocused}
+                onResize={handleImageResize}
+                onResizeStart={handleImageResizeStart}
+                onResizeEnd={handleImageResizeEnd}
+                onDragMove={handleImageDragMove}
+                onDragStart={handleImageDragStart}
+                onDragEnd={handleImageDragEnd}
+              />
+            )}
+
+            {/* Table quick action insert button */}
+            {tableInsertButton && (
+              <button
+                type="button"
+                onMouseDown={handleTableInsertClick}
+                onMouseEnter={clearTableInsertTimer}
+                onMouseLeave={() => setTableInsertButton(null)}
+                style={{
+                  position: "absolute",
+                  left: tableInsertButton.x,
+                  top: tableInsertButton.y,
+                  width: 20,
+                  height: 20,
+                  borderRadius: "4px",
+                  border: "1px solid var(--doc-border, #dadce0)",
+                  backgroundColor: "var(--doc-bg, #f8f9fa)",
+                  color: "var(--doc-text-muted, #5f6368)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  // Keep this editor overlay below the app's popover/modal layer
+                  // (z-50) so it can't bleed through an open popover over a table.
+                  zIndex: 40,
+                  padding: 0,
+                  boxShadow: "none",
+                }}
+                title={
+                  tableInsertButton.type === "row"
+                    ? "Insert row below"
+                    : "Insert column to the right"
+                }
+                aria-label={
+                  tableInsertButton.type === "row"
+                    ? "Insert row below"
+                    : "Insert column to the right"
+                }
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path
+                    d="M6 1v10M1 6h10"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar overlay — inside scroll container, scrolls with document */}
+        {sidebarOverlay}
+      </div>
+    );
+  },
+);

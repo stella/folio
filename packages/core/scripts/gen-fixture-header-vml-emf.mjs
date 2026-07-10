@@ -16,9 +16,9 @@
  * original bytes round-trip via `verbatimXml`, so Word never has to
  * read this EMF.
  */
-import JSZip from 'jszip';
-import { writeFileSync } from 'node:fs';
-import { deflateSync } from 'node:zlib';
+import JSZip from "jszip";
+import { writeFileSync } from "node:fs";
+import { deflateSync } from "node:zlib";
 
 // ---------------------------------------------------------------------------
 // 1. Build a tiny PNG (96×80 solid teal) without external assets.
@@ -38,7 +38,7 @@ function crc32(buf) {
 function chunk(type, data) {
   const len = Buffer.alloc(4);
   len.writeUInt32BE(data.length);
-  const t = Buffer.from(type, 'ascii');
+  const t = Buffer.from(type, "ascii");
   const crc = Buffer.alloc(4);
   crc.writeUInt32BE(crc32(Buffer.concat([t, data])));
   return Buffer.concat([len, t, data, crc]);
@@ -62,7 +62,12 @@ function makePng(w, h, [r, g, b]) {
     }
   }
   const idat = deflateSync(raw);
-  return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
+  return Buffer.concat([
+    sig,
+    chunk("IHDR", ihdr),
+    chunk("IDAT", idat),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -129,17 +134,19 @@ const pkgRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 // 4. Assemble the package.
 // ---------------------------------------------------------------------------
 const zip = new JSZip();
-zip.file('[Content_Types].xml', contentTypes);
-zip.file('_rels/.rels', pkgRels);
-zip.file('word/document.xml', documentXml);
-zip.file('word/_rels/document.xml.rels', documentRels);
-zip.file('word/styles.xml', stylesXml);
-zip.file('word/header1.xml', headerXml);
-zip.file('word/_rels/header1.xml.rels', headerRels);
-zip.file('word/footer1.xml', footerXml);
-zip.file('word/media/image1.emf', emf);
-zip.file('word/embeddings/oleObject1.bin', Buffer.from([0xd0, 0xcf, 0x11, 0xe0]));
+zip.file("[Content_Types].xml", contentTypes);
+zip.file("_rels/.rels", pkgRels);
+zip.file("word/document.xml", documentXml);
+zip.file("word/_rels/document.xml.rels", documentRels);
+zip.file("word/styles.xml", stylesXml);
+zip.file("word/header1.xml", headerXml);
+zip.file("word/_rels/header1.xml.rels", headerRels);
+zip.file("word/footer1.xml", footerXml);
+zip.file("word/media/image1.emf", emf);
+zip.file("word/embeddings/oleObject1.bin", Buffer.from([0xd0, 0xcf, 0x11, 0xe0]));
 
-const out = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
-writeFileSync('src/docx/__fixtures__/header-vml-emf.docx', out);
-console.log(`wrote src/docx/__fixtures__/header-vml-emf.docx (${out.length} bytes, EMF ${emf.length}b wrapping PNG ${png.length}b)`);
+const out = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+writeFileSync("src/docx/__fixtures__/header-vml-emf.docx", out);
+console.log(
+  `wrote src/docx/__fixtures__/header-vml-emf.docx (${out.length} bytes, EMF ${emf.length}b wrapping PNG ${png.length}b)`,
+);

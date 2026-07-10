@@ -30,7 +30,7 @@ export type UsePageSetupControlsOptions = {
    * tab-stop edits dispatch PM commands and notify via the pipeline instead.
    */
   onChange: (doc: Document) => void;
-}
+};
 
 type MarginProperty = "marginLeft" | "marginRight" | "marginTop" | "marginBottom";
 

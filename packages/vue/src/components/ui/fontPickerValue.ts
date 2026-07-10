@@ -1,9 +1,9 @@
 export function getPrimaryFontFamily(fontFamily: string): string {
   const trimmed = fontFamily.trim();
-  if (!trimmed) return '';
+  if (!trimmed) return "";
 
   let quote: '"' | "'" | null = null;
-  let first = '';
+  let first = "";
 
   for (const char of trimmed) {
     if ((char === '"' || char === "'") && quote === null) {
@@ -18,12 +18,12 @@ export function getPrimaryFontFamily(fontFamily: string): string {
       continue;
     }
 
-    if (char === ',' && quote === null) {
+    if (char === "," && quote === null) {
       break;
     }
 
     first += char;
   }
 
-  return first.trim().replace(/^['"]|['"]$/g, '');
+  return first.trim().replace(/^['"]|['"]$/g, "");
 }

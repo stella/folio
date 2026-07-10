@@ -15,8 +15,8 @@
 <script setup lang="ts">
 // Outline toggle — Vue counterpart of React's OutlineToggleButton. Inject-based
 // translation (host calls provideLocale) so the label tracks the user's i18n prop.
-import { useTranslation } from '../i18n';
-import MaterialSymbol from './ui/MaterialSymbol.vue';
+import { useTranslation } from "../i18n";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
 
 withDefaults(
   defineProps<{
@@ -31,7 +31,7 @@ withDefaults(
      */
     topPx?: number;
   }>(),
-  { topPx: 24 }
+  { topPx: 24 },
 );
 
 defineEmits<{ toggle: [] }>();

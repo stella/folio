@@ -22,11 +22,7 @@ const CORRECT_PASSWORD = "Password1234_";
 const loadFixture = (): Uint8Array => new Uint8Array(readFileSync(FIXTURE_PATH));
 
 const isZip = (data: Uint8Array): boolean =>
-  data.length >= 4 &&
-  data[0] === 0x50 &&
-  data[1] === 0x4b &&
-  data[2] === 0x03 &&
-  data[3] === 0x04;
+  data.length >= 4 && data[0] === 0x50 && data[1] === 0x4b && data[2] === 0x03 && data[3] === 0x04;
 
 describe("decryptDocxIfNeeded — encrypted fixture integration", () => {
   test("decrypts an encrypted .docx with the correct password", async () => {

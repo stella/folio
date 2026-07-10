@@ -18,7 +18,7 @@ export function useColorMode(colorMode: () => ColorMode): ComputedRef<boolean> {
     onCleanup(
       subscribeSystemDark((dark) => {
         systemDark.value = dark;
-      })
+      }),
     );
   });
   return computed(() => resolveIsDark(colorMode(), systemDark.value));

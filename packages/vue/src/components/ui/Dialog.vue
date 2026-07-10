@@ -46,17 +46,17 @@ const props = withDefaults(
     backdropClass?: string;
     closeOnBackdrop?: boolean;
   }>(),
-  { closeOnBackdrop: true }
+  { closeOnBackdrop: true },
 );
 
 const emit = defineEmits<{
-  (e: 'update:open', value: boolean): void;
-  (e: 'close'): void;
+  (e: "update:open", value: boolean): void;
+  (e: "close"): void;
 }>();
 
 function requestClose() {
-  emit('update:open', false);
-  emit('close');
+  emit("update:open", false);
+  emit("close");
 }
 
 function onBackdropMousedown() {

@@ -2,7 +2,18 @@
 // sessionStorage so a refresh keeps the same user; a new tab gets a fresh
 // persona for side-by-side multi-user testing.
 
-const NAMES = ["Ada", "Grace", "Linus", "Hedy", "Margaret", "Tim", "Donald", "Barbara", "Alan", "Radia"];
+const NAMES = [
+  "Ada",
+  "Grace",
+  "Linus",
+  "Hedy",
+  "Margaret",
+  "Tim",
+  "Donald",
+  "Barbara",
+  "Alan",
+  "Radia",
+];
 
 const COLORS = [
   "#ef4444",
@@ -22,7 +33,7 @@ export type CollabUser = {
 
 const STORAGE_KEY = "folio-playground-collab-user";
 
-const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
+const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)]!;
 
 export const loadOrCreateUser = (): CollabUser => {
   try {

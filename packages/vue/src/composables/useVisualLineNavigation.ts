@@ -20,7 +20,7 @@ export type UseVisualLineNavigationReturn = {
   findLineElementAtPosition: (pmPos: number) => HTMLElement | null;
   findPositionOnLineAtClientX: (line: HTMLElement, clientX: number) => number | null;
   handlePMKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
-}
+};
 
 export function useVisualLineNavigation(
   pagesContainer: Ref<HTMLElement | null>,

@@ -52,8 +52,7 @@ export type FolioMessages = { folio: FolioMessageTree };
 // makes the 13 translated catalogs assignable to one shared type.
 type Widen<T> = { [K in keyof T]: T[K] extends string ? string : Widen<T[K]> };
 
-const CATALOGS: Record<FolioLocale, Widen<(typeof GENERATED_CATALOGS)["en"]>> =
-  GENERATED_CATALOGS;
+const CATALOGS: Record<FolioLocale, Widen<(typeof GENERATED_CATALOGS)["en"]>> = GENERATED_CATALOGS;
 
 const FOLIO_LOCALE_SET = new Set<string>(FOLIO_LOCALES);
 

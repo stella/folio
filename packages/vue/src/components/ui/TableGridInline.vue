@@ -12,38 +12,46 @@
       :style="{ gridTemplateColumns: `repeat(${gridColumns}, 18px)` }"
       role="grid"
       aria-label="Table size selector"
-      @mouseleave="hoverRows = 0; hoverCols = 0"
+      @mouseleave="
+        hoverRows = 0;
+        hoverCols = 0;
+      "
     >
       <div
         v-for="cell in cells"
         :key="`${cell.r}-${cell.c}`"
         class="docx-table-grid-inline__cell"
-        :class="{ 'docx-table-grid-inline__cell--active': cell.r <= hoverRows && cell.c <= hoverCols }"
+        :class="{
+          'docx-table-grid-inline__cell--active': cell.r <= hoverRows && cell.c <= hoverCols,
+        }"
         role="gridcell"
         :aria-selected="cell.r <= hoverRows && cell.c <= hoverCols"
-        @mouseenter="hoverRows = cell.r; hoverCols = cell.c"
+        @mouseenter="
+          hoverRows = cell.r;
+          hoverCols = cell.c;
+        "
         @click.prevent="handleClick"
       />
     </div>
     <div class="docx-table-grid-inline__label">
-      {{ hoverRows > 0 && hoverCols > 0 ? `${hoverCols} × ${hoverRows}` : 'Select size' }}
+      {{ hoverRows > 0 && hoverCols > 0 ? `${hoverCols} × ${hoverRows}` : "Select size" }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed } from "vue";
 
 const props = withDefaults(
   defineProps<{
     gridRows?: number;
     gridColumns?: number;
   }>(),
-  { gridRows: 6, gridColumns: 6 }
+  { gridRows: 6, gridColumns: 6 },
 );
 
 const emit = defineEmits<{
-  (e: 'insert', rows: number, cols: number): void;
+  (e: "insert", rows: number, cols: number): void;
 }>();
 
 const hoverRows = ref(0);
@@ -61,7 +69,7 @@ const cells = computed(() => {
 
 function handleClick() {
   if (hoverRows.value > 0 && hoverCols.value > 0) {
-    emit('insert', hoverRows.value, hoverCols.value);
+    emit("insert", hoverRows.value, hoverCols.value);
   }
 }
 </script>
@@ -78,7 +86,9 @@ function handleClick() {
   border: 1px solid var(--doc-border);
   border-radius: 2px;
   cursor: pointer;
-  transition: background-color 0.1s, border-color 0.1s;
+  transition:
+    background-color 0.1s,
+    border-color 0.1s;
 }
 .docx-table-grid-inline__cell--active {
   background: var(--doc-primary);

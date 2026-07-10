@@ -8,128 +8,126 @@
     :style="{ minWidth: '400px', maxWidth: '90vw' }"
     @close="close"
   >
-      <div class="dialog__header">
-        <span class="dialog__title">{{ t('dialogs.imageProperties.title') }}</span>
-        <button class="dialog__close" :aria-label="t('common.closeDialog')" @click="close">
-          ✕
-        </button>
+    <div class="dialog__header">
+      <span class="dialog__title">{{ t("dialogs.imageProperties.title") }}</span>
+      <button class="dialog__close" :aria-label="t('common.closeDialog')" @click="close">✕</button>
+    </div>
+    <div class="dialog__body">
+      <!-- Alt text -->
+      <div class="field">
+        <label class="field__label">{{ t("dialogs.imageProperties.altText") }}</label>
+        <textarea
+          v-model="altText"
+          class="field__textarea"
+          :placeholder="t('dialogs.imageProperties.altTextPlaceholder')"
+          rows="2"
+        ></textarea>
       </div>
-      <div class="dialog__body">
-        <!-- Alt text -->
-        <div class="field">
-          <label class="field__label">{{ t('dialogs.imageProperties.altText') }}</label>
-          <textarea
-            v-model="altText"
-            class="field__textarea"
-            :placeholder="t('dialogs.imageProperties.altTextPlaceholder')"
-            rows="2"
-          ></textarea>
-        </div>
 
-        <!-- Wrap type -->
-        <div class="field">
-          <label class="field__label">{{ t('dialogs.imageProperties.textWrapping') }}</label>
-          <select v-model="wrapType" class="field__select">
-            <option value="inline">{{ t('dialogs.imageProperties.wrapOptions.inline') }}</option>
-            <option value="wrapRight">
-              {{ t('dialogs.imageProperties.wrapOptions.wrapRight') }}
-            </option>
-            <option value="wrapLeft">
-              {{ t('dialogs.imageProperties.wrapOptions.wrapLeft') }}
-            </option>
-            <option value="topAndBottom">
-              {{ t('dialogs.imageProperties.wrapOptions.topAndBottom') }}
-            </option>
-            <option value="behind">{{ t('dialogs.imageProperties.wrapOptions.behind') }}</option>
-            <option value="inFront">{{ t('dialogs.imageProperties.wrapOptions.inFront') }}</option>
-          </select>
-        </div>
+      <!-- Wrap type -->
+      <div class="field">
+        <label class="field__label">{{ t("dialogs.imageProperties.textWrapping") }}</label>
+        <select v-model="wrapType" class="field__select">
+          <option value="inline">{{ t("dialogs.imageProperties.wrapOptions.inline") }}</option>
+          <option value="wrapRight">
+            {{ t("dialogs.imageProperties.wrapOptions.wrapRight") }}
+          </option>
+          <option value="wrapLeft">
+            {{ t("dialogs.imageProperties.wrapOptions.wrapLeft") }}
+          </option>
+          <option value="topAndBottom">
+            {{ t("dialogs.imageProperties.wrapOptions.topAndBottom") }}
+          </option>
+          <option value="behind">{{ t("dialogs.imageProperties.wrapOptions.behind") }}</option>
+          <option value="inFront">{{ t("dialogs.imageProperties.wrapOptions.inFront") }}</option>
+        </select>
+      </div>
 
-        <!-- Border -->
-        <div class="field">
-          <label class="field__label">{{ t('dialogs.imageProperties.border') }}</label>
-          <div class="field-row">
-            <label
-              >{{ t('dialogs.imageProperties.width') }}:
-              <input
-                v-model.number="borderWidth"
-                type="number"
-                min="0"
-                max="20"
-                step="0.5"
-                class="field__input--small"
-              />{{ t('common.px') }}
-            </label>
-            <label
-              >{{ t('dialogs.imageProperties.style') }}:
-              <select v-model="borderStyle" class="field__select--small">
-                <option value="solid">{{ t('dialogs.imageProperties.borderStyles.solid') }}</option>
-                <option value="dashed">
-                  {{ t('dialogs.imageProperties.borderStyles.dashed') }}
-                </option>
-                <option value="dotted">
-                  {{ t('dialogs.imageProperties.borderStyles.dotted') }}
-                </option>
-                <option value="double">
-                  {{ t('dialogs.imageProperties.borderStyles.double') }}
-                </option>
-              </select>
-            </label>
-            <label
-              >{{ t('dialogs.imageProperties.color') }}:
-              <input v-model="borderColor" type="color" class="field__color" />
-            </label>
-          </div>
-        </div>
-
-        <!-- Dimensions -->
-        <div class="field">
-          <label class="field__label">{{ t('dialogs.imageProperties.dimensions') }}</label>
-          <div class="field-row">
-            <label
-              >{{ t('dialogs.imageProperties.widthLabel') }}
-              <input
-                :value="width"
-                type="number"
-                min="1"
-                max="2000"
-                class="field__input--small"
-                @input="onWidthInput"
-              />{{ t('common.px') }}</label
-            >
-            <label
-              >{{ t('dialogs.imageProperties.heightLabel') }}
-              <input
-                :value="height"
-                type="number"
-                min="1"
-                max="2000"
-                class="field__input--small"
-                @input="onHeightInput"
-              />{{ t('common.px') }}</label
-            >
-          </div>
-          <label class="field__checkbox">
-            <input v-model="lockRatio" type="checkbox" />
-            {{ t('dialogs.imageProperties.lockAspectRatio') }}
+      <!-- Border -->
+      <div class="field">
+        <label class="field__label">{{ t("dialogs.imageProperties.border") }}</label>
+        <div class="field-row">
+          <label
+            >{{ t("dialogs.imageProperties.width") }}:
+            <input
+              v-model.number="borderWidth"
+              type="number"
+              min="0"
+              max="20"
+              step="0.5"
+              class="field__input--small"
+            />{{ t("common.px") }}
+          </label>
+          <label
+            >{{ t("dialogs.imageProperties.style") }}:
+            <select v-model="borderStyle" class="field__select--small">
+              <option value="solid">{{ t("dialogs.imageProperties.borderStyles.solid") }}</option>
+              <option value="dashed">
+                {{ t("dialogs.imageProperties.borderStyles.dashed") }}
+              </option>
+              <option value="dotted">
+                {{ t("dialogs.imageProperties.borderStyles.dotted") }}
+              </option>
+              <option value="double">
+                {{ t("dialogs.imageProperties.borderStyles.double") }}
+              </option>
+            </select>
+          </label>
+          <label
+            >{{ t("dialogs.imageProperties.color") }}:
+            <input v-model="borderColor" type="color" class="field__color" />
           </label>
         </div>
-
-        <div class="dialog__actions">
-          <button class="dialog__btn" @click="close">{{ t('common.cancel') }}</button>
-          <button class="dialog__btn dialog__btn--primary" @mousedown.prevent="apply">
-            {{ t('common.apply') }}
-          </button>
-        </div>
       </div>
+
+      <!-- Dimensions -->
+      <div class="field">
+        <label class="field__label">{{ t("dialogs.imageProperties.dimensions") }}</label>
+        <div class="field-row">
+          <label
+            >{{ t("dialogs.imageProperties.widthLabel") }}
+            <input
+              :value="width"
+              type="number"
+              min="1"
+              max="2000"
+              class="field__input--small"
+              @input="onWidthInput"
+            />{{ t("common.px") }}</label
+          >
+          <label
+            >{{ t("dialogs.imageProperties.heightLabel") }}
+            <input
+              :value="height"
+              type="number"
+              min="1"
+              max="2000"
+              class="field__input--small"
+              @input="onHeightInput"
+            />{{ t("common.px") }}</label
+          >
+        </div>
+        <label class="field__checkbox">
+          <input v-model="lockRatio" type="checkbox" />
+          {{ t("dialogs.imageProperties.lockAspectRatio") }}
+        </label>
+      </div>
+
+      <div class="dialog__actions">
+        <button class="dialog__btn" @click="close">{{ t("common.cancel") }}</button>
+        <button class="dialog__btn dialog__btn--primary" @mousedown.prevent="apply">
+          {{ t("common.apply") }}
+        </button>
+      </div>
+    </div>
   </FolioDialog>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import type { EditorView } from 'prosemirror-view';
-import { useTranslation } from '../../i18n';
-import { useFolioUI } from '../../ui/folio-ui';
+import { ref, watch } from "vue";
+import type { EditorView } from "prosemirror-view";
+import { useTranslation } from "../../i18n";
+import { useFolioUI } from "../../ui/folio-ui";
 
 const { t } = useTranslation();
 
@@ -144,14 +142,14 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: "close"): void;
 }>();
 
-const altText = ref('');
-const wrapType = ref('inline');
+const altText = ref("");
+const wrapType = ref("inline");
 const borderWidth = ref(0);
-const borderStyle = ref('solid');
-const borderColor = ref('#000000');
+const borderStyle = ref("solid");
+const borderColor = ref("#000000");
 const width = ref(200);
 const height = ref(150);
 const lockRatio = ref(true);
@@ -164,32 +162,32 @@ watch(
     if (!open || !props.view || props.pmPos === null) return;
     try {
       const node = props.view.state.doc.nodeAt(props.pmPos);
-      if (node && node.type.name === 'image') {
+      if (node && node.type.name === "image") {
         const attrs = node.attrs;
-        altText.value = attrs['alt'] || '';
-        borderWidth.value = attrs['borderWidth'] || 0;
-        borderStyle.value = attrs['borderStyle'] || 'solid';
-        borderColor.value = attrs['borderColor'] || '#000000';
-        width.value = attrs['width'] || 200;
-        height.value = attrs['height'] || 150;
+        altText.value = attrs["alt"] || "";
+        borderWidth.value = attrs["borderWidth"] || 0;
+        borderStyle.value = attrs["borderStyle"] || "solid";
+        borderColor.value = attrs["borderColor"] || "#000000";
+        width.value = attrs["width"] || 200;
+        height.value = attrs["height"] || 150;
         aspectRatio = width.value / (height.value || 1);
         lockRatio.value = true;
 
         // Derive wrap type from attrs
-        const dm = attrs['displayMode'];
-        const cf = attrs['cssFloat'];
-        const wt = attrs['wrapType'];
-        if (dm === 'float' && cf === 'left') wrapType.value = 'wrapRight';
-        else if (dm === 'float' && cf === 'right') wrapType.value = 'wrapLeft';
-        else if (dm === 'block') wrapType.value = 'topAndBottom';
-        else if (wt === 'behind') wrapType.value = 'behind';
-        else if (wt === 'inFront') wrapType.value = 'inFront';
-        else wrapType.value = 'inline';
+        const dm = attrs["displayMode"];
+        const cf = attrs["cssFloat"];
+        const wt = attrs["wrapType"];
+        if (dm === "float" && cf === "left") wrapType.value = "wrapRight";
+        else if (dm === "float" && cf === "right") wrapType.value = "wrapLeft";
+        else if (dm === "block") wrapType.value = "topAndBottom";
+        else if (wt === "behind") wrapType.value = "behind";
+        else if (wt === "inFront") wrapType.value = "inFront";
+        else wrapType.value = "inline";
       }
     } catch {
       /* ignore */
     }
-  }
+  },
 );
 
 function onWidthInput(e: Event) {
@@ -213,7 +211,7 @@ function onHeightInput(e: Event) {
 }
 
 function close() {
-  emit('close');
+  emit("close");
 }
 
 function apply() {
@@ -222,41 +220,41 @@ function apply() {
 
   try {
     const node = v.state.doc.nodeAt(props.pmPos);
-    if (!node || node.type.name !== 'image') return;
+    if (!node || node.type.name !== "image") return;
 
     // Map wrap type to PM attributes
-    let displayMode = 'inline';
+    let displayMode = "inline";
     let cssFloat: string | null = null;
-    let wrapTypeAttr = 'inline';
+    let wrapTypeAttr = "inline";
 
     switch (wrapType.value) {
-      case 'wrapRight':
-        displayMode = 'float';
-        cssFloat = 'left';
-        wrapTypeAttr = 'square';
+      case "wrapRight":
+        displayMode = "float";
+        cssFloat = "left";
+        wrapTypeAttr = "square";
         break;
-      case 'wrapLeft':
-        displayMode = 'float';
-        cssFloat = 'right';
-        wrapTypeAttr = 'square';
+      case "wrapLeft":
+        displayMode = "float";
+        cssFloat = "right";
+        wrapTypeAttr = "square";
         break;
-      case 'topAndBottom':
-        displayMode = 'block';
-        wrapTypeAttr = 'topAndBottom';
+      case "topAndBottom":
+        displayMode = "block";
+        wrapTypeAttr = "topAndBottom";
         break;
-      case 'behind':
-        displayMode = 'float';
-        cssFloat = 'none';
-        wrapTypeAttr = 'behind';
+      case "behind":
+        displayMode = "float";
+        cssFloat = "none";
+        wrapTypeAttr = "behind";
         break;
-      case 'inFront':
-        displayMode = 'float';
-        cssFloat = 'none';
-        wrapTypeAttr = 'inFront';
+      case "inFront":
+        displayMode = "float";
+        cssFloat = "none";
+        wrapTypeAttr = "inFront";
         break;
       default:
-        displayMode = 'inline';
-        wrapTypeAttr = 'inline';
+        displayMode = "inline";
+        wrapTypeAttr = "inline";
         break;
     }
 

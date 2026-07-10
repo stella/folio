@@ -7,7 +7,7 @@
 <template>
   <div v-if="replies.length > 0" class="reply-thread">
     <div v-if="hiddenCount > 0" class="reply-thread__more">
-      {{ hiddenCount }} {{ hiddenCount === 1 ? 'reply' : 'replies' }}
+      {{ hiddenCount }} {{ hiddenCount === 1 ? "reply" : "replies" }}
     </div>
     <div
       v-for="reply in visibleReplies"
@@ -18,7 +18,7 @@
       <div class="reply-thread__header">
         <Avatar :name="reply.author" :size="28" />
         <div class="reply-thread__author-block">
-          <div class="reply-thread__author">{{ reply.author || 'Unknown' }}</div>
+          <div class="reply-thread__author">{{ reply.author || "Unknown" }}</div>
           <div class="reply-thread__date">{{ formatDate(reply.date) }}</div>
         </div>
       </div>
@@ -40,16 +40,14 @@ const props = defineProps<{
   isExpanded: boolean;
 }>();
 
-const visibleReplies = computed(() =>
-  props.isExpanded ? props.replies : props.replies.slice(-1),
-);
-const hiddenCount = computed(() =>
-  props.isExpanded ? 0 : Math.max(0, props.replies.length - 1),
-);
+const visibleReplies = computed(() => (props.isExpanded ? props.replies : props.replies.slice(-1)));
+const hiddenCount = computed(() => (props.isExpanded ? 0 : Math.max(0, props.replies.length - 1)));
 </script>
 
 <style scoped>
-.reply-thread { margin-top: 8px; }
+.reply-thread {
+  margin-top: 8px;
+}
 .reply-thread__more {
   font-size: 12px;
   font-weight: 500;
@@ -61,13 +59,18 @@ const hiddenCount = computed(() =>
   padding-top: 8px;
   border-top: 1px solid var(--doc-border-light);
 }
-.reply-thread__item--expanded { margin-bottom: 8px; }
+.reply-thread__item--expanded {
+  margin-bottom: 8px;
+}
 .reply-thread__header {
   display: flex;
   align-items: flex-start;
   gap: 10px;
 }
-.reply-thread__author-block { flex: 1; min-width: 0; }
+.reply-thread__author-block {
+  flex: 1;
+  min-width: 0;
+}
 .reply-thread__author {
   font-size: 13px;
   font-weight: 600;

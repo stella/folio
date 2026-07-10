@@ -621,8 +621,7 @@
 }
 
 .layout-paragraph.folio-paragraph-flash {
-  animation: folio-paragraph-flash-fade var(--folio-paragraph-flash-duration, 1200ms) ease-out
-    both;
+  animation: folio-paragraph-flash-fade var(--folio-paragraph-flash-duration, 1200ms) ease-out both;
 }
 
 @keyframes folio-paragraph-flash-fade {

@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import type { OutlineItem } from '../../ui/folio-ui';
+import type { OutlineItem } from "../../ui/folio-ui";
 
 const props = defineProps<{
   items: OutlineItem[];

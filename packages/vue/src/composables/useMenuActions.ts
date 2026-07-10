@@ -43,7 +43,7 @@ export type UseMenuActionsOptions = {
   handleToggleSidebar: () => void;
   downloadCurrentDocument: () => Promise<void>;
   emit: (event: string, ...args: unknown[]) => void;
-}
+};
 
 export function useMenuActions(opts: UseMenuActionsOptions) {
   function execSimpleCommand(name: string) {

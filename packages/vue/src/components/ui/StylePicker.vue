@@ -17,10 +17,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { StyleOption } from './StylePicker.types';
-import { useFolioUI } from '../../ui/folio-ui';
-import type { FolioSelectItem } from '../../ui/folio-ui';
+import { computed } from "vue";
+import type { StyleOption } from "./StylePicker.types";
+import { useFolioUI } from "../../ui/folio-ui";
+import type { FolioSelectItem } from "../../ui/folio-ui";
 
 // Resolve Select from the FolioUI injection provider so a host override
 // takes effect here too (previously a native `<select>`).
@@ -33,30 +33,30 @@ const props = withDefaults(
     disabled?: boolean;
     className?: string;
   }>(),
-  { disabled: false }
+  { disabled: false },
 );
 
 const emit = defineEmits<{
-  (e: 'change', styleId: string): void;
+  (e: "change", styleId: string): void;
 }>();
 
 const DEFAULT_STYLES: StyleOption[] = [
-  { styleId: 'Normal', name: 'Normal text' },
-  { styleId: 'Title', name: 'Title' },
-  { styleId: 'Subtitle', name: 'Subtitle' },
-  { styleId: 'Heading1', name: 'Heading 1' },
-  { styleId: 'Heading2', name: 'Heading 2' },
-  { styleId: 'Heading3', name: 'Heading 3' },
+  { styleId: "Normal", name: "Normal text" },
+  { styleId: "Title", name: "Title" },
+  { styleId: "Subtitle", name: "Subtitle" },
+  { styleId: "Heading1", name: "Heading 1" },
+  { styleId: "Heading2", name: "Heading 2" },
+  { styleId: "Heading3", name: "Heading 3" },
 ];
 
 const resolvedStyles = computed(() => props.styles ?? DEFAULT_STYLES);
 
 const selectItems = computed<FolioSelectItem[]>(() =>
-  resolvedStyles.value.map((s) => ({ value: s.styleId, label: s.name }))
+  resolvedStyles.value.map((s) => ({ value: s.styleId, label: s.name })),
 );
 
 function onSelectChange(value: string) {
-  emit('change', value);
+  emit("change", value);
 }
 </script>
 

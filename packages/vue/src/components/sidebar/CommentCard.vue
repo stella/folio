@@ -20,7 +20,7 @@
     <div class="comment-card__head">
       <Avatar :name="comment.author" :size="32" />
       <div class="comment-card__author-block">
-        <div class="comment-card__author">{{ comment.author || 'Unknown' }}</div>
+        <div class="comment-card__author">{{ comment.author || "Unknown" }}</div>
         <div class="comment-card__date">{{ formatDate(comment.date) }}</div>
       </div>
       <div v-if="expanded" class="comment-card__actions">
@@ -38,16 +38,8 @@
         >
           <MaterialSymbol name="more_vert" :size="20" />
         </button>
-        <div
-          v-if="menuOpen"
-          class="comment-card__menu"
-          @click.stop
-          @mousedown.stop
-        >
-          <button
-            class="comment-card__menu-item"
-            @click="onDelete"
-          >Delete</button>
+        <div v-if="menuOpen" class="comment-card__menu" @click.stop @mousedown.stop>
+          <button class="comment-card__menu-item" @click="onDelete">Delete</button>
         </div>
       </div>
     </div>
@@ -105,7 +97,10 @@ function onDelete() {
   cursor: pointer;
   box-shadow: var(--doc-card-shadow);
   margin-bottom: 6px;
-  transition: box-shadow 0.15s ease, background-color 0.15s ease, padding 0.15s ease;
+  transition:
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    padding 0.15s ease;
 }
 /* Expanded card matches React CARD_STYLE_EXPANDED — plain white
    with a stronger drop shadow. The yellow visual link to the

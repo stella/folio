@@ -49,11 +49,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue';
-import type { EditorView } from 'prosemirror-view';
-import { NodeSelection } from 'prosemirror-state';
-import { pixelsToEmu } from '@stll/folio-core/utils/units';
-import { clickToPositionDom } from '@stll/folio-core/layout-bridge/dom/clickToPositionDom';
+import { ref, computed, watch, onBeforeUnmount, nextTick } from "vue";
+import type { EditorView } from "prosemirror-view";
+import { NodeSelection } from "prosemirror-state";
+import { pixelsToEmu } from "@stll/folio-core/utils/units";
+import { clickToPositionDom } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
 import {
   isFloatingImage,
   commitImageResize,
@@ -61,16 +61,16 @@ import {
   commitImageInlineMove,
   calculateResizedImageDimensions,
   type ImageResizeHandle,
-} from '@stll/folio-core/prosemirror/imageCommit';
-import { findBodyPmAnchor } from '@stll/folio-core/layout-bridge/dom/findBodyPmSpans';
-import { findImageElement } from '@stll/folio-core/layout-painter/imageLayout';
-import { Z_INDEX } from '../styles/zIndex';
-import { computeImageOverlayRect } from '../composables/imageOverlayRect';
-import { useTranslation } from '../i18n';
+} from "@stll/folio-core/prosemirror/imageCommit";
+import { findBodyPmAnchor } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
+import { findImageElement } from "@stll/folio-core/layout-painter/imageLayout";
+import { Z_INDEX } from "../styles/zIndex";
+import { computeImageOverlayRect } from "../composables/imageOverlayRect";
+import { useTranslation } from "../i18n";
 
 const { t } = useTranslation();
 
-import type { ImageSelectionInfo } from './imageSelectionTypes';
+import type { ImageSelectionInfo } from "./imageSelectionTypes";
 export type { ImageSelectionInfo };
 
 /** Resize handle position; the resize math lives in core (shared with React). */
@@ -83,13 +83,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'deselect'): void;
+  (e: "deselect"): void;
   /** Fired when a resize / move / rotate gesture begins (parity with React's onResizeStart/onDragStart). */
-  (e: 'interact-start'): void;
+  (e: "interact-start"): void;
   /** Fired when a resize / move / rotate gesture ends. */
-  (e: 'interact-end'): void;
+  (e: "interact-end"): void;
   /** Fired when the selected image overlay receives a context-menu gesture. */
-  (e: 'context-menu', event: MouseEvent): void;
+  (e: "context-menu", event: MouseEvent): void;
 }>();
 
 const overlayRootRef = ref<HTMLElement | null>(null);
@@ -109,7 +109,7 @@ const overlayRect = ref<{ left: number; top: number; width: number; height: numb
 const DRAG_THRESHOLD = 4; // px before a press becomes a move drag — matches React.
 const ROTATION_SNAP_DEG = 15; // snap increments (released by holding Shift) — matches Word.
 
-let resizeHandle: ResizeHandle = 'se';
+let resizeHandle: ResizeHandle = "se";
 let startX = 0;
 let startY = 0;
 let startWidth = 0;
@@ -130,7 +130,7 @@ function getImageNode(v: EditorView | null, pos: number) {
   if (!v) return null;
   try {
     const node = v.state.doc.nodeAt(pos);
-    return node && node.type.name === 'image' ? node : null;
+    return node && node.type.name === "image" ? node : null;
   } catch {
     return null;
   }
@@ -139,8 +139,8 @@ function getImageNode(v: EditorView | null, pos: number) {
 /** Read the image node's CSS `transform` attr (an untyped PM attr) as a string. */
 function readTransformAttr(node: ReturnType<typeof getImageNode>): string | null {
   if (!node) return null;
-  const raw: unknown = node.attrs['transform'];
-  return typeof raw === 'string' ? raw : null;
+  const raw: unknown = node.attrs["transform"];
+  return typeof raw === "string" ? raw : null;
 }
 
 // ---- Position calculation (matches React's approach) ----
@@ -149,8 +149,8 @@ function readTransformAttr(node: ReturnType<typeof getImageNode>): string | null
 function getPagesEl(): HTMLElement | null {
   return (
     overlayRootRef.value
-      ?.closest('.docx-editor-vue__pages-viewport')
-      ?.querySelector<HTMLElement>('.docx-editor-vue__pages') ?? null
+      ?.closest(".docx-editor-vue__pages-viewport")
+      ?.querySelector<HTMLElement>(".docx-editor-vue__pages") ?? null
   );
 }
 
@@ -248,7 +248,7 @@ let cancelReanchor: (() => void) | null = null;
 function scheduleReanchor() {
   cancelReanchor?.();
   let raf = 0;
-  let prevKey = '';
+  let prevKey = "";
   let stableFrames = 0;
   let startTs = 0;
   const step = (ts: number) => {
@@ -256,7 +256,7 @@ function scheduleReanchor() {
     const elapsed = ts - startTs;
     updatePosition();
     const r = overlayRect.value;
-    const key = r ? `${r.left}|${r.top}|${r.width}|${r.height}` : '';
+    const key = r ? `${r.left}|${r.top}|${r.width}|${r.height}` : "";
     stableFrames = key === prevKey ? stableFrames + 1 : 0;
     prevKey = key;
     const settled = elapsed >= SETTLE_MIN_MS && stableFrames >= 2;
@@ -286,7 +286,7 @@ watch(
     scheduleReanchor();
     onCleanup(() => cancelReanchor?.());
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // Re-anchor when zoom changes.
@@ -295,7 +295,7 @@ watch(
   () => {
     if (!props.imageInfo) return;
     scheduleReanchor();
-  }
+  },
 );
 
 // While an image is selected, keep the frame on it across the layout shifts
@@ -320,9 +320,9 @@ watch(
     // parent `.docx-editor-vue__editor-area` is `overflow: hidden` and never
     // scrolls. `scroll` events don't bubble, so the listener must sit on the
     // viewport or it never fires and the overlay drifts off the image on scroll.
-    const viewport = overlayRootRef.value?.closest('.docx-editor-vue__pages-viewport');
-    viewport?.addEventListener('scroll', handleScrollOrResize, { passive: true });
-    window.addEventListener('resize', handleScrollOrResize, { passive: true });
+    const viewport = overlayRootRef.value?.closest(".docx-editor-vue__pages-viewport");
+    viewport?.addEventListener("scroll", handleScrollOrResize, { passive: true });
+    window.addEventListener("resize", handleScrollOrResize, { passive: true });
 
     let transformObserver: MutationObserver | null = null;
     let cancelled = false;
@@ -331,27 +331,27 @@ watch(
       const pages = getPagesEl();
       if (!pages) return;
       transformObserver = new MutationObserver(() => scheduleReanchor());
-      transformObserver.observe(pages, { attributes: true, attributeFilter: ['style'] });
+      transformObserver.observe(pages, { attributes: true, attributeFilter: ["style"] });
     });
 
     onCleanup(() => {
       cancelled = true;
-      viewport?.removeEventListener('scroll', handleScrollOrResize);
-      window.removeEventListener('resize', handleScrollOrResize);
+      viewport?.removeEventListener("scroll", handleScrollOrResize);
+      window.removeEventListener("resize", handleScrollOrResize);
       transformObserver?.disconnect();
       if (rafId) cancelAnimationFrame(rafId);
     });
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // ---- Computed styles ----
 
 const currentRectWidth = computed(() =>
-  isResizing.value ? currentWidth.value : overlayRect.value?.width || 0
+  isResizing.value ? currentWidth.value : overlayRect.value?.width || 0,
 );
 const currentRectHeight = computed(() =>
-  isResizing.value ? currentHeight.value : overlayRect.value?.height || 0
+  isResizing.value ? currentHeight.value : overlayRect.value?.height || 0,
 );
 
 const overlayStyle = computed(() => {
@@ -360,11 +360,11 @@ const overlayStyle = computed(() => {
     // Use visibility:hidden instead of display:none so offsetParent remains
     // available for position calculation on the next tick.
     return {
-      position: 'absolute' as const,
-      top: '0px',
-      left: '0px',
-      visibility: 'hidden' as const,
-      pointerEvents: 'none' as const,
+      position: "absolute" as const,
+      top: "0px",
+      left: "0px",
+      visibility: "hidden" as const,
+      pointerEvents: "none" as const,
     };
   }
 
@@ -381,15 +381,15 @@ const overlayStyle = computed(() => {
   const z = props.zoom || 1;
 
   return {
-    position: 'absolute' as const,
+    position: "absolute" as const,
     left: `${r.left * z}px`,
     top: `${r.top * z}px`,
     width: `${w}px`,
     height: `${h}px`,
     transform: z === 1 ? undefined : `scale(${z})`,
-    transformOrigin: 'top left' as const,
+    transformOrigin: "top left" as const,
     zIndex: Z_INDEX.imageOverlay,
-    pointerEvents: 'auto' as const,
+    pointerEvents: "auto" as const,
   };
 });
 
@@ -408,14 +408,14 @@ const handles = computed<Array<{ pos: ResizeHandle; style: Record<string, string
   const bottom = `${h - half}px`;
   const neg = `-${half}px`;
   return [
-    { pos: 'nw', style: { left: neg, top: neg, cursor: 'nwse-resize' } },
-    { pos: 'n', style: { left: midX, top: neg, cursor: 'ns-resize' } },
-    { pos: 'ne', style: { left: right, top: neg, cursor: 'nesw-resize' } },
-    { pos: 'e', style: { left: right, top: midY, cursor: 'ew-resize' } },
-    { pos: 'se', style: { left: right, top: bottom, cursor: 'nwse-resize' } },
-    { pos: 's', style: { left: midX, top: bottom, cursor: 'ns-resize' } },
-    { pos: 'sw', style: { left: neg, top: bottom, cursor: 'nesw-resize' } },
-    { pos: 'w', style: { left: neg, top: midY, cursor: 'ew-resize' } },
+    { pos: "nw", style: { left: neg, top: neg, cursor: "nwse-resize" } },
+    { pos: "n", style: { left: midX, top: neg, cursor: "ns-resize" } },
+    { pos: "ne", style: { left: right, top: neg, cursor: "nesw-resize" } },
+    { pos: "e", style: { left: right, top: midY, cursor: "ew-resize" } },
+    { pos: "se", style: { left: right, top: bottom, cursor: "nwse-resize" } },
+    { pos: "s", style: { left: midX, top: bottom, cursor: "ns-resize" } },
+    { pos: "sw", style: { left: neg, top: bottom, cursor: "nesw-resize" } },
+    { pos: "w", style: { left: neg, top: midY, cursor: "ew-resize" } },
   ];
 });
 
@@ -434,10 +434,10 @@ function startResize(e: MouseEvent, handle: ResizeHandle) {
   currentWidth.value = Math.round(startWidth);
   currentHeight.value = Math.round(startHeight);
   isResizing.value = true;
-  emit('interact-start');
+  emit("interact-start");
 
-  document.addEventListener('mousemove', onResizeMove);
-  document.addEventListener('mouseup', onResizeEnd);
+  document.addEventListener("mousemove", onResizeMove);
+  document.addEventListener("mouseup", onResizeEnd);
 }
 
 function onResizeMove(e: MouseEvent) {
@@ -452,7 +452,7 @@ function onResizeMove(e: MouseEvent) {
     deltaY,
     startWidth,
     startHeight,
-    lockAspect
+    lockAspect,
   );
   currentWidth.value = Math.round(dims.width);
   currentHeight.value = Math.round(dims.height);
@@ -462,18 +462,18 @@ function onResizeMove(e: MouseEvent) {
   // the immutable start-rect so repeated moves never drift.
   const base = resizeStartRect;
   if (base) {
-    const nextLeft = resizeHandle.includes('w') ? base.left + (base.width - dims.width) : base.left;
-    const nextTop = resizeHandle.includes('n') ? base.top + (base.height - dims.height) : base.top;
+    const nextLeft = resizeHandle.includes("w") ? base.left + (base.width - dims.width) : base.left;
+    const nextTop = resizeHandle.includes("n") ? base.top + (base.height - dims.height) : base.top;
     overlayRect.value = { left: nextLeft, top: nextTop, width: base.width, height: base.height };
   }
 }
 
 function onResizeEnd() {
-  document.removeEventListener('mousemove', onResizeMove);
-  document.removeEventListener('mouseup', onResizeEnd);
+  document.removeEventListener("mousemove", onResizeMove);
+  document.removeEventListener("mouseup", onResizeEnd);
   isResizing.value = false;
   resizeStartRect = null;
-  emit('interact-end');
+  emit("interact-end");
 
   const v = props.view;
   const info = props.imageInfo;
@@ -511,14 +511,14 @@ function readRotation(transform: string | null | undefined): number {
 
 /** Re-assemble a transform string keeping any flip terms intact (mirrors DocxEditor's logic). */
 function writeRotation(transform: string | null | undefined, rotation: number): string | null {
-  const hasFlipH = /scaleX\(-1\)/.test(transform || '');
-  const hasFlipV = /scaleY\(-1\)/.test(transform || '');
+  const hasFlipH = /scaleX\(-1\)/.test(transform || "");
+  const hasFlipV = /scaleY\(-1\)/.test(transform || "");
   const parts: string[] = [];
   const norm = ((rotation % 360) + 360) % 360;
   if (norm !== 0) parts.push(`rotate(${norm}deg)`);
-  if (hasFlipH) parts.push('scaleX(-1)');
-  if (hasFlipV) parts.push('scaleY(-1)');
-  return parts.length > 0 ? parts.join(' ') : null;
+  if (hasFlipH) parts.push("scaleX(-1)");
+  if (hasFlipV) parts.push("scaleY(-1)");
+  return parts.length > 0 ? parts.join(" ") : null;
 }
 
 function angleFromCenter(clientX: number, clientY: number): number {
@@ -536,14 +536,14 @@ function startRotate(e: MouseEvent) {
   const node = getImageNode(props.view, props.imageInfo.pmPos);
   rotateBaseTransform = readTransformAttr(node);
   rotateBaseRotation = readRotation(rotateBaseTransform);
-  rotateImgEl = props.imageInfo.element.querySelector('img');
+  rotateImgEl = props.imageInfo.element.querySelector("img");
   rotateStartAngle = angleFromCenter(e.clientX, e.clientY);
   currentRotation.value = rotateBaseRotation;
   isRotating.value = true;
-  emit('interact-start');
+  emit("interact-start");
 
-  document.addEventListener('mousemove', onRotateMove);
-  document.addEventListener('mouseup', onRotateEnd);
+  document.addEventListener("mousemove", onRotateMove);
+  document.addEventListener("mouseup", onRotateEnd);
 }
 
 function onRotateMove(e: MouseEvent) {
@@ -558,15 +558,15 @@ function onRotateMove(e: MouseEvent) {
   // container would just clip the still-upright image). Element + base transform
   // were snapshotted in startRotate; this only writes a style.
   if (rotateImgEl) {
-    rotateImgEl.style.transform = writeRotation(rotateBaseTransform, currentRotation.value) || '';
+    rotateImgEl.style.transform = writeRotation(rotateBaseTransform, currentRotation.value) || "";
   }
 }
 
 function onRotateEnd() {
-  document.removeEventListener('mousemove', onRotateMove);
-  document.removeEventListener('mouseup', onRotateEnd);
+  document.removeEventListener("mousemove", onRotateMove);
+  document.removeEventListener("mouseup", onRotateEnd);
   isRotating.value = false;
-  emit('interact-end');
+  emit("interact-end");
 
   const v = props.view;
   const info = props.imageInfo;
@@ -577,7 +577,7 @@ function onRotateEnd() {
         v.state.tr.setNodeMarkup(info.pmPos, undefined, {
           ...node.attrs,
           transform: writeRotation(readTransformAttr(node), currentRotation.value),
-        })
+        }),
       );
       // Keep the image node-selected after the markup change (see onResizeEnd).
       reselectImage(info.pmPos);
@@ -589,7 +589,7 @@ function onRotateEnd() {
     // above re-paints the pages and replaces this <img> anyway; this matters
     // for the catch path, where no re-paint follows and the stale transform
     // would otherwise stick.
-    if (rotateImgEl) rotateImgEl.style.transform = '';
+    if (rotateImgEl) rotateImgEl.style.transform = "";
     rotateImgEl = null;
     rotateBaseTransform = null;
   }
@@ -615,11 +615,11 @@ function startDragMove(e: MouseEvent) {
     if (!dragStarted) {
       dragStarted = true;
       isDragging.value = true;
-      emit('interact-start');
-      moveGhostEl = document.createElement('div');
+      emit("interact-start");
+      moveGhostEl = document.createElement("div");
       moveGhostEl.style.cssText =
-        'position: fixed; pointer-events: none; z-index: 10000; opacity: 0.5; ' +
-        'border: 2px dashed #2563eb; border-radius: 4px; background: rgba(37, 99, 235, 0.1);';
+        "position: fixed; pointer-events: none; z-index: 10000; opacity: 0.5; " +
+        "border: 2px dashed #2563eb; border-radius: 4px; background: rgba(37, 99, 235, 0.1);";
       const z = props.zoom;
       moveGhostEl.style.width = `${rect.width * z}px`;
       moveGhostEl.style.height = `${rect.height * z}px`;
@@ -634,8 +634,8 @@ function startDragMove(e: MouseEvent) {
   };
 
   const onUp = (upEvent: MouseEvent) => {
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
     dragMoveListener = null;
     dragUpListener = null;
     if (moveGhostEl) {
@@ -644,15 +644,15 @@ function startDragMove(e: MouseEvent) {
     }
     isDragging.value = false;
     if (dragStarted) {
-      emit('interact-end');
+      emit("interact-end");
       commitDragMove(upEvent.clientX, upEvent.clientY);
     }
   };
 
   dragMoveListener = onMove;
   dragUpListener = onUp;
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
 }
 
 /**
@@ -669,21 +669,21 @@ function commitDragMove(clientX: number, clientY: number) {
   if (!node) return;
 
   if (isFloatingImage(node)) {
-    const viewport = overlayRootRef.value?.closest('.docx-editor-vue__pages-viewport');
-    const pages = viewport?.querySelectorAll<HTMLElement>('.layout-page');
+    const viewport = overlayRootRef.value?.closest(".docx-editor-vue__pages-viewport");
+    const pages = viewport?.querySelectorAll<HTMLElement>(".layout-page");
     if (!pages || pages.length === 0) return;
 
     let contentEl: HTMLElement | null = null;
     for (const page of pages) {
       const r = page.getBoundingClientRect();
       if (clientY >= r.top && clientY <= r.bottom) {
-        contentEl = page.querySelector<HTMLElement>('.layout-page-content');
+        contentEl = page.querySelector<HTMLElement>(".layout-page-content");
         break;
       }
     }
     if (!contentEl) {
       const lastPage = pages.item(pages.length - 1);
-      contentEl = lastPage ? lastPage.querySelector<HTMLElement>('.layout-page-content') : null;
+      contentEl = lastPage ? lastPage.querySelector<HTMLElement>(".layout-page-content") : null;
     }
     if (!contentEl) return;
 
@@ -719,12 +719,12 @@ function reselectImage(pos: number) {
 }
 
 onBeforeUnmount(() => {
-  document.removeEventListener('mousemove', onResizeMove);
-  document.removeEventListener('mouseup', onResizeEnd);
-  document.removeEventListener('mousemove', onRotateMove);
-  document.removeEventListener('mouseup', onRotateEnd);
-  if (dragMoveListener) document.removeEventListener('mousemove', dragMoveListener);
-  if (dragUpListener) document.removeEventListener('mouseup', dragUpListener);
+  document.removeEventListener("mousemove", onResizeMove);
+  document.removeEventListener("mouseup", onResizeEnd);
+  document.removeEventListener("mousemove", onRotateMove);
+  document.removeEventListener("mouseup", onRotateEnd);
+  if (dragMoveListener) document.removeEventListener("mousemove", dragMoveListener);
+  if (dragUpListener) document.removeEventListener("mouseup", dragUpListener);
   if (moveGhostEl) {
     moveGhostEl.remove();
     moveGhostEl = null;

@@ -30,10 +30,7 @@ import {
 const HERE = import.meta.dirname;
 const PYTHON_SCRIPT = path.join(HERE, "python_docx_project.py");
 const OPENXML_PROJECT = path.join(HERE, "dotnet");
-const OPENXML_DLL = path.join(
-  OPENXML_PROJECT,
-  "bin/Release/net8.0/OpenXmlProjector.dll",
-);
+const OPENXML_DLL = path.join(OPENXML_PROJECT, "bin/Release/net8.0/OpenXmlProjector.dll");
 
 const EXIT_OK = 0;
 const EXIT_DIVERGED = 1;
@@ -61,10 +58,7 @@ const resolveOpenXmlProjector = (): string | null => {
   if (existsSync(OPENXML_DLL)) {
     return OPENXML_DLL;
   }
-  const debugDll = path.join(
-    OPENXML_PROJECT,
-    "bin/Debug/net8.0/OpenXmlProjector.dll",
-  );
+  const debugDll = path.join(OPENXML_PROJECT, "bin/Debug/net8.0/OpenXmlProjector.dll");
   if (existsSync(debugDll)) {
     return debugDll;
   }

@@ -16,7 +16,7 @@ import { extractTrackedChanges } from "./utils/extractTrackedChanges";
 export type PmRange = {
   from: number;
   to: number;
-}
+};
 
 /**
  * Clamp a caller-supplied `[from, to]` range to a valid in-document span, or

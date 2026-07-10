@@ -35,6 +35,7 @@
     "lint": "bun --bun oxlint -c oxlint.config.ts packages scripts test benchmarks parity",
     "lint:fix": "bun --bun oxlint -c oxlint.config.ts --fix packages scripts test benchmarks parity",
     "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "sync-ai": "bash scripts/sync-ai-skills.sh",
     "test:packaged-consumer": "bun scripts/packaged-consumer-build.ts",
     "test:packaged-consumer-smoke": "bun scripts/packaged-consumer-smoke.ts",

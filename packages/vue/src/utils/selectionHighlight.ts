@@ -15,7 +15,7 @@ export type HighlightRect = {
   top: number;
   width: number;
   height: number;
-}
+};
 
 /** Selection highlight configuration. */
 export type SelectionHighlightConfig = {
@@ -31,7 +31,7 @@ export type SelectionHighlightConfig = {
   opacity?: number;
   /** CSS `mix-blend-mode` for the overlay. */
   mixBlendMode?: string;
-}
+};
 
 /** Default selection highlight style (matches Word / Google Docs). */
 export const DEFAULT_SELECTION_STYLE: SelectionHighlightConfig = {
@@ -163,7 +163,9 @@ function removeSelectionStyles(): void {
 }
 
 /** Inject selection highlight CSS into the document head. */
-export function injectSelectionStyles(config: SelectionHighlightConfig = DEFAULT_SELECTION_STYLE): void {
+export function injectSelectionStyles(
+  config: SelectionHighlightConfig = DEFAULT_SELECTION_STYLE,
+): void {
   removeSelectionStyles();
 
   const css = `
@@ -236,5 +238,7 @@ export function injectSelectionStyles(config: SelectionHighlightConfig = DEFAULT
 
 /** Whether selection styles are currently injected. */
 export function areSelectionStylesInjected(): boolean {
-  return injectedStyleElement !== null || document.getElementById(SELECTION_STYLE_ELEMENT_ID) !== null;
+  return (
+    injectedStyleElement !== null || document.getElementById(SELECTION_STYLE_ELEMENT_ID) !== null
+  );
 }

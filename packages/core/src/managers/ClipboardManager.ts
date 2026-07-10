@@ -29,7 +29,7 @@ export type ClipboardSelection = {
   endRunIndex: number;
   endOffset: number;
   isMultiParagraph: boolean;
-}
+};
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -182,8 +182,7 @@ export function getSelectionRuns(): Run[] {
   const range = selection.getRangeAt(0);
 
   const container = range.commonAncestorContainer;
-  const containerElement =
-    container instanceof HTMLElement ? container : container.parentElement;
+  const containerElement = container instanceof HTMLElement ? container : container.parentElement;
 
   if (!containerElement) {
     return runs;

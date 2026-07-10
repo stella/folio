@@ -22,7 +22,7 @@ type FoundTable = {
   node: PMNode;
   /** PM doc position of the table node (its `before(d)`) */
   tablePos: number;
-}
+};
 
 /** Walk up from `pmStart + 1` to find the enclosing table node. */
 function findTableAt(view: EditorView, pmStart: number): FoundTable | null {

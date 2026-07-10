@@ -28,7 +28,7 @@ const PORTAL_CLASS_KEY: InjectionKey<ComputedRef<Record<string, boolean>>> =
 export function provideDocxPortalClass(isDark: MaybeRef<boolean>): void {
   provide(
     PORTAL_CLASS_KEY,
-    computed(() => ({ "ep-root": true, dark: !!unref(isDark) }))
+    computed(() => ({ "ep-root": true, dark: !!unref(isDark) })),
   );
 }
 
@@ -40,6 +40,6 @@ export function provideDocxPortalClass(isDark: MaybeRef<boolean>): void {
 export function useDocxPortalClass(): ComputedRef<Record<string, boolean>> {
   return inject(
     PORTAL_CLASS_KEY,
-    computed(() => ({ "ep-root": true }))
+    computed(() => ({ "ep-root": true })),
   );
 }

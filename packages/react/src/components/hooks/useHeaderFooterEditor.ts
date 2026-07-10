@@ -14,11 +14,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { EditorView } from "prosemirror-view";
 
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
-import type {
-  Document,
-  HeaderFooter,
-  SectionProperties,
-} from "@stll/folio-core/types/document";
+import type { Document, HeaderFooter, SectionProperties } from "@stll/folio-core/types/document";
 import {
   createEmptyHeaderFooter,
   pickActiveHeaderFooterRId,

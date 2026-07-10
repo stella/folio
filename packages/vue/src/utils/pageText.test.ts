@@ -79,9 +79,7 @@ const layout = {
 
 describe("getPageTextFromLayout", () => {
   test("joins a page's fragment text with newlines", () => {
-    expect(getPageTextFromLayout(layout, doc, 1)).toBe(
-      "Page one first line\nPage one second line",
-    );
+    expect(getPageTextFromLayout(layout, doc, 1)).toBe("Page one first line\nPage one second line");
   });
 
   test("reads a later page independently", () => {

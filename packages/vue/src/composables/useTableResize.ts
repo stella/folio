@@ -35,7 +35,7 @@ type ColumnResizeState = {
   columnIndex: number;
   tablePmStart: number;
   origWidths: { left: number; right: number };
-}
+};
 
 type RowResizeState = {
   active: boolean;
@@ -45,7 +45,7 @@ type RowResizeState = {
   isEdge: boolean;
   tablePmStart: number;
   origHeight: number;
-}
+};
 
 type RightEdgeResizeState = {
   active: boolean;
@@ -54,13 +54,13 @@ type RightEdgeResizeState = {
   columnIndex: number;
   tablePmStart: number;
   origWidth: number;
-}
+};
 
 export type UseTableResizeReturn = {
   tryStartResize: (e: MouseEvent, view: EditorView) => boolean;
   install: () => () => void;
   isResizing: () => boolean;
-}
+};
 
 export function useTableResize(): UseTableResizeReturn {
   const col: ColumnResizeState = {

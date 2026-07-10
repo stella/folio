@@ -28,13 +28,13 @@
 </template>
 
 <script setup lang="ts">
-import { useTranslation } from '../../i18n';
+import { useTranslation } from "../../i18n";
 import {
   BUILTIN_TABLE_STYLES,
   TABLE_STYLE_NAME_KEYS,
   getPreviewCells,
   type TableStylePreset,
-} from '../tableStylePresets';
+} from "../tableStylePresets";
 
 const { t } = useTranslation();
 
@@ -43,7 +43,7 @@ defineProps<{
 }>();
 
 defineEmits<{
-  (e: 'apply', styleId: string): void;
+  (e: "apply", styleId: string): void;
 }>();
 
 const presets = BUILTIN_TABLE_STYLES;
