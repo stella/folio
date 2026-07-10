@@ -1205,6 +1205,25 @@ describe("toFlowBlocks list numbering", () => {
 // carry rounded OOXML dimensions, where zero is a valid subpixel result rather
 // than an absent value that should receive the default size.
 describe("toFlowBlocks image attribute normalization", () => {
+  test("omits inline image nodes without a paintable source", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.nodes.image.create({
+          src: "",
+          width: 100,
+          height: 100,
+        }),
+      ]),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind === "paragraph") {
+      expect(paragraph.runs).toEqual([]);
+    }
+  });
+
   test("preserves zero-sized inline image dimensions", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [

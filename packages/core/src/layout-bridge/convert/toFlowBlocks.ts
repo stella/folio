@@ -985,6 +985,13 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
     }
     if (child.type.name === "image") {
       const attrs = expectImageAttrs(child);
+      if (!attrs.src) {
+        // Unsupported DrawingML shapes can survive the parser as image nodes
+        // without a relationship target. They have no paintable payload; a
+        // 100x100 fallback box would render a broken image and incorrectly
+        // consume paragraph flow. Keep the host paragraph, but omit the run.
+        return;
+      }
       const constrained = constrainImageToPage(
         attrs.width ?? 100,
         attrs.height ?? 100,
