@@ -66,6 +66,9 @@ export const TWIPS_PER_INCH = 1440;
 /** Pixels per inch (96 dpi standard for CSS) */
 export const PIXELS_PER_INCH = 96;
 
+/** Ignore sub-twip round trips when the cursor already occupies a tab stop. */
+const TAB_POSITION_EPSILON_TWIPS = 0.01;
+
 /**
  * Convert twips to pixels
  * @param twips - Value in twips (1/1440 inch)
@@ -225,7 +228,7 @@ export function calculateTabWidth(
   const stops = computeTabStops(context);
 
   // Find next stop after current position
-  const nextStop = stops.find((stop) => stop.pos > currentXTwips);
+  const nextStop = stops.find((stop) => stop.pos > currentXTwips + TAB_POSITION_EPSILON_TWIPS);
 
   // Fallback to default grid
   if (!nextStop) {

@@ -520,6 +520,31 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
+  test("uses hanging-tab shrink tolerance on a custom-hanging list marker line", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-custom-list-marker-line",
+            runs: [{ kind: "text", text }],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 36 },
+            },
+          },
+          136,
+        );
+
+        expect(measure.lines).toHaveLength(1);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
+
   test("does not treat non-breaking spaces as compressible list-continuation spaces", () => {
     const continuationText = `${"a".repeat(50)} ${"a".repeat(47)} \u00a0bbb`;
 

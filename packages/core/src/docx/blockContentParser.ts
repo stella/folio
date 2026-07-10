@@ -145,6 +145,20 @@ const computeListMarker = (
   }
 
   const abstractNumId = numbering.getAbstractNumId(numId);
+  const styleNumbering = paragraph.formatting?.numPrFromStyle;
+  if (abstractNumId !== null && styleNumbering) {
+    const latestAbstractCounters = abstractCounters.get(abstractNumId);
+    if (latestAbstractCounters) {
+      // A paragraph whose numbering comes only from its style resumes the
+      // latest compatible list instance. Word does this when an attachment
+      // starts a fresh w:num (with a startOverride) and later paragraphs fall
+      // back to the style's original w:num: the style continues the attachment
+      // sequence instead of reviving its stale counters from earlier content.
+      for (let i = 0; i < counters.length; i += 1) {
+        counters[i] = latestAbstractCounters[i] ?? Number.NaN;
+      }
+    }
+  }
   if (abstractNumId !== null && level > 0) {
     const latestAbstractCounters = abstractCounters.get(abstractNumId);
     const missingParentCounters = counters.slice(0, level).every(Number.isNaN);

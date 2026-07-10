@@ -8,7 +8,12 @@ import { describe, expect, test } from "bun:test";
 
 import { clearTextWidthCache } from "../layout-engine/measure/cache";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
-import type { ParagraphBlock, ParagraphFragment, ParagraphMeasure } from "../layout-engine/types";
+import type {
+  MeasuredLine,
+  ParagraphBlock,
+  ParagraphFragment,
+  ParagraphMeasure,
+} from "../layout-engine/types";
 import { renderLine, renderParagraphFragment } from "./renderParagraph";
 
 function createFakeStyle(): Record<string, string> {
@@ -178,5 +183,45 @@ describe("Issue #868 — justify first line to full content width on indented pa
     expect(lineEl.style.textAlign).toBe("left");
     expect(lineEl.style.textAlignLast).toBe("auto");
     expect(lineEl.style.wordSpacing).toBe("-5px");
+  });
+
+  test("justifies a hanging-list marker line through the full right edge", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-list-justify-width",
+      runs: [{ kind: "text", text: "Item text" }],
+      attrs: { alignment: "justify", listMarker: "1.", indent: { left: 36, hanging: 36 } },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 9,
+      width: 90,
+      ascent: 10,
+      descent: 2,
+      lineHeight: 12,
+    };
+
+    const originalDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", { value: fakeDocument, configurable: true });
+    resetCanvasContext();
+    try {
+      const lineEl = renderLine(block, line, "justify", fakeDocument, {
+        availableWidth: 100,
+        isLastLine: false,
+        isFirstLine: true,
+        paragraphEndsWithLineBreak: false,
+        firstLineIndentPx: -36,
+      }) as unknown as FakeElement;
+
+      expect(lineEl.style["width"]).toBe("136px");
+    } finally {
+      resetCanvasContext();
+      Object.defineProperty(globalThis, "document", {
+        value: originalDocument,
+        configurable: true,
+      });
+    }
   });
 });

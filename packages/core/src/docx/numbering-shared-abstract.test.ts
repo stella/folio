@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { parseBlockContent } from "./blockContentParser";
 import { parseNumbering } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
+import { parseStyles } from "./styleParser";
 import type { XmlElement } from "./xmlParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -121,4 +122,33 @@ test("zero-based numbering advances instead of repeatedly reinitializing", () =>
   expect(paragraphs.at(1)?.type === "paragraph" && paragraphs.at(1)?.listRendering?.marker).toBe(
     "0.1.",
   );
+});
+
+test("style numbering resumes the latest compatible restarted instance", () => {
+  const numbering = parseNumbering(NUMBERING_SHARED);
+  const styles = parseStyles(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:style w:type="paragraph" w:styleId="Article">
+        <w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr>
+      </w:style>
+    </w:styles>`);
+  const root = parseXmlDocument(
+    `<w:body xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:p><w:pPr><w:pStyle w:val="Article"/></w:pPr><w:r><w:t>Old article</w:t></w:r></w:p>
+      <w:p><w:pPr><w:numPr><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t>Attachment one</w:t></w:r></w:p>
+      <w:p><w:pPr><w:numPr><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t>Attachment two</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Article"/></w:pPr><w:r><w:t>Attachment three</w:t></w:r></w:p>
+    </w:body>`,
+  ) as XmlElement | null;
+  if (!root) {
+    throw new Error("Failed to parse body XML");
+  }
+
+  const paragraphs = parseBlockContent(root, styles, null, numbering, null, null);
+
+  expect(
+    paragraphs.map((paragraph) =>
+      paragraph.type === "paragraph" ? paragraph.listRendering?.marker : undefined,
+    ),
+  ).toEqual(["(1)", "(1)", "(2)", "(3)"]);
 });

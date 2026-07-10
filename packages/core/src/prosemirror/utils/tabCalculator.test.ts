@@ -162,6 +162,19 @@ describe("calculateTabWidth", () => {
     expect(Math.abs(result.width - expectedWidth)).toBeLessThan(1);
   });
 
+  it("advances past an explicit stop after a pixel-to-twip round trip", () => {
+    const firstStop = 1480;
+    const result = calculateTabWidth(twipsToPixels(firstStop), {
+      explicitStops: [
+        { val: "start", pos: firstStop },
+        { val: "center", pos: 4536 },
+      ],
+    });
+
+    expect(result.alignment).toBe("center");
+    expect(result.width).toBeCloseTo(twipsToPixels(4536 - firstStop));
+  });
+
   it("returns fallback when width would be too small", () => {
     // When tab width calculates to less than 1, should use fallback
     const result = calculateTabWidth(twipsToPixels(719), {}); // Just before 720

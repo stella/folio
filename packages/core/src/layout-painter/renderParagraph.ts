@@ -1732,7 +1732,11 @@ export function renderLine(
         lineEl.style.textAlignLast = "justify";
       }
       // Set explicit width so browser knows how wide to justify/compress to.
-      lineEl.style.width = `${options.availableWidth}px`;
+      const listFirstLineOffset =
+        options.isFirstLine && block.attrs?.listMarker && !block.attrs.listMarkerHidden
+          ? (options.firstLineIndentPx ?? 0)
+          : 0;
+      lineEl.style.width = `${options.availableWidth - listFirstLineOffset}px`;
     }
   }
 
