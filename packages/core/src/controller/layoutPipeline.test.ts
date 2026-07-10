@@ -495,10 +495,7 @@ describe("runLayoutPipeline", () => {
       },
     ];
 
-    const outcome = runLayoutPipeline(
-      makeDeps(createLayoutSession(), { document }),
-      makeState(),
-    );
+    const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document }), makeState());
 
     expect(outcome.layout?.pages.at(0)?.size).toEqual({ w: 1124, h: 795 });
   });
