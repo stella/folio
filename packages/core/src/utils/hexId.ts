@@ -2,6 +2,8 @@
  * Lifted from
  * https://github.com/eigenpal/docx-editor/blob/main/packages/core/src/utils/hexId.ts
  * (Apache-2.0). Keep the bound and the comments in sync upstream.
+ * folio divergence: `00000000` is excluded from both generators — Word
+ * treats a zero `w14:paraId` as unassigned, so it must never be minted.
  */
 
 /**
@@ -19,13 +21,14 @@ export const MAX_HEX_ID_EXCLUSIVE = 0x7fffffff;
  * Random 8-char uppercase hex id, matching Microsoft's `w14:paraId`
  * extension format (also reused for comment `paraId` / `durableId`).
  *
- * Range is `[0, MAX_HEX_ID_EXCLUSIVE)` = `[0, 0x7FFFFFFE]`.
+ * Range is `[1, MAX_HEX_ID_EXCLUSIVE)` = `[1, 0x7FFFFFFE]` — zero is
+ * excluded because Word reads `w14:paraId="00000000"` as "no id".
  *
  * Uses `Math.random()` rather than `crypto.randomUUID()` so the
  * generator works in non-secure contexts (file://, web workers).
  */
 export const generateHexId = (): string =>
-  Math.floor(Math.random() * MAX_HEX_ID_EXCLUSIVE)
+  (Math.floor(Math.random() * (MAX_HEX_ID_EXCLUSIVE - 1)) + 1)
     .toString(16)
     .toUpperCase()
     .padStart(8, "0");
@@ -34,11 +37,16 @@ export const generateHexId = (): string =>
  * Deterministic 8-char uppercase hex id (FNV-1a over `seed`), `< 0x7FFFFFFF`.
  * Re-deriving from the same seed mints the same id, so content/position-derived
  * ids (block paraIds, comment thread keys) are stable across saves.
+ *
+ * A hash of exactly zero is remapped to `1`: `00000000` is Word's "no id"
+ * sentinel, and remapping only that one (already invalid) output keeps every
+ * previously shipped deterministic id unchanged.
  */
 export const deterministicHexId = (seed: string): string => {
   let hash = 2_166_136_261;
   for (const character of seed) {
     hash = Math.imul(hash ^ (character.codePointAt(0) ?? 0), 16_777_619) >>> 0;
   }
-  return (hash % MAX_HEX_ID_EXCLUSIVE).toString(16).toUpperCase().padStart(8, "0");
+  const value = hash % MAX_HEX_ID_EXCLUSIVE;
+  return (value === 0 ? 1 : value).toString(16).toUpperCase().padStart(8, "0");
 };
