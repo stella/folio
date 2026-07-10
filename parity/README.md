@@ -46,4 +46,10 @@ The HTML report lands in `parity/report/index.html`.
 5. **Report** (`report.ts`): per-doc fidelity scores, the cluster ranking, and
    per-page Word-vs-folio renderings with both sets of line boxes overlaid.
 
+Font preflight compares the family Word embedded in its PDF with Chromium's
+resolved CSS family on matching text lines. A requested font may be substituted
+without invalidating the run when both renderers use the same fallback
+(`font-shared:*`). `font-renderer-mismatch` means geometry may primarily reflect
+different font metrics and the document should not drive a layout fix.
+
 Shared data contract: `types.ts`. Tolerances and paths: `config.ts`.

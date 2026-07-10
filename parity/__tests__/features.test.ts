@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  assessFontEnvironment,
   attributeDivergences,
   clusterCorpus,
   computeFontSubstitutionTags,
+  fontFamiliesMatch,
   scanDocumentXml,
 } from "../features";
 import type { DocFeatures, ParagraphFeatures } from "../features";
-import type { Divergence, FeatureAttributedResult, ParityResult } from "../types";
+import type { Divergence, DocGeom, FeatureAttributedResult, ParityResult } from "../types";
 
 const wrapBody = (body: string): string =>
   `<?xml version="1.0"?><w:document><w:body>${body}</w:body></w:document>`;
@@ -501,5 +503,92 @@ describe("computeFontSubstitutionTags", () => {
     expect(
       computeFontSubstitutionTags(["Calibri", "calibri", "Missing Font"], ["ABCDEF+Calibri-Bold"]),
     ).toEqual(["font-substituted:missingfont"]);
+  });
+});
+
+const fontGeom = (source: "word" | "folio", lines: Array<[string, string]>): DocGeom => ({
+  source,
+  file: "/font-test.docx",
+  pages: [
+    {
+      number: 1,
+      widthPt: 600,
+      heightPt: 800,
+      lines: lines.map(([text, fontName], index) => ({
+        text,
+        normText: text,
+        xPt: 0,
+        yPt: index * 12,
+        widthPt: 100,
+        heightPt: 12,
+        fontName,
+        region: "body",
+      })),
+    },
+  ],
+  meta: {},
+});
+
+describe("assessFontEnvironment", () => {
+  test("recognizes equivalent PDF and CSS family names", () => {
+    expect(fontFamiliesMatch("ArialMT", "Arial")).toBe(true);
+    expect(fontFamiliesMatch("ABCDEF+Calibri-BoldItalic", "Calibri")).toBe(true);
+    expect(fontFamiliesMatch("Interstate-Bold", "Inter")).toBe(false);
+  });
+
+  test("accepts a shared substituted family", () => {
+    const assessment = assessFontEnvironment(
+      ["Times New Roman"],
+      fontGeom("word", [["Shared line", "Tinos-Regular"]]),
+      fontGeom("folio", [["Shared line", "Tinos"]]),
+    );
+
+    expect(assessment).toEqual({
+      status: "shared-substitution",
+      tags: ["font-shared:timesnewroman"],
+      comparedLines: 1,
+      matchingLines: 1,
+    });
+  });
+
+  test("rejects a cross-renderer family mismatch", () => {
+    const assessment = assessFontEnvironment(
+      ["Times New Roman"],
+      fontGeom("word", [["Same text", "LiberationSerif"]]),
+      fontGeom("folio", [["Same text", "Tinos"]]),
+    );
+
+    expect(assessment).toEqual({
+      status: "mismatch",
+      tags: ["font-renderer-mismatch", "font-substituted:timesnewroman"],
+      comparedLines: 1,
+      matchingLines: 0,
+    });
+  });
+
+  test("rejects a renderer mismatch even when Word used the requested font", () => {
+    const assessment = assessFontEnvironment(
+      ["Arial"],
+      fontGeom("word", [["Same text", "ArialMT"]]),
+      fontGeom("folio", [["Same text", "Helvetica"]]),
+    );
+
+    expect(assessment).toEqual({
+      status: "mismatch",
+      tags: ["font-renderer-mismatch"],
+      comparedLines: 1,
+      matchingLines: 0,
+    });
+  });
+
+  test("reports unverified when no font-bearing text can be paired", () => {
+    const assessment = assessFontEnvironment(
+      ["Arial"],
+      fontGeom("word", [["Word only", "ArialMT"]]),
+      fontGeom("folio", [["Folio only", "Arial"]]),
+    );
+
+    expect(assessment.status).toBe("unverified");
+    expect(assessment.tags).toEqual(["font-parity-unverified"]);
   });
 });

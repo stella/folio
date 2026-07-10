@@ -24,7 +24,7 @@ import { DEFAULT_CORPUS_DIRS } from "./config";
 import {
   attributeDivergences,
   clusterCorpus,
-  detectFontSubstitution,
+  detectFontEnvironment,
   extractDocFeatures,
 } from "./features";
 import type { ParagraphFeatures } from "./features";
@@ -232,13 +232,20 @@ const runPipeline = async (docs: string[], flags: CliFlags): Promise<PipelineOut
 
         // oxlint-disable-next-line no-await-in-loop -- sequential per-doc pipeline
         const docFeatures = await extractDocFeatures(doc);
-        // Ground truth rendered with substituted fonts (doc requests a font
-        // this machine's Word lacks) is a first-class doc-level condition:
-        // its divergences may be font availability, not folio layout bugs.
-        const substitutionTags = detectFontSubstitution(doc, wordGeom);
-        if (substitutionTags.length > 0) {
-          docFeatures.docFeatures.push(...substitutionTags);
-          process.stderr.write(`(ground truth font-substituted: ${substitutionTags.join(", ")}) `);
+        const fontEnvironment = detectFontEnvironment(doc, wordGeom, folio.geom);
+        if (fontEnvironment.tags.length > 0) {
+          docFeatures.docFeatures.push(...fontEnvironment.tags);
+        }
+        if (fontEnvironment.status === "shared-substitution") {
+          process.stderr.write(
+            `(shared substituted font: ${fontEnvironment.tags.join(", ")}; ${fontEnvironment.comparedLines} lines) `,
+          );
+        } else if (fontEnvironment.status === "mismatch") {
+          process.stderr.write(
+            `(Word/Folio font mismatch: ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} lines match) `,
+          );
+        } else if (fontEnvironment.status === "unverified") {
+          process.stderr.write("(Word/Folio font parity unverified) ");
         }
         const attributed = attributeDivergences(result, docFeatures);
 

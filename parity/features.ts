@@ -395,6 +395,95 @@ export const computeFontSubstitutionTags = (
   return tags;
 };
 
+export type FontEnvironmentAssessment = {
+  status: "native" | "shared-substitution" | "mismatch" | "unverified";
+  tags: string[];
+  comparedLines: number;
+  matchingLines: number;
+};
+
+/** Whether two renderer-reported names identify the same font family. PDF
+ * PostScript names commonly carry style suffixes (`ArialMT`,
+ * `Calibri-Bold`), while CSS reports the undecorated family. */
+export const fontFamiliesMatch = (leftRaw: string, rightRaw: string): boolean => {
+  const left = normalizeFontName(leftRaw);
+  const right = normalizeFontName(rightRaw);
+  if (left.length === 0 || right.length === 0) return false;
+  return observedSatisfiesRequested(left, right) || observedSatisfiesRequested(right, left);
+};
+
+const collectFontPairs = (wordGeom: DocGeom, folioGeom: DocGeom): Array<[string, string]> => {
+  const folioFontsByText = new Map<string, string[]>();
+  for (const page of folioGeom.pages) {
+    for (const line of page.lines) {
+      if (line.fontName === undefined) continue;
+      const fonts = folioFontsByText.get(line.normText);
+      if (fonts) {
+        fonts.push(line.fontName);
+      } else {
+        folioFontsByText.set(line.normText, [line.fontName]);
+      }
+    }
+  }
+
+  const pairs: Array<[string, string]> = [];
+  for (const page of wordGeom.pages) {
+    for (const line of page.lines) {
+      if (line.fontName === undefined) continue;
+      const folioFonts = folioFontsByText.get(line.normText);
+      const folioFont = folioFonts?.shift();
+      if (folioFont !== undefined) {
+        pairs.push([line.fontName, folioFont]);
+      }
+    }
+  }
+  return pairs;
+};
+
+/** Classify the actual fonts resolved by Word and Chromium. Requested-font
+ * substitution is harmless for geometric parity when both renderers resolve
+ * every comparable line to the same family. */
+export const assessFontEnvironment = (
+  requestedFonts: string[],
+  wordGeom: DocGeom,
+  folioGeom: DocGeom,
+): FontEnvironmentAssessment => {
+  const observedWordFonts = wordGeom.pages.flatMap((page) =>
+    page.lines.flatMap((line) => (line.fontName === undefined ? [] : [line.fontName])),
+  );
+  const substitutionTags = computeFontSubstitutionTags(requestedFonts, observedWordFonts);
+  const pairs = collectFontPairs(wordGeom, folioGeom);
+  const matchingLines = pairs.filter(([wordFont, folioFont]) =>
+    fontFamiliesMatch(wordFont, folioFont),
+  ).length;
+
+  if (pairs.length === 0) {
+    return {
+      status: "unverified",
+      tags: ["font-parity-unverified"],
+      comparedLines: 0,
+      matchingLines: 0,
+    };
+  }
+  if (matchingLines !== pairs.length) {
+    return {
+      status: "mismatch",
+      tags: ["font-renderer-mismatch", ...substitutionTags],
+      comparedLines: pairs.length,
+      matchingLines,
+    };
+  }
+  if (substitutionTags.length > 0) {
+    return {
+      status: "shared-substitution",
+      tags: substitutionTags.map((tag) => tag.replace("font-substituted:", "font-shared:")),
+      comparedLines: pairs.length,
+      matchingLines,
+    };
+  }
+  return { status: "native", tags: [], comparedLines: pairs.length, matchingLines };
+};
+
 const RFONTS_ASCII_RE = /<w:rFonts\b[^>]*\bw:(?:ascii|hAnsi)="([^"]+)"/g;
 
 /** Font families the document actually asks for: every `w:rFonts` ascii/hAnsi
@@ -424,12 +513,12 @@ const collectRequestedFonts = (docxPath: string): string[] => {
  * warning. Returned tags (e.g. "font-substituted:inter") are meant to be
  * appended to `DocFeatures.docFeatures` before attribution.
  */
-export const detectFontSubstitution = (docxPath: string, wordGeom: DocGeom): string[] => {
-  const observedPdfFonts = wordGeom.pages.flatMap((page) =>
-    page.lines.flatMap((line) => (line.fontName === undefined ? [] : [line.fontName])),
-  );
-  return computeFontSubstitutionTags(collectRequestedFonts(docxPath), observedPdfFonts);
-};
+export const detectFontEnvironment = (
+  docxPath: string,
+  wordGeom: DocGeom,
+  folioGeom: DocGeom,
+): FontEnvironmentAssessment =>
+  assessFontEnvironment(collectRequestedFonts(docxPath), wordGeom, folioGeom);
 
 // ---------------------------------------------------------------------------
 // divergence -> paragraph attribution
