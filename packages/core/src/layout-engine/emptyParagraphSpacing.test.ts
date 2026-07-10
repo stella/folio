@@ -102,6 +102,24 @@ describe("empty-paragraph spacing collapse (issue #402)", () => {
     expect(fragments[2]!.y).toBe(112);
   });
 
+  test("spacing from an explicitly selected paragraph style is honored", () => {
+    const blocks: FlowBlock[] = [
+      makePara(0, "Heading", { spacing: { after: 0 } }),
+      makePara(1, "", {
+        styleId: "ContractPartyDetails",
+        spacing: { before: 0, after: 8 },
+      }),
+      makePara(2, "Body", { spacing: { before: 0 } }),
+    ];
+    const measures: Measure[] = [makeMeasure(16), makeMeasure(16), makeMeasure(16)];
+
+    const layout = layoutDocument(blocks, measures, layoutOptions);
+    const fragments = layout.pages[0]!.fragments;
+
+    expect(fragments[1]!.y).toBe(16);
+    expect(fragments[2]!.y).toBe(40);
+  });
+
   test("non-empty paragraphs always carry their inherited spacing", () => {
     // Sanity: the collapse only applies to empty paragraphs.
     const blocks: FlowBlock[] = [
