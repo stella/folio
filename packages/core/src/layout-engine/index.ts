@@ -342,17 +342,10 @@ export function layoutDocument(
       const chainHeight = calculateChainHeight(chain, blocks, measures);
       const state = paginator.getCurrentState();
       const availableHeight = paginator.getAvailableHeight();
-      const pageContentHeight = state.contentBottom - state.topMargin;
-
-      // Only move to new page if:
-      // 1. Chain fits on a blank page (avoid infinite loop for oversized chains)
-      // 2. Chain doesn't fit in current available space
-      // 3. Current page already has content
-      if (
-        chainHeight <= pageContentHeight &&
-        chainHeight > availableHeight &&
-        state.page.fragments.length > 0
-      ) {
+      // Word moves an oversized keepNext chain to a fresh page, then paginates
+      // the chain naturally. The populated-page guard prevents an extra blank
+      // page when the chain still cannot fit in a single page.
+      if (chainHeight > availableHeight && state.page.fragments.length > 0) {
         paginator.forcePageBreak();
       }
     }
