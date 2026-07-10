@@ -78,11 +78,18 @@ const createSurfaces = async (): Promise<ConformanceSurface[]> => {
   ];
 };
 
-const normalizeResult = ({ version, status, applied, skipped }: FolioDocumentOperationResult) => ({
+const normalizeResult = ({
+  version,
+  status,
+  applied,
+  skipped,
+  issues,
+}: FolioDocumentOperationResult) => ({
   version,
   status,
   applied: applied.map(({ id }) => ({ id })),
   skipped,
+  issues,
 });
 
 const normalizeChanges = (reviewer: FolioDocxReviewer) =>
@@ -117,6 +124,7 @@ describe("document operation cross-surface conformance", () => {
         status: "committed",
         applied: [{ id: "replace-heading" }],
         skipped: [],
+        issues: [],
       },
       content: "[0304003A] Intro paragraph.\n[32560014] Trailing paragraph.",
       changes: [
@@ -166,6 +174,7 @@ describe("document operation cross-surface conformance", () => {
         status: "previewed",
         applied: [{ id: "replace-heading" }],
         skipped: [],
+        issues: [],
       });
       expect(output.contentAfter, output.name).toBe(output.contentBefore);
       expect(output.changes, output.name).toEqual([]);

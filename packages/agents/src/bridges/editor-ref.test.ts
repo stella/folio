@@ -17,6 +17,14 @@ import { createEditorRefBridge, type FolioAgentEditorRefLike } from "./editor-re
 
 const EMPTY_SNAPSHOT: FolioAIEditSnapshot = { blocks: [], anchors: {} };
 const EMPTY_APPLY_RESULT: FolioAIEditApplyResult = { applied: [], skipped: [] };
+const UNSUPPORTED_MODE_ISSUE = {
+  operationId: "op-1",
+  operationIndex: 0,
+  path: "$.operations[0]",
+  code: "unsupportedMode",
+  retryable: true,
+  recovery: "changeMode",
+} as const;
 
 /** Base fake ref implementing only the required `FolioAgentEditorRefLike` members (an "older ref"). */
 const baseRef = (): FolioAgentEditorRefLike => ({
@@ -69,6 +77,7 @@ describe("createEditorRefBridge: document operations", () => {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       status: "committed",
       ...EMPTY_APPLY_RESULT,
+      issues: [],
     });
   });
 
@@ -99,6 +108,7 @@ describe("createEditorRefBridge: document operations", () => {
       status: "rejected",
       applied: [],
       skipped: [{ id: "op-1", reason: "unsupportedMode" }],
+      issues: [UNSUPPORTED_MODE_ISSUE],
     });
     expect(applyCalls).toBe(0);
   });
@@ -130,6 +140,7 @@ describe("createEditorRefBridge: document operations", () => {
       status: "previewed",
       applied: [],
       skipped: [{ id: "op-1", reason: "unsupportedMode" }],
+      issues: [UNSUPPORTED_MODE_ISSUE],
     });
     expect(applyCalls).toBe(0);
   });

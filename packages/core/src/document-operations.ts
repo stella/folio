@@ -585,11 +585,61 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
 
 export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected";
 
+export type FolioDocumentOperationRecovery =
+  | "refreshDocument"
+  | "narrowMatch"
+  | "changeMode"
+  | "changeTarget"
+  | "removeOperation"
+  | "inspectBatch";
+
+export type FolioDocumentOperationIssue = {
+  operationId: string;
+  operationIndex: number;
+  path: `$.operations[${number}]`;
+  code: FolioAIEditSkippedOperation["reason"];
+  retryable: boolean;
+  recovery: FolioDocumentOperationRecovery;
+};
+
 export type FolioDocumentOperationResult = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   status: FolioDocumentOperationStatus;
   applied: FolioAIEditAppliedOperation[];
   skipped: FolioAIEditSkippedOperation[];
+  issues: FolioDocumentOperationIssue[];
+};
+
+const recoveryByReason = {
+  missingBlock: "refreshDocument",
+  changedBlock: "refreshDocument",
+  ambiguousFind: "narrowMatch",
+  missingFind: "refreshDocument",
+  unsupportedBlock: "changeTarget",
+  unsupportedMode: "changeMode",
+  atomicBatchRejected: "inspectBatch",
+  preconditionFailed: "refreshDocument",
+  staleRange: "refreshDocument",
+  emptyOperation: "removeOperation",
+  noopOperation: "removeOperation",
+} as const satisfies Record<FolioAIEditSkippedOperation["reason"], FolioDocumentOperationRecovery>;
+
+export const getFolioDocumentOperationIssues = (
+  operations: readonly FolioDocumentOperation[],
+  skipped: readonly FolioAIEditSkippedOperation[],
+): FolioDocumentOperationIssue[] => {
+  const indexById = new Map(operations.map(({ id }, index) => [id, index]));
+  return skipped.map(({ id, reason }) => {
+    const operationIndex = indexById.get(id) ?? -1;
+    return {
+      operationId: id,
+      operationIndex,
+      path: `$.operations[${operationIndex}]`,
+      code: reason,
+      retryable: reason !== "emptyOperation" && reason !== "noopOperation",
+      recovery: recoveryByReason[reason],
+    };
+  });
 };
 
 export type ApplyFolioDocumentOperationsOptions = {
@@ -639,14 +689,16 @@ export const applyFolioDocumentOperations = ({
     const skippedById = new Map(
       previewResult.skipped.map((operation) => [operation.id, operation]),
     );
+    const skipped = parsedBatch.operations.map(
+      ({ id }): FolioAIEditSkippedOperation =>
+        skippedById.get(id) ?? { id, reason: "atomicBatchRejected" },
+    );
     return {
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
       status,
       applied: [],
-      skipped: parsedBatch.operations.map(
-        ({ id }): FolioAIEditSkippedOperation =>
-          skippedById.get(id) ?? { id, reason: "atomicBatchRejected" },
-      ),
+      skipped,
+      issues: getFolioDocumentOperationIssues(parsedBatch.operations, skipped),
     };
   };
 
@@ -660,6 +712,7 @@ export const applyFolioDocumentOperations = ({
       status: "previewed",
       applied: previewResult.applied.map(({ id }) => ({ id })),
       skipped: previewResult.skipped,
+      issues: getFolioDocumentOperationIssues(parsedBatch.operations, previewResult.skipped),
     };
   }
 
@@ -670,9 +723,11 @@ export const applyFolioDocumentOperations = ({
     }
   }
 
+  const result = apply({ targetView: view });
   return {
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
     status: "committed",
-    ...apply({ targetView: view }),
+    ...result,
+    issues: getFolioDocumentOperationIssues(parsedBatch.operations, result.skipped),
   };
 };

@@ -1,6 +1,7 @@
 import type {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FolioAITextRangeHandle,
+  FolioDocumentOperationIssue,
 } from "@stll/folio-core/server";
 
 /**
@@ -123,4 +124,5 @@ export type FolioAgentApplyOperationsSummary = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   applied: { id: string }[];
   skipped: { id: string; reason: string }[];
+  issues: FolioDocumentOperationIssue[];
 };

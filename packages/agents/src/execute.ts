@@ -284,6 +284,7 @@ const summarizeApplyResult = (result: {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   applied: { id: string }[];
   skipped: { id: string; reason: string }[];
+  issues: FolioAgentApplyOperationsSummary["issues"];
 }): FolioAgentApplyOperationsSummary => ({
   version: result.version,
   applied: result.applied.map((entry) => ({ id: entry.id })),
@@ -291,6 +292,7 @@ const summarizeApplyResult = (result: {
     id: entry.id,
     reason: explainSkipReason(entry.reason),
   })),
+  issues: result.issues,
 });
 
 const applyOperations = (

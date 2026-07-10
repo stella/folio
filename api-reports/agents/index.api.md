@@ -13,6 +13,7 @@ import { FolioAIEditSnapshot } from '@stll/folio-core/server';
 import { FolioAITextRangeHandle } from '@stll/folio-core/server';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
+import { FolioDocumentOperationIssue } from '@stll/folio-core/server';
 import { FolioDocumentOperationResult } from '@stll/folio-core/server';
 import { FolioDocumentStory } from '@stll/folio-core/server';
 import { FolioDocumentStoryHandle } from '@stll/folio-core/server';
@@ -83,6 +84,7 @@ export type FolioAgentApplyOperationsSummary = {
         id: string;
         reason: string;
     }[];
+    issues: FolioDocumentOperationIssue[];
 };
 
 // @public

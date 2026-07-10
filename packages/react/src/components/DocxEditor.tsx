@@ -44,6 +44,7 @@ import {
   createFolioAIEditSnapshot,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   getCommentAnchorsFromDoc,
+  getFolioDocumentOperationIssues,
   getTrackedChangesFromDoc,
   type FolioDocumentOperationStatus,
 } from "@stll/folio-core/ai-edits";
@@ -2803,14 +2804,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           } else if (batch.atomic === true) {
             status = "rejected";
           }
+          const skipped = batch.operations.map((operation) => ({
+            id: operation.id,
+            reason: "unsupportedBlock" as const,
+          }));
           return {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
             status,
             applied: [],
-            skipped: batch.operations.map((operation) => ({
-              id: operation.id,
-              reason: "unsupportedBlock",
-            })),
+            skipped,
+            issues: getFolioDocumentOperationIssues(batch.operations, skipped),
           };
         }
 

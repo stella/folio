@@ -289,10 +289,23 @@ export type FolioDocumentOperationCapabilities = {
 };
 
 // @public (undocumented)
+export type FolioDocumentOperationIssue = {
+    operationId: string;
+    operationIndex: number;
+    path: `$.operations[${number}]`;
+    code: FolioAIEditSkippedOperation["reason"];
+    retryable: boolean;
+    recovery: FolioDocumentOperationRecovery;
+};
+
+// @public (undocumented)
 export type FolioDocumentOperationMode = FolioAIEditApplyMode;
 
 // @public (undocumented)
 export type FolioDocumentOperationPrecondition = FolioAIEditPrecondition;
+
+// @public (undocumented)
+export type FolioDocumentOperationRecovery = "refreshDocument" | "narrowMatch" | "changeMode" | "changeTarget" | "removeOperation" | "inspectBatch";
 
 // @public (undocumented)
 export type FolioDocumentOperationResult = {
@@ -300,6 +313,7 @@ export type FolioDocumentOperationResult = {
     status: FolioDocumentOperationStatus;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
+    issues: FolioDocumentOperationIssue[];
 };
 
 // @public (undocumented)
@@ -343,6 +357,9 @@ export const getCommentAnchorsFromDoc: (doc: Node_2) => FolioCommentAnchor[];
 
 // @public (undocumented)
 export const getFolioDocumentOperationCapabilities: () => FolioDocumentOperationCapabilities;
+
+// @public (undocumented)
+export const getFolioDocumentOperationIssues: (operations: readonly FolioDocumentOperation[], skipped: readonly FolioAIEditSkippedOperation[]) => FolioDocumentOperationIssue[];
 
 // @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;

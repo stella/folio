@@ -9,6 +9,7 @@ import type {
 import {
   assertSupportedFolioDocumentOperationVersion,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  getFolioDocumentOperationIssues,
 } from "@stll/folio-core/server";
 import type { FolioCommentAnchor, FolioReviewChange } from "@stll/folio-core/ai-edits";
 import { createReply } from "@stll/folio-core/docx/replyToComment";
@@ -176,36 +177,42 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
         return ref.applyDocumentOperations({ snapshot, batch: versionedBatch, author });
       }
       if (versionedBatch.dryRun === true) {
+        const skipped = versionedBatch.operations.map(({ id }) => ({
+          id,
+          reason: "unsupportedMode" as const,
+        }));
         return {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           status: "previewed",
           applied: [],
-          skipped: versionedBatch.operations.map(({ id }) => ({
-            id,
-            reason: "unsupportedMode",
-          })),
+          skipped,
+          issues: getFolioDocumentOperationIssues(versionedBatch.operations, skipped),
         };
       }
       if (versionedBatch.atomic === true) {
+        const skipped = versionedBatch.operations.map(({ id }) => ({
+          id,
+          reason: "unsupportedMode" as const,
+        }));
         return {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           status: "rejected",
           applied: [],
-          skipped: versionedBatch.operations.map(({ id }) => ({
-            id,
-            reason: "unsupportedMode",
-          })),
+          skipped,
+          issues: getFolioDocumentOperationIssues(versionedBatch.operations, skipped),
         };
       }
+      const result = ref.applyAIEditOperations({
+        snapshot,
+        operations: versionedBatch.operations,
+        mode: versionedBatch.mode,
+        author,
+      });
       return {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         status: "committed",
-        ...ref.applyAIEditOperations({
-          snapshot,
-          operations: versionedBatch.operations,
-          mode: versionedBatch.mode,
-          author,
-        }),
+        ...result,
+        issues: getFolioDocumentOperationIssues(versionedBatch.operations, result.skipped),
       };
     },
     getComments: (): FolioAgentComment[] => {

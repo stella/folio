@@ -208,6 +208,24 @@ describe("headless docx review round-trip", () => {
         { id: "valid", reason: "atomicBatchRejected" },
         { id: "missing", reason: "missingBlock" },
       ],
+      issues: [
+        {
+          operationId: "valid",
+          operationIndex: 0,
+          path: "$.operations[0]",
+          code: "atomicBatchRejected",
+          retryable: true,
+          recovery: "inspectBatch",
+        },
+        {
+          operationId: "missing",
+          operationIndex: 1,
+          path: "$.operations[1]",
+          code: "missingBlock",
+          retryable: true,
+          recovery: "refreshDocument",
+        },
+      ],
     });
     expect(reviewer.getContentAsText()).toBe(contentBefore);
     expect(reviewer.getComments()).toEqual([]);
@@ -277,6 +295,16 @@ describe("headless docx review round-trip", () => {
       status: "previewed",
       applied: [{ id: "valid" }],
       skipped: [{ id: "missing", reason: "missingBlock" }],
+      issues: [
+        {
+          operationId: "missing",
+          operationIndex: 1,
+          path: "$.operations[1]",
+          code: "missingBlock",
+          retryable: true,
+          recovery: "refreshDocument",
+        },
+      ],
     });
     expect(reviewer.getContentAsText()).toBe(contentBefore);
     expect(reviewer.getComments()).toEqual([]);
@@ -321,6 +349,24 @@ describe("headless docx review round-trip", () => {
       skipped: [
         { id: "valid", reason: "atomicBatchRejected" },
         { id: "missing", reason: "missingBlock" },
+      ],
+      issues: [
+        {
+          operationId: "valid",
+          operationIndex: 0,
+          path: "$.operations[0]",
+          code: "atomicBatchRejected",
+          retryable: true,
+          recovery: "inspectBatch",
+        },
+        {
+          operationId: "missing",
+          operationIndex: 1,
+          path: "$.operations[1]",
+          code: "missingBlock",
+          retryable: true,
+          recovery: "refreshDocument",
+        },
       ],
     });
     expect(reviewer.getContentAsText()).toContain("Heading paragraph.");
