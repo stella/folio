@@ -1,0 +1,50 @@
+name: Nightly Parity E2E
+
+on:
+  schedule:
+    # 05:37 UTC daily, offset from the nightly property-test cron (05:17) so the
+    # two jobs don't contend for runners at the same minute.
+    - cron: "37 5 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  parity-e2e:
+    name: Cross-adapter parity e2e (React vs Vue)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      # persist-credentials: false — this job can be manually dispatched on any
+      # branch ref, so the checkout token must not linger in the git config.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: |
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
+          bunx playwright install --with-deps chromium
+
+      # The `parity` Playwright project boots both the React (4200) and Vue
+      # (4201) playground dev servers via the config's webServer array and runs
+      # each cross-adapter spec against both, asserting the two adapters behave
+      # identically through the shared `window.__folioParity` bridge. Kept on a
+      # nightly cadence (not the PR `ci` job) because it boots two dev servers
+      # and the static React<->Vue parity gates (check:parity-contract,
+      # check:export-parity) already guard the API surface on every PR.
+      - name: Parity e2e specs
+        run: bun run test:e2e:parity
