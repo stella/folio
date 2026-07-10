@@ -807,10 +807,12 @@ function layoutTable(
     } else {
       // w:tblInd positions the leading edge of the first cell's text, not
       // the table border. The border therefore extends left by that cell's
-      // leading margin. Adding both indent and padding shifts every cell by
-      // one extra cell margin.
-      const leadingCellMargin = block.rows[0]?.cells[0]?.padding?.left ?? 0;
-      x += (block.indent ?? 0) - leadingCellMargin;
+      // leading margin. An absent w:tblInd leaves the table border at the
+      // content edge, so only translate explicitly authored indent values.
+      if (block.indent !== undefined) {
+        const leadingCellMargin = block.rows[0]?.cells[0]?.padding?.left ?? 0;
+        x += block.indent - leadingCellMargin;
+      }
     }
     return x;
   };
