@@ -43,6 +43,26 @@ function firstTableCellAttrs(doc: Document): Record<string, unknown> {
 }
 
 describe("toProseDoc", () => {
+  test("tracks docDefaults spacing so empty paragraphs retain it during layout", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [{ type: "paragraph", content: [] }],
+        },
+        styles: {
+          docDefaults: { pPr: { spaceAfter: 160 } },
+          styles: [],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+
+    expect(doc.firstChild?.attrs.spaceAfter).toBe(160);
+    expect(doc.firstChild?.attrs.spacingFromDocDefaults).toEqual({ after: true });
+    expect(doc.firstChild?.attrs.spacingExplicit).toBeNull();
+  });
+
   test("applies oneNDA paragraph mark defaults to unformatted visible text like Word", () => {
     const document: Document = {
       package: {

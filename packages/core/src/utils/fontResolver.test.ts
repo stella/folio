@@ -19,6 +19,8 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
   // This locks the facts driving FONT_MAPPINGS — a future edit that
   // hand-writes a different decimal into the table will fail here.
   const verifiedRatios: [font: string, expectedRatio: number][] = [
+    ["aptos", 1.2207],
+    ["aptos display", 1.2207],
     ["arial", 1.1499],
     ["times new roman", 1.1499],
     ["cg times", 1.1499],
@@ -43,6 +45,16 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
       expect(resolveFontFamily(font).singleLineRatio).toBeCloseTo(expectedRatio, 4);
     });
   }
+});
+
+describe("fontResolver — Aptos falls back to bundled Source Sans 3", () => {
+  test.each(["Aptos", "Aptos Display"])("%s keeps an Office-compatible fallback", (font) => {
+    const resolved = resolveFontFamily(font);
+
+    expect(resolved.googleFont).toBe("Source Sans 3");
+    expect(resolved.cssFallback).toContain("Source Sans 3");
+    expect(resolved.hasGoogleEquivalent).toBe(true);
+  });
 });
 
 describe("fontResolver — legacy Times-compatible faces", () => {

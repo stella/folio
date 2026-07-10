@@ -123,6 +123,12 @@ const JP_MEASURED_LINE_HEIGHT: FontLineHeight = {
   note: "Measured against real Word: 10.5pt Japanese body, non-grid section, renders at 13.68pt line pitch.",
 };
 
+const APTOS_MEASURED_LINE_HEIGHT: FontLineHeight = {
+  source: "measured",
+  ratio: 1.2207,
+  note: "Measured against real Word: 11pt Aptos body, non-grid section, renders at 13.43pt line pitch.",
+};
+
 /**
  * Mapping of common DOCX fonts to Google Fonts equivalents
  *
@@ -139,6 +145,18 @@ const JP_MEASURED_LINE_HEIGHT: FontLineHeight = {
  */
 const FONT_MAPPINGS: Record<string, FontMapping> = {
   // Microsoft Office fonts -> Google equivalents (via Croscore)
+  aptos: {
+    googleFont: "Source Sans 3",
+    category: "sans-serif",
+    fallbackStack: ["Aptos", "Source Sans 3", "Arial", "Helvetica", "sans-serif"],
+    singleLineRatio: singleLineRatioOf(APTOS_MEASURED_LINE_HEIGHT),
+  },
+  "aptos display": {
+    googleFont: "Source Sans 3",
+    category: "sans-serif",
+    fallbackStack: ["Aptos Display", "Source Sans 3", "Arial", "Helvetica", "sans-serif"],
+    singleLineRatio: singleLineRatioOf(APTOS_MEASURED_LINE_HEIGHT),
+  },
   calibri: {
     googleFont: "Carlito",
     category: "sans-serif",

@@ -1388,11 +1388,15 @@ function convertParagraphAttrs(
       | { before?: boolean; after?: boolean }
       | null
       | undefined;
+    const spacingFromDocDefaults = pmAttrs.spacingFromDocDefaults as
+      | { before?: boolean; after?: boolean }
+      | null
+      | undefined;
     const explicit: { before?: boolean; after?: boolean } = {};
-    if (autoBefore || pmSpacingExplicit?.before) {
+    if (autoBefore || pmSpacingExplicit?.before || spacingFromDocDefaults?.before) {
       explicit.before = true;
     }
-    if (autoAfter || pmSpacingExplicit?.after) {
+    if (autoAfter || pmSpacingExplicit?.after || spacingFromDocDefaults?.after) {
       explicit.after = true;
     }
     if (explicit.before !== undefined || explicit.after !== undefined) {

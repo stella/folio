@@ -552,6 +552,30 @@ function paragraphFormattingToAttrs(
     set("lineSpacing", formatting?.lineSpacing ?? stylePpr?.lineSpacing);
     set("lineSpacingRule", formatting?.lineSpacingRule ?? stylePpr?.lineSpacingRule);
     set("spacingExplicit", formatting?.spacingExplicit);
+    const paragraphStyle = styleId
+      ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
+      : styleResolver.getDefaultParagraphStyle();
+    const docDefaultSpacing = styleResolver.getDocDefaults()?.pPr;
+    const spacingFromDocDefaults: NonNullable<ParagraphAttrs["spacingFromDocDefaults"]> = {};
+    if (
+      formatting?.spaceBefore === undefined &&
+      tableParagraphOverlay?.spaceBefore === undefined &&
+      paragraphStyle?.pPr?.spaceBefore === undefined &&
+      docDefaultSpacing?.spaceBefore !== undefined
+    ) {
+      spacingFromDocDefaults.before = true;
+    }
+    if (
+      formatting?.spaceAfter === undefined &&
+      tableParagraphOverlay?.spaceAfter === undefined &&
+      paragraphStyle?.pPr?.spaceAfter === undefined &&
+      docDefaultSpacing?.spaceAfter !== undefined
+    ) {
+      spacingFromDocDefaults.after = true;
+    }
+    if (spacingFromDocDefaults.before || spacingFromDocDefaults.after) {
+      attrs.spacingFromDocDefaults = spacingFromDocDefaults;
+    }
     set("indentLeft", formatting?.indentLeft ?? stylePpr?.indentLeft);
     set("indentRight", formatting?.indentRight ?? stylePpr?.indentRight);
     // When the paragraph explicitly removes the style's numbering (direct
