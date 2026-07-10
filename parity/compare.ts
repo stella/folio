@@ -154,6 +154,13 @@ export const mergeVisualRows = (lines: LineBox[]): LineBox[] => {
 };
 
 const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
+  if (
+    current.visualGroup !== undefined &&
+    next.visualGroup !== undefined &&
+    current.visualGroup !== next.visualGroup
+  ) {
+    return false;
+  }
   const gap = horizontalGap(current, next);
   if (gap <= ROW_MERGE_GAP_PT) {
     return true;
@@ -196,6 +203,7 @@ const mergeBoxes = (a: LineBox, b: LineBox): LineBox => {
     widthPt: Math.max(a.xPt + a.widthPt, b.xPt + b.widthPt) - xPt,
     heightPt: Math.max(a.yPt + a.heightPt, b.yPt + b.heightPt) - yPt,
     region: left.region,
+    ...(left.visualGroup !== undefined ? { visualGroup: left.visualGroup } : {}),
     ...(fontName !== undefined ? { fontName } : {}),
     ...(fontSizePt !== undefined ? { fontSizePt } : {}),
   };

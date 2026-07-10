@@ -181,6 +181,20 @@ describe("toPageGeom", () => {
     expect(page.lines.map((line) => line.region)).toEqual(["header", "body", "footer"]);
   });
 
+  test("preserves table-cell visual groups", () => {
+    const rawPage = makeRawPage({
+      lines: [
+        makeRawLine({
+          text: "Cell text",
+          rect: rect(0, 0, 40, 10),
+          visualGroup: "table-cell:3",
+        }),
+      ],
+    });
+
+    expect(toPageGeom(rawPage).lines.at(0)?.visualGroup).toBe("table-cell:3");
+  });
+
   test("computes fontName/fontSizePt from raw px values, omitting when absent", () => {
     const rawPage = makeRawPage({
       lines: [

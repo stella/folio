@@ -128,6 +128,8 @@ export type RawLine = {
   fontFamilyRaw?: string;
   /** `getComputedStyle(...).fontSize` of the first `.layout-run`, parsed to a px number. */
   fontSizePx?: number;
+  /** Stable page-local table-cell identity, when the line is inside a cell. */
+  visualGroup?: string;
 };
 
 /** One `.layout-page` element and its lines, extracted with DOM-only reads. */
@@ -202,6 +204,7 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
       widthPt: lineWidthPt,
       heightPt: lineHeightPt,
       region: rawLine.region,
+      ...(rawLine.visualGroup !== undefined ? { visualGroup: rawLine.visualGroup } : {}),
       ...(fontName !== undefined ? { fontName } : {}),
       ...(fontSizePt !== undefined ? { fontSizePt } : {}),
     });
@@ -427,68 +430,225 @@ const listPageMeta = (page: Page): Promise<PageMeta[]> =>
  * read an empty/stale shell.
  */
 const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
-  page.evaluate<RawPage, { domIndex: number; meaningfulInkPattern: string }>((input) => {
-    const { domIndex: idx, meaningfulInkPattern } = input;
-    const meaningfulInkCharacter = new RegExp(meaningfulInkPattern, "u");
-    const pageEls = Array.from(document.querySelectorAll(".layout-page")) as HTMLElement[];
-    const el = pageEls[idx];
-    if (!el) {
-      throw new Error(`layout-page at domIndex ${idx} disappeared`);
-    }
+  page.evaluate<RawPage, { domIndex: number; meaningfulInkPattern: string }>(
+    (input) => {
+      const { domIndex: idx, meaningfulInkPattern } = input;
+      const meaningfulInkCharacter = new RegExp(meaningfulInkPattern, "u");
+      const pageEls = Array.from(document.querySelectorAll(".layout-page")) as HTMLElement[];
+      const el = pageEls[idx];
+      if (!el) {
+        throw new Error(`layout-page at domIndex ${idx} disappeared`);
+      }
 
-    const pageRect = el.getBoundingClientRect();
-    const dataPageNumber = Number(el.dataset["pageNumber"]);
-    const pageNumber = Number.isFinite(dataPageNumber) ? dataPageNumber : idx + 1;
+      const pageRect = el.getBoundingClientRect();
+      const dataPageNumber = Number(el.dataset["pageNumber"]);
+      const pageNumber = Number.isFinite(dataPageNumber) ? dataPageNumber : idx + 1;
 
-    const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
-    const lines = lineEls.flatMap((lineEl) => {
-      const segmentInkRect = (segmentEl: HTMLElement): DOMRect | null => {
-        if (
-          segmentEl.matches("img, svg, canvas, video") ||
-          segmentEl.querySelector("img, svg, canvas, video")
-        ) {
-          const rect = segmentEl.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0 ? rect : null;
+      const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
+      const lines = lineEls.flatMap((lineEl) => {
+        const segmentInkRect = (segmentEl: HTMLElement): DOMRect | null => {
+          if (
+            segmentEl.matches("img, svg, canvas, video") ||
+            segmentEl.querySelector("img, svg, canvas, video")
+          ) {
+            const rect = segmentEl.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0 ? rect : null;
+          }
+
+          const walker = document.createTreeWalker(segmentEl, NodeFilter.SHOW_TEXT);
+          let firstNode: Text | null = null;
+          let firstOffset = 0;
+          let lastNode: Text | null = null;
+          let lastOffset = 0;
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const textNode = node as Text;
+            const value = textNode.data;
+            const start = value.search(meaningfulInkCharacter);
+            if (start < 0) {
+              continue;
+            }
+            let end = value.length;
+            while (end > start && !meaningfulInkCharacter.test(value[end - 1] ?? "")) {
+              end -= 1;
+            }
+            firstNode ??= textNode;
+            if (firstNode === textNode) {
+              firstOffset = start;
+            }
+            lastNode = textNode;
+            lastOffset = end;
+          }
+
+          if (firstNode && lastNode) {
+            const range = document.createRange();
+            range.setStart(firstNode, firstOffset);
+            range.setEnd(lastNode, lastOffset);
+            const rect = range.getBoundingClientRect();
+            range.detach();
+            if (rect.width > 0 && rect.height > 0) {
+              return rect;
+            }
+          }
+
+          return null;
+        };
+        const rectFor = (segmentEls: HTMLElement[]): DOMRect | null => {
+          let inkLeft = Number.POSITIVE_INFINITY;
+          let inkTop = Number.POSITIVE_INFINITY;
+          let inkRight = Number.NEGATIVE_INFINITY;
+          let inkBottom = Number.NEGATIVE_INFINITY;
+          for (const segmentEl of segmentEls) {
+            const segmentRect = segmentInkRect(segmentEl);
+            if (!segmentRect) continue;
+            inkLeft = Math.min(inkLeft, segmentRect.left);
+            inkTop = Math.min(inkTop, segmentRect.top);
+            inkRight = Math.max(inkRight, segmentRect.right);
+            inkBottom = Math.max(inkBottom, segmentRect.bottom);
+          }
+          return inkRight > inkLeft && inkBottom > inkTop
+            ? new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop)
+            : null;
+        };
+        const region = (() => {
+          if (lineEl.closest(".layout-page-header")) {
+            return "header";
+          }
+          if (lineEl.closest(".layout-page-footer")) {
+            return "footer";
+          }
+          return "body";
+        })();
+        const tableCell = lineEl.closest(".layout-table-cell");
+        const visualGroup = tableCell
+          ? `table-cell:${Array.from(el.querySelectorAll(".layout-table-cell")).indexOf(tableCell)}`
+          : undefined;
+
+        const fontFrom = (sourceEl: HTMLElement | null) => {
+          if (!sourceEl) return {};
+          const computed = getComputedStyle(sourceEl);
+          const parsedSize = Number.parseFloat(computed.fontSize);
+          return {
+            fontFamilyRaw: computed.fontFamily,
+            ...(Number.isFinite(parsedSize) ? { fontSizePx: parsedSize } : {}),
+          };
+        };
+        const textFor = (sourceEl: HTMLElement): string => {
+          const text = sourceEl.textContent ?? "";
+          const computed = getComputedStyle(sourceEl);
+          if (
+            computed.textTransform === "uppercase" ||
+            computed.fontVariant.includes("small-caps")
+          ) {
+            return text.toLocaleUpperCase();
+          }
+          return text;
+        };
+
+        const toRawLine = (text: string, rect: DOMRect, sourceEl: HTMLElement | null) => ({
+          text,
+          rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+          region,
+          ...(visualGroup !== undefined ? { visualGroup } : {}),
+          ...fontFrom(sourceEl),
+        });
+
+        const markerEls = Array.from(
+          lineEl.querySelectorAll(".layout-list-marker"),
+        ) as HTMLElement[];
+        const runEls = Array.from(lineEl.querySelectorAll(".layout-run")) as HTMLElement[];
+        if (markerEls.length > 0 && runEls.length > 0) {
+          const markerRect = rectFor(markerEls);
+          const runsRect = rectFor(runEls);
+          const splitLines = [];
+          if (markerRect) {
+            splitLines.push(
+              toRawLine(
+                markerEls.map((markerEl) => textFor(markerEl)).join(""),
+                markerRect,
+                markerEls[0] ?? null,
+              ),
+            );
+          }
+          if (runsRect) {
+            splitLines.push(
+              toRawLine(
+                runEls.map((runEl) => textFor(runEl)).join(""),
+                runsRect,
+                runEls[0] ?? null,
+              ),
+            );
+          }
+          if (splitLines.length > 0) {
+            return splitLines;
+          }
         }
 
-        const walker = document.createTreeWalker(segmentEl, NodeFilter.SHOW_TEXT);
-        let firstNode: Text | null = null;
-        let firstOffset = 0;
-        let lastNode: Text | null = null;
-        let lastOffset = 0;
-        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-          const textNode = node as Text;
-          const value = textNode.data;
-          const start = value.search(meaningfulInkCharacter);
-          if (start < 0) {
-            continue;
+        const visualRunEls = Array.from(lineEl.children).filter(
+          (child): child is HTMLElement =>
+            child instanceof HTMLElement && child.classList.contains("layout-run"),
+        );
+        if (visualRunEls.some((runEl) => runEl.classList.contains("layout-run-tab"))) {
+          const segments: HTMLElement[][] = [];
+          let currentSegment: HTMLElement[] = [];
+          const flushSegment = () => {
+            if (currentSegment.length === 0) {
+              return;
+            }
+            segments.push(currentSegment);
+            currentSegment = [];
+          };
+
+          for (const runEl of visualRunEls) {
+            if (!runEl.classList.contains("layout-run-tab")) {
+              currentSegment.push(runEl);
+              continue;
+            }
+
+            const tabText = (runEl.textContent ?? "").replace(/[­​-‍﻿\s]/gu, "");
+            if (tabText.length > 0) {
+              currentSegment.push(runEl);
+              continue;
+            }
+
+            flushSegment();
           }
-          let end = value.length;
-          while (end > start && !meaningfulInkCharacter.test(value[end - 1] ?? "")) {
-            end -= 1;
+          flushSegment();
+
+          if (segments.length > 0) {
+            const splitLines = [];
+            for (const segment of segments) {
+              const segmentRect = rectFor(segment);
+              if (!segmentRect) {
+                continue;
+              }
+              const sourceEl =
+                segment.find((segmentEl) => !segmentEl.classList.contains("layout-run-tab")) ??
+                segment[0] ??
+                null;
+              splitLines.push(
+                toRawLine(
+                  segment.map((segmentEl) => textFor(segmentEl)).join(""),
+                  segmentRect,
+                  sourceEl,
+                ),
+              );
+            }
+            if (splitLines.length > 0) {
+              return splitLines;
+            }
           }
-          firstNode ??= textNode;
-          if (firstNode === textNode) {
-            firstOffset = start;
-          }
-          lastNode = textNode;
-          lastOffset = end;
         }
 
-        if (firstNode && lastNode) {
-          const range = document.createRange();
-          range.setStart(firstNode, firstOffset);
-          range.setEnd(lastNode, lastOffset);
-          const rect = range.getBoundingClientRect();
-          range.detach();
-          if (rect.width > 0 && rect.height > 0) {
-            return rect;
-          }
-        }
-
-        return null;
-      };
-      const rectFor = (segmentEls: HTMLElement[]): DOMRect | null => {
+        // The `.layout-line` box spans the full column width regardless of where
+        // the text ink actually sits (centered/right-aligned lines, table cells),
+        // while the Word-side extractor reports glyph-ink bounds. Use the union
+        // of the line's run and list-marker boxes as the ink rect so both sides
+        // measure the same thing; fall back to the line box for lines without
+        // segment children.
+        const segmentEls = Array.from(
+          lineEl.querySelectorAll(".layout-run, .layout-list-marker"),
+        ) as HTMLElement[];
+        let rect = lineEl.getBoundingClientRect();
         let inkLeft = Number.POSITIVE_INFINITY;
         let inkTop = Number.POSITIVE_INFINITY;
         let inkRight = Number.NEGATIVE_INFINITY;
@@ -501,175 +661,35 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
           inkRight = Math.max(inkRight, segmentRect.right);
           inkBottom = Math.max(inkBottom, segmentRect.bottom);
         }
-        return inkRight > inkLeft && inkBottom > inkTop
-          ? new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop)
-          : null;
-      };
-      const region = (() => {
-        if (lineEl.closest(".layout-page-header")) {
-          return "header";
+        if (inkRight > inkLeft && inkBottom > inkTop) {
+          rect = new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop);
         }
-        if (lineEl.closest(".layout-page-footer")) {
-          return "footer";
-        }
-        return "body";
-      })();
 
-      const fontFrom = (sourceEl: HTMLElement | null) => {
-        if (!sourceEl) return {};
-        const computed = getComputedStyle(sourceEl);
-        const parsedSize = Number.parseFloat(computed.fontSize);
-        return {
-          fontFamilyRaw: computed.fontFamily,
-          ...(Number.isFinite(parsedSize) ? { fontSizePx: parsedSize } : {}),
-        };
-      };
-      const textFor = (sourceEl: HTMLElement): string => {
-        const text = sourceEl.textContent ?? "";
-        const computed = getComputedStyle(sourceEl);
-        if (computed.textTransform === "uppercase" || computed.fontVariant.includes("small-caps")) {
-          return text.toLocaleUpperCase();
-        }
-        return text;
-      };
+        const runEl = lineEl.querySelector(".layout-run");
 
-      const toRawLine = (text: string, rect: DOMRect, sourceEl: HTMLElement | null) => ({
-        text,
-        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-        region,
-        ...fontFrom(sourceEl),
+        const text =
+          segmentEls.length > 0
+            ? segmentEls.map((segmentEl) => textFor(segmentEl)).join("")
+            : textFor(lineEl);
+        return [toRawLine(text, rect, runEl)];
       });
 
-      const markerEls = Array.from(lineEl.querySelectorAll(".layout-list-marker")) as HTMLElement[];
-      const runEls = Array.from(lineEl.querySelectorAll(".layout-run")) as HTMLElement[];
-      if (markerEls.length > 0 && runEls.length > 0) {
-        const markerRect = rectFor(markerEls);
-        const runsRect = rectFor(runEls);
-        const splitLines = [];
-        if (markerRect) {
-          splitLines.push(
-            toRawLine(
-              markerEls.map((markerEl) => textFor(markerEl)).join(""),
-              markerRect,
-              markerEls[0] ?? null,
-            ),
-          );
-        }
-        if (runsRect) {
-          splitLines.push(
-            toRawLine(runEls.map((runEl) => textFor(runEl)).join(""), runsRect, runEls[0] ?? null),
-          );
-        }
-        if (splitLines.length > 0) {
-          return splitLines;
-        }
-      }
-
-      const visualRunEls = Array.from(lineEl.children).filter(
-        (child): child is HTMLElement =>
-          child instanceof HTMLElement && child.classList.contains("layout-run"),
-      );
-      if (visualRunEls.some((runEl) => runEl.classList.contains("layout-run-tab"))) {
-        const segments: HTMLElement[][] = [];
-        let currentSegment: HTMLElement[] = [];
-        const flushSegment = () => {
-          if (currentSegment.length === 0) {
-            return;
-          }
-          segments.push(currentSegment);
-          currentSegment = [];
-        };
-
-        for (const runEl of visualRunEls) {
-          if (!runEl.classList.contains("layout-run-tab")) {
-            currentSegment.push(runEl);
-            continue;
-          }
-
-          const tabText = (runEl.textContent ?? "").replace(/[­​-‍﻿\s]/gu, "");
-          if (tabText.length > 0) {
-            currentSegment.push(runEl);
-            continue;
-          }
-
-          flushSegment();
-        }
-        flushSegment();
-
-        if (segments.length > 0) {
-          const splitLines = [];
-          for (const segment of segments) {
-            const segmentRect = rectFor(segment);
-            if (!segmentRect) {
-              continue;
-            }
-            const sourceEl =
-              segment.find((segmentEl) => !segmentEl.classList.contains("layout-run-tab")) ??
-              segment[0] ??
-              null;
-            splitLines.push(
-              toRawLine(
-                segment.map((segmentEl) => textFor(segmentEl)).join(""),
-                segmentRect,
-                sourceEl,
-              ),
-            );
-          }
-          if (splitLines.length > 0) {
-            return splitLines;
-          }
-        }
-      }
-
-      // The `.layout-line` box spans the full column width regardless of where
-      // the text ink actually sits (centered/right-aligned lines, table cells),
-      // while the Word-side extractor reports glyph-ink bounds. Use the union
-      // of the line's run and list-marker boxes as the ink rect so both sides
-      // measure the same thing; fall back to the line box for lines without
-      // segment children.
-      const segmentEls = Array.from(
-        lineEl.querySelectorAll(".layout-run, .layout-list-marker"),
-      ) as HTMLElement[];
-      let rect = lineEl.getBoundingClientRect();
-      let inkLeft = Number.POSITIVE_INFINITY;
-      let inkTop = Number.POSITIVE_INFINITY;
-      let inkRight = Number.NEGATIVE_INFINITY;
-      let inkBottom = Number.NEGATIVE_INFINITY;
-      for (const segmentEl of segmentEls) {
-        const segmentRect = segmentInkRect(segmentEl);
-        if (!segmentRect) continue;
-        inkLeft = Math.min(inkLeft, segmentRect.left);
-        inkTop = Math.min(inkTop, segmentRect.top);
-        inkRight = Math.max(inkRight, segmentRect.right);
-        inkBottom = Math.max(inkBottom, segmentRect.bottom);
-      }
-      if (inkRight > inkLeft && inkBottom > inkTop) {
-        rect = new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop);
-      }
-
-      const runEl = lineEl.querySelector(".layout-run");
-
-      const text =
-        segmentEls.length > 0
-          ? segmentEls.map((segmentEl) => textFor(segmentEl)).join("")
-          : textFor(lineEl);
-      return [toRawLine(text, rect, runEl)];
-    });
-
-    return {
-      pageNumber,
-      domIndex: idx,
-      pageRect: {
-        left: pageRect.left,
-        top: pageRect.top,
-        width: pageRect.width,
-        height: pageRect.height,
-      },
-      offsetWidth: el.offsetWidth,
-      offsetHeight: el.offsetHeight,
-      lines,
-    };
-  }, { domIndex, meaningfulInkPattern: MEANINGFUL_INK_CHARACTER.source });
+      return {
+        pageNumber,
+        domIndex: idx,
+        pageRect: {
+          left: pageRect.left,
+          top: pageRect.top,
+          width: pageRect.width,
+          height: pageRect.height,
+        },
+        offsetWidth: el.offsetWidth,
+        offsetHeight: el.offsetHeight,
+        lines,
+      };
+    },
+    { domIndex, meaningfulInkPattern: MEANINGFUL_INK_CHARACTER.source },
+  );
 
 const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspection> =>
   page.evaluate<FolioPageInspection, number>((idx) => {

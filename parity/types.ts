@@ -28,6 +28,8 @@ export type LineBox = {
   fontName?: string;
   fontSizePt?: number;
   region: Region;
+  /** DOM visual container, used to keep adjacent table cells distinct. */
+  visualGroup?: string;
 };
 
 export type PageGeom = {
