@@ -436,8 +436,7 @@ export function calculateHeaderFooterVisualBounds(
         // so its extent must be factored into the visual bounds. Without
         // this, a wrap-type-only header image would be visible but
         // `visualBottom` would still equal the stripped paragraph height,
-        // and `computeHeaderFooterMarginExtender` wouldn't reserve enough
-        // body push-down — the image would overlap body text.
+        // leaving prepared header/footer geometry inconsistent with paint.
         if (!run.position && !isFloatingImageRun(run)) {
           continue;
         }
@@ -518,13 +517,11 @@ export function calculateHeaderFooterVisualBounds(
 }
 
 /**
- * Compute the header/footer bounds used by `computeHeaderFooterMarginExtender`
- * to push body margins clear of HF overflow. Excludes anchored/floating objects
- * (full-page letterheads, watermarks): Word positions them on the page instead
- * of in the header/footer flow, so they must not reserve body push-down. Keeping
- * them in `visualBottom` is still correct for the renderer (and for the
- * page-hash invalidation signal), but the margin extender needs the flow-only
- * extent.
+ * Compute flow-only header/footer bounds, excluding anchored/floating objects
+ * such as full-page letterheads and watermarks. Word positions those objects on
+ * the page independently from header/footer flow. Keeping them in
+ * `visualBottom` is still correct for rendering and page-hash invalidation;
+ * these bounds separately describe the in-flow portion for API consumers.
  */
 export function calculateHeaderFooterMarginPushBounds(
   blocks: FlowBlock[],

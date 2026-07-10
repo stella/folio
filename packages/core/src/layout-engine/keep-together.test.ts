@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { calculateChainHeight } from "./keep-together";
+import { calculateChainHeight, computeKeepNextChains } from "./keep-together";
 import type { FlowBlock, Measure, ParagraphBlock, ParagraphMeasure } from "./types";
 
 const paragraph = (id: string, keepNext = false): ParagraphBlock => ({
@@ -8,6 +8,12 @@ const paragraph = (id: string, keepNext = false): ParagraphBlock => ({
   id,
   runs: [{ kind: "text", text: id }],
   attrs: { keepNext },
+});
+
+const emptyParagraph = (id: string): ParagraphBlock => ({
+  kind: "paragraph",
+  id,
+  runs: [],
 });
 
 const paragraphMeasure = (...lineHeights: number[]): ParagraphMeasure => ({
@@ -50,5 +56,48 @@ describe("calculateChainHeight", () => {
         measures,
       ),
     ).toBe(38);
+  });
+
+  test("reserves every consecutive single-line member through the anchor", () => {
+    const blocks: FlowBlock[] = [
+      paragraph("empty heading", true),
+      paragraph("heading", true),
+      paragraph("anchor"),
+    ];
+    const measures: Measure[] = [
+      paragraphMeasure(12),
+      paragraphMeasure(14),
+      paragraphMeasure(16),
+    ];
+
+    expect(
+      calculateChainHeight(
+        {
+          startIndex: 0,
+          endIndex: 1,
+          memberIndices: [0, 1],
+          anchorIndex: 2,
+        },
+        blocks,
+        measures,
+      ),
+    ).toBe(42);
+  });
+});
+
+describe("computeKeepNextChains", () => {
+  test("carries keepNext through an empty separator to the next content paragraph", () => {
+    const blocks: FlowBlock[] = [
+      paragraph("heading", true),
+      emptyParagraph("separator"),
+      paragraph("body"),
+    ];
+
+    expect(computeKeepNextChains(blocks).get(0)).toEqual({
+      startIndex: 0,
+      endIndex: 1,
+      memberIndices: [0, 1],
+      anchorIndex: 2,
+    });
   });
 });

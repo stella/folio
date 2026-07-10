@@ -8,25 +8,37 @@
 import type { FlowBlock, ParagraphBlock, Measure } from "./types";
 
 /**
- * A chain of consecutive keepNext paragraphs.
+ * A chain of keepNext-linked paragraphs, including empty separators Word
+ * carries through to the next paragraph with visible content.
  */
 export type KeepNextChain = {
   /** Index of the first paragraph in the chain. */
   startIndex: number;
-  /** Index of the last paragraph in the chain. */
+  /** Index of the last keepNext or pass-through empty member. */
   endIndex: number;
-  /** All paragraph indices in the chain. */
+  /** All keepNext and pass-through empty paragraph indices in the chain. */
   memberIndices: number[];
   /** Index of the anchor paragraph (first non-keepNext after chain), or -1 if none. */
   anchorIndex: number;
 };
 
+function isVisuallyEmptyParagraph(block: ParagraphBlock): boolean {
+  if (block.runs.length === 0) {
+    return true;
+  }
+  if (block.runs.length !== 1) {
+    return false;
+  }
+  const run = block.runs.at(0);
+  return run?.kind === "text" && run.text === "";
+}
+
 /**
  * Pre-scan blocks to find all keepNext chains.
  *
- * A keepNext chain is a sequence of consecutive paragraphs with keepNext=true,
- * followed by an anchor paragraph (the first non-keepNext paragraph).
- * The entire chain must stay on the same page as the anchor's first line.
+ * A keepNext chain starts with a paragraph whose keepNext=true and continues
+ * through further keepNext paragraphs and structural empty separators. The
+ * first visible non-keepNext paragraph is its anchor.
  *
  * Returns a map from chain start index to chain info.
  */
@@ -47,7 +59,7 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
       continue;
     }
 
-    const para = block as ParagraphBlock;
+    const para = block;
     // Skip paragraphs without keepNext
     if (!para.attrs?.keepNext) {
       continue;
@@ -75,9 +87,11 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
         break;
       }
 
-      const nextPara = nextBlock as ParagraphBlock;
-      if (nextPara.attrs?.keepNext) {
-        // Continue the chain
+      const nextPara = nextBlock;
+      if (nextPara.attrs?.keepNext || isVisuallyEmptyParagraph(nextPara)) {
+        // Word carries keepNext across structural empty paragraphs. Treat
+        // them as pass-through members so a blank separator cannot strand a
+        // heading at the bottom of the preceding page.
         memberIndices.push(j);
         endIndex = j;
         processed.add(j);
@@ -117,21 +131,19 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
 }
 
 /**
- * Calculate the height needed to keep the chain's first paragraph with the
- * first line of its successor.
+ * Calculate the height needed to keep consecutive paragraph boundaries from
+ * breaking across pages.
  *
- * `keepNext` prevents a break between paragraphs; it does not imply
- * `keepLines`. A later chain member may therefore split across pages. Reserving
- * every line of every member moves otherwise splittable legal clauses as one
- * oversized unit.
+ * Single-line and `keepLines` members are indivisible, so the reservation must
+ * continue through them to the anchor's first line. A multi-line member without
+ * `keepLines` may itself split; only its first line is needed to satisfy the
+ * preceding member's `keepNext`, and the chain can stop there.
  */
 export function calculateChainHeight(
   chain: KeepNextChain,
   blocks: FlowBlock[],
   measures: Measure[],
 ): number {
-  let totalHeight = 0;
-
   const firstMemberIndex = chain.memberIndices.at(0);
   if (firstMemberIndex === undefined) {
     return 0;
@@ -142,17 +154,39 @@ export function calculateChainHeight(
     return 0;
   }
 
-  totalHeight += firstBlock.attrs?.spacing?.before ?? 0;
-  totalHeight += firstMeasure.totalHeight;
-  totalHeight += firstBlock.attrs?.spacing?.after ?? 0;
+  let totalHeight = (firstBlock.attrs?.spacing?.before ?? 0) + firstMeasure.totalHeight;
+  let trailingSpacing = firstBlock.attrs?.spacing?.after ?? 0;
 
-  const successorIndex = chain.memberIndices.at(1) ?? chain.anchorIndex;
-  const successorMeasure = successorIndex === -1 ? undefined : measures[successorIndex];
-  if (successorMeasure?.kind === "paragraph") {
-    const firstSuccessorLine = successorMeasure.lines.at(0);
-    if (firstSuccessorLine) {
-      totalHeight += firstSuccessorLine.lineHeight;
+  const successorIndices = [...chain.memberIndices.slice(1)];
+  if (chain.anchorIndex !== -1) {
+    successorIndices.push(chain.anchorIndex);
+  }
+
+  for (let index = 0; index < successorIndices.length; index++) {
+    const successorIndex = successorIndices[index];
+    if (successorIndex === undefined) {
+      continue;
     }
+    const successorBlock = blocks[successorIndex];
+    const successorMeasure = measures[successorIndex];
+    if (successorBlock?.kind !== "paragraph" || successorMeasure?.kind !== "paragraph") {
+      return totalHeight;
+    }
+
+    totalHeight += Math.max(trailingSpacing, successorBlock.attrs?.spacing?.before ?? 0);
+    const firstLine = successorMeasure.lines.at(0);
+    if (!firstLine) {
+      return totalHeight;
+    }
+
+    const isAnchor = index === successorIndices.length - 1 && chain.anchorIndex !== -1;
+    const isSplittable = successorMeasure.lines.length > 1 && !successorBlock.attrs?.keepLines;
+    if (isAnchor || isSplittable) {
+      return totalHeight + firstLine.lineHeight;
+    }
+
+    totalHeight += successorMeasure.totalHeight;
+    trailingSpacing = successorBlock.attrs?.spacing?.after ?? 0;
   }
 
   return totalHeight;
@@ -183,7 +217,7 @@ export function hasKeepLines(block: FlowBlock): boolean {
   if (block.kind !== "paragraph") {
     return false;
   }
-  const para = block as ParagraphBlock;
+  const para = block;
   return para.attrs?.keepLines === true;
 }
 
@@ -194,6 +228,6 @@ export function hasPageBreakBefore(block: FlowBlock): boolean {
   if (block.kind !== "paragraph") {
     return false;
   }
-  const para = block as ParagraphBlock;
+  const para = block;
   return para.attrs?.pageBreakBefore === true;
 }

@@ -44,7 +44,6 @@ import type {
   Measure,
   PageHeaderFooterRefs,
   PageMargins,
-  SectionBreakBlock,
 } from "../layout-engine/types";
 import type { BlockLookup, LayoutPainter } from "../layout-painter";
 import { renderPages } from "../layout-painter/renderPage";
@@ -53,11 +52,6 @@ import type {
   HeaderFooterContent,
   RenderPageOptions,
 } from "../layout-painter/renderPage";
-import {
-  computeFirstPageHeaderFooterMarginExtender,
-  computeHeaderFooterMarginExtender,
-  extendSectionBreakMargins,
-} from "../paged-layout/headerFooterMargins";
 import { tryBuildIncrementalMeasures } from "../paged-layout/incrementalMeasure";
 import type { DirtyRange } from "../paged-layout/incrementalMeasure";
 import type { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
@@ -75,27 +69,6 @@ import type {
 } from "../types/document";
 import { getDocumentWatermark } from "../watermark";
 import type { LayoutArtifacts, LayoutSession, LayoutTemplatePreview } from "./layoutSession";
-
-function pageMarginsEqual(left: PageMargins, right: PageMargins): boolean {
-  return (
-    left.top === right.top &&
-    left.right === right.right &&
-    left.bottom === right.bottom &&
-    left.left === right.left &&
-    left.header === right.header &&
-    left.footer === right.footer
-  );
-}
-
-function optionalPageMarginsEqual(
-  left: PageMargins | undefined,
-  right: PageMargins | undefined,
-): boolean {
-  if (left === undefined || right === undefined) {
-    return left === right;
-  }
-  return pageMarginsEqual(left, right);
-}
 
 export type LayoutRunOptions = {
   dirtyRange?: DirtyRange;
@@ -276,8 +249,9 @@ export function runLayoutPipeline<THfPMs>(
     const documentFootnotes = document?.package.footnotes;
     const hasFootnotes = footnoteRefs.length > 0 && documentFootnotes !== undefined;
 
-    // Step 2.75: Prepare header/footer content for rendering (needed before layout
-    // to compute effective margins when header content exceeds available space)
+    // Step 2.75: Prepare header/footer content for rendering. Headers and
+    // footers are positioned independently from the authored body margins,
+    // matching Word's overlap behavior when their content is unusually tall.
     const hfMetricsHeader: HeaderFooterMetrics = {
       section: "header",
       pageSize,
@@ -364,120 +338,24 @@ export function runLayoutPipeline<THfPMs>(
       hfOptions,
     );
 
-    // Rendered H/F content is shared across every extender; only the
-    // page size (body vs. a section's own) and the mode (default vs.
-    // first-page) vary.
-    const hfExtenderContent = {
-      headerContent: headerContentForRender,
-      footerContent: footerContentForRender,
-      firstPageHeaderContent: firstPageHeaderForRender,
-      firstPageFooterContent: firstPageFooterForRender,
-    };
-    const buildSectionHfExtenderContent = (): typeof hfExtenderContent[] | undefined => {
-      if (!sectionHeaderFooterRefs) {
-        return undefined;
-      }
-      return sectionHeaderFooterRefs.map((refs) => ({
-        headerContent: pickSectionHeaderFooterContent(
-          headerContentByRId,
-          refs.headerDefault,
-          refs.evenAndOddHeaders === true ? refs.headerEven : undefined,
-        ),
-        footerContent: pickSectionHeaderFooterContent(
-          footerContentByRId,
-          refs.footerDefault,
-          refs.evenAndOddHeaders === true ? refs.footerEven : undefined,
-        ),
-        firstPageHeaderContent:
-          refs.titlePg === true ? headerContentByRId?.get(refs.headerFirst ?? "") : undefined,
-        firstPageFooterContent:
-          refs.titlePg === true ? footerContentByRId?.get(refs.footerFirst ?? "") : undefined,
-      }));
-    };
-    const hfWarn = (msg: string): void => {
-      // eslint-disable-next-line no-console -- standalone editor package has no logger in scope
-      console.warn(`[PagedEditor] ${msg}`);
-    };
-    // Default extender — applied to pages 2+ of every section. It
-    // ignores firstPage H/F so a `<w:titlePg/>` section's
-    // overflowing first-page header doesn't push body content down
-    // on every subsequent page.
-    const extendForHfOverflow = computeHeaderFooterMarginExtender({
-      ...hfExtenderContent,
-      pageSize,
-      warn: hfWarn,
-    });
-    // First-page extender — used only for page 1 of a titlePg
-    // section so the title page's larger header reservation is
-    // honored without leaking onto pages 2+.
-    const extendForFirstPage = computeFirstPageHeaderFooterMarginExtender({
-      ...hfExtenderContent,
-      pageSize,
-      warn: hfWarn,
-    });
-    let effectiveMargins = extendForHfOverflow(margins);
-    let effectiveFirstPageMargins = hasTitlePg ? extendForFirstPage(margins) : undefined;
-    const sectionBreaks = newBlocks.filter(
-      (block): block is SectionBreakBlock => block.kind === "sectionBreak",
-    );
-    const originalSectionBreakMargins = new Map<SectionBreakBlock["id"], PageMargins | undefined>();
-    for (const sectionBreak of sectionBreaks) {
-      originalSectionBreakMargins.set(
-        sectionBreak.id,
-        sectionBreak.margins ? { ...sectionBreak.margins } : undefined,
-      );
-    }
-    const restoreSectionBreakMargins = (): void => {
-      for (const sectionBreak of sectionBreaks) {
-        const originalMargins = originalSectionBreakMargins.get(sectionBreak.id);
-        if (originalMargins === undefined) {
-          delete sectionBreak.margins;
-          continue;
-        }
-        sectionBreak.margins = { ...originalMargins };
-      }
-    };
-    const applySectionBreakMargins = (
-      content: typeof hfExtenderContent,
-      bodyMargins: PageMargins,
-    ): void => {
-      restoreSectionBreakMargins();
-      // Section-break blocks carry their own `pageSize`/`margins` from
-      // `<w:sectPr>` and the layout engine prefers those over the
-      // body-level fallback. Extend each against its own resolved page
-      // so an overflowing footer never re-overlaps body text on the next
-      // section. (Eigenpal #400.)
-      extendSectionBreakMargins(sectionBreaks, {
-        content,
-        sectionContent: buildSectionHfExtenderContent(),
-        bodyPageSize: pageSize,
-        bodyMargins,
-        warn: hfWarn,
-      });
-    };
-    applySectionBreakMargins(hfExtenderContent, effectiveMargins);
     recordPhaseDuration("header-footer", phaseStartedAt);
 
-    // Compute per-block widths + band geometry from the EFFECTIVE margins
-    // layout uses (header/footer overflow extension + section-break margin
-    // extension applied above), so a page/margin-pinned topAndBottom band
-    // reserves its band at the same Y the box is painted. Measuring with the
-    // raw margins would mis-place the reserved band when a tall header/footer
-    // extends the margins. eigenpal #694.
+    // Compute per-block widths and band geometry from the authored section
+    // margins. Header/footer paint bounds never redefine the body text area.
     phaseStartedAt = performance.now();
-    let bodyLayoutConfig: SectionLayoutConfig = {
+    const bodyLayoutConfig: SectionLayoutConfig = {
       pageSize,
-      margins: effectiveMargins,
+      margins,
     };
     if (columns !== undefined) {
       bodyLayoutConfig.columns = columns;
     }
-    let blockMeasureInputs = computePerBlockMeasureInputs({
+    const blockMeasureInputs = computePerBlockMeasureInputs({
       blocks: newBlocks,
       bodyConfig: bodyLayoutConfig,
       finalConfig: bodyLayoutConfig,
     });
-    let blockWidths = blockMeasureInputs.widths;
+    const blockWidths = blockMeasureInputs.widths;
     const previousArtifacts = session.artifacts;
     const incrementalResult =
       options.dirtyRange && !options.forceFull && previousArtifacts
@@ -522,18 +400,12 @@ export function runLayoutPipeline<THfPMs>(
       | "evenPage"
       | "oddPage"
       | undefined;
-    const buildLayoutOpts = (
-      nextMargins: PageMargins,
-      nextFirstPageMargins: PageMargins | undefined,
-    ): Parameters<typeof layoutDocument>[2] => {
+    const buildLayoutOpts = (): Parameters<typeof layoutDocument>[2] => {
       const nextLayoutOpts: Parameters<typeof layoutDocument>[2] = {
         pageSize,
-        margins: nextMargins,
+        margins,
         pageGap,
       };
-      if (nextFirstPageMargins !== undefined) {
-        nextLayoutOpts.firstPageMargins = nextFirstPageMargins;
-      }
       if (columns !== undefined) {
         nextLayoutOpts.columns = columns;
       }
@@ -545,7 +417,7 @@ export function runLayoutPipeline<THfPMs>(
       }
       return nextLayoutOpts;
     };
-    const layoutOpts = buildLayoutOpts(effectiveMargins, effectiveFirstPageMargins);
+    const layoutOpts = buildLayoutOpts();
     // The exact options the layout was produced with, reused if the field-
     // width stabilization pass re-lays-out below.
     let layoutOptsUsed: Parameters<typeof layoutDocument>[2] = layoutOpts;
@@ -699,7 +571,7 @@ export function runLayoutPipeline<THfPMs>(
     let stabilizedFieldValues: Map<number, string> | undefined;
     stabilizeFieldWidths();
 
-    const rebuildHeaderFooterForLayout = (): typeof hfExtenderContent => {
+    const rebuildHeaderFooterForLayout = (): void => {
       const seqValues = buildSeqValues(newBlocks);
       const bookmarkTextInputs =
         stabilizedFieldValues === undefined
@@ -762,63 +634,9 @@ export function runLayoutPipeline<THfPMs>(
         hfMetricsFooter,
         finalHfOptions,
       );
-      return {
-        headerContent: headerContentForRender,
-        footerContent: footerContentForRender,
-        firstPageHeaderContent: firstPageHeaderForRender,
-        firstPageFooterContent: firstPageFooterForRender,
-      };
     };
 
-    const MAX_HEADER_FOOTER_STABILIZATION_PASSES = 3;
-    for (let pass = 0; pass < MAX_HEADER_FOOTER_STABILIZATION_PASSES; pass++) {
-      const finalHfExtenderContent = rebuildHeaderFooterForLayout();
-      const finalEffectiveMargins = computeHeaderFooterMarginExtender({
-        ...finalHfExtenderContent,
-        pageSize,
-        warn: hfWarn,
-      })(margins);
-      const finalEffectiveFirstPageMargins = hasTitlePg
-        ? computeFirstPageHeaderFooterMarginExtender({
-            ...finalHfExtenderContent,
-            pageSize,
-            warn: hfWarn,
-          })(margins)
-        : undefined;
-
-      if (
-        !pageMarginsEqual(effectiveMargins, finalEffectiveMargins) ||
-        !optionalPageMarginsEqual(effectiveFirstPageMargins, finalEffectiveFirstPageMargins)
-      ) {
-        effectiveMargins = finalEffectiveMargins;
-        effectiveFirstPageMargins = finalEffectiveFirstPageMargins;
-        applySectionBreakMargins(finalHfExtenderContent, effectiveMargins);
-        bodyLayoutConfig = { pageSize, margins: effectiveMargins };
-        if (columns !== undefined) {
-          bodyLayoutConfig.columns = columns;
-        }
-        blockMeasureInputs = computePerBlockMeasureInputs({
-          blocks: newBlocks,
-          bodyConfig: bodyLayoutConfig,
-          finalConfig: bodyLayoutConfig,
-        });
-        blockWidths = blockMeasureInputs.widths;
-        newMeasures = measureBlocks(newBlocks, blockWidths, blockMeasureInputs.marginTops, {
-          pageHeight: blockMeasureInputs.pageHeights,
-          marginBottom: blockMeasureInputs.marginBottoms,
-        });
-        pendingArtifacts = {
-          blocks: newBlocks,
-          blockWidths,
-          measures: newMeasures,
-        };
-        outcome.measures = newMeasures;
-        relayoutWithCurrentMeasures(buildLayoutOpts(effectiveMargins, effectiveFirstPageMargins));
-        stabilizeFieldWidths();
-        continue;
-      }
-      break;
-    }
+    rebuildHeaderFooterForLayout();
 
     outcome.layout = newLayout;
     recordPhaseDuration("layout-document", phaseStartedAt);
@@ -975,28 +793,4 @@ export function runLayoutPipeline<THfPMs>(
   syncCoordinator.onLayoutComplete(currentEpoch);
 
   return outcome;
-}
-
-function pickSectionHeaderFooterContent(
-  byRId: ReadonlyMap<string, HeaderFooterContent> | undefined,
-  defaultRId: string | undefined,
-  evenRId: string | undefined,
-): HeaderFooterContent | undefined {
-  const defaultContent = defaultRId ? byRId?.get(defaultRId) : undefined;
-  const evenContent = evenRId ? byRId?.get(evenRId) : undefined;
-  if (!defaultContent) {
-    return evenContent;
-  }
-  if (!evenContent) {
-    return defaultContent;
-  }
-  return headerFooterMarginPushHeight(evenContent) > headerFooterMarginPushHeight(defaultContent)
-    ? evenContent
-    : defaultContent;
-}
-
-function headerFooterMarginPushHeight(content: HeaderFooterContent): number {
-  const bottom = content.marginPushBottom ?? content.visualBottom ?? content.height;
-  const top = content.marginPushTop ?? content.visualTop ?? 0;
-  return Math.max(bottom - top, content.height);
 }

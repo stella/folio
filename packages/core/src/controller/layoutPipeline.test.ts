@@ -417,6 +417,35 @@ describe("runLayoutPipeline", () => {
     expect(layoutCompletes).toHaveLength(1);
   });
 
+  test("keeps authored body margins when footer content extends beyond them", () => {
+    const state = makeState();
+    const baseline = runLayoutPipeline(makeDeps(createLayoutSession()), state);
+    const withTallFooter = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        renderHfFromContentOrPm: (_hf, _rId, _hfPMs, _contentWidth, metrics) =>
+          metrics.section === "footer"
+            ? {
+                blocks: [],
+                measures: [],
+                height: 120,
+                visualTop: 0,
+                visualBottom: 120,
+                marginPushTop: 0,
+                marginPushBottom: 120,
+              }
+            : undefined,
+      }),
+      state,
+    );
+
+    expect(withTallFooter.layout?.pages.map((page) => page.margins)).toEqual(
+      baseline.layout?.pages.map((page) => page.margins),
+    );
+    expect(withTallFooter.layout?.pages.map((page) => page.fragments.map(({ y }) => y))).toEqual(
+      baseline.layout?.pages.map((page) => page.fragments.map(({ y }) => y)),
+    );
+  });
+
   test("discards the outcome and leaves the session unmutated when the paint phase throws", () => {
     const session = createLayoutSession();
     const state = makeState();
