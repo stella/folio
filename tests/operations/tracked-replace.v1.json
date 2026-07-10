@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "mode": "tracked-changes",
+  "operations": [
+    {
+      "id": "replace-heading",
+      "type": "replaceInBlock",
+      "blockId": "0304003A",
+      "find": "Heading",
+      "replace": "Intro"
+    }
+  ]
+}
