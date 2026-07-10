@@ -105,6 +105,7 @@ const VIEWPORT = { width: 1400, height: 1000 };
 const SERVER_PROBE_TIMEOUT_MS = 2000;
 const SERVER_START_TIMEOUT_MS = 90_000;
 const SERVER_POLL_INTERVAL_MS = 500;
+const SERVER_LOG_TAIL_CHARS = 4000;
 
 const PLAYGROUND_NAVIGATION_TIMEOUT_MS = 120_000;
 const EDITOR_RENDER_TIMEOUT_MS = 20_000;
@@ -115,6 +116,43 @@ const STABILITY_SETTLE_MS = 250;
 const CHROMIUM_MISSING_MARKER = "Executable doesn't exist";
 const CHROMIUM_MISSING_MESSAGE =
   "Playwright chromium missing; run: bunx playwright install chromium";
+
+type OutputTail = { read: () => string; done: Promise<void> };
+
+const captureOutputTail = (stream: ReadableStream<Uint8Array>): OutputTail => {
+  const decoder = new TextDecoder();
+  let output = "";
+
+  const done = (async () => {
+    try {
+      for await (const chunk of stream) {
+        output = `${output}${decoder.decode(chunk, { stream: true })}`.slice(
+          -SERVER_LOG_TAIL_CHARS,
+        );
+      }
+      output = `${output}${decoder.decode()}`.slice(-SERVER_LOG_TAIL_CHARS);
+    } catch (error) {
+      output = `${output}\n[log capture failed: ${String(error)}]`.slice(-SERVER_LOG_TAIL_CHARS);
+    }
+  })();
+
+  return { read: () => output.trim(), done };
+};
+
+export const formatServerStartFailure = (
+  url: string,
+  timeoutMs: number,
+  exitCode: number | undefined,
+  output: string,
+): string => {
+  const reason =
+    exitCode === undefined
+      ? `did not become ready at ${url} within ${timeoutMs}ms`
+      : `exited with code ${exitCode} before becoming ready at ${url}`;
+  return output.length === 0
+    ? `playground dev server ${reason}`
+    : `playground dev server ${reason}\nPlayground output:\n${output}`;
+};
 
 /** A raw rect as returned by `getBoundingClientRect()` (visual/CSS px). */
 export type RawRect = { left: number; top: number; width: number; height: number };
@@ -387,10 +425,11 @@ const waitForEditorLayout = async (page: Page): Promise<void> => {
   await page.waitForTimeout(STABILITY_SETTLE_MS);
 };
 
-const installCleanScreenshotStyle = async (page: Page): Promise<void> => {
-  await page.addStyleTag({
-    content: `
+export const CLEAN_SCREENSHOT_CSS = `
       .pg-collab-header,
+      .pg-controls,
+      [data-folio-toolbar="true"],
+      [data-testid="playground-controls"],
       [class*="toolbar" i],
       [class*="ruler" i],
       [style*="position: fixed"],
@@ -402,7 +441,11 @@ const installCleanScreenshotStyle = async (page: Page): Promise<void> => {
       .layout-page * {
         visibility: visible !important;
       }
-    `,
+    `;
+
+const installCleanScreenshotStyle = async (page: Page): Promise<void> => {
+  await page.addStyleTag({
+    content: CLEAN_SCREENSHOT_CSS,
   });
 };
 
@@ -858,18 +901,29 @@ export const createFolioExtractor = async (
       cwd: REPO_ROOT,
       env: { ...process.env, FOLIO_PLAYGROUND_PORT: String(PLAYGROUND_PORT) },
       stdin: "ignore",
-      stdout: "ignore",
-      stderr: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
     });
-    const ready = await waitForServerReady(
-      PLAYGROUND_URL,
-      SERVER_START_TIMEOUT_MS,
-      SERVER_POLL_INTERVAL_MS,
-    );
-    if (!ready) {
+    const stdoutTail = captureOutputTail(serverProcess.stdout);
+    const stderrTail = captureOutputTail(serverProcess.stderr);
+    const startup = await Promise.race([
+      waitForServerReady(PLAYGROUND_URL, SERVER_START_TIMEOUT_MS, SERVER_POLL_INTERVAL_MS).then(
+        (ready) => ({ type: "probe" as const, ready }),
+      ),
+      serverProcess.exited.then((exitCode) => ({ type: "exit" as const, exitCode })),
+    ]);
+    if (startup.type === "exit" || !startup.ready) {
+      if (startup.type === "exit") {
+        await Promise.all([stdoutTail.done, stderrTail.done]);
+      }
       await killByPort(PLAYGROUND_PORT);
       throw new FolioExtractError(
-        `playground dev server did not become ready at ${PLAYGROUND_URL} within ${SERVER_START_TIMEOUT_MS}ms`,
+        formatServerStartFailure(
+          PLAYGROUND_URL,
+          SERVER_START_TIMEOUT_MS,
+          startup.type === "exit" ? startup.exitCode : undefined,
+          [stdoutTail.read(), stderrTail.read()].filter(Boolean).join("\n"),
+        ),
       );
     }
   }

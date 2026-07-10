@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import { PX_TO_PT } from "../config";
 import {
+  CLEAN_SCREENSHOT_CSS,
   computeZoomFactor,
+  formatServerStartFailure,
   meaningfulTextRange,
   parseCssFontFamilies,
   parseFirstFontFamily,
@@ -15,6 +17,34 @@ const rect = (left: number, top: number, width: number, height: number) => ({
   top,
   width,
   height,
+});
+
+describe("clean screenshot style", () => {
+  test("hides editor and playground chrome that can overlap a page", () => {
+    expect(CLEAN_SCREENSHOT_CSS).toContain('[data-folio-toolbar="true"]');
+    expect(CLEAN_SCREENSHOT_CSS).toContain('[data-testid="playground-controls"]');
+  });
+
+  test("keeps the page and its document content visible", () => {
+    expect(CLEAN_SCREENSHOT_CSS).toContain(".layout-page,");
+    expect(CLEAN_SCREENSHOT_CSS).toContain(".layout-page *");
+  });
+});
+
+describe("playground startup diagnostics", () => {
+  test("includes an early exit code and captured output", () => {
+    expect(formatServerStartFailure("http://localhost:4200", 90_000, 127, "vite: not found")).toBe(
+      "playground dev server exited with code 127 before becoming ready at http://localhost:4200\n" +
+        "Playground output:\n" +
+        "vite: not found",
+    );
+  });
+
+  test("reports a quiet startup timeout without an empty output section", () => {
+    expect(formatServerStartFailure("http://localhost:4200", 90_000, undefined, "")).toBe(
+      "playground dev server did not become ready at http://localhost:4200 within 90000ms",
+    );
+  });
 });
 
 describe("parseCssFontFamilies", () => {
