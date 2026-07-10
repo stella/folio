@@ -295,6 +295,23 @@ export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
+// @public (undocumented)
+export type FolioDocumentStory = {
+    handle: FolioDocumentStoryHandle;
+    text: string;
+};
+
+// @public (undocumented)
+export type FolioDocumentStoryHandle = {
+    type: "main";
+} | {
+    type: "header" | "footer";
+    relationshipId: string;
+} | {
+    type: "footnote" | "endnote";
+    noteId: number;
+};
+
 // @public
 export class FolioDocxReviewer {
     acceptAll(): number;
@@ -308,6 +325,8 @@ export class FolioDocxReviewer {
     getContent(): FolioAIBlock[];
     getContentAsText(options?: FolioGetContentAsTextOptions): string;
     getNotesAsText(): string;
+    listStories(): FolioDocumentStory[];
+    readStory(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
     rejectAll(): number;
     rejectChange(target: FolioReviewChange | number): boolean;
     replyTo(target: FolioReviewComment | number, input: FolioReviewReplyInput): FolioReviewCommentReply | null;

@@ -13,6 +13,8 @@ import type {
 /** Every tool name this package exposes, as a stable string union (no enums). */
 export const FOLIO_AGENT_TOOL_NAMES = {
   readDocument: "read_document",
+  listStories: "list_stories",
+  readStory: "read_story",
   findText: "find_text",
   readComments: "read_comments",
   readChanges: "read_changes",

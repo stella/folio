@@ -15,6 +15,7 @@ export {
 } from "./snapshot";
 export { getFolioParaIdFromBlockId } from "../types/block-id";
 export { diffWordSegments } from "./word-diff";
+export type { FolioDocumentStory, FolioDocumentStoryHandle } from "./headless";
 export type { WordDiffSegment } from "./word-diff";
 export type {
   FolioAIBlock,

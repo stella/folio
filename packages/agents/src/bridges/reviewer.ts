@@ -59,6 +59,8 @@ export const createReviewerBridge = (
     applyDocumentOperations: (batch) => reviewer.applyDocumentOperations({ ...batch, mode }),
     getComments: () => reviewer.getComments().map(toAgentComment),
     getChanges: () => reviewer.getChanges().map(toAgentChange),
+    listStories: () => reviewer.listStories(),
+    readStory: (handle) => reviewer.readStory(handle),
     replyToComment: (commentId, text) => {
       const parentId = parseCommentId(commentId);
       if (parentId === null) {

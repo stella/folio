@@ -38,6 +38,8 @@ export {
   type FolioApplyOperationsOptions,
   type FolioApplyDocumentOperationsOptions,
   type FolioDocxReviewerOptions,
+  type FolioDocumentStory,
+  type FolioDocumentStoryHandle,
   type FolioReviewChange,
   type FolioReviewChangeFilter,
   type FolioReviewChangeKind,

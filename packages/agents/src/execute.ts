@@ -3,6 +3,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioAIBlock,
   type FolioDocumentOperation,
+  type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
 import type { FolioAgentBridge } from "./bridge";
@@ -68,6 +69,14 @@ const dispatch = (name: string, args: unknown, bridge: FolioAgentBridge): FolioT
   if (name === FOLIO_AGENT_TOOL_NAMES.readDocument) {
     return readDocument(bridge);
   }
+  if (name === FOLIO_AGENT_TOOL_NAMES.listStories) {
+    return bridge.listStories
+      ? ok(bridge.listStories())
+      : fail("This editor surface does not support story discovery.");
+  }
+  if (name === FOLIO_AGENT_TOOL_NAMES.readStory) {
+    return readStory(args, bridge);
+  }
   if (name === FOLIO_AGENT_TOOL_NAMES.findText) {
     return findText(args, bridge);
   }
@@ -105,6 +114,37 @@ const dispatch = (name: string, args: unknown, bridge: FolioAgentBridge): FolioT
 const readDocument = (bridge: FolioAgentBridge): FolioToolCallResult => {
   const { blocks } = bridge.snapshot();
   return ok(blocks.map((block) => ({ blockId: block.id, kind: block.kind, text: block.text })));
+};
+
+const readStory = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+  if (!bridge.readStory) {
+    return fail("This editor surface does not support story reads.");
+  }
+  if (!isPlainObject(args) || !isPlainObject(args["handle"])) {
+    return fail("read_story requires a typed `handle` from list_stories.");
+  }
+  const handle = args["handle"];
+  const type = handle["type"];
+  let parsed: FolioDocumentStoryHandle;
+  if (type === "main") {
+    parsed = { type };
+  } else if (type === "header" || type === "footer") {
+    const relationshipId = handle["relationshipId"];
+    if (!isNonEmptyString(relationshipId)) {
+      return fail("read_story requires the handle's `relationshipId`.");
+    }
+    parsed = { type, relationshipId };
+  } else if (type === "footnote" || type === "endnote") {
+    const noteId = handle["noteId"];
+    if (typeof noteId !== "number" || !Number.isInteger(noteId)) {
+      return fail("read_story requires the handle's integer `noteId`.");
+    }
+    parsed = { type, noteId };
+  } else {
+    return fail("read_story received an unsupported story handle type.");
+  }
+  const story = bridge.readStory(parsed);
+  return story ? ok(story) : fail("The requested story was not found; run list_stories again.");
 };
 
 const CONTEXT_RADIUS = 40;

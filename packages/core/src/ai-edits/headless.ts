@@ -188,6 +188,16 @@ export type FolioGetContentAsTextOptions = {
   annotated?: boolean;
 };
 
+export type FolioDocumentStoryHandle =
+  | { type: "main" }
+  | { type: "header" | "footer"; relationshipId: string }
+  | { type: "footnote" | "endnote"; noteId: number };
+
+export type FolioDocumentStory = {
+  handle: FolioDocumentStoryHandle;
+  text: string;
+};
+
 // The change shape and its pure reader now live in `./read` so a live editor
 // can produce the same `FolioReviewChange[]` from its own doc; the reviewer
 // delegates to `getTrackedChangesFromDoc` and re-exports the types here so its
@@ -512,6 +522,67 @@ export class FolioDocxReviewer {
     }
 
     return lines.join("\n");
+  }
+
+  /** Discover every readable document story through a typed, serializable handle. */
+  listStories(): FolioDocumentStory[] {
+    const pkg = this.baseDocument.package;
+    const stories: FolioDocumentStory[] = [
+      { handle: { type: "main" }, text: this.getContentAsText() },
+    ];
+    for (const [relationshipId, header] of pkg.headers ?? []) {
+      stories.push({
+        handle: { type: "header", relationshipId },
+        text: normalizeFolioAIBlockText(getHeaderFooterText(header)),
+      });
+    }
+    for (const [relationshipId, footer] of pkg.footers ?? []) {
+      stories.push({
+        handle: { type: "footer", relationshipId },
+        text: normalizeFolioAIBlockText(getHeaderFooterText(footer)),
+      });
+    }
+    for (const footnote of pkg.footnotes ?? []) {
+      if (!isSeparatorFootnote(footnote)) {
+        stories.push({
+          handle: { type: "footnote", noteId: footnote.id },
+          text: normalizeFolioAIBlockText(getFootnoteText(footnote)),
+        });
+      }
+    }
+    for (const endnote of pkg.endnotes ?? []) {
+      if (!isSeparatorEndnote(endnote)) {
+        stories.push({
+          handle: { type: "endnote", noteId: endnote.id },
+          text: normalizeFolioAIBlockText(getEndnoteText(endnote)),
+        });
+      }
+    }
+    return stories;
+  }
+
+  /** Read one discovered story; returns null when its handle is no longer present. */
+  readStory(handle: FolioDocumentStoryHandle): FolioDocumentStory | null {
+    const stories = this.listStories();
+    if (handle.type === "main") {
+      return stories.at(0) ?? null;
+    }
+    if (handle.type === "header" || handle.type === "footer") {
+      return (
+        stories.find(
+          ({ handle: candidate }) =>
+            candidate.type === handle.type && candidate.relationshipId === handle.relationshipId,
+        ) ?? null
+      );
+    }
+    return (
+      stories.find(
+        ({ handle: candidate }) =>
+          (candidate.type === "footnote" || candidate.type === "endnote") &&
+          candidate.type === handle.type &&
+          candidate.noteId === handle.noteId,
+      ) ?? null
+    );
   }
 
   /**

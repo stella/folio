@@ -104,6 +104,19 @@ describe("executeFolioToolCall: argument validation", () => {
 });
 
 describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", () => {
+  test("list_stories returns typed handles that read_story accepts", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+    const stories = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.listStories, {}, bridge),
+    ) as { handle: { type: string }; text: string }[];
+    expect(stories.at(0)?.handle).toEqual({ type: "main" });
+    const main = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readStory, { handle: { type: "main" } }, bridge),
+    );
+    expect(main).toEqual(stories.at(0));
+  });
+
   test("read_document -> find_text -> suggest_changes -> read_changes -> add_comment -> read_comments -> reply_comment -> resolve_comment", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), { author: "AI Reviewer" });
     const bridge = createReviewerBridge(reviewer);

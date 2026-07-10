@@ -87,6 +87,37 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     },
   },
   {
+    name: FOLIO_AGENT_TOOL_NAMES.listStories,
+    description: "List readable document stories and their typed handles.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: FOLIO_AGENT_TOOL_NAMES.readStory,
+    description: "Read one document story using a handle returned by `list_stories`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        handle: {
+          type: "object",
+          properties: {
+            type: { type: "string", enum: ["main", "header", "footer", "footnote", "endnote"] },
+            relationshipId: { type: "string" },
+            noteId: { type: "integer" },
+          },
+          required: ["type"],
+          additionalProperties: false,
+        },
+      },
+      required: ["handle"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: FOLIO_AGENT_TOOL_NAMES.findText,
     description:
       "Search the document body for a text string and return `{ matches, truncated, totalMatches }`, where each " +

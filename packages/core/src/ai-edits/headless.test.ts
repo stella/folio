@@ -755,6 +755,16 @@ const readNotesFixture = async (): Promise<ArrayBuffer> => {
 };
 
 describe("headless docx review notes read surface", () => {
+  test("listStories discovers typed handles that readStory resolves", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await readNotesFixture());
+    const stories = reviewer.listStories();
+    expect(stories.at(0)?.handle).toEqual({ type: "main" });
+    const footnote = stories.find(({ handle }) => handle.type === "footnote");
+    expect(footnote?.text).toBe("Injected footnote body text.");
+    expect(footnote ? reviewer.readStory(footnote.handle) : null).toEqual(footnote);
+    expect(reviewer.readStory({ type: "footnote", noteId: 999_999 })).toBeNull();
+  });
+
   test("getNotesAsText surfaces header, footer, and footnote text with labels", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await readNotesFixture());
     const notes = reviewer.getNotesAsText();

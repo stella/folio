@@ -14,6 +14,8 @@ import { FolioAITextRangeHandle } from '@stll/folio-core/server';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
 import { FolioDocumentOperationResult } from '@stll/folio-core/server';
+import { FolioDocumentStory } from '@stll/folio-core/server';
+import { FolioDocumentStoryHandle } from '@stll/folio-core/server';
 import { FolioDocxReviewer } from '@stll/folio-core/server';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { WordDiffSegment } from '@stll/folio-core/ai-edits';
@@ -54,6 +56,8 @@ export const executeFolioToolCall: (name: string, args: unknown, bridge: FolioAg
 // @public
 export const FOLIO_AGENT_TOOL_NAMES: {
     readonly readDocument: "read_document";
+    readonly listStories: "list_stories";
+    readonly readStory: "read_story";
     readonly findText: "find_text";
     readonly readComments: "read_comments";
     readonly readChanges: "read_changes";
@@ -111,7 +115,9 @@ export type FolioAgentBridge = {
     snapshot(): FolioAIEditSnapshot;
     applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult; /** The comment threads present in the document. */
     getComments(): FolioAgentComment[]; /** The pending tracked changes (insertions/deletions) present in the document. */
-    getChanges(): FolioAgentChange[]; /** Reply to a comment thread. Returns `false` when the target comment does not exist. */
+    getChanges(): FolioAgentChange[]; /** Discover typed document stories when the surface exposes package parts. */
+    listStories?(): FolioDocumentStory[]; /** Read one previously discovered story. */
+    readStory?(handle: FolioDocumentStoryHandle): FolioDocumentStory | null; /** Reply to a comment thread. Returns `false` when the target comment does not exist. */
     replyToComment(commentId: string, text: string): boolean; /** Mark a comment thread resolved or reopen it. Returns `false` when the target comment does not exist. */
     resolveComment(commentId: string, resolved: boolean): boolean; /** Scroll the live editor to the given block and select it. */
     scrollToBlock?(blockId: string): boolean; /** The user's current text selection in the live editor, as plain text. */

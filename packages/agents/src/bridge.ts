@@ -2,6 +2,8 @@ import type {
   FolioAIEditSnapshot,
   FolioDocumentOperationBatch,
   FolioDocumentOperationResult,
+  FolioDocumentStory,
+  FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
 import type { FolioAgentChange, FolioAgentComment } from "./types";
@@ -31,6 +33,10 @@ export type FolioAgentBridge = {
   getComments(): FolioAgentComment[];
   /** The pending tracked changes (insertions/deletions) present in the document. */
   getChanges(): FolioAgentChange[];
+  /** Discover typed document stories when the surface exposes package parts. */
+  listStories?(): FolioDocumentStory[];
+  /** Read one previously discovered story. */
+  readStory?(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
   /** Reply to a comment thread. Returns `false` when the target comment does not exist. */
   replyToComment(commentId: string, text: string): boolean;
   /** Mark a comment thread resolved or reopen it. Returns `false` when the target comment does not exist. */

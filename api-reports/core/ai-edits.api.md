@@ -308,6 +308,23 @@ export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
+// @public (undocumented)
+export type FolioDocumentStory = {
+    handle: FolioDocumentStoryHandle;
+    text: string;
+};
+
+// @public (undocumented)
+export type FolioDocumentStoryHandle = {
+    type: "main";
+} | {
+    type: "header" | "footer";
+    relationshipId: string;
+} | {
+    type: "footnote" | "endnote";
+    noteId: number;
+};
+
 // @public
 export type FolioReviewChange = {
     id: number;
