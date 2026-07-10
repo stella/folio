@@ -140,6 +140,16 @@ export type InsertImageDialogProps = {
 };
 
 // @public (undocumented)
+export function InsertSymbolDialog(input: InsertSymbolDialogProps): JSX.Element;
+
+// @public (undocumented)
+export type InsertSymbolDialogProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onInsert: (symbol: string) => void;
+};
+
+// @public (undocumented)
 export function InsertTableDialog(input: InsertTableDialogProps): JSX.Element;
 
 // @public (undocumented)
