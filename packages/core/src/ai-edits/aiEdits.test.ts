@@ -175,6 +175,25 @@ const collectMarksByText = (state: EditorState): Record<string, string[]> => {
 };
 
 describe("Folio AI edit operations", () => {
+  test("rejects invalid text range boundaries", () => {
+    expect(
+      createFolioAITextRangeHandle({
+        blockId: "",
+        text: "text",
+        startOffset: 0,
+        endOffset: 4,
+      }),
+    ).toBeNull();
+    expect(
+      createFolioAITextRangeHandle({
+        blockId: "block",
+        text: "text",
+        startOffset: 2,
+        endOffset: 2,
+      }),
+    ).toBeNull();
+  });
+
   test("replaces one exact occurrence through a stable text range", () => {
     const view = makeView(makeState(["repeat repeat"]));
     const snapshot = createFolioAIEditSnapshot(view.state.doc);

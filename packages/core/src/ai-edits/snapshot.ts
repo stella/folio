@@ -36,6 +36,7 @@ export const createFolioAITextRangeHandle = ({
   endOffset,
 }: CreateFolioAITextRangeHandleOptions): FolioAITextRangeHandle | null => {
   if (
+    blockId.length === 0 ||
     !Number.isInteger(startOffset) ||
     !Number.isInteger(endOffset) ||
     startOffset < 0 ||
