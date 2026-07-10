@@ -46,7 +46,9 @@ type LedgerRow = {
   deltaWidth?: number;
 };
 
-type FolioExtractResult = Awaited<ReturnType<Awaited<ReturnType<typeof createFolioExtractor>>["extract"]>>;
+type FolioExtractResult = Awaited<
+  ReturnType<Awaited<ReturnType<typeof createFolioExtractor>>["extract"]>
+>;
 
 const usage = (): string =>
   [
@@ -135,7 +137,14 @@ const ledgerFor = (wordLines: LineBox[], folioLines: LineBox[]): LedgerRow[] => 
     const folio = folioLines[i];
     rows.push({
       index: i + 1,
-      ...(word ? { wordText: word.text, wordY: round(word.yPt), wordX: round(word.xPt), wordWidth: round(word.widthPt) } : {}),
+      ...(word
+        ? {
+            wordText: word.text,
+            wordY: round(word.yPt),
+            wordX: round(word.xPt),
+            wordWidth: round(word.widthPt),
+          }
+        : {}),
       ...(folio
         ? {
             folioText: folio.text,
@@ -189,8 +198,16 @@ const main = async (): Promise<void> => {
     score: comparison.score,
     counts,
     pages: {
-      word: wordPage && { widthPt: wordPage.widthPt, heightPt: wordPage.heightPt, lines: wordLines.length },
-      folio: folioPage && { widthPt: folioPage.widthPt, heightPt: folioPage.heightPt, lines: folioLines.length },
+      word: wordPage && {
+        widthPt: wordPage.widthPt,
+        heightPt: wordPage.heightPt,
+        lines: wordLines.length,
+      },
+      folio: folioPage && {
+        widthPt: folioPage.widthPt,
+        heightPt: folioPage.heightPt,
+        lines: folioLines.length,
+      },
     },
     assets: {
       wordPng: wordPngs[flags.page - 1],

@@ -21,7 +21,15 @@
  * Document changes through history.
  */
 
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from "react";
 import type { CSSProperties } from "react";
 
 import { EditorState } from "prosemirror-state";
@@ -206,7 +214,10 @@ const HOST_STYLES: CSSProperties = {
 // =============================================================================
 
 export const HiddenHeaderFooterPMs = memo(
-  forwardRef<HiddenHeaderFooterPMsRef, HiddenHeaderFooterPMsProps>(function HiddenHeaderFooterPMs({ document, styles, theme, onTransaction }, ref) {
+  forwardRef<HiddenHeaderFooterPMsRef, HiddenHeaderFooterPMsProps>(function HiddenHeaderFooterPMs(
+    { document, styles, theme, onTransaction },
+    ref,
+  ) {
     // Stable callback ref so re-renders don't recreate every EditorView.
     const onTransactionRef = useRef(onTransaction);
     onTransactionRef.current = onTransaction;

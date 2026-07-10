@@ -23,7 +23,9 @@
         :class="{ 'add-comment-card__submit--active': trimmed }"
         :disabled="!trimmed"
         @click="handleSubmit"
-      >Comment</button>
+      >
+        Comment
+      </button>
     </div>
   </div>
 </template>

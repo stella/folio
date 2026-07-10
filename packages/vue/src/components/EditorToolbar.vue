@@ -24,8 +24,8 @@
 </template>
 
 <script setup lang="ts">
-import Toolbar from './Toolbar.vue';
-import MenuBar from './MenuBar.vue';
+import Toolbar from "./Toolbar.vue";
+import MenuBar from "./MenuBar.vue";
 
 defineOptions({ inheritAttrs: false });
 
@@ -33,11 +33,11 @@ withDefaults(
   defineProps<{
     showMenuBar?: boolean;
   }>(),
-  { showMenuBar: true }
+  { showMenuBar: true },
 );
 
 defineEmits<{
-  (e: 'menu-action', action: string): void;
+  (e: "menu-action", action: string): void;
 }>();
 </script>
 

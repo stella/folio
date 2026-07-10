@@ -100,14 +100,20 @@ const labelStyle: CSSProperties = {
 // COMPONENT
 // ============================================================================
 
-export const InlineHeaderFooterEditor = forwardRef<InlineHeaderFooterEditorRef, InlineHeaderFooterEditorProps>(function InlineHeaderFooterEditor({
-  position,
-  targetElement,
-  parentElement,
-  getActiveView,
-  onClose,
-  onRemove,
-}: InlineHeaderFooterEditorProps, ref) {
+export const InlineHeaderFooterEditor = forwardRef<
+  InlineHeaderFooterEditorRef,
+  InlineHeaderFooterEditorProps
+>(function InlineHeaderFooterEditor(
+  {
+    position,
+    targetElement,
+    parentElement,
+    getActiveView,
+    onClose,
+    onRemove,
+  }: InlineHeaderFooterEditorProps,
+  ref,
+) {
   const [showOptions, setShowOptions] = useState(false);
   const optionsRef = useRef<HTMLDivElement>(null);
 

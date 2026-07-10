@@ -58,6 +58,7 @@ CodeRabbit, Gemini, GitHub Copilot, Devin, Greptile, and similar bots.
 ## Decision Guidelines
 
 **Accept when the suggestion:**
+
 - fixes a bug or real edge case
 - improves type safety
 - adds missing tests
@@ -65,6 +66,7 @@ CodeRabbit, Gemini, GitHub Copilot, Devin, Greptile, and similar bots.
 - tightens security or validation appropriately
 
 **Push back when the suggestion:**
+
 - assumes facts not true in this codebase
 - conflicts with canonical specs or official sources
 - adds complexity for little benefit

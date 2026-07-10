@@ -19,12 +19,12 @@ export type ResolvableSidebarItem = {
   priority?: number;
   fixedY?: number;
   estimatedHeight?: number;
-}
+};
 
 export type ResolvedPosition<T extends ResolvableSidebarItem = ResolvableSidebarItem> = {
   item: T;
   y: number;
-}
+};
 
 /**
  * Given a list of sidebar items plus their anchor sources, return resolved Y

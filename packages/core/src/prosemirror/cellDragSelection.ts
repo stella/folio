@@ -71,7 +71,7 @@ export type CellDragTracker = {
   end(): void;
   /** True while a cell drag is actively producing CellSelections. */
   readonly isCellDragging: boolean;
-}
+};
 
 export function createCellDragTracker(): CellDragTracker {
   let anchorCellPos: number | null = null;

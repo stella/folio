@@ -483,7 +483,7 @@ onBeforeUnmount(() => {
      UnifiedSidebar fades in via opacity (no slide), so match that
      here — the slide-from-right animation was a Vue-only addition. */
   background: transparent;
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
+  font-family: "Google Sans", Roboto, Arial, sans-serif;
   pointer-events: auto;
   z-index: 5;
   transition: opacity 0.15s ease;

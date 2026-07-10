@@ -1,11 +1,6 @@
 <template>
-  <button
-    class="print-btn"
-    :disabled="disabled"
-    :title="label"
-    @mousedown.prevent="handlePrint"
-  >
-    {{ compact ? '' : label }}
+  <button class="print-btn" :disabled="disabled" :title="label" @mousedown.prevent="handlePrint">
+    {{ compact ? "" : label }}
     <span v-if="compact" class="print-btn__icon">&#x1F5A8;</span>
   </button>
 </template>
@@ -19,18 +14,18 @@ const props = withDefaults(
   }>(),
   {
     disabled: false,
-    label: 'Print',
+    label: "Print",
     compact: false,
-  }
+  },
 );
 
 const emit = defineEmits<{
-  (e: 'print'): void;
+  (e: "print"): void;
 }>();
 
 function handlePrint() {
   if (props.disabled) return;
-  emit('print');
+  emit("print");
   window.print();
 }
 </script>
@@ -48,7 +43,14 @@ function handlePrint() {
   align-items: center;
   gap: 4px;
 }
-.print-btn:hover:not(:disabled) { background: var(--doc-bg-hover); }
-.print-btn:disabled { opacity: 0.5; cursor: default; }
-.print-btn__icon { font-size: 14px; }
+.print-btn:hover:not(:disabled) {
+  background: var(--doc-bg-hover);
+}
+.print-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.print-btn__icon {
+  font-size: 14px;
+}
 </style>

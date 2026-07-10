@@ -10,7 +10,7 @@
   <div v-if="isOpen" class="dialog-overlay" @mousedown.self="close">
     <div class="dialog" @mousedown.stop @keydown.stop="onKeydown">
       <div class="dialog__header">
-        <span class="dialog__title">{{ t('dialogs.insertTable.title') }}</span>
+        <span class="dialog__title">{{ t("dialogs.insertTable.title") }}</span>
         <button class="dialog__close" :title="t('common.closeDialog')" @click="close">✕</button>
       </div>
       <div class="dialog__body">
@@ -40,19 +40,19 @@
         <div class="table-grid__label">
           {{
             hoverRow > 0
-              ? t('dialogs.insertTable.tableSize', { cols: hoverCol, rows: hoverRow })
-              : t('dialogs.insertTable.hoverToSelect')
+              ? t("dialogs.insertTable.tableSize", { cols: hoverCol, rows: hoverRow })
+              : t("dialogs.insertTable.hoverToSelect")
           }}
         </div>
 
         <div class="dialog__separator">
-          <span>{{ t('dialogs.insertTable.orSpecifySize') }}</span>
+          <span>{{ t("dialogs.insertTable.orSpecifySize") }}</span>
         </div>
 
         <!-- Manual input -->
         <div class="table-manual">
           <label class="table-manual__field">
-            <span>{{ t('dialogs.insertTable.rowsLabel') }}</span>
+            <span>{{ t("dialogs.insertTable.rowsLabel") }}</span>
             <input
               v-model="rowsInput"
               type="number"
@@ -63,7 +63,7 @@
             />
           </label>
           <label class="table-manual__field">
-            <span>{{ t('dialogs.insertTable.columnsLabel') }}</span>
+            <span>{{ t("dialogs.insertTable.columnsLabel") }}</span>
             <input
               v-model="colsInput"
               type="number"
@@ -76,7 +76,7 @@
         </div>
         <div class="table-manual__hint" :class="{ 'table-manual__hint--error': !canInsert }">
           {{
-            t('dialogs.insertTable.validationHint', {
+            t("dialogs.insertTable.validationHint", {
               minRows: MIN_ROWS,
               maxRows: MAX_ROWS,
               minCols: MIN_COLS,
@@ -87,31 +87,31 @@
 
         <!-- Column width mode -->
         <fieldset class="table-options">
-          <legend>{{ t('dialogs.insertTable.columnWidthLabel') }}</legend>
+          <legend>{{ t("dialogs.insertTable.columnWidthLabel") }}</legend>
           <label class="table-options__radio">
             <input type="radio" value="fixed" v-model="widthMode" />
-            <span>{{ t('dialogs.insertTable.fixedWidth') }}</span>
+            <span>{{ t("dialogs.insertTable.fixedWidth") }}</span>
           </label>
           <label class="table-options__radio">
             <input type="radio" value="autofit" v-model="widthMode" />
-            <span>{{ t('dialogs.insertTable.autofit') }}</span>
+            <span>{{ t("dialogs.insertTable.autofit") }}</span>
           </label>
         </fieldset>
 
         <!-- Preset table-style gallery -->
         <div class="dialog__separator">
-          <span>{{ t('dialogs.insertTable.style') }}</span>
+          <span>{{ t("dialogs.insertTable.style") }}</span>
         </div>
         <TableStyleGallery :current-style-id="styleId" @apply="(id: string) => (styleId = id)" />
       </div>
       <div class="dialog__footer">
-        <button class="dialog__btn" @mousedown.prevent="close">{{ t('common.cancel') }}</button>
+        <button class="dialog__btn" @mousedown.prevent="close">{{ t("common.cancel") }}</button>
         <button
           class="dialog__btn dialog__btn--primary"
           :disabled="!canInsert"
           @mousedown.prevent="insert()"
         >
-          {{ t('dialogs.insertTable.insertButton') }}
+          {{ t("dialogs.insertTable.insertButton") }}
         </button>
       </div>
     </div>
@@ -119,19 +119,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { useTranslation } from '../../i18n';
-import TableStyleGallery from '../ui/TableStyleGallery.vue';
-import { rememberedTableSize } from '../insertTableState';
+import { ref, computed, watch } from "vue";
+import { useTranslation } from "../../i18n";
+import TableStyleGallery from "../ui/TableStyleGallery.vue";
+import { rememberedTableSize } from "../insertTableState";
 
 const { t } = useTranslation();
 
 const props = defineProps<{ isOpen: boolean }>();
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: "close"): void;
   (
-    e: 'insert',
-    config: { rows: number; cols: number; autofit: boolean; styleId: string | null }
+    e: "insert",
+    config: { rows: number; cols: number; autofit: boolean; styleId: string | null },
   ): void;
 }>();
 
@@ -146,7 +146,7 @@ const hoverRow = ref(0);
 const hoverCol = ref(0);
 const rowsInput = ref<number | string>(rememberedTableSize.rows);
 const colsInput = ref<number | string>(rememberedTableSize.cols);
-const widthMode = ref<'fixed' | 'autofit'>('fixed');
+const widthMode = ref<"fixed" | "autofit">("fixed");
 // Selected preset style from the gallery; null = plain grid table.
 const styleId = ref<string | null>(null);
 
@@ -160,21 +160,21 @@ watch(
       hoverRow.value = 0;
       hoverCol.value = 0;
     }
-  }
+  },
 );
 
 const rowsNum = computed(() => Number.parseInt(String(rowsInput.value), 10));
 const colsNum = computed(() => Number.parseInt(String(colsInput.value), 10));
 const rowsValid = computed(
-  () => Number.isFinite(rowsNum.value) && rowsNum.value >= MIN_ROWS && rowsNum.value <= MAX_ROWS
+  () => Number.isFinite(rowsNum.value) && rowsNum.value >= MIN_ROWS && rowsNum.value <= MAX_ROWS,
 );
 const colsValid = computed(
-  () => Number.isFinite(colsNum.value) && colsNum.value >= MIN_COLS && colsNum.value <= MAX_COLS
+  () => Number.isFinite(colsNum.value) && colsNum.value >= MIN_COLS && colsNum.value <= MAX_COLS,
 );
 const canInsert = computed(() => rowsValid.value && colsValid.value);
 
 function close() {
-  emit('close');
+  emit("close");
 }
 
 function pickFromGrid(rows: number, cols: number) {
@@ -185,9 +185,9 @@ function pickFromGrid(rows: number, cols: number) {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
+  if (e.key === "Escape") {
     close();
-  } else if (e.key === 'Enter') {
+  } else if (e.key === "Enter") {
     e.preventDefault();
     insert();
   }
@@ -199,10 +199,10 @@ function insert() {
   const cols = Math.min(Math.max(MIN_COLS, colsNum.value), MAX_COLS);
   rememberedTableSize.rows = rows;
   rememberedTableSize.cols = cols;
-  emit('insert', {
+  emit("insert", {
     rows,
     cols,
-    autofit: widthMode.value === 'autofit',
+    autofit: widthMode.value === "autofit",
     styleId: styleId.value,
   });
   close();
@@ -304,7 +304,7 @@ function insert() {
 }
 .dialog__separator::before,
 .dialog__separator::after {
-  content: '';
+  content: "";
   flex: 1;
   height: 1px;
   background: var(--doc-border);

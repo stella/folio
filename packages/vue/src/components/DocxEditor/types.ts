@@ -29,7 +29,13 @@ import type {
   TemplateSlashMenuKeyAction,
   TemplateSlashMenuState,
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
-import type { Document, ParagraphAlignment, SdtProperties, TabStop, Theme } from "@stll/folio-core/types/document";
+import type {
+  Document,
+  ParagraphAlignment,
+  SdtProperties,
+  TabStop,
+  Theme,
+} from "@stll/folio-core/types/document";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";

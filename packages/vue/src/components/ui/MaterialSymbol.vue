@@ -40,8 +40,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, type CSSProperties } from 'vue';
-import iconPaths from './icon-paths.json';
+import { computed, type CSSProperties } from "vue";
+import iconPaths from "./icon-paths.json";
 
 const props = withDefaults(
   defineProps<{
@@ -50,7 +50,7 @@ const props = withDefaults(
     className?: string;
     style?: CSSProperties;
   }>(),
-  { size: 20, className: '' }
+  { size: 20, className: "" },
 );
 
 // JSON import is typed structurally; widen to a plain registry so the lookup
@@ -60,7 +60,7 @@ const registry: Record<string, string[]> = iconPaths;
 const paths = computed<string[] | null>(() => {
   const entry = registry[props.name];
   if (!entry) {
-    if (typeof console !== 'undefined') console.warn(`Icon not found: ${props.name}`);
+    if (typeof console !== "undefined") console.warn(`Icon not found: ${props.name}`);
     return null;
   }
   return entry;

@@ -228,7 +228,8 @@ const blockText = (block: FlowBlock): string => {
   return "";
 };
 
-const normalizedSearchText = (value: string): string => normalizeLineText(value).toLocaleLowerCase();
+const normalizedSearchText = (value: string): string =>
+  normalizeLineText(value).toLocaleLowerCase();
 
 const main = async (): Promise<void> => {
   const flags = parseArgs(process.argv.slice(2));

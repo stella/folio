@@ -20,13 +20,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed } from "vue";
 
 export type LineSpacingOption = {
   label: string;
   value: number;
   twipsValue: number;
-}
+};
 
 const props = withDefaults(
   defineProps<{
@@ -35,18 +35,18 @@ const props = withDefaults(
     disabled?: boolean;
     className?: string;
   }>(),
-  { disabled: false }
+  { disabled: false },
 );
 
 const emit = defineEmits<{
-  (e: 'change', twips: number): void;
+  (e: "change", twips: number): void;
 }>();
 
 const DEFAULT_OPTIONS: LineSpacingOption[] = [
-  { label: 'Single', value: 1.0, twipsValue: 240 },
-  { label: '1.15', value: 1.15, twipsValue: 276 },
-  { label: '1.5', value: 1.5, twipsValue: 360 },
-  { label: 'Double', value: 2.0, twipsValue: 480 },
+  { label: "Single", value: 1.0, twipsValue: 240 },
+  { label: "1.15", value: 1.15, twipsValue: 276 },
+  { label: "1.5", value: 1.5, twipsValue: 360 },
+  { label: "Double", value: 2.0, twipsValue: 480 },
 ];
 
 const resolvedOptions = computed(() => props.options ?? DEFAULT_OPTIONS);
@@ -58,7 +58,7 @@ const currentValue = computed(() => {
 function onChange(e: Event) {
   if (!(e.target instanceof HTMLSelectElement)) return;
   const v = parseInt(e.target.value, 10);
-  if (!isNaN(v)) emit('change', v);
+  if (!isNaN(v)) emit("change", v);
 }
 </script>
 

@@ -38,5 +38,7 @@ defineEmits<{
   padding: 2px;
   transition: opacity 0.15s ease;
 }
-.resolved-comment-marker:hover { opacity: 0.7; }
+.resolved-comment-marker:hover {
+  opacity: 0.7;
+}
 </style>

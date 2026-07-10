@@ -32,9 +32,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, type CSSProperties } from 'vue';
-import type { Comment } from '@stll/folio-core/types/content';
-import MaterialSymbol from './ui/MaterialSymbol.vue';
+import { computed, type CSSProperties } from "vue";
+import type { Comment } from "@stll/folio-core/types/content";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
 
 const props = defineProps<{
   comments: Comment[];
@@ -46,14 +46,14 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  (e: 'marker-click', commentId: number): void;
+  (e: "marker-click", commentId: number): void;
 }>();
 
 type Marker = {
   comment: Comment;
   isResolved: boolean;
   y: number;
-}
+};
 
 const markers = computed<Marker[]>(() => {
   // Hide all markers when the sidebar is open — cards are visible
@@ -66,8 +66,8 @@ const markers = computed<Marker[]>(() => {
   // Build a comment-id → element map in one querySelectorAll, then
   // look up by id (avoids N querySelectors per render).
   const els = new Map<string, HTMLElement>();
-  for (const el of container.querySelectorAll<HTMLElement>('[data-comment-id]')) {
-    const id = el.dataset['commentId'];
+  for (const el of container.querySelectorAll<HTMLElement>("[data-comment-id]")) {
+    const id = el.dataset["commentId"];
     if (id && !els.has(id)) els.set(id, el);
   }
 
@@ -91,11 +91,11 @@ const markers = computed<Marker[]>(() => {
 // zoom back out so the markers stay glued to the page right edge
 // across zoom levels (mirrors UnifiedSidebar.vue's asideStyle).
 const containerStyle = computed<CSSProperties>(() => ({
-  position: 'absolute',
+  position: "absolute",
   top: 0,
   left: `calc(50% + ${props.pageWidthPx / props.zoom / 2 + 6}px)`,
   zIndex: 30,
-  pointerEvents: 'none',
+  pointerEvents: "none",
 }));
 </script>
 
@@ -118,5 +118,7 @@ const containerStyle = computed<CSSProperties>(() => ({
   font-family: inherit;
   transition: opacity 0.15s ease;
 }
-.docx-comment-margin-markers__btn:hover { opacity: 0.7; }
+.docx-comment-margin-markers__btn:hover {
+  opacity: 0.7;
+}
 </style>

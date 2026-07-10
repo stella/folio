@@ -5,12 +5,12 @@
     aria-live="polite"
     role="status"
   >
-    {{ t('viewer.pageIndicator', { current: currentPage, total: totalPages }) }}
+    {{ t("viewer.pageIndicator", { current: currentPage, total: totalPages }) }}
   </div>
 </template>
 
 <script setup lang="ts">
-import { useTranslation } from '../i18n';
+import { useTranslation } from "../i18n";
 
 defineProps<{
   currentPage: number;
@@ -37,7 +37,7 @@ const { t } = useTranslation();
   padding: 6px 12px;
   border-radius: 4px;
   font-size: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-weight: 500;
   white-space: nowrap;
   pointer-events: none;

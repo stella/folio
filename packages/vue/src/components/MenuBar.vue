@@ -46,12 +46,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useTranslation } from '../i18n';
-import MaterialSymbol from './ui/MaterialSymbol.vue';
-import type { MenuEntry } from './ui/MenuDropdown.vue';
-import TableGridInline from './ui/TableGridInline.vue';
-import { useFolioUI } from '../ui/folio-ui';
+import { computed } from "vue";
+import { useTranslation } from "../i18n";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
+import type { MenuEntry } from "./ui/MenuDropdown.vue";
+import TableGridInline from "./ui/TableGridInline.vue";
+import { useFolioUI } from "../ui/folio-ui";
 
 // Resolve Menu from the FolioUI injection provider so a host override takes
 // effect here too (previously a static import of MenuDropdown.vue).
@@ -67,82 +67,88 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  (e: 'action', action: string): void;
-  (e: 'insert-table', rows: number, cols: number): void;
+  (e: "action", action: string): void;
+  (e: "insert-table", rows: number, cols: number): void;
 }>();
 
 const { t } = useTranslation();
 
 function act(action: string) {
-  return () => emit('action', action);
+  return () => emit("action", action);
 }
 
 const fileItems = computed<MenuEntry[]>(() => {
   const items: MenuEntry[] = [];
   if (props.showFileOpen) {
     items.push({
-      icon: 'file_upload',
-      label: t('toolbar.open'),
-      shortcut: t('toolbar.openShortcut'),
-      onClick: act('open'),
+      icon: "file_upload",
+      label: t("toolbar.open"),
+      shortcut: t("toolbar.openShortcut"),
+      onClick: act("open"),
     });
   }
   items.push(
     {
-      icon: 'file_download',
-      label: t('toolbar.save'),
-      shortcut: t('toolbar.saveShortcut'),
-      onClick: act('save'),
+      icon: "file_download",
+      label: t("toolbar.save"),
+      shortcut: t("toolbar.saveShortcut"),
+      onClick: act("save"),
     },
-    { type: 'separator' },
+    { type: "separator" },
     {
-      label: t('toolbar.findReplace'),
-      shortcut: t('toolbar.findReplaceShortcut'),
-      onClick: act('findReplace'),
+      label: t("toolbar.findReplace"),
+      shortcut: t("toolbar.findReplaceShortcut"),
+      onClick: act("findReplace"),
     },
-    { type: 'separator' },
-    { icon: 'settings', label: t('toolbar.pageSetup'), onClick: act('pageSetup') }
+    { type: "separator" },
+    { icon: "settings", label: t("toolbar.pageSetup"), onClick: act("pageSetup") },
   );
   return items;
 });
 
 const formatItems = computed<MenuEntry[]>(() => [
-  { icon: 'format_textdirection_l_to_r', label: t('toolbar.leftToRight'), onClick: act('dirLTR') },
-  { icon: 'format_textdirection_r_to_l', label: t('toolbar.rightToLeft'), onClick: act('dirRTL') },
+  { icon: "format_textdirection_l_to_r", label: t("toolbar.leftToRight"), onClick: act("dirLTR") },
+  { icon: "format_textdirection_r_to_l", label: t("toolbar.rightToLeft"), onClick: act("dirRTL") },
 ]);
 
 const insertItems = computed<MenuEntry[]>(() => {
-  const items: MenuEntry[] = [{ icon: 'image', label: t('toolbar.image'), onClick: act('insertImage') }];
+  const items: MenuEntry[] = [
+    { icon: "image", label: t("toolbar.image"), onClick: act("insertImage") },
+  ];
   // Gate the Insert > Table item on `showTableInsert`, mirroring React's
   // FormattingBar Insert-Table control gating.
   if (props.showTableInsert) {
-    items.push({ icon: 'grid_on', label: t('toolbar.table'), key: 'table', submenu: true });
+    items.push({ icon: "grid_on", label: t("toolbar.table"), key: "table", submenu: true });
   }
   items.push(
-    { type: 'separator' },
-    { icon: 'page_break', label: t('toolbar.break'), key: 'break', submenu: true },
-    { icon: 'format_list_numbered', label: t('toolbar.tableOfContents'), onClick: act('insertTOC') },
-    { icon: 'branding_watermark', label: t('toolbar.watermark'), onClick: act('watermark') },
+    { type: "separator" },
+    { icon: "page_break", label: t("toolbar.break"), key: "break", submenu: true },
+    {
+      icon: "format_list_numbered",
+      label: t("toolbar.tableOfContents"),
+      onClick: act("insertTOC"),
+    },
+    { icon: "branding_watermark", label: t("toolbar.watermark"), onClick: act("watermark") },
   );
   return items;
 });
 
 const breakItems = computed(() => [
-  { icon: 'page_break', label: t('toolbar.pageBreak'), action: 'insertPageBreak' },
+  { icon: "page_break", label: t("toolbar.pageBreak"), action: "insertPageBreak" },
   {
-    icon: 'horizontal_rule',
-    label: t('toolbar.sectionBreakNextPage'),
-    action: 'insertSectionBreakNextPage',
+    icon: "horizontal_rule",
+    label: t("toolbar.sectionBreakNextPage"),
+    action: "insertSectionBreakNextPage",
   },
   {
-    icon: 'border_horizontal',
-    label: t('toolbar.sectionBreakContinuous'),
-    action: 'insertSectionBreakContinuous',
+    icon: "border_horizontal",
+    label: t("toolbar.sectionBreakContinuous"),
+    action: "insertSectionBreakContinuous",
   },
 ]);
 
 const helpItems = computed<MenuEntry[]>(() => [
-  { label: t('toolbar.reportIssue'), onClick: act('reportIssue') },
+  { label: t("toolbar.reportIssue"), onClick: act("reportIssue") },
 ]);
 </script>
 

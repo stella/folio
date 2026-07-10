@@ -33,15 +33,15 @@
 
     <div class="tc-card__body">
       <template v-if="change.type === 'replacement'">
-        {{ t('trackedChanges.replaced') }}
+        {{ t("trackedChanges.replaced") }}
         <span class="tc-card__deleted"
-          >&quot;{{ truncateText(change.deletedText || '') }}&quot;</span
+          >&quot;{{ truncateText(change.deletedText || "") }}&quot;</span
         >
-        {{ t('trackedChanges.with') }}
+        {{ t("trackedChanges.with") }}
         <span class="tc-card__inserted">&quot;{{ truncateText(change.text) }}&quot;</span>
       </template>
       <template v-else-if="change.type === 'paragraphMarkInsertion'">
-        {{ t('revisions.paragraphMarkInserted')
+        {{ t("revisions.paragraphMarkInserted")
         }}<template v-if="change.text"
           >:
           <span class="tc-card__inserted"
@@ -50,7 +50,7 @@
         >
       </template>
       <template v-else-if="change.type === 'paragraphMarkDeletion'">
-        {{ t('revisions.paragraphMarkDeleted')
+        {{ t("revisions.paragraphMarkDeleted")
         }}<template v-if="change.text"
           >:
           <span class="tc-card__deleted"
@@ -59,7 +59,7 @@
         >
       </template>
       <template v-else-if="change.type === 'paragraphPropertiesChanged'">
-        {{ t('revisions.paragraphPropertiesChanged')
+        {{ t("revisions.paragraphPropertiesChanged")
         }}<template v-if="change.text"
           >:
           <span class="tc-card__changed"
@@ -68,37 +68,37 @@
         >
       </template>
       <template v-else-if="change.type === 'rowInserted'">
-        <span class="tc-card__inserted">{{ t('revisions.rowInserted') }}</span>
+        <span class="tc-card__inserted">{{ t("revisions.rowInserted") }}</span>
       </template>
       <template v-else-if="change.type === 'rowDeleted'">
-        <span class="tc-card__deleted">{{ t('revisions.rowDeleted') }}</span>
+        <span class="tc-card__deleted">{{ t("revisions.rowDeleted") }}</span>
       </template>
       <template v-else-if="change.type === 'cellInserted'">
-        <span class="tc-card__inserted">{{ t('revisions.cellInserted') }}</span>
+        <span class="tc-card__inserted">{{ t("revisions.cellInserted") }}</span>
       </template>
       <template v-else-if="change.type === 'cellDeleted'">
-        <span class="tc-card__deleted">{{ t('revisions.cellDeleted') }}</span>
+        <span class="tc-card__deleted">{{ t("revisions.cellDeleted") }}</span>
       </template>
       <template v-else-if="change.type === 'cellMerged'">
-        <span class="tc-card__changed">{{ t('revisions.cellMerged') }}</span>
+        <span class="tc-card__changed">{{ t("revisions.cellMerged") }}</span>
       </template>
       <template v-else-if="change.type === 'rowPropertiesChanged'">
-        <span class="tc-card__changed">{{ t('revisions.rowPropertiesChanged') }}</span>
+        <span class="tc-card__changed">{{ t("revisions.rowPropertiesChanged") }}</span>
       </template>
       <template v-else-if="change.type === 'cellPropertiesChanged'">
-        <span class="tc-card__changed">{{ t('revisions.cellPropertiesChanged') }}</span>
+        <span class="tc-card__changed">{{ t("revisions.cellPropertiesChanged") }}</span>
       </template>
       <template v-else-if="change.type === 'tablePropertiesChanged'">
-        <span class="tc-card__changed">{{ t('revisions.tablePropertiesChanged') }}</span>
+        <span class="tc-card__changed">{{ t("revisions.tablePropertiesChanged") }}</span>
       </template>
       <template v-else-if="change.type === 'tableInserted'">
-        <span class="tc-card__inserted">{{ t('revisions.tableInserted') }}</span>
+        <span class="tc-card__inserted">{{ t("revisions.tableInserted") }}</span>
       </template>
       <template v-else-if="change.type === 'tableDeleted'">
-        <span class="tc-card__deleted">{{ t('revisions.tableDeleted') }}</span>
+        <span class="tc-card__deleted">{{ t("revisions.tableDeleted") }}</span>
       </template>
       <template v-else>
-        {{ change.type === 'insertion' ? t('inserted') : t('deleted') }}
+        {{ change.type === "insertion" ? t("inserted") : t("deleted") }}
         <span :class="change.type === 'insertion' ? 'tc-card__inserted' : 'tc-card__deleted'">
           &quot;{{ truncateText(change.text) }}&quot;
         </span>

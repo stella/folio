@@ -24,7 +24,7 @@ export type CommentSidebarItem = {
   comment?: Comment;
   replies?: Comment[];
   change?: TrackedChangeEntry;
-}
+};
 
 export type UseCommentSidebarItemsOptions = {
   comments: Ref<Comment[]>;
@@ -32,7 +32,7 @@ export type UseCommentSidebarItemsOptions = {
   showResolved?: Ref<boolean>;
   isAddingComment?: Ref<boolean>;
   addCommentYPosition?: Ref<number | null>;
-}
+};
 
 export function useCommentSidebarItems({
   comments,

@@ -8,7 +8,7 @@ export type FontOption = {
   name: string;
   fontFamily: string;
   category?: "sans-serif" | "serif" | "monospace" | "other";
-}
+};
 
 /**
  * Normalize a `fontFamilies` prop (mix of strings and FontOption

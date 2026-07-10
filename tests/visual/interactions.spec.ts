@@ -423,10 +423,7 @@ test.describe("rendered page-break hints", () => {
       mode: "hintAfterContent" | "hintAfterBreak" | "explicitAndHintAfterBreak",
     ) => {
       await page.evaluate((nextMode) => {
-        const view = globalThis.__folioPlayground
-          ?.getEditorRef()
-          ?.getEditorRef()
-          ?.getView();
+        const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
         if (!view) {
           throw new Error("Editor view unavailable");
         }

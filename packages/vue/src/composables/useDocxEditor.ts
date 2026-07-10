@@ -40,10 +40,7 @@ import {
 import type { HiddenEditorManager } from "@stll/folio-core/controller/hiddenEditorManager";
 import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
 import type { LayoutOutcome, LayoutRunOptions } from "@stll/folio-core/controller/layoutPipeline";
-import {
-  browserClock,
-  createLayoutScheduler,
-} from "@stll/folio-core/controller/layoutScheduler";
+import { browserClock, createLayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
 import type { LayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { parseDocx } from "@stll/folio-core/docx/parser";
@@ -100,11 +97,7 @@ import type {
 } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import type { Footnote } from "@stll/folio-core/types/content";
-import type {
-  Document,
-  HeaderFooter,
-  SectionProperties,
-} from "@stll/folio-core/types/document";
+import type { Document, HeaderFooter, SectionProperties } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
 // ============================================================================
@@ -230,9 +223,9 @@ function resolveHeaderFooters(
   const headers = pkg.headers;
   const footers = pkg.footers;
   const lookupHeader = (rId: string | null): HeaderFooter | null =>
-    rId ? headers?.get(rId) ?? null : null;
+    rId ? (headers?.get(rId) ?? null) : null;
   const lookupFooter = (rId: string | null): HeaderFooter | null =>
-    rId ? footers?.get(rId) ?? null : null;
+    rId ? (footers?.get(rId) ?? null) : null;
 
   let headerRId: string | null = null;
   let firstHeaderRId: string | null = null;
@@ -473,7 +466,7 @@ export type UseDocxEditorOptions = {
    * only — never blocks or poisons the save. Mirrors React's callback.
    */
   onSelectiveSaveTripwire?: ((result: TripwireResult) => void) | undefined;
-}
+};
 
 export type UseDocxEditorReturn = {
   /** The headless controller (imperative API + layout access + events). */
@@ -517,7 +510,7 @@ export type UseDocxEditorReturn = {
   reLayout: () => void;
   /** Destroy the editor view and clean up listeners. */
   destroy: () => void;
-}
+};
 
 export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorReturn {
   const {
@@ -650,8 +643,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     const body = model?.package.document;
     // Lead geometry from the first section; trailing section falls back to the
     // body's final section properties. Mirrors the React split.
-    const sectionProps =
-      body?.sections?.[0]?.properties ?? body?.finalSectionProperties ?? null;
+    const sectionProps = body?.sections?.[0]?.properties ?? body?.finalSectionProperties ?? null;
 
     const pageSize = getPageSize(sectionProps);
     const margins = getMargins(sectionProps);
@@ -842,15 +834,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     setSuggestionMode(active, view.state, view.dispatch, toValue(author));
   }
 
-  watch(
-    [() => toValue(editorMode), () => toValue(author)],
-    () => {
-      const view = editorView.value;
-      if (view) {
-        syncSuggestionMode(view);
-      }
-    },
-  );
+  watch([() => toValue(editorMode), () => toValue(author)], () => {
+    const view = editorView.value;
+    if (view) {
+      syncSuggestionMode(view);
+    }
+  });
 
   // Keep the hidden view's editable() ARIA state in sync with readOnly.
   watch(
@@ -991,9 +980,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // edit that landed mid-save and diff against the wrong baseline.
     const state = view.state;
 
-    const { resolveSelectiveSaveFlags } = await import(
-      "@stll/folio-core/docx/selectiveSaveFlags"
-    );
+    const { resolveSelectiveSaveFlags } = await import("@stll/folio-core/docx/selectiveSaveFlags");
     const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
 
     const updatedDoc = fromProseDoc(state.doc, base);
@@ -1036,9 +1023,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     if (flags.selectiveSaveTripwire && fullBuffer && onSelectiveSaveTripwire) {
       // The comparison itself never blocks the save path.
       try {
-        const { compareSelectiveVsFull } = await import(
-          "@stll/folio-core/docx/selectiveSaveTripwire"
-        );
+        const { compareSelectiveVsFull } =
+          await import("@stll/folio-core/docx/selectiveSaveTripwire");
         onSelectiveSaveTripwire(await compareSelectiveVsFull(selectiveBuffer, fullBuffer));
       } catch {
         // Comparison failures must never poison the save path.

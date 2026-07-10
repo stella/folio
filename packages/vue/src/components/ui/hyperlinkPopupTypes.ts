@@ -15,4 +15,4 @@ export type HyperlinkPopupData = {
    *  renders inside that viewport with `position: absolute`, so the
    *  browser handles repositioning during scroll for free. */
   position: { top: number; left: number };
-}
+};

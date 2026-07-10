@@ -1,6 +1,6 @@
 ---
 name: plan
-description: 'Create a new implementation plan in the repo''s planning area.'
+description: "Create a new implementation plan in the repo's planning area."
 ---
 
 # Create Plan
@@ -71,9 +71,11 @@ creating duplicate systems.
    ## Scope
 
    **In scope:**
+
    - ...
 
    **Out of scope:**
+
    - ...
 
    ## Implementation

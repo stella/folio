@@ -1,4 +1,4 @@
-import { reactive } from 'vue';
+import { reactive } from "vue";
 
 /**
  * Last-used Insert-Table dimensions. Module-level so the dialog reopens with

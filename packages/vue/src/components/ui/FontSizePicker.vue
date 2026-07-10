@@ -12,15 +12,23 @@
       :disabled="disabled || currentValue <= minSize"
       title="Decrease font size"
       @click.prevent="handleDecrease"
-    >−</button>
+    >
+      −
+    </button>
     <input
       class="docx-font-size__input"
       type="text"
       :value="displayValue"
       :disabled="disabled"
       :placeholder="placeholder"
-      @keydown.up.prevent="handleDecrease(); $event.stopPropagation()"
-      @keydown.down.prevent="handleIncrease(); $event.stopPropagation()"
+      @keydown.up.prevent="
+        handleDecrease();
+        $event.stopPropagation();
+      "
+      @keydown.down.prevent="
+        handleIncrease();
+        $event.stopPropagation();
+      "
       @keydown.enter.prevent="commit($event)"
       @blur="commit($event)"
     />
@@ -30,7 +38,9 @@
       :disabled="disabled || currentValue >= maxSize"
       title="Increase font size"
       @click.prevent="handleIncrease"
-    >+</button>
+    >
+      +
+    </button>
   </div>
 </template>
 
@@ -38,11 +48,11 @@
 // Re-exported for parity with React's FontSizePicker, which exposes these
 // half-point/point unit helpers from the same module as the component.
 // `<script setup>` can't carry re-exports, so they live in a plain block.
-export { halfPointsToPoints, pointsToHalfPoints } from '@stll/folio-core/utils/units';
+export { halfPointsToPoints, pointsToHalfPoints } from "@stll/folio-core/utils/units";
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed } from "vue";
 
 const props = withDefaults(
   defineProps<{
@@ -57,12 +67,12 @@ const props = withDefaults(
     disabled: false,
     minSize: 1,
     maxSize: 1638,
-    placeholder: '11',
-  }
+    placeholder: "11",
+  },
 );
 
 const emit = defineEmits<{
-  (e: 'change', size: number): void;
+  (e: "change", size: number): void;
 }>();
 
 const DEFAULT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
@@ -70,7 +80,7 @@ const DEFAULT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
 const resolvedSizes = computed(() => props.sizes ?? DEFAULT_SIZES);
 const currentValue = computed(() => props.value ?? parseInt(props.placeholder, 10) ?? 11);
 const displayValue = computed(() =>
-  props.value !== undefined ? String(props.value) : props.placeholder
+  props.value !== undefined ? String(props.value) : props.placeholder,
 );
 
 function getNext(curr: number) {
@@ -84,17 +94,17 @@ function getPrev(curr: number) {
 
 function handleDecrease() {
   if (props.disabled) return;
-  emit('change', getPrev(currentValue.value));
+  emit("change", getPrev(currentValue.value));
 }
 function handleIncrease() {
   if (props.disabled) return;
-  emit('change', getNext(currentValue.value));
+  emit("change", getNext(currentValue.value));
 }
 function commit(e: Event) {
   if (!(e.target instanceof HTMLInputElement)) return;
   const v = parseFloat(e.target.value);
   if (!isNaN(v) && v >= props.minSize && v <= props.maxSize) {
-    emit('change', Math.round(v * 2) / 2);
+    emit("change", Math.round(v * 2) / 2);
   }
 }
 </script>

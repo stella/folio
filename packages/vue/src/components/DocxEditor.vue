@@ -504,7 +504,7 @@ function setDisplayMode(mode: DisplayMode): void {
 // Root modifier class driving the tracked-change display CSS (mirrors React's
 // `folio-root--<mode>`). `all-markup` is the default render, so it adds no class.
 const displayModeClass = computed(() =>
-  displayMode.value === "all-markup" ? "" : `folio-root--${displayMode.value}`
+  displayMode.value === "all-markup" ? "" : `folio-root--${displayMode.value}`,
 );
 
 const { t } = useTranslation();

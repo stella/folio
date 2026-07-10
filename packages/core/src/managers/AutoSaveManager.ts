@@ -41,7 +41,7 @@ export type AutoSaveManagerOptions = {
   onError?: (error: Error) => void;
   /** Callback when recovery data is found. */
   onRecoveryAvailable?: (savedDocument: SavedDocumentData) => void;
-}
+};
 
 /** Saved document data structure. */
 export type SavedDocumentData = {
@@ -53,7 +53,7 @@ export type SavedDocumentData = {
   version: number;
   /** Optional document identifier. */
   documentId?: string;
-}
+};
 
 /** AutoSaveManager snapshot for UI consumption. */
 export type AutoSaveSnapshot = {
@@ -61,7 +61,7 @@ export type AutoSaveSnapshot = {
   lastSaveTime: Date | null;
   hasRecoveryData: boolean;
   isEnabled: boolean;
-}
+};
 
 // ============================================================================
 // CONSTANTS
@@ -139,9 +139,7 @@ export class AutoSaveManager extends Subscribable<AutoSaveSnapshot> {
   private readonly debounceDelay: number;
   private readonly onSaveCallback: ((timestamp: Date) => void) | undefined;
   private readonly onErrorCallback: ((error: Error) => void) | undefined;
-  private readonly onRecoveryAvailableCallback:
-    | ((saved: SavedDocumentData) => void)
-    | undefined;
+  private readonly onRecoveryAvailableCallback: ((saved: SavedDocumentData) => void) | undefined;
 
   private readonly storageAvailable: boolean;
   private currentDocument: Document | null = null;

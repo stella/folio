@@ -54,7 +54,7 @@ export type UseAutoSaveOptions = {
   saveOnChange?: boolean;
   /** Debounce delay for saveOnChange in milliseconds. */
   debounceDelay?: number;
-}
+};
 
 export type UseAutoSaveReturn = {
   status: Ref<AutoSaveStatus>;
@@ -68,7 +68,7 @@ export type UseAutoSaveReturn = {
   isEnabled: Ref<boolean>;
   enable: () => void;
   disable: () => void;
-}
+};
 
 export function useAutoSave(
   document: MaybeRef<Document | null | undefined>,

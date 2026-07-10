@@ -24,12 +24,12 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:checked', value: boolean): void;
+  (e: "update:checked", value: boolean): void;
 }>();
 
 function onChange(event: Event) {
   if (!(event.target instanceof HTMLInputElement)) return;
-  emit('update:checked', event.target.checked);
+  emit("update:checked", event.target.checked);
 }
 </script>
 

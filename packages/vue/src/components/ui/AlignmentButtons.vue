@@ -40,10 +40,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import MaterialSymbol from './MaterialSymbol.vue';
-import type { ParagraphAlignment } from './AlignmentButtons.types';
-import { useFolioUI } from '../../ui/folio-ui';
+import { ref, computed } from "vue";
+import MaterialSymbol from "./MaterialSymbol.vue";
+import type { ParagraphAlignment } from "./AlignmentButtons.types";
+import { useFolioUI } from "../../ui/folio-ui";
 
 // Resolve Popover from the FolioUI injection provider so a host override
 // takes effect here too (previously a static import).
@@ -54,31 +54,29 @@ const props = withDefaults(
     value?: ParagraphAlignment;
     disabled?: boolean;
   }>(),
-  { value: 'left', disabled: false }
+  { value: "left", disabled: false },
 );
 
 const emit = defineEmits<{
-  (e: 'change', alignment: ParagraphAlignment): void;
+  (e: "change", alignment: ParagraphAlignment): void;
 }>();
 
 const isOpen = ref(false);
 
 const OPTIONS: { value: ParagraphAlignment; label: string; icon: string; shortcut: string }[] = [
-  { value: 'left', label: 'Align left', icon: 'format_align_left', shortcut: 'Ctrl+L' },
-  { value: 'center', label: 'Center', icon: 'format_align_center', shortcut: 'Ctrl+E' },
-  { value: 'right', label: 'Align right', icon: 'format_align_right', shortcut: 'Ctrl+R' },
-  { value: 'both', label: 'Justify', icon: 'format_align_justify', shortcut: 'Ctrl+J' },
+  { value: "left", label: "Align left", icon: "format_align_left", shortcut: "Ctrl+L" },
+  { value: "center", label: "Center", icon: "format_align_center", shortcut: "Ctrl+E" },
+  { value: "right", label: "Align right", icon: "format_align_right", shortcut: "Ctrl+R" },
+  { value: "both", label: "Justify", icon: "format_align_justify", shortcut: "Ctrl+J" },
 ];
 
 const currentIcon = computed(
-  () => OPTIONS.find((o) => o.value === props.value)?.icon ?? 'format_align_left'
+  () => OPTIONS.find((o) => o.value === props.value)?.icon ?? "format_align_left",
 );
-const currentLabel = computed(
-  () => OPTIONS.find((o) => o.value === props.value)?.label ?? 'Left'
-);
+const currentLabel = computed(() => OPTIONS.find((o) => o.value === props.value)?.label ?? "Left");
 
 function select(v: ParagraphAlignment) {
-  emit('change', v);
+  emit("change", v);
   isOpen.value = false;
 }
 </script>
@@ -100,8 +98,13 @@ function select(v: ParagraphAlignment) {
   background: var(--doc-bg-hover);
   color: var(--doc-text);
 }
-.docx-align__btn--open { background: var(--doc-bg-hover); }
-.docx-align__btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.docx-align__btn--open {
+  background: var(--doc-bg-hover);
+}
+.docx-align__btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
 .docx-align__panel {
   display: flex;
   gap: 2px;
@@ -120,7 +123,9 @@ function select(v: ParagraphAlignment) {
   color: var(--doc-text-muted);
   cursor: pointer;
 }
-.docx-align__option:hover { background: var(--doc-bg-hover); }
+.docx-align__option:hover {
+  background: var(--doc-bg-hover);
+}
 .docx-align__option--active {
   background: var(--doc-primary-light);
   color: var(--doc-primary);

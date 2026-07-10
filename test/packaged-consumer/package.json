@@ -2,6 +2,6 @@
   "name": "folio-packaged-consumer",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
-  "description": "Clean-room consumer that a production Vite build runs against the PACKED @stll/folio-* tarballs (not source). Exercises the real downstream bundler path so a packaging regression — e.g. a worker `new URL(..., import.meta.url)` target that the dist does not ship — fails CI. Driven by scripts/packaged-consumer-build.ts."
+  "description": "Clean-room consumer that a production Vite build runs against the PACKED @stll/folio-* tarballs (not source). Exercises the real downstream bundler path so a packaging regression — e.g. a worker `new URL(..., import.meta.url)` target that the dist does not ship — fails CI. Driven by scripts/packaged-consumer-build.ts.",
+  "type": "module"
 }

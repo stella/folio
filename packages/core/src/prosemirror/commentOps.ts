@@ -39,7 +39,7 @@ export type AddCommentOptions = {
   text: string;
   author: string;
   search?: string;
-}
+};
 
 /**
  * Locate the comment range (paragraph, narrowed by `search`), add the comment
@@ -83,7 +83,7 @@ export type ProposeChangeOptions = {
   search: string;
   replaceWith: string;
   author: string;
-}
+};
 
 /**
  * Apply a tracked change (insertion / deletion / replace) to the located range.

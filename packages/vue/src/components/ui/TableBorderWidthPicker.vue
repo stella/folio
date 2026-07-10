@@ -25,10 +25,7 @@
           class="docx-tbwidth__option"
           @click.prevent="pick(w.eighths)"
         >
-          <span
-            class="docx-tbwidth__preview"
-            :style="{ borderTopWidth: w.previewPx + 'px' }"
-          />
+          <span class="docx-tbwidth__preview" :style="{ borderTopWidth: w.previewPx + 'px' }" />
           <span class="docx-tbwidth__label">{{ w.label }}</span>
         </button>
       </div>
@@ -37,9 +34,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import MaterialSymbol from './MaterialSymbol.vue';
-import { useFolioUI } from '../../ui/folio-ui';
+import { ref } from "vue";
+import MaterialSymbol from "./MaterialSymbol.vue";
+import { useFolioUI } from "../../ui/folio-ui";
 
 // Resolve Popover from the FolioUI injection provider so a host override
 // takes effect here too (previously a static import).
@@ -49,36 +46,44 @@ defineProps<{ disabled?: boolean }>();
 
 const emit = defineEmits<{
   // OOXML w:sz value: eighths of a point.
-  (e: 'change', eighths: number): void;
+  (e: "change", eighths: number): void;
 }>();
 
 const isOpen = ref(false);
 
 const WIDTHS = [
-  { label: '0.5pt', eighths: 4, previewPx: 1 },
-  { label: '0.75pt', eighths: 6, previewPx: 1 },
-  { label: '1pt', eighths: 8, previewPx: 2 },
-  { label: '1.5pt', eighths: 12, previewPx: 2 },
-  { label: '2.25pt', eighths: 18, previewPx: 3 },
-  { label: '3pt', eighths: 24, previewPx: 4 },
-  { label: '4.5pt', eighths: 36, previewPx: 6 },
-  { label: '6pt', eighths: 48, previewPx: 8 },
+  { label: "0.5pt", eighths: 4, previewPx: 1 },
+  { label: "0.75pt", eighths: 6, previewPx: 1 },
+  { label: "1pt", eighths: 8, previewPx: 2 },
+  { label: "1.5pt", eighths: 12, previewPx: 2 },
+  { label: "2.25pt", eighths: 18, previewPx: 3 },
+  { label: "3pt", eighths: 24, previewPx: 4 },
+  { label: "4.5pt", eighths: 36, previewPx: 6 },
+  { label: "6pt", eighths: 48, previewPx: 8 },
 ];
 
 function pick(eighths: number) {
-  emit('change', eighths);
+  emit("change", eighths);
   isOpen.value = false;
 }
 </script>
 
 <style scoped>
 .docx-tbwidth__btn {
-  width: 28px; height: 28px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: 6px;
-  background: transparent; color: var(--doc-text-muted); cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--doc-text-muted);
+  cursor: pointer;
 }
-.docx-tbwidth__btn:hover:not(:disabled) { background: var(--doc-bg-hover); }
+.docx-tbwidth__btn:hover:not(:disabled) {
+  background: var(--doc-bg-hover);
+}
 .docx-tbwidth__panel {
   padding: 4px 0;
   min-width: 120px;
@@ -94,7 +99,9 @@ function pick(eighths: number) {
   cursor: pointer;
   text-align: left;
 }
-.docx-tbwidth__option:hover { background: var(--doc-bg-hover); }
+.docx-tbwidth__option:hover {
+  background: var(--doc-bg-hover);
+}
 .docx-tbwidth__preview {
   flex-shrink: 0;
   display: inline-block;

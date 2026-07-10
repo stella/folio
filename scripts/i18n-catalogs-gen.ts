@@ -38,10 +38,7 @@ const LOCALES = [
   "zh-CN",
 ] as const;
 
-const messagesDir = path.resolve(
-  import.meta.dir,
-  "../packages/core/src/i18n/messages",
-);
+const messagesDir = path.resolve(import.meta.dir, "../packages/core/src/i18n/messages");
 const outputPath = path.join(messagesDir, "catalogs.gen.ts");
 
 const entries = LOCALES.map((locale) => {

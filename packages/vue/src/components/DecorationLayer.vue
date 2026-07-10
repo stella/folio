@@ -11,10 +11,10 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { EditorState } from 'prosemirror-state';
-import type { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
-import type { LayoutSelectionGate } from '@stll/folio-core/paged-layout/LayoutSelectionGate';
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import type { EditorState } from "prosemirror-state";
+import type { Decoration, DecorationSet, EditorView } from "prosemirror-view";
+import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
 
 const props = defineProps<{
   getView: () => EditorView | null;
@@ -59,14 +59,14 @@ onBeforeUnmount(() => {
 
 watch(
   () => [props.zoom, props.transactionVersion, renderEpoch.value],
-  () => scheduleSync()
+  () => scheduleSync(),
 );
 
 function syncDecorations(
   view: EditorView,
   pagesContainer: HTMLElement,
   overlay: HTMLElement,
-  zoom: number
+  zoom: number,
 ) {
   const decorations = collectDecorations(view.state);
   if (decorations.length === 0) {
@@ -84,7 +84,7 @@ function syncDecorations(
       if (!dom) continue;
       const coords = ctx.getCoordinatesForPosition(from);
       if (!coords) continue;
-      const wrapper = document.createElement('div');
+      const wrapper = document.createElement("div");
       wrapper.style.cssText =
         `position:absolute;left:${coords.x + offset.x}px;top:${coords.y + offset.y}px;` +
         `height:${coords.height}px;`;
@@ -97,15 +97,15 @@ function syncDecorations(
     if (!attrs) continue;
     const rects = ctx.getRectsForRange(from, to);
     for (const rect of rects) {
-      const el = document.createElement('div');
+      const el = document.createElement("div");
       for (const [name, value] of Object.entries(attrs)) {
-        if (name === 'nodeName') continue;
+        if (name === "nodeName") continue;
         el.setAttribute(name, value);
       }
       const baseStyle =
         `position:absolute;left:${rect.x + offset.x}px;top:${rect.y + offset.y}px;` +
         `width:${rect.width}px;height:${rect.height}px;`;
-      el.style.cssText = baseStyle + (attrs['style'] ?? '');
+      el.style.cssText = baseStyle + (attrs["style"] ?? "");
       fragment.appendChild(el);
     }
   }
@@ -117,7 +117,7 @@ type CollectedDecoration = {
   decoration: Decoration;
   from: number;
   to: number;
-}
+};
 
 function collectDecorations(state: EditorState): CollectedDecoration[] {
   const out: CollectedDecoration[] = [];
@@ -131,12 +131,12 @@ function collectDecorations(state: EditorState): CollectedDecoration[] {
     // the traversal reflectively and skip the source rather than throw if a
     // future/leaner prosemirror-view drops the method. The stub renders nothing
     // regardless, so failing soft here keeps it from crashing the editor.
-    const forEachSet = readField(source, 'forEachSet');
-    if (typeof forEachSet !== 'function') continue;
+    const forEachSet = readField(source, "forEachSet");
+    if (typeof forEachSet !== "function") continue;
     forEachSet.call(source, (set: DecorationSet) => {
       set.find().forEach((decoration) => {
-        const spec = readField(decoration, 'spec');
-        if (typeof spec === 'object' && spec !== null && readField(spec, 'noOverlay')) return;
+        const spec = readField(decoration, "spec");
+        if (typeof spec === "object" && spec !== null && readField(spec, "noOverlay")) return;
         out.push({ decoration, from: decoration.from, to: decoration.to });
       });
     });
@@ -154,10 +154,10 @@ function readField(target: object, key: string): unknown {
 }
 
 function getWidgetDOM(decoration: Decoration, view: EditorView): HTMLElement | null {
-  const type = readField(decoration, 'type');
-  if (typeof type !== 'object' || type === null) return null;
-  const toDOM = readField(type, 'toDOM');
-  if (typeof toDOM === 'function') {
+  const type = readField(decoration, "type");
+  if (typeof type !== "object" || type === null) return null;
+  const toDOM = readField(type, "toDOM");
+  if (typeof toDOM === "function") {
     const dom: unknown = toDOM(view, () => decoration.from);
     return dom instanceof HTMLElement ? dom : null;
   }
@@ -169,13 +169,13 @@ function getWidgetDOM(decoration: Decoration, view: EditorView): HTMLElement | n
 }
 
 function getDecorationAttrs(decoration: Decoration): Record<string, string> | null {
-  const type = readField(decoration, 'type');
-  if (typeof type !== 'object' || type === null) return null;
-  const attrs = readField(type, 'attrs');
-  if (typeof attrs !== 'object' || attrs === null) return null;
+  const type = readField(decoration, "type");
+  if (typeof type !== "object" || type === null) return null;
+  const attrs = readField(type, "attrs");
+  if (typeof attrs !== "object" || attrs === null) return null;
   const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(attrs)) {
-    if (typeof value === 'string') out[name] = value;
+    if (typeof value === "string") out[name] = value;
   }
   return out;
 }
@@ -188,13 +188,13 @@ type RenderedDomContextStub = {
   getCoordinatesForPosition(pos: number): { x: number; y: number; height: number } | null;
   getRectsForRange(
     from: number,
-    to: number
+    to: number,
   ): Array<{ x: number; y: number; width: number; height: number }>;
-}
+};
 
 function createRenderedDomContext(
   _pagesContainer: HTMLElement,
-  _zoom: number
+  _zoom: number,
 ): RenderedDomContextStub {
   return {
     getContainerOffset: () => ({ x: 0, y: 0 }),

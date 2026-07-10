@@ -23,7 +23,7 @@
   background: var(--doc-surface);
   padding: 8px 0 4px;
   width: 100%;
-  font-family: 'Google Sans Text', system-ui, sans-serif;
+  font-family: "Google Sans Text", system-ui, sans-serif;
 }
 .docx-title-bar__left {
   display: flex;

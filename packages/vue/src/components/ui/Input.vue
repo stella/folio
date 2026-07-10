@@ -23,24 +23,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref } from "vue";
 
 withDefaults(
   defineProps<{
     modelValue?: string | number;
     className?: string;
-    size?: 'sm' | 'default' | 'lg';
+    size?: "sm" | "default" | "lg";
   }>(),
-  { size: 'default' }
+  { size: "default" },
 );
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void;
+  (e: "update:modelValue", value: string): void;
 }>();
 
 function onInput(event: Event) {
   if (!(event.target instanceof HTMLInputElement)) return;
-  emit('update:modelValue', event.target.value);
+  emit("update:modelValue", event.target.value);
 }
 
 const inputRef = ref<HTMLInputElement | null>(null);

@@ -105,7 +105,7 @@ export type TrackedChangeEntry = {
    * minted a fresh id per atomic edit.
    */
   coalescedRevisionIds?: number[] | undefined;
-}
+};
 
 /**
  * Output of {@link extractTrackedChanges}.
@@ -120,7 +120,7 @@ export type TrackedChangesResult = {
    * Consumers (DocxEditor's threading effect) use this to thread comments under their tracked change.
    */
   commentToRevision: Map<number, number>;
-}
+};
 
 const EMPTY_RESULT: TrackedChangesResult = {
   entries: [],

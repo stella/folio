@@ -19,7 +19,7 @@ export type UseToolbarFontSizeReturn = {
   pickFontSize: (size: number) => void;
   increaseFontSize: () => void;
   decreaseFontSize: () => void;
-}
+};
 
 export function useToolbarFontSize(opts: {
   currentFontSize: ComputedRef<number>;

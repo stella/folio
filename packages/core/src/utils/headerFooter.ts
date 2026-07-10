@@ -271,7 +271,9 @@ export const pickActiveHeaderFooterRId = (
   isFirstPage: boolean,
 ): string | null => {
   if (isFirstPage) {
-    return position === "header" ? resolution.activeFirstHeaderRId : resolution.activeFirstFooterRId;
+    return position === "header"
+      ? resolution.activeFirstHeaderRId
+      : resolution.activeFirstFooterRId;
   }
   return position === "header" ? resolution.activeHeaderRId : resolution.activeFooterRId;
 };

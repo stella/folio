@@ -48,20 +48,20 @@ export type TableInsertButton = {
   x: number;
   y: number;
   cellPmPos: number;
-}
+};
 
 export type HfEditState = {
   position: "header" | "footer";
   rId: string | null;
   headerFooter: HeaderFooter | null;
   targetRect: { top: number; left: number; width: number; height: number } | null;
-}
+};
 
 export type ScrollPageInfo = {
   currentPage: number;
   totalPages: number;
   visible: boolean;
-}
+};
 
 export type UsePagesPointerOptions = {
   editorView: Ref<EditorView | null>;
@@ -94,7 +94,7 @@ export type UsePagesPointerOptions = {
    * callers fall back to in-place mutation + `syncHfPMs()`.
    */
   setDocument?: (doc: Document) => void;
-}
+};
 
 const MULTI_CLICK_DELAY = 500;
 
@@ -114,7 +114,7 @@ export type UsePagesPointerReturn = {
   clearTableInsertTimer: () => void;
   handleHfSave: (content: BlockContent[]) => void;
   handleHfRemove: () => void;
-}
+};
 
 export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerReturn {
   // ─── Table quick-action "+" button ──────────────────────────────────────

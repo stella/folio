@@ -50,8 +50,7 @@ const referenceAvailability: Record<DifferentialReference, () => boolean> = {
 
 const referenceSetupHints: Record<DifferentialReference, string> = {
   "python-docx": "pip install python-docx",
-  "open-xml-sdk":
-    "dotnet build packages/core/scripts/differential/dotnet -c Release",
+  "open-xml-sdk": "dotnet build packages/core/scripts/differential/dotnet -c Release",
 };
 
 for (const reference of DIFFERENTIAL_REFERENCES) {
@@ -78,18 +77,22 @@ for (const reference of DIFFERENTIAL_REFERENCES) {
 
     for (const fixture of fixtures) {
       const name = path.basename(fixture);
-      test(`structural projection matches ${reference}: ${name}`, async () => {
-        const result = await runDifferential(fixture, { reference });
-        if (!result.ok) {
-          if (result.reason === "infra") {
-            throw new Error(`harness infrastructure failure: ${result.message}`);
+      test(
+        `structural projection matches ${reference}: ${name}`,
+        async () => {
+          const result = await runDifferential(fixture, { reference });
+          if (!result.ok) {
+            if (result.reason === "infra") {
+              throw new Error(`harness infrastructure failure: ${result.message}`);
+            }
+            throw new Error(
+              `unexpected divergence on ${name} (${reference}):\n${JSON.stringify(result.divergences, null, 2)}\n\nfolio: ${JSON.stringify(result.folio, null, 2)}\nreference: ${JSON.stringify(result.reference, null, 2)}`,
+            );
           }
-          throw new Error(
-            `unexpected divergence on ${name} (${reference}):\n${JSON.stringify(result.divergences, null, 2)}\n\nfolio: ${JSON.stringify(result.folio, null, 2)}\nreference: ${JSON.stringify(result.reference, null, 2)}`,
-          );
-        }
-        expect(result.ok).toBe(true);
-      }, fixtureTimeoutMs);
+          expect(result.ok).toBe(true);
+        },
+        fixtureTimeoutMs,
+      );
     }
   });
 }

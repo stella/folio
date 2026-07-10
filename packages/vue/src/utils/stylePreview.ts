@@ -21,7 +21,7 @@ export type StylePreviewProps = {
   fontWeight?: "bold";
   fontStyle?: "italic";
   color?: string;
-}
+};
 
 /**
  * A resolved paragraph-style option (document order, with extracted visual

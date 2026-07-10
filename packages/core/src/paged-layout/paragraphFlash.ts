@@ -42,10 +42,7 @@ const normalizedDurationMs = (options?: ParagraphHighlightOptions): number => {
 };
 
 /** Find all painted paragraph fragments with a stable `data-para-id`. */
-export const findParagraphFragmentsByParaId = (
-  root: ParentNode,
-  paraId: string,
-): HTMLElement[] => {
+export const findParagraphFragmentsByParaId = (root: ParentNode, paraId: string): HTMLElement[] => {
   if (!paraId || !paraId.trim()) {
     return [];
   }

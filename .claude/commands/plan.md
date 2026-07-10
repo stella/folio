@@ -66,9 +66,11 @@ creating duplicate systems.
    ## Scope
 
    **In scope:**
+
    - ...
 
    **Out of scope:**
+
    - ...
 
    ## Implementation

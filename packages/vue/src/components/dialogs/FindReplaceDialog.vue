@@ -8,7 +8,7 @@
   <div v-if="isOpen" class="find-replace-dialog" @mousedown.stop @keydown.stop>
     <div class="find-replace-dialog__header">
       <span class="find-replace-dialog__title">{{
-        replaceMode ? t('findReplace.findAndReplace') : t('findReplace.find')
+        replaceMode ? t("findReplace.findAndReplace") : t("findReplace.find")
       }}</span>
       <FolioButton
         class="find-replace-dialog__close"
@@ -62,7 +62,7 @@
               }
             "
           />
-          {{ t('findReplace.matchCase') }}
+          {{ t("findReplace.matchCase") }}
         </label>
         <label>
           <FolioCheckbox
@@ -74,7 +74,7 @@
               }
             "
           />
-          {{ t('findReplace.wholeWords') }}
+          {{ t("findReplace.wholeWords") }}
         </label>
         <FolioButton
           class="find-replace-dialog__toggle"
@@ -84,7 +84,7 @@
           @mousedown.prevent="replaceMode = !replaceMode"
           :title="t('dialogs.findReplace.toggleReplace')"
         >
-          ↔ {{ t('dialogs.findReplace.replaceButton') }}
+          ↔ {{ t("dialogs.findReplace.replaceButton") }}
         </FolioButton>
       </div>
 
@@ -103,7 +103,7 @@
           :title="t('findReplace.replaceCurrent')"
           @mousedown.prevent="handleReplace"
         >
-          {{ t('dialogs.findReplace.replaceButton') }}
+          {{ t("dialogs.findReplace.replaceButton") }}
         </FolioButton>
         <FolioButton
           variant="ghost"
@@ -111,7 +111,7 @@
           :title="t('findReplace.replaceAll')"
           @mousedown.prevent="handleReplaceAll"
         >
-          {{ t('findReplace.replaceAll') }}
+          {{ t("findReplace.replaceAll") }}
         </FolioButton>
       </div>
     </div>
@@ -119,11 +119,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from 'vue';
-import type { EditorView } from 'prosemirror-view';
-import { TextSelection } from 'prosemirror-state';
-import { useTranslation } from '../../i18n';
-import { useFolioUI } from '../../ui/folio-ui';
+import { ref, watch, nextTick, computed } from "vue";
+import type { EditorView } from "prosemirror-view";
+import { TextSelection } from "prosemirror-state";
+import { useTranslation } from "../../i18n";
+import { useFolioUI } from "../../ui/folio-ui";
 
 const { t } = useTranslation();
 
@@ -139,12 +139,12 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: "close"): void;
 }>();
 
 const searchInputRef = ref<HTMLInputElement | null>(null);
-const searchText = ref('');
-const replaceText = ref('');
+const searchText = ref("");
+const replaceText = ref("");
 const matchCase = ref(false);
 const matchWholeWord = ref(false);
 const replaceMode = ref(false);
@@ -155,11 +155,11 @@ const matches = ref<Match[]>([]);
 const currentIndex = ref(-1);
 
 const matchCountText = computed(() => {
-  if (!searchText.value.trim()) return '';
-  if (matches.value.length === 0) return t('findReplace.noResults');
+  if (!searchText.value.trim()) return "";
+  if (matches.value.length === 0) return t("findReplace.noResults");
   if (currentIndex.value < 0)
-    return t('dialogs.findReplace.matchesFound', { total: matches.value.length });
-  return t('findReplace.matchCounter', {
+    return t("dialogs.findReplace.matchesFound", { total: matches.value.length });
+  return t("findReplace.matchCounter", {
     current: currentIndex.value + 1,
     total: matches.value.length,
   });
@@ -177,12 +177,12 @@ watch(
     } else {
       clearHighlights();
     }
-  }
+  },
 );
 
 function close() {
   clearHighlights();
-  emit('close');
+  emit("close");
 }
 
 /**
@@ -210,7 +210,7 @@ function performSearch() {
     if (!node.isTextblock) return true;
 
     // Get the full text of this text block
-    const blockText = doc.textBetween(pos + 1, pos + node.nodeSize - 1, '', '');
+    const blockText = doc.textBetween(pos + 1, pos + node.nodeSize - 1, "", "");
     if (!blockText) return false;
 
     const searchStr = caseInsensitive ? search.toLowerCase() : search;
@@ -222,8 +222,8 @@ function performSearch() {
 
       if (matchWholeWord.value) {
         // Whole word matching with regex
-        const escaped = searchStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const flags = caseInsensitive ? 'gi' : 'g';
+        const escaped = searchStr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const flags = caseInsensitive ? "gi" : "g";
         const regex = new RegExp(`\\b${escaped}\\b`, flags);
         regex.lastIndex = searchFrom;
         const m = regex.exec(haystack);
@@ -336,14 +336,14 @@ function clearHighlights() {
 }
 
 function handleSearchKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Enter') {
+  if (e.key === "Enter") {
     e.preventDefault();
     if (e.shiftKey) {
       findPrevious();
     } else {
       findNext();
     }
-  } else if (e.key === 'Escape') {
+  } else if (e.key === "Escape") {
     close();
   }
 }
@@ -436,7 +436,7 @@ function handleSearchKeyDown(e: KeyboardEvent) {
   gap: 4px;
   cursor: pointer;
 }
-.find-replace-dialog__options input[type='checkbox'] {
+.find-replace-dialog__options input[type="checkbox"] {
   margin: 0;
 }
 .find-replace-dialog__toggle {

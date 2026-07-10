@@ -25,14 +25,14 @@ type CommandFactory = (...args: readonly unknown[]) => Command;
 export type UseHyperlinkManagementOptions = {
   editorView: Ref<EditorView | null>;
   getCommands: () => Record<string, CommandFactory>;
-}
+};
 
 export type HyperlinkSubmitData = {
   url?: string;
   bookmark?: string;
   displayText: string;
   tooltip: string;
-}
+};
 
 export function useHyperlinkManagement(opts: UseHyperlinkManagementOptions) {
   const hyperlinkPopupData = ref<HyperlinkPopupData | null>(null);

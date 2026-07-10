@@ -16,12 +16,12 @@ export type DragAutoScrollOptions = {
   pagesContainer: Ref<HTMLElement | null>;
   /** Called during auto-scroll to extend the selection at the current mouse position. */
   onScrollExtendSelection: (clientX: number, clientY: number) => void;
-}
+};
 
 export type UseDragAutoScrollReturn = {
   updateMousePosition: (clientX: number, clientY: number) => void;
   stopAutoScroll: () => void;
-}
+};
 
 export function useDragAutoScroll({
   pagesContainer,

@@ -24,7 +24,7 @@ type DocxBufferInput = ArrayBuffer | Uint8Array | Blob | File;
 type ReadDocxResult = {
   buffer: ArrayBuffer;
   name: string;
-}
+};
 
 /** Read the first picked file from a file-input change event; resets the
  *  input so the same file can be re-selected. */
@@ -63,7 +63,7 @@ export type UseFileIOOptions = {
   getActiveView: () => EditorView | null;
   /** Vue's `nextTick` — passed in so the composable doesn't require its own import wiring. */
   nextTick: () => Promise<void>;
-}
+};
 
 export function useFileIO(opts: UseFileIOOptions) {
   const docxInputRef = ref<HTMLInputElement | null>(null);

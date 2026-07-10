@@ -32,7 +32,9 @@
           :class="{ 'reply-input__submit--active': trimmed }"
           :disabled="!trimmed"
           @click.stop="submitAndClose"
-        >Reply</button>
+        >
+          Reply
+        </button>
       </div>
     </template>
   </div>
@@ -70,7 +72,9 @@ function submitAndClose() {
 </script>
 
 <style scoped>
-.reply-input { margin-top: 12px; }
+.reply-input {
+  margin-top: 12px;
+}
 .reply-input__field {
   width: 100%;
   border-radius: 20px;

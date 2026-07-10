@@ -41,7 +41,7 @@
         <span class="image-ctx-menu__icon">
           <MaterialSymbol name="settings" :size="ICON_SIZE" />
         </span>
-        <span class="image-ctx-menu__label">{{ t('imageWrap.menu.imageProperties') }}</span>
+        <span class="image-ctx-menu__label">{{ t("imageWrap.menu.imageProperties") }}</span>
       </button>
       <div v-if="canOpenProperties" class="image-ctx-menu__divider" role="separator" />
 
@@ -122,10 +122,7 @@ import {
   type ImageLayoutTarget,
 } from "@stll/folio-core/layout-painter/imageLayout";
 
-import type {
-  ImageContextMenuState,
-  ImageContextMenuTextAction,
-} from "./imageContextMenuTypes";
+import type { ImageContextMenuState, ImageContextMenuTextAction } from "./imageContextMenuTypes";
 export type { ImageContextMenuState, ImageContextMenuTextAction };
 
 const props = withDefaults(

@@ -160,7 +160,11 @@ import type { ColorValue } from "@stll/folio-core/types/document";
 import type { ListState } from "../utils/listState";
 import type { ParagraphAlignment } from "./ui/AlignmentButtons.types";
 import type { StyleOption } from "./ui/StylePicker.types";
-import type { FormattingAction, FormattingBarProps, SelectionFormatting } from "./FormattingBar.types";
+import type {
+  FormattingAction,
+  FormattingBarProps,
+  SelectionFormatting,
+} from "./FormattingBar.types";
 
 const props = withDefaults(defineProps<FormattingBarProps>(), {
   disabled: false,

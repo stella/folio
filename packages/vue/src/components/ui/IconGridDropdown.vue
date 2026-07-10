@@ -41,15 +41,15 @@
 </template>
 
 <script setup lang="ts" generic="T extends string">
-import { ref } from 'vue';
-import MaterialSymbol from './MaterialSymbol.vue';
-import { useFolioUI } from '../../ui/folio-ui';
+import { ref } from "vue";
+import MaterialSymbol from "./MaterialSymbol.vue";
+import { useFolioUI } from "../../ui/folio-ui";
 
 export type IconGridOption<V extends string = string> = {
   value: V;
   label: string;
   iconName: string;
-}
+};
 
 defineProps<{
   options: IconGridOption<T>[];
@@ -61,7 +61,7 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'select', value: T): void;
+  (e: "select", value: T): void;
 }>();
 
 // Resolve Popover from the FolioUI injection provider so a host override
@@ -71,7 +71,7 @@ const { Popover } = useFolioUI();
 const isOpen = ref(false);
 
 function select(value: T) {
-  emit('select', value);
+  emit("select", value);
   isOpen.value = false;
 }
 </script>
@@ -93,8 +93,13 @@ function select(value: T) {
   background: var(--doc-bg-hover);
   color: var(--doc-text);
 }
-.docx-icon-grid__btn--open { background: var(--doc-bg-hover); }
-.docx-icon-grid__btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.docx-icon-grid__btn--open {
+  background: var(--doc-bg-hover);
+}
+.docx-icon-grid__btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
 .docx-icon-grid__panel {
   display: flex;
   gap: 2px;
@@ -113,7 +118,9 @@ function select(value: T) {
   color: var(--doc-text-muted);
   cursor: pointer;
 }
-.docx-icon-grid__option:hover { background: var(--doc-bg-hover); }
+.docx-icon-grid__option:hover {
+  background: var(--doc-bg-hover);
+}
 .docx-icon-grid__option--active {
   background: var(--doc-primary-light);
   color: var(--doc-primary);

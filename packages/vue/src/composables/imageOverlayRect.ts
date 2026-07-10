@@ -14,14 +14,14 @@ export type OverlayRectInputs = {
   parentOffsetWidth: number;
   parentClientWidth: number;
   zoom: number;
-}
+};
 
 export type OverlayRect = {
   left: number;
   top: number;
   width: number;
   height: number;
-}
+};
 
 /**
  * Position the overlay (absolute, inside the scroll container) over the image.

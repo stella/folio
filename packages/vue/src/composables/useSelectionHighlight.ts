@@ -42,7 +42,7 @@ export type UseSelectionHighlightOptions = {
   useOverlay?: boolean;
   debounceMs?: number;
   onSelectionChange?: (hasSelection: boolean, text: string) => void;
-}
+};
 
 export type UseSelectionHighlightReturn = {
   hasSelection: ComputedRef<boolean>;
@@ -51,7 +51,7 @@ export type UseSelectionHighlightReturn = {
   isSelectionInContainer: ComputedRef<boolean>;
   refresh: () => void;
   getOverlayStyle: (rect: HighlightRect) => CSSProperties;
-}
+};
 
 export function useSelectionHighlight(
   options: UseSelectionHighlightOptions,

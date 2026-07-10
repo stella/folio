@@ -10,14 +10,7 @@
  * `useContextMenus`.
  */
 
-import {
-  computed,
-  ref,
-  shallowRef,
-  type ComputedRef,
-  type Ref,
-  type ShallowRef,
-} from "vue";
+import { computed, ref, shallowRef, type ComputedRef, type Ref, type ShallowRef } from "vue";
 import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import {
@@ -33,13 +26,13 @@ export type UseImageActionsOptions = {
   zoom: Ref<number>;
   stateTick: Ref<number>;
   getCommands: () => Record<string, CommandFactory>;
-}
+};
 
 export type ImageToolbarContext = {
   wrapType: string;
   displayMode: string;
   cssFloat: string | null;
-}
+};
 
 export type UseImageActionsReturn = {
   selectedImage: ShallowRef<ImageSelectionInfo | null>;
@@ -47,7 +40,7 @@ export type UseImageActionsReturn = {
   imageToolbarContext: ComputedRef<ImageToolbarContext | null>;
   handleToolbarImageWrap: (value: string) => void;
   handleImageTransform: (action: "rotateCW" | "rotateCCW" | "flipH" | "flipV") => void;
-}
+};
 
 export function useImageActions(opts: UseImageActionsOptions): UseImageActionsReturn {
   // shallowRef so the wrapped HTMLElement isn't proxied — identity comparisons

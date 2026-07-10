@@ -16,9 +16,9 @@
 </template>
 
 <script setup lang="ts">
-import type { ColorValue, Theme } from '@stll/folio-core/types/document';
-import ColorPicker from './ColorPicker.vue';
-import { useTranslation } from '../../i18n';
+import type { ColorValue, Theme } from "@stll/folio-core/types/document";
+import ColorPicker from "./ColorPicker.vue";
+import { useTranslation } from "../../i18n";
 
 defineProps<{
   disabled?: boolean;
@@ -28,14 +28,14 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'change', hex: string): void;
+  (e: "change", hex: string): void;
 }>();
 
 const { t } = useTranslation();
 
 function onChange(color: ColorValue | string) {
-  if (typeof color === 'string') emit('change', color.replace(/^#/, ''));
-  else if (color.rgb) emit('change', color.rgb.replace(/^#/, ''));
-  else if (color.auto) emit('change', '000000');
+  if (typeof color === "string") emit("change", color.replace(/^#/, ""));
+  else if (color.rgb) emit("change", color.rgb.replace(/^#/, ""));
+  else if (color.auto) emit("change", "000000");
 }
 </script>

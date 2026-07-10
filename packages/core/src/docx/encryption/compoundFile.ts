@@ -69,7 +69,8 @@ const decodeName = (nameBytes: Uint8Array): string => {
   return decoded.slice(0, end);
 };
 
-const sectorOffset = (sectorId: number, sectorBytes: number): number => (sectorId + 1) * sectorBytes;
+const sectorOffset = (sectorId: number, sectorBytes: number): number =>
+  (sectorId + 1) * sectorBytes;
 
 const readHeader = (file: Uint8Array): CompoundHeader => {
   if (file.length < HEADER_BYTES) {
@@ -199,7 +200,11 @@ const followSectorChain = (
   return joinBytes(parts);
 };
 
-const loadDirectory = (file: Uint8Array, header: CompoundHeader, fat: number[]): DirectoryRecord[] => {
+const loadDirectory = (
+  file: Uint8Array,
+  header: CompoundHeader,
+  fat: number[],
+): DirectoryRecord[] => {
   const raw = followSectorChain(file, header, fat, header.directoryStartSector);
   const records: DirectoryRecord[] = [];
 
@@ -369,10 +374,12 @@ export const openCompoundFile = (data: ArrayBuffer | Uint8Array): CompoundFileRe
         return null;
       }
       if (entry.byteLength < header.miniCutoff) {
-        return followMiniChain(miniContainer, miniFat, header.miniSectorBytes, entry.firstSector).subarray(
-          0,
-          entry.byteLength,
-        );
+        return followMiniChain(
+          miniContainer,
+          miniFat,
+          header.miniSectorBytes,
+          entry.firstSector,
+        ).subarray(0, entry.byteLength);
       }
       return followSectorChain(file, header, fat, entry.firstSector).subarray(0, entry.byteLength);
     },

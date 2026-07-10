@@ -20,12 +20,12 @@ export type ResolvedStyle = {
   id: string;
   label: string;
   previewStyle: StylePreviewProps;
-}
+};
 
 export type UseParagraphStyleOptionsReturn = {
   resolvedParagraphStyles: ComputedRef<ResolvedStyle[]>;
   currentStyleLabel: ComputedRef<string>;
-}
+};
 
 export function useParagraphStyleOptions(opts: {
   documentStyles: () => Style[] | undefined;

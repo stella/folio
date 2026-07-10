@@ -3108,8 +3108,7 @@ export function renderPages(
   // before the first one so the overlay stays above the repainted pages
   // (unchanged z-order).
   const pageShellClass = options.pageClassName ?? PAGE_CLASS_NAMES.page;
-  const isPageShell = (el: Element): boolean =>
-    el.className.split(/\s+/u).includes(pageShellClass);
+  const isPageShell = (el: Element): boolean => el.className.split(/\s+/u).includes(pageShellClass);
   const existingChildren = Array.from(container.children);
   const overlayBefore = existingChildren.find((el) => !isPageShell(el)) ?? null;
   for (const el of existingChildren) {

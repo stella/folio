@@ -213,7 +213,13 @@ describe("compareDocxVersions: as-accepted semantics", () => {
       throw new Error("expected a block in the base document");
     }
     revisedReviewer.applyOperations([
-      { id: "t1", type: "replaceInBlock", blockId: target.id, find: "due.", replace: "due promptly." },
+      {
+        id: "t1",
+        type: "replaceInBlock",
+        blockId: target.id,
+        find: "due.",
+        replace: "due promptly.",
+      },
     ]);
     const revised = await revisedReviewer.toBuffer();
 

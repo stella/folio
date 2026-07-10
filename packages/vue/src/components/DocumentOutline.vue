@@ -107,7 +107,7 @@ function handleJump(id: string) {
   width: 240px;
   display: flex;
   flex-direction: column;
-  font-family: 'Google Sans', Roboto, Arial, sans-serif;
+  font-family: "Google Sans", Roboto, Arial, sans-serif;
   z-index: 40;
   animation: docOutlineIn 0.15s ease-out;
 }

@@ -41,7 +41,7 @@ export type ParagraphStylePreset = {
   /** Fallback label used if the i18n key resolves to nothing. */
   label: string;
   nameKey: TranslationKey;
-}
+};
 
 // Built-in style list shown when the document defines no styles. The dropdown
 // preview CSS is derived by the shared core helper (getStylePreviewProps), so
@@ -60,7 +60,7 @@ export type LineSpacingPreset = {
   label: string;
   labelKey?: TranslationKey;
   value: number;
-}
+};
 
 export const lineSpacingOptions: LineSpacingPreset[] = [
   { label: "Single", labelKey: "lineSpacing.single", value: 240 },

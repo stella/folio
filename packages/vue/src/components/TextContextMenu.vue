@@ -74,14 +74,14 @@ export type ContextMenuItem = {
   emphasis?: boolean;
   /** Optional leading icon (host `customContextMenuItems` entries). */
   icon?: VNodeChild;
-}
+};
 
 /** Host-injected menu entry, already filtered by `requiresSelection`. */
 export type CustomTextMenuItem = {
   id: string;
   label: string;
   icon?: VNodeChild;
-}
+};
 
 const props = defineProps<{
   isOpen: boolean;

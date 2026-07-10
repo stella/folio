@@ -43,7 +43,9 @@ const numericAttr = (element: XmlElement | null, name: string): number => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-const childTransform = (wsp: XmlElement): { x: number; y: number; width: number; height: number } => {
+const childTransform = (
+  wsp: XmlElement,
+): { x: number; y: number; width: number; height: number } => {
   const spPr = findChildByLocalName(wsp, "spPr");
   const xfrm = findChildByLocalName(spPr, "xfrm");
   const off = findChildByLocalName(xfrm, "off");
@@ -138,9 +140,7 @@ const renderGeometry = (wsp: XmlElement): string => {
   const fill = colorFrom(spPr, "none");
   const line = findChildByLocalName(spPr, "ln");
   const stroke = colorFrom(line, "none");
-  const strokeWidth = line
-    ? (parseNumericAttribute(line, null, "w") ?? DEFAULT_LINE_WIDTH_EMU)
-    : 0;
+  const strokeWidth = line ? (parseNumericAttribute(line, null, "w") ?? DEFAULT_LINE_WIDTH_EMU) : 0;
   const paths = findAllDeep(findChildByLocalName(spPr, "custGeom"), "a", "path");
   if (paths.length === 0) {
     return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fill === "none" ? "none" : `#${fill}`}" stroke="${stroke === "none" ? "none" : `#${stroke}`}" stroke-width="${strokeWidth}"/>`;
@@ -190,9 +190,7 @@ const renderTextBox = (wsp: XmlElement): string => {
 const createSvg = (group: XmlElement, width: number, height: number): string => {
   const children = findChildrenByLocalName(group, "wsp").slice(0, MAX_GROUP_SHAPES);
   const content = children
-    .map((wsp) =>
-      findChildByLocalName(wsp, "txbx") ? renderTextBox(wsp) : renderGeometry(wsp),
-    )
+    .map((wsp) => (findChildByLocalName(wsp, "txbx") ? renderTextBox(wsp) : renderGeometry(wsp)))
     .join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${emuToPixels(width)}" height="${emuToPixels(height)}">${content}</svg>`;
 };

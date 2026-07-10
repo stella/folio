@@ -1,6 +1,6 @@
 ---
 name: security-audit
-description: 'Run a security-focused code audit with a generic checklist first, then layer on repo-specific risks.'
+description: "Run a security-focused code audit with a generic checklist first, then layer on repo-specific risks."
 ---
 
 # Security Audit
@@ -63,16 +63,18 @@ layer on repo-specific risks.
    - explicitly call out the domain assumptions you used
 
 10. **Report findings by severity**:
-   - Critical
-   - High
-   - Medium
-   - Low
 
-   For each finding include:
-   - file and line
-   - issue
-   - likely impact
-   - recommended fix
+- Critical
+- High
+- Medium
+- Low
+
+For each finding include:
+
+- file and line
+- issue
+- likely impact
+- recommended fix
 
 11. **If there are no findings**, say so explicitly and mention what was checked
-   plus any residual gaps in verification.
+    plus any residual gaps in verification.

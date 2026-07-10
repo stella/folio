@@ -18,7 +18,7 @@ export type UseHistoryReturn = {
   canRedo: ComputedRef<boolean>;
   undo: () => boolean;
   redo: () => boolean;
-}
+};
 
 export function useHistory(view: Ref<EditorView | null>, stateTick: Ref<number>): UseHistoryReturn {
   const canUndo = computed(() => {

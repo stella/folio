@@ -64,14 +64,14 @@ import PageSetupDialog from "../dialogs/PageSetupDialog.vue";
 type BookmarkOption = {
   name: string;
   label?: string;
-}
+};
 
 type HyperlinkSubmitPayload = {
   url?: string;
   bookmark?: string;
   displayText: string;
   tooltip: string;
-}
+};
 
 defineProps<{
   view: EditorView | null;

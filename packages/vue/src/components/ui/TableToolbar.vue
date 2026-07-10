@@ -39,16 +39,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
-import type { EditorView } from 'prosemirror-view';
-import type { Command, Transaction } from 'prosemirror-state';
-import { getTableContext } from '@stll/folio-core/prosemirror/extensions/nodes/TableExtension';
-import type { Theme } from '@stll/folio-core/types/document';
-import TableBorderPicker from './TableBorderPicker.vue';
-import TableBorderColorPicker from './TableBorderColorPicker.vue';
-import TableBorderWidthPicker from './TableBorderWidthPicker.vue';
-import TableCellFillPicker from './TableCellFillPicker.vue';
-import TableMoreDropdown from './TableMoreDropdown.vue';
+import { computed, watch } from "vue";
+import type { EditorView } from "prosemirror-view";
+import type { Command, Transaction } from "prosemirror-state";
+import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
+import type { Theme } from "@stll/folio-core/types/document";
+import TableBorderPicker from "./TableBorderPicker.vue";
+import TableBorderColorPicker from "./TableBorderColorPicker.vue";
+import TableBorderWidthPicker from "./TableBorderWidthPicker.vue";
+import TableCellFillPicker from "./TableCellFillPicker.vue";
+import TableMoreDropdown from "./TableMoreDropdown.vue";
 
 /**
  * A toolbar command factory: called with whatever arguments the specific
@@ -58,16 +58,16 @@ type CommandFactory = (...args: readonly unknown[]) => Command;
 
 /** Border preset `TableBorderPicker` emits. */
 type TableBorderPreset =
-  | 'all'
-  | 'none'
-  | 'box'
-  | 'inside'
-  | 'insideH'
-  | 'insideV'
-  | 'top'
-  | 'bottom'
-  | 'left'
-  | 'right';
+  | "all"
+  | "none"
+  | "box"
+  | "inside"
+  | "insideH"
+  | "insideV"
+  | "top"
+  | "bottom"
+  | "left"
+  | "right";
 
 /**
  * Action string `TableMoreDropdown` emits. Kept as a widened
@@ -104,12 +104,12 @@ const canSplit = computed(() => {
   if (!v) return false;
   const { $from } = v.state.selection;
   for (let depth = $from.depth; depth > 0; depth--) {
-    if ($from.node(depth).type.name === 'tableCell') {
+    if ($from.node(depth).type.name === "tableCell") {
       const cell = $from.node(depth);
-      const colspanRaw = cell.attrs['colspan'];
-      const rowspanRaw = cell.attrs['rowspan'];
-      const colspan = typeof colspanRaw === 'number' ? colspanRaw : 1;
-      const rowspan = typeof rowspanRaw === 'number' ? rowspanRaw : 1;
+      const colspanRaw = cell.attrs["colspan"];
+      const rowspanRaw = cell.attrs["rowspan"];
+      const colspan = typeof colspanRaw === "number" ? colspanRaw : 1;
+      const rowspan = typeof rowspanRaw === "number" ? rowspanRaw : 1;
       return colspan > 1 || rowspan > 1;
     }
   }
@@ -120,7 +120,7 @@ const canSplit = computed(() => {
 // swatch. Only the literal-rgb ColorValue shape resolves without theme lookup.
 const currentBorderColorHex = computed<string | undefined>(() => {
   const c = tableCtx.value?.cellBorderColor;
-  if (c && typeof c === 'object' && 'rgb' in c && typeof c.rgb === 'string') {
+  if (c && typeof c === "object" && "rgb" in c && typeof c.rgb === "string") {
     return c.rgb;
   }
   return undefined;
@@ -129,24 +129,24 @@ const currentBorderColorHex = computed<string | undefined>(() => {
 // Omit `value` entirely (not `undefined`) under exactOptionalPropertyTypes so
 // an absent border color drops the key rather than passing an explicit undefined.
 const borderColorValueBind = computed<{ value?: string }>(() =>
-  currentBorderColorHex.value !== undefined ? { value: currentBorderColorHex.value } : {}
+  currentBorderColorHex.value !== undefined ? { value: currentBorderColorHex.value } : {},
 );
 
 const canMerge = computed(() => !!tableCtx.value?.hasMultiCellSelection);
 const rowCount = computed(() => tableCtx.value?.rowCount ?? 0);
 const columnCount = computed(() => tableCtx.value?.columnCount ?? 0);
-const currentJustification = computed<'left' | 'center' | 'right'>(() => {
-  const j = tableCtx.value?.table?.attrs['justification'];
-  return j === 'center' || j === 'right' ? j : 'left';
+const currentJustification = computed<"left" | "center" | "right">(() => {
+  const j = tableCtx.value?.table?.attrs["justification"];
+  return j === "center" || j === "right" ? j : "left";
 });
 
 // Default style/size/color match TableExtension's solid-border defaults.
 // Read in callbacks only — no template/computed consumer, so a plain
 // object is sufficient.
 const borderSpec: { style: string; size: number; color: { rgb: string } } = {
-  style: 'single',
+  style: "single",
   size: 4,
-  color: { rgb: '000000' },
+  color: { rgb: "000000" },
 };
 
 // Sync the spec's color with the current cell's existing border color
@@ -162,11 +162,11 @@ watch(
     if (!c || !ctx.isInTable) return;
     // `cellBorderColor` is a ColorValue — only the literal rgb shape
     // can flow into the OOXML border spec without theme resolution.
-    if (typeof c === 'object' && 'rgb' in c && typeof c.rgb === 'string') {
+    if (typeof c === "object" && "rgb" in c && typeof c.rgb === "string") {
       borderSpec.color = { rgb: c.rgb };
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 function exec(name: string, ...args: unknown[]): boolean {
@@ -185,77 +185,77 @@ function onBorderPreset(preset: TableBorderPreset) {
   // local mutable object.
   const spec = { ...borderSpec, color: { ...borderSpec.color } };
   switch (preset) {
-    case 'all':
-      exec('setAllTableBorders', spec);
+    case "all":
+      exec("setAllTableBorders", spec);
       return;
-    case 'none':
-      exec('removeTableBorders');
+    case "none":
+      exec("removeTableBorders");
       return;
-    case 'box':
-      exec('setOutsideTableBorders', spec);
+    case "box":
+      exec("setOutsideTableBorders", spec);
       return;
-    case 'inside':
-    case 'insideH':
-    case 'insideV':
+    case "inside":
+    case "insideH":
+    case "insideV":
       // BorderPreset has no insideH/insideV split; both fall back to
       // the umbrella "inside" preset.
-      exec('setInsideTableBorders', spec);
+      exec("setInsideTableBorders", spec);
       return;
-    case 'top':
-    case 'bottom':
-    case 'left':
-    case 'right':
-      exec('setCellBorder', preset, spec, true);
+    case "top":
+    case "bottom":
+    case "left":
+    case "right":
+      exec("setCellBorder", preset, spec, true);
       return;
   }
 }
 
 function onBorderColor(hex: string) {
-  borderSpec.color = { rgb: hex.replace(/^#/, '') };
-  exec('setTableBorderColor', hex);
+  borderSpec.color = { rgb: hex.replace(/^#/, "") };
+  exec("setTableBorderColor", hex);
 }
 
 function onBorderWidth(eighths: number) {
   borderSpec.size = eighths;
-  exec('setTableBorderWidth', eighths);
+  exec("setTableBorderWidth", eighths);
 }
 
 function onCellFill(hex: string) {
-  exec('setCellFillColor', hex);
+  exec("setCellFillColor", hex);
 }
 
 // Actions whose menu name diverges from the core command name, plus
 // their extra args. Everything not in this map falls through to
 // `exec(action)` directly.
 const moreActionMap: Partial<Record<TableAction, [string, ...unknown[]]>> = {
-  autoFit: ['autoFitContents'],
-  alignTableLeft: ['setTableProperties', { justification: 'left' }],
-  alignTableCenter: ['setTableProperties', { justification: 'center' }],
-  alignTableRight: ['setTableProperties', { justification: 'right' }],
-  verticalAlignTop: ['setCellVerticalAlign', 'top'],
-  verticalAlignMiddle: ['setCellVerticalAlign', 'center'],
-  verticalAlignBottom: ['setCellVerticalAlign', 'bottom'],
+  autoFit: ["autoFitContents"],
+  alignTableLeft: ["setTableProperties", { justification: "left" }],
+  alignTableCenter: ["setTableProperties", { justification: "center" }],
+  alignTableRight: ["setTableProperties", { justification: "right" }],
+  verticalAlignTop: ["setCellVerticalAlign", "top"],
+  verticalAlignMiddle: ["setCellVerticalAlign", "center"],
+  verticalAlignBottom: ["setCellVerticalAlign", "bottom"],
 };
 
 function onMoreAction(action: TableAction) {
   // Dialog action is a v1.x followup — explicit no-op so the menu
   // closes cleanly without dispatching a phantom command.
-  if (action === 'tableProperties') return;
+  if (action === "tableProperties") return;
   const mapped = moreActionMap[action];
   if (mapped) exec(...mapped);
   else exec(action);
 }
 
 function onCellMargins(margins: { top?: number; bottom?: number; left?: number; right?: number }) {
-  exec('setCellMargins', margins);
+  exec("setCellMargins", margins);
 }
 
 function onCellTextDirection(direction: string | null) {
-  exec('setCellTextDirection', direction);
+  exec("setCellTextDirection", direction);
 }
 
-function onRowHeight(value: { height: number | null; rule?: 'auto' | 'atLeast' | 'exact' }) {
-  exec('setRowHeight', value.height, value.rule);
+function onRowHeight(value: { height: number | null; rule?: "auto" | "atLeast" | "exact" }) {
+  exec("setRowHeight", value.height, value.rule);
 }
 
 // Surface the command routers + gating state until the picker children are

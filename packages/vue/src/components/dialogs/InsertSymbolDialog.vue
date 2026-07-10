@@ -5,7 +5,7 @@
   <div v-if="isOpen" class="dialog-overlay" @mousedown.self="close">
     <div class="dialog symbol-dialog" @mousedown.stop @keydown.stop>
       <div class="dialog__header">
-        <span class="dialog__title">{{ t('dialogs.insertSymbol.title') }}</span>
+        <span class="dialog__title">{{ t("dialogs.insertSymbol.title") }}</span>
         <button class="dialog__close" :title="t('common.closeDialog')" @click="close">✕</button>
       </div>
       <div class="dialog__body">
@@ -47,8 +47,8 @@
           <div v-if="displayedSymbols.length === 0" class="symbol-empty">
             {{
               search
-                ? t('dialogs.insertSymbol.noResults', { query: search })
-                : t('dialogs.insertSymbol.noResultsEmpty')
+                ? t("dialogs.insertSymbol.noResults", { query: search })
+                : t("dialogs.insertSymbol.noResultsEmpty")
             }}
           </div>
         </div>
@@ -58,14 +58,14 @@
           <span class="symbol-preview__char">{{ selectedSymbol }}</span>
           <span class="symbol-preview__info"
             >U+{{
-              selectedSymbol.codePointAt(0)?.toString(16).toUpperCase().padStart(4, '0')
+              selectedSymbol.codePointAt(0)?.toString(16).toUpperCase().padStart(4, "0")
             }}</span
           >
         </div>
 
         <!-- Recent -->
         <div v-if="recentSymbols.length > 0 && !search" class="symbol-recent">
-          <div class="symbol-recent__label">{{ t('dialogs.insertSymbol.recent') }}</div>
+          <div class="symbol-recent__label">{{ t("dialogs.insertSymbol.recent") }}</div>
           <button
             v-for="s in recentSymbols"
             :key="s"
@@ -78,13 +78,13 @@
         </div>
 
         <div class="dialog__actions">
-          <button class="dialog__btn" @click="close">{{ t('common.cancel') }}</button>
+          <button class="dialog__btn" @click="close">{{ t("common.cancel") }}</button>
           <button
             class="dialog__btn dialog__btn--primary"
             @mousedown.prevent="insertSymbol(selectedSymbol)"
             :disabled="!selectedSymbol"
           >
-            {{ t('common.insert') }}
+            {{ t("common.insert") }}
           </button>
         </div>
       </div>
@@ -93,184 +93,184 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
-import { useTranslation } from '../../i18n';
+import { ref, computed, watch, nextTick } from "vue";
+import { useTranslation } from "../../i18n";
 
 const { t } = useTranslation();
 
 const props = defineProps<{ isOpen: boolean }>();
 const emit = defineEmits<{
-  (e: 'close'): void;
-  (e: 'insert', symbol: string): void;
+  (e: "close"): void;
+  (e: "insert", symbol: string): void;
 }>();
 
 const searchRef = ref<HTMLInputElement | null>(null);
-const search = ref('');
-const activeCategory = ref('Common');
-const selectedSymbol = ref('');
+const search = ref("");
+const activeCategory = ref("Common");
+const selectedSymbol = ref("");
 const recentSymbols = ref<string[]>([]);
 
 type SymbolEntry = {
   char: string;
   name: string;
   category: string;
-}
+};
 
 type SymbolCategory = {
   name: string;
   nameKey: string;
   symbols: { char: string; name: string }[];
-}
+};
 
 const categories: SymbolCategory[] = [
   {
-    name: 'Common',
-    nameKey: 'dialogs.insertSymbol.categories.common',
+    name: "Common",
+    nameKey: "dialogs.insertSymbol.categories.common",
     symbols: [
-      { char: '©', name: 'Copyright' },
-      { char: '®', name: 'Registered' },
-      { char: '™', name: 'Trademark' },
-      { char: '•', name: 'Bullet' },
-      { char: '…', name: 'Ellipsis' },
-      { char: '—', name: 'Em dash' },
-      { char: '–', name: 'En dash' },
-      { char: '±', name: 'Plus-minus' },
-      { char: '×', name: 'Multiply' },
-      { char: '÷', name: 'Divide' },
-      { char: '≠', name: 'Not equal' },
-      { char: '≈', name: 'Approximately' },
-      { char: '≤', name: 'Less or equal' },
-      { char: '≥', name: 'Greater or equal' },
-      { char: '°', name: 'Degree' },
-      { char: 'µ', name: 'Micro' },
-      { char: '¶', name: 'Pilcrow' },
-      { char: '§', name: 'Section' },
-      { char: '†', name: 'Dagger' },
-      { char: '‡', name: 'Double dagger' },
-      { char: '¿', name: 'Inverted question' },
-      { char: '¡', name: 'Inverted exclamation' },
-      { char: '‰', name: 'Per mille' },
-      { char: '∞', name: 'Infinity' },
+      { char: "©", name: "Copyright" },
+      { char: "®", name: "Registered" },
+      { char: "™", name: "Trademark" },
+      { char: "•", name: "Bullet" },
+      { char: "…", name: "Ellipsis" },
+      { char: "—", name: "Em dash" },
+      { char: "–", name: "En dash" },
+      { char: "±", name: "Plus-minus" },
+      { char: "×", name: "Multiply" },
+      { char: "÷", name: "Divide" },
+      { char: "≠", name: "Not equal" },
+      { char: "≈", name: "Approximately" },
+      { char: "≤", name: "Less or equal" },
+      { char: "≥", name: "Greater or equal" },
+      { char: "°", name: "Degree" },
+      { char: "µ", name: "Micro" },
+      { char: "¶", name: "Pilcrow" },
+      { char: "§", name: "Section" },
+      { char: "†", name: "Dagger" },
+      { char: "‡", name: "Double dagger" },
+      { char: "¿", name: "Inverted question" },
+      { char: "¡", name: "Inverted exclamation" },
+      { char: "‰", name: "Per mille" },
+      { char: "∞", name: "Infinity" },
     ],
   },
   {
-    name: 'Arrows',
-    nameKey: 'dialogs.insertSymbol.categories.arrows',
+    name: "Arrows",
+    nameKey: "dialogs.insertSymbol.categories.arrows",
     symbols: [
-      { char: '←', name: 'Left' },
-      { char: '→', name: 'Right' },
-      { char: '↑', name: 'Up' },
-      { char: '↓', name: 'Down' },
-      { char: '↔', name: 'Left-right' },
-      { char: '↕', name: 'Up-down' },
-      { char: '⇐', name: 'Double left' },
-      { char: '⇒', name: 'Double right' },
-      { char: '⇑', name: 'Double up' },
-      { char: '⇓', name: 'Double down' },
-      { char: '⇔', name: 'Double left-right' },
-      { char: '➡', name: 'Heavy right' },
-      { char: '↩', name: 'Return' },
-      { char: '↪', name: 'Curved right' },
-      { char: '↻', name: 'Clockwise' },
-      { char: '↺', name: 'Counter-clockwise' },
+      { char: "←", name: "Left" },
+      { char: "→", name: "Right" },
+      { char: "↑", name: "Up" },
+      { char: "↓", name: "Down" },
+      { char: "↔", name: "Left-right" },
+      { char: "↕", name: "Up-down" },
+      { char: "⇐", name: "Double left" },
+      { char: "⇒", name: "Double right" },
+      { char: "⇑", name: "Double up" },
+      { char: "⇓", name: "Double down" },
+      { char: "⇔", name: "Double left-right" },
+      { char: "➡", name: "Heavy right" },
+      { char: "↩", name: "Return" },
+      { char: "↪", name: "Curved right" },
+      { char: "↻", name: "Clockwise" },
+      { char: "↺", name: "Counter-clockwise" },
     ],
   },
   {
-    name: 'Math',
-    nameKey: 'dialogs.insertSymbol.categories.math',
+    name: "Math",
+    nameKey: "dialogs.insertSymbol.categories.math",
     symbols: [
-      { char: '∑', name: 'Summation' },
-      { char: '∏', name: 'Product' },
-      { char: '∫', name: 'Integral' },
-      { char: '√', name: 'Square root' },
-      { char: '∂', name: 'Partial diff' },
-      { char: '∇', name: 'Nabla' },
-      { char: '∈', name: 'Element of' },
-      { char: '∉', name: 'Not element' },
-      { char: '⊂', name: 'Subset' },
-      { char: '⊃', name: 'Superset' },
-      { char: '∪', name: 'Union' },
-      { char: '∩', name: 'Intersection' },
-      { char: '∧', name: 'And' },
-      { char: '∨', name: 'Or' },
-      { char: '¬', name: 'Not' },
-      { char: '∀', name: 'For all' },
-      { char: '∃', name: 'Exists' },
-      { char: '∅', name: 'Empty set' },
-      { char: '∝', name: 'Proportional' },
-      { char: '∠', name: 'Angle' },
+      { char: "∑", name: "Summation" },
+      { char: "∏", name: "Product" },
+      { char: "∫", name: "Integral" },
+      { char: "√", name: "Square root" },
+      { char: "∂", name: "Partial diff" },
+      { char: "∇", name: "Nabla" },
+      { char: "∈", name: "Element of" },
+      { char: "∉", name: "Not element" },
+      { char: "⊂", name: "Subset" },
+      { char: "⊃", name: "Superset" },
+      { char: "∪", name: "Union" },
+      { char: "∩", name: "Intersection" },
+      { char: "∧", name: "And" },
+      { char: "∨", name: "Or" },
+      { char: "¬", name: "Not" },
+      { char: "∀", name: "For all" },
+      { char: "∃", name: "Exists" },
+      { char: "∅", name: "Empty set" },
+      { char: "∝", name: "Proportional" },
+      { char: "∠", name: "Angle" },
     ],
   },
   {
-    name: 'Greek',
-    nameKey: 'dialogs.insertSymbol.categories.greek',
+    name: "Greek",
+    nameKey: "dialogs.insertSymbol.categories.greek",
     symbols: [
-      { char: 'α', name: 'alpha' },
-      { char: 'β', name: 'beta' },
-      { char: 'γ', name: 'gamma' },
-      { char: 'δ', name: 'delta' },
-      { char: 'ε', name: 'epsilon' },
-      { char: 'ζ', name: 'zeta' },
-      { char: 'η', name: 'eta' },
-      { char: 'θ', name: 'theta' },
-      { char: 'λ', name: 'lambda' },
-      { char: 'μ', name: 'mu' },
-      { char: 'π', name: 'pi' },
-      { char: 'ρ', name: 'rho' },
-      { char: 'σ', name: 'sigma' },
-      { char: 'τ', name: 'tau' },
-      { char: 'φ', name: 'phi' },
-      { char: 'ψ', name: 'psi' },
-      { char: 'ω', name: 'omega' },
-      { char: 'Δ', name: 'Delta' },
-      { char: 'Σ', name: 'Sigma' },
-      { char: 'Ω', name: 'Omega' },
-      { char: 'Π', name: 'Pi' },
-      { char: 'Φ', name: 'Phi' },
-      { char: 'Ψ', name: 'Psi' },
-      { char: 'Θ', name: 'Theta' },
+      { char: "α", name: "alpha" },
+      { char: "β", name: "beta" },
+      { char: "γ", name: "gamma" },
+      { char: "δ", name: "delta" },
+      { char: "ε", name: "epsilon" },
+      { char: "ζ", name: "zeta" },
+      { char: "η", name: "eta" },
+      { char: "θ", name: "theta" },
+      { char: "λ", name: "lambda" },
+      { char: "μ", name: "mu" },
+      { char: "π", name: "pi" },
+      { char: "ρ", name: "rho" },
+      { char: "σ", name: "sigma" },
+      { char: "τ", name: "tau" },
+      { char: "φ", name: "phi" },
+      { char: "ψ", name: "psi" },
+      { char: "ω", name: "omega" },
+      { char: "Δ", name: "Delta" },
+      { char: "Σ", name: "Sigma" },
+      { char: "Ω", name: "Omega" },
+      { char: "Π", name: "Pi" },
+      { char: "Φ", name: "Phi" },
+      { char: "Ψ", name: "Psi" },
+      { char: "Θ", name: "Theta" },
     ],
   },
   {
-    name: 'Currency',
-    nameKey: 'dialogs.insertSymbol.categories.currency',
+    name: "Currency",
+    nameKey: "dialogs.insertSymbol.categories.currency",
     symbols: [
-      { char: '$', name: 'Dollar' },
-      { char: '€', name: 'Euro' },
-      { char: '£', name: 'Pound' },
-      { char: '¥', name: 'Yen' },
-      { char: '₹', name: 'Rupee' },
-      { char: '₽', name: 'Ruble' },
-      { char: '₩', name: 'Won' },
-      { char: '₿', name: 'Bitcoin' },
-      { char: '¢', name: 'Cent' },
-      { char: '₫', name: 'Dong' },
-      { char: '₺', name: 'Lira' },
-      { char: '₴', name: 'Hryvnia' },
+      { char: "$", name: "Dollar" },
+      { char: "€", name: "Euro" },
+      { char: "£", name: "Pound" },
+      { char: "¥", name: "Yen" },
+      { char: "₹", name: "Rupee" },
+      { char: "₽", name: "Ruble" },
+      { char: "₩", name: "Won" },
+      { char: "₿", name: "Bitcoin" },
+      { char: "¢", name: "Cent" },
+      { char: "₫", name: "Dong" },
+      { char: "₺", name: "Lira" },
+      { char: "₴", name: "Hryvnia" },
     ],
   },
   {
-    name: 'Shapes',
-    nameKey: 'dialogs.insertSymbol.categories.shapes',
+    name: "Shapes",
+    nameKey: "dialogs.insertSymbol.categories.shapes",
     symbols: [
-      { char: '■', name: 'Black square' },
-      { char: '□', name: 'White square' },
-      { char: '▲', name: 'Up triangle' },
-      { char: '▼', name: 'Down triangle' },
-      { char: '●', name: 'Black circle' },
-      { char: '○', name: 'White circle' },
-      { char: '◆', name: 'Black diamond' },
-      { char: '◇', name: 'White diamond' },
-      { char: '★', name: 'Black star' },
-      { char: '☆', name: 'White star' },
-      { char: '♠', name: 'Spade' },
-      { char: '♥', name: 'Heart' },
-      { char: '♦', name: 'Diamond' },
-      { char: '♣', name: 'Club' },
-      { char: '✓', name: 'Check mark' },
-      { char: '✗', name: 'Ballot X' },
-      { char: '✦', name: 'Four pointed star' },
-      { char: '◌', name: 'Dotted circle' },
+      { char: "■", name: "Black square" },
+      { char: "□", name: "White square" },
+      { char: "▲", name: "Up triangle" },
+      { char: "▼", name: "Down triangle" },
+      { char: "●", name: "Black circle" },
+      { char: "○", name: "White circle" },
+      { char: "◆", name: "Black diamond" },
+      { char: "◇", name: "White diamond" },
+      { char: "★", name: "Black star" },
+      { char: "☆", name: "White star" },
+      { char: "♠", name: "Spade" },
+      { char: "♥", name: "Heart" },
+      { char: "♦", name: "Diamond" },
+      { char: "♣", name: "Club" },
+      { char: "✓", name: "Check mark" },
+      { char: "✗", name: "Ballot X" },
+      { char: "✦", name: "Four pointed star" },
+      { char: "◌", name: "Dotted circle" },
     ],
   },
 ];
@@ -301,18 +301,18 @@ watch(
       await nextTick();
       searchRef.value?.focus();
     }
-  }
+  },
 );
 
 function close() {
-  emit('close');
+  emit("close");
 }
 
 function insertSymbol(sym: string) {
   if (!sym) return;
   // Track recent
   recentSymbols.value = [sym, ...recentSymbols.value.filter((s) => s !== sym)].slice(0, 10);
-  emit('insert', sym);
+  emit("insert", sym);
 }
 </script>
 

@@ -45,7 +45,7 @@ Per-dialog prop/data type aliases (framework-idiom difference, not a port gap):
 React's dialogs are `.tsx` components that export a named props/data type alias
 per dialog from root, so React hosts can type their dialog usage. Vue's dialogs
 are `.vue` SFCs whose props are consumed through the component itself and carry
-no equivalent root-exported type alias. The dialog *components* are paired
+no equivalent root-exported type alias. The dialog _components_ are paired
 (both adapters export `FindReplaceDialog`, `WatermarkDialog`, etc. from root);
 only these React type aliases have no Vue counterpart.
 

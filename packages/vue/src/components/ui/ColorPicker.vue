@@ -99,12 +99,12 @@
         <span v-else class="docx-color-picker__auto-icon docx-color-picker__auto-icon--auto" />
         {{
           autoLabel ??
-          (mode === 'highlight' ? t('colorPicker.noColor') : t('colorPicker.automatic'))
+          (mode === "highlight" ? t("colorPicker.noColor") : t("colorPicker.automatic"))
         }}
       </button>
 
       <div class="docx-color-picker__divider" />
-      <div class="docx-color-picker__section-label">{{ t('colorPicker.themeColors') }}</div>
+      <div class="docx-color-picker__section-label">{{ t("colorPicker.themeColors") }}</div>
       <div class="docx-color-picker__grid">
         <button
           v-for="cell in flatMatrix"
@@ -122,7 +122,7 @@
       </div>
 
       <div class="docx-color-picker__divider" />
-      <div class="docx-color-picker__section-label">{{ t('colorPicker.standardColors') }}</div>
+      <div class="docx-color-picker__section-label">{{ t("colorPicker.standardColors") }}</div>
       <div class="docx-color-picker__grid">
         <button
           v-for="c in STANDARD_COLORS"
@@ -140,7 +140,7 @@
       </div>
 
       <div class="docx-color-picker__divider" />
-      <div class="docx-color-picker__section-label">{{ t('colorPicker.customColor') }}</div>
+      <div class="docx-color-picker__section-label">{{ t("colorPicker.customColor") }}</div>
       <div class="docx-color-picker__custom">
         <span class="docx-color-picker__hash">#</span>
         <input
@@ -161,7 +161,7 @@
           @mousedown.prevent
           @click="applyCustom"
         >
-          {{ t('common.apply') }}
+          {{ t("common.apply") }}
         </button>
       </div>
     </div>
@@ -169,8 +169,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, type CSSProperties } from 'vue';
-import type { ColorValue, Theme } from '@stll/folio-core/types/document';
+import { ref, computed, watch, onMounted, onBeforeUnmount, type CSSProperties } from "vue";
+import type { ColorValue, Theme } from "@stll/folio-core/types/document";
 import {
   generateThemeTintShadeMatrix,
   resolveColor,
@@ -178,11 +178,11 @@ import {
   resolveColorToHex,
   resolveHighlightColor,
   type ThemeMatrixCell,
-} from '@stll/folio-core/utils/colorResolver';
-import MaterialSymbol from './MaterialSymbol.vue';
-import { useTranslation } from '../../i18n';
+} from "@stll/folio-core/utils/colorResolver";
+import MaterialSymbol from "./MaterialSymbol.vue";
+import { useTranslation } from "../../i18n";
 
-export type ColorPickerMode = 'text' | 'highlight' | 'border';
+export type ColorPickerMode = "text" | "highlight" | "border";
 
 const props = withDefaults(
   defineProps<{
@@ -204,52 +204,52 @@ const props = withDefaults(
     /** Initial "last picked" color used by the apply half. */
     defaultColor?: ColorValue | string;
   }>(),
-  { disabled: false, splitButton: true }
+  { disabled: false, splitButton: true },
 );
 
 const emit = defineEmits<{
-  (e: 'change', color: ColorValue | string): void;
+  (e: "change", color: ColorValue | string): void;
 }>();
 
 const { t } = useTranslation();
 
 const STANDARD_COLORS: Array<{ nameKey: string; hex: string }> = [
-  { nameKey: 'colorPicker.colors.darkRed', hex: 'C00000' },
-  { nameKey: 'colorPicker.colors.red', hex: 'FF0000' },
-  { nameKey: 'colorPicker.colors.orange', hex: 'FFC000' },
-  { nameKey: 'colorPicker.colors.yellow', hex: 'FFFF00' },
-  { nameKey: 'colorPicker.colors.lightGreen', hex: '92D050' },
-  { nameKey: 'colorPicker.colors.green', hex: '00B050' },
-  { nameKey: 'colorPicker.colors.lightBlue', hex: '00B0F0' },
-  { nameKey: 'colorPicker.colors.blue', hex: '0070C0' },
-  { nameKey: 'colorPicker.colors.darkBlue', hex: '002060' },
-  { nameKey: 'colorPicker.colors.purple', hex: '7030A0' },
+  { nameKey: "colorPicker.colors.darkRed", hex: "C00000" },
+  { nameKey: "colorPicker.colors.red", hex: "FF0000" },
+  { nameKey: "colorPicker.colors.orange", hex: "FFC000" },
+  { nameKey: "colorPicker.colors.yellow", hex: "FFFF00" },
+  { nameKey: "colorPicker.colors.lightGreen", hex: "92D050" },
+  { nameKey: "colorPicker.colors.green", hex: "00B050" },
+  { nameKey: "colorPicker.colors.lightBlue", hex: "00B0F0" },
+  { nameKey: "colorPicker.colors.blue", hex: "0070C0" },
+  { nameKey: "colorPicker.colors.darkBlue", hex: "002060" },
+  { nameKey: "colorPicker.colors.purple", hex: "7030A0" },
 ];
 
 // ── Color resolution helpers (mirror ColorPicker.tsx) ───────────────────────
 
 function resolveCurrentColor(value: ColorValue | string | undefined): string {
   if (!value) {
-    return props.mode === 'text' || props.mode === 'border' ? '#000000' : 'transparent';
+    return props.mode === "text" || props.mode === "border" ? "#000000" : "transparent";
   }
-  if (typeof value === 'string') {
-    if (props.mode === 'highlight') {
+  if (typeof value === "string") {
+    if (props.mode === "highlight") {
       const resolved = resolveHighlightColor(value);
       if (resolved) return resolved;
-      if (value === 'none') return 'transparent';
-      return value.startsWith('#') ? value : `#${value}`;
+      if (value === "none") return "transparent";
+      return value.startsWith("#") ? value : `#${value}`;
     }
-    return value.startsWith('#') ? value : `#${value}`;
+    return value.startsWith("#") ? value : `#${value}`;
   }
   return resolveColor(value, props.theme);
 }
 
 function isValidHex(hex: string): boolean {
-  return /^[0-9A-Fa-f]{6}$/.test(hex.replace(/^#/, ''));
+  return /^[0-9A-Fa-f]{6}$/.test(hex.replace(/^#/, ""));
 }
 
 function isLightColor(hex: string): boolean {
-  const h = hex.replace(/^#/, '');
+  const h = hex.replace(/^#/, "");
   if (h.length !== 6) return false;
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
@@ -260,46 +260,44 @@ function isLightColor(hex: string): boolean {
 function isSelectedCell(value: ColorValue | string | undefined, cellHex: string): boolean {
   if (!value) return false;
   const resolved =
-    typeof value === 'string'
-      ? value.replace(/^#/, '').toUpperCase()
+    typeof value === "string"
+      ? value.replace(/^#/, "").toUpperCase()
       : resolveColorToHex(value, props.theme);
   return resolved === cellHex.toUpperCase();
 }
 
 function defaultPickedColor(mode: ColorPickerMode): ColorValue | string {
-  if (mode === 'highlight') return 'FFFF00';
-  if (mode === 'border') return { rgb: '000000' };
-  return { rgb: 'FF0000' };
+  if (mode === "highlight") return "FFFF00";
+  if (mode === "border") return { rgb: "000000" };
+  return { rgb: "FF0000" };
 }
 
 function defaultTitleForMode(mode: ColorPickerMode): string {
-  if (mode === 'text') return t('fontColor');
-  if (mode === 'highlight') return t('formattingBar.highlightColor');
-  return t('table.borderColor');
+  if (mode === "text") return t("fontColor");
+  if (mode === "highlight") return t("formattingBar.highlightColor");
+  return t("table.borderColor");
 }
 
 function defaultIconForMode(mode: ColorPickerMode): string {
-  if (mode === 'text') return 'format_color_text';
-  if (mode === 'highlight') return 'ink_highlighter';
-  return 'border_color';
+  if (mode === "text") return "format_color_text";
+  if (mode === "highlight") return "ink_highlighter";
+  return "border_color";
 }
 
 // ── Reactive state ──────────────────────────────────────────────────────────
 
 const isOpen = ref(false);
-const customHex = ref('');
+const customHex = ref("");
 const containerRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 
 // Word-style "last picked" color used by the apply half — red for text,
 // yellow for highlight, black for border until the user picks something.
-const pickedColor = ref<ColorValue | string>(
-  props.defaultColor ?? defaultPickedColor(props.mode)
-);
+const pickedColor = ref<ColorValue | string>(props.defaultColor ?? defaultPickedColor(props.mode));
 
 const matrix = computed(() => generateThemeTintShadeMatrix(props.theme?.colorScheme ?? null));
 const flatMatrix = computed(() =>
-  matrix.value.flatMap((row, ri) => row.map((cell, ci) => ({ ...cell, key: `${ri}-${ci}` })))
+  matrix.value.flatMap((row, ri) => row.map((cell, ci) => ({ ...cell, key: `${ri}-${ci}` }))),
 );
 
 const resolvedColor = computed(() => resolveCurrentColor(props.value));
@@ -313,10 +311,10 @@ const resolvedIcon = computed(() => props.icon ?? defaultIconForMode(props.mode)
 watch(
   () => [props.value, props.mode, props.theme] as const,
   () => {
-    const hex = resolveCurrentColor(props.value).replace(/^#/, '');
+    const hex = resolveCurrentColor(props.value).replace(/^#/, "");
     if (/^[0-9A-Fa-f]{6}$/.test(hex)) customHex.value = hex.toUpperCase();
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // ── Panel positioning (position: fixed so it escapes overflow-clipped toolbars) ──
@@ -339,17 +337,17 @@ function toggle() {
 
 function emitAndClose(color: ColorValue | string, remember = true) {
   if (remember) pickedColor.value = color;
-  emit('change', color);
+  emit("change", color);
   isOpen.value = false;
 }
 
 function applyLast() {
   if (props.disabled) return;
-  emit('change', pickedColor.value);
+  emit("change", pickedColor.value);
 }
 
 function pickThemeCell(cell: ThemeMatrixCell) {
-  if (props.mode === 'highlight') {
+  if (props.mode === "highlight") {
     emitAndClose(cell.hex);
     return;
   }
@@ -360,19 +358,19 @@ function pickThemeCell(cell: ThemeMatrixCell) {
 }
 
 function pickStandard(hex: string) {
-  emitAndClose(props.mode === 'highlight' ? hex : { rgb: hex });
+  emitAndClose(props.mode === "highlight" ? hex : { rgb: hex });
 }
 
 // Auto / no-color isn't a "color choice" the apply half should remember.
 function pickAutomatic() {
-  emitAndClose(props.mode === 'highlight' ? 'none' : { auto: true }, false);
+  emitAndClose(props.mode === "highlight" ? "none" : { auto: true }, false);
 }
 
 function applyCustom() {
-  const hex = customHex.value.replace(/^#/, '').toUpperCase();
+  const hex = customHex.value.replace(/^#/, "").toUpperCase();
   if (!isValidHex(hex)) return;
-  emitAndClose(props.mode === 'highlight' ? hex : { rgb: hex });
-  customHex.value = '';
+  emitAndClose(props.mode === "highlight" ? hex : { rgb: hex });
+  customHex.value = "";
 }
 
 function onPanelMouseDown(e: MouseEvent) {
@@ -390,8 +388,8 @@ function onClickOutside(e: MouseEvent) {
   if (panelRef.value?.contains(target)) return;
   isOpen.value = false;
 }
-onMounted(() => document.addEventListener('mousedown', onClickOutside));
-onBeforeUnmount(() => document.removeEventListener('mousedown', onClickOutside));
+onMounted(() => document.addEventListener("mousedown", onClickOutside));
+onBeforeUnmount(() => document.removeEventListener("mousedown", onClickOutside));
 </script>
 
 <style scoped>

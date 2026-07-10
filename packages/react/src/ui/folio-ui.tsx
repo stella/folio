@@ -111,7 +111,10 @@ export type FolioSelectRootProps = Pick<
   SelectPrimitive.Root.Props<string>,
   "value" | "onValueChange" | "disabled" | "items"
 > & { children?: ReactNode };
-export type FolioSelectTriggerProps = Pick<SelectPrimitive.Trigger.Props, "style" | "aria-label"> & {
+export type FolioSelectTriggerProps = Pick<
+  SelectPrimitive.Trigger.Props,
+  "style" | "aria-label"
+> & {
   className?: string;
   children?: ReactNode;
   size?: "sm" | "default" | "lg";

@@ -28,7 +28,8 @@ const PORT_BASE = 4200;
 const PORT_SPAN = 400;
 export const PLAYGROUND_PORT =
   PORT_BASE +
-  (Number.parseInt(createHash("sha256").update(REPO_ROOT).digest("hex").slice(0, 8), 16) % PORT_SPAN);
+  (Number.parseInt(createHash("sha256").update(REPO_ROOT).digest("hex").slice(0, 8), 16) %
+    PORT_SPAN);
 export const PLAYGROUND_URL = `http://localhost:${PLAYGROUND_PORT}`;
 /** The dev server reads its port from `FOLIO_PLAYGROUND_PORT` (see the
  * playground `vite.config.ts`); folioExtract sets it when spawning. */

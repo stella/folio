@@ -18,9 +18,9 @@
 </template>
 
 <script setup lang="ts">
-import type { ColorValue, Theme } from '@stll/folio-core/types/document';
-import ColorPicker from './ColorPicker.vue';
-import { useTranslation } from '../../i18n';
+import type { ColorValue, Theme } from "@stll/folio-core/types/document";
+import ColorPicker from "./ColorPicker.vue";
+import { useTranslation } from "../../i18n";
 
 defineProps<{
   disabled?: boolean;
@@ -30,14 +30,14 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'change', hex: string): void;
+  (e: "change", hex: string): void;
 }>();
 
 const { t } = useTranslation();
 
 function onChange(color: ColorValue | string) {
   // Highlight mode emits a string: 'none' (clear fill) or a hex.
-  if (typeof color !== 'string') return;
-  emit('change', color === 'none' ? '' : color.replace(/^#/, ''));
+  if (typeof color !== "string") return;
+  emit("change", color === "none" ? "" : color.replace(/^#/, ""));
 }
 </script>

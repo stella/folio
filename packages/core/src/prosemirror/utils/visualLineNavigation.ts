@@ -21,7 +21,7 @@ const CONTENT_LINE_SELECTOR = ".layout-page-content .layout-line";
 export type VisualLineState = {
   stickyX: number | null;
   lastVisualLineIndex: number;
-}
+};
 
 /** @internal */
 export function createVisualLineState(): VisualLineState {

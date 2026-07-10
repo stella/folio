@@ -13,7 +13,7 @@ export type ReportIssueEnv = {
   userAgent?: string;
   viewport?: { width: number; height: number };
   pageUrl?: string;
-}
+};
 
 export function buildReportIssueUrl(env: ReportIssueEnv = {}): string {
   const ua = env.userAgent ?? (typeof navigator !== "undefined" ? navigator.userAgent : "unknown");

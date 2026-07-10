@@ -15,7 +15,7 @@ export type UseDocumentLifecycleOptions = {
   loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;
   loadDocument: (doc: Document) => void;
   sidebarAutoOpenedRef: Ref<boolean>;
-}
+};
 
 export function useDocumentLifecycle(opts: UseDocumentLifecycleOptions) {
   async function loadBufferReset(buf: DocxInput) {
