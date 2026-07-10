@@ -321,6 +321,7 @@ const makeDeps = (
   sectionProperties: null,
   document: null,
   defaultTabStop: undefined,
+  mirrorMargins: false,
   styles: null,
   layout: null,
   hfPMs: null,

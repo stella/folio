@@ -63,6 +63,14 @@ describe("parseSettings — w:evenAndOddHeaders (§17.10.1)", () => {
   });
 });
 
+describe("parseSettings — w:mirrorMargins (§17.15.1.57)", () => {
+  test("records only the enabled state", () => {
+    expect(parseSettings(wrap(`<w:mirrorMargins/>`)).mirrorMargins).toBe(true);
+    expect(parseSettings(wrap(`<w:mirrorMargins w:val="0"/>`)).mirrorMargins).toBeUndefined();
+    expect(parseSettings(wrap("")).mirrorMargins).toBeUndefined();
+  });
+});
+
 describe("parseSettings — w:themeFontLang (§17.15.1.88)", () => {
   test("reads eastAsia and bidi tags", () => {
     expect(

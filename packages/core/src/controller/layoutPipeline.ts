@@ -110,6 +110,7 @@ export type LayoutPipelineDeps<THfPMs> = {
   sectionProperties: SectionProperties | null | undefined;
   document: Document | null;
   defaultTabStop: number | undefined;
+  mirrorMargins: boolean;
   styles: StyleDefinitions | null | undefined;
   layout: Layout | null;
   // Refs read as their current value; `session` is the object itself because
@@ -170,6 +171,7 @@ export function runLayoutPipeline<THfPMs>(
     sectionProperties,
     document,
     defaultTabStop,
+    mirrorMargins,
     styles,
     layout,
     hfPMs,
@@ -405,6 +407,7 @@ export function runLayoutPipeline<THfPMs>(
         pageSize,
         margins,
         pageGap,
+        mirrorMargins,
       };
       if (hasTitlePg && firstPageHeaderForRender) {
         const headerDistance = margins.header ?? 0;

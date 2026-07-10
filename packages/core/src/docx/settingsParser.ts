@@ -14,7 +14,10 @@ import type { DocumentSettings } from "../types/document";
 import { findChild, getAttribute, parseBooleanElement, parseXmlDocument } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
-export type { DocumentSettings };
+export type FolioDocumentSettings = DocumentSettings & {
+  /** Swap left/right section margins on even physical pages. */
+  mirrorMargins?: boolean;
+};
 
 /** OOXML default per §17.6.13 when `w:defaultTabStop` is absent. */
 export const DEFAULT_TAB_STOP_TWIPS = 720;
@@ -26,9 +29,9 @@ export const DEFAULT_TAB_STOP_TWIPS = 720;
  */
 const MAX_TAB_STOP_TWIPS = 31_680;
 
-export function parseSettings(xml: string | null): DocumentSettings {
+export function parseSettings(xml: string | null): FolioDocumentSettings {
   const root = xml ? (parseXmlDocument(xml) as XmlElement | null) : null;
-  const settings: DocumentSettings = {
+  const settings: FolioDocumentSettings = {
     defaultTabStop: parseDefaultTabStop(root),
   };
   // `w:evenAndOddHeaders` lives in settings.xml, not sectPr. Only record the
@@ -36,6 +39,10 @@ export function parseSettings(xml: string | null): DocumentSettings {
   const evenAndOddHeaders = root ? findChild(root, "w", "evenAndOddHeaders") : null;
   if (evenAndOddHeaders && parseBooleanElement(evenAndOddHeaders)) {
     settings.evenAndOddHeaders = true;
+  }
+  const mirrorMargins = root ? findChild(root, "w", "mirrorMargins") : null;
+  if (mirrorMargins && parseBooleanElement(mirrorMargins)) {
+    settings.mirrorMargins = true;
   }
 
   // `w:themeFontLang` selects the concrete typeface for the empty `<a:ea>` /

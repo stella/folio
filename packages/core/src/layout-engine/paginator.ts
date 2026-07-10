@@ -53,6 +53,8 @@ export type PaginatorOptions = {
   pageSize: { w: number; h: number };
   /** Page margins. */
   margins: PageMargins;
+  /** Swap left/right margins on even physical pages. */
+  mirrorMargins?: boolean;
   /**
    * Margins applied only to the very first page (page 1) of the paginator.
    * Used when a `<w:titlePg/>`-enabled section needs different margins for
@@ -138,7 +140,8 @@ export function createPaginator(options: PaginatorOptions) {
       return false;
     }
     return (
-      arePageSizesEqual(state.page.size, pageSize) && areMarginsEqual(state.page.margins, margins)
+      arePageSizesEqual(state.page.size, pageSize) &&
+      areMarginsEqual(state.page.margins, getPageMargins(state.page.number))
     );
   }
 
@@ -169,9 +172,14 @@ export function createPaginator(options: PaginatorOptions) {
   }
 
   function getPageMargins(pageNumber: number): PageMargins {
-    return pageNumber === 1 && options.firstPageMargins
-      ? { ...options.firstPageMargins }
-      : { ...margins };
+    const pageMargins =
+      pageNumber === 1 && options.firstPageMargins
+        ? { ...options.firstPageMargins }
+        : { ...margins };
+    if (options.mirrorMargins === true && pageNumber % 2 === 0) {
+      return { ...pageMargins, left: pageMargins.right, right: pageMargins.left };
+    }
+    return pageMargins;
   }
 
   // Track where column content starts on the current page.
@@ -184,7 +192,8 @@ export function createPaginator(options: PaginatorOptions) {
    * Get X position for a given column index.
    */
   function getColumnX(columnIndex: number): number {
-    return margins.left + columnIndex * (columnWidth + columns.gap);
+    const activeLeftMargin = states.at(-1)?.page.margins.left ?? getPageMargins(1).left;
+    return activeLeftMargin + columnIndex * (columnWidth + columns.gap);
   }
 
   /**

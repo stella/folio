@@ -5,6 +5,25 @@ import { createPaginator } from "./paginator";
 const SIZE = { w: 800, h: 1000 };
 const MARGINS = { top: 50, right: 50, bottom: 50, left: 50 };
 
+describe("paginator mirrored margins", () => {
+  test("swaps left and right margins on even physical pages", () => {
+    const paginator = createPaginator({
+      pageSize: SIZE,
+      margins: { ...MARGINS, left: 90, right: 72 },
+      mirrorMargins: true,
+    });
+
+    const first = paginator.getCurrentState();
+    expect(first.page.margins.left).toBe(90);
+    expect(paginator.getColumnX(0)).toBe(90);
+
+    const second = paginator.forcePageBreak();
+    expect(second.page.margins.left).toBe(72);
+    expect(second.page.margins.right).toBe(90);
+    expect(paginator.getColumnX(0)).toBe(72);
+  });
+});
+
 describe("paginator forcePageBreak", () => {
   test("two consecutive forcePageBreak calls preserve an explicit blank page", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });

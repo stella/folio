@@ -291,6 +291,7 @@ export function layoutDocument(
   const paginator = createPaginator({
     pageSize: initialConfig.pageSize,
     margins: initialConfig.margins,
+    ...(options.mirrorMargins === true ? { mirrorMargins: true } : {}),
     ...(options.firstPageMargins !== undefined
       ? { firstPageMargins: options.firstPageMargins }
       : {}),

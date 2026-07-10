@@ -1141,6 +1141,8 @@ export type LayoutOptions = {
   titlePage?: boolean;
   /** Whether section has different even/odd headers/footers. */
   evenAndOddHeaders?: boolean;
+  /** Swap left/right margins on even physical pages. */
+  mirrorMargins?: boolean;
   /** Per-page footnote reserved heights (pageNumber → height in pixels). */
   footnoteReservedHeights?: Map<number, number>;
   /**

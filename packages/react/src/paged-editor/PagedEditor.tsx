@@ -956,6 +956,7 @@ type LayoutInputSignatureOptions = {
   columns: ColumnLayout | undefined;
   contentWidth: number;
   defaultTabStop: number | undefined;
+  mirrorMargins: boolean;
   firstPageFooterContent: HeaderFooter | null | undefined;
   firstPageHeaderContent: HeaderFooter | null | undefined;
   footerContent: HeaderFooter | null | undefined;
@@ -2054,6 +2055,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const columns = useMemo(() => getColumns(sectionProperties), [sectionProperties]);
     const contentWidth = pageSize.w - margins.left - margins.right;
     const defaultTabStop = document?.package.settings?.defaultTabStop;
+    const documentSettings = document?.package.settings;
+    const mirrorMargins =
+      documentSettings !== undefined &&
+      "mirrorMargins" in documentSettings &&
+      documentSettings.mirrorMargins === true;
     const sectionHeaderFooterRefs = useMemo(() => getSectionHeaderFooterRefs(document), [document]);
     const layoutInputSignature = useMemo(
       () =>
@@ -2061,6 +2067,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           columns,
           contentWidth,
           defaultTabStop,
+          mirrorMargins,
           firstPageFooterContent,
           firstPageHeaderContent,
           footerContent,
@@ -2081,6 +2088,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         columns,
         contentWidth,
         defaultTabStop,
+        mirrorMargins,
         firstPageFooterContent,
         firstPageHeaderContent,
         footerContent,
@@ -2153,6 +2161,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             sectionProperties,
             document,
             defaultTabStop,
+            mirrorMargins,
             styles,
             layout: layoutRef.current,
             hfPMs: hfPMsRef.current,
@@ -2218,6 +2227,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         sectionProperties,
         document,
         defaultTabStop,
+        mirrorMargins,
         styles,
       ],
     );
