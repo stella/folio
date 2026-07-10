@@ -48,6 +48,7 @@
       "onSelectiveSaveTripwire",
       "onSlashMenuChange",
       "onSlashMenuKeyAction",
+      "password",
       "placeholder",
       "preserveDocumentWhileLoading",
       "readOnly",
@@ -91,15 +92,20 @@
     "paired": [
       "acceptAIEditOperation",
       "applyAIEditOperations",
+      "applyDocumentOperations",
       "createAIEditSnapshot",
       "ensureEditorView",
       "focus",
+      "getCommentAnchors",
       "getContentControls",
       "getCurrentPage",
       "getDocument",
       "getEditor",
       "getEditorRef",
+      "getPageText",
+      "getSelectionText",
       "getTotalPages",
+      "getTrackedChanges",
       "getZoom",
       "hasPendingChanges",
       "loadDocument",
@@ -121,6 +127,7 @@
       "undo"
     ],
     "pairedNotes": {
+      "applyDocumentOperations": "Both wired against the shared core `applyFolioDocumentOperations`, mirroring the adjacent (already-paired) `applyAIEditOperations`. Both assert the batch version (`assertSupportedFolioDocumentOperationVersion`), return an all-skipped `unsupportedBlock` result at the contract version when no view is mounted, and otherwise delegate to core with the same snapshot/batch/author. Comment-creation idiom differs like the AI-edit method: React's `createCommentId` closure calls `createComment` and folds the results in via `updateComments`, while Vue passes `opts.createAIEditComment`, which mints the comment and appends it to the thread list internally (from useCommentManagement) — same observable effect.",
       "hasPendingChanges": "Both wired, same set/clear points, different-idiom implementation. React derives it live each call from the ParagraphChangeTracker plugin (getChangedParagraphIds/hasStructuralChanges/hasUntrackedChanges) OR-ed with commentsDirtyRef, and clears the tracker after each successful save. Vue cannot read the tracker for this because it deliberately leaves the tracker uncleared across saves (the tracker is the selective-save baseline; see the featureFlags props note) and re-editing an already-tracked paragraph would not grow the set, so a tracker read could never go false after save. Instead Vue tracks two boolean flags with the same set/clear points as React's underlying signals: `isDirty` in useDocxEditor (set on every doc-changing transaction — the same signal that drives the writeback/onChange; cleared on a successful save() and on document load/swap) and `commentsDirty` in useCommentManagement (set on every user comment mutation add/reply/resolve/unresolve/delete; cleared on document load via seedFromDocument and on a successful save via the ref API's save wrapper). useDocxEditorRefApi returns `isDirty || commentsDirty` (false before the view mounts, matching React's no-view guard). Net semantics match: pending after typing or a comment edit, clean after save or load. Housekeeping transactions (paraId allocation, auto-bidi) only run as appendTransactions to a real user edit or imperatively at initial-state build (never through the runtime transaction handler on a plain load), so they never set isDirty spuriously.",
       "getEditorRef": "Both wired, real handle in both, one sub-method genuinely no-op in both. Vue has no ported PagedEditor component to source a ref from, so useDocxEditorRefApi.ts synthesizes the identical PagedEditorRef shape from primitives it already holds: getEditor/getDocument/getState/getView/ensureView/focus/blur/isFocused/dispatch/undo/redo/canUndo/canRedo/setSelection/getLayout/relayout delegate straight to the headless FolioEditor controller (core/controller/folioEditor.ts), which already implements the hidden-editor imperative API 1:1 with React's PagedEditorRef surface; scrollToPosition delegates to the same scrollVisiblePositionIntoView used by the AI-edit scroll methods; scrollToPage/scrollToParaId reuse this file's own DocxEditorRef-level implementations verbatim (same pagesRef/pagesViewportRef-based DOM math as React's PagedEditor); getPageNumberForPmPos uses findPageIndexContainingPmPos against the reactive layout, the same helper getCurrentPage already uses, so it is null before first layout and 1-indexed like React's version. getHfView is a documented no-op returning null in Vue (paired with React's real hfPMsRef-backed lookup only in the sense that both exist and typecheck): useDocxEditor's layout pipeline always calls runLayoutPipelineCompute with hfPMs: null (see the HfPmsHandle type there), so Vue has no persistent hidden header/footer EditorView to look up by rId yet, unlike React's inline HF editing. ensureView ignores its {focus} option like the top-level ensureEditorView (PORT-BLOCKED, ProseMirror-core ensureView() takes no argument yet)."
     },

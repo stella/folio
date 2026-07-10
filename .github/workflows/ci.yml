@@ -51,6 +51,12 @@ jobs:
       - name: i18n check
         run: bun run check:i18n
 
+      - name: Adapter parity contract (React <-> Vue props/ref)
+        run: bun run check:parity-contract
+
+      - name: Adapter export parity (React <-> Vue public exports)
+        run: bun run check:export-parity
+
       - name: Typecheck
         run: bun run typecheck
 
