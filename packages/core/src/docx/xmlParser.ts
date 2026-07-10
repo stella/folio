@@ -110,8 +110,9 @@ function fxpNodeToElement(node: Record<string, unknown>): XmlElement {
   // Element node: { "w:p": [...children], ":@": { ...attrs } }
   const attrs = node[ATTR_KEY] as Record<string, string> | undefined;
 
-  // The tag name is the first key that is neither #text nor :@
-  for (const key of Object.keys(node)) {
+  // fast-xml-parser creates these nodes and rejects prototype-polluting tag
+  // names. Iterating directly avoids allocating a keys array for every node.
+  for (const key in node) {
     if (key === ATTR_KEY) {
       continue;
     }
@@ -119,12 +120,18 @@ function fxpNodeToElement(node: Record<string, unknown>): XmlElement {
     const children = node[key] as Record<string, unknown>[];
     const element: XmlElement = { type: "element", name: key };
 
-    if (attrs && Object.keys(attrs).length > 0) {
+    // fast-xml-parser only emits the attribute group when it contains an
+    // attribute, so a second Object.keys allocation is unnecessary.
+    if (attrs) {
       element.attributes = attrs;
     }
 
     if (children.length > 0) {
-      element.elements = children.map(fxpNodeToElement);
+      const elements: XmlElement[] = [];
+      for (const child of children) {
+        elements.push(fxpNodeToElement(child));
+      }
+      element.elements = elements;
     }
 
     return element;
@@ -140,8 +147,13 @@ function fxpNodeToElement(node: Record<string, unknown>): XmlElement {
  * `{ elements: [...] }`.
  */
 function fxpToRootElement(nodes: Record<string, unknown>[]): XmlElement {
+  const elements: XmlElement[] = [];
+  for (const node of nodes) {
+    elements.push(fxpNodeToElement(node));
+  }
+
   return {
-    elements: nodes.map(fxpNodeToElement),
+    elements,
   };
 }
 
