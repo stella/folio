@@ -26,7 +26,7 @@ describe("extractSinglePage font resolution", () => {
       await page.setContent(`
         <div class="layout-page" data-page-number="1" style="width: 600px; height: 800px">
           <div class="layout-line">
-            <span class="layout-run" style="font: 16px 'Definitely Missing Font', sans-serif">Font probe</span>
+            <span class="layout-run" style="font: 16px 'Definitely, Missing Font', sans-serif">Font probe</span>
           </div>
         </div>
       `);
