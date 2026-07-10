@@ -191,9 +191,12 @@ import { HorizontalRuler } from "./ui/HorizontalRuler";
 import { VerticalRuler } from "./ui/VerticalRuler";
 import { FolioUIProvider, DEFAULT_COMPONENTS } from "../ui/folio-ui";
 import { containedHandler } from "../utils/contained-handler";
-import { clampRangeToDocSize, resolveFolioAIBlockRange } from "./aiEditRange";
+import {
+  clampRangeToDocSize,
+  resolveFolioAIBlockRange,
+} from "@stll/folio-core/ai-edits/blockRange";
 import { resolveCommentCreationRange } from "./commentAnchors";
-import { getPageTextFromLayout } from "./pageText";
+import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 import {
   EMPTY_ANCHOR_POSITIONS,
   PENDING_COMMENT_ID,

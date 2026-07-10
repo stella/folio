@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 
-import type { Layout } from "@stll/folio-core/layout-engine";
+import type { Layout } from "../layout-engine";
 import { getPageTextFromLayout } from "./pageText";
 
 const schema = new Schema({

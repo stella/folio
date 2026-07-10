@@ -1,23 +1,19 @@
 /**
- * Helpers shared by the AI-edit imperative API methods.
+ * Helpers shared by the adapters' AI-edit imperative API methods (React and
+ * Vue both resolve block/revision ranges through here, so the behavior can
+ * never drift).
  *
- * Lives outside `useDocxEditorRefApi.ts` so the bounds-checking logic that
- * protects `TextSelection.between` from "endpoint not pointing into a node
- * with inline content" can be unit-tested without spinning up a real PM view.
- *
- * Ported verbatim from the React adapter's `components/aiEditRange.ts` so the
- * two adapters resolve block/revision ranges identically (React ≡ Vue).
+ * Framework-neutral so the bounds-checking logic that protects
+ * `TextSelection.between` from "endpoint not pointing into a node with
+ * inline content" can be unit-tested without spinning up a real PM view.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
-import type { FolioAIBlockAnchor, FolioAIEditSnapshot } from "@stll/folio-core/ai-edits/types";
-import { findParagraphByParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
-import {
-  getFolioParaIdFromBlockId,
-  getSequentialFolioBlockIdIndex,
-} from "@stll/folio-core/types/block-id";
+import { createFolioAIEditSnapshot } from "./snapshot";
+import type { FolioAIBlockAnchor, FolioAIEditSnapshot } from "./types";
+import { findParagraphByParaId } from "../prosemirror/utils/findParagraphByParaId";
+import { getFolioParaIdFromBlockId, getSequentialFolioBlockIdIndex } from "../types/block-id";
 
 export type DocPositionRange = { from: number; to: number };
 
