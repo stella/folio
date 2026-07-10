@@ -18,19 +18,19 @@ bun add @stll/folio-agents
 
 ## Tools
 
-| Tool              | What it does                                                                                                                  |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `read_document`   | Read the document body as `{ blockId, kind, text }` blocks                                                                    |
-| `find_text`       | Search block text for a string; returns block id, occurrence, and context per match                                           |
-| `read_comments`   | Read comment threads (author, text, resolved, anchored block, replies)                                                        |
-| `read_changes`    | Read pending tracked changes (insertions/deletions) awaiting review                                                           |
-| `add_comment`     | Attach a comment to a block, optionally quoting specific text                                                                 |
-| `suggest_changes` | Propose `replaceInBlock` / `insertAfterBlock` / `insertBeforeBlock` / `replaceBlock` / `deleteBlock` edits as tracked changes |
-| `reply_comment`   | Reply to a comment thread                                                                                                     |
-| `resolve_comment` | Resolve or reopen a comment thread                                                                                            |
-| `read_page`       | Read a page's plain text (live editor only)                                                                                   |
-| `read_selection`  | Read the current text selection (live editor only)                                                                            |
-| `scroll_to_block` | Scroll the live editor to a block (live editor only)                                                                          |
+| Tool              | What it does                                                                        |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| `read_document`   | Read the document body as `{ blockId, kind, text }` blocks                          |
+| `find_text`       | Search block text for a string; returns block id, occurrence, and context per match |
+| `read_comments`   | Read comment threads (author, text, resolved, anchored block, replies)              |
+| `read_changes`    | Read pending tracked changes (insertions/deletions) awaiting review                 |
+| `add_comment`     | Attach a comment to a block, optionally quoting specific text                       |
+| `suggest_changes` | Propose block or stable-range edits as tracked changes                              |
+| `reply_comment`   | Reply to a comment thread                                                           |
+| `resolve_comment` | Resolve or reopen a comment thread                                                  |
+| `read_page`       | Read a page's plain text (live editor only)                                         |
+| `read_selection`  | Read the current text selection (live editor only)                                  |
+| `scroll_to_block` | Scroll the live editor to a block (live editor only)                                |
 
 Block ids and comment ids always come from a prior tool call
 (`read_document`, `find_text`, `read_comments`) within the same conversation —

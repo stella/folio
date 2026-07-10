@@ -105,11 +105,12 @@ go straight back to the model.
 - `suggest_changes` defaults to tracked-changes mode on both shipped bridges
   — it proposes redlines for a human to accept or reject, never edits the
   visible text directly.
-- The tool surface here is fixed: five edit operation kinds
-  (`replaceInBlock`, `insertAfterBlock`, `insertBeforeBlock`, `replaceBlock`,
-  `deleteBlock`) plus comment/reply/resolve. There is no
+- The tool surface here is fixed: seven edit operation kinds
+  (`replaceInBlock`, `replaceRange`, `commentOnRange`, `insertAfterBlock`,
+  `insertBeforeBlock`, `replaceBlock`, `deleteBlock`) plus
+  comment/reply/resolve. There is no
   `insertSignatureTable`-style structural op, and none should be invented —
-  compose the five primitives, or extend `@stll/folio-core`'s ai-edits engine
+  compose the seven primitives, or extend `@stll/folio-core`'s ai-edits engine
   itself if a document needs a structural operation this package doesn't
   expose.
 - **Untrusted documents:** `read_document`, `read_comments`, `read_changes`,
@@ -126,8 +127,8 @@ go straight back to the model.
 Two different questions, two different tools:
 
 - **Pending redlines in one document** — what a reviewer would see as tracked
-  changes right now: use the `read_changes` tool (headless bridge only; see
-  the capability gap above) or call `reviewer.getChanges()` directly.
+  changes right now: use the `read_changes` tool on a capable bridge or call
+  `reviewer.getChanges()` directly.
 - **Between two saved `.docx` versions** — `compareDocxVersions(previousBuffer,
 currentBuffer)` + `formatVersionDiffForLLM(diff)`. Both are plain async
   functions, not tool definitions: a model can't attach two buffers to one
