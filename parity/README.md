@@ -51,5 +51,7 @@ resolved CSS family on matching text lines. A requested font may be substituted
 without invalidating the run when both renderers use the same fallback
 (`font-shared:*`). `font-renderer-mismatch` means geometry may primarily reflect
 different font metrics and the document should not drive a layout fix.
+Chromium families are canvas-probed in CSS-stack order; the computed stack alone
+cannot reveal which fallback supplied the glyphs.
 
 Shared data contract: `types.ts`. Tolerances and paths: `config.ts`.

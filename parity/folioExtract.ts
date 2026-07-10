@@ -124,7 +124,8 @@ export type RawLine = {
   text: string;
   rect: RawRect;
   region: Region;
-  /** `getComputedStyle(...).fontFamily` of the first `.layout-run`, verbatim. */
+  /** First actually available family from the computed CSS stack of the first
+   * `.layout-run`; falls back to the computed stack when canvas probing is unavailable. */
   fontFamilyRaw?: string;
   /** `getComputedStyle(...).fontSize` of the first `.layout-run`, parsed to a px number. */
   fontSizePx?: number;
@@ -166,6 +167,15 @@ export const parseFirstFontFamily = (fontFamilyRaw: string | undefined): string 
   }
   return first.replace(/^["']|["']$/gu, "");
 };
+
+const CSS_FONT_FAMILY_TOKEN_PATTERN = `"[^"]*"|'[^']*'|[^,]+`;
+
+/** Split a computed CSS family stack without treating commas inside quoted
+ * family names as separators. */
+export const parseCssFontFamilies = (fontFamilyRaw: string): string[] =>
+  (fontFamilyRaw.match(new RegExp(CSS_FONT_FAMILY_TOKEN_PATTERN, "gu")) ?? [])
+    .map((family) => family.trim().replace(/^['"]|['"]$/gu, ""))
+    .filter((family) => family.length > 0);
 
 /**
  * Pure transformer from one raw evaluate()-extracted page to the normalized
@@ -429,10 +439,13 @@ const listPageMeta = (page: Page): Promise<PageMeta[]> =>
  * page into view (and let layout stabilize) before calling this, or it will
  * read an empty/stale shell.
  */
-const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
-  page.evaluate<RawPage, { domIndex: number; meaningfulInkPattern: string }>(
+export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
+  page.evaluate<
+    RawPage,
+    { domIndex: number; meaningfulInkPattern: string; fontFamilyTokenPattern: string }
+  >(
     (input) => {
-      const { domIndex: idx, meaningfulInkPattern } = input;
+      const { domIndex: idx, meaningfulInkPattern, fontFamilyTokenPattern } = input;
       const meaningfulInkCharacter = new RegExp(meaningfulInkPattern, "u");
       const pageEls = Array.from(document.querySelectorAll(".layout-page")) as HTMLElement[];
       const el = pageEls[idx];
@@ -446,6 +459,53 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
 
       const tableCells = Array.from(el.querySelectorAll(".layout-table-cell"));
       const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
+      const resolvedFontCache = new Map<string, string>();
+      const canvasContext = document.createElement("canvas").getContext("2d");
+      const fontProbeText = "mmmmmmmmmmlliWW0123456789";
+      const genericFamilies = new Set([
+        "serif",
+        "sans-serif",
+        "monospace",
+        "cursive",
+        "fantasy",
+        "system-ui",
+      ]);
+      const resolveFontFamily = (computed: CSSStyleDeclaration): string => {
+        const cached = resolvedFontCache.get(computed.fontFamily);
+        if (cached !== undefined) return cached;
+
+        const families =
+          computed.fontFamily
+            .match(new RegExp(fontFamilyTokenPattern, "gu"))
+            ?.map((family) => family.trim().replace(/^['"]|['"]$/gu, ""))
+            .filter((family) => family.length > 0) ?? [];
+        if (!canvasContext) return families[0] ?? computed.fontFamily;
+
+        const fontSize = computed.fontSize || "16px";
+        const baselines = ["monospace", "serif", "sans-serif"];
+        for (const family of families) {
+          if (genericFamilies.has(family.toLocaleLowerCase())) {
+            resolvedFontCache.set(computed.fontFamily, family);
+            return family;
+          }
+          const escapedFamily = family.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
+          const isAvailable = baselines.some((baseline) => {
+            canvasContext.font = `${fontSize} ${baseline}`;
+            const baselineWidth = canvasContext.measureText(fontProbeText).width;
+            canvasContext.font = `${fontSize} "${escapedFamily}", ${baseline}`;
+            const candidateWidth = canvasContext.measureText(fontProbeText).width;
+            return Math.abs(candidateWidth - baselineWidth) > 0.01;
+          });
+          if (isAvailable) {
+            resolvedFontCache.set(computed.fontFamily, family);
+            return family;
+          }
+        }
+
+        const fallback = families.at(-1) ?? computed.fontFamily;
+        resolvedFontCache.set(computed.fontFamily, fallback);
+        return fallback;
+      };
       const lines = lineEls.flatMap((lineEl) => {
         const segmentInkRect = (segmentEl: HTMLElement): DOMRect | null => {
           if (
@@ -520,16 +580,14 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
           return "body";
         })();
         const tableCell = lineEl.closest(".layout-table-cell");
-        const visualGroup = tableCell
-          ? `table-cell:${tableCells.indexOf(tableCell)}`
-          : undefined;
+        const visualGroup = tableCell ? `table-cell:${tableCells.indexOf(tableCell)}` : undefined;
 
         const fontFrom = (sourceEl: HTMLElement | null) => {
           if (!sourceEl) return {};
           const computed = getComputedStyle(sourceEl);
           const parsedSize = Number.parseFloat(computed.fontSize);
           return {
-            fontFamilyRaw: computed.fontFamily,
+            fontFamilyRaw: resolveFontFamily(computed),
             ...(Number.isFinite(parsedSize) ? { fontSizePx: parsedSize } : {}),
           };
         };
@@ -689,7 +747,11 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
         lines,
       };
     },
-    { domIndex, meaningfulInkPattern: MEANINGFUL_INK_CHARACTER.source },
+    {
+      domIndex,
+      meaningfulInkPattern: MEANINGFUL_INK_CHARACTER.source,
+      fontFamilyTokenPattern: CSS_FONT_FAMILY_TOKEN_PATTERN,
+    },
   );
 
 const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspection> =>

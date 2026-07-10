@@ -4,6 +4,7 @@ import { PX_TO_PT } from "../config";
 import {
   computeZoomFactor,
   meaningfulTextRange,
+  parseCssFontFamilies,
   parseFirstFontFamily,
   toPageGeom,
 } from "../folioExtract";
@@ -14,6 +15,20 @@ const rect = (left: number, top: number, width: number, height: number) => ({
   top,
   width,
   height,
+});
+
+describe("parseCssFontFamilies", () => {
+  test("preserves commas inside quoted family names", () => {
+    expect(parseCssFontFamilies('"Definitely, Missing Font", Arial, sans-serif')).toEqual([
+      "Definitely, Missing Font",
+      "Arial",
+      "sans-serif",
+    ]);
+  });
+
+  test("handles single-quoted and unquoted families", () => {
+    expect(parseCssFontFamilies("'Times New Roman', serif")).toEqual(["Times New Roman", "serif"]);
+  });
 });
 
 const makeRawLine = (overrides: Partial<RawLine> & Pick<RawLine, "text" | "rect">): RawLine => ({
