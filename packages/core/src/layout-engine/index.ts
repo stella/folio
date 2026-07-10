@@ -809,7 +809,7 @@ function layoutTable(
       // the table border. The border therefore extends left by that cell's
       // leading margin. Adding both indent and padding shifts every cell by
       // one extra cell margin.
-      const leadingCellMargin = block.rows[0]?.cells[0]?.padding.left ?? 0;
+      const leadingCellMargin = block.rows[0]?.cells[0]?.padding?.left ?? 0;
       x += (block.indent ?? 0) - leadingCellMargin;
     }
     return x;
