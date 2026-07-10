@@ -10,6 +10,8 @@ import type {
   FolioAIEditOperation,
   FolioAIEditSnapshot,
   FolioCommentAnchor,
+  FolioDocumentOperationBatch,
+  FolioDocumentOperationResult,
   FolioReviewChange,
 } from "@stll/folio-core/ai-edits";
 import type {
@@ -328,6 +330,12 @@ export type DocxEditorCollaboration = {
   yXmlFragment: XmlFragment;
 };
 
+export type DocxEditorApplyDocumentOperationsOptions = {
+  snapshot: FolioAIEditSnapshot;
+  batch: FolioDocumentOperationBatch;
+  author?: string;
+};
+
 /**
  * Imperative handle exposed by the DocxEditor component.
  */
@@ -377,6 +385,10 @@ export type DocxEditorRef = {
   ensureEditorView: (options?: { focus?: boolean }) => void;
   /** Create the block snapshot that an external AI editor should reference. */
   createAIEditSnapshot: () => FolioAIEditSnapshot | null;
+  /** Apply a versioned document-operation batch against a previously created block snapshot. */
+  applyDocumentOperations: (
+    options: DocxEditorApplyDocumentOperationsOptions,
+  ) => FolioDocumentOperationResult;
   /** Apply AI-authored operations against a previously created block snapshot. */
   applyAIEditOperations: (options: {
     snapshot: FolioAIEditSnapshot;
