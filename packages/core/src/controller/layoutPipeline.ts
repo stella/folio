@@ -415,7 +415,7 @@ export function runLayoutPipeline<THfPMs>(
           nextLayoutOpts.firstPageMargins = { ...margins, top: headerBottom };
         }
       }
-      const finalSection = document?.package.document.sections.at(-1);
+      const finalSection = document?.package.document.sections?.at(-1);
       if (finalSection) {
         nextLayoutOpts.finalPageSize = getPageSize(finalSection.properties);
         nextLayoutOpts.finalMargins = getMargins(finalSection.properties);
