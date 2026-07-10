@@ -125,6 +125,9 @@ function pageHasVisibleBodyContent(
  */
 function getSpacingBefore(block: ParagraphBlock): number {
   const value = block.attrs?.spacing?.before ?? 0;
+  if (value === 0) {
+    return 0;
+  }
   if (isEmptyParagraph(block) && !block.attrs?.styleId && !block.attrs?.spacingExplicit?.before) {
     return 0;
   }
@@ -137,6 +140,9 @@ function getSpacingBefore(block: ParagraphBlock): number {
  */
 function getSpacingAfter(block: ParagraphBlock): number {
   const value = block.attrs?.spacing?.after ?? 0;
+  if (value === 0) {
+    return 0;
+  }
   if (isEmptyParagraph(block) && !block.attrs?.styleId && !block.attrs?.spacingExplicit?.after) {
     return 0;
   }
