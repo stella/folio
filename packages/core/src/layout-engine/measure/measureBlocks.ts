@@ -157,8 +157,11 @@ export function measureTableCellBlockVisualHeight(block: FlowBlock, blockMeasure
   return spacingBefore + maxImageHeight + spacingAfter;
 }
 
-function getTableCellVerticalBorderHeight(cell: TableCell | undefined): number {
-  const top = cell?.borders?.top?.width ?? 0;
+function getTableCellVerticalBorderHeight(
+  cell: TableCell | undefined,
+  isFirstRow: boolean,
+): number {
+  const top = isFirstRow ? (cell?.borders?.top?.width ?? 0) : 0;
   const bottom = cell?.borders?.bottom?.width ?? 0;
   return top + bottom;
 }
@@ -324,7 +327,7 @@ export function measureTableBlock(
       cell.height += padTop + padBottom;
       maxCellHeightWithBorders = Math.max(
         maxCellHeightWithBorders,
-        cell.height + getTableCellVerticalBorderHeight(sourceCell),
+        cell.height + getTableCellVerticalBorderHeight(sourceCell, rowIdx === 0),
       );
     }
 
