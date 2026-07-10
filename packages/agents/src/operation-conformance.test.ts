@@ -78,8 +78,9 @@ const createSurfaces = async (): Promise<ConformanceSurface[]> => {
   ];
 };
 
-const normalizeResult = ({ version, applied, skipped }: FolioDocumentOperationResult) => ({
+const normalizeResult = ({ version, status, applied, skipped }: FolioDocumentOperationResult) => ({
   version,
+  status,
   applied: applied.map(({ id }) => ({ id })),
   skipped,
 });
@@ -113,6 +114,7 @@ describe("document operation cross-surface conformance", () => {
     const expected = {
       result: {
         version: 1,
+        status: "committed",
         applied: [{ id: "replace-heading" }],
         skipped: [],
       },

@@ -2826,6 +2826,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         if (!view) {
           return {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            status: batch.atomic === true ? "rejected" : "committed",
             applied: [],
             skipped: batch.operations.map((operation) => ({
               id: operation.id,

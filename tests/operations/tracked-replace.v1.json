@@ -1,6 +1,7 @@
 {
   "version": 1,
   "mode": "tracked-changes",
+  "atomic": true,
   "operations": [
     {
       "id": "replace-heading",

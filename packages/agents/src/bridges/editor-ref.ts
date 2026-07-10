@@ -175,8 +175,20 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
       if (ref.applyDocumentOperations) {
         return ref.applyDocumentOperations({ snapshot, batch: versionedBatch, author });
       }
+      if (versionedBatch.atomic === true) {
+        return {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          status: "rejected",
+          applied: [],
+          skipped: versionedBatch.operations.map(({ id }) => ({
+            id,
+            reason: "unsupportedMode",
+          })),
+        };
+      }
       return {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        status: "committed",
         ...ref.applyAIEditOperations({
           snapshot,
           operations: versionedBatch.operations,

@@ -62,6 +62,7 @@ export {
   applyFolioDocumentOperations,
   assertSupportedFolioDocumentOperationVersion,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
   FOLIO_DOCUMENT_OPERATION_MODES,
   FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
   FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
@@ -81,6 +82,7 @@ export {
   type FolioDocumentOperationPrecondition,
   type FolioDocumentOperationType,
   type FolioDocumentOperationResult,
+  type FolioDocumentOperationStatus,
 } from "./ai-edits";
 export {
   resolveSuggestionAnchor,

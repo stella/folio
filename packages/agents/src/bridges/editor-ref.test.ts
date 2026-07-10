@@ -33,7 +33,7 @@ describe("createEditorRefBridge: document operations", () => {
       ...baseRef(),
       applyDocumentOperations: ({ batch }) => {
         receivedVersion = batch.version;
-        return { version: batch.version, applied: [], skipped: [] };
+        return { version: batch.version, status: "committed", applied: [], skipped: [] };
       },
     };
     const bridge = createEditorRefBridge({
@@ -67,8 +67,40 @@ describe("createEditorRefBridge: document operations", () => {
 
     expect(result).toEqual({
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      status: "committed",
       ...EMPTY_APPLY_RESULT,
     });
+  });
+
+  test("rejects atomic batches without mutating through an older editor ref", () => {
+    let applyCalls = 0;
+    const ref: FolioAgentEditorRefLike = {
+      ...baseRef(),
+      applyAIEditOperations: () => {
+        applyCalls += 1;
+        return EMPTY_APPLY_RESULT;
+      },
+    };
+    const bridge = createEditorRefBridge({
+      ref,
+      author: "AI",
+      getComments: () => [],
+      setComments: () => {},
+    });
+
+    const result = bridge.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      atomic: true,
+      operations: [{ id: "op-1", type: "deleteBlock", blockId: "para-1" }],
+    });
+
+    expect(result).toEqual({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      status: "rejected",
+      applied: [],
+      skipped: [{ id: "op-1", reason: "unsupportedMode" }],
+    });
+    expect(applyCalls).toBe(0);
   });
 
   test("rejects unsupported serialized versions before using a legacy ref", () => {

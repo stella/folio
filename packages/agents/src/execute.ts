@@ -211,6 +211,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "unsupportedMode") {
     return "this operation does not support the requested mutation mode; inspect document operation capabilities and retry with a supported mode.";
   }
+  if (reason === "atomicBatchRejected") {
+    return "another operation in this atomic batch could not be applied; no operations were committed.";
+  }
   if (reason === "preconditionFailed") {
     return "the target block changed after the operation was prepared; re-read the document and retry with a fresh operation.";
   }

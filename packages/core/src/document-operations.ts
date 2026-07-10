@@ -31,6 +31,10 @@ export const FOLIO_DOCUMENT_OPERATION_MODES = Object.freeze([
 
 export const FOLIO_DOCUMENT_OPERATION_STORIES = Object.freeze(["main"] as const);
 export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS = Object.freeze(["blockTextHash"] as const);
+export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES = Object.freeze([
+  "best-effort",
+  "atomic",
+] as const);
 
 export type FolioDocumentOperation = FolioAIEditOperation;
 export type FolioDocumentOperationMode = FolioAIEditApplyMode;
@@ -59,6 +63,7 @@ export type FolioDocumentOperationCapabilities = {
   readonly operationTypes: typeof FOLIO_DOCUMENT_OPERATION_TYPES;
   readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
   readonly modesByOperationType: typeof FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE;
+  readonly batchModes: typeof FOLIO_DOCUMENT_OPERATION_BATCH_MODES;
   readonly preconditions: typeof FOLIO_DOCUMENT_OPERATION_PRECONDITIONS;
   readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
@@ -68,6 +73,7 @@ const DOCUMENT_OPERATION_CAPABILITIES = Object.freeze({
   operationTypes: FOLIO_DOCUMENT_OPERATION_TYPES,
   modes: FOLIO_DOCUMENT_OPERATION_MODES,
   modesByOperationType: FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
+  batchModes: FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
   preconditions: FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   stories: FOLIO_DOCUMENT_OPERATION_STORIES,
 } as const satisfies FolioDocumentOperationCapabilities);
@@ -127,6 +133,7 @@ export type FolioDocumentOperationBatch = {
   readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   operations: FolioDocumentOperation[];
   mode?: FolioDocumentOperationMode;
+  atomic?: boolean;
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -397,7 +404,7 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
   if (!isPlainObject(value)) {
     return invalidBatch("$", "expected an object");
   }
-  assertAllowedKeys(value, "$", ["version", "operations", "mode"]);
+  assertAllowedKeys(value, "$", ["version", "operations", "mode", "atomic"]);
   const version = assertSupportedFolioDocumentOperationVersion(value["version"]);
   const operations = value["operations"];
   if (!Array.isArray(operations)) {
@@ -407,15 +414,28 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
   if (mode !== undefined && mode !== "direct" && mode !== "tracked-changes") {
     return invalidBatch("$.mode", 'expected "direct" or "tracked-changes" when provided');
   }
+  const atomic = readOptionalBoolean(value, "atomic", "$");
+  const parsedOperations = operations.map(parseDocumentOperation);
+  const operationIds = new Set<string>();
+  for (const [index, operation] of parsedOperations.entries()) {
+    if (operationIds.has(operation.id)) {
+      return invalidBatch(`$.operations[${index}].id`, "expected a unique operation id");
+    }
+    operationIds.add(operation.id);
+  }
   return {
     version,
-    operations: operations.map(parseDocumentOperation),
+    operations: parsedOperations,
     ...(mode !== undefined && { mode }),
+    ...(atomic !== undefined && { atomic }),
   };
 };
 
+export type FolioDocumentOperationStatus = "committed" | "rejected";
+
 export type FolioDocumentOperationResult = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+  status: FolioDocumentOperationStatus;
   applied: FolioAIEditAppliedOperation[];
   skipped: FolioAIEditSkippedOperation[];
 };
@@ -436,15 +456,45 @@ export const applyFolioDocumentOperations = ({
   createCommentId,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
-  return {
-    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-    ...applyFolioAIEditOperations({
-      view,
+  const apply = (targetView: FolioAIEditView, targetCreateCommentId = createCommentId) =>
+    applyFolioAIEditOperations({
+      view: targetView,
       snapshot,
       operations: parsedBatch.operations,
       mode: parsedBatch.mode ?? "tracked-changes",
       ...(author !== undefined && { author }),
-      ...(createCommentId !== undefined && { createCommentId }),
-    }),
+      ...(targetCreateCommentId !== undefined && { createCommentId: targetCreateCommentId }),
+    });
+
+  if (parsedBatch.atomic === true) {
+    let previewCommentId = -1;
+    const previewView: FolioAIEditView = {
+      state: view.state,
+      dispatch: (transaction) => {
+        previewView.state = previewView.state.apply(transaction);
+      },
+    };
+    const preview = apply(
+      previewView,
+      createCommentId === undefined ? undefined : () => previewCommentId--,
+    );
+    if (preview.skipped.length > 0) {
+      const skippedById = new Map(preview.skipped.map((operation) => [operation.id, operation]));
+      return {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        status: "rejected",
+        applied: [],
+        skipped: parsedBatch.operations.map(
+          ({ id }): FolioAIEditSkippedOperation =>
+            skippedById.get(id) ?? { id, reason: "atomicBatchRejected" },
+        ),
+      };
+    }
+  }
+
+  return {
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    status: "committed",
+    ...apply(view),
   };
 };
