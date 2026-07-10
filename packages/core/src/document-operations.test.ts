@@ -20,6 +20,7 @@ describe("document operation contract", () => {
       version: 1,
       operationTypes: [
         "replaceInBlock",
+        "replaceRange",
         "insertAfterBlock",
         "insertBeforeBlock",
         "replaceBlock",
@@ -32,6 +33,7 @@ describe("document operation contract", () => {
       dryRun: true,
       modesByOperationType: {
         replaceInBlock: ["direct", "tracked-changes"],
+        replaceRange: ["direct", "tracked-changes"],
         insertAfterBlock: ["direct", "tracked-changes"],
         insertBeforeBlock: ["direct", "tracked-changes"],
         replaceBlock: ["direct", "tracked-changes"],
@@ -87,6 +89,19 @@ describe("document operation contract", () => {
           find: "old",
           replace: "new",
           precondition: { blockTextHash: "h123" },
+        },
+        {
+          id: "range",
+          type: "replaceRange",
+          range: {
+            type: "textRange",
+            story: "main",
+            blockId: "a",
+            startOffset: 0,
+            endOffset: 3,
+            selectedTextHash: "h123",
+          },
+          replace: "new",
         },
         { id: "2", type: "insertAfterBlock", blockId: "a", text: "after" },
         { id: "3", type: "insertBeforeBlock", blockId: "a", text: "before" },
@@ -155,6 +170,28 @@ describe("document operation contract", () => {
       { version: 1, operations: [{ id: "1", type: "replaceInBlock", blockId: "a" }] },
       "$.operations[0].find",
       "expected a string",
+    ],
+    [
+      {
+        version: 1,
+        operations: [
+          {
+            id: "1",
+            type: "replaceRange",
+            range: {
+              type: "textRange",
+              story: "main",
+              blockId: "a",
+              startOffset: 3,
+              endOffset: 3,
+              selectedTextHash: "h123",
+            },
+            replace: "new",
+          },
+        ],
+      },
+      "$.operations[0].range.endOffset",
+      "greater than startOffset",
     ],
     [
       {

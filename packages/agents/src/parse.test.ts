@@ -90,6 +90,27 @@ describe("parseAddCommentInput", () => {
 });
 
 describe("parseSuggestChangesInput", () => {
+  test("valid replaceRange operation preserves the handle returned by find_text", () => {
+    const range = {
+      type: "textRange",
+      story: "main",
+      blockId: "b1",
+      startOffset: 7,
+      endOffset: 13,
+      selectedTextHash: "h123",
+    };
+    const result = parseSuggestChangesInput({
+      operations: [{ type: "replaceRange", range, replace: "done" }],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected ok:true");
+    }
+    expect(result.operations).toEqual([
+      { id: "op-1", type: "replaceRange", range, replace: "done" },
+    ]);
+  });
+
   test("valid replaceInBlock operation is parsed with an auto-generated id", () => {
     const result = parseSuggestChangesInput({
       operations: [{ type: "replaceInBlock", blockId: "b1", find: "Heading", replace: "Intro" }],

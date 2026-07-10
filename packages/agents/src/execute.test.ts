@@ -480,6 +480,26 @@ describe("find_text edge cases", () => {
     expect(findTextResult.truncated).toBe(false);
     expect(findTextResult.totalMatches).toBe(3);
     expect(findTextResult.matches.map((match) => match.occurrenceInBlock)).toEqual([0, 1, 2]);
+    expect(
+      findTextResult.matches.map((match) => [match.range.startOffset, match.range.endOffset]),
+    ).toEqual([
+      [0, 6],
+      [7, 13],
+      [14, 20],
+    ]);
+
+    const secondMatch = findTextResult.matches.at(1);
+    if (!secondMatch) {
+      throw new Error("expected the second match");
+    }
+    const suggested = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        { operations: [{ type: "replaceRange", range: secondMatch.range, replace: "done" }] },
+        bridge,
+      ),
+    ) as FolioAgentApplyOperationsSummary;
+    expect(suggested.applied).toEqual([{ id: "op-1" }]);
 
     const caseSensitive = expectOk(
       executeFolioToolCall(
@@ -488,8 +508,8 @@ describe("find_text edge cases", () => {
         bridge,
       ),
     ) as FolioAgentFindTextResult;
-    expect(caseSensitive.matches).toHaveLength(2);
-    expect(caseSensitive.totalMatches).toBe(2);
+    expect(caseSensitive.matches).toHaveLength(1);
+    expect(caseSensitive.totalMatches).toBe(1);
   });
 
   test("query over the length cap is rejected", async () => {

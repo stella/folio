@@ -4,7 +4,7 @@ import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import { applyFolioAIEditOperations } from "./apply";
-import { createFolioAIEditSnapshot } from "./snapshot";
+import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
 
 const schema = new Schema({
   nodes: {
@@ -175,6 +175,81 @@ const collectMarksByText = (state: EditorState): Record<string, string[]> => {
 };
 
 describe("Folio AI edit operations", () => {
+  test("rejects invalid text range boundaries", () => {
+    expect(
+      createFolioAITextRangeHandle({
+        blockId: "",
+        text: "text",
+        startOffset: 0,
+        endOffset: 4,
+      }),
+    ).toBeNull();
+    expect(
+      createFolioAITextRangeHandle({
+        blockId: "block",
+        text: "text",
+        startOffset: 2,
+        endOffset: 2,
+      }),
+    ).toBeNull();
+  });
+
+  test("replaces one exact occurrence through a stable text range", () => {
+    const view = makeView(makeState(["repeat repeat"]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    const block = snapshot.blocks.at(0);
+    if (!block) {
+      throw new Error("expected a block");
+    }
+    const range = createFolioAITextRangeHandle({
+      blockId: block.id,
+      text: block.text,
+      startOffset: 7,
+      endOffset: 13,
+    });
+    if (!range) {
+      throw new Error("expected a range");
+    }
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [{ id: "range-1", type: "replaceRange", range, replace: "done" }],
+      mode: "direct",
+    });
+
+    expect(result.applied.map(({ id }) => id)).toEqual(["range-1"]);
+    expect(view.state.doc.textContent).toBe("repeat done");
+  });
+
+  test("rejects a range whose selected text hash is stale", () => {
+    const view = makeView(makeState(["repeat repeat"]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    const block = snapshot.blocks.at(0);
+    if (!block) {
+      throw new Error("expected a block");
+    }
+    const range = createFolioAITextRangeHandle({
+      blockId: block.id,
+      text: "repeat changed",
+      startOffset: 7,
+      endOffset: 14,
+    });
+    if (!range) {
+      throw new Error("expected a range");
+    }
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [{ id: "range-1", type: "replaceRange", range, replace: "done" }],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([{ id: "range-1", reason: "staleRange" }]);
+    expect(view.state.doc.textContent).toBe("repeat repeat");
+  });
+
   test("creates a simple AI-facing block snapshot", () => {
     const state = makeState(["Opening paragraph.", { listMarker: "7.5.1", text: "Payment one." }]);
 

@@ -10,6 +10,7 @@ import { FolioAIEditApplyMode } from '@stll/folio-core/server';
 import { FolioAIEditApplyResult } from '@stll/folio-core/server';
 import { FolioAIEditOperation } from '@stll/folio-core/server';
 import { FolioAIEditSnapshot } from '@stll/folio-core/server';
+import { FolioAITextRangeHandle } from '@stll/folio-core/server';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
 import { FolioDocumentOperationResult } from '@stll/folio-core/server';
@@ -176,7 +177,8 @@ export type FolioAgentEditorRefLike = {
 
 // @public
 export type FolioAgentTextMatch = {
-    blockId: string; /** 0-based index of this occurrence within its block (multiple matches in one block increment this). */
+    blockId: string; /** Stable handle that can be passed directly to a `replaceRange` operation. */
+    range: FolioAITextRangeHandle; /** 0-based index of this occurrence within its block (multiple matches in one block increment this). */
     occurrenceInBlock: number; /** The match plus ~40 characters of surrounding context on each side. */
     context: string;
 };

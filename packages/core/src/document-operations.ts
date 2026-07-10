@@ -15,12 +15,14 @@ import type {
   FolioAIEditSeverity,
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
+  FolioAITextRangeHandle,
 } from "./ai-edits/types";
 
 export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION = 1 as const;
 
 export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "replaceInBlock",
+  "replaceRange",
   "insertAfterBlock",
   "insertBeforeBlock",
   "replaceBlock",
@@ -53,6 +55,7 @@ const DIRECT_ONLY_MODES = Object.freeze([
 
 export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   replaceInBlock: DIRECT_AND_TRACKED_MODES,
+  replaceRange: DIRECT_AND_TRACKED_MODES,
   insertAfterBlock: DIRECT_AND_TRACKED_MODES,
   insertBeforeBlock: DIRECT_AND_TRACKED_MODES,
   replaceBlock: DIRECT_AND_TRACKED_MODES,
@@ -204,6 +207,61 @@ const readOptionalBoolean = (
   return invalidBatch(`${path}.${key}`, "expected a boolean when provided");
 };
 
+const readNonNegativeInteger = (
+  value: Record<string, unknown>,
+  key: string,
+  path: string,
+): number => {
+  const candidate = value[key];
+  if (typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 0) {
+    return candidate;
+  }
+  return invalidBatch(`${path}.${key}`, "expected a non-negative integer");
+};
+
+const readTextRange = (value: Record<string, unknown>, path: string): FolioAITextRangeHandle => {
+  const candidate = value["range"];
+  const rangePath = `${path}.range`;
+  if (!isPlainObject(candidate)) {
+    return invalidBatch(rangePath, "expected an object");
+  }
+  assertAllowedKeys(candidate, rangePath, [
+    "type",
+    "story",
+    "blockId",
+    "startOffset",
+    "endOffset",
+    "selectedTextHash",
+  ]);
+  if (candidate["type"] !== "textRange") {
+    return invalidBatch(`${rangePath}.type`, 'expected "textRange"');
+  }
+  if (candidate["story"] !== "main") {
+    return invalidBatch(`${rangePath}.story`, 'expected "main"');
+  }
+  const blockId = readString(candidate, "blockId", rangePath);
+  if (blockId.length === 0) {
+    return invalidBatch(`${rangePath}.blockId`, "expected a non-empty string");
+  }
+  const startOffset = readNonNegativeInteger(candidate, "startOffset", rangePath);
+  const endOffset = readNonNegativeInteger(candidate, "endOffset", rangePath);
+  if (endOffset <= startOffset) {
+    return invalidBatch(`${rangePath}.endOffset`, "expected a value greater than startOffset");
+  }
+  const selectedTextHash = readString(candidate, "selectedTextHash", rangePath);
+  if (!/^h[0-9a-z]+$/.test(selectedTextHash)) {
+    return invalidBatch(`${rangePath}.selectedTextHash`, "expected a normalized text hash");
+  }
+  return {
+    type: "textRange",
+    story: "main",
+    blockId,
+    startOffset,
+    endOffset,
+    selectedTextHash,
+  };
+};
+
 const readOptionalComment = (
   value: Record<string, unknown>,
   path: string,
@@ -298,7 +356,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 
   const id = readString(value, "id", path);
   const type = readString(value, "type", path);
-  const blockId = readString(value, "blockId", path);
   const reviewMeta = readReviewMeta(value, path);
   const precondition = readOptionalPrecondition(value, path);
   const comment = readOptionalComment(value, path);
@@ -306,6 +363,29 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     ...reviewMeta,
     ...(precondition !== undefined && { precondition }),
   };
+
+  if (type === "replaceRange") {
+    assertAllowedKeys(value, path, [
+      "id",
+      "type",
+      "range",
+      "replace",
+      "comment",
+      "severity",
+      "area",
+      "precondition",
+    ]);
+    return {
+      ...operationMeta,
+      id,
+      type,
+      range: readTextRange(value, path),
+      replace: readString(value, "replace", path),
+      ...(comment !== undefined && { comment }),
+    };
+  }
+
+  const blockId = readString(value, "blockId", path);
 
   if (type === "replaceInBlock") {
     assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "find", "replace", "comment"]);
@@ -477,9 +557,7 @@ export const applyFolioDocumentOperations = ({
     targetCreateCommentId = createCommentId,
     preview = false,
   }: ApplyParsedDocumentOperationBatchOptions) => {
-    const applyOperations = preview
-      ? previewFolioAIEditOperations
-      : applyFolioAIEditOperations;
+    const applyOperations = preview ? previewFolioAIEditOperations : applyFolioAIEditOperations;
     return applyOperations({
       view: targetView,
       snapshot,

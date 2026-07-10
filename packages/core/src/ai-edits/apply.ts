@@ -453,7 +453,8 @@ const applyFolioAIEditOperationsInternal = ({
     let appliedRevisionIds: number[] | undefined;
 
     switch (item.operation.type) {
-      case "replaceInBlock": {
+      case "replaceInBlock":
+      case "replaceRange": {
         const revisionIdDelete = revisionSeed++;
         const revisionIdInsert = revisionSeed++;
         tr = applyTextReplacement({
@@ -756,7 +757,7 @@ const applyTextReplacement = ({
   let nextTr = tr;
   const replacement = stripInlineEmphasisMarkers(
     (() => {
-      if (item.operation.type === "replaceInBlock") {
+      if (item.operation.type === "replaceInBlock" || item.operation.type === "replaceRange") {
         return item.operation.replace;
       }
       if (item.operation.type === "replaceBlock") {
@@ -772,7 +773,10 @@ const applyTextReplacement = ({
     // text. Full-block replaceBlock in direct mode is intercepted earlier and
     // never reaches here with emphasis; the tracked-changes path below still
     // strips, since its word-diff redline can't carry inline marks.
-    if (item.operation.type === "replaceInBlock" && hasInlineEmphasis(item.operation.replace)) {
+    if (
+      (item.operation.type === "replaceInBlock" || item.operation.type === "replaceRange") &&
+      hasInlineEmphasis(item.operation.replace)
+    ) {
       const content = buildEmphasisInlineContent(
         nextTr.doc.type.schema,
         item.operation.replace,
@@ -819,6 +823,9 @@ const applyTextReplacement = ({
       if (sourceCleanStart === -1) {
         sourceText = null;
       }
+    } else if (item.operation.type === "replaceRange") {
+      sourceCleanStart = item.operation.range.startOffset;
+      sourceText = cleanBlock.text.slice(sourceCleanStart, item.operation.range.endOffset);
     } else if (item.operation.type === "replaceBlock") {
       sourceText = cleanBlock.text;
       sourceCleanStart = 0;
@@ -930,7 +937,8 @@ const resolveOperation = ({
 }: ResolveOperationArgs):
   | { type: "resolved"; operation: ResolvedBase }
   | OperationResolutionSkip => {
-  const anchor = snapshot.anchors[operation.blockId];
+  const blockId = operation.type === "replaceRange" ? operation.range.blockId : operation.blockId;
+  const anchor = snapshot.anchors[blockId];
   if (!anchor) {
     return { type: "skip", reason: "missingBlock" };
   }
@@ -941,7 +949,7 @@ const resolveOperation = ({
   // which the hash+ordinal path would mis-target. Missing paraIds
   // are stale anchors, so they skip rather than falling back to a
   // same-text block that may be unrelated.
-  const encodedParaId = getFolioParaIdFromBlockId(operation.blockId);
+  const encodedParaId = getFolioParaIdFromBlockId(blockId);
   let live: LiveBlockEntry | undefined;
   if (encodedParaId !== null) {
     live = liveBlocksByParaId.get(encodedParaId);
@@ -949,7 +957,7 @@ const resolveOperation = ({
       return { type: "skip", reason: "missingBlock" };
     }
   } else {
-    const ordinal = ordinalAmongSameHash(snapshot, operation.blockId);
+    const ordinal = ordinalAmongSameHash(snapshot, blockId);
     if (ordinal < 0) {
       return { type: "skip", reason: "missingBlock" };
     }
@@ -975,6 +983,33 @@ const resolveOperation = ({
   }
   if (currentTextHash !== anchor.textHash) {
     return { type: "skip", reason: "changedBlock" };
+  }
+
+  if (operation.type === "replaceRange") {
+    const { startOffset, endOffset, selectedTextHash } = operation.range;
+    const from = cleanBlock.offsets[startOffset];
+    const to = cleanBlock.offsets[endOffset];
+    if (from === undefined || to === undefined) {
+      return { type: "skip", reason: "staleRange" };
+    }
+    const selectedText = currentText.slice(startOffset, endOffset);
+    if (hashFolioAIBlockText(selectedText) !== selectedTextHash) {
+      return { type: "skip", reason: "staleRange" };
+    }
+    if (selectedText === operation.replace) {
+      return { type: "skip", reason: "noopOperation" };
+    }
+    return {
+      type: "resolved",
+      operation: {
+        operation,
+        from,
+        to,
+        blockFrom,
+        blockTo,
+        blockNode,
+      },
+    };
   }
 
   if (operation.type === "insertAfterBlock" || operation.type === "insertBeforeBlock") {

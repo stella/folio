@@ -1,4 +1,5 @@
 import {
+  createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioAIBlock,
   type FolioDocumentOperation,
@@ -132,8 +133,18 @@ const findTextMatches = (
       if (matches.length < MAX_FIND_MATCHES) {
         const contextStart = Math.max(0, at - CONTEXT_RADIUS);
         const contextEnd = Math.min(block.text.length, at + query.length + CONTEXT_RADIUS);
+        const range = createFolioAITextRangeHandle({
+          blockId: block.id,
+          text: block.text,
+          startOffset: at,
+          endOffset: at + query.length,
+        });
+        if (range === null) {
+          break;
+        }
         matches.push({
           blockId: block.id,
+          range,
           occurrenceInBlock: occurrence,
           context: block.text.slice(contextStart, contextEnd),
         });
@@ -217,6 +228,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "preconditionFailed") {
     return "the target block changed after the operation was prepared; re-read the document and retry with a fresh operation.";
   }
+  if (reason === "staleRange") {
+    return "the selected range changed or shifted; run find_text again and retry with the fresh range.";
+  }
   if (reason === "emptyOperation") {
     return "this operation has no effect; nothing to apply.";
   }
@@ -246,7 +260,8 @@ const applyOperations = (
   const snapshot = bridge.snapshot();
   const guardedOperations: FolioDocumentOperation[] = [];
   for (const operation of operations) {
-    const blockTextHash = snapshot.anchors[operation.blockId]?.textHash;
+    const blockId = operation.type === "replaceRange" ? operation.range.blockId : operation.blockId;
+    const blockTextHash = snapshot.anchors[blockId]?.textHash;
     guardedOperations.push({
       ...operation,
       ...(blockTextHash !== undefined && { precondition: { blockTextHash } }),

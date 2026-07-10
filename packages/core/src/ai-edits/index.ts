@@ -9,6 +9,7 @@ export {
 } from "./read";
 export {
   createFolioAIEditSnapshot,
+  createFolioAITextRangeHandle,
   hashFolioAIBlockText,
   normalizeFolioAIBlockText,
 } from "./snapshot";
@@ -32,6 +33,7 @@ export type {
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
   FolioAISignatureParty,
+  FolioAITextRangeHandle,
 } from "./types";
 export {
   applyFolioDocumentOperations,

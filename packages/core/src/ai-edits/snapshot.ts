@@ -8,6 +8,7 @@ import type {
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,
   FolioAIEditSnapshot,
+  FolioAITextRangeHandle,
 } from "./types";
 
 export const normalizeFolioAIBlockText = (text: string): string =>
@@ -19,6 +20,39 @@ export const hashFolioAIBlockText = (text: string): string => {
     hash = (hash * 33 + (character.codePointAt(0) ?? 0)) % 2_147_483_647;
   }
   return `h${hash.toString(36)}`;
+};
+
+type CreateFolioAITextRangeHandleOptions = {
+  blockId: string;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+};
+
+export const createFolioAITextRangeHandle = ({
+  blockId,
+  text,
+  startOffset,
+  endOffset,
+}: CreateFolioAITextRangeHandleOptions): FolioAITextRangeHandle | null => {
+  if (
+    blockId.length === 0 ||
+    !Number.isInteger(startOffset) ||
+    !Number.isInteger(endOffset) ||
+    startOffset < 0 ||
+    endOffset <= startOffset ||
+    endOffset > text.length
+  ) {
+    return null;
+  }
+  return {
+    type: "textRange",
+    story: "main",
+    blockId,
+    startOffset,
+    endOffset,
+    selectedTextHash: hashFolioAIBlockText(text.slice(startOffset, endOffset)),
+  };
 };
 
 export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
