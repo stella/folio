@@ -37,6 +37,7 @@ import {
   assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentOperationStatus,
   getCommentAnchorsFromDoc,
   getTrackedChangesFromDoc,
 } from "@stll/folio-core/ai-edits";
@@ -299,8 +300,15 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       assertSupportedFolioDocumentOperationVersion(batch.version);
       const view = opts.editorView.value;
       if (!view) {
+        let status: FolioDocumentOperationStatus = "committed";
+        if (batch.dryRun === true) {
+          status = "previewed";
+        } else if (batch.atomic === true) {
+          status = "rejected";
+        }
         return {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          status,
           applied: [],
           skipped: batch.operations.map((operation) => ({
             id: operation.id,
