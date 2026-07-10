@@ -14,7 +14,7 @@
  * (`<w:p\n  w14:paraId="…">`) is still recognized as the element rather than
  * mistaken for a longer-named sibling.
  */
-function isXmlNameBoundary(char: string | undefined): boolean {
+export function isXmlNameBoundary(char: string | undefined): boolean {
   return (
     char === " " || char === "\t" || char === "\n" || char === "\r" || char === ">" || char === "/"
   );

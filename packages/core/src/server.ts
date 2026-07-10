@@ -28,6 +28,7 @@ export {
   type FolioBlockId,
 } from "./types/block-id";
 export { createDocx } from "./docx/rezip";
+export { ensureParaIds, EnsureParaIdsError, type EnsureParaIdsResult } from "./docx/ensureParaIds";
 export { replyToComment, type CreateCommentReplyInput } from "./docx/replyToComment";
 export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
 export {
