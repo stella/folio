@@ -2568,6 +2568,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       setFloatingCommentBtn,
       setIsAddingComment,
       setShowCommentsSidebar,
+      t,
     ],
   );
 
