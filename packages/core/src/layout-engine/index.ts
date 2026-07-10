@@ -1042,6 +1042,11 @@ function layoutFloatingTable(
   }
   if (floating?.vertAnchor === "page") {
     baseY = 0;
+  } else if (floating?.vertAnchor === "text") {
+    // A text-relative table position is offset from the current text
+    // anchor, not from the page's body margin. Using the margin here lifts
+    // later floating tables to the top of the page and overlays earlier text.
+    baseY = state.cursorY;
   }
 
   // Determine X position

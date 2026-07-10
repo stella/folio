@@ -18,10 +18,34 @@ import type { BlockLookup } from "./index";
 import {
   applySectionHeaderFooterOptions,
   computePageFingerprint,
+  floatingTableReservesBand,
   getDefaultPageFontFamily,
   renderPage,
   renderFootnoteArea,
 } from "./renderPage";
+
+describe("floating table wrap zones", () => {
+  test("reserves a top-and-bottom band when neither side can hold text", () => {
+    expect(
+      floatingTableReservesBand({
+        contentX: 0,
+        tableWidth: 577,
+        contentWidth: 578,
+        distLeft: 12,
+        distRight: 12,
+      }),
+    ).toBe(true);
+    expect(
+      floatingTableReservesBand({
+        contentX: 0,
+        tableWidth: 300,
+        contentWidth: 578,
+        distLeft: 12,
+        distRight: 12,
+      }),
+    ).toBe(false);
+  });
+});
 
 class FakeElement {
   className = "";

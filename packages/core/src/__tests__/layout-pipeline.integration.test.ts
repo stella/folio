@@ -23,6 +23,8 @@ import type {
   Measure,
   PageMargins,
   LayoutOptions,
+  TableBlock,
+  TableMeasure,
 } from "../layout-engine/types";
 
 // =============================================================================
@@ -150,6 +152,58 @@ describe("Layout Engine - Page Production", () => {
       const fragment = layout.pages[0].fragments[0];
       expect(fragment.kind).toBe("paragraph");
       expect(fragment.blockId).toBe(0);
+    });
+
+    test("positions a text-anchored floating table from the current text cursor", () => {
+      const paragraph = makeParagraphBlock(0, "Anchor", 1);
+      const table: TableBlock = {
+        kind: "table",
+        id: 1,
+        rows: [
+          {
+            id: "row",
+            cells: [
+              {
+                id: "cell",
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                blocks: [makeParagraphBlock(2, "Value", 8)],
+              },
+            ],
+          },
+        ],
+        columnWidths: [200],
+        floating: { vertAnchor: "text", tblpY: 10 },
+      };
+      const paragraphMeasure = makeParagraphMeasure([makeLine(0, 0, 0, 6, 50, 40)]);
+      const tableMeasure: TableMeasure = {
+        kind: "table",
+        rows: [
+          {
+            cells: [
+              {
+                blocks: [makeParagraphMeasure([makeLine(0, 0, 0, 5, 40, 20)])],
+                width: 200,
+                height: 20,
+              },
+            ],
+            height: 20,
+          },
+        ],
+        columnWidths: [200],
+        totalWidth: 200,
+        totalHeight: 20,
+      };
+
+      const layout = layoutDocument(
+        [paragraph, table],
+        [paragraphMeasure, tableMeasure],
+        makeLayoutOptions(),
+      );
+      const tableFragment = layout.pages[0]?.fragments.find(
+        (fragment) => fragment.kind === "table",
+      );
+
+      expect(tableFragment?.y).toBe(DEFAULT_MARGINS.top + 40 + 10);
     });
 
     test("first paragraph on a page honors explicit spaceBefore", () => {

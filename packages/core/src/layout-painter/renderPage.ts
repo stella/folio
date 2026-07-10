@@ -9,6 +9,7 @@ import { panic } from "better-result";
 
 import { measureParagraph, rectsToFloatingZones } from "../layout-engine/measure";
 import type { FloatingExclusionRect, FloatingImageZone } from "../layout-engine/measure";
+import { MIN_WRAP_SEGMENT_WIDTH } from "../layout-engine/measure/measureParagraph";
 import {
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,
   FOOTNOTE_FALLBACK_LINE_HEIGHT,
@@ -101,6 +102,26 @@ export type PageFloatingImage = {
    * above-text layer so wrapNone semantics survive in the DOM.
    */
   behindDoc: boolean;
+};
+
+type FloatingTableBandOptions = {
+  contentX: number;
+  tableWidth: number;
+  contentWidth: number;
+  distLeft: number;
+  distRight: number;
+};
+
+export const floatingTableReservesBand = ({
+  contentX,
+  tableWidth,
+  contentWidth,
+  distLeft,
+  distRight,
+}: FloatingTableBandOptions): boolean => {
+  const leftClearance = Math.max(0, contentX - distLeft);
+  const rightClearance = Math.max(0, contentWidth - contentX - tableWidth - distRight);
+  return Math.max(leftClearance, rightClearance) < MIN_WRAP_SEGMENT_WIDTH;
 };
 
 type ScopedFloatingRect = {
@@ -1764,7 +1785,8 @@ export function renderPage(
 
   // Collect floating table exclusion rectangles
   if (options.blockLookup) {
-    for (const fragment of page.fragments) {
+    for (let fragmentIndex = 0; fragmentIndex < page.fragments.length; fragmentIndex++) {
+      const fragment = page.fragments[fragmentIndex]!; // SAFETY: bounded by page.fragments.length
       if (fragment.kind !== "table") {
         continue;
       }
@@ -1788,7 +1810,7 @@ export function renderPage(
 
       const side = contentX < contentWidth / 2 ? "left" : "right";
 
-      floatingRects.push({
+      const rect: FloatingExclusionRect = {
         side,
         x: contentX,
         y: contentY,
@@ -1798,7 +1820,23 @@ export function renderPage(
         distBottom,
         distLeft,
         distRight,
-      });
+      };
+      if (
+        floatingTableReservesBand({
+          contentX,
+          tableWidth: fragment.width,
+          contentWidth,
+          distLeft,
+          distRight,
+        })
+      ) {
+        rect.wrapType = "topAndBottom";
+      }
+      if (floating.vertAnchor === "text") {
+        scopedFloatingRects.push({ startsAtFragmentIndex: fragmentIndex, rect });
+      } else {
+        floatingRects.push(rect);
+      }
     }
   }
 
