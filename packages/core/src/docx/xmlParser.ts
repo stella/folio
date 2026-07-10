@@ -57,6 +57,9 @@ const fxpParserOptions = {
   parseAttributeValue: false,
   ignoreDeclaration: true,
   ignorePiTags: true,
+  // Folio leaves the parser callbacks at their defaults, which do not consume
+  // the current-node path. Re-enable this if a callback needs a string path.
+  jPath: false,
   // Security: only process the 5 built-in XML entities (&lt; &gt; &amp;
   // &apos; &quot;). Custom/DOCTYPE-defined entities are blocked to
   // prevent Billion Laughs exponential expansion DoS. OOXML does not
