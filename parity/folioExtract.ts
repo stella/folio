@@ -119,9 +119,13 @@ const CHROMIUM_MISSING_MESSAGE =
 
 type OutputTail = { read: () => string; done: Promise<void> };
 
-const captureOutputTail = (stream: ReadableStream<Uint8Array>): OutputTail => {
+const captureOutputTail = (stream: ReadableStream<Uint8Array> | null | undefined): OutputTail => {
   const decoder = new TextDecoder();
   let output = "";
+
+  if (!stream) {
+    return { read: () => "", done: Promise.resolve() };
+  }
 
   const done = (async () => {
     try {
@@ -281,13 +285,17 @@ const waitForServerReady = async (
   url: string,
   timeoutMs: number,
   intervalMs: number,
+  signal?: AbortSignal,
 ): Promise<boolean> => {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
+    if (signal?.aborted) {
+      return false;
+    }
     if (await probeServer(url, SERVER_PROBE_TIMEOUT_MS)) {
       return true;
     }
-    if (Date.now() >= deadline) {
+    if (signal?.aborted || Date.now() >= deadline) {
       return false;
     }
     await Bun.sleep(intervalMs);
@@ -906,17 +914,24 @@ export const createFolioExtractor = async (
     });
     const stdoutTail = captureOutputTail(serverProcess.stdout);
     const stderrTail = captureOutputTail(serverProcess.stderr);
+    const startupProbe = new AbortController();
     const startup = await Promise.race([
-      waitForServerReady(PLAYGROUND_URL, SERVER_START_TIMEOUT_MS, SERVER_POLL_INTERVAL_MS).then(
-        (ready) => ({ type: "probe" as const, ready }),
-      ),
+      waitForServerReady(
+        PLAYGROUND_URL,
+        SERVER_START_TIMEOUT_MS,
+        SERVER_POLL_INTERVAL_MS,
+        startupProbe.signal,
+      ).then((ready) => ({ type: "probe" as const, ready })),
       serverProcess.exited.then((exitCode) => ({ type: "exit" as const, exitCode })),
     ]);
+    startupProbe.abort();
     if (startup.type === "exit" || !startup.ready) {
-      if (startup.type === "exit") {
-        await Promise.all([stdoutTail.done, stderrTail.done]);
-      }
+      await killProcessTree(serverProcess.pid);
       await killByPort(PLAYGROUND_PORT);
+      await Promise.race([
+        Promise.all([stdoutTail.done, stderrTail.done]),
+        Bun.sleep(SERVER_PROBE_TIMEOUT_MS),
+      ]);
       throw new FolioExtractError(
         formatServerStartFailure(
           PLAYGROUND_URL,
