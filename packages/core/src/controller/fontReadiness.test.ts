@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { toProseDoc } from "@stll/folio-core/prosemirror";
-import { schema } from "@stll/folio-core/prosemirror/schema";
-import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
-import { collectInitialLayoutFontFaces, collectInitialLayoutFontFamilies } from "./PagedEditor";
+import { toProseDoc } from "../prosemirror";
+import { schema } from "../prosemirror/schema";
+import { createEmptyDocument } from "../utils/createDocument";
+import {
+  collectInitialLayoutFontFaces,
+  collectInitialLayoutFontFamilies,
+  documentFontsAreLoaded,
+} from "./fontReadiness";
 
 describe("initial layout font loading", () => {
   test("loads only document-driven font families plus metric-compatible fallbacks", () => {
@@ -78,6 +82,20 @@ describe("initial layout font loading", () => {
 
     expect(faces).toContain("Cambria|italic|700");
     expect(faces).toContain("Caladea|italic|700");
+  });
+
+  test("reports fonts loaded when the document font set is unavailable (SSR/headless)", () => {
+    // Under the bun runner `document` is undefined, so getDocumentFontSet()
+    // returns null and the gate must resolve to "loaded" rather than block the
+    // first layout forever in a non-browser host.
+    expect(documentFontsAreLoaded()).toBe(true);
+  });
+
+  test("always includes the default layout font family for a null document model", () => {
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("plain")]),
+    ]);
+    expect(collectInitialLayoutFontFamilies(null, pmDoc)).toContain("Calibri");
   });
 });
 
