@@ -21,6 +21,8 @@ describe("document operation contract", () => {
       operationTypes: [
         "replaceInBlock",
         "replaceRange",
+        "commentOnRange",
+        "formatRange",
         "insertAfterBlock",
         "insertBeforeBlock",
         "replaceBlock",
@@ -34,6 +36,8 @@ describe("document operation contract", () => {
       modesByOperationType: {
         replaceInBlock: ["direct", "tracked-changes"],
         replaceRange: ["direct", "tracked-changes"],
+        commentOnRange: ["direct", "tracked-changes"],
+        formatRange: ["direct"],
         insertAfterBlock: ["direct", "tracked-changes"],
         insertBeforeBlock: ["direct", "tracked-changes"],
         replaceBlock: ["direct", "tracked-changes"],

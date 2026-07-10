@@ -222,6 +222,62 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc.textContent).toBe("repeat done");
   });
 
+  test("comments and formats an exact text range", () => {
+    const view = makeView(makeState(["before target after"]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    const block = snapshot.blocks.at(0);
+    if (!block) {
+      throw new Error("expected a block");
+    }
+    const range = createFolioAITextRangeHandle({
+      blockId: block.id,
+      text: block.text,
+      startOffset: 7,
+      endOffset: 13,
+    });
+    if (!range) {
+      throw new Error("expected a range");
+    }
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        { id: "comment", type: "commentOnRange", range, comment: { text: "Review" } },
+        { id: "format", type: "formatRange", range, formatting: { bold: true } },
+      ],
+      mode: "direct",
+      createCommentId: () => 42,
+    });
+
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["comment", "format"]);
+    const target = view.state.doc.nodeAt(8);
+    expect(target?.marks.map((mark) => mark.type.name).toSorted()).toEqual(["bold", "comment"]);
+  });
+
+  test("reports range formatting as unsupported in tracked-changes mode", () => {
+    const view = makeView(makeState(["target"]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    const block = snapshot.blocks.at(0);
+    const range = block
+      ? createFolioAITextRangeHandle({
+          blockId: block.id,
+          text: block.text,
+          startOffset: 0,
+          endOffset: 6,
+        })
+      : null;
+    if (!range) {
+      throw new Error("expected a range");
+    }
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [{ id: "format", type: "formatRange", range, formatting: { italic: true } }],
+    });
+    expect(result.skipped).toEqual([{ id: "format", reason: "unsupportedMode" }]);
+  });
+
   test("rejects a range whose selected text hash is stale", () => {
     const view = makeView(makeState(["repeat repeat"]));
     const snapshot = createFolioAIEditSnapshot(view.state.doc);

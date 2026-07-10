@@ -14,6 +14,7 @@ const suggestChangesOperationSchema = {
       enum: [
         "replaceInBlock",
         "replaceRange",
+        "commentOnRange",
         "insertAfterBlock",
         "insertBeforeBlock",
         "replaceBlock",

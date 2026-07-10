@@ -338,6 +338,8 @@ export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-change
 export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly replaceInBlock: readonly ["direct", "tracked-changes"];
     readonly replaceRange: readonly ["direct", "tracked-changes"];
+    readonly commentOnRange: readonly ["direct", "tracked-changes"];
+    readonly formatRange: readonly ["direct"];
     readonly insertAfterBlock: readonly ["direct", "tracked-changes"];
     readonly insertBeforeBlock: readonly ["direct", "tracked-changes"];
     readonly replaceBlock: readonly ["direct", "tracked-changes"];
@@ -353,7 +355,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -429,6 +431,16 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     range: FolioAITextRangeHandle;
     replace: string;
     comment?: FolioAIComment;
+} | {
+    id: string;
+    type: "commentOnRange";
+    range: FolioAITextRangeHandle;
+    comment: FolioAIComment;
+} | {
+    id: string;
+    type: "formatRange";
+    range: FolioAITextRangeHandle;
+    formatting: FolioAIInlineFormatting;
 } | {
     id: string;
     type: "insertAfterBlock" | "insertBeforeBlock";

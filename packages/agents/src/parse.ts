@@ -83,11 +83,12 @@ export const parseAddCommentInput = (args: unknown): ParseAddCommentResult => {
 };
 
 const OPERATION_TYPES =
-  "replaceInBlock, replaceRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock";
+  "replaceInBlock, replaceRange, commentOnRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock";
 
 type SuggestedOperationType =
   | "replaceInBlock"
   | "replaceRange"
+  | "commentOnRange"
   | "insertAfterBlock"
   | "insertBeforeBlock"
   | "replaceBlock"
@@ -96,6 +97,7 @@ type SuggestedOperationType =
 const isOperationType = (value: unknown): value is SuggestedOperationType =>
   value === "replaceInBlock" ||
   value === "replaceRange" ||
+  value === "commentOnRange" ||
   value === "insertAfterBlock" ||
   value === "insertBeforeBlock" ||
   value === "replaceBlock" ||
@@ -155,10 +157,16 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
   const opId = isNonEmptyString(id) ? id : `op-${index + 1}`;
   const commentField = typeof comment === "string" ? { comment: { text: comment } } : {};
 
-  if (type === "replaceRange") {
+  if (type === "replaceRange" || type === "commentOnRange") {
     const range = readTextRange(raw["range"], index);
     if (typeof range === "string") {
       return range;
+    }
+    if (type === "commentOnRange") {
+      if (!isNonEmptyString(comment)) {
+        return `operations[${index}] (commentOnRange) requires a non-empty string \`comment\`.`;
+      }
+      return { id: opId, type, range, comment: { text: comment } };
     }
     const replace = raw["replace"];
     if (typeof replace !== "string") {

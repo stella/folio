@@ -77,6 +77,8 @@ export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-change
 export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly replaceInBlock: readonly ["direct", "tracked-changes"];
     readonly replaceRange: readonly ["direct", "tracked-changes"];
+    readonly commentOnRange: readonly ["direct", "tracked-changes"];
+    readonly formatRange: readonly ["direct"];
     readonly insertAfterBlock: readonly ["direct", "tracked-changes"];
     readonly insertBeforeBlock: readonly ["direct", "tracked-changes"];
     readonly replaceBlock: readonly ["direct", "tracked-changes"];
@@ -92,7 +94,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -162,6 +164,16 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     comment?: FolioAIComment;
 } | {
     id: string;
+    type: "commentOnRange";
+    range: FolioAITextRangeHandle;
+    comment: FolioAIComment;
+} | {
+    id: string;
+    type: "formatRange";
+    range: FolioAITextRangeHandle;
+    formatting: FolioAIInlineFormatting;
+} | {
+    id: string;
     type: "insertAfterBlock" | "insertBeforeBlock";
     blockId: string;
     text: string;
@@ -206,6 +218,13 @@ export type FolioAIEditPrecondition = {
 export type FolioAIEditSnapshot = {
     blocks: FolioAIBlock[];
     anchors: Record<string, FolioAIBlockAnchor>;
+};
+
+// @public (undocumented)
+export type FolioAIInlineFormatting = {
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
 };
 
 // @public

@@ -70,6 +70,12 @@ export type FolioAITextRangeHandle = {
   selectedTextHash: string;
 };
 
+export type FolioAIInlineFormatting = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+};
+
 /**
  * A party in an `insertSignatureTable` op. Mirrors the
  * `signatureTable` helper in `docx-core/legal-source/compile.ts`:
@@ -99,6 +105,18 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         range: FolioAITextRangeHandle;
         replace: string;
         comment?: FolioAIComment;
+      }
+    | {
+        id: string;
+        type: "commentOnRange";
+        range: FolioAITextRangeHandle;
+        comment: FolioAIComment;
+      }
+    | {
+        id: string;
+        type: "formatRange";
+        range: FolioAITextRangeHandle;
+        formatting: FolioAIInlineFormatting;
       }
     | {
         id: string;

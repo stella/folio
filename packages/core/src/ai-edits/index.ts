@@ -32,6 +32,7 @@ export type {
   FolioAIEditSkipReason,
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
+  FolioAIInlineFormatting,
   FolioAISignatureParty,
   FolioAITextRangeHandle,
 } from "./types";

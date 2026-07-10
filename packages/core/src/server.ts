@@ -15,6 +15,7 @@ export type {
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,
   FolioAIEditSnapshot,
+  FolioAIInlineFormatting,
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
 export { createFolioAITextRangeHandle } from "./ai-edits/snapshot";

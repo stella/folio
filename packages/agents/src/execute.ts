@@ -260,7 +260,12 @@ const applyOperations = (
   const snapshot = bridge.snapshot();
   const guardedOperations: FolioDocumentOperation[] = [];
   for (const operation of operations) {
-    const blockId = operation.type === "replaceRange" ? operation.range.blockId : operation.blockId;
+    const blockId =
+      operation.type === "replaceRange" ||
+      operation.type === "commentOnRange" ||
+      operation.type === "formatRange"
+        ? operation.range.blockId
+        : operation.blockId;
     const blockTextHash = snapshot.anchors[blockId]?.textHash;
     guardedOperations.push({
       ...operation,

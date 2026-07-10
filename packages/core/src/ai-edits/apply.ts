@@ -391,6 +391,10 @@ const applyFolioAIEditOperationsInternal = ({
   const liveBlocksByParaId = collectLiveBlocksByParaId(view.state.doc);
 
   for (const [index, operation] of operations.entries()) {
+    if (mode === "tracked-changes" && operation.type === "formatRange") {
+      skipped.push({ id: operation.id, reason: "unsupportedMode" });
+      continue;
+    }
     const commentText = getOperationCommentText(operation);
     if (commentText !== undefined && (!commentType || createCommentId === undefined)) {
       skipped.push({ id: operation.id, reason: "unsupportedBlock" });
@@ -469,6 +473,30 @@ const applyFolioAIEditOperationsInternal = ({
         });
         if (mode === "tracked-changes") {
           appliedRevisionIds = [revisionIdDelete, revisionIdInsert];
+        }
+        break;
+      }
+      case "commentOnRange": {
+        if (commentMark) {
+          tr = tr.addMark(item.from, item.to, commentMark);
+        }
+        break;
+      }
+      case "formatRange": {
+        for (const [name, enabled] of Object.entries(item.operation.formatting)) {
+          const markType = view.state.schema.marks[name];
+          if (!markType) {
+            continue;
+          }
+          if (enabled) {
+            tr = tr.addMark(
+              item.from,
+              item.to,
+              name === "underline" ? markType.create({ style: "single" }) : markType.create(),
+            );
+          } else {
+            tr = tr.removeMark(item.from, item.to, markType);
+          }
         }
         break;
       }
@@ -937,7 +965,12 @@ const resolveOperation = ({
 }: ResolveOperationArgs):
   | { type: "resolved"; operation: ResolvedBase }
   | OperationResolutionSkip => {
-  const blockId = operation.type === "replaceRange" ? operation.range.blockId : operation.blockId;
+  const blockId =
+    operation.type === "replaceRange" ||
+    operation.type === "commentOnRange" ||
+    operation.type === "formatRange"
+      ? operation.range.blockId
+      : operation.blockId;
   const anchor = snapshot.anchors[blockId];
   if (!anchor) {
     return { type: "skip", reason: "missingBlock" };
@@ -985,7 +1018,11 @@ const resolveOperation = ({
     return { type: "skip", reason: "changedBlock" };
   }
 
-  if (operation.type === "replaceRange") {
+  if (
+    operation.type === "replaceRange" ||
+    operation.type === "commentOnRange" ||
+    operation.type === "formatRange"
+  ) {
     const { startOffset, endOffset, selectedTextHash } = operation.range;
     const from = cleanBlock.offsets[startOffset];
     const to = cleanBlock.offsets[endOffset];
@@ -996,7 +1033,7 @@ const resolveOperation = ({
     if (hashFolioAIBlockText(selectedText) !== selectedTextHash) {
       return { type: "skip", reason: "staleRange" };
     }
-    if (selectedText === operation.replace) {
+    if (operation.type === "replaceRange" && selectedText === operation.replace) {
       return { type: "skip", reason: "noopOperation" };
     }
     return {
@@ -1177,7 +1214,7 @@ const getTextRangeFromCleanBlock = (cleanBlock: {
 };
 
 const getOperationCommentText = (operation: FolioAIEditOperation): string | undefined =>
-  operation.comment?.text;
+  "comment" in operation ? operation.comment?.text : undefined;
 
 const getOperationQuote = (operation: FolioAIEditOperation): string | undefined => {
   if (operation.type === "replaceInBlock") {

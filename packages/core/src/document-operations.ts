@@ -23,6 +23,8 @@ export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION = 1 as const;
 export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "replaceInBlock",
   "replaceRange",
+  "commentOnRange",
+  "formatRange",
   "insertAfterBlock",
   "insertBeforeBlock",
   "replaceBlock",
@@ -56,6 +58,8 @@ const DIRECT_ONLY_MODES = Object.freeze([
 export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   replaceInBlock: DIRECT_AND_TRACKED_MODES,
   replaceRange: DIRECT_AND_TRACKED_MODES,
+  commentOnRange: DIRECT_AND_TRACKED_MODES,
+  formatRange: DIRECT_ONLY_MODES,
   insertAfterBlock: DIRECT_AND_TRACKED_MODES,
   insertBeforeBlock: DIRECT_AND_TRACKED_MODES,
   replaceBlock: DIRECT_AND_TRACKED_MODES,
@@ -262,6 +266,29 @@ const readTextRange = (value: Record<string, unknown>, path: string): FolioAITex
   };
 };
 
+const readInlineFormatting = (
+  value: Record<string, unknown>,
+  path: string,
+): { bold?: boolean; italic?: boolean; underline?: boolean } => {
+  const candidate = value["formatting"];
+  const formattingPath = `${path}.formatting`;
+  if (!isPlainObject(candidate)) {
+    return invalidBatch(formattingPath, "expected an object");
+  }
+  assertAllowedKeys(candidate, formattingPath, ["bold", "italic", "underline"]);
+  const bold = readOptionalBoolean(candidate, "bold", formattingPath);
+  const italic = readOptionalBoolean(candidate, "italic", formattingPath);
+  const underline = readOptionalBoolean(candidate, "underline", formattingPath);
+  if (bold === undefined && italic === undefined && underline === undefined) {
+    return invalidBatch(formattingPath, "expected at least one formatting property");
+  }
+  return {
+    ...(bold !== undefined && { bold }),
+    ...(italic !== undefined && { italic }),
+    ...(underline !== undefined && { underline }),
+  };
+};
+
 const readOptionalComment = (
   value: Record<string, unknown>,
   path: string,
@@ -382,6 +409,41 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       range: readTextRange(value, path),
       replace: readString(value, "replace", path),
       ...(comment !== undefined && { comment }),
+    };
+  }
+
+  if (type === "commentOnRange") {
+    assertAllowedKeys(value, path, [
+      "id",
+      "type",
+      "range",
+      "comment",
+      "severity",
+      "area",
+      "precondition",
+    ]);
+    if (comment === undefined) {
+      return invalidBatch(`${path}.comment`, "expected an object");
+    }
+    return { ...operationMeta, id, type, range: readTextRange(value, path), comment };
+  }
+
+  if (type === "formatRange") {
+    assertAllowedKeys(value, path, [
+      "id",
+      "type",
+      "range",
+      "formatting",
+      "severity",
+      "area",
+      "precondition",
+    ]);
+    return {
+      ...operationMeta,
+      id,
+      type,
+      range: readTextRange(value, path),
+      formatting: readInlineFormatting(value, path),
     };
   }
 

@@ -90,6 +90,27 @@ describe("parseAddCommentInput", () => {
 });
 
 describe("parseSuggestChangesInput", () => {
+  test("valid commentOnRange operation preserves the selected range", () => {
+    const range = {
+      type: "textRange",
+      story: "main",
+      blockId: "b1",
+      startOffset: 0,
+      endOffset: 4,
+      selectedTextHash: "h123",
+    };
+    const result = parseSuggestChangesInput({
+      operations: [{ type: "commentOnRange", range, comment: "Review this" }],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected ok:true");
+    }
+    expect(result.operations).toEqual([
+      { id: "op-1", type: "commentOnRange", range, comment: { text: "Review this" } },
+    ]);
+  });
+
   test("valid replaceRange operation preserves the handle returned by find_text", () => {
     const range = {
       type: "textRange",
