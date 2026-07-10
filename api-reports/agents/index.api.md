@@ -11,6 +11,7 @@ import { FolioAIEditApplyResult } from '@stll/folio-core/server';
 import { FolioAIEditOperation } from '@stll/folio-core/server';
 import { FolioAIEditSnapshot } from '@stll/folio-core/server';
 import { FolioAITextRangeHandle } from '@stll/folio-core/server';
+import { FolioBlockDiff } from '@stll/folio-core/server';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
 import { FolioDocumentOperationIssue } from '@stll/folio-core/server';
@@ -19,7 +20,8 @@ import { FolioDocumentStory } from '@stll/folio-core/server';
 import { FolioDocumentStoryHandle } from '@stll/folio-core/server';
 import { FolioDocxReviewer } from '@stll/folio-core/server';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
-import { WordDiffSegment } from '@stll/folio-core/ai-edits';
+import { FolioVersionDiff } from '@stll/folio-core/server';
+import { FolioVersionDiffSegment } from '@stll/folio-core/server';
 
 // @public
 export type AnthropicToolDefinition = {
@@ -95,22 +97,7 @@ export type FolioAgentBlock = {
 };
 
 // @public
-export type FolioAgentBlockDiff = {
-    type: "added";
-    blockId: string;
-    kind: string;
-    text: string;
-} | {
-    type: "deleted";
-    blockId: string;
-    kind: string;
-    text: string;
-} | {
-    type: "modified";
-    blockId: string;
-    kind: string;
-    segments: FolioAgentVersionDiffSegment[];
-};
+export type FolioAgentBlockDiff = FolioBlockDiff;
 
 // @public
 export type FolioAgentBridge = {
@@ -202,18 +189,10 @@ export type FolioAgentToolDefinition = {
 export type FolioAgentToolName = (typeof FOLIO_AGENT_TOOL_NAMES)[keyof typeof FOLIO_AGENT_TOOL_NAMES];
 
 // @public
-export type FolioAgentVersionDiff = {
-    changes: FolioAgentBlockDiff[]; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. */
-    summaryCounts: {
-        added: number;
-        deleted: number;
-        modified: number;
-        unchanged: number;
-    };
-};
+export type FolioAgentVersionDiff = FolioVersionDiff;
 
 // @public
-export type FolioAgentVersionDiffSegment = WordDiffSegment;
+export type FolioAgentVersionDiffSegment = FolioVersionDiffSegment;
 
 // @public
 export type FolioToolCallResult = {
