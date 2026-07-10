@@ -93,3 +93,32 @@ test("nested numbering starts from authored levels when no parent paragraph exis
     "3.4.",
   );
 });
+
+test("zero-based numbering advances instead of repeatedly reinitializing", () => {
+  const numbering = parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="9">
+    <w:lvl w:ilvl="0"><w:start w:val="0"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2."/></w:lvl>
+    <w:lvl w:ilvl="1"><w:start w:val="0"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2."/></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="4"><w:abstractNumId w:val="9"/></w:num>
+</w:numbering>`);
+  const root = parseXmlDocument(
+    `<w:body xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="4"/></w:numPr></w:pPr><w:r><w:t>First</w:t></w:r></w:p>
+      <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="4"/></w:numPr></w:pPr><w:r><w:t>Second</w:t></w:r></w:p>
+    </w:body>`,
+  ) as XmlElement | null;
+  if (!root) {
+    throw new Error("Failed to parse body XML");
+  }
+
+  const paragraphs = parseBlockContent(root, null, null, numbering, null, null);
+
+  expect(paragraphs.at(0)?.type === "paragraph" && paragraphs.at(0)?.listRendering?.marker).toBe(
+    "0.0.",
+  );
+  expect(paragraphs.at(1)?.type === "paragraph" && paragraphs.at(1)?.listRendering?.marker).toBe(
+    "0.1.",
+  );
+});

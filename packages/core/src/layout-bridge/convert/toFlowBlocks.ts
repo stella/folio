@@ -238,7 +238,7 @@ function toLetter(value: number, upper: boolean): string {
 }
 
 export function formatCounter(value: number, format: NumberFormat | undefined): string {
-  if (value <= 0) {
+  if (!Number.isFinite(value)) {
     return "";
   }
   // NumberFormat is the OOXML w:numFmt enum (70+ values). This switch
@@ -284,10 +284,11 @@ export function resolveListTemplate(
     if (index < 0) {
       return "";
     }
-    const formatted = formatCounter(
-      counters[index] ?? 0,
-      forceDecimal ? "decimal" : levelFormats?.[index],
-    );
+    const counter = counters[index];
+    if (counter === undefined || Number.isNaN(counter)) {
+      return "";
+    }
+    const formatted = formatCounter(counter, forceDecimal ? "decimal" : levelFormats?.[index]);
     return formatted ? `${formatted}${punct}` : "";
   });
 }
@@ -334,14 +335,19 @@ function computeListMarker(
   }
 
   const level = pmAttrs.numPr?.ilvl ?? 0;
-  const counters = listCounters.get(numId) ?? (Array.from({ length: 9 }, () => 0) as number[]);
+  const counters =
+    listCounters.get(numId) ?? (Array.from({ length: 9 }, () => Number.NaN) as number[]);
   const abstractNumId = pmAttrs.listAbstractNumId;
   if (level > 0) {
     const latestAbstractCounters =
       abstractNumId === undefined ? undefined : abstractCounters.get(abstractNumId);
-    if (counters.slice(0, level).every((value) => value === 0)) {
+    if (counters.slice(0, level).every(Number.isNaN)) {
       for (let i = 0; i < level; i += 1) {
-        counters[i] = latestAbstractCounters?.[i] ?? pmAttrs.listLevelStarts?.[i] ?? 0;
+        const latestCounter = latestAbstractCounters?.[i];
+        counters[i] =
+          latestCounter !== undefined && !Number.isNaN(latestCounter)
+            ? latestCounter
+            : (pmAttrs.listLevelStarts?.[i] ?? 1);
       }
     }
   }
@@ -351,14 +357,14 @@ function computeListMarker(
     seenNumIds.add(seenKey);
     if (pmAttrs.listStartOverride != null) {
       counters[level] = pmAttrs.listStartOverride - 1;
-    } else if (counters[level] === 0) {
+    } else if (Number.isNaN(counters[level])) {
       counters[level] = (pmAttrs.listLevelStarts?.[level] ?? 1) - 1;
     }
   }
 
   counters[level] = (counters[level] ?? 0) + 1;
   for (let i = level + 1; i < counters.length; i += 1) {
-    counters[i] = 0;
+    counters[i] = Number.NaN;
   }
   // Word's default LISTNUM field advances the counter at one ilvl deeper
   // than the host paragraph. Carrying the consumed advances forward here
@@ -366,7 +372,9 @@ function computeListMarker(
   // OutNum2 "(a)") picks up the next letter instead of restarting at "(a)".
   const childAdvances = pmAttrs.listImplicitChildLevelAdvances ?? 0;
   if (childAdvances > 0 && level + 1 < counters.length) {
-    counters[level + 1] = (counters[level + 1] ?? 0) + childAdvances;
+    const childCounter = counters[level + 1];
+    counters[level + 1] =
+      (childCounter === undefined || Number.isNaN(childCounter) ? 0 : childCounter) + childAdvances;
   }
   listCounters.set(numId, counters);
   if (abstractNumId !== undefined) {

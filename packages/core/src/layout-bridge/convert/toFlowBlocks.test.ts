@@ -1044,6 +1044,38 @@ describe("toFlowBlocks list numbering", () => {
     expect(blocks.at(1)?.attrs?.listMarker).toBe("3.4.");
   });
 
+  test("advances nested lists whose authored start is zero", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          numPr: { numId: 4, ilvl: 1 },
+          listMarker: "%1.%2.",
+          listNumFmt: "decimal",
+          listLevelStarts: [0, 0],
+          listLevelNumFmts: ["decimal", "decimal"],
+        },
+        [schema.text("First")],
+      ),
+      schema.node(
+        "paragraph",
+        {
+          numPr: { numId: 4, ilvl: 1 },
+          listMarker: "%1.%2.",
+          listNumFmt: "decimal",
+          listLevelStarts: [0, 0],
+          listLevelNumFmts: ["decimal", "decimal"],
+        },
+        [schema.text("Second")],
+      ),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.at(0)?.attrs?.listMarker).toBe("0.0.");
+    expect(blocks.at(1)?.attrs?.listMarker).toBe("0.1.");
+  });
+
   test("formats legal multilevel markers with decimal parent placeholders", () => {
     const paragraphs = [];
     for (let index = 1; index <= 7; index += 1) {
