@@ -317,12 +317,13 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         },
         bridge,
       ),
-    ) as { skipped: { reason: string }[] };
+    ) as { issues: unknown[]; skipped: { reason: string }[] };
 
     expect(receivedPrecondition).toEqual({
       blockTextHash: reviewer.snapshot().anchors[heading.id]?.textHash,
     });
     expect(result.skipped[0]?.reason).toContain("re-read the document");
+    expect(result.issues).toEqual([]);
   });
 
   test("suggest_changes explains an unsupported mutation mode", async () => {

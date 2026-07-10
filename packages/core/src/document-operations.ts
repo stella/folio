@@ -628,7 +628,10 @@ export const getFolioDocumentOperationIssues = (
   operations: readonly FolioDocumentOperation[],
   skipped: readonly FolioAIEditSkippedOperation[],
 ): FolioDocumentOperationIssue[] => {
-  const indexById = new Map(operations.map(({ id }, index) => [id, index]));
+  const indexById = new Map<string, number>();
+  operations.forEach(({ id }, index) => {
+    indexById.set(id, index);
+  });
   return skipped.map(({ id, reason }) => {
     const operationIndex = indexById.get(id) ?? -1;
     return {
