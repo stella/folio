@@ -7,12 +7,14 @@
  */
 
 import { ref, computed, onMounted, onBeforeUnmount, type Ref, type ComputedRef } from "vue";
+import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "@stll/folio-core/utils/zoom";
 
-// Range + presets match React (Toolbar.tsx minZoom=0.5/maxZoom=2 +
-// ZoomControl DEFAULT_ZOOM_LEVELS) so both adapters offer the same zoom levels.
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 2.0;
-const ZOOM_STEP = 0.1;
+// Reachable range comes from folio-core so React and Vue clamp to the same span
+// (0.25-4x); see `@stll/folio-core/utils/zoom` (single source of truth). The
+// dropdown presets below are the curated toolbar menu (50-200%), matching
+// React's ZoomControl, and are intentionally a subset of the reachable range.
+const MIN_ZOOM = ZOOM_MIN;
+const MAX_ZOOM = ZOOM_MAX;
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
 export type UseZoomReturn = {
@@ -28,7 +30,7 @@ export type UseZoomReturn = {
   handleKeyDown: (e: KeyboardEvent) => void;
   installShortcuts: () => void;
   ZOOM_PRESETS: number[];
-}
+};
 
 export function useZoom(initialZoom = 1.0): UseZoomReturn {
   const zoom = ref(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, initialZoom)));
