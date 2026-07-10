@@ -179,7 +179,7 @@ describe("compareDocxVersions: as-accepted semantics", () => {
     // replace against a fresh reviewer over `base` — the revised buffer still
     // carries real w:ins/w:del marks on disk.
     const revisedReviewer = await FolioDocxReviewer.fromBuffer(base, { author: "AI" });
-    const target = revisedReviewer.snapshot().blocks[0];
+    const target = revisedReviewer.snapshot().blocks.at(0);
     if (!target) {
       throw new Error("expected a block in the base document");
     }
@@ -195,7 +195,7 @@ describe("compareDocxVersions: as-accepted semantics", () => {
     const revised = await revisedReviewer.toBuffer();
 
     // Sanity: the revised snapshot's clean text is already the accepted view.
-    expect(revisedReviewer.snapshot().blocks[0]?.text).toBe("Payment is due promptly.");
+    expect(revisedReviewer.snapshot().blocks.at(0)?.text).toBe("Payment is due promptly.");
 
     const diff = await compareDocxVersions(base, revised);
 

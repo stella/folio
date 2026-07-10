@@ -78,9 +78,6 @@ type IndexedBlock = { block: FolioAIBlock; index: number };
 
 const isStableBlockId = (id: string): boolean => getFolioParaIdFromBlockId(id) !== null;
 
-const index = (blocks: readonly FolioAIBlock[]): IndexedBlock[] =>
-  blocks.map((block, blockIndex) => ({ block, index: blockIndex }));
-
 /**
  * Longest increasing subsequence by `revisedIndex`, assuming `pairs` is
  * already sorted by `baseIndex` ascending. Drops any pair that would make
@@ -91,8 +88,8 @@ const longestIncreasingByRevisedIndex = (pairs: readonly BlockPair[]): BlockPair
   if (pairs.length === 0) {
     return [];
   }
-  const lengths = Array.from<number>({ length: pairs.length }).fill(1);
-  const predecessors = Array.from<number>({ length: pairs.length }).fill(-1);
+  const lengths = new Int32Array(pairs.length).fill(1);
+  const predecessors = new Int32Array(pairs.length).fill(-1);
   let bestEnd = 0;
   for (let i = 0; i < pairs.length; i++) {
     for (let j = 0; j < i; j++) {
@@ -179,6 +176,8 @@ const pairByExactText = (
   if (exceedsLcsBudget(m, n)) {
     return [];
   }
+  const baseTexts = base.map(({ block }) => block.text);
+  const revisedTexts = revised.map(({ block }) => block.text);
   // A single flat Int32Array (indexed `i * (n + 1) + j`) instead of `m + 1`
   // separately-allocated rows: one contiguous allocation instead of thousands
   // of small ones, which matters once `m` and `n` approach the budget above.
@@ -187,9 +186,9 @@ const pairByExactText = (
   for (let i = m - 1; i >= 0; i--) {
     const rowOffset = i * stride;
     const nextRowOffset = (i + 1) * stride;
+    const baseText = baseTexts[i];
     for (let j = n - 1; j >= 0; j--) {
-      const baseText = base[i]?.block.text;
-      const revisedText = revised[j]?.block.text;
+      const revisedText = revisedTexts[j];
       dp[rowOffset + j] =
         baseText === revisedText
           ? (dp[nextRowOffset + j + 1] ?? 0) + 1
@@ -206,7 +205,7 @@ const pairByExactText = (
     if (!baseEntry || !revisedEntry) {
       break;
     }
-    if (baseEntry.block.text === revisedEntry.block.text) {
+    if (baseTexts[i] === revisedTexts[j]) {
       pairs.push({ baseIndex: baseEntry.index, revisedIndex: revisedEntry.index });
       i++;
       j++;
@@ -243,10 +242,18 @@ export const compareDocxVersions = async (
   const usedBaseIndexes = new Set(stableIdAnchors.map((anchor) => anchor.baseIndex));
   const usedRevisedIndexes = new Set(stableIdAnchors.map((anchor) => anchor.revisedIndex));
 
-  const baseRemaining = index(baseBlocks).filter(({ index: i }) => !usedBaseIndexes.has(i));
-  const revisedRemaining = index(revisedBlocks).filter(
-    ({ index: i }) => !usedRevisedIndexes.has(i),
-  );
+  const baseRemaining: IndexedBlock[] = [];
+  baseBlocks.forEach((block, blockIndex) => {
+    if (!usedBaseIndexes.has(blockIndex)) {
+      baseRemaining.push({ block, index: blockIndex });
+    }
+  });
+  const revisedRemaining: IndexedBlock[] = [];
+  revisedBlocks.forEach((block, blockIndex) => {
+    if (!usedRevisedIndexes.has(blockIndex)) {
+      revisedRemaining.push({ block, index: blockIndex });
+    }
+  });
   const exactTextAnchors = pairByExactText(baseRemaining, revisedRemaining);
 
   const anchors = longestIncreasingByRevisedIndex(
