@@ -395,7 +395,7 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[1].fragments.map((fragment) => fragment.blockId)).toEqual([1, 2]);
     });
 
-    test("successive rendered page breaks do not outrun pages reached by natural reflow", () => {
+    test("successive rendered page breaks remain authoritative after natural reflow", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Fill page one", 1),
         makeParagraphBlock(1, "Natural page two", 15),
@@ -421,9 +421,10 @@ describe("Layout Engine - Page Production", () => {
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
-      expect(layout.pages.length).toBe(3);
-      expect(layout.pages[1].fragments.map((fragment) => fragment.blockId)).toEqual([1, 2, 3]);
-      expect(layout.pages[2].fragments.map((fragment) => fragment.blockId)).toEqual([4, 5]);
+      expect(layout.pages.length).toBe(4);
+      expect(layout.pages[1].fragments.map((fragment) => fragment.blockId)).toEqual([1]);
+      expect(layout.pages[2].fragments.map((fragment) => fragment.blockId)).toEqual([2, 3, 4]);
+      expect(layout.pages[3].fragments.map((fragment) => fragment.blockId)).toEqual([5]);
     });
 
     test("explicit pageBreakBefore takes priority over a rendered page break hint", () => {
@@ -1178,7 +1179,7 @@ describe("Layout Engine - Contextual Spacing", () => {
     expect(gap).toBe(13);
   });
 
-  test("does NOT suppress when only one paragraph has contextualSpacing", () => {
+  test("suppresses only the opted-in side when one paragraph has contextualSpacing", () => {
     const blocks: FlowBlock[] = [
       makeSpacedParagraph(0, "First", 1, {
         spaceAfter: 13,
@@ -1200,9 +1201,10 @@ describe("Layout Engine - Contextual Spacing", () => {
     const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
     const frags = layout.pages[0].fragments;
-    // gap = max(spaceAfter, spaceBefore) = 13
+    // The first paragraph suppresses its own spaceAfter; the second paragraph
+    // retains its 5px spaceBefore.
     const gap = frags[1].y - (frags[0].y + frags[0].height);
-    expect(gap).toBe(13);
+    expect(gap).toBe(5);
   });
 
   test("suppresses spacing in a chain of 3+ same-style paragraphs", () => {
@@ -1295,7 +1297,7 @@ describe("Layout Engine - Contextual Spacing", () => {
     expect(gap2to3).toBe(13);
   });
 
-  test("does NOT suppress when styleId is undefined", () => {
+  test("treats two absent style ids as the shared default paragraph style", () => {
     const blocks: FlowBlock[] = [
       makeSpacedParagraph(0, "No style 1", 1, {
         spaceAfter: 10,
@@ -1317,9 +1319,7 @@ describe("Layout Engine - Contextual Spacing", () => {
     const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
     const frags = layout.pages[0].fragments;
-    // Without styleId, contextual spacing should NOT be applied
-    // gap = max(spaceAfter, spaceBefore) = 10
     const gap = frags[1].y - (frags[0].y + frags[0].height);
-    expect(gap).toBe(10);
+    expect(gap).toBe(0);
   });
 });
