@@ -156,6 +156,9 @@ export const mergeVisualRows = (lines: LineBox[]): LineBox[] => {
 };
 
 const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
+  if (current.region !== next.region) {
+    return false;
+  }
   const gap = horizontalGap(current, next);
   if (gap <= ROW_MERGE_GAP_PT) {
     return true;

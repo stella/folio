@@ -97,6 +97,15 @@ describe("compareGeoms", () => {
     expect(merged).toHaveLength(1);
   });
 
+  test("keeps nearby boxes from different semantic regions separate", () => {
+    const merged = mergeVisualRows([
+      makeLine({ text: "Header", region: "header", xPt: 90, yPt: 100, widthPt: 60 }),
+      makeLine({ text: "Body", region: "body", xPt: 155, yPt: 100, widthPt: 60 }),
+    ]);
+
+    expect(merged).toHaveLength(2);
+  });
+
   test("normalizes adjacent table cells symmetrically across extractors", () => {
     const word = makeDoc("word", [
       makePage({
