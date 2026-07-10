@@ -111,15 +111,17 @@ const ROW_OVERLAP_RATIO = 0.5;
 /** Maximum horizontal gap (pt) between same-row boxes that still merges them.
  * Word emits list markers as separate ink boxes ~10pt left of the item text,
  * and tabbed legal clauses can leave ~23pt between the marker and text; table
- * cells sit farther apart (>25pt) and must stay separate. */
+ * widely separated table cells sit farther apart (>25pt) and stay separate. */
 const ROW_MERGE_GAP_PT = 24;
 const MARKER_ROW_MERGE_GAP_PT = 36;
 
 /** Clusters boxes into visual rows (>= ROW_OVERLAP_RATIO vertical overlap),
  * then merges row neighbours within ROW_MERGE_GAP_PT of each other into a
- * single LineBox — bullet/number markers join their item text the way folio
- * paints them, while table cells (large gaps) stay separate boxes. The result
- * is ordered row-by-row, left-to-right within a row: Word's ink boxes on one
+ * single LineBox — bullet/number markers and tightly adjacent table-cell text
+ * join the way Word's PDF boxes do. Folio's DOM-only cell identity is ignored
+ * here because Word truth has no equivalent metadata; using it would normalize
+ * the two extractors differently. The result is ordered row-by-row,
+ * left-to-right within a row: Word's ink boxes on one
  * visual row can differ by fractions of a pt vertically (e.g. table cells), so
  * a raw (y, x) sort would order the same row differently on the two sides and
  * derail the sequence alignment. Applied to BOTH sides so the pass itself
@@ -154,9 +156,6 @@ export const mergeVisualRows = (lines: LineBox[]): LineBox[] => {
 };
 
 const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
-  if (current.visualGroup !== next.visualGroup) {
-    return false;
-  }
   const gap = horizontalGap(current, next);
   if (gap <= ROW_MERGE_GAP_PT) {
     return true;
@@ -199,7 +198,6 @@ const mergeBoxes = (a: LineBox, b: LineBox): LineBox => {
     widthPt: Math.max(a.xPt + a.widthPt, b.xPt + b.widthPt) - xPt,
     heightPt: Math.max(a.yPt + a.heightPt, b.yPt + b.heightPt) - yPt,
     region: left.region,
-    ...(left.visualGroup !== undefined ? { visualGroup: left.visualGroup } : {}),
     ...(fontName !== undefined ? { fontName } : {}),
     ...(fontSizePt !== undefined ? { fontSizePt } : {}),
   };
