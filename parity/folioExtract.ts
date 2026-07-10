@@ -168,6 +168,15 @@ export const parseFirstFontFamily = (fontFamilyRaw: string | undefined): string 
   return first.replace(/^["']|["']$/gu, "");
 };
 
+const CSS_FONT_FAMILY_TOKEN_PATTERN = `"[^"]*"|'[^']*'|[^,]+`;
+
+/** Split a computed CSS family stack without treating commas inside quoted
+ * family names as separators. */
+export const parseCssFontFamilies = (fontFamilyRaw: string): string[] =>
+  (fontFamilyRaw.match(new RegExp(CSS_FONT_FAMILY_TOKEN_PATTERN, "gu")) ?? [])
+    .map((family) => family.trim().replace(/^['"]|['"]$/gu, ""))
+    .filter((family) => family.length > 0);
+
 /**
  * Pure transformer from one raw evaluate()-extracted page to the normalized
  * `PageGeom` the comparator consumes: applies the zoom-normalized px→pt
@@ -431,9 +440,12 @@ const listPageMeta = (page: Page): Promise<PageMeta[]> =>
  * read an empty/stale shell.
  */
 export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
-  page.evaluate<RawPage, { domIndex: number; meaningfulInkPattern: string }>(
+  page.evaluate<
+    RawPage,
+    { domIndex: number; meaningfulInkPattern: string; fontFamilyTokenPattern: string }
+  >(
     (input) => {
-      const { domIndex: idx, meaningfulInkPattern } = input;
+      const { domIndex: idx, meaningfulInkPattern, fontFamilyTokenPattern } = input;
       const meaningfulInkCharacter = new RegExp(meaningfulInkPattern, "u");
       const pageEls = Array.from(document.querySelectorAll(".layout-page")) as HTMLElement[];
       const el = pageEls[idx];
@@ -464,7 +476,7 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
 
         const families =
           computed.fontFamily
-            .match(/"[^"]*"|'[^']*'|[^,]+/gu)
+            .match(new RegExp(fontFamilyTokenPattern, "gu"))
             ?.map((family) => family.trim().replace(/^['"]|['"]$/gu, ""))
             .filter((family) => family.length > 0) ?? [];
         if (!canvasContext) return families[0] ?? computed.fontFamily;
@@ -735,7 +747,11 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
         lines,
       };
     },
-    { domIndex, meaningfulInkPattern: MEANINGFUL_INK_CHARACTER.source },
+    {
+      domIndex,
+      meaningfulInkPattern: MEANINGFUL_INK_CHARACTER.source,
+      fontFamilyTokenPattern: CSS_FONT_FAMILY_TOKEN_PATTERN,
+    },
   );
 
 const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspection> =>
