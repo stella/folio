@@ -84,6 +84,8 @@ import { FolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { FolioAISignatureParty } from '@stll/folio-core/ai-edits';
 import { FolioBlockId } from '@stll/folio-core/types/block-id';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
+import { FolioDocumentOperationBatch } from '@stll/folio-core/ai-edits';
+import { FolioDocumentOperationResult } from '@stll/folio-core/ai-edits';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
@@ -264,6 +266,13 @@ export { DocxCompatibility }
 export { DocxEditor }
 
 // @public (undocumented)
+export type DocxEditorApplyDocumentOperationsOptions = {
+    snapshot: FolioAIEditSnapshot;
+    batch: FolioDocumentOperationBatch;
+    author?: string;
+};
+
+// @public (undocumented)
 export type DocxEditorCollaboration = {
     awareness?: {
         clientID: number;
@@ -389,6 +398,7 @@ export type DocxEditorRef = {
         focus?: boolean;
     }) => void;
     createAIEditSnapshot: () => FolioAIEditSnapshot | null;
+    applyDocumentOperations: (options: DocxEditorApplyDocumentOperationsOptions) => FolioDocumentOperationResult;
     applyAIEditOperations: (options: {
         snapshot: FolioAIEditSnapshot;
         operations: FolioAIEditOperation[];
