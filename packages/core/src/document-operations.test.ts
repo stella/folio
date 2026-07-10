@@ -4,6 +4,7 @@ import {
   assertSupportedFolioDocumentOperationVersion,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
+  FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   getFolioDocumentOperationCapabilities,
   isFolioDocumentOperationModeSupported,
   InvalidFolioDocumentOperationBatchError,
@@ -35,6 +36,7 @@ describe("document operation contract", () => {
         commentOnBlock: ["direct", "tracked-changes"],
         insertSignatureTable: ["direct"],
       },
+      preconditions: ["blockTextHash"],
       stories: ["main"],
     });
   });
@@ -51,6 +53,7 @@ describe("document operation contract", () => {
     expect(Object.keys(FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE)).toEqual(
       getFolioDocumentOperationCapabilities().operationTypes,
     );
+    expect(FOLIO_DOCUMENT_OPERATION_PRECONDITIONS).toEqual(["blockTextHash"]);
   });
 
   test("checks untyped contract versions at a serialization boundary", () => {
@@ -71,7 +74,14 @@ describe("document operation contract", () => {
       version: 1,
       mode: "tracked-changes",
       operations: [
-        { id: "1", type: "replaceInBlock", blockId: "a", find: "old", replace: "new" },
+        {
+          id: "1",
+          type: "replaceInBlock",
+          blockId: "a",
+          find: "old",
+          replace: "new",
+          precondition: { blockTextHash: "h123" },
+        },
         { id: "2", type: "insertAfterBlock", blockId: "a", text: "after" },
         { id: "3", type: "insertBeforeBlock", blockId: "a", text: "before" },
         { id: "4", type: "replaceBlock", blockId: "a", text: "replacement" },
@@ -102,6 +112,21 @@ describe("document operation contract", () => {
     [null, "$", "expected an object"],
     [{ version: 1 }, "$.operations", "expected an array"],
     [{ version: 1, operations: [], mode: "review" }, "$.mode", "expected"],
+    [
+      {
+        version: 1,
+        operations: [
+          {
+            id: "1",
+            type: "deleteBlock",
+            blockId: "a",
+            precondition: { blockTextHash: "not-a-hash" },
+          },
+        ],
+      },
+      "$.operations[0].precondition.blockTextHash",
+      "expected a normalized block text hash",
+    ],
     [
       { version: 1, operations: [{ id: "1", type: "unknown", blockId: "a" }] },
       "$.operations[0].type",

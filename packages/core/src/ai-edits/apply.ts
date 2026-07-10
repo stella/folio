@@ -933,6 +933,12 @@ const resolveOperation = ({
   const cleanBlock = buildCleanBlockText(blockNode, blockFrom);
   const currentText = cleanBlock.text;
   const currentTextHash = hashFolioAIBlockText(normalizeFolioAIBlockText(currentText));
+  if (
+    operation.precondition !== undefined &&
+    currentTextHash !== operation.precondition.blockTextHash
+  ) {
+    return { type: "skip", reason: "preconditionFailed" };
+  }
   if (currentTextHash !== anchor.textHash) {
     return { type: "skip", reason: "changedBlock" };
   }

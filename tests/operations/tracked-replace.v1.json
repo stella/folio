@@ -6,6 +6,7 @@
       "id": "replace-heading",
       "type": "replaceInBlock",
       "blockId": "0304003A",
+      "precondition": { "blockTextHash": "hnoenbg" },
       "find": "Heading",
       "replace": "Intro"
     }

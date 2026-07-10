@@ -48,12 +48,14 @@ export type {
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
   FolioAIEditOperation,
+  FolioAIEditPrecondition,
 } from "./ai-edits/types";
 export {
   assertSupportedFolioDocumentOperationVersion,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
   FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
+  FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   FOLIO_DOCUMENT_OPERATION_STORIES,
   FOLIO_DOCUMENT_OPERATION_TYPES,
   getFolioDocumentOperationCapabilities,
@@ -66,6 +68,7 @@ export {
   type FolioDocumentOperationBatch,
   type FolioDocumentOperationCapabilities,
   type FolioDocumentOperationMode,
+  type FolioDocumentOperationPrecondition,
   type FolioDocumentOperationType,
   type FolioDocumentOperationResult,
 } from "./document-operations";

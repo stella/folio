@@ -54,6 +54,9 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
 }>;
 
 // @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
+
+// @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
 
 // @public (undocumented)
@@ -118,7 +121,9 @@ export type FolioAIEditApplyResult = {
 };
 
 // @public (undocumented)
-export type FolioAIEditOperation = FolioAIEditReviewMeta & ({
+export type FolioAIEditOperation = FolioAIEditReviewMeta & {
+    precondition?: FolioAIEditPrecondition;
+} & ({
     id: string;
     type: "replaceInBlock";
     blockId: string;
@@ -162,6 +167,11 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & ({
     comment?: FolioAIComment;
 });
 
+// @public (undocumented)
+export type FolioAIEditPrecondition = {
+    blockTextHash: string;
+};
+
 // @public
 export type FolioAIEditReviewMeta = {
     severity?: FolioAIEditSeverity;
@@ -178,7 +188,7 @@ export type FolioAIEditSkippedOperation = {
 };
 
 // @public (undocumented)
-export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "emptyOperation"
+export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "preconditionFailed" | "emptyOperation"
 /**
 * The operation would not change the document — find equals
 * replace, or replaceBlock's `text` matches the live block.
@@ -228,11 +238,15 @@ export type FolioDocumentOperationCapabilities = {
     readonly operationTypes: typeof FOLIO_DOCUMENT_OPERATION_TYPES;
     readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
     readonly modesByOperationType: typeof FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE;
+    readonly preconditions: typeof FOLIO_DOCUMENT_OPERATION_PRECONDITIONS;
     readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
 
 // @public (undocumented)
 export type FolioDocumentOperationMode = FolioAIEditApplyMode;
+
+// @public (undocumented)
+export type FolioDocumentOperationPrecondition = FolioAIEditPrecondition;
 
 // @public (undocumented)
 export type FolioDocumentOperationResult = {

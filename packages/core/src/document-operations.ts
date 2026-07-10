@@ -5,6 +5,7 @@ import type {
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditOperation,
+  FolioAIEditPrecondition,
   FolioAIEditReviewMeta,
   FolioAIEditSeverity,
   FolioAIEditSkippedOperation,
@@ -29,9 +30,11 @@ export const FOLIO_DOCUMENT_OPERATION_MODES = Object.freeze([
 ] as const satisfies readonly FolioAIEditApplyMode[]);
 
 export const FOLIO_DOCUMENT_OPERATION_STORIES = Object.freeze(["main"] as const);
+export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS = Object.freeze(["blockTextHash"] as const);
 
 export type FolioDocumentOperation = FolioAIEditOperation;
 export type FolioDocumentOperationMode = FolioAIEditApplyMode;
+export type FolioDocumentOperationPrecondition = FolioAIEditPrecondition;
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
 const DIRECT_AND_TRACKED_MODES = FOLIO_DOCUMENT_OPERATION_MODES;
@@ -56,6 +59,7 @@ export type FolioDocumentOperationCapabilities = {
   readonly operationTypes: typeof FOLIO_DOCUMENT_OPERATION_TYPES;
   readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
   readonly modesByOperationType: typeof FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE;
+  readonly preconditions: typeof FOLIO_DOCUMENT_OPERATION_PRECONDITIONS;
   readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
 
@@ -64,6 +68,7 @@ const DOCUMENT_OPERATION_CAPABILITIES = Object.freeze({
   operationTypes: FOLIO_DOCUMENT_OPERATION_TYPES,
   modes: FOLIO_DOCUMENT_OPERATION_MODES,
   modesByOperationType: FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
+  preconditions: FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   stories: FOLIO_DOCUMENT_OPERATION_STORIES,
 } as const satisfies FolioDocumentOperationCapabilities);
 
@@ -199,6 +204,29 @@ const readOptionalComment = (
   return invalidBatch(`${path}.comment`, "expected an object when provided");
 };
 
+const readOptionalPrecondition = (
+  value: Record<string, unknown>,
+  path: string,
+): FolioAIEditPrecondition | undefined => {
+  const candidate = value["precondition"];
+  if (candidate === undefined) {
+    return undefined;
+  }
+  if (!isPlainObject(candidate)) {
+    return invalidBatch(`${path}.precondition`, "expected an object when provided");
+  }
+  const preconditionPath = `${path}.precondition`;
+  assertAllowedKeys(candidate, preconditionPath, ["blockTextHash"]);
+  const blockTextHash = readString(candidate, "blockTextHash", preconditionPath);
+  if (!/^h[0-9a-z]+$/.test(blockTextHash)) {
+    return invalidBatch(
+      `${preconditionPath}.blockTextHash`,
+      "expected a normalized block text hash",
+    );
+  }
+  return { blockTextHash };
+};
+
 const isReviewSeverity = (value: unknown): value is FolioAIEditSeverity =>
   value === "low" || value === "medium" || value === "high";
 
@@ -214,7 +242,14 @@ const readReviewMeta = (value: Record<string, unknown>, path: string): FolioAIEd
   };
 };
 
-const COMMON_OPERATION_KEYS = ["id", "type", "blockId", "severity", "area"] as const;
+const COMMON_OPERATION_KEYS = [
+  "id",
+  "type",
+  "blockId",
+  "severity",
+  "area",
+  "precondition",
+] as const;
 
 const parseSignatureParties = (
   value: Record<string, unknown>,
@@ -250,12 +285,17 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   const type = readString(value, "type", path);
   const blockId = readString(value, "blockId", path);
   const reviewMeta = readReviewMeta(value, path);
+  const precondition = readOptionalPrecondition(value, path);
   const comment = readOptionalComment(value, path);
+  const operationMeta = {
+    ...reviewMeta,
+    ...(precondition !== undefined && { precondition }),
+  };
 
   if (type === "replaceInBlock") {
     assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "find", "replace", "comment"]);
     return {
-      ...reviewMeta,
+      ...operationMeta,
       id,
       type,
       blockId,
@@ -278,7 +318,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const pageBreakBefore = readOptionalBoolean(value, "pageBreakBefore", path);
     const styleId = readOptionalString(value, "styleId", path);
     return {
-      ...reviewMeta,
+      ...operationMeta,
       id,
       type,
       blockId,
@@ -301,7 +341,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const preserveFormatting = readOptionalBoolean(value, "preserveFormatting", path);
     const styleId = readOptionalString(value, "styleId", path);
     return {
-      ...reviewMeta,
+      ...operationMeta,
       id,
       type,
       blockId,
@@ -314,7 +354,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 
   if (type === "deleteBlock") {
     assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "comment"]);
-    return { ...reviewMeta, id, type, blockId, ...(comment !== undefined && { comment }) };
+    return { ...operationMeta, id, type, blockId, ...(comment !== undefined && { comment }) };
   }
 
   if (type === "commentOnBlock") {
@@ -324,7 +364,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     }
     const quote = readOptionalString(value, "quote", path);
     return {
-      ...reviewMeta,
+      ...operationMeta,
       id,
       type,
       blockId,
@@ -340,7 +380,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
     }
     return {
-      ...reviewMeta,
+      ...operationMeta,
       id,
       type,
       blockId,

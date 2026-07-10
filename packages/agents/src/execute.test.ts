@@ -265,6 +265,52 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     expect(result.skipped[0]?.reason).toContain("re-read the document");
   });
 
+  test("suggest_changes attaches a block-text precondition and explains a stale target", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const reviewerBridge = createReviewerBridge(reviewer);
+    const heading = reviewer.snapshot().blocks.find(({ text }) => text.includes("Heading"));
+    if (!heading) {
+      throw new Error("expected a heading block");
+    }
+    let receivedPrecondition: { blockTextHash: string } | undefined;
+    const bridge = {
+      ...reviewerBridge,
+      applyDocumentOperations: (
+        batch: Parameters<typeof reviewerBridge.applyDocumentOperations>[0],
+      ) => {
+        receivedPrecondition = batch.operations.at(0)?.precondition;
+        return {
+          version: batch.version,
+          applied: [],
+          skipped: [{ id: "custom-1", reason: "preconditionFailed" as const }],
+        };
+      },
+    };
+
+    const result = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        {
+          operations: [
+            {
+              id: "custom-1",
+              type: "replaceInBlock",
+              blockId: heading.id,
+              find: "Heading",
+              replace: "Intro",
+            },
+          ],
+        },
+        bridge,
+      ),
+    ) as { skipped: { reason: string }[] };
+
+    expect(receivedPrecondition).toEqual({
+      blockTextHash: reviewer.snapshot().anchors[heading.id]?.textHash,
+    });
+    expect(result.skipped[0]?.reason).toContain("re-read the document");
+  });
+
   test("suggest_changes explains an unsupported mutation mode", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const reviewerBridge = createReviewerBridge(reviewer);

@@ -506,6 +506,39 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc.child(0).textContent).toBe("Payment changed.");
   });
 
+  test("serialized precondition detects a stale target with a fresh apply snapshot", () => {
+    const originalState = makeState([{ text: "Payment.", paraId: "AAAA0001" }]);
+    const originalSnapshot = createFolioAIEditSnapshot(originalState.doc);
+    const view = makeView(makeState([{ text: "Payment changed.", paraId: "AAAA0001" }]));
+    const currentSnapshot = createFolioAIEditSnapshot(view.state.doc);
+    const blockTextHash = originalSnapshot.anchors["AAAA0001"]?.textHash;
+    if (blockTextHash === undefined) {
+      throw new Error("expected the original block anchor");
+    }
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: currentSnapshot,
+      operations: [
+        {
+          id: "op-1",
+          type: "replaceInBlock",
+          blockId: "AAAA0001",
+          find: "Payment changed",
+          replace: "Charge",
+          precondition: { blockTextHash },
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result).toEqual({
+      applied: [],
+      skipped: [{ id: "op-1", reason: "preconditionFailed" }],
+    });
+    expect(view.state.doc.child(0).textContent).toBe("Payment changed.");
+  });
+
   test("paraId-anchored op skips when the live paraId is gone", () => {
     const originalState = makeState([{ text: "Payment.", paraId: "AAAA0001" }]);
     const snapshot = createFolioAIEditSnapshot(originalState.doc);

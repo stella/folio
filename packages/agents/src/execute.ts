@@ -211,6 +211,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "unsupportedMode") {
     return "this operation does not support the requested mutation mode; inspect document operation capabilities and retry with a supported mode.";
   }
+  if (reason === "preconditionFailed") {
+    return "the target block changed after the operation was prepared; re-read the document and retry with a fresh operation.";
+  }
   if (reason === "emptyOperation") {
     return "this operation has no effect; nothing to apply.";
   }
@@ -236,13 +239,23 @@ const summarizeApplyResult = (result: {
 const applyOperations = (
   bridge: FolioAgentBridge,
   operations: FolioDocumentOperation[],
-): FolioAgentApplyOperationsSummary =>
-  summarizeApplyResult(
+): FolioAgentApplyOperationsSummary => {
+  const snapshot = bridge.snapshot();
+  const guardedOperations: FolioDocumentOperation[] = [];
+  for (const operation of operations) {
+    const blockTextHash = snapshot.anchors[operation.blockId]?.textHash;
+    guardedOperations.push({
+      ...operation,
+      ...(blockTextHash !== undefined && { precondition: { blockTextHash } }),
+    });
+  }
+  return summarizeApplyResult(
     bridge.applyDocumentOperations({
       version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      operations,
+      operations: guardedOperations,
     }),
   );
+};
 
 const addComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
   const parsed = parseAddCommentInput(args);

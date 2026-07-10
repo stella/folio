@@ -52,6 +52,10 @@ export type FolioAIEditReviewMeta = {
   area?: string;
 };
 
+export type FolioAIEditPrecondition = {
+  blockTextHash: string;
+};
+
 /**
  * A party in an `insertSignatureTable` op. Mirrors the
  * `signatureTable` helper in `docx-core/legal-source/compile.ts`:
@@ -64,8 +68,9 @@ export type FolioAISignatureParty = {
   title?: string;
 };
 
-export type FolioAIEditOperation = FolioAIEditReviewMeta &
-  (
+export type FolioAIEditOperation = FolioAIEditReviewMeta & {
+  precondition?: FolioAIEditPrecondition;
+} & (
     | {
         id: string;
         type: "replaceInBlock";
@@ -141,6 +146,7 @@ export type FolioAIEditSkipReason =
   | "missingFind"
   | "unsupportedBlock"
   | "unsupportedMode"
+  | "preconditionFailed"
   | "emptyOperation"
   /**
    * The operation would not change the document — find equals
