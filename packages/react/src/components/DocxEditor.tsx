@@ -227,7 +227,7 @@ import { useContextMenu } from "./hooks/useContextMenu";
 import type { DocumentLoadState } from "./hooks/useDocumentLoader";
 import { useDocumentLoader } from "./hooks/useDocumentLoader";
 import type { DisplayMode } from "./hooks/useEditorMode";
-import { useEditorMode } from "./hooks/useEditorMode";
+import { DISPLAY_MODES, useEditorMode } from "./hooks/useEditorMode";
 import { useFindReplace } from "./hooks/useFindReplace";
 import { useHeaderFooterEditor } from "./hooks/useHeaderFooterEditor";
 import { useHyperlinkHandlers } from "./hooks/useHyperlinkHandlers";
@@ -280,6 +280,14 @@ const loadRepackDocx = async () => {
 // (`src/index.ts`) imports them from those canonical homes directly; no
 // re-export shim here.
 // ============================================================================
+
+/** Translation key for each display mode's label (trigger and popup). */
+const DISPLAY_MODE_LABEL_KEYS = {
+  "all-markup": "markupView.allMarkup",
+  "simple-markup": "markupView.simple",
+  "no-markup": "markupView.noMarkup",
+  original: "markupView.original",
+} as const satisfies Record<DisplayMode, string>;
 
 // ============================================================================
 // MAIN COMPONENT
@@ -3079,6 +3087,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     return pagesContainer.querySelector(selector);
   }, []);
 
+  // The display-mode Select derives its trigger label from `items` (Base UI),
+  // so feed it the same translated labels the popup renders. Memoized per
+  // locale (`t` is stable until the locale changes): the toolbar re-renders on
+  // every editor state change, and a fresh inline array would churn the Select
+  // subtree's props identity each time.
+  const displayModeItems = useMemo(
+    () => DISPLAY_MODES.map((mode) => ({ value: mode, label: t(DISPLAY_MODE_LABEL_KEYS[mode]) })),
+    [t],
+  );
+
   // Container styles - using overflow: auto so sticky toolbar works
   const containerStyle: CSSProperties = {
     display: "flex",
@@ -3153,13 +3171,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     );
   }
 
-  const DISPLAY_MODE_LABELS = {
-    "all-markup": t("markupView.allMarkup"),
-    "simple-markup": t("markupView.simple"),
-    "no-markup": t("markupView.noMarkup"),
-    original: t("markupView.original"),
-  } as const satisfies Record<DisplayMode, string>;
-
   const toolbarChildren = toolbarExtra ?? null;
   const visibleCommentAuthorCount = commentAuthors.filter((commentAuthor) =>
     visibleCommentAuthorSet.has(commentAuthor),
@@ -3220,12 +3231,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       <StSelect
         value={displayMode}
         onValueChange={(val) => setDisplayMode(val as DisplayMode)}
-        items={[
-          { value: "all-markup", label: "All Markup" },
-          { value: "simple-markup", label: "Simple" },
-          { value: "no-markup", label: "No Markup" },
-          { value: "original", label: "Original" },
-        ]}
+        items={displayModeItems}
       >
         <StSelectTrigger
           size="sm"
@@ -3235,9 +3241,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           <StSelectValue />
         </StSelectTrigger>
         <StSelectPopup>
-          {(["all-markup", "simple-markup", "no-markup", "original"] as const).map((mode) => (
-            <StSelectItem key={mode} value={mode}>
-              {DISPLAY_MODE_LABELS[mode]}
+          {displayModeItems.map((item) => (
+            <StSelectItem key={item.value} value={item.value}>
+              {item.label}
             </StSelectItem>
           ))}
         </StSelectPopup>
