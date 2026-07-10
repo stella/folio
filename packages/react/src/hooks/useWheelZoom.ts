@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "@stll/folio-core/utils/zoom";
 
 // ============================================================================
 // TYPES
@@ -89,9 +90,9 @@ export type UseWheelZoomReturn = {
 // ============================================================================
 
 const DEFAULT_INITIAL_ZOOM = 1;
-const DEFAULT_MIN_ZOOM = 0.25;
-const DEFAULT_MAX_ZOOM = 4;
-const DEFAULT_ZOOM_STEP = 0.1;
+const DEFAULT_MIN_ZOOM = ZOOM_MIN;
+const DEFAULT_MAX_ZOOM = ZOOM_MAX;
+const DEFAULT_ZOOM_STEP = ZOOM_STEP;
 
 /**
  * Per-event zoom sensitivity for Ctrl/Cmd+wheel and trackpad pinch. Multiplies
@@ -101,7 +102,8 @@ const DEFAULT_ZOOM_STEP = 0.1;
 const WHEEL_ZOOM_SENSITIVITY = 0.003;
 
 /**
- * Preset zoom levels for snapping
+ * Preset zoom levels for wheel/keyboard snapping within the shared
+ * `[ZOOM_MIN, ZOOM_MAX]` range (see `@stll/folio-core/utils/zoom`).
  */
 export const ZOOM_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 

@@ -201,7 +201,7 @@ export async function copyRuns(runs: Run[], options: ClipboardOptions = {}): Pro
     const content = runsToClipboardContent(runs, includeFormatting);
     return await writeToClipboard(content);
   } catch (error) {
-    onError?.(error as Error);
+    onError?.(error instanceof Error ? error : new Error(String(error)));
     return false;
   }
 }
@@ -219,7 +219,7 @@ export async function copyParagraphs(
     const content = paragraphsToClipboardContent(paragraphs, includeFormatting);
     return await writeToClipboard(content);
   } catch (error) {
-    onError?.(error as Error);
+    onError?.(error instanceof Error ? error : new Error(String(error)));
     return false;
   }
 }
@@ -323,7 +323,7 @@ export async function readFromClipboard(
     const items = await navigator.clipboard.read();
     return await parseClipboardItems(items, cleanWordFormatting);
   } catch (error) {
-    onError?.(error as Error);
+    onError?.(error instanceof Error ? error : new Error(String(error)));
     return null;
   }
 }
