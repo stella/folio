@@ -221,6 +221,7 @@ export type FolioDocumentOperationBatch = {
     operations: FolioDocumentOperation[];
     mode?: FolioDocumentOperationMode;
     atomic?: boolean;
+    dryRun?: boolean;
 };
 
 // @public (undocumented)
@@ -230,6 +231,7 @@ export type FolioDocumentOperationCapabilities = {
     readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
     readonly modesByOperationType: typeof FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE;
     readonly batchModes: typeof FOLIO_DOCUMENT_OPERATION_BATCH_MODES;
+    readonly dryRun: true;
     readonly preconditions: typeof FOLIO_DOCUMENT_OPERATION_PRECONDITIONS;
     readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
@@ -249,7 +251,7 @@ export type FolioDocumentOperationResult = {
 };
 
 // @public (undocumented)
-export type FolioDocumentOperationStatus = "committed" | "rejected";
+export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected";
 
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];

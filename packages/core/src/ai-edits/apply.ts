@@ -44,6 +44,10 @@ type ApplyFolioAIEditOperationsOptions = {
   createCommentId?: (text: string) => number;
 };
 
+type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
+  revisionIdSeed?: number;
+};
+
 type ResolvedOperation = {
   operation: FolioAIEditOperation;
   from: number;
@@ -353,14 +357,15 @@ const buildEmphasisInlineContent = (
   return nodes.length > 0 ? nodes : [schema.text(text, [...baseMarks])];
 };
 
-export const applyFolioAIEditOperations = ({
+const applyFolioAIEditOperationsInternal = ({
   view,
   snapshot,
   operations,
   mode = "tracked-changes",
   author = "AI",
   createCommentId,
-}: ApplyFolioAIEditOperationsOptions): FolioAIEditApplyResult => {
+  revisionIdSeed,
+}: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyResult => {
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
   const resolved: ResolvedOperation[] = [];
@@ -417,7 +422,7 @@ export const applyFolioAIEditOperations = ({
   }
 
   let tr = view.state.tr;
-  let revisionSeed = nextRevisionSeed(resolved.length);
+  let revisionSeed = revisionIdSeed ?? nextRevisionSeed(resolved.length);
   const date = new Date().toISOString();
 
   // Sort right-to-left so each tr.insert / tr.delete leaves
@@ -687,6 +692,35 @@ export const applyFolioAIEditOperations = ({
   }
 
   return { applied, skipped };
+};
+
+export const applyFolioAIEditOperations = (
+  options: ApplyFolioAIEditOperationsOptions,
+): FolioAIEditApplyResult => applyFolioAIEditOperationsInternal(options);
+
+export const previewFolioAIEditOperations = (
+  options: ApplyFolioAIEditOperationsOptions,
+): FolioAIEditApplyResult => {
+  const { view, createCommentId, ...applyOptions } = options;
+  let previewCommentId = -1;
+  const previewView: FolioAIEditView = {
+    state: view.state,
+    dispatch: (transaction) => {
+      previewView.state = previewView.state.apply(transaction);
+    },
+  };
+  const result = applyFolioAIEditOperationsInternal({
+    ...applyOptions,
+    view: previewView,
+    ...(createCommentId !== undefined && {
+      createCommentId: () => previewCommentId--,
+    }),
+    revisionIdSeed: -1_000_000_000,
+  });
+  return {
+    applied: result.applied.map(({ id }) => ({ id })),
+    skipped: result.skipped,
+  };
 };
 
 type TextReplacementOptions = {

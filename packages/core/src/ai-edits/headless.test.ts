@@ -248,6 +248,85 @@ describe("headless docx review round-trip", () => {
     expect(reviewer.getComments()).toHaveLength(1);
   });
 
+  test("dry runs predict best-effort results without document or comment changes", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    const contentBefore = reviewer.getContentAsText();
+    const operations = [
+      {
+        id: "valid",
+        type: "replaceInBlock" as const,
+        blockId: target.id,
+        find: "Heading",
+        replace: "Intro",
+        comment: { text: "Review this change." },
+      },
+      { id: "missing", type: "deleteBlock" as const, blockId: "para-missing" },
+    ];
+
+    const preview = reviewer.applyDocumentOperations({
+      version: 1,
+      dryRun: true,
+      mode: "direct",
+      operations,
+    });
+
+    expect(preview).toEqual({
+      version: 1,
+      status: "previewed",
+      applied: [{ id: "valid" }],
+      skipped: [{ id: "missing", reason: "missingBlock" }],
+    });
+    expect(reviewer.getContentAsText()).toBe(contentBefore);
+    expect(reviewer.getComments()).toEqual([]);
+
+    const committed = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations,
+    });
+    expect(committed.status).toBe("committed");
+    expect(committed.applied.map(({ id }) => id)).toEqual(["valid"]);
+    expect(committed.skipped).toEqual([{ id: "missing", reason: "missingBlock" }]);
+    expect(reviewer.getContentAsText()).toContain("Intro paragraph.");
+    expect(reviewer.getComments()).toHaveLength(1);
+  });
+
+  test("dry runs predict atomic rejection without exposing generated ids", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+
+    const preview = reviewer.applyDocumentOperations({
+      version: 1,
+      atomic: true,
+      dryRun: true,
+      operations: [
+        {
+          id: "valid",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+      ],
+    });
+
+    expect(preview).toEqual({
+      version: 1,
+      status: "previewed",
+      applied: [],
+      skipped: [
+        { id: "valid", reason: "atomicBatchRejected" },
+        { id: "missing", reason: "missingBlock" },
+      ],
+    });
+    expect(reviewer.getContentAsText()).toContain("Heading paragraph.");
+    expect(reviewer.getChanges()).toEqual([]);
+  });
+
   test("insertAfterBlock (direct) adds a sibling paragraph, no tracked marks", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);

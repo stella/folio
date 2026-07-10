@@ -29,6 +29,7 @@ describe("document operation contract", () => {
       ],
       modes: ["direct", "tracked-changes"],
       batchModes: ["best-effort", "atomic"],
+      dryRun: true,
       modesByOperationType: {
         replaceInBlock: ["direct", "tracked-changes"],
         insertAfterBlock: ["direct", "tracked-changes"],
@@ -77,6 +78,7 @@ describe("document operation contract", () => {
       version: 1,
       mode: "tracked-changes",
       atomic: true,
+      dryRun: true,
       operations: [
         {
           id: "1",
@@ -117,6 +119,7 @@ describe("document operation contract", () => {
     [{ version: 1 }, "$.operations", "expected an array"],
     [{ version: 1, operations: [], mode: "review" }, "$.mode", "expected"],
     [{ version: 1, operations: [], atomic: "yes" }, "$.atomic", "expected a boolean"],
+    [{ version: 1, operations: [], dryRun: "yes" }, "$.dryRun", "expected a boolean"],
     [
       {
         version: 1,

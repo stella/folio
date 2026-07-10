@@ -103,6 +103,37 @@ describe("createEditorRefBridge: document operations", () => {
     expect(applyCalls).toBe(0);
   });
 
+  test("reports dry runs as unsupported without mutating through an older editor ref", () => {
+    let applyCalls = 0;
+    const ref: FolioAgentEditorRefLike = {
+      ...baseRef(),
+      applyAIEditOperations: () => {
+        applyCalls += 1;
+        return EMPTY_APPLY_RESULT;
+      },
+    };
+    const bridge = createEditorRefBridge({
+      ref,
+      author: "AI",
+      getComments: () => [],
+      setComments: () => {},
+    });
+
+    const result = bridge.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      dryRun: true,
+      operations: [{ id: "op-1", type: "deleteBlock", blockId: "para-1" }],
+    });
+
+    expect(result).toEqual({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      status: "previewed",
+      applied: [],
+      skipped: [{ id: "op-1", reason: "unsupportedMode" }],
+    });
+    expect(applyCalls).toBe(0);
+  });
+
   test("rejects unsupported serialized versions before using a legacy ref", () => {
     const bridge = createEditorRefBridge({
       ref: baseRef(),

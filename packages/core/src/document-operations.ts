@@ -1,9 +1,14 @@
 import { TaggedError } from "better-result";
 
-import { applyFolioAIEditOperations, type FolioAIEditView } from "./ai-edits/apply";
+import {
+  applyFolioAIEditOperations,
+  type FolioAIEditView,
+  previewFolioAIEditOperations,
+} from "./ai-edits/apply";
 import type {
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
+  FolioAIEditApplyResult,
   FolioAIEditOperation,
   FolioAIEditPrecondition,
   FolioAIEditReviewMeta,
@@ -64,6 +69,7 @@ export type FolioDocumentOperationCapabilities = {
   readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
   readonly modesByOperationType: typeof FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE;
   readonly batchModes: typeof FOLIO_DOCUMENT_OPERATION_BATCH_MODES;
+  readonly dryRun: true;
   readonly preconditions: typeof FOLIO_DOCUMENT_OPERATION_PRECONDITIONS;
   readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
@@ -74,6 +80,7 @@ const DOCUMENT_OPERATION_CAPABILITIES = Object.freeze({
   modes: FOLIO_DOCUMENT_OPERATION_MODES,
   modesByOperationType: FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
   batchModes: FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
+  dryRun: true,
   preconditions: FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   stories: FOLIO_DOCUMENT_OPERATION_STORIES,
 } as const satisfies FolioDocumentOperationCapabilities);
@@ -134,6 +141,7 @@ export type FolioDocumentOperationBatch = {
   operations: FolioDocumentOperation[];
   mode?: FolioDocumentOperationMode;
   atomic?: boolean;
+  dryRun?: boolean;
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -404,7 +412,7 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
   if (!isPlainObject(value)) {
     return invalidBatch("$", "expected an object");
   }
-  assertAllowedKeys(value, "$", ["version", "operations", "mode", "atomic"]);
+  assertAllowedKeys(value, "$", ["version", "operations", "mode", "atomic", "dryRun"]);
   const version = assertSupportedFolioDocumentOperationVersion(value["version"]);
   const operations = value["operations"];
   if (!Array.isArray(operations)) {
@@ -415,6 +423,7 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
     return invalidBatch("$.mode", 'expected "direct" or "tracked-changes" when provided');
   }
   const atomic = readOptionalBoolean(value, "atomic", "$");
+  const dryRun = readOptionalBoolean(value, "dryRun", "$");
   const parsedOperations = operations.map(parseDocumentOperation);
   const operationIds = new Set<string>();
   for (const [index, operation] of parsedOperations.entries()) {
@@ -428,10 +437,11 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
     operations: parsedOperations,
     ...(mode !== undefined && { mode }),
     ...(atomic !== undefined && { atomic }),
+    ...(dryRun !== undefined && { dryRun }),
   };
 };
 
-export type FolioDocumentOperationStatus = "committed" | "rejected";
+export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected";
 
 export type FolioDocumentOperationResult = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
@@ -448,6 +458,12 @@ export type ApplyFolioDocumentOperationsOptions = {
   createCommentId?: (text: string) => number;
 };
 
+type ApplyParsedDocumentOperationBatchOptions = {
+  targetView: FolioAIEditView;
+  targetCreateCommentId?: (text: string) => number;
+  preview?: boolean;
+};
+
 export const applyFolioDocumentOperations = ({
   view,
   snapshot,
@@ -456,8 +472,15 @@ export const applyFolioDocumentOperations = ({
   createCommentId,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
-  const apply = (targetView: FolioAIEditView, targetCreateCommentId = createCommentId) =>
-    applyFolioAIEditOperations({
+  const apply = ({
+    targetView,
+    targetCreateCommentId = createCommentId,
+    preview = false,
+  }: ApplyParsedDocumentOperationBatchOptions) => {
+    const applyOperations = preview
+      ? previewFolioAIEditOperations
+      : applyFolioAIEditOperations;
+    return applyOperations({
       view: targetView,
       snapshot,
       operations: parsedBatch.operations,
@@ -465,36 +488,51 @@ export const applyFolioDocumentOperations = ({
       ...(author !== undefined && { author }),
       ...(targetCreateCommentId !== undefined && { createCommentId: targetCreateCommentId }),
     });
+  };
+
+  const preview = () => apply({ targetView: view, preview: true });
+
+  const atomicResult = (
+    previewResult: FolioAIEditApplyResult,
+    status: "previewed" | "rejected",
+  ): FolioDocumentOperationResult => {
+    const skippedById = new Map(
+      previewResult.skipped.map((operation) => [operation.id, operation]),
+    );
+    return {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      status,
+      applied: [],
+      skipped: parsedBatch.operations.map(
+        ({ id }): FolioAIEditSkippedOperation =>
+          skippedById.get(id) ?? { id, reason: "atomicBatchRejected" },
+      ),
+    };
+  };
+
+  if (parsedBatch.dryRun === true) {
+    const previewResult = preview();
+    if (parsedBatch.atomic === true && previewResult.skipped.length > 0) {
+      return atomicResult(previewResult, "previewed");
+    }
+    return {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      status: "previewed",
+      applied: previewResult.applied.map(({ id }) => ({ id })),
+      skipped: previewResult.skipped,
+    };
+  }
 
   if (parsedBatch.atomic === true) {
-    let previewCommentId = -1;
-    const previewView: FolioAIEditView = {
-      state: view.state,
-      dispatch: (transaction) => {
-        previewView.state = previewView.state.apply(transaction);
-      },
-    };
-    const preview = apply(
-      previewView,
-      createCommentId === undefined ? undefined : () => previewCommentId--,
-    );
-    if (preview.skipped.length > 0) {
-      const skippedById = new Map(preview.skipped.map((operation) => [operation.id, operation]));
-      return {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        status: "rejected",
-        applied: [],
-        skipped: parsedBatch.operations.map(
-          ({ id }): FolioAIEditSkippedOperation =>
-            skippedById.get(id) ?? { id, reason: "atomicBatchRejected" },
-        ),
-      };
+    const previewResult = preview();
+    if (previewResult.skipped.length > 0) {
+      return atomicResult(previewResult, "rejected");
     }
   }
 
   return {
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
     status: "committed",
-    ...apply(view),
+    ...apply({ targetView: view }),
   };
 };

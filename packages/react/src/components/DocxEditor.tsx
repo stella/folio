@@ -45,6 +45,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   getCommentAnchorsFromDoc,
   getTrackedChangesFromDoc,
+  type FolioDocumentOperationStatus,
 } from "@stll/folio-core/ai-edits";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
@@ -2824,9 +2825,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         assertSupportedFolioDocumentOperationVersion(batch.version);
         const view = pagedEditorRef.current?.getView();
         if (!view) {
+          let status: FolioDocumentOperationStatus = "committed";
+          if (batch.dryRun === true) {
+            status = "previewed";
+          } else if (batch.atomic === true) {
+            status = "rejected";
+          }
           return {
             version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-            status: batch.atomic === true ? "rejected" : "committed",
+            status,
             applied: [],
             skipped: batch.operations.map((operation) => ({
               id: operation.id,

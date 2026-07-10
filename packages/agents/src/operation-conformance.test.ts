@@ -143,4 +143,32 @@ describe("document operation cross-surface conformance", () => {
       expect(output.savedChanges, output.name).toEqual(expected.changes);
     }
   });
+
+  test("previews equivalent results without mutating any surface", async () => {
+    const batch = { ...readOperationFixture(), dryRun: true };
+    const outputs = [];
+
+    for (const surface of await createSurfaces()) {
+      const contentBefore = surface.reviewer.getContentAsText();
+      const result = surface.apply(batch);
+      outputs.push({
+        name: surface.name,
+        result: normalizeResult(result),
+        contentBefore,
+        contentAfter: surface.reviewer.getContentAsText(),
+        changes: normalizeChanges(surface.reviewer),
+      });
+    }
+
+    for (const output of outputs) {
+      expect(output.result, output.name).toEqual({
+        version: 1,
+        status: "previewed",
+        applied: [{ id: "replace-heading" }],
+        skipped: [],
+      });
+      expect(output.contentAfter, output.name).toBe(output.contentBefore);
+      expect(output.changes, output.name).toEqual([]);
+    }
+  });
 });

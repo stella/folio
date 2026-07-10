@@ -175,6 +175,17 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
       if (ref.applyDocumentOperations) {
         return ref.applyDocumentOperations({ snapshot, batch: versionedBatch, author });
       }
+      if (versionedBatch.dryRun === true) {
+        return {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          status: "previewed",
+          applied: [],
+          skipped: versionedBatch.operations.map(({ id }) => ({
+            id,
+            reason: "unsupportedMode",
+          })),
+        };
+      }
       if (versionedBatch.atomic === true) {
         return {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
