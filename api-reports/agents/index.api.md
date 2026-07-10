@@ -15,6 +15,7 @@ import { FolioBlockDiff } from '@stll/folio-core/server';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
 import { FolioDocumentOperationIssue } from '@stll/folio-core/server';
+import { FolioDocumentOperationReceipt } from '@stll/folio-core/server';
 import { FolioDocumentOperationResult } from '@stll/folio-core/server';
 import { FolioDocumentStory } from '@stll/folio-core/server';
 import { FolioDocumentStoryHandle } from '@stll/folio-core/server';
@@ -87,6 +88,7 @@ export type FolioAgentApplyOperationsSummary = {
         reason: string;
     }[];
     issues: FolioDocumentOperationIssue[];
+    receipts: FolioDocumentOperationReceipt[];
 };
 
 // @public

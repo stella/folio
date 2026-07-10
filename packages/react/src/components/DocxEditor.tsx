@@ -2829,6 +2829,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             applied: [],
             skipped,
             issues: getFolioDocumentOperationIssues(batch.operations, skipped),
+            receipts: [],
           };
         }
 

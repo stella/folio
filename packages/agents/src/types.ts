@@ -2,6 +2,7 @@ import type {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FolioAITextRangeHandle,
   FolioDocumentOperationIssue,
+  FolioDocumentOperationReceipt,
 } from "@stll/folio-core/server";
 
 /**
@@ -125,4 +126,5 @@ export type FolioAgentApplyOperationsSummary = {
   applied: { id: string }[];
   skipped: { id: string; reason: string }[];
   issues: FolioDocumentOperationIssue[];
+  receipts: FolioDocumentOperationReceipt[];
 };

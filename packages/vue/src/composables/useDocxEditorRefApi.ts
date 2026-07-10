@@ -320,6 +320,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           applied: [],
           skipped,
           issues: getFolioDocumentOperationIssues(batch.operations, skipped),
+          receipts: [],
         };
       }
       return applyFolioDocumentOperations({

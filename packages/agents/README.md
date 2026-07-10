@@ -36,7 +36,8 @@ Block ids and comment ids always come from a prior tool call
 (`read_document`, `find_text`, `read_comments`) within the same conversation —
 never guess them. `suggest_changes` reports a plain-language reason when an
 operation is skipped (e.g. the block changed since it was last read), so the
-model can re-read and retry.
+model can re-read and retry. Successful mutation results include `receipts`
+that identify affected blocks, ranges, insertions, and created comments.
 
 ### Untrusted documents
 

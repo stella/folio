@@ -84,12 +84,14 @@ const normalizeResult = ({
   applied,
   skipped,
   issues,
+  receipts,
 }: FolioDocumentOperationResult) => ({
   version,
   status,
   applied: applied.map(({ id }) => ({ id })),
   skipped,
   issues,
+  receipts,
 });
 
 const normalizeChanges = (reviewer: FolioDocxReviewer) =>
@@ -125,6 +127,20 @@ describe("document operation cross-surface conformance", () => {
         applied: [{ id: "replace-heading" }],
         skipped: [],
         issues: [],
+        receipts: [
+          {
+            operationId: "replace-heading",
+            operationIndex: 0,
+            affected: [
+              {
+                type: "block",
+                story: "main",
+                blockId: "0304003A",
+                effect: "updated",
+              },
+            ],
+          },
+        ],
       },
       content: "[0304003A] Intro paragraph.\n[32560014] Trailing paragraph.",
       changes: [
@@ -175,6 +191,20 @@ describe("document operation cross-surface conformance", () => {
         applied: [{ id: "replace-heading" }],
         skipped: [],
         issues: [],
+        receipts: [
+          {
+            operationId: "replace-heading",
+            operationIndex: 0,
+            affected: [
+              {
+                type: "block",
+                story: "main",
+                blockId: "0304003A",
+                effect: "updated",
+              },
+            ],
+          },
+        ],
       });
       expect(output.contentAfter, output.name).toBe(output.contentBefore);
       expect(output.changes, output.name).toEqual([]);

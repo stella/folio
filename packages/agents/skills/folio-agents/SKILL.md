@@ -99,6 +99,9 @@ go straight back to the model.
   since your snapshot; re-read the document and retry with fresh ids"). Treat
   a skip as a retry signal: re-read (`read_document` or `find_text`) and
   reissue with fresh ids, not a dead end.
+- Successful mutations return input-ordered `receipts`. Use their typed
+  `affected` targets to identify updated blocks, stable ranges, insertions,
+  and created comments without inferring effects from document text.
 - `suggest_changes` defaults to tracked-changes mode on both shipped bridges
   — it proposes redlines for a human to accept or reject, never edits the
   visible text directly.

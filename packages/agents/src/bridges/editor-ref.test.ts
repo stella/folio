@@ -58,6 +58,8 @@ describe("createEditorRefBridge: document operations", () => {
 
     expect(receivedVersion).toBe(FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION);
     expect(result.version).toBe(FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION);
+    expect(result.issues).toEqual([]);
+    expect(result.receipts).toEqual([]);
   });
 
   test("preserves the versioned result when adapting an older editor ref", () => {
@@ -78,7 +80,34 @@ describe("createEditorRefBridge: document operations", () => {
       status: "committed",
       ...EMPTY_APPLY_RESULT,
       issues: [],
+      receipts: [],
     });
+  });
+
+  test("builds receipts when adapting successful operations through an older editor ref", () => {
+    const ref: FolioAgentEditorRefLike = {
+      ...baseRef(),
+      applyAIEditOperations: () => ({ applied: [{ id: "op-1" }], skipped: [] }),
+    };
+    const bridge = createEditorRefBridge({
+      ref,
+      author: "AI",
+      getComments: () => [],
+      setComments: () => {},
+    });
+
+    const result = bridge.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      operations: [{ id: "op-1", type: "deleteBlock", blockId: "para-1" }],
+    });
+
+    expect(result.receipts).toEqual([
+      {
+        operationId: "op-1",
+        operationIndex: 0,
+        affected: [{ type: "block", story: "main", blockId: "para-1", effect: "deleted" }],
+      },
+    ]);
   });
 
   test("rejects atomic batches without mutating through an older editor ref", () => {
@@ -109,6 +138,7 @@ describe("createEditorRefBridge: document operations", () => {
       applied: [],
       skipped: [{ id: "op-1", reason: "unsupportedMode" }],
       issues: [UNSUPPORTED_MODE_ISSUE],
+      receipts: [],
     });
     expect(applyCalls).toBe(0);
   });
@@ -141,6 +171,7 @@ describe("createEditorRefBridge: document operations", () => {
       applied: [],
       skipped: [{ id: "op-1", reason: "unsupportedMode" }],
       issues: [UNSUPPORTED_MODE_ISSUE],
+      receipts: [],
     });
     expect(applyCalls).toBe(0);
   });

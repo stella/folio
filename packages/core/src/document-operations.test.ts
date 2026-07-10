@@ -7,11 +7,13 @@ import {
   FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
   FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   getFolioDocumentOperationCapabilities,
+  getFolioDocumentOperationReceipts,
   isFolioDocumentOperationModeSupported,
   InvalidFolioDocumentOperationBatchError,
   isSupportedFolioDocumentOperationVersion,
   parseFolioDocumentOperationBatch,
   UnsupportedFolioDocumentOperationVersionError,
+  type FolioDocumentOperation,
 } from "./document-operations";
 
 describe("document operation contract", () => {
@@ -71,6 +73,113 @@ describe("document operation contract", () => {
     expect(isSupportedFolioDocumentOperationVersion("1")).toBe(false);
     expect(isSupportedFolioDocumentOperationVersion(2)).toBe(false);
     expect(FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION).toBe(1);
+  });
+
+  test("builds input-ordered receipts for successful affected targets", () => {
+    const range = {
+      type: "textRange",
+      story: "main",
+      blockId: "paragraph-2",
+      startOffset: 4,
+      endOffset: 9,
+      selectedTextHash: "h123",
+    } as const;
+    const operations = [
+      {
+        id: "replace",
+        type: "replaceInBlock",
+        blockId: "paragraph-1",
+        find: "old",
+        replace: "new",
+        comment: { text: "Changed" },
+      },
+      { id: "comment", type: "commentOnRange", range, comment: { text: "Review" } },
+      { id: "format", type: "formatRange", range, formatting: { bold: true } },
+      { id: "insert", type: "insertBeforeBlock", blockId: "paragraph-3", text: "New" },
+      { id: "delete", type: "deleteBlock", blockId: "paragraph-4" },
+      {
+        id: "signature",
+        type: "insertSignatureTable",
+        blockId: "paragraph-5",
+        parties: [{ name: "Party" }],
+      },
+    ] as const satisfies readonly FolioDocumentOperation[];
+
+    expect(
+      getFolioDocumentOperationReceipts(operations, [
+        { id: "signature" },
+        { id: "format" },
+        { id: "replace", commentId: 17 },
+        { id: "insert" },
+        { id: "comment", commentId: 18 },
+        { id: "delete" },
+      ]),
+    ).toEqual([
+      {
+        operationId: "replace",
+        operationIndex: 0,
+        affected: [
+          {
+            type: "block",
+            story: "main",
+            blockId: "paragraph-1",
+            effect: "updated",
+          },
+          { type: "comment", commentId: 17 },
+        ],
+      },
+      {
+        operationId: "comment",
+        operationIndex: 1,
+        affected: [
+          { type: "textRange", range, effect: "commented" },
+          { type: "comment", commentId: 18 },
+        ],
+      },
+      {
+        operationId: "format",
+        operationIndex: 2,
+        affected: [{ type: "textRange", range, effect: "formatted" }],
+      },
+      {
+        operationId: "insert",
+        operationIndex: 3,
+        affected: [
+          {
+            type: "insertion",
+            story: "main",
+            anchorBlockId: "paragraph-3",
+            position: "before",
+            content: "block",
+          },
+        ],
+      },
+      {
+        operationId: "delete",
+        operationIndex: 4,
+        affected: [
+          {
+            type: "block",
+            story: "main",
+            blockId: "paragraph-4",
+            effect: "deleted",
+          },
+        ],
+      },
+      {
+        operationId: "signature",
+        operationIndex: 5,
+        affected: [
+          {
+            type: "insertion",
+            story: "main",
+            anchorBlockId: "paragraph-5",
+            position: "after",
+            content: "signatureTable",
+          },
+        ],
+      },
+    ]);
   });
 
   test("rejects an unsupported serialized contract version", () => {

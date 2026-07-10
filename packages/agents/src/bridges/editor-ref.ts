@@ -10,6 +10,7 @@ import {
   assertSupportedFolioDocumentOperationVersion,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   getFolioDocumentOperationIssues,
+  getFolioDocumentOperationReceipts,
 } from "@stll/folio-core/server";
 import type { FolioCommentAnchor, FolioReviewChange } from "@stll/folio-core/ai-edits";
 import { createReply } from "@stll/folio-core/docx/replyToComment";
@@ -174,7 +175,16 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
       const snapshot = requireSnapshot();
       const versionedBatch = { ...batch, mode };
       if (ref.applyDocumentOperations) {
-        return ref.applyDocumentOperations({ snapshot, batch: versionedBatch, author });
+        const result = ref.applyDocumentOperations({ snapshot, batch: versionedBatch, author });
+        return {
+          ...result,
+          issues:
+            result.issues ??
+            getFolioDocumentOperationIssues(versionedBatch.operations, result.skipped),
+          receipts:
+            result.receipts ??
+            getFolioDocumentOperationReceipts(versionedBatch.operations, result.applied),
+        };
       }
       if (versionedBatch.dryRun === true) {
         const skipped = versionedBatch.operations.map(({ id }) => ({
@@ -187,6 +197,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
           applied: [],
           skipped,
           issues: getFolioDocumentOperationIssues(versionedBatch.operations, skipped),
+          receipts: [],
         };
       }
       if (versionedBatch.atomic === true) {
@@ -200,6 +211,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
           applied: [],
           skipped,
           issues: getFolioDocumentOperationIssues(versionedBatch.operations, skipped),
+          receipts: [],
         };
       }
       const result = ref.applyAIEditOperations({
@@ -213,6 +225,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
         status: "committed",
         ...result,
         issues: getFolioDocumentOperationIssues(versionedBatch.operations, result.skipped),
+        receipts: getFolioDocumentOperationReceipts(versionedBatch.operations, result.applied),
       };
     },
     getComments: (): FolioAgentComment[] => {

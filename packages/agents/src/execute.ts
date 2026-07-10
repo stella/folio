@@ -285,6 +285,7 @@ const summarizeApplyResult = (result: {
   applied: { id: string }[];
   skipped: { id: string; reason: string }[];
   issues?: FolioAgentApplyOperationsSummary["issues"];
+  receipts?: FolioAgentApplyOperationsSummary["receipts"];
 }): FolioAgentApplyOperationsSummary => ({
   version: result.version,
   applied: result.applied.map((entry) => ({ id: entry.id })),
@@ -293,6 +294,7 @@ const summarizeApplyResult = (result: {
     reason: explainSkipReason(entry.reason),
   })),
   issues: result.issues ?? [],
+  receipts: result.receipts ?? [],
 });
 
 const applyOperations = (

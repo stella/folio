@@ -155,6 +155,20 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     expect(suggestResult.applied).toHaveLength(1);
     expect(suggestResult.applied[0]?.id).toBe("op-1");
     expect(suggestResult.skipped).toEqual([]);
+    expect(suggestResult.receipts).toEqual([
+      {
+        operationId: "op-1",
+        operationIndex: 0,
+        affected: [
+          {
+            type: "block",
+            story: "main",
+            blockId: heading.blockId,
+            effect: "updated",
+          },
+        ],
+      },
+    ]);
 
     // read_changes: the replace is now a pending tracked change
     const changes = expectOk(
@@ -178,6 +192,21 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     expect(addCommentResult.version).toBe(1);
     expect(addCommentResult.applied).toHaveLength(1);
     expect(addCommentResult.skipped).toEqual([]);
+    expect(addCommentResult.receipts).toEqual([
+      {
+        operationId: "comment-1",
+        operationIndex: 0,
+        affected: [
+          {
+            type: "block",
+            story: "main",
+            blockId: heading.blockId,
+            effect: "commented",
+          },
+          { type: "comment", commentId: expect.any(Number) },
+        ],
+      },
+    ]);
 
     // read_comments
     const comments = expectOk(
@@ -271,8 +300,9 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         },
         bridge,
       ),
-    ) as { applied: unknown[]; skipped: { id: string; reason: string }[] };
+    ) as { applied: unknown[]; receipts: unknown[]; skipped: { id: string; reason: string }[] };
     expect(result.applied).toEqual([]);
+    expect(result.receipts).toEqual([]);
     expect(result.skipped).toHaveLength(1);
     expect(result.skipped[0]?.id).toBe("custom-1");
     expect(result.skipped[0]?.reason).toContain("re-read the document");
@@ -317,13 +347,14 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         },
         bridge,
       ),
-    ) as { issues: unknown[]; skipped: { reason: string }[] };
+    ) as { issues: unknown[]; receipts: unknown[]; skipped: { reason: string }[] };
 
     expect(receivedPrecondition).toEqual({
       blockTextHash: reviewer.snapshot().anchors[heading.id]?.textHash,
     });
     expect(result.skipped[0]?.reason).toContain("re-read the document");
     expect(result.issues).toEqual([]);
+    expect(result.receipts).toEqual([]);
   });
 
   test("suggest_changes explains an unsupported mutation mode", async () => {

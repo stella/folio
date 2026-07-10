@@ -174,6 +174,13 @@ describe("headless docx review round-trip", () => {
     expect(result.status).toBe("committed");
     expect(result.applied.map(({ id }) => id)).toEqual(["v1"]);
     expect(result.skipped).toEqual([]);
+    expect(result.receipts).toEqual([
+      {
+        operationId: "v1",
+        operationIndex: 0,
+        affected: [{ type: "block", story: "main", blockId: target.id, effect: "updated" }],
+      },
+    ]);
     expect(await partText(await reviewer.toBuffer(), "word/document.xml")).toContain("<w:ins ");
   });
 
@@ -226,6 +233,7 @@ describe("headless docx review round-trip", () => {
           recovery: "refreshDocument",
         },
       ],
+      receipts: [],
     });
     expect(reviewer.getContentAsText()).toBe(contentBefore);
     expect(reviewer.getComments()).toEqual([]);
@@ -261,6 +269,29 @@ describe("headless docx review round-trip", () => {
     expect(result.status).toBe("committed");
     expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["insert", "replace"]);
     expect(result.skipped).toEqual([]);
+    expect(result.receipts).toEqual([
+      {
+        operationId: "replace",
+        operationIndex: 0,
+        affected: [
+          { type: "block", story: "main", blockId: target.id, effect: "updated" },
+          { type: "comment", commentId: expect.any(Number) },
+        ],
+      },
+      {
+        operationId: "insert",
+        operationIndex: 1,
+        affected: [
+          {
+            type: "insertion",
+            story: "main",
+            anchorBlockId: target.id,
+            position: "after",
+            content: "block",
+          },
+        ],
+      },
+    ]);
     expect(reviewer.getContentAsText()).toContain("Intro paragraph.");
     expect(reviewer.getContentAsText()).toContain("New clause.");
     expect(reviewer.getComments()).toHaveLength(1);
@@ -303,6 +334,13 @@ describe("headless docx review round-trip", () => {
           code: "missingBlock",
           retryable: true,
           recovery: "refreshDocument",
+        },
+      ],
+      receipts: [
+        {
+          operationId: "valid",
+          operationIndex: 0,
+          affected: [{ type: "block", story: "main", blockId: target.id, effect: "updated" }],
         },
       ],
     });
@@ -368,6 +406,7 @@ describe("headless docx review round-trip", () => {
           recovery: "refreshDocument",
         },
       ],
+      receipts: [],
     });
     expect(reviewer.getContentAsText()).toContain("Heading paragraph.");
     expect(reviewer.getChanges()).toEqual([]);

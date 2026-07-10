@@ -602,12 +602,46 @@ export type FolioDocumentOperationIssue = {
   recovery: FolioDocumentOperationRecovery;
 };
 
+/** One typed target affected by a successfully applied document operation. */
+export type FolioDocumentOperationAffectedTarget =
+  | {
+      type: "block";
+      story: "main";
+      blockId: string;
+      effect: "updated" | "deleted" | "commented";
+    }
+  | {
+      type: "textRange";
+      range: FolioAITextRangeHandle;
+      effect: "formatted" | "commented";
+    }
+  | {
+      type: "insertion";
+      story: "main";
+      anchorBlockId: string;
+      position: "before" | "after";
+      content: "block" | "signatureTable";
+    }
+  | {
+      type: "comment";
+      commentId: number;
+    };
+
+/** Input-ordered effect receipt for one successfully applied operation. */
+export type FolioDocumentOperationReceipt = {
+  operationId: string;
+  operationIndex: number;
+  affected: FolioDocumentOperationAffectedTarget[];
+};
+
 export type FolioDocumentOperationResult = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   status: FolioDocumentOperationStatus;
   applied: FolioAIEditAppliedOperation[];
   skipped: FolioAIEditSkippedOperation[];
   issues: FolioDocumentOperationIssue[];
+  /** Successful effects in input-operation order; skipped operations are omitted. */
+  receipts: FolioDocumentOperationReceipt[];
 };
 
 const recoveryByReason = {
@@ -643,6 +677,87 @@ export const getFolioDocumentOperationIssues = (
       recovery: recoveryByReason[reason],
     };
   });
+};
+
+const getPrimaryAffectedTarget = (
+  operation: FolioDocumentOperation,
+): FolioDocumentOperationAffectedTarget => {
+  switch (operation.type) {
+    case "replaceInBlock":
+    case "replaceBlock":
+      return {
+        type: "block",
+        story: "main",
+        blockId: operation.blockId,
+        effect: "updated",
+      };
+    case "replaceRange":
+      return {
+        type: "block",
+        story: "main",
+        blockId: operation.range.blockId,
+        effect: "updated",
+      };
+    case "commentOnRange":
+      return { type: "textRange", range: operation.range, effect: "commented" };
+    case "formatRange":
+      return { type: "textRange", range: operation.range, effect: "formatted" };
+    case "insertAfterBlock":
+    case "insertBeforeBlock":
+      return {
+        type: "insertion",
+        story: "main",
+        anchorBlockId: operation.blockId,
+        position: operation.type === "insertBeforeBlock" ? "before" : "after",
+        content: "block",
+      };
+    case "deleteBlock":
+      return {
+        type: "block",
+        story: "main",
+        blockId: operation.blockId,
+        effect: "deleted",
+      };
+    case "commentOnBlock":
+      return {
+        type: "block",
+        story: "main",
+        blockId: operation.blockId,
+        effect: "commented",
+      };
+    case "insertSignatureTable":
+      return {
+        type: "insertion",
+        story: "main",
+        anchorBlockId: operation.blockId,
+        position: operation.position ?? "after",
+        content: "signatureTable",
+      };
+  }
+};
+
+/** Build deterministic affected-target receipts from operations and their applied entries. */
+export const getFolioDocumentOperationReceipts = (
+  operations: readonly FolioDocumentOperation[],
+  applied: readonly FolioAIEditAppliedOperation[],
+): FolioDocumentOperationReceipt[] => {
+  const appliedById = new Map<string, FolioAIEditAppliedOperation>();
+  applied.forEach((operation) => {
+    appliedById.set(operation.id, operation);
+  });
+  const receipts: FolioDocumentOperationReceipt[] = [];
+  operations.forEach((operation, operationIndex) => {
+    const appliedOperation = appliedById.get(operation.id);
+    if (!appliedOperation) {
+      return;
+    }
+    const affected: FolioDocumentOperationAffectedTarget[] = [getPrimaryAffectedTarget(operation)];
+    if (appliedOperation.commentId !== undefined) {
+      affected.push({ type: "comment", commentId: appliedOperation.commentId });
+    }
+    receipts.push({ operationId: operation.id, operationIndex, affected });
+  });
+  return receipts;
 };
 
 export type ApplyFolioDocumentOperationsOptions = {
@@ -702,6 +817,7 @@ export const applyFolioDocumentOperations = ({
       applied: [],
       skipped,
       issues: getFolioDocumentOperationIssues(parsedBatch.operations, skipped),
+      receipts: [],
     };
   };
 
@@ -716,6 +832,7 @@ export const applyFolioDocumentOperations = ({
       applied: previewResult.applied.map(({ id }) => ({ id })),
       skipped: previewResult.skipped,
       issues: getFolioDocumentOperationIssues(parsedBatch.operations, previewResult.skipped),
+      receipts: getFolioDocumentOperationReceipts(parsedBatch.operations, previewResult.applied),
     };
   }
 
@@ -732,5 +849,6 @@ export const applyFolioDocumentOperations = ({
     status: "committed",
     ...result,
     issues: getFolioDocumentOperationIssues(parsedBatch.operations, result.skipped),
+    receipts: getFolioDocumentOperationReceipts(parsedBatch.operations, result.applied),
   };
 };

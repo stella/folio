@@ -528,6 +528,27 @@ export type FolioBlockId = string & {
 // @public (undocumented)
 export type FolioDocumentOperation = FolioAIEditOperation;
 
+// @public
+export type FolioDocumentOperationAffectedTarget = {
+    type: "block";
+    story: "main";
+    blockId: string;
+    effect: "updated" | "deleted" | "commented";
+} | {
+    type: "textRange";
+    range: FolioAITextRangeHandle;
+    effect: "formatted" | "commented";
+} | {
+    type: "insertion";
+    story: "main";
+    anchorBlockId: string;
+    position: "before" | "after";
+    content: "block" | "signatureTable";
+} | {
+    type: "comment";
+    commentId: number;
+};
+
 // @public (undocumented)
 export type FolioDocumentOperationBatch = {
     readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
@@ -565,6 +586,13 @@ export type FolioDocumentOperationMode = FolioAIEditApplyMode;
 // @public (undocumented)
 export type FolioDocumentOperationPrecondition = FolioAIEditPrecondition;
 
+// @public
+export type FolioDocumentOperationReceipt = {
+    operationId: string;
+    operationIndex: number;
+    affected: FolioDocumentOperationAffectedTarget[];
+};
+
 // @public (undocumented)
 export type FolioDocumentOperationRecovery = "refreshDocument" | "narrowMatch" | "changeMode" | "changeTarget" | "removeOperation" | "inspectBatch";
 
@@ -574,7 +602,8 @@ export type FolioDocumentOperationResult = {
     status: FolioDocumentOperationStatus;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
-    issues: FolioDocumentOperationIssue[];
+    issues: FolioDocumentOperationIssue[]; /** Successful effects in input-operation order; skipped operations are omitted. */
+    receipts: FolioDocumentOperationReceipt[];
 };
 
 // @public (undocumented)
@@ -603,6 +632,9 @@ export const getFolioDocumentOperationCapabilities: () => FolioDocumentOperation
 
 // @public (undocumented)
 export const getFolioDocumentOperationIssues: (operations: readonly FolioDocumentOperation[], skipped: readonly FolioAIEditSkippedOperation[]) => FolioDocumentOperationIssue[];
+
+// @public
+export const getFolioDocumentOperationReceipts: (operations: readonly FolioDocumentOperation[], applied: readonly FolioAIEditAppliedOperation[]) => FolioDocumentOperationReceipt[];
 
 // @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
