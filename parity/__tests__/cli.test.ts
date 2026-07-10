@@ -20,6 +20,13 @@ describe("parity CLI args", () => {
     expect(flags.outputPath).toBe("/tmp/out.json");
   });
 
+  test("parses the explicit playground server reuse opt-in", () => {
+    const flags = parseArgs(["fixture.docx", "--reuse-server"]);
+
+    expect(flags.paths).toEqual(["fixture.docx"]);
+    expect(flags.reuseServer).toBe(true);
+  });
+
   test("requires a path after --output", () => {
     expect(() => parseArgs(["fixture.docx", "--output"])).toThrow("--output requires a file path");
     expect(() => parseArgs(["fixture.docx", "--output", "--json"])).toThrow(

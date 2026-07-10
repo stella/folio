@@ -132,6 +132,34 @@ describe("parseStextXml", () => {
     expect(box?.fontSizePt).toBe(12.5);
   });
 
+  test("normalizes a Wingdings square marker without rewriting a real section sign", () => {
+    const xml = documentEl(
+      pageEl(
+        1,
+        "612",
+        "792",
+        [
+          lineEl({
+            bbox: "0 0 10 10",
+            chars: "§ ",
+            font: { name: "ABCDEF+Wingdings-Regular", size: "9.12" },
+          }),
+          lineEl({
+            bbox: "0 20 50 30",
+            chars: "§ 12",
+            font: { name: "ArialMT", size: "9.12" },
+          }),
+        ].join(""),
+      ),
+    );
+
+    const pages = parseStextXml(xml);
+
+    expect(pages[0]?.lines[0]?.text).toBe("■ ");
+    expect(pages[0]?.lines[0]?.normText).toBe("■");
+    expect(pages[0]?.lines[1]?.text).toBe("§ 12");
+  });
+
   test("reconstructs text from <char> elements when the line has no text attribute", () => {
     const xml = documentEl(
       pageEl(1, "612", "792", lineEl({ bbox: "0 0 60 10", chars: "NoTextAttr" })),

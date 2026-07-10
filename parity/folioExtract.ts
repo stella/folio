@@ -103,6 +103,7 @@ const PAGE_SELECTOR = ".layout-page";
 const VIEWPORT = { width: 1400, height: 1000 };
 
 const SERVER_PROBE_TIMEOUT_MS = 2000;
+const SERVER_REUSE_PROBE_TIMEOUT_MS = 15_000;
 const SERVER_START_TIMEOUT_MS = 90_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 const SERVER_LOG_TAIL_CHARS = 4000;
@@ -156,6 +157,13 @@ export const formatServerStartFailure = (
   return output.length === 0
     ? `playground dev server ${reason}`
     : `playground dev server ${reason}\nPlayground output:\n${output}`;
+};
+
+export const formatNavigationFailure = (url: string, error: unknown, output: string): string => {
+  const message = error instanceof Error ? error.message : String(error);
+  return output.length === 0
+    ? `playground navigation failed for ${url}: ${message}`
+    : `playground navigation failed for ${url}: ${message}\nPlayground output:\n${output}`;
 };
 
 /** A raw rect as returned by `getBoundingClientRect()` (visual/CSS px). */
@@ -898,8 +906,10 @@ export const createFolioExtractor = async (
   const reuseServer = opts.reuseServer ?? false;
 
   let serverProcess: ReturnType<typeof Bun.spawn> | null = null;
+  let serverStdoutTail: OutputTail | null = null;
+  let serverStderrTail: OutputTail | null = null;
   const serverAlreadyUp =
-    reuseServer && (await probeServer(PLAYGROUND_URL, SERVER_PROBE_TIMEOUT_MS));
+    reuseServer && (await probeServer(PLAYGROUND_URL, SERVER_REUSE_PROBE_TIMEOUT_MS));
   if (!serverAlreadyUp) {
     // Clear any leftover server on OUR per-worktree port (see killByPort:
     // port-scoped, so other worktrees' servers are untouched), then start
@@ -912,8 +922,8 @@ export const createFolioExtractor = async (
       stdout: "pipe",
       stderr: "pipe",
     });
-    const stdoutTail = captureOutputTail(serverProcess.stdout);
-    const stderrTail = captureOutputTail(serverProcess.stderr);
+    serverStdoutTail = captureOutputTail(serverProcess.stdout);
+    serverStderrTail = captureOutputTail(serverProcess.stderr);
     const startupProbe = new AbortController();
     const startup = await Promise.race([
       waitForServerReady(
@@ -929,7 +939,7 @@ export const createFolioExtractor = async (
       await killProcessTree(serverProcess.pid);
       await killByPort(PLAYGROUND_PORT);
       await Promise.race([
-        Promise.all([stdoutTail.done, stderrTail.done]),
+        Promise.all([serverStdoutTail.done, serverStderrTail.done]),
         Bun.sleep(SERVER_PROBE_TIMEOUT_MS),
       ]);
       throw new FolioExtractError(
@@ -937,7 +947,7 @@ export const createFolioExtractor = async (
           PLAYGROUND_URL,
           SERVER_START_TIMEOUT_MS,
           startup.type === "exit" ? startup.exitCode : undefined,
-          [stdoutTail.read(), stderrTail.read()].filter(Boolean).join("\n"),
+          [serverStdoutTail.read(), serverStderrTail.read()].filter(Boolean).join("\n"),
         ),
       );
     }
@@ -965,6 +975,21 @@ export const createFolioExtractor = async (
   });
   const page = await context.newPage();
 
+  const navigateToDocument = async (stagedName: string): Promise<void> => {
+    const documentUrl = `${PLAYGROUND_URL}/?file=${encodeURIComponent(stagedName)}`;
+    try {
+      await page.goto(documentUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: PLAYGROUND_NAVIGATION_TIMEOUT_MS,
+      });
+    } catch (error) {
+      const output = [serverStdoutTail?.read(), serverStderrTail?.read()]
+        .filter(Boolean)
+        .join("\n");
+      throw new FolioExtractError(formatNavigationFailure(documentUrl, error, output));
+    }
+  };
+
   const extract = async (
     docxPath: string,
     options: FolioExtractOptions = {},
@@ -977,10 +1002,7 @@ export const createFolioExtractor = async (
 
     await fs.copyFile(absoluteDocxPath, stagedPath);
     try {
-      await page.goto(`${PLAYGROUND_URL}/?file=${encodeURIComponent(stagedName)}`, {
-        waitUntil: "domcontentloaded",
-        timeout: PLAYGROUND_NAVIGATION_TIMEOUT_MS,
-      });
+      await navigateToDocument(stagedName);
       await waitForEditorLayout(page);
 
       const pageMeta = await listPageMeta(page);
@@ -1052,10 +1074,7 @@ export const createFolioExtractor = async (
 
     await fs.copyFile(absoluteDocxPath, stagedPath);
     try {
-      await page.goto(`${PLAYGROUND_URL}/?file=${encodeURIComponent(stagedName)}`, {
-        waitUntil: "domcontentloaded",
-        timeout: PLAYGROUND_NAVIGATION_TIMEOUT_MS,
-      });
+      await navigateToDocument(stagedName);
       await waitForEditorLayout(page);
 
       const pageMeta = await listPageMeta(page);
