@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 
-import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
-import { clampRangeToDocSize, resolveFolioAIBlockRange } from "./aiEditRange";
+import { createFolioAIEditSnapshot } from "./snapshot";
+import { clampRangeToDocSize, resolveFolioAIBlockRange } from "./blockRange";
 
 const schema = new Schema({
   nodes: {

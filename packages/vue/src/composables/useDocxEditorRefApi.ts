@@ -69,8 +69,11 @@ import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
 import type { DocxEditorRef } from "../components/DocxEditor/types";
 import type { PagedEditorRef } from "../components/DocxEditor/pagedEditorRef";
-import { clampRangeToDocSize, resolveFolioAIBlockRange } from "../utils/aiEditRange";
-import { getPageTextFromLayout } from "../utils/pageText";
+import {
+  clampRangeToDocSize,
+  resolveFolioAIBlockRange,
+} from "@stll/folio-core/ai-edits/blockRange";
+import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 
 export type UseDocxEditorRefApiOptions = {
   /** Headless controller handle (imperative API + events; Seam 6). */

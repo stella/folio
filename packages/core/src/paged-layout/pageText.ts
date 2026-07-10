@@ -1,6 +1,6 @@
 import type { Node as PMNode } from "prosemirror-model";
 
-import type { Layout } from "@stll/folio-core/layout-engine";
+import type { Layout } from "../layout-engine";
 
 /**
  * The plain text of a single rendered page (1-based), read by joining each of
