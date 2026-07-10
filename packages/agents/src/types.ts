@@ -1,4 +1,7 @@
-import type { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
+import type {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FolioAITextRangeHandle,
+} from "@stll/folio-core/server";
 
 /**
  * Provider-neutral tool-layer types. `FolioAgentToolDefinition` describes a
@@ -57,6 +60,8 @@ export type FolioAgentBlock = {
 /** One `find_text` match: which block, which occurrence within it, and a text window around the match. */
 export type FolioAgentTextMatch = {
   blockId: string;
+  /** Stable handle that can be passed directly to a `replaceRange` operation. */
+  range: FolioAITextRangeHandle;
   /** 0-based index of this occurrence within its block (multiple matches in one block increment this). */
   occurrenceInBlock: number;
   /** The match plus ~40 characters of surrounding context on each side. */

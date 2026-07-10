@@ -11,7 +11,11 @@
  * rules, so there is exactly one place these caps and error messages live.
  */
 
-import type { FolioAIComment, FolioAIEditOperation } from "@stll/folio-core/server";
+import type {
+  FolioAIComment,
+  FolioAIEditOperation,
+  FolioAITextRangeHandle,
+} from "@stll/folio-core/server";
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -79,10 +83,11 @@ export const parseAddCommentInput = (args: unknown): ParseAddCommentResult => {
 };
 
 const OPERATION_TYPES =
-  "replaceInBlock, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock";
+  "replaceInBlock, replaceRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock";
 
 type SuggestedOperationType =
   | "replaceInBlock"
+  | "replaceRange"
   | "insertAfterBlock"
   | "insertBeforeBlock"
   | "replaceBlock"
@@ -90,10 +95,40 @@ type SuggestedOperationType =
 
 const isOperationType = (value: unknown): value is SuggestedOperationType =>
   value === "replaceInBlock" ||
+  value === "replaceRange" ||
   value === "insertAfterBlock" ||
   value === "insertBeforeBlock" ||
   value === "replaceBlock" ||
   value === "deleteBlock";
+
+const readTextRange = (value: unknown, index: number): FolioAITextRangeHandle | string => {
+  const path = `operations[${index}].range`;
+  if (!isPlainObject(value)) {
+    return `${path} must be an object copied from find_text.`;
+  }
+  const type = value["type"];
+  const story = value["story"];
+  const blockId = value["blockId"];
+  const startOffset = value["startOffset"];
+  const endOffset = value["endOffset"];
+  const selectedTextHash = value["selectedTextHash"];
+  if (type !== "textRange" || story !== "main") {
+    return `${path} must be a main-story textRange copied from find_text.`;
+  }
+  if (!isNonEmptyString(blockId)) {
+    return `${path}.blockId must be a non-empty string.`;
+  }
+  if (typeof startOffset !== "number" || !Number.isInteger(startOffset) || startOffset < 0) {
+    return `${path}.startOffset must be a non-negative integer.`;
+  }
+  if (typeof endOffset !== "number" || !Number.isInteger(endOffset) || endOffset <= startOffset) {
+    return `${path}.endOffset must be an integer greater than startOffset.`;
+  }
+  if (!isNonEmptyString(selectedTextHash) || !/^h[0-9a-z]+$/.test(selectedTextHash)) {
+    return `${path}.selectedTextHash must be a normalized text hash.`;
+  }
+  return { type, story, blockId, startOffset, endOffset, selectedTextHash };
+};
 
 /** Validate + map one `suggest_changes` operation, or return a plain-language error string. */
 const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperation | string => {
@@ -108,9 +143,6 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
   if (!isOperationType(type)) {
     return `operations[${index}].type must be one of ${OPERATION_TYPES}.`;
   }
-  if (!isNonEmptyString(blockId)) {
-    return `operations[${index}].blockId must be a non-empty string.`;
-  }
   if (id !== undefined && !isNonEmptyString(id)) {
     return `operations[${index}].id must be a non-empty string when provided.`;
   }
@@ -122,6 +154,25 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
   }
   const opId = isNonEmptyString(id) ? id : `op-${index + 1}`;
   const commentField = typeof comment === "string" ? { comment: { text: comment } } : {};
+
+  if (type === "replaceRange") {
+    const range = readTextRange(raw["range"], index);
+    if (typeof range === "string") {
+      return range;
+    }
+    const replace = raw["replace"];
+    if (typeof replace !== "string") {
+      return `operations[${index}] (replaceRange) requires a string \`replace\`.`;
+    }
+    if (replace.length > MAX_OPERATION_TEXT_LENGTH) {
+      return explainTextTooLong(`operations[${index}] (replaceRange) \`replace\``, replace.length);
+    }
+    return { id: opId, type, range, replace, ...commentField };
+  }
+
+  if (!isNonEmptyString(blockId)) {
+    return `operations[${index}].blockId must be a non-empty string.`;
+  }
 
   if (type === "replaceInBlock") {
     const find = raw["find"];

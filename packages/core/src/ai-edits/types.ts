@@ -57,6 +57,20 @@ export type FolioAIEditPrecondition = {
 };
 
 /**
+ * A serializable range over the visible, post-tracked-changes text of one
+ * block. Offsets are zero-based UTF-16 boundaries, matching JavaScript string
+ * slicing; `selectedTextHash` makes a shifted or changed selection fail stale.
+ */
+export type FolioAITextRangeHandle = {
+  type: "textRange";
+  story: "main";
+  blockId: string;
+  startOffset: number;
+  endOffset: number;
+  selectedTextHash: string;
+};
+
+/**
  * A party in an `insertSignatureTable` op. Mirrors the
  * `signatureTable` helper in `docx-core/legal-source/compile.ts`:
  * name is rendered bold; `signatory` and `title` are optional
@@ -76,6 +90,13 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         type: "replaceInBlock";
         blockId: string;
         find: string;
+        replace: string;
+        comment?: FolioAIComment;
+      }
+    | {
+        id: string;
+        type: "replaceRange";
+        range: FolioAITextRangeHandle;
         replace: string;
         comment?: FolioAIComment;
       }
@@ -148,6 +169,7 @@ export type FolioAIEditSkipReason =
   | "unsupportedMode"
   | "atomicBatchRejected"
   | "preconditionFailed"
+  | "staleRange"
   | "emptyOperation"
   /**
    * The operation would not change the document — find equals

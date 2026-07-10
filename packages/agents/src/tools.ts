@@ -6,24 +6,48 @@ const suggestChangesOperationSchema = {
   properties: {
     id: {
       type: "string",
-      description: "Optional caller-supplied operation id, echoed back in `applied`/`skipped`. Auto-generated (op-1, op-2, …) when omitted.",
+      description:
+        "Optional caller-supplied operation id, echoed back in `applied`/`skipped`. Auto-generated (op-1, op-2, …) when omitted.",
     },
     type: {
       type: "string",
-      enum: ["replaceInBlock", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock"],
+      enum: [
+        "replaceInBlock",
+        "replaceRange",
+        "insertAfterBlock",
+        "insertBeforeBlock",
+        "replaceBlock",
+        "deleteBlock",
+      ],
       description: "The kind of edit to make.",
     },
     blockId: {
       type: "string",
       description: "The block to edit, from `read_document` or `find_text`.",
     },
+    range: {
+      type: "object",
+      description: "Required for `replaceRange`: copy the range object returned by `find_text`.",
+      properties: {
+        type: { type: "string", enum: ["textRange"] },
+        story: { type: "string", enum: ["main"] },
+        blockId: { type: "string" },
+        startOffset: { type: "integer", minimum: 0 },
+        endOffset: { type: "integer", minimum: 1 },
+        selectedTextHash: { type: "string" },
+      },
+      required: ["type", "story", "blockId", "startOffset", "endOffset", "selectedTextHash"],
+      additionalProperties: false,
+    },
     find: {
       type: "string",
-      description: "Required for `replaceInBlock`: the exact text to find within the block, up to 100,000 characters.",
+      description:
+        "Required for `replaceInBlock`: the exact text to find within the block, up to 100,000 characters.",
     },
     replace: {
       type: "string",
-      description: "Required for `replaceInBlock`: the text to replace `find` with, up to 100,000 characters.",
+      description:
+        "Required for `replaceInBlock` and `replaceRange`: replacement text, up to 100,000 characters.",
     },
     text: {
       type: "string",
@@ -32,10 +56,11 @@ const suggestChangesOperationSchema = {
     },
     comment: {
       type: "string",
-      description: "Optional comment explaining this edit, attached to the affected text, up to 100,000 characters.",
+      description:
+        "Optional comment explaining this edit, attached to the affected text, up to 100,000 characters.",
     },
   },
-  required: ["type", "blockId"],
+  required: ["type"],
   additionalProperties: false,
 } as const;
 
@@ -88,14 +113,14 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     name: FOLIO_AGENT_TOOL_NAMES.readComments,
     description:
       "Read comment threads in the document, each with its author, text, resolved status, anchored block, and " +
-      "replies. Filter to unresolved (\"open\") comments to see what still needs attention.",
+      'replies. Filter to unresolved ("open") comments to see what still needs attention.',
     inputSchema: {
       type: "object",
       properties: {
         filter: {
           type: "string",
           enum: ["all", "open", "resolved"],
-          description: "Which comments to return. Defaults to \"all\".",
+          description: 'Which comments to return. Defaults to "all".',
         },
       },
       required: [],
@@ -123,10 +148,14 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        blockId: { type: "string", description: "The block to comment on, from `read_document` or `find_text`." },
+        blockId: {
+          type: "string",
+          description: "The block to comment on, from `read_document` or `find_text`.",
+        },
         quote: {
           type: "string",
-          description: "Optional exact text within the block this comment is about, up to 100,000 characters.",
+          description:
+            "Optional exact text within the block this comment is about, up to 100,000 characters.",
         },
         text: { type: "string", description: "The comment body, up to 100,000 characters." },
       },
@@ -172,12 +201,16 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
   },
   {
     name: FOLIO_AGENT_TOOL_NAMES.resolveComment,
-    description: "Mark a comment thread resolved, or pass `reopen: true` to reopen a previously resolved one.",
+    description:
+      "Mark a comment thread resolved, or pass `reopen: true` to reopen a previously resolved one.",
     inputSchema: {
       type: "object",
       properties: {
         commentId: { type: "string", description: "The comment id from `read_comments`." },
-        reopen: { type: "boolean", description: "Reopen an already-resolved thread instead of resolving it." },
+        reopen: {
+          type: "boolean",
+          description: "Reopen an already-resolved thread instead of resolving it.",
+        },
       },
       required: ["commentId"],
       additionalProperties: false,
@@ -217,7 +250,10 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        blockId: { type: "string", description: "The block to scroll to, from `read_document` or `find_text`." },
+        blockId: {
+          type: "string",
+          description: "The block to scroll to, from `read_document` or `find_text`.",
+        },
       },
       required: ["blockId"],
       additionalProperties: false,
