@@ -43,6 +43,8 @@ export type LayoutSchedulerConfig<TState> = {
   runLayout: RunLayout<TState>;
   /** Quiet-window debounce before an interactive layout pass. */
   debounceMs: number;
+  /** Run the first edit after a max-delay-sized idle period on the next frame. */
+  leadingFrame?: boolean;
   /** Hard cap on latency from the first edit in a burst. */
   maxDelayMs: number;
   /**
@@ -76,6 +78,7 @@ export const createLayoutScheduler = <TState>(
   config: LayoutSchedulerConfig<TState>,
 ): LayoutScheduler<TState> => {
   const clock = config.clock;
+  let lastRunAt: number | null = null;
   let pending: PendingLayoutRequest<TState> | null = null;
 
   const flushPending = (): void => {
@@ -89,6 +92,7 @@ export const createLayoutScheduler = <TState>(
       if (!latest) {
         return;
       }
+      lastRunAt = clock.now();
       const options: LayoutRunOptions = { reason: "transaction" };
       if (latest.dirtyRange) {
         options.dirtyRange = latest.dirtyRange;
@@ -128,6 +132,13 @@ export const createLayoutScheduler = <TState>(
         timerId: null,
       };
       pending = next;
+      if (
+        config.leadingFrame &&
+        (lastRunAt === null || clock.now() - lastRunAt >= config.maxDelayMs)
+      ) {
+        flushPending();
+        return;
+      }
       armTimer(next);
     },
     dispose() {

@@ -435,7 +435,7 @@ const TABLE_INSERT_EDGE_PROXIMITY = 30;
 const TABLE_INSERT_HIDE_DELAY = 200;
 /** Delay before converting PM state back to the Folio document model. */
 const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
-/** Short window for coalescing rapid typing transactions into one visual layout. */
+/** Quiet window for coalescing follow-up transactions after the leading frame. */
 const TRANSACTION_LAYOUT_DEBOUNCE_MS = 32;
 /** Upper bound for how long visible layout can trail the hidden editor. */
 const TRANSACTION_LAYOUT_MAX_DELAY_MS = 96;
@@ -2240,6 +2240,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(function
     layoutSchedulerRef.current = createLayoutScheduler<EditorState>({
       runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
       debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
+      leadingFrame: true,
       maxDelayMs: TRANSACTION_LAYOUT_MAX_DELAY_MS,
       clock: browserClock,
     });

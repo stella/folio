@@ -104,6 +104,42 @@ describe("layoutScheduler", () => {
     expect(optionsSeen[0]?.dirtyRange).toEqual({ from: 10, to: 40 });
   });
 
+  test("leading-frame mode paints the first edit immediately and debounces the rest", () => {
+    const fc = makeFakeClock();
+    const runs: TestState[] = [];
+    const scheduler = createLayoutScheduler<TestState>({
+      runLayout: (state) => {
+        runs.push(state);
+      },
+      debounceMs: 32,
+      leadingFrame: true,
+      maxDelayMs: 96,
+      clock: fc.clock,
+    });
+
+    scheduler.schedule({ id: 1 }, { from: 10, to: 20 });
+    scheduler.schedule({ id: 2 }, { from: 30, to: 40 });
+
+    expect(fc.pendingTimers()).toBe(0);
+    expect(fc.pendingFrames()).toBe(1);
+    expect(runs).toHaveLength(0);
+
+    fc.fireFrames();
+
+    expect(runs).toEqual([{ id: 2 }]);
+
+    scheduler.schedule({ id: 3 }, { from: 50, to: 60 });
+    scheduler.schedule({ id: 4 }, { from: 70, to: 80 });
+
+    expect(fc.pendingTimers()).toBe(1);
+    expect(fc.pendingFrames()).toBe(0);
+
+    fc.fireTimers();
+    fc.fireFrames();
+
+    expect(runs).toEqual([{ id: 2 }, { id: 4 }]);
+  });
+
   test("exceeding maxDelay flushes with zero debounce", () => {
     const fc = makeFakeClock();
     const runs: TestState[] = [];
@@ -144,6 +180,27 @@ describe("layoutScheduler", () => {
 
     expect(runs).toHaveLength(0);
     expect(fc.pendingTimers()).toBe(0);
+    expect(fc.pendingFrames()).toBe(0);
+  });
+
+  test("dispose cancels a pending leading frame", () => {
+    const fc = makeFakeClock();
+    const runs: TestState[] = [];
+    const scheduler = createLayoutScheduler<TestState>({
+      runLayout: (state) => {
+        runs.push(state);
+      },
+      debounceMs: 32,
+      leadingFrame: true,
+      maxDelayMs: 96,
+      clock: fc.clock,
+    });
+
+    scheduler.schedule({ id: 1 }, null);
+    scheduler.dispose();
+    fc.fireFrames();
+
+    expect(runs).toHaveLength(0);
     expect(fc.pendingFrames()).toBe(0);
   });
 });
