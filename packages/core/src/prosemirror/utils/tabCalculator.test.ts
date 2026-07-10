@@ -95,6 +95,26 @@ describe("computeTabStops", () => {
     expect(stop1000).toBeDefined();
   });
 
+  it("keeps the default grid anchored to the text-area origin after an indent", () => {
+    const stops = computeTabStops({
+      explicitStops: [{ val: "start", pos: 567 }],
+      leftIndent: 1134,
+    });
+
+    expect(
+      stops
+        .filter((stop) => stop.pos >= 1134)
+        .slice(0, 3)
+        .map((stop) => stop.pos),
+    ).toEqual([1134, 1440, 2160]);
+    expect(
+      calculateTabWidth(twipsToPixels(1573), {
+        explicitStops: [{ val: "start", pos: 567 }],
+        leftIndent: 1134,
+      }).width,
+    ).toBeCloseTo(twipsToPixels(2160 - 1573), 5);
+  });
+
   it("returns stops sorted by position", () => {
     const stops = computeTabStops({
       explicitStops: [

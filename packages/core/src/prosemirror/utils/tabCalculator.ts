@@ -133,10 +133,13 @@ export function computeTabStops(context: TabContext): TabStop[] {
     }
   }
 
-  // Generate default stops at regular intervals
-  // Start from leftIndent and go up to ~10 inches
-  const startPos = maxExplicit > 0 ? Math.max(maxExplicit, leftIndent) : leftIndent;
-  let pos = startPos;
+  // Generate default stops on the document-wide grid measured from the text
+  // area's left edge. An indent filters earlier stops, but must not shift the
+  // grid itself: a 1,134-twip indent still advances through 1,440, 2,160, ...,
+  // not 1,854, 2,574, ... . Start at the grid line at or before the rightmost
+  // explicit stop / indent; the loop advances to the first candidate after it.
+  const searchStart = Math.max(maxExplicit, leftIndent);
+  let pos = Math.floor(searchStart / defaultTabInterval) * defaultTabInterval;
   const limitPos = leftIndent + 14_400; // 14400 twips = 10 inches
 
   while (pos < limitPos) {
