@@ -119,24 +119,25 @@ function pageHasVisibleBodyContent(
 
 /**
  * Get spacing before a paragraph block. Empty paragraphs whose
- * `before` was inherited from a paragraph style (not set inline) collapse
- * to zero — Word fidelity for incidental empty separators.
+ * `before` came only from the implicit default paragraph style collapse to
+ * zero. An explicit `w:pStyle` selection is authored paragraph formatting,
+ * so Word keeps the selected style's spacing even when the paragraph is empty.
  */
 function getSpacingBefore(block: ParagraphBlock): number {
   const value = block.attrs?.spacing?.before ?? 0;
-  if (isEmptyParagraph(block) && !block.attrs?.spacingExplicit?.before) {
+  if (isEmptyParagraph(block) && !block.attrs?.styleId && !block.attrs?.spacingExplicit?.before) {
     return 0;
   }
   return value;
 }
 
 /**
- * Get spacing after a paragraph block. Same empty-paragraph collapse rule
- * as `getSpacingBefore`.
+ * Get spacing after a paragraph block. Same implicit-default-style collapse
+ * rule as `getSpacingBefore`.
  */
 function getSpacingAfter(block: ParagraphBlock): number {
   const value = block.attrs?.spacing?.after ?? 0;
-  if (isEmptyParagraph(block) && !block.attrs?.spacingExplicit?.after) {
+  if (isEmptyParagraph(block) && !block.attrs?.styleId && !block.attrs?.spacingExplicit?.after) {
     return 0;
   }
   return value;
