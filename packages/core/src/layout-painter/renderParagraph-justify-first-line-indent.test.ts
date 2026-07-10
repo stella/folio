@@ -185,6 +185,75 @@ describe("Issue #868 — justify first line to full content width on indented pa
     expect(lineEl.style.wordSpacing).toBe("-5px");
   });
 
+  test("underfull justified tab lines distribute their remaining width explicitly", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-underfull-tab",
+      runs: [
+        { kind: "text", text: "6.3.2" },
+        { kind: "tab" },
+        { kind: "text", text: "alpha beta" },
+      ],
+      attrs: { alignment: "justify" },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 10,
+      width: 80,
+      ascent: 10,
+      descent: 3,
+      lineHeight: 14,
+    };
+
+    const lineEl = renderLine(block, line, "justify", fakeDocument, {
+      availableWidth: 100,
+      isLastLine: false,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+    });
+
+    expect(lineEl.style.width).toBe("100px");
+    expect(lineEl.style.textAlign).toBe("left");
+    expect(lineEl.style.textAlignLast).toBe("auto");
+    expect(lineEl.style.wordSpacing).toBe("20px");
+  });
+
+  test("includes a hanging first-line region in justified tab capacity", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-underfull-hanging-tab",
+      runs: [
+        { kind: "text", text: "6.3.2" },
+        { kind: "tab" },
+        { kind: "text", text: "alpha beta" },
+      ],
+      attrs: { alignment: "justify", indent: { left: 20, hanging: 20 } },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 10,
+      width: 110,
+      ascent: 10,
+      descent: 3,
+      lineHeight: 14,
+    };
+
+    const lineEl = renderLine(block, line, "justify", fakeDocument, {
+      availableWidth: 100,
+      isLastLine: false,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      firstLineIndentPx: -20,
+    });
+
+    expect(lineEl.style.width).toBe("100px");
+    expect(lineEl.style.wordSpacing).toBe("10px");
+  });
+
   test("justifies a hanging-list marker line through the full right edge", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",

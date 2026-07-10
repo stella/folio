@@ -1711,6 +1711,8 @@ export function renderLine(
     return lineEl;
   }
 
+  const hasTabRuns = runsForLine.some(isTabRun);
+
   // Calculate justify spacing if needed
   const isJustify = alignment === "justify";
 
@@ -1719,9 +1721,20 @@ export function renderLine(
     const shouldJustify = !options.isLastLine || options.paragraphEndsWithLineBreak;
 
     if (shouldJustify) {
-      const overfullPx = line.width - options.availableWidth;
+      const firstLineIndentPx = options.isFirstLine ? (options.firstLineIndentPx ?? 0) : 0;
+      const firstLineHangingPx = Math.max(0, -firstLineIndentPx);
+      const justifyCapacityPx = options.availableWidth + firstLineHangingPx;
+      const overfullPx = line.width - justifyCapacityPx;
       const shrinkableSpaces = countShrinkableSpaces(runsForLine);
       if (overfullPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
+        lineEl.style.textAlign = "left";
+        lineEl.style.textAlignLast = "auto";
+        lineEl.style.wordSpacing = `${-overfullPx / shrinkableSpaces}px`;
+      } else if (hasTabRuns && shrinkableSpaces > 0 && -overfullPx > RIGHT_EDGE_EPSILON_PX) {
+        // CSS justification does not expand preserved spaces reliably when a
+        // line also contains an inline tab span. The layout engine has already
+        // fixed the line break, so distribute the remaining width explicitly;
+        // this is paint-only and cannot change pagination.
         lineEl.style.textAlign = "left";
         lineEl.style.textAlignLast = "auto";
         lineEl.style.wordSpacing = `${-overfullPx / shrinkableSpaces}px`;
@@ -1751,7 +1764,6 @@ export function renderLine(
   // renderParagraphFragment via MeasuredLine offsets from re-measurement.
 
   // Build tab context if we have tab runs - also create for text measurement
-  const hasTabRuns = runsForLine.some(isTabRun);
   let tabContext: TabContext | undefined;
 
   // Always create text measurer for accurate X position tracking
