@@ -395,6 +395,39 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[1].fragments.map((fragment) => fragment.blockId)).toEqual([1, 2]);
     });
 
+    test("empty rendered break marker reuses a page opened by the preceding paragraph", () => {
+      const marker: ParagraphBlock = {
+        kind: "paragraph",
+        id: 3,
+        runs: [
+          { kind: "tab", pmStart: 76, pmEnd: 77 },
+          { kind: "tab", pmStart: 77, pmEnd: 78 },
+        ],
+        attrs: { renderedPageBreakBefore: true },
+        pmStart: 25,
+        pmEnd: 26,
+      };
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Nearly fills page one", 1),
+        makeParagraphBlock(1, "Naturally moves to page two", 22),
+        makeParagraphBlock(2, "Trailing content on page two", 50),
+        marker,
+        makeParagraphBlock(4, "After cached boundary", 79),
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 840)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 27, 100, 40)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 28, 100, 24)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 0, 0, 24)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 21, 100, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(2);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2, 3, 4]);
+    });
+
     test("successive rendered page breaks remain authoritative after natural reflow", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Fill page one", 1),

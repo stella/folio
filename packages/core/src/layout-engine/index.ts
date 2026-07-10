@@ -101,6 +101,15 @@ function isEmptyParagraph(block: ParagraphBlock): boolean {
   return r?.kind === "text" && r.text === "";
 }
 
+function isPaginationEmptyParagraph(block: ParagraphBlock): boolean {
+  return block.runs.every((run) => {
+    if (run.kind === "text") {
+      return run.text.trim().length === 0;
+    }
+    return run.kind === "tab" || run.kind === "lineBreak";
+  });
+}
+
 function pageHasVisibleBodyContent(
   page: Page,
   blocksById: ReadonlyMap<string, FlowBlock>,
@@ -110,7 +119,7 @@ function pageHasVisibleBodyContent(
       return true;
     }
     const block = blocksById.get(String(fragment.blockId));
-    if (block?.kind !== "paragraph" || !isEmptyParagraph(block)) {
+    if (block?.kind !== "paragraph" || !isPaginationEmptyParagraph(block)) {
       return true;
     }
   }
@@ -316,6 +325,7 @@ export function layoutDocument(
   let activeSectionMarginTop = initialConfig.margins.top;
   let activeSectionPageHeight = initialConfig.pageSize.h;
   let activeSectionMarginBottom = initialConfig.margins.bottom;
+  let naturalPageAdvanceSinceRenderedBreak = false;
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
@@ -331,9 +341,19 @@ export function layoutDocument(
       paginator.forcePageBreak();
     } else if (hasRenderedPageBreak) {
       const state = paginator.getCurrentState();
-      if (pageHasVisibleBodyContent(state.page, blocksById)) {
+      const naturalOverflowAlreadyCrossedEmptyMarker =
+        block.kind === "paragraph" &&
+        isPaginationEmptyParagraph(block) &&
+        naturalPageAdvanceSinceRenderedBreak;
+      if (
+        !naturalOverflowAlreadyCrossedEmptyMarker &&
+        pageHasVisibleBodyContent(state.page, blocksById)
+      ) {
         paginator.forcePageBreak();
       }
+    }
+    if (hasRenderedPageBreak) {
+      naturalPageAdvanceSinceRenderedBreak = false;
     }
 
     // Handle keepNext chains - if this is a chain start, check if chain fits
@@ -343,6 +363,7 @@ export function layoutDocument(
       paginator.ensureFits(chainHeight);
     }
 
+    const pageBeforeBlockLayout = paginator.getCurrentState().page.number;
     switch (block.kind) {
       case "paragraph":
         layoutParagraph(
@@ -408,6 +429,16 @@ export function layoutDocument(
       }
       default:
         break;
+    }
+
+    const isVisibleBodyBlock =
+      block.kind === "paragraph"
+        ? !isEmptyParagraph(block)
+        : block.kind !== "pageBreak" &&
+          block.kind !== "columnBreak" &&
+          block.kind !== "sectionBreak";
+    if (isVisibleBodyBlock && paginator.getCurrentState().page.number > pageBeforeBlockLayout) {
+      naturalPageAdvanceSinceRenderedBreak = true;
     }
   }
 
