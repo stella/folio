@@ -234,6 +234,42 @@ describe("measureParagraph cross-run line breaking", () => {
     }, fakeMeasure);
   });
 
+  test("excludes a final collapsible space from paragraph fit width", () => {
+    withFakeTextMeasure(() => {
+      const text = "parcela č. ";
+      const { lines } = measureParagraph(
+        paragraph([{ kind: "text", text }]),
+        width(text.trimEnd()),
+      );
+
+      expect(lines).toHaveLength(1);
+      expect(lines[0]?.toChar).toBe(text.length);
+      expect(lines[0]?.width).toBe(width(text.trimEnd()));
+    }, fakeMeasure);
+  });
+
+  test("consumes a break-space after the last visible word on a line", () => {
+    withFakeTextMeasure(() => {
+      const text = "alpha beta gamma";
+      const { lines } = measureParagraph(paragraph([{ kind: "text", text }]), width("alpha beta"));
+
+      expect(lines).toHaveLength(2);
+      expect(lines[0]?.toChar).toBe("alpha beta ".length);
+      expect(lines[0]?.width).toBe(width("alpha beta"));
+    }, fakeMeasure);
+  });
+
+  test("does not create a whitespace-only line after hard-breaking a long word", () => {
+    withFakeTextMeasure(() => {
+      const text = "abcdefgh ";
+      const { lines } = measureParagraph(paragraph([{ kind: "text", text }]), width("abcd"));
+
+      expect(lines).toHaveLength(2);
+      expect(lines[1]?.toChar).toBe(text.length);
+      expect(lines[1]?.width).toBe(width("efgh"));
+    }, fakeMeasure);
+  });
+
   test("keeps a split leading hyphen glued to the preceding run", () => {
     withFakeTextMeasure(() => {
       const runs: Run[] = [

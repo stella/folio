@@ -115,6 +115,8 @@ type LineState = {
   toRun: number;
   toChar: number;
   width: number;
+  /** Width of collapsible ASCII whitespace at the current line tail. */
+  trailingWhitespaceWidth: number;
   /** Spaces Word may compress while justifying this line. */
   regularSpaceCount: number;
   /** Fixed-width spaces excluded from the line's justification budget. */
@@ -913,6 +915,7 @@ export function measureParagraph(
     toRun: 0,
     toChar: 0,
     width: 0,
+    trailingWhitespaceWidth: 0,
     regularSpaceCount: 0,
     nonBreakingSpaceCount: 0,
     maxFontSize: DEFAULT_FONT_SIZE,
@@ -1005,7 +1008,7 @@ export function measureParagraph(
       fromChar: currentLine.fromChar,
       toRun: currentLine.toRun,
       toChar: currentLine.toChar,
-      width: currentLine.width,
+      width: Math.max(0, currentLine.width - currentLine.trailingWhitespaceWidth),
       ...finalTypography,
     };
 
@@ -1056,6 +1059,7 @@ export function measureParagraph(
       toRun: runIndex,
       toChar: charIndex,
       width: 0,
+      trailingWhitespaceWidth: 0,
       regularSpaceCount: 0,
       nonBreakingSpaceCount: 0,
       maxFontSize: DEFAULT_FONT_SIZE,
@@ -1179,6 +1183,7 @@ export function measureParagraph(
       }
 
       currentLine.width += tabWidth;
+      currentLine.trailingWhitespaceWidth = 0;
       currentLine.toRun = runIndex;
       currentLine.toChar = 1;
       continue;
@@ -1281,6 +1286,7 @@ export function measureParagraph(
       }
 
       currentLine.width += imageWidth;
+      currentLine.trailingWhitespaceWidth = 0;
       currentLine.toRun = runIndex;
       currentLine.toChar = 1;
       continue;
@@ -1306,6 +1312,7 @@ export function measureParagraph(
       }
 
       currentLine.width += fieldWidth;
+      currentLine.trailingWhitespaceWidth = 0;
       currentLine.toRun = runIndex;
       currentLine.toChar = 1;
       continue;
@@ -1338,6 +1345,7 @@ export function measureParagraph(
         currentLine.maxMathHeightPx = mathFootprintPx;
       }
       currentLine.width += mathWidth;
+      currentLine.trailingWhitespaceWidth = 0;
       currentLine.toRun = runIndex;
       currentLine.toChar = 1;
       continue;
@@ -1376,11 +1384,16 @@ export function measureParagraph(
           }
         }
 
-        // Extract word (includes trailing space if present)
+        // Extract word (includes trailing space if present). Word consumes a
+        // break-space without including it in the current line's fit width.
+        // Keep the full width while accumulating in case another word follows
+        // on this line, then remove any whitespace still trailing at finalize.
         const word = text.slice(charIndex, nextBreak);
-        const wordWidth = measureTextWidth(word, style);
-        const regularSpaces = word.split(" ").length - 1;
-        const nonBreakingSpaces = word.split("\u00a0").length - 1;
+        const measuredWord = trimTrailingSpacesAndTabs(word);
+        const wordWidth = measureTextWidth(measuredWord, style);
+        const fullWordWidth = measureTextWidth(word, style);
+        const regularSpaces = measuredWord.split(" ").length - 1;
+        const nonBreakingSpaces = measuredWord.split("\u00a0").length - 1;
         const widthTolerance = isJustifiedParagraph
           ? Math.max(
               WIDTH_TOLERANCE,
@@ -1405,9 +1418,9 @@ export function measureParagraph(
           // (like "{" at 10pt) precedes a long word (like a variable at 5.5pt).
           let chunkStart = 0;
 
-          while (chunkStart < word.length) {
+          while (chunkStart < measuredWord.length) {
             const spaceLeft = currentLine.availableWidth - currentLine.width + WIDTH_TOLERANCE;
-            const remaining = word.slice(chunkStart);
+            const remaining = measuredWord.slice(chunkStart);
             let bestEnd = findMaxFittingLength(remaining, style, spaceLeft);
 
             // Nothing fits → start a new line and retry (or force 1 char on empty line)
@@ -1421,21 +1434,30 @@ export function measureParagraph(
             }
 
             const chunkEnd = chunkStart + bestEnd;
-            const chunk = word.slice(chunkStart, chunkEnd);
+            const chunk = measuredWord.slice(chunkStart, chunkEnd);
             const chunkWidth = measureTextWidth(chunk, style);
 
             currentLine.width += chunkWidth;
+            currentLine.trailingWhitespaceWidth =
+              chunkWidth - measureTextWidth(trimTrailingSpacesAndTabs(chunk), style);
             currentLine.regularSpaceCount += chunk.split(" ").length - 1;
             currentLine.nonBreakingSpaceCount += chunk.split("\u00a0").length - 1;
             currentLine.toRun = runIndex;
             currentLine.toChar = charIndex + chunkEnd;
 
             chunkStart = chunkEnd;
-            if (chunkStart < word.length) {
+            if (chunkStart < measuredWord.length) {
               startNewLine(runIndex, charIndex + chunkStart);
               updateMaxFont(lineHeightStyle);
             }
           }
+
+          const trailingWhitespaceWidth = fullWordWidth - wordWidth;
+          currentLine.width += trailingWhitespaceWidth;
+          currentLine.trailingWhitespaceWidth = trailingWhitespaceWidth;
+          currentLine.regularSpaceCount += word.split(" ").length - 1;
+          currentLine.nonBreakingSpaceCount += word.split("\u00a0").length - 1;
+          currentLine.toChar = nextBreak;
 
           charIndex = nextBreak;
           continue;
@@ -1467,9 +1489,10 @@ export function measureParagraph(
         }
 
         // Add word to current line
-        currentLine.width += wordWidth;
-        currentLine.regularSpaceCount += regularSpaces;
-        currentLine.nonBreakingSpaceCount += nonBreakingSpaces;
+        currentLine.width += fullWordWidth;
+        currentLine.trailingWhitespaceWidth = fullWordWidth - wordWidth;
+        currentLine.regularSpaceCount += word.split(" ").length - 1;
+        currentLine.nonBreakingSpaceCount += word.split("\u00a0").length - 1;
         currentLine.toRun = runIndex;
         currentLine.toChar = nextBreak;
 
