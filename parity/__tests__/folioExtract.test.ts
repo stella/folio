@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { chromium } from "@playwright/test";
 
 import { PX_TO_PT } from "../config";
 import {
   computeZoomFactor,
+  extractSinglePage,
   meaningfulTextRange,
   parseFirstFontFamily,
   toPageGeom,
@@ -14,6 +16,28 @@ const rect = (left: number, top: number, width: number, height: number) => ({
   top,
   width,
   height,
+});
+
+describe("extractSinglePage font resolution", () => {
+  test("skips a missing first family and records the generic fallback", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`
+        <div class="layout-page" data-page-number="1" style="width: 600px; height: 800px">
+          <div class="layout-line">
+            <span class="layout-run" style="font: 16px 'Definitely Missing Font', sans-serif">Font probe</span>
+          </div>
+        </div>
+      `);
+
+      const rawPage = await extractSinglePage(page, 0);
+
+      expect(rawPage.lines.at(0)?.fontFamilyRaw).toBe("sans-serif");
+    } finally {
+      await browser.close();
+    }
+  });
 });
 
 const makeRawLine = (overrides: Partial<RawLine> & Pick<RawLine, "text" | "rect">): RawLine => ({
