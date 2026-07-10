@@ -80,6 +80,22 @@ describe("compareGeoms", () => {
     expect(merged).toHaveLength(2);
   });
 
+  test("keeps nearby table and non-table text separate", () => {
+    const merged = mergeVisualRows([
+      makeLine({ text: "Body text", xPt: 90, yPt: 100, widthPt: 60, heightPt: 12 }),
+      makeLine({
+        text: "Cell text",
+        xPt: 155,
+        yPt: 100,
+        widthPt: 60,
+        heightPt: 12,
+        visualGroup: "table-cell:0",
+      }),
+    ]);
+
+    expect(merged).toHaveLength(2);
+  });
+
   test("merges standalone list markers with their body across marker-sized gaps", () => {
     const merged = mergeVisualRows([
       makeLine({ text: "(i)", xPt: 108, yPt: 100, widthPt: 10.4, heightPt: 12 }),

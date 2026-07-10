@@ -154,11 +154,7 @@ export const mergeVisualRows = (lines: LineBox[]): LineBox[] => {
 };
 
 const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
-  if (
-    current.visualGroup !== undefined &&
-    next.visualGroup !== undefined &&
-    current.visualGroup !== next.visualGroup
-  ) {
+  if (current.visualGroup !== next.visualGroup) {
     return false;
   }
   const gap = horizontalGap(current, next);

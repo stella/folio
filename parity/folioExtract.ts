@@ -444,6 +444,7 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
       const dataPageNumber = Number(el.dataset["pageNumber"]);
       const pageNumber = Number.isFinite(dataPageNumber) ? dataPageNumber : idx + 1;
 
+      const tableCells = Array.from(el.querySelectorAll(".layout-table-cell"));
       const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
       const lines = lineEls.flatMap((lineEl) => {
         const segmentInkRect = (segmentEl: HTMLElement): DOMRect | null => {
@@ -520,7 +521,7 @@ const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage> =>
         })();
         const tableCell = lineEl.closest(".layout-table-cell");
         const visualGroup = tableCell
-          ? `table-cell:${Array.from(el.querySelectorAll(".layout-table-cell")).indexOf(tableCell)}`
+          ? `table-cell:${tableCells.indexOf(tableCell)}`
           : undefined;
 
         const fontFrom = (sourceEl: HTMLElement | null) => {
