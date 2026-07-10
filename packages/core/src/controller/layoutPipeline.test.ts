@@ -23,6 +23,7 @@ import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { LayoutPainter } from "../layout-painter";
 import { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
 import { schema } from "../prosemirror/schema";
+import { createEmptyDocument } from "../utils/createDocument";
 import { runLayoutPipeline } from "./layoutPipeline";
 import type { LayoutPipelineDeps } from "./layoutPipeline";
 import { createLayoutSession } from "./layoutSession";
@@ -444,6 +445,59 @@ describe("runLayoutPipeline", () => {
     expect(withTallFooter.layout?.pages.map((page) => page.fragments.map(({ y }) => y))).toEqual(
       baseline.layout?.pages.map((page) => page.fragments.map(({ y }) => y)),
     );
+  });
+
+  test("moves only the title-page body below an overflowing first-page header", () => {
+    const state = makeState();
+    const baseline = runLayoutPipeline(makeDeps(createLayoutSession()), state);
+    const withTallFirstHeader = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        sectionProperties: { titlePg: true },
+        firstPageHeaderContent: { type: "header", hdrFtrType: "first", content: [] },
+        renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
+          hf && metrics.section === "header"
+            ? {
+                blocks: [],
+                measures: [],
+                height: 120,
+                visualTop: 0,
+                visualBottom: 120,
+                marginPushTop: 0,
+                marginPushBottom: 120,
+              }
+            : undefined,
+      }),
+      state,
+    );
+
+    const baselineFirstPage = baseline.layout?.pages.at(0);
+    const pushedFirstPage = withTallFirstHeader.layout?.pages.at(0);
+    expect(pushedFirstPage?.margins.top).toBe(MARGINS.header + 120);
+    expect(pushedFirstPage?.fragments.at(0)?.y).toBeGreaterThan(
+      baselineFirstPage?.fragments.at(0)?.y ?? 0,
+    );
+  });
+
+  test("threads the final section geometry into layout", () => {
+    const document = createEmptyDocument();
+    document.package.document.sections = [
+      {
+        properties: {
+          pageWidth: 16_860,
+          pageHeight: 11_920,
+          orientation: "landscape",
+          marginTop: 1_134,
+          marginRight: 1_134,
+          marginBottom: 1_134,
+          marginLeft: 1_134,
+        },
+        content: [],
+      },
+    ];
+
+    const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document }), makeState());
+
+    expect(outcome.layout?.pages.at(0)?.size).toEqual({ w: 1124, h: 795 });
   });
 
   test("discards the outcome and leaves the session unmutated when the paint phase throws", () => {

@@ -56,7 +56,7 @@ import { tryBuildIncrementalMeasures } from "../paged-layout/incrementalMeasure"
 import type { DirtyRange } from "../paged-layout/incrementalMeasure";
 import type { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
 import { computePerBlockMeasureInputs } from "../paged-layout/sectionBlockWidths";
-import { twipsToPixels } from "../paged-layout/sectionGeometry";
+import { getMargins, getPageSize, twipsToPixels } from "../paged-layout/sectionGeometry";
 import { templatePreviewValuesKey } from "../prosemirror/plugins/templatePreviewValues";
 import type { TemplatePreviewEntry } from "../prosemirror/plugins/templatePreviewValues";
 import type {
@@ -406,6 +406,20 @@ export function runLayoutPipeline<THfPMs>(
         margins,
         pageGap,
       };
+      if (hasTitlePg && firstPageHeaderForRender) {
+        const headerDistance = margins.header ?? 0;
+        const headerBottom =
+          headerDistance +
+          (firstPageHeaderForRender.marginPushBottom ?? firstPageHeaderForRender.height);
+        if (headerBottom > margins.top) {
+          nextLayoutOpts.firstPageMargins = { ...margins, top: headerBottom };
+        }
+      }
+      const finalSection = document?.package.document.sections?.at(-1);
+      if (finalSection) {
+        nextLayoutOpts.finalPageSize = getPageSize(finalSection.properties);
+        nextLayoutOpts.finalMargins = getMargins(finalSection.properties);
+      }
       if (columns !== undefined) {
         nextLayoutOpts.columns = columns;
       }
