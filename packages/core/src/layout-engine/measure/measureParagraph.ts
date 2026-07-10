@@ -114,6 +114,10 @@ type LineState = {
   toRun: number;
   toChar: number;
   width: number;
+  /** Spaces Word may compress while justifying this line. */
+  regularSpaceCount: number;
+  /** Fixed-width spaces excluded from the line's justification budget. */
+  nonBreakingSpaceCount: number;
   maxFontSize: number;
   maxFontMetrics: FontMetrics | null;
   /** Maximum inline image height in pixels (already in px, not points) */
@@ -549,9 +553,27 @@ function uppercaseLetterRatio(text: string): number {
   return letters === 0 ? 0 : uppercase / letters;
 }
 
-function justifyShrinkToleranceRatio(block: ParagraphBlock, isFirstLine: boolean): number {
+function justifyShrinkToleranceRatio(
+  block: ParagraphBlock,
+  isFirstLine: boolean,
+  regularSpaceCount: number,
+  nonBreakingSpaceCount: number,
+): number {
   if (block.attrs?.listMarker !== undefined) {
-    return JUSTIFY_SHRINK_TOLERANCE_RATIO;
+    // The marker only participates on the first line. Continuations use the
+    // prose allowance, reduced by the share of fixed non-breaking spaces on
+    // the current line; Word does not compress NBSPs during justification.
+    if (isFirstLine) {
+      return JUSTIFY_SHRINK_TOLERANCE_RATIO;
+    }
+    const totalSpaces = regularSpaceCount + nonBreakingSpaceCount;
+    if (totalSpaces === 0) {
+      return JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO;
+    }
+    return Math.max(
+      JUSTIFY_SHRINK_TOLERANCE_RATIO,
+      JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO * (regularSpaceCount / totalSpaces),
+    );
   }
   const hasTabStops = (block.attrs?.tabs?.length ?? 0) > 0;
   const hasTabRuns = block.runs.some(isTabRun);
@@ -885,6 +907,8 @@ export function measureParagraph(
     toRun: 0,
     toChar: 0,
     width: 0,
+    regularSpaceCount: 0,
+    nonBreakingSpaceCount: 0,
     maxFontSize: DEFAULT_FONT_SIZE,
     maxFontMetrics: null,
     maxImageHeightPx: 0,
@@ -1026,6 +1050,8 @@ export function measureParagraph(
       toRun: runIndex,
       toChar: charIndex,
       width: 0,
+      regularSpaceCount: 0,
+      nonBreakingSpaceCount: 0,
       maxFontSize: DEFAULT_FONT_SIZE,
       maxFontMetrics: null,
       maxImageHeightPx: 0,
@@ -1344,10 +1370,18 @@ export function measureParagraph(
         // Extract word (includes trailing space if present)
         const word = text.slice(charIndex, nextBreak);
         const wordWidth = measureTextWidth(word, style);
+        const regularSpaces = word.split(" ").length - 1;
+        const nonBreakingSpaces = word.split("\u00a0").length - 1;
         const widthTolerance = isJustifiedParagraph
           ? Math.max(
               WIDTH_TOLERANCE,
-              currentLine.availableWidth * justifyShrinkToleranceRatio(block, lines.length === 0),
+              currentLine.availableWidth *
+                justifyShrinkToleranceRatio(
+                  block,
+                  lines.length === 0,
+                  currentLine.regularSpaceCount + regularSpaces,
+                  currentLine.nonBreakingSpaceCount + nonBreakingSpaces,
+                ),
             )
           : WIDTH_TOLERANCE;
 
@@ -1382,6 +1416,8 @@ export function measureParagraph(
             const chunkWidth = measureTextWidth(chunk, style);
 
             currentLine.width += chunkWidth;
+            currentLine.regularSpaceCount += chunk.split(" ").length - 1;
+            currentLine.nonBreakingSpaceCount += chunk.split("\u00a0").length - 1;
             currentLine.toRun = runIndex;
             currentLine.toChar = charIndex + chunkEnd;
 
@@ -1423,6 +1459,8 @@ export function measureParagraph(
 
         // Add word to current line
         currentLine.width += wordWidth;
+        currentLine.regularSpaceCount += regularSpaces;
+        currentLine.nonBreakingSpaceCount += nonBreakingSpaces;
         currentLine.toRun = runIndex;
         currentLine.toChar = nextBreak;
 

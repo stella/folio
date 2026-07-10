@@ -490,6 +490,64 @@ describe("measureParagraph justified shrink tolerance", () => {
       },
     );
   });
+
+  test("uses prose shrink tolerance for justified list continuation lines", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-continuation",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+            },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
+
+  test("does not treat non-breaking spaces as compressible list-continuation spaces", () => {
+    const continuationText = `${"a".repeat(50)} ${"a".repeat(47)} \u00a0bbb`;
+
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-nonbreaking-space",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: continuationText },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+            },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(3);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
 });
 
 describe("inline image paragraph measurement", () => {
