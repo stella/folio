@@ -564,6 +564,10 @@ describe("Layout Engine - Page Production", () => {
 
       expect(chainStartPage).toBe(1);
       expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0]);
+      const chainPageCount = layout.pages.filter((page) =>
+        page.fragments.some(({ blockId }) => blockId !== 0),
+      ).length;
+      expect(chainPageCount).toBeGreaterThan(1);
     });
   });
 
