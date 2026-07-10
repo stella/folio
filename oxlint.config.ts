@@ -25,7 +25,7 @@ export default library({
     // never resolved, so those rules were effectively dormant over folio and
     // its source was never held to them. Running them against the inlined
     // standalone tsconfig would surface hundreds of never-enforced findings.
-    // Type *safety* is fully covered by `bun run typecheck` (tsgo --noEmit);
+    // Type *safety* is fully covered by `bun run typecheck` (tsc --noEmit);
     // lint here enforces folio's architecture boundaries (the layer-boundary
     // plugin below) plus the AST-level hygiene rules folio already conforms to.
     typeAware: false,

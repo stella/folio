@@ -41,7 +41,7 @@
     "build": "rm -rf dist && tsdown",
     "prepack": "bun run build",
     "pack:dry-run": "bun pm pack --dry-run",
-    "typecheck": "tsgo --noEmit -p tsconfig.build.json",
+    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
     "test": "bun test src"
   },
   "dependencies": {

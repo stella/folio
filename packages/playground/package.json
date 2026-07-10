@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit",
     "format": "oxfmt ."
   },
   "dependencies": {
