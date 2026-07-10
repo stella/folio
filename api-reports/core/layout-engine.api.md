@@ -412,7 +412,8 @@ export type LayoutOptions = {
     headerContentHeights?: HeaderFooterContentHeights; /** Footer content heights by variant. */
     footerContentHeights?: HeaderFooterContentHeights; /** Whether section has different first page header/footer. */
     titlePage?: boolean; /** Whether section has different even/odd headers/footers. */
-    evenAndOddHeaders?: boolean; /** Per-page footnote reserved heights (pageNumber → height in pixels). */
+    evenAndOddHeaders?: boolean; /** Swap left/right margins on even physical pages. */
+    mirrorMargins?: boolean; /** Per-page footnote reserved heights (pageNumber → height in pixels). */
     footnoteReservedHeights?: Map<number, number>;
     footnoteHeightById?: Map<number, number>; /** Section break type for the body-level (final) section (for section transition logic). */
     bodyBreakType?: "continuous" | "nextPage" | "evenPage" | "oddPage"; /** Header/footer references for each document section, by section index. */
@@ -534,7 +535,8 @@ export type PaginatorOptions = {
         w: number;
         h: number;
     }; /** Page margins. */
-    margins: PageMargins;
+    margins: PageMargins; /** Swap left/right margins on even physical pages. */
+    mirrorMargins?: boolean;
     firstPageMargins?: PageMargins; /** Column configuration (optional). */
     columns?: ColumnLayout; /** Per-page footnote reserved heights (pageNumber → height in pixels). */
     footnoteReservedHeights?: Map<number, number>; /** Header/footer refs by section index. */
