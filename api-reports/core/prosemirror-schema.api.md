@@ -204,7 +204,8 @@ export type ParagraphAttrs = {
     listMarkerAllCaps?: boolean;
     listImplicitChildLevelAdvances?: number;
     listMarkerSecondSlotOffsetTwips?: number; /** Number format for each level used by multi-level marker templates. */
-    listLevelNumFmts?: import__stll_docx_core_model.NumberFormat[]; /** Abstract numbering ID shared by numbering instances. */
+    listLevelNumFmts?: import__stll_docx_core_model.NumberFormat[]; /** Initial counter for each level used by multi-level marker templates. */
+    listLevelStarts?: number[]; /** Abstract numbering ID shared by numbering instances. */
     listAbstractNumId?: number; /** Numbering start override for this numId/level. */
     listStartOverride?: number;
     styleId?: string;

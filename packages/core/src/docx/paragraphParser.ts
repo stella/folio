@@ -1743,17 +1743,21 @@ export function parseParagraph(
       const level = numbering.getLevel(numId, ilvl);
       if (level) {
         const levelNumFmts: NonNullable<typeof paragraph.listRendering>["levelNumFmts"] = [];
+        const levelStarts: number[] = [];
         for (let levelIndex = 0; levelIndex <= ilvl; levelIndex += 1) {
-          levelNumFmts.push(
-            level.isLgl ? "decimal" : (numbering.getLevel(numId, levelIndex)?.numFmt ?? "decimal"),
-          );
+          const listLevel = numbering.getLevel(numId, levelIndex);
+          levelNumFmts.push(level.isLgl ? "decimal" : (listLevel?.numFmt ?? "decimal"));
+          levelStarts.push(listLevel?.start ?? 1);
         }
-        const listRendering: typeof paragraph.listRendering & object = {
+        const listRendering: NonNullable<typeof paragraph.listRendering> & {
+          levelStarts: number[];
+        } = {
           level: ilvl,
           numId,
           marker: level.lvlText,
           isBullet: level.numFmt === "bullet",
           levelNumFmts,
+          levelStarts,
         };
         const instance = numbering.getInstance(numId);
         const overrideForLevel = instance?.levelOverrides?.find(

@@ -148,13 +148,16 @@ const computeListMarker = (
   if (abstractNumId !== null && level > 0) {
     const latestAbstractCounters = abstractCounters.get(abstractNumId);
     const missingParentCounters = counters.slice(0, level).every((value) => value === 0);
-    if (latestAbstractCounters && missingParentCounters) {
+    if (missingParentCounters) {
       for (let i = 0; i < level; i += 1) {
-        counters[i] = latestAbstractCounters[i] ?? 0;
+        counters[i] = latestAbstractCounters?.[i] ?? numbering.getLevel(numId, i)?.start ?? 0;
       }
     }
   }
 
+  if (counters[level] === 0) {
+    counters[level] = (numbering.getLevel(numId, level)?.start ?? 1) - 1;
+  }
   counters[level] = (counters[level] || 0) + 1;
 
   for (let i = level + 1; i < counters.length; i += 1) {

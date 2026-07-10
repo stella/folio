@@ -919,7 +919,7 @@ export function createNumberingMap(definitions: NumberingDefinitions): Numbering
 export function computeListRendering(
   numPr: { numId?: number; ilvl?: number },
   numbering: NumberingMap,
-): ListRendering | null {
+): (ListRendering & { levelStarts: number[] }) | null {
   const { numId, ilvl = 0 } = numPr;
   if (numId === undefined || numId === 0) {
     return null;
@@ -933,22 +933,24 @@ export function computeListRendering(
   // Collect numFmts for levels 0..ilvl so multi-level templates like "%1.%2."
   // can resolve each %N with its own format (legal numbering forces decimal).
   const levelNumFmts: NumberFormat[] = [];
+  const levelStarts: number[] = [];
   for (let i = 0; i <= ilvl; i += 1) {
-    levelNumFmts.push(
-      level.isLgl ? "decimal" : (numbering.getLevel(numId, i)?.numFmt ?? "decimal"),
-    );
+    const listLevel = numbering.getLevel(numId, i);
+    levelNumFmts.push(level.isLgl ? "decimal" : (listLevel?.numFmt ?? "decimal"));
+    levelStarts.push(listLevel?.start ?? 1);
   }
 
   const instance = numbering.getInstance(numId);
   const overrideForLevel = instance?.levelOverrides?.find((override) => override.ilvl === ilvl);
 
-  const rendering: ListRendering = {
+  const rendering: ListRendering & { levelStarts: number[] } = {
     level: ilvl,
     numId,
     marker: level.lvlText,
     isBullet: level.numFmt === "bullet",
     numFmt: level.isLgl ? "decimal" : level.numFmt,
     levelNumFmts,
+    levelStarts,
   };
   if (level.isLgl) {
     rendering.isLegal = true;

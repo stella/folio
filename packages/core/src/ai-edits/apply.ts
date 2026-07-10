@@ -585,6 +585,7 @@ export const applyFolioAIEditOperations = ({
             attrs["listMarker"] = null;
             attrs["listMarkerHidden"] = null;
             attrs["listLevelNumFmts"] = null;
+            attrs["listLevelStarts"] = null;
             attrs["listAbstractNumId"] = null;
             attrs["listStartOverride"] = null;
           }

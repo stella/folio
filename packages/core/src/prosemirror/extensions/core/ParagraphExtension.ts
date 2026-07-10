@@ -344,6 +344,7 @@ const paragraphNodeSpec: NodeSpec = {
     listImplicitChildLevelAdvances: { default: null },
     listMarkerSecondSlotOffsetTwips: { default: null },
     listLevelNumFmts: { default: null },
+    listLevelStarts: { default: null },
     listAbstractNumId: { default: null },
     listStartOverride: { default: null },
     styleId: { default: null },

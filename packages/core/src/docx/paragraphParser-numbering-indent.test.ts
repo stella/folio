@@ -102,6 +102,26 @@ describe("paragraphParser direct ind vs numbering level indent", () => {
   });
 });
 
+test("carries every relevant numbering-level start into list rendering", () => {
+  const numbering = parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="8">
+    <w:lvl w:ilvl="0"><w:start w:val="3"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
+    <w:lvl w:ilvl="1"><w:start w:val="3"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2."/></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="3"><w:abstractNumId w:val="8"/></w:num>
+</w:numbering>`);
+  const paragraph = parseParagraphXml(
+    `<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="3"/></w:numPr></w:pPr>
+      <w:r><w:t>First visible child</w:t></w:r>
+    </w:p>`,
+    numbering,
+  );
+
+  expect(paragraph.listRendering).toHaveProperty("levelStarts", [3, 3]);
+});
+
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 // abstractNum 10 / numId 2 — level 0 carries a 360/360 hanging slot, the same

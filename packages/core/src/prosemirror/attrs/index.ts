@@ -302,6 +302,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
     SECTION_BREAK_TYPES,
   );
   optionalStringArray(attrs, "listLevelNumFmts", "paragraph.attrs.listLevelNumFmts", issues);
+  optionalNumberArray(attrs, "listLevelStarts", "paragraph.attrs.listLevelStarts", issues);
   optionalNumber(attrs, "listAbstractNumId", "paragraph.attrs.listAbstractNumId", issues);
   optionalBorderMap(attrs, "borders", "paragraph.attrs.borders", issues, [
     "top",

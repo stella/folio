@@ -115,6 +115,7 @@ export function listAttrsFromResolvedStyle(
     listImplicitChildLevelAdvances: null,
     listMarkerSecondSlotOffsetTwips: null,
     listLevelNumFmts: rendering?.levelNumFmts ?? null,
+    listLevelStarts: rendering?.levelStarts ?? null,
     listAbstractNumId: rendering?.abstractNumId ?? null,
     listStartOverride: rendering?.startOverride ?? null,
   };

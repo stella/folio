@@ -121,6 +121,8 @@ export type ParagraphAttrs = {
   listMarkerSecondSlotOffsetTwips?: number;
   /** Number format for each level used by multi-level marker templates. */
   listLevelNumFmts?: NumberFormat[];
+  /** Initial counter for each level used by multi-level marker templates. */
+  listLevelStarts?: number[];
   /** Abstract numbering ID shared by numbering instances. */
   listAbstractNumId?: number;
   /** Numbering start override for this numId/level. */

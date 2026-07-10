@@ -336,12 +336,12 @@ function computeListMarker(
   const level = pmAttrs.numPr?.ilvl ?? 0;
   const counters = listCounters.get(numId) ?? (Array.from({ length: 9 }, () => 0) as number[]);
   const abstractNumId = pmAttrs.listAbstractNumId;
-  if (abstractNumId !== undefined && level > 0) {
-    const latestAbstractCounters = abstractCounters.get(abstractNumId);
-    const missingParentCounters = counters.slice(0, level).every((value) => value === 0);
-    if (latestAbstractCounters && missingParentCounters) {
+  if (level > 0) {
+    const latestAbstractCounters =
+      abstractNumId === undefined ? undefined : abstractCounters.get(abstractNumId);
+    if (counters.slice(0, level).every((value) => value === 0)) {
       for (let i = 0; i < level; i += 1) {
-        counters[i] = latestAbstractCounters[i] ?? 0;
+        counters[i] = latestAbstractCounters?.[i] ?? pmAttrs.listLevelStarts?.[i] ?? 0;
       }
     }
   }
@@ -351,6 +351,8 @@ function computeListMarker(
     seenNumIds.add(seenKey);
     if (pmAttrs.listStartOverride != null) {
       counters[level] = pmAttrs.listStartOverride - 1;
+    } else if (counters[level] === 0) {
+      counters[level] = (pmAttrs.listLevelStarts?.[level] ?? 1) - 1;
     }
   }
 
@@ -1210,6 +1212,14 @@ function toPreviousListAttrs(previousFormatting: Record<string, unknown>): PMPar
   const listLevelNumFmts = readNumberFormats(previousFormatting["listLevelNumFmts"]);
   if (listLevelNumFmts) {
     attrs.listLevelNumFmts = listLevelNumFmts;
+  }
+
+  const listLevelStarts = previousFormatting["listLevelStarts"];
+  if (
+    Array.isArray(listLevelStarts) &&
+    listLevelStarts.every((value) => typeof value === "number")
+  ) {
+    attrs.listLevelStarts = listLevelStarts;
   }
 
   const listAbstractNumId = previousFormatting["listAbstractNumId"];

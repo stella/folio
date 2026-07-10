@@ -64,6 +64,7 @@ const LIST_FORMATTING_ATTRS = [
   "listMarkerFontSize",
   "listMarkerSuffix",
   "listLevelNumFmts",
+  "listLevelStarts",
   "listAbstractNumId",
   "listStartOverride",
 ] as const;

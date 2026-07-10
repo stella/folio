@@ -1012,6 +1012,38 @@ describe("toFlowBlocks list numbering", () => {
     expect(blocks.at(1)?.attrs?.listMarker).toBe("I.a)");
   });
 
+  test("uses authored starts when a nested list begins without parent paragraphs", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          numPr: { numId: 8, ilvl: 1 },
+          listMarker: "%1.%2.",
+          listNumFmt: "decimal",
+          listLevelNumFmts: ["decimal", "decimal"],
+          listLevelStarts: [3, 3],
+        },
+        [schema.text("First visible child")],
+      ),
+      schema.node(
+        "paragraph",
+        {
+          numPr: { numId: 8, ilvl: 1 },
+          listMarker: "%1.%2.",
+          listNumFmt: "decimal",
+          listLevelNumFmts: ["decimal", "decimal"],
+          listLevelStarts: [3, 3],
+        },
+        [schema.text("Second visible child")],
+      ),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.at(0)?.attrs?.listMarker).toBe("3.3.");
+    expect(blocks.at(1)?.attrs?.listMarker).toBe("3.4.");
+  });
+
   test("formats legal multilevel markers with decimal parent placeholders", () => {
     const paragraphs = [];
     for (let index = 1; index <= 7; index += 1) {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { resolveListTemplate } from "../layout-bridge/convert/toFlowBlocks";
-import { formatNumber, parseNumbering } from "./numberingParser";
+import { computeListRendering, formatNumber, parseNumbering } from "./numberingParser";
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 const MC = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
@@ -107,4 +107,18 @@ describe("custom numFmt inside mc:AlternateContent (#765)", () => {
     expect(formatNumber(7, "decimalZero4")).toBe("0007");
     expect(formatNumber(7, "decimalZero5")).toBe("00007");
   });
+});
+
+test("computeListRendering carries parent and current level starts", () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering ${W}>
+  <w:abstractNum w:abstractNumId="8">
+    <w:lvl w:ilvl="0"><w:start w:val="3"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
+    <w:lvl w:ilvl="1"><w:start w:val="3"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2."/></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="3"><w:abstractNumId w:val="8"/></w:num>
+</w:numbering>`;
+  const numbering = parseNumbering(xml);
+
+  expect(computeListRendering({ numId: 3, ilvl: 1 }, numbering)?.levelStarts).toEqual([3, 3]);
 });
