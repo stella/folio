@@ -25,6 +25,7 @@ import {
   PaintbrushIcon,
   PilcrowIcon,
   Redo2Icon,
+  OmegaIcon,
   RulerIcon,
   SeparatorHorizontalIcon,
   TableIcon,
@@ -128,6 +129,7 @@ export function FormattingBar(props: FormattingBarProps) {
     showTableInsert = true,
     onInsertPageBreak,
     onInsertTOC,
+    onInsertSymbol,
     priorityExtra,
     inlineExtra,
     stylePickerLabel,
@@ -340,9 +342,20 @@ export function FormattingBar(props: FormattingBarProps) {
     }
   }, [disabled, onInsertTOC, onRefocusEditor]);
 
+  const handleInsertSymbol = useCallback(() => {
+    if (!disabled && onInsertSymbol) {
+      onInsertSymbol();
+      requestAnimationFrame(() => onRefocusEditor?.());
+    }
+  }, [disabled, onInsertSymbol, onRefocusEditor]);
+
   const showTableButton = showTableInsert && Boolean(onInsertTable);
   const hasInsertControls =
-    Boolean(onInsertImage) || showTableButton || Boolean(onInsertPageBreak) || Boolean(onInsertTOC);
+    Boolean(onInsertImage) ||
+    showTableButton ||
+    Boolean(onInsertPageBreak) ||
+    Boolean(onInsertTOC) ||
+    Boolean(onInsertSymbol);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -788,6 +801,16 @@ export function FormattingBar(props: FormattingBarProps) {
                     ariaLabel={t("insertTableOfContents")}
                   >
                     <TableOfContentsIcon size={ICON_SIZE} />
+                  </ToolbarButton>
+                )}
+                {onInsertSymbol && (
+                  <ToolbarButton
+                    onClick={handleInsertSymbol}
+                    disabled={disabled}
+                    title={t("dialogs.insertSymbol.title")}
+                    ariaLabel={t("dialogs.insertSymbol.title")}
+                  >
+                    <OmegaIcon size={ICON_SIZE} />
                   </ToolbarButton>
                 )}
               </ToolbarGroup>

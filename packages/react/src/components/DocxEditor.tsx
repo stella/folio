@@ -548,6 +548,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const [tablePropsOpen, setTablePropsOpen] = useState(false);
   // Footnote properties dialog state
   const [footnotePropsOpen, setFootnotePropsOpen] = useState(false);
+  // Insert-symbol dialog state
+  const [showInsertSymbol, setShowInsertSymbol] = useState(false);
   // Ruler visibility — seeded from the prop, then user-driven via the toolbar toggle.
   const [rulerVisible, setRulerVisible] = useState(showRulerProp);
   const toggleRuler = useCallback(() => setRulerVisible((visible) => !visible), []);
@@ -3503,6 +3505,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                       showTableInsert={showTableInsert}
                       onInsertPageBreak={onInsertPageBreak}
                       onInsertTOC={onInsertTOC}
+                      onInsertSymbol={() => setShowInsertSymbol(true)}
                       priorityExtra={toolbarPriorityExtra}
                       inlineExtra={toolbarInlineExtra}
                       {...(history.state.package.styles?.styles
@@ -4126,6 +4129,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                 onApply: handleApplyFootnoteProperties,
                 footnotePr: history.state.package.document.finalSectionProperties?.footnotePr,
                 endnotePr: history.state.package.document.finalSectionProperties?.endnotePr,
+              }}
+              insertSymbol={{
+                isOpen: showInsertSymbol,
+                onClose: () => setShowInsertSymbol(false),
+                onInsert: (symbol) => {
+                  const view = getActiveEditorView();
+                  if (view) {
+                    view.dispatch(view.state.tr.insertText(symbol).scrollIntoView());
+                  }
+                },
               }}
             />
             {/* InlineHeaderFooterEditor is rendered inside the editor content area (position:relative div) */}

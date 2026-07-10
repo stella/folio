@@ -174,6 +174,8 @@ export type ToolbarProps = {
   onInsertPageBreak?: (() => void) | undefined;
   /** Callback when user wants to insert a table of contents */
   onInsertTOC?: (() => void) | undefined;
+  /** Callback when user wants to insert a symbol/special character */
+  onInsertSymbol?: (() => void) | undefined;
   /** Callback when user wants to insert a shape */
   onInsertShape?: (data: {
     shapeType: string;

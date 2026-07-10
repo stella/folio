@@ -60,6 +60,7 @@ only these React type aliases have no Vue counterpart.
 - `ImagePropertiesDialogProps` — React image-properties dialog props.
 - `InsertImageDialogData` — React insert-image dialog data type.
 - `InsertImageDialogProps` — React insert-image dialog props.
+- `InsertSymbolDialogProps` — React insert-symbol dialog props (Vue's `InsertSymbolDialog.vue` SFC has no exported prop type).
 - `InsertTableDialogData` — React insert-table dialog data type.
 - `InsertTableDialogProps` — React insert-table dialog props.
 - `InsertTableStyleOption` — React insert-table style-option type.
@@ -71,7 +72,3 @@ only these React type aliases have no Vue counterpart.
 - `TableProperties` — React table-properties dialog model type (Vue keeps the equivalent in `./ui`).
 - `TablePropertiesDialogProps` — React table-properties dialog props.
 - `WatermarkDialogProps` — React watermark dialog props.
-
-Known React gaps (Vue-only chrome not yet ported to React):
-
-- `InsertSymbolDialog` — Vue insert-symbol dialog component; React has no insert-symbol dialog yet.

@@ -28,6 +28,10 @@ export {
   type InsertImageDialogProps,
 } from "./components/dialogs/InsertImageDialog";
 export {
+  InsertSymbolDialog,
+  type InsertSymbolDialogProps,
+} from "./components/dialogs/InsertSymbolDialog";
+export {
   InsertTableDialog,
   type InsertTableDialogData,
   type InsertTableDialogProps,

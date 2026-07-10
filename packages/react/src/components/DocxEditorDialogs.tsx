@@ -41,6 +41,11 @@ const PageSetupDialog = lazy(() =>
     default: m.PageSetupDialog,
   })),
 );
+const InsertSymbolDialog = lazy(() =>
+  import("./dialogs/InsertSymbolDialog").then((m) => ({
+    default: m.InsertSymbolDialog,
+  })),
+);
 
 export type FindReplaceMount = {
   state: UseFindReplaceReturn["state"];
@@ -88,6 +93,12 @@ export type FootnotePropertiesMount = {
   endnotePr: EndnoteProperties | undefined;
 };
 
+export type InsertSymbolMount = {
+  isOpen: boolean;
+  onClose: () => void;
+  onInsert: (symbol: string) => void;
+};
+
 export type DocxEditorDialogsProps = {
   findReplace: FindReplaceMount;
   tableProperties: TablePropertiesMount;
@@ -95,6 +106,7 @@ export type DocxEditorDialogsProps = {
   imageProperties: ImagePropertiesMount;
   pageSetup: PageSetupMount;
   footnoteProperties: FootnotePropertiesMount;
+  insertSymbol: InsertSymbolMount;
 };
 
 export function DocxEditorDialogs({
@@ -104,6 +116,7 @@ export function DocxEditorDialogs({
   imageProperties,
   pageSetup,
   footnoteProperties,
+  insertSymbol,
 }: DocxEditorDialogsProps) {
   return (
     <Suspense fallback={null}>
@@ -158,6 +171,13 @@ export function DocxEditorDialogs({
           onApply={footnoteProperties.onApply}
           {...(footnoteProperties.footnotePr ? { footnotePr: footnoteProperties.footnotePr } : {})}
           {...(footnoteProperties.endnotePr ? { endnotePr: footnoteProperties.endnotePr } : {})}
+        />
+      )}
+      {insertSymbol.isOpen && (
+        <InsertSymbolDialog
+          isOpen={insertSymbol.isOpen}
+          onClose={insertSymbol.onClose}
+          onInsert={insertSymbol.onInsert}
         />
       )}
     </Suspense>
