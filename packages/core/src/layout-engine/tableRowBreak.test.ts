@@ -775,6 +775,27 @@ function tableFragments(block: TableBlock, measure: TableMeasure): TableFragment
     .filter((f): f is TableFragment => f.kind === "table");
 }
 
+describe("left-aligned table placement", () => {
+  test("keeps an unindented table border at the content edge", () => {
+    const { block, measure } = tallTable(1);
+    block.rows[0]!.cells[0]!.padding.left = 7;
+
+    const fragment = tableFragments(block, measure)[0];
+
+    expect(fragment?.x).toBe(OPTIONS.margins.left);
+  });
+
+  test("applies w:tblInd to the first cell text edge", () => {
+    const { block, measure } = tallTable(1);
+    block.indent = 10;
+    block.rows[0]!.cells[0]!.padding.left = 7;
+
+    const fragment = tableFragments(block, measure)[0];
+
+    expect(fragment?.x).toBe(OPTIONS.margins.left + 10 - 7);
+  });
+});
+
 describe("oversized table row splits across pages (#570)", () => {
   test("a row taller than a page breaks at line boundaries with no content lost", () => {
     // 15 lines = 300px row, page content height = 120px (6 lines).
