@@ -23,6 +23,7 @@ import type {
   Measure,
   Layout,
   LayoutOptions,
+  Page,
   PageMargins,
   ColumnLayout,
   ParagraphBlock,
@@ -97,7 +98,20 @@ function isEmptyParagraph(block: ParagraphBlock): boolean {
     return false;
   }
   const r = block.runs[0];
-  return r?.kind === "text" && ((r as { text?: string }).text ?? "") === "";
+  return r?.kind === "text" && r.text === "";
+}
+
+function pageHasVisibleBodyContent(page: Page, blocksById: ReadonlyMap<string, FlowBlock>): boolean {
+  for (const fragment of page.fragments) {
+    if (fragment.kind !== "paragraph") {
+      return true;
+    }
+    const block = blocksById.get(String(fragment.blockId));
+    if (block?.kind !== "paragraph" || !isEmptyParagraph(block)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -132,9 +146,10 @@ function hasWidowControl(block: ParagraphBlock): boolean {
 /**
  * Apply contextual spacing suppression (OOXML §17.3.1.9).
  *
- * When two consecutive paragraph blocks both have `contextualSpacing: true`
- * and share the same `styleId`, the spaceAfter of the first paragraph and
- * the spaceBefore of the second paragraph are suppressed (set to 0).
+ * Contextual spacing applies independently to each paragraph: suppress the
+ * current paragraph's spaceAfter when it opts in, and the next paragraph's
+ * spaceBefore when it opts in, provided both paragraphs share a style. Two
+ * absent style ids both refer to the document's default paragraph style.
  *
  * This mutates the block attrs in-place before layout runs.
  */
@@ -147,23 +162,17 @@ export function applyContextualSpacing(blocks: FlowBlock[]): void {
       continue;
     }
 
-    const currAttrs = (curr as ParagraphBlock).attrs;
-    const nextAttrs = (next as ParagraphBlock).attrs;
+    const currAttrs = curr.attrs;
+    const nextAttrs = next.attrs;
 
-    if (
-      currAttrs?.contextualSpacing &&
-      nextAttrs?.contextualSpacing &&
-      currAttrs.styleId &&
-      currAttrs.styleId === nextAttrs.styleId
-    ) {
-      // Suppress spaceAfter on current paragraph
-      if (currAttrs.spacing) {
-        currAttrs.spacing = { ...currAttrs.spacing, after: 0 };
-      }
-      // Suppress spaceBefore on next paragraph
-      if (nextAttrs.spacing) {
-        nextAttrs.spacing = { ...nextAttrs.spacing, before: 0 };
-      }
+    if (currAttrs?.styleId !== nextAttrs?.styleId) {
+      continue;
+    }
+    if (currAttrs?.contextualSpacing && currAttrs.spacing) {
+      currAttrs.spacing = { ...currAttrs.spacing, after: 0 };
+    }
+    if (nextAttrs?.contextualSpacing && nextAttrs.spacing) {
+      nextAttrs.spacing = { ...nextAttrs.spacing, before: 0 };
     }
   }
 
@@ -283,7 +292,10 @@ export function layoutDocument(
   // Pre-compute keepNext chains for pagination decisions
   const keepNextChains = computeKeepNextChains(blocks);
   const midChainIndices = getMidChainIndices(keepNextChains);
-  let renderedPageBreakTarget = 1;
+  const blocksById = new Map<string, FlowBlock>();
+  for (const block of blocks) {
+    blocksById.set(String(block.id), block);
+  }
 
   // Process each block, tracking section break index with a counter (O(1) per break)
   let sectionIdx = 0;
@@ -298,22 +310,20 @@ export function layoutDocument(
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
 
-    // Cached Word pagination markers are advisory physical-page targets. Each
-    // marker advances the minimum page number by one; natural reflow or a
-    // structural break may already have reached that page, in which case the
-    // marker must not create an additional blank or shifted page.
+    // A cached Word pagination marker records a break at this paragraph, not
+    // an ordinal page target: Word does not emit markers for every physical
+    // page. Honor the break whenever visible content precedes it on Folio's
+    // current page. A structural/natural break that opened an empty page, or a
+    // page containing only overflowed empty paragraphs, already satisfies it.
     const hasRenderedPageBreak =
       block.kind === "paragraph" && block.attrs?.renderedPageBreakBefore === true;
-    if (hasRenderedPageBreak) {
-      renderedPageBreakTarget += 1;
-    }
     if (hasPageBreakBefore(block)) {
       paginator.forcePageBreak();
-    } else if (
-      hasRenderedPageBreak &&
-      paginator.getCurrentState().page.number < renderedPageBreakTarget
-    ) {
-      paginator.forcePageBreak({ coalesceBlankPage: true });
+    } else if (hasRenderedPageBreak) {
+      const state = paginator.getCurrentState();
+      if (pageHasVisibleBodyContent(state.page, blocksById)) {
+        paginator.forcePageBreak();
+      }
     }
 
     // Handle keepNext chains - if this is a chain start, check if chain fits
