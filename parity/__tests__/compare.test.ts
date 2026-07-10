@@ -57,7 +57,7 @@ describe("compareGeoms", () => {
     expect(merged).toHaveLength(2);
   });
 
-  test("keeps nearby text from different table cells separate", () => {
+  test("merges nearby text from different table cells like Word PDF boxes", () => {
     const merged = mergeVisualRows([
       makeLine({
         text: "Left cell",
@@ -77,10 +77,11 @@ describe("compareGeoms", () => {
       }),
     ]);
 
-    expect(merged).toHaveLength(2);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.normText).toBe(normalizeLineText("Left cell Right cell"));
   });
 
-  test("keeps nearby table and non-table text separate", () => {
+  test("merges nearby table and ungrouped text without Folio-only asymmetry", () => {
     const merged = mergeVisualRows([
       makeLine({ text: "Body text", xPt: 90, yPt: 100, widthPt: 60, heightPt: 12 }),
       makeLine({
@@ -93,7 +94,54 @@ describe("compareGeoms", () => {
       }),
     ]);
 
+    expect(merged).toHaveLength(1);
+  });
+
+  test("keeps nearby boxes from different semantic regions separate", () => {
+    const merged = mergeVisualRows([
+      makeLine({ text: "Header", region: "header", xPt: 90, yPt: 100, widthPt: 60 }),
+      makeLine({ text: "Body", region: "body", xPt: 155, yPt: 100, widthPt: 60 }),
+    ]);
+
     expect(merged).toHaveLength(2);
+  });
+
+  test("normalizes adjacent table cells symmetrically across extractors", () => {
+    const word = makeDoc("word", [
+      makePage({
+        lines: [
+          makeLine({ text: "počet", xPt: 90, yPt: 100, widthPt: 30, heightPt: 12 }),
+          makeLine({ text: "celkem", xPt: 125, yPt: 100, widthPt: 35, heightPt: 12 }),
+        ],
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({
+            text: "počet",
+            xPt: 90,
+            yPt: 100,
+            widthPt: 30,
+            heightPt: 12,
+            visualGroup: "table-cell:0",
+          }),
+          makeLine({
+            text: "celkem",
+            xPt: 125,
+            yPt: 100,
+            widthPt: 35,
+            heightPt: 12,
+            visualGroup: "table-cell:1",
+          }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(word, folio);
+
+    expect(result.divergences.filter((divergence) => divergence.kind === "line-break")).toEqual([]);
+    expect(result.score).toBe(1);
   });
 
   test("merges standalone list markers with their body across marker-sized gaps", () => {
