@@ -47,7 +47,10 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: "FOLIO_PLAYGROUND_PORT=4201 bun --filter @stll/playground-vue dev",
+      command: "bun --filter @stll/playground-vue dev",
+      env: {
+        FOLIO_PLAYGROUND_PORT: "4201",
+      },
       url: "http://localhost:4201",
       reuseExistingServer: true,
       timeout: 120_000,

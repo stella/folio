@@ -477,8 +477,10 @@ async function profileTypingScenario(browser: Browser): Promise<PerfScenarioResu
         await page.keyboard.press("a");
         // oxlint-disable-next-line no-await-in-loop -- wait for the edited content to reach the visible page
         await page.waitForFunction(
-          (previousText) =>
-            document.querySelector(".layout-page-content")?.textContent !== previousText,
+          (previousText) => {
+            const pageContent = document.querySelector(".layout-page-content");
+            return pageContent !== null && pageContent.textContent !== previousText;
+          },
           visibleTextBefore,
           { timeout: 20_000 },
         );

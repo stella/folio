@@ -46,7 +46,13 @@ function installFixtureMiddleware(
       res.end("Invalid fixture path");
       return;
     }
-    if (!name || name.includes("/") || name.includes("..")) {
+    if (
+      !name ||
+      name !== path.basename(name) ||
+      name.includes("/") ||
+      name.includes("\\") ||
+      name.includes("..")
+    ) {
       res.statusCode = 400;
       res.end("Invalid fixture path");
       return;
