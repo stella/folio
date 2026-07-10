@@ -56,6 +56,7 @@ const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
 const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
 const JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO = 0.025;
 const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
+const DEFAULT_LIST_HANGING_INDENT_PX = 24;
 const ALL_CAPS_RATIO_THRESHOLD = 0.8;
 
 /**
@@ -560,10 +561,11 @@ function justifyShrinkToleranceRatio(
   nonBreakingSpaceCount: number,
 ): number {
   if (block.attrs?.listMarker !== undefined) {
-    // The marker only participates on the first line. Continuations use the
-    // prose allowance, reduced by the share of fixed non-breaking spaces on
-    // the current line; Word does not compress NBSPs during justification.
-    if (isFirstLine) {
+    // Word keeps its conservative list allowance for the standard 360-twip
+    // hanging slot. Custom, wider slots use prose compression after the marker
+    // line, reduced by fixed non-breaking spaces on the current line.
+    const hanging = block.attrs.indent?.hanging ?? 0;
+    if (isFirstLine || hanging <= DEFAULT_LIST_HANGING_INDENT_PX) {
       return JUSTIFY_SHRINK_TOLERANCE_RATIO;
     }
     const totalSpaces = regularSpaceCount + nonBreakingSpaceCount;
