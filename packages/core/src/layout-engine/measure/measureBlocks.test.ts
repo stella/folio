@@ -73,6 +73,33 @@ describe("measureBlocks", () => {
 });
 
 describe("measureTableBlock row height", () => {
+  test("counts a collapsed top border only on the first row", () => {
+    withFakeTextMeasure(() => {
+      const borderedCell = (id: string) => ({
+        id,
+        blocks: [para(`${id}-p`, "One line")],
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+        borders: { top: { width: 2 }, bottom: { width: 2 } },
+      });
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [120],
+        rows: [
+          { id: "r0", cells: [borderedCell("first")] },
+          { id: "r1", cells: [borderedCell("second")] },
+        ],
+      };
+
+      const measure = measureTableBlock(table, 120);
+      const firstContentHeight = measure.rows[0]?.cells[0]?.height ?? 0;
+      const secondContentHeight = measure.rows[1]?.cells[0]?.height ?? 0;
+
+      expect(measure.rows[0]?.height).toBe(firstContentHeight + 4);
+      expect(measure.rows[1]?.height).toBe(secondContentHeight + 2);
+    }, fakeMeasure);
+  });
+
   test("maxes per-cell content+border, not summed independent maxes", () => {
     withFakeTextMeasure(() => {
       // Cell A: more content (two paragraphs), thin border.
