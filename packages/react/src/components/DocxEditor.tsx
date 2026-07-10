@@ -197,6 +197,7 @@ import {
 } from "@stll/folio-core/ai-edits/blockRange";
 import { resolveCommentCreationRange } from "./commentAnchors";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
+import { toast } from "./toast";
 import {
   EMPTY_ANCHOR_POSITIONS,
   PENDING_COMMENT_ID,
@@ -268,43 +269,6 @@ const loadAttemptSelectiveSave = async () => {
 const loadRepackDocx = async () => {
   const { repackDocx } = await import("@stll/folio-core/docx/rezip");
   return repackDocx;
-};
-
-// Toast stub — host app provides the real toast system.
-// Uses a temporary DOM banner so the user sees feedback even without
-// a toast provider (e.g., in the standalone playground).
-const toast = (msg: string) => {
-  const existing = document.querySelector("[data-folio-toast]");
-  if (existing) {
-    return;
-  } // debounce rapid calls (e.g., key repeat)
-  const el = document.createElement("div");
-  el.dataset["folioToast"] = "";
-  el.textContent = msg;
-  Object.assign(el.style, {
-    position: "fixed",
-    bottom: "24px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    padding: "10px 20px",
-    borderRadius: "8px",
-    background: "var(--popover, #1f1f1f)",
-    color: "var(--popover-foreground, #fff)",
-    fontSize: "13px",
-    boxShadow: "0 4px 12px var(--doc-shadow-lg, rgba(0,0,0,0.25))",
-    zIndex: "9999",
-    pointerEvents: "none",
-    opacity: "0",
-    transition: "opacity 200ms",
-  });
-  document.body.append(el);
-  requestAnimationFrame(() => {
-    el.style.opacity = "1";
-  });
-  setTimeout(() => {
-    el.style.opacity = "0";
-    setTimeout(() => el.remove(), 200);
-  }, 3000);
 };
 
 // Dialog tree (lazy-loaded internally) lives in ./DocxEditorDialogs.

@@ -4,7 +4,6 @@
  * This module provides ProseMirror-based editing:
  * - Schema for DOCX document structure
  * - Bidirectional conversion between Document and PM
- * - React wrapper component
  * - Plugins for selection tracking
  * - Commands for formatting
  * - Extension system for schema, plugins, and keymaps

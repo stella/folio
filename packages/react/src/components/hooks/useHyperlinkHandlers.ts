@@ -8,34 +8,7 @@ import {
 } from "@stll/folio-core/prosemirror/commands/hyperlink";
 import { sanitizeExternalUrl } from "@stll/folio-core/utils/urlSecurity";
 import type { HyperlinkPopupData } from "../ui/HyperlinkPopup";
-
-// Toast stub — mirrors the one in DocxEditor.tsx.
-const toast = (msg: string) => {
-  const existing = document.querySelector("[data-folio-toast]");
-  if (existing) {
-    return;
-  } // debounce rapid calls (e.g., key repeat)
-  const el = document.createElement("div");
-  el.dataset["folioToast"] = "";
-  el.textContent = msg;
-  Object.assign(el.style, {
-    position: "fixed",
-    bottom: "24px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    padding: "10px 20px",
-    borderRadius: "8px",
-    background: "var(--popover, #1f1f1f)",
-    color: "var(--popover-foreground, #fff)",
-    fontSize: "13px",
-    boxShadow: "0 4px 12px var(--doc-shadow-lg, rgba(0,0,0,0.25))",
-    zIndex: "9999",
-  } satisfies Partial<CSSStyleDeclaration>);
-  document.body.append(el);
-  setTimeout(() => {
-    el.remove();
-  }, 2200);
-};
+import { toast } from "../toast";
 
 // ============================================================================
 // TYPES
