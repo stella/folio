@@ -168,6 +168,9 @@ export function FormattingBar(props: FormattingBarProps) {
     },
     [disabled, onFormat],
   );
+  const handleBold = useCallback(() => handleFormat("bold"), [handleFormat]);
+  const handleItalic = useCallback(() => handleFormat("italic"), [handleFormat]);
+  const handleUnderline = useCallback(() => handleFormat("underline"), [handleFormat]);
 
   const handleUndo = useCallback(() => {
     if (!disabled && canUndo && onUndo) {
@@ -540,6 +543,19 @@ export function FormattingBar(props: FormattingBarProps) {
     requestAnimationFrame(() => onRefocusEditor?.());
   }, [onRefocusEditor]);
 
+  const moreFormattingLabel = t("moreFormatting");
+  const overflowTrigger = useMemo(
+    () => (
+      <button
+        type="button"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--doc-text-muted)] transition-colors duration-100 hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)]"
+        aria-label={moreFormattingLabel}
+        title={moreFormattingLabel}
+      />
+    ),
+    [moreFormattingLabel],
+  );
+
   const secondaryControls = (
     <>
       <ToolbarGroup label={t("fontGroup")}>
@@ -715,7 +731,7 @@ export function FormattingBar(props: FormattingBarProps) {
           {/* Bold, Italic, Underline */}
           <ToolbarGroup label={t("textFormattingGroup")}>
             <ToolbarButton
-              onClick={() => handleFormat("bold")}
+              onClick={handleBold}
               active={currentFormatting.bold}
               disabled={disabled}
               title={t("boldShortcut")}
@@ -724,7 +740,7 @@ export function FormattingBar(props: FormattingBarProps) {
               <BoldIcon size={ICON_SIZE} />
             </ToolbarButton>
             <ToolbarButton
-              onClick={() => handleFormat("italic")}
+              onClick={handleItalic}
               active={currentFormatting.italic}
               disabled={disabled}
               title={t("italicShortcut")}
@@ -733,7 +749,7 @@ export function FormattingBar(props: FormattingBarProps) {
               <ItalicIcon size={ICON_SIZE} />
             </ToolbarButton>
             <ToolbarButton
-              onClick={() => handleFormat("underline")}
+              onClick={handleUnderline}
               active={currentFormatting.underline}
               disabled={disabled}
               title={t("underlineShortcut")}
@@ -834,16 +850,7 @@ export function FormattingBar(props: FormattingBarProps) {
         <>
           <ToolbarSeparator />
           <Menu>
-            <MenuTrigger
-              render={
-                <button
-                  type="button"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--doc-text-muted)] transition-colors duration-100 hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)]"
-                  aria-label={t("moreFormatting")}
-                  title={t("moreFormatting")}
-                />
-              }
-            >
+            <MenuTrigger render={overflowTrigger}>
               <MoreHorizontalIcon size={ICON_SIZE} />
             </MenuTrigger>
             <MenuPopup align="end" className="max-w-[min(520px,calc(100vw-24px))]">

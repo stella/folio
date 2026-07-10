@@ -1,3 +1,16 @@
+import { useCallback } from "react";
+
+export function useCloseOnDialogOpenChange(onClose: () => void) {
+  return useCallback(
+    (open: boolean) => {
+      if (!open) {
+        onClose();
+      }
+    },
+    [onClose],
+  );
+}
+
 export const DIALOG_BACKDROP_CLASS = "fixed inset-0 z-[10000] bg-black/50";
 
 export const DIALOG_POPUP_CLASS =

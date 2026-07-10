@@ -299,9 +299,9 @@ export function HorizontalRuler({
           editable={editable}
           isDragging={dragging === "firstLineIndent"}
           isHovered={hoveredMarker === "firstLineIndent"}
-          onMouseEnter={() => setHoveredMarker("firstLineIndent")}
-          onMouseLeave={() => setHoveredMarker(null)}
-          onMouseDown={(e) => handleDragStart(e, "firstLineIndent")}
+          marker="firstLineIndent"
+          onDragStart={handleDragStart}
+          onHoverChange={setHoveredMarker}
           label={t("ruler.firstLineIndent")}
         />
       )}
@@ -314,9 +314,9 @@ export function HorizontalRuler({
           editable={editable}
           isDragging={dragging === "leftIndent"}
           isHovered={hoveredMarker === "leftIndent"}
-          onMouseEnter={() => setHoveredMarker("leftIndent")}
-          onMouseLeave={() => setHoveredMarker(null)}
-          onMouseDown={(e) => handleDragStart(e, "leftIndent")}
+          marker="leftIndent"
+          onDragStart={handleDragStart}
+          onHoverChange={setHoveredMarker}
           label={t("ruler.leftIndent")}
         />
       )}
@@ -329,9 +329,9 @@ export function HorizontalRuler({
           editable={editable}
           isDragging={dragging === "rightIndent"}
           isHovered={hoveredMarker === "rightIndent"}
-          onMouseEnter={() => setHoveredMarker("rightIndent")}
-          onMouseLeave={() => setHoveredMarker(null)}
-          onMouseDown={(e) => handleDragStart(e, "rightIndent")}
+          marker="rightIndent"
+          onDragStart={handleDragStart}
+          onHoverChange={setHoveredMarker}
           label={t("ruler.rightIndent")}
         />
       )}
@@ -344,7 +344,7 @@ export function HorizontalRuler({
           key={tab.position}
           tabStop={tab}
           positionPx={twipsToPixels(leftMarginTwips + tab.position) * zoom}
-          onDoubleClick={() => onTabStopRemove?.(tab.position)}
+          onRemove={onTabStopRemove}
         />
       ))}
 
@@ -410,9 +410,9 @@ type IndentTriangleProps = {
   editable: boolean;
   isDragging: boolean;
   isHovered: boolean;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
-  onMouseDown: (e: React.MouseEvent) => void;
+  marker: MarkerType;
+  onDragStart: (event: React.MouseEvent, marker: MarkerType) => void;
+  onHoverChange: (marker: MarkerType | null) => void;
   label: string;
 };
 
@@ -422,13 +422,19 @@ function IndentTriangle({
   editable,
   isDragging,
   isHovered,
-  onMouseEnter,
-  onMouseLeave,
-  onMouseDown,
+  marker,
+  onDragStart,
+  onHoverChange,
   label,
 }: IndentTriangleProps): React.ReactElement {
   const color = resolveIndentColor(isDragging, isHovered);
   const triHeight = Math.round(TRI_SIZE * 1.6);
+  const handleMouseEnter = useCallback(() => onHoverChange(marker), [marker, onHoverChange]);
+  const handleMouseLeave = useCallback(() => onHoverChange(null), [onHoverChange]);
+  const handleMouseDown = useCallback(
+    (event: React.MouseEvent) => onDragStart(event, marker),
+    [marker, onDragStart],
+  );
 
   const containerStyle: CSSProperties = {
     position: "absolute",
@@ -469,9 +475,9 @@ function IndentTriangle({
     <div
       className="docx-ruler-indent"
       style={containerStyle}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      onMouseDown={onMouseDown}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onMouseDown={handleMouseDown}
       role="slider"
       aria-label={label}
       aria-orientation="horizontal"
@@ -515,7 +521,7 @@ function DragTooltip({
 type TabStopMarkerProps = {
   tabStop: TabStop;
   positionPx: number;
-  onDoubleClick: () => void;
+  onRemove?: ((positionTwips: number) => void) | undefined;
 };
 
 const TAB_SYMBOLS: Record<string, string> = {
@@ -526,11 +532,15 @@ const TAB_SYMBOLS: Record<string, string> = {
   bar: "|",
 };
 
-function TabStopMarker({
-  tabStop,
-  positionPx,
-  onDoubleClick,
-}: TabStopMarkerProps): React.ReactElement {
+function TabStopMarker({ tabStop, positionPx, onRemove }: TabStopMarkerProps): React.ReactElement {
+  const handleDoubleClick = useCallback(
+    (event: React.MouseEvent) => {
+      event.stopPropagation();
+      onRemove?.(tabStop.position);
+    },
+    [onRemove, tabStop.position],
+  );
+
   return (
     <div
       style={{
@@ -548,10 +558,7 @@ function TabStopMarker({
         cursor: "pointer",
         userSelect: "none",
       }}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        onDoubleClick();
-      }}
+      onDoubleClick={handleDoubleClick}
       title={`${tabStop.alignment} tab at ${(tabStop.position / 1440).toFixed(2)}"`}
     >
       {TAB_SYMBOLS[tabStop.alignment] || "L"}

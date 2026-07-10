@@ -10,6 +10,7 @@ import {
   DIALOG_PRIMARY_BUTTON_CLASS,
   DIALOG_SECONDARY_BUTTON_CLASS,
   DIALOG_TITLE_CLASS,
+  useCloseOnDialogOpenChange,
 } from "./dialogChrome";
 
 export type PasteSpecialMode = "keepFormatting" | "mergeFormatting" | "plainText";
@@ -53,6 +54,7 @@ export function PasteSpecialDialog({
     Title: DialogTitle,
     Close: DialogClose,
   } = useFolioUI().Dialog;
+  const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const id = useId();
   const [mode, setMode] = useState<PasteSpecialMode>(defaultMode);
 
@@ -68,14 +70,7 @@ export function PasteSpecialDialog({
   };
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>

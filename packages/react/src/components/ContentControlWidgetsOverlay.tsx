@@ -30,6 +30,8 @@ import { useFolioUI } from "../ui/folio-ui";
 
 type ListItem = { displayText: string; value: string };
 
+type FolioMenuItem = ReturnType<typeof useFolioUI>["Menu"]["Item"];
+
 type OpenPicker =
   | {
       kind: "dropdown";
@@ -166,25 +168,41 @@ export function ContentControlWidgetsOverlay({ getEditorView }: ContentControlWi
     };
   }, [open]);
 
+  const openPmPos = open?.pmPos;
+  const onDropdownPick = useCallback(
+    (value: string) => {
+      const liveView = getEditorViewRef.current();
+      if (liveView && typeof openPmPos === "number") {
+        dispatchDropdownPick(liveView, openPmPos, value);
+      }
+      close();
+    },
+    [close, openPmPos],
+  );
+
+  const onDatePick = useCallback(
+    (value: string) => {
+      const liveView = getEditorViewRef.current();
+      if (liveView && value.length > 0 && typeof openPmPos === "number") {
+        dispatchDatePick(liveView, openPmPos, value);
+      }
+      close();
+    },
+    [close, openPmPos],
+  );
+
+  const handleDateChange = useCallback(
+    (value: string | null) => {
+      if (value) {
+        onDatePick(value);
+      }
+    },
+    [onDatePick],
+  );
+
   if (!open) {
     return null;
   }
-
-  const onDropdownPick = (value: string): void => {
-    const liveView = getEditorViewRef.current();
-    if (liveView) {
-      dispatchDropdownPick(liveView, open.pmPos, value);
-    }
-    close();
-  };
-
-  const onDatePick = (value: string): void => {
-    const liveView = getEditorViewRef.current();
-    if (liveView && value.length > 0) {
-      dispatchDatePick(liveView, open.pmPos, value);
-    }
-    close();
-  };
 
   // `folio-root` wrapper re-establishes the editor root inside this body portal
   // so, on the standalone-stylesheet path, the design tokens and scoped
@@ -210,12 +228,12 @@ export function ContentControlWidgetsOverlay({ getEditorView }: ContentControlWi
               </div>
             ) : (
               open.items.map((item) => (
-                <MenuItem
+                <ContentControlDropdownItem
                   key={`${item.value}::${item.displayText}`}
-                  onClick={() => onDropdownPick(item.value)}
-                >
-                  {item.displayText}
-                </MenuItem>
+                  item={item}
+                  MenuItem={MenuItem}
+                  onPick={onDropdownPick}
+                />
               ))
             )}
           </div>
@@ -224,11 +242,7 @@ export function ContentControlWidgetsOverlay({ getEditorView }: ContentControlWi
           <DatePickerPopover
             clearLabel={t("clearDate")}
             defaultOpen
-            onChange={(value) => {
-              if (value) {
-                onDatePick(value);
-              }
-            }}
+            onChange={handleDateChange}
             showIcon={false}
             value={null}
           />
@@ -237,4 +251,16 @@ export function ContentControlWidgetsOverlay({ getEditorView }: ContentControlWi
     </div>,
     document.body,
   );
+}
+
+type ContentControlDropdownItemProps = {
+  item: ListItem;
+  MenuItem: FolioMenuItem;
+  onPick: (value: string) => void;
+};
+
+function ContentControlDropdownItem({ item, MenuItem, onPick }: ContentControlDropdownItemProps) {
+  const handleClick = useCallback(() => onPick(item.value), [item.value, onPick]);
+
+  return <MenuItem onClick={handleClick}>{item.displayText}</MenuItem>;
 }

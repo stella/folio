@@ -3,6 +3,8 @@
  * Values are points; internally the editor stores half-points (OOXML w:sz).
  */
 
+import { useCallback, useMemo } from "react";
+
 import { useFolioUI } from "../../ui/folio-ui";
 
 // ============================================================================
@@ -58,30 +60,34 @@ export function FontSizePicker({
   } = useFolioUI().Select;
   const sizeOptions = sizes ?? Array.from(DEFAULT_SIZES);
   const selectedLabel = value === undefined ? undefined : formatSize(value);
+  const handleValueChange = useCallback(
+    (label: string | null) => {
+      if (typeof label !== "string") {
+        return;
+      }
+      const parsed = Number.parseFloat(label);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return;
+      }
+      onChange?.(parsed);
+    },
+    [onChange],
+  );
+  const triggerStyle = useMemo(
+    () => ({
+      width: typeof width === "number" ? `${width}px` : width,
+      height: 28,
+    }),
+    [width],
+  );
 
   return (
-    <Select
-      value={selectedLabel}
-      onValueChange={(label) => {
-        if (typeof label !== "string") {
-          return;
-        }
-        const parsed = Number.parseFloat(label);
-        if (!Number.isFinite(parsed) || parsed <= 0) {
-          return;
-        }
-        onChange?.(parsed);
-      }}
-      disabled={disabled}
-    >
+    <Select value={selectedLabel} onValueChange={handleValueChange} disabled={disabled}>
       <SelectTrigger
         aria-label={ariaLabel}
         size="sm"
         className="min-h-0 min-w-0 border-transparent bg-transparent text-sm text-[var(--doc-text-muted)] tabular-nums shadow-none hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)] data-[pressed]:bg-[var(--doc-primary-light)]"
-        style={{
-          width: typeof width === "number" ? `${width}px` : width,
-          height: 28,
-        }}
+        style={triggerStyle}
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>

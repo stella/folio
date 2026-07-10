@@ -10,6 +10,7 @@
 import { useEffect, useId, useState } from "react";
 
 import { useFolioUI } from "../../ui/folio-ui";
+import { useCloseOnDialogOpenChange } from "./dialogChrome";
 
 // ============================================================================
 // TYPES
@@ -57,6 +58,7 @@ export function ImagePositionDialog({
     Title: DialogTitle,
     Close: DialogClose,
   } = useFolioUI().Dialog;
+  const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const id = useId();
   const [hMode, setHMode] = useState<"align" | "offset">("align");
   const [hAlign, setHAlign] = useState("center");
@@ -146,14 +148,7 @@ export function ImagePositionDialog({
   };
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogPortal>
         <DialogBackdrop className="fixed inset-0 z-[10000] bg-black/50" />
         <DialogPopup className="bg-popover fixed start-1/2 top-1/2 z-[10001] w-full max-w-[480px] min-w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-xl">

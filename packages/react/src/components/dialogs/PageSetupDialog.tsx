@@ -12,6 +12,7 @@ import { useEffect, useId, useState } from "react";
 import type { SectionProperties } from "@stll/folio-core/types/document";
 import { TWIPS_PER_INCH } from "@stll/folio-core/utils/units";
 import { useFolioUI } from "../../ui/folio-ui";
+import { useCloseOnDialogOpenChange } from "./dialogChrome";
 
 /** Common page sizes in twips (width x height in portrait orientation) */
 const PAGE_SIZES = [
@@ -73,6 +74,7 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
     Title: DialogTitle,
     Close: DialogClose,
   } = useFolioUI().Dialog;
+  const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const id = useId();
   const [pageWidth, setPageWidth] = useState(DEFAULT_WIDTH);
   const [pageHeight, setPageHeight] = useState(DEFAULT_HEIGHT);
@@ -154,14 +156,7 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
   };
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogPortal>
         <DialogBackdrop className="fixed inset-0 z-[10000] bg-black/50" />
         <DialogPopup className="bg-popover fixed start-1/2 top-1/2 z-[10001] w-full max-w-[480px] min-w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-xl">

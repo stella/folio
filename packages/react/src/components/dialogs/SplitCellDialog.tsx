@@ -11,6 +11,7 @@ import {
   DIALOG_PRIMARY_BUTTON_CLASS,
   DIALOG_SECONDARY_BUTTON_CLASS,
   DIALOG_TITLE_CLASS,
+  useCloseOnDialogOpenChange,
 } from "./dialogChrome";
 
 export type SplitCellDialogData = {
@@ -45,6 +46,7 @@ export function SplitCellDialog({
     Title: DialogTitle,
     Close: DialogClose,
   } = useFolioUI().Dialog;
+  const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const id = useId();
   const [rows, setRows] = useState(defaultRows);
   const [columns, setColumns] = useState(defaultColumns);
@@ -77,14 +79,7 @@ export function SplitCellDialog({
   };
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>

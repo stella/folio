@@ -184,7 +184,7 @@ function NotificationContainer({ notifications, onDismiss }: NotificationContain
         <NotificationToast
           key={notification.id}
           notification={notification}
-          onDismiss={() => onDismiss(notification.id)}
+          onDismiss={onDismiss}
         />
       ))}
     </div>
@@ -209,13 +209,14 @@ const SEVERITY_ICONS = {
 
 type NotificationToastProps = {
   notification: ErrorNotification;
-  onDismiss: () => void;
+  onDismiss: (id: string) => void;
 };
 
 function NotificationToast({ notification, onDismiss }: NotificationToastProps) {
   const t = useTranslations("folio");
   const [isExpanded, setIsExpanded] = useState(false);
   const SeverityIcon = SEVERITY_ICONS[notification.severity];
+  const handleDismiss = useCallback(() => onDismiss(notification.id), [notification.id, onDismiss]);
 
   return (
     <div
@@ -247,7 +248,7 @@ function NotificationToast({ notification, onDismiss }: NotificationToastProps) 
         </div>
         <button
           type="button"
-          onClick={onDismiss}
+          onClick={handleDismiss}
           className="shrink-0 cursor-pointer rounded p-1 opacity-60 hover:opacity-100"
           title={t("dismiss")}
         >

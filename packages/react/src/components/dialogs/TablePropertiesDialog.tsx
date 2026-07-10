@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 
 import { useFolioUI } from "../../ui/folio-ui";
+import { useCloseOnDialogOpenChange } from "./dialogChrome";
 
 export type TableProperties = {
   width?: number | null;
@@ -37,6 +38,7 @@ export function TablePropertiesDialog({
     Title: DialogTitle,
     Close: DialogClose,
   } = useFolioUI().Dialog;
+  const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const id = useId();
   const [width, setWidth] = useState(currentProps?.width ?? 0);
   const [widthType, setWidthType] = useState(currentProps?.widthType ?? "auto");
@@ -79,14 +81,7 @@ export function TablePropertiesDialog({
   };
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogPortal>
         <DialogBackdrop className="fixed inset-0 z-[10000] bg-black/50" />
         <DialogPopup className="bg-popover fixed start-1/2 top-1/2 z-[10001] w-full max-w-[440px] min-w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-xl">

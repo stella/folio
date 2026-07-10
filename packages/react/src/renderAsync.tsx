@@ -116,27 +116,32 @@ export const renderAsync = (
       },
     };
 
+    const lifecycle = {
+      onError(error: Error) {
+        editorOptions["onError"]?.(error);
+        if (!settled) {
+          settled = true;
+          root?.unmount();
+          root = null;
+          reject(error);
+        }
+      },
+      onChange(doc: Document) {
+        editorOptions["onChange"]?.(doc);
+        if (!settled) {
+          settled = true;
+          resolve(handle);
+        }
+      },
+    };
+
     const element = (
       <IntlProvider locale={locale} messages={getFolioMessages(locale)}>
         <DocxEditor
           {...editorOptions}
           documentBuffer={input}
-          onError={(error) => {
-            editorOptions["onError"]?.(error);
-            if (!settled) {
-              settled = true;
-              root?.unmount();
-              root = null;
-              reject(error);
-            }
-          }}
-          onChange={(doc) => {
-            editorOptions["onChange"]?.(doc);
-            if (!settled) {
-              settled = true;
-              resolve(handle);
-            }
-          }}
+          onError={lifecycle.onError}
+          onChange={lifecycle.onChange}
           ref={ref}
         />
       </IntlProvider>

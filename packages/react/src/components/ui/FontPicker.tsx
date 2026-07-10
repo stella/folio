@@ -3,6 +3,8 @@
  * Each item rendered in its own font for preview.
  */
 
+import { useCallback, useMemo } from "react";
+
 import { useFolioUI } from "../../ui/folio-ui";
 
 // ============================================================================
@@ -110,25 +112,33 @@ export function FontPicker({
     Item: SelectItem,
   } = useFolioUI().Select;
   const fontOptions = fonts ?? DEFAULT_FONTS;
+  const handleValueChange = useCallback(
+    (name: string | null) => {
+      const font = fontOptions.find((option) => option.name === name);
+      if (font) {
+        onChange?.(font.name);
+      }
+    },
+    [fontOptions, onChange],
+  );
+  const triggerStyle = useMemo(
+    () => ({
+      width: typeof width === "number" ? `${width}px` : width,
+      height: 28,
+    }),
+    [width],
+  );
 
   return (
     <Select
       value={value ? toDisplayName(value, fontOptions) : undefined}
-      onValueChange={(name) => {
-        const font = fontOptions.find((f) => f.name === name);
-        if (font) {
-          onChange?.(font.name);
-        }
-      }}
+      onValueChange={handleValueChange}
       disabled={disabled}
     >
       <SelectTrigger
         size="sm"
         className="min-h-0 min-w-0 border-transparent bg-transparent text-sm text-[var(--doc-text-muted)] shadow-none hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)] data-[pressed]:bg-[var(--doc-primary-light)]"
-        style={{
-          width: typeof width === "number" ? `${width}px` : width,
-          height: 28,
-        }}
+        style={triggerStyle}
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>

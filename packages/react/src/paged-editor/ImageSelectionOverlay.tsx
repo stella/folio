@@ -540,10 +540,8 @@ export function ImageSelectionOverlay({
         <Handle
           key={pos}
           handle={pos}
-          style={{
-            left: left + width * x - HANDLE_HALF,
-            top: top + height * y - HANDLE_HALF,
-          }}
+          left={left + width * x - HANDLE_HALF}
+          top={top + height * y - HANDLE_HALF}
           onMouseDown={handleResizeStart}
         />
       ))}
@@ -570,17 +568,19 @@ export function ImageSelectionOverlay({
 
 type HandleProps = {
   handle: ResizeHandle;
-  style: CSSProperties;
+  left: number;
+  top: number;
   onMouseDown: (handle: ResizeHandle, e: React.MouseEvent) => void;
 };
 
-function Handle({ handle, style, onMouseDown }: HandleProps): React.ReactElement {
+function Handle({ handle, left, top, onMouseDown }: HandleProps): React.ReactElement {
   return (
     <div
       role="presentation"
       style={{
         ...handleBaseStyles,
-        ...style,
+        left,
+        top,
         cursor: HANDLE_CURSORS[handle],
       }}
       onMouseDown={(e) => onMouseDown(handle, e)}

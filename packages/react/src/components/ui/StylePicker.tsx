@@ -189,19 +189,23 @@ export function StylePicker({
     }
     return styles?.find((s) => s.styleId === current)?.name || current;
   }, [displayLabel, value, styleOptions, styles]);
+  const handleValueChange = React.useCallback(
+    (nextValue: string | null) => onChange?.(nextValue ?? ""),
+    [onChange],
+  );
+  const triggerStyle = React.useMemo(
+    () => ({
+      width: typeof width === "number" ? `${width}px` : width,
+    }),
+    [width],
+  );
 
   return (
-    <Select
-      value={value || "Normal"}
-      onValueChange={(val) => onChange?.(val ?? "")}
-      disabled={disabled}
-    >
+    <Select value={value || "Normal"} onValueChange={handleValueChange} disabled={disabled}>
       <SelectTrigger
         size="sm"
         className={`folio-style-picker h-8 min-h-0 min-w-0 border-transparent bg-transparent text-sm text-[var(--doc-text-muted)] shadow-none hover:bg-[var(--doc-primary-light)] hover:text-[var(--doc-text)] data-[pressed]:bg-[var(--doc-primary-light)] ${className ?? ""}`}
-        style={{
-          width: typeof width === "number" ? `${width}px` : width,
-        }}
+        style={triggerStyle}
       >
         {triggerLabel !== undefined ? (
           <span

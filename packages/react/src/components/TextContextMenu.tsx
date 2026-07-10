@@ -238,17 +238,26 @@ function itemIconColor(item: TextContextMenuItem): string {
 
 type MenuItemComponentProps = {
   item: TextContextMenuItem;
-  onClick: () => void;
   isHighlighted: boolean;
-  onMouseEnter: () => void;
+  navigableIndex: number;
+  onItemClick: (item: TextContextMenuItem) => void;
+  onItemEnter: (index: number) => void;
 };
 
 const MenuItemComponent: React.FC<MenuItemComponentProps> = ({
   item,
-  onClick,
   isHighlighted,
-  onMouseEnter,
+  navigableIndex,
+  onItemClick,
+  onItemEnter,
 }) => {
+  const handleClick = useCallback(() => onItemClick(item), [item, onItemClick]);
+  const handleMouseEnter = useCallback(() => {
+    if (navigableIndex !== -1 && !item.disabled) {
+      onItemEnter(navigableIndex);
+    }
+  }, [item.disabled, navigableIndex, onItemEnter]);
+
   if (item.action === "separator") {
     return (
       <div
@@ -267,8 +276,8 @@ const MenuItemComponent: React.FC<MenuItemComponentProps> = ({
       <button
         type="button"
         className={`docx-text-context-menu-item ${isHighlighted ? "docx-text-context-menu-item-highlighted" : ""} ${item.disabled ? "docx-text-context-menu-item-disabled" : ""}`}
-        onClick={onClick}
-        onMouseEnter={onMouseEnter}
+        onClick={handleClick}
+        onMouseEnter={handleMouseEnter}
         disabled={item.disabled}
         role="menuitem"
         aria-disabled={item.disabled}
@@ -519,13 +528,16 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
     } satisfies React.CSSProperties;
   }, [hasSelection, position, menuItems.length]);
 
-  const handleItemClick = (item: TextContextMenuItem) => {
-    if (item.disabled) {
-      return;
-    }
-    onAction(item.action);
-    onClose();
-  };
+  const handleItemClick = useCallback(
+    (item: TextContextMenuItem) => {
+      if (item.disabled) {
+        return;
+      }
+      onAction(item.action);
+      onClose();
+    },
+    [onAction, onClose],
+  );
 
   if (!isOpen) {
     return null;
@@ -547,13 +559,10 @@ export const TextContextMenu: React.FC<TextContextMenuProps> = ({
           <MenuItemComponent
             key={`${item.action}-${index}`}
             item={item}
-            onClick={() => handleItemClick(item)}
             isHighlighted={navigableIndex === highlightedIndex}
-            onMouseEnter={() => {
-              if (navigableIndex !== -1 && !item.disabled) {
-                setHighlightedIndex(navigableIndex);
-              }
-            }}
+            navigableIndex={navigableIndex}
+            onItemClick={handleItemClick}
+            onItemEnter={setHighlightedIndex}
           />
         );
       })}

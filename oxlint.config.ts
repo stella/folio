@@ -149,15 +149,18 @@ export default library({
       // that run the React Compiler over their own app code do not need these
       // rules; they are scoped to this package's source only.
       //
-      // The remaining react-perf rules are intentionally off for now; the
-      // existing violation counts are not tractable as a lint gate (measured
-      // at oxlint 1.71.0): jsx-no-new-object-as-prop: 110,
-      // jsx-no-new-function-as-prop: 222. Revisit after a burn-down.
       files: ["packages/react/src/**/*.{ts,tsx}"],
       plugins: ["react", "react-perf"],
       rules: {
         "react/jsx-no-constructed-context-values": "error",
-        "react-perf/jsx-no-new-array-as-prop": "error",
+        // Intrinsic elements do not have React memoization boundaries, so a
+        // fresh DOM prop cannot invalidate a child-component bailout. Keep the
+        // rules strict at every component boundary without forcing no-op
+        // memoization around native event handlers and style objects.
+        "react-perf/jsx-no-jsx-as-prop": ["error", { nativeAllowList: "all" }],
+        "react-perf/jsx-no-new-array-as-prop": ["error", { nativeAllowList: "all" }],
+        "react-perf/jsx-no-new-function-as-prop": ["error", { nativeAllowList: "all" }],
+        "react-perf/jsx-no-new-object-as-prop": ["error", { nativeAllowList: "all" }],
       },
     },
     {

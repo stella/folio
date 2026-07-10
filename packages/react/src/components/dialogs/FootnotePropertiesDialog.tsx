@@ -15,6 +15,7 @@ import type {
   NumberFormat,
 } from "@stll/folio-core/types/document";
 import { useFolioUI } from "../../ui/folio-ui";
+import { useCloseOnDialogOpenChange } from "./dialogChrome";
 
 // ============================================================================
 // TYPES
@@ -60,6 +61,7 @@ export function FootnotePropertiesDialog({
     Title: DialogTitle,
     Close: DialogClose,
   } = useFolioUI().Dialog;
+  const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const id = useId();
   const [fnPosition, setFnPosition] = useState<FootnotePosition>(
     footnotePr?.position ?? "pageBottom",
@@ -113,14 +115,7 @@ export function FootnotePropertiesDialog({
   };
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogPortal>
         <DialogBackdrop className="fixed inset-0 z-[10000] bg-black/50" />
         <DialogPopup className="bg-popover fixed start-1/2 top-1/2 z-[10001] w-full max-w-[500px] min-w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-xl">

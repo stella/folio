@@ -209,9 +209,8 @@ export function VerticalRuler({
         editable={editable}
         isDragging={dragging === "topMargin"}
         isHovered={hoveredMarker === "topMargin"}
-        onMouseEnter={() => setHoveredMarker("topMargin")}
-        onMouseLeave={() => setHoveredMarker(null)}
-        onMouseDown={(e) => handleDragStart(e, "topMargin")}
+        onDragStart={handleDragStart}
+        onHoverChange={setHoveredMarker}
       />
 
       {/* Bottom margin marker */}
@@ -221,9 +220,8 @@ export function VerticalRuler({
         editable={editable}
         isDragging={dragging === "bottomMargin"}
         isHovered={hoveredMarker === "bottomMargin"}
-        onMouseEnter={() => setHoveredMarker("bottomMargin")}
-        onMouseLeave={() => setHoveredMarker(null)}
-        onMouseDown={(e) => handleDragStart(e, "bottomMargin")}
+        onDragStart={handleDragStart}
+        onHoverChange={setHoveredMarker}
       />
     </div>
   );
@@ -274,9 +272,8 @@ type VerticalMarginMarkerProps = {
   editable: boolean;
   isDragging: boolean;
   isHovered: boolean;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
-  onMouseDown: (e: React.MouseEvent) => void;
+  onDragStart: (event: React.MouseEvent, marker: MarkerType) => void;
+  onHoverChange: (marker: MarkerType | null) => void;
 };
 
 function VerticalMarginMarker({
@@ -285,12 +282,17 @@ function VerticalMarginMarker({
   editable,
   isDragging,
   isHovered,
-  onMouseEnter,
-  onMouseLeave,
-  onMouseDown,
+  onDragStart,
+  onHoverChange,
 }: VerticalMarginMarkerProps): React.ReactElement {
   const t = useTranslations("folio");
   const color = resolveMarkerColor(isDragging, isHovered);
+  const handleMouseEnter = useCallback(() => onHoverChange(type), [onHoverChange, type]);
+  const handleMouseLeave = useCallback(() => onHoverChange(null), [onHoverChange]);
+  const handleMouseDown = useCallback(
+    (event: React.MouseEvent) => onDragStart(event, type),
+    [onDragStart, type],
+  );
 
   const markerStyle: CSSProperties = {
     position: "absolute",
@@ -319,9 +321,9 @@ function VerticalMarginMarker({
     <div
       className={`docx-ruler-marker docx-ruler-marker-${type}`}
       style={markerStyle}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      onMouseDown={onMouseDown}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onMouseDown={handleMouseDown}
       role="slider"
       aria-label={type === "topMargin" ? t("ruler.topMargin") : t("ruler.bottomMargin")}
       aria-orientation="vertical"

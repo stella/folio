@@ -8,6 +8,8 @@
  * FormattingBar).
  */
 
+import { useCallback, useMemo } from "react";
+
 import { useFolioUI } from "../../ui/folio-ui";
 import { cn } from "../../lib/utils";
 
@@ -71,21 +73,25 @@ export function ZoomControl({
   // Use the matched preset's exact string so the active item highlights even
   // when `value` is a near-preset float (e.g. 0.9999 from continuous zoom).
   const selectValue = matchingLevel ? matchingLevel.value.toString() : value.toString();
+  const handleValueChange = useCallback(
+    (newValue: string | null) => {
+      if (typeof newValue !== "string") {
+        return;
+      }
+      const zoom = Number.parseFloat(newValue);
+      if (!Number.isNaN(zoom)) {
+        onChange?.(zoom);
+      }
+    },
+    [onChange],
+  );
+  const triggerStyle = useMemo(
+    () => ({ width: compact ? 76 : 80, height: compact ? 28 : 32 }),
+    [compact],
+  );
 
   return (
-    <Select
-      value={selectValue}
-      onValueChange={(newValue) => {
-        if (typeof newValue !== "string") {
-          return;
-        }
-        const zoom = Number.parseFloat(newValue);
-        if (!Number.isNaN(zoom)) {
-          onChange?.(zoom);
-        }
-      }}
-      disabled={disabled}
-    >
+    <Select value={selectValue} onValueChange={handleValueChange} disabled={disabled}>
       <SelectTrigger
         size="sm"
         className={cn(
@@ -93,7 +99,7 @@ export function ZoomControl({
           compact ? "text-xs" : "text-sm",
           className,
         )}
-        style={{ width: compact ? 76 : 80, height: compact ? 28 : 32 }}
+        style={triggerStyle}
       >
         <SelectValue placeholder="100%">{displayLabel}</SelectValue>
       </SelectTrigger>

@@ -3,7 +3,8 @@
  * with left/center/right/justify options.
  */
 
-import type { CSSProperties } from "react";
+import { useCallback, useMemo } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 
 import { panic } from "better-result";
 import {
@@ -27,6 +28,8 @@ export type AlignmentButtonsProps = {
 };
 
 const ICON_SIZE = 16;
+
+const stopMouseDownPropagation = (event: MouseEvent) => event.stopPropagation();
 
 const OPTIONS = [
   {
@@ -91,31 +94,57 @@ export function AlignmentButtons({
         side="bottom"
         sideOffset={4}
         className="flex gap-0.5 p-1"
-        onMouseDown={(e) => e.stopPropagation()}
+        onMouseDown={stopMouseDownPropagation}
       >
         {OPTIONS.map((opt) => (
-          <PopoverClose
+          <AlignmentOption
             key={opt.value}
-            render={
-              <button
-                className={cn(
-                  "flex size-8 items-center justify-center rounded transition-colors",
-                  value === opt.value
-                    ? "bg-[var(--doc-primary-light)] text-[var(--doc-text)]"
-                    : "text-[var(--doc-text)] hover:bg-[var(--doc-primary-light)]",
-                )}
-                data-testid={`alignment-${opt.value}`}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onChange?.(opt.value)}
-                title={`${opt.label} (${opt.shortcut})`}
-                type="button"
-              />
-            }
-          >
-            <opt.Icon size={ICON_SIZE} />
-          </PopoverClose>
+            PopoverClose={PopoverClose}
+            option={opt}
+            selected={value === opt.value}
+            onChange={onChange}
+          />
         ))}
       </PopoverPopup>
     </Popover>
+  );
+}
+
+type AlignmentOptionValue = (typeof OPTIONS)[number];
+type PopoverCloseComponent = ReturnType<typeof useFolioUI>["Popover"]["Close"];
+
+type AlignmentOptionProps = {
+  PopoverClose: PopoverCloseComponent;
+  option: AlignmentOptionValue;
+  selected: boolean;
+  onChange: AlignmentButtonsProps["onChange"];
+};
+
+function AlignmentOption({ PopoverClose, option, selected, onChange }: AlignmentOptionProps) {
+  const handleMouseDown = useCallback((event: MouseEvent) => event.preventDefault(), []);
+  const handleClick = useCallback(() => onChange?.(option.value), [onChange, option.value]);
+  const trigger = useMemo(
+    () => (
+      <button
+        className={cn(
+          "flex size-8 items-center justify-center rounded transition-colors",
+          selected
+            ? "bg-[var(--doc-primary-light)] text-[var(--doc-text)]"
+            : "text-[var(--doc-text)] hover:bg-[var(--doc-primary-light)]",
+        )}
+        data-testid={`alignment-${option.value}`}
+        onMouseDown={handleMouseDown}
+        onClick={handleClick}
+        title={`${option.label} (${option.shortcut})`}
+        type="button"
+      />
+    ),
+    [handleClick, handleMouseDown, option.label, option.shortcut, option.value, selected],
+  );
+
+  return (
+    <PopoverClose render={trigger}>
+      <option.Icon size={ICON_SIZE} />
+    </PopoverClose>
   );
 }

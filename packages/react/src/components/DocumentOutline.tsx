@@ -132,6 +132,8 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
     [onHeadingClick],
   );
 
+  const resolvePct = useCallback((id: string) => pctByPmPos.get(id) ?? null, [pctByPmPos]);
+
   if (headings.length < 2) {
     return null;
   }
@@ -143,7 +145,7 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
       items={items}
       onJump={handleJump}
       panelWidth={320}
-      resolvePct={(id) => pctByPmPos.get(id) ?? null}
+      resolvePct={resolvePct}
       scrollContainerRef={scrollContainerRef}
       topOffset={topOffset}
     />

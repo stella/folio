@@ -11,6 +11,7 @@ import {
   DIALOG_PRIMARY_BUTTON_CLASS,
   DIALOG_SECONDARY_BUTTON_CLASS,
   DIALOG_TITLE_CLASS,
+  useCloseOnDialogOpenChange,
 } from "./dialogChrome";
 
 export type InsertImageDialogData = {
@@ -41,6 +42,7 @@ export function InsertImageDialog({
     Title: DialogTitle,
     Close: DialogClose,
   } = useFolioUI().Dialog;
+  const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const id = useId();
   const [file, setFile] = useState<File | null>(null);
   const [alt, setAlt] = useState("");
@@ -80,14 +82,7 @@ export function InsertImageDialog({
   };
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>

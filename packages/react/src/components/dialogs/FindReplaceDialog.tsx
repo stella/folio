@@ -283,6 +283,12 @@ export function FindReplaceDialog({
     [searchText, result, performSearch, handleFindPrevious, handleFindNext, onClose],
   );
 
+  const handleSearchBlur = useCallback(() => {
+    if (searchText.trim() && !result) {
+      performSearch();
+    }
+  }, [performSearch, result, searchText]);
+
   const handleOverlayClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       // Don't close on overlay click - this is a non-modal dialog
@@ -355,11 +361,7 @@ export function FindReplaceDialog({
               value={searchText}
               onChange={handleSearchChange}
               onKeyDown={handleSearchKeyDown}
-              onBlur={() => {
-                if (searchText.trim() && !result) {
-                  performSearch();
-                }
-              }}
+              onBlur={handleSearchBlur}
               placeholder={t("findReplace.findPlaceholder")}
               aria-label={t("findReplace.findText")}
             />
