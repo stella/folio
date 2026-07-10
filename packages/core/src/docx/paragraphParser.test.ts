@@ -240,7 +240,7 @@ describe("parseParagraph rendered page break markers", () => {
     expect(paragraph.renderedPageBreakBefore).toBe(true);
   });
 
-  test("marks a paragraph when a page break appears before visible text", () => {
+  test("does not treat a hard page break as a cached rendered-page hint", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:r>
@@ -250,7 +250,23 @@ describe("parseParagraph rendered page break markers", () => {
       </w:p>
     `);
 
-    expect(paragraph.renderedPageBreakBefore).toBe(true);
+    expect(paragraph.renderedPageBreakBefore).toBeUndefined();
+  });
+
+  test("keeps a real rendered-page hint after a hard-break paragraph", () => {
+    const hardBreak = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:r><w:br w:type="page"/></w:r>
+      </w:p>
+    `);
+    const cachedNextPage = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:r><w:lastRenderedPageBreak/><w:t>Next page</w:t></w:r>
+      </w:p>
+    `);
+
+    expect(hardBreak.renderedPageBreakBefore).toBeUndefined();
+    expect(cachedNextPage.renderedPageBreakBefore).toBe(true);
   });
 
   test("does not mark a paragraph when rendered page break follows visible text", () => {
