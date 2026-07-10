@@ -34,6 +34,9 @@ export const buildAnnotatedBlockText: (blockNode: Node_2) => string;
 export const createFolioAIEditSnapshot: (doc: Node_2) => FolioAIEditSnapshot;
 
 // @public (undocumented)
+export const createFolioAITextRangeHandle: (input: CreateFolioAITextRangeHandleOptions) => FolioAITextRangeHandle | null;
+
+// @public (undocumented)
 export const diffWordSegments: (before: string, after: string) => WordDiffSegment[];
 
 // @public (undocumented)
@@ -48,6 +51,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-change
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly replaceInBlock: readonly ["direct", "tracked-changes"];
+    readonly replaceRange: readonly ["direct", "tracked-changes"];
     readonly insertAfterBlock: readonly ["direct", "tracked-changes"];
     readonly insertBeforeBlock: readonly ["direct", "tracked-changes"];
     readonly replaceBlock: readonly ["direct", "tracked-changes"];
@@ -63,7 +67,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -135,6 +139,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     comment?: FolioAIComment;
 } | {
     id: string;
+    type: "replaceRange";
+    range: FolioAITextRangeHandle;
+    replace: string;
+    comment?: FolioAIComment;
+} | {
+    id: string;
     type: "insertAfterBlock" | "insertBeforeBlock";
     blockId: string;
     text: string;
@@ -191,7 +201,7 @@ export type FolioAIEditSkippedOperation = {
 };
 
 // @public (undocumented)
-export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "emptyOperation"
+export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "staleRange" | "emptyOperation"
 /**
 * The operation would not change the document — find equals
 * replace, or replaceBlock's `text` matches the live block.
@@ -216,6 +226,16 @@ export type FolioAISignatureParty = {
     name: string;
     signatory?: string;
     title?: string;
+};
+
+// @public
+export type FolioAITextRangeHandle = {
+    type: "textRange";
+    story: "main";
+    blockId: string;
+    startOffset: number;
+    endOffset: number;
+    selectedTextHash: string;
 };
 
 // @public

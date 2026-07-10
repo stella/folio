@@ -52,6 +52,9 @@ export type CreateEmptyDocumentOptions = {
 };
 
 // @public (undocumented)
+export const createFolioAITextRangeHandle: (input: CreateFolioAITextRangeHandleOptions) => FolioAITextRangeHandle | null;
+
+// @public (undocumented)
 export const deriveBlockId: (input: DeriveBlockIdInput) => FolioBlockId;
 
 // @public (undocumented)
@@ -73,6 +76,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-change
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly replaceInBlock: readonly ["direct", "tracked-changes"];
+    readonly replaceRange: readonly ["direct", "tracked-changes"];
     readonly insertAfterBlock: readonly ["direct", "tracked-changes"];
     readonly insertBeforeBlock: readonly ["direct", "tracked-changes"];
     readonly replaceBlock: readonly ["direct", "tracked-changes"];
@@ -88,7 +92,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -152,6 +156,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     comment?: FolioAIComment;
 } | {
     id: string;
+    type: "replaceRange";
+    range: FolioAITextRangeHandle;
+    replace: string;
+    comment?: FolioAIComment;
+} | {
+    id: string;
     type: "insertAfterBlock" | "insertBeforeBlock";
     blockId: string;
     text: string;
@@ -196,6 +206,16 @@ export type FolioAIEditPrecondition = {
 export type FolioAIEditSnapshot = {
     blocks: FolioAIBlock[];
     anchors: Record<string, FolioAIBlockAnchor>;
+};
+
+// @public
+export type FolioAITextRangeHandle = {
+    type: "textRange";
+    story: "main";
+    blockId: string;
+    startOffset: number;
+    endOffset: number;
+    selectedTextHash: string;
 };
 
 // @public
