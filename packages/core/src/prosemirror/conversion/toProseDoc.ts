@@ -236,9 +236,10 @@ function convertParagraph(
     styleRunFormatting = resolved.runFormatting;
   }
 
-  const paragraphRunFormatting = paragraph.formatting?.runProperties
-    ? resolveTextFormatting(paragraph.formatting.runProperties, styleResolver)
-    : undefined;
+  const paragraphRunFormatting = resolveParagraphMarkRunFormatting(
+    paragraph.formatting?.runProperties,
+    styleResolver,
+  );
   // Word does not propagate paragraph-mark-only visual decorations
   // (highlight, shading) to body runs — they paint the pilcrow alone. Strip
   // them off the inheritance path so a `<w:pPr><w:rPr><w:highlight/></w:rPr>`
@@ -920,6 +921,24 @@ function suppressParagraphMarkFormatting(
   suppressBooleanParagraphMark(result, paragraphMark, direct, "outline");
   suppressBooleanParagraphMark(result, paragraphMark, direct, "rtl");
 
+  // A direct run suppresses a size stored only on the paragraph mark. Restore
+  // the resolved paragraph-style size instead of letting the pilcrow size leak
+  // into visible text.
+  if (
+    paragraphMark.fontSize !== undefined &&
+    direct?.fontSize === undefined &&
+    base?.fontSize !== undefined
+  ) {
+    result.fontSize = base.fontSize;
+  }
+  if (
+    paragraphMark.fontSizeCs !== undefined &&
+    direct?.fontSizeCs === undefined &&
+    base?.fontSizeCs !== undefined
+  ) {
+    result.fontSizeCs = base.fontSizeCs;
+  }
+
   if (paragraphMark.underline !== undefined && direct?.underline === undefined) {
     result.underline = { style: "none" };
   }
@@ -975,6 +994,20 @@ function resolveTextFormatting(
   return mergeTextFormatting(styleFormatting, formatting);
 }
 
+function resolveParagraphMarkRunFormatting(
+  formatting: TextFormatting | undefined,
+  styleResolver: StyleEngine | null,
+): TextFormatting | undefined {
+  if (!formatting || !styleResolver) {
+    return formatting;
+  }
+
+  const characterStyleFormatting = formatting.styleId
+    ? styleResolver.getRunStyleOwnProperties(formatting.styleId)
+    : undefined;
+  return mergeTextFormatting(characterStyleFormatting, formatting);
+}
+
 function resolveParagraphDefaultTextFormatting(
   styleId: string | undefined,
   formatting: Paragraph["formatting"] | undefined,
@@ -993,13 +1026,9 @@ function resolveParagraphDefaultTextFormatting(
   // merged into the cascade below.
   const rawParagraphMarkRpr =
     options.includeParagraphMarkRunProperties === false ? undefined : formatting?.runProperties;
-  const characterStyleRpr =
-    rawParagraphMarkRpr?.styleId !== undefined
-      ? styleResolver.getRunStyleOwnProperties(rawParagraphMarkRpr.styleId)
-      : undefined;
   const paragraphRunProperties = rawParagraphMarkRpr
     ? stripParagraphMarkOnlyFormatting(
-        mergeTextFormatting(characterStyleRpr, rawParagraphMarkRpr) ?? {},
+        resolveParagraphMarkRunFormatting(rawParagraphMarkRpr, styleResolver) ?? {},
       )
     : undefined;
 

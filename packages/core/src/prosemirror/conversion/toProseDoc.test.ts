@@ -170,6 +170,101 @@ describe("toProseDoc", () => {
     expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(16);
   });
 
+  test("keeps the default paragraph style size when paragraph and run only set a font family", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                runProperties: {
+                  fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: {
+                    fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+                  },
+                  content: [{ type: "text", text: "Default style text" }],
+                },
+              ],
+            },
+          ],
+        },
+        styles: {
+          docDefaults: { rPr: { fontSize: 22 } },
+          styles: [
+            {
+              styleId: "Normal",
+              type: "paragraph",
+              default: true,
+              rPr: { fontSize: 24 },
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+    const paragraph = doc.firstChild;
+    const text = paragraph?.firstChild;
+
+    expect(paragraph?.attrs.defaultTextFormatting.fontSize).toBe(24);
+    expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(24);
+    expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe("Arial");
+  });
+
+  test("does not leak a paragraph-mark-only size into directly formatted body text", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                runProperties: {
+                  fontSize: 52,
+                  fontSizeCs: 52,
+                  fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: {
+                    fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+                  },
+                  content: [{ type: "text", text: "Body text" }],
+                },
+              ],
+            },
+          ],
+        },
+        styles: {
+          docDefaults: { rPr: { fontSize: 22, fontSizeCs: 22 } },
+          styles: [
+            {
+              styleId: "Normal",
+              type: "paragraph",
+              default: true,
+              rPr: { fontSize: 24, fontSizeCs: 24 },
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+    const paragraph = doc.firstChild;
+    const text = paragraph?.firstChild;
+
+    expect(paragraph?.attrs.defaultTextFormatting.fontSize).toBe(52);
+    expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(24);
+  });
+
   test("keeps named paragraph style fonts ahead of paragraph-mark formatting", () => {
     const document: Document = {
       package: {
