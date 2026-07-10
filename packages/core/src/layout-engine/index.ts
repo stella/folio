@@ -804,8 +804,13 @@ function layoutTable(
       x += (paginator.columnWidth - measure.totalWidth) / 2;
     } else if (block.justification === "right") {
       x = x + paginator.columnWidth - measure.totalWidth;
-    } else if (block.indent) {
-      x += block.indent;
+    } else {
+      // w:tblInd positions the leading edge of the first cell's text, not
+      // the table border. The border therefore extends left by that cell's
+      // leading margin. Adding both indent and padding shifts every cell by
+      // one extra cell margin.
+      const leadingCellMargin = block.rows[0]?.cells[0]?.padding.left ?? 0;
+      x += (block.indent ?? 0) - leadingCellMargin;
     }
     return x;
   };
