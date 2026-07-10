@@ -58,6 +58,7 @@ type CliFlags = {
   json: boolean;
   refreshTruth: boolean;
   headed: boolean;
+  reuseServer: boolean;
   noReport: boolean;
   outputPath?: string;
   maxPages?: number;
@@ -70,6 +71,7 @@ export const parseArgs = (argv: string[]): CliFlags => {
     json: false,
     refreshTruth: false,
     headed: false,
+    reuseServer: false,
     noReport: false,
     paths: [],
   };
@@ -83,6 +85,8 @@ export const parseArgs = (argv: string[]): CliFlags => {
       flags.refreshTruth = true;
     } else if (arg === "--headed") {
       flags.headed = true;
+    } else if (arg === "--reuse-server") {
+      flags.reuseServer = true;
     } else if (arg === "--no-report") {
       flags.noReport = true;
     } else if (arg === "--output") {
@@ -119,6 +123,7 @@ Options:
   --max-pages <n>      Compare only the first n pages.
   --refresh-truth      Re-render Word ground truth instead of using cache.
   --headed             Show the Folio browser window.
+  --reuse-server       Reuse a healthy current-worktree playground server.
   --no-report          Skip writing the HTML report.
 
 Examples:
@@ -221,7 +226,10 @@ const runPipeline = async (docs: string[], flags: CliFlags): Promise<PipelineOut
 
         if (!extractor) {
           // oxlint-disable-next-line no-await-in-loop -- created lazily on first use, before any folio extraction
-          extractor = await createFolioExtractor({ headless: !flags.headed });
+          extractor = await createFolioExtractor({
+            headless: !flags.headed,
+            reuseServer: flags.reuseServer,
+          });
         }
 
         process.stderr.write("folio… ");

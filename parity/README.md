@@ -19,6 +19,18 @@ bun parity/cli.ts --refresh-truth          # ignore cached Word exports
 
 The HTML report lands in `parity/report/index.html`.
 
+For repeated runs in one worktree, start a current-source playground once and
+explicitly reuse it:
+
+```sh
+FOLIO_PLAYGROUND_PORT=$(bun -e 'import { PLAYGROUND_PORT } from "./parity/config"; process.stdout.write(String(PLAYGROUND_PORT))') \
+  bun --filter @stll/playground dev
+bun parity/cli.ts path/to/file.docx --reuse-server
+```
+
+Fresh-server mode remains the default. Reuse is an opt-in for iterative work
+where the caller owns the server and knows it reflects the current worktree.
+
 ## How it works
 
 1. **Ground truth** (`wordTruth.ts`): the docx is exported to PDF by scripting

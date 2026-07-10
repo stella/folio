@@ -4,6 +4,7 @@ import { PX_TO_PT } from "../config";
 import {
   CLEAN_SCREENSHOT_CSS,
   computeZoomFactor,
+  formatNavigationFailure,
   formatServerStartFailure,
   meaningfulTextRange,
   parseCssFontFamilies,
@@ -43,6 +44,26 @@ describe("playground startup diagnostics", () => {
   test("reports a quiet startup timeout without an empty output section", () => {
     expect(formatServerStartFailure("http://localhost:4200", 90_000, undefined, "")).toBe(
       "playground dev server did not become ready at http://localhost:4200 within 90000ms",
+    );
+  });
+
+  test("includes captured playground output in navigation failures", () => {
+    expect(
+      formatNavigationFailure(
+        "http://localhost:4200/?file=fixture.docx",
+        new Error("goto timed out"),
+        "vite transform error",
+      ),
+    ).toBe(
+      "playground navigation failed for http://localhost:4200/?file=fixture.docx: goto timed out\n" +
+        "Playground output:\n" +
+        "vite transform error",
+    );
+  });
+
+  test("omits an empty playground output section from navigation failures", () => {
+    expect(formatNavigationFailure("http://localhost:4200", "connection reset", "")).toBe(
+      "playground navigation failed for http://localhost:4200: connection reset",
     );
   });
 });

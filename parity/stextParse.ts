@@ -67,6 +67,19 @@ const parseBbox = (bboxAttr: string): Bbox | null => {
 
 type LineFont = { name?: string; sizePt?: number };
 
+const normalizeFontEncodedText = (text: string, fontName: string | undefined): string => {
+  // mutool exposes the character code behind Word's Wingdings square marker
+  // as a section sign even though the rendered glyph is a black square.
+  if (
+    fontName !== undefined &&
+    /^(?:[A-Z]{6}\+)?Wingdings(?:-|$)/iu.test(fontName) &&
+    normalizeLineText(text) === "§"
+  ) {
+    return text.replace("§", "■");
+  }
+  return text;
+};
+
 /** The line's primary font: the first `<font>` element it contains. */
 const extractFirstFont = (lineContent: string): LineFont => {
   const fontMatch = FONT_OPEN_RE.exec(lineContent);
@@ -150,14 +163,15 @@ const parseLines = (pageContent: string): LineBox[] => {
     const lineBbox = bboxAttr === null ? null : parseBbox(bboxAttr);
 
     const { text: charText, inkBbox } = parseChars(lineContent);
-    const text = charText !== "" ? charText : (extractAttr(lineAttrs, "text") ?? "");
+    const font = extractFirstFont(lineContent);
+    const extractedText = charText !== "" ? charText : (extractAttr(lineAttrs, "text") ?? "");
+    const text = normalizeFontEncodedText(extractedText, font.name);
     const bbox = inkBbox ?? lineBbox;
     if (bbox === null) continue;
 
     const normText = normalizeLineText(text);
     if (normText === "") continue;
 
-    const font = extractFirstFont(lineContent);
     lines.push({
       text,
       normText,
