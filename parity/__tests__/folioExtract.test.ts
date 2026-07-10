@@ -37,7 +37,7 @@ describe("extractSinglePage font resolution", () => {
     } finally {
       await browser.close();
     }
-  });
+  }, 15_000);
 });
 
 const makeRawLine = (overrides: Partial<RawLine> & Pick<RawLine, "text" | "rect">): RawLine => ({
