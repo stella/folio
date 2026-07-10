@@ -25,6 +25,9 @@ export type ApplyFolioAIEditsToBufferResult = FolioAIEditApplyResult & {
 // @public (undocumented)
 export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
+// @public
+export const compareDocxVersions: (base: ArrayBuffer, revised: ArrayBuffer) => Promise<FolioVersionDiff>;
+
 // @public (undocumented)
 export type CreateCommentReplyInput = {
     author: string;
@@ -247,6 +250,24 @@ export type FolioApplyOperationsOptions = {
 };
 
 // @public
+export type FolioBlockDiff = {
+    type: "added";
+    blockId: string;
+    kind: string;
+    text: string;
+} | {
+    type: "deleted";
+    blockId: string;
+    kind: string;
+    text: string;
+} | {
+    type: "modified";
+    blockId: string;
+    kind: string;
+    segments: FolioVersionDiffSegment[];
+};
+
+// @public
 export type FolioBlockId = string & {
     readonly __brand: "folio.blockId";
 };
@@ -409,6 +430,20 @@ export type FolioReviewReplyInput = {
     author?: string;
     initials?: string;
 };
+
+// @public
+export type FolioVersionDiff = {
+    changes: FolioBlockDiff[]; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. */
+    summaryCounts: {
+        added: number;
+        deleted: number;
+        modified: number;
+        unchanged: number;
+    };
+};
+
+// @public
+export type FolioVersionDiffSegment = WordDiffSegment;
 
 // @public (undocumented)
 export const getFolioDocumentOperationCapabilities: () => FolioDocumentOperationCapabilities;

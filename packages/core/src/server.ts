@@ -48,6 +48,12 @@ export {
   type FolioReviewCommentReply,
   type FolioReviewReplyInput,
 } from "./ai-edits/headless";
+export {
+  compareDocxVersions,
+  type FolioBlockDiff,
+  type FolioVersionDiff,
+  type FolioVersionDiffSegment,
+} from "./version-comparison";
 export type {
   FolioAIComment,
   FolioAIEditApplyMode,
