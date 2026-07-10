@@ -269,6 +269,16 @@ describe("parseParagraph rendered page break markers", () => {
     expect(cachedNextPage.renderedPageBreakBefore).toBe(true);
   });
 
+  test("keeps a real rendered-page hint that precedes a hard break", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:r><w:lastRenderedPageBreak/><w:br w:type="page"/></w:r>
+      </w:p>
+    `);
+
+    expect(paragraph.renderedPageBreakBefore).toBe(true);
+  });
+
   test("does not mark a paragraph when rendered page break follows visible text", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

@@ -851,7 +851,7 @@ function paragraphStartsWithRenderedPageBreak(node: XmlElement): boolean {
     // A hard break is structural content, not Word's cached pagination metadata.
     // Treating it as both makes a following w:lastRenderedPageBreak advance the
     // advisory page target twice.
-    return false;
+    return sawRenderedPageBreak;
   }
   return outcome === "visible" && sawRenderedPageBreak;
 }
