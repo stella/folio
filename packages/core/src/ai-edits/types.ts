@@ -146,6 +146,7 @@ export type FolioAIEditSkipReason =
   | "missingFind"
   | "unsupportedBlock"
   | "unsupportedMode"
+  | "atomicBatchRejected"
   | "preconditionFailed"
   | "emptyOperation"
   /**

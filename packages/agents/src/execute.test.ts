@@ -281,6 +281,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         receivedPrecondition = batch.operations.at(0)?.precondition;
         return {
           version: batch.version,
+          status: "committed" as const,
           applied: [],
           skipped: [{ id: "custom-1", reason: "preconditionFailed" as const }],
         };
@@ -320,6 +321,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         batch: Parameters<typeof reviewerBridge.applyDocumentOperations>[0],
       ) => ({
         version: batch.version,
+        status: "committed" as const,
         applied: [],
         skipped: batch.operations.map(({ id }) => ({ id, reason: "unsupportedMode" as const })),
       }),

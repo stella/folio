@@ -171,9 +171,81 @@ describe("headless docx review round-trip", () => {
     });
 
     expect(result.version).toBe(1);
+    expect(result.status).toBe("committed");
     expect(result.applied.map(({ id }) => id)).toEqual(["v1"]);
     expect(result.skipped).toEqual([]);
     expect(await partText(await reviewer.toBuffer(), "word/document.xml")).toContain("<w:ins ");
+  });
+
+  test("atomic batches reject every operation without document or comment changes", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    const contentBefore = reviewer.getContentAsText();
+
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      atomic: true,
+      mode: "direct",
+      operations: [
+        {
+          id: "valid",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+          comment: { text: "Review this change." },
+        },
+        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+      ],
+    });
+
+    expect(result).toEqual({
+      version: 1,
+      status: "rejected",
+      applied: [],
+      skipped: [
+        { id: "valid", reason: "atomicBatchRejected" },
+        { id: "missing", reason: "missingBlock" },
+      ],
+    });
+    expect(reviewer.getContentAsText()).toBe(contentBefore);
+    expect(reviewer.getComments()).toEqual([]);
+  });
+
+  test("atomic batches commit all operations after a successful preflight", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      atomic: true,
+      mode: "direct",
+      operations: [
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Heading",
+          replace: "Intro",
+          comment: { text: "Review this change." },
+        },
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: target.id,
+          text: "New clause.",
+        },
+      ],
+    });
+
+    expect(result.status).toBe("committed");
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["insert", "replace"]);
+    expect(result.skipped).toEqual([]);
+    expect(reviewer.getContentAsText()).toContain("Intro paragraph.");
+    expect(reviewer.getContentAsText()).toContain("New clause.");
+    expect(reviewer.getComments()).toHaveLength(1);
   });
 
   test("insertAfterBlock (direct) adds a sibling paragraph, no tracked marks", async () => {

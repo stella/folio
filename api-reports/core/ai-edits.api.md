@@ -37,6 +37,9 @@ export const createFolioAIEditSnapshot: (doc: Node_2) => FolioAIEditSnapshot;
 export const diffWordSegments: (before: string, after: string) => WordDiffSegment[];
 
 // @public (undocumented)
+export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES: readonly ["best-effort", "atomic"];
+
+// @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION: 1;
 
 // @public (undocumented)
@@ -188,7 +191,7 @@ export type FolioAIEditSkippedOperation = {
 };
 
 // @public (undocumented)
-export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "preconditionFailed" | "emptyOperation"
+export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "emptyOperation"
 /**
 * The operation would not change the document — find equals
 * replace, or replaceBlock's `text` matches the live block.
@@ -230,6 +233,7 @@ export type FolioDocumentOperationBatch = {
     readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
     operations: FolioDocumentOperation[];
     mode?: FolioDocumentOperationMode;
+    atomic?: boolean;
 };
 
 // @public (undocumented)
@@ -238,6 +242,7 @@ export type FolioDocumentOperationCapabilities = {
     readonly operationTypes: typeof FOLIO_DOCUMENT_OPERATION_TYPES;
     readonly modes: typeof FOLIO_DOCUMENT_OPERATION_MODES;
     readonly modesByOperationType: typeof FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE;
+    readonly batchModes: typeof FOLIO_DOCUMENT_OPERATION_BATCH_MODES;
     readonly preconditions: typeof FOLIO_DOCUMENT_OPERATION_PRECONDITIONS;
     readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
@@ -251,9 +256,13 @@ export type FolioDocumentOperationPrecondition = FolioAIEditPrecondition;
 // @public (undocumented)
 export type FolioDocumentOperationResult = {
     version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    status: FolioDocumentOperationStatus;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
 };
+
+// @public (undocumented)
+export type FolioDocumentOperationStatus = "committed" | "rejected";
 
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];

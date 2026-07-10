@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   assertSupportedFolioDocumentOperationVersion,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
   FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
   FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   getFolioDocumentOperationCapabilities,
@@ -27,6 +28,7 @@ describe("document operation contract", () => {
         "insertSignatureTable",
       ],
       modes: ["direct", "tracked-changes"],
+      batchModes: ["best-effort", "atomic"],
       modesByOperationType: {
         replaceInBlock: ["direct", "tracked-changes"],
         insertAfterBlock: ["direct", "tracked-changes"],
@@ -54,6 +56,7 @@ describe("document operation contract", () => {
       getFolioDocumentOperationCapabilities().operationTypes,
     );
     expect(FOLIO_DOCUMENT_OPERATION_PRECONDITIONS).toEqual(["blockTextHash"]);
+    expect(FOLIO_DOCUMENT_OPERATION_BATCH_MODES).toEqual(["best-effort", "atomic"]);
   });
 
   test("checks untyped contract versions at a serialization boundary", () => {
@@ -73,6 +76,7 @@ describe("document operation contract", () => {
     const batch = {
       version: 1,
       mode: "tracked-changes",
+      atomic: true,
       operations: [
         {
           id: "1",
@@ -112,6 +116,18 @@ describe("document operation contract", () => {
     [null, "$", "expected an object"],
     [{ version: 1 }, "$.operations", "expected an array"],
     [{ version: 1, operations: [], mode: "review" }, "$.mode", "expected"],
+    [{ version: 1, operations: [], atomic: "yes" }, "$.atomic", "expected a boolean"],
+    [
+      {
+        version: 1,
+        operations: [
+          { id: "duplicate", type: "deleteBlock", blockId: "a" },
+          { id: "duplicate", type: "deleteBlock", blockId: "b" },
+        ],
+      },
+      "$.operations[1].id",
+      "expected a unique operation id",
+    ],
     [
       {
         version: 1,
