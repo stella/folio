@@ -371,8 +371,8 @@ export const isTextWrappingFloatingImageRun: (run: ImageRun) => boolean;
 
 // @public
 export type KeepNextChain = {
-    startIndex: number; /** Index of the last paragraph in the chain. */
-    endIndex: number; /** All paragraph indices in the chain. */
+    startIndex: number; /** Index of the last keepNext or pass-through empty member. */
+    endIndex: number; /** All keepNext and pass-through empty paragraph indices in the chain. */
     memberIndices: number[]; /** Index of the anchor paragraph (first non-keepNext after chain), or -1 if none. */
     anchorIndex: number;
 };
