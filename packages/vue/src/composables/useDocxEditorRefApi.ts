@@ -37,9 +37,10 @@ import {
   assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-  type FolioDocumentOperationStatus,
   getCommentAnchorsFromDoc,
+  getFolioDocumentOperationIssues,
   getTrackedChangesFromDoc,
+  type FolioDocumentOperationStatus,
 } from "@stll/folio-core/ai-edits";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
@@ -309,14 +310,16 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         } else if (batch.atomic === true) {
           status = "rejected";
         }
+        const skipped = batch.operations.map((operation) => ({
+          id: operation.id,
+          reason: "unsupportedBlock" as const,
+        }));
         return {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           status,
           applied: [],
-          skipped: batch.operations.map((operation) => ({
-            id: operation.id,
-            reason: "unsupportedBlock",
-          })),
+          skipped,
+          issues: getFolioDocumentOperationIssues(batch.operations, skipped),
         };
       }
       return applyFolioDocumentOperations({
