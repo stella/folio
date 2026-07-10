@@ -1137,6 +1137,9 @@ export function measureParagraph(
       const contentX = indentLeft + (isFirstLine ? firstLineOffset + markerInlineWidth : 0) + lineX;
       const tabContext: TabContext = {
         ...(attrs?.tabs !== undefined ? { explicitStops: attrs.tabs } : {}),
+        ...(attrs?.defaultTabStopTwips !== undefined
+          ? { defaultTabInterval: attrs.defaultTabStopTwips }
+          : {}),
         leftIndent: pixelsToTwips(indentLeft),
       };
       const tabResult = calculateTabWidth(contentX, tabContext, {

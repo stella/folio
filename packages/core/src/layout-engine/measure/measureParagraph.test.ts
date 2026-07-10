@@ -581,6 +581,33 @@ describe("measureParagraph justified shrink tolerance", () => {
   });
 });
 
+describe("measureParagraph document default tab interval", () => {
+  test("advances consecutive tabs on the authored grid", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "authored-default-tabs",
+            runs: [
+              { kind: "text", text: "a".repeat(41) },
+              { kind: "tab" },
+              { kind: "tab" },
+              { kind: "text", text: "x" },
+            ],
+            attrs: { defaultTabStopTwips: 600 },
+          },
+          200,
+        );
+
+        expect(measure.lines).toHaveLength(1);
+        expect(measure.lines[0]?.width).toBe(121);
+      },
+      { charWidth: () => 1 },
+    );
+  });
+});
+
 describe("inline image paragraph measurement", () => {
   test("image-only line reserves descender room above and below image", () => {
     const imageHeight = 29;

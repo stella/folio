@@ -1765,6 +1765,9 @@ export function renderLine(
 
     tabContext = {
       ...(explicitStops !== undefined ? { explicitStops } : {}),
+      ...(block.attrs?.defaultTabStopTwips !== undefined
+        ? { defaultTabInterval: block.attrs.defaultTabStopTwips }
+        : {}),
       leftIndent: leftIndentTwips,
     };
   }

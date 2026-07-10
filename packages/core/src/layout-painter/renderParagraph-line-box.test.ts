@@ -55,6 +55,10 @@ function findTabEl(lineEl: FakeElement): FakeElement | undefined {
   return lineEl.children.find((child) => child.className.includes("layout-run-tab"));
 }
 
+function findTabEls(lineEl: FakeElement): FakeElement[] {
+  return lineEl.children.filter((child) => child.className.includes("layout-run-tab"));
+}
+
 describe("renderLine box model", () => {
   test("uses content-box and visible overflow so highlighted text is not clipped", () => {
     const block: ParagraphBlock = {
@@ -123,6 +127,43 @@ describe("renderLine box model", () => {
     expect(tabEl).toBeDefined();
     expect(tabEl?.style["borderBottom"]).toBe("1px solid currentColor");
     expect(tabEl?.style["textDecorationLine"]).toBe("");
+  });
+
+  test("paints consecutive tabs on the document default grid", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "authored-default-tabs",
+      runs: [
+        { kind: "text", text: "1234567" },
+        { kind: "tab" },
+        { kind: "tab" },
+        { kind: "text", text: "x" },
+      ],
+      attrs: { defaultTabStopTwips: 600 },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 3,
+      toChar: 1,
+      width: 127,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 200,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+
+    const tabs = findTabEls(lineEl);
+    expect(tabs).toHaveLength(2);
+    expect(tabs[0]?.style["width"]).toBe("31px");
+    expect(tabs[1]?.style["width"]).toBe("40px");
   });
 
   test("does not underline raised footnote reference markers", () => {
