@@ -547,6 +547,28 @@ describe("Layout Engine - Page Production", () => {
       expect(headingPage).toBe(1);
       expect(bodyPage).toBe(headingPage);
     });
+
+    test("moves an oversized keepNext chain before paginating it naturally", () => {
+      const blocks: FlowBlock[] = [makeParagraphBlock(0, "Filler", 0)];
+      const measures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 6, 80, 400)])];
+
+      for (let id = 1; id <= 6; id++) {
+        blocks.push(makeParagraphBlock(id, `Chain ${id}`, id * 10, { keepNext: id < 6 }));
+        measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 7, 80, 200)]));
+      }
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+      const chainStartPage = layout.pages.findIndex((page) =>
+        page.fragments.some(({ blockId }) => blockId === 1),
+      );
+
+      expect(chainStartPage).toBe(1);
+      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0]);
+      const chainPageCount = layout.pages.filter((page) =>
+        page.fragments.some(({ blockId }) => blockId !== 0),
+      ).length;
+      expect(chainPageCount).toBeGreaterThan(1);
+    });
   });
 
   describe("margin and positioning", () => {

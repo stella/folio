@@ -340,21 +340,7 @@ export function layoutDocument(
     const chain = keepNextChains.get(i);
     if (chain && !midChainIndices.has(i)) {
       const chainHeight = calculateChainHeight(chain, blocks, measures);
-      const state = paginator.getCurrentState();
-      const availableHeight = paginator.getAvailableHeight();
-      const pageContentHeight = state.contentBottom - state.topMargin;
-
-      // Only move to new page if:
-      // 1. Chain fits on a blank page (avoid infinite loop for oversized chains)
-      // 2. Chain doesn't fit in current available space
-      // 3. Current page already has content
-      if (
-        chainHeight <= pageContentHeight &&
-        chainHeight > availableHeight &&
-        state.page.fragments.length > 0
-      ) {
-        paginator.forcePageBreak();
-      }
+      paginator.ensureFits(chainHeight);
     }
 
     switch (block.kind) {
