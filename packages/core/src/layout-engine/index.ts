@@ -352,7 +352,7 @@ export function layoutDocument(
         paginator.forcePageBreak();
       }
     }
-    if (hasRenderedPageBreak) {
+    if (hasRenderedPageBreak || hasPageBreakBefore(block)) {
       naturalPageAdvanceSinceRenderedBreak = false;
     }
 
@@ -437,7 +437,14 @@ export function layoutDocument(
         : block.kind !== "pageBreak" &&
           block.kind !== "columnBreak" &&
           block.kind !== "sectionBreak";
-    if (isVisibleBodyBlock && paginator.getCurrentState().page.number > pageBeforeBlockLayout) {
+    const isStructuralBreak =
+      block.kind === "pageBreak" || block.kind === "columnBreak" || block.kind === "sectionBreak";
+    if (isStructuralBreak) {
+      naturalPageAdvanceSinceRenderedBreak = false;
+    } else if (
+      isVisibleBodyBlock &&
+      paginator.getCurrentState().page.number > pageBeforeBlockLayout
+    ) {
       naturalPageAdvanceSinceRenderedBreak = true;
     }
   }
