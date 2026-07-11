@@ -123,7 +123,7 @@ const candidatesFor = (lines: LineBox[], text: string, limit: number): Candidate
     })
     .toSorted((a, b) => b.similarity - a.similarity || a.lineIndex - b.lineIndex)
     .slice(0, limit)
-    .map((candidate, index) => ({ ...candidate, rank: index + 1 }));
+    .map((candidate, index) => Object.assign({}, candidate, { rank: index + 1 }));
 };
 
 const round = (value: number | undefined): number | undefined =>

@@ -407,6 +407,7 @@ function areActiveTrackedChangesEqual(
 /**
  * DocxEditor - Complete DOCX editor component
  */
+/* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools without reindenting this large component. */
 export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function DocxEditor(
   {
     documentBuffer,
@@ -3962,7 +3963,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                     <div
                       ref={editorContentRef}
                       style={{ position: "relative", flex: 1, minWidth: 0 }}
-                      onMouseDown={containedHandler(editorContentRef, (e) => {
+                      onMouseDown={containedHandler((e: React.MouseEvent) => {
                         // Focus editor when clicking on the background area (not the editor itself)
                         // Using mouseDown for immediate response before focus can be lost
                         if (e.target === e.currentTarget) {
@@ -4291,6 +4292,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     </FolioUIProvider>
   );
 });
+/* eslint-enable prefer-arrow-callback */
 
 type MenuCheckboxItemComponent = typeof DEFAULT_COMPONENTS.Menu.CheckboxItem;
 

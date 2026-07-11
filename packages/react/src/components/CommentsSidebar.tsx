@@ -832,15 +832,6 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     const isExpanded = expandedCard === cardId;
     const isActive = activeCommentId === comment.id;
     const yPos = cardPositions.get(cardId) ?? lastKnownCardPositionsRef.current.get(cardId);
-    // Map-tracked refs can't be passed to `containedHandler` directly,
-    // so wrap the Map lookup in a thin getter that satisfies the
-    // RefObject shape and stays current as cards mount/unmount.
-    const cardRef: React.RefObject<HTMLDivElement | null> = {
-      get current() {
-        return cardRefs.current.get(cardId) ?? null;
-      },
-    };
-
     return (
       // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- card is a clickable container with nested buttons/input; role="button" would be invalid, keyboard handler provides Enter/Space access
       <div
@@ -854,13 +845,13 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
         }}
         data-comment-id={comment.id}
         className="docx-comment-card"
-        onClick={containedHandler(cardRef, () => handleCardClick(cardId, comment.id))}
+        onClick={containedHandler(() => handleCardClick(cardId, comment.id))}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             handleCardClick(cardId, comment.id);
           }
         }}
-        onMouseDown={containedHandler(cardRef, (e) => e.stopPropagation())}
+        onMouseDown={containedHandler((e: React.MouseEvent) => e.stopPropagation())}
         style={{
           ...cardContainerStyle(cardId, isExpanded, yPos),
           opacity: comment.done ? 0.6 : 1,
@@ -1016,7 +1007,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
         pointerEvents: initialPositionsDone || cardPositions.size > 0 ? "auto" : "none",
         transition: "opacity 0.15s ease",
       }}
-      onMouseDown={containedHandler(sidebarRef, (e) => e.stopPropagation())}
+      onMouseDown={containedHandler((e: React.MouseEvent) => e.stopPropagation())}
     >
       {/* Cards container — relative for absolute card positioning */}
       <div style={{ position: "relative" }}>

@@ -100,6 +100,7 @@ const labelStyle: CSSProperties = {
 // COMPONENT
 // ============================================================================
 
+/* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools without reindenting the implementation. */
 export const InlineHeaderFooterEditor = forwardRef<
   InlineHeaderFooterEditorRef,
   InlineHeaderFooterEditorProps
@@ -298,6 +299,7 @@ export const InlineHeaderFooterEditor = forwardRef<
     </div>
   );
 });
+/* eslint-enable prefer-arrow-callback */
 
 // ============================================================================
 // OPTIONS MENU SUB-COMPONENT

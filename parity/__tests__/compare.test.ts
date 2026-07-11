@@ -172,7 +172,11 @@ describe("compareGeoms", () => {
     const word = makeDoc("word", pages);
     const folio = makeDoc(
       "folio",
-      pages.map((p) => ({ ...p, lines: p.lines.map((l) => ({ ...l })) })),
+      pages.map((page) =>
+        Object.assign({}, page, {
+          lines: page.lines.map((line) => Object.assign({}, line)),
+        }),
+      ),
     );
 
     const result = compareGeoms(word, folio);

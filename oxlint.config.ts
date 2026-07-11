@@ -56,6 +56,9 @@ export default library({
     "unicorn/no-hex-escape": "off",
     "unicorn/number-literal-case": "off",
     "unicorn/prefer-response-static-json": "off",
+    // The shared config enables compiler analysis globally, including for Vue.
+    // Folio does not currently run the React Compiler in any package build.
+    "react/react-compiler": "off",
   },
   jsPlugins: [
     "./.oxlint-plugins/folio-layer-boundaries.ts",

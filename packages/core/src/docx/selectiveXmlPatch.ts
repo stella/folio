@@ -85,11 +85,10 @@ export function findParagraphOffsets(
             // This IS our paragraph and it's self-closing
             return { start, end: tagEnd + 1 };
           }
-          pos = tagEnd + 1;
         } else {
           depth++;
-          pos = tagEnd + 1;
         }
+        pos = tagEnd + 1;
       } else {
         // It's something like <w:pPr — skip
         pos = tagStart + 1;
@@ -377,11 +376,10 @@ function scanElementRange(
         if (depth === 0) {
           return { start, end: tagEnd + 1 };
         }
-        pos = tagEnd + 1;
       } else {
         depth++;
-        pos = tagEnd + 1;
       }
+      pos = tagEnd + 1;
     } else if (xml.startsWith(closeTag, tagStart)) {
       depth--;
       if (depth === 0) {

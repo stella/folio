@@ -71,6 +71,7 @@ import { useTranslation } from "../i18n";
 const { t } = useTranslation();
 
 import type { ImageSelectionInfo } from "./imageSelectionTypes";
+
 export type { ImageSelectionInfo };
 
 /** Resize handle position; the resize math lives in core (shared with React). */
@@ -668,6 +669,7 @@ function commitDragMove(clientX: number, clientY: number) {
   const node = getImageNode(v, info.pmPos);
   if (!node) return;
 
+  let selectionPos: number | null;
   if (isFloatingImage(node)) {
     const viewport = overlayRootRef.value?.closest(".docx-editor-vue__pages-viewport");
     const pages = viewport?.querySelectorAll<HTMLElement>(".layout-page");
@@ -691,8 +693,7 @@ function commitDragMove(clientX: number, clientY: number) {
     const z = props.zoom;
     const hEmu = pixelsToEmu((clientX - contentRect.left) / z);
     const vEmu = pixelsToEmu((clientY - contentRect.top) / z);
-    const sel = commitImageFloatMove(v, info.pmPos, hEmu, vEmu);
-    if (sel !== null) reselectImage(sel);
+    selectionPos = commitImageFloatMove(v, info.pmPos, hEmu, vEmu);
   } else {
     // Map the drop point to a PM position via the *visible pages* hit-test —
     // the hidden ProseMirror lives off-screen, so `view.posAtCoords` would
@@ -701,9 +702,9 @@ function commitDragMove(clientX: number, clientY: number) {
     if (!pagesEl) return;
     const dropPos = clickToPositionDom(pagesEl, clientX, clientY, 1);
     if (dropPos == null || dropPos < 0) return;
-    const sel = commitImageInlineMove(v, info.pmPos, dropPos);
-    if (sel !== null) reselectImage(sel);
+    selectionPos = commitImageInlineMove(v, info.pmPos, dropPos);
   }
+  if (selectionPos !== null) reselectImage(selectionPos);
   nextTick(() => updatePosition());
 }
 

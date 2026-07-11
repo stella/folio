@@ -47,7 +47,7 @@ export function InsertSymbolDialog({ isOpen, onClose, onInsert }: InsertSymbolDi
   const activeSymbols: SymbolSearchEntry[] = search
     ? filterSymbols(search)
     : (SYMBOL_CATEGORIES.find((category) => category.name === activeCategory)?.symbols.map(
-        (symbol) => ({ ...symbol, category: activeCategory }),
+        (symbol) => Object.assign({}, symbol, { category: activeCategory }),
       ) ?? []);
 
   const insertSymbol = (symbol: string) => {

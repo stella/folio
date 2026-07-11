@@ -215,14 +215,15 @@ const main = async (): Promise<void> => {
         report: reportPath,
         total: rows.length,
         counts,
-        rows: selected.map((row) => ({
-          ...row,
-          inspectCommand:
-            row.page === undefined
-              ? undefined
-              : `bun parity/inspect.ts --doc ${shellQuote(row.doc)} --page ${row.page} --text ${shellQuote(row.queryText)} --max-pages ${row.page}`,
-          sourceTraceCommand: `bun parity/sourceTrace.ts --doc ${shellQuote(row.doc)} --text ${shellQuote(row.queryText)}`,
-        })),
+        rows: selected.map((row) =>
+          Object.assign({}, row, {
+            inspectCommand:
+              row.page === undefined
+                ? undefined
+                : `bun parity/inspect.ts --doc ${shellQuote(row.doc)} --page ${row.page} --text ${shellQuote(row.queryText)} --max-pages ${row.page}`,
+            sourceTraceCommand: `bun parity/sourceTrace.ts --doc ${shellQuote(row.doc)} --text ${shellQuote(row.queryText)}`,
+          }),
+        ),
       },
       null,
       2,

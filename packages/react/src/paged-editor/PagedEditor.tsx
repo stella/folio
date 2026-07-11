@@ -1644,6 +1644,7 @@ function buildFootnoteRenderItems(
  * PagedEditor - Main paginated editing component.
  */
 export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
+  // eslint-disable-next-line prefer-arrow-callback -- preserve the component name in React DevTools without reindenting this large component.
   function PagedEditor(props, ref) {
     const {
       document,
@@ -3556,20 +3557,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           cellDragContentEndRef.current = null;
           isCellDraggingRef.current = false;
           const view = hiddenPMRef.current?.getView();
+          let endPos: number;
           if (view) {
-            const endPos = Math.max(0, view.state.doc.content.size - 1);
+            endPos = Math.max(0, view.state.doc.content.size - 1);
             hiddenPMRef.current?.setSelection(endPos);
-            dragAnchorRef.current = endPos;
-            isDraggingRef.current = true;
           } else {
-            const docEnd = Math.max(
-              0,
-              (precomputedInitialStateRef.current?.doc.content.size ?? 1) - 1,
-            );
-            queueHiddenEditorSelection({ type: "text", anchor: docEnd });
-            dragAnchorRef.current = docEnd;
-            isDraggingRef.current = true;
+            endPos = Math.max(0, (precomputedInitialStateRef.current?.doc.content.size ?? 1) - 1);
+            queueHiddenEditorSelection({ type: "text", anchor: endPos });
           }
+          dragAnchorRef.current = endPos;
+          isDraggingRef.current = true;
         }
 
         focusHiddenEditor();
@@ -5162,18 +5159,19 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             }
 
             let tr = view.state.tr;
+            tr = tr.delete(pmPos, pmPos + node.nodeSize);
+            let selectionPos: number;
 
             if (dropPos <= pmPos) {
-              tr = tr.delete(pmPos, pmPos + node.nodeSize);
               tr = tr.insert(dropPos, node);
-              hiddenPMRef.current?.setNodeSelection(dropPos);
+              selectionPos = dropPos;
             } else {
-              tr = tr.delete(pmPos, pmPos + node.nodeSize);
               const adjusted = dropPos - node.nodeSize;
               tr = tr.insert(Math.min(adjusted, tr.doc.content.size), node);
-              hiddenPMRef.current?.setNodeSelection(Math.min(adjusted, tr.doc.content.size - 1));
+              selectionPos = Math.min(adjusted, tr.doc.content.size - 1);
             }
 
+            hiddenPMRef.current?.setNodeSelection(selectionPos);
             view.dispatch(tr);
           }
         } catch {
@@ -5663,20 +5661,21 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       void loadEmbeddedFontFaces(embeddedFontBuffer).then((faces) => {
         if (cancelled) {
           removeFontFaces(faces);
-          return;
+          return undefined;
         }
         registered = faces;
         if (faces.length === 0) {
-          return;
+          return undefined;
         }
         const view = hiddenPMRef.current?.getView();
         if (!view) {
-          return;
+          return undefined;
         }
         resetCanvasContext();
         clearAllCaches();
         runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
         updateSelectionOverlayRef.current(view.state);
+        return undefined;
       });
       return () => {
         cancelled = true;
@@ -5715,13 +5714,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       void loadHostFontFaces(hostFonts).then((faces) => {
         if (cancelled) {
           removeFontFaces(faces);
-          return;
+          return undefined;
         }
         registered = faces;
         if (faces.length === 0) {
-          return;
+          return undefined;
         }
         remeasureForFontChange();
+        return undefined;
       });
 
       return () => {
@@ -5997,10 +5997,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         tabIndex={0}
         role="textbox"
         aria-multiline
-        onFocus={containedHandler(containerRef, handleContainerFocus)}
+        onFocus={containedHandler(handleContainerFocus)}
         onBlur={handleContainerBlur}
         onKeyDown={handleKeyDown}
-        onMouseDown={containedHandler(containerRef, handleContainerMouseDown)}
+        onMouseDown={containedHandler(handleContainerMouseDown)}
       >
         {/* Persistent off-screen ProseMirror per HF rId — the painter reads
           from these views when a slot's view exists (see HF unification port,
@@ -6044,9 +6044,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               ref={pagesContainerRef}
               className={`${PAGES_CONTAINER_CLASS}${readOnly ? " paged-editor--readonly" : ""}${hfEditMode ? ` paged-editor--hf-editing paged-editor--editing-${hfEditMode}` : ""}`}
               style={pagesContainerStyles}
-              onMouseDown={containedHandler(pagesContainerRef, handlePagesMouseDown)}
+              onMouseDown={containedHandler(handlePagesMouseDown)}
               onMouseMove={handlePagesMouseMove}
-              onClick={containedHandler(pagesContainerRef, handlePagesClick)}
+              onClick={containedHandler(handlePagesClick)}
               onContextMenu={handlePagesContextMenu}
               aria-hidden="true" // Visual only, PM provides semantic content
             />

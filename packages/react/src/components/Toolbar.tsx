@@ -114,8 +114,8 @@ export function Toolbar({
       tabIndex={-1}
       data-testid="toolbar"
       data-folio-toolbar="true"
-      onMouseDown={containedHandler(toolbarRef, handleToolbarMouseDown)}
-      onMouseUp={containedHandler(toolbarRef, handleToolbarMouseUp)}
+      onMouseDown={containedHandler(handleToolbarMouseDown)}
+      onMouseUp={containedHandler(handleToolbarMouseUp)}
     >
       {/* Formatting icons — rendered inline (display:contents) */}
       <FormattingBar

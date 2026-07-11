@@ -305,16 +305,14 @@ const tableSpec: NodeSpec = {
 
     if (attrs.width !== undefined && attrs.widthType === "pct") {
       styles.push(`width: ${attrs.width / 50}%`);
-      styles.push("table-layout: fixed");
     } else if (attrs.width !== undefined && attrs.widthType === "dxa") {
       const widthPx = Math.round((attrs.width / 20) * 1.333);
       styles.push(`width: ${widthPx}px`);
-      styles.push("table-layout: fixed");
     } else {
       // Default: fill available width so tables aren't collapsed to content
       styles.push("width: 100%");
-      styles.push("table-layout: fixed");
     }
+    styles.push("table-layout: fixed");
 
     if (attrs.justification === "center") {
       styles.push("margin-left: auto", "margin-right: auto");

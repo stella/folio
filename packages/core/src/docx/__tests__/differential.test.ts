@@ -39,9 +39,9 @@ const FIXTURE_DIRS = [
   path.resolve(import.meta.dir, "../../../../../tests/visual/fixtures"),
 ];
 
-const fixtures = FIXTURE_DIRS.flatMap((dir) => [
-  ...new Glob("**/*.docx").scanSync({ cwd: dir, absolute: true }),
-]).sort();
+const fixtures = FIXTURE_DIRS.flatMap((dir) =>
+  Array.from(new Glob("**/*.docx").scanSync({ cwd: dir, absolute: true })),
+).sort();
 
 const referenceAvailability: Record<DifferentialReference, () => boolean> = {
   "python-docx": isPythonDocxAvailable,

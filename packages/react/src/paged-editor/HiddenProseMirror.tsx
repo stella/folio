@@ -195,7 +195,7 @@ const HIDDEN_HOST_STYLES: CSSProperties = {
  * HiddenProseMirror - Off-screen ProseMirror editor for keyboard input
  */
 export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMirrorProps>(
-  function HiddenProseMirror(props, ref) {
+  (props, ref) => {
     const {
       document,
       documentKey,

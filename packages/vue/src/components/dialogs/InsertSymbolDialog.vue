@@ -118,7 +118,7 @@ const displayedSymbols = computed<SymbolSearchEntry[]>(() => {
     return filterSymbols(search.value);
   }
   const cat = categories.find((c) => c.name === activeCategory.value);
-  return cat ? cat.symbols.map((s) => ({ ...s, category: cat.name })) : [];
+  return cat ? cat.symbols.map((symbol) => Object.assign({}, symbol, { category: cat.name })) : [];
 });
 
 watch(

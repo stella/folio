@@ -80,10 +80,11 @@ export const pasteWithoutFormatting: Command = (state, dispatch, view) => {
       // The clipboard read is async: the editor may have been torn down while
       // it was in flight, so re-check before dispatching against a dead view.
       if (!text || view.isDestroyed) {
-        return;
+        return undefined;
       }
       const slice = buildPlainTextSlice(text, schema);
       view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+      return undefined;
     })
     .catch((error: unknown) => {
       // Surface the failure to the shell instead of swallowing it; guard the
@@ -93,6 +94,7 @@ export const pasteWithoutFormatting: Command = (state, dispatch, view) => {
           new CustomEvent(CLIPBOARD_READ_ERROR_EVENT, { detail: { error }, bubbles: true }),
         );
       }
+      return undefined;
     });
 
   return true;

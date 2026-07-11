@@ -1,8 +1,6 @@
-import type * as React from "react";
-
 /**
  * Wrap a React event handler so it only fires when the event target
- * is a DOM descendant of the given ref.
+ * is a DOM descendant of the element handling the event.
  *
  * React forwards synthetic events through the parent React tree even
  * when descendants are rendered via createPortal. That makes it unsafe
@@ -23,11 +21,9 @@ import type * as React from "react";
  * element carrying both `ref={…}` and one of the watched handler props.
  *
  * @example
- *   const barRef = useRef<HTMLDivElement>(null);
  *   return (
  *     <div
- *       ref={barRef}
- *       onMouseDown={containedHandler(barRef, (e) => {
+ *       onMouseDown={containedHandler((e) => {
  *         e.preventDefault();
  *         focusEditor();
  *       })}
@@ -37,16 +33,14 @@ import type * as React from "react";
  *   );
  */
 export const containedHandler =
-  <E extends { target: unknown }>(
-    ref: React.RefObject<HTMLElement | null> | null | undefined,
+  <E extends { currentTarget: EventTarget & Element; target: unknown }>(
     handler: ((event: E) => void) | undefined,
   ) =>
   (event: E): void => {
     if (handler === undefined) {
       return;
     }
-    const container = ref?.current ?? null;
-    if (container !== null && event.target instanceof Node && !container.contains(event.target)) {
+    if (event.target instanceof Node && !event.currentTarget.contains(event.target)) {
       return;
     }
     handler(event);
