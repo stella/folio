@@ -8,7 +8,7 @@ import { isCjkCodePoint } from "../../utils/scriptSegments";
 export function findWordBreaks(text: string): number[] {
   const breaks: number[] = [];
 
-  for (let index = 0; index < text.length; ) {
+  for (let index = 0; index < text.length;) {
     const codePoint = text.codePointAt(index);
     if (codePoint === undefined) {
       break;
