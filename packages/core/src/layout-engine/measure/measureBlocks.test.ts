@@ -207,6 +207,112 @@ describe("measureTableBlock row height", () => {
     }, fakeMeasure);
   });
 
+  test("adds horizontal cell borders on top of an atLeast/auto minimum height", () => {
+    withFakeTextMeasure(() => {
+      // A short single-line cell whose content is well under an explicit
+      // (atLeast) row height, but which carries a horizontal border. Word treats
+      // the explicit height as the minimum of the cell content+padding region;
+      // the border sits on the grid line and adds on top. So the row must be
+      // taller than the explicit height by the border thickness — the border
+      // must not be absorbed by `max(content + border, explicit)`.
+      const border = 6;
+      const tallMinHeight = 400;
+      const build = (rule: "atLeast" | undefined): TableBlock => ({
+        kind: "table",
+        id: "t",
+        columnWidths: [120],
+        rows: [
+          {
+            id: "r0",
+            height: tallMinHeight,
+            ...(rule ? { heightRule: rule } : {}),
+            cells: [
+              {
+                id: "a",
+                blocks: [para("a1", "One line")],
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                // First row: top+bottom both collapse in, so 2 * border.
+                borders: { top: { width: border }, bottom: { width: border } },
+              },
+            ],
+          },
+        ],
+      });
+
+      for (const rule of ["atLeast", undefined] as const) {
+        const measure = measureTableBlock(build(rule), 120);
+        const contentHeight = measure.rows[0]?.cells[0]?.height ?? 0;
+        expect(contentHeight).toBeLessThan(tallMinHeight); // content is the shorter term
+        // Border (2 * 6 on the first row) added on top of the minimum height.
+        expect(measure.rows[0]?.height).toBe(tallMinHeight + 2 * border);
+        expect(measure.rows[0]?.height).toBeGreaterThan(tallMinHeight);
+      }
+    }, fakeMeasure);
+  });
+
+  test("does not double-count borders when content already exceeds the minimum height", () => {
+    withFakeTextMeasure(() => {
+      // Guard against over-correction: when content+border already exceeds the
+      // explicit minimum, the row is content+border (the border is not added a
+      // second time), matching the no-explicit-height case.
+      const border = 4;
+      const cell = () => ({
+        id: "a",
+        blocks: [para("a1", "One line")],
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+        borders: { top: { width: border }, bottom: { width: border } },
+      });
+      const withMin: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [120],
+        rows: [{ id: "r0", height: 1, heightRule: "atLeast", cells: [cell()] }],
+      };
+      const noMin: TableBlock = {
+        kind: "table",
+        id: "t2",
+        columnWidths: [120],
+        rows: [{ id: "r0", cells: [cell()] }],
+      };
+
+      const withMinHeight = measureTableBlock(withMin, 120).rows[0]?.height ?? 0;
+      const noMinHeight = measureTableBlock(noMin, 120).rows[0]?.height ?? 0;
+      const contentHeight = measureTableBlock(noMin, 120).rows[0]?.cells[0]?.height ?? 0;
+
+      expect(withMinHeight).toBe(contentHeight + 2 * border);
+      expect(withMinHeight).toBe(noMinHeight);
+    }, fakeMeasure);
+  });
+
+  test("exact height rule stays exact and ignores cell borders", () => {
+    withFakeTextMeasure(() => {
+      // `hRule=exact` fixes the whole row height; borders do not extend it.
+      const exactHeight = 300;
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [120],
+        rows: [
+          {
+            id: "r0",
+            height: exactHeight,
+            heightRule: "exact",
+            cells: [
+              {
+                id: "a",
+                blocks: [para("a1", "One line")],
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                borders: { top: { width: 8 }, bottom: { width: 8 } },
+              },
+            ],
+          },
+        ],
+      };
+
+      expect(measureTableBlock(table, 120).rows[0]?.height).toBe(exactHeight);
+    }, fakeMeasure);
+  });
+
   test("hidden rows remain addressable but contribute zero height", () => {
     withFakeTextMeasure(() => {
       const table: TableBlock = {
