@@ -82,6 +82,11 @@
   "devDependencies": {
     "@tailwindcss/cli": "4.3.1",
     "@vitejs/plugin-vue": "^6.0.7",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-model": "^1.25.10",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-tables": "^1.8.5",
+    "prosemirror-view": "^1.42.0",
     "tailwindcss": "4.3.1",
     "vite": "8.0.16",
     "vite-plugin-dts": "^5.0.3",
