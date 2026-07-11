@@ -57,7 +57,9 @@ export default library({
     "unicorn/number-literal-case": "off",
     "unicorn/prefer-response-static-json": "off",
     // The shared config enables compiler analysis globally, including for Vue.
-    // Folio does not currently run the React Compiler in any package build.
+    // The React package runs the real compiler and ratchets its intentional
+    // bailouts in scripts/react-compiler-bailouts.json; this rule cannot model
+    // that gradual baseline and would turn every known bailout into an error.
     "react/react-compiler": "off",
   },
   jsPlugins: [

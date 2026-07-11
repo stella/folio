@@ -60,6 +60,11 @@ jobs:
       - name: Adapter export parity (React <-> Vue public exports)
         run: bun run check:export-parity
 
+      - name: React Compiler bailout guard
+        # The compiler skips some imperative ProseMirror/ref-heavy components.
+        # Guard their manual memoization so a cleanup cannot create render loops.
+        run: bun run check:react-compiler
+
       - name: Typecheck
         run: bun run typecheck
 

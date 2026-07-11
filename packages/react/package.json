@@ -63,6 +63,7 @@
     "prosemirror-state": "^1.4.4",
     "prosemirror-tables": "^1.8.5",
     "prosemirror-view": "^1.41.8",
+    "react-compiler-runtime": "^1.0.0",
     "yjs": "^13.6.31"
   },
   "devDependencies": {
