@@ -627,6 +627,29 @@ describe("toFlowBlocks table cell formatting", () => {
     expect(row.cells.at(0)?.noWrap).toBe(true);
     expect(row.cells.at(1)?.noWrap).toBeUndefined();
   });
+
+  test("suppresses a trailing empty paragraph after real cell content", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [schema.text("content")]),
+            schema.node("paragraph"),
+          ]),
+          schema.node("tableCell", null, [schema.node("paragraph")]),
+        ]),
+      ]),
+    ]);
+
+    const table = toFlowBlocks(doc).at(0);
+    if (table?.kind !== "table") {
+      throw new Error("Expected table block");
+    }
+
+    const cells = table.rows.at(0)?.cells;
+    expect(cells?.at(0)?.blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBe(true);
+    expect(cells?.at(1)?.blocks.at(0)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+  });
 });
 
 describe("toFlowBlocks list numbering", () => {

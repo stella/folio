@@ -1953,6 +1953,19 @@ function convertTableCell(
     offset += child.nodeSize;
   });
 
+  // A structurally empty paragraph appended after real cell content is the
+  // cell-end marker in Word's layout model, not another visible blank line.
+  // Keep the paragraph as a zero-height anchor for editing/positions. A cell
+  // whose only paragraph is empty still needs Word's normal empty-line floor.
+  const trailingBlock = blocks.at(-1);
+  if (
+    blocks.length > 1 &&
+    trailingBlock?.kind === "paragraph" &&
+    trailingBlock.runs.every((run) => run.kind === "text" && run.text.length === 0)
+  ) {
+    trailingBlock.attrs = { ...trailingBlock.attrs, suppressEmptyParagraphHeight: true };
+  }
+
   const attrs = expectTableCellAttrs(node);
 
   // Convert cell margins (twips) to pixel padding
