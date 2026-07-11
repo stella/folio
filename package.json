@@ -71,7 +71,7 @@
     "@types/react-dom": "^19.2.3",
     "@typescript/native": "npm:typescript@7.0.2",
     "better-result": "2.9.2",
-    "fast-check": "^4.8.0",
+    "fast-check": "^4.9.0",
     "jszip": "3.10.1",
     "lightningcss": "1.32.0",
     "mammoth": "^1.12.0",
@@ -83,11 +83,14 @@
     "tinybench": "^6.0.2",
     "tsdown": "0.22.3",
     "typescript": "6.0.3",
-    "use-intl": "^4.13.0"
+    "use-intl": "^4.13.2"
   },
   "packageManager": "bun@1.3.14",
   "overrides": {
     "prosemirror-model": "1.25.10",
     "prosemirror-view": "1.42.0"
+  },
+  "dependencies": {
+    "vue-tsc": "^3.3.7"
   }
 }
