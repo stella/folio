@@ -24,6 +24,7 @@ import type {
   ParagraphMeasure,
   ParagraphFragment,
 } from "../layout-engine/types";
+import { tableColumnsArePinned } from "../layout-engine/types";
 import { getAutomaticTextColorForBackground } from "./documentColors";
 import { renderParagraphFragment } from "./renderParagraph";
 import type { RenderContext } from "./renderUtils";
@@ -232,6 +233,7 @@ function renderNestedTable(
   const spanningCells = new Map<string, SpanningCell>();
 
   // Render all rows
+  const columnsPinned = tableColumnsArePinned(block);
   let y = 0;
   for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
     const row = block.rows[rowIndex];
@@ -258,6 +260,7 @@ function renderNestedTable(
       rowYPositions,
       undefined,
       block.bidi,
+      columnsPinned,
     );
     tableEl.append(rowEl);
     y += rowMeasure.height;
@@ -306,6 +309,7 @@ function renderTableCell(
     isFirstCol: boolean;
     isLastCol: boolean;
   },
+  columnsPinned: boolean,
   context: RenderContext,
   doc: Document,
 ): HTMLElement {
@@ -355,14 +359,15 @@ function renderTableCell(
     }
   }
 
-  // `w:noWrap` (§17.4.30): forbid soft-wrapping inside the cell. The
-  // measurement phase already collapses noWrap cell paragraphs to a single
-  // MeasuredLine (see NO_WRAP_MEASURE_WIDTH in PagedEditor.tsx), so each cell
-  // paints as one row. This style is the inline-content guard: it prevents
-  // the browser from re-wrapping inside a single line div if the painted
-  // content would overflow (e.g., user zoom, font fallback widening).
-  // eigenpal #424 (cell noWrap).
-  if (cell.noWrap) {
+  // `w:noWrap` (§17.4.30): forbid soft-wrapping inside the cell. This applies
+  // only when the columns can grow to honor it (auto-width table); measurement
+  // then collapses the cell to a single MeasuredLine (see NO_WRAP_MEASURE_WIDTH)
+  // and this style is the inline-content guard that stops the browser from
+  // re-wrapping the single line div (e.g. user zoom, font fallback widening).
+  // When the columns are pinned Word cannot honor `w:noWrap`, so measurement
+  // wrapped the cell; emitting `nowrap` here would collapse those lines and
+  // desync the painted height from the measured height. eigenpal #424.
+  if (cell.noWrap && !columnsPinned) {
     cellEl.style.whiteSpace = "nowrap";
   }
 
@@ -436,6 +441,7 @@ function renderTableRow(
   rowYPositions?: number[],
   isFirstRowInFragment?: boolean,
   bidi = false,
+  columnsPinned = false,
 ): HTMLElement {
   const rowEl = doc.createElement("div");
   rowEl.className = TABLE_CLASS_NAMES.row;
@@ -525,6 +531,7 @@ function renderTableRow(
       cellLeft,
       cellHeight,
       { isFirstRow, isLastRow, isFirstCol, isLastCol },
+      columnsPinned,
       context,
       doc,
     );
@@ -652,6 +659,7 @@ export function renderTableFragment(
 
   // Track spanning cells across rows
   const spanningCells = new Map<string, SpanningCell>();
+  const columnsPinned = tableColumnsArePinned(block);
 
   // Render repeated header rows for continuation fragments. For a mid-content
   // row break (eigenpal #698), keep repeated headers pinned to the fragment top
@@ -683,6 +691,7 @@ export function renderTableFragment(
         rowYPositions,
         hdrIdx === 0, // first header row draws top border
         block.bidi,
+        columnsPinned,
       );
       rowEl.dataset["repeatedHeader"] = "true";
       tableEl.append(rowEl);
@@ -739,6 +748,7 @@ export function renderTableFragment(
       rowYPositions,
       isFirstRowInFragment,
       block.bidi,
+      columnsPinned,
     );
 
     contentParent.append(rowEl);

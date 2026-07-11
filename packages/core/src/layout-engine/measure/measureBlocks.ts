@@ -1,7 +1,11 @@
 import { recordMeasureBlock, recordMeasureBlockError } from "../layoutInstrumentation";
 import { bandTopContentY, isPageFrameRelativeAnchor } from "../textBoxFlow";
 import { getTextBoxGroupId } from "../textBoxGroup";
-import { DEFAULT_TEXTBOX_MARGINS, floatingTextBoxReservesBand } from "../types";
+import {
+  DEFAULT_TEXTBOX_MARGINS,
+  floatingTextBoxReservesBand,
+  tableColumnsArePinned,
+} from "../types";
 import type {
   FlowBlock,
   ImageBlock,
@@ -234,6 +238,12 @@ export function measureTableBlock(
     }
   }
 
+  // When the columns are pinned (fixed layout or a fully-consumed explicit
+  // width), Word cannot widen a column to satisfy `w:noWrap`, so overflowing
+  // content wraps. Only an auto-width table honors `w:noWrap` by keeping the
+  // cell on one line. The painter reads the same predicate for `white-space`.
+  const columnsPinned = tableColumnsArePinned(tableBlock);
+
   // Calculate cell widths based on colSpan and columnWidths,
   // skipping columns occupied by spanning cells from previous rows.
   const rows = tableBlock.rows.map((row, rowIdx) => {
@@ -263,14 +273,14 @@ export function measureTableBlock(
         const padLeft = cell.padding?.left ?? DEFAULT_CELL_PADDING_X;
         const padRight = cell.padding?.right ?? DEFAULT_CELL_PADDING_X;
         const cellContentWidth = Math.max(1, cellWidth - padLeft - padRight);
-        // `w:noWrap` (§17.4.30): measure cell paragraphs against an effectively
-        // unbounded width so the line breaker never splits a single Word line
-        // into multiple MeasuredLines. The painter still constrains the cell
-        // box to `cellWidth`; `white-space: nowrap` keeps inline content on
-        // one line, and `overflow-x` lets it extend past the column. Without
-        // this, `renderTable.ts`'s nowrap style only prevents inline wrapping
-        // and the precomputed line splits would still render as stacked rows.
-        const measureWidth = cell.noWrap ? NO_WRAP_MEASURE_WIDTH : cellContentWidth;
+        // `w:noWrap` (§17.4.30): in an auto-width table Word honors it by
+        // widening the column, so measure against an effectively unbounded
+        // width and the line breaker keeps the cell on one MeasuredLine (the
+        // painter pairs this with `white-space: nowrap`). When the columns are
+        // pinned Word cannot widen, so overflowing content wraps: measure at the
+        // real content width like an ordinary cell.
+        const keepSingleLine = cell.noWrap === true && !columnsPinned;
+        const measureWidth = keepSingleLine ? NO_WRAP_MEASURE_WIDTH : cellContentWidth;
         const cellMeasure: TableCellMeasure = {
           blocks: cell.blocks.map((b) =>
             measureBlock(b, measureWidth, undefined, undefined, fieldValues),

@@ -396,6 +396,76 @@ describe("measureTableBlock row height", () => {
   });
 });
 
+describe("measureTableBlock w:noWrap column pinning", () => {
+  // Column content width is 60px (no padding) and each char is 5px, so this
+  // three-word phrase (75px unbroken) must wrap when the column is pinned and
+  // must stay on one line when the cell is allowed to keep noWrap.
+  const OVERFLOW_TEXT = "wordone wordtwo wordthree";
+  const FIT_TEXT = "hi";
+
+  const noWrapTable = (opts: {
+    text: string;
+    widthType?: TableBlock["widthType"];
+    layout?: TableBlock["layout"];
+  }): TableBlock => ({
+    kind: "table",
+    id: "t",
+    columnWidths: [60],
+    ...(opts.widthType ? { widthType: opts.widthType } : {}),
+    ...(opts.layout ? { layout: opts.layout } : {}),
+    rows: [
+      {
+        id: "r",
+        cells: [
+          {
+            id: "c",
+            noWrap: true,
+            padding: { top: 0, right: 0, bottom: 0, left: 0 },
+            blocks: [para("p", opts.text)],
+          },
+        ],
+      },
+    ],
+  });
+
+  const cellLineCount = (table: TableBlock): number => {
+    const paragraph = measureTableBlock(table, 500).rows[0]?.cells[0]?.blocks[0];
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph measure");
+    }
+    return paragraph.lines.length;
+  };
+
+  test("wraps an overflowing noWrap cell when an explicit dxa width pins the column", () => {
+    withFakeTextMeasure(() => {
+      expect(cellLineCount(noWrapTable({ text: OVERFLOW_TEXT, widthType: "dxa" }))).toBeGreaterThan(
+        1,
+      );
+    }, fakeMeasure);
+  });
+
+  test("wraps an overflowing noWrap cell under a fixed table layout", () => {
+    withFakeTextMeasure(() => {
+      expect(cellLineCount(noWrapTable({ text: OVERFLOW_TEXT, layout: "fixed" }))).toBeGreaterThan(
+        1,
+      );
+    }, fakeMeasure);
+  });
+
+  test("keeps an overflowing noWrap cell on one line in an auto-width table", () => {
+    withFakeTextMeasure(() => {
+      // Auto layout: Word would widen the column, so noWrap stays single-line.
+      expect(cellLineCount(noWrapTable({ text: OVERFLOW_TEXT, widthType: "auto" }))).toBe(1);
+    }, fakeMeasure);
+  });
+
+  test("keeps a fitting noWrap cell on one line even when the column is pinned", () => {
+    withFakeTextMeasure(() => {
+      expect(cellLineCount(noWrapTable({ text: FIT_TEXT, widthType: "dxa" }))).toBe(1);
+    }, fakeMeasure);
+  });
+});
+
 describe("measureBlocks error instrumentation", () => {
   test("routes a block-measurement failure through the instrumentation hook", () => {
     type MeasureBlockErrorEvent = {

@@ -556,6 +556,13 @@ export type TableBlock = {
   width?: number;
   /** Table width type ('auto', 'pct', 'dxa', 'nil'). */
   widthType?: TableWidthType;
+  /**
+   * Table layout algorithm (`w:tblLayout`). "fixed" pins columns to their grid
+   * widths; "autofit" (the default when absent) lets Word size columns to
+   * content. Consulted alongside `widthType` to decide whether `w:noWrap` cells
+   * can be honored (see `tableColumnsArePinned`).
+   */
+  layout?: "fixed" | "autofit";
   /** Table horizontal alignment */
   justification?: "left" | "center" | "right";
   /** Table indent from left margin (in pixels, from w:tblInd) */
@@ -1340,4 +1347,24 @@ export function floatingTextBoxWrapsText(block: TextBoxFlowAttrs): boolean {
  */
 export function floatingTextBoxReservesBand(block: TextBoxFlowAttrs): boolean {
   return isFloatingTextBoxBlock(block) && block.wrapType === "topAndBottom";
+}
+
+/**
+ * A table's columns are pinned when the layout engine cannot widen a column to
+ * fit content that overflows it: either the layout is explicitly fixed
+ * (`w:tblLayout w:type="fixed"`) or an explicit total width (`w:tblW` `dxa`/
+ * `pct`) is fully consumed by the grid.
+ *
+ * In OOXML, `w:noWrap` (§17.4.30) asks Word not to soft-wrap a cell, but Word
+ * can only honor it by widening the column. When the columns are pinned it
+ * cannot, so overflowing content wraps despite `w:noWrap`. An auto-width table
+ * (`w:tblW` `auto`/`nil`/absent with autofit layout) lets Word widen the column
+ * instead, so there `w:noWrap` genuinely keeps content on one line. Measurement
+ * and the painter both consult this so their line count and `white-space` agree.
+ */
+export function tableColumnsArePinned(table: TableBlock): boolean {
+  if (table.layout === "fixed") {
+    return true;
+  }
+  return table.widthType === "dxa" || table.widthType === "pct";
 }

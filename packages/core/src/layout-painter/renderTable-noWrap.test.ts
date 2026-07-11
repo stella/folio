@@ -71,7 +71,10 @@ function findCells(element: FakeElement): FakeElement[] {
   return matches;
 }
 
-function buildSingleCellTable(noWrap?: boolean): {
+function buildSingleCellTable(
+  noWrap?: boolean,
+  tableProps?: { widthType?: TableBlock["widthType"]; layout?: TableBlock["layout"] },
+): {
   fragment: TableFragment;
   block: TableBlock;
   measure: TableMeasure;
@@ -99,6 +102,8 @@ function buildSingleCellTable(noWrap?: boolean): {
       },
     ],
     columnWidths: [100],
+    ...(tableProps?.widthType ? { widthType: tableProps.widthType } : {}),
+    ...(tableProps?.layout ? { layout: tableProps.layout } : {}),
   };
   const measure: TableMeasure = {
     kind: "table",
@@ -189,5 +194,45 @@ describe("renderTable cell w:noWrap (eigenpal #424 gap 14)", () => {
     const cells = findCells(tableEl);
     expect(cells.length).toBe(1);
     expect(cells[0]?.style["whiteSpace"]).toBeUndefined();
+  });
+
+  // Coherence with measurement: when the columns are pinned (fixed layout or an
+  // explicit dxa/pct width), Word cannot honor noWrap and measurement wrapped
+  // the cell, so the painter must NOT emit `white-space: nowrap` (that would
+  // collapse the wrapped lines and desync painted vs measured height).
+  test("does NOT set white-space on a noWrap cell when an explicit dxa width pins the column", () => {
+    const { fragment, block, measure } = buildSingleCellTable(true, { widthType: "dxa" });
+
+    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+
+    const cells = findCells(tableEl);
+    expect(cells.length).toBe(1);
+    expect(cells[0]?.style["whiteSpace"]).toBeUndefined();
+  });
+
+  test("does NOT set white-space on a noWrap cell under a fixed table layout", () => {
+    const { fragment, block, measure } = buildSingleCellTable(true, { layout: "fixed" });
+
+    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+
+    const cells = findCells(tableEl);
+    expect(cells.length).toBe(1);
+    expect(cells[0]?.style["whiteSpace"]).toBeUndefined();
+  });
+
+  test("still sets white-space: nowrap on a noWrap cell in an auto-width table", () => {
+    const { fragment, block, measure } = buildSingleCellTable(true, { widthType: "auto" });
+
+    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+
+    const cells = findCells(tableEl);
+    expect(cells.length).toBe(1);
+    expect(cells[0]?.style["whiteSpace"]).toBe("nowrap");
   });
 });

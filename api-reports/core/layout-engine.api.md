@@ -774,7 +774,8 @@ export type TableBlock = {
     rows: TableRow[];
     columnWidths?: number[]; /** Table width value (twips for dxa, 50ths of percent for pct). */
     width?: number; /** Table width type ('auto', 'pct', 'dxa', 'nil'). */
-    widthType?: TableWidthType; /** Table horizontal alignment */
+    widthType?: TableWidthType;
+    layout?: "fixed" | "autofit"; /** Table horizontal alignment */
     justification?: "left" | "center" | "right"; /** Table indent from left margin (in pixels, from w:tblInd) */
     indent?: number; /** Right-to-left column order (w:bidiVisual): logical column 0 paints on the right. */
     bidi?: boolean; /** Floating table properties (pixel values). */
@@ -811,6 +812,9 @@ export type TableCellMeasure = {
     colSpan?: number;
     rowSpan?: number;
 };
+
+// @public
+export function tableColumnsArePinned(table: TableBlock): boolean;
 
 // @public
 export type TableFragment = FragmentBase & {

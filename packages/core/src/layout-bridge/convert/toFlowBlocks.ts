@@ -2108,7 +2108,11 @@ function convertTable(node: PMNode, startPos: number, options: ToFlowBlocksOptio
   // toggle it — so reading the preserved formatting is sufficient
   // (eigenpal/docx-editor#940).
   const originalFormatting = attrs._originalFormatting as
-    | { indent?: { value: number; type: string }; bidi?: boolean }
+    | {
+        indent?: { value: number; type: string };
+        bidi?: boolean;
+        layout?: "fixed" | "autofit";
+      }
     | undefined;
   const indentPx =
     originalFormatting?.indent?.value && originalFormatting.indent.type === "dxa"
@@ -2181,6 +2185,9 @@ function convertTable(node: PMNode, startPos: number, options: ToFlowBlocksOptio
   }
   if (widthType !== undefined) {
     tableBlock.widthType = widthType;
+  }
+  if (originalFormatting?.layout !== undefined) {
+    tableBlock.layout = originalFormatting.layout;
   }
   if (justification) {
     tableBlock.justification = justification;
