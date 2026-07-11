@@ -4,9 +4,6 @@
   "workspaces": {
     "": {
       "name": "@stll/folio",
-      "dependencies": {
-        "vue-tsc": "^3.3.7",
-      },
       "devDependencies": {
         "@changesets/changelog-github": "^0.7.0",
         "@changesets/cli": "^2.31.0",
@@ -124,7 +121,7 @@
       "devDependencies": {
         "@vitejs/plugin-vue": "^6.0.7",
         "vite": "8.0.16",
-        "vue-tsc": "^3.3.6",
+        "vue-tsc": "^3.3.7",
       },
     },
     "packages/react": {
@@ -181,7 +178,7 @@
         "vite": "8.0.16",
         "vite-plugin-dts": "^5.0.3",
         "vue": "^3.5.39",
-        "vue-tsc": "^3.3.6",
+        "vue-tsc": "^3.3.7",
       },
       "peerDependencies": {
         "prosemirror-history": "^1.4.0",

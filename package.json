@@ -89,8 +89,5 @@
   "overrides": {
     "prosemirror-model": "1.25.10",
     "prosemirror-view": "1.42.0"
-  },
-  "dependencies": {
-    "vue-tsc": "^3.3.7"
   }
 }
