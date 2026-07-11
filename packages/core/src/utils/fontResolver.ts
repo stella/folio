@@ -267,6 +267,18 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
       unitsPerEm: 2048,
     }), // 1.2070 (was hand-transcribed 1.2075 — negligible, now derived)
   },
+  montserrat: {
+    googleFont: "Montserrat",
+    category: "sans-serif",
+    fallbackStack: ["Montserrat", "Arial", "Helvetica", "sans-serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 968,
+      hheaDescent: -251,
+      hheaLineGap: 0,
+      unitsPerEm: 1000,
+    }), // 1.2190
+  },
   "trebuchet ms": {
     googleFont: "Fira Sans",
     category: "sans-serif",

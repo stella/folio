@@ -29,6 +29,7 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
     ["georgia", 1.1362],
     ["verdana", 1.2153],
     ["tahoma", 1.207],
+    ["montserrat", 1.219],
     ["trebuchet ms", 1.1611],
     ["courier new", 1.1328],
     ["consolas", 1.1709],
