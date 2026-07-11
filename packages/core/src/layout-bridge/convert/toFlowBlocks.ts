@@ -33,6 +33,7 @@ import type {
   TabStop,
   FloatingTablePosition,
 } from "../../layout-engine/types";
+import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { DEFAULT_TEXTBOX_MARGINS, DEFAULT_TEXTBOX_WIDTH } from "../../layout-engine/types";
 import {
   expectBlockSdtAttrs,
@@ -2333,7 +2334,7 @@ function convertTextBoxNode(
     textBox.position = attrs.position;
   }
   if (attrs._docxGroupId !== undefined) {
-    textBox._docxGroupId = attrs._docxGroupId;
+    setTextBoxGroupId(textBox, attrs._docxGroupId);
   }
   return textBox;
 }

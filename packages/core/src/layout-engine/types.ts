@@ -690,8 +690,6 @@ export type TextBoxBlock = {
   wrapText?: "bothSides" | "left" | "right" | "largest";
   /** Position for floating/anchored text boxes (OOXML EMU offsets). */
   position?: ImageRunPosition;
-  /** Import-only identifier shared by text boxes from the same host paragraph. */
-  _docxGroupId?: string;
   /** Wrap distances in pixels. */
   distTop?: number;
   distBottom?: number;

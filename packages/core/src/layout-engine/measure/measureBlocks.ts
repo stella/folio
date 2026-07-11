@@ -1,5 +1,6 @@
 import { recordMeasureBlock, recordMeasureBlockError } from "../layoutInstrumentation";
 import { bandTopContentY, isPageFrameRelativeAnchor } from "../textBoxFlow";
+import { getTextBoxGroupId } from "../textBoxGroup";
 import { DEFAULT_TEXTBOX_MARGINS, floatingTextBoxReservesBand } from "../types";
 import type {
   FlowBlock,
@@ -587,7 +588,7 @@ function extractFloatingZones(
     if (bottomY <= 0) {
       continue;
     }
-    const groupId = tb._docxGroupId;
+    const groupId = getTextBoxGroupId(tb);
     const anchorBlockIndex = groupId
       ? (textBoxGroupAnchors.get(groupId) ?? blockIndex)
       : blockIndex;

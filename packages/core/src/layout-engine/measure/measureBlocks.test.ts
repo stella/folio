@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { FlowBlock, ImageBlock, ParagraphBlock, TableBlock, TextBoxBlock } from "../types";
+import { setTextBoxGroupId } from "../textBoxGroup";
 import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
 import { measureBlock, measureBlocks, measureTableBlock } from "./measureBlocks";
 
@@ -66,13 +67,14 @@ describe("measureBlocks", () => {
         content: [],
         wrapType: "topAndBottom",
         position: { vertical: { relativeTo: "paragraph", posOffset: 0 } },
-        _docxGroupId: "host-paragraph",
       };
       const secondBand: TextBoxBlock = {
         ...firstBand,
         id: "second-band",
         position: { vertical: { relativeTo: "paragraph", posOffset: 285_750 } },
       };
+      setTextBoxGroupId(firstBand, "host-paragraph");
+      setTextBoxGroupId(secondBand, "host-paragraph");
 
       const measures = measureBlocks([firstBand, secondBand, para("after", "after")], 600);
       const paragraphMeasure = measures.at(2);
