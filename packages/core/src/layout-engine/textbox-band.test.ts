@@ -2,8 +2,9 @@
  * A page/margin-pinned topAndBottom text box (e.g. a "For Internal Use" banner)
  * floats to the page top instead of dropping into the flow at its anchor, and it
  * does not consume flow height (the reserved band in the measure pass — see
- * extractFloatingZones in PagedEditor — pushes body text below it). A
- * paragraph-anchored topAndBottom box keeps the in-flow handling.
+ * extractFloatingZones in PagedEditor — pushes body text below it). An
+ * unpositioned topAndBottom box keeps the in-flow handling, while an explicit
+ * paragraph anchor positions from the current cursor without consuming flow.
  * Regression for eigenpal/docx-editor#694.
  */
 
@@ -173,7 +174,7 @@ describe("topAndBottom band text box layout", () => {
     expect(box?.y).toBe(960);
   });
 
-  test("paragraph-anchored topAndBottom box stays in flow (unchanged)", () => {
+  test("unpositioned topAndBottom box stays in flow", () => {
     const frags = textBoxFragments([banner(undefined), para("p")], [boxMeasure, paraMeasure]);
 
     const box = frags.find((f) => f.kind === "textBox") as TextBoxFragment | undefined;
@@ -182,6 +183,19 @@ describe("topAndBottom band text box layout", () => {
     // In-flow box at the top, paragraph pushed below it by the box height.
     expect(box?.y).toBe(MARGINS.top);
     expect(paragraph?.y).toBe(MARGINS.top + BOX_HEIGHT);
+  });
+
+  test("paragraph-anchored text box positions from the cursor without consuming flow", () => {
+    const anchored = verticalBanner({ relativeTo: "paragraph", posOffset: EMU_PER_INCH });
+    const frags = textBoxFragments([anchored, para("p")], [boxMeasure, paraMeasure]);
+
+    const box = frags.find((fragment) => fragment.kind === "textBox") as
+      | TextBoxFragment
+      | undefined;
+    const paragraph = frags.find((fragment) => fragment.kind === "paragraph");
+
+    expect(box?.y).toBe(MARGINS.top + 96);
+    expect(paragraph?.y).toBe(MARGINS.top);
   });
 
   test("band uses the section top margin, not a page's first-page margin", () => {

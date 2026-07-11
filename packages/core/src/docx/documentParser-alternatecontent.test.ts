@@ -174,4 +174,32 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
 
     expect(cardTitles).toEqual(["Card 1", "Card 2", "Card 3"]);
   });
+
+  test("preserves text boxes when the host paragraph has no flow content", () => {
+    const body = parseDocumentBody(`${XML_DECLARATION}
+<w:document
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+  <w:body>
+    <w:p>
+      <w:r><mc:AlternateContent><mc:Choice Requires="wps">${textBoxDrawingXml("Card 1")}</mc:Choice><mc:Fallback><w:pict/></mc:Fallback></mc:AlternateContent></w:r>
+      <w:r><mc:AlternateContent><mc:Choice Requires="wps">${textBoxDrawingXml("Card 2")}</mc:Choice><mc:Fallback><w:pict/></mc:Fallback></mc:AlternateContent></w:r>
+    </w:p>
+  </w:body>
+</w:document>`);
+
+    const paragraph = body.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+
+    const shapes = paragraph.content
+      .filter((content) => content.type === "run")
+      .flatMap((run) => run.content.filter((content) => content.type === "shape"));
+
+    expect(shapes).toHaveLength(2);
+  });
 });

@@ -56,6 +56,62 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("keeps paragraph-anchored bands from one textbox group active together", () => {
+    withFakeTextMeasure(() => {
+      const firstBand: TextBoxBlock = {
+        kind: "textBox",
+        id: "first-band",
+        width: 300,
+        height: 30,
+        content: [],
+        wrapType: "topAndBottom",
+        position: { vertical: { relativeTo: "paragraph", posOffset: 0 } },
+        _docxGroupId: "host-paragraph",
+      };
+      const secondBand: TextBoxBlock = {
+        ...firstBand,
+        id: "second-band",
+        position: { vertical: { relativeTo: "paragraph", posOffset: 285_750 } },
+      };
+
+      const measures = measureBlocks([firstBand, secondBand, para("after", "after")], 600);
+      const paragraphMeasure = measures.at(2);
+      if (paragraphMeasure?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measure");
+      }
+
+      expect(paragraphMeasure.lines.at(0)?.floatSkipBefore).toBeCloseTo(60, 5);
+    }, fakeMeasure);
+  });
+
+  test("keeps an active band across an unspecified continuous section break", () => {
+    withFakeTextMeasure(() => {
+      const band: TextBoxBlock = {
+        kind: "textBox",
+        id: "band",
+        width: 300,
+        height: 120,
+        content: [],
+        wrapType: "topAndBottom",
+        position: { vertical: { relativeTo: "paragraph", posOffset: 285_750 } },
+      };
+      const blocks: FlowBlock[] = [
+        band,
+        para("before", "before"),
+        { kind: "sectionBreak", id: "section" },
+        para("after", "after"),
+      ];
+
+      const measures = measureBlocks(blocks, 600);
+      const afterMeasure = measures.at(3);
+      if (afterMeasure?.kind !== "paragraph") {
+        throw new Error("Expected paragraph after section break");
+      }
+
+      expect(afterMeasure.lines.at(0)?.floatSkipBefore).toBeGreaterThan(0);
+    }, fakeMeasure);
+  });
+
   test("per-block content widths are honoured for parallel arrays", () => {
     withFakeTextMeasure(() => {
       const paragraph: ParagraphBlock = {

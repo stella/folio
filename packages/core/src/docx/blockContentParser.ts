@@ -234,10 +234,6 @@ const enrichParagraphTextBoxes = (
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
 ): void => {
-  if (paragraph.content.length === 0) {
-    return;
-  }
-
   const xmlChildren = getChildElements(paraXml);
   let parsedIndex = 0;
   let lastConsumedRun: Run | undefined;

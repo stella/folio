@@ -2332,6 +2332,9 @@ function convertTextBoxNode(
   if (attrs.position !== undefined) {
     textBox.position = attrs.position;
   }
+  if (attrs._docxGroupId !== undefined) {
+    textBox._docxGroupId = attrs._docxGroupId;
+  }
   return textBox;
 }
 

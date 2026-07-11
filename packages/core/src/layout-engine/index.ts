@@ -6,6 +6,7 @@
 
 import { panic } from "better-result";
 
+import { emuToPixels } from "../utils/units";
 import {
   computeKeepNextChains,
   calculateChainHeight,
@@ -1246,6 +1247,45 @@ function layoutTextBox(
       blockId: block.id,
       x,
       y: state.topMargin + bandTop,
+      width: measure.width,
+      height: measure.height,
+      ...(block.pmStart !== undefined ? { pmStart: block.pmStart } : {}),
+      ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
+    };
+    state.page.fragments.push(fragment);
+    return;
+  }
+
+  // Any explicitly positioned textbox is an anchored object, including
+  // paragraph/line-relative anchors. Place it from the current text anchor
+  // without advancing normal flow; otherwise several shapes owned by one
+  // shape-only paragraph stack vertically and push the body onto another page.
+  if (block.position !== undefined) {
+    const state = paginator.getCurrentState();
+    const horizontal = block.position.horizontal;
+    const x = horizontal
+      ? bandFragmentX(horizontal, {
+          pageWidth: state.page.size.w,
+          marginLeft: state.page.margins.left,
+          marginRight: state.page.margins.right,
+          boxWidth: measure.width,
+        })
+      : paginator.getColumnX(state.columnIndex);
+    const vertical = block.position.vertical;
+    const y = isPageFrameRelativeAnchor(vertical?.relativeTo)
+      ? state.topMargin +
+        bandTopContentY(vertical, {
+          pageHeight: sectionPageHeight,
+          marginTop: sectionMarginTop,
+          marginBottom: sectionMarginBottom,
+          boxHeight: measure.height,
+        })
+      : state.cursorY + emuToPixels(vertical?.posOffset ?? 0);
+    const fragment: TextBoxFragment = {
+      kind: "textBox",
+      blockId: block.id,
+      x,
+      y,
       width: measure.width,
       height: measure.height,
       ...(block.pmStart !== undefined ? { pmStart: block.pmStart } : {}),

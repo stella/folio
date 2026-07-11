@@ -402,6 +402,7 @@ function extractFloatingZones(
   pageGeometry?: BandPageGeometry,
 ): FloatingZoneWithAnchor[] {
   const zones: FloatingZoneWithAnchor[] = [];
+  const textBoxGroupAnchors = new Map<string, number>();
   const defaultMarginTop = Array.isArray(marginTop) ? (marginTop[0] ?? 0) : marginTop;
   const pageHeightInput = pageGeometry?.pageHeight ?? 0;
   const marginBottomInput = pageGeometry?.marginBottom ?? 0;
@@ -554,47 +555,52 @@ function extractFloatingZones(
     });
   }
 
-  // Page/margin-anchored topAndBottom text boxes (e.g. a banner pinned to the
-  // page top) reserve a full-width band so body text flows above and below the
-  // box instead of the box dropping into the flow at its anchor paragraph.
-  // Paragraph-anchored topAndBottom boxes keep folio's in-flow handling (they
-  // already render on their own line at the anchor). eigenpal docx-editor #694.
+  // Positioned topAndBottom text boxes reserve a full-width band so body text
+  // flows above and below the anchored shape. Multiple boxes extracted from
+  // one shape-only paragraph share an anchor and remain active together.
   for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
     const block = blocks[blockIndex]!; // SAFETY: blockIndex < blocks.length
     if (block.kind !== "textBox") {
       continue;
     }
     const tb = block as TextBoxBlock;
-    if (!floatingTextBoxReservesBand(tb)) {
+    if (!floatingTextBoxReservesBand(tb) || tb.position === undefined) {
       continue;
     }
     const v = tb.position?.vertical;
-    if (!isPageFrameRelativeAnchor(v?.relativeTo)) {
-      continue;
-    }
 
     const height = measureTextBoxBlock(tb).height;
     const distTop = tb.distTop ?? 0;
     const distBottom = tb.distBottom ?? 0;
     const blockMarginTop = perBlockNumberValue(marginTop, blockIndex, defaultMarginTop);
+    const pageFrameRelative = isPageFrameRelativeAnchor(v?.relativeTo);
     // Shared with layoutTextBox so the reserved band and the painted box agree.
-    const rawTop = bandTopContentY(v, {
-      pageHeight: perBlockNumberValue(pageHeightInput, blockIndex, defaultPageHeight),
-      marginTop: blockMarginTop,
-      marginBottom: perBlockNumberValue(marginBottomInput, blockIndex, defaultMarginBottom),
-      boxHeight: height,
-    });
+    const rawTop = pageFrameRelative
+      ? bandTopContentY(v, {
+          pageHeight: perBlockNumberValue(pageHeightInput, blockIndex, defaultPageHeight),
+          marginTop: blockMarginTop,
+          marginBottom: perBlockNumberValue(marginBottomInput, blockIndex, defaultMarginBottom),
+          boxHeight: height,
+        })
+      : emuToPixels(v?.posOffset ?? 0);
     const bottomY = rawTop + height + distBottom;
     if (bottomY <= 0) {
       continue;
+    }
+    const groupId = tb._docxGroupId;
+    const anchorBlockIndex = groupId
+      ? (textBoxGroupAnchors.get(groupId) ?? blockIndex)
+      : blockIndex;
+    if (groupId && !textBoxGroupAnchors.has(groupId)) {
+      textBoxGroupAnchors.set(groupId, blockIndex);
     }
     zones.push({
       leftMargin: 0,
       rightMargin: 0,
       topY: Math.max(0, rawTop - distTop),
       bottomY,
-      anchorBlockIndex: blockIndex,
-      isMarginRelative: true,
+      anchorBlockIndex,
+      ...(pageFrameRelative ? { isMarginRelative: true } : {}),
       fullWidthBlock: true,
     });
   }
@@ -708,14 +714,15 @@ export function measureTextBoxBlock(
 }
 
 /**
- * `true` for a section break that starts a new page (`nextPage`/`evenPage`/
- * `oddPage`, or an unspecified type, which the layout treats as `nextPage`).
- * A `continuous` break stays on the current page, so it does not open a fresh
- * page frame. Used by `measureBlocks` to reset the running Y for a page-pinned
- * band that lands right after the break. eigenpal #694.
+ * `true` for a section break that explicitly starts a new page
+ * (`nextPage`/`evenPage`/`oddPage`). An absent type follows
+ * `scheduleSectionBreak` and stays continuous, so measurement must retain any
+ * active exclusion zones across it. Used by `measureBlocks` to reset the
+ * running Y for a page-pinned band that lands right after the break.
+ * eigenpal #694.
  */
 function isNextPageSectionBreak(block: FlowBlock): boolean {
-  return block.kind === "sectionBreak" && block.type !== "continuous";
+  return block.kind === "sectionBreak" && block.type !== undefined && block.type !== "continuous";
 }
 
 /**
