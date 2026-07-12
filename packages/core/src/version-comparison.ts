@@ -49,28 +49,80 @@
  * pathological crossing match (content reordered across versions) can't
  * produce an out-of-order gap — the alignment always walks both documents
  * forward.
+ *
+ * ## Move detection
+ *
+ * Relocated content would otherwise report as an unrelated `deleted` +
+ * `added` pair (both order-preserving passes drop crossing matches by
+ * design). A post-pass re-classifies such pairs: an `added` and a `deleted`
+ * block with identical text and at least {@link MOVE_MINIMUM_WORD_COUNT}
+ * words become `movedFrom` / `movedTo` entries sharing a `moveGroupId`. The
+ * word-count floor keeps boilerplate one-liners ("Confidential", empty
+ * headings) from pairing as spurious moves. Blocks a positional zip already
+ * mis-paired as `modified` are out of this pass's reach — a known limitation
+ * of the gap fallback, not of the move pass.
+ *
+ * ## Format-only changes
+ *
+ * A paired block whose text is byte-equal but whose run-level formatting
+ * (bold, italic, underline, strike, font family, font size, color) differs
+ * reports as `formatChanged` with the set of properties that differ, instead
+ * of silently counting as `unchanged`. Detection walks the two blocks'
+ * preview runs character-aligned; when a block carries non-text inline
+ * content that makes the preview texts disagree, detection backs off to
+ * `unchanged` rather than misattribute properties.
  */
 
 import { FolioDocxReviewer } from "./ai-edits/headless";
-import type { FolioAIBlock } from "./ai-edits/types";
+import type { FolioAIBlock, FolioAIBlockPreviewRun } from "./ai-edits/types";
 import { diffWordSegments, type WordDiffSegment } from "./ai-edits/word-diff";
 import { getFolioParaIdFromBlockId } from "./types/block-id";
 
 /** One word-level diff segment within a `modified` block. Mirrors {@link WordDiffSegment}. */
 export type FolioVersionDiffSegment = WordDiffSegment;
 
+/** Run-level formatting properties compared for `formatChanged` detection. */
+const FORMAT_PROPERTIES = [
+  "bold",
+  "italic",
+  "underline",
+  "strike",
+  "fontFamily",
+  "fontSizePt",
+  "color",
+] as const;
+
+/** A run-level formatting property that can differ in a `formatChanged` block. */
+export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];
+
 /** One block-level change between two document versions, in revised-side document order. */
 export type FolioBlockDiff =
   | { type: "added"; blockId: string; kind: string; text: string }
   | { type: "deleted"; blockId: string; kind: string; text: string }
-  | { type: "modified"; blockId: string; kind: string; segments: FolioVersionDiffSegment[] };
+  | { type: "modified"; blockId: string; kind: string; segments: FolioVersionDiffSegment[] }
+  | {
+      type: "formatChanged";
+      blockId: string;
+      kind: string;
+      text: string;
+      changedProperties: FolioFormatProperty[];
+    }
+  | { type: "movedFrom"; blockId: string; kind: string; text: string; moveGroupId: number }
+  | { type: "movedTo"; blockId: string; kind: string; text: string; moveGroupId: number };
 
 /** Result of {@link compareDocxVersions}. */
 export type FolioVersionDiff = {
-  /** Every added, deleted, or modified block, in revised-side document order (deletions slotted where they sat). */
+  /** Every changed block, in revised-side document order (deletions and move sources slotted where they sat). */
   changes: FolioBlockDiff[];
-  /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. */
-  summaryCounts: { added: number; deleted: number; modified: number; unchanged: number };
+  /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
+  summaryCounts: {
+    added: number;
+    deleted: number;
+    modified: number;
+    formatChanged: number;
+    moved: number;
+    unchanged: number;
+  };
 };
 
 type BlockPair = { baseIndex: number; revisedIndex: number };
@@ -223,21 +275,26 @@ const pairByExactText = (
 };
 
 /**
- * Compare two `.docx` buffers and return a structured, block-level diff.
- * See the module doc comment for the as-accepted comparison semantics and
- * the three-pass alignment algorithm.
+ * One step of a completed alignment, in revised-side document order with
+ * base-only blocks slotted where they sat. `pair` events cover pass 1/2
+ * anchors and pass 3's positional zip alike; whether the pair is unchanged,
+ * modified, or format-changed is the consumer's call.
  */
-export const compareDocxVersions = async (
-  base: ArrayBuffer,
-  revised: ArrayBuffer,
-): Promise<FolioVersionDiff> => {
-  const [baseReviewer, revisedReviewer] = await Promise.all([
-    FolioDocxReviewer.fromBuffer(base),
-    FolioDocxReviewer.fromBuffer(revised),
-  ]);
-  const baseBlocks = baseReviewer.snapshot().blocks;
-  const revisedBlocks = revisedReviewer.snapshot().blocks;
+export type FolioAlignedBlockEvent =
+  | { type: "pair"; baseBlock: FolioAIBlock; revisedBlock: FolioAIBlock }
+  | { type: "baseOnly"; block: FolioAIBlock }
+  | { type: "revisedOnly"; block: FolioAIBlock };
 
+/**
+ * Run the three-pass alignment (see the module doc comment) over two block
+ * snapshots and flatten it into an ordered event stream. Shared by
+ * {@link compareDocxVersions} and the redline generator so both interpret
+ * one document walk instead of re-deriving it.
+ */
+export const alignFolioBlocks = (
+  baseBlocks: readonly FolioAIBlock[],
+  revisedBlocks: readonly FolioAIBlock[],
+): FolioAlignedBlockEvent[] => {
   const stableIdAnchors = pairByStableId(baseBlocks, revisedBlocks);
   const usedBaseIndexes = new Set(stableIdAnchors.map((anchor) => anchor.baseIndex));
   const usedRevisedIndexes = new Set(stableIdAnchors.map((anchor) => anchor.revisedIndex));
@@ -260,8 +317,7 @@ export const compareDocxVersions = async (
     [...stableIdAnchors, ...exactTextAnchors].toSorted((a, b) => a.baseIndex - b.baseIndex),
   );
 
-  const changes: FolioBlockDiff[] = [];
-  const counts = { added: 0, deleted: 0, modified: 0, unchanged: 0 };
+  const events: FolioAlignedBlockEvent[] = [];
 
   /** Pass 3: positionally zip the leftover blocks in one gap between anchors. */
   const emitGap = (
@@ -270,53 +326,25 @@ export const compareDocxVersions = async (
     revisedFrom: number,
     revisedTo: number,
   ): void => {
-    const baseSlice = baseBlocks.slice(baseFrom, baseTo);
-    const revisedSlice = revisedBlocks.slice(revisedFrom, revisedTo);
-    const pairedCount = Math.min(baseSlice.length, revisedSlice.length);
-
+    const pairedCount = Math.min(baseTo - baseFrom, revisedTo - revisedFrom);
     for (let k = 0; k < pairedCount; k++) {
-      const baseBlock = baseSlice[k];
-      const revisedBlock = revisedSlice[k];
-      if (!baseBlock || !revisedBlock) {
-        continue;
+      const baseBlock = baseBlocks[baseFrom + k];
+      const revisedBlock = revisedBlocks[revisedFrom + k];
+      if (baseBlock && revisedBlock) {
+        events.push({ type: "pair", baseBlock, revisedBlock });
       }
-      if (baseBlock.text === revisedBlock.text) {
-        counts.unchanged++;
-        continue;
-      }
-      counts.modified++;
-      changes.push({
-        type: "modified",
-        blockId: revisedBlock.id,
-        kind: revisedBlock.kind,
-        segments: diffWordSegments(baseBlock.text, revisedBlock.text),
-      });
     }
-    for (let k = pairedCount; k < baseSlice.length; k++) {
-      const baseBlock = baseSlice[k];
-      if (!baseBlock) {
-        continue;
+    for (let k = baseFrom + pairedCount; k < baseTo; k++) {
+      const block = baseBlocks[k];
+      if (block) {
+        events.push({ type: "baseOnly", block });
       }
-      counts.deleted++;
-      changes.push({
-        type: "deleted",
-        blockId: baseBlock.id,
-        kind: baseBlock.kind,
-        text: baseBlock.text,
-      });
     }
-    for (let k = pairedCount; k < revisedSlice.length; k++) {
-      const revisedBlock = revisedSlice[k];
-      if (!revisedBlock) {
-        continue;
+    for (let k = revisedFrom + pairedCount; k < revisedTo; k++) {
+      const block = revisedBlocks[k];
+      if (block) {
+        events.push({ type: "revisedOnly", block });
       }
-      counts.added++;
-      changes.push({
-        type: "added",
-        blockId: revisedBlock.id,
-        kind: revisedBlock.kind,
-        text: revisedBlock.text,
-      });
     }
   };
 
@@ -324,13 +352,193 @@ export const compareDocxVersions = async (
   let revisedCursor = 0;
   for (const anchor of anchors) {
     emitGap(baseCursor, anchor.baseIndex, revisedCursor, anchor.revisedIndex);
-
     const baseBlock = baseBlocks[anchor.baseIndex];
     const revisedBlock = revisedBlocks[anchor.revisedIndex];
     if (baseBlock && revisedBlock) {
-      if (baseBlock.text === revisedBlock.text) {
-        counts.unchanged++;
-      } else {
+      events.push({ type: "pair", baseBlock, revisedBlock });
+    }
+    baseCursor = anchor.baseIndex + 1;
+    revisedCursor = anchor.revisedIndex + 1;
+  }
+  emitGap(baseCursor, baseBlocks.length, revisedCursor, revisedBlocks.length);
+
+  return events;
+};
+
+const previewRunsText = (runs: readonly FolioAIBlockPreviewRun[]): string =>
+  runs.map((run) => run.text).join("");
+
+/**
+ * Character-aligned formatting diff of two text-equal blocks. Walks both
+ * blocks' preview runs in parallel and collects every property whose value
+ * differs anywhere in the overlap. A side with `previewRuns === undefined`
+ * (the snapshot omits them when every run is unstyled) counts as one
+ * unstyled run spanning the whole text. When both sides carry runs but
+ * their concatenated texts disagree (non-text inline content can make the
+ * preview text drift from the block text), positions can't be aligned, so
+ * detection backs off and reports no change.
+ */
+const diffPreviewRunFormatting = (
+  base: FolioAIBlock,
+  revised: FolioAIBlock,
+): FolioFormatProperty[] => {
+  if (base.previewRuns === undefined && revised.previewRuns === undefined) {
+    return [];
+  }
+  const baseText = base.previewRuns === undefined ? null : previewRunsText(base.previewRuns);
+  const revisedText =
+    revised.previewRuns === undefined ? null : previewRunsText(revised.previewRuns);
+  if (baseText !== null && revisedText !== null && baseText !== revisedText) {
+    return [];
+  }
+  const text = baseText ?? revisedText;
+  if (text === null || text.length === 0) {
+    return [];
+  }
+  const baseRuns: readonly FolioAIBlockPreviewRun[] = base.previewRuns ?? [{ text }];
+  const revisedRuns: readonly FolioAIBlockPreviewRun[] = revised.previewRuns ?? [{ text }];
+
+  const changed = new Set<FolioFormatProperty>();
+  let baseRunIndex = 0;
+  let revisedRunIndex = 0;
+  let baseOffset = 0;
+  let revisedOffset = 0;
+  while (baseRunIndex < baseRuns.length && revisedRunIndex < revisedRuns.length) {
+    const baseRun = baseRuns[baseRunIndex];
+    const revisedRun = revisedRuns[revisedRunIndex];
+    if (!baseRun || !revisedRun) {
+      break;
+    }
+    for (const property of FORMAT_PROPERTIES) {
+      if (baseRun[property] !== revisedRun[property]) {
+        changed.add(property);
+      }
+    }
+    const step = Math.min(
+      baseRun.text.length - baseOffset,
+      revisedRun.text.length - revisedOffset,
+    );
+    baseOffset += step;
+    revisedOffset += step;
+    if (baseOffset >= baseRun.text.length) {
+      baseRunIndex++;
+      baseOffset = 0;
+    }
+    if (revisedOffset >= revisedRun.text.length) {
+      revisedRunIndex++;
+      revisedOffset = 0;
+    }
+  }
+  // Report in the stable FORMAT_PROPERTIES order, not set-insertion order.
+  return FORMAT_PROPERTIES.filter((property) => changed.has(property));
+};
+
+/**
+ * Floor for move detection: an added/deleted text must hold at least this
+ * many whitespace-separated words before an identical pair re-classifies as
+ * a move. Short boilerplate ("Confidential", a bare heading word) recurs
+ * throughout real documents and would otherwise pair as spurious moves.
+ */
+const MOVE_MINIMUM_WORD_COUNT = 3;
+
+const meetsMoveWordCount = (text: string): boolean => {
+  let words = 0;
+  for (const token of text.split(/\s+/u)) {
+    if (token.length > 0 && ++words >= MOVE_MINIMUM_WORD_COUNT) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
+ * Re-classify `deleted` + `added` pairs with identical text as
+ * `movedFrom` / `movedTo` entries sharing a `moveGroupId`, in place, so each
+ * side keeps its slot in the revised-side document order. Matching is FIFO
+ * per text, so duplicated boilerplate above the word floor pairs
+ * first-to-first rather than fanning out.
+ */
+const detectMoves = (
+  changes: FolioBlockDiff[],
+  counts: FolioVersionDiff["summaryCounts"],
+): void => {
+  const deletedIndexesByText = new Map<string, number[]>();
+  changes.forEach((change, index) => {
+    if (change.type === "deleted" && meetsMoveWordCount(change.text)) {
+      const queue = deletedIndexesByText.get(change.text) ?? [];
+      queue.push(index);
+      deletedIndexesByText.set(change.text, queue);
+    }
+  });
+  if (deletedIndexesByText.size === 0) {
+    return;
+  }
+
+  let moveGroupId = 0;
+  changes.forEach((change, index) => {
+    if (change.type !== "added") {
+      return;
+    }
+    const deletedIndex = deletedIndexesByText.get(change.text)?.shift();
+    if (deletedIndex === undefined) {
+      return;
+    }
+    const deleted = changes[deletedIndex];
+    if (!deleted || deleted.type !== "deleted") {
+      return;
+    }
+    moveGroupId++;
+    changes[deletedIndex] = {
+      type: "movedFrom",
+      blockId: deleted.blockId,
+      kind: deleted.kind,
+      text: deleted.text,
+      moveGroupId,
+    };
+    changes[index] = {
+      type: "movedTo",
+      blockId: change.blockId,
+      kind: change.kind,
+      text: change.text,
+      moveGroupId,
+    };
+    counts.deleted--;
+    counts.added--;
+    counts.moved++;
+  });
+};
+
+/**
+ * Compare two `.docx` buffers and return a structured, block-level diff.
+ * See the module doc comment for the as-accepted comparison semantics, the
+ * three-pass alignment algorithm, move detection, and format-only change
+ * detection.
+ */
+export const compareDocxVersions = async (
+  base: ArrayBuffer,
+  revised: ArrayBuffer,
+): Promise<FolioVersionDiff> => {
+  const [baseReviewer, revisedReviewer] = await Promise.all([
+    FolioDocxReviewer.fromBuffer(base),
+    FolioDocxReviewer.fromBuffer(revised),
+  ]);
+  const baseBlocks = baseReviewer.snapshot().blocks;
+  const revisedBlocks = revisedReviewer.snapshot().blocks;
+
+  const changes: FolioBlockDiff[] = [];
+  const counts: FolioVersionDiff["summaryCounts"] = {
+    added: 0,
+    deleted: 0,
+    modified: 0,
+    formatChanged: 0,
+    moved: 0,
+    unchanged: 0,
+  };
+
+  for (const event of alignFolioBlocks(baseBlocks, revisedBlocks)) {
+    if (event.type === "pair") {
+      const { baseBlock, revisedBlock } = event;
+      if (baseBlock.text !== revisedBlock.text) {
         counts.modified++;
         changes.push({
           type: "modified",
@@ -338,13 +546,43 @@ export const compareDocxVersions = async (
           kind: revisedBlock.kind,
           segments: diffWordSegments(baseBlock.text, revisedBlock.text),
         });
+        continue;
       }
+      const changedProperties = diffPreviewRunFormatting(baseBlock, revisedBlock);
+      if (changedProperties.length > 0) {
+        counts.formatChanged++;
+        changes.push({
+          type: "formatChanged",
+          blockId: revisedBlock.id,
+          kind: revisedBlock.kind,
+          text: revisedBlock.text,
+          changedProperties,
+        });
+        continue;
+      }
+      counts.unchanged++;
+      continue;
     }
-
-    baseCursor = anchor.baseIndex + 1;
-    revisedCursor = anchor.revisedIndex + 1;
+    if (event.type === "baseOnly") {
+      counts.deleted++;
+      changes.push({
+        type: "deleted",
+        blockId: event.block.id,
+        kind: event.block.kind,
+        text: event.block.text,
+      });
+      continue;
+    }
+    counts.added++;
+    changes.push({
+      type: "added",
+      blockId: event.block.id,
+      kind: event.block.kind,
+      text: event.block.text,
+    });
   }
-  emitGap(baseCursor, baseBlocks.length, revisedCursor, revisedBlocks.length);
+
+  detectMoves(changes, counts);
 
   return { changes, summaryCounts: counts };
 };

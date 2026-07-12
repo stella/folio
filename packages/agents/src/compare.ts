@@ -44,18 +44,27 @@ const renderSegment = (segment: FolioVersionDiffSegment): string => {
 };
 
 const formatChangeLine = (change: FolioBlockDiff): string => {
-  if (change.type === "added") {
-    return `+ [${change.blockId}] added: ${change.text}`;
+  switch (change.type) {
+    case "added":
+      return `+ [${change.blockId}] added: ${change.text}`;
+    case "deleted":
+      return `- [${change.blockId}] deleted: ${change.text}`;
+    case "modified":
+      return `~ [${change.blockId}] modified: ${change.segments.map(renderSegment).join("")}`;
+    case "formatChanged":
+      return `~ [${change.blockId}] format changed (${change.changedProperties.join(", ")}): ${truncateUnchangedRun(change.text)}`;
+    case "movedFrom":
+      return `< [${change.blockId}] moved away (move ${change.moveGroupId}): ${truncateUnchangedRun(change.text)}`;
+    case "movedTo":
+      return `> [${change.blockId}] moved here (move ${change.moveGroupId}): ${truncateUnchangedRun(change.text)}`;
+    default:
+      return "";
   }
-  if (change.type === "deleted") {
-    return `- [${change.blockId}] deleted: ${change.text}`;
-  }
-  return `~ [${change.blockId}] modified: ${change.segments.map(renderSegment).join("")}`;
 };
 
 /** Render a structured version diff as compact, deterministic model input. */
 export const formatVersionDiffForLLM = (diff: FolioAgentVersionDiff): string => {
-  const { added, deleted, modified, unchanged } = diff.summaryCounts;
-  const header = `Version diff: ${added} added, ${deleted} deleted, ${modified} modified, ${unchanged} unchanged`;
+  const { added, deleted, modified, formatChanged, moved, unchanged } = diff.summaryCounts;
+  const header = `Version diff: ${added} added, ${deleted} deleted, ${modified} modified, ${formatChanged} format-changed, ${moved} moved, ${unchanged} unchanged`;
   return [header, ...diff.changes.map(formatChangeLine)].join("\n");
 };

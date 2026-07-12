@@ -51,9 +51,15 @@ export {
 export {
   compareDocxVersions,
   type FolioBlockDiff,
+  type FolioFormatProperty,
   type FolioVersionDiff,
   type FolioVersionDiffSegment,
 } from "./version-comparison";
+export {
+  generateRedlineDocx,
+  type GenerateRedlineDocxOptions,
+  type GenerateRedlineDocxResult,
+} from "./redline";
 export type {
   FolioAIComment,
   FolioAIEditApplyMode,
