@@ -409,12 +409,14 @@ const diffPreviewRunFormatting = (
     if (!baseRun || !revisedRun) {
       break;
     }
-    for (const property of FORMAT_PROPERTIES) {
-      if (baseRun[property] !== revisedRun[property]) {
-        changed.add(property);
+    const step = Math.min(baseRun.text.length - baseOffset, revisedRun.text.length - revisedOffset);
+    if (step > 0) {
+      for (const property of FORMAT_PROPERTIES) {
+        if (baseRun[property] !== revisedRun[property]) {
+          changed.add(property);
+        }
       }
     }
-    const step = Math.min(baseRun.text.length - baseOffset, revisedRun.text.length - revisedOffset);
     baseOffset += step;
     revisedOffset += step;
     if (baseOffset >= baseRun.text.length) {
@@ -439,9 +441,12 @@ const diffPreviewRunFormatting = (
 const MOVE_MINIMUM_WORD_COUNT = 3;
 
 const meetsMoveWordCount = (text: string): boolean => {
-  let words = 0;
-  for (const token of text.split(/\s+/u)) {
-    if (token.length > 0 && ++words >= MOVE_MINIMUM_WORD_COUNT) {
+  // Iterate matches instead of split(): a large block would otherwise
+  // allocate its entire token array just to count to the floor.
+  const words = text.matchAll(/\S+/gu);
+  let count = 0;
+  while (!words.next().done) {
+    if (++count >= MOVE_MINIMUM_WORD_COUNT) {
       return true;
     }
   }
