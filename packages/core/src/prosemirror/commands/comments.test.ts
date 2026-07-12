@@ -12,6 +12,7 @@ import {
   findNextChange,
   findPreviousChange,
   rejectAIEditRevision,
+  rejectChange,
 } from "./comments";
 
 const schema = new Schema({
@@ -22,7 +23,9 @@ const schema = new Schema({
       group: "block",
       attrs: {
         numPr: { default: null },
+        alignment: { default: null },
         _propertyChanges: { default: null },
+        _sectionProperties: { default: null },
         pPrMark: { default: null },
       },
     },
@@ -243,6 +246,47 @@ describe("findChangeAtPosition", () => {
     expect(acceptChange(range.from, range.to)(view.state, view.dispatch)).toBe(true);
 
     expect(view.state.doc.child(0).attrs["_propertyChanges"]).toBeNull();
+  });
+
+  test("rejecting a pPrChange restores only in-scope properties and preserves out-of-scope attrs", () => {
+    // Word stores a pPrChange's old properties as CT_PPrBase, which cannot
+    // carry an inline sectPr (or its header/footer references). Rejecting a
+    // paragraph-property change must therefore MERGE the stored old
+    // properties over the live attrs, not replace the pPr wholesale — a
+    // wholesale replace would drop the separately-modeled inline section
+    // break. Regression guard for the OOXML corner case.
+    const sectionProperties = {
+      type: "nextPage",
+      headerReferences: [{ type: "default", relationshipId: "rId7" }],
+    };
+    const initial = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            alignment: "left",
+            _sectionProperties: sectionProperties,
+            _propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: { id: 10, author: "Alice", date: "2026-01-01" },
+                previousFormatting: { alignment: "center" },
+              },
+            ],
+          },
+          [schema.text("alpha")],
+        ),
+      ]),
+    });
+    const view = dispatcher(initial);
+
+    expect(rejectChange(0, initial.doc.content.size)(view.state, view.dispatch)).toBe(true);
+
+    const attrs = view.state.doc.child(0).attrs;
+    expect(attrs["alignment"]).toBe("center");
+    expect(attrs["_propertyChanges"]).toBeNull();
+    expect(attrs["_sectionProperties"]).toEqual(sectionProperties);
   });
 });
 
