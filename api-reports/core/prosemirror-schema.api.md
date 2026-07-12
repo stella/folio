@@ -342,7 +342,8 @@ export type TableAttrs = {
     }; /** Table look flags for conditional formatting (w:tblLook) */
     look?: import__stll_docx_core_model.TableLook; /** Table-level borders (w:tblBorders) — full BorderSpec per side */
     borders?: import__stll_docx_core_model.TableBorders; /** Original table formatting from DOCX for lossless round-trip serialization */
-    _originalFormatting?: import__stll_docx_core_model.TableFormatting;
+    _originalFormatting?: import__stll_docx_core_model.TableFormatting; /** Tracked table property changes (w:tblPrChange) for round-trip + accept/reject */
+    tblPrChange?: import__stll_docx_core_model.TablePropertyChange[];
 };
 
 // @public
@@ -368,7 +369,8 @@ export type TableCellAttrs = {
         left?: number;
         right?: number;
     }; /** Original cell formatting from DOCX for lossless round-trip serialization */
-    _originalFormatting?: import__stll_docx_core_model.TableCellFormatting; /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
+    _originalFormatting?: import__stll_docx_core_model.TableCellFormatting; /** Tracked cell property changes (w:tcPrChange) for round-trip + accept/reject */
+    tcPrChange?: import__stll_docx_core_model.TableCellPropertyChange[]; /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
     _preserveVMergeRestart?: boolean; /** Original DOCX vMerge continuation cells skipped into this PM rowspan. */
     _docxVMergeContinuationCells?: import__stll_docx_core_model.TableCell[];
 };
@@ -379,7 +381,8 @@ export type TableRowAttrs = {
     heightRule?: NonNullable<import__stll_docx_core_model.TableRowFormatting["heightRule"]>; /** Is header row */
     isHeader?: boolean; /** Whether the row is hidden (`w:hidden`) */
     hidden?: boolean; /** Original row formatting from DOCX for lossless round-trip serialization */
-    _originalFormatting?: import__stll_docx_core_model.TableRowFormatting;
+    _originalFormatting?: import__stll_docx_core_model.TableRowFormatting; /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
+    trPrChange?: import__stll_docx_core_model.TableRowPropertyChange[];
 };
 
 // @public
