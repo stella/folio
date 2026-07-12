@@ -39,6 +39,7 @@ import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
+import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
 import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
 import {
   browserClock,
@@ -1487,7 +1488,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // doesn't depend on a state setter callback that would trigger
     // its own re-run.
     const anonymizationMatchesRef = useRef<readonly AnonymizationMatch[]>([]);
-    const anonymizationOverlayRequestSeqRef = useRef(0);
+    const anonymizationOverlayRequestGateRef = useRef(createLatestRequestGate());
     // Autocomplete (inline ghost-text) overlay state. Mirrors the
     // anonymization pattern: a ref tracks the latest plugin
     // suggestion, a derived caret-rect lives in state and drives
@@ -1499,7 +1500,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       text: "",
       requestId: null,
     });
-    const autocompleteOverlayRequestSeqRef = useRef(0);
+    const autocompleteOverlayRequestGateRef = useRef(createLatestRequestGate());
     const [autocompleteCaret, setAutocompleteCaret] = useState<AutocompleteCaretRect | null>(null);
     const [autocompleteText, setAutocompleteText] = useState<string>("");
     const [autocompleteIsStreaming, setAutocompleteIsStreaming] = useState<boolean>(false);
@@ -1509,7 +1510,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // block directives — drives the innermost-block rail emphasis in the overlay.
     const [directiveCaretPos, setDirectiveCaretPos] = useState<number | null>(null);
     const directivesRef = useRef<readonly DirectiveRange[]>([]);
-    const directivesOverlayRequestSeqRef = useRef(0);
+    const directivesOverlayRequestGateRef = useRef(createLatestRequestGate());
     // Template fill preview — the hidden editor's plugin keeps marker↔value
     // entries in sync; the layout pipeline substitutes them into the flow
     // blocks so the painted pages reflow as if the values were the text.
@@ -1529,13 +1530,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       suggestions: readonly AISuggestion[];
       focusedId: string | null;
     }>({ suggestions: EMPTY_AI_SUGGESTIONS, focusedId: null });
-    const aiSuggestionsOverlayRequestSeqRef = useRef(0);
+    const aiSuggestionsOverlayRequestGateRef = useRef(createLatestRequestGate());
     const [remoteSelections, setRemoteSelections] = useState<HiddenProseMirrorRemoteSelection[]>(
       [],
     );
     const suppressSelectionOverlayRef = useRef(false);
     const revealSelectionOverlayTimerRef = useRef<number | null>(null);
-    const selectionOverlayRequestSeqRef = useRef(0);
+    const selectionOverlayRequestGateRef = useRef(createLatestRequestGate());
 
     const validPrecomputedInitialState =
       precomputedInitialDocumentRef.current === document ? precomputedInitialState : null;
@@ -2136,9 +2137,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const updateSelectionOverlay = useCallback(
       (state: EditorState) => {
         const { from, to } = state.selection;
-        const requestSeq = selectionOverlayRequestSeqRef.current + 1;
-        selectionOverlayRequestSeqRef.current = requestSeq;
-        const isCurrentRequest = () => selectionOverlayRequestSeqRef.current === requestSeq;
+        const isCurrentRequest = selectionOverlayRequestGateRef.current.begin();
 
         // Feed the template-directives overlay the caret head so it can emphasise
         // the innermost block around it. Gated on there being directives at all,
@@ -2390,9 +2389,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // ProseMirror's spans are not used — they sit at -9999px and
     // would yield bogus coordinates.
     const updateAnonymizationOverlay = useCallback(() => {
-      const requestSeq = anonymizationOverlayRequestSeqRef.current + 1;
-      anonymizationOverlayRequestSeqRef.current = requestSeq;
-      const isCurrentRequest = () => anonymizationOverlayRequestSeqRef.current === requestSeq;
+      const isCurrentRequest = anonymizationOverlayRequestGateRef.current.begin();
       const matches = anonymizationMatchesRef.current;
       if (matches.length === 0) {
         setAnonymizationRectGroups([]);
@@ -2542,11 +2539,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // ref so this can run from a transaction handler without
     // re-creating callbacks per render.
     const updateAutocompleteOverlay = useCallback(() => {
-      const requestSeq = autocompleteOverlayRequestSeqRef.current + 1;
-      autocompleteOverlayRequestSeqRef.current = requestSeq;
+      const requestIsLatest = autocompleteOverlayRequestGateRef.current.begin();
       const current = autocompleteSuggestionRef.current;
       const isCurrentRequest = () =>
-        autocompleteOverlayRequestSeqRef.current === requestSeq &&
+        requestIsLatest() &&
         autocompleteSuggestionRef.current === current &&
         current.status !== "idle" &&
         current.text.length > 0;
@@ -2628,8 +2624,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // the projection pipeline with anonymization via
     // `projectRangesToRects`.
     const updateDirectivesOverlay = useCallback(() => {
-      const requestSeq = directivesOverlayRequestSeqRef.current + 1;
-      directivesOverlayRequestSeqRef.current = requestSeq;
+      const isCurrentRequest = directivesOverlayRequestGateRef.current.begin();
       // A marker with an active fill-preview value already reads as filled
       // (orange substituted run); suppress its blue marker tint so filled and
       // to-be-filled markers are visually disjoint.
@@ -2654,7 +2649,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           blocks,
           measures,
         });
-        if (directivesOverlayRequestSeqRef.current === requestSeq) {
+        if (isCurrentRequest()) {
           setDirectiveRectGroups(projected);
         }
       })();
@@ -2665,8 +2660,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // severity underlines, plus the focused suggestion's in-text diff
     // (struck-through original + adjacent replacement text).
     const updateAISuggestionsOverlay = useCallback(() => {
-      const requestSeq = aiSuggestionsOverlayRequestSeqRef.current + 1;
-      aiSuggestionsOverlayRequestSeqRef.current = requestSeq;
+      const isCurrentRequest = aiSuggestionsOverlayRequestGateRef.current.begin();
       const { suggestions, focusedId } = aiSuggestionsRef.current;
       const pending = suggestions.filter(
         (suggestion) =>
@@ -2688,7 +2682,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           })),
           { pagesContainer, zoom, layout, blocks, measures },
         );
-        if (aiSuggestionsOverlayRequestSeqRef.current !== requestSeq) {
+        if (!isCurrentRequest()) {
           return;
         }
         const focused = projected.find(({ range }) => range.suggestion.id === focusedId);
@@ -2709,7 +2703,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
     const hideSelectionOverlayDuringInput = useCallback(
       (state: EditorState) => {
-        selectionOverlayRequestSeqRef.current += 1;
+        selectionOverlayRequestGateRef.current.invalidate();
         suppressSelectionOverlayRef.current = true;
         setCaretPosition(null);
         setSelectionRects([]);

@@ -51,6 +51,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
 import type { FlowBlock, Layout, Measure } from "@stll/folio-core/layout-engine/types";
 import { projectRangesToRects } from "@stll/folio-core/paged-layout/rangeProjection";
 import { prefersReducedMotionBehavior } from "@stll/folio-core/paged-layout/scrollNavigation";
@@ -85,8 +86,7 @@ const props = defineProps<{
 const rootRef = ref<HTMLDivElement | null>(null);
 const groups = ref<AnonymizationRectGroup[]>([]);
 
-// Monotonic guard: a stale async projection must not overwrite a newer one.
-let requestSeq = 0;
+const requestGate = createLatestRequestGate();
 let rafId: number | null = null;
 
 function scheduleProject(): void {
@@ -100,7 +100,7 @@ function scheduleProject(): void {
 }
 
 async function project(): Promise<void> {
-  const seq = ++requestSeq;
+  const isCurrentRequest = requestGate.begin();
   const view = props.getView();
   const pagesContainer = props.getPagesContainer();
   const state = props.editorState;
@@ -120,7 +120,7 @@ async function project(): Promise<void> {
     blocks: props.blocks,
     measures: props.measures,
   });
-  if (seq !== requestSeq) {
+  if (!isCurrentRequest()) {
     return;
   }
   const z = props.zoom;
@@ -214,6 +214,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  requestGate.invalidate();
   document.removeEventListener("click", handleDocumentClick);
   if (rafId !== null) {
     cancelAnimationFrame(rafId);

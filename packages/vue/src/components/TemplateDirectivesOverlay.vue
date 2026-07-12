@@ -64,6 +64,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
 import type { SelectionRect } from "@stll/folio-core/layout-bridge/engine/selectionRects";
 import type { FlowBlock, Layout, Measure } from "@stll/folio-core/layout-engine/types";
 import type {
@@ -261,7 +262,7 @@ const gutter = ref<DirectiveGutterGeometry | null>(null);
 const caretPos = ref<number | null>(null);
 const hoveredBlockId = ref<number | null>(null);
 
-let requestSeq = 0;
+const requestGate = createLatestRequestGate();
 let rafId: number | null = null;
 
 function scheduleProject(): void {
@@ -275,7 +276,7 @@ function scheduleProject(): void {
 }
 
 async function project(): Promise<void> {
-  const seq = ++requestSeq;
+  const isCurrentRequest = requestGate.begin();
   const view = props.getView();
   const pagesContainer = props.getPagesContainer();
   const state = props.editorState;
@@ -302,7 +303,7 @@ async function project(): Promise<void> {
     blocks: props.blocks,
     measures: props.measures,
   });
-  if (seq !== requestSeq) {
+  if (!isCurrentRequest()) {
     return;
   }
   // Commit all reactive state together after the sequence guard so a superseded
@@ -400,6 +401,7 @@ function handlePointerOut(event: PointerEvent): void {
 
 onMounted(() => scheduleProject());
 onBeforeUnmount(() => {
+  requestGate.invalidate();
   if (rafId !== null) {
     cancelAnimationFrame(rafId);
     rafId = null;
