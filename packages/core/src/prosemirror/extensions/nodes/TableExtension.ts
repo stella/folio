@@ -273,6 +273,7 @@ const tableSpec: NodeSpec = {
     look: { default: null },
     borders: { default: null },
     _originalFormatting: { default: null },
+    tblPrChange: { default: null },
   },
   parseDOM: [
     {
@@ -334,6 +335,7 @@ const tableRowSpec: NodeSpec = {
     isHeader: { default: false },
     hidden: { default: false },
     _originalFormatting: { default: null },
+    trPrChange: { default: null },
   },
   parseDOM: [{ tag: "tr" }],
   toDOM(node) {
@@ -494,6 +496,7 @@ const tableCellSpec: NodeSpec = {
     textDirection: { default: null },
     noWrap: { default: false },
     _originalFormatting: { default: null },
+    tcPrChange: { default: null },
     _preserveVMergeRestart: { default: null },
     _docxVMergeContinuationCells: { default: null },
   },
@@ -558,6 +561,7 @@ const tableHeaderSpec: NodeSpec = {
     textDirection: { default: null },
     noWrap: { default: false },
     _originalFormatting: { default: null },
+    tcPrChange: { default: null },
     _preserveVMergeRestart: { default: null },
     _docxVMergeContinuationCells: { default: null },
   },

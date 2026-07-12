@@ -1266,6 +1266,12 @@ function convertTable(
   if (table.formatting) {
     attrs._originalFormatting = table.formatting;
   }
+  // Carry `w:tblPrChange` opaquely through PM (same rationale as the
+  // paragraph `_propertyChanges` attr) so edits don't strip the tracked
+  // property-change history and accept/reject can resolve it.
+  if (table.propertyChanges && table.propertyChanges.length > 0) {
+    attrs.tblPrChange = [...table.propertyChanges];
+  }
 
   const conditionalStyles: {
     wholeTable?: TableConditionalStyle;
@@ -1429,6 +1435,10 @@ function convertTableRow(
   }
   if (row.formatting) {
     attrs._originalFormatting = row.formatting;
+  }
+  // Carry `w:trPrChange` opaquely through PM for round-trip + accept/reject.
+  if (row.propertyChanges && row.propertyChanges.length > 0) {
+    attrs.trPrChange = [...row.propertyChanges];
   }
 
   const numCells = row.cells.length;
@@ -1791,6 +1801,10 @@ function convertTableCell(
   }
   if (formatting) {
     attrs._originalFormatting = formatting;
+  }
+  // Carry `w:tcPrChange` opaquely through PM for round-trip + accept/reject.
+  if (cell.propertyChanges && cell.propertyChanges.length > 0) {
+    attrs.tcPrChange = [...cell.propertyChanges];
   }
   if (preserveVMergeRestart) {
     attrs._preserveVMergeRestart = true;

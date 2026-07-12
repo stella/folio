@@ -2281,6 +2281,7 @@ function convertPMTable(node: PMNode, documentCounts?: TrackedChangeCounts): Tab
         if (attrs.columnWidths) {
           minTable.columnWidths = attrs.columnWidths;
         }
+        restoreTablePropertyChanges(minTable, attrs);
         return minTable;
       }
     }
@@ -2293,7 +2294,19 @@ function convertPMTable(node: PMNode, documentCounts?: TrackedChangeCounts): Tab
   if (formatting) {
     table.formatting = formatting;
   }
+  restoreTablePropertyChanges(table, attrs);
   return table;
+}
+
+/**
+ * Restore `w:tblPrChange` entries that PM carried opaquely on the table attrs
+ * (same rationale as the paragraph `_propertyChanges` attr): they must survive
+ * an edit so the saved DOCX keeps the tracked property-change history.
+ */
+function restoreTablePropertyChanges(table: Table, attrs: TableAttrs): void {
+  if (Array.isArray(attrs.tblPrChange) && attrs.tblPrChange.length > 0) {
+    table.propertyChanges = [...attrs.tblPrChange];
+  }
 }
 
 type ActiveVerticalMerge = {
@@ -2523,6 +2536,11 @@ function convertPMTableRow(
   if (rowFormatting) {
     row.formatting = rowFormatting;
   }
+  // Restore `w:trPrChange` entries PM carried opaquely (see the paragraph
+  // `_propertyChanges` attr for the rationale).
+  if (Array.isArray(attrs.trPrChange) && attrs.trPrChange.length > 0) {
+    row.propertyChanges = [...attrs.trPrChange];
+  }
   return row;
 }
 
@@ -2626,6 +2644,11 @@ function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts):
   const cellFormatting = tableCellAttrsToFormatting(attrs);
   if (cellFormatting) {
     cell.formatting = cellFormatting;
+  }
+  // Restore `w:tcPrChange` entries PM carried opaquely (see the paragraph
+  // `_propertyChanges` attr for the rationale).
+  if (Array.isArray(attrs.tcPrChange) && attrs.tcPrChange.length > 0) {
+    cell.propertyChanges = [...attrs.tcPrChange];
   }
   return cell;
 }

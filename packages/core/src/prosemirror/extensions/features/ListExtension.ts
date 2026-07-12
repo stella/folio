@@ -7,6 +7,7 @@
 
 import type { Command, EditorState } from "prosemirror-state";
 
+import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "../../commands/propertyChangeScope";
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
@@ -71,6 +72,18 @@ const LIST_FORMATTING_ATTRS = [
 
 function getPreviousListFormatting(attrs: Record<string, unknown>): Record<string, unknown> {
   const previousFormatting: Record<string, unknown> = {};
+  // Rejecting a pPrChange restores the stored record WHOLESALE within the
+  // CT_PPrBase scope (a scoped key absent from the record resets to null —
+  // see propertyChangeScope.ts). Snapshot every non-null in-scope attr so a
+  // reject cannot wipe formatting the list toggle never touched.
+  for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
+    const value = attrs[key];
+    if (value != null) {
+      previousFormatting[key] = value;
+    }
+  }
+  // List-rendering bookkeeping snapshots with explicit nulls: these attrs are
+  // outside the wholesale scope, so only recorded keys restore on reject.
   for (const key of LIST_FORMATTING_ATTRS) {
     previousFormatting[key] = attrs[key] ?? null;
   }
