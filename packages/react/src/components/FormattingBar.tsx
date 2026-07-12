@@ -665,8 +665,8 @@ export function FormattingBar(props: FormattingBarProps) {
       aria-label={t("formattingToolbar")}
       tabIndex={-1}
       data-folio-toolbar="true"
-      onMouseDown={inline ? undefined : containedHandler(barRef, handleBarMouseDown)}
-      onMouseUp={inline ? undefined : containedHandler(barRef, handleBarMouseUp)}
+      onMouseDown={inline ? undefined : containedHandler(handleBarMouseDown)}
+      onMouseUp={inline ? undefined : containedHandler(handleBarMouseUp)}
     >
       {/* Formatting controls: horizontally scrollable when the primary
           controls alone still overflow (the secondary group never scrolls —

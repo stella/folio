@@ -349,9 +349,11 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
           .readText()
           .then((text) => {
             if (text) view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+            return undefined;
           })
           .catch(() => {
             // Clipboard read denied — nothing to paste.
+            return undefined;
           });
         break;
       case "delete": {

@@ -367,11 +367,16 @@ const parseSignatureParties = (
     assertAllowedKeys(party, partyPath, ["name", "signatory", "title"]);
     const signatory = readOptionalString(party, "signatory", partyPath);
     const title = readOptionalString(party, "title", partyPath);
-    return {
+    const parsedParty: { name: string; signatory?: string; title?: string } = {
       name: readString(party, "name", partyPath),
-      ...(signatory !== undefined && { signatory }),
-      ...(title !== undefined && { title }),
     };
+    if (signatory !== undefined) {
+      parsedParty.signatory = signatory;
+    }
+    if (title !== undefined) {
+      parsedParty.title = title;
+    }
+    return parsedParty;
   });
 };
 

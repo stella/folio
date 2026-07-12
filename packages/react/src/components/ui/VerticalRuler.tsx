@@ -108,7 +108,9 @@ export function VerticalRuler({
     onBottomMarginChange,
   };
   const dragParamsRef = useRef(dragParams);
-  dragParamsRef.current = dragParams;
+  useEffect(() => {
+    dragParamsRef.current = dragParams;
+  }, [dragParams]);
 
   // Handle drag start
   const handleDragStart = useCallback(

@@ -3163,25 +3163,24 @@ export function renderPages(
 
   for (let i = 0; i < pages.length; i++) {
     const page = pages[i]!; // SAFETY: i < pages.length
+    let pageEl: HTMLElement;
 
     if (!useVirtualization) {
       // Small document: render all pages eagerly
       const { context, pageOptions } = buildPageRenderArgs(page, totalPages, options);
-      const pageEl = renderPage(page, context, pageOptions);
-      container.insertBefore(pageEl, overlayBefore);
-      pageShells.push(pageEl);
+      pageEl = renderPage(page, context, pageOptions);
     } else {
       // Large document: create lightweight shell with correct dimensions
       const doc = options.document ?? document;
-      const pageEl = doc.createElement("div");
+      pageEl = doc.createElement("div");
       pageEl.className = options.pageClassName ?? PAGE_CLASS_NAMES.page;
       pageEl.dataset["pageNumber"] = String(page.number);
       pageEl.dataset["pageIndex"] = String(i);
       applyPageStyles(pageEl, page.size.w, page.size.h, options);
       syncPageBorderOverlay(pageEl, page, options, doc);
-      container.insertBefore(pageEl, overlayBefore);
-      pageShells.push(pageEl);
     }
+    container.insertBefore(pageEl, overlayBefore);
+    pageShells.push(pageEl);
   }
 
   if (!useVirtualization) {

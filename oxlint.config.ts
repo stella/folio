@@ -56,6 +56,11 @@ export default library({
     "unicorn/no-hex-escape": "off",
     "unicorn/number-literal-case": "off",
     "unicorn/prefer-response-static-json": "off",
+    // The shared config enables compiler analysis globally, including for Vue.
+    // The React package runs the real compiler and ratchets its intentional
+    // bailouts in scripts/react-compiler-bailouts.json; this rule cannot model
+    // that gradual baseline and would turn every known bailout into an error.
+    "react/react-compiler": "off",
   },
   jsPlugins: [
     "./.oxlint-plugins/folio-layer-boundaries.ts",

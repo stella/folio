@@ -216,14 +216,16 @@ const readCachedGeom = async (geomPath: string, absDocxPath: string): Promise<Do
   const file = Bun.file(geomPath);
   if (!(await file.exists())) return null;
   const geom = (await file.json()) as DocGeom;
-  return {
-    ...geom,
+  return Object.assign({}, geom, {
     file: absDocxPath,
-    pages: geom.pages.map((page) => ({
-      ...page,
-      lines: page.lines.map((line) => ({ ...line, normText: normalizeLineText(line.text) })),
-    })),
-  };
+    pages: geom.pages.map((page) =>
+      Object.assign({}, page, {
+        lines: page.lines.map((line) =>
+          Object.assign({}, line, { normText: normalizeLineText(line.text) }),
+        ),
+      }),
+    ),
+  });
 };
 
 /** Word ground truth for `docxPath`: exports via Word, extracts geometry via

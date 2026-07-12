@@ -296,7 +296,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
           return comment;
         }
         found = true;
-        return { ...comment, done: resolved };
+        return Object.assign({}, comment, { done: resolved });
       });
       if (!found) {
         return false;

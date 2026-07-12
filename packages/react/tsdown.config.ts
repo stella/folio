@@ -1,3 +1,5 @@
+import babel from "@rolldown/plugin-babel";
+import { reactCompilerPreset } from "@vitejs/plugin-react";
 import type { Plugin } from "rolldown";
 import { defineConfig } from "tsdown";
 
@@ -21,6 +23,15 @@ const stripCssImports = (): Plugin => ({
     return null;
   },
 });
+
+const compileReact = (): Plugin =>
+  babel({
+    // Folio publishes TSX and supports React 18 consumers. Parse the original
+    // source before tsdown transforms it, then emit against the standalone
+    // React 18 compiler runtime rather than React 19's built-in runtime.
+    parserOpts: { plugins: ["typescript", "jsx"] },
+    presets: [reactCompilerPreset({ target: "18" })],
+  });
 
 const entry = {
   index: "src/index.ts",
@@ -84,6 +95,6 @@ const shared = {
 // tsdown runs array configs concurrently, so neither pass may `clean` (it would
 // race the other's output). The `build` script clears `dist` up front instead.
 export default defineConfig([
-  { ...shared, dts: false, clean: false },
+  { ...shared, plugins: [stripCssImports(), compileReact()], dts: false, clean: false },
   { ...shared, dts: { emitDtsOnly: true }, clean: false },
 ]);

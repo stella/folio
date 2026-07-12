@@ -714,13 +714,14 @@ watch(
     void loadHostFontFaces(fonts).then((faces) => {
       if (cancelled) {
         removeFontFaces(faces);
-        return;
+        return undefined;
       }
       registered = faces;
       if (faces.length === 0) {
-        return;
+        return undefined;
       }
       remeasureForFontChange();
+      return undefined;
     });
     onCleanup(() => {
       cancelled = true;

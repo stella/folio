@@ -34,8 +34,10 @@
 //     2. Types    — node16 + bundler.
 //     3. CSS      — `dist/editor.css` exists, parses, carries the bundled rules,
 //                   and preserves `@fontsource` `@import`s (not inlined).
-//     4. External — React / react-dom / ProseMirror AND `@stll/folio-core` are
-//                   imported as externals, never bundled into the JS.
+//     4. External — React / react-dom / React Compiler runtime / ProseMirror
+//                   AND `@stll/folio-core` are imported as externals, never
+//                   bundled into the JS. Requiring the compiler runtime import
+//                   also proves the published JS passed through the compiler.
 //     5. Messages — the published `messages.d.ts` exports `FolioMessages` /
 //                   `getFolioMessages` and never imports a `./messages/*.json`
 //                   source file (dist inlines the JSON, ships no JSON).
@@ -570,7 +572,14 @@ const leaked = reactSentinels.filter((s) => allJs.includes(s));
 // Each external must appear only as an import specifier, never bundled.
 const externalsByTarget: Record<string, string[]> = {
   core: ["prosemirror-state", "prosemirror-model", "jszip"],
-  react: ["react", "react-dom", "react/jsx-runtime", "@stll/folio-core", "prosemirror-view"],
+  react: [
+    "react",
+    "react-dom",
+    "react/jsx-runtime",
+    "react-compiler-runtime",
+    "@stll/folio-core",
+    "prosemirror-view",
+  ],
   agents: ["@stll/folio-core"],
   vue: ["vue", "@stll/folio-core", "prosemirror-history", "prosemirror-state"],
 };
@@ -582,7 +591,7 @@ const dataFontInlined = /["']data:font|["']data:application\/font/u.test(allJs);
 const externalOk = leaked.length === 0 && notExternalized.length === 0 && !dataFontInlined;
 const externalLabels: Record<string, string> = {
   core: "external: React never bundled; deps stay external",
-  react: "external: React / ProseMirror / @stll/folio-core not bundled into JS",
+  react: "external: React / compiler runtime / ProseMirror / @stll/folio-core not bundled",
   agents: "external: @stll/folio-core not bundled into JS",
   vue: "external: Vue / ProseMirror / @stll/folio-core not bundled into JS",
 };

@@ -18,6 +18,7 @@ import {
   removeHyperlinkAtCursor,
 } from "@stll/folio-core/prosemirror/commands/hyperlink";
 import type { HyperlinkPopupData } from "../components/ui/hyperlinkPopupTypes";
+
 export type { HyperlinkPopupData };
 
 type CommandFactory = (...args: readonly unknown[]) => Command;

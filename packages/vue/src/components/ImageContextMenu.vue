@@ -123,6 +123,7 @@ import {
 } from "@stll/folio-core/layout-painter/imageLayout";
 
 import type { ImageContextMenuState, ImageContextMenuTextAction } from "./imageContextMenuTypes";
+
 export type { ImageContextMenuState, ImageContextMenuTextAction };
 
 const props = withDefaults(

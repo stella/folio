@@ -10,6 +10,7 @@ import {
 import { DocxEditor as FolioDocxEditor } from "../components/DocxEditor";
 import type { DocxEditorProps, DocxEditorRef } from "../components/DocxEditor.props";
 import { getFolioMessages } from "../i18n/messages";
+
 export {
   renderAsync,
   type DocxEditorHandle,

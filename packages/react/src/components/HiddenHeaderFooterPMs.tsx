@@ -213,6 +213,7 @@ const HOST_STYLES: CSSProperties = {
 // COMPONENT
 // =============================================================================
 
+/* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools without reindenting the implementation. */
 export const HiddenHeaderFooterPMs = memo(
   forwardRef<HiddenHeaderFooterPMsRef, HiddenHeaderFooterPMsProps>(function HiddenHeaderFooterPMs(
     { document, styles, theme, onTransaction },
@@ -377,5 +378,6 @@ export const HiddenHeaderFooterPMs = memo(
     return <div ref={hostRef} style={HOST_STYLES} />;
   }),
 );
+/* eslint-enable prefer-arrow-callback */
 
 HiddenHeaderFooterPMs.displayName = "HiddenHeaderFooterPMs";

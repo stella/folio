@@ -1067,7 +1067,6 @@ function extractParagraphContent(
 
       if (currentHyperlink && currentHyperlinkKey === linkKey) {
         // Continue current hyperlink
-        addNodeToHyperlink(currentHyperlink, node);
       } else {
         // Finish previous content
         flushCurrentInline();
@@ -1075,8 +1074,8 @@ function extractParagraphContent(
         // Start new hyperlink
         currentHyperlink = createHyperlink(linkMark);
         currentHyperlinkKey = linkKey;
-        addNodeToHyperlink(currentHyperlink, node);
       }
+      addNodeToHyperlink(currentHyperlink, node);
       return;
     }
 
