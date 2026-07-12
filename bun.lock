@@ -10,6 +10,7 @@
         "@changesets/cli": "^2.31.0",
         "@codspeed/tinybench-plugin": "^5.7.1",
         "@eigenpal/docx-editor-core": "^1.9.0",
+        "@formatjs/icu-messageformat-parser": "^3.5.12",
         "@microsoft/api-extractor": "7.58.9",
         "@playwright/test": "^1.61.1",
         "@rolldown/plugin-babel": "^0.2.2",
@@ -40,14 +41,14 @@
     },
     "packages/agents": {
       "name": "@stll/folio-agents",
-      "version": "0.1.1",
+      "version": "0.3.0",
       "dependencies": {
         "@stll/folio-core": "workspace:^",
       },
     },
     "packages/core": {
       "name": "@stll/folio-core",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "dependencies": {
         "@stll/docx-core": "^0.1.0",
         "@stll/docx-utils": "^0.1.0",
@@ -75,7 +76,7 @@
     },
     "packages/nuxt": {
       "name": "@stll/folio-nuxt",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@nuxt/kit": "^3.14.0 || ^4.0.0",
         "@stll/folio-vue": "workspace:^",
@@ -131,7 +132,7 @@
     },
     "packages/react": {
       "name": "@stll/folio-react",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "dependencies": {
         "@base-ui/react": "1.6.0",
         "@fontsource/arimo": "^5.2.8",
@@ -165,7 +166,7 @@
     },
     "packages/vue": {
       "name": "@stll/folio-vue",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "dependencies": {
         "@stll/folio-core": "workspace:^",
         "better-result": "2.9.2",

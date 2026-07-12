@@ -1,0 +1,1056 @@
+{
+  "_note": "Canonical terms mirror Microsoft Word's localized UI. Verified 2026-07-12 against localized support.microsoft.com articles (Word keyboard-shortcuts page 95ef89dd, track-changes 197ba630, footnotes/endnotes 61f3fb1a, page-orientation 9b5ac1af, per-locale) plus help.libreoffice.org for divergence checks. Where Word and LibreOffice disagree, Word's term is canonical and the LibreOffice variant is recorded in folio-glossary-notes.md (not in forbidden). Locales with thin sourcing (hi, et, lt, lv) intentionally cover fewer entries. Source URLs and confidence notes per locale: see folio-glossary-notes.md.",
+  "locales": [
+    "ar",
+    "cs",
+    "de",
+    "es",
+    "et",
+    "fr",
+    "he",
+    "hi",
+    "hu",
+    "lt",
+    "lv",
+    "pl",
+    "pt-BR",
+    "sk",
+    "tr",
+    "zh-CN"
+  ],
+  "nouns": [
+    {
+      "id": "trackChanges",
+      "en": "Track Changes",
+      "translations": {
+        "ar": "تعقب التغييرات",
+        "cs": "Sledování změn",
+        "de": "Änderungen nachverfolgen",
+        "es": "Control de cambios",
+        "et": "Muutuste jälitus",
+        "fr": "Suivi des modifications",
+        "he": "מעקב אחר שינויים",
+        "hu": "Változások követése",
+        "lt": "Keitimų sekimas",
+        "lv": "Izmaiņu reģistrēšana",
+        "pl": "Śledzenie zmian",
+        "pt-BR": "Controle de Alterações",
+        "sk": "Sledovanie zmien",
+        "tr": "Değişiklik izleme",
+        "zh-CN": "修订"
+      },
+      "forbidden": {
+        "de": ["Änderungen verfolgen"],
+        "zh-CN": ["追蹤修訂"]
+      }
+    },
+    {
+      "id": "revision",
+      "en": "Revision",
+      "translations": {
+        "ar": "مراجعة",
+        "cs": "Revize",
+        "de": "Überarbeitung",
+        "es": "Revisión",
+        "fr": "Révision",
+        "hu": "Korrektúra",
+        "pt-BR": "Revisão",
+        "sk": "Revízia",
+        "zh-CN": "修订"
+      }
+    },
+    {
+      "id": "comment",
+      "en": "Comment",
+      "translations": {
+        "ar": "تعليق",
+        "cs": "Komentář",
+        "de": "Kommentar",
+        "es": "Comentario",
+        "et": "Kommentaar",
+        "fr": "Commentaire",
+        "he": "הערה",
+        "hi": "टिप्पणी",
+        "hu": "Megjegyzés",
+        "lt": "Komentaras",
+        "lv": "Komentārs",
+        "pl": "Komentarz",
+        "pt-BR": "Comentário",
+        "sk": "Komentár",
+        "tr": "Açıklama",
+        "zh-CN": "批注"
+      },
+      "forbidden": {
+        "tr": ["yorum"],
+        "zh-CN": ["註解", "评论"]
+      }
+    },
+    {
+      "id": "footnote",
+      "en": "Footnote",
+      "translations": {
+        "ar": "حاشية سفلية",
+        "cs": "Poznámka pod čarou",
+        "de": "Fußnote",
+        "es": "Nota al pie",
+        "et": "Allmärkus",
+        "fr": "Note de bas de page",
+        "he": "הערת שוליים",
+        "hu": "Lábjegyzet",
+        "lt": "Puslapio išnaša",
+        "lv": "Vēre",
+        "pl": "Przypis dolny",
+        "pt-BR": "Nota de rodapé",
+        "sk": "Poznámka pod čiarou",
+        "tr": "Dipnot",
+        "zh-CN": "脚注"
+      },
+      "forbidden": {
+        "zh-CN": ["註腳"]
+      }
+    },
+    {
+      "id": "endnote",
+      "en": "Endnote",
+      "translations": {
+        "ar": "تعليق ختامي",
+        "cs": "Vysvětlivka",
+        "de": "Endnote",
+        "es": "Nota al final",
+        "et": "Lõpumärkus",
+        "fr": "Note de fin",
+        "he": "הערת סיום",
+        "hu": "Végjegyzet",
+        "lt": "Dokumento išnaša",
+        "lv": "Beigu vēre",
+        "pl": "Przypis końcowy",
+        "pt-BR": "Nota de fim",
+        "sk": "Vysvetlivka",
+        "tr": "Son not",
+        "zh-CN": "尾注"
+      },
+      "forbidden": {
+        "cs": ["koncová poznámka"],
+        "zh-CN": ["章節附註"]
+      }
+    },
+    {
+      "id": "header",
+      "en": "Header",
+      "translations": {
+        "ar": "رأس الصفحة",
+        "cs": "Záhlaví",
+        "de": "Kopfzeile",
+        "es": "Encabezado",
+        "et": "Päis",
+        "fr": "En-tête",
+        "he": "כותרת עליונה",
+        "hu": "Élőfej",
+        "lt": "Antraštė",
+        "lv": "Galvene",
+        "pl": "Nagłówek",
+        "pt-BR": "Cabeçalho",
+        "sk": "Hlavička",
+        "tr": "Üstbilgi",
+        "zh-CN": "页眉"
+      },
+      "forbidden": {
+        "hu": ["fejléc"],
+        "zh-CN": ["頁首"]
+      }
+    },
+    {
+      "id": "footer",
+      "en": "Footer",
+      "translations": {
+        "ar": "تذييل الصفحة",
+        "cs": "Zápatí",
+        "de": "Fußzeile",
+        "es": "Pie de página",
+        "et": "Jalus",
+        "fr": "Pied de page",
+        "he": "כותרת תחתונה",
+        "hu": "Élőláb",
+        "lt": "Poraštė",
+        "lv": "Kājene",
+        "pl": "Stopka",
+        "pt-BR": "Rodapé",
+        "sk": "Päta",
+        "tr": "Altbilgi",
+        "zh-CN": "页脚"
+      },
+      "forbidden": {
+        "hu": ["lábléc"],
+        "zh-CN": ["頁尾"]
+      }
+    },
+    {
+      "id": "pageBreak",
+      "en": "Page Break",
+      "translations": {
+        "ar": "فاصل صفحات",
+        "cs": "Konec stránky",
+        "de": "Seitenumbruch",
+        "es": "Salto de página",
+        "et": "Leheküljepiir",
+        "fr": "Saut de page",
+        "he": "מעבר עמוד",
+        "hu": "Oldaltörés",
+        "lt": "Puslapio lūžis",
+        "lv": "Lappuses pārtraukums",
+        "pl": "Podział strony",
+        "pt-BR": "Quebra de página",
+        "sk": "Zlom strany",
+        "tr": "Sayfa sonu",
+        "zh-CN": "分页符"
+      },
+      "forbidden": {
+        "zh-CN": ["分頁符號"]
+      }
+    },
+    {
+      "id": "sectionBreak",
+      "en": "Section Break",
+      "translations": {
+        "ar": "فاصل مقطعي",
+        "cs": "Konec oddílu",
+        "de": "Abschnittsumbruch",
+        "es": "Salto de sección",
+        "fr": "Saut de section",
+        "he": "מעבר מקטע",
+        "hu": "Szakasztörés",
+        "pl": "Podział sekcji",
+        "pt-BR": "Quebra de seção",
+        "sk": "Zlom sekcie",
+        "tr": "Bölüm sonu",
+        "zh-CN": "分节符"
+      },
+      "forbidden": {
+        "zh-CN": ["分節符號"]
+      }
+    },
+    {
+      "id": "tableOfContents",
+      "en": "Table of Contents",
+      "translations": {
+        "ar": "جدول المحتويات",
+        "cs": "Obsah",
+        "de": "Inhaltsverzeichnis",
+        "es": "Tabla de contenido",
+        "et": "Sisukord",
+        "fr": "Table des matières",
+        "he": "תוכן עניינים",
+        "hu": "Tartalomjegyzék",
+        "lt": "Turinys",
+        "lv": "Satura rādītājs",
+        "pl": "Spis treści",
+        "pt-BR": "Sumário",
+        "sk": "Obsah",
+        "tr": "İçindekiler tablosu",
+        "zh-CN": "目录"
+      },
+      "forbidden": {
+        "pt-BR": ["Tabela de Conteúdo"]
+      }
+    },
+    {
+      "id": "bookmark",
+      "en": "Bookmark",
+      "translations": {
+        "ar": "إشارة مرجعية",
+        "cs": "Záložka",
+        "de": "Textmarke",
+        "es": "Marcador",
+        "et": "Järjehoidja",
+        "fr": "Signet",
+        "he": "סימניה",
+        "hu": "Könyvjelző",
+        "lt": "Žymelė",
+        "lv": "Grāmatzīme",
+        "pl": "Zakładka",
+        "pt-BR": "Indicador",
+        "sk": "Záložka",
+        "tr": "Yer işareti",
+        "zh-CN": "书签"
+      }
+    },
+    {
+      "id": "hyperlink",
+      "en": "Hyperlink",
+      "translations": {
+        "ar": "ارتباط تشعبي",
+        "cs": "Hypertextový odkaz",
+        "de": "Hyperlink",
+        "es": "Hipervínculo",
+        "et": "Hüperlink",
+        "fr": "Lien hypertexte",
+        "he": "היפר-קישור",
+        "hu": "Hivatkozás",
+        "lt": "Hipersaitas",
+        "lv": "Hipersaite",
+        "pl": "Hiperłącze",
+        "pt-BR": "Hiperlink",
+        "sk": "Hypertextové prepojenie",
+        "tr": "Köprü",
+        "zh-CN": "超链接"
+      },
+      "forbidden": {
+        "zh-CN": ["超連結"]
+      }
+    },
+    {
+      "id": "watermark",
+      "en": "Watermark",
+      "translations": {
+        "ar": "علامة مائية",
+        "cs": "Vodoznak",
+        "de": "Wasserzeichen",
+        "es": "Marca de agua",
+        "et": "Vesimärk",
+        "fr": "Filigrane",
+        "he": "סימן מים",
+        "hu": "Vízjel",
+        "lt": "Vandens ženklas",
+        "lv": "Ūdenszīme",
+        "pl": "Znak wodny",
+        "pt-BR": "Marca-d'água",
+        "sk": "Vodotlač",
+        "tr": "Filigran",
+        "zh-CN": "水印"
+      },
+      "forbidden": {
+        "zh-CN": ["浮水印"]
+      }
+    },
+    {
+      "id": "margin",
+      "en": "Margin",
+      "translations": {
+        "ar": "هامش",
+        "cs": "Okraj",
+        "de": "Seitenrand",
+        "es": "Margen",
+        "et": "Veeris",
+        "fr": "Marge",
+        "he": "שוליים",
+        "hu": "Margó",
+        "lt": "Paraštė",
+        "pl": "Margines",
+        "pt-BR": "Margem",
+        "sk": "Okraj",
+        "tr": "Kenar boşluğu",
+        "zh-CN": "页边距"
+      }
+    },
+    {
+      "id": "indent",
+      "en": "Indent",
+      "translations": {
+        "ar": "مسافة بادئة",
+        "cs": "Odsazení",
+        "de": "Einzug",
+        "es": "Sangría",
+        "et": "Taane",
+        "fr": "Retrait",
+        "he": "כניסה",
+        "hu": "Behúzás",
+        "lt": "Įtrauka",
+        "lv": "Atkāpe",
+        "pl": "Wcięcie",
+        "pt-BR": "Recuo",
+        "sk": "Odsadenie",
+        "tr": "Girinti",
+        "zh-CN": "缩进"
+      },
+      "forbidden": {
+        "fr": ["indentation"],
+        "pt-BR": ["indentação"],
+        "zh-CN": ["縮排"]
+      }
+    },
+    {
+      "id": "alignment",
+      "en": "Alignment",
+      "translations": {
+        "ar": "محاذاة",
+        "cs": "Zarovnání",
+        "de": "Ausrichtung",
+        "es": "Alineación",
+        "et": "Joondus",
+        "fr": "Alignement",
+        "he": "יישור",
+        "hu": "Igazítás",
+        "lt": "Lygiuotė",
+        "lv": "Līdzinājums",
+        "pl": "Wyrównanie",
+        "pt-BR": "Alinhamento",
+        "sk": "Zarovnanie",
+        "tr": "Hizalama",
+        "zh-CN": "对齐方式"
+      }
+    },
+    {
+      "id": "bold",
+      "en": "Bold",
+      "translations": {
+        "ar": "غامق",
+        "cs": "Tučné",
+        "de": "Fett",
+        "es": "Negrita",
+        "et": "Paks",
+        "fr": "Gras",
+        "he": "מודגש",
+        "hi": "बोल्ड",
+        "hu": "Félkövér",
+        "lt": "Paryškintasis",
+        "lv": "Treknraksts",
+        "pl": "Pogrubienie",
+        "pt-BR": "Negrito",
+        "sk": "Tučné",
+        "tr": "Kalın",
+        "zh-CN": "加粗"
+      }
+    },
+    {
+      "id": "italic",
+      "en": "Italic",
+      "translations": {
+        "ar": "مائل",
+        "cs": "Kurzíva",
+        "de": "Kursiv",
+        "es": "Cursiva",
+        "et": "Kursiiv",
+        "fr": "Italique",
+        "he": "נטוי",
+        "hi": "इटैलिक",
+        "hu": "Dőlt",
+        "lt": "Pasvirasis",
+        "lv": "Slīpraksts",
+        "pl": "Kursywa",
+        "pt-BR": "Itálico",
+        "sk": "Kurzíva",
+        "tr": "İtalik",
+        "zh-CN": "倾斜"
+      }
+    },
+    {
+      "id": "underline",
+      "en": "Underline",
+      "translations": {
+        "ar": "تسطير",
+        "cs": "Podtržení",
+        "de": "Unterstrichen",
+        "es": "Subrayado",
+        "et": "Allakriipsutus",
+        "fr": "Souligné",
+        "he": "קו תחתון",
+        "hu": "Aláhúzott",
+        "lt": "Pabrauktasis",
+        "lv": "Pasvītrojums",
+        "pl": "Podkreślenie",
+        "pt-BR": "Sublinhado",
+        "sk": "Podčiarknutie",
+        "tr": "Altı çizili",
+        "zh-CN": "下划线"
+      },
+      "forbidden": {
+        "zh-CN": ["底線"]
+      }
+    },
+    {
+      "id": "strikethrough",
+      "en": "Strikethrough",
+      "translations": {
+        "ar": "يتوسطه خط",
+        "cs": "Přeškrtnutí",
+        "de": "Durchgestrichen",
+        "es": "Tachado",
+        "fr": "Barré",
+        "he": "קו חוצה",
+        "hu": "Áthúzott",
+        "pl": "Przekreślenie",
+        "pt-BR": "Tachado",
+        "sk": "Prečiarknutie",
+        "tr": "Üstü çizili",
+        "zh-CN": "删除线"
+      }
+    },
+    {
+      "id": "superscript",
+      "en": "Superscript",
+      "translations": {
+        "ar": "مرتفع",
+        "cs": "Horní index",
+        "de": "Hochgestellt",
+        "es": "Superíndice",
+        "et": "Ülaindeks",
+        "fr": "Exposant",
+        "he": "כתב עילי",
+        "hu": "Felső index",
+        "lt": "Viršutinis indeksas",
+        "lv": "Augšraksts",
+        "pl": "Indeks górny",
+        "pt-BR": "Sobrescrito",
+        "sk": "Horný index",
+        "tr": "Üst simge",
+        "zh-CN": "上标"
+      }
+    },
+    {
+      "id": "subscript",
+      "en": "Subscript",
+      "translations": {
+        "ar": "منخفض",
+        "cs": "Dolní index",
+        "de": "Tiefgestellt",
+        "es": "Subíndice",
+        "et": "Allindeks",
+        "fr": "Indice",
+        "he": "כתב תחתי",
+        "hu": "Alsó index",
+        "lt": "Apatinis indeksas",
+        "lv": "Apakšraksts",
+        "pl": "Indeks dolny",
+        "pt-BR": "Subscrito",
+        "sk": "Dolný index",
+        "tr": "Alt simge",
+        "zh-CN": "下标"
+      }
+    },
+    {
+      "id": "style",
+      "en": "Style",
+      "translations": {
+        "ar": "نمط",
+        "cs": "Styl",
+        "de": "Formatvorlage",
+        "es": "Estilo",
+        "et": "Laad",
+        "fr": "Style",
+        "he": "סגנון",
+        "hi": "शैली",
+        "hu": "Stílus",
+        "lt": "Stilius",
+        "lv": "Stils",
+        "pl": "Styl",
+        "pt-BR": "Estilo",
+        "sk": "Štýl",
+        "tr": "Stil",
+        "zh-CN": "样式"
+      },
+      "forbidden": {
+        "de": ["Stil"]
+      }
+    },
+    {
+      "id": "ruler",
+      "en": "Ruler",
+      "translations": {
+        "ar": "مسطرة",
+        "cs": "Pravítko",
+        "de": "Lineal",
+        "es": "Regla",
+        "et": "Joonlaud",
+        "fr": "Règle",
+        "he": "סרגל",
+        "hu": "Vonalzó",
+        "lt": "Liniuotė",
+        "pl": "Linijka",
+        "pt-BR": "Régua",
+        "sk": "Pravítko",
+        "tr": "Cetvel",
+        "zh-CN": "标尺"
+      }
+    },
+    {
+      "id": "orientation",
+      "en": "Orientation",
+      "translations": {
+        "ar": "اتجاه",
+        "cs": "Orientace",
+        "de": "Ausrichtung",
+        "es": "Orientación",
+        "fr": "Orientation",
+        "he": "כיוון",
+        "hu": "Tájolás",
+        "pl": "Orientacja",
+        "pt-BR": "Orientação",
+        "sk": "Orientácia",
+        "tr": "Yönlendirme",
+        "zh-CN": "纸张方向"
+      }
+    },
+    {
+      "id": "portrait",
+      "en": "Portrait",
+      "translations": {
+        "ar": "عمودي",
+        "cs": "Na výšku",
+        "de": "Hochformat",
+        "es": "Vertical",
+        "fr": "Portrait",
+        "he": "לאורך",
+        "hu": "Álló",
+        "pl": "Pionowa",
+        "pt-BR": "Retrato",
+        "sk": "Na výšku",
+        "tr": "Dikey",
+        "zh-CN": "纵向"
+      }
+    },
+    {
+      "id": "landscape",
+      "en": "Landscape",
+      "translations": {
+        "ar": "أفقي",
+        "cs": "Na šířku",
+        "de": "Querformat",
+        "es": "Horizontal",
+        "fr": "Paysage",
+        "he": "לרוחב",
+        "hu": "Fekvő",
+        "pl": "Pozioma",
+        "pt-BR": "Paisagem",
+        "sk": "Na šírku",
+        "tr": "Yatay",
+        "zh-CN": "横向"
+      }
+    },
+    {
+      "id": "pageSetup",
+      "en": "Page Setup",
+      "translations": {
+        "ar": "إعداد الصفحة",
+        "cs": "Vzhled stránky",
+        "de": "Seite einrichten",
+        "es": "Configurar página",
+        "fr": "Mise en page",
+        "he": "הגדרת עמוד",
+        "hu": "Oldalbeállítás",
+        "pl": "Ustawienia strony",
+        "pt-BR": "Configurar página",
+        "sk": "Nastavenie strany",
+        "tr": "Sayfa Yapısı",
+        "zh-CN": "页面设置"
+      },
+      "forbidden": {
+        "zh-CN": ["版面設定"]
+      }
+    },
+    {
+      "id": "findAndReplace",
+      "en": "Find and Replace",
+      "translations": {
+        "ar": "بحث واستبدال",
+        "cs": "Najít a nahradit",
+        "de": "Suchen und Ersetzen",
+        "es": "Buscar y reemplazar",
+        "fr": "Rechercher et remplacer",
+        "he": "חיפוש והחלפה",
+        "hu": "Keresés és csere",
+        "pl": "Znajdowanie i zamienianie",
+        "pt-BR": "Localizar e substituir",
+        "sk": "Hľadať a nahradiť",
+        "tr": "Bul ve değiştir",
+        "zh-CN": "查找和替换"
+      },
+      "forbidden": {
+        "zh-CN": ["尋找及取代"]
+      }
+    },
+    {
+      "id": "paragraph",
+      "en": "Paragraph",
+      "translations": {
+        "ar": "فقرة",
+        "cs": "Odstavec",
+        "de": "Absatz",
+        "es": "Párrafo",
+        "et": "Lõik",
+        "fr": "Paragraphe",
+        "he": "פיסקה",
+        "hi": "अनुच्छेद",
+        "hu": "Bekezdés",
+        "lt": "Pastraipa",
+        "lv": "Rindkopa",
+        "pl": "Akapit",
+        "pt-BR": "Parágrafo",
+        "sk": "Odsek",
+        "tr": "Paragraf",
+        "zh-CN": "段落"
+      },
+      "forbidden": {
+        "pl": ["paragraf"]
+      }
+    },
+    {
+      "id": "table",
+      "en": "Table",
+      "translations": {
+        "ar": "جدول",
+        "cs": "Tabulka",
+        "de": "Tabelle",
+        "es": "Tabla",
+        "et": "Tabel",
+        "fr": "Tableau",
+        "he": "טבלה",
+        "hi": "तालिका",
+        "hu": "Táblázat",
+        "lt": "Lentelė",
+        "lv": "Tabula",
+        "pl": "Tabela",
+        "pt-BR": "Tabela",
+        "sk": "Tabuľka",
+        "tr": "Tablo",
+        "zh-CN": "表格"
+      }
+    },
+    {
+      "id": "cell",
+      "en": "Cell",
+      "translations": {
+        "ar": "خلية",
+        "cs": "Buňka",
+        "de": "Zelle",
+        "es": "Celda",
+        "et": "Lahter",
+        "fr": "Cellule",
+        "he": "תא",
+        "hu": "Cella",
+        "lt": "Langelis",
+        "lv": "Šūna",
+        "pl": "Komórka",
+        "pt-BR": "Célula",
+        "sk": "Bunka",
+        "tr": "Hücre",
+        "zh-CN": "单元格"
+      },
+      "forbidden": {
+        "zh-CN": ["儲存格"]
+      }
+    },
+    {
+      "id": "row",
+      "en": "Row",
+      "translations": {
+        "ar": "صف",
+        "cs": "Řádek",
+        "de": "Zeile",
+        "es": "Fila",
+        "et": "Rida",
+        "fr": "Ligne",
+        "he": "שורה",
+        "hi": "पंक्ति",
+        "hu": "Sor",
+        "lt": "Eilutė",
+        "lv": "Rinda",
+        "pl": "Wiersz",
+        "pt-BR": "Linha",
+        "sk": "Riadok",
+        "tr": "Satır",
+        "zh-CN": "行"
+      }
+    },
+    {
+      "id": "column",
+      "en": "Column",
+      "translations": {
+        "ar": "عمود",
+        "cs": "Sloupec",
+        "de": "Spalte",
+        "es": "Columna",
+        "et": "Veerg",
+        "fr": "Colonne",
+        "he": "עמודה",
+        "hi": "स्तंभ",
+        "hu": "Oszlop",
+        "lt": "Stulpelis",
+        "lv": "Kolonna",
+        "pl": "Kolumna",
+        "pt-BR": "Coluna",
+        "sk": "Stĺpec",
+        "tr": "Sütun",
+        "zh-CN": "列"
+      }
+    }
+  ],
+  "verbs": [
+    {
+      "id": "save",
+      "en": "Save",
+      "translations": {
+        "ar": "حفظ",
+        "cs": "Uložit",
+        "de": "Speichern",
+        "es": "Guardar",
+        "et": "Salvesta",
+        "fr": "Enregistrer",
+        "he": "שמור",
+        "hi": "सहेजें",
+        "hu": "Mentés",
+        "lt": "Įrašyti",
+        "lv": "Saglabāt",
+        "pl": "Zapisz",
+        "pt-BR": "Salvar",
+        "sk": "Uložiť",
+        "tr": "Kaydet",
+        "zh-CN": "保存"
+      },
+      "forbidden": {
+        "es": ["Salvar"],
+        "fr": ["Sauvegarder"],
+        "pt-BR": ["Guardar"],
+        "zh-CN": ["儲存"]
+      }
+    },
+    {
+      "id": "undo",
+      "en": "Undo",
+      "translations": {
+        "ar": "تراجع",
+        "cs": "Zpět",
+        "de": "Rückgängig",
+        "es": "Deshacer",
+        "et": "Võta tagasi",
+        "fr": "Annuler",
+        "he": "בטל",
+        "hi": "पूर्ववत करें",
+        "hu": "Visszavonás",
+        "lt": "Anuliuoti",
+        "lv": "Atsaukt",
+        "pl": "Cofnij",
+        "pt-BR": "Desfazer",
+        "sk": "Späť",
+        "tr": "Geri Al",
+        "zh-CN": "撤消"
+      },
+      "forbidden": {
+        "zh-CN": ["復原"]
+      }
+    },
+    {
+      "id": "redo",
+      "en": "Redo",
+      "translations": {
+        "ar": "إعادة",
+        "cs": "Znovu",
+        "de": "Wiederholen",
+        "es": "Rehacer",
+        "et": "Tee uuesti",
+        "fr": "Rétablir",
+        "he": "בצע שוב",
+        "lt": "Perdaryti",
+        "lv": "Atcelt atsaukšanu",
+        "pl": "Wykonaj ponownie",
+        "pt-BR": "Refazer",
+        "sk": "Zopakovať",
+        "tr": "Yinele",
+        "zh-CN": "重做"
+      }
+    },
+    {
+      "id": "accept",
+      "en": "Accept",
+      "translations": {
+        "ar": "قبول",
+        "cs": "Přijmout",
+        "de": "Annehmen",
+        "es": "Aceptar",
+        "fr": "Accepter",
+        "he": "קבל",
+        "hu": "Elfogadás",
+        "pl": "Zaakceptuj",
+        "pt-BR": "Aceitar",
+        "sk": "Prijať",
+        "tr": "Kabul Et",
+        "zh-CN": "接受"
+      }
+    },
+    {
+      "id": "reject",
+      "en": "Reject",
+      "translations": {
+        "ar": "رفض",
+        "cs": "Odmítnout",
+        "de": "Ablehnen",
+        "es": "Rechazar",
+        "fr": "Refuser",
+        "he": "דחה",
+        "hu": "Elvetés",
+        "pl": "Odrzuć",
+        "pt-BR": "Rejeitar",
+        "sk": "Odmietnuť",
+        "tr": "Reddet",
+        "zh-CN": "拒绝"
+      }
+    },
+    {
+      "id": "insert",
+      "en": "Insert",
+      "translations": {
+        "ar": "إدراج",
+        "cs": "Vložit",
+        "de": "Einfügen",
+        "es": "Insertar",
+        "et": "Lisa",
+        "fr": "Insérer",
+        "he": "הוסף",
+        "hu": "Beszúrás",
+        "lt": "Įterpti",
+        "lv": "Ievietot",
+        "pl": "Wstaw",
+        "pt-BR": "Inserir",
+        "sk": "Vložiť",
+        "tr": "Ekle",
+        "zh-CN": "插入"
+      }
+    },
+    {
+      "id": "delete",
+      "en": "Delete",
+      "translations": {
+        "ar": "حذف",
+        "cs": "Odstranit",
+        "de": "Löschen",
+        "es": "Eliminar",
+        "et": "Kustuta",
+        "fr": "Supprimer",
+        "he": "מחק",
+        "hi": "हटाएँ",
+        "hu": "Törlés",
+        "lt": "Naikinti",
+        "lv": "Dzēst",
+        "pl": "Usuń",
+        "pt-BR": "Excluir",
+        "sk": "Odstrániť",
+        "tr": "Sil",
+        "zh-CN": "删除"
+      },
+      "forbidden": {
+        "pt-BR": ["Deletar"]
+      }
+    },
+    {
+      "id": "replace",
+      "en": "Replace",
+      "translations": {
+        "ar": "استبدال",
+        "cs": "Nahradit",
+        "de": "Ersetzen",
+        "es": "Reemplazar",
+        "et": "Asenda",
+        "fr": "Remplacer",
+        "he": "החלף",
+        "hu": "Csere",
+        "lt": "Keisti",
+        "lv": "Aizstāt",
+        "pl": "Zamień",
+        "pt-BR": "Substituir",
+        "sk": "Nahradiť",
+        "tr": "Değiştir",
+        "zh-CN": "替换"
+      },
+      "forbidden": {
+        "zh-CN": ["取代"]
+      }
+    },
+    {
+      "id": "cut",
+      "en": "Cut",
+      "translations": {
+        "ar": "قص",
+        "cs": "Vyjmout",
+        "de": "Ausschneiden",
+        "es": "Cortar",
+        "et": "Lõika",
+        "fr": "Couper",
+        "he": "גזור",
+        "hi": "काटें",
+        "hu": "Kivágás",
+        "lt": "Iškirpti",
+        "lv": "Izgriezt",
+        "pl": "Wytnij",
+        "pt-BR": "Recortar",
+        "sk": "Vystrihnúť",
+        "tr": "Kes",
+        "zh-CN": "剪切"
+      },
+      "forbidden": {
+        "pt-BR": ["Cortar"],
+        "zh-CN": ["剪下"]
+      }
+    },
+    {
+      "id": "copy",
+      "en": "Copy",
+      "translations": {
+        "ar": "نسخ",
+        "cs": "Kopírovat",
+        "de": "Kopieren",
+        "es": "Copiar",
+        "et": "Kopeeri",
+        "fr": "Copier",
+        "he": "העתק",
+        "hi": "कॉपी करें",
+        "hu": "Másolás",
+        "lt": "Kopijuoti",
+        "lv": "Kopēt",
+        "pl": "Kopiuj",
+        "pt-BR": "Copiar",
+        "sk": "Kopírovať",
+        "tr": "Kopyala",
+        "zh-CN": "复制"
+      }
+    },
+    {
+      "id": "paste",
+      "en": "Paste",
+      "translations": {
+        "ar": "لصق",
+        "cs": "Vložit",
+        "de": "Einfügen",
+        "es": "Pegar",
+        "et": "Kleebi",
+        "fr": "Coller",
+        "he": "הדבק",
+        "hi": "पेस्ट करें",
+        "hu": "Beillesztés",
+        "lt": "Įklijuoti",
+        "lv": "Ielīmēt",
+        "pl": "Wklej",
+        "pt-BR": "Colar",
+        "sk": "Prilepiť",
+        "tr": "Yapıştır",
+        "zh-CN": "粘贴"
+      },
+      "forbidden": {
+        "zh-CN": ["貼上"]
+      }
+    },
+    {
+      "id": "print",
+      "en": "Print",
+      "translations": {
+        "ar": "طباعة",
+        "cs": "Tisk",
+        "de": "Drucken",
+        "es": "Imprimir",
+        "et": "Prindi",
+        "fr": "Imprimer",
+        "he": "הדפס",
+        "hi": "प्रिंट करें",
+        "hu": "Nyomtatás",
+        "lt": "Spausdinti",
+        "lv": "Drukāt",
+        "pl": "Drukuj",
+        "pt-BR": "Imprimir",
+        "sk": "Tlačiť",
+        "tr": "Yazdır",
+        "zh-CN": "打印"
+      },
+      "forbidden": {
+        "zh-CN": ["列印"]
+      }
+    }
+  ]
+}

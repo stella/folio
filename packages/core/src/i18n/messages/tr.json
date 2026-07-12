@@ -40,9 +40,9 @@
       "standardColors": "Standard Colors",
       "themeColors": "Theme Colors"
     },
-    "comment": "Yorum",
+    "comment": "Açıklama",
     "comments": {
-      "addPlaceholder": "Yorum ekle...",
+      "addPlaceholder": "Açıklama ekle...",
       "cancel": "İptal",
       "hideAll": "Hide comments",
       "moreReplies": "{count} more replies",
