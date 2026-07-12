@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import {
@@ -55,6 +56,7 @@ export function HyperlinkDialog({
     Close: DialogClose,
   } = useFolioUI().Dialog;
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
+  const t = useTranslations("folio");
   const id = useId();
   const [targetType, setTargetType] = useState<HyperlinkTargetType>("url");
   const [url, setUrl] = useState("");
@@ -127,22 +129,22 @@ export function HyperlinkDialog({
           <div className={DIALOG_BODY_CLASS}>
             {(bookmarks.length > 0 || targetType === "bookmark") && (
               <label className="flex flex-col gap-1" htmlFor={fieldIds.targetType}>
-                <span className={DIALOG_LABEL_CLASS}>Link to</span>
+                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.hyperlink.linkTo")}</span>
                 <select
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.targetType}
                   onChange={(e) => setTargetType(toTargetType(e.target.value))}
                   value={targetType}
                 >
-                  <option value="url">Web address</option>
-                  <option value="bookmark">Bookmark</option>
+                  <option value="url">{t("dialogs.hyperlink.tabWebAddress")}</option>
+                  <option value="bookmark">{t("dialogs.hyperlink.tabBookmark")}</option>
                 </select>
               </label>
             )}
 
             {targetType === "url" && (
               <label className="flex flex-col gap-1" htmlFor={fieldIds.url}>
-                <span className={DIALOG_LABEL_CLASS}>Address</span>
+                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.hyperlink.addressLabel")}</span>
                 <input
                   aria-invalid={touched && urlError.length > 0}
                   className={DIALOG_INPUT_CLASS}
@@ -160,14 +162,14 @@ export function HyperlinkDialog({
 
             {targetType === "bookmark" && (
               <label className="flex flex-col gap-1" htmlFor={fieldIds.bookmark}>
-                <span className={DIALOG_LABEL_CLASS}>Bookmark</span>
+                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.hyperlink.bookmarkLabel")}</span>
                 <select
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.bookmark}
                   onChange={(e) => setBookmark(e.target.value)}
                   value={bookmark}
                 >
-                  <option value="">Select a bookmark</option>
+                  <option value="">{t("dialogs.hyperlink.bookmarkPlaceholder")}</option>
                   {bookmarks.map((option) => (
                     <option key={option.name} value={option.name}>
                       {option.label ?? option.name}
@@ -178,7 +180,9 @@ export function HyperlinkDialog({
             )}
 
             <label className="flex flex-col gap-1" htmlFor={fieldIds.displayText}>
-              <span className={DIALOG_LABEL_CLASS}>Text to display</span>
+              <span className={DIALOG_LABEL_CLASS}>
+                {t("dialogs.hyperlink.displayTextPlaceholder")}
+              </span>
               <input
                 className={DIALOG_INPUT_CLASS}
                 id={fieldIds.displayText}
@@ -188,7 +192,7 @@ export function HyperlinkDialog({
             </label>
 
             <label className="flex flex-col gap-1" htmlFor={fieldIds.tooltip}>
-              <span className={DIALOG_LABEL_CLASS}>Screen tip</span>
+              <span className={DIALOG_LABEL_CLASS}>{t("dialogs.hyperlink.screenTipLabel")}</span>
               <input
                 className={DIALOG_INPUT_CLASS}
                 id={fieldIds.tooltip}
@@ -205,17 +209,19 @@ export function HyperlinkDialog({
                 onClick={handleRemove}
                 type="button"
               >
-                Remove
+                {t("common.remove")}
               </button>
             )}
-            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>Cancel</DialogClose>
+            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>
+              {t("common.cancel")}
+            </DialogClose>
             <button
               className={DIALOG_PRIMARY_BUTTON_CLASS}
               disabled={!canSubmit}
               onClick={handleSubmit}
               type="button"
             >
-              {isEditing ? "Update" : "Insert"}
+              {isEditing ? t("common.update") : t("common.insert")}
             </button>
           </div>
         </DialogPopup>

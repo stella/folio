@@ -5,6 +5,7 @@
  */
 
 import { useId, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import type {
   FootnoteProperties,
@@ -33,13 +34,22 @@ export type FootnotePropertiesDialogProps = {
 // NUMBER FORMAT OPTIONS
 // ============================================================================
 
-const numberFormatOptions: { value: NumberFormat; label: string }[] = [
-  { value: "decimal", label: "1, 2, 3, ..." },
-  { value: "lowerRoman", label: "i, ii, iii, ..." },
-  { value: "upperRoman", label: "I, II, III, ..." },
-  { value: "lowerLetter", label: "a, b, c, ..." },
-  { value: "upperLetter", label: "A, B, C, ..." },
-  { value: "chicago", label: "*, \u2020, \u2021, ..." },
+/** i18n message keys for the note number-format labels. */
+type NumberFormatLabelKey =
+  | "dialogs.footnoteProperties.formats.decimal"
+  | "dialogs.footnoteProperties.formats.lowerRoman"
+  | "dialogs.footnoteProperties.formats.upperRoman"
+  | "dialogs.footnoteProperties.formats.lowerAlpha"
+  | "dialogs.footnoteProperties.formats.upperAlpha"
+  | "dialogs.footnoteProperties.formats.symbols";
+
+const numberFormatOptions: { value: NumberFormat; labelKey: NumberFormatLabelKey }[] = [
+  { value: "decimal", labelKey: "dialogs.footnoteProperties.formats.decimal" },
+  { value: "lowerRoman", labelKey: "dialogs.footnoteProperties.formats.lowerRoman" },
+  { value: "upperRoman", labelKey: "dialogs.footnoteProperties.formats.upperRoman" },
+  { value: "lowerLetter", labelKey: "dialogs.footnoteProperties.formats.lowerAlpha" },
+  { value: "upperLetter", labelKey: "dialogs.footnoteProperties.formats.upperAlpha" },
+  { value: "chicago", labelKey: "dialogs.footnoteProperties.formats.symbols" },
 ];
 
 // ============================================================================
@@ -62,6 +72,7 @@ export function FootnotePropertiesDialog({
     Close: DialogClose,
   } = useFolioUI().Dialog;
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
+  const t = useTranslations("folio");
   const id = useId();
   const [fnPosition, setFnPosition] = useState<FootnotePosition>(
     footnotePr?.position ?? "pageBottom",
@@ -120,16 +131,18 @@ export function FootnotePropertiesDialog({
         <DialogBackdrop className="fixed inset-0 z-[10000] bg-black/50" />
         <DialogPopup className="bg-popover fixed start-1/2 top-1/2 z-[10001] w-full max-w-[500px] min-w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-xl">
           <DialogTitle className="border-b px-5 py-3 text-base font-semibold">
-            Footnote & Endnote Properties
+            {t("dialogs.footnoteProperties.title")}
           </DialogTitle>
 
           <div className="flex flex-col gap-3 px-5 py-4">
             {/* Footnote section */}
             <div className={sectionCls}>
-              <h4 className="mb-2 text-sm font-semibold">Footnotes</h4>
+              <h4 className="mb-2 text-sm font-semibold">
+                {t("dialogs.footnoteProperties.footnotes")}
+              </h4>
 
               <label htmlFor={fieldIds.fnPosition} className={labelCls}>
-                Position
+                {t("dialogs.footnoteProperties.position")}
               </label>
               <select
                 id={fieldIds.fnPosition}
@@ -137,12 +150,16 @@ export function FootnotePropertiesDialog({
                 value={fnPosition}
                 onChange={(e) => setFnPosition(e.target.value as FootnotePosition)}
               >
-                <option value="pageBottom">Bottom of page</option>
-                <option value="beneathText">Below text</option>
+                <option value="pageBottom">
+                  {t("dialogs.footnoteProperties.footnotePositions.bottomOfPage")}
+                </option>
+                <option value="beneathText">
+                  {t("dialogs.footnoteProperties.footnotePositions.belowText")}
+                </option>
               </select>
 
               <label htmlFor={fieldIds.fnNumFmt} className={labelCls}>
-                Number format
+                {t("dialogs.footnoteProperties.numberFormat")}
               </label>
               <select
                 id={fieldIds.fnNumFmt}
@@ -152,7 +169,7 @@ export function FootnotePropertiesDialog({
               >
                 {numberFormatOptions.map((o) => (
                   <option key={o.value} value={o.value}>
-                    {o.label}
+                    {t(o.labelKey)}
                   </option>
                 ))}
               </select>
@@ -160,7 +177,7 @@ export function FootnotePropertiesDialog({
               <div className="flex items-center gap-3">
                 <div>
                   <label htmlFor={fieldIds.fnStartAt} className={labelCls}>
-                    Start at
+                    {t("dialogs.footnoteProperties.startAt")}
                   </label>
                   <input
                     id={fieldIds.fnStartAt}
@@ -173,7 +190,7 @@ export function FootnotePropertiesDialog({
                 </div>
                 <div className="flex-1">
                   <label htmlFor={fieldIds.fnNumbering} className={labelCls}>
-                    Numbering
+                    {t("dialogs.footnoteProperties.numbering")}
                   </label>
                   <select
                     id={fieldIds.fnNumbering}
@@ -181,9 +198,15 @@ export function FootnotePropertiesDialog({
                     value={fnRestart}
                     onChange={(e) => setFnRestart(e.target.value as NoteNumberRestart)}
                   >
-                    <option value="continuous">Continuous</option>
-                    <option value="eachSect">Restart each section</option>
-                    <option value="eachPage">Restart each page</option>
+                    <option value="continuous">
+                      {t("dialogs.footnoteProperties.numberingOptions.continuous")}
+                    </option>
+                    <option value="eachSect">
+                      {t("dialogs.footnoteProperties.numberingOptions.restartSection")}
+                    </option>
+                    <option value="eachPage">
+                      {t("dialogs.footnoteProperties.numberingOptions.restartPage")}
+                    </option>
                   </select>
                 </div>
               </div>
@@ -191,10 +214,12 @@ export function FootnotePropertiesDialog({
 
             {/* Endnote section */}
             <div className={sectionCls}>
-              <h4 className="mb-2 text-sm font-semibold">Endnotes</h4>
+              <h4 className="mb-2 text-sm font-semibold">
+                {t("dialogs.footnoteProperties.endnotes")}
+              </h4>
 
               <label htmlFor={fieldIds.enPosition} className={labelCls}>
-                Position
+                {t("dialogs.footnoteProperties.position")}
               </label>
               <select
                 id={fieldIds.enPosition}
@@ -202,12 +227,16 @@ export function FootnotePropertiesDialog({
                 value={enPosition}
                 onChange={(e) => setEnPosition(e.target.value as EndnotePosition)}
               >
-                <option value="docEnd">End of document</option>
-                <option value="sectEnd">End of section</option>
+                <option value="docEnd">
+                  {t("dialogs.footnoteProperties.endnotePositions.endOfDocument")}
+                </option>
+                <option value="sectEnd">
+                  {t("dialogs.footnoteProperties.endnotePositions.endOfSection")}
+                </option>
               </select>
 
               <label htmlFor={fieldIds.enNumFmt} className={labelCls}>
-                Number format
+                {t("dialogs.footnoteProperties.numberFormat")}
               </label>
               <select
                 id={fieldIds.enNumFmt}
@@ -217,7 +246,7 @@ export function FootnotePropertiesDialog({
               >
                 {numberFormatOptions.map((o) => (
                   <option key={o.value} value={o.value}>
-                    {o.label}
+                    {t(o.labelKey)}
                   </option>
                 ))}
               </select>
@@ -225,7 +254,7 @@ export function FootnotePropertiesDialog({
               <div className="flex items-center gap-3">
                 <div>
                   <label htmlFor={fieldIds.enStartAt} className={labelCls}>
-                    Start at
+                    {t("dialogs.footnoteProperties.startAt")}
                   </label>
                   <input
                     id={fieldIds.enStartAt}
@@ -238,7 +267,7 @@ export function FootnotePropertiesDialog({
                 </div>
                 <div className="flex-1">
                   <label htmlFor={fieldIds.enNumbering} className={labelCls}>
-                    Numbering
+                    {t("dialogs.footnoteProperties.numbering")}
                   </label>
                   <select
                     id={fieldIds.enNumbering}
@@ -246,8 +275,12 @@ export function FootnotePropertiesDialog({
                     value={enRestart}
                     onChange={(e) => setEnRestart(e.target.value as NoteNumberRestart)}
                   >
-                    <option value="continuous">Continuous</option>
-                    <option value="eachSect">Restart each section</option>
+                    <option value="continuous">
+                      {t("dialogs.footnoteProperties.numberingOptions.continuous")}
+                    </option>
+                    <option value="eachSect">
+                      {t("dialogs.footnoteProperties.numberingOptions.restartSection")}
+                    </option>
                   </select>
                 </div>
               </div>
@@ -256,14 +289,14 @@ export function FootnotePropertiesDialog({
 
           <div className="flex justify-end gap-2 border-t px-5 py-3">
             <DialogClose className="border-input rounded border px-4 py-1.5 text-[13px]">
-              Cancel
+              {t("common.cancel")}
             </DialogClose>
             <button
               className="bg-primary text-primary-foreground rounded px-4 py-1.5 text-[13px] font-medium"
               onClick={handleApply}
               type="button"
             >
-              Apply
+              {t("common.apply")}
             </button>
           </div>
         </DialogPopup>

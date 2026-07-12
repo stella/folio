@@ -1,5 +1,6 @@
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { useCallback, useMemo } from "react";
+import { useTranslations } from "use-intl";
 
 import { cn } from "../../lib/utils";
 import type { ColorPreset, FolioColorPickerProps } from "../folio-ui";
@@ -27,6 +28,7 @@ export function DefaultColorPicker({
   columns = 8,
   children,
 }: FolioColorPickerProps) {
+  const t = useTranslations("folio");
   const trigger = useMemo(() => <div className="folio-default-color-picker-trigger" />, []);
 
   return (
@@ -50,7 +52,7 @@ export function DefaultColorPicker({
                 className="folio-default-color-picker-clear"
                 onClick={onClear}
               >
-                No color
+                {t("colorPicker.noColor")}
               </PopoverPrimitive.Close>
             )}
             <div
@@ -67,9 +69,9 @@ export function DefaultColorPicker({
               ))}
             </div>
             <label className="folio-default-color-picker-custom">
-              Custom
+              {t("colorPicker.custom")}
               <input
-                aria-label="Custom color"
+                aria-label={t("colorPicker.customColor")}
                 onChange={(event) => onSelect?.(normalizeHex(event.target.value))}
                 type="color"
                 value={value ? `#${normalizeHex(value)}` : "#000000"}

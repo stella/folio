@@ -34,6 +34,7 @@
         "red": "Red",
         "yellow": "Yellow"
       },
+      "custom": "Custom",
       "customColor": "Custom Color",
       "noColor": "No color",
       "standardColors": "Standard Colors",
@@ -58,6 +59,7 @@
       "closeDialog": "Close",
       "insert": "Insert",
       "px": "px",
+      "remove": "Remove",
       "update": "Update"
     },
     "contentControlDateAriaLabel": "Pasirinkite datą",
@@ -121,13 +123,16 @@
         "title": "Footnote & Endnote Properties"
       },
       "hyperlink": {
+        "addressLabel": "Address",
         "bookmarkLabel": "Bookmark",
         "bookmarkPlaceholder": "Select a bookmark",
         "displayTextHint": "Defaults to the selected text",
         "displayTextLabel": "Display text",
         "displayTextPlaceholder": "Text to display",
         "invalidUrl": "Enter a valid URL",
+        "linkTo": "Link to",
         "removeLink": "Remove link",
+        "screenTipLabel": "Screen tip",
         "tabBookmark": "Bookmark",
         "tabWebAddress": "Web address",
         "titleEdit": "Edit hyperlink",
@@ -149,9 +154,11 @@
           "top": "Top"
         },
         "alignment": "Alignment",
+        "distanceFromText": "Distance from text (px)",
         "horizontal": "Horizontal",
         "offset": "Offset",
         "offsetPx": "Offset (px)",
+        "position": "Position",
         "relativeOptions": {
           "character": "Character",
           "column": "Column",
@@ -172,12 +179,17 @@
           "dashed": "Dashed",
           "dotted": "Dotted",
           "double": "Double",
+          "groove": "Groove",
+          "inset": "Inset",
+          "outset": "Outset",
+          "ridge": "Ridge",
           "solid": "Solid"
         },
         "color": "Color",
         "dimensions": "Dimensions",
         "heightLabel": "Height",
         "lockAspectRatio": "Lock aspect ratio",
+        "preview": "Preview",
         "style": "Style",
         "textWrapping": "Text wrapping",
         "title": "Image Properties",
@@ -191,6 +203,11 @@
           "wrapLeft": "Wrap left",
           "wrapRight": "Wrap right"
         }
+      },
+      "insertImage": {
+        "altText": "Alt text",
+        "imageFile": "Image file",
+        "title": "Insert Image"
       },
       "insertSymbol": {
         "categories": {
@@ -208,18 +225,19 @@
         "title": "Insert symbol"
       },
       "insertTable": {
-        "autofit": "Autofit",
+        "autofit": "Autofit to contents",
         "columnWidthLabel": "Column width",
         "columnsLabel": "Columns",
         "fixedWidth": "Fixed width",
         "hoverToSelect": "Hover to select table size",
         "insertButton": "Insert",
         "orSpecifySize": "Or specify size",
+        "plainTable": "Plain table",
         "rowsLabel": "Rows",
         "sizeSelector": "Table size selector",
         "style": "Style",
         "tableSize": "{cols} × {rows} table",
-        "title": "Insert table",
+        "title": "Insert Table",
         "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
       },
       "pageSetup": {
@@ -243,7 +261,17 @@
         "right": "Right",
         "sizeLabel": "Size",
         "title": "Page Setup",
-        "top": "Top"
+        "top": "Top",
+        "unitInches": "in"
+      },
+      "pasteSpecial": {
+        "pasteMode": "Paste mode",
+        "title": "Paste Special"
+      },
+      "splitCell": {
+        "mergeBeforeSplit": "Merge selected cells before splitting",
+        "splitButton": "Split",
+        "title": "Split Cell"
       },
       "tableProperties": {
         "alignOptions": {
@@ -264,6 +292,23 @@
           "fixed": "Fixed (twips)",
           "percentage": "Percentage"
         }
+      },
+      "watermark": {
+        "color": "Color",
+        "diagonal": "Diagonal",
+        "font": "Font",
+        "imageRelationshipId": "Header image relationship id",
+        "imageTarget": "Image target",
+        "noWatermark": "No watermark",
+        "opacity": "Opacity",
+        "pictureWatermark": "Picture watermark",
+        "scale": "Scale",
+        "targetIsExternalUrl": "Target is an external URL",
+        "text": "Text",
+        "textWatermark": "Text watermark",
+        "title": "Watermark",
+        "type": "Type",
+        "washout": "Washout"
       }
     },
     "discardChanges": "Atmesti",
@@ -337,6 +382,17 @@
       "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
     },
     "formattingToolbar": "Formatavimo įrankių juosta",
+    "headerFooter": {
+      "closeFooterEditing": "Close footer editing",
+      "closeHeaderEditing": "Close header editing",
+      "footer": "Footer",
+      "header": "Header",
+      "insertPageCount": "Insert total page count",
+      "insertPageNumber": "Insert current page number",
+      "options": "Options",
+      "removeFooter": "Remove footer",
+      "removeHeader": "Remove header"
+    },
     "hideDetails": "Slėpti detales",
     "historyGroup": "Istorija",
     "imageOverlay": {
@@ -398,6 +454,7 @@
     },
     "listFormatting": "Sąrašo formatavimas",
     "listsGroup": "Sąrašai",
+    "loadDocumentFailedTitle": "Failed to Load Document",
     "loadingDocument": "Įkeliamas dokumentas…",
     "loadingEditor": "Įkeliamas redaktorius...",
     "lockFile": "Užrakinti failą",
@@ -410,8 +467,10 @@
     "moreFormatting": "Daugiau formatavimo",
     "networkError": "Tinklo klaida. Patikrinkite interneto ryšį ir bandykite dar kartą.",
     "nextChange": "Kitas keitimas",
+    "noDocumentLoaded": "No document loaded",
     "numberedList": "Numeruotas sąrašas",
     "parseError": "Nepavyko apdoroti dokumento. Jis gali būti sugadintas arba nepalaikomo formato.",
+    "parseErrorTitle": "Unable to Parse Document",
     "paste": "Įklijuoti",
     "pasteUnformatted": "Įklijuoti be formatavimo",
     "previousChange": "Ankstesnis keitimas",
@@ -570,7 +629,8 @@
     "unsupportedDocxEditTitle": "Redagavimas užblokuotas",
     "viewGroup": "Rodinys",
     "viewer": {
-      "pageIndicator": "Page {current} of {total}"
+      "pageIndicator": "Page {current} of {total}",
+      "pageOfTotal": "{current} of {total}"
     },
     "zoom": {
       "zoomIn": "Zoom in",

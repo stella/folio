@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import {
@@ -47,6 +48,7 @@ export function SplitCellDialog({
     Close: DialogClose,
   } = useFolioUI().Dialog;
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
+  const t = useTranslations("folio");
   const id = useId();
   const [rows, setRows] = useState(defaultRows);
   const [columns, setColumns] = useState(defaultColumns);
@@ -83,12 +85,12 @@ export function SplitCellDialog({
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>
-          <DialogTitle className={DIALOG_TITLE_CLASS}>Split Cell</DialogTitle>
+          <DialogTitle className={DIALOG_TITLE_CLASS}>{t("dialogs.splitCell.title")}</DialogTitle>
 
           <div className={DIALOG_BODY_CLASS}>
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1" htmlFor={fieldIds.columns}>
-                <span className={DIALOG_LABEL_CLASS}>Columns</span>
+                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertTable.columnsLabel")}</span>
                 <input
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.columns}
@@ -100,7 +102,7 @@ export function SplitCellDialog({
                 />
               </label>
               <label className="flex flex-col gap-1" htmlFor={fieldIds.rows}>
-                <span className={DIALOG_LABEL_CLASS}>Rows</span>
+                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertTable.rowsLabel")}</span>
                 <input
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.rows}
@@ -120,19 +122,21 @@ export function SplitCellDialog({
                 onChange={(e) => setMergeBeforeSplit(e.target.checked)}
                 type="checkbox"
               />
-              <span className={DIALOG_LABEL_CLASS}>Merge selected cells before splitting</span>
+              <span className={DIALOG_LABEL_CLASS}>{t("dialogs.splitCell.mergeBeforeSplit")}</span>
             </label>
           </div>
 
           <div className={DIALOG_FOOTER_CLASS}>
-            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>Cancel</DialogClose>
+            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>
+              {t("common.cancel")}
+            </DialogClose>
             <button
               className={DIALOG_PRIMARY_BUTTON_CLASS}
               disabled={!canSplit}
               onClick={handleSplit}
               type="button"
             >
-              Split
+              {t("dialogs.splitCell.splitButton")}
             </button>
           </div>
         </DialogPopup>

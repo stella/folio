@@ -21,6 +21,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { useTranslations } from "use-intl";
 
 import { redo, undo } from "prosemirror-history";
 import type { EditorView } from "prosemirror-view";
@@ -115,6 +116,7 @@ export const InlineHeaderFooterEditor = forwardRef<
   }: InlineHeaderFooterEditorProps,
   ref,
 ) {
+  const t = useTranslations("folio");
   const [showOptions, setShowOptions] = useState(false);
   const optionsRef = useRef<HTMLDivElement>(null);
 
@@ -241,7 +243,7 @@ export const InlineHeaderFooterEditor = forwardRef<
     },
   }));
 
-  const label = position === "header" ? "Header" : "Footer";
+  const label = position === "header" ? t("headerFooter.header") : t("headerFooter.footer");
 
   if (!overlayPos) {
     return null;
@@ -270,7 +272,6 @@ export const InlineHeaderFooterEditor = forwardRef<
           <span style={labelStyle}>{label}</span>
           <OptionsMenu
             position={position}
-            label={label}
             showOptions={showOptions}
             setShowOptions={setShowOptions}
             optionsRef={optionsRef}
@@ -286,7 +287,6 @@ export const InlineHeaderFooterEditor = forwardRef<
           <span style={labelStyle}>{label}</span>
           <OptionsMenu
             position={position}
-            label={label}
             showOptions={showOptions}
             setShowOptions={setShowOptions}
             optionsRef={optionsRef}
@@ -307,7 +307,6 @@ export const InlineHeaderFooterEditor = forwardRef<
 
 function OptionsMenu({
   position,
-  label,
   showOptions,
   setShowOptions,
   optionsRef,
@@ -316,7 +315,6 @@ function OptionsMenu({
   getActiveView,
 }: {
   position: "header" | "footer";
-  label: string;
   showOptions: boolean;
   setShowOptions: (v: boolean | ((prev: boolean) => boolean)) => void;
   optionsRef: React.RefObject<HTMLDivElement | null>;
@@ -324,6 +322,7 @@ function OptionsMenu({
   onClose: () => void;
   getActiveView: () => EditorView | null;
 }) {
+  const t = useTranslations("folio");
   const insertField = (fieldType: "PAGE" | "NUMPAGES") => {
     const view = getActiveView();
     if (!view) {
@@ -353,7 +352,7 @@ function OptionsMenu({
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        Options ▾
+        {t("headerFooter.options")} ▾
       </button>
       {showOptions && (
         <div
@@ -367,7 +366,7 @@ function OptionsMenu({
               insertField("PAGE");
             }}
           >
-            Insert current page number
+            {t("headerFooter.insertPageNumber")}
           </button>
           <button
             type="button"
@@ -377,7 +376,7 @@ function OptionsMenu({
               insertField("NUMPAGES");
             }}
           >
-            Insert total page count
+            {t("headerFooter.insertPageCount")}
           </button>
           <div className="hf-options-divider" />
           {onRemove && (
@@ -389,7 +388,9 @@ function OptionsMenu({
                 onRemove();
               }}
             >
-              Remove {label.toLowerCase()}
+              {position === "header"
+                ? t("headerFooter.removeHeader")
+                : t("headerFooter.removeFooter")}
             </button>
           )}
           <button
@@ -400,7 +401,9 @@ function OptionsMenu({
               onClose();
             }}
           >
-            Close {label.toLowerCase()} editing
+            {position === "header"
+              ? t("headerFooter.closeHeaderEditing")
+              : t("headerFooter.closeFooterEditing")}
           </button>
         </div>
       )}

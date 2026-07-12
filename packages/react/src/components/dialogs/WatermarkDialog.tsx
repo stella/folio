@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import type { Watermark } from "@stll/folio-core/watermark";
 import { useFolioUI } from "../../ui/folio-ui";
@@ -41,6 +42,7 @@ export function WatermarkDialog({
     Close: DialogClose,
   } = useFolioUI().Dialog;
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
+  const t = useTranslations("folio");
   const id = useId();
   const [mode, setMode] = useState<WatermarkMode>("text");
   const [text, setText] = useState("CONFIDENTIAL");
@@ -144,27 +146,27 @@ export function WatermarkDialog({
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>
-          <DialogTitle className={DIALOG_TITLE_CLASS}>Watermark</DialogTitle>
+          <DialogTitle className={DIALOG_TITLE_CLASS}>{t("dialogs.watermark.title")}</DialogTitle>
 
           <div className={DIALOG_BODY_CLASS}>
             <label className="flex flex-col gap-1" htmlFor={fieldIds.mode}>
-              <span className={DIALOG_LABEL_CLASS}>Type</span>
+              <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.type")}</span>
               <select
                 className={DIALOG_INPUT_CLASS}
                 id={fieldIds.mode}
                 onChange={(e) => setMode(toWatermarkMode(e.target.value))}
                 value={mode}
               >
-                <option value="text">Text watermark</option>
-                <option value="picture">Picture watermark</option>
-                <option value="none">No watermark</option>
+                <option value="text">{t("dialogs.watermark.textWatermark")}</option>
+                <option value="picture">{t("dialogs.watermark.pictureWatermark")}</option>
+                <option value="none">{t("dialogs.watermark.noWatermark")}</option>
               </select>
             </label>
 
             {mode === "text" && (
               <div className="grid grid-cols-2 gap-3">
                 <label className="col-span-2 flex flex-col gap-1" htmlFor={fieldIds.text}>
-                  <span className={DIALOG_LABEL_CLASS}>Text</span>
+                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.text")}</span>
                   <input
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.text}
@@ -173,7 +175,7 @@ export function WatermarkDialog({
                   />
                 </label>
                 <label className="flex flex-col gap-1" htmlFor={fieldIds.font}>
-                  <span className={DIALOG_LABEL_CLASS}>Font</span>
+                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.font")}</span>
                   <input
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.font}
@@ -182,7 +184,7 @@ export function WatermarkDialog({
                   />
                 </label>
                 <label className="flex flex-col gap-1" htmlFor={fieldIds.color}>
-                  <span className={DIALOG_LABEL_CLASS}>Color</span>
+                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.color")}</span>
                   <input
                     className={`${DIALOG_INPUT_CLASS} h-[34px]`}
                     id={fieldIds.color}
@@ -192,7 +194,7 @@ export function WatermarkDialog({
                   />
                 </label>
                 <label className="flex flex-col gap-1" htmlFor={fieldIds.opacity}>
-                  <span className={DIALOG_LABEL_CLASS}>Opacity</span>
+                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.opacity")}</span>
                   <input
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.opacity}
@@ -210,7 +212,7 @@ export function WatermarkDialog({
                     onChange={(e) => setDiagonal(e.target.checked)}
                     type="checkbox"
                   />
-                  <span className={DIALOG_LABEL_CLASS}>Diagonal</span>
+                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.diagonal")}</span>
                 </label>
               </div>
             )}
@@ -218,7 +220,9 @@ export function WatermarkDialog({
             {mode === "picture" && (
               <div className="grid grid-cols-2 gap-3">
                 <label className="col-span-2 flex flex-col gap-1" htmlFor={fieldIds.imageRId}>
-                  <span className={DIALOG_LABEL_CLASS}>Header image relationship id</span>
+                  <span className={DIALOG_LABEL_CLASS}>
+                    {t("dialogs.watermark.imageRelationshipId")}
+                  </span>
                   <input
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.imageRId}
@@ -228,7 +232,7 @@ export function WatermarkDialog({
                   />
                 </label>
                 <label className="col-span-2 flex flex-col gap-1" htmlFor={fieldIds.imageTarget}>
-                  <span className={DIALOG_LABEL_CLASS}>Image target</span>
+                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.imageTarget")}</span>
                   <input
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.imageTarget}
@@ -238,7 +242,7 @@ export function WatermarkDialog({
                   />
                 </label>
                 <label className="flex flex-col gap-1" htmlFor={fieldIds.scale}>
-                  <span className={DIALOG_LABEL_CLASS}>Scale</span>
+                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.scale")}</span>
                   <input
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.scale}
@@ -256,7 +260,7 @@ export function WatermarkDialog({
                     onChange={(e) => setWashout(e.target.checked)}
                     type="checkbox"
                   />
-                  <span className={DIALOG_LABEL_CLASS}>Washout</span>
+                  <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.washout")}</span>
                 </label>
                 <label
                   className="col-span-2 flex items-center gap-2"
@@ -268,21 +272,25 @@ export function WatermarkDialog({
                     onChange={(e) => setImageTargetExternal(e.target.checked)}
                     type="checkbox"
                   />
-                  <span className={DIALOG_LABEL_CLASS}>Target is an external URL</span>
+                  <span className={DIALOG_LABEL_CLASS}>
+                    {t("dialogs.watermark.targetIsExternalUrl")}
+                  </span>
                 </label>
               </div>
             )}
           </div>
 
           <div className={DIALOG_FOOTER_CLASS}>
-            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>Cancel</DialogClose>
+            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>
+              {t("common.cancel")}
+            </DialogClose>
             <button
               className={DIALOG_PRIMARY_BUTTON_CLASS}
               disabled={!canApply}
               onClick={handleApply}
               type="button"
             >
-              Apply
+              {t("common.apply")}
             </button>
           </div>
         </DialogPopup>

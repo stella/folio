@@ -958,7 +958,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
                       e.currentTarget.style.backgroundColor = "transparent";
                     }}
                   >
-                    Delete
+                    {t("delete")}
                   </button>
                 </div>
               )}

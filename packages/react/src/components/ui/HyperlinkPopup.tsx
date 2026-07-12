@@ -235,7 +235,7 @@ export function HyperlinkPopup({
             onClick={handleApply}
             type="button"
           >
-            Apply
+            {t("common.apply")}
           </button>
         </div>
       </div>

@@ -4218,7 +4218,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                     aria-live="polite"
                     role="status"
                   >
-                    {scrollPageInfo.currentPage} of {scrollPageInfo.totalPages}
+                    {t("viewer.pageOfTotal", {
+                      current: String(scrollPageInfo.currentPage),
+                      total: String(scrollPageInfo.totalPages),
+                    })}
                   </div>
                 )}
 

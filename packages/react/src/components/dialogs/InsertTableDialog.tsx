@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import {
@@ -64,6 +65,7 @@ export function InsertTableDialog({
     Close: DialogClose,
   } = useFolioUI().Dialog;
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
+  const t = useTranslations("folio");
   const id = useId();
   const [rows, setRows] = useState(defaultRows);
   const [columns, setColumns] = useState(defaultColumns);
@@ -112,7 +114,7 @@ export function InsertTableDialog({
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>
-          <DialogTitle className={DIALOG_TITLE_CLASS}>Insert Table</DialogTitle>
+          <DialogTitle className={DIALOG_TITLE_CLASS}>{t("dialogs.insertTable.title")}</DialogTitle>
 
           <div className={DIALOG_BODY_CLASS}>
             <div
@@ -156,7 +158,7 @@ export function InsertTableDialog({
 
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1" htmlFor={fieldIds.rows}>
-                <span className={DIALOG_LABEL_CLASS}>Rows</span>
+                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertTable.rowsLabel")}</span>
                 <input
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.rows}
@@ -168,7 +170,7 @@ export function InsertTableDialog({
                 />
               </label>
               <label className="flex flex-col gap-1" htmlFor={fieldIds.columns}>
-                <span className={DIALOG_LABEL_CLASS}>Columns</span>
+                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertTable.columnsLabel")}</span>
                 <input
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.columns}
@@ -188,19 +190,19 @@ export function InsertTableDialog({
                 onChange={(e) => setAutofit(e.target.checked)}
                 type="checkbox"
               />
-              <span className={DIALOG_LABEL_CLASS}>Autofit to contents</span>
+              <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertTable.autofit")}</span>
             </label>
 
             {styleOptions.length > 0 && (
               <label className="flex flex-col gap-1" htmlFor={fieldIds.style}>
-                <span className={DIALOG_LABEL_CLASS}>Style</span>
+                <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertTable.style")}</span>
                 <select
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.style}
                   onChange={(e) => setStyleId(e.target.value)}
                   value={styleId}
                 >
-                  <option value="">Plain table</option>
+                  <option value="">{t("dialogs.insertTable.plainTable")}</option>
                   {styleOptions.map((style) => (
                     <option key={style.id} value={style.id}>
                       {style.name}
@@ -212,14 +214,16 @@ export function InsertTableDialog({
           </div>
 
           <div className={DIALOG_FOOTER_CLASS}>
-            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>Cancel</DialogClose>
+            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>
+              {t("common.cancel")}
+            </DialogClose>
             <button
               className={DIALOG_PRIMARY_BUTTON_CLASS}
               disabled={!canInsert}
               onClick={handleInsert}
               type="button"
             >
-              Insert
+              {t("common.insert")}
             </button>
           </div>
         </DialogPopup>

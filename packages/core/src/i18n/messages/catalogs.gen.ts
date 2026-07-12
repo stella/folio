@@ -43,6 +43,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -67,6 +68,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Pick a date",
@@ -130,13 +132,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -158,9 +163,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -181,12 +188,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -200,6 +212,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -217,18 +234,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -252,7 +270,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -273,6 +301,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Discard",
@@ -346,6 +391,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Formatting toolbar",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Hide details",
       "historyGroup": "History",
       "imageOverlay": {
@@ -407,6 +463,7 @@ export const CATALOGS = {
       },
       "listFormatting": "List formatting",
       "listsGroup": "Lists",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Loading document...",
       "loadingEditor": "Loading editor...",
       "lockFile": "Lock file",
@@ -419,8 +476,10 @@ export const CATALOGS = {
       "moreFormatting": "More formatting",
       "networkError": "Network error. Please check your internet connection and try again.",
       "nextChange": "Next Change",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Numbered List",
       "parseError": "The document could not be parsed. It may be corrupted or in an unsupported format.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Paste",
       "pasteUnformatted": "Paste without formatting",
       "previousChange": "Previous Change",
@@ -579,7 +638,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Editing blocked",
       "viewGroup": "View",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -625,6 +685,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -649,6 +710,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Datum auswählen",
@@ -712,13 +774,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -740,9 +805,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -763,12 +830,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -782,6 +854,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -799,18 +876,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -834,7 +912,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -855,6 +943,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Verwerfen",
@@ -928,6 +1033,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Formatierungsleiste",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Details ausblenden",
       "historyGroup": "Verlauf",
       "imageOverlay": {
@@ -989,6 +1105,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Listenformatierung",
       "listsGroup": "Listen",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Dokument wird geladen…",
       "loadingEditor": "Editor wird geladen...",
       "lockFile": "Datei sperren",
@@ -1001,8 +1118,10 @@ export const CATALOGS = {
       "moreFormatting": "Weitere Formatierung",
       "networkError": "Netzwerkfehler. Bitte überprüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.",
       "nextChange": "Nächste Änderung",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Nummerierte Liste",
       "parseError": "Das Dokument konnte nicht verarbeitet werden. Möglicherweise ist es beschädigt oder liegt in einem nicht unterstützten Format vor.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Einfügen",
       "pasteUnformatted": "Ohne Formatierung einfügen",
       "previousChange": "Vorherige Änderung",
@@ -1161,7 +1280,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Bearbeitung gesperrt",
       "viewGroup": "Ansicht",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -1207,6 +1327,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -1231,6 +1352,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Choisir une date",
@@ -1294,13 +1416,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -1322,9 +1447,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -1345,12 +1472,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -1364,6 +1496,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -1381,18 +1518,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -1416,7 +1554,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -1437,6 +1585,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Abandonner",
@@ -1510,6 +1675,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Barre d’outils de mise en forme",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Masquer les détails",
       "historyGroup": "Historique",
       "imageOverlay": {
@@ -1571,6 +1747,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Mise en forme des listes",
       "listsGroup": "Listes",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Chargement du document...",
       "loadingEditor": "Chargement de l’éditeur...",
       "lockFile": "Verrouiller le fichier",
@@ -1583,8 +1760,10 @@ export const CATALOGS = {
       "moreFormatting": "Plus de mise en forme",
       "networkError": "Erreur réseau. Vérifiez votre connexion Internet et réessayez.",
       "nextChange": "Modification suivante",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Liste numérotée",
       "parseError": "Le document n’a pas pu être analysé. Il est peut-être corrompu ou dans un format non pris en charge.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Coller",
       "pasteUnformatted": "Coller sans mise en forme",
       "previousChange": "Modification précédente",
@@ -1743,7 +1922,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Modification bloquée",
       "viewGroup": "Affichage",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -1789,6 +1969,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -1813,6 +1994,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Elegir una fecha",
@@ -1876,13 +2058,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -1904,9 +2089,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -1927,12 +2114,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -1946,6 +2138,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -1963,18 +2160,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -1998,7 +2196,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -2019,6 +2227,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Descartar",
@@ -2092,6 +2317,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Barra de formato",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Ocultar detalles",
       "historyGroup": "Historial",
       "imageOverlay": {
@@ -2153,6 +2389,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Formato de lista",
       "listsGroup": "Listas",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Cargando el documento…",
       "loadingEditor": "Cargando editor...",
       "lockFile": "Bloquear archivo",
@@ -2165,8 +2402,10 @@ export const CATALOGS = {
       "moreFormatting": "Más formato",
       "networkError": "Error de red. Comprueba tu conexión a internet y vuelve a intentarlo.",
       "nextChange": "Cambio siguiente",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Lista numerada",
       "parseError": "No se pudo analizar el documento. Puede que esté dañado o en un formato no compatible.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Pegar",
       "pasteUnformatted": "Pegar sin formato",
       "previousChange": "Cambio anterior",
@@ -2325,7 +2564,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Edición bloqueada",
       "viewGroup": "Vista",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -2371,6 +2611,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -2395,6 +2636,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Vyberte datum",
@@ -2458,13 +2700,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -2486,9 +2731,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -2509,12 +2756,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -2528,6 +2780,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -2545,18 +2802,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -2580,7 +2838,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -2601,6 +2869,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Zahodit",
@@ -2674,6 +2959,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Panel formátování",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Skrýt podrobnosti",
       "historyGroup": "Historie",
       "imageOverlay": {
@@ -2735,6 +3031,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Formátování seznamu",
       "listsGroup": "Seznamy",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Načítání dokumentu…",
       "loadingEditor": "Načítání editoru...",
       "lockFile": "Zamknout soubor",
@@ -2747,8 +3044,10 @@ export const CATALOGS = {
       "moreFormatting": "Další formátování",
       "networkError": "Chyba sítě. Zkontrolujte připojení k internetu a zkuste to znovu.",
       "nextChange": "Následující změna",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Číslovaný seznam",
       "parseError": "Dokument se nepodařilo zpracovat. Může být poškozen nebo v nepodporovaném formátu.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Vložit",
       "pasteUnformatted": "Vložit bez formátování",
       "previousChange": "Předchozí změna",
@@ -2907,7 +3206,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Úpravy zablokovány",
       "viewGroup": "Zobrazení",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -2953,6 +3253,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -2977,6 +3278,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "اختر تاريخًا",
@@ -3040,13 +3342,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -3068,9 +3373,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -3091,12 +3398,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -3110,6 +3422,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -3127,18 +3444,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -3162,7 +3480,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -3183,6 +3511,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "تجاهل",
@@ -3256,6 +3601,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "شريط أدوات التنسيق",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "إخفاء التفاصيل",
       "historyGroup": "السجل",
       "imageOverlay": {
@@ -3317,6 +3673,7 @@ export const CATALOGS = {
       },
       "listFormatting": "تنسيق القائمة",
       "listsGroup": "القوائم",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "جارٍ تحميل المستند...",
       "loadingEditor": "جارٍ تحميل المحرر...",
       "lockFile": "قفل الملف",
@@ -3329,8 +3686,10 @@ export const CATALOGS = {
       "moreFormatting": "المزيد من التنسيق",
       "networkError": "خطأ في الشبكة. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.",
       "nextChange": "التغيير التالي",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "قائمة مرقّمة",
       "parseError": "تعذّر تحليل المستند. قد يكون تالفًا أو بتنسيق غير مدعوم.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "لصق",
       "pasteUnformatted": "لصق بدون تنسيق",
       "previousChange": "التغيير السابق",
@@ -3489,7 +3848,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "التعديل محظور",
       "viewGroup": "عرض",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -3535,6 +3895,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -3559,6 +3920,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Vali kuupäev",
@@ -3622,13 +3984,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -3650,9 +4015,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -3673,12 +4040,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -3692,6 +4064,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -3709,18 +4086,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -3744,7 +4122,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -3765,6 +4153,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Loobu",
@@ -3838,6 +4243,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Vormindusriba",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Peida üksikasjad",
       "historyGroup": "Ajalugu",
       "imageOverlay": {
@@ -3899,6 +4315,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Loendi vormindus",
       "listsGroup": "Loendid",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Dokumendi laadimine...",
       "loadingEditor": "Redaktori laadimine...",
       "lockFile": "Lukusta fail",
@@ -3911,8 +4328,10 @@ export const CATALOGS = {
       "moreFormatting": "Veel vormindust",
       "networkError": "Võrguviga. Kontrolli internetiühendust ja proovi uuesti.",
       "nextChange": "Järgmine muudatus",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Nummerdatud loend",
       "parseError": "Dokumenti ei õnnestunud sõeluda. See võib olla rikutud või toetamata vormingus.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Kleebi",
       "pasteUnformatted": "Kleebi vorminduseta",
       "previousChange": "Eelmine muudatus",
@@ -4071,7 +4490,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Muutmine on blokeeritud",
       "viewGroup": "Vaade",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -4117,6 +4537,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -4141,6 +4562,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Pick a date",
@@ -4204,13 +4626,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -4232,9 +4657,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -4255,12 +4682,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -4274,6 +4706,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -4291,18 +4728,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -4326,7 +4764,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -4347,6 +4795,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Discard",
@@ -4420,6 +4885,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "סרגל כלים לעיצוב",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "הסתר פרטים",
       "historyGroup": "היסטוריה",
       "imageOverlay": {
@@ -4481,6 +4957,7 @@ export const CATALOGS = {
       },
       "listFormatting": "עיצוב רשימה",
       "listsGroup": "Lists",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "טוען מסמך...",
       "loadingEditor": "Loading editor...",
       "lockFile": "Lock file",
@@ -4493,8 +4970,10 @@ export const CATALOGS = {
       "moreFormatting": "More formatting",
       "networkError": "Network error. Please check your internet connection and try again.",
       "nextChange": "Next Change",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "רשימה ממוספרת",
       "parseError": "The document could not be parsed. It may be corrupted or in an unsupported format.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "הדבק",
       "pasteUnformatted": "הדבק ללא עיצוב",
       "previousChange": "Previous Change",
@@ -4653,7 +5132,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Editing blocked",
       "viewGroup": "תצוגה",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -4699,6 +5179,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -4723,6 +5204,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Pick a date",
@@ -4786,13 +5268,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -4814,9 +5299,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -4837,12 +5324,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -4856,6 +5348,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -4873,18 +5370,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -4908,7 +5406,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -4929,6 +5437,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Discard",
@@ -5002,6 +5527,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "प्रारूपण टूलबार",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "विवरण छिपाएं",
       "historyGroup": "इतिहास",
       "imageOverlay": {
@@ -5063,6 +5599,7 @@ export const CATALOGS = {
       },
       "listFormatting": "सूची प्रारूपण",
       "listsGroup": "Lists",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "दस्तावेज़ लोड हो रहा है...",
       "loadingEditor": "Loading editor...",
       "lockFile": "Lock file",
@@ -5075,8 +5612,10 @@ export const CATALOGS = {
       "moreFormatting": "More formatting",
       "networkError": "Network error. Please check your internet connection and try again.",
       "nextChange": "Next Change",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "नंबर वाली सूची",
       "parseError": "The document could not be parsed. It may be corrupted or in an unsupported format.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "पेस्ट करें",
       "pasteUnformatted": "बिना प्रारूपण के पेस्ट करें",
       "previousChange": "Previous Change",
@@ -5235,7 +5774,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Editing blocked",
       "viewGroup": "देखें",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -5281,6 +5821,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -5305,6 +5846,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Dátum kiválasztása",
@@ -5368,13 +5910,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -5396,9 +5941,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -5419,12 +5966,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -5438,6 +5990,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -5455,18 +6012,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -5490,7 +6048,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -5511,6 +6079,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Elvetés",
@@ -5584,6 +6169,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Formázási eszköztár",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Részletek elrejtése",
       "historyGroup": "Előzmények",
       "imageOverlay": {
@@ -5645,6 +6241,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Listaformázás",
       "listsGroup": "Listák",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Dokumentum betöltése…",
       "loadingEditor": "Szerkesztő betöltése...",
       "lockFile": "Fájl zárolása",
@@ -5657,8 +6254,10 @@ export const CATALOGS = {
       "moreFormatting": "További formázás",
       "networkError": "Hálózati hiba. Ellenőrizze az internetkapcsolatát, és próbálja újra.",
       "nextChange": "Következő módosítás",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Számozott lista",
       "parseError": "A dokumentumot nem sikerült feldolgozni. Lehet, hogy sérült, vagy nem támogatott formátumú.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Beillesztés",
       "pasteUnformatted": "Beillesztés formázás nélkül",
       "previousChange": "Előző módosítás",
@@ -5817,7 +6416,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "A szerkesztés letiltva",
       "viewGroup": "Nézet",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -5863,6 +6463,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -5887,6 +6488,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Pasirinkite datą",
@@ -5950,13 +6552,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -5978,9 +6583,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -6001,12 +6608,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -6020,6 +6632,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -6037,18 +6654,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -6072,7 +6690,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -6093,6 +6721,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Atmesti",
@@ -6166,6 +6811,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Formatavimo įrankių juosta",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Slėpti detales",
       "historyGroup": "Istorija",
       "imageOverlay": {
@@ -6227,6 +6883,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Sąrašo formatavimas",
       "listsGroup": "Sąrašai",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Įkeliamas dokumentas…",
       "loadingEditor": "Įkeliamas redaktorius...",
       "lockFile": "Užrakinti failą",
@@ -6239,8 +6896,10 @@ export const CATALOGS = {
       "moreFormatting": "Daugiau formatavimo",
       "networkError": "Tinklo klaida. Patikrinkite interneto ryšį ir bandykite dar kartą.",
       "nextChange": "Kitas keitimas",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Numeruotas sąrašas",
       "parseError": "Nepavyko apdoroti dokumento. Jis gali būti sugadintas arba nepalaikomo formato.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Įklijuoti",
       "pasteUnformatted": "Įklijuoti be formatavimo",
       "previousChange": "Ankstesnis keitimas",
@@ -6399,7 +7058,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Redagavimas užblokuotas",
       "viewGroup": "Rodinys",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -6445,6 +7105,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -6469,6 +7130,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Izvēlieties datumu",
@@ -6532,13 +7194,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -6560,9 +7225,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -6583,12 +7250,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -6602,6 +7274,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -6619,18 +7296,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -6654,7 +7332,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -6675,6 +7363,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Atmest",
@@ -6748,6 +7453,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Formatēšanas rīkjosla",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Slēpt detaļas",
       "historyGroup": "Vēsture",
       "imageOverlay": {
@@ -6809,6 +7525,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Saraksta formatēšana",
       "listsGroup": "Saraksti",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Ielādē dokumentu…",
       "loadingEditor": "Ielādē redaktoru...",
       "lockFile": "Bloķēt failu",
@@ -6821,8 +7538,10 @@ export const CATALOGS = {
       "moreFormatting": "Papildu formatēšana",
       "networkError": "Tīkla kļūda. Lūdzu, pārbaudiet interneta savienojumu un mēģiniet vēlreiz.",
       "nextChange": "Nākamā izmaiņa",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Numurēts saraksts",
       "parseError": "Dokumentu neizdevās apstrādāt. Iespējams, tas ir bojāts vai neatbalstītā formātā.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Ielīmēt",
       "pasteUnformatted": "Ielīmēt bez formatējuma",
       "previousChange": "Iepriekšējā izmaiņa",
@@ -6981,7 +7700,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Rediģēšana bloķēta",
       "viewGroup": "Skats",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -7027,6 +7747,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -7051,6 +7772,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Wybierz datę",
@@ -7114,13 +7836,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -7142,9 +7867,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -7165,12 +7892,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -7184,6 +7916,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -7201,18 +7938,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -7236,7 +7974,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -7257,6 +8005,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Odrzuć",
@@ -7330,6 +8095,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Pasek formatowania",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Ukryj szczegóły",
       "historyGroup": "Historia",
       "imageOverlay": {
@@ -7391,6 +8167,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Formatowanie listy",
       "listsGroup": "Listy",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Ładowanie dokumentu...",
       "loadingEditor": "Ładowanie edytora...",
       "lockFile": "Zablokuj plik",
@@ -7403,8 +8180,10 @@ export const CATALOGS = {
       "moreFormatting": "Więcej formatowania",
       "networkError": "Błąd sieci. Sprawdź połączenie z internetem i spróbuj ponownie.",
       "nextChange": "Następna zmiana",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Lista numerowana",
       "parseError": "Nie udało się przetworzyć dokumentu. Może być uszkodzony lub w nieobsługiwanym formacie.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Wklej",
       "pasteUnformatted": "Wklej bez formatowania",
       "previousChange": "Poprzednia zmiana",
@@ -7563,7 +8342,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Edycja zablokowana",
       "viewGroup": "Widok",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -7609,6 +8389,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -7633,6 +8414,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Escolher uma data",
@@ -7696,13 +8478,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -7724,9 +8509,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -7747,12 +8534,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -7766,6 +8558,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -7783,18 +8580,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -7818,7 +8616,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -7839,6 +8647,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Descartar",
@@ -7912,6 +8737,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Barra de ferramentas de formatação",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Ocultar detalhes",
       "historyGroup": "Histórico",
       "imageOverlay": {
@@ -7973,6 +8809,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Formatação de lista",
       "listsGroup": "Listas",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Carregando documento...",
       "loadingEditor": "Carregando editor...",
       "lockFile": "Bloquear arquivo",
@@ -7985,8 +8822,10 @@ export const CATALOGS = {
       "moreFormatting": "Mais formatação",
       "networkError": "Erro de rede. Verifique sua conexão com a Internet e tente novamente.",
       "nextChange": "Próxima alteração",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Lista numerada",
       "parseError": "O documento não pôde ser analisado. Ele pode estar corrompido ou em um formato não compatível.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Colar",
       "pasteUnformatted": "Colar sem formatar",
       "previousChange": "Alteração anterior",
@@ -8145,7 +8984,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Edição bloqueada",
       "viewGroup": "Exibir",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -8191,6 +9031,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -8215,6 +9056,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Vyberte dátum",
@@ -8278,13 +9120,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -8306,9 +9151,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -8329,12 +9176,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -8348,6 +9200,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -8365,18 +9222,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -8400,7 +9258,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -8421,6 +9289,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Zahodiť",
@@ -8494,6 +9379,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Panel formátovania",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Skryť detaily",
       "historyGroup": "História",
       "imageOverlay": {
@@ -8555,6 +9451,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Formátovanie zoznamu",
       "listsGroup": "Zoznamy",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Načitávanie dokumentu...",
       "loadingEditor": "Načítava sa editor...",
       "lockFile": "Zamknúť súbor",
@@ -8567,8 +9464,10 @@ export const CATALOGS = {
       "moreFormatting": "Ďalšie formátovanie",
       "networkError": "Chyba siete. Skontrolujte internetové pripojenie a skúste znova.",
       "nextChange": "Ďalšia zmena",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Číslovaný zoznam",
       "parseError": "Dokument sa nepodarilo spracovať. Môže byť poškodený alebo v nepodporovanom formáte.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Vložiť",
       "pasteUnformatted": "Vložiť bez formátovania",
       "previousChange": "Predchádzajúca zmena",
@@ -8727,7 +9626,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Úpravy zablokované",
       "viewGroup": "Zobraziť",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -8773,6 +9673,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -8797,6 +9698,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Pick a date",
@@ -8860,13 +9762,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -8888,9 +9793,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -8911,12 +9818,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -8930,6 +9842,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -8947,18 +9864,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -8982,7 +9900,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -9003,6 +9931,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Discard",
@@ -9076,6 +10021,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "Biçimlendirme araç çubuğu",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "Ayrıntıları gizle",
       "historyGroup": "Geçmiş",
       "imageOverlay": {
@@ -9137,6 +10093,7 @@ export const CATALOGS = {
       },
       "listFormatting": "Liste biçimlendirme",
       "listsGroup": "Lists",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "Belge yükleniyor...",
       "loadingEditor": "Loading editor...",
       "lockFile": "Lock file",
@@ -9149,8 +10106,10 @@ export const CATALOGS = {
       "moreFormatting": "More formatting",
       "networkError": "Network error. Please check your internet connection and try again.",
       "nextChange": "Next Change",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "Numaralı liste",
       "parseError": "The document could not be parsed. It may be corrupted or in an unsupported format.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "Yapıştır",
       "pasteUnformatted": "Biçimlendirmeden yapıştır",
       "previousChange": "Previous Change",
@@ -9309,7 +10268,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Editing blocked",
       "viewGroup": "Görünüm",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",
@@ -9355,6 +10315,7 @@ export const CATALOGS = {
           "red": "Red",
           "yellow": "Yellow"
         },
+        "custom": "Custom",
         "customColor": "Custom Color",
         "noColor": "No color",
         "standardColors": "Standard Colors",
@@ -9379,6 +10340,7 @@ export const CATALOGS = {
         "closeDialog": "Close",
         "insert": "Insert",
         "px": "px",
+        "remove": "Remove",
         "update": "Update"
       },
       "contentControlDateAriaLabel": "Pick a date",
@@ -9442,13 +10404,16 @@ export const CATALOGS = {
           "title": "Footnote & Endnote Properties"
         },
         "hyperlink": {
+          "addressLabel": "Address",
           "bookmarkLabel": "Bookmark",
           "bookmarkPlaceholder": "Select a bookmark",
           "displayTextHint": "Defaults to the selected text",
           "displayTextLabel": "Display text",
           "displayTextPlaceholder": "Text to display",
           "invalidUrl": "Enter a valid URL",
+          "linkTo": "Link to",
           "removeLink": "Remove link",
+          "screenTipLabel": "Screen tip",
           "tabBookmark": "Bookmark",
           "tabWebAddress": "Web address",
           "titleEdit": "Edit hyperlink",
@@ -9470,9 +10435,11 @@ export const CATALOGS = {
             "top": "Top"
           },
           "alignment": "Alignment",
+          "distanceFromText": "Distance from text (px)",
           "horizontal": "Horizontal",
           "offset": "Offset",
           "offsetPx": "Offset (px)",
+          "position": "Position",
           "relativeOptions": {
             "character": "Character",
             "column": "Column",
@@ -9493,12 +10460,17 @@ export const CATALOGS = {
             "dashed": "Dashed",
             "dotted": "Dotted",
             "double": "Double",
+            "groove": "Groove",
+            "inset": "Inset",
+            "outset": "Outset",
+            "ridge": "Ridge",
             "solid": "Solid"
           },
           "color": "Color",
           "dimensions": "Dimensions",
           "heightLabel": "Height",
           "lockAspectRatio": "Lock aspect ratio",
+          "preview": "Preview",
           "style": "Style",
           "textWrapping": "Text wrapping",
           "title": "Image Properties",
@@ -9512,6 +10484,11 @@ export const CATALOGS = {
             "wrapLeft": "Wrap left",
             "wrapRight": "Wrap right"
           }
+        },
+        "insertImage": {
+          "altText": "Alt text",
+          "imageFile": "Image file",
+          "title": "Insert Image"
         },
         "insertSymbol": {
           "categories": {
@@ -9529,18 +10506,19 @@ export const CATALOGS = {
           "title": "Insert symbol"
         },
         "insertTable": {
-          "autofit": "Autofit",
+          "autofit": "Autofit to contents",
           "columnWidthLabel": "Column width",
           "columnsLabel": "Columns",
           "fixedWidth": "Fixed width",
           "hoverToSelect": "Hover to select table size",
           "insertButton": "Insert",
           "orSpecifySize": "Or specify size",
+          "plainTable": "Plain table",
           "rowsLabel": "Rows",
           "sizeSelector": "Table size selector",
           "style": "Style",
           "tableSize": "{cols} × {rows} table",
-          "title": "Insert table",
+          "title": "Insert Table",
           "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}"
         },
         "pageSetup": {
@@ -9564,7 +10542,17 @@ export const CATALOGS = {
           "right": "Right",
           "sizeLabel": "Size",
           "title": "Page Setup",
-          "top": "Top"
+          "top": "Top",
+          "unitInches": "in"
+        },
+        "pasteSpecial": {
+          "pasteMode": "Paste mode",
+          "title": "Paste Special"
+        },
+        "splitCell": {
+          "mergeBeforeSplit": "Merge selected cells before splitting",
+          "splitButton": "Split",
+          "title": "Split Cell"
         },
         "tableProperties": {
           "alignOptions": {
@@ -9585,6 +10573,23 @@ export const CATALOGS = {
             "fixed": "Fixed (twips)",
             "percentage": "Percentage"
           }
+        },
+        "watermark": {
+          "color": "Color",
+          "diagonal": "Diagonal",
+          "font": "Font",
+          "imageRelationshipId": "Header image relationship id",
+          "imageTarget": "Image target",
+          "noWatermark": "No watermark",
+          "opacity": "Opacity",
+          "pictureWatermark": "Picture watermark",
+          "scale": "Scale",
+          "targetIsExternalUrl": "Target is an external URL",
+          "text": "Text",
+          "textWatermark": "Text watermark",
+          "title": "Watermark",
+          "type": "Type",
+          "washout": "Washout"
         }
       },
       "discardChanges": "Discard",
@@ -9658,6 +10663,17 @@ export const CATALOGS = {
         "superscriptShortcut": "Superscript (Ctrl+Shift+=)"
       },
       "formattingToolbar": "格式工具栏",
+      "headerFooter": {
+        "closeFooterEditing": "Close footer editing",
+        "closeHeaderEditing": "Close header editing",
+        "footer": "Footer",
+        "header": "Header",
+        "insertPageCount": "Insert total page count",
+        "insertPageNumber": "Insert current page number",
+        "options": "Options",
+        "removeFooter": "Remove footer",
+        "removeHeader": "Remove header"
+      },
       "hideDetails": "隐藏详情",
       "historyGroup": "历史记录",
       "imageOverlay": {
@@ -9719,6 +10735,7 @@ export const CATALOGS = {
       },
       "listFormatting": "列表格式",
       "listsGroup": "Lists",
+      "loadDocumentFailedTitle": "Failed to Load Document",
       "loadingDocument": "正在加载文档...",
       "loadingEditor": "Loading editor...",
       "lockFile": "Lock file",
@@ -9731,8 +10748,10 @@ export const CATALOGS = {
       "moreFormatting": "More formatting",
       "networkError": "Network error. Please check your internet connection and try again.",
       "nextChange": "Next Change",
+      "noDocumentLoaded": "No document loaded",
       "numberedList": "编号",
       "parseError": "The document could not be parsed. It may be corrupted or in an unsupported format.",
+      "parseErrorTitle": "Unable to Parse Document",
       "paste": "粘贴",
       "pasteUnformatted": "粘贴为纯文本，不保留任何格式",
       "previousChange": "Previous Change",
@@ -9891,7 +10910,8 @@ export const CATALOGS = {
       "unsupportedDocxEditTitle": "Editing blocked",
       "viewGroup": "视图",
       "viewer": {
-        "pageIndicator": "Page {current} of {total}"
+        "pageIndicator": "Page {current} of {total}",
+        "pageOfTotal": "{current} of {total}"
       },
       "zoom": {
         "zoomIn": "Zoom in",

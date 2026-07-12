@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useEffect, useId, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import { useCloseOnDialogOpenChange } from "./dialogChrome";
@@ -39,6 +40,7 @@ export function TablePropertiesDialog({
     Close: DialogClose,
   } = useFolioUI().Dialog;
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
+  const t = useTranslations("folio");
   const id = useId();
   const [width, setWidth] = useState(currentProps?.width ?? 0);
   const [widthType, setWidthType] = useState(currentProps?.widthType ?? "auto");
@@ -86,13 +88,13 @@ export function TablePropertiesDialog({
         <DialogBackdrop className="fixed inset-0 z-[10000] bg-black/50" />
         <DialogPopup className="bg-popover fixed start-1/2 top-1/2 z-[10001] w-full max-w-[440px] min-w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-xl">
           <DialogTitle className="border-b px-5 py-3 text-base font-semibold">
-            Table Properties
+            {t("dialogs.tableProperties.title")}
           </DialogTitle>
 
           <div className="flex flex-col gap-3 px-5 py-4">
             <div className="flex items-center gap-3">
               <label className={labelCls} htmlFor={fieldIds.widthType}>
-                Width type
+                {t("dialogs.tableProperties.widthType")}
               </label>
               <select
                 className={inputCls}
@@ -100,16 +102,16 @@ export function TablePropertiesDialog({
                 onChange={(e) => setWidthType(e.target.value)}
                 value={widthType}
               >
-                <option value="auto">Auto</option>
-                <option value="dxa">Fixed (twips)</option>
-                <option value="pct">Percentage</option>
+                <option value="auto">{t("dialogs.tableProperties.widthTypes.auto")}</option>
+                <option value="dxa">{t("dialogs.tableProperties.widthTypes.fixed")}</option>
+                <option value="pct">{t("dialogs.tableProperties.widthTypes.percentage")}</option>
               </select>
             </div>
 
             {widthType !== "auto" && (
               <div className="flex items-center gap-3">
                 <label className={labelCls} htmlFor={fieldIds.width}>
-                  Width
+                  {t("dialogs.tableProperties.widthLabel")}
                 </label>
                 <input
                   className={inputCls}
@@ -121,14 +123,16 @@ export function TablePropertiesDialog({
                   value={width}
                 />
                 <span className="text-muted-foreground text-[11px]">
-                  {widthType === "pct" ? "(50ths of %)" : "tw"}
+                  {widthType === "pct"
+                    ? t("dialogs.tableProperties.units.fiftiethsPercent")
+                    : t("dialogs.tableProperties.units.twips")}
                 </span>
               </div>
             )}
 
             <div className="flex items-center gap-3">
               <label className={labelCls} htmlFor={fieldIds.align}>
-                Alignment
+                {t("dialogs.tableProperties.alignmentLabel")}
               </label>
               <select
                 className={inputCls}
@@ -136,23 +140,23 @@ export function TablePropertiesDialog({
                 onChange={(e) => setJustification(e.target.value)}
                 value={justification}
               >
-                <option value="left">Left</option>
-                <option value="center">Center</option>
-                <option value="right">Right</option>
+                <option value="left">{t("dialogs.tableProperties.alignOptions.left")}</option>
+                <option value="center">{t("dialogs.tableProperties.alignOptions.center")}</option>
+                <option value="right">{t("dialogs.tableProperties.alignOptions.right")}</option>
               </select>
             </div>
           </div>
 
           <div className="flex justify-end gap-2 border-t px-5 py-3">
             <DialogClose className="border-input rounded border px-4 py-1.5 text-[13px]">
-              Cancel
+              {t("common.cancel")}
             </DialogClose>
             <button
               className="bg-primary text-primary-foreground rounded px-4 py-1.5 text-[13px] font-medium"
               onClick={handleApply}
               type="button"
             >
-              Apply
+              {t("common.apply")}
             </button>
           </div>
         </DialogPopup>

@@ -396,6 +396,7 @@ export function ParseErrorDisplay({
   className = "",
 }: ParseErrorDisplayProps): React.ReactElement {
   const { Button } = useFolioUI();
+  const t = useTranslations("folio");
   return (
     <div
       className={cn(
@@ -404,7 +405,7 @@ export function ParseErrorDisplay({
       )}
     >
       <FileWarningIcon className="text-destructive mb-4 size-10" />
-      <h3 className="text-foreground mb-2 text-base font-semibold">Unable to Parse Document</h3>
+      <h3 className="text-foreground mb-2 text-base font-semibold">{t("parseErrorTitle")}</h3>
       <p className="text-muted-foreground mb-4 max-w-[400px] text-sm">{message}</p>
       {details && (
         <pre className="bg-muted mb-4 max-w-full overflow-auto rounded p-3 text-start font-mono text-xs">
@@ -413,7 +414,7 @@ export function ParseErrorDisplay({
       )}
       {onRetry && (
         <Button variant="default" size="sm" onClick={onRetry}>
-          Try Again
+          {t("tryAgain")}
         </Button>
       )}
     </div>

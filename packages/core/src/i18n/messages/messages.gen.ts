@@ -37,6 +37,7 @@ type Messages = {
         "red": "Red";
         "yellow": "Yellow";
       };
+      "custom": "Custom";
       "customColor": "Custom Color";
       "noColor": "No color";
       "standardColors": "Standard Colors";
@@ -61,6 +62,7 @@ type Messages = {
       "closeDialog": "Close";
       "insert": "Insert";
       "px": "px";
+      "remove": "Remove";
       "update": "Update";
     };
     "contentControlDateAriaLabel": "Pick a date";
@@ -124,13 +126,16 @@ type Messages = {
         "title": "Footnote & Endnote Properties";
       };
       "hyperlink": {
+        "addressLabel": "Address";
         "bookmarkLabel": "Bookmark";
         "bookmarkPlaceholder": "Select a bookmark";
         "displayTextHint": "Defaults to the selected text";
         "displayTextLabel": "Display text";
         "displayTextPlaceholder": "Text to display";
         "invalidUrl": "Enter a valid URL";
+        "linkTo": "Link to";
         "removeLink": "Remove link";
+        "screenTipLabel": "Screen tip";
         "tabBookmark": "Bookmark";
         "tabWebAddress": "Web address";
         "titleEdit": "Edit hyperlink";
@@ -152,9 +157,11 @@ type Messages = {
           "top": "Top";
         };
         "alignment": "Alignment";
+        "distanceFromText": "Distance from text (px)";
         "horizontal": "Horizontal";
         "offset": "Offset";
         "offsetPx": "Offset (px)";
+        "position": "Position";
         "relativeOptions": {
           "character": "Character";
           "column": "Column";
@@ -175,12 +182,17 @@ type Messages = {
           "dashed": "Dashed";
           "dotted": "Dotted";
           "double": "Double";
+          "groove": "Groove";
+          "inset": "Inset";
+          "outset": "Outset";
+          "ridge": "Ridge";
           "solid": "Solid";
         };
         "color": "Color";
         "dimensions": "Dimensions";
         "heightLabel": "Height";
         "lockAspectRatio": "Lock aspect ratio";
+        "preview": "Preview";
         "style": "Style";
         "textWrapping": "Text wrapping";
         "title": "Image Properties";
@@ -194,6 +206,11 @@ type Messages = {
           "wrapLeft": "Wrap left";
           "wrapRight": "Wrap right";
         };
+      };
+      "insertImage": {
+        "altText": "Alt text";
+        "imageFile": "Image file";
+        "title": "Insert Image";
       };
       "insertSymbol": {
         "categories": {
@@ -211,18 +228,19 @@ type Messages = {
         "title": "Insert symbol";
       };
       "insertTable": {
-        "autofit": "Autofit";
+        "autofit": "Autofit to contents";
         "columnWidthLabel": "Column width";
         "columnsLabel": "Columns";
         "fixedWidth": "Fixed width";
         "hoverToSelect": "Hover to select table size";
         "insertButton": "Insert";
         "orSpecifySize": "Or specify size";
+        "plainTable": "Plain table";
         "rowsLabel": "Rows";
         "sizeSelector": "Table size selector";
         "style": "Style";
         "tableSize": "{cols} × {rows} table";
-        "title": "Insert table";
+        "title": "Insert Table";
         "validationHint": "Rows: {minRows}–{maxRows}, columns: {minCols}–{maxCols}";
       };
       "pageSetup": {
@@ -247,6 +265,16 @@ type Messages = {
         "sizeLabel": "Size";
         "title": "Page Setup";
         "top": "Top";
+        "unitInches": "in";
+      };
+      "pasteSpecial": {
+        "pasteMode": "Paste mode";
+        "title": "Paste Special";
+      };
+      "splitCell": {
+        "mergeBeforeSplit": "Merge selected cells before splitting";
+        "splitButton": "Split";
+        "title": "Split Cell";
       };
       "tableProperties": {
         "alignOptions": {
@@ -267,6 +295,23 @@ type Messages = {
           "fixed": "Fixed (twips)";
           "percentage": "Percentage";
         };
+      };
+      "watermark": {
+        "color": "Color";
+        "diagonal": "Diagonal";
+        "font": "Font";
+        "imageRelationshipId": "Header image relationship id";
+        "imageTarget": "Image target";
+        "noWatermark": "No watermark";
+        "opacity": "Opacity";
+        "pictureWatermark": "Picture watermark";
+        "scale": "Scale";
+        "targetIsExternalUrl": "Target is an external URL";
+        "text": "Text";
+        "textWatermark": "Text watermark";
+        "title": "Watermark";
+        "type": "Type";
+        "washout": "Washout";
       };
     };
     "discardChanges": "Discard";
@@ -340,6 +385,17 @@ type Messages = {
       "superscriptShortcut": "Superscript (Ctrl+Shift+=)";
     };
     "formattingToolbar": "Formatting toolbar";
+    "headerFooter": {
+      "closeFooterEditing": "Close footer editing";
+      "closeHeaderEditing": "Close header editing";
+      "footer": "Footer";
+      "header": "Header";
+      "insertPageCount": "Insert total page count";
+      "insertPageNumber": "Insert current page number";
+      "options": "Options";
+      "removeFooter": "Remove footer";
+      "removeHeader": "Remove header";
+    };
     "hideDetails": "Hide details";
     "historyGroup": "History";
     "imageOverlay": {
@@ -401,6 +457,7 @@ type Messages = {
     };
     "listFormatting": "List formatting";
     "listsGroup": "Lists";
+    "loadDocumentFailedTitle": "Failed to Load Document";
     "loadingDocument": "Loading document...";
     "loadingEditor": "Loading editor...";
     "lockFile": "Lock file";
@@ -413,8 +470,10 @@ type Messages = {
     "moreFormatting": "More formatting";
     "networkError": "Network error. Please check your internet connection and try again.";
     "nextChange": "Next Change";
+    "noDocumentLoaded": "No document loaded";
     "numberedList": "Numbered List";
     "parseError": "The document could not be parsed. It may be corrupted or in an unsupported format.";
+    "parseErrorTitle": "Unable to Parse Document";
     "paste": "Paste";
     "pasteUnformatted": "Paste without formatting";
     "previousChange": "Previous Change";
@@ -574,6 +633,7 @@ type Messages = {
     "viewGroup": "View";
     "viewer": {
       "pageIndicator": "Page {current} of {total}";
+      "pageOfTotal": "{current} of {total}";
     };
     "zoom": {
       "zoomIn": "Zoom in";

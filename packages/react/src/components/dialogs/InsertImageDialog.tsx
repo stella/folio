@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import {
@@ -43,6 +44,7 @@ export function InsertImageDialog({
     Close: DialogClose,
   } = useFolioUI().Dialog;
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
+  const t = useTranslations("folio");
   const id = useId();
   const [file, setFile] = useState<File | null>(null);
   const [alt, setAlt] = useState("");
@@ -86,11 +88,11 @@ export function InsertImageDialog({
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>
-          <DialogTitle className={DIALOG_TITLE_CLASS}>Insert Image</DialogTitle>
+          <DialogTitle className={DIALOG_TITLE_CLASS}>{t("dialogs.insertImage.title")}</DialogTitle>
 
           <div className={DIALOG_BODY_CLASS}>
             <label className="flex flex-col gap-1" htmlFor={fieldIds.file}>
-              <span className={DIALOG_LABEL_CLASS}>Image file</span>
+              <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertImage.imageFile")}</span>
               <input
                 accept={accept}
                 className={DIALOG_INPUT_CLASS}
@@ -101,7 +103,7 @@ export function InsertImageDialog({
             </label>
 
             <label className="flex flex-col gap-1" htmlFor={fieldIds.alt}>
-              <span className={DIALOG_LABEL_CLASS}>Alt text</span>
+              <span className={DIALOG_LABEL_CLASS}>{t("dialogs.insertImage.altText")}</span>
               <input
                 className={DIALOG_INPUT_CLASS}
                 id={fieldIds.alt}
@@ -113,7 +115,9 @@ export function InsertImageDialog({
 
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1" htmlFor={fieldIds.width}>
-                <span className={DIALOG_LABEL_CLASS}>Width</span>
+                <span className={DIALOG_LABEL_CLASS}>
+                  {t("dialogs.imageProperties.widthLabel")}
+                </span>
                 <input
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.width}
@@ -125,7 +129,9 @@ export function InsertImageDialog({
                 />
               </label>
               <label className="flex flex-col gap-1" htmlFor={fieldIds.height}>
-                <span className={DIALOG_LABEL_CLASS}>Height</span>
+                <span className={DIALOG_LABEL_CLASS}>
+                  {t("dialogs.imageProperties.heightLabel")}
+                </span>
                 <input
                   className={DIALOG_INPUT_CLASS}
                   id={fieldIds.height}
@@ -140,14 +146,16 @@ export function InsertImageDialog({
           </div>
 
           <div className={DIALOG_FOOTER_CLASS}>
-            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>Cancel</DialogClose>
+            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>
+              {t("common.cancel")}
+            </DialogClose>
             <button
               className={DIALOG_PRIMARY_BUTTON_CLASS}
               disabled={!file}
               onClick={handleInsert}
               type="button"
             >
-              Insert
+              {t("common.insert")}
             </button>
           </div>
         </DialogPopup>

@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import {
@@ -55,6 +56,7 @@ export function PasteSpecialDialog({
     Close: DialogClose,
   } = useFolioUI().Dialog;
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
+  const t = useTranslations("folio");
   const id = useId();
   const [mode, setMode] = useState<PasteSpecialMode>(defaultMode);
 
@@ -74,11 +76,13 @@ export function PasteSpecialDialog({
       <DialogPortal>
         <DialogBackdrop className={DIALOG_BACKDROP_CLASS} />
         <DialogPopup className={DIALOG_POPUP_CLASS}>
-          <DialogTitle className={DIALOG_TITLE_CLASS}>Paste Special</DialogTitle>
+          <DialogTitle className={DIALOG_TITLE_CLASS}>
+            {t("dialogs.pasteSpecial.title")}
+          </DialogTitle>
 
           <div className={DIALOG_BODY_CLASS}>
             <fieldset className="flex flex-col gap-3">
-              <legend className={DIALOG_LABEL_CLASS}>Paste mode</legend>
+              <legend className={DIALOG_LABEL_CLASS}>{t("dialogs.pasteSpecial.pasteMode")}</legend>
               {PASTE_MODES.map((option) => {
                 const optionId = `${id}-paste-special-${option.value}`;
                 return (
@@ -102,9 +106,11 @@ export function PasteSpecialDialog({
           </div>
 
           <div className={DIALOG_FOOTER_CLASS}>
-            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>Cancel</DialogClose>
+            <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>
+              {t("common.cancel")}
+            </DialogClose>
             <button className={DIALOG_PRIMARY_BUTTON_CLASS} onClick={handlePaste} type="button">
-              Paste
+              {t("paste")}
             </button>
           </div>
         </DialogPopup>

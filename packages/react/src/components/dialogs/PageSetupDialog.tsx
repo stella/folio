@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useId, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
 import { TWIPS_PER_INCH } from "@stll/folio-core/utils/units";
@@ -75,6 +76,7 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
     Close: DialogClose,
   } = useFolioUI().Dialog;
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
+  const t = useTranslations("folio");
   const id = useId();
   const [pageWidth, setPageWidth] = useState(DEFAULT_WIDTH);
   const [pageHeight, setPageHeight] = useState(DEFAULT_HEIGHT);
@@ -161,16 +163,16 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
         <DialogBackdrop className="fixed inset-0 z-[10000] bg-black/50" />
         <DialogPopup className="bg-popover fixed start-1/2 top-1/2 z-[10001] w-full max-w-[480px] min-w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-xl">
           <DialogTitle className="border-b px-5 py-3 text-base font-semibold">
-            Page Setup
+            {t("dialogs.pageSetup.title")}
           </DialogTitle>
 
           <div className="flex flex-col gap-3.5 px-5 py-4">
             {/* Page size section */}
-            <div className={sectionLabelCls}>Page Size</div>
+            <div className={sectionLabelCls}>{t("dialogs.pageSetup.pageSize")}</div>
 
             <div className="flex items-center gap-3">
               <label htmlFor={fieldIds.size} className={labelCls}>
-                Size
+                {t("dialogs.pageSetup.sizeLabel")}
               </label>
               <select
                 id={fieldIds.size}
@@ -183,13 +185,13 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
                     {size.label}
                   </option>
                 ))}
-                {sizeIndex < 0 && <option value={-1}>Custom</option>}
+                {sizeIndex < 0 && <option value={-1}>{t("dialogs.pageSetup.custom")}</option>}
               </select>
             </div>
 
             <div className="flex items-center gap-3">
               <label htmlFor={fieldIds.orientation} className={labelCls}>
-                Orientation
+                {t("dialogs.pageSetup.orientation")}
               </label>
               <select
                 id={fieldIds.orientation}
@@ -199,17 +201,17 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
                   handleOrientationChange(e.target.value as "portrait" | "landscape")
                 }
               >
-                <option value="portrait">Portrait</option>
-                <option value="landscape">Landscape</option>
+                <option value="portrait">{t("dialogs.pageSetup.portrait")}</option>
+                <option value="landscape">{t("dialogs.pageSetup.landscape")}</option>
               </select>
             </div>
 
             {/* Margins section */}
-            <div className={`${sectionLabelCls} mt-1`}>Margins</div>
+            <div className={`${sectionLabelCls} mt-1`}>{t("dialogs.pageSetup.margins")}</div>
 
             <div className="flex items-center gap-3">
               <label htmlFor={fieldIds.marginTop} className={labelCls}>
-                Top
+                {t("dialogs.pageSetup.top")}
               </label>
               <input
                 id={fieldIds.marginTop}
@@ -221,12 +223,14 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
                 value={twipsToInches(marginTop)}
                 onChange={(e) => setMarginTop(inchesToTwips(Number(e.target.value) || 0))}
               />
-              <span className="text-muted-foreground w-4 text-[11px]">in</span>
+              <span className="text-muted-foreground w-4 text-[11px]">
+                {t("dialogs.pageSetup.unitInches")}
+              </span>
             </div>
 
             <div className="flex items-center gap-3">
               <label htmlFor={fieldIds.marginBottom} className={labelCls}>
-                Bottom
+                {t("dialogs.pageSetup.bottom")}
               </label>
               <input
                 id={fieldIds.marginBottom}
@@ -238,12 +242,14 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
                 value={twipsToInches(marginBottom)}
                 onChange={(e) => setMarginBottom(inchesToTwips(Number(e.target.value) || 0))}
               />
-              <span className="text-muted-foreground w-4 text-[11px]">in</span>
+              <span className="text-muted-foreground w-4 text-[11px]">
+                {t("dialogs.pageSetup.unitInches")}
+              </span>
             </div>
 
             <div className="flex items-center gap-3">
               <label htmlFor={fieldIds.marginLeft} className={labelCls}>
-                Left
+                {t("dialogs.pageSetup.left")}
               </label>
               <input
                 id={fieldIds.marginLeft}
@@ -255,12 +261,14 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
                 value={twipsToInches(marginLeft)}
                 onChange={(e) => setMarginLeft(inchesToTwips(Number(e.target.value) || 0))}
               />
-              <span className="text-muted-foreground w-4 text-[11px]">in</span>
+              <span className="text-muted-foreground w-4 text-[11px]">
+                {t("dialogs.pageSetup.unitInches")}
+              </span>
             </div>
 
             <div className="flex items-center gap-3">
               <label htmlFor={fieldIds.marginRight} className={labelCls}>
-                Right
+                {t("dialogs.pageSetup.right")}
               </label>
               <input
                 id={fieldIds.marginRight}
@@ -272,20 +280,22 @@ export function PageSetupDialog({ isOpen, onClose, onApply, currentProps }: Page
                 value={twipsToInches(marginRight)}
                 onChange={(e) => setMarginRight(inchesToTwips(Number(e.target.value) || 0))}
               />
-              <span className="text-muted-foreground w-4 text-[11px]">in</span>
+              <span className="text-muted-foreground w-4 text-[11px]">
+                {t("dialogs.pageSetup.unitInches")}
+              </span>
             </div>
           </div>
 
           <div className="flex justify-end gap-2 border-t px-5 py-3">
             <DialogClose className="border-input rounded border px-4 py-1.5 text-[13px]">
-              Cancel
+              {t("common.cancel")}
             </DialogClose>
             <button
               className="bg-primary text-primary-foreground rounded px-4 py-1.5 text-[13px] font-medium"
               onClick={handleApply}
               type="button"
             >
-              Apply
+              {t("common.apply")}
             </button>
           </div>
         </DialogPopup>

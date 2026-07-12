@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useId, useState } from "react";
+import { useTranslations } from "use-intl";
 
 import { useFolioUI } from "../../ui/folio-ui";
 import { useCloseOnDialogOpenChange } from "./dialogChrome";
@@ -48,6 +49,7 @@ export function ImagePropertiesDialog({
     Close: DialogClose,
   } = useFolioUI().Dialog;
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
+  const t = useTranslations("folio");
   const id = useId();
   const [alt, setAlt] = useState("");
   const [borderWidth, setBorderWidth] = useState(0);
@@ -88,27 +90,27 @@ export function ImagePropertiesDialog({
         <DialogBackdrop className="fixed inset-0 z-[10000] bg-black/50" />
         <DialogPopup className="bg-popover fixed start-1/2 top-1/2 z-[10001] w-full max-w-[440px] min-w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-xl">
           <DialogTitle className="border-b px-5 py-3 text-base font-semibold">
-            Image Properties
+            {t("dialogs.imageProperties.title")}
           </DialogTitle>
 
           <div className="flex flex-col gap-4 px-5 py-4">
             {/* Alt Text */}
             <div className="flex flex-col gap-2">
-              <div className={sectionLabelCls}>Alt Text</div>
+              <div className={sectionLabelCls}>{t("dialogs.imageProperties.altText")}</div>
               <textarea
                 className="border-input bg-background text-foreground font-[inherit] min-h-[60px] resize-y rounded border px-1.5 py-1 text-xs outline-none"
                 value={alt}
                 onChange={(e) => setAlt(e.target.value)}
-                placeholder="Describe this image for accessibility..."
+                placeholder={t("dialogs.imageProperties.altTextPlaceholder")}
               />
             </div>
 
             {/* Border / Outline */}
             <div className="flex flex-col gap-2">
-              <div className={sectionLabelCls}>Border</div>
+              <div className={sectionLabelCls}>{t("dialogs.imageProperties.border")}</div>
               <div className="flex items-center gap-2">
                 <label htmlFor={fieldIds.borderWidth} className={labelCls}>
-                  Width
+                  {t("dialogs.imageProperties.width")}
                 </label>
                 <input
                   id={fieldIds.borderWidth}
@@ -124,7 +126,7 @@ export function ImagePropertiesDialog({
               </div>
               <div className="flex items-center gap-2">
                 <label htmlFor={fieldIds.borderStyle} className={labelCls}>
-                  Style
+                  {t("dialogs.imageProperties.style")}
                 </label>
                 <select
                   id={fieldIds.borderStyle}
@@ -132,19 +134,19 @@ export function ImagePropertiesDialog({
                   value={borderStyle}
                   onChange={(e) => setBorderStyle(e.target.value)}
                 >
-                  <option value="solid">Solid</option>
-                  <option value="dashed">Dashed</option>
-                  <option value="dotted">Dotted</option>
-                  <option value="double">Double</option>
-                  <option value="groove">Groove</option>
-                  <option value="ridge">Ridge</option>
-                  <option value="inset">Inset</option>
-                  <option value="outset">Outset</option>
+                  <option value="solid">{t("dialogs.imageProperties.borderStyles.solid")}</option>
+                  <option value="dashed">{t("dialogs.imageProperties.borderStyles.dashed")}</option>
+                  <option value="dotted">{t("dialogs.imageProperties.borderStyles.dotted")}</option>
+                  <option value="double">{t("dialogs.imageProperties.borderStyles.double")}</option>
+                  <option value="groove">{t("dialogs.imageProperties.borderStyles.groove")}</option>
+                  <option value="ridge">{t("dialogs.imageProperties.borderStyles.ridge")}</option>
+                  <option value="inset">{t("dialogs.imageProperties.borderStyles.inset")}</option>
+                  <option value="outset">{t("dialogs.imageProperties.borderStyles.outset")}</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
                 <label htmlFor={fieldIds.borderColor} className={labelCls}>
-                  Color
+                  {t("dialogs.imageProperties.color")}
                 </label>
                 <input
                   id={fieldIds.borderColor}
@@ -167,7 +169,7 @@ export function ImagePropertiesDialog({
                     border: `${borderWidth}px ${borderStyle} ${borderColor}`,
                   }}
                 >
-                  Preview
+                  {t("dialogs.imageProperties.preview")}
                 </div>
               )}
             </div>
@@ -175,14 +177,14 @@ export function ImagePropertiesDialog({
 
           <div className="flex justify-end gap-2 border-t px-5 py-3">
             <DialogClose className="border-input rounded border px-4 py-1.5 text-[13px]">
-              Cancel
+              {t("common.cancel")}
             </DialogClose>
             <button
               className="bg-primary text-primary-foreground rounded px-4 py-1.5 text-[13px] font-medium"
               onClick={handleApply}
               type="button"
             >
-              Apply
+              {t("common.apply")}
             </button>
           </div>
         </DialogPopup>
