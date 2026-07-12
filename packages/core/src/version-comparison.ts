@@ -414,10 +414,7 @@ const diffPreviewRunFormatting = (
         changed.add(property);
       }
     }
-    const step = Math.min(
-      baseRun.text.length - baseOffset,
-      revisedRun.text.length - revisedOffset,
-    );
+    const step = Math.min(baseRun.text.length - baseOffset, revisedRun.text.length - revisedOffset);
     baseOffset += step;
     revisedOffset += step;
     if (baseOffset >= baseRun.text.length) {

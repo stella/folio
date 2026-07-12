@@ -73,7 +73,14 @@ describe("compareDocxVersions: real w14:paraId alignment", () => {
 
     const diff = await compareDocxVersions(base, revised);
 
-    expect(diff.summaryCounts).toEqual({ added: 1, deleted: 1, modified: 1, formatChanged: 0, moved: 0, unchanged: 2 });
+    expect(diff.summaryCounts).toEqual({
+      added: 1,
+      deleted: 1,
+      modified: 1,
+      formatChanged: 0,
+      moved: 0,
+      unchanged: 2,
+    });
     // Unchanged blocks (Alpha, Zeta) never appear in `changes`.
     expect(diff.changes).toHaveLength(3);
     expect(diff.changes.map((c) => c.type)).toEqual(["modified", "deleted", "added"]);
@@ -132,7 +139,14 @@ describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () =
 
     // Alpha (unshifted, same fallback id both sides) and Gamma (shifted,
     // recovered via text-LCS) are both unchanged and absent from `changes`.
-    expect(diff.summaryCounts).toEqual({ added: 1, deleted: 0, modified: 1, formatChanged: 0, moved: 0, unchanged: 2 });
+    expect(diff.summaryCounts).toEqual({
+      added: 1,
+      deleted: 0,
+      modified: 1,
+      formatChanged: 0,
+      moved: 0,
+      unchanged: 2,
+    });
     expect(diff.changes.map((c) => c.type)).toEqual(["modified", "added"]);
 
     const modified = diff.changes[0];
@@ -165,7 +179,14 @@ describe("compareDocxVersions: no-op", () => {
     const diff = await compareDocxVersions(base, revised);
 
     expect(diff.changes).toEqual([]);
-    expect(diff.summaryCounts).toEqual({ added: 0, deleted: 0, modified: 0, formatChanged: 0, moved: 0, unchanged: 2 });
+    expect(diff.summaryCounts).toEqual({
+      added: 0,
+      deleted: 0,
+      modified: 0,
+      formatChanged: 0,
+      moved: 0,
+      unchanged: 2,
+    });
   });
 });
 
@@ -314,7 +335,14 @@ describe("compareDocxVersions: as-accepted semantics", () => {
 
     const diff = await compareDocxVersions(base, revised);
 
-    expect(diff.summaryCounts).toEqual({ added: 0, deleted: 0, modified: 1, formatChanged: 0, moved: 0, unchanged: 0 });
+    expect(diff.summaryCounts).toEqual({
+      added: 0,
+      deleted: 0,
+      modified: 1,
+      formatChanged: 0,
+      moved: 0,
+      unchanged: 0,
+    });
     const [change] = diff.changes;
     if (!change || change.type !== "modified") {
       throw new Error("expected a single modified change");
