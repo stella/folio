@@ -184,6 +184,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
           receipts:
             result.receipts ??
             getFolioDocumentOperationReceipts(versionedBatch.operations, result.applied),
+          undoHandle: result.undoHandle ?? null,
         };
       }
       if (versionedBatch.dryRun === true) {
@@ -198,6 +199,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
           skipped,
           issues: getFolioDocumentOperationIssues(versionedBatch.operations, skipped),
           receipts: [],
+          undoHandle: null,
         };
       }
       if (versionedBatch.atomic === true) {
@@ -212,6 +214,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
           skipped,
           issues: getFolioDocumentOperationIssues(versionedBatch.operations, skipped),
           receipts: [],
+          undoHandle: null,
         };
       }
       const result = ref.applyAIEditOperations({
@@ -226,6 +229,7 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
         ...result,
         issues: getFolioDocumentOperationIssues(versionedBatch.operations, result.skipped),
         receipts: getFolioDocumentOperationReceipts(versionedBatch.operations, result.applied),
+        undoHandle: null,
       };
     },
     getComments: (): FolioAgentComment[] => {

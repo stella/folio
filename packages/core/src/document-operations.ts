@@ -639,6 +639,28 @@ export type FolioDocumentOperationReceipt = {
   affected: FolioDocumentOperationAffectedTarget[];
 };
 
+/** Opaque handle for undoing one committed document-operation batch. */
+export type FolioDocumentOperationUndoHandle = {
+  type: "documentOperationUndo";
+  id: string;
+};
+
+export type FolioDocumentOperationUndoFailureReason =
+  | "unknownHandle"
+  | "notLatest"
+  | "documentChanged";
+
+export type FolioDocumentOperationUndoResult =
+  | {
+      status: "undone";
+      undoHandle: FolioDocumentOperationUndoHandle;
+    }
+  | {
+      status: "rejected";
+      undoHandle: FolioDocumentOperationUndoHandle;
+      reason: FolioDocumentOperationUndoFailureReason;
+    };
+
 export type FolioDocumentOperationResult = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   status: FolioDocumentOperationStatus;
@@ -647,6 +669,8 @@ export type FolioDocumentOperationResult = {
   issues: FolioDocumentOperationIssue[];
   /** Successful effects in input-operation order; skipped operations are omitted. */
   receipts: FolioDocumentOperationReceipt[];
+  /** Present when the execution surface can undo this committed batch. */
+  undoHandle: FolioDocumentOperationUndoHandle | null;
 };
 
 const recoveryByReason = {
@@ -771,6 +795,7 @@ export type ApplyFolioDocumentOperationsOptions = {
   batch: FolioDocumentOperationBatch;
   author?: string;
   createCommentId?: (text: string) => number;
+  createUndoHandle?: () => FolioDocumentOperationUndoHandle;
 };
 
 type ApplyParsedDocumentOperationBatchOptions = {
@@ -785,6 +810,7 @@ export const applyFolioDocumentOperations = ({
   batch,
   author,
   createCommentId,
+  createUndoHandle,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
   const apply = ({
@@ -823,6 +849,7 @@ export const applyFolioDocumentOperations = ({
       skipped,
       issues: getFolioDocumentOperationIssues(parsedBatch.operations, skipped),
       receipts: [],
+      undoHandle: null,
     };
   };
 
@@ -838,6 +865,7 @@ export const applyFolioDocumentOperations = ({
       skipped: previewResult.skipped,
       issues: getFolioDocumentOperationIssues(parsedBatch.operations, previewResult.skipped),
       receipts: getFolioDocumentOperationReceipts(parsedBatch.operations, previewResult.applied),
+      undoHandle: null,
     };
   }
 
@@ -855,5 +883,7 @@ export const applyFolioDocumentOperations = ({
     ...result,
     issues: getFolioDocumentOperationIssues(parsedBatch.operations, result.skipped),
     receipts: getFolioDocumentOperationReceipts(parsedBatch.operations, result.applied),
+    undoHandle:
+      result.applied.length > 0 && createUndoHandle !== undefined ? createUndoHandle() : null,
   };
 };

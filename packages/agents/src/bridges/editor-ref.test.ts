@@ -60,6 +60,7 @@ describe("createEditorRefBridge: document operations", () => {
     expect(result.version).toBe(FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION);
     expect(result.issues).toEqual([]);
     expect(result.receipts).toEqual([]);
+    expect(result.undoHandle).toBeNull();
   });
 
   test("preserves the versioned result when adapting an older editor ref", () => {
@@ -81,6 +82,7 @@ describe("createEditorRefBridge: document operations", () => {
       ...EMPTY_APPLY_RESULT,
       issues: [],
       receipts: [],
+      undoHandle: null,
     });
   });
 
@@ -139,6 +141,7 @@ describe("createEditorRefBridge: document operations", () => {
       skipped: [{ id: "op-1", reason: "unsupportedMode" }],
       issues: [UNSUPPORTED_MODE_ISSUE],
       receipts: [],
+      undoHandle: null,
     });
     expect(applyCalls).toBe(0);
   });
@@ -172,6 +175,7 @@ describe("createEditorRefBridge: document operations", () => {
       skipped: [{ id: "op-1", reason: "unsupportedMode" }],
       issues: [UNSUPPORTED_MODE_ISSUE],
       receipts: [],
+      undoHandle: null,
     });
     expect(applyCalls).toBe(0);
   });

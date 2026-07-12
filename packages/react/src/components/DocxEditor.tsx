@@ -2831,6 +2831,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             skipped,
             issues: getFolioDocumentOperationIssues(batch.operations, skipped),
             receipts: [],
+            undoHandle: null,
           };
         }
 

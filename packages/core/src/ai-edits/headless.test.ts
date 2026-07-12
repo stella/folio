@@ -155,6 +155,7 @@ describe("headless docx review round-trip", () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    const contentBefore = reviewer.getContentAsText();
 
     const result = reviewer.applyDocumentOperations({
       version: 1,
@@ -181,7 +182,20 @@ describe("headless docx review round-trip", () => {
         affected: [{ type: "block", story: "main", blockId: target.id, effect: "updated" }],
       },
     ]);
+    expect(result.undoHandle).toEqual({
+      type: "documentOperationUndo",
+      id: expect.any(String),
+    });
     expect(await partText(await reviewer.toBuffer(), "word/document.xml")).toContain("<w:ins ");
+    if (!result.undoHandle) {
+      throw new Error("expected an undo handle");
+    }
+    expect(reviewer.undoDocumentOperations(result.undoHandle)).toEqual({
+      status: "undone",
+      undoHandle: result.undoHandle,
+    });
+    expect(reviewer.getContentAsText()).toBe(contentBefore);
+    expect(reviewer.getChanges()).toEqual([]);
   });
 
   test("atomic batches reject every operation without document or comment changes", async () => {
@@ -234,6 +248,7 @@ describe("headless docx review round-trip", () => {
         },
       ],
       receipts: [],
+      undoHandle: null,
     });
     expect(reviewer.getContentAsText()).toBe(contentBefore);
     expect(reviewer.getComments()).toEqual([]);
@@ -243,6 +258,7 @@ describe("headless docx review round-trip", () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
     const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    const contentBefore = reviewer.getContentAsText();
 
     const result = reviewer.applyDocumentOperations({
       version: 1,
@@ -295,6 +311,115 @@ describe("headless docx review round-trip", () => {
     expect(reviewer.getContentAsText()).toContain("Intro paragraph.");
     expect(reviewer.getContentAsText()).toContain("New clause.");
     expect(reviewer.getComments()).toHaveLength(1);
+    expect(result.undoHandle).toEqual({
+      type: "documentOperationUndo",
+      id: expect.any(String),
+    });
+    if (!result.undoHandle) {
+      throw new Error("expected an undo handle");
+    }
+    expect(reviewer.undoDocumentOperations(result.undoHandle)).toEqual({
+      status: "undone",
+      undoHandle: result.undoHandle,
+    });
+    expect(reviewer.getContentAsText()).toBe(contentBefore);
+    expect(reviewer.getComments()).toEqual([]);
+
+    const reparsed = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(reparsed.getContentAsText()).toBe(contentBefore);
+    expect(reparsed.getComments()).toEqual([]);
+  });
+
+  test("undo handles reject unknown, out-of-order, and changed document state", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const skipped = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [{ id: "missing", type: "deleteBlock", blockId: "missing" }],
+    });
+    expect(skipped.status).toBe("committed");
+    expect(skipped.undoHandle).toBeNull();
+    const heading = findBlock(reviewer.snapshot().blocks, "Heading");
+    const first = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "first",
+          type: "replaceInBlock",
+          blockId: heading.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
+    });
+    const trailing = findBlock(reviewer.snapshot().blocks, "Trailing");
+    const second = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "second",
+          type: "replaceInBlock",
+          blockId: trailing.id,
+          find: "Trailing",
+          replace: "Closing",
+        },
+      ],
+    });
+    if (!first.undoHandle || !second.undoHandle) {
+      throw new Error("expected undo handles");
+    }
+
+    expect(reviewer.undoDocumentOperations(first.undoHandle)).toEqual({
+      status: "rejected",
+      undoHandle: first.undoHandle,
+      reason: "notLatest",
+    });
+    expect(reviewer.undoDocumentOperations(second.undoHandle)).toEqual({
+      status: "undone",
+      undoHandle: second.undoHandle,
+    });
+    expect(reviewer.undoDocumentOperations(first.undoHandle)).toEqual({
+      status: "undone",
+      undoHandle: first.undoHandle,
+    });
+    const unknownHandle = { type: "documentOperationUndo", id: "unknown" } as const;
+    expect(reviewer.undoDocumentOperations(unknownHandle)).toEqual({
+      status: "rejected",
+      undoHandle: unknownHandle,
+      reason: "unknownHandle",
+    });
+
+    const changedReviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const changedTarget = findBlock(changedReviewer.snapshot().blocks, "Heading");
+    const changed = changedReviewer.applyDocumentOperations({
+      version: 1,
+      operations: [
+        {
+          id: "changed",
+          type: "replaceInBlock",
+          blockId: changedTarget.id,
+          find: "Heading",
+          replace: "Intro",
+        },
+      ],
+    });
+    if (!changed.undoHandle) {
+      throw new Error("expected an undo handle");
+    }
+    expect(changedReviewer.undoDocumentOperations(first.undoHandle)).toEqual({
+      status: "rejected",
+      undoHandle: first.undoHandle,
+      reason: "unknownHandle",
+    });
+    changedReviewer.acceptAll();
+    expect(changedReviewer.undoDocumentOperations(changed.undoHandle)).toEqual({
+      status: "rejected",
+      undoHandle: changed.undoHandle,
+      reason: "documentChanged",
+    });
   });
 
   test("dry runs predict best-effort results without document or comment changes", async () => {
@@ -343,6 +468,7 @@ describe("headless docx review round-trip", () => {
           affected: [{ type: "block", story: "main", blockId: target.id, effect: "updated" }],
         },
       ],
+      undoHandle: null,
     });
     expect(reviewer.getContentAsText()).toBe(contentBefore);
     expect(reviewer.getComments()).toEqual([]);
@@ -407,6 +533,7 @@ describe("headless docx review round-trip", () => {
         },
       ],
       receipts: [],
+      undoHandle: null,
     });
     expect(reviewer.getContentAsText()).toContain("Heading paragraph.");
     expect(reviewer.getChanges()).toEqual([]);

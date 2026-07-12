@@ -321,6 +321,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           skipped,
           issues: getFolioDocumentOperationIssues(batch.operations, skipped),
           receipts: [],
+          undoHandle: null,
         };
       }
       return applyFolioDocumentOperations({

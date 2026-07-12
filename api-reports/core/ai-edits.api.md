@@ -22,6 +22,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     batch: FolioDocumentOperationBatch;
     author?: string;
     createCommentId?: (text: string) => number;
+    createUndoHandle?: () => FolioDocumentOperationUndoHandle;
 };
 
 // @public (undocumented)
@@ -342,7 +343,8 @@ export type FolioDocumentOperationResult = {
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
     issues: FolioDocumentOperationIssue[]; /** Successful effects in input-operation order; skipped operations are omitted. */
-    receipts: FolioDocumentOperationReceipt[];
+    receipts: FolioDocumentOperationReceipt[]; /** Present when the execution surface can undo this committed batch. */
+    undoHandle: FolioDocumentOperationUndoHandle | null;
 };
 
 // @public (undocumented)
@@ -350,6 +352,25 @@ export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected
 
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
+
+// @public (undocumented)
+export type FolioDocumentOperationUndoFailureReason = "unknownHandle" | "notLatest" | "documentChanged";
+
+// @public
+export type FolioDocumentOperationUndoHandle = {
+    type: "documentOperationUndo";
+    id: string;
+};
+
+// @public (undocumented)
+export type FolioDocumentOperationUndoResult = {
+    status: "undone";
+    undoHandle: FolioDocumentOperationUndoHandle;
+} | {
+    status: "rejected";
+    undoHandle: FolioDocumentOperationUndoHandle;
+    reason: FolioDocumentOperationUndoFailureReason;
+};
 
 // @public (undocumented)
 export type FolioDocumentStory = {

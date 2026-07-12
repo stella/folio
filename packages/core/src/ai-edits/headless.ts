@@ -58,6 +58,8 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationBatch,
   type FolioDocumentOperationResult,
+  type FolioDocumentOperationUndoHandle,
+  type FolioDocumentOperationUndoResult,
 } from "../document-operations";
 import { buildAnnotatedBlockText } from "./clean-text";
 import {
@@ -83,6 +85,7 @@ import type {
  * across reviewers created within the same millisecond.
  */
 let commentIdCursor = Date.now();
+let undoHandleCursor = Date.now();
 
 /**
  * Build the note-free comment thread the apply layer references by id.
@@ -102,6 +105,13 @@ const createReviewerComment = (text: string, author: string): Comment => ({
     },
   ],
 });
+
+type FolioDocumentOperationUndoEntry = {
+  undoHandle: FolioDocumentOperationUndoHandle;
+  beforeState: EditorState;
+  afterState: EditorState;
+  createdCommentsLengthBefore: number;
+};
 
 /**
  * Assign a stable `w14:paraId` to every body paragraph that lacks one (or
@@ -317,6 +327,7 @@ export class FolioDocxReviewer {
   private readonly originalBuffer: ArrayBuffer;
   private state: EditorState;
   private readonly createdComments: Comment[] = [];
+  private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] = [];
   /**
    * Resolved-state overrides recorded by {@link resolveComment}, keyed by
    * comment id. Applied on read ({@link getComments}) and on write
@@ -388,7 +399,7 @@ export class FolioDocxReviewer {
     operations: FolioAIEditOperation[],
     options: FolioApplyOperationsOptions = {},
   ): FolioAIEditApplyResult {
-    const { applied, skipped } = this.applyDocumentOperations(
+    const { applied, skipped } = this.applyDocumentOperationsInternal(
       {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         operations,
@@ -397,6 +408,7 @@ export class FolioDocxReviewer {
       {
         ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       },
+      false,
     );
     return { applied, skipped };
   }
@@ -411,6 +423,16 @@ export class FolioDocxReviewer {
     batch: FolioDocumentOperationBatch,
     options: FolioApplyDocumentOperationsOptions = {},
   ): FolioDocumentOperationResult {
+    return this.applyDocumentOperationsInternal(batch, options, true);
+  }
+
+  private applyDocumentOperationsInternal(
+    batch: FolioDocumentOperationBatch,
+    options: FolioApplyDocumentOperationsOptions,
+    createUndoEntry: boolean,
+  ): FolioDocumentOperationResult {
+    const beforeState = this.state;
+    const createdCommentsLengthBefore = this.createdComments.length;
     const view = {
       state: this.state,
       dispatch: (transaction: Transaction) => {
@@ -428,10 +450,52 @@ export class FolioDocxReviewer {
         this.createdComments.push(comment);
         return comment.id;
       },
+      ...(createUndoEntry && {
+        createUndoHandle: () => ({
+          type: "documentOperationUndo",
+          id: `headless-${String(undoHandleCursor++)}`,
+        }),
+      }),
     });
 
     this.state = view.state;
+    if (result.undoHandle !== null) {
+      this.documentOperationUndoEntries.push({
+        undoHandle: result.undoHandle,
+        beforeState,
+        afterState: this.state,
+        createdCommentsLengthBefore,
+      });
+    }
     return result;
+  }
+
+  /** Undo the latest unchanged document-operation batch and its created comments. */
+  undoDocumentOperations(
+    undoHandle: FolioDocumentOperationUndoHandle,
+  ): FolioDocumentOperationUndoResult {
+    const entryIndex = this.documentOperationUndoEntries.findIndex(
+      (entry) => entry.undoHandle.type === undoHandle.type && entry.undoHandle.id === undoHandle.id,
+    );
+    if (entryIndex === -1) {
+      return { status: "rejected", undoHandle, reason: "unknownHandle" };
+    }
+    if (entryIndex !== this.documentOperationUndoEntries.length - 1) {
+      return { status: "rejected", undoHandle, reason: "notLatest" };
+    }
+
+    const entry = this.documentOperationUndoEntries.at(-1);
+    if (!entry) {
+      return { status: "rejected", undoHandle, reason: "unknownHandle" };
+    }
+    if (this.state !== entry.afterState) {
+      return { status: "rejected", undoHandle, reason: "documentChanged" };
+    }
+
+    this.state = entry.beforeState;
+    this.createdComments.length = entry.createdCommentsLengthBefore;
+    this.documentOperationUndoEntries.pop();
+    return { status: "undone", undoHandle };
   }
 
   /**

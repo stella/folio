@@ -89,6 +89,9 @@ export {
   type FolioDocumentOperationType,
   type FolioDocumentOperationResult,
   type FolioDocumentOperationStatus,
+  type FolioDocumentOperationUndoFailureReason,
+  type FolioDocumentOperationUndoHandle,
+  type FolioDocumentOperationUndoResult,
 } from "./ai-edits";
 export {
   resolveSuggestionAnchor,
