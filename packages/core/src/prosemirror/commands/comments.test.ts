@@ -288,6 +288,188 @@ describe("findChangeAtPosition", () => {
     expect(attrs["_propertyChanges"]).toBeNull();
     expect(attrs["_sectionProperties"]).toEqual(sectionProperties);
   });
+
+  test("rejecting a pPrChange resets a property the change ADDED", () => {
+    // Word stores the complete old pPr inside the pPrChange. A property
+    // present on the live paragraph but absent from the stored old pPr was
+    // ADDED by the tracked change — rejecting must reset it to the schema
+    // default, not let it survive because no stored key overwrites it.
+    const initial = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            alignment: "center",
+            numPr: { numId: 4, ilvl: 0 },
+            _propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: { id: 11, author: "Alice", date: "2026-01-01" },
+                // Old pPr only carried numbering — no alignment.
+                previousFormatting: { numPr: { numId: 4, ilvl: 0 } },
+              },
+            ],
+          },
+          [schema.text("alpha")],
+        ),
+      ]),
+    });
+    const view = dispatcher(initial);
+
+    expect(rejectChange(0, initial.doc.content.size)(view.state, view.dispatch)).toBe(true);
+
+    const attrs = view.state.doc.child(0).attrs;
+    expect(attrs["alignment"]).toBeNull();
+    expect(attrs["numPr"]).toEqual({ numId: 4, ilvl: 0 });
+    expect(attrs["_propertyChanges"]).toBeNull();
+  });
+
+  test("accepting a pPrChange keeps a change-added property and only clears the record", () => {
+    const initial = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            alignment: "center",
+            _propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: { id: 11, author: "Alice", date: "2026-01-01" },
+                previousFormatting: {},
+              },
+            ],
+          },
+          [schema.text("alpha")],
+        ),
+      ]),
+    });
+    const view = dispatcher(initial);
+
+    expect(acceptChange(0, initial.doc.content.size)(view.state, view.dispatch)).toBe(true);
+
+    const attrs = view.state.doc.child(0).attrs;
+    expect(attrs["alignment"]).toBe("center");
+    expect(attrs["_propertyChanges"]).toBeNull();
+  });
+
+  test("rejecting a sectPrChange restores the old sectPr but keeps live header references", () => {
+    // CT_SectPrBase (the payload w:sectPrChange stores) cannot carry
+    // header/footer references — rejecting the section-property change must
+    // restore the stored old properties wholesale while the live
+    // headerReferences survive.
+    const initial = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            _sectionProperties: {
+              sectionStart: "nextPage",
+              pageWidth: 12_240,
+              marginTop: 1440,
+              headerReferences: [{ type: "default", relationshipId: "rId7" }],
+              propertyChanges: [
+                {
+                  type: "sectionPropertyChange",
+                  info: { id: 21, author: "Alice", date: "2026-01-01" },
+                  previousProperties: { sectionStart: "continuous", pageWidth: 15_840 },
+                },
+              ],
+            },
+          },
+          [schema.text("alpha")],
+        ),
+      ]),
+    });
+    const view = dispatcher(initial);
+
+    expect(rejectChange(0, initial.doc.content.size)(view.state, view.dispatch)).toBe(true);
+
+    expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
+      sectionStart: "continuous",
+      pageWidth: 15_840,
+      headerReferences: [{ type: "default", relationshipId: "rId7" }],
+    });
+  });
+
+  test("accepting a sectPrChange keeps the live sectPr and clears the record", () => {
+    const initial = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            _sectionProperties: {
+              sectionStart: "nextPage",
+              pageWidth: 12_240,
+              propertyChanges: [
+                {
+                  type: "sectionPropertyChange",
+                  info: { id: 21, author: "Alice", date: "2026-01-01" },
+                  previousProperties: { sectionStart: "continuous", pageWidth: 15_840 },
+                },
+              ],
+            },
+          },
+          [schema.text("alpha")],
+        ),
+      ]),
+    });
+    const view = dispatcher(initial);
+
+    expect(acceptChange(0, initial.doc.content.size)(view.state, view.dispatch)).toBe(true);
+
+    expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
+      sectionStart: "nextPage",
+      pageWidth: 12_240,
+    });
+  });
+
+  test("a revision-scoped reject leaves other sectPrChange records in place", () => {
+    // Revision 21 spans two paragraphs (its inline marks derive the range, so
+    // the range covers the first paragraph's boundary); revision 99's section
+    // record on the same paragraph must survive the scoped reject untouched.
+    const insertion = schema.marks["insertion"];
+    const otherChange = {
+      type: "sectionPropertyChange",
+      info: { id: 99, author: "Bob", date: "2026-01-02" },
+      previousProperties: { pageWidth: 11_906 },
+    };
+    const revisionAttrs = { revisionId: 21, author: "AI", date: "2026-01-01" };
+    const initial = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            _sectionProperties: {
+              pageWidth: 12_240,
+              propertyChanges: [
+                {
+                  type: "sectionPropertyChange",
+                  info: { id: 21, author: "Alice", date: "2026-01-01" },
+                  previousProperties: { pageWidth: 15_840 },
+                },
+                otherChange,
+              ],
+            },
+          },
+          [schema.text("one", [insertion.create(revisionAttrs)])],
+        ),
+        schema.node("paragraph", null, [schema.text("two", [insertion.create(revisionAttrs)])]),
+      ]),
+    });
+    const view = dispatcher(initial);
+
+    expect(rejectAIEditRevision(21)(view.state, view.dispatch)).toBe(true);
+
+    expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({
+      pageWidth: 15_840,
+      propertyChanges: [otherChange],
+    });
+  });
 });
 
 describe("tracked change navigation", () => {

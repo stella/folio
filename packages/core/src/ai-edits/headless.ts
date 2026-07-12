@@ -801,22 +801,44 @@ export class FolioDocxReviewer {
 
   /**
    * Count every tracked change an accept-all / reject-all sweep resolves: the
-   * inline insertion / deletion groups {@link getChanges} enumerates, plus
-   * paragraph-level changes (`pPrMark`, `_propertyChanges`) that live on
-   * paragraph attrs rather than inline marks.
+   * inline insertion / deletion groups {@link getChanges} enumerates, plus the
+   * property-change records living on node attrs rather than inline marks —
+   * paragraph-level (`pPrMark`, `_propertyChanges`, the inline sectPr's
+   * `propertyChanges`) and table-level (`tblPrChange` / `trPrChange` /
+   * `tcPrChange`).
    */
   private countTrackedChanges(): number {
+    const hasEntries = (value: unknown): boolean => Array.isArray(value) && value.length > 0;
     let count = this.getChanges().length;
     this.state.doc.descendants((node) => {
-      if (node.type.name !== "paragraph") {
+      const typeName = node.type.name;
+      if (typeName === "table" && hasEntries(node.attrs["tblPrChange"])) {
+        count += 1;
+      }
+      if (typeName === "tableRow" && hasEntries(node.attrs["trPrChange"])) {
+        count += 1;
+      }
+      if (
+        (typeName === "tableCell" || typeName === "tableHeader") &&
+        hasEntries(node.attrs["tcPrChange"])
+      ) {
+        count += 1;
+      }
+      if (typeName !== "paragraph") {
         return undefined;
       }
       const pPrMark = node.attrs["pPrMark"];
       if (pPrMark !== null && pPrMark !== undefined) {
         count += 1;
       }
-      const propertyChanges = node.attrs["_propertyChanges"];
-      if (Array.isArray(propertyChanges) && propertyChanges.length > 0) {
+      if (hasEntries(node.attrs["_propertyChanges"])) {
+        count += 1;
+      }
+      const sectionProperties = node.attrs["_sectionProperties"] as
+        | { propertyChanges?: unknown }
+        | null
+        | undefined;
+      if (hasEntries(sectionProperties?.propertyChanges)) {
         count += 1;
       }
       return false;

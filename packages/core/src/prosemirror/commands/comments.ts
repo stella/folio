@@ -7,6 +7,21 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 
+import type {
+  SectionProperties,
+  TableCellFormatting,
+  TableFormatting,
+  TableRowFormatting,
+} from "../../types/document";
+import {
+  paragraphRejectAttrPatch,
+  paragraphRejectOriginalFormatting,
+  sectionRejectProperties,
+  tableCellRejectAttrPatch,
+  tableRejectAttrPatch,
+  tableRowRejectAttrPatch,
+} from "./propertyChangeScope";
+
 /**
  * Add a comment mark to the current selection.
  */
@@ -102,6 +117,9 @@ function resolveChange(
             pPrMarkOps.push(op);
           }
 
+          const boundaryCovered = rangeCoversParagraphBoundary(from, to, pos, node);
+          let nextAttrs: Record<string, unknown> | null = null;
+
           // Process paragraph property changes (w:pPrChange)
           const propertyChanges = node.attrs["_propertyChanges"] as
             | {
@@ -110,11 +128,7 @@ function resolveChange(
               }[]
             | undefined;
 
-          if (
-            Array.isArray(propertyChanges) &&
-            propertyChanges.length > 0 &&
-            rangeCoversParagraphBoundary(from, to, pos, node)
-          ) {
+          if (Array.isArray(propertyChanges) && propertyChanges.length > 0 && boundaryCovered) {
             const matches = propertyChanges.filter(
               (c) => revisionSet === null || (c.info && revisionSet.has(c.info.id)),
             );
@@ -122,23 +136,88 @@ function resolveChange(
               const remaining = propertyChanges.filter(
                 (c) => revisionSet !== null && (!c.info || !revisionSet.has(c.info.id)),
               );
-              const nextAttrs: Record<string, unknown> = {
+              nextAttrs = {
                 ...node.attrs,
                 _propertyChanges: remaining.length > 0 ? remaining : null,
               };
               if (mode === "reject") {
+                // Word stores the complete old pPr in the pPrChange, so a
+                // reject restores it WHOLESALE within CT_PPrBase scope: a
+                // property the change ADDED resets too. Out-of-scope attrs
+                // (inline sectPr, paragraph-mark rPr, identity) survive —
+                // see propertyChangeScope.ts. Iterating end → start makes
+                // the earliest change's stored pPr win for scoped keys.
                 for (const change of matches.toReversed()) {
-                  if (change.previousFormatting) {
-                    for (const [key, val] of Object.entries(change.previousFormatting)) {
-                      nextAttrs[key] = val;
-                    }
-                  }
+                  Object.assign(nextAttrs, paragraphRejectAttrPatch(change.previousFormatting));
+                  nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
+                    change.previousFormatting,
+                    node.attrs["_originalFormatting"],
+                  );
                 }
               }
-              tr.setNodeMarkup(pos, undefined, nextAttrs);
             }
           }
 
+          // Process inline section-property changes (w:sectPrChange) carried
+          // on the paragraph's `_sectionProperties` attr.
+          const sectionProperties = node.attrs["_sectionProperties"] as
+            | SectionProperties
+            | null
+            | undefined;
+          const sectionChanges = sectionProperties?.propertyChanges;
+          if (
+            sectionProperties &&
+            Array.isArray(sectionChanges) &&
+            sectionChanges.length > 0 &&
+            boundaryCovered
+          ) {
+            const matches = sectionChanges.filter(
+              (c) => revisionSet === null || revisionSet.has(c.info.id),
+            );
+            if (matches.length > 0) {
+              const remaining = sectionChanges.filter(
+                (c) => revisionSet !== null && !revisionSet.has(c.info.id),
+              );
+              let restored: SectionProperties = { ...sectionProperties };
+              if (mode === "reject") {
+                for (const change of matches.toReversed()) {
+                  restored = sectionRejectProperties(restored, change.previousProperties);
+                }
+              }
+              delete restored.propertyChanges;
+              if (remaining.length > 0) {
+                restored.propertyChanges = remaining;
+              }
+              nextAttrs = nextAttrs ?? { ...node.attrs };
+              nextAttrs["_sectionProperties"] = restored;
+              nextAttrs["sectionBreakType"] = sectionBreakTypeFromSectionStart(
+                restored.sectionStart,
+              );
+            }
+          }
+
+          if (nextAttrs) {
+            tr.setNodeMarkup(pos, undefined, nextAttrs);
+          }
+
+          return true;
+        }
+
+        // Table property changes (w:tblPrChange / w:trPrChange / w:tcPrChange)
+        // carried on the table / row / cell node attrs.
+        const tableChangeAttrName = TABLE_PROPERTY_CHANGE_ATTR_BY_NODE[node.type.name];
+        if (tableChangeAttrName !== undefined) {
+          if (rangeCoversNode(from, to, pos, node)) {
+            const nextAttrs = resolveTablePropertyChangeAttrs(
+              node,
+              tableChangeAttrName,
+              mode,
+              revisionSet,
+            );
+            if (nextAttrs) {
+              tr.setNodeMarkup(pos, undefined, nextAttrs);
+            }
+          }
           return true;
         }
         // Text AND inline atoms (image, shape, hardBreak, tab) can carry
@@ -267,6 +346,98 @@ function rangeCoversParagraphBoundary(
   const boundaryFrom = pos + node.nodeSize - 1;
   const boundaryTo = pos + node.nodeSize;
   return from <= boundaryFrom && to >= boundaryTo;
+}
+
+/** Whether [from, to] fully covers the node — the range property-change cards
+ * and accept-all / reject-all sweeps supply for table-level records. */
+function rangeCoversNode(
+  from: number,
+  to: number,
+  pos: number,
+  node: { nodeSize: number },
+): boolean {
+  return from <= pos && to >= pos + node.nodeSize;
+}
+
+const SECTION_BREAK_TYPE_VALUES = ["nextPage", "continuous", "oddPage", "evenPage"] as const;
+
+function sectionBreakTypeFromSectionStart(
+  sectionStart: SectionProperties["sectionStart"],
+): (typeof SECTION_BREAK_TYPE_VALUES)[number] | null {
+  const match = SECTION_BREAK_TYPE_VALUES.find((value) => value === sectionStart);
+  return match ?? null;
+}
+
+/** PM node type name → the attr its tracked property-change records live on. */
+const TABLE_PROPERTY_CHANGE_ATTR_BY_NODE: Record<
+  string,
+  "tblPrChange" | "trPrChange" | "tcPrChange" | undefined
+> = {
+  table: "tblPrChange",
+  tableRow: "trPrChange",
+  tableCell: "tcPrChange",
+  tableHeader: "tcPrChange",
+};
+
+type TablePropertyChangeEntry = {
+  info?: { id: number; author: string; date?: string };
+  previousFormatting?: TableFormatting | TableRowFormatting | TableCellFormatting;
+};
+
+/**
+ * Resolve the tracked property-change records on one table / row / cell node.
+ * Accept keeps the live formatting and clears the matched records; reject
+ * additionally restores the stored previous formatting wholesale (the change
+ * element stores the complete old property set — see propertyChangeScope.ts).
+ * Returns the next attrs, or `null` when no record matches.
+ */
+function resolveTablePropertyChangeAttrs(
+  node: PMNode,
+  attrName: "tblPrChange" | "trPrChange" | "tcPrChange",
+  mode: "accept" | "reject",
+  revisionSet: Set<number> | null,
+): Record<string, unknown> | null {
+  const changes = node.attrs[attrName] as TablePropertyChangeEntry[] | null | undefined;
+  if (!Array.isArray(changes) || changes.length === 0) {
+    return null;
+  }
+  const matches = changes.filter(
+    (c) => revisionSet === null || (c.info && revisionSet.has(c.info.id)),
+  );
+  if (matches.length === 0) {
+    return null;
+  }
+  const remaining = changes.filter(
+    (c) => revisionSet !== null && (!c.info || !revisionSet.has(c.info.id)),
+  );
+  const nextAttrs: Record<string, unknown> = {
+    ...node.attrs,
+    [attrName]: remaining.length > 0 ? remaining : null,
+  };
+  if (mode === "reject") {
+    for (const change of matches.toReversed()) {
+      if (attrName === "tblPrChange") {
+        Object.assign(
+          nextAttrs,
+          tableRejectAttrPatch(change.previousFormatting as TableFormatting | undefined),
+        );
+      } else if (attrName === "trPrChange") {
+        Object.assign(
+          nextAttrs,
+          tableRowRejectAttrPatch(change.previousFormatting as TableRowFormatting | undefined),
+        );
+      } else {
+        Object.assign(
+          nextAttrs,
+          tableCellRejectAttrPatch(
+            change.previousFormatting as TableCellFormatting | undefined,
+            node.attrs["_originalFormatting"] as TableCellFormatting | null | undefined,
+          ),
+        );
+      }
+    }
+  }
+  return nextAttrs;
 }
 
 function isPPrMarkAttr(value: unknown): value is { kind: "ins" | "del"; info: { id: number } } {

@@ -24,9 +24,12 @@ import type {
   NumberFormat,
   TableBorders,
   TableFormatting,
+  TablePropertyChange,
   TableRowFormatting,
+  TableRowPropertyChange,
   TableCell,
   TableCellFormatting,
+  TableCellPropertyChange,
   TableWidthType,
   SectionProperties,
   ShapeFill,
@@ -554,6 +557,8 @@ export type TableAttrs = {
   borders?: TableBorders;
   /** Original table formatting from DOCX for lossless round-trip serialization */
   _originalFormatting?: TableFormatting;
+  /** Tracked table property changes (w:tblPrChange) for round-trip + accept/reject */
+  tblPrChange?: TablePropertyChange[];
 };
 
 /**
@@ -570,6 +575,8 @@ export type TableRowAttrs = {
   hidden?: boolean;
   /** Original row formatting from DOCX for lossless round-trip serialization */
   _originalFormatting?: TableRowFormatting;
+  /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
+  trPrChange?: TableRowPropertyChange[];
 };
 
 /**
@@ -605,6 +612,8 @@ export type TableCellAttrs = {
   margins?: { top?: number; bottom?: number; left?: number; right?: number };
   /** Original cell formatting from DOCX for lossless round-trip serialization */
   _originalFormatting?: TableCellFormatting;
+  /** Tracked cell property changes (w:tcPrChange) for round-trip + accept/reject */
+  tcPrChange?: TableCellPropertyChange[];
   /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
   _preserveVMergeRestart?: boolean;
   /** Original DOCX vMerge continuation cells skipped into this PM rowspan. */
