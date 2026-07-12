@@ -172,11 +172,11 @@ function resolveChange(
             boundaryCovered
           ) {
             const matches = sectionChanges.filter(
-              (c) => revisionSet === null || revisionSet.has(c.info.id),
+              (c) => revisionSet === null || (c.info && revisionSet.has(c.info.id)),
             );
             if (matches.length > 0) {
               const remaining = sectionChanges.filter(
-                (c) => revisionSet !== null && !revisionSet.has(c.info.id),
+                (c) => revisionSet !== null && (!c.info || !revisionSet.has(c.info.id)),
               );
               let restored: SectionProperties = { ...sectionProperties };
               if (mode === "reject") {
