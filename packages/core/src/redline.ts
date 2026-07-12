@@ -49,27 +49,26 @@ export type GenerateRedlineDocxResult = FolioAIEditApplyResult & {
 };
 
 /**
- * The base block id the next `revisedOnly` event at `startIndex` should
- * anchor before: the base side of the nearest later `pair` or `baseOnly`
- * event, or `null` when only additions remain until the end of the document.
+ * For each event index, the base block id the next `revisedOnly` event
+ * should anchor before: the base side of the nearest later `pair` or
+ * `baseOnly` event, or `null` when only additions remain until the end of
+ * the document. One backward pass, so a long run of trailing additions
+ * (huge revised document vs. a small base) stays linear instead of
+ * re-scanning the tail per added block.
  */
-const nextBaseBlockId = (
-  events: readonly FolioAlignedBlockEvent[],
-  startIndex: number,
-): string | null => {
-  for (let i = startIndex; i < events.length; i++) {
+const nextBaseBlockIdByIndex = (events: readonly FolioAlignedBlockEvent[]): (string | null)[] => {
+  const nextIds = Array.from<string | null>({ length: events.length });
+  let nextId: string | null = null;
+  for (let i = events.length - 1; i >= 0; i--) {
+    nextIds[i] = nextId;
     const event = events[i];
-    if (!event) {
-      continue;
-    }
-    if (event.type === "pair") {
-      return event.baseBlock.id;
-    }
-    if (event.type === "baseOnly") {
-      return event.block.id;
+    if (event?.type === "pair") {
+      nextId = event.baseBlock.id;
+    } else if (event?.type === "baseOnly") {
+      nextId = event.block.id;
     }
   }
-  return null;
+  return nextIds;
 };
 
 /**
@@ -94,6 +93,7 @@ export const generateRedlineDocx = async (
   const revisedBlocks = revisedReviewer.snapshot().blocks;
 
   const events = alignFolioBlocks(baseSnapshot.blocks, revisedBlocks);
+  const anchorIds = nextBaseBlockIdByIndex(events);
 
   const operations: FolioAIEditOperation[] = [];
   let operationSeq = 0;
@@ -122,7 +122,7 @@ export const generateRedlineDocx = async (
       });
       return;
     }
-    const anchorId = nextBaseBlockId(events, eventIndex + 1);
+    const anchorId = anchorIds[eventIndex] ?? null;
     if (anchorId === null) {
       trailingAdditions.push({
         text: event.block.text,
