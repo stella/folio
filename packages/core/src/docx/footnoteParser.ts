@@ -467,57 +467,9 @@ export function isSeparatorEndnote(endnote: Endnote): boolean {
   );
 }
 
-/**
- * Get footnote number for display (excluding separators)
- * @param footnote - The footnote to get the number for
- * @param footnoteMap - The footnote map
- * @param startNumber - Starting number (default 1)
- * @returns The display number, or null for separator footnotes
- */
-export function getFootnoteDisplayNumber(
-  footnote: Footnote,
-  footnoteMap: FootnoteMap,
-  startNumber: number = 1,
-): number | null {
-  if (isSeparatorFootnote(footnote)) {
-    return null;
-  }
-
-  const normalFootnotes = footnoteMap.getNormalFootnotes();
-  const index = normalFootnotes.findIndex((fn) => fn.id === footnote.id);
-
-  if (index === -1) {
-    return null;
-  }
-
-  return startNumber + index;
-}
-
-/**
- * Get endnote number for display (excluding separators)
- * @param endnote - The endnote to get the number for
- * @param endnoteMap - The endnote map
- * @param startNumber - Starting number (default 1)
- * @returns The display number, or null for separator endnotes
- */
-export function getEndnoteDisplayNumber(
-  endnote: Endnote,
-  endnoteMap: EndnoteMap,
-  startNumber: number = 1,
-): number | null {
-  if (isSeparatorEndnote(endnote)) {
-    return null;
-  }
-
-  const normalEndnotes = endnoteMap.getNormalEndnotes();
-  const index = normalEndnotes.findIndex((en) => en.id === endnote.id);
-
-  if (index === -1) {
-    return null;
-  }
-
-  return startNumber + index;
-}
+// Note: display numbers are NOT derivable from footnotes.xml file order.
+// Word numbers notes by reference order in the document body; see
+// `computeNoteDisplayNumbers` in `layout-bridge/convert/footnoteLayout.ts`.
 
 /**
  * Create an empty footnote map

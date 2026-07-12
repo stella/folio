@@ -13,7 +13,10 @@ import { buildSeqValues } from "../fields/seqValues";
 import {
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,
   buildFootnoteContentMap,
+  collectEndnoteRefs,
   collectFootnoteRefs,
+  computeNoteDisplayNumbers,
+  remapNoteMarkerText,
 } from "../layout-bridge/convert/footnoteLayout";
 import type { MeasureBlocksFn } from "../layout-bridge/convert/footnoteLayout";
 import type {
@@ -250,6 +253,30 @@ export function runLayoutPipeline<THfPMs>(
     const footnoteRefs = collectFootnoteRefs(newBlocks);
     const documentFootnotes = document?.package.footnotes;
     const hasFootnotes = footnoteRefs.length > 0 && documentFootnotes !== undefined;
+
+    // Body note markers carry the raw `w:id` as their run text (the PM doc
+    // stores it that way; the save path serializes from the mark attrs).
+    // Remap them to Word's sequential reference-order numbers here, before
+    // measurement, so the measured widths match the painted digits and the
+    // marker agrees with the footnote-area number built from the same map.
+    const footnoteDisplayNumbers = documentFootnotes
+      ? computeNoteDisplayNumbers(
+          documentFootnotes,
+          footnoteRefs.map((ref) => ref.footnoteId),
+        )
+      : undefined;
+    const documentEndnotes = document?.package.endnotes;
+    const endnoteDisplayNumbers = documentEndnotes
+      ? computeNoteDisplayNumbers(
+          documentEndnotes,
+          collectEndnoteRefs(newBlocks).map((ref) => ref.endnoteId),
+        )
+      : undefined;
+    newBlocks = remapNoteMarkerText(newBlocks, {
+      ...(footnoteDisplayNumbers ? { footnoteNumbers: footnoteDisplayNumbers } : {}),
+      ...(endnoteDisplayNumbers ? { endnoteNumbers: endnoteDisplayNumbers } : {}),
+    });
+    outcome.blocks = newBlocks;
 
     // Step 2.75: Prepare header/footer content for rendering. Headers and
     // footers are positioned independently from the authored body margins,

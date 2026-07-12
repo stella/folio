@@ -62,17 +62,39 @@ export type ConvertFootnoteOptions = {
  * area.
  */
 export function collectFootnoteRefs(blocks: FlowBlock[]): { footnoteId: number; pmPos: number }[] {
-  const refs: { footnoteId: number; pmPos: number }[] = [];
+  return collectNoteRefs(blocks, "footnoteRefId").map(({ noteId, pmPos }) => ({
+    footnoteId: noteId,
+    pmPos,
+  }));
+}
+
+/**
+ * Scan FlowBlocks for runs with endnoteRefId set, in document order.
+ * Same recursive walk as `collectFootnoteRefs`.
+ */
+export function collectEndnoteRefs(blocks: FlowBlock[]): { endnoteId: number; pmPos: number }[] {
+  return collectNoteRefs(blocks, "endnoteRefId").map(({ noteId, pmPos }) => ({
+    endnoteId: noteId,
+    pmPos,
+  }));
+}
+
+function collectNoteRefs(
+  blocks: FlowBlock[],
+  idKey: "footnoteRefId" | "endnoteRefId",
+): { noteId: number; pmPos: number }[] {
+  const refs: { noteId: number; pmPos: number }[] = [];
 
   const walk = (containerBlocks: FlowBlock[]): void => {
     for (const block of containerBlocks) {
       if (block.kind === "paragraph") {
         for (const run of block.runs) {
-          if (run.kind === "text" && run.footnoteRefId !== undefined) {
-            refs.push({
-              footnoteId: run.footnoteRefId,
-              pmPos: run.pmStart ?? 0,
-            });
+          if (run.kind !== "text") {
+            continue;
+          }
+          const noteId = run[idKey];
+          if (noteId !== undefined) {
+            refs.push({ noteId, pmPos: run.pmStart ?? 0 });
           }
         }
       } else if (block.kind === "table") {
@@ -89,6 +111,147 @@ export function collectFootnoteRefs(blocks: FlowBlock[]): { footnoteId: number; 
 
   walk(blocks);
   return refs;
+}
+
+// ============================================================================
+// 1.5 Sequential display numbers + body marker remap
+// ============================================================================
+
+type NumberableNote = {
+  id: number;
+  noteType?: Footnote["noteType"];
+};
+
+/**
+ * Assign sequential display numbers (1, 2, 3, …) to notes in order of first
+ * reference. Word numbers footnotes/endnotes by reference order, not by their
+ * `w:id` values, which may be non-contiguous or out of document order. Only
+ * `normal` notes are numbered; separator/continuation notes and refs to
+ * missing notes consume no number.
+ */
+export function computeNoteDisplayNumbers(
+  notes: readonly NumberableNote[],
+  refNoteIds: readonly number[],
+): Map<number, number> {
+  const numberable = new Set<number>();
+  for (const note of notes) {
+    if (note.noteType === "normal") {
+      numberable.add(note.id);
+    }
+  }
+
+  const displayNumbers = new Map<number, number>();
+  let nextNumber = 1;
+  for (const noteId of refNoteIds) {
+    if (displayNumbers.has(noteId) || !numberable.has(noteId)) {
+      continue;
+    }
+    displayNumbers.set(noteId, nextNumber);
+    nextNumber++;
+  }
+  return displayNumbers;
+}
+
+export type NoteDisplayNumberMaps = {
+  /** footnote `w:id` → sequential display number */
+  footnoteNumbers?: ReadonlyMap<number, number>;
+  /** endnote `w:id` → sequential display number */
+  endnoteNumbers?: ReadonlyMap<number, number>;
+};
+
+/**
+ * Rewrite body reference-marker run text from the raw `w:id` (which the PM
+ * doc stores as the marker text; the save path serializes from the mark
+ * attrs, never from this text) to the sequential display number, so the
+ * inline marker matches the number rendered in the note area. Must run
+ * before measurement so marker widths match the painted digits. Untouched
+ * blocks/runs are returned by reference so the painter's fingerprinting and
+ * the incremental measure path see them unchanged. Runs keep their PM range,
+ * so click-to-position still resolves into the marker (same contract as the
+ * template preview substitution).
+ */
+export function remapNoteMarkerText(blocks: FlowBlock[], maps: NoteDisplayNumberMaps): FlowBlock[] {
+  if ((maps.footnoteNumbers?.size ?? 0) === 0 && (maps.endnoteNumbers?.size ?? 0) === 0) {
+    return blocks;
+  }
+
+  let changed = false;
+  const next = blocks.map((block) => {
+    const remapped = remapNoteMarkerBlock(block, maps);
+    changed ||= remapped !== block;
+    return remapped;
+  });
+  return changed ? next : blocks;
+}
+
+function remapNoteMarkerBlock(block: FlowBlock, maps: NoteDisplayNumberMaps): FlowBlock {
+  if (block.kind === "paragraph") {
+    return remapNoteMarkerParagraph(block, maps);
+  }
+  if (block.kind === "table") {
+    let tableChanged = false;
+    const rows = block.rows.map((row) => {
+      let rowChanged = false;
+      const cells = row.cells.map((cell) => {
+        let cellChanged = false;
+        const cellBlocks = cell.blocks.map((cellBlock) => {
+          const remapped = remapNoteMarkerBlock(cellBlock, maps);
+          cellChanged ||= remapped !== cellBlock;
+          return remapped;
+        });
+        return cellChanged ? { ...cell, blocks: cellBlocks } : cell;
+      });
+      rowChanged = cells.some((cell, index) => cell !== row.cells[index]);
+      tableChanged ||= rowChanged;
+      return rowChanged ? { ...row, cells } : row;
+    });
+    return tableChanged ? { ...block, rows } : block;
+  }
+  if (block.kind === "textBox") {
+    let boxChanged = false;
+    const content = block.content.map((paragraph) => {
+      const remapped = remapNoteMarkerParagraph(paragraph, maps);
+      boxChanged ||= remapped !== paragraph;
+      return remapped;
+    });
+    return boxChanged ? { ...block, content } : block;
+  }
+  return block;
+}
+
+function remapNoteMarkerParagraph(
+  block: ParagraphBlock,
+  maps: NoteDisplayNumberMaps,
+): ParagraphBlock {
+  let changed = false;
+  const runs = block.runs.map((run) => {
+    const remapped = remapNoteMarkerRun(run, maps);
+    changed ||= remapped !== run;
+    return remapped;
+  });
+  return changed ? { ...block, runs } : block;
+}
+
+function remapNoteMarkerRun(run: Run, maps: NoteDisplayNumberMaps): Run {
+  if (run.kind !== "text") {
+    return run;
+  }
+  const displayNumber = getRunDisplayNumber(run, maps);
+  if (displayNumber === undefined) {
+    return run;
+  }
+  const text = String(displayNumber);
+  return run.text === text ? run : { ...run, text };
+}
+
+function getRunDisplayNumber(run: TextRun, maps: NoteDisplayNumberMaps): number | undefined {
+  if (run.footnoteRefId !== undefined) {
+    return maps.footnoteNumbers?.get(run.footnoteRefId);
+  }
+  if (run.endnoteRefId !== undefined) {
+    return maps.endnoteNumbers?.get(run.endnoteRefId);
+  }
+  return undefined;
 }
 
 // ============================================================================
@@ -515,24 +678,22 @@ export function buildFootnoteContentMap(
     }
   }
 
-  // Assign display numbers in order of first appearance
-  let displayNumber = 1;
-  const seen = new Set<number>();
+  // Display numbers follow first-appearance order — the same map that
+  // drives the body marker remap, so area and marker can never disagree.
+  const displayNumbers = computeNoteDisplayNumbers(
+    footnotes,
+    footnoteRefs.map((ref) => ref.footnoteId),
+  );
 
-  for (const ref of footnoteRefs) {
-    if (seen.has(ref.footnoteId)) {
-      continue;
-    }
-    seen.add(ref.footnoteId);
-
-    const footnote = footnoteById.get(ref.footnoteId);
+  for (const [footnoteId, displayNumber] of displayNumbers) {
+    const footnote = footnoteById.get(footnoteId);
     if (!footnote) {
       continue;
     }
-
-    const content = convertFootnoteToContent(footnote, displayNumber, contentWidth, options);
-    contentMap.set(ref.footnoteId, content);
-    displayNumber++;
+    contentMap.set(
+      footnoteId,
+      convertFootnoteToContent(footnote, displayNumber, contentWidth, options),
+    );
   }
 
   return contentMap;
