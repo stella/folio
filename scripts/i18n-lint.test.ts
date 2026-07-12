@@ -1,0 +1,378 @@
+import { describe, expect, test } from "bun:test";
+
+import {
+  buildForbiddenRules,
+  emptyGlossary,
+  findDroppedExactSelectors,
+  findDroppedPlurals,
+  findForbiddenTerms,
+  findIcuError,
+  findMissingPluralCategories,
+  findPlaceholderMismatch,
+  isSuppressed,
+  parseGlossary,
+} from "./i18n-lint";
+import type { LintBaseline } from "./i18n-lint";
+
+describe("findPlaceholderMismatch", () => {
+  test("returns null when the variable sets match (order is irrelevant)", () => {
+    expect(findPlaceholderMismatch("Hi {name}, {count}", "{count} – {name}")).toBeNull();
+  });
+
+  test("flags a dropped variable", () => {
+    expect(findPlaceholderMismatch("Sent to {email}", "Odesláno")).toEqual({
+      missing: ["email"],
+      extra: [],
+    });
+  });
+
+  test("flags a renamed variable as both missing and extra", () => {
+    expect(findPlaceholderMismatch("{a}", "{b}")).toEqual({
+      missing: ["a"],
+      extra: ["b"],
+    });
+  });
+
+  test("tracks rich-text tag names (t.rich), not just their children", () => {
+    expect(findPlaceholderMismatch("<terms>Terms</terms>", "<link>Podmínky</link>")).toEqual({
+      missing: ["<terms>"],
+      extra: ["<link>"],
+    });
+  });
+
+  test("counts the plural argument, not the # placeholder", () => {
+    expect(
+      findPlaceholderMismatch(
+        "{count, plural, one {# item} other {# items}}",
+        "{count, plural, one {# položka} few {# položky} other {# položek}}",
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("findIcuError", () => {
+  test("returns null for valid ICU", () => {
+    expect(findIcuError("{count, plural, one {#} other {#}}")).toBeNull();
+  });
+
+  test("returns a message for broken ICU", () => {
+    expect(findIcuError("{count, plural, one {#}")).not.toBeNull();
+  });
+});
+
+describe("findMissingPluralCategories", () => {
+  test("flags Polish missing few/many for an English-shaped plural", () => {
+    expect(findMissingPluralCategories("{n, plural, one {#} other {#}}", "pl")).toEqual(
+      expect.arrayContaining(["n#few", "n#many"]),
+    );
+  });
+
+  test("passes when the locale needs only the present categories", () => {
+    expect(findMissingPluralCategories("{n, plural, one {#} other {#}}", "de")).toEqual([]);
+  });
+
+  test("does not require cs/sk fractional-only `many` for integer UI counts", () => {
+    expect(findMissingPluralCategories("{n, plural, one {#} few {#} other {#}}", "cs")).toEqual([]);
+  });
+
+  test("does not require the dormant es/fr/pt-BR `many` (exact millions)", () => {
+    for (const locale of ["es", "fr", "pt-BR"]) {
+      expect(findMissingPluralCategories("{n, plural, one {#} other {#}}", locale)).toEqual([]);
+    }
+  });
+
+  test("does not count exact selectors like =0 toward CLDR categories", () => {
+    expect(findMissingPluralCategories("{n, plural, =0 {none} one {#} other {#}}", "en")).toEqual(
+      [],
+    );
+  });
+
+  test("degrades to [] for an invalid locale code instead of throwing", () => {
+    expect(findMissingPluralCategories("{n, plural, one {#} other {#}}", "!")).toEqual([]);
+  });
+});
+
+describe("findDroppedPlurals", () => {
+  test("flags a source plural flattened to plain interpolation", () => {
+    expect(findDroppedPlurals("{count, plural, one {#} other {#}}", "{count} items")).toEqual([
+      "count",
+    ]);
+  });
+
+  test("passes when the target keeps the plural", () => {
+    expect(
+      findDroppedPlurals(
+        "{count, plural, one {#} other {#}}",
+        "{count, plural, one {#} few {#} other {#}}",
+      ),
+    ).toEqual([]);
+  });
+
+  test("flags a plural that dropped the count from every branch", () => {
+    expect(
+      findDroppedPlurals(
+        "{count, plural, one {# file} other {# files}}",
+        "{count, plural, one {file} other {files}}",
+      ),
+    ).toEqual(["count"]);
+  });
+
+  test("allows one branch to omit the count when another shows it", () => {
+    expect(
+      findDroppedPlurals(
+        "{count, plural, one {# file} other {# files}}",
+        "{count, plural, one {jeden soubor} other {# souborů}}",
+      ),
+    ).toEqual([]);
+  });
+
+  test("does not count a nested plural's # as the outer count", () => {
+    expect(
+      findDroppedPlurals(
+        "{count, plural, one {# file} other {# files}}",
+        "{count, plural, one {{n, plural, other {#}}} other {{n, plural, other {#}}}}",
+      ),
+    ).toEqual(["count"]);
+  });
+
+  test("counts a {count, number} formatted node as showing the count", () => {
+    expect(
+      findDroppedPlurals(
+        "{count, plural, one {# file} other {# files}}",
+        "{count, plural, one {{count, number} soubor} other {{count, number} souborů}}",
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("findDroppedExactSelectors", () => {
+  test("flags a dropped source exact selector (=0 zero-state)", () => {
+    expect(
+      findDroppedExactSelectors(
+        "{count, plural, =0 {No results} one {# result} other {# results}}",
+        "{count, plural, one {# výsledek} few {# výsledky} other {# výsledků}}",
+      ),
+    ).toEqual(["count=0"]);
+  });
+
+  test("passes when the target keeps the source's exact selectors", () => {
+    expect(
+      findDroppedExactSelectors(
+        "{count, plural, =0 {No results} other {# results}}",
+        "{count, plural, =0 {Žádné} other {# výsledků}}",
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("isSuppressed", () => {
+  const baseline: LintBaseline = {
+    placeholder: { "a.b": { cs: { source: "Open {x}", target: "Otevřít" } } },
+    icu: {},
+    plural: {},
+    terminology: {},
+  };
+
+  test("suppresses only when both source and target are unchanged", () => {
+    expect(
+      isSuppressed(baseline, "placeholder", "a.b", "cs", {
+        source: "Open {x}",
+        target: "Otevřít",
+      }),
+    ).toBe(true);
+  });
+
+  test("re-checks when the translation is edited", () => {
+    expect(
+      isSuppressed(baseline, "placeholder", "a.b", "cs", {
+        source: "Open {x}",
+        target: "Edited",
+      }),
+    ).toBe(false);
+  });
+
+  test("re-checks when the en source changes under a stale translation", () => {
+    expect(
+      isSuppressed(baseline, "placeholder", "a.b", "cs", {
+        source: "Open {x} and {y}",
+        target: "Otevřít",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("parseGlossary", () => {
+  test("an empty glossary yields no rules (terminology check is a no-op)", () => {
+    expect(buildForbiddenRules(emptyGlossary())).toEqual([]);
+  });
+
+  test("term groups are optional and default to empty", () => {
+    expect(parseGlossary("{}")).toEqual(emptyGlossary());
+  });
+
+  test("rejects a malformed term group instead of silently disabling it", () => {
+    expect(() => parseGlossary(JSON.stringify({ verbs: "nope" }))).toThrow();
+  });
+
+  test("rejects a term with a non-array forbidden entry", () => {
+    expect(() =>
+      parseGlossary(JSON.stringify({ nouns: [{ id: "x", en: "X", forbidden: { de: "Wort" } }] })),
+    ).toThrow();
+  });
+});
+
+describe("terminology", () => {
+  const rules = buildForbiddenRules(
+    parseGlossary(
+      JSON.stringify({
+        legalConcepts: [{ id: "matter", en: "Matter", forbidden: { de: ["Sache"] } }],
+      }),
+    ),
+  );
+
+  test("flags a forbidden rendering when the source is about the concept", () => {
+    expect(findForbiddenTerms("Open this matter", "Diese Sache öffnen", "de", rules)).toEqual([
+      "Sache",
+    ]);
+  });
+
+  test("does not fire when the source is unrelated to the concept", () => {
+    expect(findForbiddenTerms("A factual question", "Eine reine Sache", "de", rules)).toEqual([]);
+  });
+
+  test("matches whole words only (no substring false positives)", () => {
+    expect(findForbiddenTerms("Open this matter", "Sachenrecht gilt", "de", rules)).toEqual([]);
+  });
+
+  test("detects the concept when the source uses the plural trigger", () => {
+    // "matters" (plural) still triggers the "Matter" concept.
+    expect(findForbiddenTerms("Manage your matters", "Diese Sache öffnen", "de", rules)).toEqual([
+      "Sache",
+    ]);
+  });
+
+  test("matches an Arabic forbidden term carrying proclitics (ال/و prefixes)", () => {
+    const arRules = buildForbiddenRules(
+      parseGlossary(
+        JSON.stringify({
+          legalConcepts: [{ id: "matter", en: "Matter", forbidden: { ar: ["قضية"] } }],
+        }),
+      ),
+    );
+    // bare, ال-prefixed, and و+ال-prefixed forms all count.
+    expect(findForbiddenTerms("Open this matter", "افتح قضية", "ar", arRules)).toEqual(["قضية"]);
+    expect(findForbiddenTerms("Open this matter", "افتح القضية", "ar", arRules)).toEqual(["قضية"]);
+    expect(findForbiddenTerms("Open this matter", "والقضية مفتوحة", "ar", arRules)).toEqual([
+      "قضية",
+    ]);
+  });
+});
+
+describe("terminology: key triggers and forbiddenOnKey", () => {
+  const rules = buildForbiddenRules(
+    parseGlossary(
+      JSON.stringify({
+        legalConcepts: [
+          {
+            id: "team",
+            en: "Team",
+            // firm: broad (unconditional). org: key-trigger always, word-trigger
+            // unless the source is about "organiz-ing".
+            forbidden: { de: ["Kanzlei"], en: ["firm"] },
+            forbiddenOnKey: { de: ["Organisation"], en: ["organisation"] },
+            keyTriggers: ["scopeTeam"],
+            sourceExempt: ["organiz", "organis"],
+          },
+        ],
+      }),
+    ),
+  );
+
+  test("key trigger fires the rule even when English lacks the trigger word", () => {
+    expect(
+      findForbiddenTerms(
+        "Everyone in the organisation",
+        "Alle in der Organisation",
+        "de",
+        rules,
+        "knowledge.skills.form.scopeTeam",
+      ),
+    ).toEqual(["Organisation"]);
+  });
+
+  test("forbiddenOnKey fires on the word trigger when the source is not exempt", () => {
+    // Source says "team member" (no "organiz-"); a target rendering it as an
+    // organization member is caught even on a non-scope key.
+    expect(
+      findForbiddenTerms(
+        "Choose an existing team member",
+        "Ein Organisation hinzufügen",
+        "de",
+        rules,
+        "workspaces.members.addMemberDescription",
+      ),
+    ).toEqual(["Organisation"]);
+  });
+
+  test("sourceExempt suppresses word-trigger enforcement of forbiddenOnKey", () => {
+    // Source also says "organize", so a Slavic/German org form renders that
+    // word, not the team concept: not flagged on a non-scope key.
+    expect(
+      findForbiddenTerms(
+        "Organize team activity",
+        "Alle in der Organisation",
+        "de",
+        rules,
+        "workspaces.emptyMatters.description",
+      ),
+    ).toEqual([]);
+  });
+
+  test("key trigger ignores sourceExempt (scope labels are always strict)", () => {
+    expect(
+      findForbiddenTerms(
+        "Organize the team",
+        "Alle in der Organisation",
+        "de",
+        rules,
+        "knowledge.agentSkills.scopeTeam",
+      ),
+    ).toEqual(["Organisation"]);
+  });
+
+  test("forbidden (firm) words are enforced broadly via the word trigger", () => {
+    expect(
+      findForbiddenTerms(
+        "team-wide list",
+        "kanzleiweite Kanzlei",
+        "de",
+        rules,
+        "settings.anonymization.description",
+      ),
+    ).toEqual(["Kanzlei"]);
+  });
+
+  test("English self-check flags banned source wording on a key-trigger key", () => {
+    expect(
+      findForbiddenTerms(
+        "Everyone in the organisation",
+        "Everyone in the organisation",
+        "en",
+        rules,
+        "knowledge.agentSkills.scopeTeam",
+      ),
+    ).toEqual(["organisation"]);
+  });
+
+  test("no key and no word trigger means no enforcement", () => {
+    expect(
+      findForbiddenTerms(
+        "Configure your organisation",
+        "Alle in der Organisation",
+        "de",
+        rules,
+        "consent.scopeOnboarding",
+      ),
+    ).toEqual([]);
+  });
+});
