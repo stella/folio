@@ -41,6 +41,7 @@ per locale below).
 ## Per-locale notes
 
 ### cs (thorough; sourced from cs-cz support articles)
+
 - Sourced: Sledování změn, revize, komentář, poznámka pod čarou, vysvětlivka, záhlaví,
   zápatí, konec stránky, konec oddílu (via search), obsah, hypertextový odkaz, orientace,
   na výšku / na šířku, Vzhled stránky, okraje, tučné, kurzíva, podtržení, přeškrtnutí,
@@ -59,6 +60,7 @@ per locale below).
   only prose descriptions).
 
 ### de (sourced: de-de shortcuts article; LO help for divergences)
+
 - Sourced: Änderungen nachverfolgen, Fußnote, Endnote, Seitenumbruch, Kopfzeile,
   Fußzeile, Formatvorlage, Fett, Kursiv, Unterstrichen, Hochgestellt, Tiefgestellt,
   Wiederholen (redo), Speichern, Ersetzen, Löschen, Kommentar, Hyperlink, Absatz, Tabelle.
@@ -77,12 +79,14 @@ per locale below).
   (standard Windows/Office term).
 
 ### es (sourced: es-es shortcuts article)
+
 - All verbs + formatting sourced. Word vs LO: TOC "Tabla de contenido" (Word) vs
   **"Sumario"** (LO); hyperlink "hipervínculo" (Word) vs "hiperenlace" (LO).
 - forbidden "Salvar" (save): anglicism; both suites use "Guardar".
 - portrait/landscape: Word es uses "Vertical" / "Horizontal" (not "retrato/paisaje").
 
 ### fr (sourced: fr-fr shortcuts article)
+
 - Sourced: Enregistrer, Annuler, Rétablir, note de bas de page, note de fin, saut de
   page, suivi des modifications, lien hypertexte, exposant, indice, gras/italique/souligné.
 - Word vs LO: bookmark **signet** (Word) vs "repère de texte" (LO); reject **Refuser**
@@ -91,6 +95,7 @@ per locale below).
   "Enregistrer". forbidden "indentation" (indent): anglicism; both suites use "retrait".
 
 ### pt-BR (sourced: pt-br shortcuts article)
+
 - Sourced: Salvar, Desfazer, Refazer, Recortar, Excluir, Localizar, Substituir,
   Controle de alterações, nota de rodapé, nota de fim, quebra de página, cabeçalho,
   rodapé, hiperlink, sobrescrito, subscrito.
@@ -107,6 +112,7 @@ per locale below).
   circulates.
 
 ### pl (sourced: pl-pl shortcuts article)
+
 - Sourced: Śledzenie zmian, przypis dolny, przypis końcowy, podział strony, nagłówek,
   stopka, hiperłącze, pogrubienie, kursywa, podkreślenie, indeks górny/dolny, akapit,
   Zapisz-family verbs.
@@ -119,6 +125,7 @@ per locale below).
   no clean single noun attested).
 
 ### tr (sourced: tr-tr shortcuts article)
+
 - Sourced: Kaydet, Geri Al, Yinele, değişiklik izleme, dipnot, son not, sayfa sonu,
   açıklama, üstbilgi/altbilgi (article spells "Üst bilgi"/"Alt bilgi"; ribbon uses the
   closed compounds "Üstbilgi"/"Altbilgi" — closed form kept), köprü, üst/alt simge.
@@ -130,6 +137,7 @@ per locale below).
   (notes only).
 
 ### hu (sourced: hu-hu shortcuts + track-changes articles)
+
 - Sourced: Változások követése (feature), **korrektúra = revision/markup**, Elfogadás,
   Elvetés, lábjegyzet, végjegyzet, oldaltörés, megjegyzés, élőfej, élőláb, hivatkozás,
   félkövér, dőlt, aláhúzott, felső/alsó index, bekezdés, Mentés-family verbs.
@@ -144,6 +152,7 @@ per locale below).
   (Ismét/Ismétlés?) vs LO hu "Újra" could not be attested confidently.
 
 ### sk (sourced: sk-sk shortcuts + footnotes articles)
+
 - Sourced: Sledovanie zmien (article verb form "Sledovať zmeny"), poznámka pod čiarou,
   **vysvetlivka** (endnote — NOT "koncová poznámka"), zlom strany, hlavička, päta,
   hypertextové prepojenie, tučné, kurzíva, podčiarknutie, horný/dolný index, odsek,
@@ -156,6 +165,7 @@ per locale below).
   Nastavenie strany, Hľadať a nahradiť, prečiarknutie.
 
 ### zh-CN (sourced: zh-cn shortcuts, track-changes, footnotes, orientation articles)
+
 - Sourced: 修订/跟踪修订 (see below), 批注, 脚注, 尾注, 页眉, 页脚, 分页符, 超链接, 加粗,
   倾斜, 下划线, 上标, 下标, 样式, 段落, 表格, 页边距, 页面设置, 纵向, 横向, 保存, 撤消,
   重做, 复制, 粘贴, 剪切, 打印, 查找, 替换, 删除, 插入, 接受, 拒绝.
@@ -169,7 +179,7 @@ per locale below).
   (repeat). Canonical 重做.
 - bold/italic: Word zh-CN = **加粗 / 倾斜**; LO zh-CN = 粗体 / 斜体 (notes only, not
   forbidden).
-- Forbidden entries are verified zh-TW Word terms where Taiwan uses a *different word*,
+- Forbidden entries are verified zh-TW Word terms where Taiwan uses a _different word_,
   not merely traditional script: 註解 (comment), 註腳 (footnote), 章節附註 (endnote),
   頁首/頁尾 (header/footer), 分頁符號/分節符號 (breaks), 超連結 (hyperlink), 浮水印
   (watermark), 縮排 (indent), 底線 (underline), 儲存格 (cell), 版面設定 (page setup),
@@ -178,6 +188,7 @@ per locale below).
   Pure same-word traditional spellings (e.g. 刪除, 樣式) were NOT listed as forbidden.
 
 ### ar (sourced: ar-sa shortcuts article)
+
 - Sourced: تعقب التغييرات, حاشية سفلية, **تعليق ختامي** (endnote), فاصل صفحات, رأس الصفحة,
   تذييل الصفحة, ارتباط تشعبي, غامق, مائل, تسطير, نمط, فقرة, جدول, verbs نسخ/لصق/قص/طباعة/
   حذف/استبدال/إدراج (via "إدراج حاشية").
@@ -188,6 +199,7 @@ per locale below).
   بحث واستبدال, قبول/رفض, تراجع/إعادة, حفظ.
 
 ### he (sourced: he-il shortcuts article)
+
 - Sourced: מעקב אחר שינויים, הערת שוליים, הערת סיום, מעבר עמוד, הערה (comment),
   היפר-קישור, מודגש, נטוי, קו תחתון, סגנון, טבלה, שמור/העתק/הדבק/גזור/הדפס/החלף/בצע שוב.
 - Platform knowledge: כותרת עליונה/תחתונה (header/footer — absent from article but
@@ -199,6 +211,7 @@ per locale below).
 - orientation: plain כיוון kept (Word he layout wording; sometimes כיוון הדפסה).
 
 ### et (sourced: et-ee shortcuts article; deliberately sparse)
+
 - Sourced: allmärkus, lõpumärkus, leheküljepiir, kommentaar, muutuste jälitus, päis,
   jalus (article rendered the inflected/typo "jalas"; nominative is jalus), hüperlink,
   lõik, tabel, **laad** (style — distinctive; LO et uses "stiil"), paks, kursiiv,
@@ -212,6 +225,7 @@ per locale below).
   portrait/landscape, page setup, find-and-replace, accept, reject.
 
 ### lt (sourced: lt-lt shortcuts article; deliberately sparse)
+
 - Sourced: **puslapio išnaša** (footnote) / **dokumento išnaša** (endnote) — Word lt
   qualifies both, plain "išnaša" is the generic word; puslapio lūžis, komentaras,
   keitimų sekimas (article verb "Sekti keitimus"), antraštė, poraštė, hipersaitas,
@@ -226,6 +240,7 @@ per locale below).
   find-and-replace, accept, reject.
 
 ### lv (sourced: lv-lv shortcuts article; deliberately sparse)
+
 - Sourced: **izmaiņu reģistrēšana** (Track Changes — distinctive Word lv term),
   lappuses pārtraukums, komentārs, galvene, kājene, hipersaite, rindkopa, tabula, stils,
   treknraksts, slīpraksts, pasvītrojums, augšraksts, apakšraksts, Saglabāt, Atsaukt,
@@ -236,6 +251,7 @@ per locale below).
   break, strikethrough, orientation set, page setup, find-and-replace, accept, reject.
 
 ### hi (deliberately very sparse)
+
 - support.microsoft.com hi-in serves English-only content (verified on two articles), so
   no article attestation was possible. Only high-confidence Microsoft Hindi LIP/Office
   terms are included: टिप्पणी (comment), तालिका (table), अनुच्छेद (paragraph), शैली
@@ -248,25 +264,25 @@ per locale below).
 
 ## Word-vs-LibreOffice divergence summary (LO variant NOT forbidden)
 
-| Locale | Concept | Word (canonical) | LibreOffice |
-|---|---|---|---|
-| cs | page break | Konec stránky | Zalomení stránky (sourced) |
-| de | track changes | Änderungen nachverfolgen | Änderungen (verfolgen)/Aufzeichnen (sourced) |
-| de | bookmark | Textmarke | Lesezeichen |
-| de | style | Formatvorlage | (Absatz)Vorlage |
-| de | redo | Wiederholen | Wiederherstellen |
-| es | TOC | Tabla de contenido | Sumario |
-| es | hyperlink | Hipervínculo | Hiperenlace |
-| fr | bookmark | Signet | Repère de texte |
-| fr | reject | Refuser | Rejeter |
-| pt-BR | bookmark | Indicador | Marcador / Marca-página |
-| pl | find & replace | Znajdowanie i zamienianie | Znajdź i zamień |
-| pl | redo | Wykonaj ponownie | Ponów |
-| sk | watermark | Vodotlač | Vodoznak |
-| sk | redo | Zopakovať | Znova |
-| zh-CN | bold / italic | 加粗 / 倾斜 | 粗体 / 斜体 |
-| zh-CN | undo spelling | 撤消 | 撤销 |
-| et | style | Laad | Stiil |
+| Locale | Concept        | Word (canonical)          | LibreOffice                                  |
+| ------ | -------------- | ------------------------- | -------------------------------------------- |
+| cs     | page break     | Konec stránky             | Zalomení stránky (sourced)                   |
+| de     | track changes  | Änderungen nachverfolgen  | Änderungen (verfolgen)/Aufzeichnen (sourced) |
+| de     | bookmark       | Textmarke                 | Lesezeichen                                  |
+| de     | style          | Formatvorlage             | (Absatz)Vorlage                              |
+| de     | redo           | Wiederholen               | Wiederherstellen                             |
+| es     | TOC            | Tabla de contenido        | Sumario                                      |
+| es     | hyperlink      | Hipervínculo              | Hiperenlace                                  |
+| fr     | bookmark       | Signet                    | Repère de texte                              |
+| fr     | reject         | Refuser                   | Rejeter                                      |
+| pt-BR  | bookmark       | Indicador                 | Marcador / Marca-página                      |
+| pl     | find & replace | Znajdowanie i zamienianie | Znajdź i zamień                              |
+| pl     | redo           | Wykonaj ponownie          | Ponów                                        |
+| sk     | watermark      | Vodotlač                  | Vodoznak                                     |
+| sk     | redo           | Zopakovať                 | Znova                                        |
+| zh-CN  | bold / italic  | 加粗 / 倾斜               | 粗体 / 斜体                                  |
+| zh-CN  | undo spelling  | 撤消                      | 撤销                                         |
+| et     | style          | Laad                      | Stiil                                        |
 
 ## Coverage summary
 
