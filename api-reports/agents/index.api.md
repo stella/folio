@@ -78,6 +78,1474 @@ export const FOLIO_AGENT_TOOL_NAMES: {
 export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[];
 
 // @public
+export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
+    readonly type: "object";
+    readonly description: string;
+    readonly properties: {
+        readonly version: {
+            readonly type: "integer";
+            readonly enum: readonly [1];
+            readonly description: "Document-operation contract version.";
+        };
+        readonly operations: {
+            readonly type: "array";
+            readonly description: "The operations to apply, in order.";
+            readonly items: {
+                readonly description: string;
+                readonly oneOf: readonly [{
+                    readonly type: "object";
+                    readonly description: "Replace an exact text match inside one block.";
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["replaceInBlock"];
+                        };
+                        readonly blockId: {
+                            readonly type: "string";
+                            readonly description: "Id of the target block, from a prior document read.";
+                        };
+                        readonly find: {
+                            readonly type: "string";
+                            readonly description: "The exact text to find within the block.";
+                        };
+                        readonly replace: {
+                            readonly type: "string";
+                            readonly description: "The replacement text.";
+                        };
+                        readonly comment: {
+                            readonly type: "object";
+                            readonly description: "A comment attached to the text affected by this operation.";
+                            readonly properties: {
+                                readonly text: {
+                                    readonly type: "string";
+                                    readonly description: "The comment body.";
+                                };
+                            };
+                            readonly required: readonly ["text"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "blockId", "find", "replace"];
+                    readonly additionalProperties: false;
+                }, {
+                    readonly type: "object";
+                    readonly description: "Replace the text covered by a range handle.";
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["replaceRange"];
+                        };
+                        readonly range: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly type: {
+                                    readonly type: "string";
+                                    readonly enum: readonly ["textRange"];
+                                };
+                                readonly story: {
+                                    readonly type: "string";
+                                    readonly enum: readonly ["main"];
+                                };
+                                readonly blockId: {
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                };
+                                readonly startOffset: {
+                                    readonly type: "integer";
+                                    readonly minimum: 0;
+                                };
+                                readonly endOffset: {
+                                    readonly type: "integer";
+                                    readonly minimum: 1;
+                                    readonly description: "Exclusive end offset; must be greater than `startOffset`.";
+                                };
+                                readonly selectedTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the selected text, used to detect stale ranges.";
+                                };
+                            };
+                            readonly required: readonly ["type", "story", "blockId", "startOffset", "endOffset", "selectedTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly replace: {
+                            readonly type: "string";
+                            readonly description: "The replacement text.";
+                        };
+                        readonly comment: {
+                            readonly type: "object";
+                            readonly description: "A comment attached to the text affected by this operation.";
+                            readonly properties: {
+                                readonly text: {
+                                    readonly type: "string";
+                                    readonly description: "The comment body.";
+                                };
+                            };
+                            readonly required: readonly ["text"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "range", "replace"];
+                    readonly additionalProperties: false;
+                }, {
+                    readonly type: "object";
+                    readonly description: "Attach a comment to the text covered by a range handle.";
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["commentOnRange"];
+                        };
+                        readonly range: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly type: {
+                                    readonly type: "string";
+                                    readonly enum: readonly ["textRange"];
+                                };
+                                readonly story: {
+                                    readonly type: "string";
+                                    readonly enum: readonly ["main"];
+                                };
+                                readonly blockId: {
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                };
+                                readonly startOffset: {
+                                    readonly type: "integer";
+                                    readonly minimum: 0;
+                                };
+                                readonly endOffset: {
+                                    readonly type: "integer";
+                                    readonly minimum: 1;
+                                    readonly description: "Exclusive end offset; must be greater than `startOffset`.";
+                                };
+                                readonly selectedTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the selected text, used to detect stale ranges.";
+                                };
+                            };
+                            readonly required: readonly ["type", "story", "blockId", "startOffset", "endOffset", "selectedTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly comment: {
+                            readonly type: "object";
+                            readonly description: "A comment attached to the text affected by this operation.";
+                            readonly properties: {
+                                readonly text: {
+                                    readonly type: "string";
+                                    readonly description: "The comment body.";
+                                };
+                            };
+                            readonly required: readonly ["text"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "range", "comment"];
+                    readonly additionalProperties: false;
+                }, {
+                    readonly type: "object";
+                    readonly description: string;
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["formatRange"];
+                        };
+                        readonly range: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly type: {
+                                    readonly type: "string";
+                                    readonly enum: readonly ["textRange"];
+                                };
+                                readonly story: {
+                                    readonly type: "string";
+                                    readonly enum: readonly ["main"];
+                                };
+                                readonly blockId: {
+                                    readonly type: "string";
+                                    readonly minLength: 1;
+                                };
+                                readonly startOffset: {
+                                    readonly type: "integer";
+                                    readonly minimum: 0;
+                                };
+                                readonly endOffset: {
+                                    readonly type: "integer";
+                                    readonly minimum: 1;
+                                    readonly description: "Exclusive end offset; must be greater than `startOffset`.";
+                                };
+                                readonly selectedTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the selected text, used to detect stale ranges.";
+                                };
+                            };
+                            readonly required: readonly ["type", "story", "blockId", "startOffset", "endOffset", "selectedTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly formatting: {
+                            readonly type: "object";
+                            readonly description: "Inline formatting to apply; at least one property is required.";
+                            readonly properties: {
+                                readonly bold: {
+                                    readonly type: "boolean";
+                                };
+                                readonly italic: {
+                                    readonly type: "boolean";
+                                };
+                                readonly underline: {
+                                    readonly type: "boolean";
+                                };
+                            };
+                            readonly minProperties: 1;
+                            readonly additionalProperties: false;
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "range", "formatting"];
+                    readonly additionalProperties: false;
+                }, {
+                    readonly type: "object";
+                    readonly description: "Insert a new paragraph after the anchor block.";
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["insertAfterBlock"];
+                        };
+                        readonly blockId: {
+                            readonly type: "string";
+                            readonly description: "Id of the target block, from a prior document read.";
+                        };
+                        readonly text: {
+                            readonly type: "string";
+                            readonly description: "The paragraph text to insert.";
+                        };
+                        readonly inheritFormatting: {
+                            readonly type: "boolean";
+                            readonly description: "Inherit the anchor block's formatting for the inserted paragraph.";
+                        };
+                        readonly pageBreakBefore: {
+                            readonly type: "boolean";
+                            readonly description: "Start the inserted paragraph on a new page (`pageBreakBefore`).";
+                        };
+                        readonly styleId: {
+                            readonly type: "string";
+                            readonly description: "Paragraph style id for the inserted block (e.g. \"ClauseHeading1\").";
+                        };
+                        readonly comment: {
+                            readonly type: "object";
+                            readonly description: "A comment attached to the text affected by this operation.";
+                            readonly properties: {
+                                readonly text: {
+                                    readonly type: "string";
+                                    readonly description: "The comment body.";
+                                };
+                            };
+                            readonly required: readonly ["text"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "blockId", "text"];
+                    readonly additionalProperties: false;
+                }, {
+                    readonly type: "object";
+                    readonly description: "Insert a new paragraph before the anchor block.";
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["insertBeforeBlock"];
+                        };
+                        readonly blockId: {
+                            readonly type: "string";
+                            readonly description: "Id of the target block, from a prior document read.";
+                        };
+                        readonly text: {
+                            readonly type: "string";
+                            readonly description: "The paragraph text to insert.";
+                        };
+                        readonly inheritFormatting: {
+                            readonly type: "boolean";
+                            readonly description: "Inherit the anchor block's formatting for the inserted paragraph.";
+                        };
+                        readonly pageBreakBefore: {
+                            readonly type: "boolean";
+                            readonly description: "Start the inserted paragraph on a new page (`pageBreakBefore`).";
+                        };
+                        readonly styleId: {
+                            readonly type: "string";
+                            readonly description: "Paragraph style id for the inserted block (e.g. \"ClauseHeading1\").";
+                        };
+                        readonly comment: {
+                            readonly type: "object";
+                            readonly description: "A comment attached to the text affected by this operation.";
+                            readonly properties: {
+                                readonly text: {
+                                    readonly type: "string";
+                                    readonly description: "The comment body.";
+                                };
+                            };
+                            readonly required: readonly ["text"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "blockId", "text"];
+                    readonly additionalProperties: false;
+                }, {
+                    readonly type: "object";
+                    readonly description: "Replace one block's entire text.";
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["replaceBlock"];
+                        };
+                        readonly blockId: {
+                            readonly type: "string";
+                            readonly description: "Id of the target block, from a prior document read.";
+                        };
+                        readonly text: {
+                            readonly type: "string";
+                            readonly description: "The new block text.";
+                        };
+                        readonly preserveFormatting: {
+                            readonly type: "boolean";
+                            readonly description: "Keep the block's existing formatting for the replacement text.";
+                        };
+                        readonly styleId: {
+                            readonly type: "string";
+                            readonly description: "Paragraph style id to set on the replaced block.";
+                        };
+                        readonly comment: {
+                            readonly type: "object";
+                            readonly description: "A comment attached to the text affected by this operation.";
+                            readonly properties: {
+                                readonly text: {
+                                    readonly type: "string";
+                                    readonly description: "The comment body.";
+                                };
+                            };
+                            readonly required: readonly ["text"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "blockId", "text"];
+                    readonly additionalProperties: false;
+                }, {
+                    readonly type: "object";
+                    readonly description: "Delete one block.";
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["deleteBlock"];
+                        };
+                        readonly blockId: {
+                            readonly type: "string";
+                            readonly description: "Id of the target block, from a prior document read.";
+                        };
+                        readonly comment: {
+                            readonly type: "object";
+                            readonly description: "A comment attached to the text affected by this operation.";
+                            readonly properties: {
+                                readonly text: {
+                                    readonly type: "string";
+                                    readonly description: "The comment body.";
+                                };
+                            };
+                            readonly required: readonly ["text"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "blockId"];
+                    readonly additionalProperties: false;
+                }, {
+                    readonly type: "object";
+                    readonly description: "Attach a comment to one block, optionally quoting text within it.";
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["commentOnBlock"];
+                        };
+                        readonly blockId: {
+                            readonly type: "string";
+                            readonly description: "Id of the target block, from a prior document read.";
+                        };
+                        readonly quote: {
+                            readonly type: "string";
+                            readonly description: "Exact text within the block the comment is about.";
+                        };
+                        readonly comment: {
+                            readonly type: "object";
+                            readonly description: "A comment attached to the text affected by this operation.";
+                            readonly properties: {
+                                readonly text: {
+                                    readonly type: "string";
+                                    readonly description: "The comment body.";
+                                };
+                            };
+                            readonly required: readonly ["text"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "blockId", "comment"];
+                    readonly additionalProperties: false;
+                }, {
+                    readonly type: "object";
+                    readonly description: string;
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["insertSignatureTable"];
+                        };
+                        readonly blockId: {
+                            readonly type: "string";
+                            readonly description: "Id of the target block, from a prior document read.";
+                        };
+                        readonly position: {
+                            readonly type: "string";
+                            readonly enum: readonly ["after", "before"];
+                            readonly description: "Insert after the anchor block (default) or before it. Defaults to \"after\".";
+                        };
+                        readonly parties: {
+                            readonly type: "array";
+                            readonly description: "The signing parties, one table cell per party.";
+                            readonly items: {
+                                readonly type: "object";
+                                readonly properties: {
+                                    readonly name: {
+                                        readonly type: "string";
+                                        readonly description: "Party name (rendered bold).";
+                                    };
+                                    readonly signatory: {
+                                        readonly type: "string";
+                                        readonly description: "Name of the person signing.";
+                                    };
+                                    readonly title: {
+                                        readonly type: "string";
+                                        readonly description: "Signatory title (rendered in italics).";
+                                    };
+                                };
+                                readonly required: readonly ["name"];
+                                readonly additionalProperties: false;
+                            };
+                        };
+                        readonly comment: {
+                            readonly type: "object";
+                            readonly description: "A comment attached to the text affected by this operation.";
+                            readonly properties: {
+                                readonly text: {
+                                    readonly type: "string";
+                                    readonly description: "The comment body.";
+                                };
+                            };
+                            readonly required: readonly ["text"];
+                            readonly additionalProperties: false;
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "blockId", "parties"];
+                    readonly additionalProperties: false;
+                }];
+            };
+        };
+        readonly mode: {
+            readonly type: "string";
+            readonly enum: readonly ["direct", "tracked-changes"];
+            readonly description: string;
+        };
+        readonly atomic: {
+            readonly type: "boolean";
+            readonly description: "Reject the whole batch when any operation would be skipped.";
+        };
+        readonly dryRun: {
+            readonly type: "boolean";
+            readonly description: "Preview the batch without mutating the document.";
+        };
+    };
+    readonly required: readonly ["version", "operations"];
+    readonly additionalProperties: false;
+};
+
+// @public
+export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
+    readonly description: string;
+    readonly oneOf: readonly [{
+        readonly type: "object";
+        readonly description: "Replace an exact text match inside one block.";
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["replaceInBlock"];
+            };
+            readonly blockId: {
+                readonly type: "string";
+                readonly description: "Id of the target block, from a prior document read.";
+            };
+            readonly find: {
+                readonly type: "string";
+                readonly description: "The exact text to find within the block.";
+            };
+            readonly replace: {
+                readonly type: "string";
+                readonly description: "The replacement text.";
+            };
+            readonly comment: {
+                readonly type: "object";
+                readonly description: "A comment attached to the text affected by this operation.";
+                readonly properties: {
+                    readonly text: {
+                        readonly type: "string";
+                        readonly description: "The comment body.";
+                    };
+                };
+                readonly required: readonly ["text"];
+                readonly additionalProperties: false;
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "blockId", "find", "replace"];
+        readonly additionalProperties: false;
+    }, {
+        readonly type: "object";
+        readonly description: "Replace the text covered by a range handle.";
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["replaceRange"];
+            };
+            readonly range: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly type: {
+                        readonly type: "string";
+                        readonly enum: readonly ["textRange"];
+                    };
+                    readonly story: {
+                        readonly type: "string";
+                        readonly enum: readonly ["main"];
+                    };
+                    readonly blockId: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                    readonly startOffset: {
+                        readonly type: "integer";
+                        readonly minimum: 0;
+                    };
+                    readonly endOffset: {
+                        readonly type: "integer";
+                        readonly minimum: 1;
+                        readonly description: "Exclusive end offset; must be greater than `startOffset`.";
+                    };
+                    readonly selectedTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the selected text, used to detect stale ranges.";
+                    };
+                };
+                readonly required: readonly ["type", "story", "blockId", "startOffset", "endOffset", "selectedTextHash"];
+                readonly additionalProperties: false;
+            };
+            readonly replace: {
+                readonly type: "string";
+                readonly description: "The replacement text.";
+            };
+            readonly comment: {
+                readonly type: "object";
+                readonly description: "A comment attached to the text affected by this operation.";
+                readonly properties: {
+                    readonly text: {
+                        readonly type: "string";
+                        readonly description: "The comment body.";
+                    };
+                };
+                readonly required: readonly ["text"];
+                readonly additionalProperties: false;
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "range", "replace"];
+        readonly additionalProperties: false;
+    }, {
+        readonly type: "object";
+        readonly description: "Attach a comment to the text covered by a range handle.";
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["commentOnRange"];
+            };
+            readonly range: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly type: {
+                        readonly type: "string";
+                        readonly enum: readonly ["textRange"];
+                    };
+                    readonly story: {
+                        readonly type: "string";
+                        readonly enum: readonly ["main"];
+                    };
+                    readonly blockId: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                    readonly startOffset: {
+                        readonly type: "integer";
+                        readonly minimum: 0;
+                    };
+                    readonly endOffset: {
+                        readonly type: "integer";
+                        readonly minimum: 1;
+                        readonly description: "Exclusive end offset; must be greater than `startOffset`.";
+                    };
+                    readonly selectedTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the selected text, used to detect stale ranges.";
+                    };
+                };
+                readonly required: readonly ["type", "story", "blockId", "startOffset", "endOffset", "selectedTextHash"];
+                readonly additionalProperties: false;
+            };
+            readonly comment: {
+                readonly type: "object";
+                readonly description: "A comment attached to the text affected by this operation.";
+                readonly properties: {
+                    readonly text: {
+                        readonly type: "string";
+                        readonly description: "The comment body.";
+                    };
+                };
+                readonly required: readonly ["text"];
+                readonly additionalProperties: false;
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "range", "comment"];
+        readonly additionalProperties: false;
+    }, {
+        readonly type: "object";
+        readonly description: string;
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["formatRange"];
+            };
+            readonly range: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly type: {
+                        readonly type: "string";
+                        readonly enum: readonly ["textRange"];
+                    };
+                    readonly story: {
+                        readonly type: "string";
+                        readonly enum: readonly ["main"];
+                    };
+                    readonly blockId: {
+                        readonly type: "string";
+                        readonly minLength: 1;
+                    };
+                    readonly startOffset: {
+                        readonly type: "integer";
+                        readonly minimum: 0;
+                    };
+                    readonly endOffset: {
+                        readonly type: "integer";
+                        readonly minimum: 1;
+                        readonly description: "Exclusive end offset; must be greater than `startOffset`.";
+                    };
+                    readonly selectedTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the selected text, used to detect stale ranges.";
+                    };
+                };
+                readonly required: readonly ["type", "story", "blockId", "startOffset", "endOffset", "selectedTextHash"];
+                readonly additionalProperties: false;
+            };
+            readonly formatting: {
+                readonly type: "object";
+                readonly description: "Inline formatting to apply; at least one property is required.";
+                readonly properties: {
+                    readonly bold: {
+                        readonly type: "boolean";
+                    };
+                    readonly italic: {
+                        readonly type: "boolean";
+                    };
+                    readonly underline: {
+                        readonly type: "boolean";
+                    };
+                };
+                readonly minProperties: 1;
+                readonly additionalProperties: false;
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "range", "formatting"];
+        readonly additionalProperties: false;
+    }, {
+        readonly type: "object";
+        readonly description: "Insert a new paragraph after the anchor block.";
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["insertAfterBlock"];
+            };
+            readonly blockId: {
+                readonly type: "string";
+                readonly description: "Id of the target block, from a prior document read.";
+            };
+            readonly text: {
+                readonly type: "string";
+                readonly description: "The paragraph text to insert.";
+            };
+            readonly inheritFormatting: {
+                readonly type: "boolean";
+                readonly description: "Inherit the anchor block's formatting for the inserted paragraph.";
+            };
+            readonly pageBreakBefore: {
+                readonly type: "boolean";
+                readonly description: "Start the inserted paragraph on a new page (`pageBreakBefore`).";
+            };
+            readonly styleId: {
+                readonly type: "string";
+                readonly description: "Paragraph style id for the inserted block (e.g. \"ClauseHeading1\").";
+            };
+            readonly comment: {
+                readonly type: "object";
+                readonly description: "A comment attached to the text affected by this operation.";
+                readonly properties: {
+                    readonly text: {
+                        readonly type: "string";
+                        readonly description: "The comment body.";
+                    };
+                };
+                readonly required: readonly ["text"];
+                readonly additionalProperties: false;
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "blockId", "text"];
+        readonly additionalProperties: false;
+    }, {
+        readonly type: "object";
+        readonly description: "Insert a new paragraph before the anchor block.";
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["insertBeforeBlock"];
+            };
+            readonly blockId: {
+                readonly type: "string";
+                readonly description: "Id of the target block, from a prior document read.";
+            };
+            readonly text: {
+                readonly type: "string";
+                readonly description: "The paragraph text to insert.";
+            };
+            readonly inheritFormatting: {
+                readonly type: "boolean";
+                readonly description: "Inherit the anchor block's formatting for the inserted paragraph.";
+            };
+            readonly pageBreakBefore: {
+                readonly type: "boolean";
+                readonly description: "Start the inserted paragraph on a new page (`pageBreakBefore`).";
+            };
+            readonly styleId: {
+                readonly type: "string";
+                readonly description: "Paragraph style id for the inserted block (e.g. \"ClauseHeading1\").";
+            };
+            readonly comment: {
+                readonly type: "object";
+                readonly description: "A comment attached to the text affected by this operation.";
+                readonly properties: {
+                    readonly text: {
+                        readonly type: "string";
+                        readonly description: "The comment body.";
+                    };
+                };
+                readonly required: readonly ["text"];
+                readonly additionalProperties: false;
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "blockId", "text"];
+        readonly additionalProperties: false;
+    }, {
+        readonly type: "object";
+        readonly description: "Replace one block's entire text.";
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["replaceBlock"];
+            };
+            readonly blockId: {
+                readonly type: "string";
+                readonly description: "Id of the target block, from a prior document read.";
+            };
+            readonly text: {
+                readonly type: "string";
+                readonly description: "The new block text.";
+            };
+            readonly preserveFormatting: {
+                readonly type: "boolean";
+                readonly description: "Keep the block's existing formatting for the replacement text.";
+            };
+            readonly styleId: {
+                readonly type: "string";
+                readonly description: "Paragraph style id to set on the replaced block.";
+            };
+            readonly comment: {
+                readonly type: "object";
+                readonly description: "A comment attached to the text affected by this operation.";
+                readonly properties: {
+                    readonly text: {
+                        readonly type: "string";
+                        readonly description: "The comment body.";
+                    };
+                };
+                readonly required: readonly ["text"];
+                readonly additionalProperties: false;
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "blockId", "text"];
+        readonly additionalProperties: false;
+    }, {
+        readonly type: "object";
+        readonly description: "Delete one block.";
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["deleteBlock"];
+            };
+            readonly blockId: {
+                readonly type: "string";
+                readonly description: "Id of the target block, from a prior document read.";
+            };
+            readonly comment: {
+                readonly type: "object";
+                readonly description: "A comment attached to the text affected by this operation.";
+                readonly properties: {
+                    readonly text: {
+                        readonly type: "string";
+                        readonly description: "The comment body.";
+                    };
+                };
+                readonly required: readonly ["text"];
+                readonly additionalProperties: false;
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "blockId"];
+        readonly additionalProperties: false;
+    }, {
+        readonly type: "object";
+        readonly description: "Attach a comment to one block, optionally quoting text within it.";
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["commentOnBlock"];
+            };
+            readonly blockId: {
+                readonly type: "string";
+                readonly description: "Id of the target block, from a prior document read.";
+            };
+            readonly quote: {
+                readonly type: "string";
+                readonly description: "Exact text within the block the comment is about.";
+            };
+            readonly comment: {
+                readonly type: "object";
+                readonly description: "A comment attached to the text affected by this operation.";
+                readonly properties: {
+                    readonly text: {
+                        readonly type: "string";
+                        readonly description: "The comment body.";
+                    };
+                };
+                readonly required: readonly ["text"];
+                readonly additionalProperties: false;
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "blockId", "comment"];
+        readonly additionalProperties: false;
+    }, {
+        readonly type: "object";
+        readonly description: string;
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["insertSignatureTable"];
+            };
+            readonly blockId: {
+                readonly type: "string";
+                readonly description: "Id of the target block, from a prior document read.";
+            };
+            readonly position: {
+                readonly type: "string";
+                readonly enum: readonly ["after", "before"];
+                readonly description: "Insert after the anchor block (default) or before it. Defaults to \"after\".";
+            };
+            readonly parties: {
+                readonly type: "array";
+                readonly description: "The signing parties, one table cell per party.";
+                readonly items: {
+                    readonly type: "object";
+                    readonly properties: {
+                        readonly name: {
+                            readonly type: "string";
+                            readonly description: "Party name (rendered bold).";
+                        };
+                        readonly signatory: {
+                            readonly type: "string";
+                            readonly description: "Name of the person signing.";
+                        };
+                        readonly title: {
+                            readonly type: "string";
+                            readonly description: "Signatory title (rendered in italics).";
+                        };
+                    };
+                    readonly required: readonly ["name"];
+                    readonly additionalProperties: false;
+                };
+            };
+            readonly comment: {
+                readonly type: "object";
+                readonly description: "A comment attached to the text affected by this operation.";
+                readonly properties: {
+                    readonly text: {
+                        readonly type: "string";
+                        readonly description: "The comment body.";
+                    };
+                };
+                readonly required: readonly ["text"];
+                readonly additionalProperties: false;
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "blockId", "parties"];
+        readonly additionalProperties: false;
+    }];
+};
+
+// @public
 export type FolioAgentApplyOperationsSummary = {
     version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
     applied: {
@@ -195,6 +1663,9 @@ export type FolioAgentVersionDiff = FolioVersionDiff;
 
 // @public
 export type FolioAgentVersionDiffSegment = FolioVersionDiffSegment;
+
+// @public
+export const folioDocumentOperationBatchSchema: FolioDocumentOperationBatchSchema;
 
 // @public
 export type FolioToolCallResult = {

@@ -11,6 +11,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { parseAddCommentInput, parseSuggestChangesInput } from "./parse";
+import { SUGGEST_CHANGES_OPERATION_TYPES } from "./tools";
 
 describe("parseAddCommentInput", () => {
   test("valid input builds a commentOnBlock operation", () => {
@@ -260,5 +261,37 @@ describe("parseSuggestChangesInput", () => {
       throw new Error("expected ok:false");
     }
     expect(commentTooLong.error).toContain("100,000-character limit");
+  });
+
+  test("accepts every operation type the suggest_changes tool schema advertises", () => {
+    // Guards the tool-schema derivation in tools.ts: since the schema's type
+    // enum is computed from the contract's operation-type list minus an
+    // exclusion list, a new contract type would silently appear in the enum
+    // even though this parser rejects it. A superset fixture works for every
+    // type because parseSuggestChangesInput ignores fields a type does not use.
+    const supersetOperation = (type: string) => ({
+      type,
+      blockId: "b1",
+      find: "old",
+      replace: "new",
+      text: "inserted",
+      comment: "why",
+      range: {
+        type: "textRange",
+        story: "main",
+        blockId: "b1",
+        startOffset: 0,
+        endOffset: 4,
+        selectedTextHash: "h123",
+      },
+    });
+    for (const type of SUGGEST_CHANGES_OPERATION_TYPES) {
+      const result = parseSuggestChangesInput({ operations: [supersetOperation(type)] });
+      expect(result.ok, type).toBe(true);
+    }
+    for (const excludedType of ["formatRange", "commentOnBlock", "insertSignatureTable"]) {
+      const result = parseSuggestChangesInput({ operations: [supersetOperation(excludedType)] });
+      expect(result.ok, excludedType).toBe(false);
+    }
   });
 });

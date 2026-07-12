@@ -1,5 +1,44 @@
+import {
+  FOLIO_DOCUMENT_OPERATION_TYPES,
+  type FolioDocumentOperationType,
+} from "@stll/folio-core/server";
+
+import { FOLIO_TEXT_RANGE_JSON_SCHEMA } from "./operation-schema";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type { FolioAgentToolDefinition } from "./types";
+
+/**
+ * `suggest_changes` deliberately narrows the full document-operation contract
+ * (see `FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA` in `operation-schema.ts`):
+ * - excluded types: `formatRange` and `insertSignatureTable` (direct-only,
+ *   not representable as tracked changes for human review) and
+ *   `commentOnBlock` (covered by the dedicated `add_comment` tool);
+ * - `id` is optional here (auto-generated `op-1`, `op-2`, … by `parse.ts`)
+ *   where the contract requires it;
+ * - `comment` is a plain string here; `parse.ts` wraps it into the contract's
+ *   `{ text }` object;
+ * - the review metadata (`severity`, `area`), `precondition` guard, and the
+ *   insert/replace formatting knobs (`inheritFormatting`, `pageBreakBefore`,
+ *   `preserveFormatting`, `styleId`, `position`, `parties`, `quote`,
+ *   `formatting`) are not exposed to the model.
+ */
+const SUGGEST_CHANGES_EXCLUDED_OPERATION_TYPES: ReadonlySet<FolioDocumentOperationType> = new Set([
+  "formatRange",
+  "commentOnBlock",
+  "insertSignatureTable",
+]);
+
+/**
+ * The contract operation types `suggest_changes` exposes to the model,
+ * derived from the shared contract constant minus the exclusions above.
+ * Exported (module-level only, not from the package index) so
+ * `parse.test.ts` can assert this enum stays in lockstep with what
+ * `parseSuggestChangesInput` actually accepts.
+ */
+export const SUGGEST_CHANGES_OPERATION_TYPES: readonly FolioDocumentOperationType[] =
+  FOLIO_DOCUMENT_OPERATION_TYPES.filter(
+    (type) => !SUGGEST_CHANGES_EXCLUDED_OPERATION_TYPES.has(type),
+  );
 
 const suggestChangesOperationSchema = {
   type: "object",
@@ -11,15 +50,7 @@ const suggestChangesOperationSchema = {
     },
     type: {
       type: "string",
-      enum: [
-        "replaceInBlock",
-        "replaceRange",
-        "commentOnRange",
-        "insertAfterBlock",
-        "insertBeforeBlock",
-        "replaceBlock",
-        "deleteBlock",
-      ],
+      enum: SUGGEST_CHANGES_OPERATION_TYPES,
       description: "The kind of edit to make.",
     },
     blockId: {
@@ -27,18 +58,9 @@ const suggestChangesOperationSchema = {
       description: "The block to edit, from `read_document` or `find_text`.",
     },
     range: {
-      type: "object",
-      description: "Required for `replaceRange`: copy the range object returned by `find_text`.",
-      properties: {
-        type: { type: "string", enum: ["textRange"] },
-        story: { type: "string", enum: ["main"] },
-        blockId: { type: "string" },
-        startOffset: { type: "integer", minimum: 0 },
-        endOffset: { type: "integer", minimum: 1 },
-        selectedTextHash: { type: "string" },
-      },
-      required: ["type", "story", "blockId", "startOffset", "endOffset", "selectedTextHash"],
-      additionalProperties: false,
+      ...FOLIO_TEXT_RANGE_JSON_SCHEMA,
+      description:
+        "Required for `replaceRange` and `commentOnRange`: copy the range object returned by `find_text`.",
     },
     find: {
       type: "string",

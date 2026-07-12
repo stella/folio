@@ -14,6 +14,11 @@ export type {
 } from "./compare";
 export { compareDocxVersions, formatVersionDiffForLLM } from "./compare";
 export { executeFolioToolCall } from "./execute";
+export {
+  FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA,
+  FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA,
+  folioDocumentOperationBatchSchema,
+} from "./operation-schema";
 export type { ParseAddCommentResult, ParseSuggestChangesResult } from "./parse";
 export { parseAddCommentInput, parseSuggestChangesInput } from "./parse";
 export type { AnthropicToolDefinition, OpenAIToolDefinition } from "./providers";
