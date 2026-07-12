@@ -265,6 +265,24 @@ export type FolioBlockDiff = {
     blockId: string;
     kind: string;
     segments: FolioVersionDiffSegment[];
+} | {
+    type: "formatChanged";
+    blockId: string;
+    kind: string;
+    text: string;
+    changedProperties: FolioFormatProperty[];
+} | {
+    type: "movedFrom";
+    blockId: string;
+    kind: string;
+    text: string;
+    moveGroupId: number;
+} | {
+    type: "movedTo";
+    blockId: string;
+    kind: string;
+    text: string;
+    moveGroupId: number;
 };
 
 // @public
@@ -409,6 +427,9 @@ export type FolioDocxReviewerOptions = {
 };
 
 // @public
+export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];
+
+// @public
 export type FolioReviewChange = {
     id: number;
     type: FolioReviewChangeKind;
@@ -462,17 +483,32 @@ export type FolioReviewReplyInput = {
 
 // @public
 export type FolioVersionDiff = {
-    changes: FolioBlockDiff[]; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. */
+    changes: FolioBlockDiff[]; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
     summaryCounts: {
         added: number;
         deleted: number;
         modified: number;
+        formatChanged: number;
+        moved: number;
         unchanged: number;
     };
 };
 
 // @public
 export type FolioVersionDiffSegment = WordDiffSegment;
+
+// @public
+export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, options?: GenerateRedlineDocxOptions) => Promise<GenerateRedlineDocxResult>;
+
+// @public
+export type GenerateRedlineDocxOptions = {
+    author?: string;
+};
+
+// @public
+export type GenerateRedlineDocxResult = FolioAIEditApplyResult & {
+    buffer: ArrayBuffer;
+};
 
 // @public (undocumented)
 export const getFolioDocumentOperationCapabilities: () => FolioDocumentOperationCapabilities;
