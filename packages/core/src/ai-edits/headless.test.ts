@@ -414,6 +414,33 @@ describe("headless docx review round-trip", () => {
       undoHandle: first.undoHandle,
       reason: "unknownHandle",
     });
+
+    const commentReviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const commentTarget = findBlock(commentReviewer.snapshot().blocks, "Heading");
+    const commented = commentReviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "commented",
+          type: "commentOnBlock",
+          blockId: commentTarget.id,
+          comment: { text: "Review this." },
+        },
+      ],
+    });
+    const parentComment = commentReviewer.getComments().at(0);
+    if (!commented.undoHandle || !parentComment) {
+      throw new Error("expected an undo handle and comment");
+    }
+    commentReviewer.replyTo(parentComment.id, { text: "Keep this reply." });
+    expect(commentReviewer.undoDocumentOperations(commented.undoHandle)).toEqual({
+      status: "rejected",
+      undoHandle: commented.undoHandle,
+      reason: "documentChanged",
+    });
+    expect(commentReviewer.getComments().at(0)?.replies.at(0)?.text).toBe("Keep this reply.");
+
     changedReviewer.acceptAll();
     expect(changedReviewer.undoDocumentOperations(changed.undoHandle)).toEqual({
       status: "rejected",

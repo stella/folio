@@ -111,6 +111,7 @@ type FolioDocumentOperationUndoEntry = {
   beforeState: EditorState;
   afterState: EditorState;
   createdCommentsLengthBefore: number;
+  createdCommentsLengthAfter: number;
 };
 
 /**
@@ -465,6 +466,7 @@ export class FolioDocxReviewer {
         beforeState,
         afterState: this.state,
         createdCommentsLengthBefore,
+        createdCommentsLengthAfter: this.createdComments.length,
       });
     }
     return result;
@@ -488,7 +490,10 @@ export class FolioDocxReviewer {
     if (!entry) {
       return { status: "rejected", undoHandle, reason: "unknownHandle" };
     }
-    if (this.state !== entry.afterState) {
+    if (
+      this.state !== entry.afterState ||
+      this.createdComments.length !== entry.createdCommentsLengthAfter
+    ) {
       return { status: "rejected", undoHandle, reason: "documentChanged" };
     }
 
