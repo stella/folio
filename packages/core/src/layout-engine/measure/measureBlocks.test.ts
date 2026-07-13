@@ -258,6 +258,50 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("clears a full-width table below a square-wrapped text box", () => {
+    withFakeTextMeasure(() => {
+      const textBox: TextBoxBlock = {
+        kind: "textBox",
+        id: "square-box",
+        width: 300,
+        height: 100,
+        content: [],
+        wrapType: "square",
+        wrapText: "bothSides",
+        position: {
+          horizontal: { relativeTo: "page", posOffset: pixelsToEmu(96) },
+          vertical: { relativeTo: "page", posOffset: pixelsToEmu(96) },
+        },
+      };
+      const table: TableBlock = {
+        kind: "table",
+        id: "body-table",
+        columnWidths: [600],
+        rows: [
+          {
+            id: "row",
+            height: 40,
+            cells: [{ id: "cell", blocks: [para("cell-content", "content")] }],
+          },
+        ],
+      };
+
+      const measures = measureBlocks([textBox, table], 600, 96, {
+        pageWidth: 792,
+        pageHeight: 1_056,
+        marginLeft: 96,
+        marginRight: 96,
+        marginBottom: 96,
+      });
+      const tableMeasure = measures.at(1);
+      if (tableMeasure?.kind !== "table") {
+        throw new Error("Expected table measure");
+      }
+
+      expect(tableMeasure.bandSkipBefore).toBe(100);
+    }, fakeMeasure);
+  });
+
   test("uses the anchor section width for positioned text-box exclusion", () => {
     withFakeTextMeasure(() => {
       const textBox: TextBoxBlock = {
