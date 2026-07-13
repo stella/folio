@@ -668,6 +668,45 @@ describe("header and footer rendering", () => {
     expect(afterParagraph?.style.top).toBe("40px");
   });
 
+  test("honors page-relative vertical positions for footer text boxes", () => {
+    const emusPerPixel = 9_525;
+    const anchoredTop = 900;
+    const textBoxBlock: TextBoxBlock = {
+      kind: "textBox",
+      id: "positioned-footer-box",
+      width: 80,
+      height: 20,
+      content: [],
+      wrapType: "behind",
+      position: {
+        vertical: {
+          relativeTo: "page",
+          posOffset: anchoredTop * emusPerPixel,
+        },
+      },
+    };
+
+    const pageElement = renderPage(
+      { ...page, fragments: [] },
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      {
+        document: fakeDocument,
+        footerContent: {
+          rId: "rIdFooter",
+          blocks: [textBoxBlock],
+          measures: [textBoxMeasure(textBoxBlock.width, textBoxBlock.height)],
+          height: 0,
+        },
+      },
+    ) as unknown as FakeElement;
+
+    const textBox = findByClass(pageElement, "layout-textbox");
+    expect(textBox?.parent).toBe(pageElement);
+    expect(textBox?.style.top).toBe(`${anchoredTop}px`);
+    expect(textBox?.dataset["hfSlotKind"]).toBe("footer");
+    expect(textBox?.dataset["hfRid"]).toBe("rIdFooter");
+  });
+
   test("interactive header/footer box tracks the flow band, not a floating shape's extent (#869)", () => {
     const para = (id: string): ParagraphBlock => ({
       kind: "paragraph",

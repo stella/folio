@@ -1299,11 +1299,21 @@ function renderHeaderFooterContent(
       const fragEl = renderTextBoxFragment(syntheticFragment, block, measure, hfContext, {
         document: doc,
       });
-      fragEl.style.top = `${cursorY}px`;
+      const textBoxTop = block.position
+        ? resolveHeaderFooterFloatTop(
+            {
+              height: measure.height,
+              paragraphY: cursorY,
+              position: block.position,
+            },
+            layout,
+          )
+        : cursorY;
+      fragEl.style.top = `${textBoxTop}px`;
       // Honor the anchor's horizontal position (e.g. centered relative to the
-      // page) instead of pinning the box to the left. The vertical position
-      // stays on the H/F flow cursor (positionV is not yet honored for H/F text
-      // boxes). eigenpal/docx-editor#700.
+      // page) instead of pinning the box to the left. Vertical page/margin
+      // anchors use the same resolver as floating H/F images so positioned
+      // text boxes do not fall back to the H/F flow cursor.
       fragEl.style.left = resolveHeaderFooterFloatLeft(
         measure.width,
         block.position?.horizontal,
