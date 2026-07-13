@@ -1,10 +1,11 @@
-import type { Image } from "../types/document";
+import type { Image, MediaFile, RelationshipMap } from "../types/document";
 import { emuToPixels } from "../utils/units";
-import { parseImage } from "./imageParser";
+import { parseImage, resolveImageData } from "./imageParser";
 import {
   findAllDeep,
   findChildByLocalName,
   findChildrenByLocalName,
+  getChildElements,
   getAttribute,
   getLocalName,
   getTextContent,
@@ -18,6 +19,7 @@ const DEFAULT_FONT_HALF_POINTS = 22;
 const DEFAULT_LINE_WIDTH_EMU = 9_525;
 const HALF_POINT_TO_EMU = 6_350;
 const MAX_GROUP_SHAPES = 256;
+const CROP_SCALE = 100_000;
 const MAX_PATH_COMMANDS = 10_000;
 const MAX_TEXT_CHARACTERS = 20_000;
 const MAX_SVG_CHARACTERS = 1_000_000;
@@ -187,16 +189,99 @@ const renderTextBox = (wsp: XmlElement): string => {
   return `<text x="0" y="${svgFontSize}" transform="translate(${x} ${y}) scale(${scale})" font-family="Arial, sans-serif" font-size="${svgFontSize}" fill="#${color}">${tspans}</text>`;
 };
 
-const createSvg = (group: XmlElement, width: number, height: number): string => {
-  const children = findChildrenByLocalName(group, "wsp").slice(0, MAX_GROUP_SHAPES);
+const renderPicture = (
+  picture: XmlElement,
+  index: number,
+  rels: RelationshipMap | undefined,
+  media: Map<string, MediaFile> | undefined,
+): string => {
+  const { x, y, width, height } = childTransform(picture);
+  if (width <= 0 || height <= 0) {
+    return "";
+  }
+  const blipFill = findChildByLocalName(picture, "blipFill");
+  const blip = findChildByLocalName(blipFill, "blip");
+  const rId = getAttribute(blip, "r", "embed") ?? getAttribute(blip, "r", "link") ?? "";
+  const { src } = resolveImageData(rId, rels, media);
+  if (!src) {
+    return "";
+  }
+
+  const sourceRect = findChildByLocalName(blipFill, "srcRect");
+  const left = Math.max(0, numericAttr(sourceRect, "l")) / CROP_SCALE;
+  const top = Math.max(0, numericAttr(sourceRect, "t")) / CROP_SCALE;
+  const right = Math.max(0, numericAttr(sourceRect, "r")) / CROP_SCALE;
+  const bottom = Math.max(0, numericAttr(sourceRect, "b")) / CROP_SCALE;
+  const visibleWidth = 1 - left - right;
+  const visibleHeight = 1 - top - bottom;
+  if (visibleWidth <= 0 || visibleHeight <= 0) {
+    return "";
+  }
+
+  const imageX = x - (width * left) / visibleWidth;
+  const imageY = y - (height * top) / visibleHeight;
+  const imageWidth = width / visibleWidth;
+  const imageHeight = height / visibleHeight;
+  const image = `<image x="${imageX}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" href="${escapeXml(src)}" preserveAspectRatio="none"/>`;
+  if (left === 0 && top === 0 && right === 0 && bottom === 0) {
+    return image;
+  }
+  const clipId = `group-picture-${index}`;
+  return `<defs><clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${width}" height="${height}"/></clipPath></defs><g clip-path="url(#${clipId})">${image}</g>`;
+};
+
+const groupViewBox = (
+  group: XmlElement,
+  width: number,
+  height: number,
+): { x: number; y: number; width: number; height: number } => {
+  const groupProperties = findChildByLocalName(group, "grpSpPr");
+  const transform = findChildByLocalName(groupProperties, "xfrm");
+  const childOffset = findChildByLocalName(transform, "chOff");
+  const childExtent = findChildByLocalName(transform, "chExt");
+  const childWidth = numericAttr(childExtent, "cx");
+  const childHeight = numericAttr(childExtent, "cy");
+  return {
+    x: numericAttr(childOffset, "x"),
+    y: numericAttr(childOffset, "y"),
+    width: childWidth > 0 ? childWidth : width,
+    height: childHeight > 0 ? childHeight : height,
+  };
+};
+
+const createSvg = (
+  group: XmlElement,
+  width: number,
+  height: number,
+  rels: RelationshipMap | undefined,
+  media: Map<string, MediaFile> | undefined,
+): string | null => {
+  const children = getChildElements(group).slice(0, MAX_GROUP_SHAPES);
   const content = children
-    .map((wsp) => (findChildByLocalName(wsp, "txbx") ? renderTextBox(wsp) : renderGeometry(wsp)))
+    .map((child, index) => {
+      const localName = getLocalName(child.name ?? "");
+      if (localName === "pic") {
+        return renderPicture(child, index, rels, media);
+      }
+      if (localName !== "wsp") {
+        return "";
+      }
+      return findChildByLocalName(child, "txbx") ? renderTextBox(child) : renderGeometry(child);
+    })
     .join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${emuToPixels(width)}" height="${emuToPixels(height)}">${content}</svg>`;
+  if (!content) {
+    return null;
+  }
+  const viewBox = groupViewBox(group, width, height);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}" width="${emuToPixels(width)}" height="${emuToPixels(height)}">${content}</svg>`;
 };
 
 /** Parse a WordprocessingGroup drawing into a safe SVG-backed image preview. */
-export const parseGroupDrawing = (drawing: XmlElement): Image | null => {
+export const parseGroupDrawing = (
+  drawing: XmlElement,
+  rels?: RelationshipMap,
+  media?: Map<string, MediaFile>,
+): Image | null => {
   const graphicData = findAllDeep(drawing, "a", "graphicData").at(0);
   const group = findChildByLocalName(graphicData ?? null, "wgp");
   if (!group) {
@@ -206,8 +291,8 @@ export const parseGroupDrawing = (drawing: XmlElement): Image | null => {
   if (!image || image.size.width <= 0 || image.size.height <= 0) {
     return null;
   }
-  const svg = createSvg(group, image.size.width, image.size.height);
-  if (svg.length > MAX_SVG_CHARACTERS) {
+  const svg = createSvg(group, image.size.width, image.size.height, rels, media);
+  if (!svg || svg.length > MAX_SVG_CHARACTERS) {
     return null;
   }
   image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;

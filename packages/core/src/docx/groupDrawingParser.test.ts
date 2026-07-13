@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import type { MediaFile, RelationshipMap } from "../types/document";
 import { parseGroupDrawing } from "./groupDrawingParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -50,5 +51,84 @@ describe("parseGroupDrawing", () => {
     expect(svg).toContain("A &amp; B");
     expect(svg).not.toContain("A & B");
     expect(svg).not.toContain('<rect width="2000000" height="1000000" fill="#FFFFFF"');
+  });
+
+  test("composes grouped pictures within the authored group extent", () => {
+    const drawing = parseXmlDocument(`
+      <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+        xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"
+        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+        xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup">
+        <wp:anchor behindDoc="1">
+          <wp:extent cx="2000000" cy="1000000"/>
+          <wp:wrapNone/>
+          <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup">
+            <wpg:wgp>
+              <wpg:grpSpPr><a:xfrm><a:chOff x="100" y="200"/><a:chExt cx="1800000" cy="800000"/></a:xfrm></wpg:grpSpPr>
+              <pic:pic>
+                <pic:blipFill><a:blip r:embed="rId1"/><a:srcRect l="25000"/></pic:blipFill>
+                <pic:spPr><a:xfrm><a:off x="100" y="200"/><a:ext cx="900000" cy="800000"/></a:xfrm></pic:spPr>
+              </pic:pic>
+              <pic:pic>
+                <pic:blipFill><a:blip r:embed="rId2"/></pic:blipFill>
+                <pic:spPr><a:xfrm><a:off x="1000000" y="200"/><a:ext cx="900000" cy="800000"/></a:xfrm></pic:spPr>
+              </pic:pic>
+            </wpg:wgp>
+          </a:graphicData></a:graphic>
+        </wp:anchor>
+      </w:drawing>
+    `);
+    if (!drawing) {
+      throw new Error("Expected drawing fixture");
+    }
+    const rels: RelationshipMap = new Map([
+      [
+        "rId1",
+        {
+          id: "rId1",
+          type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+          target: "media/first.png",
+        },
+      ],
+      [
+        "rId2",
+        {
+          id: "rId2",
+          type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+          target: "media/second.png",
+        },
+      ],
+    ]);
+    const media = new Map<string, MediaFile>([
+      [
+        "word/media/first.png",
+        {
+          path: "word/media/first.png",
+          mimeType: "image/png",
+          data: new ArrayBuffer(0),
+          dataUrl: "data:image/png;base64,Zmlyc3Q=",
+        },
+      ],
+      [
+        "word/media/second.png",
+        {
+          path: "word/media/second.png",
+          mimeType: "image/png",
+          data: new ArrayBuffer(0),
+          dataUrl: "data:image/png;base64,c2Vjb25k",
+        },
+      ],
+    ]);
+
+    const image = parseGroupDrawing(drawing, rels, media);
+    expect(image?.size).toEqual({ width: 2_000_000, height: 1_000_000 });
+    const svg = decodeURIComponent(image?.src?.split(",").at(1) ?? "");
+    expect(svg).toContain('viewBox="100 200 1800000 800000"');
+    expect(svg.match(/<image /gu)).toHaveLength(2);
+    expect(svg).toContain('href="data:image/png;base64,Zmlyc3Q="');
+    expect(svg).toContain('href="data:image/png;base64,c2Vjb25k"');
+    expect(svg).toContain('<clipPath id="group-picture-1">');
   });
 });
