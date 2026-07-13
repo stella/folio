@@ -53,6 +53,45 @@ describe("parseGroupDrawing", () => {
     expect(svg).not.toContain('<rect width="2000000" height="1000000" fill="#FFFFFF"');
   });
 
+  test("uses grouped shape style outline colour when geometry omits a direct colour", () => {
+    const drawing = parseXmlDocument(`
+      <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+        xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+        xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+        <wp:anchor>
+          <wp:extent cx="2000000" cy="100000"/>
+          <wp:wrapTopAndBottom/>
+          <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup">
+            <wpg:wgp><wps:wsp>
+              <wps:spPr>
+                <a:xfrm><a:off x="0" y="0"/><a:ext cx="2000000" cy="100000"/></a:xfrm>
+                <a:custGeom><a:pathLst><a:path w="2000000" h="100000">
+                  <a:moveTo><a:pt x="0" y="50000"/></a:moveTo>
+                  <a:lnTo><a:pt x="2000000" y="50000"/></a:lnTo>
+                </a:path></a:pathLst></a:custGeom>
+                <a:ln w="20000"/>
+              </wps:spPr>
+              <wps:style>
+                <a:lnRef idx="1"><a:srgbClr val="123456"/></a:lnRef>
+                <a:fillRef idx="0"><a:srgbClr val="ABCDEF"/></a:fillRef>
+              </wps:style>
+            </wps:wsp></wpg:wgp>
+          </a:graphicData></a:graphic>
+        </wp:anchor>
+      </w:drawing>
+    `);
+
+    if (!drawing) {
+      throw new Error("Expected drawing fixture");
+    }
+    const image = parseGroupDrawing(drawing);
+    const svg = decodeURIComponent(image?.src?.split(",").at(1) ?? "");
+
+    expect(svg).toContain('fill="none" stroke="#123456" stroke-width="20000"');
+  });
+
   test("composes grouped pictures within the authored group extent", () => {
     const drawing = parseXmlDocument(`
       <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"

@@ -67,9 +67,13 @@ const colorFrom = (parent: XmlElement | null, fallback?: string): string | undef
       return value.toUpperCase();
     }
   }
+  if (findChildByLocalName(parent, "noFill")) {
+    return "none";
+  }
   const solidFill = findChildByLocalName(parent, "solidFill");
   const srgb = findChildByLocalName(solidFill, "srgbClr");
-  const value = getAttribute(srgb, null, "val");
+  const referencedSrgb = findChildByLocalName(parent, "srgbClr");
+  const value = getAttribute(srgb ?? referencedSrgb, null, "val");
   if (value && HEX_COLOR.test(value)) {
     return value.toUpperCase();
   }
@@ -139,9 +143,11 @@ const renderGeometry = (wsp: XmlElement): string => {
     return "";
   }
   const spPr = findChildByLocalName(wsp, "spPr");
+  const style = findChildByLocalName(wsp, "style");
+  const styleStroke = colorFrom(findChildByLocalName(style, "lnRef"), "none");
   const fill = colorFrom(spPr, "none");
   const line = findChildByLocalName(spPr, "ln");
-  const stroke = colorFrom(line, "none");
+  const stroke = colorFrom(line, styleStroke);
   const strokeWidth = line ? (parseNumericAttribute(line, null, "w") ?? DEFAULT_LINE_WIDTH_EMU) : 0;
   const paths = findAllDeep(findChildByLocalName(spPr, "custGeom"), "a", "path");
   if (paths.length === 0) {
