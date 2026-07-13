@@ -36,7 +36,6 @@ import type {
   MeasureWorkerRequest,
   MeasureWorkerResponse,
 } from "./measureWorkerProtocol";
-import type { FontKerningMode } from "./textMeasurementPolicy";
 
 // =============================================================================
 // TRANSPORT
