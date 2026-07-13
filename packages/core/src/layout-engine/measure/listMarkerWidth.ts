@@ -169,7 +169,7 @@ export function getListMarkerVisualOffset(block: ParagraphBlock): number {
 
 const getMarkerEndOffset = (
   naturalWidth: number,
-  alignment: ParagraphBlock["attrs"]["listMarkerAlignment"],
+  alignment: NonNullable<ParagraphBlock["attrs"]>["listMarkerAlignment"],
 ): number => {
   if (alignment === "right") {
     return 0;
