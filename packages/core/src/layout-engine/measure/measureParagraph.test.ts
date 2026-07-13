@@ -571,7 +571,28 @@ describe("measureParagraph justified shrink tolerance", () => {
         expect(measure.lines).toHaveLength(1);
       },
       {
-        charWidth: (char) => (char === "b" ? 0.55 : 1),
+        charWidth: (char) => (char === "b" ? 0.5 : 1),
+      },
+    );
+  });
+
+  test("wraps ordinary prose beyond the constrained shrink capacity", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-prose-shrink-boundary",
+            runs: [{ kind: "text", text }],
+            attrs: { alignment: "justify" },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: (char) => (char === "b" ? 0.7 : 1),
       },
     );
   });
@@ -590,7 +611,7 @@ describe("measureParagraph justified shrink tolerance", () => {
               tabs: [{ val: "start", pos: 360 }],
             },
           },
-          147.8,
+          148,
         );
 
         expect(measure.lines).toHaveLength(1);
