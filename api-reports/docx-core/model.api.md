@@ -497,7 +497,8 @@ export type ListRendering = {
     numFmt?: NumberFormat; /** Whether the list marker is hidden (w:vanish on level rPr) */
     markerHidden?: boolean; /** Marker font family from numbering level rPr (ascii name) */
     markerFontFamily?: string; /** Marker font size from numbering level rPr, in points */
-    markerFontSize?: number;
+    markerFontSize?: number; /** Horizontal alignment of the marker around the paragraph's list anchor. */
+    markerAlignment?: "left" | "center" | "right";
     markerAllCaps?: boolean;
     markerSuffix?: LevelSuffix; /** Number format for each level from 0 through this paragraph's level. */
     levelNumFmts?: NumberFormat[]; /** Abstract numbering definition shared by one or more numIds. */

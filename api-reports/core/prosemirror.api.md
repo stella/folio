@@ -308,7 +308,8 @@ export type ParagraphAttrs = {
     listMarker?: string; /** Whether the list marker is hidden (w:vanish on numbering level rPr) */
     listMarkerHidden?: boolean; /** Marker font family from numbering level rPr */
     listMarkerFontFamily?: string; /** Marker font size from numbering level rPr, in points */
-    listMarkerFontSize?: number;
+    listMarkerFontSize?: number; /** Horizontal alignment of the marker around the paragraph's list anchor. */
+    listMarkerAlignment?: "left" | "center" | "right";
     listMarkerSuffix?: "tab" | "space" | "nothing"; /** `w:caps` on the numbering level rPr — render marker in upper case. */
     listMarkerAllCaps?: boolean;
     listImplicitChildLevelAdvances?: number;

@@ -584,7 +584,8 @@ export type ParagraphAttrs = {
     listIsBullet?: boolean;
     listMarkerHidden?: boolean;
     listMarkerFontFamily?: string;
-    listMarkerFontSize?: number;
+    listMarkerFontSize?: number; /** Horizontal alignment of the marker around the paragraph's list anchor. */
+    listMarkerAlignment?: "left" | "center" | "right";
     listMarkerSuffix?: "tab" | "space" | "nothing";
     listMarkerRevision?: {
         kind: "ins" | "del";
