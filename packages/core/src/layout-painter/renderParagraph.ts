@@ -2515,13 +2515,6 @@ export function renderParagraphFragment(
     } else if (indentLeft > 0) {
       // Body lines (not first line)
       lineEl.style.paddingLeft = `${indentLeft}px`;
-    } else if (hasHanging && indentLeft === 0) {
-      // Zero left indent + hanging: body lines need padding = hanging so
-      // continuation text aligns with the first line's post-marker body.
-      // A NEGATIVE left indent is realized by the line's own margin-left
-      // (`min(indentLeft, 0)` below); adding hanging padding there would
-      // double-shift the continuation right of where Word places it.
-      lineEl.style.paddingLeft = `${indent.hanging ?? 0}px`;
     }
 
     if (indentRight > 0) {
@@ -2600,11 +2593,9 @@ export function renderParagraphFragment(
       // that so the marker only takes the REMAINING negative offset: for a
       // positive left indent the line margin is 0 and this is just `markerStart`;
       // for a negative left indent it is `markerStart - indentLeft = -hanging`.
-      // The zero-left-indent case keeps its existing model (marker at the box
-      // edge, body at `hanging` via padding), so it is excluded.
       const markerLineMargin = Math.min(indentLeft, 0);
       const markerMarginLeft = markerStart - markerLineMargin;
-      if (markerMarginLeft < 0 && indentLeft !== 0) {
+      if (markerMarginLeft < 0) {
         marker.style.marginLeft = `${markerMarginLeft}px`;
       }
       lineEl.prepend(marker);

@@ -164,12 +164,16 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
     expect(line.style.textIndent).toBe("0");
   });
 
-  test("left == 0 with hanging: no negative margin (continuation lines sit at hanging)", () => {
-    // Gating on indentLeft > 0 avoids misaligning the first line with the
-    // continuation lines, which the body-line branch places at `hanging`.
+  test("left == 0 with hanging: marker hangs left and body stays at the content edge", () => {
     const { line, marker } = renderListItem({ left: 0, hanging: 24 });
-    expect(marker?.style.marginLeft).toBeFalsy();
+    expect(marker?.style.marginLeft).toBe("-24px");
     expect(line.style.paddingLeft).toBe("0px");
+  });
+
+  test("left == 0 with hanging: continuation lines stay at the content edge", () => {
+    const { continuation } = renderMultiLineListItem({ left: 0, hanging: 24 });
+    expect(continuation.style.paddingLeft).toBeFalsy();
+    expect(continuation.style.marginLeft).toBeFalsy();
   });
 });
 
