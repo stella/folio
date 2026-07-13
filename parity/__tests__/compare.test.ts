@@ -487,6 +487,34 @@ describe("compareGeoms", () => {
     ).toBe(false);
   });
 
+  test("accepts equivalent same-row segmentation when union geometry agrees", () => {
+    const word = makeDoc("word", [
+      makePage({
+        lines: [
+          makeLine({ text: "Left one", xPt: 72, yPt: 72, widthPt: 60 }),
+          makeLine({ text: "Right one", xPt: 300, yPt: 72, widthPt: 60 }),
+          makeLine({ text: "Left two", xPt: 72, yPt: 100, widthPt: 60 }),
+          makeLine({ text: "Right two", xPt: 300, yPt: 100, widthPt: 60 }),
+        ],
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({ text: "Left one Right one", xPt: 72, yPt: 78, widthPt: 288 }),
+          makeLine({ text: "Left two Right two", xPt: 72, yPt: 106, widthPt: 288 }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(word, folio);
+
+    expect(result.divergences).toEqual([]);
+    expect(result.matchedLines).toBe(4);
+    expect(result.medianYOffsetPt).toBe(6);
+    expect(result.score).toBe(1);
+  });
+
   test("a normalized 1-to-1 gap is treated as a match, not a line-break", () => {
     const word = makeDoc("word", [
       makePage({

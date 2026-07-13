@@ -69,15 +69,25 @@ export const compareGeoms = (
   const matches = resolved.filter(
     (item): item is Extract<ResolvedItem, { kind: "match" }> => item.kind === "match",
   );
-  const medianYOffsetsByPageRegion = pageRegionMedianYOffsets(matches, wordFlat, folioFlat);
+  const equivalentRows = resolved.flatMap((item) => {
+    if (item.kind !== "line-break") return [];
+    return equivalentVisualRows(item, wordFlat, folioFlat) ?? [];
+  });
+  const medianYOffsetsByPageRegion = pageRegionMedianYOffsets({
+    matches,
+    wordFlat,
+    folioFlat,
+    equivalentRows,
+  });
   const medianYOffsetPt = median([...medianYOffsetsByPageRegion.values()]);
   const yResidualsByMatch = segmentedYResiduals(matches, wordFlat, folioFlat, tolerances);
 
-  const { orderedDivergences, matchedGeomPass } = diffMatches({
+  const { orderedDivergences, matchedGeomPass, matchedLineCount } = diffMatches({
     resolved,
     wordFlat,
     folioFlat,
     tolerances,
+    medianYOffsetsByPageRegion,
     yResidualsByMatch,
   });
   divergences.push(...orderedDivergences);
@@ -94,7 +104,7 @@ export const compareGeoms = (
     wordPages: word.pages.length,
     folioPages: folio.pages.length,
     totalWordLines,
-    matchedLines: matches.length,
+    matchedLines: matchedLineCount,
     medianYOffsetPt,
     divergences,
   };
@@ -515,11 +525,19 @@ const pageRegionKey = (page: number, region: LineBox["region"]): string =>
 const matchedPageRegionKey = (word: FlatLine, folio: FlatLine): string =>
   pageRegionKey(word.page, folio.line.region);
 
-const pageRegionMedianYOffsets = (
-  matches: Extract<ResolvedItem, { kind: "match" }>[],
-  wordFlat: FlatLine[],
-  folioFlat: FlatLine[],
-): Map<string, number> => {
+type PageRegionMedianYOffsetsOptions = {
+  matches: Extract<ResolvedItem, { kind: "match" }>[];
+  wordFlat: FlatLine[];
+  folioFlat: FlatLine[];
+  equivalentRows: EquivalentVisualRow[];
+};
+
+const pageRegionMedianYOffsets = ({
+  matches,
+  wordFlat,
+  folioFlat,
+  equivalentRows,
+}: PageRegionMedianYOffsetsOptions): Map<string, number> => {
   const deltasByPageRegion = new Map<string, number[]>();
   for (const m of matches) {
     const w = wordFlat[m.wordIdx];
@@ -536,6 +554,15 @@ const pageRegionMedianYOffsets = (
     const key = matchedPageRegionKey(w, f);
     const deltas = deltasByPageRegion.get(key) ?? [];
     deltas.push(f.line.yPt - w.line.yPt);
+    deltasByPageRegion.set(key, deltas);
+  }
+  for (const { reference, candidate } of equivalentRows) {
+    if (!hasStableVerticalInk(reference.line) || !hasStableVerticalInk(candidate.line)) {
+      continue;
+    }
+    const key = matchedPageRegionKey(reference, candidate);
+    const deltas = deltasByPageRegion.get(key) ?? [];
+    deltas.push(candidate.line.yPt - reference.line.yPt);
     deltasByPageRegion.set(key, deltas);
   }
   return new Map([...deltasByPageRegion].map(([key, deltas]) => [key, median(deltas)]));
@@ -627,12 +654,17 @@ const segmentedYResiduals = (
 /** Result of walking the resolved items into divergences: the divergences
  * in document order, plus the count of matched pairs that pass every
  * geometric check (used for the parity score numerator). */
-type DiffMatchesResult = { orderedDivergences: Divergence[]; matchedGeomPass: number };
+type DiffMatchesResult = {
+  orderedDivergences: Divergence[];
+  matchedGeomPass: number;
+  matchedLineCount: number;
+};
 type DiffMatchesOptions = {
   resolved: ResolvedItem[];
   wordFlat: FlatLine[];
   folioFlat: FlatLine[];
   tolerances: ComparisonTolerances;
+  medianYOffsetsByPageRegion: ReadonlyMap<string, number>;
   yResidualsByMatch: ReadonlyMap<string, number>;
 };
 
@@ -641,16 +673,19 @@ const diffMatches = ({
   wordFlat,
   folioFlat,
   tolerances,
+  medianYOffsetsByPageRegion,
   yResidualsByMatch,
 }: DiffMatchesOptions): DiffMatchesResult => {
   const orderedDivergences: Divergence[] = [];
   let matchedGeomPass = 0;
+  let matchedLineCount = 0;
 
   for (const item of resolved) {
     if (item.kind === "match") {
       const w = wordFlat[item.wordIdx];
       const f = folioFlat[item.folioIdx];
       if (!w || !f) continue;
+      matchedLineCount++;
       const samePage = w.page === f.page;
 
       // Space-insensitive: visual-row merging joins reference marker
@@ -707,6 +742,54 @@ const diffMatches = ({
 
       if (samePage && xDelta === null && widthDelta === null && yDelta === null) matchedGeomPass++;
     } else if (item.kind === "line-break") {
+      const equivalentRows = equivalentVisualRows(item, wordFlat, folioFlat);
+      if (equivalentRows) {
+        for (const { reference, candidate, referenceLineCount } of equivalentRows) {
+          matchedLineCount += referenceLineCount;
+          const xDelta = checkXDrift(reference.line, candidate.line, tolerances);
+          if (xDelta !== null) {
+            orderedDivergences.push({
+              kind: "x-drift",
+              page: reference.page,
+              text: reference.line.normText,
+              deltaPt: xDelta,
+            });
+          }
+          const widthDelta = checkWidthDrift(reference.line, candidate.line, tolerances);
+          if (widthDelta !== null) {
+            orderedDivergences.push({
+              kind: "width-drift",
+              page: reference.page,
+              text: reference.line.normText,
+              deltaPt: widthDelta,
+            });
+          }
+
+          let yDelta: number | null = null;
+          if (hasStableVerticalInk(reference.line) && hasStableVerticalInk(candidate.line)) {
+            const medianOffset =
+              medianYOffsetsByPageRegion.get(
+                pageRegionKey(reference.page, candidate.line.region),
+              ) ?? 0;
+            const residual = candidate.line.yPt - reference.line.yPt - medianOffset;
+            if (Math.abs(residual) > tolerances.yResidualPt) {
+              yDelta = residual;
+              orderedDivergences.push({
+                kind: "y-drift",
+                page: reference.page,
+                text: reference.line.normText,
+                residualPt: residual,
+              });
+            }
+          }
+
+          if (xDelta === null && widthDelta === null && yDelta === null) {
+            matchedGeomPass += referenceLineCount;
+          }
+        }
+        continue;
+      }
+
       const firstWordIdx = item.wordIdxs[0];
       const page = firstWordIdx === undefined ? undefined : wordFlat[firstWordIdx]?.page;
       if (page !== undefined) {
@@ -726,7 +809,87 @@ const diffMatches = ({
     }
   }
 
-  return { orderedDivergences, matchedGeomPass };
+  return { orderedDivergences, matchedGeomPass, matchedLineCount };
+};
+
+type EquivalentVisualRow = {
+  reference: FlatLine;
+  candidate: FlatLine;
+  referenceLineCount: number;
+};
+
+const equivalentVisualRows = (
+  item: Extract<ResolvedItem, { kind: "line-break" }>,
+  referenceFlat: FlatLine[],
+  candidateFlat: FlatLine[],
+): EquivalentVisualRow[] | null => {
+  if (item.wordIdxs.length === item.folioIdxs.length) return null;
+  const referenceRows = groupGapLinesByVisualRow(item.wordIdxs, referenceFlat);
+  const candidateRows = groupGapLinesByVisualRow(item.folioIdxs, candidateFlat);
+  if (referenceRows.length === 0 || referenceRows.length !== candidateRows.length) {
+    return null;
+  }
+
+  const equivalentRows: EquivalentVisualRow[] = [];
+  for (let index = 0; index < referenceRows.length; index++) {
+    const referenceIdxs = referenceRows[index];
+    const candidateIdxs = candidateRows[index];
+    if (!referenceIdxs || !candidateIdxs) return null;
+    const reference = mergeFlatLines(referenceIdxs, referenceFlat);
+    const candidate = mergeFlatLines(candidateIdxs, candidateFlat);
+    if (!reference || !candidate) return null;
+    if (
+      reference.page !== candidate.page ||
+      textSimilarity(reference.line.normText, candidate.line.normText) < CONCAT_THRESHOLD
+    ) {
+      return null;
+    }
+    equivalentRows.push({ reference, candidate, referenceLineCount: referenceIdxs.length });
+  }
+  return equivalentRows;
+};
+
+const groupGapLinesByVisualRow = (idxs: number[], flat: FlatLine[]): number[][] => {
+  const rows: number[][] = [];
+  for (const idx of idxs) {
+    const current = flat[idx];
+    if (!current) return [];
+    const row = rows.at(-1);
+    const sharesVisualRow = row?.some((rowIdx) => {
+      const member = flat[rowIdx];
+      return (
+        member !== undefined &&
+        member.page === current.page &&
+        member.line.region === current.line.region &&
+        isSameVisualRow(member.line, current.line)
+      );
+    });
+    if (row && sharesVisualRow) {
+      row.push(idx);
+      continue;
+    }
+    rows.push([idx]);
+  }
+  return rows;
+};
+
+const mergeFlatLines = (idxs: number[], flat: FlatLine[]): FlatLine | null => {
+  const members = idxs
+    .map((idx) => flat[idx])
+    .filter((member): member is FlatLine => member !== undefined)
+    .sort((left, right) => left.line.xPt - right.line.xPt);
+  const first = members[0];
+  if (!first || members.length !== idxs.length) return null;
+  let mergedLine = first.line;
+  for (let index = 1; index < members.length; index++) {
+    const member = members[index];
+    if (!member) return null;
+    mergedLine = mergeBoxes(mergedLine, member.line);
+  }
+  return {
+    page: first.page,
+    line: mergedLine,
+  };
 };
 
 /** x-drift: folio's left edge vs word's, page-relative pt. */
