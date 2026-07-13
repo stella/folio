@@ -100,8 +100,12 @@ export function renderTextBoxFragment(
       toLine: paraMeasure.lines.length,
     };
 
+    const prevBorders = block.content[i - 1]?.attrs?.borders;
+    const nextBorders = block.content[i + 1]?.attrs?.borders;
     const paraEl = renderParagraphFragment(paraFragment, paraBlock, paraMeasure, context, {
       document: doc,
+      ...(prevBorders !== undefined ? { prevBorders } : {}),
+      ...(nextBorders !== undefined ? { nextBorders } : {}),
     });
 
     // Override absolute positioning to use relative flow within the text box

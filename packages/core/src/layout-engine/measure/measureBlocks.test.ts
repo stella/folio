@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 import type { FlowBlock, ImageBlock, ParagraphBlock, TableBlock, TextBoxBlock } from "../types";
+import { markParagraphFrameTextBox } from "../paragraphFrame";
 import { setTextBoxGroupId } from "../textBoxGroup";
+import { pixelsToEmu } from "../../utils/units";
 import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
 import { measureBlock, measureBlocks, measureTableBlock } from "./measureBlocks";
 
@@ -141,6 +143,45 @@ describe("measureBlocks", () => {
       }
 
       expect(paragraphMeasure.lines.at(0)?.floatSkipBefore).toBeCloseTo(60, 5);
+    }, fakeMeasure);
+  });
+
+  test("reserves a paragraph frame set before measuring body text", () => {
+    withFakeTextMeasure(() => {
+      const frame = (id: string, x: number): TextBoxBlock => ({
+        kind: "textBox",
+        id,
+        width: 300,
+        height: 100,
+        content: [],
+        displayMode: "float",
+        wrapType: "square",
+        wrapText: "bothSides",
+        position: {
+          horizontal: { relativeTo: "page", posOffset: pixelsToEmu(x) },
+          vertical: { relativeTo: "page", posOffset: pixelsToEmu(136) },
+        },
+      });
+      const left = frame("left-frame", 96);
+      const right = frame("right-frame", 396);
+      markParagraphFrameTextBox(left);
+      markParagraphFrameTextBox(right);
+      setTextBoxGroupId(left, "frame-set");
+      setTextBoxGroupId(right, "frame-set");
+
+      const measures = measureBlocks([left, right, para("body", "body")], 600, 96, {
+        pageWidth: 792,
+        pageHeight: 1_056,
+        marginLeft: 96,
+        marginRight: 96,
+        marginBottom: 96,
+      });
+      const bodyMeasure = measures.at(2);
+      if (bodyMeasure?.kind !== "paragraph") {
+        throw new Error("Expected body paragraph measure");
+      }
+
+      expect(bodyMeasure.lines.at(0)?.floatSkipBefore).toBeCloseTo(140, 5);
     }, fakeMeasure);
   });
 

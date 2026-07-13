@@ -15,6 +15,9 @@ type PerBlockMeasureInputs = {
   // bands (`bandTopContentY`) in the measure pass. Sections can vary page size
   // and margins, so these are per-block like `widths`/`marginTops`.
   pageHeights: number[];
+  pageWidths: number[];
+  marginLefts: number[];
+  marginRights: number[];
   marginBottoms: number[];
 };
 
@@ -71,6 +74,9 @@ export function computePerBlockMeasureInputs({
   const widths: number[] = [];
   const marginTops: number[] = [];
   const pageHeights: number[] = [];
+  const pageWidths: number[] = [];
+  const marginLefts: number[] = [];
+  const marginRights: number[] = [];
   const marginBottoms: number[] = [];
 
   for (let i = 0; i < blocks.length; i++) {
@@ -79,6 +85,9 @@ export function computePerBlockMeasureInputs({
     widths.push(colWidth(contentWidth(config), columns, columnIndex));
     marginTops.push(config.margins.top);
     pageHeights.push(config.pageSize.h);
+    pageWidths.push(config.pageSize.w);
+    marginLefts.push(config.margins.left);
+    marginRights.push(config.margins.right);
     marginBottoms.push(config.margins.bottom);
 
     if (sectionIdx < breakIndices.length && i === breakIndices[sectionIdx]) {
@@ -91,5 +100,13 @@ export function computePerBlockMeasureInputs({
     }
   }
 
-  return { widths, marginTops, pageHeights, marginBottoms };
+  return {
+    widths,
+    marginTops,
+    pageHeights,
+    pageWidths,
+    marginLefts,
+    marginRights,
+    marginBottoms,
+  };
 }

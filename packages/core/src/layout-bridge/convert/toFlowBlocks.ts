@@ -34,6 +34,7 @@ import type {
   FloatingTablePosition,
 } from "../../layout-engine/types";
 import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
+import { setParagraphFrame } from "../../layout-engine/paragraphFrame";
 import { DEFAULT_TEXTBOX_MARGINS, DEFAULT_TEXTBOX_WIDTH } from "../../layout-engine/types";
 import { getColumns } from "../sectionColumns";
 import {
@@ -87,6 +88,7 @@ import {
   halfPointsToPixels,
   halfPointsToPoints,
 } from "../../utils/units";
+import { groupParagraphFrames } from "./paragraphFrames";
 
 /**
  * Options for the conversion.
@@ -1854,7 +1856,7 @@ function convertParagraph(
 
   const bookmarkNames = pmAttrs.bookmarks?.map((b) => b.name);
 
-  return {
+  const block: ParagraphBlock = {
     kind: "paragraph",
     id: nextBlockId(),
     runs,
@@ -1864,6 +1866,21 @@ function convertParagraph(
     pmStart: startPos,
     pmEnd: startPos + node.nodeSize,
   };
+  const frame = pmAttrs._originalFormatting?.frame;
+  if (frame !== undefined) {
+    setParagraphFrame(block, {
+      ...(frame.width !== undefined ? { width: twipsToPixels(frame.width) } : {}),
+      ...(frame.height !== undefined ? { height: twipsToPixels(frame.height) } : {}),
+      ...(frame.hAnchor !== undefined ? { hAnchor: frame.hAnchor } : {}),
+      ...(frame.vAnchor !== undefined ? { vAnchor: frame.vAnchor } : {}),
+      ...(frame.x !== undefined ? { x: twipsToPixels(frame.x) } : {}),
+      ...(frame.y !== undefined ? { y: twipsToPixels(frame.y) } : {}),
+      ...(frame.xAlign !== undefined ? { xAlign: frame.xAlign } : {}),
+      ...(frame.yAlign !== undefined ? { yAlign: frame.yAlign } : {}),
+      ...(frame.wrap !== undefined ? { wrap: frame.wrap } : {}),
+    });
+  }
+  return block;
 }
 
 /**
@@ -2104,7 +2121,7 @@ function convertTableCell(
 
   const cell: TableCell = {
     id: nextBlockId(),
-    blocks,
+    blocks: groupParagraphFrames(blocks, nextBlockId),
     colSpan: attrs.colspan,
     rowSpan: attrs.rowspan,
     padding,
@@ -2770,7 +2787,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
 
   reserveLeadingEmptyOutlineHeight(blocks);
   suppressTerminalEmptyParagraphsAfterTable(blocks);
-  return mergeRunInParagraphs(blocks);
+  return groupParagraphFrames(mergeRunInParagraphs(blocks), nextBlockId);
 }
 
 /**

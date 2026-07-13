@@ -58,6 +58,9 @@ describe("section block measurement inputs", () => {
     });
 
     expect(inputs.marginTops).toEqual([64, 64, BODY_CONFIG.margins.top]);
+    expect(inputs.pageWidths).toEqual([600, 600, BODY_CONFIG.pageSize.w]);
+    expect(inputs.marginLefts).toEqual([50, 50, BODY_CONFIG.margins.left]);
+    expect(inputs.marginRights).toEqual([50, 50, BODY_CONFIG.margins.right]);
   });
 
   test("uses the authored width after a forced break in unequal columns", () => {
