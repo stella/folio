@@ -125,6 +125,20 @@ function pageHasVisibleBodyContent(
   return false;
 }
 
+function continuesNumberedSequence(previous: FlowBlock | undefined, current: FlowBlock): boolean {
+  if (previous?.kind !== "paragraph" || current.kind !== "paragraph") {
+    return false;
+  }
+  const previousNumPr = previous.attrs?.numPr;
+  const currentNumPr = current.attrs?.numPr;
+  if (previousNumPr?.numId === undefined || currentNumPr?.numId === undefined) {
+    return false;
+  }
+  return previousNumPr.numId === currentNumPr.numId && previousNumPr.ilvl === currentNumPr.ilvl;
+}
+
+type NaturalPageAdvance = "none" | "ordinary" | "reflowBoundary";
+
 /**
  * Get spacing before a paragraph block. Empty paragraphs whose
  * `before` came only from the implicit default paragraph style collapse to
@@ -442,7 +456,7 @@ export function layoutDocument(
   let activeSectionMarginTop = initialConfig.margins.top;
   let activeSectionPageHeight = initialConfig.pageSize.h;
   let activeSectionMarginBottom = initialConfig.margins.bottom;
-  let naturalPageAdvanceSinceRenderedBreak = false;
+  let naturalPageAdvanceSinceRenderedBreak: NaturalPageAdvance = "none";
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
@@ -458,26 +472,35 @@ export function layoutDocument(
       paginator.forcePageBreak();
     } else if (hasRenderedPageBreak) {
       const state = paginator.getCurrentState();
-      const naturalOverflowAlreadyCrossedEmptyMarker =
-        block.kind === "paragraph" &&
-        isPaginationEmptyParagraph(block) &&
-        naturalPageAdvanceSinceRenderedBreak;
+      const naturalAdvanceAlreadyCrossedMarker =
+        naturalPageAdvanceSinceRenderedBreak === "reflowBoundary" ||
+        (block.kind === "paragraph" &&
+          isPaginationEmptyParagraph(block) &&
+          naturalPageAdvanceSinceRenderedBreak !== "none") ||
+        (naturalPageAdvanceSinceRenderedBreak !== "none" &&
+          continuesNumberedSequence(blocks[i - 1], block));
       if (
-        !naturalOverflowAlreadyCrossedEmptyMarker &&
+        !naturalAdvanceAlreadyCrossedMarker &&
         pageHasVisibleBodyContent(state.page, blocksById)
       ) {
         paginator.forcePageBreak();
       }
     }
     if (hasRenderedPageBreak || hasPageBreakBefore(block)) {
-      naturalPageAdvanceSinceRenderedBreak = false;
+      naturalPageAdvanceSinceRenderedBreak = "none";
     }
 
     // Handle keepNext chains - if this is a chain start, check if chain fits
     const chain = keepNextChains.get(i);
     if (chain && !midChainIndices.has(i)) {
       const chainHeight = calculateChainHeight(chain, blocks, measures);
+      const pageBeforeChainLayout = paginator.getCurrentState().page.number;
       paginator.ensureFits(chainHeight);
+      if (paginator.getCurrentState().page.number > pageBeforeChainLayout) {
+        // The chain moved as one unit across the cached boundary. A rendered
+        // marker immediately after it describes the page Folio just opened.
+        naturalPageAdvanceSinceRenderedBreak = "reflowBoundary";
+      }
     }
 
     const pageBeforeBlockLayout = paginator.getCurrentState().page.number;
@@ -578,12 +601,18 @@ export function layoutDocument(
     const isStructuralBreak =
       block.kind === "pageBreak" || block.kind === "columnBreak" || block.kind === "sectionBreak";
     if (isStructuralBreak) {
-      naturalPageAdvanceSinceRenderedBreak = false;
+      naturalPageAdvanceSinceRenderedBreak = "none";
     } else if (
       isVisibleBodyBlock &&
       paginator.getCurrentState().page.number > pageBeforeBlockLayout
     ) {
-      naturalPageAdvanceSinceRenderedBreak = true;
+      const previousPage = paginator.pages.find(({ number }) => number === pageBeforeBlockLayout);
+      const blockContinuedAcrossBoundary = previousPage?.fragments.some(
+        ({ blockId }) => blockId === block.id,
+      );
+      naturalPageAdvanceSinceRenderedBreak = blockContinuedAcrossBoundary
+        ? "reflowBoundary"
+        : "ordinary";
     }
   }
 
