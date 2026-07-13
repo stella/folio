@@ -1,5 +1,26 @@
 # @stll/folio-core
 
+## 0.6.1
+
+### Patch Changes
+
+- [#192](https://github.com/stella/folio/pull/192) [`ee6d2ef`](https://github.com/stella/folio/commit/ee6d2ef6f750664e662f2931c81f3f3e0e400312) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep justified zero-left hanging list lines within the authored right margin.
+
+- [#198](https://github.com/stella/folio/pull/198) [`8712941`](https://github.com/stella/folio/commit/87129417ad86a0f9f6579410b259f9f2b4775b46) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve and paint anchored text boxes and images inside table cells.
+
+- [#191](https://github.com/stella/folio/pull/191) [`5200874`](https://github.com/stella/folio/commit/5200874a57875acfbfbda11002a2e8bb8d79b943) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve standalone column breaks and authored unequal section columns during layout.
+
+- [#194](https://github.com/stella/folio/pull/194) [`caa171b`](https://github.com/stella/folio/commit/caa171b36ac892ef7690db69b741ea89bcf99777) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor vertical page and margin anchors for positioned header and footer text boxes.
+
+- [#195](https://github.com/stella/folio/pull/195) [`cd53605`](https://github.com/stella/folio/commit/cd5360527e34fadd3cb7fe58b7192258e5ace0e5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align the leading text edge of unindented tables with the document content margin.
+
+- [#199](https://github.com/stella/folio/pull/199) [`e7fbc8d`](https://github.com/stella/folio/commit/e7fbc8d46f7973abb46e5593e6db7466e214515b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve autofit table grids that exceed their preferred width.
+
+- [#188](https://github.com/stella/folio/pull/188) [`3a2052e`](https://github.com/stella/folio/commit/3a2052e01e742f2a00a8dcfe1990abc85e679685) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Position zero-left hanging list markers in the page margin.
+
+- Updated dependencies [[`46c6730`](https://github.com/stella/folio/commit/46c6730ebf29daccdfac64c72fcf07702709e70f)]:
+  - @stll/docx-core@0.1.1
+
 ## 0.6.0
 
 ### Minor Changes
