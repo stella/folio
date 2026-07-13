@@ -971,10 +971,19 @@ export function measureParagraph(
   };
 
   const calculateLineTypography = (line: LineState): LineTypography => {
-    const typography = calculateTypographyMetrics(line.maxFontSize, spacing, line.maxFontMetrics);
+    const paragraphFontSize = attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE;
+    const paragraphFontFamily = attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
+    const fontSize = line.maxFontMetrics ? line.maxFontSize : paragraphFontSize;
+    const metrics =
+      line.maxFontMetrics ??
+      getFontMetrics({
+        fontSize: paragraphFontSize,
+        fontFamily: paragraphFontFamily,
+      });
+    const typography = calculateTypographyMetrics(fontSize, spacing, metrics);
 
     // If an inline image or stacked equation is taller than the text-based
-    // line height, the line grows to fit it. Word seats these inline objects
+    // line height, the line grows to fit it. The reference layout seats these inline objects
     // as tall glyphs on the text baseline.
     const finalTypography = { ...typography };
     const inlineObjectHeight = Math.max(line.maxImageHeightPx, line.maxMathHeightPx);

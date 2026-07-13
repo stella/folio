@@ -249,6 +249,32 @@ describe("empty paragraph line-height floor", () => {
     expect(measure.totalHeight).toBe(0);
     expect(measure.lines[0]?.lineHeight).toBe(0);
   });
+
+  test("uses paragraph mark metrics for blank hard-break lines", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "hard-break-default-metrics",
+          runs: [
+            { kind: "text", text: "first", fontSize: 9, fontFamily: "Times New Roman" },
+            { kind: "lineBreak" },
+            { kind: "lineBreak" },
+            { kind: "text", text: "last", fontSize: 9, fontFamily: "Times New Roman" },
+          ],
+          attrs: {
+            defaultFontSize: 9,
+            defaultFontFamily: "Times New Roman",
+            spacing: { line: 1, lineUnit: "multiplier", lineRule: "auto" },
+          },
+        },
+        600,
+      );
+
+      expect(measure.lines).toHaveLength(3);
+      expect(measure.lines[1]?.lineHeight).toBeCloseTo(measure.lines[0]?.lineHeight ?? 0, 5);
+    }, fakeMeasure);
+  });
 });
 
 describe("measureParagraph cross-run line breaking", () => {
