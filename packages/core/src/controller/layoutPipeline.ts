@@ -175,6 +175,53 @@ function bodyMarginsClearHeaderFooter({
   return { ...authoredMargins, top, bottom };
 }
 
+type SectionHeaderFooterClearanceOptions = {
+  authoredMargins: PageMargins;
+  sectionHeaderFooterRefs: PageHeaderFooterRefs[] | undefined;
+  headerContentByRId: Map<string, HeaderFooterContent> | undefined;
+  footerContentByRId: Map<string, HeaderFooterContent> | undefined;
+};
+
+function bodyBlocksClearSectionHeaderFooter(
+  blocks: FlowBlock[],
+  {
+    authoredMargins,
+    sectionHeaderFooterRefs,
+    headerContentByRId,
+    footerContentByRId,
+  }: SectionHeaderFooterClearanceOptions,
+): FlowBlock[] {
+  if (!sectionHeaderFooterRefs || (!headerContentByRId && !footerContentByRId)) {
+    return blocks;
+  }
+
+  let sectionIndex = 0;
+  let currentAuthoredMargins = authoredMargins;
+  let changed = false;
+  const nextBlocks = blocks.map((block) => {
+    if (block.kind !== "sectionBreak") {
+      return block;
+    }
+
+    currentAuthoredMargins = block.margins ?? currentAuthoredMargins;
+    const refs = sectionHeaderFooterRefs[sectionIndex];
+    sectionIndex += 1;
+    const effectiveMargins = bodyMarginsClearHeaderFooter({
+      authoredMargins: currentAuthoredMargins,
+      preparedHeader: refs?.headerDefault ? headerContentByRId?.get(refs.headerDefault) : undefined,
+      preparedFooter: refs?.footerDefault ? footerContentByRId?.get(refs.footerDefault) : undefined,
+    });
+    if (effectiveMargins === currentAuthoredMargins && block.margins === currentAuthoredMargins) {
+      return block;
+    }
+
+    changed = true;
+    return { ...block, margins: effectiveMargins };
+  });
+
+  return changed ? nextBlocks : blocks;
+}
+
 export function runLayoutPipeline<THfPMs>(
   deps: LayoutPipelineDeps<THfPMs>,
   state: EditorState,
@@ -392,6 +439,14 @@ export function runLayoutPipeline<THfPMs>(
       hfMetricsFooter,
       hfOptions,
     );
+
+    newBlocks = bodyBlocksClearSectionHeaderFooter(newBlocks, {
+      authoredMargins: margins,
+      sectionHeaderFooterRefs,
+      headerContentByRId,
+      footerContentByRId,
+    });
+    outcome.blocks = newBlocks;
 
     const initialBodyMargins = bodyMarginsClearHeaderFooter({
       authoredMargins: margins,

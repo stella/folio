@@ -19,7 +19,7 @@ import { EditorState } from "prosemirror-state";
 
 import type { LayoutInstrumentation } from "../layout-engine/layoutInstrumentation";
 import { clearAllCaches } from "../layout-engine/measure/cache";
-import type { FootnoteContent } from "../layout-engine/types";
+import type { FootnoteContent, HeaderFooterContent } from "../layout-engine/types";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { LayoutPainter } from "../layout-painter";
 import { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
@@ -297,6 +297,39 @@ const makeState = (): EditorState =>
       schema.node("paragraph", null, [schema.text("Second paragraph here.")]),
     ]),
   });
+
+const makeSectionedState = (): EditorState =>
+  EditorState.create({
+    doc: schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          sectionBreakType: "continuous",
+          _sectionProperties: {
+            sectionStart: "continuous",
+            marginTop: 1080,
+            marginRight: 1080,
+            marginBottom: 1080,
+            marginLeft: 1080,
+            headerDistance: 540,
+            footerDistance: 540,
+          },
+        },
+        [schema.text("First section")],
+      ),
+      schema.node("paragraph", null, [schema.text("Second section")]),
+    ]),
+  });
+
+const makePreparedHeaderFooter = (height: number): HeaderFooterContent => ({
+  blocks: [],
+  measures: [],
+  height,
+  visualTop: 0,
+  visualBottom: height,
+  marginPushTop: 0,
+  marginPushBottom: height,
+});
 
 type DepsOverrides = Partial<LayoutPipelineDeps<null>>;
 
@@ -591,6 +624,50 @@ describe("runLayoutPipeline", () => {
                 marginPushBottom: 20,
               }
             : undefined,
+      }),
+      state,
+    );
+
+    expect(outcome.layout?.pages.at(0)?.margins.top).toBe(MARGINS.top);
+    expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(MARGINS.top);
+  });
+
+  test("moves a section body between its referenced default header and footer", () => {
+    const state = makeSectionedState();
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        sectionHeaderFooterRefs: [
+          { headerDefault: "first-header", footerDefault: "first-footer" },
+          { headerDefault: "second-header", footerDefault: "second-footer" },
+        ],
+        renderHeaderFooterContentByRId: (_source, _hfPMs, _contentWidth, metrics) => {
+          if (metrics.section === "header") {
+            return new Map([
+              ["first-header", makePreparedHeaderFooter(120)],
+              ["second-header", makePreparedHeaderFooter(20)],
+            ]);
+          }
+          return new Map([
+            ["first-footer", makePreparedHeaderFooter(120)],
+            ["second-footer", makePreparedHeaderFooter(20)],
+          ]);
+        },
+      }),
+      state,
+    );
+
+    expect(outcome.layout?.pages.at(0)?.margins.top).toBe(MARGINS.header + 120);
+    expect(outcome.layout?.pages.at(0)?.margins.bottom).toBe(MARGINS.footer + 120);
+    expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(MARGINS.header + 120);
+  });
+
+  test("keeps a section's authored margin when its referenced header fits above it", () => {
+    const state = makeSectionedState();
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        sectionHeaderFooterRefs: [{ headerDefault: "compact-header" }, {}],
+        renderHeaderFooterContentByRId: () =>
+          new Map([["compact-header", makePreparedHeaderFooter(20)]]),
       }),
       state,
     );
