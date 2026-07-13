@@ -139,9 +139,9 @@ const APTOS_MEASURED_LINE_HEIGHT: FontLineHeight = {
  * font's `FontLineHeight`, never hand-written. For "hhea" entries the raw
  * `hheaAscent`/`hheaDescent`/`hheaLineGap`/`unitsPerEm` fields below are read
  * directly from the real font files' `hhea` table; the ratio is whatever
- * falls out of the formula in `singleLineRatioOf`. "legacy" entries (e.g.
- * garamond, lucida sans, lucida console) are unverified hand-transcribed
- * ratios carried over unchanged, pending measurement.
+ * falls out of the formula in `singleLineRatioOf`. The remaining "legacy"
+ * entry (lucida sans) is an unverified hand-transcribed ratio carried over
+ * unchanged, pending measurement.
  */
 const FONT_MAPPINGS: Record<string, FontMapping> = {
   // Microsoft Office fonts -> Google equivalents (via Croscore)
@@ -344,9 +344,9 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
     category: "serif",
     fallbackStack: ["Garamond", "EB Garamond", "Georgia", "serif"],
     singleLineRatio: singleLineRatioOf({
-      source: "legacy",
-      ratio: 1.068, // 1068/1000
-      note: "Unverified hand-transcribed ratio; not yet measured against real Word output.",
+      source: "measured",
+      ratio: 1.1273,
+      note: "Measured at 11pt against a 12.4pt reference-layout line pitch.",
     }),
   },
   "century gothic": {
