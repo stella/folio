@@ -1951,6 +1951,8 @@ function convertTableCell(
       blocks.push(block);
     } else if (child.type.name === "table") {
       blocks.push(convertTable(child, offset, options));
+    } else if (child.type.name === "textBox") {
+      blocks.push(convertTextBoxNode(child, offset, options));
     }
     offset += child.nodeSize;
   });

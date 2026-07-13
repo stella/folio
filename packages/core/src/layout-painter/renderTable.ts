@@ -23,10 +23,19 @@ import type {
   ParagraphBlock,
   ParagraphMeasure,
   ParagraphFragment,
+  TextBoxBlock,
+  TextBoxMeasure,
+  TextBoxFragment,
 } from "../layout-engine/types";
-import { tableColumnsArePinned } from "../layout-engine/types";
+import {
+  isFloatingImageRun,
+  isFloatingTextBoxBlock,
+  tableColumnsArePinned,
+} from "../layout-engine/types";
+import { emuToPixels } from "../utils/units";
 import { getAutomaticTextColorForBackground } from "./documentColors";
 import { renderParagraphFragment } from "./renderParagraph";
+import { renderTextBoxFragment } from "./renderTextBox";
 import type { RenderContext } from "./renderUtils";
 
 /**
@@ -53,12 +62,17 @@ export type RenderTableFragmentOptions = {
 /**
  * Render cell content (paragraphs and nested tables)
  */
+type RenderedCellContent = {
+  content: HTMLElement;
+  floatingLayers: HTMLElement[];
+};
+
 function renderCellContent(
   cell: TableCell,
   cellMeasure: TableCellMeasure,
   context: RenderContext,
   doc: Document,
-): HTMLElement {
+): RenderedCellContent {
   const contentEl = doc.createElement("div");
   contentEl.className = TABLE_CLASS_NAMES.cellContent;
   contentEl.style.position = "relative";
@@ -73,6 +87,7 @@ function renderCellContent(
 
   // Build floating zones for measurement and render floating layer
   const floatingZones = buildTableCellFloatingZones(cellFloatingImages, contentWidth);
+  const floatingLayers: HTMLElement[] = [];
   if (cellFloatingImages.length > 0) {
     // Render floating image layer within the cell
     const floatingLayer = doc.createElement("div");
@@ -84,7 +99,7 @@ function renderCellContent(
     floatingLayer.style.height = "100%";
     floatingLayer.style.pointerEvents = "none";
     floatingLayer.style.zIndex = "10";
-    floatingLayer.style.overflow = "hidden";
+    floatingLayer.style.overflow = "visible";
 
     for (const img of cellFloatingImages) {
       const imgContainer = doc.createElement("div");
@@ -115,10 +130,12 @@ function renderCellContent(
       floatingLayer.append(imgContainer);
     }
 
-    contentEl.append(floatingLayer);
+    floatingLayers.push(floatingLayer);
   }
 
   let cumulativeY = 0;
+  let anchorParagraphY = 0;
+  let floatingTextBoxesLayer: HTMLElement | undefined;
   for (let i = 0; i < cell.blocks.length; i++) {
     const block = cell.blocks[i];
     const measure = cellMeasure.blocks[i];
@@ -166,6 +183,7 @@ function renderCellContent(
         fragEl.style.paddingTop = `${spaceBefore}px`;
       }
       contentEl.append(fragEl);
+      anchorParagraphY = cumulativeY;
       cumulativeY += paragraphMeasure.totalHeight;
     } else if (block?.kind === "table" && measure?.kind === "table") {
       // Nested table - render in normal document flow.
@@ -178,10 +196,113 @@ function renderCellContent(
       nestedTableEl.style.position = "relative";
       contentEl.append(nestedTableEl);
       cumulativeY += (measure as TableMeasure).totalHeight;
+      // A standalone anchored shape after a nested table belongs to a
+      // shape-only host paragraph at the current flow position. That host is
+      // omitted from the ProseMirror cell, so the nested table's bottom is the
+      // anchor Y for the following floating text box.
+      anchorParagraphY = cumulativeY;
+    } else if (block?.kind === "textBox" && measure?.kind === "textBox") {
+      const textBoxBlock = block as TextBoxBlock;
+      const textBoxMeasure = measure as TextBoxMeasure;
+      const syntheticFragment: TextBoxFragment = {
+        kind: "textBox",
+        blockId: textBoxBlock.id,
+        x: 0,
+        y: 0,
+        width: textBoxMeasure.width,
+        height: textBoxMeasure.height,
+        ...(textBoxBlock.pmStart !== undefined ? { pmStart: textBoxBlock.pmStart } : {}),
+        ...(textBoxBlock.pmEnd !== undefined ? { pmEnd: textBoxBlock.pmEnd } : {}),
+      };
+      const textBoxEl = renderTextBoxFragment(
+        syntheticFragment,
+        textBoxBlock,
+        textBoxMeasure,
+        { ...context, insideTableCell: true },
+        { document: doc },
+      );
+
+      if (isFloatingTextBoxBlock(textBoxBlock)) {
+        floatingTextBoxesLayer ??= createCellFloatingTextBoxesLayer(doc);
+        textBoxEl.style.left = `${resolveCellTextBoxX(textBoxBlock, contentWidth)}px`;
+        textBoxEl.style.top = `${anchorParagraphY + resolveCellTextBoxY(textBoxBlock)}px`;
+        textBoxEl.style.pointerEvents = "auto";
+        floatingTextBoxesLayer.append(textBoxEl);
+        continue;
+      }
+
+      textBoxEl.style.position = "relative";
+      textBoxEl.style.left = "0";
+      textBoxEl.style.top = "0";
+      contentEl.append(textBoxEl);
+      cumulativeY += textBoxMeasure.height;
+      anchorParagraphY = cumulativeY;
     }
   }
 
-  return contentEl;
+  if (floatingTextBoxesLayer) {
+    floatingLayers.push(floatingTextBoxesLayer);
+  }
+
+  return {
+    content: contentEl,
+    floatingLayers,
+  };
+}
+
+function createCellFloatingTextBoxesLayer(doc: Document): HTMLElement {
+  const layer = doc.createElement("div");
+  layer.className = "layout-cell-floating-text-boxes-layer";
+  layer.style.position = "absolute";
+  layer.style.inset = "0";
+  layer.style.pointerEvents = "none";
+  layer.style.zIndex = "10";
+  layer.style.overflow = "visible";
+  return layer;
+}
+
+function resolveCellTextBoxX(block: TextBoxBlock, contentWidth: number): number {
+  const horizontal = block.position?.horizontal;
+  if (horizontal?.posOffset !== undefined) {
+    return emuToPixels(horizontal.posOffset);
+  }
+  if (horizontal?.align === "center") {
+    return (contentWidth - block.width) / 2;
+  }
+  if (horizontal?.align === "right" || horizontal?.align === "outside") {
+    return contentWidth - block.width;
+  }
+  return 0;
+}
+
+function resolveCellTextBoxY(block: TextBoxBlock): number {
+  const vertical = block.position?.vertical;
+  if (vertical?.posOffset !== undefined) {
+    return emuToPixels(vertical.posOffset);
+  }
+  return 0;
+}
+
+function tableHasFloatingCellContent(block: TableBlock): boolean {
+  for (const row of block.rows) {
+    for (const cell of row.cells) {
+      for (const cellBlock of cell.blocks) {
+        if (cellBlock.kind === "textBox" && isFloatingTextBoxBlock(cellBlock)) {
+          return true;
+        }
+        if (
+          cellBlock.kind === "paragraph" &&
+          cellBlock.runs.some((run) => run.kind === "image" && isFloatingImageRun(run))
+        ) {
+          return true;
+        }
+        if (cellBlock.kind === "table" && tableHasFloatingCellContent(cellBlock)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -391,8 +512,18 @@ function renderTableCell(
   }
 
   // Render cell content
-  const contentEl = renderCellContent(cell, cellMeasure, context, doc);
-  cellEl.append(contentEl);
+  const renderedContent = renderCellContent(cell, cellMeasure, context, doc);
+  if (renderedContent.floatingLayers.length > 0) {
+    renderedContent.content.style.height = "100%";
+    renderedContent.content.style.overflow = "hidden";
+    cellEl.style.overflow = "visible";
+  }
+  cellEl.append(renderedContent.content);
+  for (const floatingLayer of renderedContent.floatingLayers) {
+    floatingLayer.style.left = `${padLeft}px`;
+    floatingLayer.style.top = `${padTop}px`;
+    cellEl.append(floatingLayer);
+  }
 
   // Store PM positions for selection
   if (cell.blocks.length > 0) {
@@ -602,7 +733,7 @@ export function renderTableFragment(
   tableEl.style.position = "absolute";
   tableEl.style.width = `${fragment.width}px`;
   tableEl.style.height = `${fragment.height}px`;
-  tableEl.style.overflow = "hidden";
+  tableEl.style.overflow = tableHasFloatingCellContent(block) ? "visible" : "hidden";
 
   // Store metadata
   tableEl.dataset["blockId"] = String(fragment.blockId);

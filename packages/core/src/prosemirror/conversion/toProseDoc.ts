@@ -100,6 +100,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const styleResolver = createStyleEngine(options?.styles ?? document.package.styles);
   const theme = options?.theme ?? document.package.theme ?? null;
   let textBoxGroupIndex = 0;
+  const nextTextBoxGroupId = (): string => String(textBoxGroupIndex++);
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
@@ -109,13 +110,16 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
         if (pbPos === "before") {
           out.push(schema.node("pageBreak"));
         }
-        out.push(...convertParagraphWithTextBoxes(block, styleResolver, String(textBoxGroupIndex)));
-        textBoxGroupIndex += 1;
+        out.push(
+          ...convertParagraphWithTextBoxes(block, styleResolver, {
+            textBoxGroupId: nextTextBoxGroupId(),
+          }),
+        );
         if (pbPos === "after") {
           out.push(schema.node("pageBreak"));
         }
       } else if (block.type === "table") {
-        out.push(convertTable(block, styleResolver, theme));
+        out.push(convertTable(block, styleResolver, { theme, nextTextBoxGroupId }));
       } else {
         out.push(convertBlockSdt(block, convertBodyBlocks));
       }
@@ -1186,10 +1190,15 @@ function paragraphContentHasMeaningfulContent(content: Paragraph["content"][numb
   return true;
 }
 
+type TableConversionContext = {
+  theme: Theme | null | undefined;
+  nextTextBoxGroupId: () => string;
+};
+
 function convertTable(
   table: Table,
   styleResolver: StyleEngine | null,
-  theme: Theme | null | undefined,
+  context: TableConversionContext,
 ): PMNode {
   // Calculate rowSpan values from vMerge
   const rowSpanMap = calculateRowSpans(table);
@@ -1346,6 +1355,7 @@ function convertTable(
     return convertTableRow(
       row,
       styleResolver,
+      context,
       isFirstRowStyled,
       columnWidths,
       totalWidth,
@@ -1359,7 +1369,6 @@ function convertTable(
       totalColumns,
       rowSpanMap,
       cellMarginsAttr,
-      theme,
     );
   });
 
@@ -1384,6 +1393,7 @@ function countTableColumns(rows: TableRow[]): number {
 function convertTableRow(
   row: TableRow,
   styleResolver: StyleEngine | null,
+  context: TableConversionContext,
   isHeaderRow: boolean,
   columnWidths?: number[],
   totalWidth?: number,
@@ -1416,7 +1426,6 @@ function convertTableRow(
     left?: number;
     right?: number;
   },
-  theme?: Theme | null,
 ): PMNode {
   const attrs: TableRowAttrs = {
     // isHeader controls header row REPETITION on page breaks.
@@ -1616,6 +1625,7 @@ function convertTableRow(
       convertTableCell(
         cell,
         styleResolver,
+        context,
         isHeaderRow,
         gridWidth,
         cellConditionalStyle,
@@ -1628,7 +1638,6 @@ function convertTableRow(
         preserveVMergeRestart,
         rowSpanInfo?.continuationCells,
         defaultCellMargins,
-        theme,
       ),
     );
   }
@@ -1678,6 +1687,7 @@ function resolveThemedBorderColors(
 function convertTableCell(
   cell: TableCell,
   styleResolver: StyleEngine | null,
+  context: TableConversionContext,
   isHeader: boolean,
   gridWidthPercent?: number,
   conditionalStyle?: TableConditionalStyle,
@@ -1695,8 +1705,8 @@ function convertTableCell(
     left?: number;
     right?: number;
   },
-  theme?: Theme | null,
 ): PMNode {
+  const { theme } = context;
   const formatting = cell.formatting;
 
   // Use the pre-calculated rowSpan from vMerge analysis
@@ -1818,17 +1828,19 @@ function convertTableCell(
   for (const content of cell.content) {
     if (content.type === "paragraph") {
       contentNodes.push(
-        convertParagraph(
-          content,
-          styleResolver,
-          undefined,
-          conditionalStyle?.rPr,
-          conditionalStyle?.pPr,
-        ),
+        ...convertParagraphWithTextBoxes(content, styleResolver, {
+          textBoxGroupId: context.nextTextBoxGroupId(),
+          ...(conditionalStyle?.rPr !== undefined
+            ? { extraRunFormatting: conditionalStyle.rPr }
+            : {}),
+          ...(conditionalStyle?.pPr !== undefined
+            ? { tableParagraphOverlay: conditionalStyle.pPr }
+            : {}),
+        }),
       );
     } else {
       // Nested tables - recursively convert
-      contentNodes.push(convertTable(content, styleResolver, theme));
+      contentNodes.push(convertTable(content, styleResolver, context));
     }
   }
 
@@ -2745,13 +2757,29 @@ function convertShape(shape: Shape): PMNode {
  * Convert a paragraph block to PM nodes, extracting text boxes as sibling nodes.
  * Skips ghost empty paragraphs that only contained text box drawings.
  */
+type ConvertParagraphWithTextBoxesOptions = {
+  textBoxGroupId: string;
+  extraRunFormatting?: TextFormatting;
+  tableParagraphOverlay?: TableCellParagraphSpacingOverlay;
+};
+
 function convertParagraphWithTextBoxes(
   block: Paragraph,
   styleResolver: StyleEngine | null,
-  textBoxGroupId: string,
+  {
+    textBoxGroupId,
+    extraRunFormatting,
+    tableParagraphOverlay,
+  }: ConvertParagraphWithTextBoxesOptions,
 ): PMNode[] {
   const textBoxes = extractTextBoxesFromParagraph(block);
-  const pmParagraph = convertParagraph(block, styleResolver);
+  const pmParagraph = convertParagraph(
+    block,
+    styleResolver,
+    undefined,
+    extraRunFormatting,
+    tableParagraphOverlay,
+  );
   const nodes: PMNode[] = [];
   const isEmptyAfterExtraction = textBoxes.length > 0 && pmParagraph.content.size === 0;
   const keepWrapperParagraph =
@@ -2995,15 +3023,19 @@ export function headerFooterToProseDoc(
   const styleResolver = options?.styles ? createStyleEngine(options.styles) : null;
   const theme = options?.theme ?? null;
   let textBoxGroupIndex = 0;
+  const nextTextBoxGroupId = (): string => String(textBoxGroupIndex++);
 
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
     for (const block of blocks) {
       if (block.type === "paragraph") {
-        out.push(...convertParagraphWithTextBoxes(block, styleResolver, String(textBoxGroupIndex)));
-        textBoxGroupIndex += 1;
+        out.push(
+          ...convertParagraphWithTextBoxes(block, styleResolver, {
+            textBoxGroupId: nextTextBoxGroupId(),
+          }),
+        );
       } else if (block.type === "table") {
-        out.push(convertTable(block, styleResolver, theme));
+        out.push(convertTable(block, styleResolver, { theme, nextTextBoxGroupId }));
       } else {
         out.push(convertBlockSdt(block, convertBlocks));
       }

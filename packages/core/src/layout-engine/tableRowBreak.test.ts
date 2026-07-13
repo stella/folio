@@ -797,6 +797,17 @@ describe("left-aligned table placement", () => {
   });
 });
 
+describe("floating table placement", () => {
+  test("clamps a page-anchored table against the page instead of the body margins", () => {
+    const { block, measure } = tallTable(1);
+    block.floating = { horzAnchor: "page", tblpX: 80 };
+
+    const fragment = tableFragments(block, measure)[0];
+
+    expect(fragment?.x).toBe(80);
+  });
+});
+
 describe("oversized table row splits across pages (#570)", () => {
   test("a row taller than a page breaks at line boundaries with no content lost", () => {
     // 15 lines = 300px row, page content height = 120px (6 lines).

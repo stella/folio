@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Document, TableCell, Theme } from "../../types/document";
+import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 const officeTheme: Theme = {
@@ -43,6 +44,78 @@ function firstTableCellAttrs(doc: Document): Record<string, unknown> {
 }
 
 describe("toProseDoc", () => {
+  test("converts table-cell text-box shapes into block nodes", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  cells: [
+                    {
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [
+                            {
+                              type: "run",
+                              content: [
+                                {
+                                  type: "shape",
+                                  shape: {
+                                    type: "shape",
+                                    shapeType: "textBox",
+                                    size: { width: 914_400, height: 457_200 },
+                                    textBody: {
+                                      content: [
+                                        {
+                                          type: "paragraph",
+                                          content: [
+                                            {
+                                              type: "run",
+                                              content: [{ type: "text", text: "Cell card" }],
+                                            },
+                                          ],
+                                        },
+                                      ],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const tableCell = pmDoc.firstChild?.firstChild?.firstChild;
+    const textBox = tableCell?.firstChild;
+
+    expect(textBox?.type.name).toBe("textBox");
+    expect(textBox?.textContent).toBe("Cell card");
+
+    const rebuilt = fromProseDoc(pmDoc, document);
+    const rebuiltTable = rebuilt.package.document.content.at(0);
+    const rebuiltParagraph =
+      rebuiltTable?.type === "table" ? rebuiltTable.rows[0]?.cells[0]?.content[0] : undefined;
+    const rebuiltRun =
+      rebuiltParagraph?.type === "paragraph" ? rebuiltParagraph.content[0] : undefined;
+    const rebuiltShape = rebuiltRun?.type === "run" ? rebuiltRun.content[0] : undefined;
+
+    expect(rebuiltShape?.type).toBe("shape");
+  });
+
   test("tracks docDefaults spacing so empty paragraphs retain it during layout", () => {
     const document: Document = {
       package: {

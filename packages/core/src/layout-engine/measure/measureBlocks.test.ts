@@ -542,6 +542,49 @@ describe("measureTableBlock w:noWrap column pinning", () => {
   });
 });
 
+describe("measureTableBlock floating cell content", () => {
+  test("does not add a floating text box to the table row height", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [200],
+        rows: [
+          {
+            id: "r",
+            cells: [
+              {
+                id: "c",
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                blocks: [
+                  para("anchor", "anchor"),
+                  {
+                    kind: "textBox",
+                    id: "floating-box",
+                    width: 180,
+                    height: 120,
+                    content: [],
+                    displayMode: "float",
+                    position: { vertical: { relativeTo: "paragraph", posOffset: 0 } },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      const measure = measureTableBlock(table, 200);
+      const paragraph = measure.rows.at(0)?.cells.at(0)?.blocks.at(0);
+      if (paragraph?.kind !== "paragraph") {
+        throw new Error("Expected anchor paragraph measure");
+      }
+
+      expect(measure.rows.at(0)?.height).toBe(paragraph.totalHeight);
+    }, fakeMeasure);
+  });
+});
+
 describe("measureBlocks error instrumentation", () => {
   test("routes a block-measurement failure through the instrumentation hook", () => {
     type MeasureBlockErrorEvent = {

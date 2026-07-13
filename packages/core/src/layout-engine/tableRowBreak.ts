@@ -21,6 +21,7 @@ import {
   getTableCellFloatingImages,
 } from "./measure/tableCellFloating";
 import type { Measure, TableBlock, TableCell, TableCellMeasure, TableMeasure } from "./types";
+import { isFloatingTextBoxBlock } from "./types";
 
 type UnsafeBreakRange = {
   top: number;
@@ -126,6 +127,10 @@ function cellBreakGeometry(
       y = blockTop + blockMeasure.totalHeight;
       paragraphY += blockMeasure.totalHeight;
     } else if (blockMeasure) {
+      const block = cellBlocks?.[i];
+      if (block?.kind === "textBox" && isFloatingTextBoxBlock(block)) {
+        continue;
+      }
       // Nested table / non-paragraph: one atomic block (break only at its bottom).
       const blockHeight = getAtomicBlockHeight(blockMeasure);
       if (blockHeight > 0) {
