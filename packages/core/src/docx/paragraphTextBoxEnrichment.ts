@@ -81,6 +81,7 @@ export const enrichParagraphTextBoxes = (
         ...(textBox.outline !== undefined ? { outline: textBox.outline } : {}),
         textBody: {
           content: textBox.content,
+          ...(textBox.autoFit !== undefined ? { autoFit: textBox.autoFit } : {}),
           ...(textBox.margins !== undefined ? { margins: textBox.margins } : {}),
         },
       };

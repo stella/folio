@@ -1068,7 +1068,7 @@ describe("fromProseDoc", () => {
 
   test("converts textBox nodes back to DOCX text box shapes", () => {
     const pmDoc = schema.node("doc", null, [
-      schema.node("textBox", { width: 120, height: 60 }, [
+      schema.node("textBox", { width: 120, height: 60, autoFit: "shape" }, [
         schema.node("paragraph", null, [schema.text("Inside")]),
       ]),
     ]);
@@ -1090,6 +1090,7 @@ describe("fromProseDoc", () => {
     }
     expect(firstRunContent.shape.shapeType).toBe("textBox");
     expect(firstRunContent.shape.textBody?.content).toHaveLength(1);
+    expect(firstRunContent.shape.textBody?.autoFit).toBe("shape");
   });
 
   test("preserves textBox wrap and position attrs on save", () => {

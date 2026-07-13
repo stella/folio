@@ -8,6 +8,7 @@
 import type {
   ImagePosition,
   ImageWrap,
+  ShapeTextBody,
   SdtProperties,
   SdtType,
   TableWidthType,
@@ -687,6 +688,8 @@ export type TextBoxBlock = {
   width: number;
   /** Height in pixels (may be auto-calculated) */
   height?: number;
+  /** Text fitting behavior */
+  autoFit?: ShapeTextBody["autoFit"];
   /** Fill/background color */
   fillColor?: string;
   /** Border width in pixels */

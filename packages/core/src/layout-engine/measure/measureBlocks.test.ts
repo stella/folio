@@ -47,6 +47,64 @@ describe("measureBlock dispatch", () => {
   });
 });
 
+describe("text box fitting", () => {
+  test("shape fitting expands past the authored height without shrinking a larger box", () => {
+    withFakeTextMeasure(() => {
+      const fixed: TextBoxBlock = {
+        kind: "textBox",
+        id: "fixed",
+        width: 200,
+        height: 1,
+        margins: { top: 0, right: 0, bottom: 0, left: 0 },
+        content: [para("inner", "content")],
+      };
+      const fittedMeasure = measureBlock({ ...fixed, id: "fitted", autoFit: "shape" }, 500);
+      const fixedMeasure = measureBlock(fixed, 500);
+      const largeMeasure = measureBlock(
+        { ...fixed, id: "large", height: 1_000, autoFit: "shape" },
+        500,
+      );
+
+      expect(fittedMeasure.kind).toBe("textBox");
+      expect(fixedMeasure.kind).toBe("textBox");
+      expect(largeMeasure.kind).toBe("textBox");
+      if (
+        fittedMeasure.kind !== "textBox" ||
+        fixedMeasure.kind !== "textBox" ||
+        largeMeasure.kind !== "textBox"
+      ) {
+        return;
+      }
+
+      expect(fittedMeasure.height).toBeGreaterThan(fixedMeasure.height);
+      expect(fixedMeasure.height).toBe(1);
+      expect(largeMeasure.height).toBe(1_000);
+    }, fakeMeasure);
+  });
+
+  test.each([undefined, "none", "normal"] as const)(
+    "keeps the authored height for the %s fitting mode",
+    (autoFit) => {
+      withFakeTextMeasure(() => {
+        const textBox: TextBoxBlock = {
+          kind: "textBox",
+          id: "fixed",
+          width: 200,
+          height: 3,
+          ...(autoFit !== undefined ? { autoFit } : {}),
+          content: [para("inner", "content")],
+        };
+
+        const measure = measureBlock(textBox, 500);
+        expect(measure.kind).toBe("textBox");
+        if (measure.kind === "textBox") {
+          expect(measure.height).toBe(3);
+        }
+      }, fakeMeasure);
+    },
+  );
+});
+
 describe("measureBlocks", () => {
   test("returns exactly one measure per input block", () => {
     withFakeTextMeasure(() => {

@@ -947,15 +947,27 @@ function serializeShapeContent(content: ShapeContent): string {
       }
     }
 
+    let autoFitXml = "";
+    if (tb.autoFit === "shape") {
+      autoFitXml = "<a:spAutoFit/>";
+    } else if (tb.autoFit === "normal") {
+      autoFitXml = "<a:normAutofit/>";
+    } else if (tb.autoFit === "none") {
+      autoFitXml = "<a:noAutofit/>";
+    }
+    const bodyPrXml = autoFitXml
+      ? `<wps:bodyPr ${bpAttrs.join(" ")}>${autoFitXml}</wps:bodyPr>`
+      : `<wps:bodyPr ${bpAttrs.join(" ")}/>`;
+
     if (isTextBox) {
       textBody = [
         "<wps:txbx><w:txbxContent>",
         serializeShapeTextBody(tb.content),
         "</w:txbxContent></wps:txbx>",
-        `<wps:bodyPr ${bpAttrs.join(" ")}/>`,
+        bodyPrXml,
       ].join("");
     } else {
-      textBody = [`<wps:bodyPr ${bpAttrs.join(" ")}/>`].join("");
+      textBody = bodyPrXml;
     }
   }
 

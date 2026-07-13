@@ -51,7 +51,7 @@ const repeatedPlaceholderNumberingXml = `${XML_DECLARATION}
 const numberedParagraphXml = (paraId: string, ilvl: number, text: string, numId = 9) =>
   `<w:p w14:paraId="${paraId}"><w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
 
-const textBoxDrawingXml = (text: string) => `
+const textBoxDrawingXml = (text: string, bodyProperties = "<wps:bodyPr/>") => `
   <w:drawing>
     <wp:inline>
       <wp:extent cx="914400" cy="457200"/>
@@ -68,7 +68,7 @@ const textBoxDrawingXml = (text: string) => `
                 <w:p><w:r><w:t>${text}</w:t></w:r></w:p>
               </w:txbxContent>
             </wps:txbx>
-            <wps:bodyPr/>
+            ${bodyProperties}
           </wps:wsp>
         </a:graphicData>
       </a:graphic>
@@ -175,7 +175,10 @@ describe("parseDocumentBody text box enrichment", () => {
   <w:body>
     <w:p w14:paraId="TXB00001">
       <w:r><w:t>Before </w:t></w:r>
-      <w:r><w:t>merged</w:t>${textBoxDrawingXml("Inside text box")}</w:r>
+      <w:r><w:t>merged</w:t>${textBoxDrawingXml(
+        "Inside text box",
+        "<wps:bodyPr><a:spAutoFit/></wps:bodyPr>",
+      )}</w:r>
       <w:bookmarkStart w:id="1" w:name="afterTextbox"/>
       <w:bookmarkEnd w:id="1"/>
       <w:r><w:t>After boundary</w:t></w:r>
@@ -208,6 +211,7 @@ describe("parseDocumentBody text box enrichment", () => {
     }
     expect(shapeContent.shape.shapeType).toBe("textBox");
     expect(shapeContent.shape.textBody?.content.at(0)?.type).toBe("paragraph");
+    expect(shapeContent.shape.textBody?.autoFit).toBe("shape");
 
     const bookmarkStartIndex = paragraph.content.findIndex(
       (content) => content.type === "bookmarkStart",

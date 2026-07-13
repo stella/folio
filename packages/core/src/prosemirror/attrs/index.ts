@@ -83,6 +83,12 @@ const IMAGE_CSS_FLOATS = ["left", "right", "none"] as const satisfies readonly N
   ImageAttrs["cssFloat"]
 >[];
 
+const TEXT_BOX_AUTO_FIT_VALUES = [
+  "none",
+  "normal",
+  "shape",
+] as const satisfies readonly NonNullable<TextBoxAttrs["autoFit"]>[];
+
 const FIELD_KINDS = ["simple", "complex"] as const satisfies readonly FieldAttrs["fieldKind"][];
 
 const MATH_DISPLAYS = ["inline", "block"] as const satisfies readonly NonNullable<
@@ -658,6 +664,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
 
   optionalNumber(attrs, "width", "textBox.attrs.width", issues);
   optionalNumber(attrs, "height", "textBox.attrs.height", issues);
+  optionalOneOf(attrs, "autoFit", "textBox.attrs.autoFit", issues, TEXT_BOX_AUTO_FIT_VALUES);
   optionalString(attrs, "textBoxId", "textBox.attrs.textBoxId", issues);
   optionalString(attrs, "fillColor", "textBox.attrs.fillColor", issues);
   optionalNumber(attrs, "outlineWidth", "textBox.attrs.outlineWidth", issues);

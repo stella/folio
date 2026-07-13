@@ -771,7 +771,11 @@ export function measureTextBoxBlock(
     measureParagraph(p, innerWidth, fieldValues ? { fieldValues } : undefined),
   );
   const contentHeight = innerMeasures.reduce((sum, m) => sum + m.totalHeight, 0);
-  const totalHeight = tb.height ?? contentHeight + margins.top + margins.bottom;
+  const contentBoxHeight = contentHeight + margins.top + margins.bottom;
+  const totalHeight =
+    tb.autoFit === "shape"
+      ? Math.max(tb.height ?? 0, contentBoxHeight)
+      : (tb.height ?? contentBoxHeight);
   return {
     kind: "textBox",
     width: tb.width,

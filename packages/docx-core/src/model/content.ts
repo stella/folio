@@ -800,6 +800,8 @@ export type TextBox = {
   outline?: ShapeOutline;
   /** Text content */
   content: Paragraph[];
+  /** Text fitting behavior */
+  autoFit?: ShapeTextBody["autoFit"];
   /** Internal margins */
   margins?: {
     top?: number;

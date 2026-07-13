@@ -2798,6 +2798,7 @@ function convertPMTextBox(node: PMNode): Paragraph {
     },
     textBody: {
       content: childParagraphs.length > 0 ? childParagraphs : [{ type: "paragraph", content: [] }],
+      ...(attrs.autoFit !== undefined ? { autoFit: attrs.autoFit } : {}),
       margins: (() => {
         const m: {
           top?: number;

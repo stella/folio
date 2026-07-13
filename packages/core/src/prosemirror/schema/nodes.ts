@@ -34,6 +34,7 @@ import type {
   SectionProperties,
   ShapeFill,
   ShapeOutline,
+  ShapeTextBody,
   SdtProperties,
   SdtType,
 } from "../../types/document";
@@ -484,6 +485,8 @@ export type TextBoxAttrs = {
   width?: number;
   /** Height in pixels */
   height?: number;
+  /** Text fitting behavior */
+  autoFit?: ShapeTextBody["autoFit"];
   /** Unique identifier */
   textBoxId?: string;
   /** Fill color as CSS color */

@@ -206,6 +206,37 @@ describe("shape EMU attributes are integer-only (issue #417)", () => {
   });
 });
 
+describe("text box fitting serialization", () => {
+  test.each([
+    ["shape", "<a:spAutoFit/>", "<a:normAutofit/>", "<a:noAutofit/>"],
+    ["normal", "<a:normAutofit/>", "<a:spAutoFit/>", "<a:noAutofit/>"],
+    ["none", "<a:noAutofit/>", "<a:spAutoFit/>", "<a:normAutofit/>"],
+  ] as const)("writes only the %s fitting element", (autoFit, expected, absentA, absentB) => {
+    const run: Run = {
+      type: "run",
+      content: [
+        {
+          type: "shape",
+          shape: {
+            type: "shape",
+            shapeType: "textBox",
+            size: { width: 914_400, height: 457_200 },
+            textBody: {
+              autoFit,
+              content: [{ type: "paragraph", content: [] }],
+            },
+          },
+        },
+      ],
+    };
+
+    const xml = serializeRun(run);
+    expect(xml).toContain(expected);
+    expect(xml).not.toContain(absentA);
+    expect(xml).not.toContain(absentB);
+  });
+});
+
 describe("run formatting integer attributes (issue #417)", () => {
   test("font size, character spacing, scale, kern, position render as integers", () => {
     const run: Run = {

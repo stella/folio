@@ -2405,6 +2405,9 @@ function convertTextBoxNode(
   if (attrs.height !== undefined) {
     textBox.height = attrs.height;
   }
+  if (attrs.autoFit !== undefined) {
+    textBox.autoFit = attrs.autoFit;
+  }
   if (attrs.fillColor !== undefined) {
     textBox.fillColor = attrs.fillColor;
   }

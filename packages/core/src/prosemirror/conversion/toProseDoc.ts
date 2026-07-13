@@ -2852,6 +2852,9 @@ function extractTextBoxesFromParagraph(paragraph: Paragraph): TextBox[] {
             if (shape.textBody.margins) {
               textBox.margins = shape.textBody.margins;
             }
+            if (shape.textBody.autoFit) {
+              textBox.autoFit = shape.textBody.autoFit;
+            }
             textBoxes.push(textBox);
           }
         }
@@ -2987,6 +2990,7 @@ function convertTextBox(
     {
       width: widthPx,
       height: heightPx,
+      autoFit: textBox.autoFit,
       textBoxId: textBox.id,
       fillColor,
       outlineWidth,
