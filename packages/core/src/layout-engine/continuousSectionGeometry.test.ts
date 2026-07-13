@@ -42,6 +42,69 @@ function paragraph(
 }
 
 describe("continuous section break geometry", () => {
+  test("balances a short paragraph-only multi-column section", () => {
+    const intro = paragraph("intro", 100);
+    const firstBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "first-break",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+    };
+    const first = paragraph("first", 100);
+    const second = paragraph("second", 100);
+    const third = paragraph("third", 100);
+    const fourth = paragraph("fourth", 100);
+    const secondBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "second-break",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      columns: { count: 2, gap: 20 },
+    };
+    const outro = paragraph("outro", 100);
+    const blocks: FlowBlock[] = [
+      intro.block,
+      firstBreak,
+      first.block,
+      second.block,
+      third.block,
+      fourth.block,
+      secondBreak,
+      outro.block,
+    ];
+    const measures = [
+      intro.measure,
+      { kind: "sectionBreak" },
+      first.measure,
+      second.measure,
+      third.measure,
+      fourth.measure,
+      { kind: "sectionBreak" },
+      outro.measure,
+    ] as never;
+
+    const result = layoutDocument(blocks, measures, {
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      finalPageSize: { w: 800, h: 1000 },
+      finalMargins: { top: 50, right: 50, bottom: 50, left: 50 },
+    });
+
+    expect(result.pages).toHaveLength(1);
+    const page = result.pages[0];
+    const firstColumn = page?.fragments.filter(
+      (fragment) => fragment.kind === "paragraph" && ["first", "second"].includes(fragment.blockId),
+    );
+    const secondColumn = page?.fragments.filter(
+      (fragment) => fragment.kind === "paragraph" && ["third", "fourth"].includes(fragment.blockId),
+    );
+    expect(firstColumn?.map(({ x }) => x)).toEqual([50, 50]);
+    expect(secondColumn?.map(({ x }) => x)).toEqual([410, 410]);
+    expect(secondColumn?.map(({ y }) => y)).toEqual([150, 250]);
+  });
+
   test("a final multi-column section keeps a forced column break on the current page", () => {
     const first = paragraph("a", 100);
     const sectionBreak: SectionBreakBlock = {

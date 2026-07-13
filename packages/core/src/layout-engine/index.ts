@@ -159,6 +159,112 @@ function getSpacingAfter(block: ParagraphBlock): number {
   return value;
 }
 
+/**
+ * Estimate the height of a short paragraph-only multi-column section so its
+ * final page can use Word-style balanced columns. Sections containing tables,
+ * floating blocks, or authored breaks keep the normal bottom-up pagination;
+ * those need structure-aware balancing rather than a height estimate.
+ */
+type BalancedParagraphSectionHeightOptions = {
+  blocks: FlowBlock[];
+  measures: Measure[];
+  startIndex: number;
+  endIndex: number;
+  incomingSpacing: number;
+  columnCount: number;
+  availableHeight: number;
+};
+
+function balancedParagraphSectionHeight({
+  blocks,
+  measures,
+  startIndex,
+  endIndex,
+  incomingSpacing,
+  columnCount,
+  availableHeight,
+}: BalancedParagraphSectionHeightOptions): number | undefined {
+  if (columnCount <= 1 || startIndex >= endIndex || availableHeight <= 0) {
+    return undefined;
+  }
+
+  const lineUnits: number[] = [];
+  let totalHeight = 0;
+  let tallestUnit = 0;
+  let trailingSpacing = incomingSpacing;
+  for (let index = startIndex; index < endIndex; index++) {
+    const block = blocks[index];
+    const measure = measures[index];
+    if (block?.kind !== "paragraph" || measure?.kind !== "paragraph") {
+      return undefined;
+    }
+    if (
+      block.attrs?.keepNext === true ||
+      block.attrs?.keepLines === true ||
+      block.runs.some((run) => run.kind === "text" && run.footnoteRefId !== undefined)
+    ) {
+      return undefined;
+    }
+
+    const leadingSpacing = Math.max(getSpacingBefore(block), trailingSpacing);
+    if (measure.lines.length === 0) {
+      if (leadingSpacing > 0) {
+        lineUnits.push(leadingSpacing);
+        totalHeight += leadingSpacing;
+        tallestUnit = Math.max(tallestUnit, leadingSpacing);
+      }
+    }
+    for (let lineIndex = 0; lineIndex < measure.lines.length; lineIndex++) {
+      const line = measure.lines[lineIndex];
+      if (!line) {
+        continue;
+      }
+      const lineHeight = measuredLineAdvance(line);
+      const unitHeight = lineHeight + (lineIndex === 0 ? leadingSpacing : 0);
+      lineUnits.push(unitHeight);
+      totalHeight += unitHeight;
+      tallestUnit = Math.max(tallestUnit, unitHeight);
+    }
+    if (tallestUnit > availableHeight || totalHeight > availableHeight * columnCount) {
+      return undefined;
+    }
+    trailingSpacing = getSpacingAfter(block);
+  }
+
+  if (totalHeight <= 0) {
+    return undefined;
+  }
+
+  const columnsNeeded = (targetHeight: number): number => {
+    let usedHeight = 0;
+    let usedColumns = 1;
+    for (const unitHeight of lineUnits) {
+      if (usedHeight > 0 && usedHeight + unitHeight > targetHeight) {
+        usedColumns += 1;
+        usedHeight = unitHeight;
+      } else {
+        usedHeight += unitHeight;
+      }
+    }
+    return usedColumns;
+  };
+
+  let lower = Math.max(tallestUnit, totalHeight / columnCount);
+  let upper = Math.min(totalHeight, availableHeight);
+  if (columnsNeeded(upper) > columnCount) {
+    return undefined;
+  }
+  for (let iteration = 0; iteration < 32; iteration++) {
+    const middle = (lower + upper) / 2;
+    if (columnsNeeded(middle) <= columnCount) {
+      upper = middle;
+    } else {
+      lower = middle;
+    }
+  }
+  return Math.ceil(upper * 1000) / 1000;
+}
+
 function hasWidowControl(block: ParagraphBlock): boolean {
   return block.attrs?.widowControl !== false;
 }
@@ -424,6 +530,27 @@ export function layoutDocument(
           nextType,
           sectionIdx + 1,
         );
+        const nextColumns = nextSectionConfig.columns;
+        const nextBreakIndex = breakIndices[sectionIdx + 1] ?? blocks.length;
+        const nextBreak = blocks[nextBreakIndex];
+        const sectionEndsContinuously =
+          nextBreakIndex === blocks.length ||
+          (nextBreak?.kind === "sectionBreak" && nextBreak.type === "continuous");
+        if (nextColumns && sectionEndsContinuously) {
+          const state = paginator.getCurrentState();
+          const balancedHeight = balancedParagraphSectionHeight({
+            blocks,
+            measures,
+            startIndex: i + 1,
+            endIndex: nextBreakIndex,
+            incomingSpacing: state.trailingSpacing,
+            columnCount: nextColumns.count,
+            availableHeight: paginator.getAvailableHeight(),
+          });
+          if (balancedHeight !== undefined) {
+            paginator.balanceColumns(balancedHeight);
+          }
+        }
         activeSectionMarginTop = nextSectionConfig.margins.top;
         activeSectionPageHeight = nextSectionConfig.pageSize.h;
         activeSectionMarginBottom = nextSectionConfig.margins.bottom;

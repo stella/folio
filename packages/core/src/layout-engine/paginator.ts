@@ -194,6 +194,14 @@ export function createPaginator(options: PaginatorOptions) {
   // (continuous section break). When advanceColumn moves to the next column,
   // it resets cursorY to this value instead of topMargin.
   let columnRegionTop = margins.top;
+  // Short multi-column sections can end before the page bottom. Word balances
+  // their final columns by temporarily shortening the available column region.
+  // Undefined keeps the normal page-bottom boundary.
+  let columnRegionBottom: number | undefined;
+
+  function getEffectiveContentBottom(state: PageState): number {
+    return Math.min(state.contentBottom, columnRegionBottom ?? state.contentBottom);
+  }
 
   /**
    * Get X position for a given column index.
@@ -262,6 +270,7 @@ export function createPaginator(options: PaginatorOptions) {
 
     // Reset column region to page top on new page
     columnRegionTop = topMargin;
+    columnRegionBottom = undefined;
 
     if (options.onNewPage) {
       options.onNewPage(state);
@@ -289,7 +298,7 @@ export function createPaginator(options: PaginatorOptions) {
    * Get available height remaining on the current column.
    */
   function getAvailableHeight(state: PageState): number {
-    return state.contentBottom - state.cursorY;
+    return getEffectiveContentBottom(state) - state.cursorY;
   }
 
   /**
@@ -327,7 +336,7 @@ export function createPaginator(options: PaginatorOptions) {
 
     // Keep advancing until we have space
     while (!fits(safeHeight, state)) {
-      const columnCapacity = state.contentBottom - state.topMargin;
+      const columnCapacity = getEffectiveContentBottom(state) - columnRegionTop;
       if (safeHeight > columnCapacity) {
         if (state.cursorY !== state.topMargin) {
           state = advanceColumn(state);
@@ -485,6 +494,7 @@ export function createPaginator(options: PaginatorOptions) {
     current.contentBottom = rawContentBottom - footnoteHeight;
     current.trailingSpacing = 0;
     columnRegionTop = topMargin;
+    columnRegionBottom = undefined;
 
     currentSectionPageNumber = 1;
     applySectionMetadata(current.page);
@@ -521,9 +531,19 @@ export function createPaginator(options: PaginatorOptions) {
     // This ensures that when advancing columns, new columns start
     // at the same Y as where the multi-column content began (not page top).
     columnRegionTop = state.cursorY;
+    columnRegionBottom = undefined;
 
     // Reset to column 0 for the new column layout
     state.columnIndex = 0;
+  }
+
+  function balanceColumns(height: number): void {
+    const state = getCurrentState();
+    if (!Number.isFinite(height) || height <= 0 || columns.count <= 1) {
+      columnRegionBottom = undefined;
+      return;
+    }
+    columnRegionBottom = Math.min(state.contentBottom, columnRegionTop + height);
   }
 
   function updatePageLayout(
@@ -607,6 +627,8 @@ export function createPaginator(options: PaginatorOptions) {
     getColumnX,
     /** Update column layout (for section breaks). */
     updateColumns,
+    /** Temporarily shorten a multi-column region so its final columns balance. */
+    balanceColumns,
     /** Update page size/margins for subsequent pages. */
     updatePageLayout,
     /** Mark the next created page as the first page of a new section. */
