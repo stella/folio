@@ -198,6 +198,45 @@ describe("toFlowBlocks style cascade", () => {
     expect(run.allCaps).toBe(false);
   });
 
+  test("paragraph-mark booleans do not replace inherited paragraph-style booleans", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "EmphasizedClause",
+          type: "paragraph",
+          name: "Emphasized Clause",
+          rPr: { bold: true },
+        },
+      ],
+    };
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      formatting: {
+        styleId: "EmphasizedClause",
+        runProperties: { bold: false },
+      },
+      content: [
+        {
+          type: "run",
+          formatting: { bold: false },
+          content: [{ type: "text", text: "Plain lead" }],
+        },
+        {
+          type: "run",
+          formatting: { fontSize: 22 },
+          content: [{ type: "text", text: "Styled remainder" }],
+        },
+      ],
+    };
+
+    const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
+    const runs = firstParagraph(blocks).runs.filter((run) => run.kind === "text");
+
+    expect(runs).toHaveLength(2);
+    expect(runs[0]?.bold).toBe(false);
+    expect(runs[1]?.bold).toBe(true);
+  });
+
   test("default character style reaches runs without rStyle", () => {
     const styles: StyleDefinitions = {
       docDefaults: { rPr: { fontSize: 22 } },

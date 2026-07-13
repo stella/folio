@@ -915,18 +915,18 @@ function suppressParagraphMarkFormatting(
     (paragraphMarkPrecedesStyle
       ? mergeTextFormatting(paragraphMark, base)
       : mergeTextFormatting(base, paragraphMark)) ?? {};
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "bold");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "italic");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "strike");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "doubleStrike");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "allCaps");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "smallCaps");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "hidden");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "emboss");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "imprint");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "shadow");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "outline");
-  suppressBooleanParagraphMark(result, paragraphMark, direct, "rtl");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "bold");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "italic");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "strike");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "doubleStrike");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "allCaps");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "smallCaps");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "hidden");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "emboss");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "imprint");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "shadow");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "outline");
+  suppressBooleanParagraphMark(result, base, paragraphMark, direct, "rtl");
 
   // A direct run suppresses a size stored only on the paragraph mark. Restore
   // the resolved paragraph-style size instead of letting the pilcrow size leak
@@ -962,6 +962,7 @@ function suppressParagraphMarkFormatting(
 
 function suppressBooleanParagraphMark(
   result: TextFormatting,
+  base: TextFormatting | undefined,
   paragraphMark: TextFormatting,
   direct: TextFormatting | undefined,
   key: keyof Pick<
@@ -983,7 +984,7 @@ function suppressBooleanParagraphMark(
   if (paragraphMark[key] === undefined || direct?.[key] !== undefined) {
     return;
   }
-  result[key] = false;
+  result[key] = base?.[key] ?? false;
 }
 
 function resolveTextFormatting(
