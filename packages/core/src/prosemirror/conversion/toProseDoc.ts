@@ -1098,7 +1098,7 @@ function calculateRowSpans(table: Table): Map<string, RowSpanInfo> {
       clearActiveVerticalMerges(activeMerges, result);
       continue;
     }
-    let colIndex = 0;
+    let colIndex = row.formatting?.gridBefore ?? 0;
     const rowCells = row.cells.map((cell) => {
       const colspan = cell.formatting?.gridSpan ?? 1;
       const vMerge = cell.formatting?.vMerge;
@@ -1399,10 +1399,11 @@ function convertTable(
 function countTableColumns(rows: TableRow[]): number {
   let maxColumns = 0;
   for (const row of rows) {
-    let rowColumns = 0;
+    let rowColumns = row.formatting?.gridBefore ?? 0;
     for (const cell of row.cells) {
       rowColumns += cell.formatting?.gridSpan ?? 1;
     }
+    rowColumns += row.formatting?.gridAfter ?? 0;
     maxColumns = Math.max(maxColumns, rowColumns);
   }
   return maxColumns;
@@ -1495,7 +1496,7 @@ function convertTableRow(
   }
 
   // Track column index for mapping to columnWidths (accounting for colspan)
-  let colIndex = 0;
+  let colIndex = row.formatting?.gridBefore ?? 0;
   const cells: PMNode[] = [];
 
   for (const cellIndex_item of effectiveCells) {

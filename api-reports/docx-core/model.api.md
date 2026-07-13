@@ -1130,6 +1130,10 @@ export type TableRow = {
 
 // @public
 export type TableRowFormatting = {
+    gridBefore?: number; /** Preferred width of the omitted leading grid columns */
+    widthBefore?: TableMeasurement; /** Number of table grid columns omitted after the last cell */
+    gridAfter?: number; /** Preferred width of the omitted trailing grid columns */
+    widthAfter?: TableMeasurement; /** Row height */
     height?: TableMeasurement; /** Height rule */
     heightRule?: "auto" | "atLeast" | "exact"; /** Header row (repeats on each page) */
     header?: boolean; /** Allow row to break across pages */

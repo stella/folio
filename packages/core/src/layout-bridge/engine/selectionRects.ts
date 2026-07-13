@@ -10,6 +10,7 @@
 
 import { getHeaderRowsHeight } from "../../layout-engine/index";
 import { measuredLineContentOffset } from "../../layout-engine/lineFlow";
+import { getTableRowLeadingWidth } from "../../layout-engine/types";
 import { measureParagraph } from "../../layout-engine/measure";
 import { buildRunFontStyle } from "../../layout-engine/measure/measureHelpers";
 import { measureRun } from "../../layout-engine/measure/measureProvider";
@@ -614,7 +615,7 @@ export function selectionToRects(
           const clipBottom = tableFragment.bottomClip ?? rowMeasure.height;
 
           // Walk through cells
-          let cellX = 0;
+          let cellX = getTableRowLeadingWidth(row, tableMeasure.columnWidths);
           for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex++) {
             const cell = row.cells[cellIndex];
             const cellMeasure = rowMeasure.cells[cellIndex];

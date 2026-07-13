@@ -465,6 +465,14 @@ export type TableFormatting = {
  * Table row formatting properties (w:trPr)
  */
 export type TableRowFormatting = {
+  /** Number of table grid columns omitted before the first cell */
+  gridBefore?: number;
+  /** Preferred width of the omitted leading grid columns */
+  widthBefore?: TableMeasurement;
+  /** Number of table grid columns omitted after the last cell */
+  gridAfter?: number;
+  /** Preferred width of the omitted trailing grid columns */
+  widthAfter?: TableMeasurement;
   /** Row height */
   height?: TableMeasurement;
   /** Height rule */

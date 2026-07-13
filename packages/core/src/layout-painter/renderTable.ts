@@ -28,6 +28,7 @@ import type {
   TextBoxFragment,
 } from "../layout-engine/types";
 import {
+  getTableRowLeadingWidth,
   isFloatingImageRun,
   isFloatingTextBoxBlock,
   tableColumnsArePinned,
@@ -608,8 +609,9 @@ function renderTableRow(
   // Render cells
   // Track actual column index separately from cell index
   // because cells with colSpan > 1 span multiple columns
-  let x = 0;
-  let columnIndex = 0;
+  const gridBefore = row.gridBefore ?? 0;
+  let x = getTableRowLeadingWidth(row, columnWidths);
+  let columnIndex = gridBefore;
 
   // Skip columns occupied by spanning cells
   while (occupiedColumns.has(columnIndex)) {

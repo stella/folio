@@ -2203,6 +2203,12 @@ function convertTableRow(
     id: nextBlockId(),
     cells,
   };
+  if (attrs._originalFormatting?.gridBefore) {
+    row.gridBefore = attrs._originalFormatting.gridBefore;
+  }
+  if (attrs._originalFormatting?.gridAfter) {
+    row.gridAfter = attrs._originalFormatting.gridAfter;
+  }
   if (attrs.height) {
     row.height = twipsToPixels(attrs.height);
   }
