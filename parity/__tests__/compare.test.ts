@@ -515,6 +515,42 @@ describe("compareGeoms", () => {
     expect(result.score).toBe(1);
   });
 
+  test("reconciles one segmented visual row inside a larger alignment gap", () => {
+    const reference = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({ text: "Short", xPt: 72, yPt: 72, widthPt: 30, region: "unknown" }),
+          makeLine({
+            text: "Right segment",
+            xPt: 180,
+            yPt: 72,
+            widthPt: 90,
+            region: "unknown",
+          }),
+          makeLine({
+            text: "Unmatched row",
+            xPt: 72,
+            yPt: 100,
+            widthPt: 80,
+            region: "unknown",
+          }),
+        ],
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: [makeLine({ text: "Short Right segment", xPt: 72, yPt: 78, widthPt: 198 })],
+      }),
+    ]);
+
+    const result = compareGeoms(reference, folio);
+
+    expect(result.divergences).toEqual([{ kind: "missing-line", page: 1, text: "Unmatched row" }]);
+    expect(result.matchedLines).toBe(2);
+    expect(result.medianYOffsetPt).toBe(6);
+    expect(result.score).toBeCloseTo(2 / 3);
+  });
+
   test("a normalized 1-to-1 gap is treated as a match, not a line-break", () => {
     const word = makeDoc("word", [
       makePage({

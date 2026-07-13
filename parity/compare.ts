@@ -473,10 +473,8 @@ const resolveOps = (
  * 1-to-N and N-to-1 cases. Otherwise every word line is missing and every
  * folio line is extra.
  *
- * Greedy sub-splitting of large, only-partially-reconcilable regions (e.g.
- * matching prefixes progressively) is spec-optional and not implemented
- * here: a region that doesn't reconcile as a whole falls through entirely to
- * missing/extra rather than being partially salvaged.
+ * If the whole gap does not reconcile, spatially equivalent segmented rows
+ * are recovered independently; unrelated leftovers remain missing/extra.
  */
 type ReconcileGapOptions = {
   wordIdxs: number[];
@@ -512,11 +510,91 @@ const reconcileGap = ({
     if (textSimilarity(wordConcat, folioConcat) >= CONCAT_THRESHOLD) {
       return [{ kind: "line-break", wordIdxs, folioIdxs }];
     }
+
+    const visualRows = reconcileGapByVisualRow({ wordIdxs, folioIdxs, wordFlat, folioFlat });
+    if (visualRows) return visualRows;
   }
   return [
     ...wordIdxs.map((wordIdx): ResolvedItem => ({ kind: "missing", wordIdx })),
     ...folioIdxs.map((folioIdx): ResolvedItem => ({ kind: "extra", folioIdx })),
   ];
+};
+
+/**
+ * A larger alignment gap can contain one equivalent segmented row plus an
+ * unrelated leftover row. Reconcile only the spatially matching row pair and
+ * retain the rest as real missing/extra lines instead of discarding the useful
+ * match because the entire gap does not concatenate to the same text.
+ */
+const reconcileGapByVisualRow = ({
+  wordIdxs,
+  folioIdxs,
+  wordFlat,
+  folioFlat,
+}: ReconcileGapOptions): ResolvedItem[] | null => {
+  const wordRows = groupGapLinesByVisualRow(wordIdxs, wordFlat);
+  const folioRows = groupGapLinesByVisualRow(folioIdxs, folioFlat);
+  const resolved: ResolvedItem[] = [];
+  let wordPosition = 0;
+  let folioPosition = 0;
+  let reconciled = false;
+
+  while (wordPosition < wordRows.length && folioPosition < folioRows.length) {
+    const wordRow = wordRows[wordPosition];
+    const folioRow = folioRows[folioPosition];
+    if (!wordRow || !folioRow) break;
+
+    if (equivalentSegmentedRows(wordRow, folioRow, wordFlat, folioFlat)) {
+      resolved.push({ kind: "line-break", wordIdxs: wordRow, folioIdxs: folioRow });
+      reconciled = true;
+      wordPosition++;
+      folioPosition++;
+      continue;
+    }
+
+    const nextWordRow = wordRows[wordPosition + 1];
+    if (nextWordRow && equivalentSegmentedRows(nextWordRow, folioRow, wordFlat, folioFlat)) {
+      resolved.push(...wordRow.map((wordIdx): ResolvedItem => ({ kind: "missing", wordIdx })));
+      wordPosition++;
+      continue;
+    }
+
+    const nextFolioRow = folioRows[folioPosition + 1];
+    if (nextFolioRow && equivalentSegmentedRows(wordRow, nextFolioRow, wordFlat, folioFlat)) {
+      resolved.push(...folioRow.map((folioIdx): ResolvedItem => ({ kind: "extra", folioIdx })));
+      folioPosition++;
+      continue;
+    }
+    break;
+  }
+
+  if (!reconciled) return null;
+  for (; wordPosition < wordRows.length; wordPosition++) {
+    const row = wordRows[wordPosition] ?? [];
+    resolved.push(...row.map((wordIdx): ResolvedItem => ({ kind: "missing", wordIdx })));
+  }
+  for (; folioPosition < folioRows.length; folioPosition++) {
+    const row = folioRows[folioPosition] ?? [];
+    resolved.push(...row.map((folioIdx): ResolvedItem => ({ kind: "extra", folioIdx })));
+  }
+  return resolved;
+};
+
+const equivalentSegmentedRows = (
+  wordIdxs: number[],
+  folioIdxs: number[],
+  wordFlat: FlatLine[],
+  folioFlat: FlatLine[],
+): boolean => {
+  if (wordIdxs.length === folioIdxs.length) return false;
+  const reference = mergeFlatLines(wordIdxs, wordFlat);
+  const candidate = mergeFlatLines(folioIdxs, folioFlat);
+  return (
+    reference !== null &&
+    candidate !== null &&
+    reference.page === candidate.page &&
+    textSimilarity(reference.line.normText, candidate.line.normText) >= CONCAT_THRESHOLD
+  );
 };
 
 const pageRegionKey = (page: number, region: LineBox["region"]): string =>
