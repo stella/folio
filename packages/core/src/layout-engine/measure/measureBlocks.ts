@@ -1085,19 +1085,29 @@ export function measureBlocks(
         : contentWidth;
       const measure = measureBlock(block, blockWidth, zones, cumulativeY, fieldValues);
 
-      // Paragraphs clear a full-width band internally (findClearLineY inside
-      // measureParagraph). An in-flow table or inline image does not, so reserve
-      // a leading skip here that layout applies before the block, pushing it
-      // below the band rather than under it. eigenpal #694.
-      const bandZones = zones?.filter((zone) => zone.fullWidthBlock);
+      // Paragraphs clear floating exclusions internally (findClearLineY inside
+      // measureParagraph). An in-flow table cannot reflow its cells around a
+      // side exclusion, so require room for the whole table. Block images keep
+      // the existing full-width-band behavior.
+      const clearingZones =
+        measure.kind === "table" ? zones : zones?.filter((zone) => zone.fullWidthBlock);
       if (
-        bandZones?.length &&
+        clearingZones?.length &&
         (measure.kind === "image" || (measure.kind === "table" && !(block as TableBlock).floating))
       ) {
         const blockHeight = measure.kind === "image" ? measure.height : measure.totalHeight;
+        const requiredWidth =
+          measure.kind === "table"
+            ? Math.min(blockWidth, measure.totalWidth)
+            : MIN_WRAP_SEGMENT_WIDTH;
         const skip =
-          findClearLineY(cumulativeY, blockHeight, bandZones, blockWidth, MIN_WRAP_SEGMENT_WIDTH) -
-          cumulativeY;
+          findClearLineY(
+            cumulativeY,
+            blockHeight,
+            clearingZones,
+            blockWidth,
+            Math.max(MIN_WRAP_SEGMENT_WIDTH, requiredWidth),
+          ) - cumulativeY;
         if (skip > 0) {
           measure.bandSkipBefore = skip;
           cumulativeY += skip;
