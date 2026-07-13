@@ -608,6 +608,29 @@ describe("header/footer layout conversion", () => {
     expect(nested.attrs?.spacing?.after).toBeUndefined();
   });
 
+  test.each([
+    { source: "paragraph formatting", attrs: { hasDirectParagraphFormatting: true } },
+    { source: "paragraph-mark formatting", attrs: { hasDirectParagraphMarkFormatting: true } },
+    { source: "an explicit style", attrs: { styleId: "Spacer" } },
+  ])("keeps inherited spacing on an empty paragraph authored through $source", ({ attrs }) => {
+    const [normalized] = normalizeHeaderFooterMeasureBlocks([
+      emptyParagraph({ attrs: { spacing: { after: 10 }, ...attrs } }),
+    ]);
+
+    expect(normalized).toMatchObject({
+      kind: "paragraph",
+      attrs: { spacing: { after: 10 } },
+    });
+  });
+
+  test("strips inherited spacing from a bare empty page-furniture paragraph", () => {
+    const [normalized] = normalizeHeaderFooterMeasureBlocks([
+      emptyParagraph({ attrs: { spacing: { after: 10 } } }),
+    ]);
+
+    expect(normalized).toMatchObject({ kind: "paragraph", attrs: { spacing: {} } });
+  });
+
   test("suppresses only the canonical trailing empty paragraph after a final table", () => {
     const blocks = normalizeHeaderFooterMeasureBlocks([
       table(),

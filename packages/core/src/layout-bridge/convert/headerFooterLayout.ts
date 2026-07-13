@@ -28,6 +28,7 @@ import type {
   ImageRunPosition,
   Measure,
   PageMargins,
+  ParagraphBlock,
   Run,
   TableBlock,
   TableMeasure,
@@ -59,12 +60,13 @@ export type HeaderFooterMetrics = {
 //    at page level and don't contribute to in-flow paragraph height. The
 //    measurement copy renders only the inline runs.
 //
-// 2. Strip style-inherited paragraph spacing (#380). Word visibly does NOT
-//    honor inherited `spaceBefore` / `spaceAfter` (e.g. Normal's default
-//    8pt-after) inside the HF text frame. Inline `<w:spacing>` set
-//    explicitly on the HF paragraph IS honored. The parser flags inline
-//    spacing via `spacingExplicit.before` / `.after`; anything not flagged
-//    was inherited and is zeroed for measurement.
+// 2. Strip style-inherited paragraph spacing (#380). The reference renderer
+//    does not honor inherited `spaceBefore` / `spaceAfter` on ordinary text
+//    inside the page-furniture frame. Authored empty paragraphs are the
+//    exception: they retain inherited spacing because it forms part of the
+//    intentional spacer. Inline `<w:spacing>` set explicitly on a paragraph
+//    is always honored. The parser flags inline spacing via
+//    `spacingExplicit.before` / `.after`.
 //
 // 3. Zero trailing empty paragraph after a table in headers (#381). OOXML requires a
 //    trailing block-level element after the last `<w:tbl>` in any block
@@ -108,6 +110,17 @@ function hasAuthoredVisualContent(block: FlowBlock): boolean {
     return true;
   }
   return false;
+}
+
+function preservesInheritedSpacing(block: ParagraphBlock): boolean {
+  if (!isVisuallyEmptyParagraph(block)) {
+    return false;
+  }
+  return (
+    block.attrs?.styleId !== undefined ||
+    block.attrs?.hasDirectParagraphFormatting === true ||
+    block.attrs?.hasDirectParagraphMarkFormatting === true
+  );
 }
 
 export function normalizeHeaderFooterMeasureBlocks(
@@ -158,8 +171,9 @@ function normalizeFlowBlockArray(
     const explicit = block.attrs?.spacingExplicit;
     const hasResolvedBefore = block.attrs?.spacing?.before != null;
     const hasResolvedAfter = block.attrs?.spacing?.after != null;
-    const beforeIsInherited = hasResolvedBefore && !explicit?.before;
-    const afterIsInherited = hasResolvedAfter && !explicit?.after;
+    const preserveInherited = preservesInheritedSpacing(block);
+    const beforeIsInherited = hasResolvedBefore && !explicit?.before && !preserveInherited;
+    const afterIsInherited = hasResolvedAfter && !explicit?.after && !preserveInherited;
     const stripsSpacing = beforeIsInherited || afterIsInherited;
 
     const stripsImages = block.runs.some(isAnchoredImageRun);
