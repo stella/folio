@@ -2523,6 +2523,10 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     switch (node.type.name) {
       case "paragraph": {
         const pmAttrs = expectParagraphAttrs(node);
+        const secProps = pmAttrs._sectionProperties as SectionProperties | undefined;
+        const hasSectionBreak =
+          secProps !== undefined ||
+          (pmAttrs.sectionBreakType !== null && pmAttrs.sectionBreakType !== undefined);
         const onlyChild = node.childCount === 1 ? node.firstChild : null;
         const isStandaloneColumnBreak =
           onlyChild?.type.name === "hardBreak" &&
@@ -2536,13 +2540,15 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
             pmEnd: pos + node.nodeSize,
           };
           trackedPush(columnBreak);
-        } else {
+        } else if (node.content.size > 0 || !hasSectionBreak) {
+          // An empty paragraph carrying w:sectPr is Word's structural section
+          // marker; it does not paint an additional blank line. Text-bearing
+          // section-ending paragraphs still participate in normal layout.
           trackedPush(convertParagraph(node, pos, opts));
         }
 
         // Emit section break block if this paragraph ends a section
-        const secProps = pmAttrs._sectionProperties as SectionProperties | undefined;
-        if (secProps || pmAttrs.sectionBreakType) {
+        if (hasSectionBreak) {
           const sectionBreak: SectionBreakBlock = {
             kind: "sectionBreak",
             id: nextBlockId(),

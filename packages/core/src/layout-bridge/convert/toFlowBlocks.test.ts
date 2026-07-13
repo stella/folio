@@ -5,6 +5,30 @@ import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  test("does not paint an empty structural section-break paragraph", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { sectionBreakType: "continuous" }),
+      schema.node("paragraph", null, [schema.text("Next section")]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["sectionBreak", "paragraph"]);
+  });
+
+  test("paints text in a paragraph that also ends a section", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { sectionBreakType: "continuous" }, [
+        schema.text("Section ending text"),
+      ]),
+      schema.node("paragraph", null, [schema.text("Next section")]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "sectionBreak", "paragraph"]);
+  });
+
   test("emits a structural break for a standalone column break paragraph", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("First column")]),
