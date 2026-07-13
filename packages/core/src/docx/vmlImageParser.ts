@@ -359,6 +359,14 @@ export function parseVmlImageContent(
     const shapeStyle = parseStyleAttr(getAttribute(shape, null, "style"));
     const widthPx = cssLengthToPx(shapeStyle["width"]);
     const heightPx = cssLengthToPx(shapeStyle["height"]);
+    const isEmbeddedObject = getLocalName(pictElement.name ?? "") === "object";
+    if (
+      isEmbeddedObject &&
+      ((widthPx !== undefined && !validPreviewDimension(widthPx)) ||
+        (heightPx !== undefined && !validPreviewDimension(heightPx)))
+    ) {
+      continue;
+    }
 
     // VML pictures in a run are inline-flow. Absolute-positioned VML is treated
     // as inline here too: rendering the picture in flow is far better than

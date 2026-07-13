@@ -146,7 +146,8 @@ export type ImageAttrs = {
     borderStyle?: string; /** Wrap text setting from DOCX (left, right, bothSides, largest) for round-trip */
     wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>; /** Hyperlink URL for clickable image */
     hlinkHref?: string; /** Original OOXML for opaque/unsupported DOCX drawings. */
-    _docxRawXml?: string;
+    _docxRawXml?: string; /** Embedded-object previews use their authored box as the exact line height. */
+    _docxObjectPreview?: boolean;
 };
 
 // @public

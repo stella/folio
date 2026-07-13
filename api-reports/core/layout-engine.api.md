@@ -341,7 +341,8 @@ export type ImageRun = {
     distTop?: number;
     distBottom?: number;
     distLeft?: number;
-    distRight?: number;
+    distRight?: number; /** Use the image box as the exact line height for an embedded-object preview. */
+    exactLineHeight?: boolean;
     cropTop?: number;
     cropRight?: number;
     cropBottom?: number;

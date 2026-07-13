@@ -1746,4 +1746,27 @@ describe("toFlowBlocks image attribute normalization", () => {
     }
     expect(imageRun.opacity).toBe(0.5);
   });
+
+  test("marks embedded-object previews for exact line-height measurement", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.nodes.image.create({
+          src: "media/preview.png",
+          width: 20,
+          height: 18,
+          _docxObjectPreview: true,
+        }),
+      ]),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph block");
+    }
+
+    expect(paragraph.runs.at(0)).toMatchObject({
+      kind: "image",
+      exactLineHeight: true,
+    });
+  });
 });
