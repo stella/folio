@@ -239,6 +239,9 @@ export function getHeaderRowsHeight(measure: TableMeasure, headerRowCount: numbe
 export function getMidChainIndices(chains: Map<number, KeepNextChain>): Set<number>;
 
 // @public
+export const getTableRowLeadingWidth: (row: TableRow, columnWidths: readonly number[]) => number;
+
+// @public
 export function hasKeepLines(block: FlowBlock): boolean;
 
 // @public
@@ -865,6 +868,8 @@ export type TableMeasure = {
 export type TableRow = {
     id: BlockId;
     cells: TableCell[];
+    gridBefore?: number;
+    gridAfter?: number;
     height?: number;
     heightRule?: "auto" | "atLeast" | "exact";
     isHeader?: boolean;
