@@ -444,11 +444,13 @@ const collectFontPairs = (wordGeom: DocGeom, folioGeom: DocGeom): FontPair[] => 
     }
   }
 
+  for (const lines of folioLinesByText.values()) lines.reverse();
+
   const pairs: FontPair[] = [];
   for (const page of wordGeom.pages) {
     for (const line of page.lines) {
       if (line.fontName === undefined) continue;
-      const folioLine = folioLinesByText.get(line.normText)?.shift();
+      const folioLine = folioLinesByText.get(line.normText)?.pop();
       if (folioLine?.fontName !== undefined) {
         pairs.push({
           wordFont: line.fontName,
@@ -479,8 +481,8 @@ const hasFontMetricMismatch = (pairs: FontPair[]): boolean => {
   const middle = Math.floor(ratios.length / 2);
   const median =
     ratios.length % 2 === 0
-      ? ((ratios.at(middle - 1) ?? 1) + (ratios.at(middle) ?? 1)) / 2
-      : (ratios.at(middle) ?? 1);
+      ? ((ratios[middle - 1] ?? 1) + (ratios[middle] ?? 1)) / 2
+      : (ratios[middle] ?? 1);
   if (Math.abs(median - 1) > FONT_METRIC_RELATIVE_TOLERANCE) return true;
 
   const wider = ratios.filter((ratio) => ratio > 1 + FONT_METRIC_RELATIVE_TOLERANCE).length;
