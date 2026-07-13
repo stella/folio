@@ -327,6 +327,36 @@ describe("Folio AI edit operations", () => {
     expect(snapshot.anchors["seq-0001"]?.textHash).toMatch(/^h/u);
   });
 
+  test("an entirely empty document exposes an operation anchor without a visible block", () => {
+    const state = makeState([""]);
+
+    const snapshot = createFolioAIEditSnapshot(state.doc);
+
+    expect(snapshot.blocks).toEqual([]);
+    expect(snapshot.emptyDocumentAnchorId).toBe("seq-0001");
+    expect(snapshot.anchors["seq-0001"]).toMatchObject({
+      id: "seq-0001",
+      text: "",
+      normalizedText: "",
+      hashOccurrenceCount: 1,
+    });
+  });
+
+  test("an empty table cell is not treated as an empty-document operation anchor", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [schema.node("tableCell", null, [schema.node("paragraph")])]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc });
+
+    const snapshot = createFolioAIEditSnapshot(state.doc);
+
+    expect(snapshot.blocks).toEqual([]);
+    expect(snapshot.emptyDocumentAnchorId).toBeUndefined();
+    expect(snapshot.anchors).toEqual({});
+  });
+
   test("snapshot uses sequential fallback ids for duplicate paraIds", () => {
     const state = makeState([
       { text: "First paragraph.", paraId: "AAAA0001" },

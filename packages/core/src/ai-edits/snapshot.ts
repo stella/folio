@@ -62,9 +62,13 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   }[] = [];
   const hashCounts = new Map<string, number>();
   const usedBlockIds = new Set<string>();
+  const emptyAnchorState: {
+    candidate: { from: number; to: number; paraId: string | null } | null;
+    textblockCount: number;
+  } = { candidate: null, textblockCount: 0 };
 
   let blockIndex = 0;
-  doc.descendants((node, pos) => {
+  doc.descendants((node, pos, parent) => {
     if (!node.isTextblock) {
       return;
     }
@@ -79,6 +83,18 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     const { text } = buildCleanBlockText(node, pos);
     const normalizedText = normalizeFolioAIBlockText(text);
     if (normalizedText.length === 0) {
+      if (parent?.type !== doc.type) {
+        return;
+      }
+      emptyAnchorState.textblockCount++;
+      if (emptyAnchorState.candidate === null) {
+        const paraIdAttr: unknown = node.attrs["paraId"];
+        emptyAnchorState.candidate = {
+          from: pos,
+          to: pos + node.nodeSize,
+          paraId: typeof paraIdAttr === "string" && paraIdAttr.length > 0 ? paraIdAttr : null,
+        };
+      }
       return;
     }
 
@@ -141,7 +157,27 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     };
   }
 
-  return { blocks, anchors };
+  const emptyAnchorCandidate = emptyAnchorState.candidate;
+  if (blocks.length > 0 || emptyAnchorCandidate === null) {
+    return { blocks, anchors };
+  }
+
+  const emptyDocumentAnchorId = deriveBlockId({
+    paraId: emptyAnchorCandidate.paraId,
+    index: 1,
+    taken: usedBlockIds,
+  });
+  const normalizedText = "";
+  anchors[emptyDocumentAnchorId] = {
+    id: emptyDocumentAnchorId,
+    from: emptyAnchorCandidate.from,
+    to: emptyAnchorCandidate.to,
+    text: "",
+    normalizedText,
+    textHash: hashFolioAIBlockText(normalizedText),
+    hashOccurrenceCount: emptyAnchorState.textblockCount,
+  };
+  return { blocks, anchors, emptyDocumentAnchorId };
 };
 
 const getBlockKind = (node: PMNode, headingLevel: number | undefined): FolioAIBlockKind => {

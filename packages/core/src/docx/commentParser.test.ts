@@ -104,6 +104,19 @@ describe("commentParser", () => {
       expect(comments[0].author).toBe("Charlie");
       expect(comments[0].date).toBeUndefined();
     });
+
+    test("normalizes missing and empty comment authors", () => {
+      const commentsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:comment w:id="1" w:author=""><w:p/></w:comment>
+  <w:comment w:id="2" w:author="   "><w:p/></w:comment>
+  <w:comment w:id="3"><w:p/></w:comment>
+</w:comments>`;
+
+      const comments = parseComments(commentsXml, emptyStyles, emptyTheme, emptyRels, emptyMedia);
+
+      expect(comments.map(({ author }) => author)).toEqual(["Unknown", "Unknown", "Unknown"]);
+    });
   });
 
   describe("UTC timestamp cross-referencing", () => {

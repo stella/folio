@@ -166,7 +166,8 @@ export function parseComments(
     }
 
     const id = Number.parseInt(getAttribute(child, "w", "id") ?? "0", 10);
-    const author = getAttribute(child, "w", "author") ?? "Unknown";
+    const rawAuthor = getAttribute(child, "w", "author");
+    const author = rawAuthor?.trim() || "Unknown";
     const rawInitials = getAttribute(child, "w", "initials");
     const initials = rawInitials !== null ? String(rawInitials) : undefined;
     const rawDate = getAttribute(child, "w", "date");

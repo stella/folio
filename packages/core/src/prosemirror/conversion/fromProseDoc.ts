@@ -1016,16 +1016,7 @@ function extractParagraphContent(
     syncCommentRanges(node, offset);
     const linkMark = node.marks.find((m) => m.type.name === "hyperlink");
 
-    // Check for footnote/endnote reference mark
     const noteRefMark = node.marks.find((m) => m.type.name === "footnoteRef");
-    if (noteRefMark && !linkMark) {
-      // Finish any current content
-      flushCurrentInline();
-      content.push(createNoteReferenceRun(noteRefMark, node.marks));
-      return;
-    }
-
-    // Check for tracked change marks (insertion/deletion)
     const insertionMark = node.marks.find((m) => m.type.name === "insertion");
     const deletionMark = node.marks.find((m) => m.type.name === "deletion");
     if (insertionMark || deletionMark) {
@@ -1072,6 +1063,14 @@ function extractParagraphContent(
       } else {
         content.push({ type: "deletion", info, content: [run] });
       }
+      return;
+    }
+
+    // A tracked note reference must reach the branch above so it stays inside
+    // the w:ins/w:del wrapper. Plain references serialize directly.
+    if (noteRefMark && !linkMark) {
+      flushCurrentInline();
+      content.push(createNoteReferenceRun(noteRefMark, node.marks));
       return;
     }
 
@@ -1190,6 +1189,10 @@ function extractParagraphContent(
 }
 
 function createTrackedChangeRun(node: PMNode, marks: readonly Mark[]): Run | null {
+  const noteRefMark = marks.find((mark) => mark.type.name === "footnoteRef");
+  if (noteRefMark) {
+    return createNoteReferenceRun(noteRefMark, marks);
+  }
   if (node.isText) {
     const formatting = marksToTextFormatting(marks);
     return {

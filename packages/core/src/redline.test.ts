@@ -121,6 +121,36 @@ describe("generateRedlineDocx", () => {
     ]);
   });
 
+  test("consecutive additions after the final base block keep revised-document order", async () => {
+    const base = await buildDocxBuffer([
+      { text: "Agreement terms.", paraId: "00000001" },
+      { text: "Final existing clause.", paraId: "00000002" },
+    ]);
+    const revised = await buildDocxBuffer([
+      { text: "Agreement terms.", paraId: "00000001" },
+      { text: "Final existing clause.", paraId: "00000002" },
+      { text: "First appendix.", paraId: "00000003" },
+      { text: "Second appendix.", paraId: "00000004" },
+      { text: "Third appendix.", paraId: "00000005" },
+    ]);
+
+    const result = await generateRedlineDocx(base, revised);
+
+    expect(result.skipped).toEqual([]);
+    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    expect(blockTexts(acceptView)).toEqual([
+      "Agreement terms.",
+      "Final existing clause.",
+      "First appendix.",
+      "Second appendix.",
+      "Third appendix.",
+    ]);
+
+    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    rejectView.rejectAll();
+    expect(blockTexts(rejectView)).toEqual(["Agreement terms.", "Final existing clause."]);
+  });
+
   test("identical documents produce a redline with no tracked changes", async () => {
     const paragraphs: ParagraphSpec[] = [
       { text: "Alpha paragraph.", paraId: "00000001" },
@@ -138,14 +168,22 @@ describe("generateRedlineDocx", () => {
     expect(blockTexts(view)).toEqual(["Alpha paragraph.", "Beta paragraph."]);
   });
 
-  test("an empty base document reports unanchorable additions as skipped", async () => {
+  test("an empty base document redlines additions and preserves accept/reject invariants", async () => {
     const base = await buildDocxBuffer([]);
-    const revised = await buildDocxBuffer([{ text: "Only paragraph.", paraId: "00000001" }]);
+    const revised = await buildDocxBuffer([
+      { text: "First paragraph.", paraId: "00000001" },
+      { text: "Second paragraph.", paraId: "00000002" },
+    ]);
 
     const result = await generateRedlineDocx(base, revised);
 
-    expect(result.applied).toEqual([]);
-    expect(result.skipped.map((op) => op.reason)).toEqual(["missingBlock"]);
+    expect(result.skipped).toEqual([]);
+    const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    expect(blockTexts(acceptView)).toEqual(["First paragraph.", "Second paragraph."]);
+
+    const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    rejectView.rejectAll();
+    expect(blockTexts(rejectView)).toEqual([]);
   });
 
   test("a custom author is recorded on the generated changes", async () => {

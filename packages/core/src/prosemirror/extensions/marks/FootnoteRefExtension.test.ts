@@ -1,8 +1,29 @@
 import { describe, expect, test } from "bun:test";
+import { EditorState } from "prosemirror-state";
 
 import { schema } from "../../schema";
 
 describe("FootnoteRefExtension parseDOM", () => {
+  test("does not extend a note reference mark onto adjacent typed text", () => {
+    const footnoteRef = schema.marks["footnoteRef"];
+    if (!footnoteRef) {
+      throw new Error("expected footnoteRef mark");
+    }
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("1", [footnoteRef.create({ id: "1", noteType: "footnote" })]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc });
+
+    const next = state.apply(state.tr.insertText("replacement", 1, 1));
+    const inserted = next.doc.firstChild?.firstChild;
+
+    expect(footnoteRef.spec.inclusive).toBe(false);
+    expect(inserted?.text).toBe("replacement");
+    expect(inserted?.marks.some((mark) => mark.type === footnoteRef)).toBe(false);
+  });
+
   test("parses superscript footnote refs rendered as sup", () => {
     const footnoteRef = schema.marks["footnoteRef"];
     if (!footnoteRef) {
