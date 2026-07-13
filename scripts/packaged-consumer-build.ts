@@ -10,7 +10,7 @@
 // gate closes that gap.
 //
 // Steps (mirrors scripts/validate-dist.ts's clean room):
-//   1. Build + transform both packages to their published "dist" shape and pack
+//   1. Build + transform the packages to their published "dist" shape and pack
 //      a tarball each (`bun pm pack`, which pins workspace/catalog protocols).
 //   2. Copy test/packaged-consumer OUT of the monorepo, install the tarballs
 //      into it npm-style (an `overrides` pin resolves folio-react's transitive
@@ -33,6 +33,7 @@ import {
   buildAndPack,
   consumerSrc,
   coreDir,
+  docxCoreDir,
   reactPeerInstallArgs,
   reactDir,
   type ReactPeerMajor,
@@ -46,13 +47,16 @@ import {
 let failure: string | null = null;
 const workerChunks: string[] = [];
 
+let docxCorePackDir = "";
 let corePackDir = "";
 let reactPackDir = "";
 const consumerDirs: string[] = [];
 try {
+  docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
   corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
   reactPackDir = await mkdtemp(path.join(tmpdir(), "folio-react-pack-"));
 
+  const docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir);
   const coreTarball = await buildAndPack(coreDir, corePackDir);
   const reactTarball = await buildAndPack(reactDir, reactPackDir);
 
@@ -68,10 +72,10 @@ try {
     await cp(path.join(consumerSrc, "src"), path.join(consumerDir, "src"), { recursive: true });
     await cp(path.join(consumerSrc, "vite.config.ts"), path.join(consumerDir, "vite.config.ts"));
 
-    await writeConsumerPackageJson(consumerDir, coreTarball);
+    await writeConsumerPackageJson({ consumerDir, coreTarball, docxCoreTarball });
 
     console.log(`→ installing tarballs + React ${reactMajor} peers`);
-    await $`bun add ${reactTarball} ${coreTarball} ${reactPeerInstallArgs(reactMajor)} use-intl@^4 vite@^8`
+    await $`bun add ${reactTarball} ${coreTarball} ${docxCoreTarball} ${reactPeerInstallArgs(reactMajor)} use-intl@^4 vite@^8`
       .cwd(consumerDir)
       .quiet();
 
@@ -106,7 +110,7 @@ try {
 } finally {
   // `rm` with `force` tolerates a dir that was never created (empty string is
   // guarded); cleanup runs on success, on failure, and on a thrown step.
-  for (const dir of [corePackDir, reactPackDir, ...consumerDirs]) {
+  for (const dir of [docxCorePackDir, corePackDir, reactPackDir, ...consumerDirs]) {
     if (dir !== "") {
       await rm(dir, { recursive: true, force: true });
     }

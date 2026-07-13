@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Runtime half of the packaged-consumer gate: build + pack both @stll/folio-*
+// Runtime half of the packaged-consumer gate: build + pack the workspace
 // packages, stage the clean-room consumer against the packed tarballs, run a
 // production SPA build, SERVE it, and drive it in a real browser (Playwright).
 //
@@ -26,6 +26,7 @@ import {
   buildAndPack,
   consumerSrc,
   coreDir,
+  docxCoreDir,
   reactPeerInstallArgs,
   reactDir,
   repoRoot,
@@ -74,13 +75,16 @@ const dumpLog = async (label: string, logPath: string): Promise<void> => {
 
 let failure: string | null = null;
 
+let docxCorePackDir = "";
 let corePackDir = "";
 let reactPackDir = "";
 const consumerDirs: string[] = [];
 try {
+  docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
   corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
   reactPackDir = await mkdtemp(path.join(tmpdir(), "folio-react-pack-"));
 
+  const docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir);
   const coreTarball = await buildAndPack(coreDir, corePackDir);
   const reactTarball = await buildAndPack(reactDir, reactPackDir);
 
@@ -110,10 +114,10 @@ try {
         path.join(consumerSrc, "vite.runtime.config.ts"),
         path.join(consumerDir, "vite.runtime.config.ts"),
       );
-      await writeConsumerPackageJson(consumerDir, coreTarball);
+      await writeConsumerPackageJson({ consumerDir, coreTarball, docxCoreTarball });
 
       console.log(`→ installing tarballs + React ${reactMajor} peers`);
-      await $`bun add ${reactTarball} ${coreTarball} ${reactPeerInstallArgs(reactMajor)} use-intl@^4 vite@^8 @vitejs/plugin-react@^6`
+      await $`bun add ${reactTarball} ${coreTarball} ${docxCoreTarball} ${reactPeerInstallArgs(reactMajor)} use-intl@^4 vite@^8 @vitejs/plugin-react@^6`
         .cwd(consumerDir)
         .quiet();
 
@@ -185,7 +189,7 @@ try {
     }
   }
 } finally {
-  for (const dir of [corePackDir, reactPackDir, ...consumerDirs]) {
+  for (const dir of [docxCorePackDir, corePackDir, reactPackDir, ...consumerDirs]) {
     if (dir !== "") {
       await rm(dir, { recursive: true, force: true });
     }
