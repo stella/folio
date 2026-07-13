@@ -1200,7 +1200,6 @@ function convertTable(
   styleResolver: StyleEngine | null,
   context: TableConversionContext,
 ): PMNode {
-  const { theme } = context;
   // Calculate rowSpan values from vMerge
   const rowSpanMap = calculateRowSpans(table);
 
