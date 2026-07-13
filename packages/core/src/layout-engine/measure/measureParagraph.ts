@@ -592,6 +592,13 @@ function justifyShrinkToleranceRatio(
         ? JUSTIFY_SHRINK_TOLERANCE_RATIO
         : JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO;
     }
+    const left = block.attrs.indent?.left ?? 0;
+    if (hanging > 0 && left > hanging) {
+      // A marker that remains inset leaves a narrower continuation body.
+      // Keep those lines on the marker-line allowance; full-hanging lists
+      // retain the broader prose allowance below.
+      return JUSTIFY_SHRINK_TOLERANCE_RATIO;
+    }
     return fixedSpaceAdjustedShrinkTolerance({
       tolerance: JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO,
       regularSpaceCount,

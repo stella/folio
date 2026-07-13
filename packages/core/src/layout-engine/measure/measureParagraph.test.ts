@@ -702,7 +702,7 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("uses prose tolerance for standard-hanging list continuation lines", () => {
+  test("keeps full-hanging list continuation lines on the prose tolerance", () => {
     withFakeTextMeasure(
       () => {
         const measure = measureParagraph(
@@ -724,6 +724,35 @@ describe("measureParagraph justified shrink tolerance", () => {
         );
 
         expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
+
+  test("keeps inset list continuation lines on the conservative tolerance", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-inset-list-continuation",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 18 },
+            },
+          },
+          136,
+        );
+
+        expect(measure.lines).toHaveLength(3);
       },
       {
         charWidth: fractionalWidth,
