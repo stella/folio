@@ -6,6 +6,7 @@
  * content>/` so a second call never reopens Word or re-runs mutool.
  */
 
+import { randomUUID } from "node:crypto";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
@@ -16,6 +17,9 @@ import type { DocGeom } from "./types";
 
 const WORD_APP_PATH = "/Applications/Microsoft Word.app";
 const EXPORT_TIMEOUT_MS = 180_000;
+const CLOSE_TIMEOUT_MS = 30_000;
+const EXPORT_ATTEMPTS = 2;
+const CLOSE_ATTEMPTS = 2;
 const PNG_DPI = 96;
 
 const PDF_FILENAME = "word.pdf";
@@ -102,16 +106,40 @@ const escapeAppleScriptString = (value: string): string =>
 // without the script's own default ceiling firing first.
 const APPLE_EVENT_TIMEOUT_SECONDS = Math.floor(EXPORT_TIMEOUT_MS / 1000) - 10;
 
-const buildExportScript = (docxPath: string, pdfPath: string): string => {
+type BuildExportScriptOptions = {
+  docxPath: string;
+  pdfPath: string;
+};
+
+// Word's scripting dictionary declares a document result for `open`, but
+// some current builds return no AppleScript value. Resolve the opened
+// document from its unique staged path instead of relying on window focus.
+export const buildExportScript = ({ docxPath, pdfPath }: BuildExportScriptOptions): string => {
   const inFile = escapeAppleScriptString(docxPath);
   const outFile = escapeAppleScriptString(pdfPath);
   return `with timeout of ${APPLE_EVENT_TIMEOUT_SECONDS} seconds
+	set stagedDocumentPath to "${inFile}"
+	set inFile to POSIX file stagedDocumentPath
 	tell application "Microsoft Word"
-		set inFile to POSIX file "${inFile}"
 		open inFile
-		set theDoc to active document
+		set theDoc to missing value
+		repeat 40 times
+			set openDocuments to get every document
+			repeat with candidateDocument in openDocuments
+				set candidatePath to missing value
+				try
+					set candidatePath to POSIX path of ((full name of candidateDocument as text) as alias)
+				end try
+				if candidatePath is stagedDocumentPath then
+					set theDoc to contents of candidateDocument
+					exit repeat
+				end if
+			end repeat
+			if theDoc is not missing value then exit repeat
+			delay 0.25
+		end repeat
+		if theDoc is missing value then error "Word did not expose the staged document after opening it"
 		save as theDoc file name "${outFile}" file format format PDF
-		close theDoc saving no
 	end tell
 end timeout`;
 };
@@ -131,13 +159,37 @@ const WORD_CONTAINER_TMP = path.join(
   "tmp",
 );
 
+export const isParityStagedDocumentPath = (filePath: string): boolean =>
+  path.dirname(filePath) === WORD_CONTAINER_TMP &&
+  /^parity-[a-zA-Z0-9-]+\.docx$/.test(path.basename(filePath));
+
+export const buildCloseStagedDocumentScript = (docxPath: string): string => {
+  const stagedDocumentPath = escapeAppleScriptString(docxPath);
+  return `with timeout of ${Math.floor(CLOSE_TIMEOUT_MS / 1000)} seconds
+	set stagedDocumentPath to "${stagedDocumentPath}"
+	tell application "Microsoft Word"
+		set openDocuments to get every document
+		repeat with candidateDocument in openDocuments
+			set candidatePath to missing value
+			try
+				set candidatePath to POSIX path of ((full name of candidateDocument as text) as alias)
+			end try
+			if candidatePath is stagedDocumentPath then
+				close candidateDocument saving no
+				exit repeat
+			end if
+		end repeat
+	end tell
+end timeout`;
+};
+
 /** Export `docxPath` to `destPdfPath` by scripting Word. Both sides of the
  * conversion are staged inside Word's sandbox container (see above), and the
  * PDF is moved to `destPdfPath` only on success, so a killed/failed export
  * never leaves a half-written `word.pdf` that a later call would mistake for
  * a valid cache entry. */
 const exportViaWord = async (docxPath: string, destPdfPath: string): Promise<void> => {
-  const stagingToken = `parity-${process.pid}-${Date.now()}`;
+  const stagingToken = `parity-${process.pid}-${Date.now()}-${randomUUID()}`;
   const stagedDocxPath = path.join(WORD_CONTAINER_TMP, `${stagingToken}.docx`);
   const tmpPdfPath = path.join(WORD_CONTAINER_TMP, `${stagingToken}.pdf`);
   await mkdir(WORD_CONTAINER_TMP, { recursive: true });
@@ -145,7 +197,7 @@ const exportViaWord = async (docxPath: string, destPdfPath: string): Promise<voi
   try {
     await runWordExportScript({ docxPath, stagedDocxPath, tmpPdfPath, destPdfPath });
   } finally {
-    await rm(stagedDocxPath, { force: true });
+    await Promise.all([rm(stagedDocxPath, { force: true }), rm(tmpPdfPath, { force: true })]);
   }
 };
 
@@ -157,45 +209,82 @@ type RunWordExportArgs = {
   destPdfPath: string;
 };
 
-const runWordExportScript = async (args: RunWordExportArgs): Promise<void> => {
-  const { docxPath, stagedDocxPath, tmpPdfPath, destPdfPath } = args;
-  const script = buildExportScript(stagedDocxPath, tmpPdfPath);
+type AppleScriptResult =
+  | { status: "success" }
+  | { status: "timed-out" }
+  | { status: "failed"; exitCode: number; stderr: string };
 
-  const proc = Bun.spawn(["osascript", "-e", script], { stdout: "pipe", stderr: "pipe" });
+const runAppleScript = async (script: string, timeoutMs: number): Promise<AppleScriptResult> => {
+  const proc = Bun.spawn(["osascript", "-e", script], { stdout: "ignore", stderr: "pipe" });
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
     proc.kill();
-  }, EXPORT_TIMEOUT_MS);
+  }, timeoutMs);
 
   const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
   clearTimeout(timer);
 
-  if (timedOut) {
+  if (timedOut) return { status: "timed-out" };
+  if (exitCode !== 0) return { status: "failed", exitCode, stderr: stderr.trim() };
+  return { status: "success" };
+};
+
+const describeAppleScriptFailure = (result: Exclude<AppleScriptResult, { status: "success" }>) => {
+  if (result.status === "timed-out") return "timed out";
+  return `failed (exit ${result.exitCode}): ${result.stderr}`;
+};
+
+const closeStagedDocument = async (stagedDocxPath: string): Promise<AppleScriptResult> => {
+  if (!isParityStagedDocumentPath(stagedDocxPath)) {
+    throw new WordTruthError("Refusing to close a document outside parity staging", "export");
+  }
+  const script = buildCloseStagedDocumentScript(stagedDocxPath);
+  let result = await runAppleScript(script, CLOSE_TIMEOUT_MS);
+  for (let attempt = 1; attempt < CLOSE_ATTEMPTS && result.status !== "success"; attempt += 1) {
+    result = await runAppleScript(script, CLOSE_TIMEOUT_MS);
+  }
+  return result;
+};
+
+const runWordExportScript = async (args: RunWordExportArgs): Promise<void> => {
+  const { docxPath, stagedDocxPath, tmpPdfPath, destPdfPath } = args;
+  const script = buildExportScript({ docxPath: stagedDocxPath, pdfPath: tmpPdfPath });
+
+  for (let attempt = 1; attempt <= EXPORT_ATTEMPTS; attempt += 1) {
+    const exportResult = await runAppleScript(script, EXPORT_TIMEOUT_MS);
+    const closeResult = await closeStagedDocument(stagedDocxPath);
+
+    if (closeResult.status !== "success") {
+      await rm(tmpPdfPath, { force: true });
+      throw new WordTruthError(
+        `Word cleanup ${describeAppleScriptFailure(closeResult)} for ${docxPath}`,
+        "export",
+      );
+    }
+
+    if (exportResult.status === "success") {
+      const exportedFile = Bun.file(tmpPdfPath);
+      if ((await exportedFile.exists()) && exportedFile.size > 0) {
+        // Cross-directory move: the container tmp dir and the cache dir may sit on
+        // different volumes, so copy + remove instead of rename.
+        await Bun.write(destPdfPath, exportedFile);
+        await rm(tmpPdfPath, { force: true });
+        return;
+      }
+    }
+
     await rm(tmpPdfPath, { force: true });
+    if (attempt < EXPORT_ATTEMPTS) continue;
+
+    if (exportResult.status === "success") {
+      throw new WordTruthError(`Word export produced an empty PDF for ${docxPath}`, "export");
+    }
     throw new WordTruthError(
-      `Word export timed out after ${EXPORT_TIMEOUT_MS}ms exporting ${docxPath}`,
+      `Word export ${describeAppleScriptFailure(exportResult)} for ${docxPath}`,
       "export",
     );
   }
-  if (exitCode !== 0) {
-    await rm(tmpPdfPath, { force: true });
-    throw new WordTruthError(
-      `Word export failed for ${docxPath} (exit ${exitCode}): ${stderr.trim()}`,
-      "export",
-    );
-  }
-
-  const exportedFile = Bun.file(tmpPdfPath);
-  if (!(await exportedFile.exists()) || exportedFile.size === 0) {
-    await rm(tmpPdfPath, { force: true });
-    throw new WordTruthError(`Word export produced an empty PDF for ${docxPath}`, "export");
-  }
-
-  // Cross-directory move: the container tmp dir and the cache dir may sit on
-  // different volumes, so copy + remove instead of rename.
-  await Bun.write(destPdfPath, exportedFile);
-  await rm(tmpPdfPath, { force: true });
 };
 
 const runMutoolStext = async (pdfPath: string, xmlPath: string): Promise<void> => {
