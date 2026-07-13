@@ -95,6 +95,110 @@ describe("renderLine box model", () => {
     expect(lineEl.style["overflow"]).toBe("visible");
   });
 
+  test("collapses paintless trailing spaces without losing their document positions", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "right-aligned-reference",
+      runs: [{ kind: "text", text: "Reference   ", pmStart: 10, pmEnd: 22 }],
+      attrs: { alignment: "right" },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: "Reference   ".length,
+      width: 63,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, "right", fakeDocument, {
+      availableWidth: 360,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+    const [text, spaces] = lineEl.children;
+
+    expect(text?.textContent).toBe("Reference");
+    expect(text?.dataset["pmStart"]).toBe("10");
+    expect(text?.dataset["pmEnd"]).toBe("19");
+    expect(spaces?.textContent).toBe("   ");
+    expect(spaces?.dataset["pmStart"]).toBe("19");
+    expect(spaces?.dataset["pmEnd"]).toBe("22");
+    expect(spaces?.dataset["collapsedTrailingSpaces"]).toBe("true");
+    expect(spaces?.style["fontSize"]).toBe("0");
+  });
+
+  test("collapses trailing spaces split across authored runs", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "split-trailing-spaces",
+      runs: [
+        { kind: "text", text: "Reference", pmStart: 10, pmEnd: 19 },
+        { kind: "text", text: " ", pmStart: 19, pmEnd: 20 },
+        { kind: "text", text: "  ", pmStart: 20, pmEnd: 22 },
+      ],
+      attrs: { alignment: "right" },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 2,
+      width: 63,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, "right", fakeDocument, {
+      availableWidth: 360,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+
+    expect(lineEl.children.map((child) => child.textContent)).toEqual(["Reference", " ", "  "]);
+    expect(lineEl.children.map((child) => child.style["fontSize"])).toEqual([undefined, "0", "0"]);
+  });
+
+  test("keeps decorated trailing spaces paintable", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "underlined-signature",
+      runs: [{ kind: "text", text: "Signature   ", underline: true }],
+      attrs: { alignment: "right" },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: "Signature   ".length,
+      width: 84,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, "right", fakeDocument, {
+      availableWidth: 360,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+    const [text] = lineEl.children;
+
+    expect(lineEl.children).toHaveLength(1);
+    expect(text?.textContent).toBe("Signature   ");
+    expect(text?.dataset["collapsedTrailingSpaces"]).toBeUndefined();
+    expect(text?.style["fontSize"]).toBeUndefined();
+  });
+
   test("renders underlined tabs as a continuous rule without a text underline mark", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",

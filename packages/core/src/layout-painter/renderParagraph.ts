@@ -1262,6 +1262,78 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
   return result;
 }
 
+type CollapsibleTrailingSpacesResult = {
+  runs: Run[];
+  collapsedRuns: Set<TextRun>;
+};
+
+const paintsTrailingSpaces = (run: TextRun): boolean =>
+  Boolean(
+    run.underline ||
+    run.strike ||
+    run.highlight ||
+    run.shading ||
+    run.hyperlink ||
+    run.hidden ||
+    run.templatePreview ||
+    run.isInsertion ||
+    run.isDeletion ||
+    run.commentIds?.length ||
+    run.textEffect ||
+    run.emphasisMark,
+  );
+
+const splitTextRunAt = (run: TextRun, index: number): [TextRun, TextRun] => {
+  const leading = { ...run, text: run.text.slice(0, index) };
+  const trailing = { ...run, text: run.text.slice(index) };
+  if (run.pmStart === undefined) {
+    return [leading, trailing];
+  }
+
+  const splitPosition = Math.min(run.pmStart + index, run.pmEnd ?? Number.POSITIVE_INFINITY);
+  leading.pmEnd = splitPosition;
+  trailing.pmStart = splitPosition;
+  return [leading, trailing];
+};
+
+/**
+ * Word keeps ordinary trailing spaces addressable in the document model but
+ * gives them no painted advance at a visual line end. Measurement already
+ * excludes that advance; split the paint runs to preserve exact PM ranges
+ * while allowing the trailing suffix to collapse in the DOM as well.
+ */
+const splitCollapsibleTrailingSpaces = (sourceRuns: Run[]): CollapsibleTrailingSpacesResult => {
+  const runs = [...sourceRuns];
+  const collapsedRuns = new Set<TextRun>();
+
+  for (let index = runs.length - 1; index >= 0; index--) {
+    const run = runs[index];
+    if (!run || !isTextRun(run)) {
+      break;
+    }
+    if (run.text.length === 0) {
+      continue;
+    }
+
+    const trailingSpaces = / +$/u.exec(run.text);
+    if (!trailingSpaces || paintsTrailingSpaces(run)) {
+      break;
+    }
+
+    if (trailingSpaces.index === 0) {
+      collapsedRuns.add(run);
+      continue;
+    }
+
+    const [leading, trailing] = splitTextRunAt(run, trailingSpaces.index);
+    runs.splice(index, 1, leading, trailing);
+    collapsedRuns.add(trailing);
+    break;
+  }
+
+  return { runs, collapsedRuns };
+};
+
 /**
  * Options for rendering a line with justify support
  */
@@ -1615,7 +1687,17 @@ export function renderLine(
   lineEl.style.lineHeight = `${line.lineHeight}px`;
 
   // Get runs for this line
-  const runsForLine = splitTextRunsByEastAsia(sliceRunsForLine(block, line));
+  const splitRuns = splitTextRunsByEastAsia(sliceRunsForLine(block, line));
+  const { runs: runsForLine, collapsedRuns: collapsedTrailingSpaceRuns } =
+    splitCollapsibleTrailingSpaces(splitRuns);
+  const renderLineTextRun = (run: TextRun): HTMLElement => {
+    const runEl = renderTextRun(run, doc);
+    if (collapsedTrailingSpaceRuns.has(run)) {
+      runEl.dataset["collapsedTrailingSpaces"] = "true";
+      runEl.style.fontSize = "0";
+    }
+    return runEl;
+  };
   // OOXML `<m:oMathPara>` (display math) defaults to `jc="centerGroup"` —
   // Word renders display math centred on its own paragraph. When the line
   // holds a single block math run, centre it horizontally so the equation
@@ -1934,7 +2016,7 @@ export function renderLine(
             break;
           }
           if (isTextRun(next)) {
-            lineEl.append(renderTextRun(next, doc));
+            lineEl.append(renderLineTextRun(next));
           } else if (isFieldRun(next) && options?.context) {
             lineEl.append(renderFieldRun(next, doc, options.context));
           } else if (isImageRun(next)) {
@@ -1986,11 +2068,14 @@ export function renderLine(
       // Update X position
       currentX += tabWidth;
     } else if (isTextRun(run)) {
-      const runEl = renderTextRun(run, doc);
+      const runEl = renderLineTextRun(run);
 
       lineEl.append(runEl);
 
       // Measure text width for accurate tab position tracking
+      if (collapsedTrailingSpaceRuns.has(run)) {
+        continue;
+      }
       const fontSize = run.fontSize || 11;
       const fontFamily = run.fontFamily || "Calibri";
       const measuredWidth = measureText(
