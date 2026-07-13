@@ -79,7 +79,12 @@ export const writeHtmlReport = async (
       ? await copyDocAssets(slug, docAssets)
       : { referencePngs: [], folioPngs: [] };
 
-    const html = renderDocPage(result, docAssets, copied, report.reference.displayName);
+    const html = renderDocPage({
+      result,
+      docAssets,
+      copied,
+      referenceDisplayName: report.reference.displayName,
+    });
     await Bun.write(path.join(REPORT_DIR, `doc-${slug}.html`), html);
   }
 
@@ -309,19 +314,26 @@ const renderClusterRow = (cluster: Cluster): string => {
 
 type PanelSide = "reference" | "folio";
 
-const renderDocPage = (
-  result: FeatureAttributedResult,
-  docAssets: DocAssets | undefined,
-  copied: CopiedPageAssets,
-  referenceDisplayName: string,
-): string => {
+type RenderDocPageOptions = {
+  result: FeatureAttributedResult;
+  docAssets: DocAssets | undefined;
+  copied: CopiedPageAssets;
+  referenceDisplayName: string;
+};
+
+const renderDocPage = ({
+  result,
+  docAssets,
+  copied,
+  referenceDisplayName,
+}: RenderDocPageOptions): string => {
   const name = path.basename(result.file);
   const pageCount = docAssets
     ? Math.max(docAssets.referenceGeom.pages.length, docAssets.folioGeom.pages.length)
     : 0;
 
-  const pagePairs = Array.from({ length: pageCount }, (_, i) =>
-    renderPagePair(i, docAssets, copied, referenceDisplayName),
+  const pagePairs = Array.from({ length: pageCount }, (_, pageIndex) =>
+    renderPagePair({ pageIndex, docAssets, copied, referenceDisplayName }),
   ).join("\n");
 
   const banner =
@@ -366,12 +378,19 @@ document.querySelectorAll(".cross-toggle").forEach((el) => {
 `;
 };
 
-const renderPagePair = (
-  pageIndex: number,
-  docAssets: DocAssets | undefined,
-  copied: CopiedPageAssets,
-  referenceDisplayName: string,
-): string => {
+type RenderPagePairOptions = {
+  pageIndex: number;
+  docAssets: DocAssets | undefined;
+  copied: CopiedPageAssets;
+  referenceDisplayName: string;
+};
+
+const renderPagePair = ({
+  pageIndex,
+  docAssets,
+  copied,
+  referenceDisplayName,
+}: RenderPagePairOptions): string => {
   const referencePage = docAssets?.referenceGeom.pages[pageIndex];
   const folioPage = docAssets?.folioGeom.pages[pageIndex];
   const referenceImg = copied.referencePngs[pageIndex] ?? null;

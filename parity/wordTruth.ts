@@ -296,7 +296,7 @@ export const getWordTruth = async (
 
   const geomPath = path.join(dir, GEOM_JSON_FILENAME);
   if (!(opts?.refresh ?? false)) {
-    const cached = await readCachedGeom(geomPath, absDocxPath);
+    const cached = await readCachedGeom({ geomPath, absDocxPath });
     if (cached) return cached;
   }
 
@@ -313,7 +313,7 @@ export const getWordTruth = async (
   const xmlPath = path.join(dir, STEXT_XML_FILENAME);
   let pages;
   try {
-    pages = await extractPdfGeometry(pdfPath, xmlPath);
+    pages = await extractPdfGeometry({ pdfPath, xmlPath });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new WordTruthError(message, "extract");

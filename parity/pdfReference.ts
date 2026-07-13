@@ -35,10 +35,15 @@ export const getMutoolVersion = async (): Promise<string> => {
   return stderr.trim();
 };
 
-export const readCachedGeom = async (
-  geomPath: string,
-  absDocxPath: string,
-): Promise<DocGeom | null> => {
+type ReadCachedGeomOptions = {
+  geomPath: string;
+  absDocxPath: string;
+};
+
+export const readCachedGeom = async ({
+  geomPath,
+  absDocxPath,
+}: ReadCachedGeomOptions): Promise<DocGeom | null> => {
   const file = Bun.file(geomPath);
   if (!(await file.exists())) return null;
   const geom = (await file.json()) as DocGeom;
@@ -54,7 +59,15 @@ export const readCachedGeom = async (
   });
 };
 
-export const extractPdfGeometry = async (pdfPath: string, xmlPath: string): Promise<PageGeom[]> => {
+type ExtractPdfGeometryOptions = {
+  pdfPath: string;
+  xmlPath: string;
+};
+
+export const extractPdfGeometry = async ({
+  pdfPath,
+  xmlPath,
+}: ExtractPdfGeometryOptions): Promise<PageGeom[]> => {
   const proc = Bun.spawn(["mutool", "draw", "-F", "stext", "-o", xmlPath, pdfPath], {
     stdout: "ignore",
     stderr: "pipe",
