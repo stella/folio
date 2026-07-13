@@ -10,6 +10,7 @@
 
 import { DEFAULT_TEXTBOX_MARGINS } from "../layout-engine/types";
 import type { TextBoxFragment, TextBoxBlock, TextBoxMeasure } from "../layout-engine/types";
+import { layoutTextBoxParagraphs } from "../layout-engine/measure/textBoxParagraphLayout";
 import { renderParagraphFragment } from "./renderParagraph";
 import type { RenderContext } from "./renderUtils";
 
@@ -76,12 +77,13 @@ export function renderTextBoxFragment(
 
   // Render inner paragraph content using pre-measured data
   const innerWidth = fragment.width - margins.left - margins.right;
-  let yOffset = 0;
+  const paragraphLayout = layoutTextBoxParagraphs(block.content, measure.innerMeasures);
 
   for (let i = 0; i < block.content.length; i++) {
     const paraBlock = block.content[i];
     const paraMeasure = measure.innerMeasures[i];
-    if (!paraBlock || !paraMeasure) {
+    const placement = paragraphLayout.placements[i];
+    if (!paraBlock || !paraMeasure || !placement) {
       continue;
     }
 
@@ -89,9 +91,9 @@ export function renderTextBoxFragment(
       kind: "paragraph" as const,
       blockId: paraBlock.id,
       x: 0,
-      y: yOffset,
+      y: 0,
       width: innerWidth,
-      height: paraMeasure.totalHeight,
+      height: placement.contentHeight,
       ...(paraBlock.pmStart !== undefined ? { pmStart: paraBlock.pmStart } : {}),
       ...(paraBlock.pmEnd !== undefined ? { pmEnd: paraBlock.pmEnd } : {}),
       fromLine: 0,
@@ -106,9 +108,10 @@ export function renderTextBoxFragment(
     paraEl.style.position = "relative";
     paraEl.style.left = "0";
     paraEl.style.top = "0";
+    paraEl.style.height = `${placement.contentHeight}px`;
+    paraEl.style.marginTop = `${placement.leadingSpacing}px`;
 
     containerEl.append(paraEl);
-    yOffset += paraMeasure.totalHeight;
   }
 
   return containerEl;

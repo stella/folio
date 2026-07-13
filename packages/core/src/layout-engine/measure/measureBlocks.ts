@@ -24,6 +24,7 @@ import type {
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
 import { findClearLineY, measureParagraph, MIN_WRAP_SEGMENT_WIDTH } from "./measureParagraph";
 import type { FloatingImageZone } from "./measureParagraph";
+import { layoutTextBoxParagraphs } from "./textBoxParagraphLayout";
 
 /**
  * Pseudo-infinite measurement width (px) used for `w:noWrap` table cells so
@@ -770,7 +771,7 @@ export function measureTextBoxBlock(
   const innerMeasures = tb.content.map((p) =>
     measureParagraph(p, innerWidth, fieldValues ? { fieldValues } : undefined),
   );
-  const contentHeight = innerMeasures.reduce((sum, m) => sum + m.totalHeight, 0);
+  const contentHeight = layoutTextBoxParagraphs(tb.content, innerMeasures).totalHeight;
   const contentBoxHeight = contentHeight + margins.top + margins.bottom;
   const totalHeight =
     tb.autoFit === "shape"
