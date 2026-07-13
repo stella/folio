@@ -25,6 +25,7 @@ describe("Word automation scripts", () => {
     });
 
     expect(script).toContain("set openDocuments to get every document");
+    expect(script).toContain("set openDocuments to {}");
     expect(script).toContain("set candidatePath to POSIX path of");
     expect(script).toContain("if candidatePath is stagedDocumentPath then");
     expect(script).toContain("set theDoc to contents of candidateDocument");
@@ -37,6 +38,7 @@ describe("Word automation scripts", () => {
 
     expect(script).toContain("if candidatePath is stagedDocumentPath then");
     expect(script).toContain("close candidateDocument saving no");
+    expect(script).not.toContain("set openDocuments to {}");
     expect(script).not.toContain("close every document");
     expect(script).not.toContain("active document");
   });

@@ -124,7 +124,10 @@ export const buildExportScript = ({ docxPath, pdfPath }: BuildExportScriptOption
 		open inFile
 		set theDoc to missing value
 		repeat 40 times
-			set openDocuments to get every document
+			set openDocuments to {}
+			try
+				set openDocuments to get every document
+			end try
 			repeat with candidateDocument in openDocuments
 				set candidatePath to missing value
 				try
@@ -255,8 +258,16 @@ const runWordExportScript = async (args: RunWordExportArgs): Promise<void> => {
     const exportResult = await runAppleScript(script, EXPORT_TIMEOUT_MS);
     const closeResult = await closeStagedDocument(stagedDocxPath);
 
+    // A retry is safe only after cleanup confirms that the exact staged
+    // document is closed; otherwise a second open can overlap stale state.
     if (closeResult.status !== "success") {
       await rm(tmpPdfPath, { force: true });
+      if (exportResult.status !== "success") {
+        throw new WordTruthError(
+          `Word export ${describeAppleScriptFailure(exportResult)}; cleanup also ${describeAppleScriptFailure(closeResult)} for ${docxPath}`,
+          "export",
+        );
+      }
       throw new WordTruthError(
         `Word cleanup ${describeAppleScriptFailure(closeResult)} for ${docxPath}`,
         "export",
