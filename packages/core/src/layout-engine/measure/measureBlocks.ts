@@ -17,7 +17,6 @@ import type {
   ParagraphBlock,
   ParagraphMeasure,
   TableBlock,
-  TableCell,
   TableCellMeasure,
   TableMeasure,
   TextBoxBlock,
@@ -26,6 +25,11 @@ import type {
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
 import { findClearLineY, measureParagraph, MIN_WRAP_SEGMENT_WIDTH } from "./measureParagraph";
 import type { FloatingImageZone } from "./measureParagraph";
+import {
+  buildTableCellGrid,
+  getFirstAvailableColumn,
+  getTableCellVerticalBorderHeight,
+} from "./tableCellGrid";
 import { layoutTextBoxParagraphs } from "./textBoxParagraphLayout";
 
 /**
@@ -170,22 +174,6 @@ export function measureTableCellBlockVisualHeight(block: FlowBlock, blockMeasure
   return spacingBefore + maxImageHeight + spacingAfter;
 }
 
-function getTableCellVerticalBorderHeight(
-  cell: TableCell | undefined,
-  isFirstRow: boolean,
-  aboveCell?: TableCell,
-): number {
-  const aboveBottom = aboveCell?.borders?.bottom;
-  const aboveOwnsEdge =
-    aboveBottom !== undefined &&
-    aboveBottom.width !== 0 &&
-    aboveBottom.style !== "none" &&
-    aboveBottom.style !== "nil";
-  const top = isFirstRow || !aboveOwnsEdge ? (cell?.borders?.top?.width ?? 0) : 0;
-  const bottom = cell?.borders?.bottom?.width ?? 0;
-  return top + bottom;
-}
-
 export function measureTableBlock(
   tableBlock: TableBlock,
   contentWidth: number,
@@ -222,52 +210,7 @@ export function measureTableBlock(
     }
   }
 
-  // Build a map of columns occupied by spanning cells from previous rows.
-  // Without this, cells in rows with vertical merges get the wrong column width.
-  const occupiedColumnsPerRow = new Map<number, Set<number>>();
-  const sourceCellsByPosition = new Map<string, TableCell>();
-  const sourceCellColumns = new WeakMap<TableCell, number>();
-  for (let rowIdx = 0; rowIdx < tableBlock.rows.length; rowIdx++) {
-    const row = tableBlock.rows[rowIdx];
-    if (!row) {
-      continue;
-    }
-    let colIdx = row.gridBefore ?? 0;
-    const occupied = occupiedColumnsPerRow.get(rowIdx) ?? new Set<number>();
-    while (occupied.has(colIdx)) {
-      colIdx++;
-    }
-
-    for (const cell of row.cells) {
-      const colSpan = cell.colSpan ?? 1;
-      const rowSpan = cell.rowSpan ?? 1;
-      sourceCellColumns.set(cell, colIdx);
-      const rowEnd = Math.min(tableBlock.rows.length, rowIdx + rowSpan);
-      const columnEnd = Math.min(columnWidths.length, colIdx + colSpan);
-      for (let gridRow = rowIdx; gridRow < rowEnd; gridRow++) {
-        for (let gridColumn = colIdx; gridColumn < columnEnd; gridColumn++) {
-          sourceCellsByPosition.set(`${gridRow}:${gridColumn}`, cell);
-        }
-      }
-
-      if (rowSpan > 1) {
-        for (let r = rowIdx + 1; r < rowIdx + rowSpan; r++) {
-          if (!occupiedColumnsPerRow.has(r)) {
-            occupiedColumnsPerRow.set(r, new Set());
-          }
-          const occSet = occupiedColumnsPerRow.get(r)!;
-          for (let c = 0; c < colSpan; c++) {
-            occSet.add(colIdx + c);
-          }
-        }
-      }
-
-      colIdx += colSpan;
-      while (occupied.has(colIdx)) {
-        colIdx++;
-      }
-    }
-  }
+  const cellGrid = buildTableCellGrid(tableBlock.rows, columnWidths.length);
 
   // When the columns are pinned (fixed layout or a fully-consumed explicit
   // width), Word cannot widen a column to satisfy `w:noWrap`, so overflowing
@@ -278,11 +221,7 @@ export function measureTableBlock(
   // Calculate cell widths based on colSpan and columnWidths,
   // skipping columns occupied by spanning cells from previous rows.
   const rows = tableBlock.rows.map((row, rowIdx) => {
-    let columnIndex = row.gridBefore ?? 0;
-    const occupied = occupiedColumnsPerRow.get(rowIdx) ?? new Set<number>();
-    while (occupied.has(columnIndex)) {
-      columnIndex++;
-    }
+    let columnIndex = getFirstAvailableColumn(cellGrid, rowIdx, row.gridBefore ?? 0);
 
     return {
       cells: row.cells.map((cell) => {
@@ -296,10 +235,7 @@ export function measureTableBlock(
         if (cellWidth === 0) {
           cellWidth = cell.width ?? 100;
         }
-        columnIndex += colSpan;
-        while (occupied.has(columnIndex)) {
-          columnIndex++;
-        }
+        columnIndex = getFirstAvailableColumn(cellGrid, rowIdx, columnIndex + colSpan);
 
         const padLeft = cell.padding?.left ?? DEFAULT_CELL_PADDING_X;
         const padRight = cell.padding?.right ?? DEFAULT_CELL_PADDING_X;
@@ -371,12 +307,7 @@ export function measureTableBlock(
       if ((sourceCell?.rowSpan ?? 1) > 1) {
         continue;
       }
-      const sourceColumn = sourceCell ? sourceCellColumns.get(sourceCell) : undefined;
-      const aboveCell =
-        sourceColumn === undefined
-          ? undefined
-          : sourceCellsByPosition.get(`${rowIdx - 1}:${sourceColumn}`);
-      const borderHeight = getTableCellVerticalBorderHeight(sourceCell, rowIdx === 0, aboveCell);
+      const borderHeight = getTableCellVerticalBorderHeight(cellGrid, sourceCell, rowIdx);
       maxCellHeightWithBorders = Math.max(maxCellHeightWithBorders, cell.height + borderHeight);
       maxCellInsets = Math.max(maxCellInsets, padTop + padBottom + borderHeight);
     }
@@ -420,12 +351,7 @@ export function measureTableBlock(
         combinedHeight += rows[spannedRowIdx]?.height ?? 0;
       }
       const requiredHeight =
-        measuredCell.height +
-        getTableCellVerticalBorderHeight(
-          sourceCell,
-          rowIdx === 0,
-          sourceCellsByPosition.get(`${rowIdx - 1}:${sourceCellColumns.get(sourceCell) ?? 0}`),
-        );
+        measuredCell.height + getTableCellVerticalBorderHeight(cellGrid, sourceCell, rowIdx);
       const deficit = requiredHeight - combinedHeight;
       if (deficit <= 0) {
         continue;
