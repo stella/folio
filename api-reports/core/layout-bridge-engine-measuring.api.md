@@ -99,7 +99,8 @@ export type FontStyle = {
     letterSpacing?: number;
     textTransform?: "uppercase";
     fontVariant?: "small-caps";
-    horizontalScale?: number;
+    horizontalScale?: number; /** Enable pair kerning for runs whose authored threshold is met. */
+    kerning?: boolean;
 };
 
 // @public
