@@ -17,7 +17,7 @@
  * ids in an `appendTransaction` hook after every doc-changed step.
  *
  * Id lifecycle rules (locked by the co-located tests):
- * - Missing/empty id: a fresh random id is minted.
+ * - Missing/empty/reserved-zero id: a fresh random id is minted.
  * - Split: the half holding the paragraph's original start position
  *   keeps the id; the other half gets a fresh one. Anchors inside the
  *   content stay resolvable on the half that carries them.
@@ -30,9 +30,10 @@
  *   order keeps it.
  * - Paste of an id unknown to this doc (cross-doc paste, cut-then-
  *   paste move): the id is kept, so a moved paragraph stays anchored.
- * - Undo/redo: allocation applies with `addToHistory: false`, so
- *   redoing a split mints a different fresh id than before the undo.
- *   An id is stable across saves, not across redo-recreation.
+ * - Undo/redo: allocation applies with `addToHistory: false`, and
+ *   ProseMirror remaps it into the originating history event. Redoing a
+ *   split therefore restores the same allocated id instead of minting
+ *   another one.
  */
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
@@ -55,6 +56,9 @@ type ParagraphOccurrence = {
   attrs: Record<string, unknown>;
 };
 
+const isUsableParaId = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && value !== "00000000";
+
 /**
  * For every valid paraId in the pre-transaction doc, the position its
  * paragraph ends up at after `transactions` — the occurrence that
@@ -71,7 +75,7 @@ const mapKeeperPositions = (
       return true;
     }
     const id = node.attrs["paraId"];
-    if (typeof id === "string" && id.length > 0 && !keepers.has(id)) {
+    if (isUsableParaId(id) && !keepers.has(id)) {
       let mapped = pos;
       let deleted = false;
       for (const tr of transactions) {
@@ -106,7 +110,7 @@ const collectParaIdUpdates = (
       return true;
     }
     const id = node.attrs["paraId"];
-    if (typeof id !== "string" || id.length === 0) {
+    if (!isUsableParaId(id)) {
       missing.push({ pos, attrs: node.attrs });
     } else {
       const occurrences = occurrencesById.get(id) ?? [];

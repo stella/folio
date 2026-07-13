@@ -12,7 +12,7 @@
  * cross-doc paste, undo/redo, change-tracker isolation).
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { history, redo, undo } from "prosemirror-history";
 import { Schema, Slice, Fragment } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
@@ -161,6 +161,23 @@ describe("ParaIdAllocatorExtension", () => {
     expect(ids[1]).not.toBe("ABCDEFGH");
   });
 
+  test("replaces the reserved zero id carried by a pasted paragraph", () => {
+    const initial = createState(para("Original", "ABCDEFGH"));
+    const pasted = para("Pasted", "00000000");
+    const next = initial.apply(
+      initial.tr.replace(
+        initial.doc.content.size,
+        initial.doc.content.size,
+        new Slice(Fragment.from(pasted), 0, 0),
+      ),
+    );
+
+    const ids = collectParaIds(next);
+    expect(ids[0]).toBe("ABCDEFGH");
+    expect(ids[1]).toMatch(/^[0-9A-F]{8}$/u);
+    expect(ids[1]).not.toBe("00000000");
+  });
+
   test("preserves existing distinct ids untouched", () => {
     const initial = createState(para("First", "11111111"), para("Second", "22222222"));
     // Trigger any doc-changed transaction.
@@ -223,28 +240,29 @@ describe("ParaIdAllocatorExtension", () => {
     expect(collectParaIds(next)).toEqual(["EX157175", "C0FFEE01"]);
   });
 
-  test("undo/redo: redoing a split mints a fresh id again (stable across saves, not redo)", () => {
-    const initial = createHistoryState(para("Hello", "5117AB1E"));
-    const afterSplit = initial.apply(initial.tr.split(3));
-    const idsAfterSplit = collectParaIds(afterSplit);
-    expect(idsAfterSplit[0]).toBe("5117AB1E");
-    const mintedBeforeUndo = idsAfterSplit[1];
-    expect(mintedBeforeUndo).toMatch(/^[0-9A-F]{8}$/u);
+  test("undo/redo: redoing a split restores the allocated id", () => {
+    const random = spyOn(Math, "random");
+    try {
+      random.mockReturnValue(0);
+      const initial = createHistoryState(para("Hello", "5117AB1E"));
+      const afterSplit = initial.apply(initial.tr.split(3));
+      const idsAfterSplit = collectParaIds(afterSplit);
+      expect(idsAfterSplit[0]).toBe("5117AB1E");
+      const mintedBeforeUndo = idsAfterSplit[1];
+      expect(mintedBeforeUndo).toBe("00000001");
 
-    const afterUndo = applyCommand(afterSplit, undo);
-    expect(collectParaIds(afterUndo)).toEqual(["5117AB1E"]);
+      const afterUndo = applyCommand(afterSplit, undo);
+      expect(collectParaIds(afterUndo)).toEqual(["5117AB1E"]);
 
-    const afterRedo = applyCommand(afterUndo, redo);
-    const idsAfterRedo = collectParaIds(afterRedo);
-    expect(idsAfterRedo).toHaveLength(2);
-    expect(idsAfterRedo[0]).toBe("5117AB1E");
-    // The redo-minted id is valid and unique, but NOT guaranteed to
-    // equal the pre-undo id: the allocation transaction is outside
-    // history (addToHistory: false), so redo re-creates the paragraph
-    // and a fresh id is minted. Accepted behavior — an id is stable
-    // across saves, not across redo-recreation.
-    expect(idsAfterRedo[1]).toMatch(/^[0-9A-F]{8}$/u);
-    expect(idsAfterRedo[1]).not.toBe("5117AB1E");
+      const afterRedo = applyCommand(afterUndo, redo);
+      const idsAfterRedo = collectParaIds(afterRedo);
+      expect(idsAfterRedo).toHaveLength(2);
+      expect(idsAfterRedo[0]).toBe("5117AB1E");
+      expect(idsAfterRedo[1]).toBe(mintedBeforeUndo);
+      expect(random).toHaveBeenCalledTimes(1);
+    } finally {
+      random.mockRestore();
+    }
   });
 
   test("allocation via appendTransaction does not mark untouched paragraphs as changed", () => {
