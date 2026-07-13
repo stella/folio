@@ -1366,9 +1366,7 @@ function layoutFloatingTable(
   const pageAnchored = floating?.horzAnchor === "page";
   const clampToPage = pageAnchored || usesNumericOffset;
   const minX = clampToPage ? 0 : margins.left;
-  const maxX = clampToPage
-    ? page.size.w - tableWidth
-    : margins.left + contentWidth - tableWidth;
+  const maxX = clampToPage ? page.size.w - tableWidth : margins.left + contentWidth - tableWidth;
   if (Number.isFinite(maxX)) {
     x = Math.max(minX, Math.min(x, maxX));
   }
