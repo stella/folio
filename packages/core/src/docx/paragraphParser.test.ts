@@ -495,3 +495,31 @@ describe("parseParagraph smartTag wrapper", () => {
     expect(text).toContain(", STATE");
   });
 });
+
+describe("parseParagraph native frame geometry", () => {
+  test("captures frame size, offsets, anchors, and wrap spacing", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:pPr>
+          <w:framePr w:dropCap="none" w:lines="2" w:w="3600" w:h="1440" w:hSpace="144" w:vSpace="72"
+            w:hAnchor="page" w:vAnchor="text" w:x="720" w:y="144" w:wrap="around"/>
+        </w:pPr>
+        <w:r><w:t>Framed text</w:t></w:r>
+      </w:p>
+    `);
+
+    expect(paragraph.formatting?.frame).toEqual({
+      dropCap: "none",
+      lines: 2,
+      width: 3600,
+      height: 1440,
+      hSpace: 144,
+      vSpace: 72,
+      hAnchor: "page",
+      vAnchor: "text",
+      x: 720,
+      y: 144,
+      wrap: "around",
+    });
+  });
+});

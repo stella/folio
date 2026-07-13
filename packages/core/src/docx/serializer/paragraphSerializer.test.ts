@@ -177,3 +177,33 @@ describe("serializeParagraph tracked-change hardening", () => {
     expect(xml).not.toContain("w:date=");
   });
 });
+
+describe("serializeParagraph native frame geometry", () => {
+  test("writes frame wrap spacing alongside its size and anchors", () => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      formatting: {
+        frame: {
+          dropCap: "none",
+          lines: 2,
+          width: 3600,
+          height: 1440,
+          hSpace: 144,
+          vSpace: 72,
+          hAnchor: "page",
+          vAnchor: "text",
+          x: 720,
+          y: 144,
+          wrap: "around",
+        },
+      },
+      content: [{ type: "run", content: [{ type: "text", text: "Framed text" }] }],
+    };
+
+    const xml = serializeParagraph(paragraph);
+
+    expect(xml).toContain(
+      '<w:framePr w:dropCap="none" w:lines="2" w:w="3600" w:h="1440" w:hSpace="144" w:vSpace="72" w:hAnchor="page" w:vAnchor="text" w:x="720" w:y="144" w:wrap="around"/>',
+    );
+  });
+});

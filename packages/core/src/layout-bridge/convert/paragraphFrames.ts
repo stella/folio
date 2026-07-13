@@ -15,6 +15,8 @@ type BlockIdFactory = () => BlockId;
 const FRAME_PROPERTIES = [
   "width",
   "height",
+  "hSpace",
+  "vSpace",
   "hAnchor",
   "vAnchor",
   "x",
@@ -110,6 +112,10 @@ function toFrameTextBox(
     displayMode: "float",
     wrapType: frameWrapType(frame),
     wrapText: "bothSides",
+    distTop: frame.vSpace ?? 0,
+    distBottom: frame.vSpace ?? 0,
+    distLeft: frame.hSpace ?? 0,
+    distRight: frame.hSpace ?? 0,
     ...(first?.pmStart !== undefined ? { pmStart: first.pmStart } : {}),
     ...(last?.pmEnd !== undefined ? { pmEnd: last.pmEnd } : {}),
   };

@@ -291,6 +291,16 @@ function parseFrameProperties(
 
   const frame: ParagraphFormatting["frame"] = {};
 
+  const dropCap = getAttribute(framePr, "w", "dropCap");
+  if (dropCap === "none" || dropCap === "drop" || dropCap === "margin") {
+    frame.dropCap = dropCap;
+  }
+
+  const lines = parseNumericAttribute(framePr, "w", "lines");
+  if (lines !== undefined) {
+    frame.lines = lines;
+  }
+
   const w = parseNumericAttribute(framePr, "w", "w");
   if (w !== undefined) {
     frame.width = w;
@@ -299,6 +309,16 @@ function parseFrameProperties(
   const h = parseNumericAttribute(framePr, "w", "h");
   if (h !== undefined) {
     frame.height = h;
+  }
+
+  const hSpace = parseNumericAttribute(framePr, "w", "hSpace");
+  if (hSpace !== undefined) {
+    frame.hSpace = hSpace;
+  }
+
+  const vSpace = parseNumericAttribute(framePr, "w", "vSpace");
+  if (vSpace !== undefined) {
+    frame.vSpace = vSpace;
   }
 
   const hAnchor = getAttribute(framePr, "w", "hAnchor");

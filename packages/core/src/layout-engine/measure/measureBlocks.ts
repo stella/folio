@@ -504,6 +504,16 @@ function extractFloatingZones(
 ): FloatingZoneWithAnchor[] {
   const zones: FloatingZoneWithAnchor[] = [];
   const textBoxGroupAnchors = new Map<string, number>();
+  const paragraphFrameGroupSizes = new Map<string, number>();
+  for (const block of blocks) {
+    if (block.kind !== "textBox" || !isParagraphFrameTextBox(block)) {
+      continue;
+    }
+    const groupId = getTextBoxGroupId(block);
+    if (groupId !== undefined) {
+      paragraphFrameGroupSizes.set(groupId, (paragraphFrameGroupSizes.get(groupId) ?? 0) + 1);
+    }
+  }
   const defaultMarginTop = Array.isArray(marginTop) ? (marginTop[0] ?? 0) : marginTop;
   const pageWidthInput = pageGeometry?.pageWidth ?? contentWidth;
   const pageHeightInput = pageGeometry?.pageHeight ?? 0;
@@ -705,7 +715,11 @@ function extractFloatingZones(
     if (groupId && !textBoxGroupAnchors.has(groupId)) {
       textBoxGroupAnchors.set(groupId, blockIndex);
     }
-    if (isParagraphFrameTextBox(tb)) {
+    if (
+      isParagraphFrameTextBox(tb) &&
+      groupId !== undefined &&
+      (paragraphFrameGroupSizes.get(groupId) ?? 0) > 1
+    ) {
       zones.push({
         leftMargin: 0,
         rightMargin: 0,

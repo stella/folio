@@ -185,6 +185,41 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("wraps beside a single paragraph frame", () => {
+    withFakeTextMeasure(() => {
+      const frame: TextBoxBlock = {
+        kind: "textBox",
+        id: "single-frame",
+        width: 300,
+        height: 100,
+        content: [],
+        displayMode: "float",
+        wrapType: "square",
+        wrapText: "bothSides",
+        position: {
+          horizontal: { relativeTo: "page", posOffset: pixelsToEmu(96) },
+          vertical: { relativeTo: "page", posOffset: pixelsToEmu(136) },
+        },
+      };
+      markParagraphFrameTextBox(frame);
+      setTextBoxGroupId(frame, "single-frame-set");
+
+      const measures = measureBlocks([frame, para("body", "body")], 600, 96, {
+        pageWidth: 792,
+        pageHeight: 1_056,
+        marginLeft: 96,
+        marginRight: 96,
+        marginBottom: 96,
+      });
+      const bodyMeasure = measures.at(1);
+      if (bodyMeasure?.kind !== "paragraph") {
+        throw new Error("Expected body paragraph measure");
+      }
+
+      expect(bodyMeasure.lines.at(0)?.floatSkipBefore).toBeUndefined();
+    }, fakeMeasure);
+  });
+
   test("keeps an active band across an unspecified continuous section break", () => {
     withFakeTextMeasure(() => {
       const band: TextBoxBlock = {

@@ -37,6 +37,64 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.indent).toEqual({ left: 96, hanging: 24 });
   });
 
+  test("preserves native frame wrap spacing on the positioned container", () => {
+    const frame = {
+      width: 3600,
+      height: 1440,
+      hSpace: 144,
+      vSpace: 72,
+      hAnchor: "page" as const,
+      vAnchor: "text" as const,
+      x: 720,
+      y: 144,
+      wrap: "around" as const,
+    };
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("paragraph", { _originalFormatting: { frame } }, [schema.text("First")]),
+        schema.node("paragraph", { _originalFormatting: { frame } }, [schema.text("Second")]),
+        schema.node("paragraph", null, [schema.text("Body")]),
+      ]),
+    );
+
+    expect(blocks.map((block) => block.kind)).toEqual(["textBox", "paragraph"]);
+    expect(blocks.at(0)).toMatchObject({
+      kind: "textBox",
+      width: 240,
+      height: 96,
+      displayMode: "float",
+      wrapType: "square",
+      position: {
+        horizontal: { relativeTo: "page", posOffset: 457200 },
+        vertical: { relativeTo: "paragraph", posOffset: 91440 },
+      },
+      content: [{ kind: "paragraph" }, { kind: "paragraph" }],
+    });
+    const textBox = blocks.at(0);
+    expect(textBox?.kind).toBe("textBox");
+    if (textBox?.kind !== "textBox") {
+      return;
+    }
+    expect(textBox.distTop).toBeCloseTo(4.8);
+    expect(textBox.distBottom).toBeCloseTo(4.8);
+    expect(textBox.distLeft).toBeCloseTo(9.6);
+    expect(textBox.distRight).toBeCloseTo(9.6);
+  });
+
+  test("keeps drop-cap frames in normal paragraph flow", () => {
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          { _originalFormatting: { frame: { dropCap: "drop", lines: 3 } } },
+          [schema.text("Opening paragraph")],
+        ),
+      ]),
+    );
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph"]);
+  });
+
   test("does not paint an empty structural section-break paragraph", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { sectionBreakType: "continuous" }),

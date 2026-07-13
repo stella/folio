@@ -323,8 +323,12 @@ export type ParagraphFormatting = {
   // Frame properties
   /** Text frame properties (w:framePr) */
   frame?: {
+    dropCap?: "none" | "drop" | "margin";
+    lines?: number;
     width?: number;
     height?: number;
+    hSpace?: number;
+    vSpace?: number;
     hAnchor?: "text" | "margin" | "page";
     vAnchor?: "text" | "margin" | "page";
     x?: number;

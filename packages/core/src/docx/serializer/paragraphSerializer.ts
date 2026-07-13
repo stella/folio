@@ -304,12 +304,28 @@ function serializeFrameProperties(frame: ParagraphFormatting["frame"]): string {
 
   const attrs: string[] = [];
 
+  if (frame.dropCap) {
+    attrs.push(`w:dropCap="${frame.dropCap}"`);
+  }
+
+  if (frame.lines !== undefined) {
+    attrs.push(`w:lines="${intAttr(frame.lines)}"`);
+  }
+
   if (frame.width !== undefined) {
     attrs.push(`w:w="${intAttr(frame.width)}"`);
   }
 
   if (frame.height !== undefined) {
     attrs.push(`w:h="${intAttr(frame.height)}"`);
+  }
+
+  if (frame.hSpace !== undefined) {
+    attrs.push(`w:hSpace="${intAttr(frame.hSpace)}"`);
+  }
+
+  if (frame.vSpace !== undefined) {
+    attrs.push(`w:vSpace="${intAttr(frame.vSpace)}"`);
   }
 
   if (frame.hAnchor) {

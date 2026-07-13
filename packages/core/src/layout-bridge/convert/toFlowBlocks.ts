@@ -1867,10 +1867,12 @@ function convertParagraph(
     pmEnd: startPos + node.nodeSize,
   };
   const frame = pmAttrs._originalFormatting?.frame;
-  if (frame !== undefined) {
+  if (frame !== undefined && frame.dropCap !== "drop" && frame.dropCap !== "margin") {
     setParagraphFrame(block, {
       ...(frame.width !== undefined ? { width: twipsToPixels(frame.width) } : {}),
       ...(frame.height !== undefined ? { height: twipsToPixels(frame.height) } : {}),
+      ...(frame.hSpace !== undefined ? { hSpace: twipsToPixels(frame.hSpace) } : {}),
+      ...(frame.vSpace !== undefined ? { vSpace: twipsToPixels(frame.vSpace) } : {}),
       ...(frame.hAnchor !== undefined ? { hAnchor: frame.hAnchor } : {}),
       ...(frame.vAnchor !== undefined ? { vAnchor: frame.vAnchor } : {}),
       ...(frame.x !== undefined ? { x: twipsToPixels(frame.x) } : {}),

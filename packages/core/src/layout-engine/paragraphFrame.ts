@@ -3,6 +3,8 @@ import type { ParagraphBlock, TextBoxBlock } from "./types";
 export type ParagraphFrame = {
   width?: number;
   height?: number;
+  hSpace?: number;
+  vSpace?: number;
   hAnchor?: "text" | "margin" | "page";
   vAnchor?: "text" | "margin" | "page";
   x?: number;
