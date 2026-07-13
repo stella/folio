@@ -81,7 +81,7 @@ function getWorkerFontFingerprintWidth(
   ctx: CanvasRenderingContext2D,
   font: string,
   fontCacheKey: string,
-  fontKerning: CanvasFontKerning,
+  fontKerning: "normal" | "none",
 ): number {
   const generation = getTextWidthCacheGeneration();
   const cached = workerFontFingerprintCache.get(fontCacheKey);
@@ -199,7 +199,7 @@ function canvasMeasureTextWidth(text: string, style: FontStyle): number {
   const font = buildFontString(style);
   const letterSpacing = style.letterSpacing ?? 0;
   const horizontalScale = getHorizontalScaleFactor(style);
-  const fontKerning: CanvasFontKerning = style.kerning ? "normal" : "none";
+  const fontKerning: "normal" | "none" = style.kerning ? "normal" : "none";
   const fontCacheKey = style.kerning
     ? `${font}|kerning:normal|scale:${horizontalScale}`
     : `${font}|scale:${horizontalScale}`;
@@ -340,7 +340,7 @@ function prefetchBinarySearchProbes(
   fontFingerprintWidth: number,
   letterSpacing: number,
   horizontalScale: number,
-  fontKerning: CanvasFontKerning,
+  fontKerning: "normal" | "none",
 ): void {
   if (text.length < 4) {
     return;
