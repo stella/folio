@@ -45,9 +45,13 @@ export function computePerBlockMeasureInputs({
   bodyConfig,
   finalConfig,
 }: ComputePerBlockMeasureInput): PerBlockMeasureInputs {
-  function colWidth(cw: number, cols: ColumnLayout): number {
+  function colWidth(cw: number, cols: ColumnLayout, columnIndex: number): number {
     if (cols.count <= 1) {
       return cw;
+    }
+    const authoredWidth = cols.widths?.[columnIndex];
+    if (authoredWidth !== undefined) {
+      return authoredWidth;
     }
     return Math.floor((cw - (cols.count - 1) * cols.gap) / cols.count);
   }
@@ -63,6 +67,7 @@ export function computePerBlockMeasureInputs({
   );
 
   let sectionIdx = 0;
+  let columnIndex = 0;
   const widths: number[] = [];
   const marginTops: number[] = [];
   const pageHeights: number[] = [];
@@ -70,13 +75,19 @@ export function computePerBlockMeasureInputs({
 
   for (let i = 0; i < blocks.length; i++) {
     const config = sectionConfigs[sectionIdx] ?? finalConfig;
-    widths.push(colWidth(contentWidth(config), config.columns ?? SINGLE_COLUMN_LAYOUT));
+    const columns = config.columns ?? SINGLE_COLUMN_LAYOUT;
+    widths.push(colWidth(contentWidth(config), columns, columnIndex));
     marginTops.push(config.margins.top);
     pageHeights.push(config.pageSize.h);
     marginBottoms.push(config.margins.bottom);
 
     if (sectionIdx < breakIndices.length && i === breakIndices[sectionIdx]) {
       sectionIdx++;
+      columnIndex = 0;
+    } else if (blocks[i]?.kind === "pageBreak") {
+      columnIndex = 0;
+    } else if (blocks[i]?.kind === "columnBreak") {
+      columnIndex = (columnIndex + 1) % columns.count;
     }
   }
 

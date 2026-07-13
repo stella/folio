@@ -22,7 +22,8 @@ const DEFAULT_COLUMN_SPACE_TWIPS = 720;
 export function getColumns(
   sectionProps: SectionProperties | null | undefined,
 ): ColumnLayout | undefined {
-  const count = sectionProps?.columnCount ?? 1;
+  const authoredColumns = sectionProps?.columns;
+  const count = sectionProps?.columnCount ?? authoredColumns?.length ?? 1;
   if (count <= 1) return undefined;
   const gap = twipsToPixels(sectionProps?.columnSpace ?? DEFAULT_COLUMN_SPACE_TWIPS);
   const columns: ColumnLayout = {
@@ -30,6 +31,18 @@ export function getColumns(
     gap,
     equalWidth: sectionProps?.equalWidth ?? true,
   };
+  if (
+    sectionProps?.equalWidth === false &&
+    authoredColumns?.length === count &&
+    authoredColumns.every(({ width }) => width !== undefined)
+  ) {
+    columns.widths = authoredColumns.map(({ width }) => twipsToPixels(width ?? 0));
+    columns.gaps = authoredColumns
+      .slice(0, -1)
+      .map(({ space }) =>
+        twipsToPixels(space ?? sectionProps.columnSpace ?? DEFAULT_COLUMN_SPACE_TWIPS),
+      );
+  }
   // exactOptionalPropertyTypes: only attach `separator` when explicitly set.
   if (sectionProps?.separator !== undefined) columns.separator = sectionProps.separator;
   return columns;

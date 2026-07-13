@@ -26,6 +26,7 @@ import type {
 import { applyTemplatePreviewToBlocks } from "../layout-bridge/convert/templatePreviewFlow";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import type { ToFlowBlocksOptions } from "../layout-bridge/convert/toFlowBlocks";
+import { getColumns } from "../layout-bridge/sectionColumns";
 import { layoutDocument } from "../layout-engine";
 import type { ColumnLayout, SectionLayoutConfig } from "../layout-engine";
 import {
@@ -379,10 +380,21 @@ export function runLayoutPipeline<THfPMs>(
     if (columns !== undefined) {
       bodyLayoutConfig.columns = columns;
     }
+    const finalSectionProperties = document?.package.document.sections?.at(-1)?.properties;
+    const finalLayoutConfig: SectionLayoutConfig = finalSectionProperties
+      ? {
+          pageSize: getPageSize(finalSectionProperties),
+          margins: getMargins(finalSectionProperties),
+        }
+      : bodyLayoutConfig;
+    const finalColumns = getColumns(finalSectionProperties);
+    if (finalColumns !== undefined) {
+      finalLayoutConfig.columns = finalColumns;
+    }
     const blockMeasureInputs = computePerBlockMeasureInputs({
       blocks: newBlocks,
       bodyConfig: bodyLayoutConfig,
-      finalConfig: bodyLayoutConfig,
+      finalConfig: finalLayoutConfig,
     });
     const blockWidths = blockMeasureInputs.widths;
     const previousArtifacts = session.artifacts;
@@ -445,10 +457,10 @@ export function runLayoutPipeline<THfPMs>(
           nextLayoutOpts.firstPageMargins = { ...margins, top: headerBottom };
         }
       }
-      const finalSection = document?.package.document.sections?.at(-1);
-      if (finalSection) {
-        nextLayoutOpts.finalPageSize = getPageSize(finalSection.properties);
-        nextLayoutOpts.finalMargins = getMargins(finalSection.properties);
+      if (finalSectionProperties) {
+        nextLayoutOpts.finalPageSize = finalLayoutConfig.pageSize;
+        nextLayoutOpts.finalMargins = finalLayoutConfig.margins;
+        nextLayoutOpts.finalColumns = finalLayoutConfig.columns ?? { count: 1, gap: 0 };
       }
       if (columns !== undefined) {
         nextLayoutOpts.columns = columns;

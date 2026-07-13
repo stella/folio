@@ -20,8 +20,8 @@ import type {
   ImageBlock,
   TextBoxBlock,
   PageBreakBlock,
+  ColumnBreakBlock,
   SectionBreakBlock,
-  ColumnLayout,
   Run,
   TextRun,
   TabRun,
@@ -35,6 +35,7 @@ import type {
 } from "../../layout-engine/types";
 import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { DEFAULT_TEXTBOX_MARGINS, DEFAULT_TEXTBOX_WIDTH } from "../../layout-engine/types";
+import { getColumns } from "../sectionColumns";
 import {
   expectBlockSdtAttrs,
   expectCharacterSpacingMarkAttrs,
@@ -44,6 +45,7 @@ import {
   expectFontFamilyMarkAttrs,
   expectFontSizeMarkAttrs,
   expectFootnoteRefMarkAttrs,
+  expectHardBreakAttrs,
   expectHighlightMarkAttrs,
   expectHyperlinkMarkAttrs,
   expectImageAttrs,
@@ -2518,10 +2520,23 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
 
     switch (node.type.name) {
       case "paragraph": {
-        const block = convertParagraph(node, pos, opts);
         const pmAttrs = expectParagraphAttrs(node);
+        const onlyChild = node.childCount === 1 ? node.firstChild : null;
+        const isStandaloneColumnBreak =
+          onlyChild?.type.name === "hardBreak" &&
+          expectHardBreakAttrs(onlyChild).breakType === "column";
 
-        trackedPush(block);
+        if (isStandaloneColumnBreak) {
+          const columnBreak: ColumnBreakBlock = {
+            kind: "columnBreak",
+            id: nextBlockId(),
+            pmStart: pos,
+            pmEnd: pos + node.nodeSize,
+          };
+          trackedPush(columnBreak);
+        } else {
+          trackedPush(convertParagraph(node, pos, opts));
+        }
 
         // Emit section break block if this paragraph ends a section
         const secProps = pmAttrs._sectionProperties as SectionProperties | undefined;
@@ -2570,17 +2585,9 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
               }
             }
             // Populate columns
-            const colCount = secProps.columnCount ?? 1;
-            if (colCount > 1) {
-              const cols: ColumnLayout = {
-                count: colCount,
-                gap: twipsToPixels(secProps.columnSpace ?? 720),
-                equalWidth: secProps.equalWidth ?? true,
-              };
-              if (secProps.separator !== undefined) {
-                cols.separator = secProps.separator;
-              }
-              sectionBreak.columns = cols;
+            const columns = getColumns(secProps);
+            if (columns) {
+              sectionBreak.columns = columns;
             }
           }
 

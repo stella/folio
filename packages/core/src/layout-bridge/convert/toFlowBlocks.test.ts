@@ -5,6 +5,19 @@ import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  test("emits a structural break for a standalone column break paragraph", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("First column")]),
+      schema.node("paragraph", null, [schema.node("hardBreak", { breakType: "column" })]),
+      schema.node("paragraph", null, [schema.text("Second column")]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "columnBreak", "paragraph"]);
+    expect(blocks.at(1)).toMatchObject({ kind: "columnBreak", pmStart: 14, pmEnd: 17 });
+  });
+
   test("empty paragraph measurement uses direct paragraph-mark font metrics", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", {

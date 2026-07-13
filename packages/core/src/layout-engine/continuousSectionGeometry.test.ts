@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { layoutDocument } from "./index";
-import type { FlowBlock, ParagraphBlock, ParagraphMeasure, SectionBreakBlock } from "./types";
+import type {
+  ColumnBreakBlock,
+  FlowBlock,
+  ParagraphBlock,
+  ParagraphMeasure,
+  SectionBreakBlock,
+} from "./types";
 
 function paragraph(
   id: string,
@@ -36,6 +42,46 @@ function paragraph(
 }
 
 describe("continuous section break geometry", () => {
+  test("a final multi-column section keeps a forced column break on the current page", () => {
+    const first = paragraph("a", 100);
+    const sectionBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "sb",
+      type: "continuous",
+    };
+    const firstColumn = paragraph("b", 100);
+    const columnBreak: ColumnBreakBlock = { kind: "columnBreak", id: "cb" };
+    const secondColumn = paragraph("c", 100);
+    const blocks: FlowBlock[] = [
+      first.block,
+      sectionBreak,
+      firstColumn.block,
+      columnBreak,
+      secondColumn.block,
+    ];
+    const measures = [
+      first.measure,
+      { kind: "sectionBreak" },
+      firstColumn.measure,
+      { kind: "columnBreak" },
+      secondColumn.measure,
+    ] as never;
+
+    const result = layoutDocument(blocks, measures, {
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      finalColumns: { count: 2, gap: 20, widths: [200, 300], gaps: [100] },
+      bodyBreakType: "continuous",
+    });
+
+    expect(result.pages).toHaveLength(1);
+    const secondColumnFragment = result.pages[0]?.fragments.find(
+      (fragment) => fragment.kind === "paragraph" && fragment.blockId === "c",
+    );
+    expect(secondColumnFragment?.x).toBe(350);
+    expect(secondColumnFragment?.width).toBe(300);
+  });
+
   test("current page keeps old geometry and overflow page picks up new geometry", () => {
     const first = paragraph("a", 200);
     const sectionBreak: SectionBreakBlock = {
