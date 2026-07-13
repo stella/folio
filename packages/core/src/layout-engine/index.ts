@@ -789,6 +789,9 @@ function layoutTable(
   if (rows.length === 0) {
     return;
   }
+  const rowFootnoteIds = block.rows.map((row) =>
+    collectTableRowFootnoteIds(row, footnoteHeightById),
+  );
 
   // Detect header rows (consecutive rows at start with isHeader: true)
   const headerRowCount = countHeaderRows(block);
@@ -963,10 +966,10 @@ function layoutTable(
 
     for (let j = currentRowIndex; j < rows.length; j++) {
       const rowHeight = rows[j]!.height; // SAFETY: j < rows.length
-      const rowFootnoteIds = collectTableRowFootnoteIds(block.rows[j], footnoteHeightById);
+      const currentRowFootnoteIds = rowFootnoteIds[j] ?? [];
       const fragmentFootnoteCountBeforeRow = fragmentFootnoteIds.length;
       let rowFootnoteHeight = 0;
-      for (const id of rowFootnoteIds) {
+      for (const id of currentRowFootnoteIds) {
         if (pageFootnoteIds.has(id) || fragmentFootnoteIds.includes(id)) {
           continue;
         }
@@ -990,16 +993,15 @@ function layoutTable(
         fragmentFootnoteHeight += rowFootnoteHeight;
         fittingRows++;
       } else if (fittingRows === 0) {
-        fragmentFootnoteIds.splice(fragmentFootnoteCountBeforeRow);
         const isFreshFlowRegion =
           state.cursorY === state.topMargin && state.page.fragments.length === 0;
         if (isFreshFlowRegion) {
           rowsHeight += rowHeight;
           fragmentFootnoteHeight += rowFootnoteHeight;
-          fragmentFootnoteIds.push(...rowFootnoteIds);
           fittingRows++;
           break;
         }
+        fragmentFootnoteIds.splice(fragmentFootnoteCountBeforeRow);
         paginator.forceColumnBreak();
         retryOnNextFlowRegion = true;
         break;
