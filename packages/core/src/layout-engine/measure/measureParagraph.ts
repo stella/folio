@@ -53,6 +53,7 @@ const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing 
 // Prevents premature line breaks due to measurement rounding
 const WIDTH_TOLERANCE = 0.5;
 const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
+const JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO = 0.015;
 const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
 const JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO = 0.025;
 const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
@@ -600,7 +601,7 @@ function justifyShrinkToleranceRatio(
       // A marker that remains inset leaves a narrower continuation body.
       // Keep those lines on the marker-line allowance; full-hanging lists
       // retain the broader prose allowance below.
-      return JUSTIFY_SHRINK_TOLERANCE_RATIO;
+      return JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO;
     }
     return fixedSpaceAdjustedShrinkTolerance({
       tolerance: JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO,

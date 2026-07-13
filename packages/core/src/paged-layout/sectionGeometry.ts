@@ -13,7 +13,7 @@ const DEFAULT_MARGINS: PageMargins = {
   left: DEFAULT_BODY_MARGIN_PX,
 };
 
-export const twipsToPixels = (twips: number): number => Math.round((twips / 1440) * 96);
+export const twipsToPixels = (twips: number): number => (twips / 1440) * 96;
 
 /**
  * Convert an offset-like twip dimension to px. Explicit 0 is meaningful for

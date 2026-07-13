@@ -23,6 +23,7 @@ import type { FootnoteContent, HeaderFooterContent } from "../layout-engine/type
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { LayoutPainter } from "../layout-painter";
 import { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
+import { twipsToPixels } from "../paged-layout/sectionGeometry";
 import { schema } from "../prosemirror/schema";
 import type { Footnote } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -818,7 +819,10 @@ describe("runLayoutPipeline", () => {
 
     const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document }), makeState());
 
-    expect(outcome.layout?.pages.at(0)?.size).toEqual({ w: 1124, h: 795 });
+    expect(outcome.layout?.pages.at(0)?.size).toEqual({
+      w: twipsToPixels(16_860),
+      h: twipsToPixels(11_920),
+    });
   });
 
   test("uses the final section start mode for an implicit paragraph boundary", () => {

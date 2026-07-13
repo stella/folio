@@ -6,6 +6,7 @@ import {
   DEFAULT_PAGE_WIDTH_PX,
   getMargins,
   getPageSize,
+  twipsToPixels,
   twipsToPxOr,
 } from "./sectionGeometry";
 
@@ -45,5 +46,14 @@ describe("paged editor section geometry", () => {
     expect(twipsToPxOr(0, 96)).toBe(0);
     expect(twipsToPxOr(1440, 96)).toBe(96);
     expect(twipsToPxOr(undefined, 96)).toBe(96);
+  });
+
+  test("preserves fractional units across page and margin geometry", () => {
+    const page = getPageSize({ pageWidth: 1001, pageHeight: 2002 });
+    const margins = getMargins({ marginLeft: 101, marginRight: 202 });
+
+    expect(page.w).toBe(twipsToPixels(1001));
+    expect(margins.left).toBe(twipsToPixels(101));
+    expect(page.w - margins.left - margins.right).toBeCloseTo(twipsToPixels(698), 10);
   });
 });

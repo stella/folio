@@ -848,6 +848,35 @@ describe("measureParagraph justified shrink tolerance", () => {
       },
     );
   });
+
+  test("wraps a trailing token beyond the inset-list continuation allowance", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-inset-list-boundary",
+            runs: [
+              { kind: "text", text: "x" },
+              { kind: "lineBreak" },
+              { kind: "text", text: `${"a".repeat(89)} bbb` },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 20, hanging: 10 },
+            },
+          },
+          110,
+        );
+
+        expect(measure.lines).toHaveLength(3);
+      },
+      {
+        charWidth: (char) => (char === "b" ? 0.465 : 1),
+      },
+    );
+  });
 });
 
 describe("measureParagraph document default tab interval", () => {
