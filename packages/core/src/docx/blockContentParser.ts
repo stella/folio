@@ -105,6 +105,8 @@ const formatNumber = (value: number, numFmt: string): string => {
       return toRoman(value);
     case "bullet":
       return "\u2022";
+    case "none":
+      return "";
     default:
       return String(value);
   }

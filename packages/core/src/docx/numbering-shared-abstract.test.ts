@@ -124,6 +124,30 @@ test("zero-based numbering advances instead of repeatedly reinitializing", () =>
   );
 });
 
+test("numbering metadata with a none format does not paint a decimal marker", () => {
+  const numbering = parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="10">
+    <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="none"/><w:lvlText w:val="%1"/></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="5"><w:abstractNumId w:val="10"/></w:num>
+</w:numbering>`);
+  const root = parseXmlDocument(
+    `<w:body xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr></w:pPr><w:r><w:t>Heading</w:t></w:r></w:p>
+    </w:body>`,
+  ) as XmlElement | null;
+  if (!root) {
+    throw new Error("Failed to parse body XML");
+  }
+
+  const paragraphs = parseBlockContent(root, null, null, numbering, null, null);
+
+  expect(paragraphs.at(0)?.type === "paragraph" && paragraphs.at(0)?.listRendering?.marker).toBe(
+    "",
+  );
+});
+
 test("style numbering resumes the latest compatible restarted instance", () => {
   const numbering = parseNumbering(NUMBERING_SHARED);
   const styles = parseStyles(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
