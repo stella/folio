@@ -66,7 +66,15 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
   ctx.font = font;
   const fontFingerprintWidth = ctx.measureText(WORKER_FONT_FINGERPRINT_TEXT).width;
 
-  prefetchMeasurement(text, font, letterSpacing, 1, fontCacheKey, fontFingerprintWidth);
+  prefetchMeasurement({
+    text,
+    font,
+    letterSpacing,
+    horizontalScale: 1,
+    fontCacheKey,
+    fontFingerprintWidth,
+    fontKerning: "none",
+  });
 
   const deadline = Date.now() + 8000;
   while (Date.now() < deadline) {
