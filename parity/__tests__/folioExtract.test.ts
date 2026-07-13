@@ -9,6 +9,7 @@ import {
   meaningfulTextRange,
   parseCssFontFamilies,
   parseFirstFontFamily,
+  screenshotViewportHeight,
   toPageGeom,
 } from "../folioExtract";
 import type { RawLine, RawPage } from "../folioExtract";
@@ -29,6 +30,20 @@ describe("clean screenshot style", () => {
   test("keeps the page and its document content visible", () => {
     expect(CLEAN_SCREENSHOT_CSS).toContain(".layout-page,");
     expect(CLEAN_SCREENSHOT_CSS).toContain(".layout-page *");
+  });
+});
+
+describe("screenshot viewport height", () => {
+  test("grows enough to paint the tallest page above playground chrome", () => {
+    expect(screenshotViewportHeight([1123, 794], 1000)).toBe(1323);
+  });
+
+  test("does not shrink an already tall viewport", () => {
+    expect(screenshotViewportHeight([1123], 1600)).toBe(1600);
+  });
+
+  test("ignores invalid page heights", () => {
+    expect(screenshotViewportHeight([Number.NaN, Number.POSITIVE_INFINITY], 1000)).toBe(1000);
   });
 });
 

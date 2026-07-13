@@ -101,6 +101,7 @@ const EDITOR_SELECTOR = '[data-testid="folio-editor"]';
 const PAGE_SELECTOR = ".layout-page";
 
 const VIEWPORT = { width: 1400, height: 1000 };
+const SCREENSHOT_VIEWPORT_VERTICAL_CHROME_PX = 200;
 
 const SERVER_PROBE_TIMEOUT_MS = 2000;
 const SERVER_REUSE_PROBE_TIMEOUT_MS = 15_000;
@@ -465,6 +466,28 @@ const installCleanScreenshotStyle = async (page: Page): Promise<void> => {
   await page.addStyleTag({
     content: CLEAN_SCREENSHOT_CSS,
   });
+};
+
+export const screenshotViewportHeight = (pageHeights: number[], currentHeight: number): number => {
+  const tallestPage = Math.max(0, ...pageHeights.filter(Number.isFinite));
+  return Math.max(currentHeight, Math.ceil(tallestPage + SCREENSHOT_VIEWPORT_VERTICAL_CHROME_PX));
+};
+
+const fitViewportToPages = async (page: Page): Promise<void> => {
+  const viewport = page.viewportSize();
+  if (!viewport) {
+    return;
+  }
+  const pageHeights = await page
+    .locator(PAGE_SELECTOR)
+    .evaluateAll((pageEls) => pageEls.map((pageEl) => (pageEl as HTMLElement).offsetHeight));
+  const height = screenshotViewportHeight(pageHeights, viewport.height);
+  if (height === viewport.height) {
+    return;
+  }
+  await page.setViewportSize({ width: viewport.width, height });
+  await waitForLayoutStability(page);
+  await page.waitForTimeout(STABILITY_SETTLE_MS);
 };
 
 /** One `.layout-page` element's identity, listed before any scrolling so the
@@ -1036,6 +1059,7 @@ export const createFolioExtractor = async (
       if (pageMeta.length === 0) {
         throw new FolioExtractError(`folio rendered zero pages for ${absoluteDocxPath}`);
       }
+      await fitViewportToPages(page);
       await installCleanScreenshotStyle(page);
       const pagesToExtract =
         options.maxPages === undefined ? pageMeta : pageMeta.slice(0, options.maxPages);
