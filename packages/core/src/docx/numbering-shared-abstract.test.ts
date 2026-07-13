@@ -176,3 +176,42 @@ test("style numbering resumes the latest compatible restarted instance", () => {
     ),
   ).toEqual(["(1)", "(1)", "(2)", "(3)"]);
 });
+
+test("a style-numbered bridge advances the concrete stream it resumes", () => {
+  const numbering = parseNumbering(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:abstractNum w:abstractNumId="4">
+        <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/></w:lvl>
+        <w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1.%2"/></w:lvl>
+      </w:abstractNum>
+      <w:num w:numId="1"><w:abstractNumId w:val="4"/></w:num>
+      <w:num w:numId="2"><w:abstractNumId w:val="4"/></w:num>
+    </w:numbering>`);
+  const styles = parseStyles(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:style w:type="paragraph" w:styleId="Clause">
+        <w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="2"/></w:numPr></w:pPr>
+      </w:style>
+    </w:styles>`);
+  const root = parseXmlDocument(
+    `<w:body xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Section one</w:t></w:r></w:p>
+      <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>First clause</w:t></w:r></w:p>
+      <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Section two</w:t></w:r></w:p>
+      <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Second section, first clause</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Clause"/></w:pPr><w:r><w:t>Style bridge</w:t></w:r></w:p>
+      <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Concrete continuation</w:t></w:r></w:p>
+    </w:body>`,
+  ) as XmlElement | null;
+  if (!root) {
+    throw new Error("Failed to parse body XML");
+  }
+
+  const paragraphs = parseBlockContent(root, styles, null, numbering, null, null);
+
+  expect(
+    paragraphs.map((paragraph) =>
+      paragraph.type === "paragraph" ? paragraph.listRendering?.marker : undefined,
+    ),
+  ).toEqual(["I.", "I.1", "II.", "II.1", "II.2", "II.3"]);
+});

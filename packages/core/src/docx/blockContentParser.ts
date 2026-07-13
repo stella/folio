@@ -139,6 +139,7 @@ const computeListMarker = (
 
   const abstractNumId = numbering.getAbstractNumId(numId);
   const styleNumbering = paragraph.formatting?.numPrFromStyle;
+  let resumedAbstractCounters: number[] | undefined;
   if (abstractNumId !== null && styleNumbering) {
     const latestAbstractCounters = abstractCounters.get(abstractNumId);
     if (latestAbstractCounters) {
@@ -150,6 +151,7 @@ const computeListMarker = (
       for (let i = 0; i < counters.length; i += 1) {
         counters[i] = latestAbstractCounters[i] ?? Number.NaN;
       }
+      resumedAbstractCounters = latestAbstractCounters;
     }
   }
   if (abstractNumId !== null && level > 0) {
@@ -188,6 +190,20 @@ const computeListMarker = (
   }
 
   if (abstractNumId !== null) {
+    if (resumedAbstractCounters) {
+      for (const [otherNumId, otherCounters] of listCounters) {
+        if (
+          otherNumId === numId ||
+          numbering.getAbstractNumId(otherNumId) !== abstractNumId ||
+          !otherCounters.every((value, index) => Object.is(value, resumedAbstractCounters[index]))
+        ) {
+          continue;
+        }
+        for (let i = 0; i < otherCounters.length; i += 1) {
+          otherCounters[i] = counters[i] ?? Number.NaN;
+        }
+      }
+    }
     abstractCounters.set(abstractNumId, [...counters]);
   }
 
