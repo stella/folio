@@ -40,6 +40,7 @@ import { buildRunFontStyle, ptToPx } from "./measureHelpers";
 import { getFontMetrics, measureRun, measureTextWidth } from "./measureProvider";
 import type { FontMetrics, FontStyle } from "./measureTypes";
 import { findWordBreaks, isBreakChar } from "./lineBreaks";
+import { countCompressibleSpaces } from "./textMeasurementPolicy";
 
 export { clampFloatingWrapMargins } from "./clampFloatingWrapMargins";
 export type { FloatingImageZone } from "./floatingZones";
@@ -1457,7 +1458,7 @@ export function measureParagraph(
         const measuredWord = trimTrailingSpacesAndTabs(word);
         const wordWidth = measureTextWidth(measuredWord, style);
         const fullWordWidth = measureTextWidth(word, style);
-        const regularSpaces = measuredWord.split(" ").length - 1;
+        const regularSpaces = countCompressibleSpaces(measuredWord);
         const nonBreakingSpaces = measuredWord.split("\u00a0").length - 1;
         const isFirstLine = lines.length === 0;
         const regularSpaceWidth =
@@ -1513,7 +1514,7 @@ export function measureParagraph(
             currentLine.width += chunkWidth;
             currentLine.trailingWhitespaceWidth =
               chunkWidth - measureTextWidth(trimTrailingSpacesAndTabs(chunk), style);
-            const chunkRegularSpaceCount = chunk.split(" ").length - 1;
+            const chunkRegularSpaceCount = countCompressibleSpaces(chunk);
             currentLine.regularSpaceCount += chunkRegularSpaceCount;
             if (
               chunkRegularSpaceCount > 0 &&
@@ -1536,7 +1537,7 @@ export function measureParagraph(
           const trailingWhitespaceWidth = fullWordWidth - wordWidth;
           currentLine.width += trailingWhitespaceWidth;
           currentLine.trailingWhitespaceWidth = trailingWhitespaceWidth;
-          const wordRegularSpaceCount = word.split(" ").length - 1;
+          const wordRegularSpaceCount = countCompressibleSpaces(word);
           currentLine.regularSpaceCount += wordRegularSpaceCount;
           if (
             wordRegularSpaceCount > 0 &&
@@ -1589,7 +1590,7 @@ export function measureParagraph(
           wordWidth === 0
             ? currentLine.trailingWhitespaceWidth + wordTrailingWhitespaceWidth
             : wordTrailingWhitespaceWidth;
-        const wordRegularSpaceCount = word.split(" ").length - 1;
+        const wordRegularSpaceCount = countCompressibleSpaces(word);
         currentLine.regularSpaceCount += wordRegularSpaceCount;
         if (
           wordRegularSpaceCount > 0 &&
