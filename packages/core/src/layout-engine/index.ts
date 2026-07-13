@@ -937,15 +937,14 @@ function layoutTable(
       x += (paginator.columnWidth - measure.totalWidth) / 2;
     } else if (block.justification === "right") {
       x = x + paginator.columnWidth - measure.totalWidth;
+    } else if (block.indent !== undefined) {
+      // An authored w:tblInd offsets the table border from the content margin.
+      // Keep the absent-value path separate because Word's inherited default
+      // aligns the first-cell text edge instead.
+      x += block.indent;
     } else {
       const leadingCellMargin = block.rows.at(0)?.cells.at(0)?.padding?.left ?? 0;
-      // With no w:tblInd, Word aligns the first cell's text edge with the
-      // content margin. An authored zero indent is distinct: it aligns the
-      // table border itself with the margin. Preserve non-zero indentation's
-      // existing text-edge behavior while retaining that zero-valued signal.
-      if (block.indent !== 0) {
-        x += (block.indent ?? 0) - leadingCellMargin;
-      }
+      x -= leadingCellMargin;
     }
     return x;
   };
