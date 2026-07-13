@@ -20,7 +20,7 @@
 
 - [#221](https://github.com/stella/folio/pull/221) [`58879bd`](https://github.com/stella/folio/commit/58879bd0a162d99eb78fcf1aeed85d926b701e1c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Coalesce cached page markers with pages opened by keep-next chains and paragraph continuations.
 
-- [#210](https://github.com/stella/folio/pull/210) [`a16bc87`](https://github.com/stella/folio/commit/a16bc87d9a06f861474ed8fada3391b6b15058c0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align explicitly indented table borders with Word layout.
+- [#210](https://github.com/stella/folio/pull/210) [`a16bc87`](https://github.com/stella/folio/commit/a16bc87d9a06f861474ed8fada3391b6b15058c0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align explicitly indented table borders with reference DOCX layout.
 
 - [#215](https://github.com/stella/folio/pull/215) [`7d09ea8`](https://github.com/stella/folio/commit/7d09ea889078646c16153de2196de16bf8dca2f6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve hanging-indent body tab positions during line wrapping.
 
@@ -54,7 +54,7 @@
 
 - [#209](https://github.com/stella/folio/pull/209) [`4e479e2`](https://github.com/stella/folio/commit/4e479e2d0d7c6f9f48d25ae4a4d511143e6ce834) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Avoid painting an extra blank line for empty structural section-break paragraphs.
 
-- [#204](https://github.com/stella/folio/pull/204) [`1e8aff9`](https://github.com/stella/folio/commit/1e8aff947b9bca3c58ab997b25687e31d43bf6a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render automatic paragraph spacing using Word's 14pt gap.
+- [#204](https://github.com/stella/folio/pull/204) [`1e8aff9`](https://github.com/stella/folio/commit/1e8aff947b9bca3c58ab997b25687e31d43bf6a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render automatic paragraph spacing using the reference 14pt gap.
 
 ## 0.6.1
 
