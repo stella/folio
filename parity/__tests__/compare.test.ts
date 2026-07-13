@@ -242,6 +242,29 @@ describe("compareGeoms", () => {
     expect(result.score).toBeCloseTo(2 / 3);
   });
 
+  test("an outlier on the first line is attributed to the first line", () => {
+    const texts = ["Alpha line", "Bravo line", "Charlie line"];
+    const word = makeDoc("word", [
+      makePage({
+        lines: texts.map((text, index) => makeLine({ text, yPt: 72 + index * 18 })),
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: texts.map((text, index) =>
+          makeLine({ text, yPt: 72 + index * 18 + (index === 0 ? 6 : 0) }),
+        ),
+      }),
+    ]);
+
+    const result = compareGeoms(word, folio);
+
+    expect(result.divergences.filter((item) => item.kind === "y-drift")).toEqual([
+      { kind: "y-drift", page: 1, text: "Alpha line", residualPt: 6 },
+    ]);
+    expect(result.score).toBeCloseTo(2 / 3);
+  });
+
   test("persistent offset transitions stay localized when the page median shifts", () => {
     const texts = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"];
     const word = makeDoc("word", [

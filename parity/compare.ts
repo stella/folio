@@ -583,6 +583,19 @@ const segmentedYResiduals = (
     const first = stableMatches.at(0);
     if (!first) continue;
     let baselinePt = first.offsetPt;
+
+    const second = stableMatches.at(1);
+    const third = stableMatches.at(2);
+    const firstIsIsolated =
+      second !== undefined &&
+      third !== undefined &&
+      Math.abs(first.offsetPt - second.offsetPt) > tolerances.yResidualPt &&
+      Math.abs(third.offsetPt - second.offsetPt) <= tolerances.yResidualPt;
+    if (firstIsIsolated && second) {
+      residuals.set(matchKey(first.match), first.offsetPt - second.offsetPt);
+      baselinePt = second.offsetPt;
+    }
+
     for (let index = 1; index < stableMatches.length; index += 1) {
       const current = stableMatches[index];
       if (!current) continue;
