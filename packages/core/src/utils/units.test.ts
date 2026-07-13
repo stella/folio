@@ -1,6 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
-import { emuToPixels, emuToTwips, pixelsToEmu, twipsToEmu } from "./units";
+import {
+  AUTO_PARAGRAPH_SPACING_PX,
+  emuToPixels,
+  emuToTwips,
+  pixelsToEmu,
+  pointsToPixels,
+  twipsToEmu,
+} from "./units";
+
+test("Word automatic paragraph spacing uses a 14pt gap", () => {
+  expect(AUTO_PARAGRAPH_SPACING_PX).toBe(pointsToPixels(14));
+});
 
 // Microsoft Word treats EMU/twip attributes as integer-typed (xs:long /
 // xs:unsignedInt). IEEE-754 drift such as `(52 / 96) * 914400 ===

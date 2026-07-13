@@ -1378,7 +1378,7 @@ function convertParagraphAttrs(
   }
 
   // Spacing. HTML-origin auto spacing (w:beforeAutospacing/afterAutospacing)
-  // renders Word's ~14px auto gap, overriding the imported before/after (which
+  // renders Word's 14pt auto gap, overriding the imported before/after (which
   // Word writes as `0`) — surface it here so pagination matches the rendered
   // margins (eigenpal/docx-editor#823). But only while the effective spacing
   // still matches the import baseline; any later command or style change that
@@ -1410,7 +1410,7 @@ function convertParagraphAttrs(
     // paragraphs inherit zero spacing unless the side was set inline (Word
     // fidelity, eigenpal #402). Auto spacing counts as explicit: an imported
     // empty paragraph whose only spacing is `w:beforeAutospacing`/
-    // `afterAutospacing` must keep the ~14px gap rather than collapse to zero
+    // `afterAutospacing` must keep the 14pt gap rather than collapse to zero
     // (eigenpal/docx-editor#823).
     const pmSpacingExplicit = pmAttrs.spacingExplicit as
       | { before?: boolean; after?: boolean }
