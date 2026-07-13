@@ -49,7 +49,7 @@ const NO_WRAP_MEASURE_WIDTH = 1_000_000;
  * around a background letterhead or a foreground overlay (Codex
  * PR #258 review).
  */
-function isFloatingImageRun(run: ImageRun): boolean {
+function isSideWrappingImageRun(run: ImageRun): boolean {
   const wrapType = run.wrapType;
   const displayMode = run.displayMode;
 
@@ -551,7 +551,8 @@ function extractFloatingZones(
       }
       const imgRun = run as ImageRun;
 
-      if (!isFloatingImageRun(imgRun)) {
+      const positionedBand = imgRun.wrapType === "topAndBottom" && imgRun.position !== undefined;
+      if (!isSideWrappingImageRun(imgRun) && !positionedBand) {
         continue;
       }
 
@@ -562,6 +563,33 @@ function extractFloatingZones(
       const distBottom = imgRun.distBottom ?? 0;
       const distLeft = imgRun.distLeft ?? 12;
       const distRight = imgRun.distRight ?? 12;
+
+      if (positionedBand && position !== undefined) {
+        const vertical = position.vertical;
+        const blockMarginTop = perBlockNumberValue(marginTop, blockIndex, defaultMarginTop);
+        const pageFrameRelative = isPageFrameRelativeAnchor(vertical?.relativeTo);
+        const rawTop = pageFrameRelative
+          ? bandTopContentY(vertical, {
+              pageHeight: perBlockNumberValue(pageHeightInput, blockIndex, defaultPageHeight),
+              marginTop: blockMarginTop,
+              marginBottom: perBlockNumberValue(marginBottomInput, blockIndex, defaultMarginBottom),
+              boxHeight: imgRun.height,
+            })
+          : emuToPixels(vertical?.posOffset ?? 0);
+        const bottomY = rawTop + imgRun.height + distBottom;
+        if (bottomY > 0) {
+          zones.push({
+            leftMargin: 0,
+            rightMargin: 0,
+            topY: Math.max(0, rawTop - distTop),
+            bottomY,
+            anchorBlockIndex: blockIndex,
+            ...(pageFrameRelative ? { isMarginRelative: true } : {}),
+            fullWidthBlock: true,
+          });
+        }
+        continue;
+      }
 
       if (position?.vertical) {
         const v = position.vertical;

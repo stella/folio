@@ -40,8 +40,18 @@ describe("isFloatingImageRun (issue #418)", () => {
     expect(isFloatingImageRun(baseImage("inline"))).toBe(false);
   });
 
-  test("topAndBottom is not floating (it's a block image)", () => {
+  test("unpositioned topAndBottom artwork remains in flow", () => {
     expect(isFloatingImageRun(baseImage("topAndBottom"))).toBe(false);
+  });
+
+  test("positioned topAndBottom artwork is floating", () => {
+    expect(
+      isFloatingImageRun(
+        baseImage("topAndBottom", {
+          position: { vertical: { relativeTo: "page", posOffset: 0 } },
+        }),
+      ),
+    ).toBe(true);
   });
 
   test("explicit displayMode='float' overrides missing wrapType", () => {

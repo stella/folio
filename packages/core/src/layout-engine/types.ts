@@ -1302,7 +1302,8 @@ export type HeaderFooterContent = {
 /**
  * `true` when the image run is anchored at page-level coordinates instead of
  * participating in inline flow. Covers the OOXML floating wrap types
- * (`square`, `tight`, `through`, `behind`, `inFront`) and the legacy
+ * (`square`, `tight`, `through`, `behind`, `inFront`), explicitly positioned
+ * `topAndBottom` artwork, and the legacy
  * `displayMode === "float"` escape hatch used by ProseMirror nodes that
  * pre-date the wrap-type round-trip.
  *
@@ -1311,6 +1312,9 @@ export type HeaderFooterContent = {
  */
 export const isFloatingImageRun = (run: ImageRun): boolean => {
   const wrapType = run.wrapType;
+  if (wrapType === "topAndBottom" && run.position !== undefined) {
+    return true;
+  }
   if (
     wrapType === "square" ||
     wrapType === "tight" ||
