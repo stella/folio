@@ -1461,8 +1461,11 @@ function convertParagraphAttrs(
   let indentFirstLine =
     typeof pmAttrs.indentFirstLine === "number" ? pmAttrs.indentFirstLine : undefined;
   let hangingIndent = pmAttrs.hangingIndent;
-  if (pmAttrs.numPr?.numId && indentLeft === undefined) {
+  if (pmAttrs.numPr?.numId && indentLeft === undefined && indentFirstLine === undefined) {
     // Fallback: calculate indentation based on level
+    // An authored first-line or hanging position is already a complete list
+    // marker anchor. Adding a synthetic left indent would shift that anchor a
+    // second time, while tab stops still resolve from the paragraph margin.
     // Each level indents 0.5 inch (720 twips) more
     const level = pmAttrs.numPr.ilvl ?? 0;
     // Base indentation: 0.5 inch (720 twips) per level

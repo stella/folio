@@ -5,6 +5,39 @@ import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  test("does not add a default list indent to an authored first-line position", () => {
+    const paragraph = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            numPr: { numId: 1, ilvl: 0 },
+            listMarker: "%1)",
+            indentFirstLine: 780,
+            tabs: [{ position: 1200, alignment: "left" }],
+          },
+          [schema.text("First item")],
+        ),
+      ]),
+    ).at(0);
+
+    expect(paragraph?.attrs?.indent).toEqual({ firstLine: 52 });
+  });
+
+  test("keeps the default indent for a list without authored positioning", () => {
+    const paragraph = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          { numPr: { numId: 1, ilvl: 1 }, listMarker: "%1.%2." },
+          [schema.text("Nested item")],
+        ),
+      ]),
+    ).at(0);
+
+    expect(paragraph?.attrs?.indent).toEqual({ left: 96, hanging: 24 });
+  });
+
   test("does not paint an empty structural section-break paragraph", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { sectionBreakType: "continuous" }),
