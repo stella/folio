@@ -37,9 +37,34 @@ import {
   elementToXml,
   findAllDeep,
   findChild,
+  getChildElements,
   getAttribute,
+  getLocalName,
   type XmlElement,
 } from "./xmlParser";
+
+const MAX_VML_PREVIEW_SHAPES = 256;
+const MAX_VML_PREVIEW_DIMENSION_PX = 20_000;
+const MAX_VML_SVG_CHARACTERS = 1_000_000;
+const SAFE_VML_COLORS = new Set([
+  "black",
+  "white",
+  "red",
+  "green",
+  "blue",
+  "yellow",
+  "gray",
+  "grey",
+  "silver",
+  "maroon",
+  "purple",
+  "fuchsia",
+  "lime",
+  "olive",
+  "navy",
+  "teal",
+  "aqua",
+]);
 
 /**
  * Convert a CSS length (pt/in/px/cm/mm/pc, default px) to pixels. Units are
@@ -100,6 +125,173 @@ function parseStyleAttr(style: string | null): Record<string, string> {
   }
   return out;
 }
+
+const finiteNumber = (raw: string | null | undefined): number | undefined => {
+  if (!raw || !/^-?(?:\d+(?:\.\d+)?|\.\d+)$/u.test(raw.trim())) {
+    return undefined;
+  }
+  const value = Number.parseFloat(raw);
+  return Number.isFinite(value) ? value : undefined;
+};
+
+const coordinatePair = (raw: string | null): { first: number; second: number } | undefined => {
+  const [firstRaw, secondRaw, extra] = raw?.split(",").map((part) => part.trim()) ?? [];
+  if (extra !== undefined) {
+    return undefined;
+  }
+  const first = finiteNumber(firstRaw);
+  const second = finiteNumber(secondRaw);
+  return first === undefined || second === undefined ? undefined : { first, second };
+};
+
+const safeColor = (raw: string | null, fallback: string): string => {
+  const normalized = raw?.trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  if (SAFE_VML_COLORS.has(normalized)) {
+    return normalized;
+  }
+  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/u.test(normalized)) {
+    return normalized;
+  }
+  return /^[0-9a-f]{6}$/u.test(normalized) ? `#${normalized}` : fallback;
+};
+
+const validPreviewDimension = (value: number | undefined): value is number =>
+  value !== undefined && value > 0 && value <= MAX_VML_PREVIEW_DIMENSION_PX;
+
+const svgDataUrl = (svg: string): string | undefined =>
+  svg.length <= MAX_VML_SVG_CHARACTERS
+    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+    : undefined;
+
+const vmlShapeSvg = (shape: XmlElement, width: number, height: number, x = 0, y = 0): string => {
+  const fill = safeColor(getAttribute(shape, null, "fillcolor"), "white");
+  const stroked = getAttribute(shape, null, "stroked")?.toLowerCase() !== "f";
+  const stroke = stroked ? safeColor(getAttribute(shape, null, "strokecolor"), "black") : "none";
+  const localName = getLocalName(shape.name ?? "");
+  if (localName === "oval") {
+    return `<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${fill}" stroke="${stroke}"/>`;
+  }
+  const radius = localName === "roundrect" ? Math.min(width, height) * 0.1 : 0;
+  return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="${fill}" stroke="${stroke}"/>`;
+};
+
+const previewImage = (
+  pictElement: XmlElement,
+  svg: string,
+  widthPx: number,
+  heightPx: number,
+  style: Record<string, string>,
+  rootXmlns: Record<string, string>,
+): DrawingContent | null => {
+  const src = svgDataUrl(svg);
+  if (!src) {
+    return null;
+  }
+  const leftPx = cssLengthToPx(style["margin-left"] ?? style["left"]) ?? 0;
+  const topPx = cssLengthToPx(style["margin-top"] ?? style["top"]) ?? 0;
+  const horizontalRelative = style["mso-position-horizontal-relative"] === "page";
+  const verticalRelative = style["mso-position-vertical-relative"] === "page";
+  const zIndex = finiteNumber(style["z-index"]);
+  const image: Image = {
+    type: "image",
+    rId: "",
+    src,
+    mimeType: "image/svg+xml",
+    filename: "vml-shape-preview.svg",
+    size: { width: pixelsToEmu(widthPx), height: pixelsToEmu(heightPx) },
+    wrap: { type: zIndex !== undefined && zIndex >= 0 ? "inFront" : "behind" },
+    position: {
+      horizontal: {
+        relativeTo: horizontalRelative ? "page" : "character",
+        posOffset: pixelsToEmu(leftPx),
+      },
+      vertical: {
+        relativeTo: verticalRelative ? "page" : "paragraph",
+        posOffset: pixelsToEmu(topPx),
+      },
+    },
+  };
+  return {
+    type: "drawing",
+    image,
+    rawXml: elementToXml(cloneWithXmlnsDeclarations(pictElement, rootXmlns)),
+  };
+};
+
+const parseStandaloneShapePreview = (
+  pictElement: XmlElement,
+  shape: XmlElement,
+  rootXmlns: Record<string, string>,
+): DrawingContent | null => {
+  const style = parseStyleAttr(getAttribute(shape, null, "style"));
+  const widthPx = cssLengthToPx(style["width"]);
+  const heightPx = cssLengthToPx(style["height"]);
+  if (!validPreviewDimension(widthPx) || !validPreviewDimension(heightPx)) {
+    return null;
+  }
+  const content = vmlShapeSvg(shape, widthPx, heightPx);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${widthPx} ${heightPx}" width="${widthPx}" height="${heightPx}">${content}</svg>`;
+  return previewImage(pictElement, svg, widthPx, heightPx, style, rootXmlns);
+};
+
+const parseGroupPreview = (
+  pictElement: XmlElement,
+  group: XmlElement,
+  rootXmlns: Record<string, string>,
+): DrawingContent | null => {
+  const style = parseStyleAttr(getAttribute(group, null, "style"));
+  const widthPx = cssLengthToPx(style["width"]);
+  const heightPx = cssLengthToPx(style["height"]);
+  if (!validPreviewDimension(widthPx) || !validPreviewDimension(heightPx)) {
+    return null;
+  }
+  const origin = coordinatePair(getAttribute(group, null, "coordorigin")) ?? {
+    first: 0,
+    second: 0,
+  };
+  const size = coordinatePair(getAttribute(group, null, "coordsize")) ?? {
+    first: widthPx,
+    second: heightPx,
+  };
+  if (size.first <= 0 || size.second <= 0) {
+    return null;
+  }
+  const content = getChildElements(group)
+    .slice(0, MAX_VML_PREVIEW_SHAPES)
+    .map((child) => {
+      const localName = getLocalName(child.name ?? "");
+      if (localName === "line") {
+        const from = coordinatePair(getAttribute(child, null, "from"));
+        const to = coordinatePair(getAttribute(child, null, "to"));
+        if (!from || !to) {
+          return "";
+        }
+        const stroke = safeColor(getAttribute(child, null, "strokecolor"), "black");
+        return `<line x1="${from.first}" y1="${from.second}" x2="${to.first}" y2="${to.second}" stroke="${stroke}"/>`;
+      }
+      if (localName !== "rect" && localName !== "roundrect" && localName !== "oval") {
+        return "";
+      }
+      const childStyle = parseStyleAttr(getAttribute(child, null, "style"));
+      const x = finiteNumber(childStyle["left"]);
+      const y = finiteNumber(childStyle["top"]);
+      const width = finiteNumber(childStyle["width"]);
+      const height = finiteNumber(childStyle["height"]);
+      if (x === undefined || y === undefined || width === undefined || height === undefined) {
+        return "";
+      }
+      return vmlShapeSvg(child, width, height, x, y);
+    })
+    .join("");
+  if (!content) {
+    return null;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${origin.first} ${origin.second} ${size.first} ${size.second}" width="${widthPx}" height="${heightPx}">${content}</svg>`;
+  return previewImage(pictElement, svg, widthPx, heightPx, style, rootXmlns);
+};
 
 /**
  * Read the relationship id off a `v:imagedata` element. Word writes `r:id`;
@@ -202,6 +394,23 @@ export function parseVmlImageContent(
       image,
       rawXml: elementToXml(cloneWithXmlnsDeclarations(pictElement, rootXmlns)),
     };
+  }
+
+  for (const child of getChildElements(pictElement)) {
+    const localName = getLocalName(child.name ?? "");
+    if (localName === "group") {
+      const preview = parseGroupPreview(pictElement, child, rootXmlns);
+      if (preview) {
+        return preview;
+      }
+      continue;
+    }
+    if (localName === "rect" || localName === "roundrect" || localName === "oval") {
+      const preview = parseStandaloneShapePreview(pictElement, child, rootXmlns);
+      if (preview) {
+        return preview;
+      }
+    }
   }
 
   return null;
