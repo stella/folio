@@ -55,14 +55,13 @@ import {
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
 } from "@stll/folio-core/layout-bridge/convert/headerFooterLayout";
-import type { ColumnLayout } from "@stll/folio-core/layout-engine";
+import { resolveSectionHeaderFooterRefs, type ColumnLayout } from "@stll/folio-core/layout-engine";
 import type {
   FlowBlock,
   FootnoteContent,
   HeaderFooterContent,
   Layout,
   Measure,
-  PageHeaderFooterRefs,
 } from "@stll/folio-core/layout-engine/types";
 import { LayoutPainter } from "@stll/folio-core/layout-painter";
 import type { FootnoteRenderItem } from "@stll/folio-core/layout-painter/renderPage";
@@ -143,50 +142,6 @@ function getColumns(sectionProps: SectionProperties | null | undefined): ColumnL
     cols.separator = sectionProps.separator;
   }
   return cols;
-}
-
-function getHeaderFooterRefsFromSectionProperties(props: SectionProperties): PageHeaderFooterRefs {
-  const refs: PageHeaderFooterRefs = {};
-  if (props.titlePg !== undefined) {
-    refs.titlePg = props.titlePg;
-  }
-  for (const hfRef of props.headerReferences ?? []) {
-    if (hfRef.type === "default") {
-      refs.headerDefault = hfRef.rId;
-    } else if (hfRef.type === "first") {
-      refs.headerFirst = hfRef.rId;
-    } else {
-      refs.headerEven = hfRef.rId;
-    }
-  }
-  for (const hfRef of props.footerReferences ?? []) {
-    if (hfRef.type === "default") {
-      refs.footerDefault = hfRef.rId;
-    } else if (hfRef.type === "first") {
-      refs.footerFirst = hfRef.rId;
-    } else {
-      refs.footerEven = hfRef.rId;
-    }
-  }
-  return refs;
-}
-
-function getSectionHeaderFooterRefs(
-  documentModel: Document | null,
-): PageHeaderFooterRefs[] | undefined {
-  const body = documentModel?.package.document;
-  if (!body) {
-    return undefined;
-  }
-  const sections = body.sections;
-  if (sections && sections.length > 0) {
-    return sections.map((section) => getHeaderFooterRefsFromSectionProperties(section.properties));
-  }
-  const finalProps = body.finalSectionProperties;
-  if (!finalProps) {
-    return undefined;
-  }
-  return [getHeaderFooterRefsFromSectionProperties(finalProps)];
 }
 
 /** One resolved header/footer slot: its `HeaderFooter` and relationship id. */
@@ -676,7 +631,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           footerContentRId: hf.footer.rId,
           firstPageHeaderContentRId: hf.firstHeader.rId,
           firstPageFooterContentRId: hf.firstFooter.rId,
-          sectionHeaderFooterRefs: getSectionHeaderFooterRefs(model),
+          sectionHeaderFooterRefs: resolveSectionHeaderFooterRefs(model),
           theme,
           sectionProperties: sectionProps,
           document: model,

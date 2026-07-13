@@ -90,7 +90,7 @@ import type {
 } from "@stll/folio-core/layout-bridge/engine/selectionRects";
 import type * as SelectionGeometry from "@stll/folio-core/layout-bridge/engine/selectionRects";
 // Layout engine
-import type { ColumnLayout } from "@stll/folio-core/layout-engine";
+import { resolveSectionHeaderFooterRefs, type ColumnLayout } from "@stll/folio-core/layout-engine";
 import { recordLayoutPhase } from "@stll/folio-core/layout-engine/layoutInstrumentation";
 import type { LayoutRunReason } from "@stll/folio-core/layout-engine/layoutInstrumentation";
 import type {
@@ -902,57 +902,6 @@ function renderHeaderFooterContentByRId(
     }
   }
   return rendered.size > 0 ? rendered : undefined;
-}
-
-function getSectionHeaderFooterRefs(
-  documentModel: Document | null | undefined,
-): PageHeaderFooterRefs[] | undefined {
-  const body = documentModel?.package.document;
-  if (!body) {
-    return undefined;
-  }
-  const documentEvenAndOddHeaders = documentModel.package.settings?.evenAndOddHeaders === true;
-  const sections = body.sections;
-  if (sections && sections.length > 0) {
-    return sections.map((section) =>
-      getHeaderFooterRefsFromSectionProperties(section.properties, documentEvenAndOddHeaders),
-    );
-  }
-  const finalProps = body.finalSectionProperties;
-  if (!finalProps) {
-    return undefined;
-  }
-  return [getHeaderFooterRefsFromSectionProperties(finalProps, documentEvenAndOddHeaders)];
-}
-
-function getHeaderFooterRefsFromSectionProperties(
-  props: SectionProperties,
-  documentEvenAndOddHeaders: boolean,
-): PageHeaderFooterRefs {
-  const refs: PageHeaderFooterRefs = {};
-  if (props.titlePg !== undefined) {
-    refs.titlePg = props.titlePg;
-  }
-  refs.evenAndOddHeaders = props.evenAndOddHeaders ?? documentEvenAndOddHeaders;
-  for (const ref of props.headerReferences ?? []) {
-    if (ref.type === "default") {
-      refs.headerDefault = ref.rId;
-    } else if (ref.type === "first") {
-      refs.headerFirst = ref.rId;
-    } else {
-      refs.headerEven = ref.rId;
-    }
-  }
-  for (const ref of props.footerReferences ?? []) {
-    if (ref.type === "default") {
-      refs.footerDefault = ref.rId;
-    } else if (ref.type === "first") {
-      refs.footerFirst = ref.rId;
-    } else {
-      refs.footerEven = ref.rId;
-    }
-  }
-  return refs;
 }
 
 type LayoutInputSignatureOptions = {
@@ -1814,7 +1763,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       documentSettings !== undefined &&
       "mirrorMargins" in documentSettings &&
       documentSettings.mirrorMargins === true;
-    const sectionHeaderFooterRefs = useMemo(() => getSectionHeaderFooterRefs(document), [document]);
+    const sectionHeaderFooterRefs = useMemo(
+      () => resolveSectionHeaderFooterRefs(document),
+      [document],
+    );
     const layoutInputSignature = useMemo(
       () =>
         buildLayoutInputSignature({

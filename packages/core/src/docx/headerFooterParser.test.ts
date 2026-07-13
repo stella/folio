@@ -129,4 +129,37 @@ describe("header/footer text boxes", () => {
 
     expect(getShapeTexts(footer)).toEqual(["Footer Box"]);
   });
+
+  test("parses positioned VML text boxes in footers", () => {
+    const footer = parseFooter(`
+      <w:ftr ${NAMESPACES}>
+        <w:p><w:r><w:pict>
+          <v:shape id="footer-box" style="position:absolute;margin-left:72pt;margin-top:720pt;width:216pt;height:18pt;z-index:-1;mso-position-horizontal-relative:page;mso-position-vertical-relative:page" filled="f" stroked="f">
+            <v:textbox inset="0,0,0,0">
+              <w:txbxContent><w:p><w:r><w:t>Positioned footer</w:t></w:r></w:p></w:txbxContent>
+            </v:textbox>
+          </v:shape>
+        </w:pict></w:r></w:p>
+      </w:ftr>`);
+
+    expect(getShapeTexts(footer)).toEqual(["Positioned footer"]);
+    const paragraph = footer.content.at(0);
+    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
+    if (shapeContent?.type !== "shape") {
+      throw new Error("Expected positioned text box");
+    }
+    expect(shapeContent.shape).toMatchObject({
+      id: "footer-box",
+      shapeType: "textBox",
+      size: { width: 2_743_200, height: 228_600 },
+      position: {
+        horizontal: { relativeTo: "page", posOffset: 914_400 },
+        vertical: { relativeTo: "page", posOffset: 9_144_000 },
+      },
+      wrap: { type: "behind" },
+      fill: { type: "none" },
+      textBody: { margins: { left: 0, top: 0, right: 0, bottom: 0 } },
+    });
+  });
 });

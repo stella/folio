@@ -1696,6 +1696,7 @@ export {
   hasPageBreakBefore,
 } from "./keep-together";
 export type { KeepNextChain } from "./keep-together";
+export { resolveSectionHeaderFooterRefs } from "./headerFooterRefs";
 export {
   scheduleSectionBreak,
   applyPendingToActive,
