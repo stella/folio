@@ -1484,7 +1484,11 @@ export function measureParagraph(
           wordWidth + rawGlueWidth <= getPostWrapAvailableWidth() + widthTolerance
             ? rawGlueWidth
             : 0;
+        // Let collapsible whitespace remain at the previous line's tail until
+        // visible content decides whether to wrap. Starting a line from an
+        // overflowed space creates whitespace-only soft-wrap lines.
         if (
+          wordWidth > 0 &&
           currentLine.width > 0 &&
           currentLine.width + wordWidth + glueWidth > currentLine.availableWidth + widthTolerance
         ) {
@@ -1496,7 +1500,13 @@ export function measureParagraph(
 
         // Add word to current line
         currentLine.width += fullWordWidth;
-        currentLine.trailingWhitespaceWidth = fullWordWidth - wordWidth;
+        const wordTrailingWhitespaceWidth = fullWordWidth - wordWidth;
+        // `findWordBreaks` yields each ASCII space separately, so consecutive
+        // trailing segments must accumulate until visible content follows.
+        currentLine.trailingWhitespaceWidth =
+          wordWidth === 0
+            ? currentLine.trailingWhitespaceWidth + wordTrailingWhitespaceWidth
+            : wordTrailingWhitespaceWidth;
         currentLine.regularSpaceCount += word.split(" ").length - 1;
         currentLine.nonBreakingSpaceCount += word.split("\u00a0").length - 1;
         currentLine.toRun = runIndex;

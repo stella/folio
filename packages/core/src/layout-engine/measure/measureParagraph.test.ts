@@ -270,6 +270,50 @@ describe("measureParagraph cross-run line breaking", () => {
     }, fakeMeasure);
   });
 
+  test("does not soft-wrap overflowed preserved spaces onto their own lines", () => {
+    withFakeTextMeasure(() => {
+      const spaces = " ".repeat(12);
+      const text = `alpha${spaces}beta`;
+      const { lines } = measureParagraph(paragraph([{ kind: "text", text }]), width("alpha"));
+
+      expect(lines).toHaveLength(2);
+      expect(lines[0]?.width).toBe(width("alpha"));
+      expect(lines[1]).toMatchObject({
+        fromRun: 0,
+        fromChar: "alpha".length + spaces.length,
+      });
+      expect(lines[1]?.width).toBe(width("beta"));
+    }, fakeMeasure);
+  });
+
+  test("preserves leading and fitting internal spaces", () => {
+    withFakeTextMeasure(() => {
+      const text = "  alpha   beta";
+      const { lines } = measureParagraph(paragraph([{ kind: "text", text }]), width(text));
+
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toMatchObject({ fromRun: 0, fromChar: 0, width: width(text) });
+    }, fakeMeasure);
+  });
+
+  test("preserves leading spaces after an explicit line break", () => {
+    withFakeTextMeasure(() => {
+      const runs: Run[] = [
+        { kind: "text", text: "alpha" },
+        { kind: "lineBreak" },
+        { kind: "text", text: "  beta" },
+      ];
+      const { lines } = measureParagraph(paragraph(runs), width("  beta"));
+
+      expect(lines).toHaveLength(2);
+      expect(lines[1]).toMatchObject({
+        fromRun: 2,
+        fromChar: 0,
+        width: width("  beta"),
+      });
+    }, fakeMeasure);
+  });
+
   test("keeps a split leading hyphen glued to the preceding run", () => {
     withFakeTextMeasure(() => {
       const runs: Run[] = [
