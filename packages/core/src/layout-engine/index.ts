@@ -16,6 +16,11 @@ import {
 import { measuredLineAdvance } from "./lineFlow";
 import { FOOTNOTE_SEPARATOR_HEIGHT, createPaginator } from "./paginator";
 import { getParagraphFragmentPmRange } from "./paragraphFragmentRange";
+import {
+  getParagraphSpacingAfter,
+  getParagraphSpacingBefore,
+  isEmptyParagraph,
+} from "./paragraphSpacing";
 import { buildTableRowBreakInfo, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
 import { floatingTextBoxReservesBand } from "./types";
@@ -85,21 +90,6 @@ export function collectSectionConfigs(
   return { configs, breakIndices };
 }
 
-/**
- * Whether a paragraph block has no visible content (no runs, or a single
- * empty text run).
- */
-function isEmptyParagraph(block: ParagraphBlock): boolean {
-  if (block.runs.length === 0) {
-    return true;
-  }
-  if (block.runs.length !== 1) {
-    return false;
-  }
-  const r = block.runs[0];
-  return r?.kind === "text" && r.text === "";
-}
-
 function isPaginationEmptyParagraph(block: ParagraphBlock): boolean {
   return block.runs.every((run) => {
     if (run.kind === "text") {
@@ -155,48 +145,6 @@ function pageStartsWithPreviousParagraphContinuation(
   );
 }
 /**
- * Get spacing before a paragraph block. Empty paragraphs whose
- * `before` came only from the implicit default paragraph style collapse to
- * zero. Reference layout keeps inherited spacing when the empty paragraph itself is
- * authored through direct `w:pPr` formatting or an explicit `w:pStyle`.
- */
-function getSpacingBefore(block: ParagraphBlock): number {
-  const value = block.attrs?.spacing?.before ?? 0;
-  if (value === 0) {
-    return 0;
-  }
-  if (
-    isEmptyParagraph(block) &&
-    !block.attrs?.styleId &&
-    !block.attrs?.hasDirectParagraphFormatting &&
-    !block.attrs?.spacingExplicit?.before
-  ) {
-    return 0;
-  }
-  return value;
-}
-
-/**
- * Get spacing after a paragraph block. Same implicit-default-style collapse
- * rule as `getSpacingBefore`.
- */
-function getSpacingAfter(block: ParagraphBlock): number {
-  const value = block.attrs?.spacing?.after ?? 0;
-  if (value === 0) {
-    return 0;
-  }
-  if (
-    isEmptyParagraph(block) &&
-    !block.attrs?.styleId &&
-    !block.attrs?.hasDirectParagraphFormatting &&
-    !block.attrs?.spacingExplicit?.after
-  ) {
-    return 0;
-  }
-  return value;
-}
-
-/**
  * Estimate the height of a short paragraph-only multi-column section so its
  * final page can use Word-style balanced columns. Sections containing tables,
  * floating blocks, or authored breaks keep the normal bottom-up pagination;
@@ -243,7 +191,7 @@ function balancedParagraphSectionHeight({
       return undefined;
     }
 
-    const leadingSpacing = Math.max(getSpacingBefore(block), trailingSpacing);
+    const leadingSpacing = Math.max(getParagraphSpacingBefore(block), trailingSpacing);
     if (measure.lines.length === 0) {
       if (leadingSpacing > 0) {
         lineUnits.push(leadingSpacing);
@@ -265,7 +213,7 @@ function balancedParagraphSectionHeight({
     if (tallestUnit > availableHeight || totalHeight > availableHeight * columnCount) {
       return undefined;
     }
-    trailingSpacing = getSpacingAfter(block);
+    trailingSpacing = getParagraphSpacingAfter(block);
   }
 
   if (totalHeight <= 0) {
@@ -743,8 +691,8 @@ function layoutParagraph(
   const lines = measure.lines;
   if (lines.length === 0) {
     // Empty paragraph - still takes up space based on spacing
-    const spaceBefore = getSpacingBefore(block);
-    const spaceAfter = getSpacingAfter(block);
+    const spaceBefore = getParagraphSpacingBefore(block);
+    const spaceAfter = getParagraphSpacingAfter(block);
     const state = paginator.getCurrentState();
 
     // Create minimal fragment
@@ -766,8 +714,8 @@ function layoutParagraph(
     return;
   }
 
-  const spaceBefore = getSpacingBefore(block);
-  const spaceAfter = getSpacingAfter(block);
+  const spaceBefore = getParagraphSpacingBefore(block);
+  const spaceAfter = getParagraphSpacingAfter(block);
 
   // Try to fit all lines on current page/column
   let currentLineIndex = 0;
