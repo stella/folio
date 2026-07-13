@@ -55,12 +55,12 @@ export const resolveSectionHeaderFooterRefs = (
   if (!body) {
     return undefined;
   }
-  const sections =
-    body.sections && body.sections.length > 0
-      ? body.sections.map(({ properties }) => properties)
-      : body.finalSectionProperties
-        ? [body.finalSectionProperties]
-        : [];
+  const sections: SectionProperties[] = [];
+  if (body.sections && body.sections.length > 0) {
+    sections.push(...body.sections.map(({ properties }) => properties));
+  } else if (body.finalSectionProperties) {
+    sections.push(body.finalSectionProperties);
+  }
   if (sections.length === 0) {
     return undefined;
   }

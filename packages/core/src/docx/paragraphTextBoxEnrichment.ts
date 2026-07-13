@@ -136,6 +136,16 @@ const parseVmlInsets = (
 const parseVmlFill = (shapeEl: XmlElement): Shape["fill"] =>
   getAttribute(shapeEl, null, "filled")?.toLowerCase() === "f" ? { type: "none" } : undefined;
 
+const vmlWrapType = (positioned: boolean, zIndex: number): NonNullable<Shape["wrap"]>["type"] => {
+  if (!positioned) {
+    return "inline";
+  }
+  if (Number.isFinite(zIndex) && zIndex < 0) {
+    return "behind";
+  }
+  return "inFront";
+};
+
 export const enrichParagraphTextBoxes = (
   paragraph: Paragraph,
   paraXml: XmlElement,
@@ -344,9 +354,7 @@ const parseVmlTextBoxShape = (
     shapeType: "textBox",
     size: { width: pixelsToEmu(width), height: pixelsToEmu(height) },
     ...(fill === undefined ? {} : { fill }),
-    wrap: {
-      type: !positioned ? "inline" : Number.isFinite(zIndex) && zIndex < 0 ? "behind" : "inFront",
-    },
+    wrap: { type: vmlWrapType(positioned, zIndex) },
     textBody: {
       content: parseTextBoxContent(
         contentEl,
