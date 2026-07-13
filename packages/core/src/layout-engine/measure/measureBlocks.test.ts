@@ -131,6 +131,82 @@ describe("measureBlocks", () => {
 });
 
 describe("measureTableBlock row height", () => {
+  test("measures a row-spanning cell against the combined spanned-row height", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [120, 120],
+        rows: [
+          {
+            id: "r0",
+            height: 30,
+            cells: [
+              {
+                id: "span",
+                rowSpan: 2,
+                blocks: [para("span-1", "First"), para("span-2", "Second")],
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              },
+              { id: "r0-cell", blocks: [para("r0-p", "Row zero")] },
+            ],
+          },
+          {
+            id: "r1",
+            height: 30,
+            cells: [{ id: "r1-cell", blocks: [para("r1-p", "Row one")] }],
+          },
+        ],
+      };
+
+      const measure = measureTableBlock(table, 240);
+
+      expect(measure.rows.map((row) => row.height)).toEqual([30, 30]);
+      expect(measure.totalHeight).toBe(60);
+    }, fakeMeasure);
+  });
+
+  test("adds a row-spanning content deficit to the last non-exact row", () => {
+    withFakeTextMeasure(() => {
+      const spanningBlocks = Array.from({ length: 6 }, (_, index) =>
+        para(`span-${index}`, `Line ${index}`),
+      );
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [120, 120],
+        rows: [
+          {
+            id: "r0",
+            height: 20,
+            heightRule: "exact",
+            cells: [
+              {
+                id: "span",
+                rowSpan: 2,
+                blocks: spanningBlocks,
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              },
+              { id: "r0-cell", blocks: [para("r0-p", "Row zero")] },
+            ],
+          },
+          {
+            id: "r1",
+            height: 20,
+            cells: [{ id: "r1-cell", blocks: [para("r1-p", "Row one")] }],
+          },
+        ],
+      };
+
+      const measure = measureTableBlock(table, 240);
+      const spanningCellHeight = measure.rows[0]!.cells[0]!.height;
+
+      expect(measure.rows[0]!.height).toBe(20);
+      expect(measure.rows[1]!.height).toBe(spanningCellHeight - 20);
+      expect(measure.totalHeight).toBe(spanningCellHeight);
+    }, fakeMeasure);
+  });
+
   test("counts a collapsed top border only on the first row", () => {
     withFakeTextMeasure(() => {
       const borderedCell = (id: string) => ({

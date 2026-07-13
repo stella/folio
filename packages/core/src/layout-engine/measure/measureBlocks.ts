@@ -337,6 +337,9 @@ export function measureTableBlock(
       const padTop = sourceCell?.padding?.top ?? DEFAULT_CELL_PADDING_Y;
       const padBottom = sourceCell?.padding?.bottom ?? DEFAULT_CELL_PADDING_Y;
       cell.height += padTop + padBottom;
+      if ((sourceCell?.rowSpan ?? 1) > 1) {
+        continue;
+      }
       const borderHeight = getTableCellVerticalBorderHeight(sourceCell, rowIdx === 0);
       maxCellHeightWithBorders = Math.max(maxCellHeightWithBorders, cell.height + borderHeight);
       maxBorderHeight = Math.max(maxBorderHeight, borderHeight);
@@ -359,6 +362,44 @@ export function measureTableBlock(
     } else {
       // No explicit height — use content height directly.
       row.height = maxCellHeightWithBorders;
+    }
+  }
+
+  // A vertically merged cell occupies the combined height of all rows it
+  // spans. Its content must constrain that combined area, not inflate the
+  // first row independently. Apply any remaining deficit to the last
+  // non-exact row in the span after every row has its own base height.
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    const sourceRow = tableBlock.rows[rowIdx];
+    const measuredRow = rows[rowIdx];
+    if (!sourceRow || !measuredRow) {
+      continue;
+    }
+    for (let cellIdx = 0; cellIdx < sourceRow.cells.length; cellIdx++) {
+      const sourceCell = sourceRow.cells[cellIdx];
+      const measuredCell = measuredRow.cells[cellIdx];
+      const rowSpan = sourceCell?.rowSpan ?? 1;
+      if (!sourceCell || !measuredCell || rowSpan <= 1) {
+        continue;
+      }
+      const spanEnd = Math.min(rows.length, rowIdx + rowSpan);
+      let combinedHeight = 0;
+      for (let spannedRowIdx = rowIdx; spannedRowIdx < spanEnd; spannedRowIdx++) {
+        combinedHeight += rows[spannedRowIdx]?.height ?? 0;
+      }
+      const requiredHeight =
+        measuredCell.height + getTableCellVerticalBorderHeight(sourceCell, rowIdx === 0);
+      const deficit = requiredHeight - combinedHeight;
+      if (deficit <= 0) {
+        continue;
+      }
+      for (let spannedRowIdx = spanEnd - 1; spannedRowIdx >= rowIdx; spannedRowIdx--) {
+        if (tableBlock.rows[spannedRowIdx]?.heightRule === "exact") {
+          continue;
+        }
+        rows[spannedRowIdx]!.height += deficit;
+        break;
+      }
     }
   }
 
