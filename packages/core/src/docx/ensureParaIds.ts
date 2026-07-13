@@ -9,6 +9,12 @@
  * once at ingest so every stored version has full id coverage before any
  * snapshot is taken.
  *
+ * IDs remain stable in folio and identity-preserving DOCX round-trips.
+ * Microsoft Word can establish a new `w14:docId` and replace all paragraph
+ * IDs on its first save of a non-Word-produced package; callers that ingest
+ * such an externally edited version must normalize it again and cannot assume
+ * the pre-save IDs still match.
+ *
  * The pass patches part XML in place (string splices, no model round-trip),
  * so documents carrying features folio's parser does not model come back
  * with those features byte-identical. Contract:
@@ -39,15 +45,19 @@
  * - Idempotent: a document that already has full coverage is returned as the
  *   original bytes, untouched (`alreadyComplete: true`).
  */
+import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
 import { deterministicHexId } from "../utils/hexId";
 import { isXmlNameBoundary } from "./selectiveXmlPatch";
 
-export class EnsureParaIdsError extends Error {
-  override name = "EnsureParaIdsError";
-}
+/** A malformed or unsupported package prevented paragraph-ID normalization. */
+export class EnsureParaIdsError extends TaggedError("EnsureParaIdsError")<{
+  message: string;
+  cause?: unknown;
+}>() {}
 
+/** Counts and normalized bytes returned by {@link ensureParaIds}. */
 export type EnsureParaIdsResult = {
   /** The normalized `.docx`; the input bytes verbatim when `alreadyComplete`. */
   docx: Uint8Array;
@@ -77,17 +87,22 @@ const TARGET_PART_PATTERNS = [
 const PARAGRAPH_OPEN = "<w:p";
 const FALLBACK_OPEN = "<mc:Fallback";
 const FALLBACK_CLOSE = "</mc:Fallback>";
+const OPAQUE_XML_REGIONS = [
+  { open: "<!--", close: "-->" },
+  { open: "<![CDATA[", close: "]]>" },
+  { open: "<?", close: "?>" },
+] as const;
 
 /**
  * The parser accepts the `w:` fallback prefix for paraId, and comment parts
  * link replies via `w15:paraId` — all three count toward uniqueness.
  */
-const ANY_PARA_ID_PATTERN = /\bw(?:14|15)?:paraId="(?<id>[^"]*)"/gu;
-const OPEN_TAG_PARA_ID_PATTERN = /\sw(?:14)?:paraId="(?<id>[^"]*)"/u;
-const OPEN_TAG_TEXT_ID_PATTERN = /\sw(?:14)?:textId="/u;
-const XMLNS_W14_PATTERN = /\sxmlns:w14="/u;
-const XMLNS_MC_PATTERN = /\sxmlns:mc="/u;
-const MC_IGNORABLE_PATTERN = /\smc:Ignorable="(?<value>[^"]*)"/u;
+const ANY_PARA_ID_PATTERN = /\bw(?:14|15)?:paraId=(?<quote>["'])(?<id>[\s\S]*?)\k<quote>/gu;
+const OPEN_TAG_PARA_ID_PATTERN = /\sw(?:14)?:paraId=(?<quote>["'])(?<id>[\s\S]*?)\k<quote>/u;
+const OPEN_TAG_TEXT_ID_PATTERN = /\sw(?:14)?:textId=(?<quote>["'])(?<id>[\s\S]*?)\k<quote>/u;
+const XMLNS_W14_PATTERN = /\sxmlns:w14=(?<quote>["'])(?<value>[\s\S]*?)\k<quote>/u;
+const XMLNS_MC_PATTERN = /\sxmlns:mc=(?<quote>["'])(?<value>[\s\S]*?)\k<quote>/u;
+const MC_IGNORABLE_PATTERN = /\smc:Ignorable=(?<quote>["'])(?<value>[\s\S]*?)\k<quote>/u;
 
 type SpliceEdit = { start: number; end: number; text: string };
 
@@ -100,6 +115,35 @@ const applySplices = (xml: string, edits: SpliceEdit[]): string => {
   return result;
 };
 
+const createEnsureParaIdsError = (message: string, cause?: unknown): EnsureParaIdsError =>
+  new EnsureParaIdsError({ message, ...(cause === undefined ? {} : { cause }) });
+
+const skipOpaqueXmlRegion = (xml: string, start: number, partPath: string): number | null => {
+  for (const { open, close } of OPAQUE_XML_REGIONS) {
+    if (!xml.startsWith(open, start)) {
+      continue;
+    }
+    const closeStart = xml.indexOf(close, start + open.length);
+    if (closeStart === -1) {
+      throw createEnsureParaIdsError(`Unterminated ${open} region in ${partPath}`);
+    }
+    return closeStart + close.length;
+  }
+  return null;
+};
+
+const attributeValueRange = (
+  match: RegExpExecArray,
+  absoluteOffset: number,
+  group: "id" | "value",
+): { start: number; end: number } => {
+  // SAFETY: every attribute pattern has matching `quote` and requested value groups.
+  const quote = match.groups!["quote"]!;
+  const value = match.groups![group]!;
+  const start = absoluteOffset + match.index + match[0].indexOf(quote) + 1;
+  return { start, end: start + value.length };
+};
+
 const collectExistingParaIds = (xml: string, into: Set<string>): void => {
   for (const match of xml.matchAll(ANY_PARA_ID_PATTERN)) {
     // SAFETY: named group `id` always present when the pattern matches
@@ -107,6 +151,65 @@ const collectExistingParaIds = (xml: string, into: Set<string>): void => {
     if (id.length > 0) {
       into.add(id.toUpperCase());
     }
+  }
+};
+
+const collectFallbackParaIds = (xml: string, partPath: string, into: Set<string>): void => {
+  let fallbackDepth = 0;
+  let pos = 0;
+
+  while (pos < xml.length) {
+    const tagStart = xml.indexOf("<", pos);
+    if (tagStart === -1) {
+      return;
+    }
+
+    const opaqueEnd = skipOpaqueXmlRegion(xml, tagStart, partPath);
+    if (opaqueEnd !== null) {
+      pos = opaqueEnd;
+      continue;
+    }
+
+    if (
+      xml.startsWith(FALLBACK_OPEN, tagStart) &&
+      isXmlNameBoundary(xml[tagStart + FALLBACK_OPEN.length])
+    ) {
+      const tagEnd = xml.indexOf(">", tagStart);
+      if (tagEnd === -1) {
+        throw createEnsureParaIdsError(`Unterminated <mc:Fallback> tag in ${partPath}`);
+      }
+      if (xml[tagEnd - 1] !== "/") {
+        fallbackDepth += 1;
+      }
+      pos = tagEnd + 1;
+      continue;
+    }
+
+    if (xml.startsWith(FALLBACK_CLOSE, tagStart)) {
+      fallbackDepth = Math.max(0, fallbackDepth - 1);
+      pos = tagStart + FALLBACK_CLOSE.length;
+      continue;
+    }
+
+    if (
+      fallbackDepth === 0 ||
+      !xml.startsWith(PARAGRAPH_OPEN, tagStart) ||
+      !isXmlNameBoundary(xml[tagStart + PARAGRAPH_OPEN.length])
+    ) {
+      pos = tagStart + 1;
+      continue;
+    }
+
+    const tagEnd = xml.indexOf(">", tagStart);
+    if (tagEnd === -1) {
+      throw createEnsureParaIdsError(`Unterminated <w:p> tag in ${partPath}`);
+    }
+    const match = OPEN_TAG_PARA_ID_PATTERN.exec(xml.slice(tagStart, tagEnd + 1));
+    const id = match?.groups?.["id"];
+    if (id) {
+      into.add(id.toUpperCase());
+    }
+    pos = tagEnd + 1;
   }
 };
 
@@ -162,13 +265,19 @@ const scanPart = (
       break;
     }
 
+    const opaqueEnd = skipOpaqueXmlRegion(xml, tagStart, partPath);
+    if (opaqueEnd !== null) {
+      pos = opaqueEnd;
+      continue;
+    }
+
     if (
       xml.startsWith(FALLBACK_OPEN, tagStart) &&
       isXmlNameBoundary(xml[tagStart + FALLBACK_OPEN.length])
     ) {
       const tagEnd = xml.indexOf(">", tagStart);
       if (tagEnd === -1) {
-        throw new EnsureParaIdsError(`Unterminated <mc:Fallback> tag in ${partPath}`);
+        throw createEnsureParaIdsError(`Unterminated <mc:Fallback> tag in ${partPath}`);
       }
       if (xml[tagEnd - 1] !== "/") {
         fallbackDepth += 1;
@@ -193,7 +302,7 @@ const scanPart = (
 
     const tagEnd = xml.indexOf(">", tagStart);
     if (tagEnd === -1) {
-      throw new EnsureParaIdsError(`Unterminated <w:p> tag in ${partPath}`);
+      throw createEnsureParaIdsError(`Unterminated <w:p> tag in ${partPath}`);
     }
     pos = tagEnd + 1;
     if (fallbackDepth > 0) {
@@ -205,9 +314,19 @@ const scanPart = (
     const paraIdMatch = OPEN_TAG_PARA_ID_PATTERN.exec(openTag);
     if (!paraIdMatch) {
       const id = mintParaId(context, partPath, ordinal);
-      const textId = OPEN_TAG_TEXT_ID_PATTERN.test(openTag) ? "" : ` w14:textId="${id}"`;
       const insertAt = tagStart + PARAGRAPH_OPEN.length;
-      edits.push({ start: insertAt, end: insertAt, text: ` w14:paraId="${id}"${textId}` });
+      const textIdMatch = OPEN_TAG_TEXT_ID_PATTERN.exec(openTag);
+      if (textIdMatch) {
+        edits.push({ start: insertAt, end: insertAt, text: ` w14:paraId="${id}"` });
+        const range = attributeValueRange(textIdMatch, tagStart, "id");
+        edits.push({ ...range, text: id });
+      } else {
+        edits.push({
+          start: insertAt,
+          end: insertAt,
+          text: ` w14:paraId="${id}" w14:textId="${id}"`,
+        });
+      }
       assigned += 1;
       seen.add(id);
       continue;
@@ -223,8 +342,14 @@ const scanPart = (
     }
 
     const id = mintParaId(context, partPath, ordinal);
-    const valueStart = tagStart + paraIdMatch.index + paraIdMatch[0].indexOf('"') + 1;
-    edits.push({ start: valueStart, end: valueStart + rawValue.length, text: id });
+    edits.push({ ...attributeValueRange(paraIdMatch, tagStart, "id"), text: id });
+    const textIdMatch = OPEN_TAG_TEXT_ID_PATTERN.exec(openTag);
+    if (textIdMatch) {
+      edits.push({ ...attributeValueRange(textIdMatch, tagStart, "id"), text: id });
+    } else {
+      const insertAt = tagStart + PARAGRAPH_OPEN.length;
+      edits.push({ start: insertAt, end: insertAt, text: ` w14:textId="${id}"` });
+    }
     if (unassigned) {
       assigned += 1;
     } else {
@@ -249,11 +374,16 @@ const ensureRootNamespaces = (xml: string, partPath: string): SpliceEdit[] => {
     if (lt === -1) {
       break;
     }
+    const opaqueEnd = skipOpaqueXmlRegion(xml, lt, partPath);
+    if (opaqueEnd !== null) {
+      pos = opaqueEnd;
+      continue;
+    }
     const next = xml[lt + 1];
-    if (next === "?" || next === "!") {
-      const skipTo = xml.startsWith("<!--", lt) ? xml.indexOf("-->", lt) : xml.indexOf(">", lt);
+    if (next === "!") {
+      const skipTo = xml.indexOf(">", lt);
       if (skipTo === -1) {
-        throw new EnsureParaIdsError(`Unterminated prolog in ${partPath}`);
+        throw createEnsureParaIdsError(`Unterminated prolog in ${partPath}`);
       }
       pos = skipTo + 1;
       continue;
@@ -262,20 +392,30 @@ const ensureRootNamespaces = (xml: string, partPath: string): SpliceEdit[] => {
     break;
   }
   if (rootStart === -1) {
-    throw new EnsureParaIdsError(`No root element in ${partPath}`);
+    throw createEnsureParaIdsError(`No root element in ${partPath}`);
   }
   const rootEnd = xml.indexOf(">", rootStart);
   if (rootEnd === -1) {
-    throw new EnsureParaIdsError(`Unterminated root element in ${partPath}`);
+    throw createEnsureParaIdsError(`Unterminated root element in ${partPath}`);
   }
   const rootTag = xml.slice(rootStart, rootEnd + 1);
 
   const edits: SpliceEdit[] = [];
   const declarations: string[] = [];
-  if (!XMLNS_MC_PATTERN.test(rootTag)) {
+  const mcNamespace = XMLNS_MC_PATTERN.exec(rootTag);
+  if (mcNamespace) {
+    if (mcNamespace.groups!["value"] !== MC_NAMESPACE_URI) {
+      throw createEnsureParaIdsError(`xmlns:mc has an unexpected namespace URI in ${partPath}`);
+    }
+  } else {
     declarations.push(` xmlns:mc="${MC_NAMESPACE_URI}"`);
   }
-  if (!XMLNS_W14_PATTERN.test(rootTag)) {
+  const w14Namespace = XMLNS_W14_PATTERN.exec(rootTag);
+  if (w14Namespace) {
+    if (w14Namespace.groups!["value"] !== W14_NAMESPACE_URI) {
+      throw createEnsureParaIdsError(`xmlns:w14 has an unexpected namespace URI in ${partPath}`);
+    }
+  } else {
     declarations.push(` xmlns:w14="${W14_NAMESPACE_URI}"`);
   }
 
@@ -285,10 +425,9 @@ const ensureRootNamespaces = (xml: string, partPath: string): SpliceEdit[] => {
     const value = ignorable.groups!["value"]!;
     const tokens = value.split(/\s+/u).filter((token) => token.length > 0);
     if (!tokens.includes(MC_IGNORABLE_W14)) {
-      const valueStart = rootStart + ignorable.index + ignorable[0].indexOf('"') + 1;
-      const valueEnd = valueStart + value.length;
+      const { end } = attributeValueRange(ignorable, rootStart, "value");
       const text = tokens.length === 0 ? MC_IGNORABLE_W14 : ` ${MC_IGNORABLE_W14}`;
-      edits.push({ start: valueEnd, end: valueEnd, text });
+      edits.push({ start: end, end, text });
     }
   } else {
     declarations.push(` mc:Ignorable="${MC_IGNORABLE_W14}"`);
@@ -317,7 +456,7 @@ const toUint8Array = (docx: Uint8Array | ArrayBuffer): Uint8Array =>
  * module doc for the exact contract. Throws {@link EnsureParaIdsError} when
  * the buffer is not a WordprocessingML package or a part is malformed.
  */
-export const ensureParaIds = async (
+const ensureParaIdsInternal = async (
   docx: Uint8Array | ArrayBuffer,
 ): Promise<EnsureParaIdsResult> => {
   const zip = await JSZip.loadAsync(docx);
@@ -331,7 +470,7 @@ export const ensureParaIds = async (
   });
   const documentPartName = xmlPartNames.find((name) => name.toLowerCase() === DOCUMENT_PART);
   if (documentPartName === undefined) {
-    throw new EnsureParaIdsError("word/document.xml not found — not a WordprocessingML package");
+    throw createEnsureParaIdsError("word/document.xml not found: not a WordprocessingML package");
   }
 
   const partTexts = new Map<string, string>();
@@ -360,7 +499,18 @@ export const ensureParaIds = async (
       .sort((a, b) => a.localeCompare(b)),
   ];
 
+  // IDs in parts or fallback branches that this pass deliberately leaves
+  // untouched own their values. Seed duplicate resolution with them so an
+  // editable paragraph cannot preserve a conflicting ID.
   const seen = new Set<string>();
+  for (const [partPath, xml] of partTexts) {
+    if (isTargetPart(partPath)) {
+      collectFallbackParaIds(xml, partPath, seen);
+    } else {
+      collectExistingParaIds(xml, seen);
+    }
+  }
+
   const updates = new Map<string, string>();
   let assigned = 0;
   let deduplicated = 0;
@@ -394,4 +544,22 @@ export const ensureParaIds = async (
   });
 
   return { docx: output, assigned, deduplicated, alreadyComplete: false };
+};
+
+/**
+ * Backfill `w14:paraId` on every paragraph of a `.docx` buffer. All package,
+ * XML, and compression failures are surfaced as {@link EnsureParaIdsError}.
+ */
+export const ensureParaIds = async (
+  docx: Uint8Array | ArrayBuffer,
+): Promise<EnsureParaIdsResult> => {
+  try {
+    return await ensureParaIdsInternal(docx);
+  } catch (error) {
+    if (error instanceof EnsureParaIdsError) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    throw createEnsureParaIdsError(`Failed to normalize paragraph IDs: ${message}`, error);
+  }
 };

@@ -51,7 +51,14 @@ const getPart = async (docx: Uint8Array, path: string): Promise<string> => {
 };
 
 const collectIds = (xml: string): string[] =>
-  [...xml.matchAll(/w14:paraId="(?<id>[^"]*)"/gu)].map((match) => match.groups!["id"]!);
+  [...xml.matchAll(/w14:paraId=(?<quote>["'])(?<id>[\s\S]*?)\k<quote>/gu)].map(
+    (match) => match.groups!["id"]!,
+  );
+
+const collectTextIds = (xml: string): string[] =>
+  [...xml.matchAll(/w14:textId=(?<quote>["'])(?<id>[\s\S]*?)\k<quote>/gu)].map(
+    (match) => match.groups!["id"]!,
+  );
 
 const PARA = (text: string, attrs = ""): string =>
   `<w:p${attrs}><w:r><w:t>${text}</w:t></w:r></w:p>`;
@@ -112,6 +119,24 @@ describe("ensureParaIds", () => {
     expect(xml.match(/xmlns:w14=/gu)).toHaveLength(1);
   });
 
+  test("supports single-quoted ids, namespaces, and mc:Ignorable values", async () => {
+    const input = await buildDocx({
+      "word/document.xml": documentXml(
+        `${PARA("Kept", " w14:paraId='1A2B3C4D' w14:textId='1A2B3C4D'")}${PARA("Needs one")}`,
+        " xmlns:mc='http://schemas.openxmlformats.org/markup-compatibility/2006' xmlns:w14='http://schemas.microsoft.com/office/word/2010/wordml' xmlns:w15='urn:x' mc:Ignorable='w15'",
+      ),
+    });
+
+    const result = await ensureParaIds(input);
+    const xml = await getPart(result.docx, "word/document.xml");
+
+    expect(result.assigned).toBe(1);
+    expect(collectIds(xml)[0]).toBe("1A2B3C4D");
+    expect(xml).toContain("mc:Ignorable='w15 w14'");
+    expect(xml.match(/xmlns:mc=/gu)).toHaveLength(1);
+    expect(xml.match(/xmlns:w14=/gu)).toHaveLength(1);
+  });
+
   test("is deterministic: same input bytes produce identical output bytes", async () => {
     const input = await buildDocx({
       "word/document.xml": documentXml(`${PARA("One")}${PARA("Two")}`),
@@ -157,20 +182,24 @@ describe("ensureParaIds", () => {
 
   test("treats the reserved all-zero paraId as unassigned", async () => {
     const input = await buildDocx({
-      "word/document.xml": documentXml(PARA("Zeroed", ' w14:paraId="00000000"')),
+      "word/document.xml": documentXml(
+        PARA("Zeroed", ' w14:paraId="00000000" w14:textId="DEADBEEF"'),
+      ),
     });
 
     const result = await ensureParaIds(input);
     expect(result.assigned).toBe(1);
 
     const xml = await getPart(result.docx, "word/document.xml");
-    expect(collectIds(xml)[0]).not.toBe("00000000");
+    const id = collectIds(xml)[0];
+    expect(id).not.toBe("00000000");
+    expect(collectTextIds(xml)[0]).toBe(id);
   });
 
   test("reassigns later duplicates; the first occurrence keeps the id", async () => {
     const input = await buildDocx({
       "word/document.xml": documentXml(
-        `${PARA("Original", ' w14:paraId="ABCD1234"')}${PARA("Copy", ' w14:paraId="ABCD1234"')}`,
+        `${PARA("Original", ' w14:paraId="ABCD1234"')}${PARA("Copy", ' w14:paraId="ABCD1234" w14:textId="DEADBEEF"')}`,
       ),
     });
 
@@ -182,13 +211,29 @@ describe("ensureParaIds", () => {
     expect(ids[0]).toBe("ABCD1234");
     expect(ids[1]).not.toBe("ABCD1234");
     expect(ids[1]).toMatch(/^[0-9A-F]{8}$/u);
+    expect(collectTextIds(xml)[0]).toBe(ids[1]);
+  });
+
+  test("ignores comments, CDATA, and processing instructions during the XML scan", async () => {
+    const opaque =
+      '<!-- <w:p w14:paraId="AAAA0001"/> --><![CDATA[<w:p w14:paraId="BBBB0002"/>]]><?folio <w:p w14:paraId="CCCC0003"/> ?>';
+    const input = await buildDocx({
+      "word/document.xml": documentXml(`${opaque}${PARA("Real paragraph")}`),
+    });
+
+    const result = await ensureParaIds(input);
+    const xml = await getPart(result.docx, "word/document.xml");
+
+    expect(result.assigned).toBe(1);
+    expect(collectIds(xml)).toHaveLength(4);
+    expect(xml).toContain(opaque);
   });
 
   test("never modifies paragraphs inside mc:Fallback", async () => {
     const fallbackParagraph = PARA("Shadow copy", ' w14:paraId="FEED0001"');
     const input = await buildDocx({
       "word/document.xml": documentXml(
-        `<w:p><w:r><mc:AlternateContent><mc:Choice Requires="wps">${PARA("Box text")}</mc:Choice><mc:Fallback>${fallbackParagraph}${PARA("No id either")}</mc:Fallback></mc:AlternateContent></w:r></w:p>`,
+        `<w:p w14:paraId="FEED0001"><w:r><mc:AlternateContent><mc:Choice Requires="wps">${PARA("Box text")}</mc:Choice><mc:Fallback>${fallbackParagraph}${PARA("No id either")}</mc:Fallback></mc:AlternateContent></w:r></w:p>`,
       ),
     });
 
@@ -198,30 +243,42 @@ describe("ensureParaIds", () => {
     // The fallback branch is byte-identical: the id-less paragraph stays
     // id-less and the existing id is not treated as a duplicate to rewrite.
     expect(xml).toContain(`<mc:Fallback>${fallbackParagraph}${PARA("No id either")}</mc:Fallback>`);
-    // The outer paragraph and the mc:Choice paragraph both got ids.
-    expect(result.assigned).toBe(2);
+    // The fallback ID owns its value, so the conflicting outer paragraph is
+    // reminted even though it appears first; the mc:Choice paragraph gets an ID.
+    expect(result.assigned).toBe(1);
+    expect(result.deduplicated).toBe(1);
   });
 
-  test("covers headers and footnotes with document-wide uniqueness", async () => {
+  test("covers headers, footers, footnotes, and endnotes with document-wide uniqueness", async () => {
     const headerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:hdr ${W_NS}>${PARA("Header text")}</w:hdr>`;
+    const footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr ${W_NS}>${PARA("Footer text")}</w:ftr>`;
     const footnotesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:footnotes ${W_NS}><w:footnote w:id="1">${PARA("Footnote text")}</w:footnote></w:footnotes>`;
+    const endnotesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:endnotes ${W_NS}><w:endnote w:id="1">${PARA("Endnote text")}</w:endnote></w:endnotes>`;
     const input = await buildDocx({
       "word/document.xml": documentXml(PARA("Body")),
       "word/header1.xml": headerXml,
+      "word/footer1.xml": footerXml,
       "word/footnotes.xml": footnotesXml,
+      "word/endnotes.xml": endnotesXml,
     });
 
     const result = await ensureParaIds(input);
-    expect(result.assigned).toBe(3);
+    expect(result.assigned).toBe(5);
 
     const bodyIds = collectIds(await getPart(result.docx, "word/document.xml"));
     const headerIds = collectIds(await getPart(result.docx, "word/header1.xml"));
+    const footerIds = collectIds(await getPart(result.docx, "word/footer1.xml"));
     const footnoteIds = collectIds(await getPart(result.docx, "word/footnotes.xml"));
+    const endnoteIds = collectIds(await getPart(result.docx, "word/endnotes.xml"));
     expect(headerIds).toHaveLength(1);
+    expect(footerIds).toHaveLength(1);
     expect(footnoteIds).toHaveLength(1);
-    const all = [...bodyIds, ...headerIds, ...footnoteIds];
+    expect(endnoteIds).toHaveLength(1);
+    const all = [...bodyIds, ...headerIds, ...footerIds, ...footnoteIds, ...endnoteIds];
     expect(new Set(all).size).toBe(all.length);
 
     const headerOut = await getPart(result.docx, "word/header1.xml");
@@ -230,14 +287,28 @@ describe("ensureParaIds", () => {
 
   test("leaves the comments part untouched while honoring its ids as taken", async () => {
     const commentsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:comments ${W_NS}><w:comment w:id="0"><w:p><w:r><w:t>A comment</w:t></w:r></w:p></w:comment></w:comments>`;
+<w:comments ${W_NS} xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:comment w:id="0">${PARA("A comment", ' w14:paraId="C0FFEE01"')}</w:comment></w:comments>`;
     const input = await buildDocx({
-      "word/document.xml": documentXml(PARA("Body")),
+      "word/document.xml": documentXml(PARA("Body", ' w14:paraId="C0FFEE01"')),
       "word/comments.xml": commentsXml,
     });
 
     const result = await ensureParaIds(input);
+    expect(result.deduplicated).toBe(1);
+    const bodyIds = collectIds(await getPart(result.docx, "word/document.xml"));
+    expect(bodyIds[0]).not.toBe("C0FFEE01");
     expect(await getPart(result.docx, "word/comments.xml")).toBe(commentsXml);
+  });
+
+  test("rejects conflicting w14 or mc namespace bindings before patching", async () => {
+    const conflictingRoots = [' xmlns:w14="urn:wrong"', ' xmlns:mc="urn:wrong"'];
+
+    for (const rootAttrs of conflictingRoots) {
+      const input = await buildDocx({
+        "word/document.xml": documentXml(PARA("Body"), rootAttrs),
+      });
+      await expect(ensureParaIds(input)).rejects.toThrow(EnsureParaIdsError);
+    }
   });
 
   test("a normalized document snapshots with zero seq- block ids", async () => {
@@ -263,6 +334,21 @@ describe("ensureParaIds", () => {
     zip.file("hello.txt", "not a docx");
     const notDocx = await zip.generateAsync({ type: "uint8array" });
 
-    expect(ensureParaIds(notDocx)).rejects.toThrow(EnsureParaIdsError);
+    await expect(ensureParaIds(notDocx)).rejects.toThrow(EnsureParaIdsError);
+  });
+
+  test("wraps malformed ZIP input in EnsureParaIdsError", async () => {
+    const malformed = new Uint8Array([0, 1, 2, 3]);
+
+    const error = await ensureParaIds(malformed).then(
+      () => null,
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(EnsureParaIdsError);
+    if (!(error instanceof EnsureParaIdsError)) {
+      throw new Error("Expected EnsureParaIdsError");
+    }
+    expect(error.message).toContain("Failed to normalize paragraph IDs");
+    expect(error.cause).toBeInstanceOf(Error);
   });
 });

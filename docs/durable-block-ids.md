@@ -1,10 +1,10 @@
 # Durable block IDs in DOCX
 
 Goal: every block in every DOCX is addressable by a stable ID that survives
-editing in folio and in Microsoft Word, so the positional `seq-NNNN` fallback
-(known bug class: sequential IDs renumber after structural edits) becomes
-unreachable in practice. This unlocks per-block blame, robust comment and
-citation anchors, and AI-edit targeting for host applications.
+editing in folio and identity-preserving DOCX round-trips, so the positional
+`seq-NNNN` fallback (known bug class: sequential IDs renumber after structural
+edits) becomes unreachable in practice. This unlocks per-block blame, robust
+comment and citation anchors, and AI-edit targeting for host applications.
 
 Provenance note: the direction was inspired by ideas in macro-inc/macro
 (AGPL-3.0). Ideas only; no code was read or ported. Everything here is
@@ -75,9 +75,24 @@ Contract highlights (the module doc in `ensureParaIds.ts` is normative):
   would NOT be byte-identical — JSZip regenerates the container — which is
   why the short-circuit exists.)
 
-Remaining validation beyond unit tests: a real-Word round-trip check (open,
-edit, save, confirm assigned IDs survive) via the parity harness; run against
-a corpus of Google-Docs/python-docx exports before wiring it into hosts.
+### Microsoft Word round-trip result
+
+A real Word edit/save check established the boundary of the durability
+contract:
+
+- When a Word-saved package had one paragraph ID pair removed,
+  `ensureParaIds` restored it and Word preserved all 26 paragraph IDs on the
+  next edit/save. This is the normal identity-preserving round-trip.
+- On the first Word save of a non-Word-produced package, Word replaced
+  `w14:docId` and every paragraph ID. Supplying a valid, previously unseen
+  `w15:docId` did not change that behavior. IDs minted before Word adopts the
+  package therefore do not survive that first save.
+
+The second case is outside this function's control: the IDs are valid OOXML,
+but Word elects to establish a new document identity. Hosts that accept an
+externally edited package must normalize it again; if anchors must cross that
+first Word save, they need content-based reconciliation rather than assuming
+the old and new paraIds match.
 
 ## WI-2: editor ID lifecycle (implemented)
 
@@ -96,9 +111,9 @@ by its tests:
   first occurrence keeps.
 - Paste of an ID unknown to the doc (cross-doc paste, cut-then-paste move):
   kept, so moving a paragraph preserves its anchors.
-- Undo/redo: allocation applies with `addToHistory: false`; redoing a split
-  mints a different fresh ID than before the undo. Accepted: an ID is stable
-  across saves, not across redo-recreation.
+- Undo/redo: allocation applies with `addToHistory: false`; ProseMirror remaps
+  the allocation into the originating history event, so redoing a split
+  restores the same allocated ID.
 - The appended allocation transaction is excluded from paragraph change
   tracking (`ignoreTrackedChanges`), matching `ensureParaIdsInState`;
   backfilling an untouched paragraph must not mark it as user-changed.
@@ -136,6 +151,9 @@ skipped }` where each applied entry carries `revisionIds` (note: nested per
 - `w14:paraId` validity: 8 uppercase hex chars, not `00000000`, below
   `0x80000000`, unique document-wide. `hexId.ts` constants are the single
   source of truth; reuse, don't reimplement.
+- Durability follows the document identity. Microsoft Word can replace
+  `w14:docId` and all paraIds on its first save of a non-Word-produced package;
+  never promise pre-save paraId continuity across that boundary.
 - `deriveBlockId` (`packages/core/src/types/block-id.ts`) returns the paraId
   VERBATIM when present and non-duplicate; it does not mint hex. Its
   contract is published (host server extractors and prompts consume it);

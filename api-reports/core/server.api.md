@@ -94,6 +94,20 @@ export type ExtractedDocxText = {
     view: "accepted";
 };
 
+// @public
+export const ensureParaIds: (docx: Uint8Array | ArrayBuffer) => Promise<EnsureParaIdsResult>;
+
+// @public
+export class EnsureParaIdsError extends EnsureParaIdsError_base {}
+
+// @public
+export type EnsureParaIdsResult = {
+    docx: Uint8Array; /** Paragraphs that received a paraId (missing or all-zero before). */
+    assigned: number; /** Duplicate paraIds reassigned (the first occurrence keeps the id). */
+    deduplicated: number; /** True when the input already had full, unique coverage. */
+    alreadyComplete: boolean;
+};
+
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES: readonly ["best-effort", "atomic"];
 
