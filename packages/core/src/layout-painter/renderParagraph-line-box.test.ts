@@ -199,6 +199,108 @@ describe("renderLine box model", () => {
     expect(text?.style["fontSize"]).toBeUndefined();
   });
 
+  test("collapses ordinary spaces at the start of a soft-wrapped line", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "soft-wrapped-leading-spaces",
+      runs: [{ kind: "text", text: "alpha   Reference", pmStart: 10, pmEnd: 27 }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: "alpha".length,
+      toRun: 0,
+      toChar: "alpha   Reference".length,
+      width: 63,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 360,
+      isLastLine: true,
+      isFirstLine: false,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+    const [spaces, text] = lineEl.children;
+
+    expect(spaces?.textContent).toBe("   ");
+    expect(spaces?.dataset["pmStart"]).toBe("15");
+    expect(spaces?.dataset["pmEnd"]).toBe("18");
+    expect(spaces?.dataset["collapsedLeadingSpaces"]).toBe("true");
+    expect(spaces?.style["fontSize"]).toBe("0");
+    expect(spaces?.style["letterSpacing"]).toBe("0");
+    expect(spaces?.style["wordSpacing"]).toBe("0");
+    expect(text?.textContent).toBe("Reference");
+    expect(text?.dataset["pmStart"]).toBe("18");
+    expect(text?.dataset["pmEnd"]).toBe("27");
+  });
+
+  test("keeps authored paragraph-leading spaces paintable", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "authored-leading-spaces",
+      runs: [{ kind: "text", text: "   Reference" }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: "   Reference".length,
+      width: 84,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 360,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+    const [text] = lineEl.children;
+
+    expect(lineEl.children).toHaveLength(1);
+    expect(text?.textContent).toBe("   Reference");
+    expect(text?.dataset["collapsedLeadingSpaces"]).toBeUndefined();
+    expect(text?.style["fontSize"]).toBeUndefined();
+  });
+
+  test("keeps spaces after a manual line break paintable", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "manual-break-leading-spaces",
+      runs: [{ kind: "lineBreak" }, { kind: "text", text: "   Reference" }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 1,
+      fromChar: 0,
+      toRun: 1,
+      toChar: "   Reference".length,
+      width: 84,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 360,
+      isLastLine: true,
+      isFirstLine: false,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+    const [text] = lineEl.children;
+
+    expect(lineEl.children).toHaveLength(1);
+    expect(text?.textContent).toBe("   Reference");
+    expect(text?.dataset["collapsedLeadingSpaces"]).toBeUndefined();
+    expect(text?.style["fontSize"]).toBeUndefined();
+  });
+
   test("renders underlined tabs as a continuous rule without a text underline mark", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",

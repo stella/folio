@@ -1262,12 +1262,13 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
   return result;
 }
 
-type CollapsibleTrailingSpacesResult = {
+type CollapsibleLineEdgeSpacesResult = {
   runs: Run[];
-  collapsedRuns: Set<TextRun>;
+  collapsedLeadingRuns: Set<TextRun>;
+  collapsedTrailingRuns: Set<TextRun>;
 };
 
-const paintsTrailingSpaces = (run: TextRun): boolean =>
+const paintsLineEdgeSpaces = (run: TextRun): boolean =>
   Boolean(
     run.underline ||
     run.strike ||
@@ -1297,14 +1298,19 @@ const splitTextRunAt = (run: TextRun, index: number): [TextRun, TextRun] => {
 };
 
 /**
- * Word keeps ordinary trailing spaces addressable in the document model but
- * gives them no painted advance at a visual line end. Measurement already
- * excludes that advance; split the paint runs to preserve exact PM ranges
- * while allowing the trailing suffix to collapse in the DOM as well.
+ * Word keeps ordinary line-edge spaces addressable in the document model but
+ * gives them no painted advance. Collapsible trailing spaces always collapse;
+ * leading spaces collapse only after a soft wrap, not at the authored
+ * paragraph start or after a manual line break. Split paint runs to preserve
+ * exact PM ranges.
  */
-const splitCollapsibleTrailingSpaces = (sourceRuns: Run[]): CollapsibleTrailingSpacesResult => {
+const splitCollapsibleLineEdgeSpaces = (
+  sourceRuns: Run[],
+  collapseLeading: boolean,
+): CollapsibleLineEdgeSpacesResult => {
   const runs = [...sourceRuns];
-  const collapsedRuns = new Set<TextRun>();
+  const collapsedLeadingRuns = new Set<TextRun>();
+  const collapsedTrailingRuns = new Set<TextRun>();
 
   for (let index = runs.length - 1; index >= 0; index--) {
     const run = runs[index];
@@ -1316,22 +1322,61 @@ const splitCollapsibleTrailingSpaces = (sourceRuns: Run[]): CollapsibleTrailingS
     }
 
     const trailingSpaces = / +$/u.exec(run.text);
-    if (!trailingSpaces || paintsTrailingSpaces(run)) {
+    if (!trailingSpaces || paintsLineEdgeSpaces(run)) {
       break;
     }
 
     if (trailingSpaces.index === 0) {
-      collapsedRuns.add(run);
+      collapsedTrailingRuns.add(run);
       continue;
     }
 
     const [leading, trailing] = splitTextRunAt(run, trailingSpaces.index);
     runs.splice(index, 1, leading, trailing);
-    collapsedRuns.add(trailing);
+    collapsedTrailingRuns.add(trailing);
     break;
   }
 
-  return { runs, collapsedRuns };
+  if (collapseLeading) {
+    for (let index = 0; index < runs.length; index++) {
+      const run = runs[index];
+      if (!run || !isTextRun(run)) {
+        break;
+      }
+      if (run.text.length === 0) {
+        continue;
+      }
+
+      const leadingSpaces = /^ +/u.exec(run.text);
+      if (!leadingSpaces || paintsLineEdgeSpaces(run)) {
+        break;
+      }
+
+      if (leadingSpaces[0].length === run.text.length) {
+        collapsedLeadingRuns.add(run);
+        continue;
+      }
+
+      const [leading, trailing] = splitTextRunAt(run, leadingSpaces[0].length);
+      runs.splice(index, 1, leading, trailing);
+      collapsedLeadingRuns.add(leading);
+      break;
+    }
+  }
+
+  return { runs, collapsedLeadingRuns, collapsedTrailingRuns };
+};
+
+const startsAfterSoftWrap = (block: ParagraphBlock, line: MeasuredLine): boolean => {
+  if (line.fromChar > 0) {
+    return true;
+  }
+  if (line.fromRun === 0) {
+    return false;
+  }
+
+  const previousRun = block.runs.at(line.fromRun - 1);
+  return previousRun !== undefined && !isLineBreakRun(previousRun);
 };
 
 /**
@@ -1688,13 +1733,25 @@ export function renderLine(
 
   // Get runs for this line
   const splitRuns = splitTextRunsByEastAsia(sliceRunsForLine(block, line));
-  const { runs: runsForLine, collapsedRuns: collapsedTrailingSpaceRuns } =
-    splitCollapsibleTrailingSpaces(splitRuns);
+  const {
+    runs: runsForLine,
+    collapsedLeadingRuns: collapsedLeadingSpaceRuns,
+    collapsedTrailingRuns: collapsedTrailingSpaceRuns,
+  } = splitCollapsibleLineEdgeSpaces(splitRuns, startsAfterSoftWrap(block, line));
+  const isCollapsedLineEdgeSpaceRun = (run: TextRun): boolean =>
+    collapsedLeadingSpaceRuns.has(run) || collapsedTrailingSpaceRuns.has(run);
   const renderLineTextRun = (run: TextRun): HTMLElement => {
     const runEl = renderTextRun(run, doc);
+    if (collapsedLeadingSpaceRuns.has(run)) {
+      runEl.dataset["collapsedLeadingSpaces"] = "true";
+    }
     if (collapsedTrailingSpaceRuns.has(run)) {
       runEl.dataset["collapsedTrailingSpaces"] = "true";
+    }
+    if (isCollapsedLineEdgeSpaceRun(run)) {
       runEl.style.fontSize = "0";
+      runEl.style.letterSpacing = "0";
+      runEl.style.wordSpacing = "0";
     }
     return runEl;
   };
@@ -1818,7 +1875,9 @@ export function renderLine(
         : firstLineHangingPx;
       const justifyCapacityPx = options.availableWidth + firstLineHangingExpansionPx;
       const overfullPx = line.width - justifyCapacityPx;
-      const shrinkableSpaces = countShrinkableSpaces(runsForLine);
+      const shrinkableSpaces = countShrinkableSpaces(
+        runsForLine.filter((run) => !isTextRun(run) || !isCollapsedLineEdgeSpaceRun(run)),
+      );
       if (overfullPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
         lineEl.style.textAlign = "left";
         lineEl.style.textAlignLast = "auto";
@@ -2073,7 +2132,7 @@ export function renderLine(
       lineEl.append(runEl);
 
       // Measure text width for accurate tab position tracking
-      if (collapsedTrailingSpaceRuns.has(run)) {
+      if (isCollapsedLineEdgeSpaceRun(run)) {
         continue;
       }
       const fontSize = run.fontSize || 11;
