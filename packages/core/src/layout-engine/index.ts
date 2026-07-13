@@ -815,7 +815,7 @@ function layoutTable(
       // the table border. Its inherited/default value is zero, so an absent
       // property still aligns that text edge with the content margin and the
       // border extends left by the leading cell margin.
-      const leadingCellMargin = block.rows[0]?.cells[0]?.padding?.left ?? 0;
+      const leadingCellMargin = block.rows.at(0)?.cells.at(0)?.padding?.left ?? 0;
       x += (block.indent ?? 0) - leadingCellMargin;
     }
     return x;
