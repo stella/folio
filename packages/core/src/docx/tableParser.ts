@@ -58,6 +58,7 @@ import {
 import type { BookmarkMarker } from "./bookmarkPlacement";
 import type { NumberingMap } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
+import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import {
   BorderStyleSchema,
   FloatingTableXSpecSchema,
@@ -1178,6 +1179,7 @@ function parseCellContent(
     if (localName === "p") {
       // Parse paragraph
       const para = parseParagraph(child, styles, theme, numbering, rels, media, options);
+      enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media);
       prependPendingBookmarkMarkers(para, pendingBookmarkMarkers);
       content.push(para);
     } else if (localName === "tbl") {

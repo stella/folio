@@ -277,3 +277,108 @@ describe("renderTableFragment cell paragraph spacing", () => {
     expect(paragraph?.style["boxSizing"]).toBe("border-box");
   });
 });
+
+describe("renderTableFragment floating cell content", () => {
+  test("paints anchored images and text boxes outside the cell clip", () => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      rows: [
+        {
+          id: "row",
+          cells: [
+            {
+              id: "cell",
+              padding: { top: 2, right: 3, bottom: 2, left: 4 },
+              blocks: [
+                {
+                  kind: "paragraph",
+                  id: "anchor",
+                  runs: [
+                    {
+                      kind: "image",
+                      src: "floating.png",
+                      width: 80,
+                      height: 60,
+                      displayMode: "float",
+                      wrapType: "inFront",
+                      position: {
+                        horizontal: { relativeTo: "column", posOffset: 95_250 },
+                        vertical: { relativeTo: "paragraph", posOffset: 47_625 },
+                      },
+                    },
+                  ],
+                },
+                {
+                  kind: "textBox",
+                  id: "box",
+                  width: 90,
+                  height: 50,
+                  content: [],
+                  displayMode: "float",
+                  wrapType: "inFront",
+                  position: {
+                    horizontal: { relativeTo: "column", posOffset: 190_500 },
+                    vertical: { relativeTo: "paragraph", posOffset: 95_250 },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      columnWidths: [100],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [
+            {
+              blocks: [
+                { kind: "paragraph", lines: [], totalHeight: 20 },
+                { kind: "textBox", width: 90, height: 50, innerMeasures: [] },
+              ],
+              width: 100,
+              height: 24,
+            },
+          ],
+          height: 24,
+        },
+      ],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 24,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "tbl",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 24,
+      fromRow: 0,
+      toRow: 1,
+    };
+
+    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+    const cell = findByClass(tableEl, TABLE_CLASS_NAMES.cell).at(0);
+    const content = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent).at(0);
+    const imageLayer = findByClass(tableEl, "layout-cell-floating-images-layer").at(0);
+    const textBoxLayer = findByClass(tableEl, "layout-cell-floating-text-boxes-layer").at(0);
+    const textBox = findByClass(tableEl, "layout-textbox").at(0);
+
+    expect(tableEl.style["overflow"]).toBe("visible");
+    expect(cell?.style["overflow"]).toBe("visible");
+    expect(content?.style["overflow"]).toBe("hidden");
+    expect(imageLayer?.style["left"]).toBe("4px");
+    expect(imageLayer?.style["top"]).toBe("2px");
+    expect(imageLayer?.style["overflow"]).toBe("visible");
+    expect(textBoxLayer?.style["left"]).toBe("4px");
+    expect(textBoxLayer?.style["top"]).toBe("2px");
+    expect(textBox?.style["left"]).toBe("20px");
+    expect(textBox?.style["top"]).toBe("10px");
+  });
+});

@@ -4,6 +4,7 @@ import { getTextBoxGroupId } from "../textBoxGroup";
 import {
   DEFAULT_TEXTBOX_MARGINS,
   floatingTextBoxReservesBand,
+  isFloatingTextBoxBlock,
   tableColumnsArePinned,
 } from "../types";
 import type {
@@ -120,6 +121,10 @@ function isInlineFlowImageRun(run: ImageRun): boolean {
 }
 
 export function measureTableCellBlockVisualHeight(block: FlowBlock, blockMeasure: Measure): number {
+  if (block.kind === "textBox" && isFloatingTextBoxBlock(block)) {
+    return 0;
+  }
+
   if (block.kind !== "paragraph" || blockMeasure.kind !== "paragraph") {
     if ("totalHeight" in blockMeasure) {
       return blockMeasure.totalHeight;

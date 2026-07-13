@@ -202,4 +202,48 @@ describe("parseDocumentBody — AlternateContent text boxes", () => {
 
     expect(shapes).toHaveLength(2);
   });
+
+  test("preserves text boxes anchored from a table-cell paragraph", () => {
+    const body = parseDocumentBody(`${XML_DECLARATION}
+<w:document
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+  <w:body>
+    <w:tbl><w:tr><w:tc><w:p>
+      <w:r><mc:AlternateContent><mc:Choice Requires="wps">${textBoxDrawingXml("Cell card 1")}</mc:Choice><mc:Fallback><w:pict/></mc:Fallback></mc:AlternateContent></w:r>
+      <w:r><mc:AlternateContent><mc:Choice Requires="wps">${textBoxDrawingXml("Cell card 2")}</mc:Choice><mc:Fallback><w:pict/></mc:Fallback></mc:AlternateContent></w:r>
+    </w:p></w:tc></w:tr></w:tbl>
+  </w:body>
+</w:document>`);
+
+    const table = body.content.at(0);
+    if (table?.type !== "table") {
+      throw new Error("Expected table");
+    }
+    const paragraph = table.rows.at(0)?.cells.at(0)?.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected table-cell paragraph");
+    }
+
+    const cardTitles = paragraph.content
+      .filter((content) => content.type === "run")
+      .flatMap((run) => run.content.filter((content) => content.type === "shape"))
+      .map((shape) => {
+        const innerParagraph = shape.shape.textBody?.content.at(0);
+        if (innerParagraph?.type !== "paragraph") {
+          return null;
+        }
+        const innerRun = innerParagraph.content.at(0);
+        if (innerRun?.type !== "run") {
+          return null;
+        }
+        const innerText = innerRun.content.at(0);
+        return innerText?.type === "text" ? innerText.text : null;
+      });
+
+    expect(cardTitles).toEqual(["Cell card 1", "Cell card 2"]);
+  });
 });

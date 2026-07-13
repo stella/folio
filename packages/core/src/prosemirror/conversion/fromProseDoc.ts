@@ -2629,14 +2629,22 @@ function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatting | u
 function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts): TableCell {
   const attrs = expectTableCellAttrs(node);
   const content: (Paragraph | Table)[] = [];
+  let previousStandaloneTextBox: PreviousStandaloneTextBox | null = null;
 
   // Extract cell content (paragraphs and nested tables)
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((contentNode) => {
     if (contentNode.type.name === "paragraph") {
       content.push(convertPMParagraph(contentNode, documentCounts));
+      previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "table") {
       content.push(convertPMTable(contentNode, documentCounts));
+      previousStandaloneTextBox = null;
+    } else if (contentNode.type.name === "textBox") {
+      previousStandaloneTextBox = appendTextBoxBlock(content, contentNode, {
+        pendingPageBreaks: 0,
+        previousStandaloneTextBox,
+      });
     }
   });
 
