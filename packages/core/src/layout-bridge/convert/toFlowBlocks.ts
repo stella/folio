@@ -1377,6 +1377,10 @@ function convertParagraphAttrs(
     // default to no alignment set (inherits from style or defaults to left)
   }
 
+  if (typeof pmAttrs.outlineLevel === "number") {
+    attrs.outlineLevel = pmAttrs.outlineLevel;
+  }
+
   // Spacing. HTML-origin auto spacing (w:beforeAutospacing/afterAutospacing)
   // renders Word's 14pt auto gap, overriding the imported before/after (which
   // Word writes as `0`) — surface it here so pagination matches the rendered
@@ -1881,6 +1885,19 @@ function suppressTerminalEmptyParagraphsAfterTable(blocks: FlowBlock[]): void {
       block.attrs = { ...block.attrs, suppressEmptyParagraphHeight: true };
     }
   }
+}
+
+function reserveLeadingEmptyOutlineHeight(blocks: FlowBlock[]): void {
+  const firstBlock = blocks.at(0);
+  if (
+    firstBlock?.kind !== "paragraph" ||
+    firstBlock.runs.length !== 0 ||
+    firstBlock.attrs?.outlineLevel !== 0
+  ) {
+    return;
+  }
+
+  firstBlock.attrs = { ...firstBlock.attrs, reserveEmptyOutlineHeight: true };
 }
 
 /**
@@ -2719,6 +2736,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     visit(node, offset + nodeOffset);
   });
 
+  reserveLeadingEmptyOutlineHeight(blocks);
   suppressTerminalEmptyParagraphsAfterTable(blocks);
   return mergeRunInParagraphs(blocks);
 }

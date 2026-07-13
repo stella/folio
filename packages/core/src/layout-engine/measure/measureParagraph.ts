@@ -875,6 +875,13 @@ export function measureParagraph(
     const emptyFontSize = attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE;
     const emptyFontFamily = attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
     const emptyMetrics = calculateEmptyParagraphMetrics(emptyFontSize, spacing, emptyFontFamily);
+    // Reference layout reserves a second line box for a story-leading empty top-level
+    // outline paragraph. Keep it as one logical/caret line while expanding
+    // the line's advance; later and ordinary empty paragraphs stay at the
+    // normal single-line height.
+    const outlineLineHeight = attrs?.reserveEmptyOutlineHeight
+      ? emptyMetrics.lineHeight * 2
+      : emptyMetrics.lineHeight;
     lines.push({
       fromRun: 0,
       fromChar: 0,
@@ -882,9 +889,10 @@ export function measureParagraph(
       toChar: 0,
       width: 0,
       ...emptyMetrics,
+      lineHeight: outlineLineHeight,
     });
 
-    let totalHeight = emptyMetrics.lineHeight;
+    let totalHeight = outlineLineHeight;
     if (spacing?.before) {
       totalHeight += spacing.before;
     }

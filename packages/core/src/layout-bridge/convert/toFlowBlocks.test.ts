@@ -80,6 +80,7 @@ describe("toFlowBlocks paragraph formatting", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", {
         styleId: "Heading6",
+        outlineLevel: 0,
         defaultTextFormatting: { fontSize: 22, fontFamily: { ascii: "Calibri" } },
         _originalFormatting: {
           styleId: "Heading6",
@@ -93,6 +94,29 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.kind).toBe("paragraph");
     expect(paragraph?.attrs?.defaultFontSize).toBe(1);
     expect(paragraph?.attrs?.defaultFontFamily).toBe("Arial");
+    expect(paragraph?.attrs?.outlineLevel).toBe(0);
+    expect(paragraph?.attrs?.reserveEmptyOutlineHeight).toBe(true);
+  });
+
+  test("does not reserve extra outline height away from the start of the story", () => {
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("content")]),
+        schema.node("paragraph", { outlineLevel: 0 }),
+      ]),
+    );
+
+    expect(blocks.at(1)?.attrs?.outlineLevel).toBe(0);
+    expect(blocks.at(1)?.attrs?.reserveEmptyOutlineHeight).toBeUndefined();
+  });
+
+  test("ignores a null outline attribute at the layout boundary", () => {
+    const paragraph = toFlowBlocks(
+      schema.node("doc", null, [schema.node("paragraph", { outlineLevel: null })]),
+    ).at(0);
+
+    expect(paragraph?.attrs?.outlineLevel).toBeUndefined();
+    expect(paragraph?.attrs?.reserveEmptyOutlineHeight).toBeUndefined();
   });
 
   test("marks direct formatting on an empty paragraph for spacing layout", () => {

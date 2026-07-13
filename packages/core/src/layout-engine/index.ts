@@ -139,10 +139,25 @@ function continuesNumberedSequence(previous: FlowBlock | undefined, current: Flo
 
 type NaturalPageAdvance = "none" | "ordinary" | "reflowBoundary";
 
+function pageStartsWithPreviousParagraphContinuation(
+  page: Page,
+  previousBlock: FlowBlock | undefined,
+): boolean {
+  if (previousBlock?.kind !== "paragraph") {
+    return false;
+  }
+
+  return page.fragments.some(
+    (fragment) =>
+      fragment.kind === "paragraph" &&
+      String(fragment.blockId) === String(previousBlock.id) &&
+      fragment.continuesFromPrev === true,
+  );
+}
 /**
  * Get spacing before a paragraph block. Empty paragraphs whose
  * `before` came only from the implicit default paragraph style collapse to
- * zero. Word keeps inherited spacing when the empty paragraph itself is
+ * zero. Reference layout keeps inherited spacing when the empty paragraph itself is
  * authored through direct `w:pPr` formatting or an explicit `w:pStyle`.
  */
 function getSpacingBefore(block: ParagraphBlock): number {
@@ -461,8 +476,8 @@ export function layoutDocument(
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
 
-    // A cached Word pagination marker records a break at this paragraph, not
-    // an ordinal page target: Word does not emit markers for every physical
+    // A cached pagination marker records a break at this paragraph, not an
+    // ordinal page target: the source does not emit markers for every physical
     // page. Honor the break whenever visible content precedes it on Folio's
     // current page. A structural/natural break that opened an empty page, or a
     // page containing only overflowed empty paragraphs, already satisfies it.
@@ -472,7 +487,12 @@ export function layoutDocument(
       paginator.forcePageBreak();
     } else if (hasRenderedPageBreak) {
       const state = paginator.getCurrentState();
+      const previousParagraphAlreadyCrossedMarker = pageStartsWithPreviousParagraphContinuation(
+        state.page,
+        blocks[i - 1],
+      );
       const naturalAdvanceAlreadyCrossedMarker =
+        previousParagraphAlreadyCrossedMarker ||
         naturalPageAdvanceSinceRenderedBreak === "reflowBoundary" ||
         (block.kind === "paragraph" &&
           isPaginationEmptyParagraph(block) &&

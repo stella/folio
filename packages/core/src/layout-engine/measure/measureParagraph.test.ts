@@ -68,6 +68,21 @@ describe("font metrics cache", () => {
       expect(getMeasureCount()).toBe(2);
     }, fakeMeasure);
   });
+
+  test("keeps outline level in the paragraph measurement cache key", () => {
+    const paragraph = {
+      kind: "paragraph" as const,
+      id: "outline-cache",
+      runs: [],
+    };
+
+    expect(hashParagraphBlock(paragraph)).not.toBe(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: { outlineLevel: 0, reserveEmptyOutlineHeight: true },
+      }),
+    );
+  });
 });
 
 describe("empty paragraph line-height floor", () => {
@@ -135,6 +150,54 @@ describe("empty paragraph line-height floor", () => {
     );
 
     expect(measure.totalHeight).toBeCloseTo(11 * PT_TO_PX * 1.15 + 12, 1);
+  });
+
+  test("empty top-level outline paragraph reserves two line boxes", () => {
+    const paragraph = {
+      kind: "paragraph" as const,
+      id: "t3-outline",
+      pmStart: 0,
+      pmEnd: 0,
+      runs: [],
+      attrs: {
+        defaultFontSize: 18,
+        defaultFontFamily: "Arial",
+      },
+    };
+    const ordinary = measureParagraph(paragraph, 600);
+    const outlined = measureParagraph(
+      {
+        ...paragraph,
+        attrs: {
+          ...paragraph.attrs,
+          outlineLevel: 0,
+          reserveEmptyOutlineHeight: true,
+        },
+      },
+      600,
+    );
+
+    expect(outlined.lines).toHaveLength(1);
+    expect(outlined.lines[0]?.lineHeight).toBeCloseTo((ordinary.lines[0]?.lineHeight ?? 0) * 2, 1);
+    expect(outlined.totalHeight).toBeCloseTo(outlined.lines[0]?.lineHeight ?? 0, 1);
+  });
+
+  test("outline metadata does not change non-empty paragraph height", () => {
+    const base = {
+      kind: "paragraph" as const,
+      id: "t3-outline-content",
+      pmStart: 0,
+      pmEnd: 4,
+      runs: [{ kind: "text" as const, text: "text" }],
+    };
+
+    withFakeTextMeasure(() => {
+      const ordinary = measureParagraph(base, 600);
+      const outlined = measureParagraph({ ...base, attrs: { outlineLevel: 0 } }, 600);
+
+      expect(outlined.totalHeight).toBe(ordinary.totalHeight);
+      expect(outlined.lines).toEqual(ordinary.lines);
+    }, fakeMeasure);
   });
 
   for (const text of ["", " ", "\u00a0"]) {

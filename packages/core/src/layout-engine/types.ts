@@ -369,6 +369,8 @@ export type ListNumPr = {
  */
 export type ParagraphAttrs = {
   alignment?: "left" | "center" | "right" | "justify";
+  /** OOXML outline level (`w:outlineLvl`), where zero is the top level. */
+  outlineLevel?: number;
   spacing?: ParagraphSpacing;
   /**
    * Tracks which `spacing` sides came from inline (`<w:pPr><w:spacing>`)
@@ -408,6 +410,8 @@ export type ParagraphAttrs = {
   tabs?: TabStop[]; // Custom tab stops
   /** Render structural empty paragraphs as zero-height anchors. */
   suppressEmptyParagraphHeight?: boolean;
+  /** Reserve the reference extra line advance for a story-leading empty level-0 outline paragraph. */
+  reserveEmptyOutlineHeight?: boolean;
   // List properties
   numPr?: ListNumPr;
   listMarker?: string; // Pre-computed marker text (e.g., "1.", "•", "a)")

@@ -421,6 +421,26 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[1].fragments[0].blockId).toBe(1);
     });
 
+    test("rendered page break reuses a page opened by the preceding paragraph continuation", () => {
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Paragraph split across the boundary", 1),
+        {
+          ...makeParagraphBlock(1, "Cached next page", 38),
+          attrs: { renderedPageBreakBefore: true },
+        },
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 850), makeLine(0, 20, 0, 37, 300, 24)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 16, 90, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(2);
+      expect(layout.pages[1].fragments.map((fragment) => fragment.blockId)).toEqual([0, 1]);
+      expect(layout.pages[1].fragments[0]).toMatchObject({ continuesFromPrev: true });
+    });
+
     test("rendered page break reuses a page containing only an overflowed empty paragraph", () => {
       const emptyParagraph: ParagraphBlock = {
         kind: "paragraph",

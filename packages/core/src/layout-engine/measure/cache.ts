@@ -303,6 +303,9 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     if (attrs.alignment) {
       parts.push(`align:${attrs.alignment}`);
     }
+    if (attrs.outlineLevel !== undefined) {
+      parts.push(`outline:${attrs.outlineLevel}`);
+    }
     if (attrs.indent) {
       parts.push(
         `indent:${attrs.indent.left}|${attrs.indent.right}|${attrs.indent.firstLine}|${attrs.indent.hanging}`,
@@ -323,6 +326,9 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     }
     if (attrs.suppressEmptyParagraphHeight) {
       parts.push("sup");
+    }
+    if (attrs.reserveEmptyOutlineHeight) {
+      parts.push("outline-empty-reserve");
     }
     const borders = attrs.borders;
     if (borders) {

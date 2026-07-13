@@ -551,7 +551,8 @@ export type PaginatorOptions = {
 
 // @public
 export type ParagraphAttrs = {
-    alignment?: "left" | "center" | "right" | "justify";
+    alignment?: "left" | "center" | "right" | "justify"; /** OOXML outline level (`w:outlineLvl`), where zero is the top level. */
+    outlineLevel?: number;
     spacing?: ParagraphSpacing;
     spacingExplicit?: {
         before?: boolean;
@@ -571,7 +572,8 @@ export type ParagraphAttrs = {
     borders?: ParagraphBorders;
     shading?: string;
     tabs?: TabStop[]; /** Render structural empty paragraphs as zero-height anchors. */
-    suppressEmptyParagraphHeight?: boolean;
+    suppressEmptyParagraphHeight?: boolean; /** Reserve the reference extra line advance for a story-leading empty level-0 outline paragraph. */
+    reserveEmptyOutlineHeight?: boolean;
     numPr?: ListNumPr;
     listMarker?: string;
     listIsBullet?: boolean;
