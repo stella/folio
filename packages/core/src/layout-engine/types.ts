@@ -372,6 +372,8 @@ export type ParagraphAttrs = {
   /** OOXML outline level (`w:outlineLvl`), where zero is the top level. */
   outlineLevel?: number;
   spacing?: ParagraphSpacing;
+  /** Spacing sides resolved from OOXML automatic paragraph spacing. */
+  automaticSpacing?: { before?: boolean; after?: boolean };
   /**
    * Tracks which `spacing` sides came from inline (`<w:pPr><w:spacing>`)
    * formatting versus inherited via paragraph style. Word collapses

@@ -356,6 +356,40 @@ export function applyContextualSpacing(blocks: FlowBlock[]): void {
   }
 }
 
+/** Suppress automatic inter-item spacing within one numbered sequence. */
+const applyAutomaticListSpacing = (blocks: FlowBlock[]): void => {
+  for (let index = 1; index < blocks.length; index++) {
+    const previous = blocks[index - 1];
+    const current = blocks[index];
+    if (
+      previous?.kind !== "paragraph" ||
+      current?.kind !== "paragraph" ||
+      !continuesNumberedSequence(previous, current)
+    ) {
+      continue;
+    }
+
+    if (previous.attrs?.automaticSpacing?.after && previous.attrs.spacing) {
+      previous.attrs.spacing = { ...previous.attrs.spacing, after: 0 };
+    }
+    if (current.attrs?.automaticSpacing?.before && current.attrs.spacing) {
+      current.attrs.spacing = { ...current.attrs.spacing, before: 0 };
+    }
+  }
+
+  for (const block of blocks) {
+    if (block.kind === "table") {
+      for (const row of block.rows) {
+        for (const cell of row.cells) {
+          applyAutomaticListSpacing(cell.blocks);
+        }
+      }
+    } else if (block.kind === "textBox") {
+      applyAutomaticListSpacing(block.content);
+    }
+  }
+};
+
 /**
  * Layout a document: convert blocks + measures into pages with positioned fragments.
  *
@@ -453,6 +487,7 @@ export function layoutDocument(
   // consecutive paragraphs that both have contextualSpacing=true and share
   // the same styleId (OOXML spec 17.3.1.9 / ECMA-376 §17.3.1.9).
   applyContextualSpacing(blocks);
+  applyAutomaticListSpacing(blocks);
 
   // Pre-compute keepNext chains for pagination decisions
   const keepNextChains = computeKeepNextChains(blocks);

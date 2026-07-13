@@ -553,7 +553,11 @@ export type PaginatorOptions = {
 export type ParagraphAttrs = {
     alignment?: "left" | "center" | "right" | "justify"; /** OOXML outline level (`w:outlineLvl`), where zero is the top level. */
     outlineLevel?: number;
-    spacing?: ParagraphSpacing;
+    spacing?: ParagraphSpacing; /** Spacing sides resolved from OOXML automatic paragraph spacing. */
+    automaticSpacing?: {
+        before?: boolean;
+        after?: boolean;
+    };
     spacingExplicit?: {
         before?: boolean;
         after?: boolean;
