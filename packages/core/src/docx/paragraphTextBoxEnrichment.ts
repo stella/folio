@@ -332,7 +332,7 @@ const parseVmlTextBoxShape = (
   const shapeEl = findDeep(pictEl, "v", "shape");
   const textBoxEl = shapeEl ? findDeep(shapeEl, "v", "textbox") : null;
   const contentEl = textBoxEl ? findDeep(textBoxEl, "w", "txbxContent") : null;
-  if (!shapeEl || !contentEl) {
+  if (!shapeEl || !textBoxEl || !contentEl) {
     return null;
   }
 
