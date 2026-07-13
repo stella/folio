@@ -249,9 +249,15 @@ const runPipeline = async (docs: string[], flags: CliFlags): Promise<PipelineOut
             `(shared substituted font: ${fontEnvironment.tags.join(", ")}; ${fontEnvironment.comparedLines} lines) `,
           );
         } else if (fontEnvironment.status === "mismatch") {
-          process.stderr.write(
-            `(Word/Folio font mismatch: ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} lines match) `,
-          );
+          if (fontEnvironment.tags.includes("font-renderer-metric-mismatch")) {
+            process.stderr.write(
+              `(Word/Folio font metric mismatch despite ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} matching family names) `,
+            );
+          } else {
+            process.stderr.write(
+              `(Word/Folio font mismatch: ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} lines match) `,
+            );
+          }
         } else if (fontEnvironment.status === "unverified") {
           process.stderr.write("(Word/Folio font parity unverified) ");
         }

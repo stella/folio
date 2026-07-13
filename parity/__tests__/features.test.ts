@@ -581,6 +581,48 @@ describe("assessFontEnvironment", () => {
     });
   });
 
+  test("rejects matching family names with persistently different metrics", () => {
+    const lines = Array.from({ length: 8 }, (_, index): [string, string] => [
+      `Line ${index}`,
+      "Arial",
+    ]);
+    const word = fontGeom("word", lines);
+    const folio = fontGeom("folio", lines);
+    for (const line of folio.pages[0]?.lines ?? []) {
+      line.widthPt = 110;
+    }
+
+    const assessment = assessFontEnvironment(["Arial"], word, folio);
+
+    expect(assessment).toEqual({
+      status: "mismatch",
+      tags: ["font-renderer-metric-mismatch"],
+      comparedLines: 8,
+      matchingLines: 8,
+    });
+  });
+
+  test("detects a repeated metric cluster hidden by otherwise stable lines", () => {
+    const lines = Array.from({ length: 32 }, (_, index): [string, string] => [
+      `Line ${index}`,
+      "Arial",
+    ]);
+    const word = fontGeom("word", lines);
+    const folio = fontGeom("folio", lines);
+    for (const line of folio.pages[0]?.lines.slice(0, 8) ?? []) {
+      line.widthPt = 110;
+    }
+
+    const assessment = assessFontEnvironment(["Arial"], word, folio);
+
+    expect(assessment).toEqual({
+      status: "mismatch",
+      tags: ["font-renderer-metric-mismatch"],
+      comparedLines: 32,
+      matchingLines: 32,
+    });
+  });
+
   test("reports unverified when no font-bearing text can be paired", () => {
     const assessment = assessFontEnvironment(
       ["Arial"],
