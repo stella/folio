@@ -1,14 +1,14 @@
 /**
- * Word rendering parity engine: static HTML report writer.
+ * Multi-engine DOCX comparison: static HTML report writer.
  *
  * Renders a `CorpusReport` (see `types.ts`) plus per-doc rendered assets into
  * a self-contained static site under `REPORT_DIR` (`config.ts`): an
  * `index.html` overview (per-doc scores, cross-corpus clusters) and one
- * `doc-<slug>.html` detail page per document (side-by-side Word/folio page
- * renderings with line-box overlays, plus the grouped divergence list).
+ * `doc-<slug>.html` detail page per document (side-by-side reference/folio
+ * page renderings with line-box overlays, plus the grouped divergence list).
  *
  * Deliberately imports only `./types` (and `./config` for the output path):
- * this module must stay testable standalone, without the Word/folio/compare
+ * this module must stay testable standalone, without the renderer/folio/compare
  * extractors that produce its input.
  */
 import { copyFile, mkdir, rm } from "node:fs/promises";
@@ -27,9 +27,9 @@ import type {
 } from "./types";
 
 export type DocAssets = {
-  wordPagePngs: string[];
+  referencePagePngs: string[];
   folioPagePngs: string[];
-  wordGeom: DocGeom;
+  referenceGeom: DocGeom;
   folioGeom: DocGeom;
 };
 
@@ -56,7 +56,7 @@ const DIVERGENCE_KIND_ORDER: DivergenceKind[] = [
 
 /** Per-doc page assets after copying into REPORT_DIR, relative-path or null (missing). */
 type CopiedPageAssets = {
-  wordPngs: (string | null)[];
+  referencePngs: (string | null)[];
   folioPngs: (string | null)[];
 };
 
@@ -77,9 +77,9 @@ export const writeHtmlReport = async (
     const docAssets = assets.get(result.file);
     const copied = docAssets
       ? await copyDocAssets(slug, docAssets)
-      : { wordPngs: [], folioPngs: [] };
+      : { referencePngs: [], folioPngs: [] };
 
-    const html = renderDocPage(result, docAssets, copied);
+    const html = renderDocPage(result, docAssets, copied, report.reference.displayName);
     await Bun.write(path.join(REPORT_DIR, `doc-${slug}.html`), html);
   }
 
@@ -131,14 +131,14 @@ const copyDocAssets = async (slug: string, docAssets: DocAssets): Promise<Copied
     }
   };
 
-  const wordPngs = await Promise.all(
-    docAssets.wordPagePngs.map((src, i) => copyOne(src, `word-${i + 1}.png`)),
+  const referencePngs = await Promise.all(
+    docAssets.referencePagePngs.map((src, i) => copyOne(src, `reference-${i + 1}.png`)),
   );
   const folioPngs = await Promise.all(
     docAssets.folioPagePngs.map((src, i) => copyOne(src, `folio-${i + 1}.png`)),
   );
 
-  return { wordPngs, folioPngs };
+  return { referencePngs, folioPngs };
 };
 
 // --- shared helpers ---
@@ -172,11 +172,11 @@ const scoreColor = (score: number): string => {
 const divergenceText = (divergence: Divergence): string => {
   switch (divergence.kind) {
     case "page-count":
-      return `page count: word=${divergence.word}, folio=${divergence.folio}`;
+      return `page count: reference=${divergence.reference}, folio=${divergence.folio}`;
     case "pagination":
       return divergence.text;
     case "line-break":
-      return `${divergence.wordTexts.join(" ")} | ${divergence.folioTexts.join(" ")}`;
+      return `${divergence.referenceTexts.join(" ")} | ${divergence.folioTexts.join(" ")}`;
     case "missing-line":
     case "extra-line":
     case "x-drift":
@@ -184,7 +184,7 @@ const divergenceText = (divergence: Divergence): string => {
     case "width-drift":
       return divergence.text;
     case "text-mismatch":
-      return `${divergence.wordText} → ${divergence.folioText}`;
+      return `${divergence.referenceText} → ${divergence.folioText}`;
     default: {
       const exhaustive: never = divergence;
       return exhaustive;
@@ -198,7 +198,7 @@ const divergencePage = (divergence: Divergence): string => {
     case "page-count":
       return "—";
     case "pagination":
-      return `${divergence.wordPage} → ${divergence.folioPage}`;
+      return `${divergence.referencePage} → ${divergence.folioPage}`;
     default:
       return String(divergence.page);
   }
@@ -233,24 +233,26 @@ const renderIndex = (report: CorpusReport, slugs: Map<string, string>): string =
   const rows = report.results.map((result) => renderIndexRow(result, slugs)).join("\n");
   const clusterRows = report.clusters.map(renderClusterRow).join("\n");
   const docCount = report.results.length;
+  const referenceVersion = report.reference.version ?? "unknown version";
 
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>folio vs Word parity report</title>
+<title>folio DOCX interoperability report</title>
 <style>${STYLE}</style>
 </head>
 <body>
 <header>
-<h1>Word rendering parity report</h1>
-<p>Generated ${escapeHtml(report.generatedAt)} &middot; Word ${escapeHtml(report.wordVersion ?? "unknown")} &middot; ${docCount} document${docCount === 1 ? "" : "s"}</p>
+<h1>DOCX rendering interoperability report</h1>
+<p>Folio compared with ${escapeHtml(report.reference.displayName)} ${escapeHtml(referenceVersion)} &middot; generated ${escapeHtml(report.generatedAt)} &middot; ${docCount} document${docCount === 1 ? "" : "s"}</p>
+<p class="method-note">The external renderer is a comparison reference, not a specification oracle. Agreement is interoperability evidence; OOXML conformance is assessed separately against the standard and structural validators.</p>
 </header>
 <main>
 <section>
 <h2>Documents</h2>
 <table>
-<thead><tr><th>Document</th><th>Score</th><th>Pages (word / folio)</th><th>Lines matched</th><th>Median Y offset (pt)</th><th>Divergences</th></tr></thead>
+<thead><tr><th>Document</th><th>Score</th><th>Pages (reference / folio)</th><th>Lines matched</th><th>Median Y offset (pt)</th><th>Divergences</th></tr></thead>
 <tbody>
 ${rows.length > 0 ? rows : `<tr><td colspan="6">No documents.</td></tr>`}
 </tbody>
@@ -280,8 +282,8 @@ const renderIndexRow = (result: FeatureAttributedResult, slugs: Map<string, stri
   return `<tr>
 <td><a href="doc-${escapeHtml(slug)}.html">${escapeHtml(name)}</a></td>
 <td><span class="score" style="color:${scoreColor(result.score)}">${pct}%</span></td>
-<td>${result.wordPages} / ${result.folioPages}</td>
-<td>${result.matchedLines} / ${result.totalWordLines}</td>
+<td>${result.referencePages} / ${result.folioPages}</td>
+<td>${result.matchedLines} / ${result.totalReferenceLines}</td>
 <td>${result.medianYOffsetPt.toFixed(2)}</td>
 <td>${counts.length > 0 ? escapeHtml(counts) : "—"}</td>
 </tr>`;
@@ -305,20 +307,21 @@ const renderClusterRow = (cluster: Cluster): string => {
 
 // --- doc-<slug>.html ---
 
-type PanelSide = "word" | "folio";
+type PanelSide = "reference" | "folio";
 
 const renderDocPage = (
   result: FeatureAttributedResult,
   docAssets: DocAssets | undefined,
   copied: CopiedPageAssets,
+  referenceDisplayName: string,
 ): string => {
   const name = path.basename(result.file);
   const pageCount = docAssets
-    ? Math.max(docAssets.wordGeom.pages.length, docAssets.folioGeom.pages.length)
+    ? Math.max(docAssets.referenceGeom.pages.length, docAssets.folioGeom.pages.length)
     : 0;
 
   const pagePairs = Array.from({ length: pageCount }, (_, i) =>
-    renderPagePair(i, docAssets, copied),
+    renderPagePair(i, docAssets, copied, referenceDisplayName),
   ).join("\n");
 
   const banner =
@@ -337,7 +340,7 @@ const renderDocPage = (
 <header>
 <p><a href="index.html">&larr; back to summary</a></p>
 <h1>${escapeHtml(name)}</h1>
-<p>Score ${(result.score * 100).toFixed(1)}% &middot; ${result.matchedLines}/${result.totalWordLines} lines matched &middot; median Y offset ${result.medianYOffsetPt.toFixed(2)}pt</p>
+<p>Folio compared with ${escapeHtml(referenceDisplayName)} &middot; score ${(result.score * 100).toFixed(1)}% &middot; ${result.matchedLines}/${result.totalReferenceLines} lines matched &middot; median Y offset ${result.medianYOffsetPt.toFixed(2)}pt</p>
 </header>
 <main>
 ${banner}
@@ -367,33 +370,34 @@ const renderPagePair = (
   pageIndex: number,
   docAssets: DocAssets | undefined,
   copied: CopiedPageAssets,
+  referenceDisplayName: string,
 ): string => {
-  const wordPage = docAssets?.wordGeom.pages[pageIndex];
+  const referencePage = docAssets?.referenceGeom.pages[pageIndex];
   const folioPage = docAssets?.folioGeom.pages[pageIndex];
-  const wordImg = copied.wordPngs[pageIndex] ?? null;
+  const referenceImg = copied.referencePngs[pageIndex] ?? null;
   const folioImg = copied.folioPngs[pageIndex] ?? null;
 
-  const wordPanel = renderPanel({
-    side: "word",
+  const referencePanel = renderPanel({
+    side: "reference",
     pageIndex,
-    page: wordPage,
+    page: referencePage,
     otherPage: folioPage,
-    imgPath: wordImg,
-    label: `Word — page ${pageIndex + 1}`,
+    imgPath: referenceImg,
+    label: `${referenceDisplayName} — page ${pageIndex + 1}`,
   });
   const folioPanel = renderPanel({
     side: "folio",
     pageIndex,
     page: folioPage,
-    otherPage: wordPage,
+    otherPage: referencePage,
     imgPath: folioImg,
     label: `folio — page ${pageIndex + 1}`,
   });
 
-  return `<div class="page-pair">${wordPanel}${folioPanel}</div>`;
+  return `<div class="page-pair">${referencePanel}${folioPanel}</div>`;
 };
 
-/** Parameters for rendering one Word/folio page panel; kept local to renderPanel. */
+/** Parameters for rendering one reference/folio page panel. */
 type RenderPanelOptions = {
   side: PanelSide;
   pageIndex: number;
@@ -412,7 +416,7 @@ const renderPanel = ({
   label,
 }: RenderPanelOptions): string => {
   if (!page) {
-    const missingSide = side === "word" ? "Word" : "folio";
+    const missingSide = side === "reference" ? "reference" : "folio";
     return `<div class="page-panel placeholder-panel">
 <h3>${escapeHtml(label)}</h3>
 <div class="placeholder">No corresponding ${missingSide} page</div>
@@ -421,9 +425,9 @@ const renderPanel = ({
 
   const pageNum = pageIndex + 1;
   const crossId = `${side}-cross-${pageNum}`;
-  const otherLabel = side === "word" ? "folio" : "Word";
-  const primaryClass = side === "word" ? "word-boxes" : "folio-boxes";
-  const crossClass = side === "word" ? "folio-boxes" : "word-boxes";
+  const otherLabel = side === "reference" ? "folio" : "reference";
+  const primaryClass = side === "reference" ? "reference-boxes" : "folio-boxes";
+  const crossClass = side === "reference" ? "folio-boxes" : "reference-boxes";
 
   const primaryBoxes = renderBoxesSvgGroup(page.lines, primaryClass);
   const crossBoxes = otherPage
@@ -508,6 +512,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Ar
 header { padding: 24px 32px; background: #ffffff; border-bottom: 1px solid #d0d7de; }
 header h1 { margin: 0 0 4px; font-size: 1.5rem; }
 header p { margin: 0; color: #57606a; }
+.method-note { margin-top: 8px; max-width: 90ch; }
 main { padding: 24px 32px; }
 section { margin-bottom: 32px; }
 h2 { font-size: 1.15rem; border-bottom: 1px solid #d0d7de; padding-bottom: 6px; }
@@ -525,7 +530,7 @@ a:hover { text-decoration: underline; }
 .page-image-wrap { position: relative; width: 100%; background: #eaeef2; line-height: 0; }
 .page-image-wrap img { display: block; width: 100%; height: auto; }
 .page-image-wrap svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-.word-boxes rect { stroke: #0969da; fill: none; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.reference-boxes rect { stroke: #0969da; fill: none; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .folio-boxes rect { stroke: #cf222e; fill: none; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .placeholder { display: flex; align-items: center; justify-content: center; background: #eaeef2; color: #57606a; border: 1px dashed #9198a1; min-height: 160px; font-size: 0.85rem; }
 .placeholder-panel { flex: 1 1 0; }

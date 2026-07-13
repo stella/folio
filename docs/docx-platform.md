@@ -106,8 +106,10 @@ through these capability levels:
 Compatibility claims should identify the evidence behind them:
 
 - the applicable ECMA-376 or ISO/IEC 29500 rule;
-- Microsoft extension documentation where Word adds behavior;
-- observed behavior from a reproducible Word interoperability fixture.
+- published implementation notes where a producer adds behavior;
+- structural agreement with independent OOXML parsers;
+- observed behavior from reproducible, versioned LibreOffice, Word, or other
+  renderer interoperability fixtures.
 
 Tests and public APIs should also name the intended profile: OOXML
 Transitional, OOXML Strict, or Word-compatible behavior. International text,

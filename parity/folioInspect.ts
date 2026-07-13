@@ -2,10 +2,10 @@
 /**
  * Folio DOM/page inspector for visual parity debugging.
  *
- * This complements `parity/inspect.ts`: the parity inspector compares Word vs
- * Folio line boxes, while this command dumps Folio's source-linked painted
- * lines and spans so an agent can trace a visual line back to PM positions and
- * computed CSS without manually reading browser DevTools.
+ * This complements `parity/inspect.ts`: the parity inspector compares an
+ * external reference with Folio line boxes, while this command dumps Folio's
+ * source-linked painted lines and spans so an agent can trace a visual line
+ * back to PM positions and computed CSS without manually reading DevTools.
  */
 import path from "node:path";
 

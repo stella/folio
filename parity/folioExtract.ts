@@ -2,7 +2,7 @@
  * Folio-side geometry extraction: loads a .docx in the playground (Playwright
  * + the existing `?file=` fixture route), walks the painted layout DOM
  * (`.layout-page` / `.layout-line`), and normalizes it into the same
- * `DocGeom` shape the reference extractor produces. Also captures a per-page
+ * `DocGeom` shape produced by external reference renderers. Also captures a per-page
  * PNG screenshot for the HTML report.
  *
  * DOM-only concerns (getBoundingClientRect, closest, getComputedStyle,
@@ -832,7 +832,7 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
 
         // The `.layout-line` box spans the full column width regardless of where
         // the text ink actually sits (centered/right-aligned lines, table cells),
-        // while the reference extractor reports glyph-ink bounds. Use the union
+        // while PDF-based reference extractors report glyph-ink bounds. Use the union
         // of the line's run and list-marker boxes as the ink rect so both sides
         // measure the same thing; fall back to the line box for lines without
         // segment children.

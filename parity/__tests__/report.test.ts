@@ -24,7 +24,7 @@ const writeFixturePng = async (name: string): Promise<string> => {
   return filePath;
 };
 
-const makeGeom = (source: "word" | "folio", file: string): DocGeom => ({
+const makeGeom = (source: DocGeom["source"], file: string): DocGeom => ({
   source,
   file,
   pages: [
@@ -72,9 +72,9 @@ describe("writeHtmlReport", () => {
     const resultA: FeatureAttributedResult = {
       file: docAFile,
       score: 1,
-      wordPages: 1,
+      referencePages: 1,
       folioPages: 1,
-      totalWordLines: 1,
+      totalReferenceLines: 1,
       matchedLines: 1,
       medianYOffsetPt: 0.5,
       divergences: [],
@@ -85,13 +85,13 @@ describe("writeHtmlReport", () => {
     const resultB: FeatureAttributedResult = {
       file: docBFile,
       score: 0.5,
-      wordPages: 1,
+      referencePages: 1,
       folioPages: 1,
-      totalWordLines: 2,
+      totalReferenceLines: 2,
       matchedLines: 1,
       medianYOffsetPt: 1.25,
       divergences: [
-        { kind: "page-count", word: 2, folio: 1 },
+        { kind: "page-count", reference: 2, folio: 1 },
         {
           kind: "missing-line",
           page: 1,
@@ -106,7 +106,7 @@ describe("writeHtmlReport", () => {
         {
           kind: "text-mismatch",
           page: 1,
-          wordText: "Hello world",
+          referenceText: "Hello world",
           folioText: "Hell0 world",
         },
       ],
@@ -121,7 +121,11 @@ describe("writeHtmlReport", () => {
 
     const report: CorpusReport = {
       generatedAt: "2026-07-04T00:00:00.000Z",
-      wordVersion: "16.112",
+      reference: {
+        id: "libreoffice",
+        displayName: "LibreOffice Writer",
+        version: "LibreOffice 26.2.4.2",
+      },
       results: [resultA, resultB],
       clusters: [
         {
@@ -153,18 +157,18 @@ describe("writeHtmlReport", () => {
       [
         docAFile,
         {
-          wordPagePngs: [wordPngA],
+          referencePagePngs: [wordPngA],
           folioPagePngs: [folioPngA],
-          wordGeom: makeGeom("word", docAFile),
+          referenceGeom: makeGeom("libreoffice", docAFile),
           folioGeom: makeGeom("folio", docAFile),
         },
       ],
       [
         docBFile,
         {
-          wordPagePngs: [wordPngB],
+          referencePagePngs: [wordPngB],
           folioPagePngs: [folioPngB],
-          wordGeom: makeGeom("word", docBFile),
+          referenceGeom: makeGeom("libreoffice", docBFile),
           folioGeom: makeGeom("folio", docBFile),
         },
       ],
@@ -221,8 +225,10 @@ describe("writeHtmlReport", () => {
     expect(yDriftIdx).toBeGreaterThan(textMismatchIdx);
 
     // PNGs were copied into REPORT_DIR/assets/<slug>/.
-    const copiedWordA = await readFile(path.join(REPORT_DIR, "assets", "sample-one", "word-1.png"));
-    expect(copiedWordA.equals(ONE_PIXEL_PNG)).toBe(true);
+    const copiedReferenceA = await readFile(
+      path.join(REPORT_DIR, "assets", "sample-one", "reference-1.png"),
+    );
+    expect(copiedReferenceA.equals(ONE_PIXEL_PNG)).toBe(true);
   });
 
   test("de-duplicates slugs that sanitize to the same basename", async () => {
@@ -232,9 +238,9 @@ describe("writeHtmlReport", () => {
     const baseResult = (file: string): FeatureAttributedResult => ({
       file,
       score: 1,
-      wordPages: 0,
+      referencePages: 0,
       folioPages: 0,
-      totalWordLines: 0,
+      totalReferenceLines: 0,
       matchedLines: 0,
       medianYOffsetPt: 0,
       divergences: [],
@@ -244,6 +250,7 @@ describe("writeHtmlReport", () => {
 
     const report: CorpusReport = {
       generatedAt: "2026-07-04T00:00:00.000Z",
+      reference: { id: "libreoffice", displayName: "LibreOffice Writer" },
       results: [baseResult(fileOne), baseResult(fileTwo)],
       clusters: [],
     };
@@ -262,9 +269,10 @@ describe("writeHtmlReport", () => {
     );
   });
 
-  test("handles missing wordVersion, empty corpus, and missing PNG source gracefully", async () => {
+  test("handles missing reference version, empty corpus, and missing PNG source gracefully", async () => {
     const report: CorpusReport = {
       generatedAt: "2026-07-04T00:00:00.000Z",
+      reference: { id: "libreoffice", displayName: "LibreOffice Writer" },
       results: [],
       clusters: [],
     };

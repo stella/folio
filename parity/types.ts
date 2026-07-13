@@ -1,13 +1,21 @@
 /**
- * Rendering parity engine: shared data contract.
+ * Multi-engine DOCX rendering comparison: shared data contract.
  *
  * All geometry is expressed in PDF points (1pt = 1/72in), page-relative with
- * the origin at the page's top-left corner. Reference geometry comes from
- * `mutool draw -F stext` over the exported PDF; folio-side geometry comes from
- * the painted playground DOM (CSS px at 96dpi, converted with the px-to-pt
+ * the origin at the page's top-left corner. Reference-renderer geometry comes
+ * from `mutool draw -F stext` over an exported PDF; folio-side geometry comes
+ * from the painted playground DOM (CSS px at 96dpi, converted with the px-to-pt
  * factor 72/96 after normalising against the page element width so playground
  * zoom cannot skew coordinates).
  */
+
+export type ReferenceRendererId = "libreoffice" | "word";
+
+export type ReferenceRendererInfo = {
+  id: ReferenceRendererId;
+  displayName: string;
+  version?: string;
+};
 
 export type Region = "body" | "header" | "footer" | "footnote" | "unknown";
 
@@ -18,9 +26,9 @@ export type LineBox = {
   normText: string;
   /** Left edge of the line's ink/text start, in pt from the page left. */
   xPt: number;
-  /** Top edge of the line box, in pt from the page top. Reference boxes are
-   * ink bounds and folio-side boxes are line-height boxes, so absolute yPt is
-   * only compared after per-page median-offset correction. */
+  /** Top edge of the line box, in pt from the page top. PDF-extracted boxes
+   * are ink bounds and folio-side boxes are line-height boxes, so absolute
+   * yPt is only compared after per-page median-offset correction. */
   yPt: number;
   widthPt: number;
   heightPt: number;
@@ -44,21 +52,21 @@ export type PageGeom = {
 };
 
 export type DocGeom = {
-  source: "word" | "folio";
+  source: ReferenceRendererId | "folio";
   /** Absolute path of the source .docx. */
   file: string;
   pages: PageGeom[];
-  /** Extractor provenance: word version, mutool version, playground URL, px-to-pt scale, ... */
+  /** Extractor provenance: renderer version, mutool version, playground URL, px-to-pt scale, ... */
   meta: Record<string, string>;
 };
 
-/** A divergence between the reference rendering and folio's rendering. */
+/** A divergence between an external reference renderer and folio. */
 export type Divergence =
-  | { kind: "page-count"; word: number; folio: number }
+  | { kind: "page-count"; reference: number; folio: number }
   /** Same line of text landed on different pages. */
-  | { kind: "pagination"; text: string; wordPage: number; folioPage: number }
+  | { kind: "pagination"; text: string; referencePage: number; folioPage: number }
   /** One reference line corresponds to 2+ folio lines, or vice versa. */
-  | { kind: "line-break"; page: number; wordTexts: string[]; folioTexts: string[] }
+  | { kind: "line-break"; page: number; referenceTexts: string[]; folioTexts: string[] }
   /** Line present in reference output but never matched in folio. */
   | { kind: "missing-line"; page: number; text: string }
   /** Line present in folio output but never matched in the reference. */
@@ -70,7 +78,7 @@ export type Divergence =
   /** Matched line's ink width differs (font metric / measurement divergence). */
   | { kind: "width-drift"; page: number; text: string; deltaPt: number }
   /** Lines aligned positionally but their text content differs. */
-  | { kind: "text-mismatch"; page: number; wordText: string; folioText: string };
+  | { kind: "text-mismatch"; page: number; referenceText: string; folioText: string };
 
 export type DivergenceKind = Divergence["kind"];
 
@@ -90,7 +98,7 @@ export type ComparisonTolerances = {
   yResidualPt: number;
   /** Max |width delta| in pt before width-drift. */
   widthPt: number;
-  /** Widths may also pass on relative terms: |delta| <= widthRelative * wordWidth. */
+  /** Widths may also pass on relative terms: |delta| <= widthRelative * referenceWidth. */
   widthRelative: number;
 };
 
@@ -99,9 +107,9 @@ export type ParityResult = {
   /** 0..1: fraction of reference lines matched to a folio line on the same page
    * with all geometric deltas within tolerance. */
   score: number;
-  wordPages: number;
+  referencePages: number;
   folioPages: number;
-  totalWordLines: number;
+  totalReferenceLines: number;
   matchedLines: number;
   /** Systematic per-doc vertical offset (median of per-line y deltas);
    * informational, already subtracted from y-drift residuals. */
@@ -133,7 +141,7 @@ export type Cluster = {
 
 export type CorpusReport = {
   generatedAt: string;
-  wordVersion?: string;
+  reference: ReferenceRendererInfo;
   results: FeatureAttributedResult[];
   clusters: Cluster[];
 };

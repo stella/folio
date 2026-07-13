@@ -583,8 +583,10 @@ export const detectFontEnvironment = (
  * no associated text (it is a whole-document divergence). */
 const divergenceSearchText = (divergence: Divergence): string | undefined => {
   if (divergence.kind === "page-count") return undefined;
-  if (divergence.kind === "line-break") return divergence.wordTexts[0] ?? divergence.folioTexts[0];
-  if (divergence.kind === "text-mismatch") return divergence.wordText;
+  if (divergence.kind === "line-break") {
+    return divergence.referenceTexts[0] ?? divergence.folioTexts[0];
+  }
+  if (divergence.kind === "text-mismatch") return divergence.referenceText;
   return divergence.text;
 };
 
