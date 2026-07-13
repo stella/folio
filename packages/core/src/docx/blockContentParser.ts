@@ -112,23 +112,48 @@ const formatNumber = (value: number, numFmt: string): string => {
   }
 };
 
+type PreviousListState = {
+  abstractNumId: number | null;
+  fromStyle: boolean;
+  numId: number | null;
+};
+
+type ComputeListMarkerOptions = {
+  numbering: NumberingMap | null;
+  listCounters: Map<number, number[]>;
+  abstractCounters: Map<number, number[]>;
+  restartedNumIds: Set<number>;
+  previousList: PreviousListState;
+};
+
 const computeListMarker = (
   paragraph: Paragraph,
-  numbering: NumberingMap | null,
-  listCounters: Map<number, number[]>,
-  abstractCounters: Map<number, number[]>,
+  {
+    numbering,
+    listCounters,
+    abstractCounters,
+    restartedNumIds,
+    previousList,
+  }: ComputeListMarkerOptions,
 ): void => {
   const listRendering = paragraph.listRendering;
   if (!listRendering || !numbering) {
+    previousList.abstractNumId = null;
+    previousList.fromStyle = false;
+    previousList.numId = null;
     return;
   }
 
   const { numId, level } = listRendering;
   if (numId === 0) {
+    previousList.abstractNumId = null;
+    previousList.fromStyle = false;
+    previousList.numId = null;
     return;
   }
 
-  if (!listCounters.has(numId)) {
+  const firstEncounter = !listCounters.has(numId);
+  if (firstEncounter) {
     listCounters.set(numId, Array.from<number>({ length: 9 }).fill(Number.NaN));
   }
 
@@ -140,7 +165,25 @@ const computeListMarker = (
   const abstractNumId = numbering.getAbstractNumId(numId);
   const styleNumbering = paragraph.formatting?.numPrFromStyle;
   let resumedAbstractCounters: number[] | undefined;
-  if (abstractNumId !== null && styleNumbering) {
+  const resumesRestartedInstance =
+    firstEncounter &&
+    listRendering.startOverride === undefined &&
+    abstractNumId !== null &&
+    previousList.abstractNumId === abstractNumId &&
+    previousList.numId !== null &&
+    previousList.numId !== numId &&
+    restartedNumIds.has(previousList.numId);
+  const resumesStyleInstance =
+    firstEncounter &&
+    !styleNumbering &&
+    listRendering.startOverride === undefined &&
+    abstractNumId !== null &&
+    previousList.abstractNumId === abstractNumId &&
+    previousList.fromStyle === true;
+  if (
+    abstractNumId !== null &&
+    (styleNumbering || resumesRestartedInstance || resumesStyleInstance)
+  ) {
     const latestAbstractCounters = abstractCounters.get(abstractNumId);
     if (latestAbstractCounters) {
       // A paragraph whose numbering comes only from its style resumes the
@@ -153,6 +196,13 @@ const computeListMarker = (
       }
       resumedAbstractCounters = latestAbstractCounters;
     }
+  }
+  if (
+    listRendering.startOverride !== undefined ||
+    resumesRestartedInstance ||
+    (previousList.numId === numId && restartedNumIds.has(numId))
+  ) {
+    restartedNumIds.add(numId);
   }
   if (abstractNumId !== null && level > 0) {
     const latestAbstractCounters = abstractCounters.get(abstractNumId);
@@ -206,11 +256,17 @@ const computeListMarker = (
     }
     abstractCounters.set(abstractNumId, [...counters]);
   }
+  previousList.abstractNumId = abstractNumId;
+  previousList.fromStyle = Boolean(styleNumbering);
+  previousList.numId = numId;
 
   const pattern = listRendering.marker;
 
   if (listRendering.isBullet) {
     listRendering.marker = convertBulletToUnicode(pattern || "");
+    previousList.abstractNumId = null;
+    previousList.fromStyle = false;
+    previousList.numId = null;
     return;
   }
 
@@ -237,6 +293,8 @@ const computeListMarker = (
 type ParseBlockContentState = {
   listCounters: Map<number, number[]>;
   abstractCounters: Map<number, number[]>;
+  restartedNumIds: Set<number>;
+  previousList: PreviousListState;
   options: ParseBlockContentOptions | undefined;
 };
 
@@ -252,6 +310,8 @@ export const parseBlockContent = (
   parseBlockContentWithState(parent, styles, theme, numbering, rels, media, {
     listCounters: new Map(),
     abstractCounters: new Map(),
+    restartedNumIds: new Set(),
+    previousList: { abstractNumId: null, fromStyle: false, numId: null },
     // Accumulate the container's own xmlns onto the inherited in-scope set so a
     // captured VML `w:pict` replay resolves prefixes scoped on this level too.
     options: {
@@ -281,7 +341,13 @@ const parseBlockContentWithState = (
       const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, state.options);
       prependPendingBookmarkMarkers(paragraph, pendingBookmarkMarkers);
       enrichParagraphTextBoxes(paragraph, child, styles, theme, numbering, rels, media);
-      computeListMarker(paragraph, numbering, state.listCounters, state.abstractCounters);
+      computeListMarker(paragraph, {
+        numbering,
+        listCounters: state.listCounters,
+        abstractCounters: state.abstractCounters,
+        restartedNumIds: state.restartedNumIds,
+        previousList: state.previousList,
+      });
       content.push(paragraph);
       continue;
     }
