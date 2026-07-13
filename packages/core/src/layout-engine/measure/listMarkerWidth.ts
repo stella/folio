@@ -10,7 +10,7 @@
  * Both the painter (`renderParagraph.ts`) and the measurer (`measureParagraph`)
  * call into this so they agree on the marker's footprint — otherwise long
  * markers overflow the right edge of the first line. The painter applies the
- * returned width as `min-width`; the measurer subtracts the same value from
+ * returned value as a fixed inline width; the measurer subtracts the same value from
  * the first line's available width.
  */
 import type { ParagraphBlock, TextRun } from "../types";
@@ -82,14 +82,15 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   const { fontFamily, fontSize } = resolveListMarkerFont(block);
   const style: FontStyle = { fontFamily, fontSize };
   const naturalWidth = measureTextWidth(attrs.listMarker, style);
+  const markerEndOffset = getMarkerEndOffset(naturalWidth, attrs.listMarkerAlignment);
 
   // §17.9.25 — `w:suff` controls what follows the marker before body text.
   const suffix = attrs.listMarkerSuffix ?? "tab";
   if (suffix === "nothing") {
-    return naturalWidth;
+    return markerEndOffset;
   }
   if (suffix === "space") {
-    return naturalWidth + measureTextWidth(" ", style);
+    return markerEndOffset + measureTextWidth(" ", style);
   }
 
   // Default suffix is `tab`. Body text aligns at the next stop past
@@ -101,7 +102,7 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   const firstLine = indent?.firstLine ?? 0;
   const hanging = indent?.hanging ?? 0;
   const markerStartPx = hanging > 0 ? indentLeft - hanging : indentLeft + firstLine;
-  const minBodyStart = markerStartPx + naturalWidth;
+  const minBodyStart = markerStartPx + markerEndOffset;
 
   // Build tab-stop candidates. For hanging lists, the right edge of the
   // hanging slot (= indentLeft) is the implicit first tab stop after the
@@ -147,3 +148,34 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   }
   return bodyStart - markerStartPx;
 }
+
+/** Paint-only offset that places the marker around its authored list anchor. */
+export function getListMarkerVisualOffset(block: ParagraphBlock): number {
+  const attrs = block.attrs;
+  if (!attrs?.listMarker || attrs.listMarkerHidden) {
+    return 0;
+  }
+
+  const { fontFamily, fontSize } = resolveListMarkerFont(block);
+  const naturalWidth = measureTextWidth(attrs.listMarker, { fontFamily, fontSize });
+  if (attrs.listMarkerAlignment === "right") {
+    return -naturalWidth;
+  }
+  if (attrs.listMarkerAlignment === "center") {
+    return -naturalWidth / 2;
+  }
+  return 0;
+}
+
+const getMarkerEndOffset = (
+  naturalWidth: number,
+  alignment: ParagraphBlock["attrs"]["listMarkerAlignment"],
+): number => {
+  if (alignment === "right") {
+    return 0;
+  }
+  if (alignment === "center") {
+    return naturalWidth / 2;
+  }
+  return naturalWidth;
+};

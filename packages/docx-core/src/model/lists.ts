@@ -176,6 +176,8 @@ export type ListRendering = {
   markerFontFamily?: string;
   /** Marker font size from numbering level rPr, in points */
   markerFontSize?: number;
+  /** Horizontal alignment of the marker around the paragraph's list anchor. */
+  markerAlignment?: "left" | "center" | "right";
   /**
    * `w:caps` on the numbering level rPr — the marker text renders in upper
    * case (e.g. "SCHEDULE 1" instead of "Schedule 1"). Apply at substitution

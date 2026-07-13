@@ -493,6 +493,9 @@ function paragraphFormattingToAttrs(
   if (paragraph.listRendering?.markerFontSize) {
     attrs.listMarkerFontSize = paragraph.listRendering.markerFontSize;
   }
+  if (paragraph.listRendering?.markerAlignment) {
+    attrs.listMarkerAlignment = paragraph.listRendering.markerAlignment;
+  }
   if (paragraph.listRendering?.markerSuffix) {
     attrs.listMarkerSuffix = paragraph.listRendering.markerSuffix;
   }

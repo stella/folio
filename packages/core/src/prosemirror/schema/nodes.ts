@@ -103,6 +103,8 @@ export type ParagraphAttrs = {
   listMarkerFontFamily?: string;
   /** Marker font size from numbering level rPr, in points */
   listMarkerFontSize?: number;
+  /** Horizontal alignment of the marker around the paragraph's list anchor. */
+  listMarkerAlignment?: "left" | "center" | "right";
   /**
    * `w:suff` (§17.9.25) — what follows the marker before body text.
    * `tab` (default) grows the marker to the next tab stop; `space` adds one

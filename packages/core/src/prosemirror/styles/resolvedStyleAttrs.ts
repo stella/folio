@@ -110,6 +110,7 @@ export function listAttrsFromResolvedStyle(
     listMarkerHidden: rendering?.markerHidden ?? null,
     listMarkerFontFamily: rendering?.markerFontFamily ?? null,
     listMarkerFontSize: rendering?.markerFontSize ?? null,
+    listMarkerAlignment: rendering?.markerAlignment ?? null,
     listMarkerSuffix: rendering?.markerSuffix ?? null,
     listMarkerAllCaps: rendering?.markerAllCaps ?? null,
     listImplicitChildLevelAdvances: null,

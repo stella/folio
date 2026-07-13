@@ -969,6 +969,9 @@ export function computeListRendering(
   if (level.rPr?.allCaps) {
     rendering.markerAllCaps = true;
   }
+  if (level.lvlJc) {
+    rendering.markerAlignment = level.lvlJc;
+  }
   if (level.suffix) {
     rendering.markerSuffix = level.suffix;
   }

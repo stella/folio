@@ -9,7 +9,10 @@ import { ommlToMathml } from "../docx/mathToMathml";
 import { parseXmlDocument } from "../docx/xmlParser";
 import { evaluateFieldInstruction } from "../fields/evaluateField";
 import type { FieldContext } from "../fields/fieldContext";
-import { getListMarkerInlineWidth } from "../layout-engine/measure/listMarkerWidth";
+import {
+  getListMarkerInlineWidth,
+  getListMarkerVisualOffset,
+} from "../layout-engine/measure/listMarkerWidth";
 import type {
   ParagraphBlock,
   ParagraphMeasure,
@@ -2737,6 +2740,7 @@ export function renderParagraphFragment(
       const marker = renderListMarker(
         block.attrs.listMarker,
         getListMarkerInlineWidth(block),
+        getListMarkerVisualOffset(block),
         doc,
         markerFontFamily,
         markerFontSize,
@@ -2769,7 +2773,7 @@ export function renderParagraphFragment(
 
 /**
  * Render a list marker element as an inline-block at the start of the first
- * body line. `minWidth` (from `getListMarkerInlineWidth`) sizes the marker
+ * body line. `inlineWidth` (from `getListMarkerInlineWidth`) sizes the marker
  * so the body text aligns at the next tab stop per ECMA-376 §17.9.25 —
  * this honours `w:suff` (`tab` / `space` / `nothing`) and the document's
  * tab grid. Long markers like "1.1.1." therefore grow to the next stop
@@ -2777,7 +2781,8 @@ export function renderParagraphFragment(
  */
 function renderListMarker(
   marker: string,
-  minWidth: number,
+  inlineWidth: number,
+  visualOffset: number,
   doc: Document,
   fontFamily?: string,
   fontSize?: number,
@@ -2805,8 +2810,9 @@ function renderListMarker(
   span.style.textAlign = "left";
   span.style.textAlignLast = "left";
   span.style.boxSizing = "border-box";
-  if (minWidth > 0) {
-    span.style.minWidth = `${minWidth}px`;
+  span.style.width = `${inlineWidth}px`;
+  if (visualOffset !== 0) {
+    span.style.transform = `translateX(${visualOffset}px)`;
   }
 
   if (revision) {

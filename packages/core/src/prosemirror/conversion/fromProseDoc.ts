@@ -519,6 +519,9 @@ function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering
     ...(attrs.listMarkerFontSize != null && {
       markerFontSize: attrs.listMarkerFontSize,
     }),
+    ...(attrs.listMarkerAlignment != null && {
+      markerAlignment: attrs.listMarkerAlignment,
+    }),
     ...(attrs.listMarkerSuffix != null && {
       markerSuffix: attrs.listMarkerSuffix,
     }),

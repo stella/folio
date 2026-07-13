@@ -1790,6 +1790,9 @@ export function parseParagraph(
         if (level.rPr?.allCaps) {
           listRendering.markerAllCaps = true;
         }
+        if (level.lvlJc) {
+          listRendering.markerAlignment = level.lvlJc;
+        }
         if (level.suffix) {
           listRendering.markerSuffix = level.suffix;
         }

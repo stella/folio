@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import type { ParagraphBlock } from "../types";
 import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
-import { DEFAULT_TAB_STOP_TWIPS, getListMarkerInlineWidth } from "./listMarkerWidth";
+import {
+  DEFAULT_TAB_STOP_TWIPS,
+  getListMarkerInlineWidth,
+  getListMarkerVisualOffset,
+} from "./listMarkerWidth";
 
 const DEFAULT_TAB_STOP_PX = (DEFAULT_TAB_STOP_TWIPS / 1440) * 96;
 
@@ -67,6 +71,45 @@ describe("getListMarkerInlineWidth", () => {
       );
       // 2 chars + 1 space char = 30.
       expect(width).toBe(30);
+    }, fakeMeasure);
+  });
+
+  test("right-aligned marker ends at its anchor without consuming body width", () => {
+    withFakeTextMeasure(() => {
+      const block = listBlock({
+        listMarker: "1.",
+        listMarkerAlignment: "right",
+        listMarkerSuffix: "nothing",
+      });
+
+      expect(getListMarkerInlineWidth(block)).toBe(0);
+      expect(getListMarkerVisualOffset(block)).toBe(-20);
+    }, fakeMeasure);
+  });
+
+  test("center-aligned marker straddles its anchor", () => {
+    withFakeTextMeasure(() => {
+      const block = listBlock({
+        listMarker: "1.",
+        listMarkerAlignment: "center",
+        listMarkerSuffix: "space",
+      });
+
+      expect(getListMarkerInlineWidth(block)).toBe(20);
+      expect(getListMarkerVisualOffset(block)).toBe(-10);
+    }, fakeMeasure);
+  });
+
+  test("right-aligned tab marker preserves the hanging body anchor", () => {
+    withFakeTextMeasure(() => {
+      const block = listBlock({
+        listMarker: "1.",
+        listMarkerAlignment: "right",
+        indent: { left: 60, hanging: 36 },
+      });
+
+      expect(getListMarkerInlineWidth(block)).toBe(36);
+      expect(getListMarkerVisualOffset(block)).toBe(-20);
     }, fakeMeasure);
   });
 

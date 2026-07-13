@@ -12,6 +12,7 @@ const NUMBERING_WITH_SUFFIXES = `<?xml version="1.0" encoding="UTF-8" standalone
       <w:start w:val="1"/>
       <w:numFmt w:val="decimal"/>
       <w:lvlText w:val="%1."/>
+      <w:lvlJc w:val="right"/>
       <w:suff w:val="space"/>
     </w:lvl>
   </w:abstractNum>
@@ -57,6 +58,7 @@ describe("paragraphParser propagates w:suff to listRendering", () => {
     );
 
     expect(paragraph.listRendering?.markerSuffix).toBe("space");
+    expect(paragraph.listRendering?.markerAlignment).toBe("right");
   });
 
   test('w:suff="nothing" reaches listRendering.markerSuffix', () => {

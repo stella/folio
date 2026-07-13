@@ -1200,6 +1200,15 @@ function readListMarkerSuffix(value: unknown): PMParagraphAttrs["listMarkerSuffi
   return undefined;
 }
 
+function readListMarkerAlignment(
+  value: unknown,
+): PMParagraphAttrs["listMarkerAlignment"] | undefined {
+  if (value === "left" || value === "center" || value === "right") {
+    return value;
+  }
+  return undefined;
+}
+
 function toPreviousListAttrs(previousFormatting: Record<string, unknown>): PMParagraphAttrs {
   const attrs: PMParagraphAttrs = {};
   const numPr = previousFormatting["numPr"];
@@ -1263,6 +1272,11 @@ function toPreviousListAttrs(previousFormatting: Record<string, unknown>): PMPar
   const listMarkerFontSize = previousFormatting["listMarkerFontSize"];
   if (typeof listMarkerFontSize === "number") {
     attrs.listMarkerFontSize = listMarkerFontSize;
+  }
+
+  const listMarkerAlignment = readListMarkerAlignment(previousFormatting["listMarkerAlignment"]);
+  if (listMarkerAlignment) {
+    attrs.listMarkerAlignment = listMarkerAlignment;
   }
 
   const listMarkerSuffix = readListMarkerSuffix(previousFormatting["listMarkerSuffix"]);
@@ -1341,6 +1355,9 @@ function applyDeletedListMarkerAttrs(
   }
   if (previousListAttrs.listMarkerFontSize) {
     attrs.listMarkerFontSize = previousListAttrs.listMarkerFontSize;
+  }
+  if (previousListAttrs.listMarkerAlignment) {
+    attrs.listMarkerAlignment = previousListAttrs.listMarkerAlignment;
   }
   if (previousListAttrs.listMarkerSuffix) {
     attrs.listMarkerSuffix = previousListAttrs.listMarkerSuffix;
@@ -1712,6 +1729,9 @@ function convertParagraphAttrs(
   }
   if (pmAttrs.listMarkerFontSize) {
     attrs.listMarkerFontSize = pmAttrs.listMarkerFontSize;
+  }
+  if (pmAttrs.listMarkerAlignment) {
+    attrs.listMarkerAlignment = pmAttrs.listMarkerAlignment;
   }
   if (pmAttrs.listMarkerSuffix) {
     attrs.listMarkerSuffix = pmAttrs.listMarkerSuffix;

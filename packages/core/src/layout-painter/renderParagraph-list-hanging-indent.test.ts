@@ -80,7 +80,10 @@ const fakeDocument = {
   },
 } as unknown as Document;
 
-function renderListItem(indent: { left: number; hanging: number }): {
+function renderListItem(
+  indent: { left: number; hanging: number },
+  listMarkerAlignment?: "left" | "center" | "right",
+): {
   line: HTMLElement;
   marker: HTMLElement | undefined;
 } {
@@ -88,7 +91,7 @@ function renderListItem(indent: { left: number; hanging: number }): {
     kind: "paragraph",
     id: "p1",
     runs: [{ kind: "text", text: "TEST1" }],
-    attrs: { listMarker: "1.", indent },
+    attrs: { listMarker: "1.", indent, listMarkerAlignment },
   };
   const measure: ParagraphMeasure = {
     kind: "paragraph",
@@ -146,6 +149,13 @@ function renderListItem(indent: { left: number; hanging: number }): {
 }
 
 describe("Issue #729 — list hanging indent exceeding left indent", () => {
+  test("right-aligned marker paints before its anchor without moving body text", () => {
+    const { marker } = renderListItem({ left: 48, hanging: 24 }, "right");
+
+    expect(marker?.style.width).toBe("24px");
+    expect(Number.parseFloat(marker?.style.transform?.slice(11) ?? "")).toBeCloseTo(-14, 1);
+  });
+
   test("hanging > left: marker hangs into the margin via negative margin-left", () => {
     // 15px left, 38px hanging — marker should start at 15 - 38 = -23px.
     const { line, marker } = renderListItem({ left: 15, hanging: 38 });

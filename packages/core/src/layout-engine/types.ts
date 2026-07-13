@@ -422,6 +422,8 @@ export type ParagraphAttrs = {
   listMarkerHidden?: boolean; // w:vanish on numbering level rPr
   listMarkerFontFamily?: string; // from numbering level rPr (w:rFonts)
   listMarkerFontSize?: number; // from numbering level rPr, in points
+  /** Horizontal alignment of the marker around the paragraph's list anchor. */
+  listMarkerAlignment?: "left" | "center" | "right";
   /**
    * `w:suff` (§17.9.25) — what follows the marker before body text.
    * `tab` (default) grows the marker to the next tab stop; `space` adds
