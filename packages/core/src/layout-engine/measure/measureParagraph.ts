@@ -586,7 +586,7 @@ function justifyShrinkToleranceRatio(
   if (!isFirstLine && hasTabRuns && !hasTabStops) {
     return JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO;
   }
-  if ((isFirstLine || hasTabStops) && (hasTabStops || hasTabRuns)) {
+  if (hasTabRuns && (isFirstLine || hasTabStops)) {
     return (block.attrs?.indent?.firstLine ?? 0) === 0
       ? JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO
       : JUSTIFY_SHRINK_TOLERANCE_RATIO;

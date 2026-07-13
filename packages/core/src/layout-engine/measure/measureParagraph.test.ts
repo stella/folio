@@ -397,13 +397,13 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("keeps first-line tabbed legal prose on the conservative shrink tolerance", () => {
+  test("ignores unused tab stops when choosing justified prose shrink tolerance", () => {
     withFakeTextMeasure(
       () => {
         const measure = measureParagraph(
           {
             kind: "paragraph",
-            id: "justified-tabbed-first-line",
+            id: "justified-unused-tab-stop",
             runs: [{ kind: "text", text }],
             attrs: {
               alignment: "justify",
@@ -411,10 +411,10 @@ describe("measureParagraph justified shrink tolerance", () => {
               tabs: [{ val: "start", pos: 360 }],
             },
           },
-          100,
+          147.8,
         );
 
-        expect(measure.lines).toHaveLength(2);
+        expect(measure.lines).toHaveLength(1);
       },
       {
         charWidth: fractionalWidth,
