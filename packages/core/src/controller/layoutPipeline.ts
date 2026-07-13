@@ -399,11 +399,12 @@ export function runLayoutPipeline<THfPMs>(
     }
     const finalSectionProperties = document?.package.document.sections?.at(-1)?.properties;
     const finalHeaderRId = sectionHeaderFooterRefs?.at(-1)?.headerDefault;
-    const finalHeaderForLayout = finalHeaderRId
-      ? headerContentByRId?.get(finalHeaderRId)
-      : sectionHeaderFooterRefs === undefined
-        ? headerContentForRender
-        : undefined;
+    let finalHeaderForLayout = headerContentForRender;
+    if (finalHeaderRId) {
+      finalHeaderForLayout = headerContentByRId?.get(finalHeaderRId);
+    } else if (sectionHeaderFooterRefs !== undefined) {
+      finalHeaderForLayout = undefined;
+    }
     const finalLayoutConfig: SectionLayoutConfig = finalSectionProperties
       ? {
           pageSize: getPageSize(finalSectionProperties),
