@@ -420,6 +420,9 @@ function isEmptyTextRun(run: TextRun): boolean {
  * preceding a floating image.
  */
 function isBlockLayoutImageRun(run: ImageRun): boolean {
+  if (isFloatingImageRun(run)) {
+    return false;
+  }
   return run.wrapType === "topAndBottom" || run.displayMode === "block";
 }
 
@@ -1233,25 +1236,10 @@ export function measureParagraph(
 
     if (isImageRun(run)) {
       const wrapType = run.wrapType;
-      // Match the painter's `isFloatingImageRun` classification —
-      // including `behind` / `inFront` (wrapNone). These images are
-      // anchored at absolute coordinates and the painter lifts them
-      // out of the paragraph flow, so the measurer must also skip
-      // them: otherwise the line reserves the image's inline width
-      // and height while the painter renders it as an overlay,
-      // leaving phantom gaps in the body text (Codex PR #258 review).
-      // Drop the `run.position` precondition too — wrapNone images
-      // can be authored without an explicit `<wp:positionH>` and
-      // still shouldn't contribute to inline metrics.
-      const isFloating =
-        run.displayMode === "float" ||
-        wrapType === "square" ||
-        wrapType === "tight" ||
-        wrapType === "through" ||
-        wrapType === "behind" ||
-        wrapType === "inFront";
-
-      if (isFloating) {
+      // Keep measurement aligned with the shared anchored-image predicate.
+      // These images paint in a page layer and must not reserve inline width
+      // or height at their host run.
+      if (isFloatingImageRun(run)) {
         currentLine.toRun = runIndex;
         currentLine.toChar = 1;
         continue;

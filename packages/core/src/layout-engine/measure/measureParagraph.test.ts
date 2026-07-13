@@ -1335,6 +1335,36 @@ describe("block image rotation measurement", () => {
     expect(measure.lines[0]?.lineHeight).toBeGreaterThanOrEqual(60 + 12);
     expect(measure.lines[0]?.lineHeight).toBeLessThan(120);
   });
+
+  test("positioned top-and-bottom artwork stays out of paragraph flow", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "positioned-band",
+          runs: [
+            {
+              kind: "image",
+              src: "data:image/png;base64,",
+              width: 600,
+              height: 95,
+              displayMode: "block",
+              wrapType: "topAndBottom",
+              position: {
+                horizontal: { relativeTo: "page", posOffset: 0 },
+                vertical: { relativeTo: "page", posOffset: 0 },
+              },
+            },
+            { kind: "text", text: "Body text" },
+          ],
+        },
+        600,
+      );
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines.at(0)?.lineHeight).toBeLessThan(95);
+    }, fakeMeasure);
+  });
 });
 
 describe("paragraph indentation measurement", () => {

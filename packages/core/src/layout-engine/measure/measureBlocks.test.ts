@@ -146,6 +146,44 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("reserves positioned top-and-bottom image bands without inline image height", () => {
+    withFakeTextMeasure(() => {
+      const anchor: ParagraphBlock = {
+        kind: "paragraph",
+        id: "image-band-anchor",
+        attrs: { suppressEmptyParagraph: true },
+        runs: [
+          {
+            kind: "image",
+            src: "data:image/png;base64,",
+            width: 300,
+            height: 60,
+            displayMode: "block",
+            wrapType: "topAndBottom",
+            position: {
+              vertical: { relativeTo: "page", posOffset: pixelsToEmu(120) },
+            },
+          },
+        ],
+      };
+
+      const measures = measureBlocks([anchor, para("after", "after")], 600, 96, {
+        pageWidth: 792,
+        pageHeight: 1_056,
+        marginLeft: 96,
+        marginRight: 96,
+        marginBottom: 96,
+      });
+      const anchorMeasure = measures.at(0);
+      const afterMeasure = measures.at(1);
+      if (anchorMeasure?.kind !== "paragraph" || afterMeasure?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measures");
+      }
+      expect(anchorMeasure.totalHeight).toBeLessThan(60);
+      expect(afterMeasure.lines.at(0)?.floatSkipBefore).toBeGreaterThan(0);
+    }, fakeMeasure);
+  });
+
   test("reserves a paragraph frame set before measuring body text", () => {
     withFakeTextMeasure(() => {
       const frame = (id: string, x: number): TextBoxBlock => ({
