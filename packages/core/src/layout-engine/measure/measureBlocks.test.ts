@@ -472,6 +472,47 @@ describe("measureTableBlock row height", () => {
   });
 });
 
+describe("measureTableBlock preferred width", () => {
+  const tableWithPreferredWidth = (layout?: TableBlock["layout"]): TableBlock => ({
+    kind: "table",
+    id: "t",
+    columnWidths: [60],
+    width: 750,
+    widthType: "dxa",
+    ...(layout ? { layout } : {}),
+    rows: [
+      {
+        id: "r",
+        cells: [
+          {
+            id: "c",
+            padding: { top: 0, right: 0, bottom: 0, left: 0 },
+            blocks: [para("p", "content")],
+          },
+        ],
+      },
+    ],
+  });
+
+  test("preserves an autofit grid that exceeds the preferred dxa width", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureTableBlock(tableWithPreferredWidth(), 500);
+
+      expect(measure.columnWidths).toEqual([60]);
+      expect(measure.totalWidth).toBe(60);
+    }, fakeMeasure);
+  });
+
+  test("continues to scale a fixed grid to its explicit dxa width", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureTableBlock(tableWithPreferredWidth("fixed"), 500);
+
+      expect(measure.columnWidths).toEqual([50]);
+      expect(measure.totalWidth).toBe(50);
+    }, fakeMeasure);
+  });
+});
+
 describe("measureTableBlock w:noWrap column pinning", () => {
   // Column content width is 60px (no padding) and each char is 5px, so this
   // three-word phrase (75px unbroken) must wrap when the column is pinned and

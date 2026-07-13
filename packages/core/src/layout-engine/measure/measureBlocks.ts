@@ -195,7 +195,13 @@ export function measureTableBlock(
     columnWidths = Array.from({ length: colCount }, () => equalWidth);
   } else if (columnWidths.length > 0 && explicitWidthPx) {
     const totalWidth = columnWidths.reduce((sum, w) => sum + w, 0);
-    if (totalWidth > 0 && Math.abs(totalWidth - explicitWidthPx) > 1) {
+    // `w:tblW` is a preferred width under autofit. When the imported grid is
+    // already wider, Word preserves that grid instead of scaling it down.
+    const preserveExpandedGrid =
+      tableBlock.layout !== "fixed" &&
+      tableBlock.widthType === "dxa" &&
+      totalWidth - explicitWidthPx > 1;
+    if (!preserveExpandedGrid && totalWidth > 0 && Math.abs(totalWidth - explicitWidthPx) > 1) {
       const scale = explicitWidthPx / totalWidth;
       columnWidths = columnWidths.map((w) => w * scale);
     }
