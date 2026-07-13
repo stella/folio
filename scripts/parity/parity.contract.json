@@ -124,7 +124,8 @@
       "setContentControlContent",
       "setContentControlValue",
       "setZoom",
-      "undo"
+      "undo",
+      "undoDocumentOperations"
     ],
     "pairedNotes": {
       "applyDocumentOperations": "Both wired against the shared core `applyFolioDocumentOperations`, mirroring the adjacent (already-paired) `applyAIEditOperations`. Both assert the batch version (`assertSupportedFolioDocumentOperationVersion`), return an all-skipped `unsupportedBlock` result at the contract version when no view is mounted, and otherwise delegate to core with the same snapshot/batch/author. Comment-creation idiom differs like the AI-edit method: React's `createCommentId` closure calls `createComment` and folds the results in via `updateComments`, while Vue passes `opts.createAIEditComment`, which mints the comment and appends it to the thread list internally (from useCommentManagement) — same observable effect.",

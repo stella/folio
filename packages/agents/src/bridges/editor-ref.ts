@@ -5,6 +5,8 @@ import type {
   FolioAIEditSnapshot,
   FolioDocumentOperationBatch,
   FolioDocumentOperationResult,
+  FolioDocumentOperationUndoHandle,
+  FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/server";
 import {
   assertSupportedFolioDocumentOperationVersion,
@@ -53,6 +55,10 @@ export type FolioAgentEditorRefLike = {
   applyDocumentOperations?(
     options: FolioAgentEditorApplyDocumentOperationsOptions,
   ): FolioDocumentOperationResult;
+  /** `DocxEditorRef.undoDocumentOperations`, when available on newer refs. */
+  undoDocumentOperations?(
+    undoHandle: FolioDocumentOperationUndoHandle,
+  ): FolioDocumentOperationUndoResult;
   /** `DocxEditorRef.scrollToBlock`. */
   scrollToBlock(blockId: string, snapshot?: FolioAIEditSnapshot): boolean;
   /** `DocxEditorRef.getTotalPages`. */
@@ -158,6 +164,7 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
  */
 export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): FolioAgentBridge => {
   const { ref, author, getComments, setComments } = options;
+  const undoDocumentOperations = ref.undoDocumentOperations;
   const mode = options.mode ?? "tracked-changes";
 
   const requireSnapshot = (): FolioAIEditSnapshot => {
@@ -232,6 +239,10 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
         undoHandle: null,
       };
     },
+    ...(undoDocumentOperations && {
+      undoDocumentOperations: (undoHandle: FolioDocumentOperationUndoHandle) =>
+        undoDocumentOperations(undoHandle),
+    }),
     getComments: (): FolioAgentComment[] => {
       const comments = getComments();
       const anchors = ref.getCommentAnchors?.();

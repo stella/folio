@@ -12,6 +12,8 @@ import type {
   FolioCommentAnchor,
   FolioDocumentOperationBatch,
   FolioDocumentOperationResult,
+  FolioDocumentOperationUndoHandle,
+  FolioDocumentOperationUndoResult,
   FolioReviewChange,
 } from "@stll/folio-core/ai-edits";
 import type {
@@ -395,6 +397,10 @@ export type DocxEditorRef = {
   applyDocumentOperations: (
     options: DocxEditorApplyDocumentOperationsOptions,
   ) => FolioDocumentOperationResult;
+  /** Undo the latest unchanged document-operation batch. */
+  undoDocumentOperations: (
+    undoHandle: FolioDocumentOperationUndoHandle,
+  ) => FolioDocumentOperationUndoResult;
   /** Apply AI-authored operations against a previously created block snapshot. */
   applyAIEditOperations: (options: {
     snapshot: FolioAIEditSnapshot;

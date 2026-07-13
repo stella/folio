@@ -30,6 +30,8 @@ export type FolioParityBridge = {
   countCommentAnchors: () => number;
   /** Block count of the AI-edit snapshot over the live doc (0 with no live view). */
   aiSnapshotBlockCount: () => number;
+  /** Apply and undo one direct document-operation batch; true only when content restores. */
+  applyAndUndoDocumentOperation: () => boolean;
   /** Push an anonymization term matching the first word. Returns whether one was pushed. */
   anonymizeFirstWord: () => boolean;
   /** Count painted anonymization highlight rects in the overlay. */
@@ -154,6 +156,35 @@ export function buildParityBridge(getRef: () => DocxEditorRef | null): FolioPari
     countCommentAnchors: () =>
       document.querySelectorAll(".paged-editor__pages [data-comment-id]").length,
     aiSnapshotBlockCount: () => getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
+    applyAndUndoDocumentOperation: () => {
+      const ref = getRef();
+      const snapshot = ref?.createAIEditSnapshot();
+      const block = snapshot?.blocks.at(0);
+      const before = liveView()?.state.doc.textContent;
+      if (!ref || !snapshot || !block || before === undefined) {
+        return false;
+      }
+      const result = ref.applyDocumentOperations({
+        snapshot,
+        batch: {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "parity-undo",
+              type: "insertAfterBlock",
+              blockId: block.id,
+              text: "Temporary undo paragraph.",
+            },
+          ],
+        },
+      });
+      if (!result.undoHandle || liveView()?.state.doc.textContent === before) {
+        return false;
+      }
+      const undoResult = ref.undoDocumentOperations(result.undoHandle);
+      return undoResult.status === "undone" && liveView()?.state.doc.textContent === before;
+    },
     anonymizeFirstWord: () => {
       const view = liveView();
       if (!view) {

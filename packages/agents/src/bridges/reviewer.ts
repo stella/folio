@@ -57,6 +57,7 @@ export const createReviewerBridge = (
   return {
     snapshot: () => reviewer.snapshot(),
     applyDocumentOperations: (batch) => reviewer.applyDocumentOperations({ ...batch, mode }),
+    undoDocumentOperations: (undoHandle) => reviewer.undoDocumentOperations(undoHandle),
     getComments: () => reviewer.getComments().map(toAgentComment),
     getChanges: () => reviewer.getChanges().map(toAgentChange),
     listStories: () => reviewer.listStories(),

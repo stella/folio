@@ -30,6 +30,7 @@ import type { Ref } from "vue";
 import { TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { closeHistory } from "prosemirror-history";
 
 import {
   applyFolioAIEditOperations,
@@ -41,6 +42,8 @@ import {
   getFolioDocumentOperationIssues,
   getTrackedChangesFromDoc,
   type FolioDocumentOperationStatus,
+  type FolioDocumentOperationUndoHandle,
+  type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
@@ -66,6 +69,7 @@ import {
 } from "@stll/folio-core/prosemirror/commands/contentControls";
 import { setContentControlContentBlocksTr } from "@stll/folio-core/prosemirror/commands/contentControlsBlockFill";
 import type { Document } from "@stll/folio-core/types/document";
+import type { Comment } from "@stll/folio-core/types/content";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
 import type { DocxEditorRef } from "../components/DocxEditor/types";
@@ -75,6 +79,15 @@ import {
   resolveFolioAIBlockRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
+
+type LiveDocumentOperationUndoEntry = {
+  undoHandle: FolioDocumentOperationUndoHandle;
+  afterState: EditorView["state"];
+  commentsBefore: Comment[];
+  commentsAfter: Comment[];
+};
+
+let documentOperationUndoHandleCursor = Date.now();
 
 export type UseDocxEditorRefApiOptions = {
   /** Headless controller handle (imperative API + events; Seam 6). */
@@ -120,6 +133,9 @@ export type UseDocxEditorRefApiOptions = {
    * closure over the comment manager). Wired from useCommentManagement.
    */
   createAIEditComment: (text: string) => number;
+  /** Read and replace the current comment array for transactional undo. */
+  getComments: () => Comment[];
+  setComments: (comments: Comment[]) => void;
   // Action handles from useDocxEditor.
   focus: () => void;
   getDocument: () => Document | null;
@@ -137,6 +153,7 @@ export type UseDocxEditorRefApiOptions = {
 export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   exposed: DocxEditorRef;
 } {
+  const documentOperationUndoEntries: LiveDocumentOperationUndoEntry[] = [];
   function print(): void {
     opts.onPrint?.();
     window.print();
@@ -324,13 +341,70 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           undoHandle: null,
         };
       }
-      return applyFolioDocumentOperations({
-        view,
+      const existingUndoEntry = documentOperationUndoEntries.at(-1);
+      if (
+        existingUndoEntry &&
+        (view.state !== existingUndoEntry.afterState ||
+          opts.getComments() !== existingUndoEntry.commentsAfter)
+      ) {
+        documentOperationUndoEntries.length = 0;
+      }
+      const commentsBefore = opts.getComments();
+      const operationView = {
+        state: view.state,
+        dispatch: (transaction: Parameters<EditorView["dispatch"]>[0]) => {
+          view.dispatch(closeHistory(transaction));
+          operationView.state = view.state;
+        },
+      };
+      const result = applyFolioDocumentOperations({
+        view: operationView,
         snapshot,
         batch,
         author: operationAuthor,
         createCommentId: opts.createAIEditComment,
+        createUndoHandle: () => ({
+          type: "documentOperationUndo",
+          id: `vue-${String(documentOperationUndoHandleCursor++)}`,
+        }),
       });
+      if (result.undoHandle !== null) {
+        documentOperationUndoEntries.push({
+          undoHandle: result.undoHandle,
+          afterState: view.state,
+          commentsBefore,
+          commentsAfter: opts.getComments(),
+        });
+      }
+      return result;
+    },
+    undoDocumentOperations: (undoHandle): FolioDocumentOperationUndoResult => {
+      const entryIndex = documentOperationUndoEntries.findIndex(
+        (entry) =>
+          entry.undoHandle.type === undoHandle.type && entry.undoHandle.id === undoHandle.id,
+      );
+      if (entryIndex === -1) {
+        return { status: "rejected", undoHandle, reason: "unknownHandle" };
+      }
+      if (entryIndex !== documentOperationUndoEntries.length - 1) {
+        return { status: "rejected", undoHandle, reason: "notLatest" };
+      }
+
+      const entry = documentOperationUndoEntries.at(-1);
+      const view = opts.editorView.value;
+      if (!entry || !view) {
+        return { status: "rejected", undoHandle, reason: "unknownHandle" };
+      }
+      if (view.state !== entry.afterState || opts.getComments() !== entry.commentsAfter) {
+        return { status: "rejected", undoHandle, reason: "documentChanged" };
+      }
+      if (!opts.editor.undo()) {
+        return { status: "rejected", undoHandle, reason: "documentChanged" };
+      }
+
+      opts.setComments(entry.commentsBefore);
+      documentOperationUndoEntries.pop();
+      return { status: "undone", undoHandle };
     },
     applyAIEditOperations: ({
       snapshot,

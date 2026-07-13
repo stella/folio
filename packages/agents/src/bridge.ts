@@ -2,6 +2,8 @@ import type {
   FolioAIEditSnapshot,
   FolioDocumentOperationBatch,
   FolioDocumentOperationResult,
+  FolioDocumentOperationUndoHandle,
+  FolioDocumentOperationUndoResult,
   FolioDocumentStory,
   FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
@@ -29,6 +31,10 @@ export type FolioAgentBridge = {
    * bridge decides mode (tracked-changes by default) and author internally.
    */
   applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult;
+  /** Undo the latest unchanged batch when the execution surface supports it. */
+  undoDocumentOperations?(
+    undoHandle: FolioDocumentOperationUndoHandle,
+  ): FolioDocumentOperationUndoResult;
   /** The comment threads present in the document. */
   getComments(): FolioAgentComment[];
   /** The pending tracked changes (insertions/deletions) present in the document. */

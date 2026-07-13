@@ -35,6 +35,34 @@ const baseRef = (): FolioAgentEditorRefLike => ({
 });
 
 describe("createEditorRefBridge: document operations", () => {
+  test("exposes transactional undo only when the editor ref supports it", () => {
+    const undoHandle = { type: "documentOperationUndo", id: "live-1" } as const;
+    const currentBridge = createEditorRefBridge({
+      ref: {
+        ...baseRef(),
+        undoDocumentOperations: (receivedHandle) => ({
+          status: "undone",
+          undoHandle: receivedHandle,
+        }),
+      },
+      author: "AI",
+      getComments: () => [],
+      setComments: () => {},
+    });
+    const legacyBridge = createEditorRefBridge({
+      ref: baseRef(),
+      author: "AI",
+      getComments: () => [],
+      setComments: () => {},
+    });
+
+    expect(currentBridge.undoDocumentOperations?.(undoHandle)).toEqual({
+      status: "undone",
+      undoHandle,
+    });
+    expect(legacyBridge.undoDocumentOperations).toBeUndefined();
+  });
+
   test("delegates a versioned batch to a current editor ref", () => {
     let receivedVersion: number | undefined;
     const ref: FolioAgentEditorRefLike = {

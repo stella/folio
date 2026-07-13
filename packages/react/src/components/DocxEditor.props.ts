@@ -15,6 +15,8 @@ import type {
 import type {
   FolioDocumentOperationBatch,
   FolioDocumentOperationResult,
+  FolioDocumentOperationUndoHandle,
+  FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/server";
 import type {
   ContentControlFilter,
@@ -388,6 +390,10 @@ export type DocxEditorRef = {
   applyDocumentOperations: (
     options: DocxEditorApplyDocumentOperationsOptions,
   ) => FolioDocumentOperationResult;
+  /** Undo the latest unchanged document-operation batch. */
+  undoDocumentOperations: (
+    undoHandle: FolioDocumentOperationUndoHandle,
+  ) => FolioDocumentOperationUndoResult;
   /** Apply AI-authored operations against a previously created block snapshot. */
   applyAIEditOperations: (options: {
     snapshot: FolioAIEditSnapshot;
