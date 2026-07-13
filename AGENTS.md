@@ -296,6 +296,30 @@ the browser, built on ProseMirror. Two published packages plus a dev playground:
   changesets. Releases: merging the changeset-generated "Version Packages" PR
   bumps `package.json`, which triggers the existing `publish.yml`.
 
+### Fidelity Consolidation
+
+- Express every fidelity fix as a reusable OOXML or layout invariant. Never branch on
+  fixture identity, source metadata, document text, or other corpus-specific signals.
+- Add a minimal synthetic regression test for the invariant. Keep source documents and
+  identifying corpus details out of the repository, commits, PRs, and test names.
+- Keep parser, normalized model, measurement, pagination, and painting responsibilities
+  separate. Central pipeline files should orchestrate; extract a typed helper or module
+  when a change introduces a new state concept or compatibility policy.
+- After roughly five to ten behavior fixes in one subsystem, land a standalone
+  behavior-preserving consolidation before adding more conditions there.
+- Prefer discriminated state machines and explicit coordinate-space types over related
+  booleans, optional-field combinations, and mutable local flags. Make invalid layout
+  states structurally difficult to represent.
+- Keep normalization and layout inputs immutable and idempotent. Derive effective values
+  instead of overwriting authored model values during measurement or pagination.
+- Consolidate shared OOXML syntax handling, units, geometry, and compatibility rules;
+  do not let separate feature parsers grow subtly different implementations.
+- Shared editor behavior belongs in framework-neutral core code so React and Vue remain
+  thin bindings over the same implementation.
+- A consolidation PR must preserve behavior, include focused invariant tests, and avoid
+  unrelated formatting or fidelity changes. If a real behavior bug is discovered during
+  extraction, fix it in a separate commit or PR.
+
 ## Cursor Cloud specific instructions
 
 Toolchain and standard commands live under `## Repository Specifics` → `### Commands`
