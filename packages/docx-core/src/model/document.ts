@@ -201,10 +201,21 @@ export type DocumentSettings = {
   themeFontLang?: { eastAsia?: string; bidi?: string };
 };
 
-/**
- * Complete DOCX package structure
- */
+/** DOCX package conformance classes. */
+export const DOCX_CONFORMANCE_CLASSES = Object.freeze({
+  STRICT: "strict",
+  TRANSITIONAL: "transitional",
+  UNKNOWN: "unknown",
+} as const);
+
+/** Conformance class detected from a DOCX package. */
+export type DocxConformanceClass =
+  (typeof DOCX_CONFORMANCE_CLASSES)[keyof typeof DOCX_CONFORMANCE_CLASSES];
+
+/** Complete DOCX package structure. */
 export type DocxPackage = {
+  /** Conformance class detected from the main document namespace. */
+  conformanceClass?: DocxConformanceClass;
   /** Document body */
   document: DocumentBody;
   /** Document-wide settings (`word/settings.xml`). */

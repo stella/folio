@@ -3,6 +3,7 @@ export type {
   BreakContent,
   Document,
   DocumentBody,
+  DocxConformanceClass,
   DocxPackage,
   Paragraph,
   ParagraphContent,
@@ -15,6 +16,7 @@ export type {
   TableRow,
   TextContent,
 } from "./model/document";
+export { DOCX_CONFORMANCE_CLASSES } from "./model/document";
 export {
   compileLegalSourceToDocument,
   compileLegalSourceToDocx,

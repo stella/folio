@@ -4,15 +4,17 @@
  * Provides functions to create new documents programmatically.
  */
 
-import type {
-  Document,
-  DocxPackage,
-  DocumentBody,
-  Paragraph,
-  Run,
-  TextContent,
-  SectionProperties,
-  Style,
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+
+import {
+  type Document,
+  type DocxPackage,
+  type DocumentBody,
+  type Paragraph,
+  type Run,
+  type TextContent,
+  type SectionProperties,
+  type Style,
 } from "../types/document";
 
 // ============================================================================
@@ -321,6 +323,7 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
 
   // Create package with default styles
   const docxPackage: DocxPackage = {
+    conformanceClass: DOCX_CONFORMANCE_CLASSES.TRANSITIONAL,
     document: documentBody,
     styles: {
       docDefaults: {

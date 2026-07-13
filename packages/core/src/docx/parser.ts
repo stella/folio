@@ -38,6 +38,7 @@ import { loadFontsWithMapping } from "../utils/fontLoader";
 import { convertTiffToPngDataUrl, isTiffMimeType } from "../utils/tiffConverter";
 import { parseComments } from "./commentParser";
 import { normalizeCommentReferences } from "./commentReferenceNormalization";
+import { detectDocxConformanceClass } from "./conformance";
 import { parseDocumentBody, extractAllTemplateVariables } from "./documentParser";
 import { parseFootnotes, parseEndnotes } from "./footnoteParser";
 import { parseHeader, parseFooter } from "./headerFooterParser";
@@ -372,6 +373,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     onProgress("Assembling document...", 95);
 
     const pkg: DocxPackage = {
+      conformanceClass: detectDocxConformanceClass(raw.documentXml),
       document: documentBody,
       settings,
       ...(styleDefinitions !== undefined ? { styles: styleDefinitions } : {}),

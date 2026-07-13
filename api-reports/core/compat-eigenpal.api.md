@@ -6,6 +6,7 @@
 
 import { DecorationSet } from 'prosemirror-view';
 import { DirectiveKind } from '@stll/template-conditions';
+import { DOCX_CONFORMANCE_CLASSES } from '@stll/docx-core/model';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
@@ -297,6 +298,8 @@ export type DirectiveRange = {
 type Document_2 = import__stll_docx_core_model.Document;
 export { Document_2 as Document }
 
+export { DOCX_CONFORMANCE_CLASSES }
+
 // @public (undocumented)
 export type DocxCompatibility = {
     schemaVersion: 1;
@@ -341,6 +344,9 @@ export type DocxCompatibilityPart = {
     type: "footnote" | "endnote";
     id: number;
 };
+
+// @public (undocumented)
+export type DocxConformanceClass = import__stll_docx_core_model.DocxConformanceClass;
 
 // @public
 export type EmbeddedFont = {

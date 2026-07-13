@@ -8,7 +8,8 @@
 
 export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
 export { createDocx } from "./docx/rezip";
-export type { Document } from "./types/document";
+export { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+export type { Document, DocxConformanceClass } from "./types/document";
 export {
   inspectDocxCompatibility,
   type DocxCompatibility,

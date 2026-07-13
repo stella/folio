@@ -1,10 +1,12 @@
-import type {
-  BlockContent,
-  Document,
-  Hyperlink,
-  HeaderFooter,
-  ParagraphContent,
-  Run,
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+
+import {
+  type BlockContent,
+  type Document,
+  type Hyperlink,
+  type HeaderFooter,
+  type ParagraphContent,
+  type Run,
 } from "../types/document";
 import {
   getFolioDocxCapability,
@@ -61,10 +63,11 @@ type InspectionLocationContext = {
 type RecordIssue = (location: DocxCompatibilityLocation) => void;
 
 const resolveCompatibilityContext = (
+  doc: Document,
   options: InspectDocxCompatibilityOptions,
 ): DocxCompatibilityContext => ({
   host: options.host ?? "unknown",
-  profile: options.profile ?? "unknown",
+  profile: options.profile ?? doc.package.conformanceClass ?? DOCX_CONFORMANCE_CLASSES.UNKNOWN,
 });
 
 const getCoverageState = (
@@ -81,7 +84,7 @@ export const inspectDocxCompatibility = (
   doc: Document,
   options: InspectDocxCompatibilityOptions = {},
 ): DocxCompatibility => {
-  const context = resolveCompatibilityContext(options);
+  const context = resolveCompatibilityContext(doc, options);
   const reasons = new Set<DocxCompatibilityReason>();
   const issues: DocxCompatibilityIssue[] = [];
 

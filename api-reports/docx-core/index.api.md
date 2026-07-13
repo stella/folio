@@ -57,7 +57,18 @@ export type DocumentBody = {
 };
 
 // @public
+export const DOCX_CONFORMANCE_CLASSES: Readonly<{
+    readonly STRICT: "strict";
+    readonly TRANSITIONAL: "transitional";
+    readonly UNKNOWN: "unknown";
+}>;
+
+// @public (undocumented)
+export type DocxConformanceClass = (typeof DOCX_CONFORMANCE_CLASSES)[keyof typeof DOCX_CONFORMANCE_CLASSES];
+
+// @public (undocumented)
 export type DocxPackage = {
+    conformanceClass?: DocxConformanceClass; /** Document body */
     document: DocumentBody; /** Document-wide settings (`word/settings.xml`). */
     settings?: DocumentSettings; /** Style definitions */
     styles?: StyleDefinitions; /** Theme */

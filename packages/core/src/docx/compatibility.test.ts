@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 
 import type { Document } from "../types/document";
 import {
@@ -117,6 +118,20 @@ describe("DOCX compatibility inspection", () => {
       host: "covered",
       profile: "unverified",
     });
+  });
+
+  test("uses parsed package metadata unless the caller overrides it", () => {
+    const document = createDocument("<w:drawing/>");
+    document.package.conformanceClass = DOCX_CONFORMANCE_CLASSES.STRICT;
+
+    expect(inspectDocxCompatibility(document).context.profile).toBe(
+      DOCX_CONFORMANCE_CLASSES.STRICT,
+    );
+    expect(
+      inspectDocxCompatibility(document, {
+        profile: DOCX_CONFORMANCE_CLASSES.TRANSITIONAL,
+      }).context.profile,
+    ).toBe(DOCX_CONFORMANCE_CLASSES.TRANSITIONAL);
   });
 });
 

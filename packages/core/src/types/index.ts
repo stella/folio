@@ -151,6 +151,7 @@ export type {
   MediaFile,
 
   // Package & Document
+  DocxConformanceClass,
   DocxPackage,
   Document,
 } from "./document";
