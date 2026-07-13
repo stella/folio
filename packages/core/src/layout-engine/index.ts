@@ -938,12 +938,14 @@ function layoutTable(
     } else if (block.justification === "right") {
       x = x + paginator.columnWidth - measure.totalWidth;
     } else {
-      // w:tblInd positions the leading edge of the first cell's text, not
-      // the table border. Its inherited/default value is zero, so an absent
-      // property still aligns that text edge with the content margin and the
-      // border extends left by the leading cell margin.
       const leadingCellMargin = block.rows.at(0)?.cells.at(0)?.padding?.left ?? 0;
-      x += (block.indent ?? 0) - leadingCellMargin;
+      // With no w:tblInd, Word aligns the first cell's text edge with the
+      // content margin. An authored zero indent is distinct: it aligns the
+      // table border itself with the margin. Preserve non-zero indentation's
+      // existing text-edge behavior while retaining that zero-valued signal.
+      if (block.indent !== 0) {
+        x += (block.indent ?? 0) - leadingCellMargin;
+      }
     }
     return x;
   };

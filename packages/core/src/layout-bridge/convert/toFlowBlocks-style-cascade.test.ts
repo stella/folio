@@ -309,6 +309,7 @@ describe("toFlowBlocks style cascade", () => {
           default: true,
           name: "Normal Table",
           tblPr: {
+            indent: { value: 0, type: "dxa" },
             cellMargins: {
               left: { value: 144, type: "dxa" },
               right: { value: 288, type: "dxa" },
@@ -355,10 +356,13 @@ describe("toFlowBlocks style cascade", () => {
       left: 144,
       right: 288,
     });
+    expect(tableNode?.attrs["_resolvedIndent"]).toEqual({ value: 0, type: "dxa" });
+    expect(tableNode?.attrs["_originalFormatting"]?.indent).toBeUndefined();
 
     const tableBlock = toFlowBlocks(pmDoc, {})[0];
     expect(tableBlock?.kind).toBe("table");
     if (tableBlock?.kind === "table") {
+      expect(tableBlock.indent).toBe(0);
       expect(tableBlock.rows[0]?.cells[0]?.padding?.left).toBeCloseTo(9.6, 1);
       expect(tableBlock.rows[0]?.cells[0]?.padding?.right).toBeCloseTo(19.2, 1);
     }

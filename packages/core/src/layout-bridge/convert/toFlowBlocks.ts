@@ -2118,9 +2118,14 @@ function convertTable(node: PMNode, startPos: number, options: ToFlowBlocksOptio
         layout?: "fixed" | "autofit";
       }
     | undefined;
+  const resolvedIndent = attrs._resolvedIndent as
+    | { value: number; type: string }
+    | null
+    | undefined;
+  const effectiveIndent = resolvedIndent ?? originalFormatting?.indent;
   const indentPx =
-    originalFormatting?.indent?.value && originalFormatting.indent.type === "dxa"
-      ? twipsToPixels(originalFormatting.indent.value)
+    effectiveIndent?.value !== undefined && effectiveIndent?.type === "dxa"
+      ? twipsToPixels(effectiveIndent.value)
       : undefined;
 
   const floating = attrs.floating as

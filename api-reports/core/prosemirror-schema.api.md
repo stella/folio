@@ -341,7 +341,8 @@ export type TableAttrs = {
         right?: number;
     }; /** Table look flags for conditional formatting (w:tblLook) */
     look?: import__stll_docx_core_model.TableLook; /** Table-level borders (w:tblBorders) — full BorderSpec per side */
-    borders?: import__stll_docx_core_model.TableBorders; /** Original table formatting from DOCX for lossless round-trip serialization */
+    borders?: import__stll_docx_core_model.TableBorders; /** Effective table indent after style resolution. PM-only; never serialized. */
+    _resolvedIndent?: NonNullable<import__stll_docx_core_model.TableFormatting["indent"]>; /** Original table formatting from DOCX for lossless round-trip serialization */
     _originalFormatting?: import__stll_docx_core_model.TableFormatting; /** Tracked table property changes (w:tblPrChange) for round-trip + accept/reject */
     tblPrChange?: import__stll_docx_core_model.TablePropertyChange[];
 };

@@ -1220,6 +1220,8 @@ function convertTable(
   const conditionalTableStyleId = tableStyle?.styleId ?? fallbackTableStyle?.styleId;
   const resolvedTableBorders =
     table.formatting?.borders ?? tableStyle?.tblPr?.borders ?? fallbackTableStyle?.tblPr?.borders;
+  const resolvedTableIndent =
+    table.formatting?.indent ?? tableStyle?.tblPr?.indent ?? fallbackTableStyle?.tblPr?.indent;
 
   // Resolve default cell margins through the same table-style cascade.
   const tableCellMargins =
@@ -1271,6 +1273,9 @@ function convertTable(
   }
   if (table.formatting?.borders) {
     attrs.borders = table.formatting.borders;
+  }
+  if (resolvedTableIndent) {
+    attrs._resolvedIndent = resolvedTableIndent;
   }
   if (table.formatting) {
     attrs._originalFormatting = table.formatting;

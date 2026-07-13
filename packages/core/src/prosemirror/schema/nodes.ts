@@ -555,6 +555,8 @@ export type TableAttrs = {
   look?: TableLook;
   /** Table-level borders (w:tblBorders) — full BorderSpec per side */
   borders?: TableBorders;
+  /** Effective table indent after style resolution. PM-only; never serialized. */
+  _resolvedIndent?: NonNullable<TableFormatting["indent"]>;
   /** Original table formatting from DOCX for lossless round-trip serialization */
   _originalFormatting?: TableFormatting;
   /** Tracked table property changes (w:tblPrChange) for round-trip + accept/reject */
