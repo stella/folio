@@ -6,102 +6,212 @@ import type {
   ParagraphContent,
   Run,
 } from "../types/document";
+import {
+  getFolioDocxCapability,
+  type FolioDocxCompatibilityHost,
+  type FolioDocxCompatibilityProfile,
+  type FolioDocxFeatureCapability,
+} from "./capabilities";
 
 export type DocxCompatibilityReason = "opaqueDrawing";
 
+export type DocxCompatibilityContext = {
+  host: FolioDocxCompatibilityHost;
+  profile: FolioDocxCompatibilityProfile;
+};
+
+export type InspectDocxCompatibilityOptions = Partial<DocxCompatibilityContext>;
+
+export type DocxCompatibilityPart =
+  | { type: "document" }
+  | { type: "header" | "footer"; relationshipId: string }
+  | { type: "footnote" | "endnote"; id: number };
+
+export type DocxCompatibilityLocation = {
+  part: DocxCompatibilityPart;
+  path: string;
+  blockId?: string;
+};
+
+export type DocxCompatibilityIssue = {
+  code: DocxCompatibilityReason;
+  capability: FolioDocxFeatureCapability;
+  coverage: {
+    host: "covered" | "unknown" | "unverified";
+    profile: "covered" | "unknown" | "unverified";
+  };
+  location: DocxCompatibilityLocation;
+};
+
 export type DocxCompatibility = {
+  schemaVersion: 1;
+  context: DocxCompatibilityContext;
   canSafelyEdit: boolean;
+  issues: DocxCompatibilityIssue[];
   reasons: DocxCompatibilityReason[];
   unsupportedContentCount: number;
 };
 
-const COMPATIBLE_DOCX: DocxCompatibility = {
-  canSafelyEdit: true,
-  reasons: [],
-  unsupportedContentCount: 0,
+type InspectionLocationContext = {
+  blockId?: string;
+  part: DocxCompatibilityPart;
+  path: string;
 };
 
-export function inspectDocxCompatibility(doc: Document): DocxCompatibility {
-  const reasons = new Set<DocxCompatibilityReason>();
-  let unsupportedContentCount = 0;
+type RecordIssue = (location: DocxCompatibilityLocation) => void;
 
-  const record = (reason: DocxCompatibilityReason) => {
-    reasons.add(reason);
-    unsupportedContentCount += 1;
+const resolveCompatibilityContext = (
+  options: InspectDocxCompatibilityOptions,
+): DocxCompatibilityContext => ({
+  host: options.host ?? "unknown",
+  profile: options.profile ?? "unknown",
+});
+
+const getCoverageState = (
+  value: string,
+  coveredValues: readonly string[],
+): "covered" | "unknown" | "unverified" => {
+  if (value === "unknown") {
+    return "unknown";
+  }
+  return coveredValues.includes(value) ? "covered" : "unverified";
+};
+
+export const inspectDocxCompatibility = (
+  doc: Document,
+  options: InspectDocxCompatibilityOptions = {},
+): DocxCompatibility => {
+  const context = resolveCompatibilityContext(options);
+  const reasons = new Set<DocxCompatibilityReason>();
+  const issues: DocxCompatibilityIssue[] = [];
+
+  const record: RecordIssue = (location) => {
+    const code = "opaqueDrawing";
+    const capability = getFolioDocxCapability(code);
+    reasons.add(code);
+    issues.push({
+      code,
+      capability,
+      coverage: {
+        host: getCoverageState(context.host, capability.hosts),
+        profile: getCoverageState(context.profile, capability.profiles),
+      },
+      location,
+    });
   };
 
-  inspectBlocks(doc.package.document.content, record);
-  for (const header of doc.package.headers?.values() ?? []) {
-    inspectHeaderFooter(header, record);
+  inspectBlocks(doc.package.document.content, {
+    part: { type: "document" },
+    path: "package.document.content",
+    record,
+  });
+  for (const [relationshipId, header] of doc.package.headers?.entries() ?? []) {
+    inspectHeaderFooter(header, {
+      part: { type: "header", relationshipId },
+      path: `package.headers.get(${JSON.stringify(relationshipId)}).content`,
+      record,
+    });
   }
-  for (const footer of doc.package.footers?.values() ?? []) {
-    inspectHeaderFooter(footer, record);
+  for (const [relationshipId, footer] of doc.package.footers?.entries() ?? []) {
+    inspectHeaderFooter(footer, {
+      part: { type: "footer", relationshipId },
+      path: `package.footers.get(${JSON.stringify(relationshipId)}).content`,
+      record,
+    });
   }
   for (const footnote of doc.package.footnotes ?? []) {
-    inspectBlocks(footnote.content, record);
+    inspectBlocks(footnote.content, {
+      part: { type: "footnote", id: footnote.id },
+      path: `package.footnotes[id=${footnote.id}].content`,
+      record,
+    });
   }
   for (const endnote of doc.package.endnotes ?? []) {
-    inspectBlocks(endnote.content, record);
-  }
-
-  if (unsupportedContentCount === 0) {
-    return COMPATIBLE_DOCX;
+    inspectBlocks(endnote.content, {
+      part: { type: "endnote", id: endnote.id },
+      path: `package.endnotes[id=${endnote.id}].content`,
+      record,
+    });
   }
 
   return {
-    canSafelyEdit: false,
+    schemaVersion: 1,
+    context,
+    canSafelyEdit: issues.length === 0,
+    issues,
     reasons: Array.from(reasons),
-    unsupportedContentCount,
+    unsupportedContentCount: issues.length,
   };
-}
+};
 
 function inspectBlocks(
   blocks: BlockContent[],
-  record: (reason: DocxCompatibilityReason) => void,
+  context: InspectionLocationContext & { record: RecordIssue },
 ): void {
-  for (const block of blocks) {
+  for (const [blockIndex, block] of blocks.entries()) {
+    const blockPath = `${context.path}[${blockIndex}]`;
     if (block.type === "paragraph") {
-      inspectParagraphContent(block.content, record);
+      inspectParagraphContent(block.content, {
+        ...(block.paraId === undefined ? {} : { blockId: block.paraId }),
+        part: context.part,
+        path: `${blockPath}.content`,
+        record: context.record,
+      });
       continue;
     }
 
     if (block.type === "table") {
-      for (const row of block.rows) {
-        for (const cell of row.cells) {
-          inspectBlocks(cell.content, record);
+      for (const [rowIndex, row] of block.rows.entries()) {
+        for (const [cellIndex, cell] of row.cells.entries()) {
+          inspectBlocks(cell.content, {
+            part: context.part,
+            path: `${blockPath}.rows[${rowIndex}].cells[${cellIndex}].content`,
+            record: context.record,
+          });
         }
       }
       continue;
     }
 
-    inspectBlocks(block.content, record);
+    inspectBlocks(block.content, {
+      part: context.part,
+      path: `${blockPath}.content`,
+      record: context.record,
+    });
   }
 }
 
 function inspectHeaderFooter(
   headerFooter: HeaderFooter,
-  record: (reason: DocxCompatibilityReason) => void,
+  context: InspectionLocationContext & { record: RecordIssue },
 ): void {
-  inspectBlocks(headerFooter.content, record);
+  inspectBlocks(headerFooter.content, context);
 }
 
 function inspectParagraphContent(
   content: ParagraphContent[],
-  record: (reason: DocxCompatibilityReason) => void,
+  context: InspectionLocationContext & { record: RecordIssue },
 ): void {
-  for (const item of content) {
+  for (const [itemIndex, item] of content.entries()) {
+    const itemContext = {
+      ...context,
+      path: `${context.path}[${itemIndex}]`,
+    };
     if (item.type === "run") {
-      inspectRun(item, record);
+      inspectRun(item, itemContext);
       continue;
     }
 
     if (item.type === "hyperlink") {
-      inspectHyperlink(item, record);
+      inspectHyperlink(item, itemContext);
       continue;
     }
 
     if (item.type === "inlineSdt") {
-      inspectParagraphContent(item.content, record);
+      inspectParagraphContent(item.content, {
+        ...itemContext,
+        path: `${itemContext.path}.content`,
+      });
       continue;
     }
 
@@ -111,21 +221,33 @@ function inspectParagraphContent(
       item.type === "moveFrom" ||
       item.type === "moveTo"
     ) {
-      inspectParagraphContent(item.content, record);
+      inspectParagraphContent(item.content, {
+        ...itemContext,
+        path: `${itemContext.path}.content`,
+      });
       continue;
     }
 
     if (item.type === "simpleField") {
-      inspectParagraphContent(item.content, record);
+      inspectParagraphContent(item.content, {
+        ...itemContext,
+        path: `${itemContext.path}.content`,
+      });
       continue;
     }
 
     if (item.type === "complexField") {
-      for (const run of item.fieldCode) {
-        inspectRun(run, record);
+      for (const [runIndex, run] of item.fieldCode.entries()) {
+        inspectRun(run, {
+          ...itemContext,
+          path: `${itemContext.path}.fieldCode[${runIndex}]`,
+        });
       }
-      for (const run of item.fieldResult) {
-        inspectRun(run, record);
+      for (const [runIndex, run] of item.fieldResult.entries()) {
+        inspectRun(run, {
+          ...itemContext,
+          path: `${itemContext.path}.fieldResult[${runIndex}]`,
+        });
       }
     }
   }
@@ -133,19 +255,26 @@ function inspectParagraphContent(
 
 function inspectHyperlink(
   hyperlink: Hyperlink,
-  record: (reason: DocxCompatibilityReason) => void,
+  context: InspectionLocationContext & { record: RecordIssue },
 ): void {
-  for (const child of hyperlink.children) {
+  for (const [childIndex, child] of hyperlink.children.entries()) {
     if (child.type === "run") {
-      inspectRun(child, record);
+      inspectRun(child, {
+        ...context,
+        path: `${context.path}.children[${childIndex}]`,
+      });
     }
   }
 }
 
-function inspectRun(run: Run, record: (reason: DocxCompatibilityReason) => void): void {
-  for (const content of run.content) {
+function inspectRun(run: Run, context: InspectionLocationContext & { record: RecordIssue }): void {
+  for (const [contentIndex, content] of run.content.entries()) {
     if (content.type === "drawing" && content.rawXml) {
-      record("opaqueDrawing");
+      context.record({
+        ...(context.blockId === undefined ? {} : { blockId: context.blockId }),
+        part: context.part,
+        path: `${context.path}.content[${contentIndex}]`,
+      });
     }
   }
 }

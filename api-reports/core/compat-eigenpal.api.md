@@ -299,9 +299,47 @@ export { Document_2 as Document }
 
 // @public (undocumented)
 export type DocxCompatibility = {
+    schemaVersion: 1;
+    context: DocxCompatibilityContext;
     canSafelyEdit: boolean;
+    issues: DocxCompatibilityIssue[];
     reasons: DocxCompatibilityReason[];
     unsupportedContentCount: number;
+};
+
+// @public (undocumented)
+export type DocxCompatibilityContext = {
+    host: FolioDocxCompatibilityHost;
+    profile: FolioDocxCompatibilityProfile;
+};
+
+// @public (undocumented)
+export type DocxCompatibilityIssue = {
+    code: DocxCompatibilityReason;
+    capability: FolioDocxFeatureCapability;
+    coverage: {
+        host: "covered" | "unknown" | "unverified";
+        profile: "covered" | "unknown" | "unverified";
+    };
+    location: DocxCompatibilityLocation;
+};
+
+// @public (undocumented)
+export type DocxCompatibilityLocation = {
+    part: DocxCompatibilityPart;
+    path: string;
+    blockId?: string;
+};
+
+// @public (undocumented)
+export type DocxCompatibilityPart = {
+    type: "document";
+} | {
+    type: "header" | "footer";
+    relationshipId: string;
+} | {
+    type: "footnote" | "endnote";
+    id: number;
 };
 
 // @public
@@ -357,6 +395,54 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
 
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_CAPABILITY_HOSTS: readonly ["browser", "server"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_CAPABILITY_IDS: readonly ["opaqueDrawing"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_CAPABILITY_MANIFEST: Readonly<{
+    version: 1;
+    capabilities: Readonly<{
+        opaqueDrawing: Readonly<{
+            readonly id: "opaqueDrawing";
+            readonly feature: "drawings";
+            readonly hosts: readonly ["browser", "server"];
+            readonly profiles: readonly "transitional"[];
+            readonly support: Readonly<{
+                create: "unsupported";
+                edit: "unsupported";
+                preserve: "supported";
+                read: "supported";
+                render: "partial";
+            }>;
+            readonly evidence: readonly {
+                type: "test";
+                path: string;
+            }[];
+        }>;
+    }>;
+}>;
+
+// @public (undocumented)
+export const FOLIO_DOCX_CAPABILITY_MANIFEST_VERSION: 1;
+
+// @public (undocumented)
+export const FOLIO_DOCX_CAPABILITY_OPERATIONS: readonly ["create", "edit", "preserve", "read", "render"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_COMPATIBILITY_HOSTS: readonly ["browser", "server", "unknown"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_COMPATIBILITY_PROFILES: readonly ["strict", "transitional", "unknown"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_PROFILES: readonly ["strict", "transitional"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_SUPPORT_STATES: readonly ["supported", "partial", "unsupported"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -634,6 +720,40 @@ export type FolioDocumentOperationUndoResult = {
     reason: FolioDocumentOperationUndoFailureReason;
 };
 
+// @public (undocumented)
+export type FolioDocxCapabilityHost = (typeof FOLIO_DOCX_CAPABILITY_HOSTS)[number];
+
+// @public (undocumented)
+export type FolioDocxCapabilityId = (typeof FOLIO_DOCX_CAPABILITY_IDS)[number];
+
+// @public (undocumented)
+export type FolioDocxCapabilityOperation = (typeof FOLIO_DOCX_CAPABILITY_OPERATIONS)[number];
+
+// @public (undocumented)
+export type FolioDocxCompatibilityHost = (typeof FOLIO_DOCX_COMPATIBILITY_HOSTS)[number];
+
+// @public (undocumented)
+export type FolioDocxCompatibilityProfile = (typeof FOLIO_DOCX_COMPATIBILITY_PROFILES)[number];
+
+// @public (undocumented)
+export type FolioDocxFeatureCapability = {
+    readonly id: FolioDocxCapabilityId;
+    readonly feature: "drawings";
+    readonly hosts: readonly FolioDocxCapabilityHost[];
+    readonly profiles: readonly FolioDocxProfile[];
+    readonly support: Readonly<Record<FolioDocxCapabilityOperation, FolioDocxSupportState>>;
+    readonly evidence: readonly {
+        readonly type: "test";
+        readonly path: string;
+    }[];
+};
+
+// @public (undocumented)
+export type FolioDocxProfile = (typeof FOLIO_DOCX_PROFILES)[number];
+
+// @public (undocumented)
+export type FolioDocxSupportState = (typeof FOLIO_DOCX_SUPPORT_STATES)[number];
+
 // @public
 export function fromMarkdown(markdown: string): import__stll_docx_core_model.Document;
 
@@ -657,6 +777,9 @@ export const getFolioDocumentOperationIssues: (operations: readonly FolioDocumen
 
 // @public
 export const getFolioDocumentOperationReceipts: (operations: readonly FolioDocumentOperation[], applied: readonly FolioAIEditAppliedOperation[]) => FolioDocumentOperationReceipt[];
+
+// @public (undocumented)
+export const getFolioDocxCapability: (id: unknown) => FolioDocxFeatureCapability;
 
 // @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
@@ -694,13 +817,25 @@ export type ImageRef = {
 } & ImageMeta;
 
 // @public (undocumented)
+export const inspectDocxCompatibility: (doc: import__stll_docx_core_model.Document, options?: InspectDocxCompatibilityOptions) => DocxCompatibility;
+
+// @public (undocumented)
+export type InspectDocxCompatibilityOptions = Partial<DocxCompatibilityContext>;
+
+// @public (undocumented)
 export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
+
+// @public (undocumented)
+export class InvalidFolioDocxCapabilityIdError extends InvalidFolioDocxCapabilityIdError_base {}
 
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
 
 // @public (undocumented)
 export const isFolioDocumentOperationModeSupported: (operationType: FolioDocumentOperationType, mode: FolioDocumentOperationMode) => boolean;
+
+// @public (undocumented)
+export const isFolioDocxCapabilityId: (value: unknown) => value is FolioDocxCapabilityId;
 
 // @public (undocumented)
 export const isSequentialFolioBlockId: (id: string) => boolean;

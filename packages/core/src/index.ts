@@ -9,7 +9,37 @@
 export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
 export { createDocx } from "./docx/rezip";
 export type { Document } from "./types/document";
-export type { DocxCompatibility } from "./docx/compatibility";
+export {
+  inspectDocxCompatibility,
+  type DocxCompatibility,
+  type DocxCompatibilityContext,
+  type DocxCompatibilityIssue,
+  type DocxCompatibilityLocation,
+  type DocxCompatibilityPart,
+  type InspectDocxCompatibilityOptions,
+} from "./docx/compatibility";
+export {
+  FOLIO_DOCX_CAPABILITY_HOSTS,
+  FOLIO_DOCX_CAPABILITY_IDS,
+  FOLIO_DOCX_CAPABILITY_MANIFEST,
+  FOLIO_DOCX_CAPABILITY_MANIFEST_VERSION,
+  FOLIO_DOCX_CAPABILITY_OPERATIONS,
+  FOLIO_DOCX_COMPATIBILITY_HOSTS,
+  FOLIO_DOCX_COMPATIBILITY_PROFILES,
+  FOLIO_DOCX_PROFILES,
+  FOLIO_DOCX_SUPPORT_STATES,
+  getFolioDocxCapability,
+  InvalidFolioDocxCapabilityIdError,
+  isFolioDocxCapabilityId,
+  type FolioDocxCapabilityHost,
+  type FolioDocxCapabilityId,
+  type FolioDocxCapabilityOperation,
+  type FolioDocxCompatibilityHost,
+  type FolioDocxCompatibilityProfile,
+  type FolioDocxFeatureCapability,
+  type FolioDocxProfile,
+  type FolioDocxSupportState,
+} from "./docx/capabilities";
 export {
   deriveBlockId,
   getFolioParaIdFromBlockId,
