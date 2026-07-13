@@ -27,11 +27,9 @@ describe("toFlowBlocks paragraph formatting", () => {
   test("keeps the default indent for a list without authored positioning", () => {
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [
-        schema.node(
-          "paragraph",
-          { numPr: { numId: 1, ilvl: 1 }, listMarker: "%1.%2." },
-          [schema.text("Nested item")],
-        ),
+        schema.node("paragraph", { numPr: { numId: 1, ilvl: 1 }, listMarker: "%1.%2." }, [
+          schema.text("Nested item"),
+        ]),
       ]),
     ).at(0);
 
