@@ -1194,9 +1194,12 @@ function layoutFloatingTable(
     y = fitState.cursorY;
   }
 
-  // Clamp within content area to avoid negative positions
-  const minX = margins.left;
-  const maxX = margins.left + contentWidth - tableWidth;
+  // Clamp within the selected horizontal anchor frame. A page-anchored table
+  // may legitimately sit outside the body margins; clamping it to the content
+  // frame shifts the table and every drawing anchored inside its cells.
+  const pageAnchored = floating?.horzAnchor === "page";
+  const minX = pageAnchored ? 0 : margins.left;
+  const maxX = pageAnchored ? page.size.w - tableWidth : margins.left + contentWidth - tableWidth;
   if (Number.isFinite(maxX)) {
     x = Math.max(minX, Math.min(x, maxX));
   }
