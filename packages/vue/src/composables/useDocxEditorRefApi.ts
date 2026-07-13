@@ -488,6 +488,10 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
       return true;
     },
+    // PORT-BLOCKED: Vue does not yet expose stable document-target navigation.
+    // Keep the imperative ref surface aligned with React while returning a
+    // deterministic failure until the backing Vue navigation bridge lands.
+    showInDocument: () => false,
     getTrackedChanges: () => {
       const view = opts.editorView.value;
       return view ? getTrackedChangesFromDoc(view.state.doc) : [];
@@ -507,6 +511,9 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       }
       return getPageTextFromLayout(opts.layout.value, view.state.doc, page);
     },
+    // PORT-BLOCKED: target-to-page resolution depends on the same stable
+    // document-target bridge as showInDocument. Return null until it lands.
+    getTargetPage: () => null,
     getContentControls: (filter = {}) => {
       const view = opts.editorView.value;
       if (!view) {
