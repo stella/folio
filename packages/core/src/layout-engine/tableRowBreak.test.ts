@@ -795,6 +795,16 @@ describe("left-aligned table placement", () => {
 
     expect(fragment?.x).toBe(OPTIONS.margins.left + 10 - 7);
   });
+
+  test("aligns an authored zero-indent table border with the content edge", () => {
+    const { block, measure } = tallTable(1);
+    block.indent = 0;
+    block.rows[0]!.cells[0]!.padding.left = 7;
+
+    const fragment = tableFragments(block, measure)[0];
+
+    expect(fragment?.x).toBe(OPTIONS.margins.left);
+  });
 });
 
 describe("floating table placement", () => {

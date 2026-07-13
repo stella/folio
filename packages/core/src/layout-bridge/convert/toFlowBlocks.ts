@@ -2119,7 +2119,7 @@ function convertTable(node: PMNode, startPos: number, options: ToFlowBlocksOptio
       }
     | undefined;
   const indentPx =
-    originalFormatting?.indent?.value && originalFormatting.indent.type === "dxa"
+    originalFormatting?.indent?.value !== undefined && originalFormatting.indent.type === "dxa"
       ? twipsToPixels(originalFormatting.indent.value)
       : undefined;
 

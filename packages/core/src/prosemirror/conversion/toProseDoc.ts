@@ -1220,6 +1220,8 @@ function convertTable(
   const conditionalTableStyleId = tableStyle?.styleId ?? fallbackTableStyle?.styleId;
   const resolvedTableBorders =
     table.formatting?.borders ?? tableStyle?.tblPr?.borders ?? fallbackTableStyle?.tblPr?.borders;
+  const resolvedTableIndent =
+    table.formatting?.indent ?? tableStyle?.tblPr?.indent ?? fallbackTableStyle?.tblPr?.indent;
 
   // Resolve default cell margins through the same table-style cascade.
   const tableCellMargins =
@@ -1272,8 +1274,11 @@ function convertTable(
   if (table.formatting?.borders) {
     attrs.borders = table.formatting.borders;
   }
-  if (table.formatting) {
-    attrs._originalFormatting = table.formatting;
+  if (table.formatting || resolvedTableIndent) {
+    attrs._originalFormatting = {
+      ...table.formatting,
+      ...(resolvedTableIndent ? { indent: resolvedTableIndent } : {}),
+    };
   }
   // Carry `w:tblPrChange` opaquely through PM (same rationale as the
   // paragraph `_propertyChanges` attr) so edits don't strip the tracked
