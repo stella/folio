@@ -18,7 +18,7 @@
 // dist shape: `module.mjs` + `types.d.mts`) and is validated by its own
 // `nuxt-module-build` step, not here.
 //
-//   docx-core — 4 checks: runtime, types, externals, and packaged assets.
+//   docx-core — runtime, types, externals, packaged assets, and attribution.
 //
 //   core  — 4 checks:
 //     1. Runtime  — ESM `import` of `.`, `/markdown`, `/server`, and a `./*`
@@ -686,6 +686,19 @@ record(
     ? `${urlTargets.total} URL target(s) resolve inside dist`
     : `missing target(s): ${urlTargets.dangling.join("; ")}`,
 );
+
+if (target === "docx-core") {
+  const missingAttribution = ["LICENSE", "NOTICE.md"].filter(
+    (file) => !existsSync(path.join(installedDir, file)),
+  );
+  record(
+    "attribution: license and notice ship in the tarball",
+    missingAttribution.length === 0,
+    missingAttribution.length === 0
+      ? "LICENSE and NOTICE.md present"
+      : `missing: ${missingAttribution.join(", ")}`,
+  );
+}
 
 // --- Check 5 (react only): messages subpath declaration is self-contained ---
 if (target === "react") {

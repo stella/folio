@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   changeset:
-    name: Changeset present for core/react src changes
+    name: Changeset present for published package src changes
     # PR-only: needs a base branch to diff against. The bot's Version Packages
     # PR touches no src, so this passes there without a special case.
     if: github.event_name == 'pull_request'
@@ -28,13 +28,13 @@ jobs:
         with:
           bun-version-file: "package.json"
 
-      - name: Require a changeset (or an empty one) for core/react src edits
+      - name: Require a changeset (or an empty one) for published package src edits
         run: bun scripts/check-changeset.ts
         env:
           CHANGESET_BASE_REF: origin/${{ github.base_ref }}
 
   ci:
-    name: Lint, typecheck, test, build (core + react)
+    name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

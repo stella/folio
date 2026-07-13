@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
-// CI gate: a PR that edits the published source of @stll/folio-core,
-// @stll/folio-react, @stll/folio-agents, @stll/folio-vue, or @stll/folio-nuxt
+// CI gate: a PR that edits the published source of @stll/docx-core,
+// @stll/folio-core, @stll/folio-react, @stll/folio-agents, @stll/folio-vue,
+// or @stll/folio-nuxt
 // must ship a changeset (`.changeset/*.md`) so the change gets a version bump
 // + changelog entry, OR an explicit empty changeset (`bunx changeset --empty`)
 // to record on purpose that no release is needed.
 //
-// Scoped to `packages/{core,react,agents,vue,nuxt}/src` deliberately: it
+// Scoped to `packages/{docx-core,core,react,agents,vue,nuxt}/src` deliberately: it
 // ignores tests, docs, and config, and it passes the bot's "Version Packages"
 // PR — that PR consumes changesets and bumps package.json, but never touches
 // src, so it needs none.

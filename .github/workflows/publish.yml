@@ -23,7 +23,7 @@ name: Publish
 #
 # @stll/folio-vue and @stll/folio-nuxt ship dist-shaped `exports` in-repo, so the
 # pack job skips the prepare-publish source->dist transform for them (it only
-# understands core/react/agents's `./src/*.ts` string exports); bun pm pack
+# understands source-shaped `./src/*.ts` string exports); bun pm pack
 # still rewrites their `workspace:` deps to concrete versions.
 #
 # Prerequisite (one-time, by a maintainer on npmjs.com): configure an npm
@@ -108,7 +108,7 @@ jobs:
             *) package_name="@stll/folio-${PKG}" ;;
           esac
           bun --filter "${package_name}" build
-          # core/react/agents carry source-shaped exports (./src/*.ts) that
+          # docx-core/core/react/agents carry source-shaped exports (./src/*.ts) that
           # prepare-publish rewrites to dist; vue/nuxt already ship dist-shaped
           # exports, so skip the transform (it panics on their { types, import }
           # objects). bun pm pack still rewrites their workspace: deps below.
@@ -129,7 +129,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish @stll/folio-${{ matrix.pkg }}
+    name: Publish ${{ matrix.pkg }}
     needs: pack
     # Auto-publish only from main: a version-bump push to main, or a manual
     # dispatch from main with the publish checkbox ticked. A dispatch from any
@@ -138,8 +138,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       # Ordered so every package's published deps already exist on the registry
-      # for downstream installs: core before react/agents/vue (all three dep on
-      # core), and vue before nuxt (nuxt deps on vue).
+      # for downstream installs: docx-core before core, core before
+      # react/agents/vue, and vue before nuxt.
       max-parallel: 1
       matrix:
         pkg: [docx-core, core, react, agents, vue, nuxt]

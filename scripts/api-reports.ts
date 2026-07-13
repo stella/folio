@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Public-API surface snapshots for the published packages.
 //
-// For every published package (`@stll/folio-core`, `@stll/folio-react`) this
+// For every package listed below, this
 // walks the `exports` map, runs API Extractor over each subpath's built
 // declaration file, and writes one normalized `<entry>.api.md` snapshot under
 // `api-reports/<pkg>/`. The snapshots are committed so any change to the
@@ -114,7 +114,7 @@ const entriesFor = (pkg: PackageTarget): { entries: Entry[]; missing: string[] }
       continue;
     }
 
-    // Otherwise the in-repo export is a plain `./src/*.ts` string (core/react),
+    // Otherwise the in-repo export is a plain `./src/*.ts` string,
     // which `prepare-publish.ts` rewrites to dist at publish time, or a bundled
     // asset. Anything else (a conditional-export object with no `types`) is a
     // shape neither gate understands: fail loudly instead of silently dropping
