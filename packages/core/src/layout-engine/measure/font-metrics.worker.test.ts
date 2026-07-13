@@ -64,7 +64,7 @@ function entry(overrides: Partial<MeasureRequestEntry>): MeasureRequestEntry {
     fontFingerprintWidth: overrides.fontFingerprintWidth ?? WORKER_FONT_FINGERPRINT_TEXT.length * 6,
     letterSpacing: overrides.letterSpacing ?? 0,
     horizontalScale,
-    ...(overrides.fontKerning !== undefined ? { fontKerning: overrides.fontKerning } : {}),
+    fontKerning: overrides.fontKerning ?? "none",
   };
 }
 

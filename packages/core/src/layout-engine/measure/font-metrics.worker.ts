@@ -25,6 +25,7 @@ import {
   type MeasureWorkerRequest,
   type MeasureWorkerResponse,
 } from "./measureWorkerProtocol";
+import type { FontKerningMode } from "./textMeasurementPolicy";
 
 class WorkerInitError extends TaggedError("WorkerInitError")<{
   message: string;
@@ -32,7 +33,7 @@ class WorkerInitError extends TaggedError("WorkerInitError")<{
 
 type WorkerCanvasContext = {
   font: string;
-  fontKerning?: "normal" | "none";
+  fontKerning: FontKerningMode;
   measureText: (text: string) => { width: number };
 };
 
@@ -74,7 +75,7 @@ function isFontFingerprintMatch(context: WorkerCanvasContext, expectedWidth: num
 function measureEntry(entry: MeasureRequestEntry): MeasureResponseEntry | null {
   const context = getCtx();
   context.font = entry.font;
-  context.fontKerning = entry.fontKerning ?? "none";
+  context.fontKerning = entry.fontKerning;
   if (!isFontFingerprintMatch(context, entry.fontFingerprintWidth)) {
     return null;
   }

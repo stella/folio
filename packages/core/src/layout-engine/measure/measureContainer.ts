@@ -38,6 +38,8 @@ import type { MeasureProvider } from "./measureProvider";
 import type { FontMetrics, FontStyle, RunMeasurement, TextMeasurement } from "./measureTypes";
 import { canPrefetchMeasurement, prefetchMeasurement } from "./measureWorker";
 import { countCodePoints, WORKER_FONT_FINGERPRINT_TEXT } from "./measureWorkerProtocol";
+import { getFontKerningMode } from "./textMeasurementPolicy";
+import type { FontKerningMode } from "./textMeasurementPolicy";
 
 // Default typography ratios
 const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing (line=240)
@@ -81,7 +83,7 @@ function getWorkerFontFingerprintWidth(
   ctx: CanvasRenderingContext2D,
   font: string,
   fontCacheKey: string,
-  fontKerning: "normal" | "none",
+  fontKerning: FontKerningMode,
 ): number {
   const generation = getTextWidthCacheGeneration();
   const cached = workerFontFingerprintCache.get(fontCacheKey);
@@ -132,7 +134,7 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
   try {
     const ctx = getCanvasContext();
     ctx.font = buildFontString(style);
-    ctx.fontKerning = style.kerning ? "normal" : "none";
+    ctx.fontKerning = getFontKerningMode(style);
 
     // Measure a standard character to get metrics
     const metrics = ctx.measureText("Hg");
@@ -199,7 +201,7 @@ function canvasMeasureTextWidth(text: string, style: FontStyle): number {
   const font = buildFontString(style);
   const letterSpacing = style.letterSpacing ?? 0;
   const horizontalScale = getHorizontalScaleFactor(style);
-  const fontKerning: "normal" | "none" = style.kerning ? "normal" : "none";
+  const fontKerning = getFontKerningMode(style);
   const fontCacheKey = style.kerning
     ? `${font}|kerning:normal|scale:${horizontalScale}`
     : `${font}|scale:${horizontalScale}`;
@@ -244,15 +246,15 @@ function canvasMeasureTextWidth(text: string, style: FontStyle): number {
   //
   // No-op when the worker flag is OFF or the host lacks
   // `OffscreenCanvas`/`Worker`. See `measureWorker.ts`.
-  prefetchMeasurement(
-    measuredText,
+  prefetchMeasurement({
+    text: measuredText,
     font,
     letterSpacing,
     horizontalScale,
     fontCacheKey,
     fontFingerprintWidth,
     fontKerning,
-  );
+  });
   prefetchBinarySearchProbes(
     measuredText,
     font,
@@ -340,7 +342,7 @@ function prefetchBinarySearchProbes(
   fontFingerprintWidth: number,
   letterSpacing: number,
   horizontalScale: number,
-  fontKerning: "normal" | "none",
+  fontKerning: FontKerningMode,
 ): void {
   if (text.length < 4) {
     return;
@@ -352,15 +354,15 @@ function prefetchBinarySearchProbes(
     if (len < 2) {
       break;
     }
-    prefetchMeasurement(
-      text.slice(0, len),
+    prefetchMeasurement({
+      text: text.slice(0, len),
       font,
       letterSpacing,
       horizontalScale,
       fontCacheKey,
       fontFingerprintWidth,
       fontKerning,
-    );
+    });
   }
 }
 

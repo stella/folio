@@ -36,6 +36,7 @@ import type {
   MeasureWorkerRequest,
   MeasureWorkerResponse,
 } from "./measureWorkerProtocol";
+import type { FontKerningMode } from "./textMeasurementPolicy";
 
 // =============================================================================
 // TRANSPORT
@@ -240,19 +241,12 @@ function flush(current: ProxyState): void {
     if (entries.length >= MAX_BATCH_SIZE) {
       break;
     }
-    current.pending.delete(makeKey(entry.text, entry.fontCacheKey, entry.letterSpacing));
-    if (entry.cacheGeneration !== cacheGeneration) {
+    const { cacheGeneration: entryGeneration, ...request } = entry;
+    current.pending.delete(makeKey(request.text, request.fontCacheKey, request.letterSpacing));
+    if (entryGeneration !== cacheGeneration) {
       continue;
     }
-    entries.push({
-      text: entry.text,
-      font: entry.font,
-      fontCacheKey: entry.fontCacheKey,
-      fontFingerprintWidth: entry.fontFingerprintWidth,
-      letterSpacing: entry.letterSpacing,
-      horizontalScale: entry.horizontalScale,
-      ...(entry.fontKerning !== undefined ? { fontKerning: entry.fontKerning } : {}),
-    });
+    entries.push(request);
   }
   if (entries.length === 0) {
     if (current.pending.size > 0) {
@@ -316,37 +310,23 @@ function handleResponse(current: ProxyState, message: MeasureWorkerResponse): vo
  * `OffscreenCanvas`/`Worker`, or when the proxy has been disabled by
  * a previous error.
  */
-export function prefetchMeasurement(
-  text: string,
-  font: string,
-  letterSpacing: number,
-  horizontalScale: number,
-  fontCacheKey: string,
-  fontFingerprintWidth: number,
-  fontKerning: "normal" | "none" = "none",
-): void {
+export function prefetchMeasurement(request: MeasureRequestEntry): void {
   if (!isWorkerFontMetricsEnabled()) {
     return;
   }
-  if (!text) {
+  if (!request.text) {
     return;
   }
   const current = ensureProxy();
   if (current === null) {
     return;
   }
-  const key = makeKey(text, fontCacheKey, letterSpacing);
+  const key = makeKey(request.text, request.fontCacheKey, request.letterSpacing);
   if (current.pending.has(key)) {
     return;
   }
   current.pending.set(key, {
-    text,
-    font,
-    fontCacheKey,
-    fontFingerprintWidth,
-    letterSpacing,
-    horizontalScale,
-    fontKerning,
+    ...request,
     cacheGeneration: getTextWidthCacheGeneration(),
   });
   scheduleFlush(current);

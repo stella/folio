@@ -13,6 +13,13 @@ import {
   getListMarkerInlineWidth,
   getListMarkerVisualOffset,
 } from "../layout-engine/measure/listMarkerWidth";
+import { DEFAULT_FONT_SIZE } from "../layout-engine/measure/measureHelpers";
+import {
+  FONT_KERNING_MODE,
+  countCompressibleSpaces,
+  getFontKerningMode,
+  getRunFontKerningMode,
+} from "../layout-engine/measure/textMeasurementPolicy";
 import type {
   ParagraphBlock,
   ParagraphMeasure,
@@ -246,9 +253,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     element.style.transform = `scaleX(${run.horizontalScale / 100})`;
     element.style.transformOrigin = "left center";
   }
-  const fontSizePt = run.fontSize ?? 11;
-  element.style.fontKerning =
-    run.kerningMinPt !== undefined && fontSizePt >= run.kerningMinPt ? "normal" : "none";
+  element.style.fontKerning = getRunFontKerningMode(run, DEFAULT_FONT_SIZE);
   if (run.emboss) {
     element.style.textShadow = "1px 1px 1px rgba(255,255,255,0.5), -1px -1px 1px rgba(0,0,0,0.3)";
   }
@@ -1424,34 +1429,27 @@ function countShrinkableSpaces(runs: Run[]): number {
   let count = 0;
   for (const run of runs) {
     if (isTextRun(run)) {
-      for (const char of run.text ?? "") {
-        if (char === " ") count++;
-      }
+      count += countCompressibleSpaces(run.text ?? "");
     } else if (isFieldRun(run)) {
-      for (const char of run.fallback ?? "") {
-        if (char === " ") count++;
-      }
+      count += countCompressibleSpaces(run.fallback ?? "");
     } else if (isMathRun(run)) {
-      for (const char of run.plainText ?? "") {
-        if (char === " ") count++;
-      }
+      count += countCompressibleSpaces(run.plainText ?? "");
     }
   }
   return count;
 }
 
 /**
- * Build a TextMeasureStyle from a TextRun or FieldRun's relevant fields.
+ * Build the shared measurement style from a paintable text run.
  */
 function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
-  const fontSize = run.fontSize ?? 11;
   return {
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),
     ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
     ...(run.smallCaps !== undefined ? { smallCaps: run.smallCaps } : {}),
     ...(run.eastAsiaFontFamily !== undefined ? { eastAsiaFontFamily: run.eastAsiaFontFamily } : {}),
-    kerning: run.kerningMinPt !== undefined && fontSize >= run.kerningMinPt,
+    kerning: getRunFontKerningMode(run, DEFAULT_FONT_SIZE) === FONT_KERNING_MODE.enabled,
   };
 }
 
@@ -1669,7 +1667,7 @@ function createTextMeasurer(
     if (!ctx) {
       return applyLetterSpacingToMeasuredWidth(text.length * 7, text, style.letterSpacing);
     } // Fallback estimate
-    ctx.fontKerning = style.kerning ? "normal" : "none";
+    ctx.fontKerning = getFontKerningMode(style);
     // Use font resolver for category-appropriate fallback stacks,
     // matching measureContainer.ts
     const cssFallback = resolveFontFamily(fontFamily).cssFallback;

@@ -11,6 +11,7 @@ import { resolveFontFamily } from "../../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../../utils/fontWeights";
 import type { RunFormatting } from "../types";
 import type { FontStyle } from "./measureTypes";
+import { FONT_KERNING_MODE, getRunFontKerningMode } from "./textMeasurementPolicy";
 
 // Constants for OOXML unit conversions
 const TWIPS_PER_INCH = 1440;
@@ -45,7 +46,7 @@ export function buildRunFontStyle(
     ...(run.allCaps ? { textTransform: "uppercase" as const } : {}),
     ...(run.smallCaps ? { fontVariant: "small-caps" as const } : {}),
     ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
-    kerning: run.kerningMinPt !== undefined && fontSize >= run.kerningMinPt,
+    kerning: getRunFontKerningMode(run, fallbackFontSize) === FONT_KERNING_MODE.enabled,
   };
 }
 
