@@ -613,6 +613,97 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2]);
     });
 
+    test("rendered page break reuses a page opened within one tabbed style sequence", () => {
+      const previousRow: FlowBlock = {
+        ...makeParagraphBlock(1, "First row", 23),
+        runs: [
+          { kind: "text", text: "First", pmStart: 23, pmEnd: 28 },
+          { kind: "tab", pmStart: 28, pmEnd: 29 },
+          { kind: "text", text: "row", pmStart: 29, pmEnd: 32 },
+        ],
+        attrs: {
+          styleId: "TabularLine",
+          indent: { left: 42 },
+          tabs: [{ val: "start", pos: 720 }],
+        },
+      };
+      const marker: FlowBlock = {
+        ...makeParagraphBlock(2, "Second row", 33),
+        runs: [
+          { kind: "text", text: "Second", pmStart: 33, pmEnd: 39 },
+          { kind: "tab", pmStart: 39, pmEnd: 40 },
+          { kind: "text", text: "row", pmStart: 40, pmEnd: 43 },
+        ],
+        attrs: {
+          styleId: "TabularLine",
+          indent: { left: 42 },
+          tabs: [{ val: "start", pos: 720 }],
+          renderedPageBreakBefore: true,
+        },
+      };
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Nearly fills page one", 1),
+        previousRow,
+        marker,
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 840)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 9, 100, 40)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 10, 100, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(2);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2]);
+    });
+
+    test("rendered page break remains authoritative when tabbed layouts differ", () => {
+      const previousRow: FlowBlock = {
+        ...makeParagraphBlock(1, "First row", 23),
+        runs: [
+          { kind: "text", text: "First", pmStart: 23, pmEnd: 28 },
+          { kind: "tab", pmStart: 28, pmEnd: 29 },
+          { kind: "text", text: "row", pmStart: 29, pmEnd: 32 },
+        ],
+        attrs: {
+          styleId: "TabularLine",
+          indent: { left: 42 },
+          tabs: [{ val: "start", pos: 720 }],
+        },
+      };
+      const marker: FlowBlock = {
+        ...makeParagraphBlock(2, "Different row", 33),
+        runs: [
+          { kind: "text", text: "Different", pmStart: 33, pmEnd: 42 },
+          { kind: "tab", pmStart: 42, pmEnd: 43 },
+          { kind: "text", text: "row", pmStart: 43, pmEnd: 46 },
+        ],
+        attrs: {
+          styleId: "TabularLine",
+          indent: { left: 42 },
+          tabs: [{ val: "start", pos: 1440 }],
+          renderedPageBreakBefore: true,
+        },
+      };
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Nearly fills page one", 1),
+        previousRow,
+        marker,
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 840)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 9, 100, 40)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 13, 100, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(3);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1]);
+      expect(layout.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual([2]);
+    });
+
     test("successive rendered page breaks remain authoritative after natural reflow", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Fill page one", 1),
