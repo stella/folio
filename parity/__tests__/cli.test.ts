@@ -52,4 +52,12 @@ describe("parity CLI args", () => {
       "--output requires a file path",
     );
   });
+
+  test("rejects fractional and partially numeric page limits", () => {
+    for (const value of ["1.5", "2pages"]) {
+      expect(() => parseArgs(["fixture.docx", "--max-pages", value])).toThrow(
+        "--max-pages requires a positive integer",
+      );
+    }
+  });
 });

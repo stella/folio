@@ -116,7 +116,7 @@ export const parseArgs = (argv: string[]): CliFlags => {
       i += 1;
     } else if (arg === "--max-pages") {
       const value = argv[i + 1];
-      const maxPages = value === undefined ? Number.NaN : Number.parseInt(value, 10);
+      const maxPages = value === undefined ? Number.NaN : Number(value);
       if (!Number.isInteger(maxPages) || maxPages <= 0) {
         throw new Error("--max-pages requires a positive integer");
       }

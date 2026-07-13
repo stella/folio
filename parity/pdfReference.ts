@@ -16,6 +16,7 @@ import type { DocGeom, PageGeom } from "./types";
 
 const PNG_DPI = 96;
 const PAGE_PNG_RE = /^p(\d+)\.png$/;
+const COMPLETE_PAGE_COUNT_FILENAME = ".complete-page-count";
 
 export const sha256OfFile = async (filePath: string): Promise<string> => {
   const data = await Bun.file(filePath).arrayBuffer();
@@ -86,6 +87,37 @@ const pageNumberOfPngName = (filename: string): number => {
   return match?.[1] === undefined ? 0 : Number(match[1]);
 };
 
+const readCompletePageCount = async (pagesDir: string): Promise<number | null> => {
+  const marker = Bun.file(path.join(pagesDir, COMPLETE_PAGE_COUNT_FILENAME));
+  if (!(await marker.exists())) return null;
+
+  const value = (await marker.text()).trim();
+  if (!/^\d+$/u.test(value)) return null;
+
+  const count = Number(value);
+  return Number.isSafeInteger(count) ? count : null;
+};
+
+type CanReusePagePngCacheOptions = {
+  existing: string[];
+  completePageCount: number | null;
+  maxPages?: number;
+};
+
+export const canReusePagePngCache = ({
+  existing,
+  completePageCount,
+  maxPages,
+}: CanReusePagePngCacheOptions): boolean => {
+  const hasSequentialPages = existing.every(
+    (filename, index) => pageNumberOfPngName(path.basename(filename)) === index + 1,
+  );
+  if (!hasSequentialPages) return false;
+
+  if (completePageCount !== null && existing.length === completePageCount) return true;
+  return maxPages !== undefined && existing.length >= maxPages;
+};
+
 const renderPagePngs = async (
   pdfPath: string,
   pagesDir: string,
@@ -125,12 +157,21 @@ export const getPdfPagePngs = async ({
   maxPages,
 }: GetPdfPagePngsOptions): Promise<string[]> => {
   const existing = await listPagePngs(pagesDir);
-  if (maxPages !== undefined && existing.length >= maxPages) {
-    return existing.slice(0, maxPages);
+  const completePageCount = await readCompletePageCount(pagesDir);
+  if (
+    canReusePagePngCache({
+      existing,
+      completePageCount,
+      ...(maxPages === undefined ? {} : { maxPages }),
+    })
+  ) {
+    return maxPages === undefined ? existing : existing.slice(0, maxPages);
   }
-  if (maxPages === undefined && existing.length > 0) return existing;
 
   await renderPagePngs(pdfPath, pagesDir, maxPages === undefined ? {} : { maxPages });
   const rendered = await listPagePngs(pagesDir);
+  if (maxPages === undefined) {
+    await Bun.write(path.join(pagesDir, COMPLETE_PAGE_COUNT_FILENAME), `${rendered.length}\n`);
+  }
   return maxPages === undefined ? rendered : rendered.slice(0, maxPages);
 };
