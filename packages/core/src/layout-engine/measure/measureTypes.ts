@@ -26,6 +26,8 @@ export type FontStyle = {
   textTransform?: "uppercase";
   fontVariant?: "small-caps";
   horizontalScale?: number;
+  /** Enable pair kerning for runs whose authored threshold is met. */
+  kerning?: boolean;
 };
 
 /**

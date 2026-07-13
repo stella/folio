@@ -60,6 +60,48 @@ function findTabEls(lineEl: FakeElement): FakeElement[] {
 }
 
 describe("renderLine box model", () => {
+  test("paints pair kerning only when the authored threshold is met", () => {
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 4,
+      width: 28,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+    const render = (kerningMinPt?: number) =>
+      renderLine(
+        {
+          kind: "paragraph",
+          id: "kerning",
+          runs: [
+            {
+              kind: "text",
+              text: "AVAV",
+              fontSize: 11,
+              ...(kerningMinPt !== undefined ? { kerningMinPt } : {}),
+            },
+          ],
+        },
+        line,
+        undefined,
+        fakeDocument,
+        {
+          availableWidth: 360,
+          isLastLine: true,
+          isFirstLine: true,
+          paragraphEndsWithLineBreak: false,
+          leftIndentPx: 0,
+        },
+      ) as unknown as FakeElement;
+
+    expect(render().children.at(0)?.style["fontKerning"]).toBe("none");
+    expect(render(12).children.at(0)?.style["fontKerning"]).toBe("none");
+    expect(render(10).children.at(0)?.style["fontKerning"]).toBe("normal");
+  });
+
   test("uses content-box and visible overflow so highlighted text is not clipped", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",

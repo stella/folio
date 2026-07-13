@@ -322,6 +322,7 @@ export function prefetchMeasurement(
   horizontalScale: number,
   fontCacheKey: string,
   fontFingerprintWidth: number,
+  fontKerning: "normal" | "none" = "none",
 ): void {
   if (!isWorkerFontMetricsEnabled()) {
     return;
@@ -344,6 +345,7 @@ export function prefetchMeasurement(
     fontFingerprintWidth,
     letterSpacing,
     horizontalScale,
+    fontKerning,
     cacheGeneration: getTextWidthCacheGeneration(),
   });
   scheduleFlush(current);

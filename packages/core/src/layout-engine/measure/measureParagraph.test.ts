@@ -44,6 +44,42 @@ describe("text measurement cache", () => {
       expect(getMeasureCount()).toBe(2);
     }, fakeMeasure);
   });
+
+  test("keeps enabled kerning in the text width cache key", () => {
+    withFakeTextMeasure((getMeasureCount) => {
+      const text = "AVAV";
+      measureTextWidth(text, { fontFamily: "Arial", fontSize: 11, kerning: false });
+      measureTextWidth(text, { fontFamily: "Arial", fontSize: 11, kerning: true });
+
+      expect(getMeasureCount()).toBe(2);
+    }, fakeMeasure);
+  });
+});
+
+describe("run kerning threshold", () => {
+  test("disables pair kerning unless the authored threshold is met", () => {
+    withFakeTextMeasure(
+      () => {
+        const runs = [{ kind: "text" as const, text: "AVAV", fontSize: 11 }];
+        const charWidth = 4;
+        const availableWidth = runs[0]!.text.length * charWidth;
+        const base = { kind: "paragraph" as const, id: "kerning", runs };
+
+        expect(measureParagraph(base, availableWidth).lines).toHaveLength(2);
+        expect(
+          measureParagraph({ ...base, runs: [{ ...runs[0]!, kerningMinPt: 10 }] }, availableWidth)
+            .lines,
+        ).toHaveLength(1);
+        expect(
+          measureParagraph({ ...base, runs: [{ ...runs[0]!, kerningMinPt: 12 }] }, availableWidth)
+            .lines,
+        ).toHaveLength(2);
+      },
+      {
+        charWidth: (_char, _font, fontKerning) => (fontKerning === "normal" ? 4 : 5),
+      },
+    );
+  });
 });
 
 describe("font metrics cache", () => {

@@ -32,6 +32,7 @@ class WorkerInitError extends TaggedError("WorkerInitError")<{
 
 type WorkerCanvasContext = {
   font: string;
+  fontKerning?: "normal" | "none";
   measureText: (text: string) => { width: number };
 };
 
@@ -73,6 +74,7 @@ function isFontFingerprintMatch(context: WorkerCanvasContext, expectedWidth: num
 function measureEntry(entry: MeasureRequestEntry): MeasureResponseEntry | null {
   const context = getCtx();
   context.font = entry.font;
+  context.fontKerning = entry.fontKerning ?? "none";
   if (!isFontFingerprintMatch(context, entry.fontFingerprintWidth)) {
     return null;
   }

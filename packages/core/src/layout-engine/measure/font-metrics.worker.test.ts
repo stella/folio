@@ -21,6 +21,7 @@ import {
 
 type CanvasStub = {
   font: string;
+  fontKerning: "normal" | "none";
   measureText: (text: string) => { width: number };
 };
 
@@ -31,8 +32,9 @@ class FakeOffscreenCanvas {
     }
     return {
       font: "",
-      measureText(text: string) {
-        return { width: text.length * 6 };
+      fontKerning: "none",
+      measureText(this: CanvasStub, text: string) {
+        return { width: text.length * 6 - (this.fontKerning === "normal" ? 1 : 0) };
       },
     };
   }
@@ -62,6 +64,7 @@ function entry(overrides: Partial<MeasureRequestEntry>): MeasureRequestEntry {
     fontFingerprintWidth: overrides.fontFingerprintWidth ?? WORKER_FONT_FINGERPRINT_TEXT.length * 6,
     letterSpacing: overrides.letterSpacing ?? 0,
     horizontalScale,
+    ...(overrides.fontKerning !== undefined ? { fontKerning: overrides.fontKerning } : {}),
   };
 }
 
@@ -86,6 +89,21 @@ describe("handleMeasureRequest", () => {
       expect(reply.entries[0]?.fontCacheKey).toBe("11px Arial|scale:1");
       expect(reply.entries[0]?.letterSpacing).toBe(0);
     }
+  });
+
+  test("applies the requested kerning mode", () => {
+    const reply = handleMeasureRequest(
+      req([
+        entry({
+          text: "AVAV",
+          fontCacheKey: "11px Arial|kerning:normal|scale:1",
+          fontFingerprintWidth: WORKER_FONT_FINGERPRINT_TEXT.length * 6 - 1,
+          fontKerning: "normal",
+        }),
+      ]),
+    );
+
+    expect(reply.ok && reply.entries[0]?.width).toBe("AVAV".length * 6 - 1);
   });
 
   test("applies letterSpacing for multi-char text", () => {
