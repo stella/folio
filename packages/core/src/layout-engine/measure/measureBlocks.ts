@@ -1,9 +1,11 @@
 import { recordMeasureBlock, recordMeasureBlockError } from "../layoutInstrumentation";
-import { bandTopContentY, isPageFrameRelativeAnchor } from "../textBoxFlow";
+import { isParagraphFrameTextBox } from "../paragraphFrame";
+import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "../textBoxFlow";
 import { getTextBoxGroupId } from "../textBoxGroup";
 import {
   DEFAULT_TEXTBOX_MARGINS,
   floatingTextBoxReservesBand,
+  floatingTextBoxWrapsText,
   isFloatingTextBoxBlock,
   tableColumnsArePinned,
 } from "../types";
@@ -455,11 +457,42 @@ function perBlockNumberValue(
   return value;
 }
 
+type TextBoxWrapSideOptions = {
+  box: TextBoxBlock;
+  contentX: number;
+  boxWidth: number;
+  contentWidth: number;
+};
+
+function textBoxWrapSide({
+  box,
+  contentX,
+  boxWidth,
+  contentWidth,
+}: TextBoxWrapSideOptions): "left" | "right" {
+  if (box.wrapText === "left") {
+    return "left";
+  }
+  if (box.wrapText === "right") {
+    return "right";
+  }
+
+  const leftSpace = contentX;
+  const rightSpace = contentWidth - contentX - boxWidth;
+  if (box.wrapText === "largest") {
+    return leftSpace >= rightSpace ? "left" : "right";
+  }
+  return contentX + boxWidth / 2 < contentWidth / 2 ? "right" : "left";
+}
+
 // Page geometry the band extraction needs to resolve page/margin-pinned
 // topAndBottom anchors (bottom-strip frames, centered/bottom align). Per-block
 // because sections can vary page size and margins. eigenpal #694.
 type BandPageGeometry = {
+  pageWidth?: number | number[];
   pageHeight: number | number[];
+  marginLeft?: number | number[];
+  marginRight?: number | number[];
   marginBottom: number | number[];
 };
 
@@ -472,11 +505,23 @@ function extractFloatingZones(
   const zones: FloatingZoneWithAnchor[] = [];
   const textBoxGroupAnchors = new Map<string, number>();
   const defaultMarginTop = Array.isArray(marginTop) ? (marginTop[0] ?? 0) : marginTop;
+  const pageWidthInput = pageGeometry?.pageWidth ?? contentWidth;
   const pageHeightInput = pageGeometry?.pageHeight ?? 0;
+  const marginLeftInput = pageGeometry?.marginLeft ?? 0;
+  const marginRightInput = pageGeometry?.marginRight ?? 0;
   const marginBottomInput = pageGeometry?.marginBottom ?? 0;
+  const defaultPageWidth = Array.isArray(pageWidthInput)
+    ? (pageWidthInput[0] ?? contentWidth)
+    : pageWidthInput;
   const defaultPageHeight = Array.isArray(pageHeightInput)
     ? (pageHeightInput[0] ?? 0)
     : pageHeightInput;
+  const defaultMarginLeft = Array.isArray(marginLeftInput)
+    ? (marginLeftInput[0] ?? 0)
+    : marginLeftInput;
+  const defaultMarginRight = Array.isArray(marginRightInput)
+    ? (marginRightInput[0] ?? 0)
+    : marginRightInput;
   const defaultMarginBottom = Array.isArray(marginBottomInput)
     ? (marginBottomInput[0] ?? 0)
     : marginBottomInput;
@@ -620,6 +665,84 @@ function extractFloatingZones(
       topY: topY - distTop,
       bottomY: bottomY + distBottom,
       anchorBlockIndex: blockIndex,
+    });
+  }
+
+  // Positioned side-wrapped text boxes carve the same horizontal exclusion
+  // during pagination that the painter applies during its final re-measure.
+  // Without this pre-scan, paragraphs paint around the box but retain their
+  // original page assignment, so a page-anchored frame can overlap later body
+  // content or create a false extra page.
+  for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+    const block = blocks[blockIndex]!; // SAFETY: blockIndex < blocks.length
+    if (block.kind !== "textBox") {
+      continue;
+    }
+    const tb = block as TextBoxBlock;
+    if (!floatingTextBoxWrapsText(tb) || tb.position === undefined) {
+      continue;
+    }
+
+    const measure = measureTextBoxBlock(tb);
+    const blockMarginTop = perBlockNumberValue(marginTop, blockIndex, defaultMarginTop);
+    const blockMarginLeft = perBlockNumberValue(marginLeftInput, blockIndex, defaultMarginLeft);
+    const blockMarginRight = perBlockNumberValue(marginRightInput, blockIndex, defaultMarginRight);
+    const blockPageWidth = perBlockNumberValue(pageWidthInput, blockIndex, defaultPageWidth);
+    const vertical = tb.position.vertical;
+    const pageFrameRelative = isPageFrameRelativeAnchor(vertical?.relativeTo);
+    const topY = pageFrameRelative
+      ? bandTopContentY(vertical, {
+          pageHeight: perBlockNumberValue(pageHeightInput, blockIndex, defaultPageHeight),
+          marginTop: blockMarginTop,
+          marginBottom: perBlockNumberValue(marginBottomInput, blockIndex, defaultMarginBottom),
+          boxHeight: measure.height,
+        })
+      : emuToPixels(vertical?.posOffset ?? 0);
+    const groupId = getTextBoxGroupId(tb);
+    const anchorBlockIndex = groupId
+      ? (textBoxGroupAnchors.get(groupId) ?? blockIndex)
+      : blockIndex;
+    if (groupId && !textBoxGroupAnchors.has(groupId)) {
+      textBoxGroupAnchors.set(groupId, blockIndex);
+    }
+    if (isParagraphFrameTextBox(tb)) {
+      zones.push({
+        leftMargin: 0,
+        rightMargin: 0,
+        topY: 0,
+        bottomY: topY + measure.height + (tb.distBottom ?? 0),
+        anchorBlockIndex,
+        ...(pageFrameRelative ? { isMarginRelative: true } : {}),
+        fullWidthBlock: true,
+      });
+      continue;
+    }
+
+    const horizontal = tb.position.horizontal;
+    const pageX = horizontal
+      ? bandFragmentX(horizontal, {
+          pageWidth: blockPageWidth,
+          marginLeft: blockMarginLeft,
+          marginRight: blockMarginRight,
+          boxWidth: measure.width,
+        })
+      : blockMarginLeft;
+    const contentX = pageX - blockMarginLeft;
+    const wrapSide = textBoxWrapSide({
+      box: tb,
+      contentX,
+      boxWidth: measure.width,
+      contentWidth,
+    });
+    const leftMargin = wrapSide === "right" ? contentX + measure.width + (tb.distRight ?? 12) : 0;
+    const rightMargin = wrapSide === "left" ? contentWidth - contentX + (tb.distLeft ?? 12) : 0;
+    zones.push({
+      leftMargin: Math.max(0, leftMargin),
+      rightMargin: Math.max(0, rightMargin),
+      topY: topY - (tb.distTop ?? 0),
+      bottomY: topY + measure.height + (tb.distBottom ?? 0),
+      anchorBlockIndex,
+      ...(pageFrameRelative ? { isMarginRelative: true } : {}),
     });
   }
 

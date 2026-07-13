@@ -517,7 +517,10 @@ export function runLayoutPipeline<THfPMs>(
     let newMeasures =
       incrementalResult?.measures ??
       measureBlocks(newBlocks, blockWidths, blockMeasureInputs.marginTops, {
+        pageWidth: blockMeasureInputs.pageWidths,
         pageHeight: blockMeasureInputs.pageHeights,
+        marginLeft: blockMeasureInputs.marginLefts,
+        marginRight: blockMeasureInputs.marginRights,
         marginBottom: blockMeasureInputs.marginBottoms,
       });
     pendingArtifacts = {
@@ -703,7 +706,10 @@ export function runLayoutPipeline<THfPMs>(
           blockWidths,
           blockMeasureInputs.marginTops,
           {
+            pageWidth: blockMeasureInputs.pageWidths,
             pageHeight: blockMeasureInputs.pageHeights,
+            marginLeft: blockMeasureInputs.marginLefts,
+            marginRight: blockMeasureInputs.marginRights,
             marginBottom: blockMeasureInputs.marginBottoms,
           },
           values,

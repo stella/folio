@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { getTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { schema } from "../../prosemirror/schema";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
@@ -217,6 +218,82 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(para?.kind).toBe("paragraph");
     if (para?.kind === "paragraph") {
       expect(para.paraId).toBe("1A2B3C4D");
+    }
+  });
+
+  test("groups consecutive page-anchored frame paragraphs into one positioned container", () => {
+    const frame = {
+      width: 1440,
+      height: 720,
+      hAnchor: "page" as const,
+      vAnchor: "page" as const,
+      x: 720,
+      y: 1440,
+      wrap: "around" as const,
+    };
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { _originalFormatting: { frame } }, [schema.text("first")]),
+      schema.node("paragraph", { _originalFormatting: { frame } }, [schema.text("second")]),
+      schema.node("paragraph", null, [schema.text("body")]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["textBox", "paragraph"]);
+    const framed = blocks.at(0);
+    if (framed?.kind !== "textBox") {
+      throw new Error("Expected grouped paragraph frame");
+    }
+    expect(framed).toMatchObject({
+      width: 96,
+      height: 48,
+      margins: { top: 0, right: 0, bottom: 0, left: 0 },
+      displayMode: "float",
+      wrapType: "square",
+      position: {
+        horizontal: { relativeTo: "page", posOffset: 457_200 },
+        vertical: { relativeTo: "page", posOffset: 914_400 },
+      },
+    });
+    expect(framed.content.map((paragraph) => paragraph.runs.at(0))).toMatchObject([
+      { kind: "text", text: "first" },
+      { kind: "text", text: "second" },
+    ]);
+  });
+
+  test("keeps page-anchored frames in one wrap set across an empty anchor paragraph", () => {
+    const frame = {
+      width: 1440,
+      height: 720,
+      hAnchor: "page" as const,
+      vAnchor: "page" as const,
+      x: 720,
+      y: 1440,
+      wrap: "around" as const,
+    };
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { _originalFormatting: { frame } }, [schema.text("left")]),
+      schema.node("paragraph", { paragraphStyle: "Anchor" }),
+      schema.node("paragraph", { _originalFormatting: { frame: { ...frame, x: 2880 } } }, [
+        schema.text("right"),
+      ]),
+      schema.node("paragraph", null, [schema.text("body")]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+    const left = blocks.at(0);
+    const right = blocks.at(2);
+
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "textBox",
+      "paragraph",
+      "textBox",
+      "paragraph",
+    ]);
+    expect(left?.kind).toBe("textBox");
+    expect(right?.kind).toBe("textBox");
+    if (left?.kind === "textBox" && right?.kind === "textBox") {
+      expect(getTextBoxGroupId(right)).toBe(getTextBoxGroupId(left));
     }
   });
 
