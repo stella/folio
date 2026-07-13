@@ -26,7 +26,12 @@ export const FOLIO_DOCX_SUPPORT_STATES = Object.freeze([
 ] as const);
 export const FOLIO_DOCX_CAPABILITY_IDS = Object.freeze([
   "comments",
+  "contentControls",
+  "fields",
   "headersFooters",
+  "hyperlinks",
+  "images",
+  "math",
   "notes",
   "numbering",
   "opaqueDrawing",
@@ -49,8 +54,13 @@ export type FolioDocxFeatureCapability = {
   readonly id: FolioDocxCapabilityId;
   readonly feature:
     | "comments"
+    | "contentControls"
     | "drawings"
+    | "fields"
     | "headersFooters"
+    | "hyperlinks"
+    | "images"
+    | "math"
     | "notes"
     | "numbering"
     | "paragraphs"
@@ -80,6 +90,13 @@ const STRUCTURED_FEATURE_SUPPORT = Object.freeze({
   read: "supported",
   render: "partial",
 } as const satisfies Readonly<Record<FolioDocxCapabilityOperation, FolioDocxSupportState>>);
+const PARTIAL_AUTHORING_FEATURE_SUPPORT = Object.freeze({
+  create: "partial",
+  edit: "partial",
+  preserve: "supported",
+  read: "supported",
+  render: "partial",
+} as const satisfies Readonly<Record<FolioDocxCapabilityOperation, FolioDocxSupportState>>);
 
 const COMMENTS_CAPABILITY = Object.freeze({
   id: "comments",
@@ -99,6 +116,45 @@ const COMMENTS_CAPABILITY = Object.freeze({
   ]),
 } as const satisfies FolioDocxFeatureCapability);
 
+const CONTENT_CONTROLS_CAPABILITY = Object.freeze({
+  id: "contentControls",
+  feature: "contentControls",
+  hosts: FOLIO_DOCX_CAPABILITY_HOSTS,
+  profiles: TRANSITIONAL_PROFILE_COVERAGE,
+  support: Object.freeze({
+    ...PARTIAL_AUTHORING_FEATURE_SUPPORT,
+    edit: "supported",
+  }),
+  evidence: Object.freeze([
+    {
+      type: "test",
+      path: "packages/core/src/content-controls/contentControls.test.ts",
+    },
+    {
+      type: "test",
+      path: "packages/core/src/docx/sdtRoundtrip.property.test.ts",
+    },
+  ]),
+} as const satisfies FolioDocxFeatureCapability);
+
+const FIELDS_CAPABILITY = Object.freeze({
+  id: "fields",
+  feature: "fields",
+  hosts: FOLIO_DOCX_CAPABILITY_HOSTS,
+  profiles: TRANSITIONAL_PROFILE_COVERAGE,
+  support: PARTIAL_AUTHORING_FEATURE_SUPPORT,
+  evidence: Object.freeze([
+    {
+      type: "test",
+      path: "packages/core/src/fields/evaluateField.test.ts",
+    },
+    {
+      type: "test",
+      path: "packages/core/src/prosemirror/extensions/nodes/FieldExtension.test.ts",
+    },
+  ]),
+} as const satisfies FolioDocxFeatureCapability);
+
 const HEADERS_FOOTERS_CAPABILITY = Object.freeze({
   id: "headersFooters",
   feature: "headersFooters",
@@ -113,6 +169,63 @@ const HEADERS_FOOTERS_CAPABILITY = Object.freeze({
     {
       type: "test",
       path: "packages/core/src/docx/headerFooterMaterialize.test.ts",
+    },
+  ]),
+} as const satisfies FolioDocxFeatureCapability);
+
+const HYPERLINKS_CAPABILITY = Object.freeze({
+  id: "hyperlinks",
+  feature: "hyperlinks",
+  hosts: FOLIO_DOCX_CAPABILITY_HOSTS,
+  profiles: TRANSITIONAL_PROFILE_COVERAGE,
+  support: PARTIAL_AUTHORING_FEATURE_SUPPORT,
+  evidence: Object.freeze([
+    {
+      type: "test",
+      path: "packages/core/src/docx/hyperlinkParser.test.ts",
+    },
+    {
+      type: "test",
+      path: "packages/core/src/prosemirror/conversion/toProseDoc-hyperlink-content.test.ts",
+    },
+  ]),
+} as const satisfies FolioDocxFeatureCapability);
+
+const IMAGES_CAPABILITY = Object.freeze({
+  id: "images",
+  feature: "images",
+  hosts: FOLIO_DOCX_CAPABILITY_HOSTS,
+  profiles: TRANSITIONAL_PROFILE_COVERAGE,
+  support: Object.freeze({
+    ...PARTIAL_AUTHORING_FEATURE_SUPPORT,
+    edit: "supported",
+  }),
+  evidence: Object.freeze([
+    {
+      type: "test",
+      path: "packages/core/src/docx/__tests__/image-crop-roundtrip.test.ts",
+    },
+    {
+      type: "test",
+      path: "packages/core/src/prosemirror/commands/image.test.ts",
+    },
+  ]),
+} as const satisfies FolioDocxFeatureCapability);
+
+const MATH_CAPABILITY = Object.freeze({
+  id: "math",
+  feature: "math",
+  hosts: FOLIO_DOCX_CAPABILITY_HOSTS,
+  profiles: TRANSITIONAL_PROFILE_COVERAGE,
+  support: PARTIAL_AUTHORING_FEATURE_SUPPORT,
+  evidence: Object.freeze([
+    {
+      type: "test",
+      path: "packages/core/src/docx/mathToMathml.test.ts",
+    },
+    {
+      type: "test",
+      path: "packages/core/src/docx/serializer/math-roundtrip.test.ts",
     },
   ]),
 } as const satisfies FolioDocxFeatureCapability);
@@ -289,7 +402,12 @@ const CAPABILITY_MANIFEST = Object.freeze({
   version: FOLIO_DOCX_CAPABILITY_MANIFEST_VERSION,
   capabilities: Object.freeze({
     comments: COMMENTS_CAPABILITY,
+    contentControls: CONTENT_CONTROLS_CAPABILITY,
+    fields: FIELDS_CAPABILITY,
     headersFooters: HEADERS_FOOTERS_CAPABILITY,
+    hyperlinks: HYPERLINKS_CAPABILITY,
+    images: IMAGES_CAPABILITY,
+    math: MATH_CAPABILITY,
     notes: NOTES_CAPABILITY,
     numbering: NUMBERING_CAPABILITY,
     opaqueDrawing: OPAQUE_DRAWING_CAPABILITY,

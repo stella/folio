@@ -200,6 +200,23 @@ describe("DOCX capability manifest", () => {
     });
   });
 
+  test("describes embedded and semantic content support conservatively", () => {
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.contentControls.support.edit).toBe(
+      "supported",
+    );
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.images.support.edit).toBe("supported");
+
+    for (const id of ["fields", "hyperlinks", "math"] as const) {
+      expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities[id].support).toEqual({
+        create: "partial",
+        edit: "partial",
+        preserve: "supported",
+        read: "supported",
+        render: "partial",
+      });
+    }
+  });
+
   test("keeps the public id list aligned with manifest keys", () => {
     expect(Object.keys(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities)).toEqual(
       FOLIO_DOCX_CAPABILITY_IDS,

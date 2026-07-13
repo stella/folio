@@ -406,7 +406,7 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replac
 export const FOLIO_DOCX_CAPABILITY_HOSTS: readonly ["browser", "server"];
 
 // @public (undocumented)
-export const FOLIO_DOCX_CAPABILITY_IDS: readonly ["comments", "headersFooters", "notes", "numbering", "opaqueDrawing", "paragraphs", "sections", "styles", "tables", "trackedChanges"];
+export const FOLIO_DOCX_CAPABILITY_IDS: readonly ["comments", "contentControls", "fields", "headersFooters", "hyperlinks", "images", "math", "notes", "numbering", "opaqueDrawing", "paragraphs", "sections", "styles", "tables", "trackedChanges"];
 
 // @public (undocumented)
 export const FOLIO_DOCX_CAPABILITY_MANIFEST: FolioDocxCapabilityManifest;
@@ -729,7 +729,7 @@ export type FolioDocxCompatibilityProfile = (typeof FOLIO_DOCX_COMPATIBILITY_PRO
 // @public (undocumented)
 export type FolioDocxFeatureCapability = {
     readonly id: FolioDocxCapabilityId;
-    readonly feature: "comments" | "drawings" | "headersFooters" | "notes" | "numbering" | "paragraphs" | "revisions" | "sections" | "styles" | "tables";
+    readonly feature: "comments" | "contentControls" | "drawings" | "fields" | "headersFooters" | "hyperlinks" | "images" | "math" | "notes" | "numbering" | "paragraphs" | "revisions" | "sections" | "styles" | "tables";
     readonly hosts: readonly FolioDocxCapabilityHost[];
     readonly profiles: readonly FolioDocxProfile[];
     readonly support: Readonly<Record<FolioDocxCapabilityOperation, FolioDocxSupportState>>;
