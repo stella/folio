@@ -557,6 +557,7 @@ export type ParagraphAttrs = {
         before?: boolean;
         after?: boolean;
     };
+    hasDirectParagraphFormatting?: boolean;
     indent?: ParagraphIndent;
     keepNext?: boolean;
     keepLines?: boolean;
