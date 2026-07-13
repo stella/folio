@@ -56,6 +56,7 @@ class SpecificationSourceError extends TaggedError("SpecificationSourceError")<{
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const MANIFEST_PATH = path.join(REPOSITORY_ROOT, "specifications", "sources.json");
 const CACHE_ROOT = path.join(REPOSITORY_ROOT, ".cache", "specifications");
+const SOURCE_FETCH_TIMEOUT_MS = 120_000;
 const SOURCE_ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SHA256_RE = /^[a-f0-9]{64}$/u;
 const GIT_OBJECT_ID_RE = /^[a-f0-9]{40}$/u;
@@ -355,10 +356,17 @@ const verifyArtifact = async (
 ): Promise<"missing" | "verified"> => {
   const cachePath = resolveCachePath(source.cachePath);
   if (!existsSync(cachePath) && fetchMissing) {
-    const response = await fetch(source.url);
+    const response = await fetch(source.url, {
+      signal: AbortSignal.timeout(SOURCE_FETCH_TIMEOUT_MS),
+    });
     if (!response.ok) {
       throw new SpecificationSourceError({
         message: `Failed to fetch ${source.id}: HTTP ${response.status}`,
+      });
+    }
+    if (!response.url.startsWith("https://")) {
+      throw new SpecificationSourceError({
+        message: `Source redirected outside HTTPS: ${source.id}`,
       });
     }
     const bytes = await readBoundedResponse(response, source.bytes);
@@ -389,7 +397,12 @@ const verifyArtifact = async (
 };
 
 const runGit = async (args: string[], cwd = REPOSITORY_ROOT): Promise<string> => {
-  const process = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
+  const process = Bun.spawn(["git", ...args], {
+    cwd,
+    signal: AbortSignal.timeout(SOURCE_FETCH_TIMEOUT_MS),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,
     new Response(process.stdout).text(),
