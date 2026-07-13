@@ -530,6 +530,56 @@ describe("runLayoutPipeline", () => {
     );
   });
 
+  test("moves body content below an overflowing default header", () => {
+    const state = makeState();
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        headerContent: { type: "header", hdrFtrType: "default", content: [] },
+        renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
+          hf && metrics.section === "header"
+            ? {
+                blocks: [],
+                measures: [],
+                height: 120,
+                visualTop: 0,
+                visualBottom: 120,
+                marginPushTop: 0,
+                marginPushBottom: 120,
+              }
+            : undefined,
+      }),
+      state,
+    );
+
+    expect(outcome.layout?.pages.at(0)?.margins.top).toBe(MARGINS.header + 120);
+    expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(MARGINS.header + 120);
+  });
+
+  test("keeps authored body margin when a default header stays above it", () => {
+    const state = makeState();
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        headerContent: { type: "header", hdrFtrType: "default", content: [] },
+        renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
+          hf && metrics.section === "header"
+            ? {
+                blocks: [],
+                measures: [],
+                height: 20,
+                visualTop: 0,
+                visualBottom: 20,
+                marginPushTop: 0,
+                marginPushBottom: 20,
+              }
+            : undefined,
+      }),
+      state,
+    );
+
+    expect(outcome.layout?.pages.at(0)?.margins.top).toBe(MARGINS.top);
+    expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(MARGINS.top);
+  });
+
   test("moves only the title-page body below an overflowing first-page header", () => {
     const state = makeState();
     const baseline = runLayoutPipeline(makeDeps(createLayoutSession()), state);
