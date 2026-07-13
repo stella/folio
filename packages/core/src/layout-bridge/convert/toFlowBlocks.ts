@@ -2221,6 +2221,9 @@ function convertTableRow(
   if (attrs.isHeader) {
     row.isHeader = attrs.isHeader;
   }
+  if (attrs._originalFormatting?.cantSplit) {
+    row.cantSplit = true;
+  }
   if (attrs.hidden) {
     row.hidden = attrs.hidden;
   }

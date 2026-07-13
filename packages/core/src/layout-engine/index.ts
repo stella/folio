@@ -886,6 +886,9 @@ function layoutTable(
   let currentRowIndex = 0;
 
   const breakInfo = buildTableRowBreakInfo(block, measure);
+  const hasVerticalMerges = block.rows.some((row) =>
+    row.cells.some((cell) => (cell.rowSpan ?? 1) > 1),
+  );
 
   // X position from justification / indent, recomputed per fragment because the
   // active column can change across section breaks.
@@ -935,7 +938,8 @@ function layoutTable(
 
   const canSplitRow = (rowIndex: number, state = paginator.getCurrentState()): boolean => {
     const row = rows[rowIndex];
-    if (!row) {
+    const sourceRow = block.rows[rowIndex];
+    if (!row || !sourceRow || sourceRow.cantSplit || sourceRow.isHeader || hasVerticalMerges) {
       return false;
     }
     if ((breakInfo.breakOffsets[rowIndex]?.length ?? 0) <= 1) {
@@ -944,17 +948,29 @@ function layoutTable(
     const freshHeaderOverhead =
       headerRowCount > 0 && rowIndex >= headerRowCount ? headerRowsHeight : 0;
     const requiredHeight = row.height + freshHeaderOverhead;
-    return requiredHeight > getCurrentRowCapacity(state);
+    const oversized = requiredHeight > getCurrentRowCapacity(state);
+    if (
+      !oversized &&
+      (state.footnoteHeight > 0 || (rowFootnoteIds[rowIndex]?.length ?? 0) > 0)
+    ) {
+      return false;
+    }
+
+    const currentHeaderOverhead = shouldRepeatHeaderRows(rowIndex, 0, state)
+      ? headerRowsHeight
+      : 0;
+    const currentAvailableHeight =
+      paginator.getAvailableHeight() - currentHeaderOverhead - state.trailingSpacing;
+    return oversized || row.height > currentAvailableHeight;
   };
 
   while (currentRowIndex < rows.length) {
-    // A row taller than a whole page can't fit anywhere; break it between whole
-    // text lines across pages instead of overflowing the page and clipping the
-    // content. eigenpal/docx-editor#698 (fixes their #570).
-    const oversizedRow = rows[currentRowIndex]!; // SAFETY: currentRowIndex < rows.length
+    // Break permitted rows between whole text lines when they exceed the current
+    // flow region; rows taller than a full region use the same path repeatedly.
+    const splittableRow = rows[currentRowIndex]!; // SAFETY: currentRowIndex < rows.length
     if (canSplitRow(currentRowIndex)) {
       let consumed = 0;
-      while (consumed < oversizedRow.height) {
+      while (consumed < splittableRow.height) {
         const sliceState = paginator.getCurrentState();
         const repeatHeaderRows = shouldRepeatHeaderRows(currentRowIndex, consumed, sliceState);
         const headerOverhead = repeatHeaderRows ? headerRowsHeight : 0;
@@ -976,10 +992,10 @@ function layoutTable(
           // the next whole line anyway so the loop always makes progress.
           const from = consumed;
           const next = breakInfo.breakOffsets[currentRowIndex]?.find((o) => o > from);
-          slice = (next ?? oversizedRow.height) - consumed;
+          slice = (next ?? splittableRow.height) - consumed;
         }
         const sliceBottom = consumed + slice;
-        const reachesRowEnd = sliceBottom >= oversizedRow.height;
+        const reachesRowEnd = sliceBottom >= splittableRow.height;
         const moreAfter = !reachesRowEnd || currentRowIndex + 1 < rows.length;
         const fragmentHeight = headerOverhead + slice;
         const sliceFragment: TableFragment = {
@@ -1004,7 +1020,7 @@ function layoutTable(
         sliceFragment.y = sliceResult.y;
         sliceFragment.x = computeTableX(sliceResult.state.columnIndex);
         consumed = sliceBottom;
-        if (consumed < oversizedRow.height) {
+        if (consumed < splittableRow.height) {
           paginator.forceColumnBreak();
         }
       }

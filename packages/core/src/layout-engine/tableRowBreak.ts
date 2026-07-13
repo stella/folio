@@ -1,12 +1,11 @@
 /**
  * Table row-break geometry. Ported from eigenpal/docx-editor#698 (folio subset).
  *
- * Word lets a table row break across a page boundary ("allow row to break
- * across pages", on by default). When a row is taller than a whole page it
- * cannot fit anywhere, so the portion that fits stays and the rest continues on
- * the next page — broken between whole text lines, never through a glyph.
- * Without this folio forced the oversized row onto one page and the overflow
- * was clipped (content lost; upstream #570).
+ * Table rows may break across flow regions unless `cantSplit` is set. When a
+ * permitted row exceeds the current region, the portion that fits stays and
+ * the rest continues in the next region, broken between whole text lines and
+ * never through a glyph. This also prevents oversized rows from overflowing
+ * one page and clipping content (upstream #570).
  *
  * This computes, per row, the safe break offsets (the y of every line bottom in
  * the row's cells) so the paginator can snap a break to the deepest whole line

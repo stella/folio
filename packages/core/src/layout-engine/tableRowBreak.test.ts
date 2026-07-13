@@ -1,8 +1,8 @@
 /**
- * Table row-break geometry + mid-content row splitting. A table row taller than
- * a whole page must break between whole text lines across pages instead of
- * overflowing and clipping content. Regression for eigenpal/docx-editor#698
- * (their #570).
+ * Table row-break geometry + mid-content row splitting. Break-permitted rows
+ * must split between whole text lines when they exceed the current flow region,
+ * including rows taller than a full page. Regression for
+ * eigenpal/docx-editor#698 (their #570).
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -920,7 +920,7 @@ describe("oversized table row splits across pages (#570)", () => {
     expect(frags[1]?.bottomClip).toBeUndefined();
   });
 
-  test("keeps page-fitting rows whole when only remaining space is short", () => {
+  test("splits a break-permitted first row when only remaining space is short", () => {
     const spacer: FlowBlock = {
       kind: "paragraph",
       id: "spacer",
@@ -937,14 +937,14 @@ describe("oversized table row splits across pages (#570)", () => {
       .flatMap((page) => page.fragments)
       .filter((f): f is TableFragment => f.kind === "table");
 
-    expect(frags.length).toBe(1);
+    expect(frags).toHaveLength(2);
+    expect(frags[0]).toMatchObject({ height: 40, bottomClip: 40 });
     expect(frags[0]?.topClip).toBeUndefined();
-    expect(frags[0]?.bottomClip).toBeUndefined();
-    expect(frags[0]?.height).toBe(100);
-    expect(frags[0]?.y).toBe(OPTIONS.margins.top);
+    expect(frags[1]).toMatchObject({ height: 60, topClip: 40 });
+    expect(frags[1]?.bottomClip).toBeUndefined();
   });
 
-  test("moves a page-fitting row intact after adjacent table rows", () => {
+  test("splits a break-permitted row after adjacent table rows", () => {
     const { block, measure } = tableWithHeaderTallBodyAndShortRow(4);
     measure.rows[2] = {
       cells: [{ blocks: [paraMeasure(3)], width: 220, height: 3 * LINE }],
@@ -958,17 +958,48 @@ describe("oversized table row splits across pages (#570)", () => {
     const secondPageTables =
       layout.pages[1]?.fragments.filter((f): f is TableFragment => f.kind === "table") ?? [];
 
-    expect(firstPageTables).toHaveLength(1);
+    expect(firstPageTables).toHaveLength(2);
     expect(firstPageTables[0]).toMatchObject({ fromRow: 0, toRow: 2 });
     expect(firstPageTables[0]?.bottomClip).toBeUndefined();
+    expect(firstPageTables[1]).toMatchObject({
+      fromRow: 2,
+      toRow: 3,
+      bottomClip: LINE,
+    });
     expect(secondPageTables).toHaveLength(1);
     expect(secondPageTables[0]).toMatchObject({
       fromRow: 2,
       toRow: 3,
       headerRowCount: 1,
+      topClip: LINE,
     });
-    expect(secondPageTables[0]?.topClip).toBeUndefined();
     expect(secondPageTables[0]?.bottomClip).toBeUndefined();
+  });
+
+  test("keeps a cantSplit row whole when only remaining space is short", () => {
+    const spacer: FlowBlock = {
+      kind: "paragraph",
+      id: "spacer",
+      runs: [{ kind: "text", text: "spacer" }],
+    };
+    const spacerMeasure = paraMeasureWithLineHeight(1, 70);
+    const { block, measure } = tallTable(5);
+    block.rows[0]!.cantSplit = true;
+
+    const layout = layoutDocument(
+      [spacer, block as FlowBlock],
+      [spacerMeasure as Measure, measure as Measure],
+      OPTIONS,
+    );
+    const frags = layout.pages
+      .flatMap((page) => page.fragments)
+      .filter((f): f is TableFragment => f.kind === "table");
+
+    expect(frags).toHaveLength(1);
+    expect(frags[0]?.topClip).toBeUndefined();
+    expect(frags[0]?.bottomClip).toBeUndefined();
+    expect(frags[0]?.height).toBe(100);
+    expect(frags[0]?.y).toBe(OPTIONS.margins.top);
   });
 
   test("keeps page-fitting rows whole after footnote reservations", () => {

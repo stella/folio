@@ -546,6 +546,8 @@ export type TableRow = {
   height?: number;
   heightRule?: "auto" | "atLeast" | "exact";
   isHeader?: boolean;
+  /** `w:cantSplit`: keep this row in one flow region. */
+  cantSplit?: boolean;
   hidden?: boolean;
 };
 

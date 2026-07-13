@@ -908,6 +908,25 @@ describe("toFlowBlocks TOC hyperlink style strip", () => {
 });
 
 describe("toFlowBlocks table cell formatting", () => {
+  test("carries cantSplit row formatting into layout blocks", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node(
+          "tableRow",
+          { _originalFormatting: { cantSplit: true } },
+          [schema.node("tableCell", null, [schema.node("paragraph")])],
+        ),
+      ]),
+    ]);
+
+    const table = toFlowBlocks(doc).at(0);
+    if (table?.kind !== "table") {
+      throw new Error("Expected table block");
+    }
+
+    expect(table.rows.at(0)?.cantSplit).toBe(true);
+  });
+
   // Regression eigenpal #424 gap 14: the parser captured w:noWrap and the PM
   // schema carried it, but convertTableCell dropped the field, so cells like
   // case numbers / citations wrapped where Word kept them on one line.
