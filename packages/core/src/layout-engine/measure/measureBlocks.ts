@@ -335,7 +335,7 @@ export function measureTableBlock(
     // stays content + padding (the painter lays cell content out within it); the
     // border only contributes to the row total here.
     let maxCellHeightWithBorders = 0;
-    let maxBorderHeight = 0;
+    let maxCellInsets = 0;
     for (let cellIdx = 0; cellIdx < row.cells.length; cellIdx++) {
       const cell = row.cells[cellIdx]!; // SAFETY: cellIdx < row.cells.length
       const sourceCell = sourceRowCells?.[cellIdx];
@@ -356,7 +356,7 @@ export function measureTableBlock(
       }
       const borderHeight = getTableCellVerticalBorderHeight(sourceCell, rowIdx === 0);
       maxCellHeightWithBorders = Math.max(maxCellHeightWithBorders, cell.height + borderHeight);
-      maxBorderHeight = Math.max(maxBorderHeight, borderHeight);
+      maxCellInsets = Math.max(maxCellInsets, padTop + padBottom + borderHeight);
     }
 
     // Apply heightRule from the source row
@@ -366,13 +366,9 @@ export function measureTableBlock(
     if (explicitHeight && heightRule === "exact") {
       row.height = explicitHeight;
     } else if (explicitHeight) {
-      // Both 'atLeast' and 'auto' (OOXML default) treat the value as a minimum.
-      // ECMA-376 §17.4.81: when hRule is absent or "auto", val is the minimum row
-      // height. In Word that minimum governs the cell content+padding region only;
-      // horizontal cell borders sit on the grid lines and add on top of it. So when
-      // the explicit height wins over content, the border must still be added rather
-      // than absorbed (`Math.max(content + border, explicit)` would swallow it).
-      row.height = Math.max(maxCellHeightWithBorders, explicitHeight + maxBorderHeight);
+      // Compatibility layouts treat both 'atLeast' and auto-with-val as a
+      // content floor; cell padding and horizontal borders remain outside it.
+      row.height = Math.max(maxCellHeightWithBorders, explicitHeight + maxCellInsets);
     } else {
       // No explicit height — use content height directly.
       row.height = maxCellHeightWithBorders;

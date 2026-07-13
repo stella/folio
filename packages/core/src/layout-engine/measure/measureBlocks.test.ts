@@ -538,15 +538,14 @@ describe("measureTableBlock row height", () => {
     }, fakeMeasure);
   });
 
-  test("adds horizontal cell borders on top of an atLeast/auto minimum height", () => {
+  test("adds cell padding and borders on top of an atLeast/auto minimum height", () => {
     withFakeTextMeasure(() => {
       // A short single-line cell whose content is well under an explicit
-      // (atLeast) row height, but which carries a horizontal border. Word treats
-      // the explicit height as the minimum of the cell content+padding region;
-      // the border sits on the grid line and adds on top. So the row must be
-      // taller than the explicit height by the border thickness — the border
-      // must not be absorbed by `max(content + border, explicit)`.
+      // (atLeast) row height, but which carries vertical padding and horizontal
+      // borders. The explicit value is the content floor; cell insets add to it.
       const border = 6;
+      const paddingTop = 7;
+      const paddingBottom = 9;
       const tallMinHeight = 400;
       const build = (rule: "atLeast" | undefined): TableBlock => ({
         kind: "table",
@@ -561,7 +560,7 @@ describe("measureTableBlock row height", () => {
               {
                 id: "a",
                 blocks: [para("a1", "One line")],
-                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                padding: { top: paddingTop, right: 0, bottom: paddingBottom, left: 0 },
                 // First row: top+bottom both collapse in, so 2 * border.
                 borders: { top: { width: border }, bottom: { width: border } },
               },
@@ -574,8 +573,9 @@ describe("measureTableBlock row height", () => {
         const measure = measureTableBlock(build(rule), 120);
         const contentHeight = measure.rows[0]?.cells[0]?.height ?? 0;
         expect(contentHeight).toBeLessThan(tallMinHeight); // content is the shorter term
-        // Border (2 * 6 on the first row) added on top of the minimum height.
-        expect(measure.rows[0]?.height).toBe(tallMinHeight + 2 * border);
+        expect(measure.rows[0]?.height).toBe(
+          tallMinHeight + paddingTop + paddingBottom + 2 * border,
+        );
         expect(measure.rows[0]?.height).toBeGreaterThan(tallMinHeight);
       }
     }, fakeMeasure);
