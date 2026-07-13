@@ -489,6 +489,44 @@ describe("measureTableBlock row height", () => {
     }, fakeMeasure);
   });
 
+  test("counts an interior top border when the cell above leaves the edge open", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [120],
+        rows: [
+          {
+            id: "r0",
+            cells: [
+              {
+                id: "first",
+                blocks: [para("first-p", "One line")],
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              },
+            ],
+          },
+          {
+            id: "r1",
+            cells: [
+              {
+                id: "second",
+                blocks: [para("second-p", "One line")],
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                borders: { top: { width: 2 } },
+              },
+            ],
+          },
+        ],
+      };
+
+      const measure = measureTableBlock(table, 120);
+      const contentHeight = measure.rows[1]?.cells[0]?.height ?? 0;
+
+      expect(measure.rows[1]?.height).toBe(contentHeight + 2);
+    }, fakeMeasure);
+  });
+
   test("maxes per-cell content+border, not summed independent maxes", () => {
     withFakeTextMeasure(() => {
       // Cell A: more content (two paragraphs), thin border.

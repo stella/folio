@@ -278,6 +278,89 @@ describe("renderTableFragment cell paragraph spacing", () => {
   });
 });
 
+describe("renderTableFragment interior border ownership", () => {
+  test("retains top and left edges when adjacent cells leave them unclaimed", () => {
+    const border = { width: 1, style: "solid", color: "#000000" };
+    const paragraph = (id: string) => ({
+      kind: "paragraph" as const,
+      id,
+      runs: [{ kind: "text" as const, text: id }],
+    });
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      rows: [
+        {
+          id: "top",
+          cells: [
+            {
+              id: "top-left",
+              borders: { right: border, bottom: border },
+              blocks: [paragraph("top-left-p")],
+            },
+            { id: "top-right", blocks: [paragraph("top-right-p")] },
+          ],
+        },
+        {
+          id: "bottom",
+          cells: [
+            {
+              id: "bottom-left",
+              borders: { top: border },
+              blocks: [paragraph("bottom-left-p")],
+            },
+            {
+              id: "bottom-right",
+              borders: { top: border, left: border },
+              blocks: [paragraph("bottom-right-p")],
+            },
+          ],
+        },
+      ],
+      columnWidths: [100, 100],
+    };
+    const measuredCell = () => ({
+      blocks: [{ kind: "paragraph" as const, lines: [], totalHeight: 20 }],
+      width: 100,
+      height: 20,
+    });
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        { cells: [measuredCell(), measuredCell()], height: 20 },
+        { cells: [measuredCell(), measuredCell()], height: 20 },
+      ],
+      columnWidths: [100, 100],
+      totalWidth: 200,
+      totalHeight: 40,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "tbl",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 40,
+      fromRow: 0,
+      toRow: 2,
+    };
+
+    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+    const rows = findRows(tableEl);
+    const cellAt = (rowIndex: string, columnIndex: string) =>
+      rows
+        .find((row) => row.dataset["rowIndex"] === rowIndex)
+        ?.children.find((candidate) => candidate.dataset["columnIndex"] === columnIndex);
+
+    expect(cellAt("1", "0")?.style["borderTop"]).toBeUndefined();
+    expect(cellAt("1", "1")?.style["borderTop"]).toBe("1px solid #000000");
+    expect(cellAt("0", "1")?.style["borderLeft"]).toBeUndefined();
+    expect(cellAt("1", "1")?.style["borderLeft"]).toBe("1px solid #000000");
+  });
+});
+
 describe("renderTableFragment floating cell content", () => {
   test("paints anchored images and text boxes outside the cell clip", () => {
     const block: TableBlock = {

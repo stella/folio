@@ -356,6 +356,7 @@ function renderNestedTable(
 
   // Render all rows
   const columnsPinned = tableColumnsArePinned(block);
+  const cellGrid = buildTableCellGrid(block);
   let y = 0;
   for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
     const row = block.rows[rowIndex];
@@ -383,6 +384,7 @@ function renderNestedTable(
       undefined,
       block.bidi,
       columnsPinned,
+      cellGrid,
     );
     tableEl.append(rowEl);
     y += rowMeasure.height;
@@ -426,9 +428,9 @@ function renderTableCell(
   x: number,
   rowHeight: number,
   borderFlags: {
-    isFirstRow: boolean;
+    drawTop: boolean;
     isLastRow: boolean;
-    isFirstCol: boolean;
+    drawLeft: boolean;
     isLastCol: boolean;
   },
   columnsPinned: boolean,
@@ -459,14 +461,15 @@ function renderTableCell(
     // Strategy: "bottom wins" for rows, "right wins" for columns.
     // Each cell's bottom border represents the shared edge with the row below.
     // Each cell's right border represents the shared edge with the column to its right.
-    // Only the first row draws its top border (table's top edge).
-    // Only the first column draws its left border (table's left edge).
-    if (borderFlags.isFirstRow) {
+    // Top/left edges are retained when the adjacent cell does not already
+    // own the shared edge. This also preserves partial boxes that begin inside
+    // a table instead of limiting those sides to the table perimeter.
+    if (borderFlags.drawTop) {
       applyBorder(cellEl, "top", cell.borders.top);
     }
     applyBorder(cellEl, "right", cell.borders.right);
     applyBorder(cellEl, "bottom", cell.borders.bottom);
-    if (borderFlags.isFirstCol) {
+    if (borderFlags.drawLeft) {
       applyBorder(cellEl, "left", cell.borders.left);
     }
   }
@@ -557,6 +560,46 @@ type SpanningCell = {
   totalHeight: number;
 };
 
+type TableCellGrid = Map<string, TableCell>;
+
+const tableCellGridKey = (rowIndex: number, columnIndex: number): string =>
+  `${rowIndex}:${columnIndex}`;
+
+function buildTableCellGrid(block: TableBlock): TableCellGrid {
+  const grid: TableCellGrid = new Map();
+
+  for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
+    const row = block.rows[rowIndex];
+    if (!row) {
+      continue;
+    }
+    let columnIndex = 0;
+    for (const cell of row.cells) {
+      while (grid.has(tableCellGridKey(rowIndex, columnIndex))) {
+        columnIndex += 1;
+      }
+      const colSpan = cell.colSpan ?? 1;
+      const rowSpan = cell.rowSpan ?? 1;
+      const rowEnd = Math.min(block.rows.length, rowIndex + rowSpan);
+      const columnEnd = Math.min(
+        block.columnWidths?.length ?? columnIndex + colSpan,
+        columnIndex + colSpan,
+      );
+      for (let gridRow = rowIndex; gridRow < rowEnd; gridRow++) {
+        for (let gridColumn = columnIndex; gridColumn < columnEnd; gridColumn++) {
+          grid.set(tableCellGridKey(gridRow, gridColumn), cell);
+        }
+      }
+      columnIndex += colSpan;
+    }
+  }
+
+  return grid;
+}
+
+const hasVisibleBorder = (border: { width?: number; style?: string } | undefined): boolean =>
+  border !== undefined && border.width !== 0 && border.style !== "none" && border.style !== "nil";
+
 /**
  * Render a table row with rowSpan support
  */
@@ -574,6 +617,7 @@ function renderTableRow(
   isFirstRowInFragment?: boolean,
   bidi = false,
   columnsPinned = false,
+  cellGrid?: TableCellGrid,
 ): HTMLElement {
   const rowEl = doc.createElement("div");
   rowEl.className = TABLE_CLASS_NAMES.row;
@@ -657,13 +701,18 @@ function renderTableRow(
     const atLogicalEnd = columnIndex + colSpan >= columnWidths.length;
     const isFirstCol = bidi ? atLogicalEnd : atLogicalStart;
     const isLastCol = bidi ? atLogicalStart : atLogicalEnd;
+    const aboveCell = cellGrid?.get(tableCellGridKey(rowIndex - 1, columnIndex));
+    const leftNeighborColumn = bidi ? columnIndex + colSpan : columnIndex - 1;
+    const leftCell = cellGrid?.get(tableCellGridKey(rowIndex, leftNeighborColumn));
+    const drawTop = isFirstRow || !hasVisibleBorder(aboveCell?.borders?.bottom);
+    const drawLeft = isFirstCol || !hasVisibleBorder(leftCell?.borders?.right);
 
     const cellEl = renderTableCell(
       cell,
       cellMeasure,
       cellLeft,
       cellHeight,
-      { isFirstRow, isLastRow, isFirstCol, isLastCol },
+      { drawTop, isLastRow, drawLeft, isLastCol },
       columnsPinned,
       context,
       doc,
@@ -793,6 +842,7 @@ export function renderTableFragment(
   // Track spanning cells across rows
   const spanningCells = new Map<string, SpanningCell>();
   const columnsPinned = tableColumnsArePinned(block);
+  const cellGrid = buildTableCellGrid(block);
 
   // Render repeated header rows for continuation fragments. For a mid-content
   // row break (eigenpal #698), keep repeated headers pinned to the fragment top
@@ -825,6 +875,7 @@ export function renderTableFragment(
         hdrIdx === 0, // first header row draws top border
         block.bidi,
         columnsPinned,
+        cellGrid,
       );
       rowEl.dataset["repeatedHeader"] = "true";
       tableEl.append(rowEl);
@@ -882,6 +933,7 @@ export function renderTableFragment(
       isFirstRowInFragment,
       block.bidi,
       columnsPinned,
+      cellGrid,
     );
 
     contentParent.append(rowEl);
