@@ -3,7 +3,7 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import { toFlowBlocks } from "../../../layout-bridge/convert/toFlowBlocks";
-import { AUTO_PARAGRAPH_SPACING_PX } from "../../../utils/units";
+import { AUTO_PARAGRAPH_SPACING_PX, formatPx } from "../../../utils/units";
 import { schema, singletonManager } from "../../schema";
 
 const paragraphDomAttrs = (attrs: Record<string, unknown>): Record<string, string> => {
@@ -82,7 +82,7 @@ describe("ParagraphExtension", () => {
 
     const domAttrs = paragraphDomAttrs(para?.attrs ?? {});
     expect(domAttrs["style"]).toContain("margin-top: 16px");
-    expect(domAttrs["style"]).not.toContain(`margin-top: ${AUTO_PARAGRAPH_SPACING_PX}px`);
+    expect(domAttrs["style"]).not.toContain(`margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`);
   });
 
   test("applying a style with spacing overrides imported auto-spacing (#823)", () => {
@@ -121,7 +121,7 @@ describe("ParagraphExtension", () => {
 
     const domAttrs = paragraphDomAttrs(para?.attrs ?? {});
     expect(domAttrs["style"]).toContain("margin-top: 24px");
-    expect(domAttrs["style"]).not.toContain(`margin-top: ${AUTO_PARAGRAPH_SPACING_PX}px`);
+    expect(domAttrs["style"]).not.toContain(`margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`);
 
     const block = toFlowBlocks(state.doc).at(0);
     expect(block?.attrs?.spacing?.before).toBe(24);
@@ -161,7 +161,9 @@ describe("ParagraphExtension", () => {
     expect(para?.attrs["_autospacingBase"]).toBeNull();
 
     const domAttrs = paragraphDomAttrs(para?.attrs ?? {});
-    expect(domAttrs["style"] ?? "").not.toContain(`margin-top: ${AUTO_PARAGRAPH_SPACING_PX}px`);
+    expect(domAttrs["style"] ?? "").not.toContain(
+      `margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`,
+    );
 
     const block = toFlowBlocks(state.doc).at(0);
     expect(block?.attrs?.spacing?.before).not.toBe(AUTO_PARAGRAPH_SPACING_PX);
@@ -173,6 +175,6 @@ describe("ParagraphExtension", () => {
       _autospacingBase: { before: null },
     });
 
-    expect(domAttrs["style"]).toContain(`margin-top: ${AUTO_PARAGRAPH_SPACING_PX}px`);
+    expect(domAttrs["style"]).toContain(`margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`);
   });
 });

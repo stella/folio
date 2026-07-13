@@ -304,7 +304,7 @@ export function paragraphToStyle(
   // ============================================================================
 
   // Space before (marginTop). HTML-origin `w:beforeAutospacing` overrides any
-  // explicit before with Word's ~14px auto gap (eigenpal/docx-editor#823).
+  // explicit before with Word's 14pt auto gap (eigenpal/docx-editor#823).
   if (formatting.beforeAutospacing) {
     style.marginTop = formatPx(AUTO_PARAGRAPH_SPACING_PX);
   } else if (formatting.spaceBefore !== undefined) {

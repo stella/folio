@@ -140,10 +140,10 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.indent).toBeUndefined();
   });
 
-  test("surfaces auto spacing (beforeAutospacing/afterAutospacing) as ~14px for pagination", () => {
+  test("surfaces auto spacing (beforeAutospacing/afterAutospacing) as 14pt for pagination", () => {
     // eigenpal/docx-editor#823: the paged layout reads spacing from the flow
     // block, so auto spacing must override the imported before/after (Word
-    // writes `0`) and render the ~14px auto gap while still unedited.
+    // writes `0`) and render the 14pt auto gap while still unedited.
     const doc = schema.node("doc", null, [
       schema.node(
         "paragraph",
@@ -189,7 +189,7 @@ describe("toFlowBlocks paragraph formatting", () => {
 
     const paragraph = toFlowBlocks(doc).at(0);
 
-    expect(paragraph?.attrs?.spacing?.before).toBe(16); // 240 twips, not the 14px auto gap
+    expect(paragraph?.attrs?.spacing?.before).toBe(16); // 240 twips, not the 14pt auto gap
   });
 
   test("auto spacing still applies when a style supplies spacing the import lacked (#823)", () => {
@@ -251,7 +251,7 @@ describe("toFlowBlocks paragraph formatting", () => {
 
   test("keeps auto spacing on an empty paragraph by marking it explicit (#823)", () => {
     // An imported empty paragraph whose only spacing is auto-spacing must keep
-    // the ~14px gap; without `spacingExplicit` the empty-paragraph collapse
+    // the 14pt gap; without `spacingExplicit` the empty-paragraph collapse
     // rule in the layout engine would suppress it.
     const doc = schema.node("doc", null, [
       schema.node(
