@@ -235,7 +235,8 @@ export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguous
 // @public (undocumented)
 export type FolioAIEditSnapshot = {
     blocks: FolioAIBlock[];
-    anchors: Record<string, FolioAIBlockAnchor>;
+    anchors: Record<string, FolioAIBlockAnchor>; /** Hidden empty paragraph used to anchor insertions when `blocks` is empty. */
+    emptyDocumentAnchorId?: string;
 };
 
 // @public
