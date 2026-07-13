@@ -6,6 +6,7 @@
  */
 
 import type { ParagraphBlock, ParagraphMeasure } from "../types";
+import { getLineBreakProviderGeneration } from "./lineBreakProvider";
 
 // =============================================================================
 // TEXT WIDTH CACHE
@@ -281,12 +282,12 @@ const paragraphMeasureCache = new Map<string, ParagraphMeasureEntry>();
  */
 export function hashParagraphBlock(block: ParagraphBlock): string {
   // Simple hash based on runs content
-  const parts: string[] = [];
+  const parts: string[] = [`lbp:${getLineBreakProviderGeneration()}`];
 
   for (const run of block.runs) {
     if (run.kind === "text") {
       parts.push(
-        `t:${run.text}|${run.fontFamily}|${run.eastAsiaFontFamily}|${run.fontSize}|${run.bold}|${run.italic}|${run.allCaps}|${run.smallCaps}|${run.horizontalScale}|${run.letterSpacing}`,
+        `t:${run.text}|${run.fontFamily}|${run.eastAsiaFontFamily}|${run.fontSize}|${run.bold}|${run.italic}|${run.allCaps}|${run.smallCaps}|${run.horizontalScale}|${run.letterSpacing}|${run.language?.val}|${run.language?.eastAsia}|${run.language?.bidi}`,
       );
     } else if (run.kind === "tab") {
       parts.push(`tab:${run.width}`);
@@ -331,6 +332,18 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     }
     if (attrs.reserveEmptyOutlineHeight) {
       parts.push("outline-empty-reserve");
+    }
+    if (attrs.kinsoku !== undefined) {
+      parts.push(`kinsoku:${attrs.kinsoku}`);
+    }
+    if (attrs.overflowPunctuation !== undefined) {
+      parts.push(`overflow-punct:${attrs.overflowPunctuation}`);
+    }
+    const lineBreakRules = attrs.lineBreakRules;
+    if (lineBreakRules) {
+      parts.push(
+        `line-break-rules:${lineBreakRules.noLineBreaksBefore?.language}|${lineBreakRules.noLineBreaksBefore?.characters}|${lineBreakRules.noLineBreaksAfter?.language}|${lineBreakRules.noLineBreaksAfter?.characters}|${lineBreakRules.useLegacyEthiopicAmharicRules}`,
+      );
     }
     const borders = attrs.borders;
     if (borders) {

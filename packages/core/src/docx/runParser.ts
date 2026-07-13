@@ -167,6 +167,7 @@ type RunPropertyChildren = {
   iCs?: XmlElement;
   imprint?: XmlElement;
   kern?: XmlElement;
+  lang?: XmlElement;
   outline?: XmlElement;
   position?: XmlElement;
   rFonts?: XmlElement;
@@ -235,6 +236,9 @@ function collectFirstRunPropertyChildren(rPr: XmlElement): RunPropertyChildren {
         break;
       case "kern":
         children.kern ??= child;
+        break;
+      case "lang":
+        children.lang ??= child;
         break;
       case "outline":
         children.outline ??= child;
@@ -515,6 +519,20 @@ export function parseRunProperties(
     }
 
     formatting.fontFamily = fontFamily;
+  }
+
+  const lang = propertyChildren.lang;
+  if (lang) {
+    const val = getAttribute(lang, "w", "val") || undefined;
+    const eastAsia = getAttribute(lang, "w", "eastAsia") || undefined;
+    const bidi = getAttribute(lang, "w", "bidi") || undefined;
+    if (val || eastAsia || bidi) {
+      formatting.language = {
+        ...(val ? { val } : {}),
+        ...(eastAsia ? { eastAsia } : {}),
+        ...(bidi ? { bidi } : {}),
+      };
+    }
   }
 
   // Character spacing in twips (w:spacing)

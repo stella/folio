@@ -71,6 +71,7 @@ import {
   expectTextEffectMarkAttrs,
   expectFieldAttrs,
   expectFontFamilyMarkAttrs,
+  expectLanguageMarkAttrs,
   expectFontSizeMarkAttrs,
   expectFootnoteRefMarkAttrs,
   expectHardBreakAttrs,
@@ -666,7 +667,7 @@ function isStyleSourcedNumPr(attrs: ParagraphAttrs): boolean {
 // "inherit", dropping the user's decision on save. Branch on `== null` so every
 // toggle routed through here preserves `false`. (Direction is handled
 // separately via the `direction` discriminated union, not this helper.)
-type BooleanToggleKey = "pageBreakBefore" | "widowControl";
+type BooleanToggleKey = "pageBreakBefore" | "widowControl" | "kinsoku" | "overflowPunctuation";
 
 function assignBooleanToggle(
   result: ParagraphFormatting,
@@ -769,6 +770,8 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     }
     assignBooleanToggle(result, attrs, orig, "pageBreakBefore");
     assignBooleanToggle(result, attrs, orig, "widowControl");
+    assignBooleanToggle(result, attrs, orig, "kinsoku");
+    assignBooleanToggle(result, attrs, orig, "overflowPunctuation");
     if (attrs.spacingExplicit !== orig.spacingExplicit) {
       if (attrs.spacingExplicit) {
         result.spacingExplicit = attrs.spacingExplicit;
@@ -818,7 +821,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     // keep the paragraph from short-circuiting to "no formatting".
     bidi != null ||
     attrs.pageBreakBefore != null ||
-    attrs.widowControl != null;
+    attrs.widowControl != null ||
+    attrs.kinsoku != null ||
+    attrs.overflowPunctuation != null;
 
   if (!hasFormatting) {
     return undefined;
@@ -892,6 +897,12 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   }
   if (attrs.widowControl != null) {
     f.widowControl = attrs.widowControl;
+  }
+  if (attrs.kinsoku != null) {
+    f.kinsoku = attrs.kinsoku;
+  }
+  if (attrs.overflowPunctuation != null) {
+    f.overflowPunctuation = attrs.overflowPunctuation;
   }
   return f;
 }
@@ -2011,6 +2022,16 @@ export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
           ff.csTheme = attrs.csTheme;
         }
         formatting.fontFamily = ff;
+        break;
+      }
+
+      case "language": {
+        const attrs = expectLanguageMarkAttrs(mark);
+        formatting.language = {
+          ...(attrs.val ? { val: attrs.val } : {}),
+          ...(attrs.eastAsia ? { eastAsia: attrs.eastAsia } : {}),
+          ...(attrs.bidi ? { bidi: attrs.bidi } : {}),
+        };
         break;
       }
 

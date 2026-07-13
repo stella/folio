@@ -56,6 +56,10 @@ export type ParagraphAttrs = {
 
   // Alignment
   alignment?: ParagraphAlignment;
+  /** Effective East Asian line-edge policy (`w:kinsoku`). */
+  kinsoku?: boolean;
+  /** Effective hanging-punctuation policy (`w:overflowPunct`). */
+  overflowPunctuation?: boolean;
 
   // Spacing (in twips)
   spaceBefore?: number;

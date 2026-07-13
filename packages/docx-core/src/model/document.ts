@@ -199,6 +199,12 @@ export type DocumentSettings = {
    * `<a:font script="…">` entries. Absent for non-CJK/bidi docs.
    */
   themeFontLang?: { eastAsia?: string; bidi?: string };
+  /** Word/OOXML document-wide line-breaking overrides. */
+  lineBreakRules?: {
+    noLineBreaksBefore?: { language?: string; characters: string };
+    noLineBreaksAfter?: { language?: string; characters: string };
+    useLegacyEthiopicAmharicRules?: boolean;
+  };
 };
 
 /** DOCX package conformance classes. */

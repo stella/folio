@@ -43,6 +43,16 @@ export type {
 } from "../../../layout-engine/measure/measureTypes";
 
 export {
+  defaultLineBreakProvider,
+  getLineBreakProvider,
+  getLineBreakProviderGeneration,
+  setLineBreakProvider,
+  resetLineBreakProvider,
+  type LineBreakPolicy,
+  type LineBreakProvider,
+} from "../../../layout-engine/measure/lineBreakProvider";
+
+export {
   measureParagraph,
   measureParagraphs,
   getRunCharWidths,

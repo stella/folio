@@ -30,6 +30,9 @@ export function clearParagraphMeasureCache(): void;
 // @public
 export function clearTextWidthCache(): void;
 
+// @public (undocumented)
+export const defaultLineBreakProvider: LineBreakProvider;
+
 // @public
 export function findCharacterAtX(x: number, charWidths: number[]): number;
 
@@ -127,6 +130,12 @@ export function getFontCacheSize(): number;
 // @public (undocumented)
 export const getFontMetrics: (style: FontStyle) => FontMetrics;
 
+// @public (undocumented)
+export const getLineBreakProvider: () => LineBreakProvider;
+
+// @public
+export const getLineBreakProviderGeneration: () => number;
+
 // @public
 export function getParagraphCacheSize(): number;
 
@@ -150,6 +159,21 @@ export function hashParagraphBlock(block: ParagraphBlock): string;
 
 // @public
 export function isWorkerFontMetricsEnabled(): boolean;
+
+// @public
+export type LineBreakPolicy = {
+    locale?: string; /** Apply East Asian first/last-character restrictions (`w:kinsoku`). */
+    kinsoku?: boolean; /** Document override: characters that may not begin a line. */
+    noLineBreaksBefore?: string; /** Document override: characters that may not end a line. */
+    noLineBreaksAfter?: string; /** Use the legacy Ethiopic/Amharic compatibility behavior. */
+    useLegacyEthiopicAmharicRules?: boolean;
+};
+
+// @public (undocumented)
+export type LineBreakProvider = {
+    findBreaks: (text: string, policy?: LineBreakPolicy) => number[]; /** Grapheme-safe emergency-wrap offsets, in ascending UTF-16 order. */
+    findGraphemeBreaks: (text: string, policy?: LineBreakPolicy) => number[];
+};
 
 // @public
 export function measureParagraph(block: ParagraphBlock, maxWidth: number, options?: MeasureParagraphOptions): ParagraphMeasure;
@@ -194,6 +218,9 @@ export function rectsToFloatingZones(rects: FloatingExclusionRect[], contentWidt
 // @public
 export function resetCanvasContext(): void;
 
+// @public (undocumented)
+export const resetLineBreakProvider: () => void;
+
 // @public
 export type RunMeasurement = {
     width: number;
@@ -215,6 +242,9 @@ export function setFolioMeasurementFlags(flags: FolioMeasurementFeatureFlags | u
 
 // @public
 export function setFontCacheSize(size: number): void;
+
+// @public (undocumented)
+export const setLineBreakProvider: (provider: LineBreakProvider) => void;
 
 // @public
 export function setParagraphCacheSize(size: number): void;

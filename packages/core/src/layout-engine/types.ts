@@ -58,6 +58,8 @@ export type RunFormatting = {
    * to `fontFamily`.
    */
   eastAsiaFontFamily?: string;
+  /** Run language metadata resolved from `w:lang`. */
+  language?: { val?: string; eastAsia?: string; bidi?: string };
   fontSize?: number;
   letterSpacing?: number;
   superscript?: boolean;
@@ -372,6 +374,16 @@ export type ListNumPr = {
  */
 export type ParagraphAttrs = {
   alignment?: "left" | "center" | "right" | "justify";
+  /** East Asian first/last-character restrictions (`w:kinsoku`). */
+  kinsoku?: boolean;
+  /** Hanging punctuation (`w:overflowPunct`), retained for layout policy. */
+  overflowPunctuation?: boolean;
+  /** Document-wide custom line-edge characters and compatibility behavior. */
+  lineBreakRules?: {
+    noLineBreaksBefore?: { language?: string; characters: string };
+    noLineBreaksAfter?: { language?: string; characters: string };
+    useLegacyEthiopicAmharicRules?: boolean;
+  };
   /** OOXML outline level (`w:outlineLvl`), where zero is the top level. */
   outlineLevel?: number;
   spacing?: ParagraphSpacing;

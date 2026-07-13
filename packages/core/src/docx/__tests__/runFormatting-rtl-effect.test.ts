@@ -63,6 +63,27 @@ describe("w:rtl run direction round-trip (eigenpal #424 gap 10)", () => {
   });
 });
 
+describe("w:lang run language round-trip", () => {
+  test("preserves primary, East Asian, and bidi language tags", () => {
+    const { formatting, serialized } = roundTrip(
+      '<w:lang w:val="en-GB" w:eastAsia="ja-JP" w:bidi="ar-SA"/>',
+    );
+
+    expect(formatting?.language).toEqual({
+      val: "en-GB",
+      eastAsia: "ja-JP",
+      bidi: "ar-SA",
+    });
+    expect(serialized).toContain('<w:lang w:val="en-GB" w:eastAsia="ja-JP" w:bidi="ar-SA"/>');
+  });
+
+  test("omits an empty language element", () => {
+    const { formatting, serialized } = roundTrip("<w:lang/>");
+    expect(formatting?.language).toBeUndefined();
+    expect(serialized).not.toContain("<w:lang");
+  });
+});
+
 describe("w:effect text animation round-trip (eigenpal #424 gap 11)", () => {
   // Upstream eigenpal #424 enumerates six active animations plus the explicit
   // "none" sentinel; mirror that union verbatim so host CSS keys (and class

@@ -14,6 +14,7 @@ import {
   readHighlightMarkAttrs,
   readHyperlinkMarkAttrs,
   readImageAttrs,
+  readLanguageMarkAttrs,
   readMathAttrs,
   readBlockSdtAttrs,
   readParagraphAttrs,
@@ -244,6 +245,10 @@ const validateMarks = (
 
       case "fontFamily":
         appendAttrIssues(markPath, readFontFamilyMarkAttrs(mark), issues);
+        continue;
+
+      case "language":
+        appendAttrIssues(markPath, readLanguageMarkAttrs(mark), issues);
         continue;
 
       case "characterSpacing":

@@ -395,6 +395,21 @@ describe("measureParagraph cross-run line breaking", () => {
     }, fakeMeasure);
   });
 
+  test("hard-breaks long words only at grapheme boundaries", () => {
+    withFakeTextMeasure(
+      () => {
+        const family = "👨‍👩‍👧‍👦";
+        const text = `${family}x`;
+        const { lines } = measureParagraph(paragraph([{ kind: "text", text }]), 10);
+
+        expect(lines).toHaveLength(2);
+        expect(lines[0]?.toChar).toBe(family.length);
+        expect(lines[1]).toMatchObject({ fromChar: family.length, toChar: text.length });
+      },
+      { charWidth: fixedCharWidth(5) },
+    );
+  });
+
   test("does not soft-wrap overflowed preserved spaces onto their own lines", () => {
     withFakeTextMeasure(() => {
       const spaces = " ".repeat(12);
@@ -1759,6 +1774,25 @@ describe("CJK line breaking", () => {
         expect(measure.lines[0]?.toChar).toBe(4);
         expect(measure.lines[1]?.fromRun).toBe(1);
         expect(measure.lines[1]?.fromChar).toBe(0);
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+  });
+
+  test("allows trailing punctuation to hang when w:overflowPunct is enabled", () => {
+    withFakeTextMeasure(
+      () => {
+        const paragraph = (overflowPunctuation: boolean): ParagraphBlock => ({
+          kind: "paragraph",
+          id: `cjk-overflow-punctuation-${overflowPunctuation}`,
+          runs: [{ kind: "text", text: "中文。", language: { eastAsia: "zh-CN" } }],
+          attrs: { overflowPunctuation },
+        });
+
+        expect(measureParagraph(paragraph(false), 20).lines).toHaveLength(2);
+        const hanging = measureParagraph(paragraph(true), 20);
+        expect(hanging.lines).toHaveLength(1);
+        expect(hanging.lines[0]?.width).toBe(30);
       },
       { charWidth: fixedCharWidth(10) },
     );

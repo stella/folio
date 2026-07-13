@@ -300,6 +300,9 @@ export function runLayoutPipeline<THfPMs>(
     if (defaultTabStop !== undefined) {
       flowOpts.defaultTabStopTwips = defaultTabStop;
     }
+    if (document?.package.settings?.lineBreakRules) {
+      flowOpts.lineBreakRules = document.package.settings.lineBreakRules;
+    }
     let newBlocks = toFlowBlocks(state.doc, flowOpts);
     // Template fill preview: substitute each matched {{marker}} range
     // with its typed value at the flow-block level so the pages lay out

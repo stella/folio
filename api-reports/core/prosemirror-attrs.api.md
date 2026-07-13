@@ -50,6 +50,9 @@ export const expectHyperlinkMarkAttrs: (mark: Mark) => HyperlinkAttrs;
 export const expectImageAttrs: (node: Node_2) => ImageAttrs;
 
 // @public (undocumented)
+export const expectLanguageMarkAttrs: (mark: Mark) => LanguageAttrs;
+
+// @public (undocumented)
 export const expectMathAttrs: (node: Node_2) => MathAttrs;
 
 // @public (undocumented)
@@ -153,6 +156,9 @@ export const readHyperlinkMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<
 
 // @public (undocumented)
 export const readImageAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<ImageAttrs>;
+
+// @public (undocumented)
+export const readLanguageMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<LanguageAttrs>;
 
 // @public (undocumented)
 export const readMathAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<MathAttrs>;

@@ -180,6 +180,17 @@ export type DocumentSettings = {
     themeFontLang?: {
         eastAsia?: string;
         bidi?: string;
+    }; /** Word/OOXML document-wide line-breaking overrides. */
+    lineBreakRules?: {
+        noLineBreaksBefore?: {
+            language?: string;
+            characters: string;
+        };
+        noLineBreaksAfter?: {
+            language?: string;
+            characters: string;
+        };
+        useLegacyEthiopicAmharicRules?: boolean;
     };
 };
 
@@ -637,7 +648,9 @@ export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | S
 // @public (undocumented)
 export type ParagraphFormatting = {
     alignment?: ParagraphAlignment; /** Text direction (w:bidi) */
-    bidi?: boolean; /** Spacing before in twips (w:spacing/@w:before) */
+    bidi?: boolean; /** Apply East Asian first/last-character line-breaking rules (w:kinsoku). */
+    kinsoku?: boolean; /** Allow punctuation to hang beyond the text margin (w:overflowPunct). */
+    overflowPunctuation?: boolean; /** Spacing before in twips (w:spacing/@w:before) */
     spaceBefore?: number; /** Spacing after in twips (w:spacing/@w:after) */
     spaceAfter?: number; /** Line spacing value (w:spacing/@w:line) */
     lineSpacing?: number; /** Line spacing rule (w:spacing/@w:lineRule) */
@@ -1240,6 +1253,11 @@ export type TextFormatting = {
         hAnsiTheme?: string;
         eastAsiaTheme?: string;
         csTheme?: string;
+    }; /** Run language metadata (`w:lang`) used by spelling and line breaking. */
+    language?: {
+        val?: string;
+        eastAsia?: string;
+        bidi?: string;
     }; /** Character spacing in twips (w:spacing) */
     spacing?: number; /** Raised/lowered text position in half-points (w:position) */
     position?: number; /** Horizontal text scale percentage (w:w) */

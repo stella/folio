@@ -94,3 +94,36 @@ describe("parseSettings — w:themeFontLang (§17.15.1.88)", () => {
     expect(parseSettings(null).themeFontLang).toBeUndefined();
   });
 });
+
+describe("parseSettings — document line-breaking rules", () => {
+  test("reads language-scoped prohibited line-start and line-end characters", () => {
+    const settings = parseSettings(
+      wrap(`
+        <w:noLineBreaksBefore w:lang="ja-JP" w:val="、。"/>
+        <w:noLineBreaksAfter w:lang="ja-JP" w:val="（［"/>
+      `),
+    );
+
+    expect(settings.lineBreakRules).toEqual({
+      noLineBreaksBefore: { language: "ja-JP", characters: "、。" },
+      noLineBreaksAfter: { language: "ja-JP", characters: "（［" },
+    });
+  });
+
+  test("reads the legacy Ethiopic and Amharic breaking compatibility flag", () => {
+    expect(
+      parseSettings(wrap(`<w:compat><w:applyBreakingRules/></w:compat>`)).lineBreakRules,
+    ).toEqual({ useLegacyEthiopicAmharicRules: true });
+  });
+
+  test("ignores disabled and incomplete line-breaking controls", () => {
+    expect(
+      parseSettings(
+        wrap(`
+          <w:noLineBreaksBefore w:lang="ja-JP"/>
+          <w:compat><w:applyBreakingRules w:val="0"/></w:compat>
+        `),
+      ).lineBreakRules,
+    ).toBeUndefined();
+  });
+});

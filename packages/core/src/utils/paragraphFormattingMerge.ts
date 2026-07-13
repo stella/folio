@@ -4,6 +4,8 @@ import { mergeTextFormatting } from "./textFormattingMerge";
 const PARAGRAPH_REPLACE_KEYS = [
   "alignment",
   "bidi",
+  "kinsoku",
+  "overflowPunctuation",
   "spaceBefore",
   "spaceAfter",
   "lineSpacing",

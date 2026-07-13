@@ -48,6 +48,13 @@ const schema = new Schema({
       attrs: { color: {} },
     },
     rtl: {},
+    language: {
+      attrs: {
+        val: { default: null },
+        eastAsia: { default: null },
+        bidi: { default: null },
+      },
+    },
     textEffect: {
       attrs: { effect: {} },
     },
@@ -171,6 +178,23 @@ describe("toFlowBlocks run-level OOXML marks", () => {
     // ProseMirror round-trip but mixed RTL runs would still paint LTR.
     const blocks = toFlowBlocks(buildSingleRunDoc("שלום", "rtl"), {});
     expect(firstRun(blocks).rtl).toBe(true);
+  });
+
+  test("propagates Word language metadata to line layout", () => {
+    const blocks = toFlowBlocks(
+      buildSingleRunDoc("日本語", "language", {
+        val: "en-GB",
+        eastAsia: "ja-JP",
+        bidi: "ar-SA",
+      }),
+      {},
+    );
+
+    expect(firstRun(blocks).language).toEqual({
+      val: "en-GB",
+      eastAsia: "ja-JP",
+      bidi: "ar-SA",
+    });
   });
 
   test("propagates textEffect mark to run formatting", () => {

@@ -320,6 +320,8 @@ const paragraphNodeSpec: NodeSpec = {
     paraId: { default: null },
     textId: { default: null },
     alignment: { default: null },
+    kinsoku: { default: null },
+    overflowPunctuation: { default: null },
     spaceBefore: { default: null },
     spaceAfter: { default: null },
     lineSpacing: { default: null },

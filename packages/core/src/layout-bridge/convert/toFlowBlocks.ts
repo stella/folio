@@ -44,6 +44,7 @@ import {
   expectEmphasisMarkAttrs,
   expectFieldAttrs,
   expectFontFamilyMarkAttrs,
+  expectLanguageMarkAttrs,
   expectFontSizeMarkAttrs,
   expectFootnoteRefMarkAttrs,
   expectHardBreakAttrs,
@@ -128,6 +129,12 @@ export type ToFlowBlocksOptions = {
    * Defaults to the OOXML 720-twip value when absent.
    */
   defaultTabStopTwips?: number;
+  /** Document-wide custom Word line-breaking settings. */
+  lineBreakRules?: {
+    noLineBreaksBefore?: { language?: string; characters: string };
+    noLineBreaksAfter?: { language?: string; characters: string };
+    useLegacyEthiopicAmharicRules?: boolean;
+  };
 };
 
 const DEFAULT_FONT = "Calibri";
@@ -509,6 +516,16 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
         break;
       }
 
+      case "language": {
+        const attrs = expectLanguageMarkAttrs(mark);
+        formatting.language = {
+          ...(attrs.val ? { val: attrs.val } : {}),
+          ...(attrs.eastAsia ? { eastAsia: attrs.eastAsia } : {}),
+          ...(attrs.bidi ? { bidi: attrs.bidi } : {}),
+        };
+        break;
+      }
+
       case "characterSpacing": {
         const attrs = expectCharacterSpacingMarkAttrs(mark);
         if (attrs.spacing !== undefined) {
@@ -746,6 +763,9 @@ function paragraphRunDefaults(pmAttrs: PMParagraphAttrs, theme?: Theme | null): 
   // run's own fontFamily mark overrides this via mergeRunFormatting.
   if (defaultTextFormatting.fontFamily?.eastAsia) {
     result.eastAsiaFontFamily = defaultTextFormatting.fontFamily.eastAsia;
+  }
+  if (defaultTextFormatting.language) {
+    result.language = { ...defaultTextFormatting.language };
   }
   if (defaultTextFormatting.fontSize !== undefined) {
     result.fontSize = defaultTextFormatting.fontSize / 2;
@@ -1603,6 +1623,12 @@ function convertParagraphAttrs(
   if (pmAttrs.pageBreakBefore) {
     attrs.pageBreakBefore = true;
   }
+  if (pmAttrs.kinsoku !== undefined && pmAttrs.kinsoku !== null) {
+    attrs.kinsoku = pmAttrs.kinsoku;
+  }
+  if (pmAttrs.overflowPunctuation !== undefined && pmAttrs.overflowPunctuation !== null) {
+    attrs.overflowPunctuation = pmAttrs.overflowPunctuation;
+  }
   if (pmAttrs.renderedPageBreakBefore) {
     attrs.renderedPageBreakBefore = true;
   }
@@ -1762,7 +1788,6 @@ function convertParagraphAttrs(
   if (defaultTabStopTwips !== undefined) {
     attrs.defaultTabStopTwips = defaultTabStopTwips;
   }
-
   // Default font for empty paragraph measurement (from style's rPr / pPr/rPr)
   const dtf = pmAttrs.defaultTextFormatting as
     | { fontSize?: number; fontFamily?: { ascii?: string; hAnsi?: string } }
@@ -1830,6 +1855,9 @@ function convertParagraph(
     options.originalListAbstractCounters,
     options.originalListSeenNumIds,
   );
+  if (options.lineBreakRules) {
+    attrs.lineBreakRules = options.lineBreakRules;
+  }
   const defaultTextFormatting = pmAttrs.defaultTextFormatting as TextFormatting | undefined;
   if (runs.length === 0) {
     const hasDirectParagraphFormatting =

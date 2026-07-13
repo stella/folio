@@ -33,6 +33,7 @@ export type {
   StrikeAttrs,
   FontSizeAttrs,
   FontFamilyAttrs,
+  LanguageAttrs,
   HighlightAttrs,
   CharacterSpacingAttrs,
   EmphasisMarkAttrs,

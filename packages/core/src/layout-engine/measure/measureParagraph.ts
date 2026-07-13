@@ -39,7 +39,8 @@ import { getListMarkerInlineWidth } from "./listMarkerWidth";
 import { buildRunFontStyle, ptToPx } from "./measureHelpers";
 import { getFontMetrics, measureRun, measureTextWidth } from "./measureProvider";
 import type { FontMetrics, FontStyle } from "./measureTypes";
-import { findWordBreaks, isBreakChar } from "./lineBreaks";
+import { findGraphemeBreaks, findWordBreaks, isBreakChar } from "./lineBreaks";
+import type { LineBreakPolicy } from "./lineBreakProvider";
 import { countCompressibleSpaces } from "./textMeasurementPolicy";
 
 export { clampFloatingWrapMargins } from "./clampFloatingWrapMargins";
@@ -71,20 +72,24 @@ function findMaxFittingLength(
   style: FontStyle,
   maxWidth: number,
   forceMin: boolean = false,
+  policy?: LineBreakPolicy,
 ): number {
-  let lo = 1;
-  let hi = text.length;
+  const boundaries = findGraphemeBreaks(text, policy);
+  let lo = 0;
+  let hi = boundaries.length - 1;
   let best = 0;
   while (lo <= hi) {
     const mid = Math.floor((lo + hi) / 2);
-    if (measureTextWidth(text.slice(0, mid), style) <= maxWidth) {
-      best = mid;
+    // SAFETY: lo/hi are bounded by boundaries.length.
+    const boundary = boundaries[mid]!;
+    if (measureTextWidth(text.slice(0, boundary), style) <= maxWidth) {
+      best = boundary;
       lo = mid + 1;
     } else {
       hi = mid - 1;
     }
   }
-  return forceMin && best === 0 ? 1 : best;
+  return forceMin && best === 0 ? (boundaries.at(0) ?? 0) : best;
 }
 
 /**
@@ -151,6 +156,43 @@ type LineState = {
  */
 function runToFontStyle(run: TextRun | TabRun | FieldRun | MathRun): FontStyle {
   return buildRunFontStyle(run, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
+}
+
+function languageMatches(ruleLanguage: string | undefined, locale: string | undefined): boolean {
+  if (!ruleLanguage) {
+    return true;
+  }
+  if (!locale) {
+    return false;
+  }
+  const rule = ruleLanguage.toLowerCase();
+  const active = locale.toLowerCase();
+  return active === rule || active.startsWith(`${rule}-`) || rule.startsWith(`${active}-`);
+}
+
+function lineBreakPolicy(block: ParagraphBlock, run: TextRun): LineBreakPolicy {
+  const language = run.language;
+  let locale = language?.val;
+  if (hasCjk(run.text)) {
+    locale = language?.eastAsia ?? language?.val;
+  } else if (run.rtl) {
+    locale = language?.bidi ?? language?.val;
+  }
+  const rules = block.attrs?.lineBreakRules;
+  const before = rules?.noLineBreaksBefore;
+  const after = rules?.noLineBreaksAfter;
+
+  return {
+    ...(locale ? { locale } : {}),
+    ...(block.attrs?.kinsoku !== undefined ? { kinsoku: block.attrs.kinsoku } : {}),
+    ...(before && languageMatches(before.language, locale)
+      ? { noLineBreaksBefore: before.characters }
+      : {}),
+    ...(after && languageMatches(after.language, locale)
+      ? { noLineBreaksAfter: after.characters }
+      : {}),
+    ...(rules?.useLegacyEthiopicAmharicRules ? { useLegacyEthiopicAmharicRules: true } : {}),
+  };
 }
 
 /**
@@ -676,12 +718,31 @@ function trimTrailingSpacesAndTabs(text: string): string {
   return text.slice(0, end);
 }
 
+function trailingHangingPunctuationWidth(
+  text: string,
+  style: FontStyle,
+  policy: LineBreakPolicy,
+  enabled: boolean | undefined,
+): number {
+  if (!enabled || text.length === 0) {
+    return 0;
+  }
+  const boundaries = findGraphemeBreaks(text, policy);
+  const lastStart = boundaries.at(-2) ?? 0;
+  const lastGrapheme = text.slice(lastStart);
+  if (!/^\p{Punctuation}+$/u.test(lastGrapheme)) {
+    return 0;
+  }
+  return measureTextWidth(lastGrapheme, style);
+}
+
 /**
  * Width of the unbreakable text glued to the end of each run.
  * A run boundary is not itself a wrap opportunity: adjacent note markers and
  * format-only word splits must wrap as one cluster.
  */
-function computeTrailingGlueWidths(runs: Run[]): number[] {
+function computeTrailingGlueWidths(block: ParagraphBlock): number[] {
+  const runs = block.runs;
   const widths = Array.from({ length: runs.length }, () => 0);
   for (let index = runs.length - 1; index >= 0; index--) {
     const nextRun = runs[index + 1];
@@ -699,7 +760,7 @@ function computeTrailingGlueWidths(runs: Run[]): number[] {
     }
 
     const style = runToFontStyle(nextRun);
-    const breaks = findWordBreaks(text);
+    const breaks = findWordBreaks(text, lineBreakPolicy(block, nextRun));
     if (breaks.length === 0) {
       widths[index] = measureTextWidth(text, style) + (widths[index + 1] ?? 0);
       continue;
@@ -976,7 +1037,7 @@ export function measureParagraph(
     };
   }
 
-  const trailingGlueWidths = computeTrailingGlueWidths(runs);
+  const trailingGlueWidths = computeTrailingGlueWidths(block);
 
   // Initialize line state
   let currentLine: LineState = {
@@ -1437,6 +1498,7 @@ export function measureParagraph(
       const textRun = run as TextRun;
       const text = textRun.text;
       const style = runToFontStyle(textRun);
+      const breakPolicy = lineBreakPolicy(block, textRun);
       // Line height comes from the CJK-aware style; width measurement below
       // keeps `style` so wrapping is unchanged.
       const lineHeightStyle = cjkLineHeightStyle(textRun, style);
@@ -1451,7 +1513,7 @@ export function measureParagraph(
       }
 
       // Find word break points for wrapping
-      const wordBreaks = findWordBreaks(text);
+      const wordBreaks = findWordBreaks(text, breakPolicy);
 
       // Process text word by word
       let charIndex = 0;
@@ -1474,6 +1536,12 @@ export function measureParagraph(
         const measuredWord = trimTrailingSpacesAndTabs(word);
         const wordWidth = measureTextWidth(measuredWord, style);
         const fullWordWidth = measureTextWidth(word, style);
+        const hangingPunctuationWidth = trailingHangingPunctuationWidth(
+          measuredWord,
+          style,
+          breakPolicy,
+          block.attrs?.overflowPunctuation,
+        );
         const regularSpaces = countCompressibleSpaces(measuredWord);
         const nonBreakingSpaces = measuredWord.split("\u00a0").length - 1;
         const isFirstLine = lines.length === 0;
@@ -1499,11 +1567,11 @@ export function measureParagraph(
               )
             : WIDTH_TOLERANCE;
 
-        // If the word itself is longer than a line, hard-break by characters.
+        // If the word itself is longer than a line, hard-break by grapheme.
         // Use substring measurement (not char-by-char accumulation) to preserve
         // kerning accuracy. Char-by-char accumulation overestimates width by
         // ~1-2px per line due to lost kerning, causing extra wraps in narrow cells.
-        if (wordWidth > currentLine.availableWidth + widthTolerance) {
+        if (wordWidth - hangingPunctuationWidth > currentLine.availableWidth + widthTolerance) {
           // Long word that needs hard-breaking. DON'T start a new line first —
           // fill the remaining space on the current line with as many characters
           // as possible. This prevents wasting a full line when a small run
@@ -1513,16 +1581,21 @@ export function measureParagraph(
           while (chunkStart < measuredWord.length) {
             const spaceLeft = currentLine.availableWidth - currentLine.width + WIDTH_TOLERANCE;
             const remaining = measuredWord.slice(chunkStart);
-            let bestEnd = findMaxFittingLength(remaining, style, spaceLeft);
+            let bestEnd = findMaxFittingLength(
+              remaining,
+              style,
+              spaceLeft,
+              currentLine.width === 0,
+              breakPolicy,
+            );
 
-            // Nothing fits → start a new line and retry (or force 1 char on empty line)
+            // Nothing fits beside existing content: start a new line and retry.
+            // On an empty line findMaxFittingLength forces one whole grapheme,
+            // even if that grapheme itself is wider than the line.
             if (bestEnd === 0) {
-              if (currentLine.width > 0) {
-                startNewLine(runIndex, charIndex + chunkStart);
-                updateMaxFont(lineHeightStyle);
-                continue;
-              }
-              bestEnd = 1;
+              startNewLine(runIndex, charIndex + chunkStart);
+              updateMaxFont(lineHeightStyle);
+              continue;
             }
 
             const chunkEnd = chunkStart + bestEnd;
@@ -1585,13 +1658,15 @@ export function measureParagraph(
           wordWidth + rawGlueWidth <= getPostWrapAvailableWidth() + widthTolerance
             ? rawGlueWidth
             : 0;
+        const hangingAllowance = glueWidth === 0 ? hangingPunctuationWidth : 0;
         // Let collapsible whitespace remain at the previous line's tail until
         // visible content decides whether to wrap. Starting a line from an
         // overflowed space creates whitespace-only soft-wrap lines.
         if (
           wordWidth > 0 &&
           currentLine.width > 0 &&
-          currentLine.width + wordWidth + glueWidth > currentLine.availableWidth + widthTolerance
+          currentLine.width + wordWidth + glueWidth >
+            currentLine.availableWidth + widthTolerance + hangingAllowance
         ) {
           // Word doesn't fit, start new line
           startNewLine(runIndex, charIndex);

@@ -608,6 +608,8 @@ function paragraphFormattingToAttrs(
     set("borders", formatting?.borders ?? stylePpr?.borders);
     set("shading", formatting?.shading ?? stylePpr?.shading);
     set("tabs", formatting?.tabs ?? stylePpr?.tabs);
+    set("kinsoku", formatting?.kinsoku ?? stylePpr?.kinsoku);
+    set("overflowPunctuation", formatting?.overflowPunctuation ?? stylePpr?.overflowPunctuation);
 
     // Page break control
     set("pageBreakBefore", formatting?.pageBreakBefore ?? stylePpr?.pageBreakBefore);
@@ -654,6 +656,8 @@ function paragraphFormattingToAttrs(
     set("borders", formatting?.borders);
     set("shading", formatting?.shading);
     set("tabs", formatting?.tabs);
+    set("kinsoku", formatting?.kinsoku);
+    set("overflowPunctuation", formatting?.overflowPunctuation);
 
     // Page break control
     set("pageBreakBefore", formatting?.pageBreakBefore);
@@ -2559,6 +2563,10 @@ export function textFormattingToMarks(
         csTheme: formatting.fontFamily.csTheme,
       }),
     );
+  }
+
+  if (formatting.language) {
+    marks.push(schema.mark("language", formatting.language));
   }
 
   // Superscript/Subscript

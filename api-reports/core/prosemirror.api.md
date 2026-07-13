@@ -284,7 +284,9 @@ export const PAINTABLE_MARK_NAMES: ReadonlySet<string>;
 export type ParagraphAttrs = {
     paraId?: string;
     textId?: string;
-    alignment?: import__stll_docx_core_model.ParagraphAlignment;
+    alignment?: import__stll_docx_core_model.ParagraphAlignment; /** Effective East Asian line-edge policy (`w:kinsoku`). */
+    kinsoku?: boolean; /** Effective hanging-punctuation policy (`w:overflowPunct`). */
+    overflowPunctuation?: boolean;
     spaceBefore?: number;
     spaceAfter?: number;
     lineSpacing?: number;

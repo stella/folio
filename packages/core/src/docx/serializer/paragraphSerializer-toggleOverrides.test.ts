@@ -24,6 +24,8 @@ const BOOLEAN_TOGGLES = [
   "pageBreakBefore",
   "suppressLineNumbers",
   "suppressAutoHyphens",
+  "kinsoku",
+  "overflowPunctuation",
   "bidi",
 ] as const satisfies readonly (keyof ParagraphFormatting)[];
 
@@ -36,6 +38,8 @@ const TAG: Record<BooleanToggle, string> = {
   pageBreakBefore: "w:pageBreakBefore",
   suppressLineNumbers: "w:suppressLineNumbers",
   suppressAutoHyphens: "w:suppressAutoHyphens",
+  kinsoku: "w:kinsoku",
+  overflowPunctuation: "w:overflowPunct",
   bidi: "w:bidi",
 };
 
@@ -85,6 +89,8 @@ describe("serializeParagraph — explicit-false paragraph toggles (eigenpal #687
           <w:pageBreakBefore w:val="0"/>
           <w:suppressLineNumbers w:val="0"/>
           <w:suppressAutoHyphens w:val="0"/>
+          <w:kinsoku w:val="0"/>
+          <w:overflowPunct w:val="0"/>
           <w:bidi w:val="0"/>
           <w:contextualSpacing w:val="0"/>
         </w:pPr>

@@ -220,6 +220,22 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
     }
   }
 
+  if (formatting.language) {
+    const languageAttrs: string[] = [];
+    if (formatting.language.val) {
+      languageAttrs.push(`w:val="${escapeXml(formatting.language.val)}"`);
+    }
+    if (formatting.language.eastAsia) {
+      languageAttrs.push(`w:eastAsia="${escapeXml(formatting.language.eastAsia)}"`);
+    }
+    if (formatting.language.bidi) {
+      languageAttrs.push(`w:bidi="${escapeXml(formatting.language.bidi)}"`);
+    }
+    if (languageAttrs.length > 0) {
+      parts.push(`<w:lang ${languageAttrs.join(" ")}/>`);
+    }
+  }
+
   // Bold
   if (formatting.bold === true) {
     parts.push("<w:b/>");

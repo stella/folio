@@ -3,9 +3,8 @@
  *
  * Extracts document-wide settings the layout pipeline consumes at render
  * time. We deliberately read only the handful of settings that affect
- * layout; the rest of settings.xml (compatibility flags, view state,
- * autoformat options) is preserved opaquely by the rezip step and ignored
- * here.
+ * layout, including the line-breaking compatibility controls Folio supports;
+ * the rest of settings.xml is preserved opaquely by the rezip step.
  *
  * See ECMA-376 §17.15 for the full settings part.
  */
@@ -62,7 +61,40 @@ export function parseSettings(xml: string | null): FolioDocumentSettings {
     };
   }
 
+  const noLineBreaksBefore = parseKinsokuOverride(root, "noLineBreaksBefore");
+  const noLineBreaksAfter = parseKinsokuOverride(root, "noLineBreaksAfter");
+  const compat = root ? findChild(root, "w", "compat") : null;
+  const applyBreakingRules = compat ? findChild(compat, "w", "applyBreakingRules") : null;
+  const useLegacyEthiopicAmharicRules =
+    applyBreakingRules !== null && parseBooleanElement(applyBreakingRules);
+  if (noLineBreaksBefore || noLineBreaksAfter || useLegacyEthiopicAmharicRules) {
+    settings.lineBreakRules = {
+      ...(noLineBreaksBefore ? { noLineBreaksBefore } : {}),
+      ...(noLineBreaksAfter ? { noLineBreaksAfter } : {}),
+      ...(useLegacyEthiopicAmharicRules ? { useLegacyEthiopicAmharicRules: true } : {}),
+    };
+  }
+
   return settings;
+}
+
+function parseKinsokuOverride(
+  root: XmlElement | null,
+  name: "noLineBreaksBefore" | "noLineBreaksAfter",
+): { language?: string; characters: string } | undefined {
+  if (!root) {
+    return undefined;
+  }
+  const element = findChild(root, "w", name);
+  const characters = element ? getAttribute(element, "w", "val") : null;
+  if (!characters) {
+    return undefined;
+  }
+  const language = getAttribute(element, "w", "lang") || undefined;
+  return {
+    characters,
+    ...(language ? { language } : {}),
+  };
 }
 
 function parseDefaultTabStop(root: XmlElement | null): number {

@@ -44,6 +44,7 @@ import { HiddenTextExtension } from "./marks/HiddenTextExtension";
 import { HighlightExtension } from "./marks/HighlightExtension";
 import { HyperlinkExtension } from "./marks/HyperlinkExtension";
 import { ItalicExtension } from "./marks/ItalicExtension";
+import { LanguageExtension } from "./marks/LanguageExtension";
 import { RtlExtension } from "./marks/RtlExtension";
 import { RunFormattingOverrideExtension } from "./marks/RunFormattingOverrideExtension";
 import { RunShadingExtension } from "./marks/RunShadingExtension";
@@ -129,6 +130,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("highlight", HighlightExtension());
   add("fontSize", FontSizeExtension());
   add("fontFamily", FontFamilyExtension());
+  add("language", LanguageExtension());
   add("superscript", SuperscriptExtension());
   add("subscript", SubscriptExtension());
   add("hyperlink", HyperlinkExtension());

@@ -164,6 +164,13 @@ export type ImagePositionAttrs = {
     };
 };
 
+// @public (undocumented)
+export type LanguageAttrs = {
+    val?: string;
+    eastAsia?: string;
+    bidi?: string;
+};
+
 // @public
 export type MathAttrs = {
     display?: "inline" | "block"; /** Raw OMML XML for round-trip preservation */
@@ -175,7 +182,9 @@ export type MathAttrs = {
 export type ParagraphAttrs = {
     paraId?: string;
     textId?: string;
-    alignment?: import__stll_docx_core_model.ParagraphAlignment;
+    alignment?: import__stll_docx_core_model.ParagraphAlignment; /** Effective East Asian line-edge policy (`w:kinsoku`). */
+    kinsoku?: boolean; /** Effective hanging-punctuation policy (`w:overflowPunct`). */
+    overflowPunctuation?: boolean;
     spaceBefore?: number;
     spaceAfter?: number;
     lineSpacing?: number;

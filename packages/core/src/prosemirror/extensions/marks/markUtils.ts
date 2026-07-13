@@ -94,6 +94,17 @@ function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
         };
         break;
       }
+      case "language": {
+        const val = mark.attrs["val"];
+        const eastAsia = mark.attrs["eastAsia"];
+        const bidi = mark.attrs["bidi"];
+        formatting.language = {
+          ...(typeof val === "string" ? { val } : {}),
+          ...(typeof eastAsia === "string" ? { eastAsia } : {}),
+          ...(typeof bidi === "string" ? { bidi } : {}),
+        };
+        break;
+      }
       case "superscript":
         formatting.vertAlign = "superscript";
         break;
@@ -341,6 +352,9 @@ export function textFormattingToMarks(formatting: TextFormatting, schema: Schema
         asciiTheme: formatting.fontFamily.asciiTheme,
       }),
     );
+  }
+  if (formatting.language && schema.marks["language"]) {
+    marks.push(schema.marks["language"].create(formatting.language));
   }
   if (formatting.vertAlign === "superscript" && schema.marks["superscript"]) {
     marks.push(schema.marks["superscript"].create());

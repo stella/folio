@@ -140,6 +140,12 @@ export type TextFormatting = {
     eastAsiaTheme?: string;
     csTheme?: string;
   };
+  /** Run language metadata (`w:lang`) used by spelling and line breaking. */
+  language?: {
+    val?: string;
+    eastAsia?: string;
+    bidi?: string;
+  };
 
   // Spacing and position
   /** Character spacing in twips (w:spacing) */
@@ -232,6 +238,10 @@ export type ParagraphFormatting = {
   alignment?: ParagraphAlignment;
   /** Text direction (w:bidi) */
   bidi?: boolean;
+  /** Apply East Asian first/last-character line-breaking rules (w:kinsoku). */
+  kinsoku?: boolean;
+  /** Allow punctuation to hang beyond the text margin (w:overflowPunct). */
+  overflowPunctuation?: boolean;
 
   // Spacing
   /** Spacing before in twips (w:spacing/@w:before) */

@@ -36,6 +36,7 @@ import type {
   EmphasisMarkAttrs,
   FieldAttrs,
   FontFamilyAttrs,
+  LanguageAttrs,
   FontSizeAttrs,
   FootnoteRefAttrs,
   HighlightAttrs,
@@ -220,6 +221,7 @@ const highlightAttrsCache = new WeakMap<Mark, HighlightAttrs>();
 const runShadingAttrsCache = new WeakMap<Mark, RunShadingAttrs>();
 const fontSizeAttrsCache = new WeakMap<Mark, FontSizeAttrs>();
 const fontFamilyAttrsCache = new WeakMap<Mark, FontFamilyAttrs>();
+const languageAttrsCache = new WeakMap<Mark, LanguageAttrs>();
 const characterSpacingAttrsCache = new WeakMap<Mark, CharacterSpacingAttrs>();
 const characterStyleAttrsCache = new WeakMap<Mark, CharacterStyleAttrs>();
 const emphasisMarkAttrsCache = new WeakMap<Mark, EmphasisMarkAttrs>();
@@ -245,6 +247,8 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
     PARAGRAPH_ALIGNMENT_VALUES,
   );
   optionalString(attrs, "styleId", "paragraph.attrs.styleId", issues);
+  optionalBoolean(attrs, "kinsoku", "paragraph.attrs.kinsoku", issues);
+  optionalBoolean(attrs, "overflowPunctuation", "paragraph.attrs.overflowPunctuation", issues);
   optionalNumber(attrs, "spaceBefore", "paragraph.attrs.spaceBefore", issues);
   optionalNumber(attrs, "spaceAfter", "paragraph.attrs.spaceAfter", issues);
   optionalNumber(attrs, "lineSpacing", "paragraph.attrs.lineSpacing", issues);
@@ -837,6 +841,21 @@ export const readFontFamilyMarkAttrs = (
 
 export const expectFontFamilyMarkAttrs = (mark: Mark): FontFamilyAttrs =>
   expectCachedMarkAttrs(mark, fontFamilyAttrsCache, readFontFamilyMarkAttrs, "font family attrs");
+
+export const readLanguageMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<LanguageAttrs> => {
+  const attrs = attrsRecord(mark.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectMarkType(mark, "language", issues);
+
+  optionalString(attrs, "val", "language.attrs.val", issues);
+  optionalString(attrs, "eastAsia", "language.attrs.eastAsia", issues);
+  optionalString(attrs, "bidi", "language.attrs.bidi", issues);
+
+  return attrsResult(attrs, issues);
+};
+
+export const expectLanguageMarkAttrs = (mark: Mark): LanguageAttrs =>
+  expectCachedMarkAttrs(mark, languageAttrsCache, readLanguageMarkAttrs, "language attrs");
 
 export const readCharacterSpacingMarkAttrs = (
   mark: Mark,

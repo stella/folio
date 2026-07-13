@@ -34,6 +34,16 @@ export {
 export type { FontStyle, FontMetrics, TextMeasurement, RunMeasurement } from "./measureTypes";
 
 export {
+  defaultLineBreakProvider,
+  getLineBreakProvider,
+  getLineBreakProviderGeneration,
+  setLineBreakProvider,
+  resetLineBreakProvider,
+  type LineBreakPolicy,
+  type LineBreakProvider,
+} from "./lineBreakProvider";
+
+export {
   measureParagraph,
   measureParagraphs,
   getRunCharWidths,

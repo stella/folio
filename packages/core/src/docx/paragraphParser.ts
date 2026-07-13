@@ -371,8 +371,10 @@ type ParagraphPropertyChildren = {
   jc?: XmlElement;
   keepLines?: XmlElement;
   keepNext?: XmlElement;
+  kinsoku?: XmlElement;
   numPr?: XmlElement;
   outlineLvl?: XmlElement;
+  overflowPunct?: XmlElement;
   pageBreakBefore?: XmlElement;
   pBdr?: XmlElement;
   pStyle?: XmlElement;
@@ -415,11 +417,17 @@ function collectFirstParagraphPropertyChildren(pPr: XmlElement): ParagraphProper
       case "keepNext":
         children.keepNext ??= child;
         break;
+      case "kinsoku":
+        children.kinsoku ??= child;
+        break;
       case "numPr":
         children.numPr ??= child;
         break;
       case "outlineLvl":
         children.outlineLvl ??= child;
+        break;
+      case "overflowPunct":
+        children.overflowPunct ??= child;
         break;
       case "pageBreakBefore":
         children.pageBreakBefore ??= child;
@@ -486,6 +494,16 @@ export function parseParagraphProperties(
 
   const formatting: ParagraphFormatting = {};
   const propertyChildren = collectFirstParagraphPropertyChildren(pPr);
+
+  const kinsoku = propertyChildren.kinsoku;
+  if (kinsoku) {
+    formatting.kinsoku = parseBooleanElement(kinsoku);
+  }
+
+  const overflowPunct = propertyChildren.overflowPunct;
+  if (overflowPunct) {
+    formatting.overflowPunctuation = parseBooleanElement(overflowPunct);
+  }
 
   // === Alignment ===
   const jc = propertyChildren.jc;

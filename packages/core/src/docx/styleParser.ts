@@ -768,6 +768,16 @@ function parseParagraphProperties(
     formatting.suppressAutoHyphens = parseBooleanElement(suppressAutoHyphens);
   }
 
+  const kinsoku = findChild(pPr, "w", "kinsoku");
+  if (kinsoku) {
+    formatting.kinsoku = parseBooleanElement(kinsoku);
+  }
+
+  const overflowPunct = findChild(pPr, "w", "overflowPunct");
+  if (overflowPunct) {
+    formatting.overflowPunctuation = parseBooleanElement(overflowPunct);
+  }
+
   // Run properties for this paragraph (default run formatting)
   const rPr = findChild(pPr, "w", "rPr");
   if (rPr) {

@@ -58,6 +58,12 @@ export type FontFamilyAttrs = {
   csTheme?: string;
 };
 
+export type LanguageAttrs = {
+  val?: string;
+  eastAsia?: string;
+  bidi?: string;
+};
+
 export type HighlightAttrs = {
   color: NonNullable<TextFormatting["highlight"]>;
 };

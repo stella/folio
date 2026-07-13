@@ -456,6 +456,8 @@ export function serializeParagraphFormatting(
     // Suppress line numbers / auto hyphens
     pushToggle("suppressLineNumbers", formatting.suppressLineNumbers);
     pushToggle("suppressAutoHyphens", formatting.suppressAutoHyphens);
+    pushToggle("kinsoku", formatting.kinsoku);
+    pushToggle("overflowPunct", formatting.overflowPunctuation);
 
     // Spacing
     const spacingXml = serializeSpacing(formatting);
