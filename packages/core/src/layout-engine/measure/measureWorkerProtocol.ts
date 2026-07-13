@@ -40,6 +40,7 @@ export type MeasureRequestEntry = {
   fontFingerprintWidth: number;
   letterSpacing: number;
   horizontalScale: number;
+  fontKerning?: "normal" | "none";
 };
 
 export const WORKER_FONT_FINGERPRINT_TEXT = "HAMBURGEFONTS ivwqy 0123456789";

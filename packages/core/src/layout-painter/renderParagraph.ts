@@ -246,12 +246,9 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     element.style.transform = `scaleX(${run.horizontalScale / 100})`;
     element.style.transformOrigin = "left center";
   }
-  if (run.kerningMinPt && run.kerningMinPt > 0) {
-    const fontSizePt = run.fontSize ?? 11;
-    if (fontSizePt >= run.kerningMinPt) {
-      element.style.fontKerning = "normal";
-    }
-  }
+  const fontSizePt = run.fontSize ?? 11;
+  element.style.fontKerning =
+    run.kerningMinPt !== undefined && fontSizePt >= run.kerningMinPt ? "normal" : "none";
   if (run.emboss) {
     element.style.textShadow = "1px 1px 1px rgba(255,255,255,0.5), -1px -1px 1px rgba(0,0,0,0.3)";
   }
@@ -1447,12 +1444,14 @@ function countShrinkableSpaces(runs: Run[]): number {
  * Build a TextMeasureStyle from a TextRun or FieldRun's relevant fields.
  */
 function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
+  const fontSize = run.fontSize ?? 11;
   return {
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),
     ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
     ...(run.smallCaps !== undefined ? { smallCaps: run.smallCaps } : {}),
     ...(run.eastAsiaFontFamily !== undefined ? { eastAsiaFontFamily: run.eastAsiaFontFamily } : {}),
+    kerning: run.kerningMinPt !== undefined && fontSize >= run.kerningMinPt,
   };
 }
 
@@ -1645,6 +1644,7 @@ type TextMeasureStyle = {
   /** EA font for CJK code points; segments the measured text by script when set
    * (and the run has no letter spacing), mirroring measureContainer. */
   eastAsiaFontFamily?: string;
+  kerning?: boolean;
 };
 
 function applyLetterSpacingToMeasuredWidth(
@@ -1669,6 +1669,7 @@ function createTextMeasurer(
     if (!ctx) {
       return applyLetterSpacingToMeasuredWidth(text.length * 7, text, style.letterSpacing);
     } // Fallback estimate
+    ctx.fontKerning = style.kerning ? "normal" : "none";
     // Use font resolver for category-appropriate fallback stacks,
     // matching measureContainer.ts
     const cssFallback = resolveFontFamily(fontFamily).cssFallback;

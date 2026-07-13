@@ -3,7 +3,7 @@ import { installCanvasMeasureProvider, resetCanvasContext } from "../measureCont
 import { getMeasureProvider, setMeasureProvider } from "../measureProvider";
 
 /** Width contribution of a single character, given the active canvas font. */
-export type FakeCharWidth = (char: string, font: string) => number;
+export type FakeCharWidth = (char: string, font: string, fontKerning?: CanvasFontKerning) => number;
 
 /** Uppercase letters render wider than everything else. */
 export const uppercaseAwareCharWidth: FakeCharWidth = (char) =>
@@ -53,11 +53,12 @@ export function withFakeTextMeasure(
         getContext() {
           return {
             font: "",
-            measureText(this: { font: string }, text: string) {
+            fontKerning: "auto" as CanvasFontKerning,
+            measureText(this: { font: string; fontKerning: CanvasFontKerning }, text: string) {
               measureCount += 1;
               let width = 0;
               for (const char of text) {
-                width += charWidth(char, this.font);
+                width += charWidth(char, this.font, this.fontKerning);
               }
               return {
                 width,

@@ -77,16 +77,22 @@ export function resetCanvasContext(): void {
   canvasContext = null;
 }
 
-function getWorkerFontFingerprintWidth(ctx: CanvasRenderingContext2D, font: string): number {
+function getWorkerFontFingerprintWidth(
+  ctx: CanvasRenderingContext2D,
+  font: string,
+  fontCacheKey: string,
+  fontKerning: CanvasFontKerning,
+): number {
   const generation = getTextWidthCacheGeneration();
-  const cached = workerFontFingerprintCache.get(font);
+  const cached = workerFontFingerprintCache.get(fontCacheKey);
   if (cached?.generation === generation) {
     return cached.width;
   }
 
   ctx.font = font;
+  ctx.fontKerning = fontKerning;
   const width = ctx.measureText(WORKER_FONT_FINGERPRINT_TEXT).width;
-  workerFontFingerprintCache.set(font, { generation, width });
+  workerFontFingerprintCache.set(fontCacheKey, { generation, width });
   return width;
 }
 
@@ -126,6 +132,7 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
   try {
     const ctx = getCanvasContext();
     ctx.font = buildFontString(style);
+    ctx.fontKerning = style.kerning ? "normal" : "none";
 
     // Measure a standard character to get metrics
     const metrics = ctx.measureText("Hg");
@@ -192,13 +199,17 @@ function canvasMeasureTextWidth(text: string, style: FontStyle): number {
   const font = buildFontString(style);
   const letterSpacing = style.letterSpacing ?? 0;
   const horizontalScale = getHorizontalScaleFactor(style);
-  const fontCacheKey = `${font}|scale:${horizontalScale}`;
+  const fontKerning: CanvasFontKerning = style.kerning ? "normal" : "none";
+  const fontCacheKey = style.kerning
+    ? `${font}|kerning:normal|scale:${horizontalScale}`
+    : `${font}|scale:${horizontalScale}`;
   const cached = getCachedTextWidth(measuredText, fontCacheKey, letterSpacing);
   if (cached !== undefined) {
     return cached;
   }
 
   ctx.font = font;
+  ctx.fontKerning = fontKerning;
 
   const metrics = ctx.measureText(measuredText);
 
@@ -221,7 +232,7 @@ function canvasMeasureTextWidth(text: string, style: FontStyle): number {
     return scaledWidth;
   }
 
-  const fontFingerprintWidth = getWorkerFontFingerprintWidth(ctx, font);
+  const fontFingerprintWidth = getWorkerFontFingerprintWidth(ctx, font, fontCacheKey, fontKerning);
   // Cache miss just cost a main-thread `measureText`. Ask the worker to
   // pre-warm:
   //   1) this exact entry (helps future re-layouts after font-ready,
@@ -240,6 +251,7 @@ function canvasMeasureTextWidth(text: string, style: FontStyle): number {
     horizontalScale,
     fontCacheKey,
     fontFingerprintWidth,
+    fontKerning,
   );
   prefetchBinarySearchProbes(
     measuredText,
@@ -248,6 +260,7 @@ function canvasMeasureTextWidth(text: string, style: FontStyle): number {
     fontFingerprintWidth,
     letterSpacing,
     horizontalScale,
+    fontKerning,
   );
   return scaledWidth;
 }
@@ -274,6 +287,9 @@ function glyphAdvanceStyle(style: FontStyle, fontFamily: string | undefined): Fo
   }
   if (style.fontVariant !== undefined) {
     result.fontVariant = style.fontVariant;
+  }
+  if (style.kerning !== undefined) {
+    result.kerning = style.kerning;
   }
   return result;
 }
@@ -324,6 +340,7 @@ function prefetchBinarySearchProbes(
   fontFingerprintWidth: number,
   letterSpacing: number,
   horizontalScale: number,
+  fontKerning: CanvasFontKerning,
 ): void {
   if (text.length < 4) {
     return;
@@ -342,6 +359,7 @@ function prefetchBinarySearchProbes(
       horizontalScale,
       fontCacheKey,
       fontFingerprintWidth,
+      fontKerning,
     );
   }
 }
@@ -382,6 +400,7 @@ function canvasMeasureRun(text: string, style: FontStyle): RunMeasurement {
   const ctx = getCanvasContext();
   const baseFont = buildFontString(style);
   ctx.font = baseFont;
+  ctx.fontKerning = style.kerning ? "normal" : "none";
   // CJK code points measure with the EA font (matching the painter); the rest
   // keep the base font. Only built when an EA font is present and the run has no
   // letter spacing (which the painter leaves to a single base-font span), so the
