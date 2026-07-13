@@ -776,13 +776,14 @@ function tableFragments(block: TableBlock, measure: TableMeasure): TableFragment
 }
 
 describe("left-aligned table placement", () => {
-  test("keeps an unindented table border at the content edge", () => {
+  test("aligns an unindented first-cell text edge with the content edge", () => {
     const { block, measure } = tallTable(1);
     block.rows[0]!.cells[0]!.padding.left = 7;
 
     const fragment = tableFragments(block, measure)[0];
 
-    expect(fragment?.x).toBe(OPTIONS.margins.left);
+    expect(fragment?.x).toBe(OPTIONS.margins.left - 7);
+    expect((fragment?.x ?? 0) + block.rows[0]!.cells[0]!.padding.left).toBe(OPTIONS.margins.left);
   });
 
   test("applies w:tblInd to the first cell text edge", () => {
