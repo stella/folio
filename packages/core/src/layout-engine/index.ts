@@ -56,6 +56,7 @@ export type SectionLayoutConfig = {
 };
 
 const DEFAULT_COLUMNS: ColumnLayout = { count: 1, gap: 0 };
+const DEFAULT_SECTION_BREAK_TYPE = "nextPage";
 
 export function collectSectionConfigs(
   blocks: FlowBlock[],
@@ -356,10 +357,7 @@ export function layoutDocument(
     bodyConfig,
     finalConfig,
   );
-  const sectionBreakTypes = [
-    ...breakIndices.map((index) => (blocks[index] as SectionBreakBlock).type),
-    options.bodyBreakType,
-  ];
+  const sectionBreakTypes = breakIndices.map((index) => (blocks[index] as SectionBreakBlock).type);
   const initialConfig = sectionConfigs.at(0) ?? bodyConfig;
 
   // Create paginator with first section's columns
@@ -486,10 +484,15 @@ export function layoutDocument(
         break;
 
       case "sectionBreak": {
-        // Use the NEXT section's columns; for break type, prefer next section's
-        // type but fall back to current break's type (preserves explicit 'continuous')
+        // A concrete following section with no authored type uses the format
+        // default. Only the final body retains the current type as a fallback
+        // when direct engine callers cannot supply its section properties.
         const nextSectionConfig = sectionConfigs[sectionIdx + 1] ?? initialConfig;
-        const nextType = sectionBreakTypes[sectionIdx + 1] ?? sectionBreakTypes[sectionIdx];
+        let nextType =
+          options.bodyBreakType ?? sectionBreakTypes[sectionIdx] ?? DEFAULT_SECTION_BREAK_TYPE;
+        if (sectionIdx + 1 < sectionBreakTypes.length) {
+          nextType = sectionBreakTypes[sectionIdx + 1] ?? DEFAULT_SECTION_BREAK_TYPE;
+        }
         handleSectionBreak(
           block as SectionBreakBlock,
           paginator,

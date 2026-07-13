@@ -4,6 +4,7 @@ import { layoutDocument } from "./index";
 import type {
   ColumnBreakBlock,
   FlowBlock,
+  Measure,
   ParagraphBlock,
   ParagraphMeasure,
   SectionBreakBlock,
@@ -143,6 +144,48 @@ describe("continuous section break geometry", () => {
     );
     expect(secondColumnFragment?.x).toBe(350);
     expect(secondColumnFragment?.width).toBe(300);
+  });
+
+  test("an omitted next section type defaults to a new page", () => {
+    const first = paragraph("first", 100);
+    const firstBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "first-break",
+      type: "continuous",
+    };
+    const second = paragraph("second", 100);
+    const omittedTypeBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "omitted-type-break",
+    };
+    const third = paragraph("third", 100);
+    const blocks: FlowBlock[] = [
+      first.block,
+      firstBreak,
+      second.block,
+      omittedTypeBreak,
+      third.block,
+    ];
+    const measures = [
+      first.measure,
+      { kind: "sectionBreak" },
+      second.measure,
+      { kind: "sectionBreak" },
+      third.measure,
+    ] satisfies Measure[];
+
+    const result = layoutDocument(blocks, measures, {
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      bodyBreakType: "continuous",
+    });
+
+    expect(result.pages).toHaveLength(2);
+    expect(result.pages[0]?.fragments.map((fragment) => fragment.blockId)).toEqual(["first"]);
+    expect(result.pages[1]?.fragments.map((fragment) => fragment.blockId)).toEqual([
+      "second",
+      "third",
+    ]);
   });
 
   test("content after a continuous column section resumes below its tallest column", () => {
