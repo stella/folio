@@ -34,6 +34,7 @@ export {
   isFolioDocxCapabilityId,
   type FolioDocxCapabilityHost,
   type FolioDocxCapabilityId,
+  type FolioDocxCapabilityManifest,
   type FolioDocxCapabilityOperation,
   type FolioDocxCompatibilityHost,
   type FolioDocxCompatibilityProfile,
