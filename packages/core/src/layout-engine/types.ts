@@ -1413,6 +1413,7 @@ const tableRowOwnsNestedGrid = (row: TableRow): boolean => {
   );
 };
 
+/** Return the leading visual offset for a row with omitted grid columns. */
 export const getTableRowLeadingWidth = (row: TableRow, columnWidths: readonly number[]): number => {
   if (tableRowOwnsNestedGrid(row)) {
     return 0;
