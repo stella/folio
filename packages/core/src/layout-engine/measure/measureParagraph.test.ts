@@ -612,7 +612,7 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("keeps standard-hanging list continuation lines on the conservative tolerance", () => {
+  test("uses prose tolerance for standard-hanging list continuation lines", () => {
     withFakeTextMeasure(
       () => {
         const measure = measureParagraph(
@@ -633,7 +633,7 @@ describe("measureParagraph justified shrink tolerance", () => {
           124,
         );
 
-        expect(measure.lines).toHaveLength(3);
+        expect(measure.lines).toHaveLength(2);
       },
       {
         charWidth: fractionalWidth,
