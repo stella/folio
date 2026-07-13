@@ -1410,6 +1410,12 @@ function convertParagraphAttrs(
     } else if (typeof spaceAfter === "number") {
       attrs.spacing.after = twipsToPixels(spaceAfter);
     }
+    if (autoBefore || autoAfter) {
+      attrs.automaticSpacing = {
+        ...(autoBefore ? { before: true } : {}),
+        ...(autoAfter ? { after: true } : {}),
+      };
+    }
     // Propagate the `spacingExplicit` flag the PM schema carries — empty
     // paragraphs inherit zero spacing unless the side was set inline (Word
     // fidelity, eigenpal #402). Auto spacing counts as explicit: an imported

@@ -285,6 +285,7 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.kind).toBe("paragraph");
     expect(paragraph?.attrs?.spacing?.before).toBe(AUTO_PARAGRAPH_SPACING_PX);
     expect(paragraph?.attrs?.spacing?.after).toBe(AUTO_PARAGRAPH_SPACING_PX);
+    expect(paragraph?.attrs?.automaticSpacing).toEqual({ before: true, after: true });
   });
 
   test("an explicit spacing edit overrides imported auto-spacing (#823)", () => {
@@ -308,6 +309,7 @@ describe("toFlowBlocks paragraph formatting", () => {
     const paragraph = toFlowBlocks(doc).at(0);
 
     expect(paragraph?.attrs?.spacing?.before).toBe(16); // 240 twips, not the 14pt auto gap
+    expect(paragraph?.attrs?.automaticSpacing).toBeUndefined();
   });
 
   test("auto spacing still applies when a style supplies spacing the import lacked (#823)", () => {
