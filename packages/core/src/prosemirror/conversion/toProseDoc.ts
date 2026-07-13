@@ -590,20 +590,20 @@ function paragraphFormattingToAttrs(
     if (spacingFromDocDefaults.before || spacingFromDocDefaults.after) {
       attrs.spacingFromDocDefaults = spacingFromDocDefaults;
     }
-    set("indentLeft", formatting?.indentLeft ?? stylePpr?.indentLeft);
-    set("indentRight", formatting?.indentRight ?? stylePpr?.indentRight);
     // When the paragraph explicitly removes the style's numbering (direct
-    // numId=0 under a numbered style), Word also drops the style's
-    // marker-positioning firstLine/hanging — the paragraph keeps only the
-    // indents it states itself (#765: a direct left=357 renders indented
-    // instead of hanging the first line back to the margin). Outside that
-    // case w:ind merges per attribute: a direct left-only indent keeps the
-    // style's firstLine (Word's own Increase Indent emits exactly that).
+    // numId=0 under a numbered style), the reference layout also drops the
+    // style's marker-positioning indents. The paragraph keeps only the indents
+    // it states itself (#765: a direct left=357 renders indented instead of
+    // hanging the first line back to the margin). Outside that case w:ind
+    // merges per attribute: a direct left-only indent keeps the style's
+    // firstLine.
     const numberingRemoved =
       formatting?.numPr?.numId === 0 && stylePpr?.numPr !== undefined && stylePpr.numPr.numId !== 0;
-    const styleFirstLine = numberingRemoved ? undefined : stylePpr;
-    set("indentFirstLine", formatting?.indentFirstLine ?? styleFirstLine?.indentFirstLine);
-    set("hangingIndent", formatting?.hangingIndent ?? styleFirstLine?.hangingIndent);
+    const numberingStyleIndent = numberingRemoved ? undefined : stylePpr;
+    set("indentLeft", formatting?.indentLeft ?? numberingStyleIndent?.indentLeft);
+    set("indentRight", formatting?.indentRight ?? stylePpr?.indentRight);
+    set("indentFirstLine", formatting?.indentFirstLine ?? numberingStyleIndent?.indentFirstLine);
+    set("hangingIndent", formatting?.hangingIndent ?? numberingStyleIndent?.hangingIndent);
     set("borders", formatting?.borders ?? stylePpr?.borders);
     set("shading", formatting?.shading ?? stylePpr?.shading);
     set("tabs", formatting?.tabs ?? stylePpr?.tabs);

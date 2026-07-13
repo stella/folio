@@ -51,8 +51,8 @@ describe("serializeParagraphFormatting auto-spacing overrides (#823)", () => {
 });
 
 // toProseDoc load-side: a paragraph that removes the style's numbering
-// (direct numId=0 under a numbered style) drops the style's hanging slot too
-// and keeps only the indent it states itself.
+// (direct numId=0 under a numbered style) drops the style's marker-positioning
+// indents and keeps only the indent it states itself.
 const STYLE_DEFS = {
   styles: [
     {
@@ -95,6 +95,16 @@ describe("style vs direct w:ind merge in toProseDoc (#765)", () => {
       indentLeft: 357,
     });
     expect(attrs["indentLeft"]).toBe(357);
+    expect(attrs["indentFirstLine"] ?? null).toBeNull();
+    expect(attrs["hangingIndent"] ?? false).toBe(false);
+  });
+
+  test("removing style numbering does not retain a style-only left indent", () => {
+    const attrs = pmAttrsFor({
+      styleId: "Numbered",
+      numPr: { numId: 0, ilvl: 0 },
+    });
+    expect(attrs["indentLeft"] ?? null).toBeNull();
     expect(attrs["indentFirstLine"] ?? null).toBeNull();
     expect(attrs["hangingIndent"] ?? false).toBe(false);
   });
