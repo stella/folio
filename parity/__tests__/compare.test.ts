@@ -228,7 +228,7 @@ describe("compareGeoms", () => {
     expect(result.score).toBe(1);
     expect(result.divergences).toEqual([]);
     expect(result.medianYOffsetPt).toBe(0);
-    expect(result.totalWordLines).toBe(2);
+    expect(result.totalReferenceLines).toBe(2);
     expect(result.matchedLines).toBe(2);
   });
 
@@ -479,7 +479,7 @@ describe("compareGeoms", () => {
     expect(result.divergences).toHaveLength(1);
     expect(result.divergences[0]).toMatchObject({
       kind: "line-break",
-      wordTexts: ["The quick brown fox jumps"],
+      referenceTexts: ["The quick brown fox jumps"],
       folioTexts: ["The quick brown", "fox jumps"],
     });
     expect(
@@ -586,12 +586,12 @@ describe("compareGeoms", () => {
 
     const result = compareGeoms(word, folio);
 
-    expect(result.divergences[0]).toEqual({ kind: "page-count", word: 1, folio: 2 });
+    expect(result.divergences[0]).toEqual({ kind: "page-count", reference: 1, folio: 2 });
     const pagination = result.divergences.find((d) => d.kind === "pagination");
     expect(pagination).toMatchObject({
       kind: "pagination",
       text: "Line two",
-      wordPage: 1,
+      referencePage: 1,
       folioPage: 2,
     });
   });
@@ -717,7 +717,7 @@ describe("compareGeoms", () => {
     expect(result.divergences).toContainEqual({
       kind: "text-mismatch",
       page: 1,
-      wordText: "The quick brown fox",
+      referenceText: "The quick brown fox",
       folioText: "The quick brown fox.",
     });
   });
@@ -729,7 +729,7 @@ describe("compareGeoms", () => {
 
     expect(emptyResult.score).toBe(1);
     expect(emptyResult.divergences).toEqual([]);
-    expect(emptyResult.totalWordLines).toBe(0);
+    expect(emptyResult.totalReferenceLines).toBe(0);
 
     const folioOnly = makeDoc("folio", [
       makePage({

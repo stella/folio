@@ -27,10 +27,37 @@ describe("parity CLI args", () => {
     expect(flags.reuseServer).toBe(true);
   });
 
+  test("defaults to LibreOffice and accepts Word as an explicit reference", () => {
+    expect(parseArgs(["fixture.docx"]).referenceId).toBe("libreoffice");
+    expect(parseArgs(["fixture.docx", "--reference", "word"]).referenceId).toBe("word");
+  });
+
+  test("validates the reference renderer", () => {
+    expect(() => parseArgs(["fixture.docx", "--reference"])).toThrow(
+      "--reference requires libreoffice or word",
+    );
+    expect(() => parseArgs(["fixture.docx", "--reference", "pages"])).toThrow(
+      "Unknown reference renderer: pages",
+    );
+  });
+
+  test("keeps the old refresh flag as an alias", () => {
+    expect(parseArgs(["--refresh-reference"]).refreshReference).toBe(true);
+    expect(parseArgs(["--refresh-truth"]).refreshReference).toBe(true);
+  });
+
   test("requires a path after --output", () => {
     expect(() => parseArgs(["fixture.docx", "--output"])).toThrow("--output requires a file path");
     expect(() => parseArgs(["fixture.docx", "--output", "--json"])).toThrow(
       "--output requires a file path",
     );
+  });
+
+  test("rejects fractional and partially numeric page limits", () => {
+    for (const value of ["1.5", "2pages"]) {
+      expect(() => parseArgs(["fixture.docx", "--max-pages", value])).toThrow(
+        "--max-pages requires a positive integer",
+      );
+    }
   });
 });

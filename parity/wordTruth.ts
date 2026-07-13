@@ -1,5 +1,5 @@
 /**
- * Word ground truth: export a .docx via the locally installed Microsoft Word
+ * Microsoft Word reference renderer: export a DOCX via the locally installed app
  * for Mac (scripted headlessly through AppleScript), extract per-line
  * geometry with `mutool draw -F stext`, and render per-page PNGs for the
  * visual report. Everything is cached under `CACHE_DIR/<sha256 of the docx
@@ -7,12 +7,17 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 
-import { CACHE_DIR } from "./config";
-import { parseStextXml } from "./stextParse";
-import { normalizeLineText } from "./textNorm";
+import {
+  cacheDirFor,
+  extractPdfGeometry,
+  getMutoolVersion,
+  getPdfPagePngs,
+  readCachedGeom,
+  sha256OfFile,
+} from "./pdfReference";
 import type { DocGeom } from "./types";
 
 const WORD_APP_PATH = "/Applications/Microsoft Word.app";
@@ -20,13 +25,10 @@ const EXPORT_TIMEOUT_MS = 180_000;
 const CLOSE_TIMEOUT_MS = 30_000;
 const EXPORT_ATTEMPTS = 2;
 const CLOSE_ATTEMPTS = 2;
-const PNG_DPI = 96;
-
 const PDF_FILENAME = "word.pdf";
 const STEXT_XML_FILENAME = "word-stext.xml";
 const GEOM_JSON_FILENAME = "word-geom.json";
 const PAGES_DIRNAME = "word-pages";
-const PAGE_PNG_RE = /^p(\d+)\.png$/;
 
 const GET_WORD_VERSION_SCRIPT = 'tell application "Microsoft Word" to get version';
 
@@ -73,25 +75,6 @@ export const getWordVersion = async (): Promise<string | null> => {
   cachedWordVersion = stdout === "" ? null : stdout;
   return cachedWordVersion;
 };
-
-/** `mutool -v` prints its version to stderr, not stdout. */
-const getMutoolVersion = async (): Promise<string> => {
-  // `mutool -v` only writes to stderr; ignore stdout so its pipe fd is not
-  // left open and leaked.
-  const proc = Bun.spawn(["mutool", "-v"], { stdout: "ignore", stderr: "pipe" });
-  const stderr = await new Response(proc.stderr).text();
-  await proc.exited;
-  return stderr.trim();
-};
-
-const sha256OfFile = async (filePath: string): Promise<string> => {
-  const data = await Bun.file(filePath).arrayBuffer();
-  const hasher = new Bun.CryptoHasher("sha256");
-  hasher.update(data);
-  return hasher.digest("hex");
-};
-
-const cacheDirFor = (sha256: string): string => path.join(CACHE_DIR, sha256);
 
 /** Escape a path for interpolation into a double-quoted AppleScript string
  * literal: backslashes first, then double quotes. */
@@ -298,37 +281,7 @@ const runWordExportScript = async (args: RunWordExportArgs): Promise<void> => {
   }
 };
 
-const runMutoolStext = async (pdfPath: string, xmlPath: string): Promise<void> => {
-  const proc = Bun.spawn(["mutool", "draw", "-F", "stext", "-o", xmlPath, pdfPath], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
-  if (exitCode !== 0) {
-    throw new WordTruthError(
-      `mutool stext extraction failed for ${pdfPath} (exit ${exitCode}): ${stderr.trim()}`,
-      "extract",
-    );
-  }
-};
-
-const readCachedGeom = async (geomPath: string, absDocxPath: string): Promise<DocGeom | null> => {
-  const file = Bun.file(geomPath);
-  if (!(await file.exists())) return null;
-  const geom = (await file.json()) as DocGeom;
-  return Object.assign({}, geom, {
-    file: absDocxPath,
-    pages: geom.pages.map((page) =>
-      Object.assign({}, page, {
-        lines: page.lines.map((line) =>
-          Object.assign({}, line, { normText: normalizeLineText(line.text) }),
-        ),
-      }),
-    ),
-  });
-};
-
-/** Word ground truth for `docxPath`: exports via Word, extracts geometry via
+/** Word reference geometry for `docxPath`: exports via Word, extracts via
  * mutool, and caches the result under `CACHE_DIR/<sha256>/word-geom.json`.
  * Returns the cached geometry (with `file` rewritten to the requested
  * absolute path) unless `opts.refresh` is set. */
@@ -343,7 +296,7 @@ export const getWordTruth = async (
 
   const geomPath = path.join(dir, GEOM_JSON_FILENAME);
   if (!(opts?.refresh ?? false)) {
-    const cached = await readCachedGeom(geomPath, absDocxPath);
+    const cached = await readCachedGeom({ geomPath, absDocxPath });
     if (cached) return cached;
   }
 
@@ -358,10 +311,15 @@ export const getWordTruth = async (
   await exportViaWord(absDocxPath, pdfPath);
 
   const xmlPath = path.join(dir, STEXT_XML_FILENAME);
-  await runMutoolStext(pdfPath, xmlPath);
+  let pages;
+  try {
+    pages = await extractPdfGeometry({ pdfPath, xmlPath });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new WordTruthError(message, "extract");
+  }
 
-  const xml = await Bun.file(xmlPath).text();
-  const pages = parseStextXml(xml);
+  await rm(path.join(dir, PAGES_DIRNAME), { recursive: true, force: true });
 
   const [wordVersion, mutoolVersion] = await Promise.all([getWordVersion(), getMutoolVersion()]);
   const geom: DocGeom = {
@@ -380,52 +338,6 @@ export const getWordTruth = async (
   return geom;
 };
 
-const listPagePngs = async (pagesDir: string): Promise<string[]> => {
-  let entries: string[];
-  try {
-    entries = await readdir(pagesDir);
-  } catch {
-    return [];
-  }
-  return entries
-    .filter((name) => PAGE_PNG_RE.test(name))
-    .sort((a, b) => pageNumberOfPngName(a) - pageNumberOfPngName(b))
-    .map((name) => path.join(pagesDir, name));
-};
-
-const pageNumberOfPngName = (filename: string): number => {
-  const match = PAGE_PNG_RE.exec(filename);
-  return match?.[1] === undefined ? 0 : Number(match[1]);
-};
-
-const renderPagePngs = async (
-  pdfPath: string,
-  pagesDir: string,
-  options: { maxPages?: number } = {},
-): Promise<void> => {
-  const pageRange = options.maxPages === undefined ? [] : [`1-${options.maxPages}`];
-  const proc = Bun.spawn(
-    [
-      "mutool",
-      "draw",
-      "-r",
-      String(PNG_DPI),
-      "-o",
-      path.join(pagesDir, "p%d.png"),
-      pdfPath,
-      ...pageRange,
-    ],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
-  if (exitCode !== 0) {
-    throw new WordTruthError(
-      `mutool PNG rendering failed for ${pdfPath} (exit ${exitCode}): ${stderr.trim()}`,
-      "extract",
-    );
-  }
-};
-
 /** Absolute paths of the cached per-page PNGs for `docxPath`, in page order,
  * rendering them from the cached `word.pdf` (via `getWordTruth`, if needed)
  * at 96dpi on first use. */
@@ -439,19 +351,19 @@ export const getWordPagePngs = async (
   const pdfPath = path.join(dir, PDF_FILENAME);
 
   if (!(await Bun.file(pdfPath).exists())) {
-    await getWordTruth(absDocxPath);
+    await getWordTruth(absDocxPath, { refresh: true });
   }
 
   const pagesDir = path.join(dir, PAGES_DIRNAME);
   await mkdir(pagesDir, { recursive: true });
-
-  const existing = await listPagePngs(pagesDir);
-  if (options.maxPages !== undefined && existing.length >= options.maxPages) {
-    return existing.slice(0, options.maxPages);
+  try {
+    return await getPdfPagePngs({
+      pdfPath,
+      pagesDir,
+      ...(options.maxPages === undefined ? {} : { maxPages: options.maxPages }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new WordTruthError(message, "extract");
   }
-  if (options.maxPages === undefined && existing.length > 0) return existing;
-
-  await renderPagePngs(pdfPath, pagesDir, options);
-  const rendered = await listPagePngs(pagesDir);
-  return options.maxPages === undefined ? rendered : rendered.slice(0, options.maxPages);
 };

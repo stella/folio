@@ -4,10 +4,12 @@
  *
  * Reads an existing `parity/cli.ts --json` report and prints a deterministic,
  * filterable list of divergences plus ready-to-run follow-up commands. This
- * avoids re-running Word/Folio when the next step is just choosing a target.
+ * avoids re-running the reference renderer and Folio when the next step is
+ * just choosing a target.
  */
 import path from "node:path";
 
+import { isReferenceRendererId } from "./referenceRenderer";
 import { normalizeLineText } from "./textNorm";
 import type { CorpusReport, Divergence, DivergenceKind } from "./types";
 
@@ -93,6 +95,9 @@ const readReport = async (file: string): Promise<CorpusReport> => {
   if (!Array.isArray(report.results)) {
     throw new Error(`${file} is not a parity JSON report`);
   }
+  if (!report.reference || !isReferenceRendererId(report.reference.id)) {
+    throw new Error(`${file} predates explicit reference-renderer metadata; regenerate it`);
+  }
   return report;
 };
 
@@ -101,7 +106,7 @@ const divergencePage = (divergence: Divergence): number | undefined => {
     case "page-count":
       return undefined;
     case "pagination":
-      return divergence.wordPage;
+      return divergence.referencePage;
     case "line-break":
     case "missing-line":
     case "extra-line":
@@ -116,7 +121,7 @@ const divergencePage = (divergence: Divergence): number | undefined => {
 const divergenceText = (divergence: Divergence): string => {
   switch (divergence.kind) {
     case "page-count":
-      return `word=${divergence.word} folio=${divergence.folio}`;
+      return `reference=${divergence.reference} folio=${divergence.folio}`;
     case "pagination":
     case "missing-line":
     case "extra-line":
@@ -125,9 +130,9 @@ const divergenceText = (divergence: Divergence): string => {
     case "width-drift":
       return divergence.text;
     case "line-break":
-      return `${divergence.wordTexts.join(" ")} | ${divergence.folioTexts.join(" ")}`;
+      return `${divergence.referenceTexts.join(" ")} | ${divergence.folioTexts.join(" ")}`;
     case "text-mismatch":
-      return `${divergence.wordText} -> ${divergence.folioText}`;
+      return `${divergence.referenceText} -> ${divergence.folioText}`;
   }
 };
 
@@ -143,9 +148,9 @@ const divergenceQueryText = (divergence: Divergence): string => {
     case "width-drift":
       return divergence.text;
     case "line-break":
-      return divergence.wordTexts.join(" ");
+      return divergence.referenceTexts.join(" ");
     case "text-mismatch":
-      return divergence.wordText;
+      return divergence.referenceText;
   }
 };
 
@@ -213,6 +218,7 @@ const main = async (): Promise<void> => {
     JSON.stringify(
       {
         report: reportPath,
+        reference: report.reference,
         total: rows.length,
         counts,
         rows: selected.map((row) =>
@@ -220,7 +226,7 @@ const main = async (): Promise<void> => {
             inspectCommand:
               row.page === undefined
                 ? undefined
-                : `bun parity/inspect.ts --doc ${shellQuote(row.doc)} --page ${row.page} --text ${shellQuote(row.queryText)} --max-pages ${row.page}`,
+                : `bun parity/inspect.ts --doc ${shellQuote(row.doc)} --reference ${report.reference.id} --page ${row.page} --text ${shellQuote(row.queryText)} --max-pages ${row.page}`,
             sourceTraceCommand: `bun parity/sourceTrace.ts --doc ${shellQuote(row.doc)} --text ${shellQuote(row.queryText)}`,
           }),
         ),

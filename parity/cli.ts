@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Word rendering parity engine: CLI entry point.
+ * Multi-engine DOCX rendering comparison: CLI entry point.
  *
  * Usage:
  *   bun parity/cli.ts                          # full default corpus, HTML report
@@ -8,14 +8,16 @@
  *   bun parity/cli.ts --help                   # print usage
  *   bun parity/cli.ts some/dir --json          # machine-readable output
  *   bun parity/cli.ts path/to/file.docx --output parity.json
- *   bun parity/cli.ts --refresh-truth          # ignore cached Word exports
+ *   bun parity/cli.ts --reference libreoffice  # open-source reference (default)
+ *   bun parity/cli.ts --reference word         # optional proprietary reference
+ *   bun parity/cli.ts --refresh-reference      # ignore cached reference exports
  *   bun parity/cli.ts --headed                 # show the folio browser window
  *   bun parity/cli.ts --no-report              # skip writing the HTML report
  *   bun parity/cli.ts path/to/file.docx --max-pages 20
  *
- * Ground truth requires Microsoft Word for Mac plus `mutool`
- * (`brew install mupdf-tools`); the CLI exits 2 with a clear message when
- * either is missing, mirroring the differential-test skip ergonomics.
+ * Every renderer is an explicit comparison reference, never “ground truth.”
+ * LibreOffice is the default. All references require `mutool`
+ * (`brew install mupdf-tools`) for normalized PDF geometry extraction.
  */
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
@@ -31,15 +33,17 @@ import type { ParagraphFeatures } from "./features";
 import { createFolioExtractor } from "./folioExtract";
 import type { FolioExtractor } from "./folioExtract";
 import { compareGeoms } from "./compare";
+import { getReferenceRenderer, isReferenceRendererId } from "./referenceRenderer";
+import type { ReferenceRenderer } from "./referenceRenderer";
 import { writeHtmlReport } from "./report";
 import type { DocAssets } from "./report";
-import { getWordPagePngs, getWordTruth, getWordVersion, isWordAvailable } from "./wordTruth";
 import type {
   CorpusReport,
   Divergence,
   DivergenceKind,
   DocGeom,
   FeatureAttributedResult,
+  ReferenceRendererId,
 } from "./types";
 
 const EXIT_OK = 0;
@@ -48,6 +52,7 @@ const EXIT_INFRA_FAILURE = 2;
 
 const TOP_CLUSTER_LIMIT = 10;
 const PERFECT_SCORE = 1;
+const DEFAULT_REFERENCE_RENDERER: ReferenceRendererId = "libreoffice";
 
 /** Word lock files ("~$name.docx") and dotfiles are never real documents. */
 const DOCX_GLOB = "**/*.docx";
@@ -56,7 +61,8 @@ const isRealDocxName = (name: string): boolean => !name.startsWith("~$") && !nam
 type CliFlags = {
   help: boolean;
   json: boolean;
-  refreshTruth: boolean;
+  refreshReference: boolean;
+  referenceId: ReferenceRendererId;
   headed: boolean;
   reuseServer: boolean;
   noReport: boolean;
@@ -69,7 +75,8 @@ export const parseArgs = (argv: string[]): CliFlags => {
   const flags: CliFlags = {
     help: false,
     json: false,
-    refreshTruth: false,
+    refreshReference: false,
+    referenceId: DEFAULT_REFERENCE_RENDERER,
     headed: false,
     reuseServer: false,
     noReport: false,
@@ -77,12 +84,23 @@ export const parseArgs = (argv: string[]): CliFlags => {
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === undefined) continue;
     if (arg === "--help" || arg === "-h") {
       flags.help = true;
     } else if (arg === "--json") {
       flags.json = true;
-    } else if (arg === "--refresh-truth") {
-      flags.refreshTruth = true;
+    } else if (arg === "--refresh-reference" || arg === "--refresh-truth") {
+      flags.refreshReference = true;
+    } else if (arg === "--reference") {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new Error("--reference requires libreoffice or word");
+      }
+      if (!isReferenceRendererId(value)) {
+        throw new Error(`Unknown reference renderer: ${value}`);
+      }
+      flags.referenceId = value;
+      i += 1;
     } else if (arg === "--headed") {
       flags.headed = true;
     } else if (arg === "--reuse-server") {
@@ -98,7 +116,7 @@ export const parseArgs = (argv: string[]): CliFlags => {
       i += 1;
     } else if (arg === "--max-pages") {
       const value = argv[i + 1];
-      const maxPages = value === undefined ? Number.NaN : Number.parseInt(value, 10);
+      const maxPages = value === undefined ? Number.NaN : Number(value);
       if (!Number.isInteger(maxPages) || maxPages <= 0) {
         throw new Error("--max-pages requires a positive integer");
       }
@@ -111,7 +129,7 @@ export const parseArgs = (argv: string[]): CliFlags => {
   return flags;
 };
 
-const HELP_TEXT = `Word rendering parity engine
+const HELP_TEXT = `DOCX rendering interoperability comparison
 
 Usage:
   bun parity/cli.ts [doc-or-dir ...] [options]
@@ -121,13 +139,15 @@ Options:
   --json               Print the machine-readable report to stdout.
   --output <path>      Write the JSON report to a file.
   --max-pages <n>      Compare only the first n pages.
-  --refresh-truth      Re-render Word ground truth instead of using cache.
+  --reference <id>     Reference renderer: libreoffice (default) or word.
+  --refresh-reference  Re-render the reference instead of using cache.
   --headed             Show the Folio browser window.
   --reuse-server       Reuse a healthy current-worktree playground server.
   --no-report          Skip writing the HTML report.
 
 Examples:
-  bun parity/cli.ts path/to/file.docx --max-pages 20
+  bun parity/cli.ts path/to/file.docx --reference libreoffice --max-pages 20
+  bun parity/cli.ts path/to/file.docx --reference word
   bun parity/cli.ts some/dir --json --output /tmp/parity.json
 `;
 
@@ -183,7 +203,7 @@ const resolveCorpus = async (inputPaths: string[]): Promise<string[]> => {
   return Array.from(files).toSorted((a, b) => a.localeCompare(b));
 };
 
-/** Per-doc pipeline failure: any throw during word-truth/folio/compare/features. */
+/** Per-doc pipeline failure: any throw during reference/folio/compare/features. */
 type DocFailure = { file: string; error: Error };
 
 /** Result of running the full per-doc pipeline over the corpus. */
@@ -195,13 +215,16 @@ type PipelineOutcome = {
 };
 
 /**
- * Runs word-truth -> folio-extract -> compare -> feature-attribution for
- * every doc in `docs`, sequentially: Word is a single-instance app and the
- * folio extractor shares one browser page, so docs cannot be processed
- * concurrently. A single `FolioExtractor` is created lazily before the first
- * folio extraction and closed in `finally` regardless of how the loop ends.
+ * Runs reference-render -> folio-extract -> compare -> feature-attribution
+ * for every document sequentially. Some external renderers are single-instance
+ * applications and the folio extractor shares one browser page, so documents
+ * cannot be processed concurrently.
  */
-const runPipeline = async (docs: string[], flags: CliFlags): Promise<PipelineOutcome> => {
+const runPipeline = async (
+  docs: string[],
+  flags: CliFlags,
+  referenceRenderer: ReferenceRenderer,
+): Promise<PipelineOutcome> => {
   const results: FeatureAttributedResult[] = [];
   const paragraphsByDoc: ParagraphFeatures[][] = [];
   const assets = new Map<string, DocAssets>();
@@ -215,12 +238,12 @@ const runPipeline = async (docs: string[], flags: CliFlags): Promise<PipelineOut
       if (!doc) continue;
 
       const label = `[${i + 1}/${docs.length}] ${path.basename(doc)}`;
-      process.stderr.write(`${label}: word truth… `);
+      process.stderr.write(`${label}: ${referenceRenderer.displayName}… `);
 
       try {
-        // oxlint-disable-next-line no-await-in-loop -- Word is a single-instance app; docs are exported one at a time
-        const wordGeom = limitGeomPages(
-          await getWordTruth(doc, { refresh: flags.refreshTruth }),
+        // oxlint-disable-next-line no-await-in-loop -- references are rendered sequentially for deterministic app automation
+        const referenceGeom = limitGeomPages(
+          await referenceRenderer.getGeometry(doc, { refresh: flags.refreshReference }),
           flags.maxPages,
         );
 
@@ -234,13 +257,14 @@ const runPipeline = async (docs: string[], flags: CliFlags): Promise<PipelineOut
 
         process.stderr.write("folio… ");
         // oxlint-disable-next-line no-await-in-loop -- the extractor shares one browser page across docs
-        const folio = await extractor.extract(doc, { maxPages: flags.maxPages });
+        const pageLimit = flags.maxPages === undefined ? {} : { maxPages: flags.maxPages };
+        const folio = await extractor.extract(doc, pageLimit);
 
-        const result = compareGeoms(wordGeom, folio.geom);
+        const result = compareGeoms(referenceGeom, folio.geom);
 
         // oxlint-disable-next-line no-await-in-loop -- sequential per-doc pipeline
         const docFeatures = await extractDocFeatures(doc);
-        const fontEnvironment = detectFontEnvironment(doc, wordGeom, folio.geom);
+        const fontEnvironment = detectFontEnvironment(doc, referenceGeom, folio.geom);
         if (fontEnvironment.tags.length > 0) {
           docFeatures.docFeatures.push(...fontEnvironment.tags);
         }
@@ -251,30 +275,30 @@ const runPipeline = async (docs: string[], flags: CliFlags): Promise<PipelineOut
         } else if (fontEnvironment.status === "mismatch") {
           if (fontEnvironment.tags.includes("font-renderer-metric-mismatch")) {
             process.stderr.write(
-              `(Word/Folio font metric mismatch despite ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} matching family names) `,
+              `(${referenceRenderer.displayName}/Folio font metric mismatch despite ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} matching family names) `,
             );
           } else {
             process.stderr.write(
-              `(Word/Folio font mismatch: ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} lines match) `,
+              `(${referenceRenderer.displayName}/Folio font mismatch: ${fontEnvironment.matchingLines}/${fontEnvironment.comparedLines} lines match) `,
             );
           }
         } else if (fontEnvironment.status === "unverified") {
-          process.stderr.write("(Word/Folio font parity unverified) ");
+          process.stderr.write(`(${referenceRenderer.displayName}/Folio font parity unverified) `);
         }
         const attributed = attributeDivergences(result, docFeatures);
 
         // oxlint-disable-next-line no-await-in-loop -- sequential per-doc pipeline
-        const wordPagePngs = limitPaths(
-          await getWordPagePngs(doc, { maxPages: flags.maxPages }),
+        const referencePagePngs = limitPaths(
+          await referenceRenderer.getPagePngs(doc, pageLimit),
           flags.maxPages,
         );
 
         results.push(attributed);
         paragraphsByDoc.push(docFeatures.paragraphs);
         assets.set(doc, {
-          wordPagePngs,
+          referencePagePngs,
           folioPagePngs: folio.screenshotPaths,
-          wordGeom,
+          referenceGeom,
           folioGeom: folio.geom,
         });
 
@@ -319,13 +343,14 @@ const compactDivergenceCounts = (divergences: Divergence[]): string => {
 
 const printHumanSummary = (report: CorpusReport, failures: DocFailure[]): void => {
   const docCount = report.results.length;
+  const version = report.reference.version ?? "unknown version";
   console.log(
-    `\nWord rendering parity report — ${docCount} document${docCount === 1 ? "" : "s"}, Word ${report.wordVersion ?? "unknown"}\n`,
+    `\nDOCX interoperability report — ${docCount} document${docCount === 1 ? "" : "s"}, Folio vs ${report.reference.displayName} ${version}\n`,
   );
 
   for (const result of report.results) {
     const pct = `${(result.score * 100).toFixed(1)}%`;
-    const pages = `pages ${result.wordPages}/${result.folioPages}`;
+    const pages = `pages ${result.referencePages}/${result.folioPages}`;
     const counts = compactDivergenceCounts(result.divergences) || "no divergences";
     console.log(
       `  ${path.basename(result.file).padEnd(40)} ${pct.padStart(6)}  ${pages}  ${counts}`,
@@ -375,12 +400,13 @@ const main = async (argv: string[]): Promise<number> => {
     return EXIT_OK;
   }
 
-  if (!(await isWordAvailable())) {
+  const referenceRenderer = getReferenceRenderer(flags.referenceId);
+  if (!(await referenceRenderer.isAvailable())) {
     console.error(
-      "Word rendering parity engine requires Microsoft Word for Mac and `mutool`.\n" +
-        "  - Install Word: https://www.microsoft.com/microsoft-365/word\n" +
+      `${referenceRenderer.displayName} comparison requires the renderer and \`mutool\`.\n` +
+        `  - ${referenceRenderer.installHint}\n` +
         "  - Install mutool: brew install mupdf-tools\n" +
-        "This tool is a local, on-demand comparison; it is not a CI gate.",
+        "This is a local, on-demand interoperability comparison; no renderer is treated as specification ground truth.",
     );
     return EXIT_INFRA_FAILURE;
   }
@@ -391,13 +417,21 @@ const main = async (argv: string[]): Promise<number> => {
     return EXIT_OK;
   }
 
-  const { results, paragraphsByDoc, assets, failures } = await runPipeline(docs, flags);
+  const { results, paragraphsByDoc, assets, failures } = await runPipeline(
+    docs,
+    flags,
+    referenceRenderer,
+  );
   const clusters = clusterCorpus(results, paragraphsByDoc);
-  const wordVersion = (await getWordVersion()) ?? undefined;
+  const referenceVersion = (await referenceRenderer.getVersion()) ?? undefined;
 
   const report: CorpusReport = {
     generatedAt: new Date().toISOString(),
-    ...(wordVersion !== undefined ? { wordVersion } : {}),
+    reference: {
+      id: referenceRenderer.id,
+      displayName: referenceRenderer.displayName,
+      ...(referenceVersion !== undefined ? { version: referenceVersion } : {}),
+    },
     results,
     clusters,
   };
@@ -430,7 +464,7 @@ if (import.meta.main) {
     process.exitCode = await main(process.argv.slice(2));
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
-    console.error(`Word rendering parity engine failed: ${err.name}: ${err.message}`);
+    console.error(`DOCX interoperability comparison failed: ${err.name}: ${err.message}`);
     process.exitCode = EXIT_INFRA_FAILURE;
   }
 }

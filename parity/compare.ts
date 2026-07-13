@@ -1,12 +1,12 @@
 /**
- * Rendering parity engine: pure comparison of two `DocGeom` values into
- * a `ParityResult`. No I/O, no browser: this module only manipulates the
+ * Multi-engine rendering comparison: pure comparison of two `DocGeom` values
+ * into a `ParityResult`. No I/O, no browser: this module only manipulates the
  * already-extracted geometry, which keeps it fully unit-testable.
  *
  * The core problem is a sequence-alignment problem: match lines by text
- * across two documents (word = ground truth, folio = candidate), then diff
- * the matched pairs geometrically. See the module-level comments below for
- * the alignment algorithm and the gap-reconciliation (line-break) heuristic.
+ * across two documents (external reference first, folio second), then diff
+ * the matched pairs geometrically. See the module-level comments below for the
+ * alignment algorithm and the gap-reconciliation (line-break) heuristic.
  */
 
 import { DEFAULT_TOLERANCES } from "./config";
@@ -57,7 +57,11 @@ export const compareGeoms = (
 
   const divergences: Divergence[] = [];
   if (word.pages.length !== folio.pages.length) {
-    divergences.push({ kind: "page-count", word: word.pages.length, folio: folio.pages.length });
+    divergences.push({
+      kind: "page-count",
+      reference: word.pages.length,
+      folio: folio.pages.length,
+    });
   }
 
   const cellCount = wordFlat.length * folioFlat.length;
@@ -92,18 +96,18 @@ export const compareGeoms = (
   });
   divergences.push(...orderedDivergences);
 
-  const totalWordLines = wordFlat.length;
+  const totalReferenceLines = wordFlat.length;
   const score =
-    totalWordLines === 0
-      ? scoreForEmptyWordDoc(folioFlat.length)
-      : matchedGeomPass / totalWordLines;
+    totalReferenceLines === 0
+      ? scoreForEmptyReferenceDoc(folioFlat.length)
+      : matchedGeomPass / totalReferenceLines;
 
   return {
     file: word.file,
     score,
-    wordPages: word.pages.length,
+    referencePages: word.pages.length,
     folioPages: folio.pages.length,
-    totalWordLines,
+    totalReferenceLines,
     matchedLines: matchedLineCount,
     medianYOffsetPt,
     divergences,
@@ -112,12 +116,13 @@ export const compareGeoms = (
 
 /** Score when the reference side has no lines at all: 1 if folio is also empty
  * (nothing to diverge on), 0 otherwise (every folio line is unaccounted for). */
-const scoreForEmptyWordDoc = (folioLineCount: number): number => (folioLineCount === 0 ? 1 : 0);
+const scoreForEmptyReferenceDoc = (folioLineCount: number): number =>
+  folioLineCount === 0 ? 1 : 0;
 
 const stripSpaces = (text: string): string => text.replaceAll(" ", "");
 
 /**
- * Reference PDF extraction reports glyph-ink bounds while Folio reports the line
+ * PDF extraction reports glyph-ink bounds while Folio reports the line
  * box. Punctuation-only rows (signature rules, ellipses, separators) have no
  * stable cap-height edge, so their top coordinates cannot establish or verify
  * a baseline offset. Horizontal geometry remains comparable.
@@ -773,7 +778,7 @@ const diffMatches = ({
         orderedDivergences.push({
           kind: "text-mismatch",
           page: w.page,
-          wordText: w.line.normText,
+          referenceText: w.line.normText,
           folioText: f.line.normText,
         });
       }
@@ -781,7 +786,7 @@ const diffMatches = ({
         orderedDivergences.push({
           kind: "pagination",
           text: w.line.normText,
-          wordPage: w.page,
+          referencePage: w.page,
           folioPage: f.page,
         });
       }
@@ -874,7 +879,7 @@ const diffMatches = ({
         orderedDivergences.push({
           kind: "line-break",
           page,
-          wordTexts: item.wordIdxs.map((idx) => wordFlat[idx]?.line.normText ?? ""),
+          referenceTexts: item.wordIdxs.map((idx) => wordFlat[idx]?.line.normText ?? ""),
           folioTexts: item.folioIdxs.map((idx) => folioFlat[idx]?.line.normText ?? ""),
         });
       }

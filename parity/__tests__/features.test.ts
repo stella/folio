@@ -238,9 +238,9 @@ describe("attributeDivergences", () => {
   const baseResult = (divergences: Divergence[]): ParityResult => ({
     file: "/docs/sample.docx",
     score: 0.9,
-    wordPages: 1,
+    referencePages: 1,
     folioPages: 1,
-    totalWordLines: 10,
+    totalReferenceLines: 10,
     matchedLines: 9,
     medianYOffsetPt: 0,
     divergences,
@@ -314,7 +314,7 @@ describe("attributeDivergences", () => {
       paragraphs: [paragraph("Whatever", ["table"])],
       docFeatures: ["multi-section"],
     };
-    const result = baseResult([{ kind: "page-count", word: 3, folio: 4 }]);
+    const result = baseResult([{ kind: "page-count", reference: 3, folio: 4 }]);
     const attributed = attributeDivergences(result, doc);
     expect(attributed.attributed[0]?.features).toEqual(["doc:multi-section"]);
   });
@@ -335,7 +335,7 @@ describe("attributeDivergences", () => {
 
   test("copies ParityResult fields through and attaches docFeatures", () => {
     const doc: DocFeatures = { paragraphs: [], docFeatures: ["landscape"] };
-    const result = baseResult([{ kind: "page-count", word: 1, folio: 1 }]);
+    const result = baseResult([{ kind: "page-count", reference: 1, folio: 1 }]);
     const attributed = attributeDivergences(result, doc);
     expect(attributed.file).toBe(result.file);
     expect(attributed.score).toBe(result.score);
@@ -356,9 +356,9 @@ describe("clusterCorpus", () => {
   ): FeatureAttributedResult => ({
     file,
     score: 0.9,
-    wordPages: 1,
+    referencePages: 1,
     folioPages: 1,
-    totalWordLines: 10,
+    totalReferenceLines: 10,
     matchedLines: 9,
     medianYOffsetPt: 0,
     divergences: attributed.map((a) => a.divergence),
@@ -468,8 +468,14 @@ describe("clusterCorpus", () => {
         "/a.docx",
         ["landscape"],
         [
-          { divergence: { kind: "page-count", word: 1, folio: 2 }, features: ["doc:landscape"] },
-          { divergence: { kind: "page-count", word: 1, folio: 2 }, features: ["doc:landscape"] },
+          {
+            divergence: { kind: "page-count", reference: 1, folio: 2 },
+            features: ["doc:landscape"],
+          },
+          {
+            divergence: { kind: "page-count", reference: 1, folio: 2 },
+            features: ["doc:landscape"],
+          },
         ],
       ),
       makeResult("/b.docx", [], []),
@@ -566,7 +572,7 @@ describe("assessFontEnvironment", () => {
     });
   });
 
-  test("rejects a renderer mismatch even when Word used the requested font", () => {
+  test("rejects a renderer mismatch even when the reference used the requested font", () => {
     const assessment = assessFontEnvironment(
       ["Arial"],
       fontGeom("word", [["Same text", "ArialMT"]]),
