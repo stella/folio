@@ -504,17 +504,19 @@ export function layoutDocument(
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
 
-    // A cached pagination marker records a break at this paragraph, not an
-    // ordinal page target: the source does not emit markers for every physical
-    // page. Honor the break whenever visible content precedes it on Folio's
-    // current page. A structural/natural break that opened an empty page, or a
-    // page containing only overflowed empty paragraphs, already satisfies it.
+    // A cached pagination marker is advisory after layout inputs change. Snap
+    // to it only when the marked paragraph would cross the current page; if the
+    // paragraph still fits, forcing the stale boundary can create a mostly empty
+    // extra page after reflow. A structural or natural break that already opened
+    // the destination page also satisfies the marker.
     const hasRenderedPageBreak =
       block.kind === "paragraph" && block.attrs?.renderedPageBreakBefore === true;
     if (hasPageBreakBefore(block)) {
       paginator.forcePageBreak();
     } else if (hasRenderedPageBreak) {
       const state = paginator.getCurrentState();
+      const renderedBreakNeedsSnap =
+        measure.kind === "paragraph" && !paginator.fits(measure.totalHeight);
       const previousParagraphAlreadyCrossedMarker = pageStartsWithPreviousParagraphContinuation(
         state.page,
         blocks[i - 1],
@@ -530,6 +532,7 @@ export function layoutDocument(
             continuesTabbedParagraphSequence(blocks[i - 1], block)));
       if (
         !naturalAdvanceAlreadyCrossedMarker &&
+        renderedBreakNeedsSnap &&
         pageHasVisibleBodyContent(state.page, blocksById)
       ) {
         paginator.forcePageBreak();
