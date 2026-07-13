@@ -8,6 +8,7 @@ import { ImagePosition } from '@stll/docx-core/model';
 import { ImageWrap } from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
+import { ShapeTextBody } from '@stll/docx-core/model';
 import { TableWidthType } from '@stll/docx-core/model';
 
 // @public
@@ -888,7 +889,8 @@ export type TextBoxBlock = {
     kind: "textBox";
     id: BlockId; /** Width in pixels */
     width: number; /** Height in pixels (may be auto-calculated) */
-    height?: number; /** Fill/background color */
+    height?: number; /** Text fitting behavior */
+    autoFit?: ShapeTextBody["autoFit"]; /** Fill/background color */
     fillColor?: string; /** Border width in pixels */
     outlineWidth?: number; /** Border color */
     outlineColor?: string; /** Outline dash style, or `"none"` for an explicit no-outline. */

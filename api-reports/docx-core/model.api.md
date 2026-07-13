@@ -1170,7 +1170,8 @@ export type TextBox = {
     wrap?: ImageWrap; /** Fill */
     fill?: ShapeFill; /** Outline */
     outline?: ShapeOutline; /** Text content */
-    content: Paragraph[]; /** Internal margins */
+    content: Paragraph[]; /** Text fitting behavior */
+    autoFit?: ShapeTextBody["autoFit"]; /** Internal margins */
     margins?: {
         top?: number;
         bottom?: number;

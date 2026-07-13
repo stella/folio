@@ -389,7 +389,8 @@ export type TableRowAttrs = {
 // @public
 export type TextBoxAttrs = {
     width?: number; /** Height in pixels */
-    height?: number; /** Unique identifier */
+    height?: number; /** Text fitting behavior */
+    autoFit?: import__stll_docx_core_model.ShapeTextBody["autoFit"]; /** Unique identifier */
     textBoxId?: string; /** Fill color as CSS color */
     fillColor?: string; /** Outline width in pixels */
     outlineWidth?: number; /** Outline color as CSS color */
