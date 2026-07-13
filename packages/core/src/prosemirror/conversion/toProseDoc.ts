@@ -600,10 +600,11 @@ function paragraphFormattingToAttrs(
     const numberingRemoved =
       formatting?.numPr?.numId === 0 && stylePpr?.numPr !== undefined && stylePpr.numPr.numId !== 0;
     const numberingStyleIndent = numberingRemoved ? undefined : stylePpr;
-    set("indentLeft", formatting?.indentLeft ?? numberingStyleIndent?.indentLeft);
+    const effectiveIndent = mergeParagraphFormatting(numberingStyleIndent, formatting);
+    set("indentLeft", effectiveIndent?.indentLeft);
     set("indentRight", formatting?.indentRight ?? stylePpr?.indentRight);
-    set("indentFirstLine", formatting?.indentFirstLine ?? numberingStyleIndent?.indentFirstLine);
-    set("hangingIndent", formatting?.hangingIndent ?? numberingStyleIndent?.hangingIndent);
+    set("indentFirstLine", effectiveIndent?.indentFirstLine);
+    set("hangingIndent", effectiveIndent?.hangingIndent);
     set("borders", formatting?.borders ?? stylePpr?.borders);
     set("shading", formatting?.shading ?? stylePpr?.shading);
     set("tabs", formatting?.tabs ?? stylePpr?.tabs);

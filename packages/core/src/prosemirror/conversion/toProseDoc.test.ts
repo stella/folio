@@ -136,6 +136,37 @@ describe("toProseDoc", () => {
     expect(doc.firstChild?.attrs.spacingExplicit).toBeNull();
   });
 
+  test("direct first-line indent clears a hanging indent inherited from the paragraph style", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { styleId: "Heading", indentFirstLine: 720 },
+              content: [],
+            },
+          ],
+        },
+        styles: {
+          styles: [
+            {
+              styleId: "Heading",
+              type: "paragraph",
+              pPr: { indentLeft: 360, indentFirstLine: -180, hangingIndent: true },
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+
+    expect(doc.firstChild?.attrs.indentLeft).toBe(360);
+    expect(doc.firstChild?.attrs.indentFirstLine).toBe(720);
+    expect(doc.firstChild?.attrs.hangingIndent).toBe(false);
+  });
+
   test("applies paragraph-mark defaults to otherwise unformatted visible text", () => {
     const document: Document = {
       package: {
