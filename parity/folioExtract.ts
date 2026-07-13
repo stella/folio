@@ -544,6 +544,11 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
       const tableCells = Array.from(el.querySelectorAll(".layout-table-cell"));
       const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
       const resolvedFontCache = new Map<string, string>();
+      const clippingValues = new Set(["auto", "clip", "hidden", "scroll"]);
+      const ancestorClipCache = new Map<
+        HTMLElement,
+        { clipsX: boolean; clipsY: boolean; rect?: DOMRect }
+      >();
       const canvasContext = document.createElement("canvas").getContext("2d");
       const fontProbeText = "mmmmmmmmmmlliWW0123456789";
       const genericFamilies = new Set([
@@ -688,14 +693,25 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
         };
 
         const isFullyClipped = (sourceEl: HTMLElement | null, rect: DOMRect): boolean => {
-          const clippingValues = new Set(["auto", "clip", "hidden", "scroll"]);
           let ancestor = (sourceEl ?? lineEl).parentElement;
           while (ancestor && el.contains(ancestor)) {
-            const computed = getComputedStyle(ancestor);
-            const clipsX = clippingValues.has(computed.overflowX);
-            const clipsY = clippingValues.has(computed.overflowY);
+            let clipInfo = ancestorClipCache.get(ancestor);
+            if (!clipInfo) {
+              const computed = getComputedStyle(ancestor);
+              const clipsX = clippingValues.has(computed.overflowX);
+              const clipsY = clippingValues.has(computed.overflowY);
+              clipInfo = {
+                clipsX,
+                clipsY,
+                ...(clipsX || clipsY ? { rect: ancestor.getBoundingClientRect() } : {}),
+              };
+              ancestorClipCache.set(ancestor, clipInfo);
+            }
+            const { clipsX, clipsY, rect: ancestorRect } = clipInfo;
             if (clipsX || clipsY) {
-              const ancestorRect = ancestor.getBoundingClientRect();
+              if (!ancestorRect) {
+                throw new Error("clipping ancestor is missing cached geometry");
+              }
               if (
                 (clipsX && (rect.right <= ancestorRect.left || rect.left >= ancestorRect.right)) ||
                 (clipsY && (rect.bottom <= ancestorRect.top || rect.top >= ancestorRect.bottom))
