@@ -321,6 +321,29 @@ const makeSectionedState = (): EditorState =>
     ]),
   });
 
+const makeImplicitSectionBoundaryState = (): EditorState =>
+  EditorState.create({
+    doc: schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          _sectionProperties: {},
+        },
+        [schema.text("First section")],
+      ),
+      schema.node("paragraph", null, [schema.text("Second section")]),
+    ]),
+  });
+
+const makeSectionBoundaryDocument = (sectionStart: "continuous" | "nextPage") => {
+  const document = createEmptyDocument();
+  document.package.document.sections = [
+    { properties: {}, content: [] },
+    { properties: { sectionStart }, content: [] },
+  ];
+  return document;
+};
+
 const makePreparedHeaderFooter = (height: number): HeaderFooterContent => ({
   blocks: [],
   measures: [],
@@ -756,6 +779,27 @@ describe("runLayoutPipeline", () => {
     const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document }), makeState());
 
     expect(outcome.layout?.pages.at(0)?.size).toEqual({ w: 1124, h: 795 });
+  });
+
+  test("uses the final section start mode for an implicit paragraph boundary", () => {
+    const state = makeImplicitSectionBoundaryState();
+    const continuous = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document: makeSectionBoundaryDocument("continuous"),
+        sectionProperties: {},
+      }),
+      state,
+    );
+    const nextPage = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document: makeSectionBoundaryDocument("nextPage"),
+        sectionProperties: {},
+      }),
+      state,
+    );
+
+    expect(continuous.layout?.pages).toHaveLength(1);
+    expect(nextPage.layout?.pages).toHaveLength(2);
   });
 
   test("uses the referenced final-section footer for body clearance", () => {

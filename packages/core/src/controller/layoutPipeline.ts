@@ -539,7 +539,7 @@ export function runLayoutPipeline<THfPMs>(
     // `bodyBreakType` does not model; the adapter narrows it away and passes the
     // value through unchanged at runtime. Preserved verbatim from the adapter.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const bodyBreakType = sectionProperties?.sectionStart as
+    const bodyBreakType = finalSectionProperties?.sectionStart as
       | "continuous"
       | "nextPage"
       | "evenPage"
