@@ -174,6 +174,8 @@ export type RawLine = {
   text: string;
   rect: RawRect;
   region: Region;
+  /** True when the line's ink box falls fully outside an overflow-clipping ancestor. */
+  fullyClipped?: boolean;
   /** First actually available family from the computed CSS stack of the first
    * `.layout-run`; falls back to the computed stack when canvas probing is unavailable. */
   fontFamilyRaw?: string;
@@ -240,7 +242,7 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
 
   const lines: LineBox[] = [];
   for (const rawLine of rawPage.lines) {
-    if (rawLine.rect.width <= 0 || rawLine.rect.height <= 0) {
+    if (rawLine.fullyClipped || rawLine.rect.width <= 0 || rawLine.rect.height <= 0) {
       continue;
     }
     const normText = normalizeLineText(rawLine.text);
@@ -662,10 +664,35 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
           return text;
         };
 
+        const isFullyClipped = (sourceEl: HTMLElement | null, rect: DOMRect): boolean => {
+          const clippingValues = new Set(["auto", "clip", "hidden", "scroll"]);
+          let ancestor = (sourceEl ?? lineEl).parentElement;
+          while (ancestor && el.contains(ancestor)) {
+            const computed = getComputedStyle(ancestor);
+            const clipsX = clippingValues.has(computed.overflowX);
+            const clipsY = clippingValues.has(computed.overflowY);
+            if (clipsX || clipsY) {
+              const ancestorRect = ancestor.getBoundingClientRect();
+              if (
+                (clipsX && (rect.right <= ancestorRect.left || rect.left >= ancestorRect.right)) ||
+                (clipsY && (rect.bottom <= ancestorRect.top || rect.top >= ancestorRect.bottom))
+              ) {
+                return true;
+              }
+            }
+            if (ancestor === el) {
+              break;
+            }
+            ancestor = ancestor.parentElement;
+          }
+          return false;
+        };
+
         const toRawLine = (text: string, rect: DOMRect, sourceEl: HTMLElement | null) => ({
           text,
           rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
           region,
+          ...(isFullyClipped(sourceEl, rect) ? { fullyClipped: true } : {}),
           ...(visualGroup !== undefined ? { visualGroup } : {}),
           ...fontFrom(sourceEl),
         });

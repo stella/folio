@@ -200,6 +200,19 @@ describe("toPageGeom", () => {
     expect(page.lines[0]?.text).toBe("Visible");
   });
 
+  test("drops lines fully clipped by an overflow ancestor", () => {
+    const rawPage = makeRawPage({
+      lines: [
+        makeRawLine({ text: "Visible", rect: rect(0, 0, 100, 10) }),
+        makeRawLine({ text: "Clipped", rect: rect(0, 20, 100, 10), fullyClipped: true }),
+      ],
+    });
+
+    const page = toPageGeom(rawPage);
+
+    expect(page.lines.map((line) => line.text)).toEqual(["Visible"]);
+  });
+
   test("drops lines whose normalized text is empty (whitespace-only / soft hyphen only)", () => {
     const rawPage = makeRawPage({
       lines: [
