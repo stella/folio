@@ -637,7 +637,7 @@ function justifyShrinkToleranceRatio(
   });
 }
 
-function isDefaultHangingListMarkerLine(block: ParagraphBlock, isFirstLine: boolean): boolean {
+function usesSpaceBasedListMarkerTolerance(block: ParagraphBlock, isFirstLine: boolean): boolean {
   return (
     isFirstLine &&
     block.attrs?.listMarker !== undefined &&
@@ -1448,13 +1448,13 @@ export function measureParagraph(
         const nonBreakingSpaces = measuredWord.split("\u00a0").length - 1;
         const isFirstLine = lines.length === 0;
         const regularSpaceWidth =
-          regularSpaces > 0 && isDefaultHangingListMarkerLine(block, isFirstLine)
+          regularSpaces > 0 && usesSpaceBasedListMarkerTolerance(block, isFirstLine)
             ? regularSpaces * measureTextWidth(" ", style)
             : 0;
         const widthTolerance = isJustifiedParagraph
           ? Math.max(
               WIDTH_TOLERANCE,
-              isDefaultHangingListMarkerLine(block, isFirstLine)
+              usesSpaceBasedListMarkerTolerance(block, isFirstLine)
                 ? (currentLine.regularSpaceWidth + regularSpaceWidth) *
                     JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO
                 : currentLine.availableWidth *
@@ -1504,7 +1504,7 @@ export function measureParagraph(
             currentLine.regularSpaceCount += chunkRegularSpaceCount;
             if (
               chunkRegularSpaceCount > 0 &&
-              isDefaultHangingListMarkerLine(block, lines.length === 0)
+              usesSpaceBasedListMarkerTolerance(block, lines.length === 0)
             ) {
               currentLine.regularSpaceWidth +=
                 chunkRegularSpaceCount * measureTextWidth(" ", style);
@@ -1527,7 +1527,7 @@ export function measureParagraph(
           currentLine.regularSpaceCount += wordRegularSpaceCount;
           if (
             wordRegularSpaceCount > 0 &&
-            isDefaultHangingListMarkerLine(block, lines.length === 0)
+            usesSpaceBasedListMarkerTolerance(block, lines.length === 0)
           ) {
             currentLine.regularSpaceWidth += wordRegularSpaceCount * measureTextWidth(" ", style);
           }
@@ -1580,7 +1580,7 @@ export function measureParagraph(
         currentLine.regularSpaceCount += wordRegularSpaceCount;
         if (
           wordRegularSpaceCount > 0 &&
-          isDefaultHangingListMarkerLine(block, lines.length === 0)
+          usesSpaceBasedListMarkerTolerance(block, lines.length === 0)
         ) {
           currentLine.regularSpaceWidth += wordRegularSpaceCount * measureTextWidth(" ", style);
         }
