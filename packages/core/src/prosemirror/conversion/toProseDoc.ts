@@ -668,7 +668,12 @@ function paragraphFormattingToAttrs(
     set("direction", directionFromBidi(formatting?.bidi));
 
     // Default run properties (pPr/rPr)
-    set("defaultTextFormatting", resolveTextFormatting(formatting?.runProperties, styleResolver));
+    set(
+      "defaultTextFormatting",
+      stripParagraphMarkOnlyFormatting(
+        resolveTextFormatting(formatting?.runProperties, styleResolver) ?? {},
+      ),
+    );
   }
 
   // Section break type and full section properties for layout + round-trip
@@ -897,7 +902,14 @@ function hasDirectRunFormatting(formatting: TextFormatting | undefined): boolean
 }
 
 function stripParagraphMarkOnlyFormatting(formatting: TextFormatting): TextFormatting | undefined {
-  const { allCaps: _ac, highlight: _h, shading: _s, smallCaps: _sc, ...rest } = formatting;
+  const {
+    allCaps: _ac,
+    highlight: _h,
+    shading: _s,
+    smallCaps: _sc,
+    vertAlign: _va,
+    ...rest
+  } = formatting;
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 

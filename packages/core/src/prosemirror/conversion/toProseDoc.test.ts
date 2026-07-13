@@ -443,6 +443,39 @@ describe("toProseDoc", () => {
     expect(text?.marks.some((mark) => mark.type.name === "italic")).toBe(true);
   });
 
+  test("keeps paragraph-mark vertical alignment off visible text", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                runProperties: {
+                  vertAlign: "superscript",
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: {},
+                  content: [{ type: "text", text: "Visible text" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document);
+    const paragraph = doc.firstChild;
+    const text = paragraph?.firstChild;
+
+    expect(paragraph?.attrs.defaultTextFormatting?.vertAlign).toBeUndefined();
+    expect(text?.marks.some((mark) => mark.type.name === "superscript")).toBe(false);
+  });
+
   test("preserves explicit run-level all-caps", () => {
     const document: Document = {
       package: {
