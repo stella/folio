@@ -13,12 +13,15 @@ import { FolioAIEditSnapshot } from '@stll/folio-core/server';
 import { FolioAITextRangeHandle } from '@stll/folio-core/server';
 import { FolioBlockDiff } from '@stll/folio-core/server';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
+import { FolioDocumentNavigationTarget } from '@stll/folio-core/server';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
 import { FolioDocumentOperationIssue } from '@stll/folio-core/server';
 import { FolioDocumentOperationReceipt } from '@stll/folio-core/server';
 import { FolioDocumentOperationResult } from '@stll/folio-core/server';
 import { FolioDocumentOperationUndoHandle } from '@stll/folio-core/server';
 import { FolioDocumentOperationUndoResult } from '@stll/folio-core/server';
+import { FolioDocumentOutlineEntry } from '@stll/folio-core/server';
+import { FolioDocumentSectionHandle } from '@stll/folio-core/server';
 import { FolioDocumentStory } from '@stll/folio-core/server';
 import { FolioDocumentStoryHandle } from '@stll/folio-core/server';
 import { FolioDocxReviewer } from '@stll/folio-core/server';
@@ -62,6 +65,8 @@ export const executeFolioToolCall: (name: string, args: unknown, bridge: FolioAg
 // @public
 export const FOLIO_AGENT_TOOL_NAMES: {
     readonly readDocument: "read_document";
+    readonly getDocumentOutline: "get_document_outline";
+    readonly readSection: "read_section";
     readonly listStories: "list_stories";
     readonly readStory: "read_story";
     readonly findText: "find_text";
@@ -74,6 +79,7 @@ export const FOLIO_AGENT_TOOL_NAMES: {
     readonly readPage: "read_page";
     readonly readSelection: "read_selection";
     readonly scrollToBlock: "scroll_to_block";
+    readonly showInDocument: "show_in_document";
 };
 
 // @public
@@ -1585,7 +1591,9 @@ export type FolioAgentBridge = {
     scrollToBlock?(blockId: string): boolean; /** The user's current text selection in the live editor, as plain text. */
     getSelectionText?(): string; /** Total page count in the live, paginated editor. */
     getPageCount?(): number; /** Plain text of the given 1-based page in the live editor. */
-    getPageText?(page: number): string;
+    getPageText?(page: number): string; /** Resolve a main-story block or exact text range to its real rendered page. */
+    getTargetPage?(target: FolioDocumentNavigationTarget): number | null; /** Select and reveal a stable block or text range in the live editor. */
+    showInDocument?(target: FolioDocumentNavigationTarget): boolean;
 };
 
 // @public
@@ -1619,6 +1627,13 @@ export type FolioAgentCommentReply = {
 };
 
 // @public (undocumented)
+export type FolioAgentDocumentOutline = {
+    sections: FolioAgentOutlineEntry[];
+    totalSections: number;
+    truncated: boolean;
+};
+
+// @public (undocumented)
 export type FolioAgentEditorApplyDocumentOperationsOptions = {
     snapshot: FolioAIEditSnapshot;
     batch: FolioDocumentOperationBatch;
@@ -1641,14 +1656,58 @@ export type FolioAgentEditorRefLike = {
     getTrackedChanges?(): FolioReviewChange[];
     getCommentAnchors?(): FolioCommentAnchor[];
     getSelectionText?(): string;
-    getPageText?(page: number): string | null;
+    getPageText?(page: number): string | null; /** `DocxEditorRef.getTargetPage`, when available on newer refs. */
+    getTargetPage?(target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot): number | null; /** `DocxEditorRef.showInDocument`, when available on newer refs. */
+    showInDocument?(target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot): boolean;
+};
+
+// @public (undocumented)
+export type FolioAgentOutlineEntry = FolioDocumentOutlineEntry & {
+    page?: number;
+};
+
+// @public (undocumented)
+export type FolioAgentScopedFindTextResult = FolioAgentFindTextResult | FolioAgentStoryFindTextResult;
+
+// @public (undocumented)
+export type FolioAgentSectionRead = {
+    handle: FolioDocumentSectionHandle;
+    heading: FolioDocumentOutlineEntry;
+    blocks: FolioAgentBlock[];
+    totalBlocks: number;
+    truncated: boolean;
+    nextAfterBlockId?: string;
+};
+
+// @public (undocumented)
+export type FolioAgentStoryFindTextResult = {
+    matches: FolioAgentStoryTextMatch[];
+    truncated: boolean;
+    totalMatches: number;
+};
+
+// @public (undocumented)
+export type FolioAgentStoryTextMatch = {
+    type: "story";
+    story: Exclude<FolioDocumentStoryHandle, {
+        type: "main";
+    }>;
+    startOffset: number;
+    endOffset: number; /** 0-based index of this occurrence within the story. */
+    occurrenceInStory: number;
+    context: string;
 };
 
 // @public
 export type FolioAgentTextMatch = {
-    blockId: string; /** Stable handle that can be passed directly to a `replaceRange` operation. */
-    range: FolioAITextRangeHandle; /** 0-based index of this occurrence within its block (multiple matches in one block increment this). */
-    occurrenceInBlock: number; /** The match plus ~40 characters of surrounding context on each side. */
+    type?: "main";
+    story?: {
+        type: "main";
+    };
+    blockId: string; /** Stable handle that can be passed directly to `show_in_document` or a range operation. */
+    range: FolioAITextRangeHandle; /** 0-based index of this occurrence within its block. */
+    occurrenceInBlock: number; /** Real rendered page when a live paginated surface supplies it. */
+    page?: number;
     context: string;
 };
 

@@ -130,7 +130,8 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replac
 export type FolioAIBlock = {
     id: string;
     kind: FolioAIBlockKind;
-    text: string;
+    text: string; /** One-based heading depth when the block has outline semantics. */
+    headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
     previewRuns?: FolioAIBlockPreviewRun[];
@@ -318,6 +319,13 @@ export type FolioBlockId = string & {
 };
 
 // @public (undocumented)
+export type FolioDocumentNavigationTarget = {
+    type: "block";
+    story: "main";
+    blockId: string;
+} | FolioAITextRangeHandle;
+
+// @public (undocumented)
 export type FolioDocumentOperation = FolioAIEditOperation;
 
 // @public
@@ -422,6 +430,46 @@ export type FolioDocumentOperationUndoResult = {
     status: "rejected";
     undoHandle: FolioDocumentOperationUndoHandle;
     reason: FolioDocumentOperationUndoFailureReason;
+};
+
+// @public (undocumented)
+export type FolioDocumentOutline = {
+    sections: FolioDocumentOutlineEntry[];
+};
+
+// @public (undocumented)
+export type FolioDocumentOutlineEntry = {
+    handle: FolioDocumentSectionHandle;
+    headingBlockId: string;
+    text: string; /** One-based heading depth. */
+    level: number;
+    parentHandle?: FolioDocumentSectionHandle;
+};
+
+// @public (undocumented)
+export type FolioDocumentSection = {
+    handle: FolioDocumentSectionHandle;
+    heading: FolioDocumentOutlineEntry; /** Heading block followed by every block in its logical section. */
+    blocks: FolioAIBlock[];
+};
+
+// @public
+export type FolioDocumentSectionHandle = {
+    type: "headingSection";
+    story: "main";
+    headingBlockId: string;
+    headingTextHash: string; /** One-based depth used to detect structural section-boundary changes. */
+    headingLevel: number;
+};
+
+// @public (undocumented)
+export type FolioDocumentSectionReadResult = {
+    status: "found";
+    section: FolioDocumentSection;
+} | {
+    status: "missing";
+} | {
+    status: "stale";
 };
 
 // @public (undocumented)
@@ -568,6 +616,9 @@ export const getFolioDocumentOperationIssues: (operations: readonly FolioDocumen
 export const getFolioDocumentOperationReceipts: (operations: readonly FolioDocumentOperation[], applied: readonly FolioAIEditAppliedOperation[]) => FolioDocumentOperationReceipt[];
 
 // @public
+export const getFolioDocumentOutline: (snapshot: FolioAIEditSnapshot) => FolioDocumentOutline;
+
+// @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
 
 // @public (undocumented)
@@ -587,6 +638,9 @@ export const isSupportedFolioDocumentOperationVersion: (value: unknown) => value
 
 // @public (undocumented)
 export const parseFolioDocumentOperationBatch: (value: unknown) => FolioDocumentOperationBatch;
+
+// @public
+export const readFolioDocumentSection: (snapshot: FolioAIEditSnapshot, handle: FolioDocumentSectionHandle) => FolioDocumentSectionReadResult;
 
 // @public
 export const replyToComment: (doc: import__stll_docx_core_model.Document, parentCommentId: number, input: CreateCommentReplyInput) => import__stll_docx_core_model.Comment | null;

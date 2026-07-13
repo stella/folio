@@ -362,7 +362,8 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replac
 export type FolioAIBlock = {
     id: string;
     kind: FolioAIBlockKind;
-    text: string;
+    text: string; /** One-based heading depth when the block has outline semantics. */
+    headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
     previewRuns?: FolioAIBlockPreviewRun[];

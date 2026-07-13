@@ -82,6 +82,7 @@ import { FolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { FolioAISignatureParty } from '@stll/folio-core/ai-edits';
 import { FolioBlockId } from '@stll/folio-core/types/block-id';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
+import { FolioDocumentNavigationTarget } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
 import { FolioDocumentOperationResult } from '@stll/folio-core/server';
 import { FolioDocumentOperationUndoHandle } from '@stll/folio-core/server';
@@ -436,11 +437,13 @@ export type DocxEditorRef = {
     undo: () => boolean;
     redo: () => boolean;
     scrollToAIEditOperation: (revisionIds: number | readonly number[]) => boolean;
-    scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean;
+    scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean; /** Resolve a stable block or text-range target and reveal it in the editor. */
+    showInDocument: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => boolean;
     getTrackedChanges: () => FolioReviewChange[];
     getCommentAnchors: () => FolioCommentAnchor[];
     getSelectionText: () => string;
-    getPageText: (page: number) => string | null;
+    getPageText: (page: number) => string | null; /** Resolve a stable block or text range to its real 1-based rendered page. */
+    getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
     getContentControls: (filter?: ContentControlFilter) => {
         properties: SdtProperties; /** Index in the PM document tree, outer→inner. */
         path: number[];

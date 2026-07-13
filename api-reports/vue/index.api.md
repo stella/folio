@@ -84,6 +84,7 @@ import { FolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
 import { FolioAISignatureParty } from '@stll/folio-core/ai-edits';
 import { FolioBlockId } from '@stll/folio-core/types/block-id';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
+import { FolioDocumentNavigationTarget } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationResult } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationUndoHandle } from '@stll/folio-core/ai-edits';
@@ -414,10 +415,12 @@ export type DocxEditorRef = {
     redo: () => boolean;
     scrollToAIEditOperation: (revisionIds: number | readonly number[]) => boolean;
     scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean;
+    showInDocument: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => boolean;
     getTrackedChanges: () => FolioReviewChange[];
     getCommentAnchors: () => FolioCommentAnchor[];
     getSelectionText: () => string;
     getPageText: (page: number) => string | null;
+    getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
     getContentControls: (filter?: ContentControlFilter) => {
         properties: SdtProperties;
         path: number[];

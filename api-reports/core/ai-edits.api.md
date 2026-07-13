@@ -31,6 +31,9 @@ export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => t
 // @public
 export const buildAnnotatedBlockText: (blockNode: Node_2) => string;
 
+// @public
+export function clampRangeToDocSize(docSize: number, range: DocPositionRange): DocPositionRange;
+
 // @public (undocumented)
 export const createFolioAIEditSnapshot: (doc: Node_2) => FolioAIEditSnapshot;
 
@@ -39,6 +42,12 @@ export const createFolioAITextRangeHandle: (input: CreateFolioAITextRangeHandleO
 
 // @public (undocumented)
 export const diffWordSegments: (before: string, after: string) => WordDiffSegment[];
+
+// @public (undocumented)
+export type DocPositionRange = {
+    from: number;
+    to: number;
+};
 
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES: readonly ["best-effort", "atomic"];
@@ -76,7 +85,8 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replac
 export type FolioAIBlock = {
     id: string;
     kind: FolioAIBlockKind;
-    text: string;
+    text: string; /** One-based heading depth when the block has outline semantics. */
+    headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
     previewRuns?: FolioAIBlockPreviewRun[];
@@ -266,6 +276,13 @@ export type FolioCommentAnchor = {
 };
 
 // @public (undocumented)
+export type FolioDocumentNavigationTarget = {
+    type: "block";
+    story: "main";
+    blockId: string;
+} | FolioAITextRangeHandle;
+
+// @public (undocumented)
 export type FolioDocumentOperation = FolioAIEditOperation;
 
 // @public
@@ -373,6 +390,46 @@ export type FolioDocumentOperationUndoResult = {
 };
 
 // @public (undocumented)
+export type FolioDocumentOutline = {
+    sections: FolioDocumentOutlineEntry[];
+};
+
+// @public (undocumented)
+export type FolioDocumentOutlineEntry = {
+    handle: FolioDocumentSectionHandle;
+    headingBlockId: string;
+    text: string; /** One-based heading depth. */
+    level: number;
+    parentHandle?: FolioDocumentSectionHandle;
+};
+
+// @public (undocumented)
+export type FolioDocumentSection = {
+    handle: FolioDocumentSectionHandle;
+    heading: FolioDocumentOutlineEntry; /** Heading block followed by every block in its logical section. */
+    blocks: FolioAIBlock[];
+};
+
+// @public
+export type FolioDocumentSectionHandle = {
+    type: "headingSection";
+    story: "main";
+    headingBlockId: string;
+    headingTextHash: string; /** One-based depth used to detect structural section-boundary changes. */
+    headingLevel: number;
+};
+
+// @public (undocumented)
+export type FolioDocumentSectionReadResult = {
+    status: "found";
+    section: FolioDocumentSection;
+} | {
+    status: "missing";
+} | {
+    status: "stale";
+};
+
+// @public (undocumented)
 export type FolioDocumentStory = {
     handle: FolioDocumentStoryHandle;
     text: string;
@@ -415,6 +472,9 @@ export const getFolioDocumentOperationIssues: (operations: readonly FolioDocumen
 export const getFolioDocumentOperationReceipts: (operations: readonly FolioDocumentOperation[], applied: readonly FolioAIEditAppliedOperation[]) => FolioDocumentOperationReceipt[];
 
 // @public
+export const getFolioDocumentOutline: (snapshot: FolioAIEditSnapshot) => FolioDocumentOutline;
+
+// @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
 
 // @public
@@ -437,6 +497,15 @@ export const normalizeFolioAIBlockText: (text: string) => string;
 
 // @public (undocumented)
 export const parseFolioDocumentOperationBatch: (value: unknown) => FolioDocumentOperationBatch;
+
+// @public
+export const readFolioDocumentSection: (snapshot: FolioAIEditSnapshot, handle: FolioDocumentSectionHandle) => FolioDocumentSectionReadResult;
+
+// @public (undocumented)
+export const resolveFolioAIBlockRange: (input: ResolveFolioAIBlockRangeOptions) => DocPositionRange | null;
+
+// @public
+export const resolveFolioAITextRange: (input: ResolveFolioAITextRangeOptions) => DocPositionRange | null;
 
 // @public (undocumented)
 export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}
