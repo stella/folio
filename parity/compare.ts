@@ -71,13 +71,14 @@ export const compareGeoms = (
   );
   const medianYOffsetsByPageRegion = pageRegionMedianYOffsets(matches, wordFlat, folioFlat);
   const medianYOffsetPt = median([...medianYOffsetsByPageRegion.values()]);
+  const yResidualsByMatch = segmentedYResiduals(matches, wordFlat, folioFlat, tolerances);
 
   const { orderedDivergences, matchedGeomPass } = diffMatches({
     resolved,
     wordFlat,
     folioFlat,
     tolerances,
-    medianYOffsetsByPageRegion,
+    yResidualsByMatch,
   });
   divergences.push(...orderedDivergences);
 
@@ -536,6 +537,68 @@ const median = (values: number[]): number => {
   return sorted[mid] ?? 0;
 };
 
+const matchKey = ({ wordIdx, folioIdx }: Extract<ResolvedItem, { kind: "match" }>): string =>
+  `${wordIdx}:${folioIdx}`;
+
+type StableYMatch = {
+  match: Extract<ResolvedItem, { kind: "match" }>;
+  offsetPt: number;
+};
+
+/**
+ * Finds vertical-offset transitions without letting a page-wide median move
+ * the goalposts. A constant extractor offset is ignored. When the offset
+ * changes persistently, the first line of the new segment reports the gap
+ * and becomes the new baseline; downstream lines are not relabelled for the
+ * same spacing discontinuity. A one-line excursion reports only that line
+ * and keeps the previous segment baseline.
+ */
+const segmentedYResiduals = (
+  matches: Extract<ResolvedItem, { kind: "match" }>[],
+  wordFlat: FlatLine[],
+  folioFlat: FlatLine[],
+  tolerances: ComparisonTolerances,
+): Map<string, number> => {
+  const matchesByPageRegion = new Map<string, StableYMatch[]>();
+  for (const match of matches) {
+    const word = wordFlat[match.wordIdx];
+    const folio = folioFlat[match.folioIdx];
+    if (
+      !word ||
+      !folio ||
+      word.page !== folio.page ||
+      !hasStableVerticalInk(word.line) ||
+      !hasStableVerticalInk(folio.line)
+    ) {
+      continue;
+    }
+    const key = matchedPageRegionKey(word, folio);
+    const stableMatches = matchesByPageRegion.get(key) ?? [];
+    stableMatches.push({ match, offsetPt: folio.line.yPt - word.line.yPt });
+    matchesByPageRegion.set(key, stableMatches);
+  }
+
+  const residuals = new Map<string, number>();
+  for (const stableMatches of matchesByPageRegion.values()) {
+    const first = stableMatches.at(0);
+    if (!first) continue;
+    let baselinePt = first.offsetPt;
+    for (let index = 1; index < stableMatches.length; index += 1) {
+      const current = stableMatches[index];
+      if (!current) continue;
+      const residualPt = current.offsetPt - baselinePt;
+      if (Math.abs(residualPt) <= tolerances.yResidualPt) continue;
+
+      residuals.set(matchKey(current.match), residualPt);
+      const next = stableMatches[index + 1];
+      const returnsToBaseline =
+        next !== undefined && Math.abs(next.offsetPt - baselinePt) <= tolerances.yResidualPt;
+      if (!returnsToBaseline) baselinePt = current.offsetPt;
+    }
+  }
+  return residuals;
+};
+
 /** Result of walking the resolved items into divergences: the divergences
  * in document order, plus the count of matched pairs that pass every
  * geometric check (used for the parity score numerator). */
@@ -545,7 +608,7 @@ type DiffMatchesOptions = {
   wordFlat: FlatLine[];
   folioFlat: FlatLine[];
   tolerances: ComparisonTolerances;
-  medianYOffsetsByPageRegion: ReadonlyMap<string, number>;
+  yResidualsByMatch: ReadonlyMap<string, number>;
 };
 
 const diffMatches = ({
@@ -553,7 +616,7 @@ const diffMatches = ({
   wordFlat,
   folioFlat,
   tolerances,
-  medianYOffsetsByPageRegion,
+  yResidualsByMatch,
 }: DiffMatchesOptions): DiffMatchesResult => {
   const orderedDivergences: Divergence[] = [];
   let matchedGeomPass = 0;
@@ -606,12 +669,7 @@ const diffMatches = ({
 
       let yDelta: number | null = null;
       if (samePage && hasStableVerticalInk(w.line) && hasStableVerticalInk(f.line)) {
-        yDelta = checkYDrift(
-          w.line,
-          f.line,
-          medianYOffsetsByPageRegion.get(matchedPageRegionKey(w, f)) ?? 0,
-          tolerances,
-        );
+        yDelta = yResidualsByMatch.get(matchKey(item)) ?? null;
         if (yDelta !== null) {
           orderedDivergences.push({
             kind: "y-drift",
@@ -667,21 +725,4 @@ const checkWidthDrift = (
   const withinAbsolute = Math.abs(delta) <= tolerances.widthPt;
   const withinRelative = Math.abs(delta) <= tolerances.widthRelative * wordLine.widthPt;
   return withinAbsolute || withinRelative ? null : delta;
-};
-
-/**
- * y-drift residual: word-side boxes are glyph-ink bounds and folio-side
- * boxes are line-height boxes, so a constant vertical offset between the two
- * extractors is expected. `medianOffsetPt` (the median of folio-minus-word y
- * across every same-page matched pair) absorbs that constant; only the
- * residual after subtracting it is a real divergence.
- */
-const checkYDrift = (
-  wordLine: LineBox,
-  folioLine: LineBox,
-  medianOffsetPt: number,
-  tolerances: ComparisonTolerances,
-): number | null => {
-  const residual = folioLine.yPt - wordLine.yPt - medianOffsetPt;
-  return Math.abs(residual) > tolerances.yResidualPt ? residual : null;
 };

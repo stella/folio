@@ -188,7 +188,7 @@ describe("compareGeoms", () => {
     expect(result.matchedLines).toBe(2);
   });
 
-  test("constant +6pt y offset on every folio line is absorbed by the median (no y-drift)", () => {
+  test("constant +6pt y offset on every folio line is absorbed as an extractor baseline", () => {
     const word = makeDoc("word", [
       makePage({
         lines: [
@@ -240,6 +240,36 @@ describe("compareGeoms", () => {
     expect(yDrifts[0]).toMatchObject({ kind: "y-drift", text: "Bravo line" });
     expect(result.medianYOffsetPt).toBe(0);
     expect(result.score).toBeCloseTo(2 / 3);
+  });
+
+  test("persistent offset transitions stay localized when the page median shifts", () => {
+    const texts = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"];
+    const word = makeDoc("word", [
+      makePage({
+        lines: texts.map((text, index) => makeLine({ text, yPt: 72 + index * 18 })),
+      }),
+    ]);
+    const makeFolio = (offsets: number[]) =>
+      makeDoc("folio", [
+        makePage({
+          lines: texts.map((text, index) =>
+            makeLine({ text, yPt: 72 + index * 18 + (offsets[index] ?? 0) }),
+          ),
+        }),
+      ]);
+
+    const before = compareGeoms(word, makeFolio([-3, -3, 1, 1, -4, -4]));
+    const after = compareGeoms(word, makeFolio([-3, -3, 1, 1, 1, 1]));
+    const beforeYDrifts = before.divergences.filter((item) => item.kind === "y-drift");
+    const afterYDrifts = after.divergences.filter((item) => item.kind === "y-drift");
+
+    expect(beforeYDrifts).toEqual([
+      { kind: "y-drift", page: 1, text: "Charlie", residualPt: 4 },
+      { kind: "y-drift", page: 1, text: "Echo", residualPt: -5 },
+    ]);
+    expect(afterYDrifts).toEqual([{ kind: "y-drift", page: 1, text: "Charlie", residualPt: 4 }]);
+    expect(after.score).toBeGreaterThan(before.score);
+    expect(after.medianYOffsetPt).not.toBe(before.medianYOffsetPt);
   });
 
   test("punctuation-only rows do not create y-drift or bias the extractor offset", () => {
