@@ -282,9 +282,51 @@ describe("Issue #868 — justify first line to full content width on indented pa
         isFirstLine: true,
         paragraphEndsWithLineBreak: false,
         firstLineIndentPx: -36,
+        leftIndentPx: 36,
       }) as unknown as FakeElement;
 
       expect(lineEl.style["width"]).toBe("136px");
+    } finally {
+      resetCanvasContext();
+      Object.defineProperty(globalThis, "document", {
+        value: originalDocument,
+        configurable: true,
+      });
+    }
+  });
+
+  test("does not widen a zero-left hanging-list line past the right edge", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-zero-left-list-justify-width",
+      runs: [{ kind: "text", text: "Item text" }],
+      attrs: { alignment: "justify", listMarker: "1.", indent: { left: 0, hanging: 36 } },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 9,
+      width: 90,
+      ascent: 10,
+      descent: 2,
+      lineHeight: 12,
+    };
+
+    const originalDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", { value: fakeDocument, configurable: true });
+    resetCanvasContext();
+    try {
+      const lineEl = renderLine(block, line, "justify", fakeDocument, {
+        availableWidth: 100,
+        isLastLine: false,
+        isFirstLine: true,
+        paragraphEndsWithLineBreak: false,
+        firstLineIndentPx: -36,
+        leftIndentPx: 0,
+      }) as unknown as FakeElement;
+
+      expect(lineEl.style["width"]).toBe("100px");
     } finally {
       resetCanvasContext();
       Object.defineProperty(globalThis, "document", {

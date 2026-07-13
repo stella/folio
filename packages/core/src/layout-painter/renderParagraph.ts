@@ -1723,7 +1723,18 @@ export function renderLine(
     if (shouldJustify) {
       const firstLineIndentPx = options.isFirstLine ? (options.firstLineIndentPx ?? 0) : 0;
       const firstLineHangingPx = Math.max(0, -firstLineIndentPx);
-      const justifyCapacityPx = options.availableWidth + firstLineHangingPx;
+      const hasVisibleListMarker =
+        options.isFirstLine && block.attrs?.listMarker && !block.attrs.listMarkerHidden;
+      // A list marker consumes the hanging slot inline. When the marker starts
+      // before the content edge, its negative margin cancels the part of that
+      // slot outside the paragraph; only the portion between the content edge
+      // and the body start can expand the line box. Letting the full hanging
+      // value expand a zero-left list pushed justified text past the right
+      // margin by exactly one hanging slot.
+      const firstLineHangingExpansionPx = hasVisibleListMarker
+        ? Math.min(firstLineHangingPx, Math.max(0, options.leftIndentPx ?? 0))
+        : firstLineHangingPx;
+      const justifyCapacityPx = options.availableWidth + firstLineHangingExpansionPx;
       const overfullPx = line.width - justifyCapacityPx;
       const shrinkableSpaces = countShrinkableSpaces(runsForLine);
       if (overfullPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
@@ -1745,10 +1756,9 @@ export function renderLine(
         lineEl.style.textAlignLast = "justify";
       }
       // Set explicit width so browser knows how wide to justify/compress to.
-      const listFirstLineOffset =
-        options.isFirstLine && block.attrs?.listMarker && !block.attrs.listMarkerHidden
-          ? (options.firstLineIndentPx ?? 0)
-          : 0;
+      const listFirstLineOffset = hasVisibleListMarker
+        ? Math.max(firstLineIndentPx, -firstLineHangingExpansionPx)
+        : 0;
       lineEl.style.width = `${options.availableWidth - listFirstLineOffset}px`;
     }
   }
