@@ -37,7 +37,8 @@ original work against the OOXML spec and the existing folio code.
 
 `ensureParaIds(docx: Uint8Array | ArrayBuffer) -> Promise<{ docx: Uint8Array,
 assigned, deduplicated, alreadyComplete }>`. Hosts call it once at
-ingest/upload so every stored version has full ID coverage. Word 2010+ writes
+ingest/upload, before deriving or storing any block anchors, so every stored
+working version has full ID coverage. Word 2010+ writes
 paraIds; Google Docs exports, LibreOffice, and python-docx/docx4j output
 generally do not — those are exactly the documents that fell into `seq-`.
 
@@ -74,6 +75,10 @@ Contract highlights (the module doc in `ensureParaIds.ts` is normative):
   (`alreadyComplete: true`), byte-identical by construction. (A no-op rezip
   would NOT be byte-identical — JSZip regenerates the container — which is
   why the short-circuit exists.)
+- OPC digital signatures cover package bytes and become invalid when a signed
+  package is rewritten. A signed document that is already complete is returned
+  untouched. If normalization is required, the default is to reject it;
+  callers may set `allowSignedPackageMutation` only after warning the user.
 
 ### Microsoft Word round-trip result
 

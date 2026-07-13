@@ -7,7 +7,7 @@
  * comment threads, AI-edit targeting) and fall back to positional `seq-NNNN`
  * ids that renumber after structural edits. Hosts call {@link ensureParaIds}
  * once at ingest so every stored version has full id coverage before any
- * snapshot is taken.
+ * snapshot or external anchor is created.
  *
  * IDs remain stable in folio and identity-preserving DOCX round-trips.
  * Microsoft Word can establish a new `w14:docId` and replace all paragraph
@@ -44,6 +44,9 @@
  *   makes pre-2010 consumers choke on the new attributes.
  * - Idempotent: a document that already has full coverage is returned as the
  *   original bytes, untouched (`alreadyComplete: true`).
+ * - Digitally signed packages are returned untouched when already complete.
+ *   When normalization would rewrite the package, it fails unless the caller
+ *   explicitly allows signature invalidation after warning the user.
  */
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
@@ -69,9 +72,19 @@ export type EnsureParaIdsResult = {
   alreadyComplete: boolean;
 };
 
+/** Controls mutation of package metadata that has security implications. */
+export type EnsureParaIdsOptions = {
+  /**
+   * Allow normalization to invalidate existing OPC digital signatures.
+   * Callers must warn the user before opting in.
+   */
+  allowSignedPackageMutation?: boolean;
+};
+
 const W14_NAMESPACE_URI = "http://schemas.microsoft.com/office/word/2010/wordml";
 const MC_NAMESPACE_URI = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 const MC_IGNORABLE_W14 = "w14";
+const DIGITAL_SIGNATURE_PART_PREFIX = "_xmlsignatures/";
 /** Word reads an all-zero `w14:paraId` as "no id assigned". */
 const RESERVED_ZERO_ID_PATTERN = /^0*$/u;
 
@@ -451,6 +464,11 @@ const isTargetPart = (path: string): boolean =>
 const toUint8Array = (docx: Uint8Array | ArrayBuffer): Uint8Array =>
   docx instanceof Uint8Array ? docx : new Uint8Array(docx);
 
+const hasDigitalSignatureParts = (zip: JSZip): boolean =>
+  Object.values(zip.files).some(
+    ({ dir, name }) => !dir && name.toLowerCase().startsWith(DIGITAL_SIGNATURE_PART_PREFIX),
+  );
+
 /**
  * Backfill `w14:paraId` on every paragraph of a `.docx` buffer. See the
  * module doc for the exact contract. Throws {@link EnsureParaIdsError} when
@@ -458,6 +476,7 @@ const toUint8Array = (docx: Uint8Array | ArrayBuffer): Uint8Array =>
  */
 const ensureParaIdsInternal = async (
   docx: Uint8Array | ArrayBuffer,
+  options: EnsureParaIdsOptions,
 ): Promise<EnsureParaIdsResult> => {
   const zip = await JSZip.loadAsync(docx);
 
@@ -534,6 +553,12 @@ const ensureParaIdsInternal = async (
     return { docx: toUint8Array(docx), assigned: 0, deduplicated: 0, alreadyComplete: true };
   }
 
+  if (hasDigitalSignatureParts(zip) && options.allowSignedPackageMutation !== true) {
+    throw createEnsureParaIdsError(
+      "Refusing to normalize a digitally signed package because rewriting OOXML invalidates its signatures. Warn the user and pass allowSignedPackageMutation only if invalidation is acceptable.",
+    );
+  }
+
   for (const [partPath, content] of updates) {
     zip.file(partPath, content, { compression: "DEFLATE", compressionOptions: { level: 6 } });
   }
@@ -552,9 +577,10 @@ const ensureParaIdsInternal = async (
  */
 export const ensureParaIds = async (
   docx: Uint8Array | ArrayBuffer,
+  options: EnsureParaIdsOptions = {},
 ): Promise<EnsureParaIdsResult> => {
   try {
-    return await ensureParaIdsInternal(docx);
+    return await ensureParaIdsInternal(docx, options);
   } catch (error) {
     if (error instanceof EnsureParaIdsError) {
       throw error;

@@ -24,6 +24,11 @@ const ROOT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 const DOCUMENT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
 
+const DIGITAL_SIGNATURE_PARTS = {
+  "_xmlsignatures/origin.sigs": "",
+  "_xmlsignatures/sig1.xml": '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"/>',
+};
+
 const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const documentXml = (body: string, extraRootAttrs = ""): string =>
@@ -309,6 +314,34 @@ describe("ensureParaIds", () => {
       });
       await expect(ensureParaIds(input)).rejects.toThrow(EnsureParaIdsError);
     }
+  });
+
+  test("requires explicit opt-in before invalidating package signatures", async () => {
+    const input = await buildDocx({
+      ...DIGITAL_SIGNATURE_PARTS,
+      "word/document.xml": documentXml(PARA("Needs an ID")),
+    });
+
+    await expect(ensureParaIds(input)).rejects.toThrow("digitally signed package");
+
+    const result = await ensureParaIds(input, { allowSignedPackageMutation: true });
+    expect(result.assigned).toBe(1);
+    expect(result.alreadyComplete).toBe(false);
+  });
+
+  test("returns an already-complete signed package byte-identically", async () => {
+    const input = await buildDocx({
+      ...DIGITAL_SIGNATURE_PARTS,
+      "word/document.xml": documentXml(
+        PARA("Already identified", ' w14:paraId="12345678" w14:textId="12345678"'),
+        ' xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w14"',
+      ),
+    });
+
+    const result = await ensureParaIds(input);
+
+    expect(result.alreadyComplete).toBe(true);
+    expect(result.docx).toBe(input);
   });
 
   test("a normalized document snapshots with zero seq- block ids", async () => {
