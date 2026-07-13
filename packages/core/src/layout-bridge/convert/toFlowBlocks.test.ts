@@ -757,6 +757,89 @@ describe("toFlowBlocks table cell formatting", () => {
     expect(cells?.at(0)?.blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBe(true);
     expect(cells?.at(1)?.blocks.at(0)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
   });
+
+  test("suppresses a terminal run of empty body paragraphs after a final table", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [schema.text("content")]),
+          ]),
+        ]),
+      ]),
+      schema.node("paragraph", { tabs: [{ position: 360, alignment: "left" }] }),
+      schema.node("paragraph", {
+        _originalFormatting: { runProperties: { italic: true } },
+      }),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["table", "paragraph", "paragraph"]);
+    expect(
+      blocks
+        .slice(1)
+        .map((block) =>
+          block.kind === "paragraph" ? block.attrs?.suppressEmptyParagraphHeight : undefined,
+        ),
+    ).toEqual([true, true]);
+  });
+
+  test("keeps terminal empty paragraph height when the preceding block is prose", () => {
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("content")]),
+        schema.node("paragraph"),
+      ]),
+    );
+
+    expect(blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+  });
+
+  test("keeps terminal empty paragraph height when the document contains only empty paragraphs", () => {
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [schema.node("paragraph"), schema.node("paragraph")]),
+    );
+
+    expect(blocks.map((block) => block.attrs?.suppressEmptyParagraphHeight)).toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
+
+  test("keeps a visible empty list item after a final table", () => {
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("table", null, [
+          schema.node("tableRow", null, [
+            schema.node("tableCell", null, [schema.node("paragraph")]),
+          ]),
+        ]),
+        schema.node("paragraph", {
+          numPr: { numId: 1, ilvl: 0 },
+          listMarker: "1.",
+        }),
+      ]),
+    );
+
+    expect(blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+  });
+
+  test("keeps empty paragraphs between a table and later body content", () => {
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("table", null, [
+          schema.node("tableRow", null, [
+            schema.node("tableCell", null, [schema.node("paragraph")]),
+          ]),
+        ]),
+        schema.node("paragraph"),
+        schema.node("paragraph", null, [schema.text("later content")]),
+      ]),
+    );
+
+    expect(blocks.at(1)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+  });
 });
 
 describe("toFlowBlocks list numbering", () => {

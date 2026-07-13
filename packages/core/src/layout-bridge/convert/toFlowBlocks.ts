@@ -1834,6 +1834,56 @@ function convertParagraph(
 }
 
 /**
+ * Word keeps terminal empty body paragraphs after a final table as editable
+ * anchors, but they do not create a page of their own. Preserve every block
+ * and PM range while collapsing only the contiguous, run-free suffix; empty
+ * paragraphs elsewhere still retain their normal line height.
+ */
+function isPaintlessTerminalParagraph(block: FlowBlock | undefined): block is ParagraphBlock {
+  if (block?.kind !== "paragraph" || block.runs.length !== 0) {
+    return false;
+  }
+
+  const attrs = block.attrs;
+  return !(
+    (attrs?.listMarker !== undefined && !attrs.listMarkerHidden) ||
+    attrs?.borders?.top ||
+    attrs?.borders?.bottom ||
+    attrs?.borders?.left ||
+    attrs?.borders?.right ||
+    attrs?.borders?.between ||
+    attrs?.borders?.bar ||
+    attrs?.shading ||
+    attrs?.spacingExplicit?.before ||
+    attrs?.spacingExplicit?.after ||
+    attrs?.pageBreakBefore ||
+    attrs?.renderedPageBreakBefore
+  );
+}
+
+function suppressTerminalEmptyParagraphsAfterTable(blocks: FlowBlock[]): void {
+  let suffixStart = blocks.length;
+  while (suffixStart > 0 && isPaintlessTerminalParagraph(blocks[suffixStart - 1])) {
+    suffixStart -= 1;
+  }
+
+  if (
+    suffixStart === blocks.length ||
+    suffixStart === 0 ||
+    blocks[suffixStart - 1]?.kind !== "table"
+  ) {
+    return;
+  }
+
+  for (let index = suffixStart; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (isPaintlessTerminalParagraph(block)) {
+      block.attrs = { ...block.attrs, suppressEmptyParagraphHeight: true };
+    }
+  }
+}
+
+/**
  * Convert border width from eighths of a point to pixels.
  * OOXML stores border widths in eighths of a point.
  */
@@ -2669,6 +2719,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     visit(node, offset + nodeOffset);
   });
 
+  suppressTerminalEmptyParagraphsAfterTable(blocks);
   return mergeRunInParagraphs(blocks);
 }
 
