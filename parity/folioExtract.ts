@@ -2,7 +2,7 @@
  * Folio-side geometry extraction: loads a .docx in the playground (Playwright
  * + the existing `?file=` fixture route), walks the painted layout DOM
  * (`.layout-page` / `.layout-line`), and normalizes it into the same
- * `DocGeom` shape the Word-side extractor produces. Also captures a per-page
+ * `DocGeom` shape the reference extractor produces. Also captures a per-page
  * PNG screenshot for the HTML report.
  *
  * DOM-only concerns (getBoundingClientRect, closest, getComputedStyle,
@@ -170,7 +170,7 @@ export const formatNavigationFailure = (url: string, error: unknown, output: str
 /** A raw rect as returned by `getBoundingClientRect()` (visual/CSS px). */
 export type RawRect = { left: number; top: number; width: number; height: number };
 
-/** One `.layout-line` element, extracted with DOM-only reads (no math). */
+/** One ink segment extracted from a `.layout-line` with DOM-only reads (no math). */
 export type RawLine = {
   text: string;
   rect: RawRect;
@@ -184,6 +184,8 @@ export type RawLine = {
   fontSizePx?: number;
   /** Stable page-local table-cell identity, when the line is inside a cell. */
   visualGroup?: string;
+  /** Stable page-local identity of the originating `.layout-line`. */
+  logicalLineGroup?: string;
 };
 
 /** One `.layout-page` element and its lines, extracted with DOM-only reads. */
@@ -268,6 +270,9 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
       heightPt: lineHeightPt,
       region: rawLine.region,
       ...(rawLine.visualGroup !== undefined ? { visualGroup: rawLine.visualGroup } : {}),
+      ...(rawLine.logicalLineGroup !== undefined
+        ? { logicalLineGroup: rawLine.logicalLineGroup }
+        : {}),
       ...(fontName !== undefined ? { fontName } : {}),
       ...(fontSizePt !== undefined ? { fontSizePt } : {}),
     });
@@ -595,7 +600,7 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
         resolvedFontCache.set(computed.fontFamily, fallback);
         return fallback;
       };
-      const lines = lineEls.flatMap((lineEl) => {
+      const lines = lineEls.flatMap((lineEl, lineIndex) => {
         const segmentInkRect = (segmentEl: HTMLElement): DOMRect | null => {
           if (
             segmentEl.matches("img, svg, canvas, video") ||
@@ -670,6 +675,7 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
         })();
         const tableCell = lineEl.closest(".layout-table-cell");
         const visualGroup = tableCell ? `table-cell:${tableCells.indexOf(tableCell)}` : undefined;
+        const logicalLineGroup = `layout-line:${lineIndex}`;
 
         const fontFrom = (sourceEl: HTMLElement | null) => {
           if (!sourceEl) return {};
@@ -733,6 +739,7 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
           region,
           ...(isFullyClipped(sourceEl, rect) ? { fullyClipped: true } : {}),
           ...(visualGroup !== undefined ? { visualGroup } : {}),
+          logicalLineGroup,
           ...fontFrom(sourceEl),
         });
 
@@ -825,7 +832,7 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
 
         // The `.layout-line` box spans the full column width regardless of where
         // the text ink actually sits (centered/right-aligned lines, table cells),
-        // while the Word-side extractor reports glyph-ink bounds. Use the union
+        // while the reference extractor reports glyph-ink bounds. Use the union
         // of the line's run and list-marker boxes as the ink rect so both sides
         // measure the same thing; fall back to the line box for lines without
         // segment children.

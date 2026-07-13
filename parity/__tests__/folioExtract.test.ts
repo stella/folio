@@ -289,6 +289,20 @@ describe("toPageGeom", () => {
     expect(toPageGeom(rawPage).lines.at(0)?.visualGroup).toBe("table-cell:3");
   });
 
+  test("preserves logical line groups", () => {
+    const rawPage = makeRawPage({
+      lines: [
+        makeRawLine({
+          text: "Segment",
+          rect: rect(96, 96, 200, 20),
+          logicalLineGroup: "layout-line:4",
+        }),
+      ],
+    });
+
+    expect(toPageGeom(rawPage).lines.at(0)?.logicalLineGroup).toBe("layout-line:4");
+  });
+
   test("computes fontName/fontSizePt from raw px values, omitting when absent", () => {
     const rawPage = makeRawPage({
       lines: [
