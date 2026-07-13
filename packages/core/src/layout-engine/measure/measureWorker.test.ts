@@ -197,8 +197,28 @@ describe("prefetchMeasurement (flag gating)", () => {
         fontFingerprintWidth: TEST_FONT_FINGERPRINT_WIDTH,
         letterSpacing: 0,
         horizontalScale: 1,
+        fontKerning: "none",
       },
     ]);
+  });
+
+  test("preserves the requested kerning mode at the worker boundary", () => {
+    setFolioMeasurementFlags({ workerFontMetrics: true });
+    const transport = makeFakeTransport();
+    __setMeasureWorkerTransport(() => transport);
+
+    prefetchMeasurement(
+      "hello",
+      "11px Arial",
+      0,
+      1,
+      "11px Arial|kerning:normal|scale:1",
+      TEST_FONT_FINGERPRINT_WIDTH,
+      "normal",
+    );
+    __flushMeasureQueueForTests();
+
+    expect(transport.posted[0]?.entries[0]?.fontKerning).toBe("normal");
   });
 });
 

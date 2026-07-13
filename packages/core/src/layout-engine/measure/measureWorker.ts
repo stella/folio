@@ -251,6 +251,7 @@ function flush(current: ProxyState): void {
       fontFingerprintWidth: entry.fontFingerprintWidth,
       letterSpacing: entry.letterSpacing,
       horizontalScale: entry.horizontalScale,
+      fontKerning: entry.fontKerning,
     });
   }
   if (entries.length === 0) {
