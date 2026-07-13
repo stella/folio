@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns="urn:folio:test:shared"
+  targetNamespace="urn:folio:test:shared"
+  elementFormDefault="qualified">
+  <xsd:element name="SharedElement" type="xsd:string"/>
+</xsd:schema>
