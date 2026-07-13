@@ -1838,6 +1838,12 @@ function convertParagraph(
       attrs.hasDirectParagraphFormatting = true;
     }
     const paragraphMarkFormatting = pmAttrs._originalFormatting?.runProperties;
+    if (
+      paragraphMarkFormatting &&
+      Object.values(paragraphMarkFormatting).some((value) => value !== undefined && value !== null)
+    ) {
+      attrs.hasDirectParagraphMarkFormatting = true;
+    }
     if (paragraphMarkFormatting?.fontSize !== undefined) {
       attrs.defaultFontSize = paragraphMarkFormatting.fontSize / 2;
     }

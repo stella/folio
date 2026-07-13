@@ -390,6 +390,8 @@ export type ParagraphAttrs = {
    * inherited spacing; a bare empty paragraph still collapses that spacing.
    */
   hasDirectParagraphFormatting?: boolean;
+  /** Whether an empty paragraph carries direct formatting on its paragraph mark. */
+  hasDirectParagraphMarkFormatting?: boolean;
   indent?: ParagraphIndent;
   keepNext?: boolean;
   keepLines?: boolean;

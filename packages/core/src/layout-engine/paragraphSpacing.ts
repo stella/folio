@@ -25,6 +25,7 @@ export function getParagraphSpacingBefore(block: ParagraphBlock): number {
     isEmptyParagraph(block) &&
     !block.attrs?.styleId &&
     !block.attrs?.hasDirectParagraphFormatting &&
+    !block.attrs?.hasDirectParagraphMarkFormatting &&
     !block.attrs?.spacingExplicit?.before
   ) {
     return 0;
@@ -45,6 +46,7 @@ export function getParagraphSpacingAfter(block: ParagraphBlock): number {
     isEmptyParagraph(block) &&
     !block.attrs?.styleId &&
     !block.attrs?.hasDirectParagraphFormatting &&
+    !block.attrs?.hasDirectParagraphMarkFormatting &&
     !block.attrs?.spacingExplicit?.after
   ) {
     return 0;

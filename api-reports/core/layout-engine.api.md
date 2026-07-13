@@ -565,7 +565,8 @@ export type ParagraphAttrs = {
         before?: boolean;
         after?: boolean;
     };
-    hasDirectParagraphFormatting?: boolean;
+    hasDirectParagraphFormatting?: boolean; /** Whether an empty paragraph carries direct formatting on its paragraph mark. */
+    hasDirectParagraphMarkFormatting?: boolean;
     indent?: ParagraphIndent;
     keepNext?: boolean;
     keepLines?: boolean;
