@@ -949,16 +949,11 @@ function layoutTable(
       headerRowCount > 0 && rowIndex >= headerRowCount ? headerRowsHeight : 0;
     const requiredHeight = row.height + freshHeaderOverhead;
     const oversized = requiredHeight > getCurrentRowCapacity(state);
-    if (
-      !oversized &&
-      (state.footnoteHeight > 0 || (rowFootnoteIds[rowIndex]?.length ?? 0) > 0)
-    ) {
+    if (!oversized && (state.footnoteHeight > 0 || (rowFootnoteIds[rowIndex]?.length ?? 0) > 0)) {
       return false;
     }
 
-    const currentHeaderOverhead = shouldRepeatHeaderRows(rowIndex, 0, state)
-      ? headerRowsHeight
-      : 0;
+    const currentHeaderOverhead = shouldRepeatHeaderRows(rowIndex, 0, state) ? headerRowsHeight : 0;
     const currentAvailableHeight =
       paginator.getAvailableHeight() - currentHeaderOverhead - state.trailingSpacing;
     return oversized || row.height > currentAvailableHeight;

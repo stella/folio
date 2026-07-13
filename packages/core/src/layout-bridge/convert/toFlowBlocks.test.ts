@@ -911,11 +911,9 @@ describe("toFlowBlocks table cell formatting", () => {
   test("carries cantSplit row formatting into layout blocks", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
-        schema.node(
-          "tableRow",
-          { _originalFormatting: { cantSplit: true } },
-          [schema.node("tableCell", null, [schema.node("paragraph")])],
-        ),
+        schema.node("tableRow", { _originalFormatting: { cantSplit: true } }, [
+          schema.node("tableCell", null, [schema.node("paragraph")]),
+        ]),
       ]),
     ]);
 
