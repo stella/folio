@@ -1359,12 +1359,16 @@ function layoutFloatingTable(
     y = fitState.cursorY;
   }
 
-  // Clamp within the selected horizontal anchor frame. A page-anchored table
-  // may legitimately sit outside the body margins; clamping it to the content
-  // frame shifts the table and every drawing anchored inside its cells.
+  // Alignment keywords stay inside their selected anchor frame. A numeric
+  // offset may deliberately move a margin-anchored table into the page margin,
+  // so clamp that resolved position only against the physical page.
+  const usesNumericOffset = floating?.tblpX !== undefined;
   const pageAnchored = floating?.horzAnchor === "page";
-  const minX = pageAnchored ? 0 : margins.left;
-  const maxX = pageAnchored ? page.size.w - tableWidth : margins.left + contentWidth - tableWidth;
+  const clampToPage = pageAnchored || usesNumericOffset;
+  const minX = clampToPage ? 0 : margins.left;
+  const maxX = clampToPage
+    ? page.size.w - tableWidth
+    : margins.left + contentWidth - tableWidth;
   if (Number.isFinite(maxX)) {
     x = Math.max(minX, Math.min(x, maxX));
   }

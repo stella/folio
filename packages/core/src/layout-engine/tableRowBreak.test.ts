@@ -808,6 +808,33 @@ describe("left-aligned table placement", () => {
 });
 
 describe("floating table placement", () => {
+  test("allows a numeric margin-relative offset to enter the page margin", () => {
+    const { block, measure } = tallTable(1);
+    block.floating = { horzAnchor: "margin", tblpX: -20 };
+
+    const fragment = tableFragments(block, measure).at(0);
+
+    expect(fragment?.x).toBe(OPTIONS.margins.left - 20);
+  });
+
+  test("keeps an aligned margin-relative table inside the body margin", () => {
+    const { block, measure } = tallTable(1);
+    block.floating = { horzAnchor: "margin", tblpXSpec: "left" };
+
+    const fragment = tableFragments(block, measure).at(0);
+
+    expect(fragment?.x).toBe(OPTIONS.margins.left);
+  });
+
+  test("clamps a numeric margin-relative offset against the physical page", () => {
+    const { block, measure } = tallTable(1);
+    block.floating = { horzAnchor: "margin", tblpX: -80 };
+
+    const fragment = tableFragments(block, measure).at(0);
+
+    expect(fragment?.x).toBe(0);
+  });
+
   test("clamps a page-anchored table against the page instead of the body margins", () => {
     const { block, measure } = tallTable(1);
     block.floating = { horzAnchor: "page", tblpX: 80 };
