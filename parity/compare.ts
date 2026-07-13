@@ -136,7 +136,7 @@ const ROW_OVERLAP_RATIO = 0.5;
  * The reference extractor emits list markers as separate ink boxes ~10pt left of the item text,
  * and tabbed legal clauses can leave ~23pt between the marker and text; table
  * widely separated table cells sit farther apart (>25pt) and stay separate. */
-const ROW_MERGE_GAP_PT = 24;
+const ROW_MERGE_GAP_PT = 25;
 const MARKER_ROW_MERGE_GAP_PT = 36;
 
 /** Clusters boxes into visual rows (>= ROW_OVERLAP_RATIO vertical overlap),
@@ -191,7 +191,7 @@ const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
     return true;
   }
   const gap = horizontalGap(current, next);
-  if (gap <= ROW_MERGE_GAP_PT) {
+  if (gap < ROW_MERGE_GAP_PT) {
     return true;
   }
   return isStandaloneListMarker(current.text) && gap <= MARKER_ROW_MERGE_GAP_PT;

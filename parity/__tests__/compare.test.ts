@@ -125,6 +125,16 @@ describe("compareGeoms", () => {
     expect(merged[0]?.normText).toBe(normalizeLineText("Left cell Right cell"));
   });
 
+  test("merges adjacent row boxes across sub-point ink-width differences", () => {
+    const merged = mergeVisualRows([
+      makeLine({ text: "Label", xPt: 90, yPt: 100, widthPt: 30, heightPt: 12 }),
+      makeLine({ text: "Value", xPt: 144.6, yPt: 100, widthPt: 60, heightPt: 12 }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.normText).toBe(normalizeLineText("Label Value"));
+  });
+
   test("merges nearby table and ungrouped text without Folio-only asymmetry", () => {
     const merged = mergeVisualRows([
       makeLine({ text: "Body text", xPt: 90, yPt: 100, widthPt: 60, heightPt: 12 }),
