@@ -30,6 +30,8 @@ export type FolioParityBridge = {
   countCommentAnchors: () => number;
   /** Block count of the AI-edit snapshot over the live doc (0 with no live view). */
   aiSnapshotBlockCount: () => number;
+  /** Apply and undo one direct document-operation batch; true only when content restores. */
+  applyAndUndoDocumentOperation: () => boolean;
   /** Push an anonymization term matching the first word. Returns whether one was pushed. */
   anonymizeFirstWord: () => boolean;
   /** Count painted anonymization highlight rects in the overlay. */
@@ -154,6 +156,63 @@ export function buildParityBridge(getRef: () => DocxEditorRef | null): FolioPari
     countCommentAnchors: () =>
       document.querySelectorAll(".paged-editor__pages [data-comment-id]").length,
     aiSnapshotBlockCount: () => getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
+    applyAndUndoDocumentOperation: () => {
+      const ref = getRef();
+      const firstSnapshot = ref?.createAIEditSnapshot();
+      const firstBlock = firstSnapshot?.blocks.at(0);
+      const before = liveView()?.state.doc.textContent;
+      if (!ref || !firstSnapshot || !firstBlock || before === undefined) {
+        return false;
+      }
+      const first = ref.applyDocumentOperations({
+        snapshot: firstSnapshot,
+        batch: {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "parity-undo-first",
+              type: "insertAfterBlock",
+              blockId: firstBlock.id,
+              text: "First temporary undo paragraph.",
+            },
+          ],
+        },
+      });
+      const secondSnapshot = ref.createAIEditSnapshot();
+      const secondBlock = secondSnapshot?.blocks.at(0);
+      if (!first.undoHandle || !secondSnapshot || !secondBlock) {
+        return false;
+      }
+      const second = ref.applyDocumentOperations({
+        snapshot: secondSnapshot,
+        batch: {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: "parity-undo-second",
+              type: "insertAfterBlock",
+              blockId: secondBlock.id,
+              text: "Second temporary undo paragraph.",
+            },
+          ],
+        },
+      });
+      const view = liveView();
+      if (!second.undoHandle || !view || view.state.doc.textContent === before) {
+        return false;
+      }
+
+      view.dispatch(view.state.tr.setMeta("folioParitySelectionOnly", true));
+      const secondUndo = ref.undoDocumentOperations(second.undoHandle);
+      const firstUndo = ref.undoDocumentOperations(first.undoHandle);
+      return (
+        secondUndo.status === "undone" &&
+        firstUndo.status === "undone" &&
+        liveView()?.state.doc.textContent === before
+      );
+    },
     anonymizeFirstWord: () => {
       const view = liveView();
       if (!view) {

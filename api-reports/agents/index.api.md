@@ -17,6 +17,8 @@ import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
 import { FolioDocumentOperationIssue } from '@stll/folio-core/server';
 import { FolioDocumentOperationReceipt } from '@stll/folio-core/server';
 import { FolioDocumentOperationResult } from '@stll/folio-core/server';
+import { FolioDocumentOperationUndoHandle } from '@stll/folio-core/server';
+import { FolioDocumentOperationUndoResult } from '@stll/folio-core/server';
 import { FolioDocumentStory } from '@stll/folio-core/server';
 import { FolioDocumentStoryHandle } from '@stll/folio-core/server';
 import { FolioDocxReviewer } from '@stll/folio-core/server';
@@ -1572,7 +1574,8 @@ export type FolioAgentBlockDiff = FolioBlockDiff;
 // @public
 export type FolioAgentBridge = {
     snapshot(): FolioAIEditSnapshot;
-    applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult; /** The comment threads present in the document. */
+    applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult; /** Undo the latest unchanged batch when the execution surface supports it. */
+    undoDocumentOperations?(undoHandle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult; /** The comment threads present in the document. */
     getComments(): FolioAgentComment[]; /** The pending tracked changes (insertions/deletions) present in the document. */
     getChanges(): FolioAgentChange[]; /** Discover typed document stories when the surface exposes package parts. */
     listStories?(): FolioDocumentStory[]; /** Read one previously discovered story. */
@@ -1631,7 +1634,8 @@ export type FolioAgentEditorRefLike = {
         mode?: FolioAIEditApplyMode;
         author?: string;
     }): FolioAIEditApplyResult; /** `DocxEditorRef.applyDocumentOperations`, when available on newer refs. */
-    applyDocumentOperations?(options: FolioAgentEditorApplyDocumentOperationsOptions): FolioDocumentOperationResult; /** `DocxEditorRef.scrollToBlock`. */
+    applyDocumentOperations?(options: FolioAgentEditorApplyDocumentOperationsOptions): FolioDocumentOperationResult; /** `DocxEditorRef.undoDocumentOperations`, when available on newer refs. */
+    undoDocumentOperations?(undoHandle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult; /** `DocxEditorRef.scrollToBlock`. */
     scrollToBlock(blockId: string, snapshot?: FolioAIEditSnapshot): boolean; /** `DocxEditorRef.getTotalPages`. */
     getTotalPages(): number;
     getTrackedChanges?(): FolioReviewChange[];

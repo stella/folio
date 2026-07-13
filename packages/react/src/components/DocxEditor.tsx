@@ -36,6 +36,7 @@ import {
 // Paginated editor
 import type { Mark } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
+import { closeHistory } from "prosemirror-history";
 import { useTranslations } from "use-intl";
 
 import {
@@ -47,6 +48,8 @@ import {
   getFolioDocumentOperationIssues,
   getTrackedChangesFromDoc,
   type FolioDocumentOperationStatus,
+  type FolioDocumentOperationUndoHandle,
+  type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
@@ -290,6 +293,15 @@ const DISPLAY_MODE_LABEL_KEYS = {
 } as const satisfies Record<DisplayMode, string>;
 
 const preventMouseDownDefault = (event: React.MouseEvent) => event.preventDefault();
+
+type LiveDocumentOperationUndoEntry = {
+  undoHandle: FolioDocumentOperationUndoHandle;
+  afterState: EditorView["state"];
+  commentsBefore: Comment[];
+  commentsAfter: Comment[];
+};
+
+let documentOperationUndoHandleCursor = Date.now();
 
 function isDisplayMode(value: unknown): value is DisplayMode {
   return typeof value === "string" && DISPLAY_MODES.some((mode) => mode === value);
@@ -896,6 +908,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     commentsProp,
     onCommentsChange,
   });
+  const documentOperationUndoEntriesRef = useRef<LiveDocumentOperationUndoEntry[]>([]);
   // Cache style resolver to avoid recreating on every selection change
   const styleResolverCacheRef = useRef<{
     styles: unknown;
@@ -2835,9 +2848,25 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           };
         }
 
+        const existingUndoEntry = documentOperationUndoEntriesRef.current.at(-1);
+        if (
+          existingUndoEntry &&
+          (!view.state.doc.eq(existingUndoEntry.afterState.doc) ||
+            commentsRef.current !== existingUndoEntry.commentsAfter)
+        ) {
+          documentOperationUndoEntriesRef.current.length = 0;
+        }
+        const commentsBefore = commentsRef.current;
         const createdComments: Comment[] = [];
+        const operationView = {
+          state: view.state,
+          dispatch: (transaction: Parameters<EditorView["dispatch"]>[0]) => {
+            view.dispatch(closeHistory(transaction));
+            operationView.state = view.state;
+          },
+        };
         const result = applyFolioDocumentOperations({
-          view,
+          view: operationView,
           snapshot,
           batch,
           author: operationAuthor,
@@ -2846,13 +2875,59 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             createdComments.push(comment);
             return comment.id;
           },
+          createUndoHandle: () => ({
+            type: "documentOperationUndo",
+            id: `react-${String(documentOperationUndoHandleCursor++)}`,
+          }),
         });
 
         if (createdComments.length > 0) {
           updateComments((currentComments) => [...currentComments, ...createdComments]);
         }
 
+        if (result.undoHandle !== null) {
+          documentOperationUndoEntriesRef.current.push({
+            undoHandle: result.undoHandle,
+            afterState: view.state,
+            commentsBefore,
+            commentsAfter: commentsRef.current,
+          });
+        }
+
         return result;
+      },
+      undoDocumentOperations: (undoHandle): FolioDocumentOperationUndoResult => {
+        const entries = documentOperationUndoEntriesRef.current;
+        const entryIndex = entries.findIndex(
+          (entry) =>
+            entry.undoHandle.type === undoHandle.type && entry.undoHandle.id === undoHandle.id,
+        );
+        if (entryIndex === -1) {
+          return { status: "rejected", undoHandle, reason: "unknownHandle" };
+        }
+        if (entryIndex !== entries.length - 1) {
+          return { status: "rejected", undoHandle, reason: "notLatest" };
+        }
+
+        const entry = entries.at(-1);
+        const view = pagedEditorRef.current?.getView();
+        if (!entry || !view) {
+          return { status: "rejected", undoHandle, reason: "unknownHandle" };
+        }
+        if (
+          !view.state.doc.eq(entry.afterState.doc) ||
+          commentsRef.current !== entry.commentsAfter
+        ) {
+          return { status: "rejected", undoHandle, reason: "documentChanged" };
+        }
+        if (!(pagedEditorRef.current?.undo() ?? false)) {
+          return { status: "rejected", undoHandle, reason: "documentChanged" };
+        }
+
+        replaceComments(entry.commentsBefore);
+        entries.pop();
+        requestAnimationFrame(refreshBodyHistoryAvailability);
+        return { status: "undone", undoHandle };
       },
       applyAIEditOperations: ({
         snapshot,
@@ -3081,6 +3156,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       loadParsedDocument,
       loadBuffer,
       updateComments,
+      replaceComments,
+      commentsRef,
       commentsDirtyRef,
       hfEditPosition,
       refreshBodyHistoryAvailability,

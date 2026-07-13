@@ -1251,6 +1251,8 @@ const { exposed } = useDocxEditorRefApi({
     commentManagement.pushComment(comment);
     return comment.id;
   },
+  getComments: () => commentManagement.comments.value,
+  setComments: commentManagement.setComments,
   focus,
   getDocument,
   setZoom,

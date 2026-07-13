@@ -86,6 +86,8 @@ import { FolioBlockId } from '@stll/folio-core/types/block-id';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationResult } from '@stll/folio-core/ai-edits';
+import { FolioDocumentOperationUndoHandle } from '@stll/folio-core/ai-edits';
+import { FolioDocumentOperationUndoResult } from '@stll/folio-core/ai-edits';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
@@ -399,6 +401,7 @@ export type DocxEditorRef = {
     }) => void;
     createAIEditSnapshot: () => FolioAIEditSnapshot | null;
     applyDocumentOperations: (options: DocxEditorApplyDocumentOperationsOptions) => FolioDocumentOperationResult;
+    undoDocumentOperations: (undoHandle: FolioDocumentOperationUndoHandle) => FolioDocumentOperationUndoResult;
     applyAIEditOperations: (options: {
         snapshot: FolioAIEditSnapshot;
         operations: FolioAIEditOperation[];
