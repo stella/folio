@@ -583,6 +583,9 @@ function justifyShrinkToleranceRatio(
   }
   const hasTabStops = (block.attrs?.tabs?.length ?? 0) > 0;
   const hasTabRuns = block.runs.some(isTabRun);
+  if (isFirstLine && hasTabRuns && (block.attrs?.indent?.hanging ?? 0) > 0) {
+    return JUSTIFY_SHRINK_TOLERANCE_RATIO;
+  }
   if (!isFirstLine && hasTabRuns && !hasTabStops) {
     return JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO;
   }
@@ -1153,6 +1156,10 @@ export function measureParagraph(
         decimalPrefixWidth,
       });
       let tabWidth = tabResult.width;
+      const landsOnLeftIndent =
+        tabResult.alignment === "start" &&
+        indentLeft > 0 &&
+        Math.abs(contentX + tabWidth - indentLeft) <= WIDTH_TOLERANCE;
 
       const lineRightEdgeX =
         indentLeft +
@@ -1160,6 +1167,7 @@ export function measureParagraph(
         currentLine.availableWidth +
         currentLine.leftOffset;
       if (
+        !landsOnLeftIndent &&
         !hasFollowingTabOnLine(runs, runIndex) &&
         canClampTabToRightEdge(
           tabResult.alignment,

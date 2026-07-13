@@ -145,6 +145,41 @@ describe("renderLine right-tab flex anchor", () => {
     expect(tabEl?.style["width"]).toBe("3px");
   });
 
+  test("does not clamp the tab that anchors a hanging-indent body", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "hanging-body-left-tab",
+      runs: [
+        { kind: "text", text: "abc" },
+        { kind: "tab" },
+        { kind: "text", text: "abcdefghijklmnopqr" },
+      ],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 18,
+      width: 150,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 150,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      firstLineIndentPx: -30,
+      leftIndentPx: 30,
+      lineRightEdgePx: 150,
+    }) as unknown as FakeElement;
+
+    const tabEl = findTabEl(lineEl);
+    expect(tabEl?.style["width"]).toBe("9px");
+  });
+
   test("does not clamp a non-leading left tab on a non-final line", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",

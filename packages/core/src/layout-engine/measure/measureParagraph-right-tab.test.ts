@@ -53,6 +53,58 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
     });
   });
 
+  test("keeps a hanging-indent tab anchored at the paragraph body edge", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "hanging-body-left-tab",
+          runs: [
+            { kind: "text", text: "abc", fontSize: 11 },
+            { kind: "tab" },
+            { kind: "text", text: "a".repeat(25), fontSize: 11 },
+          ],
+          attrs: {
+            indent: { left: 30, hanging: 30 },
+          },
+        },
+        150,
+      );
+
+      expect(measure.lines).toHaveLength(2);
+      expect(measure.lines[0]?.toRun).toBe(1);
+      expect(measure.lines[1]?.fromRun).toBe(2);
+    });
+  });
+
+  test("uses conservative justification after a hanging-indent body tab", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-hanging-body-tab",
+            runs: [
+              { kind: "text", text: "abc", fontSize: 11 },
+              { kind: "tab" },
+              { kind: "text", text: `${"a".repeat(24)}z`, fontSize: 11 },
+            ],
+            attrs: {
+              alignment: "justify",
+              indent: { left: 30, hanging: 30 },
+            },
+          },
+          150,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: (char) => (char === "z" ? 2.7 : 5),
+      },
+    );
+  });
+
   test("non-leading left tab keeps its stop before multi-line prose", () => {
     withFakeTextMeasure(() => {
       const measure = measureParagraph(

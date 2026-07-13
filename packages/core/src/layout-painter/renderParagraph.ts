@@ -1962,7 +1962,12 @@ export function renderLine(
       // the content area (Word TOC styles author stops a hair beyond the
       // margin); without this, the painted tab spills into the right margin.
       let tabWidth = tabResult.width;
+      const landsOnLeftIndent =
+        tabResult.alignment === "start" &&
+        leftIndentPx > 0 &&
+        Math.abs(currentX + tabWidth - leftIndentPx) <= RIGHT_EDGE_EPSILON_PX;
       if (
+        !landsOnLeftIndent &&
         lineRightEdgeX !== undefined &&
         canClampTabToRightEdge(
           tabResult.alignment,
