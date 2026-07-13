@@ -995,9 +995,6 @@ function layoutTable(
   const getCurrentRowCapacity = (state = paginator.getCurrentState()): number =>
     state.rawContentBottom - state.topMargin;
 
-  const getCurrentAvailableHeight = (state = paginator.getCurrentState()): number =>
-    state.contentBottom - state.cursorY;
-
   const hasAdjacentPriorTableRows = (
     rowIndex: number,
     state = paginator.getCurrentState(),
@@ -1026,20 +1023,13 @@ function layoutTable(
     if (!row) {
       return false;
     }
-    const repeatedHeaderOverhead = shouldRepeatHeaderRows(rowIndex, 0, state)
-      ? headerRowsHeight
-      : 0;
     if ((breakInfo.breakOffsets[rowIndex]?.length ?? 0) <= 1) {
       return false;
     }
-    const requiredHeight = row.height + repeatedHeaderOverhead;
-    if (requiredHeight > getCurrentRowCapacity(state)) {
-      return true;
-    }
-    return (
-      hasAdjacentPriorTableRows(rowIndex, state) &&
-      requiredHeight > getCurrentAvailableHeight(state) - state.trailingSpacing
-    );
+    const freshHeaderOverhead =
+      headerRowCount > 0 && rowIndex >= headerRowCount ? headerRowsHeight : 0;
+    const requiredHeight = row.height + freshHeaderOverhead;
+    return requiredHeight > getCurrentRowCapacity(state);
   };
 
   while (currentRowIndex < rows.length) {
