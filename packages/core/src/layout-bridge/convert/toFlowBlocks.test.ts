@@ -1000,6 +1000,24 @@ describe("toFlowBlocks table cell formatting", () => {
     expect(blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
   });
 
+  test("keeps one line before the final marker in a repeated terminal empty run", () => {
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("content")]),
+        schema.node("paragraph"),
+        schema.node("paragraph"),
+      ]),
+    );
+
+    expect(
+      blocks
+        .slice(-2)
+        .map((block) =>
+          block.kind === "paragraph" ? block.attrs?.suppressEmptyParagraphHeight : undefined,
+        ),
+    ).toEqual([undefined, true]);
+  });
+
   test("keeps terminal empty paragraph height when the document contains only empty paragraphs", () => {
     const blocks = toFlowBlocks(
       schema.node("doc", null, [schema.node("paragraph"), schema.node("paragraph")]),

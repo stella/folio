@@ -1941,6 +1941,26 @@ function suppressTerminalEmptyParagraphsAfterTable(blocks: FlowBlock[]): void {
   }
 }
 
+function suppressFinalParagraphInRepeatedEmptySuffix(blocks: FlowBlock[]): void {
+  let suffixStart = blocks.length;
+  while (suffixStart > 0 && isPaintlessTerminalParagraph(blocks[suffixStart - 1])) {
+    suffixStart -= 1;
+  }
+
+  if (
+    suffixStart === 0 ||
+    blocks.length - suffixStart < 2 ||
+    blocks[suffixStart - 1]?.kind === "table"
+  ) {
+    return;
+  }
+
+  const finalBlock = blocks.at(-1);
+  if (isPaintlessTerminalParagraph(finalBlock)) {
+    finalBlock.attrs = { ...finalBlock.attrs, suppressEmptyParagraphHeight: true };
+  }
+}
+
 function reserveLeadingEmptyOutlineHeight(blocks: FlowBlock[]): void {
   const firstBlock = blocks.at(0);
   if (
@@ -2795,6 +2815,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
 
   reserveLeadingEmptyOutlineHeight(blocks);
   suppressTerminalEmptyParagraphsAfterTable(blocks);
+  suppressFinalParagraphInRepeatedEmptySuffix(blocks);
   return groupParagraphFrames(mergeRunInParagraphs(blocks), nextBlockId);
 }
 
