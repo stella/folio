@@ -563,16 +563,14 @@ function justifyShrinkToleranceRatio(
   nonBreakingSpaceCount: number,
 ): number {
   if (block.attrs?.listMarker !== undefined) {
-    // Word keeps its conservative list allowance for the standard 360-twip
-    // hanging slot. Custom, wider slots use the tabbed allowance on their
-    // marker line and prose compression on continuations, reduced by fixed
-    // non-breaking spaces on the current line.
+    // Word keeps a conservative allowance on the marker line. Continuation
+    // lines use prose compression, reduced by fixed non-breaking spaces on the
+    // current line.
     const hanging = block.attrs.indent?.hanging ?? 0;
-    if (hanging <= DEFAULT_LIST_HANGING_INDENT_PX) {
-      return JUSTIFY_SHRINK_TOLERANCE_RATIO;
-    }
     if (isFirstLine) {
-      return JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO;
+      return hanging <= DEFAULT_LIST_HANGING_INDENT_PX
+        ? JUSTIFY_SHRINK_TOLERANCE_RATIO
+        : JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO;
     }
     const totalSpaces = regularSpaceCount + nonBreakingSpaceCount;
     if (totalSpaces === 0) {
