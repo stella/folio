@@ -916,6 +916,35 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
+  test("keeps shallow full-hanging list continuations on rounding tolerance", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-shallow-list-continuation",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 18, hanging: 18 },
+            },
+          },
+          118,
+        );
+
+        expect(measure.lines).toHaveLength(3);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
+
   test("keeps inset list continuation lines on the conservative tolerance", () => {
     withFakeTextMeasure(
       () => {
