@@ -244,10 +244,8 @@ function convertParagraph(
     paragraph.formatting?.runProperties,
     styleResolver,
   );
-  // Word does not propagate paragraph-mark-only visual decorations
-  // (highlight, shading) to body runs — they paint the pilcrow alone. Strip
-  // them off the inheritance path so a `<w:pPr><w:rPr><w:highlight/></w:rPr>`
-  // used to mark just the paragraph glyph doesn't bleed onto every run.
+  // Paragraph-mark-only visual decorations (highlight, shading) paint the
+  // paragraph glyph alone. Strip them from the body-run inheritance path.
   let inheritableParagraphRunFormatting: TextFormatting | undefined;
   if (paragraphRunFormatting && !isTocParagraph) {
     inheritableParagraphRunFormatting = stripParagraphMarkOnlyFormatting(paragraphRunFormatting);
@@ -269,7 +267,9 @@ function convertParagraph(
         ? suppressParagraphMarkFormatting(baseRunFormatting, undefined, formatting)
         : baseRunFormatting;
     }
-    if (!hasDirectRunFormatting(formatting)) {
+    const hasExplicitRunFormatting =
+      hasDirectRunFormatting(formatting) || formatting?.styleId !== undefined;
+    if (!hasExplicitRunFormatting) {
       return defaultRunFormatting;
     }
     return suppressParagraphMarkFormatting(

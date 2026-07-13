@@ -136,7 +136,7 @@ describe("toProseDoc", () => {
     expect(doc.firstChild?.attrs.spacingExplicit).toBeNull();
   });
 
-  test("applies oneNDA paragraph mark defaults to unformatted visible text like Word", () => {
+  test("applies paragraph-mark defaults to otherwise unformatted visible text", () => {
     const document: Document = {
       package: {
         document: {
@@ -172,7 +172,7 @@ describe("toProseDoc", () => {
     expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe("Arial");
   });
 
-  test("keeps oneNDA heading direct run formatting ahead of paragraph mark defaults", () => {
+  test("keeps direct run formatting ahead of paragraph-mark defaults", () => {
     const document: Document = {
       package: {
         document: {
@@ -613,6 +613,66 @@ describe("toProseDoc", () => {
     expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(false);
     expect(text?.marks.find((mark) => mark.type.name === "runFormattingOverride")?.attrs.bold).toBe(
       false,
+    );
+  });
+
+  test("does not leak paragraph-mark bold through a character-style reference", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                runProperties: {
+                  bold: true,
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: {
+                    styleId: "BodyCharacter",
+                  },
+                  content: [{ type: "text", text: "Visible body text" }],
+                },
+              ],
+            },
+          ],
+        },
+        styles: {
+          styles: [
+            {
+              styleId: "BodyCharacter",
+              type: "character",
+              rPr: {},
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+    const paragraph = doc.firstChild;
+    const text = paragraph?.firstChild;
+
+    expect(paragraph?.attrs._originalFormatting.runProperties.bold).toBe(true);
+    expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(false);
+    expect(text?.marks.find((mark) => mark.type.name === "runFormattingOverride")?.attrs.bold).toBe(
+      false,
+    );
+    expect(text?.marks.find((mark) => mark.type.name === "characterStyle")?.attrs.styleId).toBe(
+      "BodyCharacter",
+    );
+
+    const rebuilt = fromProseDoc(doc, document);
+    const rebuiltParagraph = rebuilt.package.document.content.at(0);
+    const rebuiltRun =
+      rebuiltParagraph?.type === "paragraph" ? rebuiltParagraph.content.at(0) : null;
+
+    expect(rebuiltParagraph?.formatting?.runProperties.bold).toBe(true);
+    expect(rebuiltRun?.type === "run" ? rebuiltRun.formatting?.styleId : null).toBe(
+      "BodyCharacter",
     );
   });
 
