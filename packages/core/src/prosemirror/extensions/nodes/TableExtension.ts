@@ -272,6 +272,7 @@ const tableSpec: NodeSpec = {
     cellMargins: { default: null },
     look: { default: null },
     borders: { default: null },
+    _resolvedIndent: { default: null },
     _originalFormatting: { default: null },
     tblPrChange: { default: null },
   },

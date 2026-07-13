@@ -1274,11 +1274,11 @@ function convertTable(
   if (table.formatting?.borders) {
     attrs.borders = table.formatting.borders;
   }
-  if (table.formatting || resolvedTableIndent) {
-    attrs._originalFormatting = {
-      ...table.formatting,
-      ...(resolvedTableIndent ? { indent: resolvedTableIndent } : {}),
-    };
+  if (resolvedTableIndent) {
+    attrs._resolvedIndent = resolvedTableIndent;
+  }
+  if (table.formatting) {
+    attrs._originalFormatting = table.formatting;
   }
   // Carry `w:tblPrChange` opaquely through PM (same rationale as the
   // paragraph `_propertyChanges` attr) so edits don't strip the tracked

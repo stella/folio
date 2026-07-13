@@ -943,7 +943,9 @@ function layoutTable(
       // content margin. An authored zero indent is distinct: it aligns the
       // table border itself with the margin. Preserve non-zero indentation's
       // existing text-edge behavior while retaining that zero-valued signal.
-      x += block.indent === 0 ? 0 : (block.indent ?? 0) - leadingCellMargin;
+      if (block.indent !== 0) {
+        x += (block.indent ?? 0) - leadingCellMargin;
+      }
     }
     return x;
   };

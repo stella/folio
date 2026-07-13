@@ -356,6 +356,8 @@ describe("toFlowBlocks style cascade", () => {
       left: 144,
       right: 288,
     });
+    expect(tableNode?.attrs["_resolvedIndent"]).toEqual({ value: 0, type: "dxa" });
+    expect(tableNode?.attrs["_originalFormatting"]?.indent).toBeUndefined();
 
     const tableBlock = toFlowBlocks(pmDoc, {})[0];
     expect(tableBlock?.kind).toBe("table");
