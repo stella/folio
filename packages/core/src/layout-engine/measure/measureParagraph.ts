@@ -1484,20 +1484,20 @@ export function measureParagraph(
             : 0;
         const widthTolerance =
           isJustifiedParagraph && !isShallowFullHangingListContinuation(block, isFirstLine)
-          ? Math.max(
-              WIDTH_TOLERANCE,
-              usesMarkerSpaceTolerance
-                ? (currentLine.regularSpaceWidth + regularSpaceWidth) *
-                    JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO
-                : currentLine.availableWidth *
-                    justifyShrinkToleranceRatio(
-                      block,
-                      isFirstLine,
-                      currentLine.regularSpaceCount + regularSpaces,
-                      currentLine.nonBreakingSpaceCount + nonBreakingSpaces,
-                    ),
-            )
-          : WIDTH_TOLERANCE;
+            ? Math.max(
+                WIDTH_TOLERANCE,
+                usesMarkerSpaceTolerance
+                  ? (currentLine.regularSpaceWidth + regularSpaceWidth) *
+                      JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO
+                  : currentLine.availableWidth *
+                      justifyShrinkToleranceRatio(
+                        block,
+                        isFirstLine,
+                        currentLine.regularSpaceCount + regularSpaces,
+                        currentLine.nonBreakingSpaceCount + nonBreakingSpaces,
+                      ),
+              )
+            : WIDTH_TOLERANCE;
 
         // If the word itself is longer than a line, hard-break by characters.
         // Use substring measurement (not char-by-char accumulation) to preserve
