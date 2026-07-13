@@ -944,6 +944,33 @@ describe("oversized table row splits across pages (#570)", () => {
     expect(frags[0]?.y).toBe(OPTIONS.margins.top);
   });
 
+  test("moves a page-fitting row intact after adjacent table rows", () => {
+    const { block, measure } = tableWithHeaderTallBodyAndShortRow(4);
+    measure.rows[2] = {
+      cells: [{ blocks: [paraMeasure(3)], width: 220, height: 3 * LINE }],
+      height: 3 * LINE,
+    };
+    measure.totalHeight = 8 * LINE;
+
+    const layout = layoutDocument([block as FlowBlock], [measure as Measure], OPTIONS);
+    const firstPageTables =
+      layout.pages[0]?.fragments.filter((f): f is TableFragment => f.kind === "table") ?? [];
+    const secondPageTables =
+      layout.pages[1]?.fragments.filter((f): f is TableFragment => f.kind === "table") ?? [];
+
+    expect(firstPageTables).toHaveLength(1);
+    expect(firstPageTables[0]).toMatchObject({ fromRow: 0, toRow: 2 });
+    expect(firstPageTables[0]?.bottomClip).toBeUndefined();
+    expect(secondPageTables).toHaveLength(1);
+    expect(secondPageTables[0]).toMatchObject({
+      fromRow: 2,
+      toRow: 3,
+      headerRowCount: 1,
+    });
+    expect(secondPageTables[0]?.topClip).toBeUndefined();
+    expect(secondPageTables[0]?.bottomClip).toBeUndefined();
+  });
+
   test("keeps page-fitting rows whole after footnote reservations", () => {
     const spacer: FlowBlock = {
       kind: "paragraph",
