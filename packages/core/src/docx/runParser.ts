@@ -957,9 +957,15 @@ function parseRunContents(
         break;
       }
 
-      case "object":
-        // Legacy OLE objects remain outside the active image path.
+      case "object": {
+        // Embedded objects can carry a relationship-backed VML preview. Route
+        // that preview through the image path while retaining the source XML.
+        const objectPreview = parseVmlImageContent(child, rels, media, rootXmlns);
+        if (objectPreview) {
+          contents.push(objectPreview);
+        }
         break;
+      }
 
       case "rPr":
         // Run properties - already handled separately

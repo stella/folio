@@ -183,6 +183,7 @@ async function bodyScopedPictDocx(bodyInnerXml: string): Promise<ArrayBuffer> {
 }
 
 const PICT_WITH_IMAGE = `<w:pict><v:shape id="Picture 1" type="#_x0000_t75" style="width:2in;height:1in"><v:imagedata r:id="rIdImg" o:title="logo"/></v:shape></w:pict>`;
+const OBJECT_WITH_PREVIEW = `<w:object><v:shape id="Object 1" type="#_x0000_t75" style="width:20pt;height:18pt"><v:imagedata r:id="rIdImg" o:title="preview"/></v:shape><w:control r:id="rIdControl" w:name="Control 1" w:shapeid="Object 1"/></w:object>`;
 
 // A VML shape/imagedata whose prefixes (`v2`, `r2`) are declared on an ancestor
 // wrapper rather than the document root; used to prove the in-scope xmlns set
@@ -230,6 +231,46 @@ describe("VML w:pict inline images", () => {
     expect(docXml).not.toContain("wp:inline");
     // The referenced media part survives the round-trip.
     expect(zip.file("word/media/image1.png")).not.toBeNull();
+  });
+
+  test("parses an embedded object's VML preview with its authored dimensions", async () => {
+    const doc = await parseDocx(await pictDocx({ runXml: OBJECT_WITH_PREVIEW }), {
+      preloadFonts: false,
+    });
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    expect(drawing?.image.rId).toBe("rIdImg");
+    expect(drawing?.image.size).toEqual({ width: 254_000, height: 228_600 });
+    expect(drawing?.image.wrap.type).toBe("inline");
+    expect(drawing?.image.src).toStartWith("data:image/png");
+    expect(drawing?.image.title).toBe("preview");
+    expect(drawing?.rawXml).toContain("<w:object");
+    expect(drawing?.rawXml).toContain("<w:control");
+  });
+
+  test("preserves an embedded object wrapper when saving its preview", async () => {
+    const original = await pictDocx({ runXml: OBJECT_WITH_PREVIEW });
+    const doc = await parseDocx(original, { preloadFonts: false });
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+
+    expect((await validateDocx(out)).valid).toBe(true);
+    const zip = await JSZip.loadAsync(out);
+    const docXml = await zip.file("word/document.xml")!.async("text");
+    expect(docXml).toContain("<w:object");
+    expect(docXml).toContain("<w:control");
+    expect(docXml).toContain('r:id="rIdImg"');
+    expect(docXml).not.toContain("<w:drawing");
+  });
+
+  test("rejects an embedded-object preview with unsafe authored dimensions", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: OBJECT_WITH_PREVIEW.replace("width:20pt", "width:30000px"),
+      }),
+      { preloadFonts: false },
+    );
+
+    expect(firstDrawing(doc.package.document.content.at(0))).toBeUndefined();
   });
 
   test("renders a positioned solid rectangle without embedded image data", async () => {

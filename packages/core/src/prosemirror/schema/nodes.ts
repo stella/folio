@@ -307,6 +307,8 @@ export type ImageAttrs = {
   hlinkHref?: string;
   /** Original OOXML for opaque/unsupported DOCX drawings. */
   _docxRawXml?: string;
+  /** Embedded-object previews use their authored box as the exact line height. */
+  _docxObjectPreview?: boolean;
 };
 
 /**

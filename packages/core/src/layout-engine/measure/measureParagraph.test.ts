@@ -1135,6 +1135,37 @@ describe("inline image paragraph measurement", () => {
     expect(line?.ascent).toBe(imageHeight + descent);
   });
 
+  test("embedded-object preview uses its authored box as the exact line height", () => {
+    const imageHeight = 40;
+    const measure = measureParagraph(
+      {
+        kind: "paragraph",
+        id: "object-preview",
+        runs: [
+          {
+            kind: "image",
+            src: "data:image/png;base64,",
+            width: 80,
+            height: imageHeight,
+            exactLineHeight: true,
+          },
+        ],
+        attrs: {
+          defaultFontSize: 11,
+          defaultFontFamily: "Calibri",
+        },
+      },
+      600,
+    );
+
+    expect(measure.lines[0]).toMatchObject({
+      lineHeight: imageHeight,
+      ascent: imageHeight,
+      descent: 0,
+    });
+    expect(measure.totalHeight).toBe(imageHeight);
+  });
+
   test("inline image footprint includes its wp:inline distT/distB", () => {
     withFakeTextMeasure(() => {
       // distTop/distBottom = 8 each = 16px of extra footprint; the line

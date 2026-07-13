@@ -2406,6 +2406,8 @@ function convertImage(image: Image, rawXml?: string): PMNode {
     wrapText,
     hlinkHref: image.hlinkHref,
     _docxRawXml: rawXml,
+    _docxObjectPreview:
+      rawXml !== undefined && /<(?:[A-Za-z_][\w.-]*:)?object(?:\s|>)/u.test(rawXml),
   });
 }
 

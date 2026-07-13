@@ -129,6 +129,8 @@ type LineState = {
   maxFontMetrics: FontMetrics | null;
   /** Maximum inline image height in pixels (already in px, not points) */
   maxImageHeightPx: number;
+  /** Maximum exact-height embedded-object preview on the line. */
+  maxExactImageHeightPx: number;
   /** Maximum inline math height in pixels (already in px, not points) */
   maxMathHeightPx: number;
   availableWidth: number;
@@ -973,6 +975,7 @@ export function measureParagraph(
     maxFontSize: DEFAULT_FONT_SIZE,
     maxFontMetrics: null,
     maxImageHeightPx: 0,
+    maxExactImageHeightPx: 0,
     maxMathHeightPx: 0,
     availableWidth: firstLineWidth,
     leftOffset: firstLineFloatingMargins.leftMargin,
@@ -1008,6 +1011,12 @@ export function measureParagraph(
       // test in renderLine — the two pick paired line-height + alignment
       // strategies and disagreeing reintroduces the floating-label bug.
       if (line.fromRun === line.toRun) {
+        if (line.maxExactImageHeightPx >= objectHeight) {
+          finalTypography.lineHeight = objectHeight;
+          finalTypography.ascent = objectHeight;
+          finalTypography.descent = 0;
+          return finalTypography;
+        }
         // Object alone on the line: grow to the object height plus the
         // parent font's descent on BOTH sides so the row has visible
         // breathing room above and below it.
@@ -1127,6 +1136,7 @@ export function measureParagraph(
       maxFontSize: DEFAULT_FONT_SIZE,
       maxFontMetrics: null,
       maxImageHeightPx: 0,
+      maxExactImageHeightPx: 0,
       maxMathHeightPx: 0,
       availableWidth: adjustedWidth,
       leftOffset: floatingMargins.leftMargin,
@@ -1335,6 +1345,9 @@ export function measureParagraph(
       const imageFootprintPx = imageHeight + (run.distTop ?? 0) + (run.distBottom ?? 0);
       if (imageFootprintPx > currentLine.maxImageHeightPx) {
         currentLine.maxImageHeightPx = imageFootprintPx;
+      }
+      if (run.exactLineHeight === true && imageFootprintPx > currentLine.maxExactImageHeightPx) {
+        currentLine.maxExactImageHeightPx = imageFootprintPx;
       }
 
       currentLine.width += imageWidth;

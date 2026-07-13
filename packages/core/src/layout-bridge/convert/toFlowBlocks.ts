@@ -874,6 +874,9 @@ function buildImageRun(
   if (attrs.distRight !== undefined) {
     run.distRight = attrs.distRight;
   }
+  if (attrs._docxObjectPreview === true) {
+    run.exactLineHeight = true;
+  }
   // eigenpal #424: pass crop fractions through to the painter so it can
   // emit CSS clip-path. PM defaults are `null`; treat null as "not set".
   if (attrs.cropTop != null) {

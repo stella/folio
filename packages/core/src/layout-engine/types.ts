@@ -217,6 +217,8 @@ export type ImageRun = {
   distBottom?: number;
   distLeft?: number;
   distRight?: number;
+  /** Use the image box as the exact line height for an embedded-object preview. */
+  exactLineHeight?: boolean;
   /**
    * wp:srcRect crop fractions in [0, 1]; emit as CSS `clip-path: inset(...)`
    * to match Word's visible region. eigenpal #424 (image-crop subset).
