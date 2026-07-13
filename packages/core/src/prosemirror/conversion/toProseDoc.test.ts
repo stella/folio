@@ -616,7 +616,7 @@ describe("toProseDoc", () => {
     );
   });
 
-  test("does not leak paragraph-mark bold through a character-style reference", () => {
+  test("does not leak paragraph-mark emphasis through a character-style reference", () => {
     const document: Document = {
       package: {
         document: {
@@ -626,6 +626,7 @@ describe("toProseDoc", () => {
               formatting: {
                 runProperties: {
                   bold: true,
+                  italic: true,
                 },
               },
               content: [
@@ -656,11 +657,19 @@ describe("toProseDoc", () => {
     const paragraph = doc.firstChild;
     const text = paragraph?.firstChild;
 
-    expect(paragraph?.attrs._originalFormatting.runProperties.bold).toBe(true);
-    expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(false);
-    expect(text?.marks.find((mark) => mark.type.name === "runFormattingOverride")?.attrs.bold).toBe(
-      false,
+    const emphasisMarks = ["bold", "italic"] as const;
+    const formattingOverride = text?.marks.find(
+      (mark) => mark.type.name === "runFormattingOverride",
     );
+
+    expect(paragraph?.attrs._originalFormatting.runProperties).toMatchObject({
+      bold: true,
+      italic: true,
+    });
+    for (const markName of emphasisMarks) {
+      expect(text?.marks.some((mark) => mark.type.name === markName)).toBe(false);
+      expect(formattingOverride?.attrs[markName]).toBe(false);
+    }
     expect(text?.marks.find((mark) => mark.type.name === "characterStyle")?.attrs.styleId).toBe(
       "BodyCharacter",
     );
@@ -670,7 +679,10 @@ describe("toProseDoc", () => {
     const rebuiltRun =
       rebuiltParagraph?.type === "paragraph" ? rebuiltParagraph.content.at(0) : null;
 
-    expect(rebuiltParagraph?.formatting?.runProperties.bold).toBe(true);
+    expect(rebuiltParagraph?.formatting?.runProperties).toMatchObject({
+      bold: true,
+      italic: true,
+    });
     expect(rebuiltRun?.type === "run" ? rebuiltRun.formatting?.styleId : null).toBe(
       "BodyCharacter",
     );
