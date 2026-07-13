@@ -1,10 +1,6 @@
 {
-  "extends": "@stll/typescript-config/base.json",
-  "compilerOptions": {
-    "lib": ["ESNext"],
-    "module": "ESNext",
-    "types": ["bun"]
-  },
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
   "include": ["src"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "dist"]
 }

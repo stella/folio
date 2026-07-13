@@ -12,14 +12,14 @@
     "validate",
     "word"
   ],
-  "homepage": "https://github.com/stella/stella/tree/main/packages/docx-core",
+  "homepage": "https://github.com/stella/folio/tree/main/packages/docx-core",
   "bugs": {
-    "url": "https://github.com/stella/stella/issues"
+    "url": "https://github.com/stella/folio/issues"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/stella/stella.git",
+    "url": "https://github.com/stella/folio.git",
     "directory": "packages/docx-core"
   },
   "files": [
@@ -38,22 +38,19 @@
   },
   "scripts": {
     "clean": "git clean -xdf dist .cache .turbo node_modules",
-    "build": "tsdown",
+    "build": "rm -rf dist && tsdown",
     "pack:dry-run": "bun pm pack --dry-run",
     "test": "bun test src",
-    "typecheck": "bun ../../packages/scripts/src/tsc-native.ts --noEmit",
-    "lint": "cd ../.. && bun --bun oxlint -c oxlint.config.ts --report-unused-disable-directives-severity=error --deny-warnings --type-aware packages/docx-core",
-    "lint:fix": "cd ../.. && bun --bun oxlint -c oxlint.config.ts --type-aware --fix packages/docx-core",
+    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
     "format": "oxfmt .",
     "prepack": "bun run build"
   },
   "dependencies": {
-    "better-result": "catalog:",
-    "jszip": "catalog:"
+    "better-result": "2.9.2",
+    "jszip": "3.10.1"
   },
   "devDependencies": {
-    "@stll/typescript-config": "workspace:*",
-    "@types/bun": "catalog:",
-    "tsdown": "catalog:"
+    "@types/bun": "1.3.14",
+    "tsdown": "0.22.3"
   }
 }

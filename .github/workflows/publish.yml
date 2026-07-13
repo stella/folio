@@ -1,8 +1,9 @@
 name: Publish
 
 # Publishes the folio packages to npm with SLSA provenance via OIDC trusted
-# publishing (no long-lived NPM_TOKEN). The monorepo ships five packages:
-# @stll/folio-core (headless engine), @stll/folio-react (React editor),
+# publishing (no long-lived NPM_TOKEN). The monorepo ships six packages:
+# @stll/docx-core (canonical model and serializer), @stll/folio-core (headless engine),
+# @stll/folio-react (React editor),
 # @stll/folio-agents (agent tool-schema bindings over core), @stll/folio-vue
 # (Vue editor), and @stll/folio-nuxt (Nuxt module wrapping the Vue editor). All
 # are released by this workflow as a matrix.
@@ -13,11 +14,11 @@ name: Publish
 # credential. Only the `publish` job — which downloads the prebuilt tarballs and
 # runs the hardened action — is granted id-token: write.
 #
-# Dependency order: @stll/folio-core publishes before @stll/folio-react,
+# Dependency order: @stll/docx-core publishes before @stll/folio-core, which publishes before @stll/folio-react,
 # @stll/folio-agents, and @stll/folio-vue (all three pin `@stll/folio-core` via
 # `workspace:^`, which bun pm pack rewrites to the concrete version), and
 # @stll/folio-vue before @stll/folio-nuxt (nuxt pins `@stll/folio-vue`). The
-# publish job runs the matrix with `max-parallel: 1` in core → react → agents →
+# publish job runs the matrix with `max-parallel: 1` in docx-core → core → react → agents →
 # vue → nuxt order.
 #
 # @stll/folio-vue and @stll/folio-nuxt ship dist-shaped `exports` in-repo, so the
@@ -29,7 +30,7 @@ name: Publish
 # "trusted publisher" for EACH package pointing at this repository and this
 # workflow file. The hardened action refuses to fall back to token auth, so the
 # first publish of a package fails until its trusted publisher exists. NOTE:
-# @stll/folio-agents, @stll/folio-vue, and @stll/folio-nuxt still need their
+# @stll/docx-core, @stll/folio-agents, @stll/folio-vue, and @stll/folio-nuxt still need their
 # trusted-publisher / OIDC entries created on npm before their publish jobs can
 # succeed — a manual npm-side step, done once per package.
 #
@@ -53,6 +54,7 @@ on:
   push:
     branches: [main]
     paths:
+      - packages/docx-core/package.json
       - packages/core/package.json
       - packages/react/package.json
       - packages/agents/package.json
@@ -75,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pkg: [core, react, agents, vue, nuxt]
+        pkg: [docx-core, core, react, agents, vue, nuxt]
     permissions:
       contents: read # deliberately NO id-token: untrusted build scripts run here
     steps:
@@ -101,13 +103,17 @@ jobs:
           # Pack with `bun pm pack`, NOT `npm pack`: only Bun rewrites the
           # `workspace:` / `catalog:` dependency protocols to concrete versions
           # in the published package.json (react's `@stll/folio-core` dep).
-          bun --filter "@stll/folio-${PKG}" build
+          case "${PKG}" in
+            docx-core) package_name="@stll/docx-core" ;;
+            *) package_name="@stll/folio-${PKG}" ;;
+          esac
+          bun --filter "${package_name}" build
           # core/react/agents carry source-shaped exports (./src/*.ts) that
           # prepare-publish rewrites to dist; vue/nuxt already ship dist-shaped
           # exports, so skip the transform (it panics on their { types, import }
           # objects). bun pm pack still rewrites their workspace: deps below.
           case "${PKG}" in
-            core|react|agents) bun scripts/prepare-publish.ts "packages/${PKG}" ;;
+            docx-core|core|react|agents) bun scripts/prepare-publish.ts "packages/${PKG}" ;;
             *) echo "skip prepare-publish for ${PKG} (already dist-shaped)" ;;
           esac
           mkdir -p "${GITHUB_WORKSPACE}/release-artifacts"
@@ -136,7 +142,7 @@ jobs:
       # core), and vue before nuxt (nuxt deps on vue).
       max-parallel: 1
       matrix:
-        pkg: [core, react, agents, vue, nuxt]
+        pkg: [docx-core, core, react, agents, vue, nuxt]
     permissions:
       # contents: write cuts the per-version GitHub Release below. Safe to grant
       # alongside id-token here: this job runs no untrusted build scripts (they

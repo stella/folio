@@ -144,8 +144,7 @@ export const parseLegalSource = (
     if (trimmed.startsWith("@")) {
       const [rawDirective = "", ...rest] = trimmed.split(/\s+/u);
       const canonicalDirective =
-        DIRECTIVE_ALIASES[rawDirective.toLowerCase()] ??
-        rawDirective.toLowerCase();
+        DIRECTIVE_ALIASES[rawDirective.toLowerCase()] ?? rawDirective.toLowerCase();
       const argument = rest.join(" ").trim();
 
       if (!DIRECTIVES.has(canonicalDirective)) {
@@ -347,11 +346,7 @@ const parseDocDirective = (
   }
 
   for (const key of attrs.keys()) {
-    if (
-      !["kind", "locale", "numbering", "page", "orientation", "title"].includes(
-        key,
-      )
-    ) {
+    if (!["kind", "locale", "numbering", "page", "orientation", "title"].includes(key)) {
       diagnostics.push({
         code: "unknown-doc-attribute",
         message: `Unknown @doc attribute "${key}".`,
@@ -385,10 +380,7 @@ type ParsedAttribute = {
   nextIndex: number;
 };
 
-const readAttribute = (
-  value: string,
-  startIndex: number,
-): ParsedAttribute | null => {
+const readAttribute = (value: string, startIndex: number): ParsedAttribute | null => {
   const keyStart = skipWhitespace(value, startIndex);
   const keyEnd = readAttributeKeyEnd(value, keyStart);
   const key = value.slice(keyStart, keyEnd).toLowerCase();
@@ -397,10 +389,7 @@ const readAttribute = (
     return null;
   }
 
-  const attributeValue = readAttributeValue(
-    value,
-    skipWhitespace(value, equalsIndex + 1),
-  );
+  const attributeValue = readAttributeValue(value, skipWhitespace(value, equalsIndex + 1));
   return {
     key,
     value: attributeValue.value,
@@ -474,16 +463,10 @@ const isAsciiAlphaNumeric = (char: string): boolean => {
   if (code === undefined) {
     return false;
   }
-  return (
-    (code >= 48 && code <= 57) ||
-    (code >= 65 && code <= 90) ||
-    (code >= 97 && code <= 122)
-  );
+  return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 };
 
-const parseMarkdownHeading = (
-  line: string,
-): { depth: number; heading: string } | null => {
+const parseMarkdownHeading = (line: string): { depth: number; heading: string } | null => {
   let depth = 0;
   for (const char of line) {
     if (char !== "#") {
@@ -516,11 +499,7 @@ const pendingToBlock = (
     case "recital":
       return { type: "recital", paragraphs: compactParagraphs(pending.lines) };
     case "clause": {
-      const heading = stripManualNumbering(
-        pending.heading,
-        pending.line,
-        fixes,
-      );
+      const heading = stripManualNumbering(pending.heading, pending.line, fixes);
       // The AI sometimes uses `@clause` as a generic "section"
       // wrapper without giving it a title. Rather than rejecting,
       // downgrade to a plain paragraph block — same body content,
@@ -561,11 +540,7 @@ const pendingToBlock = (
     case "table":
       return parseTableBlock(pending, diagnostics, fixes);
     case "schedule": {
-      const heading = stripManualNumbering(
-        pending.heading,
-        pending.line,
-        fixes,
-      );
+      const heading = stripManualNumbering(pending.heading, pending.line, fixes);
       return {
         type: "schedule",
         heading,
@@ -662,9 +637,7 @@ const applyDocumentAutofixes = ({
     hasSeenSubstantiveBlock ||= isSubstantiveDraftBlock(block);
   }
 
-  const signatureIndex = blocks.findIndex(
-    (block) => block.type === "signatures",
-  );
+  const signatureIndex = blocks.findIndex((block) => block.type === "signatures");
   if (signatureIndex !== -1 && signatureIndex !== blocks.length - 1) {
     const [signatureBlock] = blocks.splice(signatureIndex, 1);
     if (signatureBlock) {
@@ -752,10 +725,7 @@ const SIGNATURE_KEY_ALIASES: Record<string, string> = {
 };
 const SIGNATURE_FIELD_KEYS = new Set(["party", "by", "name", "title", "date"]);
 
-const parseSignatureParties = (
-  lines: string[],
-  heading: string,
-): LegalSignatureParty[] => {
+const parseSignatureParties = (lines: string[], heading: string): LegalSignatureParty[] => {
   const parties: LegalSignatureParty[] = [];
   let current: LegalSignatureParty | null = null;
 
@@ -828,8 +798,7 @@ const parseSignatureParties = (
 };
 
 const ORDERED_LIST_MARKER_RE = /^(?:\d+(?:\.\d+)+|\d+[.)])\s+/u;
-const MANUAL_NUMBERING_PREFIX_RE =
-  /^(?:\d+(?:\.\d+)+|\d+[.)]|[A-Za-z][.)]|\([a-zivx]+\))\s+/u;
+const MANUAL_NUMBERING_PREFIX_RE = /^(?:\d+(?:\.\d+)+|\d+[.)]|[A-Za-z][.)]|\([a-zivx]+\))\s+/u;
 
 const stripListMarker = (line: string, ordered: boolean): string => {
   const trimmed = line.trim();
@@ -872,14 +841,9 @@ const compactParagraphs = (lines: string[]): string[] => {
   return paragraphs;
 };
 
-const paragraphText = (lines: string[]): string =>
-  compactParagraphs(lines).join(" ");
+const paragraphText = (lines: string[]): string => compactParagraphs(lines).join(" ");
 
-const stripManualNumbering = (
-  value: string,
-  line: number,
-  fixes: Autofix[],
-): string => {
+const stripManualNumbering = (value: string, line: number, fixes: Autofix[]): string => {
   // Numeric and letter branches both require a delimiter so legit
   // headings starting with a year or single-word capital
   // ("2024 Compliance Obligations", "A Party's Obligations") are
@@ -915,15 +879,11 @@ const isLegalKind = (value: string | undefined): value is LegalDocumentKind =>
   value === "pleading" ||
   value === "other";
 
-const isNumberingProfile = (
-  value: string | undefined,
-): value is LegalNumberingProfile =>
+const isNumberingProfile = (value: string | undefined): value is LegalNumberingProfile =>
   value === "legal" || value === "none" || value === "checklist";
 
 const isPageSize = (value: string | undefined): value is LegalPageSize =>
   value === "A4" || value === "Letter";
 
-const isPageOrientation = (
-  value: string | undefined,
-): value is LegalPageOrientation =>
+const isPageOrientation = (value: string | undefined): value is LegalPageOrientation =>
   value === "portrait" || value === "landscape";

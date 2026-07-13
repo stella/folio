@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import {
-  compileLegalSourceToDocx,
-  compileLegalSourceToDocument,
-  parseLegalSource,
-} from "./index";
+import { compileLegalSourceToDocx, compileLegalSourceToDocument, parseLegalSource } from "./index";
 
 const SAMPLE_SOURCE = `@doc kind=agreement locale=en-GB numbering=legal page=A4
 @title Mutual Non-Disclosure Agreement
@@ -37,16 +33,10 @@ describe("Stella Legal Source", () => {
   test("parses compact legal directives and applies deterministic autofixes", () => {
     const result = parseLegalSource(SAMPLE_SOURCE);
 
-    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
-      [],
-    );
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(result.draft.meta.title).toBe("Mutual Non-Disclosure Agreement");
-    expect(result.fixes.map((fix) => fix.code)).toContain(
-      "manual-numbering-stripped",
-    );
-    expect(result.fixes.map((fix) => fix.code)).toContain(
-      "table-row-width-normalized",
-    );
+    expect(result.fixes.map((fix) => fix.code)).toContain("manual-numbering-stripped");
+    expect(result.fixes.map((fix) => fix.code)).toContain("table-row-width-normalized");
 
     const definitions = result.draft.blocks.find(
       (block) => block.type === "clause" && block.heading === "Definitions",
@@ -122,9 +112,7 @@ describe("Stella Legal Source", () => {
       ].join("\n"),
     );
 
-    const signatures = result.draft.blocks.find(
-      (block) => block.type === "signatures",
-    );
+    const signatures = result.draft.blocks.find((block) => block.type === "signatures");
 
     expect(signatures).toEqual({
       type: "signatures",
@@ -169,21 +157,13 @@ describe("Stella Legal Source", () => {
 
   test("keeps distinct non-Latin clauses when removing duplicate titles", () => {
     const result = parseLegalSource(
-      [
-        '@doc title="服务协议"',
-        "@clause 保密义务",
-        "双方应保护机密信息。",
-      ].join("\n"),
+      ['@doc title="服务协议"', "@clause 保密义务", "双方应保护机密信息。"].join("\n"),
     );
 
-    const clauses = result.draft.blocks.filter(
-      (block) => block.type === "clause",
-    );
+    const clauses = result.draft.blocks.filter((block) => block.type === "clause");
 
     expect(clauses.map((clause) => clause.heading)).toEqual(["保密义务"]);
-    expect(result.fixes.map((fix) => fix.code)).not.toContain(
-      "duplicate-title-clause-removed",
-    );
+    expect(result.fixes.map((fix) => fix.code)).not.toContain("duplicate-title-clause-removed");
   });
 
   test("removes only a leading duplicate-title clause", () => {
@@ -199,18 +179,14 @@ describe("Stella Legal Source", () => {
       ].join("\n"),
     );
 
-    const clauses = result.draft.blocks.filter(
-      (block) => block.type === "clause",
-    );
+    const clauses = result.draft.blocks.filter((block) => block.type === "clause");
 
     expect(clauses.map((clause) => clause.heading)).toEqual([
       "Background",
       "Master Services Agreement",
     ]);
     expect(
-      result.fixes.filter(
-        (fix) => fix.code === "duplicate-title-clause-removed",
-      ),
+      result.fixes.filter((fix) => fix.code === "duplicate-title-clause-removed"),
     ).toHaveLength(1);
   });
 
@@ -225,9 +201,7 @@ describe("Stella Legal Source", () => {
       ].join("\n"),
     );
 
-    const clauses = result.draft.blocks.filter(
-      (block) => block.type === "clause",
-    );
+    const clauses = result.draft.blocks.filter((block) => block.type === "clause");
 
     expect(clauses.map((clause) => clause.heading)).toEqual([
       "A Party's Obligations",
@@ -246,14 +220,10 @@ describe("Stella Legal Source", () => {
     const paragraphs = result.document.package.document.content.filter(
       (block) => block.type === "paragraph",
     );
-    const numbered = paragraphs.filter(
-      (paragraph) => paragraph.formatting?.numPr !== undefined,
-    );
+    const numbered = paragraphs.filter((paragraph) => paragraph.formatting?.numPr !== undefined);
 
     expect(numbered.length).toBeGreaterThanOrEqual(2);
-    expect(
-      result.document.package.numbering?.abstractNums.at(0)?.levels,
-    ).toHaveLength(5);
+    expect(result.document.package.numbering?.abstractNums.at(0)?.levels).toHaveLength(5);
   });
 
   test("compiles numbering=none without numbering definitions or paragraph numPr", async () => {
@@ -276,11 +246,7 @@ describe("Stella Legal Source", () => {
     const paragraphs = result.document.package.document.content.filter(
       (block) => block.type === "paragraph",
     );
-    expect(
-      paragraphs.every(
-        (paragraph) => paragraph.formatting?.numPr === undefined,
-      ),
-    ).toBe(true);
+    expect(paragraphs.every((paragraph) => paragraph.formatting?.numPr === undefined)).toBe(true);
 
     const docxResult = await compileLegalSourceToDocx(source);
     expect(docxResult.status).toBe("ok");
@@ -290,12 +256,8 @@ describe("Stella Legal Source", () => {
 
     const zip = await JSZip.loadAsync(docxResult.buffer);
     expect(zip.file("word/numbering.xml")).toBeNull();
-    const contentTypesXml = await zip
-      .file("[Content_Types].xml")
-      ?.async("string");
-    const documentRelsXml = await zip
-      .file("word/_rels/document.xml.rels")
-      ?.async("string");
+    const contentTypesXml = await zip.file("[Content_Types].xml")?.async("string");
+    const documentRelsXml = await zip.file("word/_rels/document.xml.rels")?.async("string");
     const documentXml = await zip.file("word/document.xml")?.async("string");
     expect(contentTypesXml).not.toContain("numbering.xml");
     expect(documentRelsXml).not.toContain("numbering.xml");

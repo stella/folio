@@ -1,8 +1,6 @@
 import type { LegalDraft, LegalDraftDiagnostic } from "./types";
 
-export const validateLegalDraft = (
-  draft: LegalDraft,
-): LegalDraftDiagnostic[] => {
+export const validateLegalDraft = (draft: LegalDraft): LegalDraftDiagnostic[] => {
   const diagnostics: LegalDraftDiagnostic[] = [];
 
   if (!draft.meta.title?.trim()) {
@@ -22,8 +20,7 @@ export const validateLegalDraft = (
       if (block.level > 1 && !hasTopLevelClause) {
         diagnostics.push({
           code: "subclause-before-clause",
-          message:
-            "A subclause cannot appear before the first top-level clause.",
+          message: "A subclause cannot appear before the first top-level clause.",
           severity: "error",
         });
       }

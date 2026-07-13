@@ -183,25 +183,12 @@ export type TextFormatting = {
 /**
  * Tab stop alignment
  */
-export type TabStopAlignment =
-  | "left"
-  | "center"
-  | "right"
-  | "decimal"
-  | "bar"
-  | "clear"
-  | "num";
+export type TabStopAlignment = "left" | "center" | "right" | "decimal" | "bar" | "clear" | "num";
 
 /**
  * Tab leader character
  */
-export type TabLeader =
-  | "none"
-  | "dot"
-  | "hyphen"
-  | "underscore"
-  | "heavy"
-  | "middleDot";
+export type TabLeader = "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
 
 /**
  * Tab stop definition
@@ -535,16 +522,7 @@ export type TableCellFormatting = {
   /** Vertical alignment */
   verticalAlign?: "top" | "center" | "bottom";
   /** Text direction */
-  textDirection?:
-    | "lr"
-    | "lrV"
-    | "rl"
-    | "rlV"
-    | "tb"
-    | "tbV"
-    | "tbRl"
-    | "tbRlV"
-    | "btLr";
+  textDirection?: "lr" | "lrV" | "rl" | "rlV" | "tb" | "tbV" | "tbRl" | "tbRlV" | "btLr";
   /** Grid span (horizontal merge) */
   gridSpan?: number;
   /** Vertical merge */

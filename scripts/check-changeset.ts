@@ -17,7 +17,7 @@
 import { $ } from "bun";
 
 const BASE = process.env.CHANGESET_BASE_REF ?? "origin/main";
-const SRC_RE = /^packages\/(?:core|react|agents|vue|nuxt)\/src\//;
+const SRC_RE = /^packages\/(?:docx-core|core|react|agents|vue|nuxt)\/src\//;
 // Any `.changeset/*.md` except the folder's own README is a changeset entry
 // (an empty changeset produced by `bunx changeset --empty` counts too).
 const CHANGESET_RE = /^\.changeset\/(?!README\.md$)[^/]+\.md$/;
@@ -52,7 +52,9 @@ const diff = async (filter: string): Promise<string[]> => {
 // release-relevant change (removing an export is a release too).
 const srcChanged = (await diff("ACMRD")).some((file) => SRC_RE.test(file));
 if (!srcChanged) {
-  console.log("changeset check: no packages/{core,react,agents,vue,nuxt}/src changes; skipping.");
+  console.log(
+    "changeset check: no packages/{docx-core,core,react,agents,vue,nuxt}/src changes; skipping.",
+  );
   process.exit(0);
 }
 
@@ -68,7 +70,7 @@ console.error(
   [
     "Missing changeset.",
     "",
-    "This PR edits packages/{core,react,agents,vue,nuxt}/src (published source)",
+    "This PR edits packages/{docx-core,core,react,agents,vue,nuxt}/src (published source)",
     "but adds no changeset. Add one so the change gets a version bump and a",
     "changelog entry:",
     "",

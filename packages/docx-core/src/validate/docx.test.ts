@@ -116,12 +116,7 @@ describe("canonical DOCX document model validation", () => {
   test("warns but accepts unbalanced bookmarks from real-world DOCX files", () => {
     const result = validateDocumentModel(
       createDocument({
-        content: [
-          paragraph([
-            { type: "bookmarkStart", id: 1, name: "orphaned" },
-            textRun(),
-          ]),
-        ],
+        content: [paragraph([{ type: "bookmarkStart", id: 1, name: "orphaned" }, textRun()])],
       }),
     );
 
@@ -220,11 +215,7 @@ describe("canonical DOCX document model validation", () => {
   test("rejects missing footnote packages", () => {
     const result = validateDocumentModel(
       createDocument({
-        content: [
-          paragraph([
-            { type: "run", content: [{ type: "footnoteRef", id: 12 }] },
-          ]),
-        ],
+        content: [paragraph([{ type: "run", content: [{ type: "footnoteRef", id: 12 }] }])],
       }),
     );
 

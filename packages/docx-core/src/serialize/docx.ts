@@ -137,9 +137,7 @@ export const serializeDocumentToDocx = async (
     word?.file("numbering.xml", serializeNumbering(document.package.numbering));
   }
   word?.file(DEFAULT_FOOTER_PART_NAME, buildFooterXml(options.language));
-  word
-    ?.folder("_rels")
-    ?.file("document.xml.rels", documentRelsXml(hasNumbering));
+  word?.folder("_rels")?.file("document.xml.rels", documentRelsXml(hasNumbering));
 
   return await zip.generateAsync({
     type: "arraybuffer",
@@ -151,15 +149,12 @@ export const serializeDocumentToDocx = async (
 const hasNumberingDefinitions = (
   numbering: NumberingDefinitions | undefined,
 ): numbering is NumberingDefinitions =>
-  (numbering?.abstractNums.length ?? 0) > 0 ||
-  (numbering?.nums.length ?? 0) > 0;
+  (numbering?.abstractNums.length ?? 0) > 0 || (numbering?.nums.length ?? 0) > 0;
 
 const serializeDocumentXml = (document: Document): string => {
   const body = document.package.document;
   const blocks = body.content.map(serializeBlock).join("");
-  const sectionProperties = serializeSectionProperties(
-    body.finalSectionProperties ?? {},
-  );
+  const sectionProperties = serializeSectionProperties(body.finalSectionProperties ?? {});
 
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -293,9 +288,7 @@ const serializeRun = (run: Run): string => {
   return `<w:r>${rPr}${content}</w:r>`;
 };
 
-const serializeRunProperties = (
-  formatting: TextFormatting | undefined,
-): string => {
+const serializeRunProperties = (formatting: TextFormatting | undefined): string => {
   if (!formatting) {
     return "";
   }
@@ -344,9 +337,7 @@ const serializeRunContent = (content: RunContent): string => {
     case "break":
       return `<w:br${attr("w:type", content.breakType)}/>`;
     case "symbol":
-      return `<w:sym w:font="${escapeXml(content.font)}" w:char="${escapeXml(
-        content.char,
-      )}"/>`;
+      return `<w:sym w:font="${escapeXml(content.font)}" w:char="${escapeXml(content.char)}"/>`;
     case "footnoteRef":
       return `<w:footnoteReference w:id="${content.id}"/>`;
     case "endnoteRef":
@@ -366,8 +357,7 @@ const serializeRunContent = (content: RunContent): string => {
 
 const serializeTable = (table: Table): string => {
   const columnCount = Math.max(0, ...table.rows.map((row) => row.cells.length));
-  const gridWidth =
-    columnCount > 0 ? Math.max(1, Math.floor(9000 / columnCount)) : 9000;
+  const gridWidth = columnCount > 0 ? Math.max(1, Math.floor(9000 / columnCount)) : 9000;
   const grid =
     columnCount > 0
       ? `<w:tblGrid>${Array.from(
@@ -463,10 +453,7 @@ const defaultBorderXml = (): string =>
 const serializeSectionProperties = (properties: SectionProperties): string =>
   "<w:sectPr>" +
   `<w:footerReference w:type="default" r:id="${DEFAULT_FOOTER_REL_ID}"/>` +
-  `<w:pgSz${attr("w:w", properties.pageWidth)}${attr(
-    "w:h",
-    properties.pageHeight,
-  )}${attr(
+  `<w:pgSz${attr("w:w", properties.pageWidth)}${attr("w:h", properties.pageHeight)}${attr(
     "w:orient",
     properties.orientation === "landscape" ? "landscape" : undefined,
   )}/>` +
@@ -499,10 +486,7 @@ const serializeDocDefaults = (styles: StyleDefinitions): string => {
   const pPr = styles.docDefaults?.pPr;
   if (pPr?.spaceAfter !== undefined || pPr?.lineSpacing !== undefined) {
     pPrParts.push(
-      `<w:spacing${attr("w:after", pPr.spaceAfter)}${attr(
-        "w:line",
-        pPr.lineSpacing,
-      )}/>`,
+      `<w:spacing${attr("w:after", pPr.spaceAfter)}${attr("w:line", pPr.lineSpacing)}/>`,
     );
   }
   return `<w:docDefaults><w:rPrDefault>${rPr}</w:rPrDefault><w:pPrDefault><w:pPr>${pPrParts.join(
@@ -533,9 +517,7 @@ const serializeStyle = (style: Style): string => {
   ].join("");
 };
 
-const serializeNumbering = (
-  numbering: NumberingDefinitions | undefined,
-): string =>
+const serializeNumbering = (numbering: NumberingDefinitions | undefined): string =>
   [
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
     '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
@@ -543,9 +525,7 @@ const serializeNumbering = (
       .map((abstractNum) =>
         [
           `<w:abstractNum w:abstractNumId="${abstractNum.abstractNumId}">`,
-          `<w:nsid w:val="${abstractNumberingNsid(
-            abstractNum.abstractNumId,
-          )}"/>`,
+          `<w:nsid w:val="${abstractNumberingNsid(abstractNum.abstractNumId)}"/>`,
           abstractNum.multiLevelType
             ? `<w:multiLevelType w:val="${abstractNum.multiLevelType}"/>`
             : "",

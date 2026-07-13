@@ -21,9 +21,7 @@ import type {
   TrackedRunChange,
 } from "../model/document";
 
-export type ValidateDocxPackageResult =
-  | { valid: true }
-  | { valid: false; error: string };
+export type ValidateDocxPackageResult = { valid: true } | { valid: false; error: string };
 
 export type ValidateDocumentModelIssue = {
   path: string;
@@ -64,17 +62,11 @@ export const validateDocxPackage = async (
       };
     }
 
-    const documentRelsXml = await zip
-      .file("word/_rels/document.xml.rels")
-      ?.async("string");
-    if (
-      documentRelsXml?.includes("/relationships/numbering") &&
-      !zip.file("word/numbering.xml")
-    ) {
+    const documentRelsXml = await zip.file("word/_rels/document.xml.rels")?.async("string");
+    if (documentRelsXml?.includes("/relationships/numbering") && !zip.file("word/numbering.xml")) {
       return {
         valid: false,
-        error:
-          "Generated DOCX references numbering.xml but does not include it.",
+        error: "Generated DOCX references numbering.xml but does not include it.",
       };
     }
 
@@ -111,15 +103,9 @@ type ValidationContext = {
   footers: Map<string, HeaderFooter> | undefined;
 };
 
-export const validateDocumentModel = (
-  document: Document,
-): ValidateDocumentModelResult => {
+export const validateDocumentModel = (document: Document): ValidateDocumentModelResult => {
   const ctx = createValidationContext(document);
-  validateBlocks(
-    document.package.document.content,
-    "package.document.content",
-    ctx,
-  );
+  validateBlocks(document.package.document.content, "package.document.content", ctx);
 
   validateHeaderFooterMap(document.package.headers, "package.headers", ctx);
   validateHeaderFooterMap(document.package.footers, "package.footers", ctx);
@@ -166,18 +152,14 @@ export const assertValidDocumentModel = (document: Document): void => {
   }
 
   const details = result.issues
-    .flatMap((issue) =>
-      issue.severity === "error" ? [`${issue.path}: ${issue.message}`] : [],
-    )
+    .flatMap((issue) => (issue.severity === "error" ? [`${issue.path}: ${issue.message}`] : []))
     .join("\n");
   panic(`Invalid DOCX document model:\n${details}`);
 };
 
 const createValidationContext = (document: Document): ValidationContext => ({
   issues: [],
-  commentIds: new Set(
-    (document.package.document.comments ?? []).map((comment) => comment.id),
-  ),
+  commentIds: new Set((document.package.document.comments ?? []).map((comment) => comment.id)),
   referencedCommentIds: new Map(),
   commentRangeStarts: new Map(),
   commentRangeEnds: new Map(),
@@ -192,33 +174,20 @@ const createValidationContext = (document: Document): ValidationContext => ({
     endnote: new Map(),
   },
   paraIds: new Map(),
-  numberingNums: new Set(
-    (document.package.numbering?.nums ?? []).map((num) => num.numId),
-  ),
+  numberingNums: new Set((document.package.numbering?.nums ?? []).map((num) => num.numId)),
   headers: document.package.headers,
   footers: document.package.footers,
 });
 
-const addIssue = (
-  ctx: ValidationContext,
-  issue: ValidateDocumentModelIssue,
-): void => {
+const addIssue = (ctx: ValidationContext, issue: ValidateDocumentModelIssue): void => {
   ctx.issues.push(issue);
 };
 
-const addError = (
-  ctx: ValidationContext,
-  path: string,
-  message: string,
-): void => {
+const addError = (ctx: ValidationContext, path: string, message: string): void => {
   addIssue(ctx, { path, message, severity: "error" });
 };
 
-const addWarning = (
-  ctx: ValidationContext,
-  path: string,
-  message: string,
-): void => {
+const addWarning = (ctx: ValidationContext, path: string, message: string): void => {
   addIssue(ctx, { path, message, severity: "warning" });
 };
 
@@ -226,11 +195,7 @@ const increment = (map: CounterMap, id: number): void => {
   map.set(id, (map.get(id) ?? 0) + 1);
 };
 
-const recordPath = (
-  map: Map<number, string[]>,
-  id: number,
-  path: string,
-): void => {
+const recordPath = (map: Map<number, string[]>, id: number, path: string): void => {
   const existing = map.get(id);
   if (existing) {
     existing.push(path);
@@ -249,11 +214,7 @@ const validateBlocks = (
   }
 };
 
-const validateBlock = (
-  block: BlockContent,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateBlock = (block: BlockContent, path: string, ctx: ValidationContext): void => {
   if (block.type === "paragraph") {
     validateParagraph(block, path, ctx);
     return;
@@ -272,19 +233,11 @@ const validateBlock = (
   validateBlocks(block.content, `${path}.content`, ctx);
 };
 
-const validateParagraph = (
-  paragraph: Paragraph,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateParagraph = (paragraph: Paragraph, path: string, ctx: ValidationContext): void => {
   if (paragraph.paraId) {
     const existingPath = ctx.paraIds.get(paragraph.paraId);
     if (existingPath) {
-      addWarning(
-        ctx,
-        `${path}.paraId`,
-        `Duplicate paragraph id also appears at ${existingPath}.`,
-      );
+      addWarning(ctx, `${path}.paraId`, `Duplicate paragraph id also appears at ${existingPath}.`);
     } else {
       ctx.paraIds.set(paragraph.paraId, path);
     }
@@ -292,11 +245,7 @@ const validateParagraph = (
 
   validateNumbering(paragraph, path, ctx);
   if (paragraph.sectionProperties) {
-    validateSectionProperties(
-      paragraph.sectionProperties,
-      `${path}.sectionProperties`,
-      ctx,
-    );
+    validateSectionProperties(paragraph.sectionProperties, `${path}.sectionProperties`, ctx);
   }
 
   for (const [index, content] of paragraph.content.entries()) {
@@ -405,11 +354,7 @@ const validateParagraphContent = (
   }
 };
 
-const validateFieldChild = (
-  child: Run | Hyperlink,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateFieldChild = (child: Run | Hyperlink, path: string, ctx: ValidationContext): void => {
   if (child.type === "run") {
     validateRun(child, path, ctx);
     return;
@@ -418,11 +363,7 @@ const validateFieldChild = (
   validateHyperlink(child, path, ctx);
 };
 
-const validateRuns = (
-  runs: readonly Run[],
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateRuns = (runs: readonly Run[], path: string, ctx: ValidationContext): void => {
   for (const [index, run] of runs.entries()) {
     validateRun(run, `${path}[${index}]`, ctx);
   }
@@ -434,11 +375,7 @@ const validateRun = (run: Run, path: string, ctx: ValidationContext): void => {
   }
 };
 
-const validateRunContent = (
-  content: RunContent,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateRunContent = (content: RunContent, path: string, ctx: ValidationContext): void => {
   if (content.type === "drawing") {
     validateImage(content.image, `${path}.image`, ctx, {
       hasPreservedRawDrawing: content.rawXml?.trim() !== "",
@@ -462,17 +399,9 @@ const validateRunContent = (
   }
 };
 
-const validateHyperlink = (
-  hyperlink: Hyperlink,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateHyperlink = (hyperlink: Hyperlink, path: string, ctx: ValidationContext): void => {
   if (!hyperlink.rId && !hyperlink.href && !hyperlink.anchor) {
-    addWarning(
-      ctx,
-      path,
-      "Hyperlink has no relationship, href, or internal anchor.",
-    );
+    addWarning(ctx, path, "Hyperlink has no relationship, href, or internal anchor.");
   }
 
   for (const [index, child] of hyperlink.children.entries()) {
@@ -518,11 +447,7 @@ const validateImage = (
   ctx: ValidationContext,
   options: { hasPreservedRawDrawing?: boolean } = {},
 ): void => {
-  if (
-    !image.rId &&
-    !image.src?.startsWith("data:") &&
-    !options.hasPreservedRawDrawing
-  ) {
+  if (!image.rId && !image.src?.startsWith("data:") && !options.hasPreservedRawDrawing) {
     addError(ctx, `${path}.rId`, "Image must have a relationship id.");
   }
 
@@ -530,11 +455,7 @@ const validateImage = (
   validateNonNegativeSize(image.size.height, `${path}.size.height`, ctx);
 };
 
-const validateShape = (
-  shape: Shape,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateShape = (shape: Shape, path: string, ctx: ValidationContext): void => {
   validateNonNegativeSize(shape.size.width, `${path}.size.width`, ctx);
   validateNonNegativeSize(shape.size.height, `${path}.size.height`, ctx);
 
@@ -543,11 +464,7 @@ const validateShape = (
   }
 };
 
-const validateNonNegativeSize = (
-  value: number,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateNonNegativeSize = (value: number, path: string, ctx: ValidationContext): void => {
   if (value < 0) {
     addError(ctx, path, "Size must be zero or greater.");
     return;
@@ -558,11 +475,7 @@ const validateNonNegativeSize = (
   }
 };
 
-const validateTable = (
-  table: Table,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateTable = (table: Table, path: string, ctx: ValidationContext): void => {
   if (table.rows.length === 0) {
     addError(ctx, `${path}.rows`, "Table must contain at least one row.");
     return;
@@ -573,11 +486,7 @@ const validateTable = (
   }
 };
 
-const validateTableRow = (
-  row: TableRow,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateTableRow = (row: TableRow, path: string, ctx: ValidationContext): void => {
   if (row.cells.length === 0) {
     addError(ctx, `${path}.cells`, "Table row must contain at least one cell.");
     return;
@@ -588,11 +497,7 @@ const validateTableRow = (
   }
 };
 
-const validateTableCell = (
-  cell: TableCell,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateTableCell = (cell: TableCell, path: string, ctx: ValidationContext): void => {
   if (cell.content.length === 0) {
     addError(ctx, `${path}.content`, "Table cell must contain block content.");
     return;
@@ -611,11 +516,7 @@ const validateParagraphs = (
   }
 };
 
-const validateNumbering = (
-  paragraph: Paragraph,
-  path: string,
-  ctx: ValidationContext,
-): void => {
+const validateNumbering = (paragraph: Paragraph, path: string, ctx: ValidationContext): void => {
   const numPr = paragraph.formatting?.numPr;
   if (!numPr) {
     return;
@@ -623,11 +524,7 @@ const validateNumbering = (
 
   const ilvl = numPr.ilvl ?? 0;
   if (ilvl < 0) {
-    addError(
-      ctx,
-      `${path}.formatting.numPr.ilvl`,
-      "List level must be zero or greater.",
-    );
+    addError(ctx, `${path}.formatting.numPr.ilvl`, "List level must be zero or greater.");
   } else if (ilvl > 8) {
     addWarning(
       ctx,
@@ -679,11 +576,7 @@ const validateHeaderFooterReferences = (
 ): void => {
   for (const [index, ref] of refs.entries()) {
     if (!map?.has(ref.rId)) {
-      addError(
-        ctx,
-        `${path}[${index}].rId`,
-        `Section references missing ${label} ${ref.rId}.`,
-      );
+      addError(ctx, `${path}[${index}].rId`, `Section references missing ${label} ${ref.rId}.`);
     }
   }
 };
@@ -702,10 +595,7 @@ const validateHeaderFooterMap = (
   }
 };
 
-const validateComments = (
-  comments: readonly Comment[],
-  ctx: ValidationContext,
-): void => {
+const validateComments = (comments: readonly Comment[], ctx: ValidationContext): void => {
   const seen = new Set<number>();
   for (const [index, comment] of comments.entries()) {
     const path = `package.document.comments[${index}]`;
@@ -718,15 +608,8 @@ const validateComments = (
       addError(ctx, `${path}.author`, "Comment author is empty.");
     }
 
-    if (
-      comment.parentId !== undefined &&
-      !ctx.commentIds.has(comment.parentId)
-    ) {
-      addError(
-        ctx,
-        `${path}.parentId`,
-        `Parent comment ${comment.parentId} is missing.`,
-      );
+    if (comment.parentId !== undefined && !ctx.commentIds.has(comment.parentId)) {
+      addError(ctx, `${path}.parentId`, `Parent comment ${comment.parentId} is missing.`);
     }
 
     validateParagraphs(comment.content, `${path}.content`, ctx);
@@ -778,11 +661,7 @@ const validateNoteCollection = ({
   const ids = new Set<number>();
   for (const [index, note] of notes.entries()) {
     if (ids.has(note.id)) {
-      addError(
-        ctx,
-        `${path}[${index}].id`,
-        `Duplicate ${label} id ${note.id}.`,
-      );
+      addError(ctx, `${path}[${index}].id`, `Duplicate ${label} id ${note.id}.`);
     }
     ids.add(note.id);
     validateBlocks(note.content, `${path}[${index}].content`, ctx);
@@ -830,13 +709,7 @@ type ValidateCounterPairsOptions = {
 const validateCounterPairs = (
   starts: CounterMap,
   ends: CounterMap,
-  {
-    label,
-    startName,
-    endName,
-    ctx,
-    severity = "error",
-  }: ValidateCounterPairsOptions,
+  { label, startName, endName, ctx, severity = "error" }: ValidateCounterPairsOptions,
 ): void => {
   const ids = new Set([...starts.keys(), ...ends.keys()]);
   for (const id of ids) {

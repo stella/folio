@@ -56,7 +56,7 @@
     "perf": "bun scripts/profile-editor.ts"
   },
   "dependencies": {
-    "@stll/docx-core": "^0.1.0",
+    "@stll/docx-core": "workspace:^",
     "@stll/docx-utils": "^0.1.0",
     "@stll/template-conditions": "^0.1.0",
     "better-result": "2.9.2",

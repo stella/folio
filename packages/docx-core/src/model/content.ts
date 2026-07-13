@@ -342,14 +342,7 @@ export type ImageSize = {
  * Image wrap type for floating images
  */
 export type ImageWrap = {
-  type:
-    | "inline"
-    | "square"
-    | "tight"
-    | "through"
-    | "topAndBottom"
-    | "behind"
-    | "inFront";
+  type: "inline" | "square" | "tight" | "through" | "topAndBottom" | "behind" | "inFront";
   /** Wrap text direction */
   wrapText?: "bothSides" | "left" | "right" | "largest";
   /** Distance from text */
@@ -1236,14 +1229,7 @@ export type InlineSdt = {
   /** SDT properties */
   properties: SdtProperties;
   /** Inline content held inside the control */
-  content: (
-    | Run
-    | Hyperlink
-    | SimpleField
-    | ComplexField
-    | InlineSdt
-    | MathEquation
-  )[];
+  content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | MathEquation)[];
 };
 
 /**
@@ -1463,11 +1449,7 @@ export type PictureWatermark = {
 /**
  * Footnote position
  */
-export type FootnotePosition =
-  | "pageBottom"
-  | "beneathText"
-  | "sectEnd"
-  | "docEnd";
+export type FootnotePosition = "pageBottom" | "beneathText" | "sectEnd" | "docEnd";
 
 /**
  * Endnote position
@@ -1507,11 +1489,7 @@ export type Footnote = {
   /** Footnote ID */
   id: number;
   /** Special footnote type */
-  noteType?:
-    | "normal"
-    | "separator"
-    | "continuationSeparator"
-    | "continuationNotice";
+  noteType?: "normal" | "separator" | "continuationSeparator" | "continuationNotice";
   /**
    * Content. Note bodies may carry block-level `<w:sdt>` content
    * controls (citation slots, bound metadata fields) — preserved as
@@ -1530,11 +1508,7 @@ export type Endnote = {
   /** Endnote ID */
   id: number;
   /** Special endnote type */
-  noteType?:
-    | "normal"
-    | "separator"
-    | "continuationSeparator"
-    | "continuationNotice";
+  noteType?: "normal" | "separator" | "continuationSeparator" | "continuationNotice";
   /**
    * Content. Like `Footnote.content`, may carry block-level `<w:sdt>`
    * preserved as `BlockSdt` so SDT round-trip works inside endnotes.
@@ -1554,12 +1528,7 @@ export type PageOrientation = "portrait" | "landscape";
 /**
  * Section start type
  */
-export type SectionStart =
-  | "continuous"
-  | "nextPage"
-  | "oddPage"
-  | "evenPage"
-  | "nextColumn";
+export type SectionStart = "continuous" | "nextPage" | "oddPage" | "evenPage" | "nextColumn";
 
 /**
  * Vertical alignment

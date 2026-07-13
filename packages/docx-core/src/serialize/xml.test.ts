@@ -19,9 +19,7 @@ describe("escapeXml", () => {
   test("strips XML 1.0 illegal control characters", () => {
     const input = `a${String.fromCodePoint(0)}b${String.fromCodePoint(
       8,
-    )}c${String.fromCodePoint(0x0b)}d${String.fromCodePoint(
-      0x0c,
-    )}e${String.fromCodePoint(0x1f)}f`;
+    )}c${String.fromCodePoint(0x0b)}d${String.fromCodePoint(0x0c)}e${String.fromCodePoint(0x1f)}f`;
     expect(escapeXml(input)).toBe("abcdef");
   });
 

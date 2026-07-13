@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Clean-room validation that the *published* shape of a folio package works.
 //
-// Usage: `bun scripts/validate-dist.ts <core|react|agents|vue>`
+// Usage: `bun scripts/validate-dist.ts <docx-core|core|react|agents|vue>`
 //
 // For the named package it builds, transforms its package.json to the dist
 // shape exactly like the publish workflow (`prepare-publish.ts`), packs a
@@ -17,6 +17,8 @@
 // rejects (a pre-existing vue build gap). nuxt is a Nuxt module (a different
 // dist shape: `module.mjs` + `types.d.mts`) and is validated by its own
 // `nuxt-module-build` step, not here.
+//
+//   docx-core — 4 checks: runtime, types, externals, and packaged assets.
 //
 //   core  — 4 checks:
 //     1. Runtime  — ESM `import` of `.`, `/markdown`, `/server`, and a `./*`
@@ -82,8 +84,14 @@ const prepareScript = path.join(repoRoot, "scripts", "prepare-publish.ts");
 const tscBin = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
 
 const target = process.argv[2];
-if (target !== "core" && target !== "react" && target !== "agents" && target !== "vue") {
-  panic("usage: bun scripts/validate-dist.ts <core|react|agents|vue>");
+if (
+  target !== "docx-core" &&
+  target !== "core" &&
+  target !== "react" &&
+  target !== "agents" &&
+  target !== "vue"
+) {
+  panic("usage: bun scripts/validate-dist.ts <docx-core|core|react|agents|vue>");
 }
 
 type CheckResult = { name: string; ok: boolean; detail: string };
@@ -103,17 +111,20 @@ const record = (name: string, ok: boolean, detail: string): void => {
 // their `workspace:` deps to concrete versions, so no transform is needed.
 const buildAndPack = async (pkgDir: string, destDir: string, prepare: boolean): Promise<string> => {
   const name = path.basename(pkgDir);
-  console.log(`→ building @stll/folio-${name}`);
+  const packageJson = (await Bun.file(path.join(pkgDir, "package.json")).json()) as {
+    name: string;
+  };
+  console.log(`→ building ${packageJson.name}`);
   await $`bun run build`.cwd(pkgDir).quiet();
 
   const pkgJsonPath = path.join(pkgDir, "package.json");
   const original = await readFile(pkgJsonPath, "utf-8");
   try {
     if (prepare) {
-      console.log(`→ transforming @stll/folio-${name} package.json to dist shape`);
+      console.log(`→ transforming ${packageJson.name} package.json to dist shape`);
       await $`bun ${prepareScript} ${pkgDir}`.quiet();
     }
-    console.log(`→ packing @stll/folio-${name} tarball`);
+    console.log(`→ packing ${packageJson.name} tarball`);
     await $`bun pm pack --destination ${destDir}`.cwd(pkgDir).quiet();
   } finally {
     // Always restore the in-repo source-shape package.json.
@@ -126,6 +137,7 @@ const buildAndPack = async (pkgDir: string, destDir: string, prepare: boolean): 
 };
 
 const dirs: Record<string, string> = {
+  "docx-core": path.join(repoRoot, "packages", "docx-core"),
   core: path.join(repoRoot, "packages", "core"),
   react: path.join(repoRoot, "packages", "react"),
   agents: path.join(repoRoot, "packages", "agents"),
@@ -141,7 +153,7 @@ const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-"));
 // rewrites; vue already ships dist-shaped exports (skip the transform).
 const needsPrepare = target !== "vue";
 const pkgDir = dirs[target];
-const pkgName = `@stll/folio-${target}`;
+const pkgName = target === "docx-core" ? "@stll/docx-core" : `@stll/folio-${target}`;
 const tarball = await buildAndPack(pkgDir, packDir, needsPrepare);
 
 // react, agents, and vue all depend on @stll/folio-core; pack it too so the
@@ -191,11 +203,18 @@ if (target === "vue") {
 }
 await $`bun add ${installArgs}`.cwd(consumerDir).quiet();
 
-const installedDir = path.join(consumerDir, "node_modules", "@stll", `folio-${target}`);
+const installedDir = path.join(consumerDir, "node_modules", ...pkgName.split("/"));
 const installedDist = path.join(installedDir, "dist");
 
 // --- runtime expectations ---------------------------------------------------
 const runtimeExpect: Record<string, Record<string, string[]>> = {
+  "docx-core": {
+    "@stll/docx-core": [
+      "compileLegalSourceToDocx",
+      "serializeDocumentToDocx",
+      "validateDocxPackage",
+    ],
+  },
   core: {
     "@stll/folio-core": ["createEmptyDocument", "createDocx", "deriveBlockId"],
     "@stll/folio-core/markdown": ["toMarkdown", "fromMarkdown", "toMarkdownResult"],
@@ -293,6 +312,18 @@ record(
 
 // --- Check 2: types resolve under node16 AND bundler ------------------------
 const consumerTsByTarget: Record<string, string> = {
+  "docx-core": `
+import {
+  compileLegalSourceToDocx,
+  serializeDocumentToDocx,
+  validateDocxPackage,
+  type Document,
+} from "@stll/docx-core";
+import type { Paragraph, Run } from "@stll/docx-core/model";
+
+export const used = [compileLegalSourceToDocx, serializeDocumentToDocx, validateDocxPackage];
+export type Surface = [Document, Paragraph, Run];
+`,
   core: `
 import { createEmptyDocument, createDocx, type Document } from "@stll/folio-core";
 import { fromMarkdown, toMarkdown, type MarkdownOptions } from "@stll/folio-core/markdown";
@@ -571,6 +602,7 @@ const reactSentinels = [
 const leaked = reactSentinels.filter((s) => allJs.includes(s));
 // Each external must appear only as an import specifier, never bundled.
 const externalsByTarget: Record<string, string[]> = {
+  "docx-core": ["better-result", "jszip"],
   core: ["prosemirror-state", "prosemirror-model", "jszip"],
   react: [
     "react",
@@ -590,6 +622,7 @@ const notExternalized = expectedExternals.filter(
 const dataFontInlined = /["']data:font|["']data:application\/font/u.test(allJs);
 const externalOk = leaked.length === 0 && notExternalized.length === 0 && !dataFontInlined;
 const externalLabels: Record<string, string> = {
+  "docx-core": "external: better-result and JSZip stay external",
   core: "external: React never bundled; deps stay external",
   react: "external: React / compiler runtime / ProseMirror / @stll/folio-core not bundled",
   agents: "external: @stll/folio-core not bundled into JS",

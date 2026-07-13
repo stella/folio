@@ -14,13 +14,7 @@
 
 import type { DocumentBody, Footnote, Endnote, HeaderFooter } from "./content";
 import type { NumberingDefinitions } from "./lists";
-import type {
-  StyleDefinitions,
-  Theme,
-  FontTable,
-  RelationshipMap,
-  MediaFile,
-} from "./styles";
+import type { StyleDefinitions, Theme, FontTable, RelationshipMap, MediaFile } from "./styles";
 
 // Color & Styling Primitives
 export type {

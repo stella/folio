@@ -47,9 +47,7 @@ export const compileLegalSourceToDocument = (
   );
   const validationDiagnostics = validateLegalDraft(parsed.draft);
   const diagnostics = [...parsed.diagnostics, ...validationDiagnostics];
-  const errors = diagnostics.filter(
-    (diagnostic) => diagnostic.severity === "error",
-  );
+  const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
 
   if (errors.length > 0) {
     return {
@@ -66,9 +64,7 @@ export const compileLegalSourceToDocument = (
     document,
     draft: parsed.draft,
     fixes: parsed.fixes,
-    warnings: diagnostics.filter(
-      (diagnostic) => diagnostic.severity === "warning",
-    ),
+    warnings: diagnostics.filter((diagnostic) => diagnostic.severity === "warning"),
   };
 };
 
@@ -91,10 +87,7 @@ export const draftToDocument = (draft: LegalDraft): Document => {
   const docxPackage: Document["package"] = {
     document: {
       content,
-      finalSectionProperties: pageProperties(
-        draft.meta.page.size,
-        draft.meta.page.orientation,
-      ),
+      finalSectionProperties: pageProperties(draft.meta.page.size, draft.meta.page.orientation),
     },
     styles: createStyleDefinitions(),
     properties: {
@@ -148,12 +141,7 @@ const appendBlock = (
     case "list":
       for (const item of block.items) {
         content.push(
-          paragraph(
-            item,
-            "ListParagraph",
-            {},
-            listNumbering(block, options.numberingProfile),
-          ),
+          paragraph(item, "ListParagraph", {}, listNumbering(block, options.numberingProfile)),
         );
       }
       return;
@@ -161,15 +149,7 @@ const appendBlock = (
       content.push(table(block.table.headers, block.table.rows));
       return;
     case "schedule":
-      content.push(
-        paragraph(
-          block.heading,
-          "ScheduleHeading",
-          { bold: true },
-          undefined,
-          true,
-        ),
-      );
+      content.push(paragraph(block.heading, "ScheduleHeading", { bold: true }, undefined, true));
       appendParagraphs(content, block.paragraphs, "BodyText");
       return;
     case "signatures":
@@ -220,11 +200,7 @@ const listNumbering = (
   };
 };
 
-const appendParagraphs = (
-  content: BlockContent[],
-  paragraphs: string[],
-  styleId: string,
-) => {
+const appendParagraphs = (content: BlockContent[], paragraphs: string[], styleId: string) => {
   for (const text of paragraphs) {
     content.push(paragraph(text, styleId));
   }
@@ -258,10 +234,7 @@ const paragraph = (
 // the highlight.
 const PLACEHOLDER_PATTERN = /\[\[(?<inner>[^\][]+?)\]\]/gu;
 
-const textRunsWithPlaceholders = (
-  text: string,
-  options: RunOptions = {},
-): Run[] => {
+const textRunsWithPlaceholders = (text: string, options: RunOptions = {}): Run[] => {
   if (!text.includes("[[")) {
     return [textRun(text, options)];
   }
@@ -317,18 +290,11 @@ const tableCell = (text: string, header: boolean): TableCell => ({
 // the bolded party name, a signing space, the `____` rule, and any
 // `by:` / `title:` values the AI supplied (raw, in whatever language
 // it wrote the document in).
-const signatureTable = (
-  parties: { name: string; signatory?: string; title?: string }[],
-): Table => {
-  const partyList =
-    parties.length > 0 ? parties : [{ name: "", signatory: "", title: "" }];
+const signatureTable = (parties: { name: string; signatory?: string; title?: string }[]): Table => {
+  const partyList = parties.length > 0 ? parties : [{ name: "", signatory: "", title: "" }];
   const empty = (): Paragraph => paragraph("", "SignatureSpacer");
 
-  const buildCell = (party: {
-    name: string;
-    signatory?: string;
-    title?: string;
-  }): TableCell => {
+  const buildCell = (party: { name: string; signatory?: string; title?: string }): TableCell => {
     const cellContent: (Paragraph | Table)[] = [
       paragraph(party.name, "SignatureParty", { bold: true }),
       empty(),
@@ -339,9 +305,7 @@ const signatureTable = (
       cellContent.push(paragraph(party.signatory, "SignatureField"));
     }
     if (party.title) {
-      cellContent.push(
-        paragraph(party.title, "SignatureField", { italic: true }),
-      );
+      cellContent.push(paragraph(party.title, "SignatureField", { italic: true }));
     }
     return { type: "tableCell", content: cellContent };
   };

@@ -1,10 +1,7 @@
 import { serializeDocumentToDocx } from "../serialize/docx";
 import { validateDocxPackage } from "../validate/docx";
 import { compileLegalSourceToDocument } from "./compile";
-import type {
-  LegalSourceDocxCompileResult,
-  LegalSourceCompileOptions,
-} from "./types";
+import type { LegalSourceDocxCompileResult, LegalSourceCompileOptions } from "./types";
 
 export const compileLegalSourceToDocx = async (
   source: string,

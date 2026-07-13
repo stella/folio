@@ -54,9 +54,7 @@ const readDocumentXml = async (buf: ArrayBuffer): Promise<string> => {
 describe("DOCX border serialization escapes attribute values", () => {
   test("a style value cannot inject extra XML attributes", async () => {
     const xml = await readDocumentXml(
-      await serializeDocumentToDocx(
-        docWithBorder('single" w:evil="1', "CCCCCC"),
-      ),
+      await serializeDocumentToDocx(docWithBorder('single" w:evil="1', "CCCCCC")),
     );
     // The injected attribute must not appear as a real attribute, and the
     // quote must be entity-escaped.
