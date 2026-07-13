@@ -26,8 +26,13 @@ export const FOLIO_DOCX_SUPPORT_STATES = Object.freeze([
 ] as const);
 export const FOLIO_DOCX_CAPABILITY_IDS = Object.freeze([
   "comments",
+  "headersFooters",
+  "notes",
+  "numbering",
   "opaqueDrawing",
   "paragraphs",
+  "sections",
+  "styles",
   "tables",
   "trackedChanges",
 ] as const);
@@ -42,7 +47,17 @@ export type FolioDocxCapabilityId = (typeof FOLIO_DOCX_CAPABILITY_IDS)[number];
 
 export type FolioDocxFeatureCapability = {
   readonly id: FolioDocxCapabilityId;
-  readonly feature: "comments" | "drawings" | "paragraphs" | "revisions" | "tables";
+  readonly feature:
+    | "comments"
+    | "drawings"
+    | "headersFooters"
+    | "notes"
+    | "numbering"
+    | "paragraphs"
+    | "revisions"
+    | "sections"
+    | "styles"
+    | "tables";
   readonly hosts: readonly FolioDocxCapabilityHost[];
   readonly profiles: readonly FolioDocxProfile[];
   readonly support: Readonly<Record<FolioDocxCapabilityOperation, FolioDocxSupportState>>;
@@ -80,6 +95,72 @@ const COMMENTS_CAPABILITY = Object.freeze({
     {
       type: "test",
       path: "packages/core/src/prosemirror/commands/comments.test.ts",
+    },
+  ]),
+} as const satisfies FolioDocxFeatureCapability);
+
+const HEADERS_FOOTERS_CAPABILITY = Object.freeze({
+  id: "headersFooters",
+  feature: "headersFooters",
+  hosts: FOLIO_DOCX_CAPABILITY_HOSTS,
+  profiles: TRANSITIONAL_PROFILE_COVERAGE,
+  support: STRUCTURED_FEATURE_SUPPORT,
+  evidence: Object.freeze([
+    {
+      type: "test",
+      path: "packages/core/src/docx/headerFooterParser.test.ts",
+    },
+    {
+      type: "test",
+      path: "packages/core/src/docx/headerFooterMaterialize.test.ts",
+    },
+  ]),
+} as const satisfies FolioDocxFeatureCapability);
+
+const NOTES_CAPABILITY = Object.freeze({
+  id: "notes",
+  feature: "notes",
+  hosts: FOLIO_DOCX_CAPABILITY_HOSTS,
+  profiles: TRANSITIONAL_PROFILE_COVERAGE,
+  support: Object.freeze({
+    create: "partial",
+    edit: "supported",
+    preserve: "supported",
+    read: "supported",
+    render: "partial",
+  }),
+  evidence: Object.freeze([
+    {
+      type: "test",
+      path: "packages/core/src/docx/noteSave.test.ts",
+    },
+    {
+      type: "test",
+      path: "packages/core/src/layout-bridge/convert/footnoteLayout-collect.test.ts",
+    },
+  ]),
+} as const satisfies FolioDocxFeatureCapability);
+
+const NUMBERING_CAPABILITY = Object.freeze({
+  id: "numbering",
+  feature: "numbering",
+  hosts: FOLIO_DOCX_CAPABILITY_HOSTS,
+  profiles: TRANSITIONAL_PROFILE_COVERAGE,
+  support: Object.freeze({
+    create: "partial",
+    edit: "supported",
+    preserve: "supported",
+    read: "supported",
+    render: "partial",
+  }),
+  evidence: Object.freeze([
+    {
+      type: "test",
+      path: "packages/core/src/docx/numberingParser-custom-format.test.ts",
+    },
+    {
+      type: "test",
+      path: "packages/core/src/docx/numberingSave.test.ts",
     },
   ]),
 } as const satisfies FolioDocxFeatureCapability);
@@ -126,6 +207,48 @@ const PARAGRAPHS_CAPABILITY = Object.freeze({
   ]),
 } as const satisfies FolioDocxFeatureCapability);
 
+const SECTIONS_CAPABILITY = Object.freeze({
+  id: "sections",
+  feature: "sections",
+  hosts: FOLIO_DOCX_CAPABILITY_HOSTS,
+  profiles: TRANSITIONAL_PROFILE_COVERAGE,
+  support: STRUCTURED_FEATURE_SUPPORT,
+  evidence: Object.freeze([
+    {
+      type: "test",
+      path: "packages/core/src/docx/serializer/sectionPropertiesSerializer.test.ts",
+    },
+    {
+      type: "test",
+      path: "packages/core/src/prosemirror/commands/sectionBreak.test.ts",
+    },
+  ]),
+} as const satisfies FolioDocxFeatureCapability);
+
+const STYLES_CAPABILITY = Object.freeze({
+  id: "styles",
+  feature: "styles",
+  hosts: FOLIO_DOCX_CAPABILITY_HOSTS,
+  profiles: TRANSITIONAL_PROFILE_COVERAGE,
+  support: Object.freeze({
+    create: "partial",
+    edit: "partial",
+    preserve: "supported",
+    read: "supported",
+    render: "partial",
+  }),
+  evidence: Object.freeze([
+    {
+      type: "test",
+      path: "packages/core/src/docx/styleParser.test.ts",
+    },
+    {
+      type: "test",
+      path: "packages/core/src/prosemirror/conversion/characterStyleRoundtrip.test.ts",
+    },
+  ]),
+} as const satisfies FolioDocxFeatureCapability);
+
 const TABLES_CAPABILITY = Object.freeze({
   id: "tables",
   feature: "tables",
@@ -166,8 +289,13 @@ const CAPABILITY_MANIFEST = Object.freeze({
   version: FOLIO_DOCX_CAPABILITY_MANIFEST_VERSION,
   capabilities: Object.freeze({
     comments: COMMENTS_CAPABILITY,
+    headersFooters: HEADERS_FOOTERS_CAPABILITY,
+    notes: NOTES_CAPABILITY,
+    numbering: NUMBERING_CAPABILITY,
     opaqueDrawing: OPAQUE_DRAWING_CAPABILITY,
     paragraphs: PARAGRAPHS_CAPABILITY,
+    sections: SECTIONS_CAPABILITY,
+    styles: STYLES_CAPABILITY,
     tables: TABLES_CAPABILITY,
     trackedChanges: TRACKED_CHANGES_CAPABILITY,
   }),

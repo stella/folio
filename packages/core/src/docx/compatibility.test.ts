@@ -184,6 +184,22 @@ describe("DOCX capability manifest", () => {
     }
   });
 
+  test("describes document structure support conservatively", () => {
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.headersFooters.support.edit).toBe(
+      "supported",
+    );
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.notes.support.create).toBe("partial");
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.numbering.support.create).toBe("partial");
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.sections.support.create).toBe("supported");
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.styles.support).toEqual({
+      create: "partial",
+      edit: "partial",
+      preserve: "supported",
+      read: "supported",
+      render: "partial",
+    });
+  });
+
   test("keeps the public id list aligned with manifest keys", () => {
     expect(Object.keys(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities)).toEqual(
       FOLIO_DOCX_CAPABILITY_IDS,
