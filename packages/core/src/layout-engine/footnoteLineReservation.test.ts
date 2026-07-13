@@ -9,6 +9,8 @@ import type {
   ParagraphMeasure,
   PageMargins,
   TextRun,
+  TableBlock,
+  TableMeasure,
 } from "./types";
 
 // Single-pass footnote layout: each body line carrying a footnote ref
@@ -67,6 +69,73 @@ function textRun(pmStart: number, text: string, footnoteRefId?: number): TextRun
 }
 
 describe("footnote line-level reservation", () => {
+  test("reserves and records footnotes referenced inside table cells", () => {
+    const paragraph: ParagraphBlock = {
+      kind: "paragraph",
+      id: "cell-paragraph",
+      runs: [textRun(1, "cell"), textRun(5, "1", 9)],
+    };
+    const table: TableBlock = {
+      kind: "table",
+      id: "table",
+      rows: [{ id: "row", cells: [{ id: "cell", blocks: [paragraph] }] }],
+    };
+    const tableMeasure: TableMeasure = {
+      kind: "table",
+      rows: [{ cells: [{ blocks: [], width: 100, height: 20 }], height: 20 }],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 20,
+    };
+
+    const layout = layoutDocument([table], [tableMeasure], {
+      pageSize: { w: 600, h: 100 },
+      margins: MARGINS,
+      pageGap: 0,
+      footnoteHeightById: new Map([[9, 30]]),
+    });
+
+    expect(layout.pages[0]!.footnoteIds).toEqual([9]);
+    expect(layout.pages[0]!.footnoteReservedHeight).toBeGreaterThanOrEqual(30);
+  });
+
+  test("moves a footnote-bearing table row with its footnote reservation", () => {
+    const { block: paragraph, measure: paragraphMeasure } = makePara(
+      1,
+      [textRun(1, "body")],
+      2,
+      10,
+    );
+    const cellParagraph: ParagraphBlock = {
+      kind: "paragraph",
+      id: "cell-paragraph",
+      runs: [textRun(10, "cell"), textRun(14, "1", 9)],
+    };
+    const table: TableBlock = {
+      kind: "table",
+      id: "table",
+      rows: [{ id: "row", cells: [{ id: "cell", blocks: [cellParagraph] }] }],
+    };
+    const tableMeasure: TableMeasure = {
+      kind: "table",
+      rows: [{ cells: [{ blocks: [], width: 100, height: 20 }], height: 20 }],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 20,
+    };
+
+    const layout = layoutDocument([paragraph, table], [paragraphMeasure, tableMeasure], {
+      pageSize: { w: 600, h: 60 },
+      margins: MARGINS,
+      pageGap: 0,
+      footnoteHeightById: new Map([[9, 30]]),
+    });
+
+    expect(layout.pages[0]!.footnoteIds).toBeUndefined();
+    expect(layout.pages[1]!.footnoteIds).toEqual([9]);
+    expect(layout.pages[1]!.fragments.some((fragment) => fragment.blockId === "table")).toBe(true);
+  });
+
   test("page reserves fn-content space for each line carrying a fn ref", () => {
     // Page 100 px tall. Line height 10 px. Fn 1 height 30 px.
     // A 5-line para where line 3 carries fn ref 1 should keep all

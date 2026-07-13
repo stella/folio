@@ -386,7 +386,7 @@ export function layoutDocument(
             paginator.getContentWidth(),
           );
         } else {
-          layoutTable(block, measure as TableMeasure, paginator);
+          layoutTable(block, measure as TableMeasure, paginator, options.footnoteHeightById);
         }
         break;
 
@@ -783,11 +783,15 @@ function layoutTable(
   block: TableBlock,
   measure: TableMeasure,
   paginator: ReturnType<typeof createPaginator>,
+  footnoteHeightById?: Map<number, number>,
 ): void {
   const rows = measure.rows;
   if (rows.length === 0) {
     return;
   }
+  const rowFootnoteIds = block.rows.map((row) =>
+    collectTableRowFootnoteIds(row, footnoteHeightById),
+  );
 
   // Detect header rows (consecutive rows at start with isHeader: true)
   const headerRowCount = countHeaderRows(block);
@@ -955,17 +959,60 @@ function layoutTable(
     // Calculate how many rows fit (excluding header rows which are prepended separately)
     let rowsHeight = 0;
     let fittingRows = 0;
+    const pageFootnoteIds = new Set(state.page.footnoteIds ?? []);
+    const fragmentFootnoteIds: number[] = [];
+    let fragmentFootnoteHeight = 0;
+    let retryOnNextFlowRegion = false;
 
     for (let j = currentRowIndex; j < rows.length; j++) {
       const rowHeight = rows[j]!.height; // SAFETY: j < rows.length
-      const totalWithRow = rowsHeight + rowHeight + normalHeaderOverhead;
+      const currentRowFootnoteIds = rowFootnoteIds[j] ?? [];
+      const fragmentFootnoteCountBeforeRow = fragmentFootnoteIds.length;
+      let rowFootnoteHeight = 0;
+      for (const id of currentRowFootnoteIds) {
+        if (pageFootnoteIds.has(id) || fragmentFootnoteIds.includes(id)) {
+          continue;
+        }
+        fragmentFootnoteIds.push(id);
+        rowFootnoteHeight += footnoteHeightById?.get(id) ?? 0;
+      }
+      const separatorHeight =
+        pageFootnoteIds.size === 0 && fragmentFootnoteHeight + rowFootnoteHeight > 0
+          ? FOOTNOTE_SEPARATOR_HEIGHT
+          : 0;
+      const totalWithRow =
+        rowsHeight +
+        rowHeight +
+        normalHeaderOverhead +
+        fragmentFootnoteHeight +
+        rowFootnoteHeight +
+        separatorHeight;
 
-      if (totalWithRow <= availableHeight || fittingRows === 0) {
+      if (totalWithRow <= availableHeight) {
         rowsHeight += rowHeight;
+        fragmentFootnoteHeight += rowFootnoteHeight;
         fittingRows++;
+      } else if (fittingRows === 0) {
+        const isFreshFlowRegion =
+          state.cursorY === state.topMargin && state.page.fragments.length === 0;
+        if (isFreshFlowRegion) {
+          rowsHeight += rowHeight;
+          fragmentFootnoteHeight += rowFootnoteHeight;
+          fittingRows++;
+          break;
+        }
+        fragmentFootnoteIds.splice(fragmentFootnoteCountBeforeRow);
+        paginator.forceColumnBreak();
+        retryOnNextFlowRegion = true;
+        break;
       } else {
+        fragmentFootnoteIds.splice(fragmentFootnoteCountBeforeRow);
         break;
       }
+    }
+
+    if (retryOnNextFlowRegion) {
+      continue;
     }
 
     // Total fragment height includes header rows for continuation fragments
@@ -994,6 +1041,9 @@ function layoutTable(
       ...(block.sdtGroups ? { sdtGroups: block.sdtGroups } : {}),
     };
 
+    if (fragmentFootnoteHeight > 0) {
+      paginator.addFootnoteHeight(fragmentFootnoteHeight, fragmentFootnoteIds);
+    }
     const result = paginator.addFragment(fragment, fragmentHeight, bandSkip, 0);
     fragment.y = result.y;
     fragment.x = desiredX;
@@ -1021,6 +1071,50 @@ function layoutTable(
       paginator.ensureFits(nextRowHeight);
     }
   }
+}
+
+function collectTableRowFootnoteIds(
+  row: TableBlock["rows"][number] | undefined,
+  footnoteHeightById: Map<number, number> | undefined,
+): number[] {
+  if (!row || !footnoteHeightById) {
+    return [];
+  }
+
+  const ids: number[] = [];
+  const walk = (blocks: FlowBlock[]): void => {
+    for (const block of blocks) {
+      if (block.kind === "paragraph") {
+        for (const run of block.runs) {
+          if (
+            run.kind === "text" &&
+            run.footnoteRefId !== undefined &&
+            footnoteHeightById.has(run.footnoteRefId) &&
+            !ids.includes(run.footnoteRefId)
+          ) {
+            ids.push(run.footnoteRefId);
+          }
+        }
+        continue;
+      }
+      if (block.kind === "table") {
+        for (const nestedRow of block.rows) {
+          for (const cell of nestedRow.cells) {
+            walk(cell.blocks);
+          }
+        }
+        continue;
+      }
+      if (block.kind === "textBox") {
+        walk(block.content);
+      }
+    }
+  };
+
+  for (const cell of row.cells) {
+    walk(cell.blocks);
+  }
+  return ids;
 }
 
 /**
