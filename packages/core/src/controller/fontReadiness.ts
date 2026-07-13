@@ -78,7 +78,7 @@ export function waitForInitialLayoutFonts(
   return Promise.race([
     loadFonts,
     new Promise<boolean>((resolve) => {
-      window.setTimeout(() => resolve(false), INITIAL_LAYOUT_FONT_TIMEOUT_MS);
+      globalThis.setTimeout(() => resolve(false), INITIAL_LAYOUT_FONT_TIMEOUT_MS);
     }),
   ]);
 }
