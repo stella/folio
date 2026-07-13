@@ -548,7 +548,7 @@ export function layoutDocument(
             availableHeight: paginator.getAvailableHeight(),
           });
           if (balancedHeight !== undefined) {
-            paginator.balanceColumns(balancedHeight);
+            state.contentBottom = Math.min(state.contentBottom, state.cursorY + balancedHeight);
           }
         }
         activeSectionMarginTop = nextSectionConfig.margins.top;
