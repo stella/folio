@@ -509,7 +509,7 @@ describe("measureParagraph justified shrink tolerance", () => {
   const fractionalWidth = (char: string): number => (char === "b" ? 0.6 : 1);
   const text = `${"a".repeat(99)} bbb`;
 
-  test("allows normal justified prose to use Word-style shrink before wrapping", () => {
+  test("allows normal justified prose to use reference-layout shrink before wrapping", () => {
     withFakeTextMeasure(
       () => {
         const measure = measureParagraph(
@@ -720,6 +720,45 @@ describe("measureParagraph justified shrink tolerance", () => {
         );
 
         expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
+
+  test("bases default list marker shrink on measured compressible spaces", () => {
+    withFakeTextMeasure(
+      () => {
+        const spaceRichMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-space-budget",
+            runs: [{ kind: "text", text: `${"a ".repeat(15)}bbb` }],
+            attrs: {
+              alignment: "justify",
+              indent: { left: 24, hanging: 24 },
+              listMarker: "1.",
+            },
+          },
+          53,
+        );
+        const spacePoorMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-small-space-budget",
+            runs: [{ kind: "text", text: `${"a".repeat(29)} bbb` }],
+            attrs: {
+              alignment: "justify",
+              indent: { left: 24, hanging: 24 },
+              listMarker: "1.",
+            },
+          },
+          53,
+        );
+
+        expect(spaceRichMeasure.lines).toHaveLength(1);
+        expect(spacePoorMeasure.lines).toHaveLength(2);
       },
       {
         charWidth: fractionalWidth,

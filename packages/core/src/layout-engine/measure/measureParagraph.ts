@@ -53,6 +53,7 @@ const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing 
 // Prevents premature line breaks due to measurement rounding
 const WIDTH_TOLERANCE = 0.5;
 const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
+const JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO = 0.195;
 const JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO = 0.015;
 const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
 const JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO = 0.02;
@@ -118,8 +119,10 @@ type LineState = {
   width: number;
   /** Width of collapsible ASCII whitespace at the current line tail. */
   trailingWhitespaceWidth: number;
-  /** Spaces Word may compress while justifying this line. */
+  /** Spaces the layout may compress while justifying this line. */
   regularSpaceCount: number;
+  /** Measured width of the compressible spaces on this line. */
+  regularSpaceWidth: number;
   /** Fixed-width spaces excluded from the line's justification budget. */
   nonBreakingSpaceCount: number;
   maxFontSize: number;
@@ -587,9 +590,8 @@ function justifyShrinkToleranceRatio(
   nonBreakingSpaceCount: number,
 ): number {
   if (block.attrs?.listMarker !== undefined) {
-    // Word keeps a conservative allowance on the marker line. Continuation
-    // lines use prose compression, reduced by fixed non-breaking spaces on the
-    // current line.
+    // Marker lines and continuation lines use separate compression budgets.
+    // Fixed non-breaking spaces reduce the continuation-line allowance.
     const hanging = block.attrs.indent?.hanging ?? 0;
     if (isFirstLine) {
       return hanging <= DEFAULT_LIST_HANGING_INDENT_PX
@@ -633,6 +635,14 @@ function justifyShrinkToleranceRatio(
     regularSpaceCount,
     nonBreakingSpaceCount,
   });
+}
+
+function isDefaultHangingListMarkerLine(block: ParagraphBlock, isFirstLine: boolean): boolean {
+  return (
+    isFirstLine &&
+    block.attrs?.listMarker !== undefined &&
+    (block.attrs.indent?.hanging ?? 0) <= DEFAULT_LIST_HANGING_INDENT_PX
+  );
 }
 
 function trimTrailingSpacesAndTabs(text: string): string {
@@ -958,6 +968,7 @@ export function measureParagraph(
     width: 0,
     trailingWhitespaceWidth: 0,
     regularSpaceCount: 0,
+    regularSpaceWidth: 0,
     nonBreakingSpaceCount: 0,
     maxFontSize: DEFAULT_FONT_SIZE,
     maxFontMetrics: null,
@@ -1111,6 +1122,7 @@ export function measureParagraph(
       width: 0,
       trailingWhitespaceWidth: 0,
       regularSpaceCount: 0,
+      regularSpaceWidth: 0,
       nonBreakingSpaceCount: 0,
       maxFontSize: DEFAULT_FONT_SIZE,
       maxFontMetrics: null,
@@ -1434,16 +1446,24 @@ export function measureParagraph(
         const fullWordWidth = measureTextWidth(word, style);
         const regularSpaces = measuredWord.split(" ").length - 1;
         const nonBreakingSpaces = measuredWord.split("\u00a0").length - 1;
+        const isFirstLine = lines.length === 0;
+        const regularSpaceWidth =
+          regularSpaces > 0 && isDefaultHangingListMarkerLine(block, isFirstLine)
+            ? regularSpaces * measureTextWidth(" ", style)
+            : 0;
         const widthTolerance = isJustifiedParagraph
           ? Math.max(
               WIDTH_TOLERANCE,
-              currentLine.availableWidth *
-                justifyShrinkToleranceRatio(
-                  block,
-                  lines.length === 0,
-                  currentLine.regularSpaceCount + regularSpaces,
-                  currentLine.nonBreakingSpaceCount + nonBreakingSpaces,
-                ),
+              isDefaultHangingListMarkerLine(block, isFirstLine)
+                ? (currentLine.regularSpaceWidth + regularSpaceWidth) *
+                    JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO
+                : currentLine.availableWidth *
+                    justifyShrinkToleranceRatio(
+                      block,
+                      isFirstLine,
+                      currentLine.regularSpaceCount + regularSpaces,
+                      currentLine.nonBreakingSpaceCount + nonBreakingSpaces,
+                    ),
             )
           : WIDTH_TOLERANCE;
 
@@ -1480,7 +1500,15 @@ export function measureParagraph(
             currentLine.width += chunkWidth;
             currentLine.trailingWhitespaceWidth =
               chunkWidth - measureTextWidth(trimTrailingSpacesAndTabs(chunk), style);
-            currentLine.regularSpaceCount += chunk.split(" ").length - 1;
+            const chunkRegularSpaceCount = chunk.split(" ").length - 1;
+            currentLine.regularSpaceCount += chunkRegularSpaceCount;
+            if (
+              chunkRegularSpaceCount > 0 &&
+              isDefaultHangingListMarkerLine(block, lines.length === 0)
+            ) {
+              currentLine.regularSpaceWidth +=
+                chunkRegularSpaceCount * measureTextWidth(" ", style);
+            }
             currentLine.nonBreakingSpaceCount += chunk.split("\u00a0").length - 1;
             currentLine.toRun = runIndex;
             currentLine.toChar = charIndex + chunkEnd;
@@ -1495,7 +1523,14 @@ export function measureParagraph(
           const trailingWhitespaceWidth = fullWordWidth - wordWidth;
           currentLine.width += trailingWhitespaceWidth;
           currentLine.trailingWhitespaceWidth = trailingWhitespaceWidth;
-          currentLine.regularSpaceCount += word.split(" ").length - 1;
+          const wordRegularSpaceCount = word.split(" ").length - 1;
+          currentLine.regularSpaceCount += wordRegularSpaceCount;
+          if (
+            wordRegularSpaceCount > 0 &&
+            isDefaultHangingListMarkerLine(block, lines.length === 0)
+          ) {
+            currentLine.regularSpaceWidth += wordRegularSpaceCount * measureTextWidth(" ", style);
+          }
           currentLine.nonBreakingSpaceCount += word.split("\u00a0").length - 1;
           currentLine.toChar = nextBreak;
 
@@ -1541,7 +1576,14 @@ export function measureParagraph(
           wordWidth === 0
             ? currentLine.trailingWhitespaceWidth + wordTrailingWhitespaceWidth
             : wordTrailingWhitespaceWidth;
-        currentLine.regularSpaceCount += word.split(" ").length - 1;
+        const wordRegularSpaceCount = word.split(" ").length - 1;
+        currentLine.regularSpaceCount += wordRegularSpaceCount;
+        if (
+          wordRegularSpaceCount > 0 &&
+          isDefaultHangingListMarkerLine(block, lines.length === 0)
+        ) {
+          currentLine.regularSpaceWidth += wordRegularSpaceCount * measureTextWidth(" ", style);
+        }
         currentLine.nonBreakingSpaceCount += word.split("\u00a0").length - 1;
         currentLine.toRun = runIndex;
         currentLine.toChar = nextBreak;
