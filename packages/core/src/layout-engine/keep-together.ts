@@ -8,8 +8,9 @@
 import type { FlowBlock, ParagraphBlock, Measure } from "./types";
 
 /**
- * A chain of keepNext-linked paragraphs, including empty separators Word
- * carries through to the next paragraph with visible content.
+ * A chain of paragraphs that Word keeps with following content. This includes
+ * explicit keepNext links and a trailing table separator that would otherwise
+ * be stranded at the bottom of a page.
  */
 export type KeepNextChain = {
   /** Index of the first paragraph in the chain. */
@@ -33,12 +34,36 @@ function isVisuallyEmptyParagraph(block: ParagraphBlock): boolean {
   return run?.kind === "text" && run.text === "";
 }
 
+function startsTrailingTableSeparatorChain(blocks: FlowBlock[], index: number): boolean {
+  const block = blocks[index];
+  if (
+    block?.kind !== "paragraph" ||
+    !isVisuallyEmptyParagraph(block) ||
+    blocks[index - 1]?.kind !== "table"
+  ) {
+    return false;
+  }
+
+  for (let nextIndex = index + 1; nextIndex < blocks.length; nextIndex++) {
+    const nextBlock = blocks[nextIndex];
+    if (nextBlock?.kind !== "paragraph") {
+      return false;
+    }
+    if (!isVisuallyEmptyParagraph(nextBlock)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Pre-scan blocks to find all keepNext chains.
  *
- * A keepNext chain starts with a paragraph whose keepNext=true and continues
- * through further keepNext paragraphs and structural empty separators. The
- * first visible non-keepNext paragraph is its anchor.
+ * A chain starts with a paragraph whose keepNext=true or with an empty
+ * separator immediately following a table. It continues through further
+ * keepNext paragraphs and structural empty separators. The first visible
+ * non-keepNext paragraph is its anchor.
  *
  * Returns a map from chain start index to chain info.
  */
@@ -60,8 +85,9 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
     }
 
     const para = block;
-    // Skip paragraphs without keepNext
-    if (!para.attrs?.keepNext) {
+    // Word carries a trailing table separator to the next visible paragraph
+    // instead of leaving the blank at the bottom of the preceding page.
+    if (!para.attrs?.keepNext && !startsTrailingTableSeparatorChain(blocks, i)) {
       continue;
     }
 
@@ -156,6 +182,10 @@ export function calculateChainHeight(
 
   let totalHeight = (firstBlock.attrs?.spacing?.before ?? 0) + firstMeasure.totalHeight;
   let trailingSpacing = firstBlock.attrs?.spacing?.after ?? 0;
+  const startsWithTrailingTableSeparator =
+    blocks[firstMemberIndex - 1]?.kind === "table" &&
+    isVisuallyEmptyParagraph(firstBlock) &&
+    !firstBlock.attrs?.keepNext;
 
   const successorIndices = [...chain.memberIndices.slice(1)];
   if (chain.anchorIndex !== -1) {
@@ -181,6 +211,15 @@ export function calculateChainHeight(
 
     const isAnchor = index === successorIndices.length - 1 && chain.anchorIndex !== -1;
     const isSplittable = successorMeasure.lines.length > 1 && !successorBlock.attrs?.keepLines;
+    if (
+      isAnchor &&
+      startsWithTrailingTableSeparator &&
+      successorBlock.attrs?.widowControl !== false &&
+      successorMeasure.lines.length > 1
+    ) {
+      const secondLine = successorMeasure.lines.at(1);
+      return totalHeight + firstLine.lineHeight + (secondLine?.lineHeight ?? 0);
+    }
     if (isAnchor || isSplittable) {
       return totalHeight + firstLine.lineHeight;
     }
