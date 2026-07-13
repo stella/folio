@@ -220,6 +220,45 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("uses the anchor section width for positioned text-box exclusion", () => {
+    withFakeTextMeasure(() => {
+      const textBox: TextBoxBlock = {
+        kind: "textBox",
+        id: "outside-narrow-section",
+        width: 140,
+        height: 126,
+        content: [],
+        wrapType: "square",
+        wrapText: "bothSides",
+        position: {
+          horizontal: { relativeTo: "page", posOffset: pixelsToEmu(440) },
+          vertical: { relativeTo: "paragraph", posOffset: 0 },
+        },
+      };
+      const blocks: FlowBlock[] = [
+        para("wide-section", "wide"),
+        textBox,
+        para("narrow-section", "narrow body"),
+      ];
+
+      const measures = measureBlocks(blocks, [720, 160, 160], [40, 40, 40], {
+        pageWidth: [800, 800, 800],
+        pageHeight: [1_000, 1_000, 1_000],
+        marginLeft: [40, 40, 40],
+        marginRight: [40, 600, 600],
+        marginBottom: [40, 40, 40],
+      });
+      const bodyMeasure = measures.at(2);
+      if (bodyMeasure?.kind !== "paragraph") {
+        throw new Error("Expected body paragraph measure");
+      }
+
+      expect(bodyMeasure.lines.at(0)?.floatSkipBefore).toBeUndefined();
+      expect(bodyMeasure.lines.at(0)?.leftOffset).toBeUndefined();
+      expect(bodyMeasure.lines.at(0)?.rightOffset).toBeUndefined();
+    }, fakeMeasure);
+  });
+
   test("keeps an active band across an unspecified continuous section break", () => {
     withFakeTextMeasure(() => {
       const band: TextBoxBlock = {
