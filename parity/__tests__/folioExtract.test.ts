@@ -6,6 +6,7 @@ import {
   computeZoomFactor,
   formatNavigationFailure,
   formatServerStartFailure,
+  isPlausibleBaseline,
   meaningfulTextRange,
   parseCssFontFamilies,
   parseFirstFontFamily,
@@ -142,6 +143,16 @@ describe("computeZoomFactor", () => {
   });
 });
 
+describe("isPlausibleBaseline", () => {
+  test("rejects a zero-width probe that wrapped below the extracted ink row", () => {
+    expect(isPlausibleBaseline(190, rect(0, 146, 200, 20))).toBe(false);
+  });
+
+  test("keeps a baseline near the extracted ink row", () => {
+    expect(isPlausibleBaseline(174, rect(0, 146, 200, 20))).toBe(true);
+  });
+});
+
 describe("parseFirstFontFamily", () => {
   test("takes the first family and strips double quotes", () => {
     expect(parseFirstFontFamily('"Calibri", "Arial", sans-serif')).toBe("Calibri");
@@ -194,6 +205,23 @@ describe("toPageGeom", () => {
     const page = toPageGeom(rawPage);
 
     expect(page.lines[0]?.baselinePt).toBeCloseTo((162 - 50) * PX_TO_PT, 5);
+  });
+
+  test("omits a baseline probe that wrapped onto the following visual row", () => {
+    const rawPage = makeRawPage({
+      pageRect: rect(100, 50, 816, 1056),
+      lines: [
+        makeRawLine({
+          text: "Full line",
+          rect: rect(196, 146, 200, 20),
+          baselineTop: 190,
+        }),
+      ],
+    });
+
+    const page = toPageGeom(rawPage);
+
+    expect(page.lines[0]?.baselinePt).toBeUndefined();
   });
 
   test("normalizes coordinates against a CSS-zoomed page (zoomFactor != 1)", () => {

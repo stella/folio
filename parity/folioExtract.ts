@@ -213,6 +213,23 @@ export const computeZoomFactor = (offsetWidth: number, pageRectWidth: number): n
   return offsetWidth / pageRectWidth;
 };
 
+const MIN_BASELINE_OFFSET_RATIO = -0.5;
+const MAX_BASELINE_OFFSET_RATIO = 1.5;
+
+/**
+ * Baseline probes are zero-width inline boxes. On a visually full line, a
+ * browser can wrap the probe onto the next row even though the document text
+ * itself did not wrap. Keep only probe positions near the extracted ink box;
+ * the comparator can fall back to ink-top geometry for rejected probes.
+ */
+export const isPlausibleBaseline = (baselineTop: number, rect: RawRect): boolean => {
+  if (!Number.isFinite(baselineTop) || rect.height <= 0) {
+    return false;
+  }
+  const offsetRatio = (baselineTop - rect.top) / rect.height;
+  return offsetRatio >= MIN_BASELINE_OFFSET_RATIO && offsetRatio <= MAX_BASELINE_OFFSET_RATIO;
+};
+
 /** First font-family in a CSS `font-family` list, with surrounding quotes stripped. */
 export const parseFirstFontFamily = (fontFamilyRaw: string | undefined): string | undefined => {
   if (!fontFamilyRaw) {
@@ -260,7 +277,7 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
     const lineWidthPt = rawLine.rect.width * zoomFactor * PX_TO_PT;
     const lineHeightPt = rawLine.rect.height * zoomFactor * PX_TO_PT;
     const baselinePt =
-      rawLine.baselineTop === undefined
+      rawLine.baselineTop === undefined || !isPlausibleBaseline(rawLine.baselineTop, rawLine.rect)
         ? undefined
         : (rawLine.baselineTop - rawPage.pageRect.top) * zoomFactor * PX_TO_PT;
 

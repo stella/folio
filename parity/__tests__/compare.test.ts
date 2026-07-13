@@ -331,6 +331,34 @@ describe("compareGeoms", () => {
     expect(result.score).toBe(1);
   });
 
+  test("uses ink tops for both lines when only one baseline is available", () => {
+    const texts = ["Alpha", "Bravo", "Charlie"];
+    const reference = makeDoc("folio", [
+      makePage({
+        lines: texts.map((text, index) =>
+          makeLine({ text, yPt: 72 + index * 18, baselinePt: 80 + index * 18 }),
+        ),
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: texts.map((text, index) =>
+          makeLine({
+            text,
+            yPt: 72 + index * 18,
+            ...(index === 0 ? {} : { baselinePt: 80 + index * 18 }),
+          }),
+        ),
+      }),
+    ]);
+
+    const result = compareGeoms(reference, folio);
+
+    expect(result.divergences.filter((item) => item.kind === "y-drift")).toEqual([]);
+    expect(result.medianYOffsetPt).toBe(0);
+    expect(result.score).toBe(1);
+  });
+
   test("baseline comparison still reports a real one-line vertical excursion", () => {
     const texts = ["Alpha", "Bravo", "Charlie"];
     const reference = makeDoc("folio", [

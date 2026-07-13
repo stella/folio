@@ -616,7 +616,17 @@ const pageRegionKey = (page: number, region: LineBox["region"]): string =>
 const matchedPageRegionKey = (word: FlatLine, folio: FlatLine): string =>
   pageRegionKey(word.page, folio.line.region);
 
-const verticalAnchorPt = (line: LineBox): number => line.baselinePt ?? line.yPt;
+type VerticalOffsetOptions = {
+  reference: LineBox;
+  candidate: LineBox;
+};
+
+const verticalOffsetPt = ({ reference, candidate }: VerticalOffsetOptions): number => {
+  if (reference.baselinePt !== undefined && candidate.baselinePt !== undefined) {
+    return candidate.baselinePt - reference.baselinePt;
+  }
+  return candidate.yPt - reference.yPt;
+};
 
 type PageRegionMedianYOffsetsOptions = {
   matches: Extract<ResolvedItem, { kind: "match" }>[];
@@ -646,7 +656,7 @@ const pageRegionMedianYOffsets = ({
     }
     const key = matchedPageRegionKey(w, f);
     const deltas = deltasByPageRegion.get(key) ?? [];
-    deltas.push(verticalAnchorPt(f.line) - verticalAnchorPt(w.line));
+    deltas.push(verticalOffsetPt({ reference: w.line, candidate: f.line }));
     deltasByPageRegion.set(key, deltas);
   }
   for (const { reference, candidate } of equivalentRows) {
@@ -655,7 +665,7 @@ const pageRegionMedianYOffsets = ({
     }
     const key = matchedPageRegionKey(reference, candidate);
     const deltas = deltasByPageRegion.get(key) ?? [];
-    deltas.push(verticalAnchorPt(candidate.line) - verticalAnchorPt(reference.line));
+    deltas.push(verticalOffsetPt({ reference: reference.line, candidate: candidate.line }));
     deltasByPageRegion.set(key, deltas);
   }
   return new Map([...deltasByPageRegion].map(([key, deltas]) => [key, median(deltas)]));
@@ -708,7 +718,7 @@ const segmentedYResiduals = (
     const stableMatches = matchesByPageRegion.get(key) ?? [];
     stableMatches.push({
       match,
-      offsetPt: verticalAnchorPt(candidate.line) - verticalAnchorPt(reference.line),
+      offsetPt: verticalOffsetPt({ reference: reference.line, candidate: candidate.line }),
     });
     matchesByPageRegion.set(key, stableMatches);
   }
@@ -868,7 +878,8 @@ const diffMatches = ({
                 pageRegionKey(reference.page, candidate.line.region),
               ) ?? 0;
             const residual =
-              verticalAnchorPt(candidate.line) - verticalAnchorPt(reference.line) - medianOffset;
+              verticalOffsetPt({ reference: reference.line, candidate: candidate.line }) -
+              medianOffset;
             if (Math.abs(residual) > tolerances.yResidualPt) {
               yDelta = residual;
               orderedDivergences.push({
