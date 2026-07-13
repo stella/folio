@@ -7,7 +7,7 @@
 
 import { getHeaderRowsHeight } from "../../layout-engine/index";
 import { measuredLineRangeHeight } from "../../layout-engine/lineFlow";
-import { getTableRowLeadingWidth } from "../../layout-engine/tableRowGrid";
+import { getTableRowLeadingWidth } from "../../layout-engine/types";
 import type {
   Layout,
   Page,

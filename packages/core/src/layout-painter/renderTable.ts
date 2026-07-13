@@ -9,7 +9,6 @@
  */
 
 import { measureParagraph } from "../layout-engine/measure";
-import { getTableRowLeadingWidth } from "../layout-engine/tableRowGrid";
 import {
   buildTableCellFloatingZones,
   getTableCellContentWidth,
@@ -29,6 +28,7 @@ import type {
   TextBoxFragment,
 } from "../layout-engine/types";
 import {
+  getTableRowLeadingWidth,
   isFloatingImageRun,
   isFloatingTextBoxBlock,
   tableColumnsArePinned,

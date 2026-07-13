@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { getTableRowLeadingWidth } from "./tableRowGrid";
-import type { TableRow } from "./types";
+import { getTableRowLeadingWidth, type TableRow } from "./types";
 
 const paragraph = {
   kind: "paragraph" as const,

@@ -10,7 +10,7 @@
 
 import { getHeaderRowsHeight } from "../../layout-engine/index";
 import { measuredLineContentOffset } from "../../layout-engine/lineFlow";
-import { getTableRowLeadingWidth } from "../../layout-engine/tableRowGrid";
+import { getTableRowLeadingWidth } from "../../layout-engine/types";
 import { measureParagraph } from "../../layout-engine/measure";
 import { buildRunFontStyle } from "../../layout-engine/measure/measureHelpers";
 import { measureRun } from "../../layout-engine/measure/measureProvider";
