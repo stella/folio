@@ -37,6 +37,7 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
     ["impact", 1.2197],
     ["palatino linotype", 1.3491],
     ["book antiqua", 1.2056],
+    ["garamond", 1.1273],
     ["century gothic", 1.2261],
     ["lucida console", 1.0],
   ];
@@ -80,6 +81,7 @@ describe("fontResolver — previously wrong ratios are corrected and reach consu
     ["palatino linotype", 1.3491], // was hand-transcribed 1.0259 — wrong by 31%
     ["arial", 1.1499], // fixed in a prior revision; still exercised here
     ["book antiqua", 1.2056], // was hand-transcribed 1.0259 — wrong by 17%
+    ["garamond", 1.1273], // replaces the unverified 1.068 legacy value
     ["century gothic", 1.2261], // was hand-transcribed 1.1611 — wrong by 6%
     ["trebuchet ms", 1.1611], // was hand-transcribed 1.1431 — wrong
     ["consolas", 1.1709], // was hand-transcribed 1.1626 — wrong
@@ -94,14 +96,9 @@ describe("fontResolver — previously wrong ratios are corrected and reach consu
 });
 
 describe("fontResolver — unverified legacy fonts are left unchanged", () => {
-  // garamond and lucida sans have not been measured against real Word output
-  // (the original fonts aren't available here to read hhea metrics from); their
-  // hand-transcribed ratios must stay exactly as they were before this refactor
-  // introduced the hhea-derived table.
-  const legacyCases: [font: string, unchangedRatio: number][] = [
-    ["garamond", 1.068],
-    ["lucida sans", 1.1655],
-  ];
+  // The original face is not available here to read hhea metrics from, so its
+  // hand-transcribed ratio stays unchanged until a verified source is available.
+  const legacyCases: [font: string, unchangedRatio: number][] = [["lucida sans", 1.1655]];
 
   for (const [font, unchangedRatio] of legacyCases) {
     test(`${font} keeps its legacy ratio`, () => {
