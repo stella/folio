@@ -1,5 +1,21 @@
 # @stll/folio-core
 
+## 0.6.0
+
+### Minor Changes
+
+- [#183](https://github.com/stella/folio/pull/183) [`e2e8b99`](https://github.com/stella/folio/commit/e2e8b99ea804c7446dda7fbed13a758032981a39) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add typed undo handles for committed document-operation batches.
+
+### Patch Changes
+
+- [#178](https://github.com/stella/folio/pull/178) [`c573ddf`](https://github.com/stella/folio/commit/c573ddface0e3826324171e3a11a6c2000e13b7a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Every user-facing string in the React editor now goes through use-intl. ~173 hardcoded English JSX literals (concentrated in the dialogs: image position/properties, page setup, footnotes, watermark, tables, hyperlinks, header/footer editing) were wired to the locale catalogs — many onto existing keys the components weren't using, ~50 new keys added to en.json and synced to all locales. Visible English output is unchanged. A new `no-untranslated-jsx-literal` oxlint rule enforces this in CI so untranslatable copy cannot land again.
+
+- [#185](https://github.com/stella/folio/pull/185) [`f67fc55`](https://github.com/stella/folio/commit/f67fc555d1db65429555232ffabde4c55b20973c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Measure vertically merged table cells against their combined row height.
+
+- [#180](https://github.com/stella/folio/pull/180) [`0ac0260`](https://github.com/stella/folio/commit/0ac02600744994e77238b9a0a92de09656f64e3c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - i18n quality gate and terminology glossary. A new `i18n-lint` stage in `check:i18n` verifies every translated catalog string for placeholder parity with the English source, ICU MessageFormat validity, CLDR plural-category completeness per locale, dropped plurals/exact selectors, and glossary terminology (with a ratchet baseline for future debt; the current catalogs are clean). New `glossary.json` term base mimics Microsoft Word's localized terminology (LibreOffice divergences documented), covering 46 word-processing concepts across 16 locales with forbidden nonstandard variants; three existing translations were corrected to canonical Word terms (pt-BR "Recortar", tr "Açıklama").
+
+- [#184](https://github.com/stella/folio/pull/184) [`938fe2b`](https://github.com/stella/folio/commit/938fe2b4f4070a34fbaafe04fdeb609552860aa4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render and reserve footnotes referenced from table cells.
+
 ## 0.5.0
 
 ### Minor Changes

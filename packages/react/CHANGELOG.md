@@ -1,5 +1,20 @@
 # @stll/folio-react
 
+## 0.8.0
+
+### Minor Changes
+
+- [#187](https://github.com/stella/folio/pull/187) [`d4aa05d`](https://github.com/stella/folio/commit/d4aa05d46546c109ffd05eb7b98460491ad7a5b9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add transactional undo for live document-operation batches.
+
+### Patch Changes
+
+- [#183](https://github.com/stella/folio/pull/183) [`e2e8b99`](https://github.com/stella/folio/commit/e2e8b99ea804c7446dda7fbed13a758032981a39) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add typed undo handles for committed document-operation batches.
+
+- [#178](https://github.com/stella/folio/pull/178) [`c573ddf`](https://github.com/stella/folio/commit/c573ddface0e3826324171e3a11a6c2000e13b7a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Every user-facing string in the React editor now goes through use-intl. ~173 hardcoded English JSX literals (concentrated in the dialogs: image position/properties, page setup, footnotes, watermark, tables, hyperlinks, header/footer editing) were wired to the locale catalogs — many onto existing keys the components weren't using, ~50 new keys added to en.json and synced to all locales. Visible English output is unchanged. A new `no-untranslated-jsx-literal` oxlint rule enforces this in CI so untranslatable copy cannot land again.
+
+- Updated dependencies [[`e2e8b99`](https://github.com/stella/folio/commit/e2e8b99ea804c7446dda7fbed13a758032981a39), [`c573ddf`](https://github.com/stella/folio/commit/c573ddface0e3826324171e3a11a6c2000e13b7a), [`f67fc55`](https://github.com/stella/folio/commit/f67fc555d1db65429555232ffabde4c55b20973c), [`0ac0260`](https://github.com/stella/folio/commit/0ac02600744994e77238b9a0a92de09656f64e3c), [`938fe2b`](https://github.com/stella/folio/commit/938fe2b4f4070a34fbaafe04fdeb609552860aa4)]:
+  - @stll/folio-core@0.6.0
+
 ## 0.7.0
 
 ### Minor Changes
