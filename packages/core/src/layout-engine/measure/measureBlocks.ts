@@ -498,11 +498,12 @@ type BandPageGeometry = {
 
 function extractFloatingZones(
   blocks: FlowBlock[],
-  contentWidth: number,
+  contentWidth: number | number[],
   marginTop: number | number[] = 0,
   pageGeometry?: BandPageGeometry,
 ): FloatingZoneWithAnchor[] {
   const zones: FloatingZoneWithAnchor[] = [];
+  const defaultContentWidth = Array.isArray(contentWidth) ? (contentWidth[0] ?? 0) : contentWidth;
   const textBoxGroupAnchors = new Map<string, number>();
   const paragraphFrameGroupSizes = new Map<string, number>();
   for (const block of blocks) {
@@ -515,13 +516,13 @@ function extractFloatingZones(
     }
   }
   const defaultMarginTop = Array.isArray(marginTop) ? (marginTop[0] ?? 0) : marginTop;
-  const pageWidthInput = pageGeometry?.pageWidth ?? contentWidth;
+  const pageWidthInput = pageGeometry?.pageWidth ?? defaultContentWidth;
   const pageHeightInput = pageGeometry?.pageHeight ?? 0;
   const marginLeftInput = pageGeometry?.marginLeft ?? 0;
   const marginRightInput = pageGeometry?.marginRight ?? 0;
   const marginBottomInput = pageGeometry?.marginBottom ?? 0;
   const defaultPageWidth = Array.isArray(pageWidthInput)
-    ? (pageWidthInput[0] ?? contentWidth)
+    ? (pageWidthInput[0] ?? defaultContentWidth)
     : pageWidthInput;
   const defaultPageHeight = Array.isArray(pageHeightInput)
     ? (pageHeightInput[0] ?? 0)
@@ -589,10 +590,10 @@ function extractFloatingZones(
           rightMargin = imgRun.width + distLeft;
         } else if (h.posOffset !== undefined) {
           const x = emuToPixels(h.posOffset);
-          if (x < contentWidth / 2) {
+          if (x < defaultContentWidth / 2) {
             leftMargin = x + imgRun.width + distRight;
           } else {
-            rightMargin = contentWidth - x + distLeft;
+            rightMargin = defaultContentWidth - x + distLeft;
           }
         }
       } else if (imgRun.cssFloat === "left") {
@@ -630,7 +631,7 @@ function extractFloatingZones(
       continue;
     }
 
-    const tableMeasure = measureTableBlock(tableBlock, contentWidth);
+    const tableMeasure = measureTableBlock(tableBlock, defaultContentWidth);
     const tableWidth = tableMeasure.totalWidth;
     const tableHeight = tableMeasure.totalHeight;
 
@@ -650,20 +651,20 @@ function extractFloatingZones(
       if (floating.tblpXSpec === "left" || floating.tblpXSpec === "inside") {
         x = 0;
       } else if (floating.tblpXSpec === "right" || floating.tblpXSpec === "outside") {
-        x = contentWidth - tableWidth;
+        x = defaultContentWidth - tableWidth;
       } else {
-        x = (contentWidth - tableWidth) / 2;
+        x = (defaultContentWidth - tableWidth) / 2;
       }
     } else if (tableBlock.justification === "center") {
-      x = (contentWidth - tableWidth) / 2;
+      x = (defaultContentWidth - tableWidth) / 2;
     } else if (tableBlock.justification === "right") {
-      x = contentWidth - tableWidth;
+      x = defaultContentWidth - tableWidth;
     }
 
-    if (x < contentWidth / 2) {
+    if (x < defaultContentWidth / 2) {
       leftMargin = x + tableWidth + distRight;
     } else {
-      rightMargin = contentWidth - x + distLeft;
+      rightMargin = defaultContentWidth - x + distLeft;
     }
 
     const topY = floating.tblpY ?? 0;
@@ -698,6 +699,7 @@ function extractFloatingZones(
     const blockMarginLeft = perBlockNumberValue(marginLeftInput, blockIndex, defaultMarginLeft);
     const blockMarginRight = perBlockNumberValue(marginRightInput, blockIndex, defaultMarginRight);
     const blockPageWidth = perBlockNumberValue(pageWidthInput, blockIndex, defaultPageWidth);
+    const blockContentWidth = perBlockNumberValue(contentWidth, blockIndex, defaultContentWidth);
     const vertical = tb.position.vertical;
     const pageFrameRelative = isPageFrameRelativeAnchor(vertical?.relativeTo);
     const topY = pageFrameRelative
@@ -746,10 +748,11 @@ function extractFloatingZones(
       box: tb,
       contentX,
       boxWidth: measure.width,
-      contentWidth,
+      contentWidth: blockContentWidth,
     });
     const leftMargin = wrapSide === "right" ? contentX + measure.width + (tb.distRight ?? 12) : 0;
-    const rightMargin = wrapSide === "left" ? contentWidth - contentX + (tb.distLeft ?? 12) : 0;
+    const rightMargin =
+      wrapSide === "left" ? blockContentWidth - contentX + (tb.distLeft ?? 12) : 0;
     zones.push({
       leftMargin: Math.max(0, leftMargin),
       rightMargin: Math.max(0, rightMargin),
@@ -952,7 +955,7 @@ export function measureBlocks(
   // Pre-extract floating image exclusion zones with anchor block indices
   const floatingZonesWithAnchors = extractFloatingZones(
     blocks,
-    defaultWidth,
+    contentWidth,
     marginTop,
     pageGeometry,
   );
