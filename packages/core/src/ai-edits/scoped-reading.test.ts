@@ -75,7 +75,7 @@ describe("scoped document reading", () => {
     }
   });
 
-  test("distinguishes stale handles from deleted headings", () => {
+  test("distinguishes stale or structurally changed handles from deleted headings", () => {
     const handle = getFolioDocumentOutline(snapshot).sections.at(0)?.handle;
     if (handle === undefined) {
       throw new Error("Expected outline handle");
@@ -83,8 +83,12 @@ describe("scoped document reading", () => {
     const renamed = makeSnapshot([
       { id: "h1", kind: "heading", headingLevel: 1, text: "Renamed agreement" },
     ]);
+    const relevelled = makeSnapshot([
+      { id: "h1", kind: "heading", headingLevel: 2, text: "Agreement" },
+    ]);
 
     expect(readFolioDocumentSection(renamed, handle)).toEqual({ status: "stale" });
+    expect(readFolioDocumentSection(relevelled, handle)).toEqual({ status: "stale" });
     expect(readFolioDocumentSection(makeSnapshot([]), handle)).toEqual({ status: "missing" });
   });
 });

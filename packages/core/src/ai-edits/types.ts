@@ -83,6 +83,8 @@ export type FolioDocumentSectionHandle = {
   story: "main";
   headingBlockId: string;
   headingTextHash: string;
+  /** One-based depth used to detect structural section-boundary changes. */
+  headingLevel: number;
 };
 
 export type FolioDocumentOutlineEntry = {

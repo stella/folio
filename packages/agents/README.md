@@ -46,18 +46,18 @@ that identify affected blocks, ranges, insertions, and created comments.
 
 For document questions, start with `get_document_outline`, then call
 `read_section` or scoped `find_text`. This keeps unrelated contract text out
-of model context. Section handles use Folio block identities plus a heading
-text hash, so renamed or deleted headings fail stale instead of resolving to
-the wrong content. Page scopes and page numbers use Folio's live layout; they
-are never approximated from character counts and therefore require a live,
-paginated editor.
+of model context. Section handles use Folio block identities, heading depth,
+and a text hash, so structurally changed, renamed, or deleted headings fail
+stale instead of resolving to the wrong content. Page scopes and page numbers
+use Folio's live layout; they are never approximated from character counts and
+therefore require a live, paginated editor.
 
 ### Untrusted documents
 
 `read_document`, `read_section`, `read_story`, `read_page`, `read_comments`,
 `read_changes`, and `find_text` return document content verbatim. If a `.docx`
-comes from an untrusted party, its
-text can carry prompt-injection payloads straight into the model's context —
+comes from an untrusted party, its text can carry prompt-injection payloads
+straight into the model's context —
 treat any document-derived tool result as untrusted model input, the same way
 you would treat a fetched web page. Mutations stay safe by design regardless:
 `suggest_changes` and `add_comment` land as tracked changes or comments
@@ -105,11 +105,11 @@ const result = executeFolioToolCall("suggest_changes", { operations: [...] }, br
 
 On a `DocxEditorRef` that implements the read surface (`getTrackedChanges`,
 `getCommentAnchors`, `getSelectionText`, `getPageText`, `getTargetPage`, and
-`showInDocument`), the editor-ref bridge
-has full parity with the headless one: `read_changes` returns real tracked
-changes, comment entries carry a resolved `blockId` / `quote`, and `read_page`
-/ `read_selection` work against the live view. Against an older ref that
-predates those methods, the bridge degrades per-member: `read_changes`
+`showInDocument`), the editor-ref bridge has full parity with the headless one:
+`read_changes` returns real tracked changes, comment entries carry a resolved
+`blockId` / `quote`, and `read_page` / `read_selection` work against the live
+view. Against an older ref that predates those methods, the bridge degrades
+per-member: `read_changes`
 returns `[]`, comment entries fall back to `blockId: null` / `quote: ""`, and
 `read_page` / `read_selection` report an unsupported-capability error — see
 `src/bridges/editor-ref.ts` for the exact fallback per method.

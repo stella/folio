@@ -25,8 +25,9 @@ const sectionHandleSchema = {
     story: { type: "string", enum: ["main"] },
     headingBlockId: { type: "string" },
     headingTextHash: { type: "string" },
+    headingLevel: { type: "integer", minimum: 1, maximum: 9 },
   },
-  required: ["type", "story", "headingBlockId", "headingTextHash"],
+  required: ["type", "story", "headingBlockId", "headingTextHash", "headingLevel"],
   additionalProperties: false,
 } as const;
 
@@ -42,6 +43,7 @@ const scopedHandleSchema = {
     noteId: { type: "integer" },
     headingBlockId: { type: "string" },
     headingTextHash: { type: "string" },
+    headingLevel: { type: "integer", minimum: 1, maximum: 9 },
   },
   required: ["type"],
   additionalProperties: false,

@@ -137,15 +137,26 @@ const parseSectionHandle = (value: unknown): FolioDocumentSectionHandle | null =
   }
   const headingBlockId = value["headingBlockId"];
   const headingTextHash = value["headingTextHash"];
+  const headingLevel = value["headingLevel"];
   if (
     value["type"] !== "headingSection" ||
     value["story"] !== "main" ||
     !isNonEmptyString(headingBlockId) ||
-    !isNonEmptyString(headingTextHash)
+    !isNonEmptyString(headingTextHash) ||
+    typeof headingLevel !== "number" ||
+    !Number.isInteger(headingLevel) ||
+    headingLevel < 1 ||
+    headingLevel > 9
   ) {
     return null;
   }
-  return { type: "headingSection", story: "main", headingBlockId, headingTextHash };
+  return {
+    type: "headingSection",
+    story: "main",
+    headingBlockId,
+    headingTextHash,
+    headingLevel,
+  };
 };
 
 const getDocumentOutline = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {

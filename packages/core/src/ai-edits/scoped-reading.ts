@@ -9,6 +9,7 @@ import type {
 const toSectionHandle = (
   snapshot: FolioAIEditSnapshot,
   headingBlockId: string,
+  headingLevel: number,
 ): FolioDocumentSectionHandle | null => {
   const headingTextHash = snapshot.anchors[headingBlockId]?.textHash;
   if (headingTextHash === undefined) {
@@ -19,6 +20,7 @@ const toSectionHandle = (
     story: "main",
     headingBlockId,
     headingTextHash,
+    headingLevel,
   };
 };
 
@@ -31,7 +33,7 @@ export const getFolioDocumentOutline = (snapshot: FolioAIEditSnapshot): FolioDoc
     if (block.headingLevel === undefined) {
       continue;
     }
-    const handle = toSectionHandle(snapshot, block.id);
+    const handle = toSectionHandle(snapshot, block.id, block.headingLevel);
     if (handle === null) {
       continue;
     }
@@ -66,7 +68,10 @@ export const readFolioDocumentSection = (
   if (heading === undefined) {
     return { status: "missing" };
   }
-  if (heading.handle.headingTextHash !== handle.headingTextHash) {
+  if (
+    heading.handle.headingTextHash !== handle.headingTextHash ||
+    heading.level !== handle.headingLevel
+  ) {
     return { status: "stale" };
   }
 
