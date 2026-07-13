@@ -190,10 +190,10 @@ export const DOCX_CONFORMANCE_CLASSES: Readonly<{
     readonly UNKNOWN: "unknown";
 }>;
 
-// @public (undocumented)
+// @public
 export type DocxConformanceClass = (typeof DOCX_CONFORMANCE_CLASSES)[keyof typeof DOCX_CONFORMANCE_CLASSES];
 
-// @public (undocumented)
+// @public
 export type DocxPackage = {
     conformanceClass?: DocxConformanceClass; /** Document body */
     document: DocumentBody; /** Document-wide settings (`word/settings.xml`). */
