@@ -7,6 +7,7 @@
 
 import { getHeaderRowsHeight } from "../../layout-engine/index";
 import { measuredLineRangeHeight } from "../../layout-engine/lineFlow";
+import { getTableRowLeadingWidth } from "../../layout-engine/tableRowGrid";
 import type {
   Layout,
   Page,
@@ -435,7 +436,7 @@ export function hitTestTableCell(
     }
 
     // Find column at localX
-    let colX = 0;
+    let colX = getTableRowLeadingWidth(row, tableMeasure.columnWidths);
     let colIndex = -1;
 
     if (rowMeasure.cells.length === 0 || row.cells.length === 0) {

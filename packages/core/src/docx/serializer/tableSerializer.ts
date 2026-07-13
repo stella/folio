@@ -482,6 +482,26 @@ export function serializeTableRowFormatting(
   const parts: string[] = [];
 
   if (formatting) {
+    if (formatting.gridBefore) {
+      parts.push(`<w:gridBefore w:val="${intAttr(formatting.gridBefore)}"/>`);
+    }
+
+    if (formatting.widthBefore) {
+      parts.push(
+        `<w:wBefore w:w="${intAttr(formatting.widthBefore.value)}" w:type="${formatting.widthBefore.type}"/>`,
+      );
+    }
+
+    if (formatting.gridAfter) {
+      parts.push(`<w:gridAfter w:val="${intAttr(formatting.gridAfter)}"/>`);
+    }
+
+    if (formatting.widthAfter) {
+      parts.push(
+        `<w:wAfter w:w="${intAttr(formatting.widthAfter.value)}" w:type="${formatting.widthAfter.type}"/>`,
+      );
+    }
+
     // Can't split
     if (formatting.cantSplit) {
       parts.push("<w:cantSplit/>");

@@ -539,6 +539,8 @@ export type TableCell = {
 export type TableRow = {
   id: BlockId;
   cells: TableCell[];
+  gridBefore?: number;
+  gridAfter?: number;
   height?: number;
   heightRule?: "auto" | "atLeast" | "exact";
   isHeader?: boolean;

@@ -9,6 +9,7 @@
  */
 
 import { measureParagraph } from "../layout-engine/measure";
+import { getTableRowLeadingWidth } from "../layout-engine/tableRowGrid";
 import {
   buildTableCellFloatingZones,
   getTableCellContentWidth,
@@ -608,8 +609,9 @@ function renderTableRow(
   // Render cells
   // Track actual column index separately from cell index
   // because cells with colSpan > 1 span multiple columns
-  let x = 0;
-  let columnIndex = 0;
+  const gridBefore = row.gridBefore ?? 0;
+  let x = getTableRowLeadingWidth(row, columnWidths);
+  let columnIndex = gridBefore;
 
   // Skip columns occupied by spanning cells
   while (occupiedColumns.has(columnIndex)) {

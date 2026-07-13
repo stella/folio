@@ -778,6 +778,40 @@ describe("measureTableBlock preferred width", () => {
   });
 });
 
+describe("measureTableBlock row grid offsets", () => {
+  test("starts cell measurement after omitted leading columns", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [40, 60, 80],
+        rows: [
+          {
+            id: "r",
+            gridBefore: 1,
+            cells: [
+              {
+                id: "first",
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                blocks: [para("first-p", "first")],
+              },
+              {
+                id: "second",
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                blocks: [para("second-p", "second")],
+              },
+            ],
+          },
+        ],
+      };
+
+      const measure = measureTableBlock(table, 180);
+
+      expect(measure.rows.at(0)?.cells.map((cell) => cell.width)).toEqual([60, 80]);
+    }, fakeMeasure);
+  });
+});
+
 describe("measureTableBlock w:noWrap column pinning", () => {
   // Column content width is 60px (no padding) and each char is 5px, so this
   // three-word phrase (75px unbroken) must wrap when the column is pinned and

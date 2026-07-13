@@ -223,7 +223,7 @@ export function measureTableBlock(
     if (!row) {
       continue;
     }
-    let colIdx = 0;
+    let colIdx = row.gridBefore ?? 0;
     const occupied = occupiedColumnsPerRow.get(rowIdx) ?? new Set<number>();
     while (occupied.has(colIdx)) {
       colIdx++;
@@ -261,7 +261,7 @@ export function measureTableBlock(
   // Calculate cell widths based on colSpan and columnWidths,
   // skipping columns occupied by spanning cells from previous rows.
   const rows = tableBlock.rows.map((row, rowIdx) => {
-    let columnIndex = 0;
+    let columnIndex = row.gridBefore ?? 0;
     const occupied = occupiedColumnsPerRow.get(rowIdx) ?? new Set<number>();
     while (occupied.has(columnIndex)) {
       columnIndex++;

@@ -827,6 +827,26 @@ export function parseTableRowProperties(
 
   const formatting: TableRowFormatting = {};
 
+  const gridBefore = parseNumericAttribute(findChild(trPrElement, "w", "gridBefore"), "w", "val");
+  if (gridBefore !== undefined && gridBefore > 0) {
+    formatting.gridBefore = gridBefore;
+  }
+
+  const widthBefore = parseTableMeasurement(findChild(trPrElement, "w", "wBefore"));
+  if (widthBefore) {
+    formatting.widthBefore = widthBefore;
+  }
+
+  const gridAfter = parseNumericAttribute(findChild(trPrElement, "w", "gridAfter"), "w", "val");
+  if (gridAfter !== undefined && gridAfter > 0) {
+    formatting.gridAfter = gridAfter;
+  }
+
+  const widthAfter = parseTableMeasurement(findChild(trPrElement, "w", "wAfter"));
+  if (widthAfter) {
+    formatting.widthAfter = widthAfter;
+  }
+
   // Row height (w:trHeight)
   // Note: w:trHeight uses w:val (not w:w) for the height value in twips.
   const heightElement = findChild(trPrElement, "w", "trHeight");

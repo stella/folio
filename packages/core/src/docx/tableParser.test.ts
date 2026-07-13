@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseTable, parseTableMeasurement } from "./tableParser";
+import { serializeTableRowFormatting } from "./serializer/tableSerializer";
+import { parseTable, parseTableMeasurement, parseTableRowProperties } from "./tableParser";
 import type { XmlElement } from "./xmlParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -28,6 +29,29 @@ describe("parseTableMeasurement", () => {
 
   test("keeps canonical pct integers unchanged", () => {
     expect(tblW("5000")).toEqual({ value: 5000, type: "pct" });
+  });
+});
+
+describe("table row grid offsets", () => {
+  test("preserves omitted leading and trailing columns", () => {
+    const root = parseXmlDocument(`<w:trPr ${NS}>
+      <w:gridBefore w:val="2"/>
+      <w:wBefore w:w="900" w:type="dxa"/>
+      <w:gridAfter w:val="1"/>
+      <w:wAfter w:w="450" w:type="dxa"/>
+    </w:trPr>`) as XmlElement;
+
+    const formatting = parseTableRowProperties(root);
+
+    expect(formatting).toMatchObject({
+      gridBefore: 2,
+      widthBefore: { value: 900, type: "dxa" },
+      gridAfter: 1,
+      widthAfter: { value: 450, type: "dxa" },
+    });
+    expect(serializeTableRowFormatting(formatting)).toContain(
+      '<w:gridBefore w:val="2"/><w:wBefore w:w="900" w:type="dxa"/><w:gridAfter w:val="1"/><w:wAfter w:w="450" w:type="dxa"/>',
+    );
   });
 });
 
