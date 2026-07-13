@@ -100,3 +100,10 @@ export {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "./document-operations";
+export {
+  extractDocxText,
+  type DocxParagraphSource,
+  type ExtractedDocxParagraph,
+  type ExtractedDocxText,
+} from "./docx/server/extractDocxText";
+export { DocxArchiveError } from "./docx/server/boundedArchive";

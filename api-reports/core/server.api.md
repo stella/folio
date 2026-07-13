@@ -67,6 +67,33 @@ export type DeriveBlockIdInput = {
     taken: ReadonlySet<string>;
 };
 
+// @public
+export class DocxArchiveError extends DocxArchiveError_base {}
+
+// @public
+export type DocxParagraphSource = "header" | "body" | "footer";
+
+// @public
+export const extractDocxText: (bytes: ArrayBuffer | Uint8Array) => Promise<ExtractedDocxText>;
+
+// @public
+export type ExtractedDocxParagraph = {
+    index: number;
+    text: string;
+    source: DocxParagraphSource;
+    style?: string;
+    bold?: boolean;
+    fontSize?: number;
+    alignment?: "left" | "center" | "right" | "both";
+};
+
+// @public
+export type ExtractedDocxText = {
+    paragraphs: ExtractedDocxParagraph[];
+    charCount: number;
+    view: "accepted";
+};
+
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES: readonly ["best-effort", "atomic"];
 
