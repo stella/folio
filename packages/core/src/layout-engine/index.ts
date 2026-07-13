@@ -274,8 +274,9 @@ export function layoutDocument(
     pageSize: finalPageSize,
     margins: finalMargins,
   };
-  if (options.columns !== undefined) {
-    finalConfig.columns = options.columns;
+  const finalColumns = options.finalColumns ?? options.columns;
+  if (finalColumns !== undefined) {
+    finalConfig.columns = finalColumns;
   }
   const { configs: sectionConfigs, breakIndices } = collectSectionConfigs(
     blocks,
@@ -372,7 +373,7 @@ export function layoutDocument(
           block,
           measure as ParagraphMeasure,
           paginator,
-          paginator.getContentWidth(),
+          paginator.columnWidth,
           options.footnoteHeightById,
         );
         break;

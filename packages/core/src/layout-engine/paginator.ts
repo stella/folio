@@ -76,19 +76,27 @@ type ForcePageBreakOptions = {
   coalesceBlankPage?: boolean;
 };
 
-/**
- * Calculate the width of a single column.
- */
-function calculateColumnWidth(
+/** Calculate active column widths, preferring authored unequal widths. */
+function calculateColumnWidths(
   pageWidth: number,
   leftMargin: number,
   rightMargin: number,
   columns: ColumnLayout,
-): number {
+): number[] {
+  if (
+    columns.widths?.length === columns.count &&
+    columns.widths.every((width) => Number.isFinite(width) && width > 0)
+  ) {
+    return [...columns.widths];
+  }
   const contentWidth = pageWidth - leftMargin - rightMargin;
   const totalGaps = (columns.count - 1) * columns.gap;
-  return (contentWidth - totalGaps) / columns.count;
+  const equalWidth = (contentWidth - totalGaps) / columns.count;
+  return Array.from({ length: columns.count }, () => equalWidth);
 }
+
+const gapAfterColumn = (columns: ColumnLayout, columnIndex: number): number =>
+  columns.gaps?.[columnIndex] ?? columns.gap;
 
 function arePageSizesEqual(
   left: { w: number; h: number },
@@ -149,11 +157,10 @@ export function createPaginator(options: PaginatorOptions) {
     panic("Paginator: page size and margins yield no content area");
   }
 
-  // Calculate column width
-  let columnWidth = calculateColumnWidth(pageSize.w, margins.left, margins.right, columns);
+  let columnWidths = calculateColumnWidths(pageSize.w, margins.left, margins.right, columns);
 
-  function recalculateColumnWidth(): void {
-    columnWidth = calculateColumnWidth(pageSize.w, margins.left, margins.right, columns);
+  function recalculateColumnWidths(): void {
+    columnWidths = calculateColumnWidths(pageSize.w, margins.left, margins.right, columns);
   }
 
   function applyPendingLayout(): void {
@@ -168,7 +175,7 @@ export function createPaginator(options: PaginatorOptions) {
     if (getContentHeight() <= 0) {
       panic("Paginator: section page size and margins yield no content area");
     }
-    recalculateColumnWidth();
+    recalculateColumnWidths();
   }
 
   function getPageMargins(pageNumber: number): PageMargins {
@@ -193,7 +200,11 @@ export function createPaginator(options: PaginatorOptions) {
    */
   function getColumnX(columnIndex: number): number {
     const activeLeftMargin = states.at(-1)?.page.margins.left ?? getPageMargins(1).left;
-    return activeLeftMargin + columnIndex * (columnWidth + columns.gap);
+    let x = activeLeftMargin;
+    for (let index = 0; index < columnIndex; index++) {
+      x += (columnWidths[index] ?? columnWidths[0] ?? 0) + gapAfterColumn(columns, index);
+    }
+    return x;
   }
 
   /**
@@ -496,7 +507,7 @@ export function createPaginator(options: PaginatorOptions) {
    */
   function updateColumns(newColumns: ColumnLayout): void {
     columns = newColumns;
-    columnWidth = calculateColumnWidth(pageSize.w, margins.left, margins.right, columns);
+    recalculateColumnWidths();
 
     // Update current page's column info for rendering
     const state = getCurrentState();
@@ -535,7 +546,7 @@ export function createPaginator(options: PaginatorOptions) {
     if (getContentHeight() <= 0) {
       panic("Paginator: section page size and margins yield no content area");
     }
-    recalculateColumnWidth();
+    recalculateColumnWidths();
     pendingPageSize = undefined;
     pendingMargins = undefined;
   }
@@ -563,7 +574,8 @@ export function createPaginator(options: PaginatorOptions) {
     states,
     /** Column width in pixels (use getColumnWidth() for current value after updates). */
     get columnWidth() {
-      return columnWidth;
+      const columnIndex = states.at(-1)?.columnIndex ?? 0;
+      return columnWidths[columnIndex] ?? columnWidths[0] ?? getContentWidth();
     },
     /** Get current column layout (returns copy to prevent external mutation). */
     get columns() {

@@ -1058,6 +1058,10 @@ export type ColumnLayout = {
   count: number;
   gap: number;
   equalWidth?: boolean;
+  /** Authored widths for unequal-width section columns. */
+  widths?: number[];
+  /** Authored space after each column except the last. */
+  gaps?: number[];
   /** Draw vertical separator line between columns (w:sep). */
   separator?: boolean;
 };
@@ -1134,6 +1138,8 @@ export type LayoutOptions = {
   finalPageSize?: { w: number; h: number };
   /** Body-level final section margins. */
   finalMargins?: PageMargins;
+  /** Body-level final section column configuration. */
+  finalColumns?: ColumnLayout;
   /** Column configuration. */
   columns?: ColumnLayout;
   /** Gap between rendered pages (for UI). */

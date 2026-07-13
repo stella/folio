@@ -78,7 +78,9 @@ export type ColumnBreakMeasure = {
 export type ColumnLayout = {
     count: number;
     gap: number;
-    equalWidth?: boolean; /** Draw vertical separator line between columns (w:sep). */
+    equalWidth?: boolean; /** Authored widths for unequal-width section columns. */
+    widths?: number[]; /** Authored space after each column except the last. */
+    gaps?: number[]; /** Draw vertical separator line between columns (w:sep). */
     separator?: boolean;
 };
 
@@ -100,6 +102,8 @@ export function createPaginator(options: PaginatorOptions): {
         count: number;
         gap: number;
         equalWidth?: boolean;
+        widths?: number[];
+        gaps?: number[];
         separator?: boolean;
     }; /** Get current state. */
     getCurrentState: () => PageState; /** Get available height in current column. */
@@ -405,7 +409,8 @@ export type LayoutOptions = {
         w: number;
         h: number;
     }; /** Body-level final section margins. */
-    finalMargins?: PageMargins; /** Column configuration. */
+    finalMargins?: PageMargins; /** Body-level final section column configuration. */
+    finalColumns?: ColumnLayout; /** Column configuration. */
     columns?: ColumnLayout; /** Gap between rendered pages (for UI). */
     pageGap?: number; /** Default line height multiplier. */
     defaultLineHeight?: number; /** Header content heights by variant. */
