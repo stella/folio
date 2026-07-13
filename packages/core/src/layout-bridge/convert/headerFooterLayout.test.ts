@@ -656,6 +656,44 @@ describe("header/footer layout conversion", () => {
 
     expect(bounds).toEqual({ top: 0, bottom: 24 });
   });
+
+  test("keeps a paintless empty story out of body margin clearance", () => {
+    const bounds = calculateHeaderFooterMarginPushBounds(
+      [emptyParagraph({ id: "empty-story" })],
+      [{ kind: "paragraph", lines: [], totalHeight: 12 }],
+      12,
+      metrics,
+    );
+
+    expect(bounds).toEqual({ top: 0, bottom: 0 });
+  });
+
+  test("keeps a tab-only story out of body margin clearance", () => {
+    const bounds = calculateHeaderFooterMarginPushBounds(
+      [paragraph({ id: "tab-only-story", runs: [{ kind: "tab" }] })],
+      [{ kind: "paragraph", lines: [], totalHeight: 12 }],
+      12,
+      metrics,
+    );
+
+    expect(bounds).toEqual({ top: 0, bottom: 0 });
+  });
+
+  test("keeps authored spacing in empty-story body margin clearance", () => {
+    const bounds = calculateHeaderFooterMarginPushBounds(
+      [
+        emptyParagraph({
+          id: "authored-empty-story",
+          attrs: { spacingExplicit: { before: true } },
+        }),
+      ],
+      [{ kind: "paragraph", lines: [], totalHeight: 12 }],
+      12,
+      metrics,
+    );
+
+    expect(bounds).toEqual({ top: 0, bottom: 12 });
+  });
 });
 
 describe("convertHeaderFooterPmDocToContent", () => {

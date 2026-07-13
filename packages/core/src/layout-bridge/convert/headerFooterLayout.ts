@@ -215,6 +215,18 @@ function isVisuallyEmptyParagraph(block: FlowBlock): boolean {
   return block.runs.every((run) => run.kind === "text" && run.text.trim().length === 0);
 }
 
+function isPaintlessParagraph(block: FlowBlock): boolean {
+  if (block.kind !== "paragraph") {
+    return false;
+  }
+  return block.runs.every(
+    (run) =>
+      (run.kind === "text" && run.text.trim().length === 0) ||
+      run.kind === "tab" ||
+      run.kind === "lineBreak",
+  );
+}
+
 function normalizeTableBlock(block: TableBlock): TableBlock {
   const blockState = { changed: false };
   const rows = block.rows.map((row) => {
@@ -529,6 +541,13 @@ export function calculateHeaderFooterMarginPushBounds(
   flowHeight: number,
   metrics: HeaderFooterMetrics,
 ): { top: number; bottom: number } {
+  const isPaintlessStory =
+    blocks.length > 0 &&
+    blocks.every((block) => isPaintlessParagraph(block) && !hasAuthoredVisualContent(block));
+  if (isPaintlessStory) {
+    return { top: 0, bottom: 0 };
+  }
+
   let top = 0;
   let bottom = 0;
   let cursorY = 0;
