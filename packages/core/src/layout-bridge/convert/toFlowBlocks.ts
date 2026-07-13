@@ -2527,6 +2527,9 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
         const hasSectionBreak =
           secProps !== undefined ||
           (pmAttrs.sectionBreakType !== null && pmAttrs.sectionBreakType !== undefined);
+        const hasListFormatting =
+          (pmAttrs.numPr !== null && pmAttrs.numPr !== undefined) ||
+          (pmAttrs.listMarker !== null && pmAttrs.listMarker !== undefined);
         const onlyChild = node.childCount === 1 ? node.firstChild : null;
         const isStandaloneColumnBreak =
           onlyChild?.type.name === "hardBreak" &&
@@ -2540,7 +2543,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
             pmEnd: pos + node.nodeSize,
           };
           trackedPush(columnBreak);
-        } else if (node.content.size > 0 || !hasSectionBreak) {
+        } else if (node.content.size > 0 || hasListFormatting || !hasSectionBreak) {
           // An empty paragraph carrying w:sectPr is Word's structural section
           // marker; it does not paint an additional blank line. Text-bearing
           // section-ending paragraphs still participate in normal layout.

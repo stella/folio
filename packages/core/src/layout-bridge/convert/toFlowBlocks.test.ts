@@ -29,6 +29,21 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "sectionBreak", "paragraph"]);
   });
 
+  test("paints an empty list item that also ends a section", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", {
+        sectionBreakType: "continuous",
+        numPr: { numId: 1, ilvl: 0 },
+        listMarker: "1.",
+      }),
+      schema.node("paragraph", null, [schema.text("Next section")]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "sectionBreak", "paragraph"]);
+  });
+
   test("emits a structural break for a standalone column break paragraph", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("First column")]),
