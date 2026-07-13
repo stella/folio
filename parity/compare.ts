@@ -1,5 +1,5 @@
 /**
- * Word rendering parity engine: pure comparison of two `DocGeom` values into
+ * Rendering parity engine: pure comparison of two `DocGeom` values into
  * a `ParityResult`. No I/O, no browser: this module only manipulates the
  * already-extracted geometry, which keeps it fully unit-testable.
  *
@@ -100,14 +100,14 @@ export const compareGeoms = (
   };
 };
 
-/** Score when the Word side has no lines at all: 1 if folio is also empty
+/** Score when the reference side has no lines at all: 1 if folio is also empty
  * (nothing to diverge on), 0 otherwise (every folio line is unaccounted for). */
 const scoreForEmptyWordDoc = (folioLineCount: number): number => (folioLineCount === 0 ? 1 : 0);
 
 const stripSpaces = (text: string): string => text.replaceAll(" ", "");
 
 /**
- * Word PDF extraction reports glyph-ink bounds while Folio reports the line
+ * Reference PDF extraction reports glyph-ink bounds while Folio reports the line
  * box. Punctuation-only rows (signature rules, ellipses, separators) have no
  * stable cap-height edge, so their top coordinates cannot establish or verify
  * a baseline offset. Horizontal geometry remains comparable.
@@ -118,7 +118,7 @@ const hasStableVerticalInk = (line: LineBox): boolean => /[\p{L}\p{N}]/u.test(li
  * as the same visual row. */
 const ROW_OVERLAP_RATIO = 0.5;
 /** Maximum horizontal gap (pt) between same-row boxes that still merges them.
- * Word emits list markers as separate ink boxes ~10pt left of the item text,
+ * The reference extractor emits list markers as separate ink boxes ~10pt left of the item text,
  * and tabbed legal clauses can leave ~23pt between the marker and text; table
  * widely separated table cells sit farther apart (>25pt) and stay separate. */
 const ROW_MERGE_GAP_PT = 24;
@@ -127,10 +127,11 @@ const MARKER_ROW_MERGE_GAP_PT = 36;
 /** Clusters boxes into visual rows (>= ROW_OVERLAP_RATIO vertical overlap),
  * then merges row neighbours within ROW_MERGE_GAP_PT of each other into a
  * single LineBox — bullet/number markers and tightly adjacent table-cell text
- * join the way Word's PDF boxes do. Folio's DOM-only cell identity is ignored
- * here because Word truth has no equivalent metadata; using it would normalize
- * the two extractors differently. The result is ordered row-by-row,
- * left-to-right within a row: Word's ink boxes on one
+ * join the way the reference PDF boxes do. Folio's DOM-only cell identity is
+ * ignored here because reference geometry has no equivalent metadata; using it
+ * would normalize the two extractors differently. Logical line identity is
+ * used only to recombine segments that came from the same painted line. The
+ * result is ordered row-by-row, left-to-right within a row: reference ink boxes on one
  * visual row can differ by fractions of a pt vertically (e.g. table cells), so
  * a raw (y, x) sort would order the same row differently on the two sides and
  * derail the sequence alignment. Applied to BOTH sides so the pass itself
@@ -168,6 +169,12 @@ const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
   if (current.region !== next.region) {
     return false;
   }
+  if (
+    current.logicalLineGroup !== undefined &&
+    current.logicalLineGroup === next.logicalLineGroup
+  ) {
+    return true;
+  }
   const gap = horizontalGap(current, next);
   if (gap <= ROW_MERGE_GAP_PT) {
     return true;
@@ -202,6 +209,10 @@ const mergeBoxes = (a: LineBox, b: LineBox): LineBox => {
   // metadata is not discarded when only the right side carries it.
   const fontName = left.fontName ?? right.fontName;
   const fontSizePt = left.fontSizePt ?? right.fontSizePt;
+  const logicalLineGroup =
+    left.logicalLineGroup !== undefined && left.logicalLineGroup === right.logicalLineGroup
+      ? left.logicalLineGroup
+      : undefined;
   return {
     text,
     normText: normalizeLineText(text),
@@ -212,6 +223,7 @@ const mergeBoxes = (a: LineBox, b: LineBox): LineBox => {
     region: left.region,
     ...(fontName !== undefined ? { fontName } : {}),
     ...(fontSizePt !== undefined ? { fontSizePt } : {}),
+    ...(logicalLineGroup !== undefined ? { logicalLineGroup } : {}),
   };
 };
 
@@ -641,7 +653,7 @@ const diffMatches = ({
       if (!w || !f) continue;
       const samePage = w.page === f.page;
 
-      // Space-insensitive: visual-row merging joins Word's separate marker
+      // Space-insensitive: visual-row merging joins reference marker
       // boxes with a space while folio's painter inlines markers without one,
       // and that spacing difference is not a text fidelity issue.
       if (stripSpaces(w.line.normText) !== stripSpaces(f.line.normText)) {

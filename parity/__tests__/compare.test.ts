@@ -57,7 +57,51 @@ describe("compareGeoms", () => {
     expect(merged).toHaveLength(2);
   });
 
-  test("merges nearby text from different table cells like Word PDF boxes", () => {
+  test("merges wide tab segments from the same logical line", () => {
+    const merged = mergeVisualRows([
+      makeLine({
+        text: "Left segment",
+        xPt: 45,
+        yPt: 100,
+        widthPt: 90,
+        logicalLineGroup: "layout-line:7",
+      }),
+      makeLine({
+        text: "Right segment",
+        xPt: 350,
+        yPt: 100,
+        widthPt: 100,
+        logicalLineGroup: "layout-line:7",
+      }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.normText).toBe(normalizeLineText("Left segment Right segment"));
+    expect(merged[0]?.logicalLineGroup).toBe("layout-line:7");
+  });
+
+  test("keeps wide same-row segments from different logical lines separate", () => {
+    const merged = mergeVisualRows([
+      makeLine({
+        text: "Left column",
+        xPt: 45,
+        yPt: 100,
+        widthPt: 90,
+        logicalLineGroup: "layout-line:7",
+      }),
+      makeLine({
+        text: "Right column",
+        xPt: 350,
+        yPt: 100,
+        widthPt: 100,
+        logicalLineGroup: "layout-line:8",
+      }),
+    ]);
+
+    expect(merged).toHaveLength(2);
+  });
+
+  test("merges nearby text from different table cells like reference PDF boxes", () => {
     const merged = mergeVisualRows([
       makeLine({
         text: "Left cell",
@@ -417,7 +461,7 @@ describe("compareGeoms", () => {
     expect(result.medianYOffsetPt).toBeCloseTo(4.5);
   });
 
-  test("a Word line split into two folio lines reconciles as a single line-break", () => {
+  test("a reference line split into two folio lines reconciles as a single line-break", () => {
     const word = makeDoc("word", [
       makePage({ lines: [makeLine({ text: "The quick brown fox jumps" })] }),
     ]);
@@ -488,7 +532,7 @@ describe("compareGeoms", () => {
     });
   });
 
-  test("a line only in Word is missing-line; a line only in folio is extra-line", () => {
+  test("a reference-only line is missing; a folio-only line is extra", () => {
     const word = makeDoc("word", [
       makePage({
         lines: [

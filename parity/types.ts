@@ -1,12 +1,12 @@
 /**
- * Word rendering parity engine: shared data contract.
+ * Rendering parity engine: shared data contract.
  *
  * All geometry is expressed in PDF points (1pt = 1/72in), page-relative with
- * the origin at the page's top-left corner. Word-side geometry comes from
- * `mutool draw -F stext` over a Word-exported PDF; folio-side geometry comes
- * from the painted playground DOM (CSS px at 96dpi, converted with the
- * px-to-pt factor 72/96 after normalising against the page element width so
- * playground zoom cannot skew coordinates).
+ * the origin at the page's top-left corner. Reference geometry comes from
+ * `mutool draw -F stext` over the exported PDF; folio-side geometry comes from
+ * the painted playground DOM (CSS px at 96dpi, converted with the px-to-pt
+ * factor 72/96 after normalising against the page element width so playground
+ * zoom cannot skew coordinates).
  */
 
 export type Region = "body" | "header" | "footer" | "footnote" | "unknown";
@@ -18,7 +18,7 @@ export type LineBox = {
   normText: string;
   /** Left edge of the line's ink/text start, in pt from the page left. */
   xPt: number;
-  /** Top edge of the line box, in pt from the page top. Word-side boxes are
+  /** Top edge of the line box, in pt from the page top. Reference boxes are
    * ink bounds and folio-side boxes are line-height boxes, so absolute yPt is
    * only compared after per-page median-offset correction. */
   yPt: number;
@@ -30,6 +30,8 @@ export type LineBox = {
   region: Region;
   /** DOM visual container, used to keep adjacent table cells distinct. */
   visualGroup?: string;
+  /** Page-local identity shared by segments extracted from one logical line. */
+  logicalLineGroup?: string;
 };
 
 export type PageGeom = {
@@ -50,16 +52,16 @@ export type DocGeom = {
   meta: Record<string, string>;
 };
 
-/** A divergence between Word's rendering and folio's rendering. */
+/** A divergence between the reference rendering and folio's rendering. */
 export type Divergence =
   | { kind: "page-count"; word: number; folio: number }
   /** Same line of text landed on different pages. */
   | { kind: "pagination"; text: string; wordPage: number; folioPage: number }
-  /** One Word line corresponds to 2+ folio lines, or vice versa (line-break position differs). */
+  /** One reference line corresponds to 2+ folio lines, or vice versa. */
   | { kind: "line-break"; page: number; wordTexts: string[]; folioTexts: string[] }
-  /** Line present in Word output but never matched in folio. */
+  /** Line present in reference output but never matched in folio. */
   | { kind: "missing-line"; page: number; text: string }
-  /** Line present in folio output but never matched in Word. */
+  /** Line present in folio output but never matched in the reference. */
   | { kind: "extra-line"; page: number; text: string }
   /** Matched line starts at a different horizontal position. */
   | { kind: "x-drift"; page: number; text: string; deltaPt: number }
@@ -94,7 +96,7 @@ export type ComparisonTolerances = {
 
 export type ParityResult = {
   file: string;
-  /** 0..1: fraction of Word lines matched to a folio line on the same page
+  /** 0..1: fraction of reference lines matched to a folio line on the same page
    * with all geometric deltas within tolerance. */
   score: number;
   wordPages: number;
