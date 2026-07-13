@@ -4,6 +4,7 @@ import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 
 import type { Document } from "../types/document";
 import {
+  FOLIO_DOCX_CAPABILITY_IDS,
   FOLIO_DOCX_CAPABILITY_MANIFEST,
   FOLIO_DOCX_CAPABILITY_MANIFEST_VERSION,
   getFolioDocxCapability,
@@ -161,10 +162,32 @@ describe("DOCX capability manifest", () => {
         },
       ],
     });
+  });
+
+  test("covers core document and review features with repository evidence", async () => {
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.paragraphs.support).toEqual({
+      create: "supported",
+      edit: "supported",
+      preserve: "supported",
+      read: "supported",
+      render: "partial",
+    });
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.tables.feature).toBe("tables");
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.comments.feature).toBe("comments");
+    expect(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities.trackedChanges.feature).toBe("revisions");
+
     const repositoryRoot = path.resolve(import.meta.dir, "../../../..");
-    for (const evidence of getFolioDocxCapability("opaqueDrawing").evidence) {
-      expect(await Bun.file(path.join(repositoryRoot, evidence.path)).exists()).toBe(true);
+    for (const capability of Object.values(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities)) {
+      for (const evidence of capability.evidence) {
+        expect(await Bun.file(path.join(repositoryRoot, evidence.path)).exists()).toBe(true);
+      }
     }
+  });
+
+  test("keeps the public id list aligned with manifest keys", () => {
+    expect(Object.keys(FOLIO_DOCX_CAPABILITY_MANIFEST.capabilities)).toEqual(
+      FOLIO_DOCX_CAPABILITY_IDS,
+    );
   });
 
   test("rejects unknown ids at the public lookup boundary", () => {

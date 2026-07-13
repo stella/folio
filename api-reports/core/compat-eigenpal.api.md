@@ -406,31 +406,10 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replac
 export const FOLIO_DOCX_CAPABILITY_HOSTS: readonly ["browser", "server"];
 
 // @public (undocumented)
-export const FOLIO_DOCX_CAPABILITY_IDS: readonly ["opaqueDrawing"];
+export const FOLIO_DOCX_CAPABILITY_IDS: readonly ["comments", "opaqueDrawing", "paragraphs", "tables", "trackedChanges"];
 
 // @public (undocumented)
-export const FOLIO_DOCX_CAPABILITY_MANIFEST: Readonly<{
-    version: 1;
-    capabilities: Readonly<{
-        opaqueDrawing: Readonly<{
-            readonly id: "opaqueDrawing";
-            readonly feature: "drawings";
-            readonly hosts: readonly ["browser", "server"];
-            readonly profiles: readonly "transitional"[];
-            readonly support: Readonly<{
-                create: "unsupported";
-                edit: "unsupported";
-                preserve: "supported";
-                read: "supported";
-                render: "partial";
-            }>;
-            readonly evidence: readonly {
-                type: "test";
-                path: string;
-            }[];
-        }>;
-    }>;
-}>;
+export const FOLIO_DOCX_CAPABILITY_MANIFEST: FolioDocxCapabilityManifest;
 
 // @public (undocumented)
 export const FOLIO_DOCX_CAPABILITY_MANIFEST_VERSION: 1;
@@ -733,6 +712,12 @@ export type FolioDocxCapabilityHost = (typeof FOLIO_DOCX_CAPABILITY_HOSTS)[numbe
 export type FolioDocxCapabilityId = (typeof FOLIO_DOCX_CAPABILITY_IDS)[number];
 
 // @public (undocumented)
+export type FolioDocxCapabilityManifest = {
+    readonly version: typeof FOLIO_DOCX_CAPABILITY_MANIFEST_VERSION;
+    readonly capabilities: Readonly<Record<FolioDocxCapabilityId, FolioDocxFeatureCapability>>;
+};
+
+// @public (undocumented)
 export type FolioDocxCapabilityOperation = (typeof FOLIO_DOCX_CAPABILITY_OPERATIONS)[number];
 
 // @public (undocumented)
@@ -744,7 +729,7 @@ export type FolioDocxCompatibilityProfile = (typeof FOLIO_DOCX_COMPATIBILITY_PRO
 // @public (undocumented)
 export type FolioDocxFeatureCapability = {
     readonly id: FolioDocxCapabilityId;
-    readonly feature: "drawings";
+    readonly feature: "comments" | "drawings" | "paragraphs" | "revisions" | "tables";
     readonly hosts: readonly FolioDocxCapabilityHost[];
     readonly profiles: readonly FolioDocxProfile[];
     readonly support: Readonly<Record<FolioDocxCapabilityOperation, FolioDocxSupportState>>;
