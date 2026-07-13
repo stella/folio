@@ -143,9 +143,11 @@ const dirs: Record<string, string> = {
   agents: path.join(repoRoot, "packages", "agents"),
   vue: path.join(repoRoot, "packages", "vue"),
 };
+const docxCoreDir = dirs["docx-core"];
 const coreDir = dirs.core;
 
 const packDir = await mkdtemp(path.join(tmpdir(), "folio-pack-"));
+const docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
 const corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
 const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-"));
 
@@ -156,10 +158,16 @@ const pkgDir = dirs[target];
 const pkgName = target === "docx-core" ? "@stll/docx-core" : `@stll/folio-${target}`;
 const tarball = await buildAndPack(pkgDir, packDir, needsPrepare);
 
-// react, agents, and vue all depend on @stll/folio-core; pack it too so the
-// clean room resolves it npm-style (no workspace leak). An `overrides` entry
-// pins the transitive dependency to this exact tarball, since the package is
-// not yet on a registry.
+// Every package above docx-core depends on its sibling build. Pack it too so
+// the clean room resolves coordinated workspace changes npm-style (no
+// workspace leak). `overrides` pins transitive dependencies to these exact
+// tarballs, since their next versions are not yet on a registry.
+let docxCoreTarball: string | null = null;
+if (target !== "docx-core") {
+  docxCoreTarball = await buildAndPack(docxCoreDir, docxCorePackDir, true);
+}
+
+// react, agents, and vue all depend on @stll/folio-core.
 let coreTarball: string | null = null;
 if (target === "react" || target === "agents" || target === "vue") {
   coreTarball = await buildAndPack(coreDir, corePackDir, true);
@@ -172,8 +180,15 @@ const consumerPkg: Record<string, unknown> = {
   private: true,
   type: "module",
 };
+const overrides: Record<string, string> = {};
+if (docxCoreTarball) {
+  overrides["@stll/docx-core"] = docxCoreTarball;
+}
 if (coreTarball) {
-  consumerPkg.overrides = { "@stll/folio-core": coreTarball };
+  overrides["@stll/folio-core"] = coreTarball;
+}
+if (Object.keys(overrides).length > 0) {
+  consumerPkg.overrides = overrides;
 }
 await writeFile(
   path.join(consumerDir, "package.json"),
@@ -181,6 +196,9 @@ await writeFile(
 );
 
 const installArgs: string[] = [tarball];
+if (docxCoreTarball) {
+  installArgs.push(docxCoreTarball);
+}
 if (target === "react") {
   if (!coreTarball) panic("validate-dist: react needs a @stll/folio-core tarball");
   installArgs.push(coreTarball, ...reactPeerInstallArgs("19"), "use-intl@^4");
@@ -737,6 +755,7 @@ if (target === "react") {
 
 // --- Summary ----------------------------------------------------------------
 await rm(packDir, { recursive: true, force: true });
+await rm(docxCorePackDir, { recursive: true, force: true });
 await rm(corePackDir, { recursive: true, force: true });
 await rm(consumerDir, { recursive: true, force: true });
 
