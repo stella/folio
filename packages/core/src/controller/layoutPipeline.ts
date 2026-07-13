@@ -150,6 +150,21 @@ export type LayoutPipelineDeps<THfPMs> = {
   emptyTemplatePreviewEntries: readonly TemplatePreviewEntry[];
 };
 
+function bodyMarginsBelowHeader(
+  authoredMargins: PageMargins,
+  preparedHeader: HeaderFooterContent | undefined,
+): PageMargins {
+  if (!preparedHeader) {
+    return authoredMargins;
+  }
+  const headerBottom =
+    (authoredMargins.header ?? 0) + (preparedHeader.marginPushBottom ?? preparedHeader.height);
+  if (headerBottom <= authoredMargins.top) {
+    return authoredMargins;
+  }
+  return { ...authoredMargins, top: headerBottom };
+}
+
 export function runLayoutPipeline<THfPMs>(
   deps: LayoutPipelineDeps<THfPMs>,
   state: EditorState,
@@ -368,23 +383,31 @@ export function runLayoutPipeline<THfPMs>(
       hfOptions,
     );
 
+    const initialBodyMargins = bodyMarginsBelowHeader(margins, headerContentForRender);
+
     recordPhaseDuration("header-footer", phaseStartedAt);
 
-    // Compute per-block widths and band geometry from the authored section
-    // margins. Header/footer paint bounds never redefine the body text area.
+    // Compute per-block widths and band geometry from the effective body
+    // margins after normal in-flow header content has been accounted for.
     phaseStartedAt = performance.now();
     const bodyLayoutConfig: SectionLayoutConfig = {
       pageSize,
-      margins,
+      margins: initialBodyMargins,
     };
     if (columns !== undefined) {
       bodyLayoutConfig.columns = columns;
     }
     const finalSectionProperties = document?.package.document.sections?.at(-1)?.properties;
+    const finalHeaderRId = sectionHeaderFooterRefs?.at(-1)?.headerDefault;
+    const finalHeaderForLayout = finalHeaderRId
+      ? headerContentByRId?.get(finalHeaderRId)
+      : sectionHeaderFooterRefs === undefined
+        ? headerContentForRender
+        : undefined;
     const finalLayoutConfig: SectionLayoutConfig = finalSectionProperties
       ? {
           pageSize: getPageSize(finalSectionProperties),
-          margins: getMargins(finalSectionProperties),
+          margins: bodyMarginsBelowHeader(getMargins(finalSectionProperties), finalHeaderForLayout),
         }
       : bodyLayoutConfig;
     const finalColumns = getColumns(finalSectionProperties);
@@ -444,18 +467,12 @@ export function runLayoutPipeline<THfPMs>(
     const buildLayoutOpts = (): Parameters<typeof layoutDocument>[2] => {
       const nextLayoutOpts: Parameters<typeof layoutDocument>[2] = {
         pageSize,
-        margins,
+        margins: initialBodyMargins,
         pageGap,
         mirrorMargins,
       };
-      if (hasTitlePg && firstPageHeaderForRender) {
-        const headerDistance = margins.header ?? 0;
-        const headerBottom =
-          headerDistance +
-          (firstPageHeaderForRender.marginPushBottom ?? firstPageHeaderForRender.height);
-        if (headerBottom > margins.top) {
-          nextLayoutOpts.firstPageMargins = { ...margins, top: headerBottom };
-        }
+      if (hasTitlePg) {
+        nextLayoutOpts.firstPageMargins = bodyMarginsBelowHeader(margins, firstPageHeaderForRender);
       }
       if (finalSectionProperties) {
         nextLayoutOpts.finalPageSize = finalLayoutConfig.pageSize;
