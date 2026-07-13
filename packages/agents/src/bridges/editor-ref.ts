@@ -7,6 +7,7 @@ import type {
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
+  FolioDocumentNavigationTarget,
 } from "@stll/folio-core/server";
 import {
   assertSupportedFolioDocumentOperationVersion,
@@ -88,6 +89,13 @@ export type FolioAgentEditorRefLike = {
    * `null` return (page in range, layout not yet computed) is handled.
    */
   getPageText?(page: number): string | null;
+  /** `DocxEditorRef.getTargetPage`, when available on newer refs. */
+  getTargetPage?(
+    target: FolioDocumentNavigationTarget,
+    snapshot?: FolioAIEditSnapshot,
+  ): number | null;
+  /** `DocxEditorRef.showInDocument`, when available on newer refs. */
+  showInDocument?(target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot): boolean;
 };
 
 /** Options for {@link createEditorRefBridge}. */
@@ -338,6 +346,16 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
     // empty page string is a safe, retryable degrade for a model mid tool
     // call, instead of throwing out of a call it has no way to recover from.
     bridge.getPageText = (page) => getPageText(page) ?? "";
+  }
+
+  const getTargetPage = ref.getTargetPage;
+  if (getTargetPage) {
+    bridge.getTargetPage = (target) => getTargetPage(target);
+  }
+
+  const showInDocument = ref.showInDocument;
+  if (showInDocument) {
+    bridge.showInDocument = (target) => showInDocument(target);
   }
 
   return bridge;

@@ -354,6 +354,15 @@ describe("Folio AI edit operations", () => {
     });
   });
 
+  test("captures standard heading styles as one-based outline levels", () => {
+    const state = makeState([{ styleId: "Heading2", text: "Payment terms" }]);
+
+    expect(createFolioAIEditSnapshot(state.doc).blocks.at(0)).toMatchObject({
+      kind: "heading",
+      headingLevel: 2,
+    });
+  });
+
   test("captures formatted preview runs in the AI-facing block snapshot", () => {
     const boldType = schema.marks["bold"];
     const italicType = schema.marks["italic"];

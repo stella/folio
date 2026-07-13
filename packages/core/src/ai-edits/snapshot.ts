@@ -104,7 +104,8 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
       taken: usedBlockIds,
     });
     usedBlockIds.add(id);
-    const kind = getBlockKind(node);
+    const headingLevel = getHeadingLevel(node);
+    const kind = getBlockKind(node, headingLevel);
     const displayLabel = getDisplayLabel(node);
     const styleId = getStyleId(node);
     const previewRuns = getPreviewRuns(node);
@@ -114,6 +115,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
         id,
         kind,
         text,
+        ...(headingLevel !== undefined && { headingLevel }),
         ...(displayLabel !== undefined && { displayLabel }),
         ...(styleId !== undefined && { styleId }),
         ...(previewRuns !== undefined && { previewRuns }),
@@ -142,7 +144,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   return { blocks, anchors };
 };
 
-const getBlockKind = (node: PMNode): FolioAIBlockKind => {
+const getBlockKind = (node: PMNode, headingLevel: number | undefined): FolioAIBlockKind => {
   const listMarker: unknown = node.attrs["listMarker"];
   const numPr: unknown = node.attrs["numPr"];
   if (
@@ -152,12 +154,31 @@ const getBlockKind = (node: PMNode): FolioAIBlockKind => {
     return "listItem";
   }
 
-  const outlineLevel: unknown = node.attrs["outlineLevel"];
-  if (typeof outlineLevel === "number" && outlineLevel >= 0) {
+  if (headingLevel !== undefined) {
     return "heading";
   }
 
   return "paragraph";
+};
+
+const getHeadingLevel = (node: PMNode): number | undefined => {
+  const outlineLevel: unknown = node.attrs["outlineLevel"];
+  if (
+    typeof outlineLevel === "number" &&
+    Number.isInteger(outlineLevel) &&
+    outlineLevel >= 0 &&
+    outlineLevel <= 8
+  ) {
+    return outlineLevel + 1;
+  }
+
+  const styleId: unknown = node.attrs["styleId"];
+  if (typeof styleId !== "string") {
+    return undefined;
+  }
+  const match = /^heading(?<level>[1-9])$/iu.exec(styleId);
+  const level = match?.groups?.["level"];
+  return level === undefined ? undefined : Number.parseInt(level, 10);
 };
 
 const getDisplayLabel = (node: PMNode): string | undefined => {

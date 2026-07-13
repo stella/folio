@@ -198,6 +198,7 @@ import { containedHandler } from "../utils/contained-handler";
 import {
   clampRangeToDocSize,
   resolveFolioAIBlockRange,
+  resolveFolioAITextRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import { resolveCommentCreationRange } from "./commentAnchors";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
@@ -3056,6 +3057,31 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         });
         return true;
       },
+      showInDocument: (target, snapshot) => {
+        const view = pagedEditorRef.current?.getView();
+        if (!view) {
+          return false;
+        }
+        const range =
+          target.type === "textRange"
+            ? resolveFolioAITextRange({ range: target, doc: view.state.doc, snapshot })
+            : resolveFolioAIBlockRange({
+                blockId: target.blockId,
+                doc: view.state.doc,
+                snapshot,
+              });
+        if (range === null) {
+          return false;
+        }
+        const { from, to } = range;
+        const $from = view.state.doc.resolve(from);
+        const $to = view.state.doc.resolve(to);
+        view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+        requestAnimationFrame(() => {
+          pagedEditorRef.current?.scrollToPosition(from);
+        });
+        return true;
+      },
       getTrackedChanges: () => {
         const view = pagedEditorRef.current?.getView();
         return view ? getTrackedChangesFromDoc(view.state.doc) : [];
@@ -3075,6 +3101,24 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
         const layout = pagedEditorRef.current?.getEditor()?.getLayout() ?? null;
         return getPageTextFromLayout(layout, view.state.doc, page);
+      },
+      getTargetPage: (target, snapshot) => {
+        const view = pagedEditorRef.current?.getView();
+        if (!view) {
+          return null;
+        }
+        const range =
+          target.type === "textRange"
+            ? resolveFolioAITextRange({ range: target, doc: view.state.doc, snapshot })
+            : resolveFolioAIBlockRange({
+                blockId: target.blockId,
+                doc: view.state.doc,
+                snapshot,
+              });
+        if (range === null) {
+          return null;
+        }
+        return pagedEditorRef.current?.getPageNumberForPmPos(range.from) ?? null;
       },
       getContentControls: (filter = {}) => {
         const view = pagedEditorRef.current?.getView();

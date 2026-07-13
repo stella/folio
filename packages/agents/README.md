@@ -18,19 +18,24 @@ bun add @stll/folio-agents
 
 ## Tools
 
-| Tool              | What it does                                                                        |
-| ----------------- | ----------------------------------------------------------------------------------- |
-| `read_document`   | Read the document body as `{ blockId, kind, text }` blocks                          |
-| `find_text`       | Search block text for a string; returns block id, occurrence, and context per match |
-| `read_comments`   | Read comment threads (author, text, resolved, anchored block, replies)              |
-| `read_changes`    | Read pending tracked changes (insertions/deletions) awaiting review                 |
-| `add_comment`     | Attach a comment to a block, optionally quoting specific text                       |
-| `suggest_changes` | Propose block or stable-range edits as tracked changes                              |
-| `reply_comment`   | Reply to a comment thread                                                           |
-| `resolve_comment` | Resolve or reopen a comment thread                                                  |
-| `read_page`       | Read a page's plain text (live editor only)                                         |
-| `read_selection`  | Read the current text selection (live editor only)                                  |
-| `scroll_to_block` | Scroll the live editor to a block (live editor only)                                |
+| Tool                   | What it does                                                           |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `read_document`        | Read the document body as `{ blockId, kind, text }` blocks             |
+| `get_document_outline` | Read heading hierarchy and stable section handles                      |
+| `read_section`         | Read a bounded logical section, with block cursor pagination           |
+| `list_stories`         | List main, header, footer, footnote, and endnote story handles         |
+| `read_story`           | Read one story by its typed handle                                     |
+| `find_text`            | Search by document, section, real page, or story scope                 |
+| `read_comments`        | Read comment threads (author, text, resolved, anchored block, replies) |
+| `read_changes`         | Read pending tracked changes (insertions/deletions) awaiting review    |
+| `add_comment`          | Attach a comment to a block, optionally quoting specific text          |
+| `suggest_changes`      | Propose block or stable-range edits as tracked changes                 |
+| `reply_comment`        | Reply to a comment thread                                              |
+| `resolve_comment`      | Resolve or reopen a comment thread                                     |
+| `read_page`            | Read a page's plain text (live editor only)                            |
+| `read_selection`       | Read the current text selection (live editor only)                     |
+| `scroll_to_block`      | Scroll the live editor to a block (live editor only)                   |
+| `show_in_document`     | Reveal a stable block or exact text range (live editor only)           |
 
 Block ids and comment ids always come from a prior tool call
 (`read_document`, `find_text`, `read_comments`) within the same conversation —
@@ -39,10 +44,19 @@ operation is skipped (e.g. the block changed since it was last read), so the
 model can re-read and retry. Successful mutation results include `receipts`
 that identify affected blocks, ranges, insertions, and created comments.
 
+For document questions, start with `get_document_outline`, then call
+`read_section` or scoped `find_text`. This keeps unrelated contract text out
+of model context. Section handles use Folio block identities plus a heading
+text hash, so renamed or deleted headings fail stale instead of resolving to
+the wrong content. Page scopes and page numbers use Folio's live layout; they
+are never approximated from character counts and therefore require a live,
+paginated editor.
+
 ### Untrusted documents
 
-`read_document`, `read_comments`, `read_changes`, and `find_text` return
-document content verbatim. If a `.docx` comes from an untrusted party, its
+`read_document`, `read_section`, `read_story`, `read_page`, `read_comments`,
+`read_changes`, and `find_text` return document content verbatim. If a `.docx`
+comes from an untrusted party, its
 text can carry prompt-injection payloads straight into the model's context —
 treat any document-derived tool result as untrusted model input, the same way
 you would treat a fetched web page. Mutations stay safe by design regardless:
@@ -90,7 +104,8 @@ const result = executeFolioToolCall("suggest_changes", { operations: [...] }, br
 ```
 
 On a `DocxEditorRef` that implements the read surface (`getTrackedChanges`,
-`getCommentAnchors`, `getSelectionText`, `getPageText`), the editor-ref bridge
+`getCommentAnchors`, `getSelectionText`, `getPageText`, `getTargetPage`, and
+`showInDocument`), the editor-ref bridge
 has full parity with the headless one: `read_changes` returns real tracked
 changes, comment entries carry a resolved `blockId` / `quote`, and `read_page`
 / `read_selection` work against the live view. Against an older ref that

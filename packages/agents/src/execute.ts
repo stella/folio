@@ -1,8 +1,12 @@
 import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  getFolioDocumentOutline,
+  readFolioDocumentSection,
   type FolioAIBlock,
+  type FolioAITextRangeHandle,
   type FolioDocumentOperation,
+  type FolioDocumentSectionHandle,
   type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
@@ -18,6 +22,8 @@ import type {
   FolioAgentApplyOperationsSummary,
   FolioAgentCommentFilter,
   FolioAgentFindTextResult,
+  FolioAgentStoryFindTextResult,
+  FolioAgentStoryTextMatch,
   FolioAgentTextMatch,
   FolioToolCallResult,
 } from "./types";
@@ -69,6 +75,12 @@ const dispatch = (name: string, args: unknown, bridge: FolioAgentBridge): FolioT
   if (name === FOLIO_AGENT_TOOL_NAMES.readDocument) {
     return readDocument(bridge);
   }
+  if (name === FOLIO_AGENT_TOOL_NAMES.getDocumentOutline) {
+    return getDocumentOutline(args, bridge);
+  }
+  if (name === FOLIO_AGENT_TOOL_NAMES.readSection) {
+    return readSection(args, bridge);
+  }
   if (name === FOLIO_AGENT_TOOL_NAMES.listStories) {
     return bridge.listStories
       ? ok(bridge.listStories())
@@ -107,6 +119,9 @@ const dispatch = (name: string, args: unknown, bridge: FolioAgentBridge): FolioT
   if (name === FOLIO_AGENT_TOOL_NAMES.scrollToBlock) {
     return scrollToBlock(args, bridge);
   }
+  if (name === FOLIO_AGENT_TOOL_NAMES.showInDocument) {
+    return showInDocument(args, bridge);
+  }
   // Unreachable: `name` was checked against VALID_TOOL_NAMES above.
   return fail(`Unknown tool "${name}".`);
 };
@@ -116,82 +131,242 @@ const readDocument = (bridge: FolioAgentBridge): FolioToolCallResult => {
   return ok(blocks.map((block) => ({ blockId: block.id, kind: block.kind, text: block.text })));
 };
 
+const parseSectionHandle = (value: unknown): FolioDocumentSectionHandle | null => {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const headingBlockId = value["headingBlockId"];
+  const headingTextHash = value["headingTextHash"];
+  if (
+    value["type"] !== "headingSection" ||
+    value["story"] !== "main" ||
+    !isNonEmptyString(headingBlockId) ||
+    !isNonEmptyString(headingTextHash)
+  ) {
+    return null;
+  }
+  return { type: "headingSection", story: "main", headingBlockId, headingTextHash };
+};
+
+const getDocumentOutline = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+  const maxDepth = isPlainObject(args) ? args["maxDepth"] : undefined;
+  if (
+    maxDepth !== undefined &&
+    (typeof maxDepth !== "number" || !Number.isInteger(maxDepth) || maxDepth < 1 || maxDepth > 9)
+  ) {
+    return fail("get_document_outline's `maxDepth` must be an integer from 1 to 9.");
+  }
+  const outline = getFolioDocumentOutline(bridge.snapshot());
+  const depth = maxDepth ?? 3;
+  const sections = outline.sections
+    .filter(({ level }) => level <= depth)
+    .map((entry) => {
+      const page =
+        bridge.getTargetPage?.({
+          type: "block",
+          story: "main",
+          blockId: entry.headingBlockId,
+        }) ?? undefined;
+      return page === undefined ? entry : Object.assign({}, entry, { page });
+    });
+  return ok({
+    sections,
+    totalSections: outline.sections.length,
+    truncated: sections.length < outline.sections.length,
+  });
+};
+
+const readSection = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+  if (!isPlainObject(args)) {
+    return fail("read_section expects a section `handle` from get_document_outline.");
+  }
+  const handle = parseSectionHandle(args["handle"]);
+  if (handle === null) {
+    return fail("read_section requires a valid `handle` from get_document_outline.");
+  }
+  const maxBlocks = args["maxBlocks"] ?? 100;
+  if (
+    typeof maxBlocks !== "number" ||
+    !Number.isInteger(maxBlocks) ||
+    maxBlocks < 1 ||
+    maxBlocks > 200
+  ) {
+    return fail("read_section's `maxBlocks` must be an integer from 1 to 200.");
+  }
+  const afterBlockId = args["afterBlockId"];
+  if (afterBlockId !== undefined && !isNonEmptyString(afterBlockId)) {
+    return fail("read_section's `afterBlockId` must be a non-empty string when provided.");
+  }
+
+  const resolved = readFolioDocumentSection(bridge.snapshot(), handle);
+  if (resolved.status === "missing") {
+    return fail("The section no longer exists; run get_document_outline again.");
+  }
+  if (resolved.status === "stale") {
+    return fail("The section heading changed; run get_document_outline again for a fresh handle.");
+  }
+
+  let startIndex = 0;
+  if (afterBlockId !== undefined) {
+    const cursorIndex = resolved.section.blocks.findIndex(({ id }) => id === afterBlockId);
+    if (cursorIndex === -1) {
+      return fail("read_section's `afterBlockId` is not part of this section.");
+    }
+    startIndex = cursorIndex + 1;
+  }
+  const selected = resolved.section.blocks.slice(startIndex, startIndex + maxBlocks);
+  const hasMore = startIndex + selected.length < resolved.section.blocks.length;
+  const lastBlockId = selected.at(-1)?.id;
+  return ok({
+    handle,
+    heading: resolved.section.heading,
+    blocks: selected.map(({ id, kind, text }) => ({ blockId: id, kind, text })),
+    totalBlocks: resolved.section.blocks.length,
+    truncated: hasMore,
+    ...(hasMore && lastBlockId !== undefined && { nextAfterBlockId: lastBlockId }),
+  });
+};
+
+const parseStoryHandle = (value: unknown): FolioDocumentStoryHandle | null => {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const handle = value;
+  const type = handle["type"];
+  if (type === "main") {
+    return { type };
+  }
+  if (type === "header" || type === "footer") {
+    const relationshipId = handle["relationshipId"];
+    if (!isNonEmptyString(relationshipId)) {
+      return null;
+    }
+    return { type, relationshipId };
+  }
+  if (type === "footnote" || type === "endnote") {
+    const noteId = handle["noteId"];
+    if (typeof noteId !== "number" || !Number.isInteger(noteId)) {
+      return null;
+    }
+    return { type, noteId };
+  }
+  return null;
+};
+
 const readStory = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
   if (!bridge.readStory) {
     return fail("This editor surface does not support story reads.");
   }
-  if (!isPlainObject(args) || !isPlainObject(args["handle"])) {
-    return fail("read_story requires a typed `handle` from list_stories.");
-  }
-  const handle = args["handle"];
-  const type = handle["type"];
-  let parsed: FolioDocumentStoryHandle;
-  if (type === "main") {
-    parsed = { type };
-  } else if (type === "header" || type === "footer") {
-    const relationshipId = handle["relationshipId"];
-    if (!isNonEmptyString(relationshipId)) {
-      return fail("read_story requires the handle's `relationshipId`.");
-    }
-    parsed = { type, relationshipId };
-  } else if (type === "footnote" || type === "endnote") {
-    const noteId = handle["noteId"];
-    if (typeof noteId !== "number" || !Number.isInteger(noteId)) {
-      return fail("read_story requires the handle's integer `noteId`.");
-    }
-    parsed = { type, noteId };
-  } else {
-    return fail("read_story received an unsupported story handle type.");
+  const parsed = isPlainObject(args) ? parseStoryHandle(args["handle"]) : null;
+  if (parsed === null) {
+    return fail("read_story requires a valid typed `handle` from list_stories.");
   }
   const story = bridge.readStory(parsed);
   return story ? ok(story) : fail("The requested story was not found; run list_stories again.");
 };
 
 const CONTEXT_RADIUS = 40;
+const WORD_CHARACTER_AT_END = /[\p{L}\p{M}\p{N}_]$/u;
+const WORD_CHARACTER_AT_START = /^[\p{L}\p{M}\p{N}_]/u;
 
 /** All matches for `query`, capped at {@link MAX_FIND_MATCHES}; `totalMatches` still counts every occurrence. */
-type FindTextMatches = { matches: FolioAgentTextMatch[]; totalMatches: number };
+type FindTextMatches<TMatch = FolioAgentTextMatch> = {
+  matches: TMatch[];
+  totalMatches: number;
+};
 
 const findTextMatches = (
   blocks: FolioAIBlock[],
   query: string,
   matchCase: boolean,
+  wholeWord: boolean,
+  getTargetPage?: (target: FolioAITextRangeHandle) => number | null,
+  pageFilter?: number,
 ): FindTextMatches => {
   const matches: FolioAgentTextMatch[] = [];
   let totalMatches = 0;
-  const needle = matchCase ? query : query.toLowerCase();
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const expression = new RegExp(escapedQuery, matchCase ? "gu" : "giu");
   for (const block of blocks) {
-    const haystack = matchCase ? block.text : block.text.toLowerCase();
     let occurrence = 0;
-    let fromIndex = 0;
-    for (;;) {
-      const at = haystack.indexOf(needle, fromIndex);
-      if (at === -1) {
-        break;
+    for (const match of block.text.matchAll(expression)) {
+      const at = match.index;
+      const matchedText = match[0];
+      if (
+        wholeWord &&
+        (WORD_CHARACTER_AT_END.test(block.text.slice(0, at)) ||
+          WORD_CHARACTER_AT_START.test(block.text.slice(at + matchedText.length)))
+      ) {
+        continue;
+      }
+      const range = createFolioAITextRangeHandle({
+        blockId: block.id,
+        text: block.text,
+        startOffset: at,
+        endOffset: at + matchedText.length,
+      });
+      if (range === null) {
+        continue;
+      }
+      const page = getTargetPage?.(range) ?? undefined;
+      if (pageFilter !== undefined && page !== pageFilter) {
+        continue;
       }
       totalMatches += 1;
       if (matches.length < MAX_FIND_MATCHES) {
         const contextStart = Math.max(0, at - CONTEXT_RADIUS);
-        const contextEnd = Math.min(block.text.length, at + query.length + CONTEXT_RADIUS);
-        const range = createFolioAITextRangeHandle({
-          blockId: block.id,
-          text: block.text,
-          startOffset: at,
-          endOffset: at + query.length,
-        });
-        if (range === null) {
-          break;
-        }
+        const contextEnd = Math.min(block.text.length, at + matchedText.length + CONTEXT_RADIUS);
         matches.push({
+          type: "main",
+          story: { type: "main" },
           blockId: block.id,
           range,
           occurrenceInBlock: occurrence,
           context: block.text.slice(contextStart, contextEnd),
+          ...(page !== undefined && page !== null && { page }),
         });
       }
       occurrence += 1;
-      fromIndex = at + needle.length;
     }
+  }
+  return { matches, totalMatches };
+};
+
+const findStoryTextMatches = (
+  text: string,
+  story: Exclude<FolioDocumentStoryHandle, { type: "main" }>,
+  query: string,
+  matchCase: boolean,
+  wholeWord: boolean,
+): FindTextMatches<FolioAgentStoryTextMatch> => {
+  const matches: FolioAgentStoryTextMatch[] = [];
+  let totalMatches = 0;
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const expression = new RegExp(escapedQuery, matchCase ? "gu" : "giu");
+  for (const match of text.matchAll(expression)) {
+    const at = match.index;
+    const matchedText = match[0];
+    if (
+      wholeWord &&
+      (WORD_CHARACTER_AT_END.test(text.slice(0, at)) ||
+        WORD_CHARACTER_AT_START.test(text.slice(at + matchedText.length)))
+    ) {
+      continue;
+    }
+    if (matches.length < MAX_FIND_MATCHES) {
+      matches.push({
+        type: "story",
+        story,
+        startOffset: at,
+        endOffset: at + matchedText.length,
+        occurrenceInStory: totalMatches,
+        context: text.slice(
+          Math.max(0, at - CONTEXT_RADIUS),
+          Math.min(text.length, at + matchedText.length + CONTEXT_RADIUS),
+        ),
+      });
+    }
+    totalMatches += 1;
   }
   return { matches, totalMatches };
 };
@@ -202,6 +377,7 @@ const findText = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult 
   }
   const query = args["query"];
   const matchCase = args["matchCase"];
+  const wholeWord = args["wholeWord"];
   if (!isNonEmptyString(query)) {
     return fail("find_text requires a non-empty string `query`.");
   }
@@ -213,8 +389,80 @@ const findText = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult 
   if (matchCase !== undefined && typeof matchCase !== "boolean") {
     return fail("find_text's `matchCase` must be a boolean when provided.");
   }
-  const { blocks } = bridge.snapshot();
-  const { matches, totalMatches } = findTextMatches(blocks, query, matchCase === true);
+  if (wholeWord !== undefined && typeof wholeWord !== "boolean") {
+    return fail("find_text's `wholeWord` must be a boolean when provided.");
+  }
+
+  const scope = args["scope"];
+  let blocks = bridge.snapshot().blocks;
+  let getTargetPage: ((target: FolioAITextRangeHandle) => number | null) | undefined;
+  let pageFilter: number | undefined;
+  if (scope !== undefined) {
+    if (!isPlainObject(scope) || !isNonEmptyString(scope["type"])) {
+      return fail("find_text's `scope` must be a document, section, page, or story scope.");
+    }
+    if (scope["type"] === "section") {
+      const handle = parseSectionHandle(scope["handle"]);
+      if (handle === null) {
+        return fail("find_text's section scope requires a handle from get_document_outline.");
+      }
+      const section = readFolioDocumentSection(bridge.snapshot(), handle);
+      if (section.status !== "found") {
+        return fail("The scoped section is stale or missing; run get_document_outline again.");
+      }
+      blocks = section.section.blocks;
+    } else if (scope["type"] === "page") {
+      const page = scope["page"];
+      if (typeof page !== "number" || !Number.isInteger(page) || page < 1) {
+        return fail("find_text's page scope requires an integer `page` >= 1.");
+      }
+      if (!bridge.getTargetPage) {
+        return fail("This editor surface cannot search by page without live pagination.");
+      }
+      const pageCount = bridge.getPageCount?.();
+      if (pageCount !== undefined && page > pageCount) {
+        return fail(`find_text's page (${page}) exceeds the document's page count (${pageCount}).`);
+      }
+      getTargetPage = bridge.getTargetPage;
+      pageFilter = page;
+    } else if (scope["type"] === "story") {
+      const handle = parseStoryHandle(scope["handle"]);
+      if (handle === null) {
+        return fail("find_text's story scope requires a handle from list_stories.");
+      }
+      if (handle.type !== "main") {
+        if (!bridge.readStory) {
+          return fail("This editor surface does not support story search.");
+        }
+        const story = bridge.readStory(handle);
+        if (story === null) {
+          return fail("The scoped story was not found; run list_stories again.");
+        }
+        const found = findStoryTextMatches(
+          story.text,
+          handle,
+          query,
+          matchCase === true,
+          wholeWord === true,
+        );
+        return ok({
+          matches: found.matches,
+          truncated: found.totalMatches > found.matches.length,
+          totalMatches: found.totalMatches,
+        } satisfies FolioAgentStoryFindTextResult);
+      }
+    } else if (scope["type"] !== "document") {
+      return fail("find_text's `scope.type` must be document, section, page, or story.");
+    }
+  }
+  const { matches, totalMatches } = findTextMatches(
+    blocks,
+    query,
+    matchCase === true,
+    wholeWord === true,
+    getTargetPage,
+    pageFilter,
+  );
   const result: FolioAgentFindTextResult = {
     matches,
     truncated: totalMatches > matches.length,
@@ -394,7 +642,7 @@ const readPage = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult 
   if (pageCount !== undefined && page > pageCount) {
     return fail(`read_page's \`page\` (${page}) exceeds the document's page count (${pageCount}).`);
   }
-  return ok({ page, text: bridge.getPageText(page) });
+  return ok({ page, totalPages: pageCount, text: bridge.getPageText(page) });
 };
 
 const readSelection = (bridge: FolioAgentBridge): FolioToolCallResult => {
@@ -413,4 +661,63 @@ const scrollToBlock = (args: unknown, bridge: FolioAgentBridge): FolioToolCallRe
     return fail("scroll_to_block requires a non-empty string `blockId`.");
   }
   return ok({ scrolled: bridge.scrollToBlock(blockId) });
+};
+
+const parseTextRange = (value: unknown): FolioAITextRangeHandle | null => {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const blockId = value["blockId"];
+  const startOffset = value["startOffset"];
+  const endOffset = value["endOffset"];
+  const selectedTextHash = value["selectedTextHash"];
+  if (
+    value["type"] !== "textRange" ||
+    value["story"] !== "main" ||
+    !isNonEmptyString(blockId) ||
+    typeof startOffset !== "number" ||
+    !Number.isInteger(startOffset) ||
+    startOffset < 0 ||
+    typeof endOffset !== "number" ||
+    !Number.isInteger(endOffset) ||
+    endOffset <= startOffset ||
+    !isNonEmptyString(selectedTextHash)
+  ) {
+    return null;
+  }
+  return {
+    type: "textRange",
+    story: "main",
+    blockId,
+    startOffset,
+    endOffset,
+    selectedTextHash,
+  };
+};
+
+const showInDocument = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+  if (!bridge.showInDocument) {
+    return fail("This editor surface does not support show_in_document (no live editor view).");
+  }
+  if (!isPlainObject(args)) {
+    return fail("show_in_document expects exactly one of `blockId` or `range`.");
+  }
+  const blockId = args["blockId"];
+  const rawRange = args["range"];
+  if ((blockId === undefined) === (rawRange === undefined)) {
+    return fail("show_in_document requires exactly one of `blockId` or `range`.");
+  }
+  if (blockId !== undefined) {
+    if (!isNonEmptyString(blockId)) {
+      return fail("show_in_document's `blockId` must be a non-empty string.");
+    }
+    return ok({
+      shown: bridge.showInDocument({ type: "block", story: "main", blockId }),
+    });
+  }
+  const range = parseTextRange(rawRange);
+  if (range === null) {
+    return fail("show_in_document's `range` must be copied from find_text.");
+  }
+  return ok({ shown: bridge.showInDocument(range) });
 };

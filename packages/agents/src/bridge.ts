@@ -4,6 +4,7 @@ import type {
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
   FolioDocumentOperationUndoResult,
+  FolioDocumentNavigationTarget,
   FolioDocumentStory,
   FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
@@ -62,4 +63,8 @@ export type FolioAgentBridge = {
   getPageCount?(): number;
   /** Plain text of the given 1-based page in the live editor. */
   getPageText?(page: number): string;
+  /** Resolve a main-story block or exact text range to its real rendered page. */
+  getTargetPage?(target: FolioDocumentNavigationTarget): number | null;
+  /** Select and reveal a stable block or text range in the live editor. */
+  showInDocument?(target: FolioDocumentNavigationTarget): boolean;
 };

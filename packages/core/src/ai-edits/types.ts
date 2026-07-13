@@ -15,6 +15,8 @@ export type FolioAIBlock = {
   id: string;
   kind: FolioAIBlockKind;
   text: string;
+  /** One-based heading depth when the block has outline semantics. */
+  headingLevel?: number;
   displayLabel?: string;
   styleId?: string;
   previewRuns?: FolioAIBlockPreviewRun[];
@@ -69,6 +71,48 @@ export type FolioAITextRangeHandle = {
   endOffset: number;
   selectedTextHash: string;
 };
+
+/**
+ * Stable handle for the logical document section introduced by one heading.
+ * The section runs until the next heading at the same or a higher level.
+ * `headingTextHash` makes a renamed heading fail stale instead of silently
+ * resolving to content whose meaning may have changed.
+ */
+export type FolioDocumentSectionHandle = {
+  type: "headingSection";
+  story: "main";
+  headingBlockId: string;
+  headingTextHash: string;
+};
+
+export type FolioDocumentOutlineEntry = {
+  handle: FolioDocumentSectionHandle;
+  headingBlockId: string;
+  text: string;
+  /** One-based heading depth. */
+  level: number;
+  parentHandle?: FolioDocumentSectionHandle;
+};
+
+export type FolioDocumentOutline = {
+  sections: FolioDocumentOutlineEntry[];
+};
+
+export type FolioDocumentSection = {
+  handle: FolioDocumentSectionHandle;
+  heading: FolioDocumentOutlineEntry;
+  /** Heading block followed by every block in its logical section. */
+  blocks: FolioAIBlock[];
+};
+
+export type FolioDocumentSectionReadResult =
+  | { status: "found"; section: FolioDocumentSection }
+  | { status: "missing" }
+  | { status: "stale" };
+
+export type FolioDocumentNavigationTarget =
+  | { type: "block"; story: "main"; blockId: string }
+  | FolioAITextRangeHandle;
 
 export type FolioAIInlineFormatting = {
   bold?: boolean;

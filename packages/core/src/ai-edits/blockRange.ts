@@ -10,8 +10,9 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import { createFolioAIEditSnapshot } from "./snapshot";
-import type { FolioAIBlockAnchor, FolioAIEditSnapshot } from "./types";
+import { buildCleanBlockText } from "./clean-text";
+import { createFolioAIEditSnapshot, hashFolioAIBlockText } from "./snapshot";
+import type { FolioAIBlockAnchor, FolioAIEditSnapshot, FolioAITextRangeHandle } from "./types";
 import { findParagraphByParaId } from "../prosemirror/utils/findParagraphByParaId";
 import { getFolioParaIdFromBlockId, getSequentialFolioBlockIdIndex } from "../types/block-id";
 
@@ -43,6 +44,44 @@ export const resolveFolioAIBlockRange = ({
     return null;
   }
   return clampRangeToDocSize(doc.content.size, anchor);
+};
+
+type ResolveFolioAITextRangeOptions = {
+  range: FolioAITextRangeHandle;
+  doc: PMNode;
+  snapshot?: FolioAIEditSnapshot | null | undefined;
+};
+
+/** Resolve and validate a stable text-range handle against the live document. */
+export const resolveFolioAITextRange = ({
+  range,
+  doc,
+  snapshot,
+}: ResolveFolioAITextRangeOptions): DocPositionRange | null => {
+  const blockRange = resolveFolioAIBlockRange({
+    blockId: range.blockId,
+    doc,
+    snapshot,
+  });
+  if (blockRange === null) {
+    return null;
+  }
+  const blockNode = doc.nodeAt(blockRange.from);
+  if (!blockNode?.isTextblock) {
+    return null;
+  }
+
+  const cleanBlock = buildCleanBlockText(blockNode, blockRange.from);
+  const from = cleanBlock.offsets[range.startOffset];
+  const to = cleanBlock.offsets[range.endOffset];
+  if (from === undefined || to === undefined) {
+    return null;
+  }
+  const selectedText = cleanBlock.text.slice(range.startOffset, range.endOffset);
+  if (hashFolioAIBlockText(selectedText) !== range.selectedTextHash) {
+    return null;
+  }
+  return clampRangeToDocSize(doc.content.size, { from, to });
 };
 
 /**

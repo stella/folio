@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 
-import { createFolioAIEditSnapshot } from "./snapshot";
-import { clampRangeToDocSize, resolveFolioAIBlockRange } from "./blockRange";
+import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
+import {
+  clampRangeToDocSize,
+  resolveFolioAIBlockRange,
+  resolveFolioAITextRange,
+} from "./blockRange";
 
 const schema = new Schema({
   nodes: {
@@ -152,5 +156,31 @@ describe("resolveFolioAIBlockRange", () => {
     const liveDoc = makeDoc([{ paraId: "0A0A0A0A", text: "Only" }]);
 
     expect(resolveFolioAIBlockRange({ blockId: "seq-0009", doc: liveDoc })).toBeNull();
+  });
+});
+
+describe("resolveFolioAITextRange", () => {
+  test("maps clean-text offsets and rejects a stale selection hash", () => {
+    const doc = makeDoc([{ paraId: "AAAA0001", text: "Payment is due" }]);
+    const snapshot = createFolioAIEditSnapshot(doc);
+    const range = createFolioAITextRangeHandle({
+      blockId: "AAAA0001",
+      text: "Payment is due",
+      startOffset: 8,
+      endOffset: 10,
+    });
+    if (range === null) {
+      throw new Error("Expected a text range handle");
+    }
+
+    const resolved = resolveFolioAITextRange({ range, doc, snapshot });
+    expect(resolved).not.toBeNull();
+    expect(
+      resolveFolioAITextRange({
+        range: { ...range, selectedTextHash: "hstale" },
+        doc,
+        snapshot,
+      }),
+    ).toBeNull();
   });
 });

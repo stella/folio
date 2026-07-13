@@ -12,6 +12,7 @@ import path from "node:path";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { createReviewerBridge } from "./bridges/reviewer";
+import type { FolioAgentBridge } from "./bridge";
 import { executeFolioToolCall } from "./execute";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
@@ -19,6 +20,9 @@ import type {
   FolioAgentBlock,
   FolioAgentComment,
   FolioAgentFindTextResult,
+  FolioAgentDocumentOutline,
+  FolioAgentSectionRead,
+  FolioAgentStoryFindTextResult,
   FolioToolCallResult,
 } from "./types";
 
@@ -590,5 +594,174 @@ describe("find_text edge cases", () => {
     expect(result.matches).toHaveLength(200);
     expect(result.truncated).toBe(true);
     expect(result.totalMatches).toBe(250);
+  });
+
+  test("whole-word matching uses Unicode word boundaries", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+    const target = reviewer.snapshot().blocks.at(0);
+    if (target === undefined) {
+      throw new Error("expected at least one block");
+    }
+    reviewer.applyOperations(
+      [
+        {
+          id: "unicode",
+          type: "replaceBlock",
+          blockId: target.id,
+          text: "žaloba předžaloba ŽALOBA",
+        },
+      ],
+      { mode: "direct" },
+    );
+
+    const result = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.findText,
+        { query: "žaloba", wholeWord: true },
+        bridge,
+      ),
+    ) as FolioAgentFindTextResult;
+
+    expect(result.totalMatches).toBe(2);
+  });
+
+  test("limits main-story search to real page mappings and exposes the page on matches", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const base = createReviewerBridge(reviewer);
+    const target = reviewer.snapshot().blocks.find(({ text }) => text.includes("Heading"));
+    if (target === undefined) {
+      throw new Error("expected a heading block");
+    }
+    const bridge: FolioAgentBridge = {
+      ...base,
+      getPageCount: () => 2,
+      getTargetPage: (received) =>
+        received.type === "textRange" && received.blockId === target.id ? 2 : 1,
+    };
+
+    const result = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.findText,
+        { query: "Heading", scope: { type: "page", page: 2 } },
+        bridge,
+      ),
+    ) as FolioAgentFindTextResult;
+
+    expect(result.totalMatches).toBeGreaterThan(0);
+    expect(result.matches.every((match) => match.type === "main" && match.page === 2)).toBe(true);
+  });
+
+  test("searches a non-main story without inventing block handles", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const base = createReviewerBridge(reviewer);
+    const bridge: FolioAgentBridge = {
+      ...base,
+      readStory: (handle) =>
+        handle.type === "header"
+          ? { handle, text: "Privileged header text" }
+          : (base.readStory?.(handle) ?? null),
+    };
+
+    const result = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.findText,
+        {
+          query: "header",
+          scope: { type: "story", handle: { type: "header", relationshipId: "rId7" } },
+        },
+        bridge,
+      ),
+    ) as FolioAgentStoryFindTextResult;
+
+    expect(result.matches.at(0)).toMatchObject({
+      type: "story",
+      startOffset: 11,
+      endOffset: 17,
+    });
+  });
+});
+
+describe("outline-first scoped reads", () => {
+  test("returns stable outline handles and bounded section pages", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const base = createReviewerBridge(reviewer);
+    const snapshot = reviewer.snapshot();
+    const firstBlock = snapshot.blocks.at(0);
+    if (firstBlock === undefined) {
+      throw new Error("expected fixture to contain a block");
+    }
+    const bridge: FolioAgentBridge = {
+      ...base,
+      snapshot: () => ({
+        ...snapshot,
+        blocks: [{ ...firstBlock, kind: "heading", headingLevel: 1 }, ...snapshot.blocks.slice(1)],
+      }),
+    };
+    const outline = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.getDocumentOutline, {}, bridge),
+    ) as FolioAgentDocumentOutline;
+    const first = outline.sections.at(0);
+    if (first === undefined) {
+      throw new Error("expected fixture to contain an outline heading");
+    }
+
+    const firstPage = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.readSection,
+        { handle: first.handle, maxBlocks: 1 },
+        bridge,
+      ),
+    ) as FolioAgentSectionRead;
+    expect(firstPage.blocks).toHaveLength(1);
+    expect(firstPage.totalBlocks).toBeGreaterThanOrEqual(1);
+
+    if (firstPage.nextAfterBlockId !== undefined) {
+      const secondPage = expectOk(
+        executeFolioToolCall(
+          FOLIO_AGENT_TOOL_NAMES.readSection,
+          { handle: first.handle, maxBlocks: 1, afterBlockId: firstPage.nextAfterBlockId },
+          bridge,
+        ),
+      ) as FolioAgentSectionRead;
+      expect(secondPage.blocks.at(0)?.blockId).not.toBe(firstPage.blocks.at(0)?.blockId);
+    }
+  });
+
+  test("show_in_document accepts either a block or an exact range", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const base = createReviewerBridge(reviewer);
+    const block = reviewer.snapshot().blocks.at(0);
+    if (block === undefined) {
+      throw new Error("expected at least one block");
+    }
+    const targets: unknown[] = [];
+    const bridge: FolioAgentBridge = {
+      ...base,
+      showInDocument: (target) => {
+        targets.push(target);
+        return true;
+      },
+    };
+    const match = (
+      expectOk(
+        executeFolioToolCall(
+          FOLIO_AGENT_TOOL_NAMES.findText,
+          { query: block.text.slice(0, 2) },
+          bridge,
+        ),
+      ) as FolioAgentFindTextResult
+    ).matches.at(0);
+    if (match === undefined || match.type !== "main") {
+      throw new Error("expected a main-story match");
+    }
+
+    expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.showInDocument, { blockId: block.id }, bridge),
+    );
+    expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.showInDocument, { range: match.range }, bridge),
+    );
+    expect(targets).toEqual([{ type: "block", story: "main", blockId: block.id }, match.range]);
   });
 });

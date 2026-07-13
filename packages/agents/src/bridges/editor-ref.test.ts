@@ -398,6 +398,32 @@ describe("createEditorRefBridge: capability-conditional members", () => {
     expect(bridge.getPageText).toBeUndefined();
   });
 
+  test("getTargetPage and showInDocument are exposed only when the ref supports them", () => {
+    const target = { type: "block", story: "main", blockId: "AAAA0001" } as const;
+    const current = createEditorRefBridge({
+      ref: {
+        ...baseRef(),
+        getTargetPage: (received) =>
+          received.type === "block" && received.blockId === "AAAA0001" ? 2 : null,
+        showInDocument: (received) => received.type === "block",
+      },
+      author: "AI",
+      getComments: () => [],
+      setComments: () => {},
+    });
+    const legacy = createEditorRefBridge({
+      ref: baseRef(),
+      author: "AI",
+      getComments: () => [],
+      setComments: () => {},
+    });
+
+    expect(current.getTargetPage?.(target)).toBe(2);
+    expect(current.showInDocument?.(target)).toBe(true);
+    expect(legacy.getTargetPage).toBeUndefined();
+    expect(legacy.showInDocument).toBeUndefined();
+  });
+
   test("getPageCount always delegates to ref.getTotalPages (required member, unaffected by the optional ones)", () => {
     const bridge = createEditorRefBridge({
       ref: baseRef(),

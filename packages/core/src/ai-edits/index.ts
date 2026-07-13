@@ -1,4 +1,10 @@
 export { applyFolioAIEditOperations, type FolioAIEditView } from "./apply";
+export {
+  clampRangeToDocSize,
+  resolveFolioAIBlockRange,
+  resolveFolioAITextRange,
+  type DocPositionRange,
+} from "./blockRange";
 export { buildAnnotatedBlockText } from "./clean-text";
 export {
   getCommentAnchorsFromDoc,
@@ -13,6 +19,7 @@ export {
   hashFolioAIBlockText,
   normalizeFolioAIBlockText,
 } from "./snapshot";
+export { getFolioDocumentOutline, readFolioDocumentSection } from "./scoped-reading";
 export { getFolioParaIdFromBlockId } from "../types/block-id";
 export { diffWordSegments } from "./word-diff";
 export type { FolioDocumentStory, FolioDocumentStoryHandle } from "./headless";
@@ -36,6 +43,12 @@ export type {
   FolioAIInlineFormatting,
   FolioAISignatureParty,
   FolioAITextRangeHandle,
+  FolioDocumentNavigationTarget,
+  FolioDocumentOutline,
+  FolioDocumentOutlineEntry,
+  FolioDocumentSection,
+  FolioDocumentSectionHandle,
+  FolioDocumentSectionReadResult,
 } from "./types";
 export {
   applyFolioDocumentOperations,

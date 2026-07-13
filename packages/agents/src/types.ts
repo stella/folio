@@ -1,8 +1,11 @@
 import type {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FolioDocumentOutlineEntry,
   FolioAITextRangeHandle,
   FolioDocumentOperationIssue,
   FolioDocumentOperationReceipt,
+  FolioDocumentSectionHandle,
+  FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
 /**
@@ -15,6 +18,8 @@ import type {
 /** Every tool name this package exposes, as a stable string union (no enums). */
 export const FOLIO_AGENT_TOOL_NAMES = {
   readDocument: "read_document",
+  getDocumentOutline: "get_document_outline",
+  readSection: "read_section",
   listStories: "list_stories",
   readStory: "read_story",
   findText: "find_text",
@@ -27,6 +32,7 @@ export const FOLIO_AGENT_TOOL_NAMES = {
   readPage: "read_page",
   readSelection: "read_selection",
   scrollToBlock: "scroll_to_block",
+  showInDocument: "show_in_document",
 } as const;
 
 export type FolioAgentToolName =
@@ -61,15 +67,46 @@ export type FolioAgentBlock = {
   text: string;
 };
 
-/** One `find_text` match: which block, which occurrence within it, and a text window around the match. */
+/** One main-story `find_text` match. Existing consumers can keep using its block and range directly. */
 export type FolioAgentTextMatch = {
+  /** Present on results from the current executor; optional for source compatibility with older hosts. */
+  type?: "main";
+  story?: { type: "main" };
   blockId: string;
-  /** Stable handle that can be passed directly to a `replaceRange` operation. */
+  /** Stable handle that can be passed directly to `show_in_document` or a range operation. */
   range: FolioAITextRangeHandle;
-  /** 0-based index of this occurrence within its block (multiple matches in one block increment this). */
+  /** 0-based index of this occurrence within its block. */
   occurrenceInBlock: number;
-  /** The match plus ~40 characters of surrounding context on each side. */
+  /** Real rendered page when a live paginated surface supplies it. */
+  page?: number;
   context: string;
+};
+
+export type FolioAgentStoryTextMatch = {
+  type: "story";
+  story: Exclude<FolioDocumentStoryHandle, { type: "main" }>;
+  startOffset: number;
+  endOffset: number;
+  /** 0-based index of this occurrence within the story. */
+  occurrenceInStory: number;
+  context: string;
+};
+
+export type FolioAgentOutlineEntry = FolioDocumentOutlineEntry & { page?: number };
+
+export type FolioAgentDocumentOutline = {
+  sections: FolioAgentOutlineEntry[];
+  totalSections: number;
+  truncated: boolean;
+};
+
+export type FolioAgentSectionRead = {
+  handle: FolioDocumentSectionHandle;
+  heading: FolioDocumentOutlineEntry;
+  blocks: FolioAgentBlock[];
+  totalBlocks: number;
+  truncated: boolean;
+  nextAfterBlockId?: string;
 };
 
 /**
@@ -83,6 +120,16 @@ export type FolioAgentFindTextResult = {
   truncated: boolean;
   totalMatches: number;
 };
+
+export type FolioAgentStoryFindTextResult = {
+  matches: FolioAgentStoryTextMatch[];
+  truncated: boolean;
+  totalMatches: number;
+};
+
+export type FolioAgentScopedFindTextResult =
+  | FolioAgentFindTextResult
+  | FolioAgentStoryFindTextResult;
 
 /** One reply within a comment thread. */
 export type FolioAgentCommentReply = {
