@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "scoped-local-elements",
+  "claimType": "schema-requirement",
+  "claim": "Local element declarations retain their owning type and compositor scope.",
+  "profiles": ["transitional"],
+  "scope": {
+    "feature": "schema-graph",
+    "applications": []
+  },
+  "confidence": "confirmed",
+  "sources": [
+    {
+      "sourceId": "ecma-376-part-4-transitional",
+      "locator": "OfficeOpenXML-XMLSchema-Transitional.zip"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "scripts/fixtures/specifications/schema-graph-main.xsd",
+      "assertion": "The nested label element is owned by the local slot declaration."
+    }
+  ]
+}
