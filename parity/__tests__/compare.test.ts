@@ -63,6 +63,7 @@ describe("compareGeoms", () => {
         text: "Left segment",
         xPt: 45,
         yPt: 100,
+        baselinePt: 109,
         widthPt: 90,
         logicalLineGroup: "layout-line:7",
       }),
@@ -70,6 +71,7 @@ describe("compareGeoms", () => {
         text: "Right segment",
         xPt: 350,
         yPt: 100,
+        baselinePt: 111,
         widthPt: 100,
         logicalLineGroup: "layout-line:7",
       }),
@@ -78,6 +80,7 @@ describe("compareGeoms", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0]?.normText).toBe(normalizeLineText("Left segment Right segment"));
     expect(merged[0]?.logicalLineGroup).toBe("layout-line:7");
+    expect(merged[0]?.baselinePt).toBe(110);
   });
 
   test("keeps wide same-row segments from different logical lines separate", () => {
@@ -294,6 +297,66 @@ describe("compareGeoms", () => {
     expect(yDrifts[0]).toMatchObject({ kind: "y-drift", text: "Bravo line" });
     expect(result.medianYOffsetPt).toBe(0);
     expect(result.score).toBeCloseTo(2 / 3);
+  });
+
+  test("matching baselines ignore glyph-dependent ink-top differences", () => {
+    const texts = ["Alpha", "a", "Bravo"];
+    const reference = makeDoc("folio", [
+      makePage({
+        lines: texts.map((text, index) =>
+          makeLine({
+            text,
+            yPt: [72, 94, 108][index] ?? 0,
+            baselinePt: 80 + index * 18,
+          }),
+        ),
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: texts.map((text, index) =>
+          makeLine({
+            text,
+            yPt: 70 + index * 18,
+            baselinePt: 80 + index * 18,
+          }),
+        ),
+      }),
+    ]);
+
+    const result = compareGeoms(reference, folio);
+
+    expect(result.divergences.filter((item) => item.kind === "y-drift")).toEqual([]);
+    expect(result.medianYOffsetPt).toBe(0);
+    expect(result.score).toBe(1);
+  });
+
+  test("baseline comparison still reports a real one-line vertical excursion", () => {
+    const texts = ["Alpha", "Bravo", "Charlie"];
+    const reference = makeDoc("folio", [
+      makePage({
+        lines: texts.map((text, index) =>
+          makeLine({ text, yPt: 72 + index * 18, baselinePt: 80 + index * 18 }),
+        ),
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: texts.map((text, index) =>
+          makeLine({
+            text,
+            yPt: 72 + index * 18,
+            baselinePt: 80 + index * 18 + (index === 1 ? 6 : 0),
+          }),
+        ),
+      }),
+    ]);
+
+    const result = compareGeoms(reference, folio);
+
+    expect(result.divergences.filter((item) => item.kind === "y-drift")).toEqual([
+      { kind: "y-drift", page: 1, text: "Bravo", residualPt: 6 },
+    ]);
   });
 
   test("an outlier on the first line is attributed to the first line", () => {

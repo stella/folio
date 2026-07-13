@@ -94,7 +94,7 @@ const extractFirstFont = (lineContent: string): LineFont => {
   };
 };
 
-type ParsedChars = { text: string; inkBbox: Bbox | null };
+type ParsedChars = { text: string; inkBbox: Bbox | null; baselinePt: number | null };
 
 /** Reconstruct line text from `<char c="...">` elements (reading order) and
  * compute the ink bbox as the union of the NON-whitespace chars' quads. The
@@ -105,6 +105,7 @@ type ParsedChars = { text: string; inkBbox: Bbox | null };
 const parseChars = (lineContent: string): ParsedChars => {
   let chars = "";
   let ink: Bbox | null = null;
+  const baselines: number[] = [];
   CHAR_RE.lastIndex = 0;
   let charMatch: RegExpExecArray | null = CHAR_RE.exec(lineContent);
   while (charMatch !== null) {
@@ -114,6 +115,13 @@ const parseChars = (lineContent: string): ParsedChars => {
     if (c === null) continue;
     chars += c;
     if (c.trim() === "") continue;
+    const baselineAttr = extractAttr(charAttrs, "y");
+    if (baselineAttr !== null) {
+      const baseline = Number(baselineAttr);
+      if (Number.isFinite(baseline)) {
+        baselines.push(baseline);
+      }
+    }
     const quad = parseQuad(extractAttr(charAttrs, "quad"));
     if (!quad) continue;
     ink =
@@ -126,7 +134,15 @@ const parseChars = (lineContent: string): ParsedChars => {
             y1: Math.max(ink.y1, quad.y1),
           };
   }
-  return { text: chars, inkBbox: ink };
+  baselines.sort((a, b) => a - b);
+  const middle = Math.floor(baselines.length / 2);
+  let baselinePt: number | null = null;
+  if (baselines.length % 2 === 0 && baselines.length > 0) {
+    baselinePt = ((baselines[middle - 1] ?? 0) + (baselines[middle] ?? 0)) / 2;
+  } else if (baselines.length > 0) {
+    baselinePt = baselines[middle] ?? null;
+  }
+  return { text: chars, inkBbox: ink, baselinePt };
 };
 
 /** A `quad="x0 y0 x1 y1 x2 y2 x3 y3"` attribute (4 corners) reduced to its
@@ -162,7 +178,7 @@ const parseLines = (pageContent: string): LineBox[] => {
     const bboxAttr = extractAttr(lineAttrs, "bbox");
     const lineBbox = bboxAttr === null ? null : parseBbox(bboxAttr);
 
-    const { text: charText, inkBbox } = parseChars(lineContent);
+    const { text: charText, inkBbox, baselinePt } = parseChars(lineContent);
     const font = extractFirstFont(lineContent);
     const extractedText = charText !== "" ? charText : (extractAttr(lineAttrs, "text") ?? "");
     const text = normalizeFontEncodedText(extractedText, font.name);
@@ -177,6 +193,7 @@ const parseLines = (pageContent: string): LineBox[] => {
       normText,
       xPt: bbox.x0,
       yPt: bbox.y0,
+      ...(baselinePt !== null ? { baselinePt } : {}),
       widthPt: bbox.x1 - bbox.x0,
       heightPt: bbox.y1 - bbox.y0,
       ...(font.name !== undefined ? { fontName: font.name } : {}),

@@ -30,6 +30,9 @@ export type LineBox = {
    * are ink bounds and folio-side boxes are line-height boxes, so absolute
    * yPt is only compared after per-page median-offset correction. */
   yPt: number;
+  /** Text baseline in pt from the page top, when the extractor exposes one.
+   * Vertical comparison prefers this glyph-independent anchor over yPt. */
+  baselinePt?: number;
   widthPt: number;
   heightPt: number;
   /** Primary font of the line (first run), when known. */
@@ -111,7 +114,7 @@ export type ParityResult = {
   folioPages: number;
   totalReferenceLines: number;
   matchedLines: number;
-  /** Systematic per-doc vertical offset (median of per-line y deltas);
+  /** Systematic per-doc vertical offset (median of per-line anchor deltas);
    * informational, already subtracted from y-drift residuals. */
   medianYOffsetPt: number;
   divergences: Divergence[];

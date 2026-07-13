@@ -174,6 +174,8 @@ export type RawRect = { left: number; top: number; width: number; height: number
 export type RawLine = {
   text: string;
   rect: RawRect;
+  /** Viewport-relative CSS-pixel position of the originating line's baseline. */
+  baselineTop?: number;
   region: Region;
   /** True when the line's ink box falls fully outside an overflow-clipping ancestor. */
   fullyClipped?: boolean;
@@ -257,6 +259,10 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
     const yPt = (rawLine.rect.top - rawPage.pageRect.top) * zoomFactor * PX_TO_PT;
     const lineWidthPt = rawLine.rect.width * zoomFactor * PX_TO_PT;
     const lineHeightPt = rawLine.rect.height * zoomFactor * PX_TO_PT;
+    const baselinePt =
+      rawLine.baselineTop === undefined
+        ? undefined
+        : (rawLine.baselineTop - rawPage.pageRect.top) * zoomFactor * PX_TO_PT;
 
     const fontName = parseFirstFontFamily(rawLine.fontFamilyRaw);
     const fontSizePt = rawLine.fontSizePx !== undefined ? rawLine.fontSizePx * PX_TO_PT : undefined;
@@ -266,6 +272,7 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
       normText,
       xPt,
       yPt,
+      ...(baselinePt !== undefined ? { baselinePt } : {}),
       widthPt: lineWidthPt,
       heightPt: lineHeightPt,
       region: rawLine.region,
@@ -601,6 +608,19 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
         return fallback;
       };
       const lines = lineEls.flatMap((lineEl, lineIndex) => {
+        const baselineProbe = document.createElement("span");
+        baselineProbe.setAttribute("aria-hidden", "true");
+        baselineProbe.style.display = "inline-block";
+        baselineProbe.style.width = "0";
+        baselineProbe.style.height = "0";
+        baselineProbe.style.margin = "0";
+        baselineProbe.style.padding = "0";
+        baselineProbe.style.border = "0";
+        baselineProbe.style.verticalAlign = "baseline";
+        lineEl.append(baselineProbe);
+        const baselineTop = baselineProbe.getBoundingClientRect().top;
+        baselineProbe.remove();
+
         const segmentInkRect = (segmentEl: HTMLElement): DOMRect | null => {
           if (
             segmentEl.matches("img, svg, canvas, video") ||
@@ -736,6 +756,7 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
         const toRawLine = (text: string, rect: DOMRect, sourceEl: HTMLElement | null) => ({
           text,
           rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+          ...(Number.isFinite(baselineTop) ? { baselineTop } : {}),
           region,
           ...(isFullyClipped(sourceEl, rect) ? { fullyClipped: true } : {}),
           ...(visualGroup !== undefined ? { visualGroup } : {}),

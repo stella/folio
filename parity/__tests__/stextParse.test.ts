@@ -185,4 +185,26 @@ describe("parseStextXml", () => {
     expect(box?.heightPt).toBe(15);
     expect(box?.region).toBe("unknown");
   });
+
+  test("uses the median non-whitespace character origin as the line baseline", () => {
+    const chars = [
+      charEl("A", "0 10 10 10 0 20 10 20").replace('y="0"', 'y="18"'),
+      charEl(" ", "10 10 20 10 10 20 20 20").replace('y="0"', 'y="99"'),
+      charEl("B", "20 10 30 10 20 20 30 20").replace('y="0"', 'y="20"'),
+      charEl("C", "30 10 40 10 30 20 40 20").replace('y="0"', 'y="22"'),
+    ].join("");
+    const xmlLine = `<line bbox="0 10 40 20" wmode="0" dir="1 0" flags="0"><font name="ArialMT" size="12">${chars}</font></line>`;
+    const pages = parseStextXml(documentEl(pageEl(1, "612", "792", xmlLine)));
+
+    expect(pages[0]?.lines[0]?.baselinePt).toBe(20);
+  });
+
+  test("omits the baseline when character origins are unavailable", () => {
+    const charWithoutOrigin =
+      '<char c="A" quad="0 10 10 10 0 20 10 20" x="0" bidi="0" color="#000000" alpha="#ff" flags="16"/>';
+    const xmlLine = `<line bbox="0 10 10 20" wmode="0" dir="1 0" flags="0"><font name="ArialMT" size="12">${charWithoutOrigin}</font></line>`;
+    const pages = parseStextXml(documentEl(pageEl(1, "612", "792", xmlLine)));
+
+    expect(pages[0]?.lines[0]?.baselinePt).toBeUndefined();
+  });
 });

@@ -179,6 +179,23 @@ describe("toPageGeom", () => {
     expect(page.lines[0]?.heightPt).toBeCloseTo(20 * PX_TO_PT, 5);
   });
 
+  test("converts an extracted baseline to page-relative points", () => {
+    const rawPage = makeRawPage({
+      pageRect: rect(100, 50, 816, 1056),
+      lines: [
+        makeRawLine({
+          text: "Hello",
+          rect: rect(196, 146, 200, 20),
+          baselineTop: 162,
+        }),
+      ],
+    });
+
+    const page = toPageGeom(rawPage);
+
+    expect(page.lines[0]?.baselinePt).toBeCloseTo((162 - 50) * PX_TO_PT, 5);
+  });
+
   test("normalizes coordinates against a CSS-zoomed page (zoomFactor != 1)", () => {
     // Page laid out at 816 layout px, rendered at 50% zoom (visual rect
     // 408px wide). A line whose visual left edge is 48px from the visual
