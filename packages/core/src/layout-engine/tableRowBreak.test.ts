@@ -783,9 +783,7 @@ describe("left-aligned table placement", () => {
     const fragment = tableFragments(block, measure)[0];
 
     expect(fragment?.x).toBe(OPTIONS.margins.left - 7);
-    expect((fragment?.x ?? 0) + block.rows[0]!.cells[0]!.padding.left).toBe(
-      OPTIONS.margins.left,
-    );
+    expect((fragment?.x ?? 0) + block.rows[0]!.cells[0]!.padding.left).toBe(OPTIONS.margins.left);
   });
 
   test("applies w:tblInd to the first cell text edge", () => {
