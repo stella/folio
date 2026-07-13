@@ -401,6 +401,28 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0, 1]);
     });
 
+    test("rendered page break preserves a fitting keep-next heading boundary", () => {
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Before heading", 1),
+        {
+          ...makeParagraphBlock(1, "Kept heading", 16, { keepNext: true }),
+          attrs: { keepNext: true, renderedPageBreakBefore: true },
+        },
+        makeParagraphBlock(2, "Kept body", 29),
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 14, 100, 24)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 9, 100, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(2);
+      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2]);
+    });
+
     test("rendered page break moves a paragraph that would cross the current page", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Nearly fills page one", 1),

@@ -88,6 +88,22 @@ describe("rendered break reconciliation", () => {
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
 
+  test("a fitting cached marker remains authoritative on a keep-next paragraph", () => {
+    const previous = paragraph(1);
+    const decision = reconcileBreakBeforeBlock({
+      state: INITIAL_RENDERED_BREAK_STATE,
+      block: paragraph(2, { keepNext: true, renderedPageBreakBefore: true }),
+      previousBlock: previous,
+      page: page([paragraphFragment(1)]),
+      blocksById: new Map([["1", previous]]),
+      hasExplicitPageBreak: false,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(decision.forcePageBreak).toBe(true);
+    expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
+  });
+
   test("paragraph continuation satisfies a cached marker", () => {
     const previous = paragraph(1);
     const decision = reconcileBreakBeforeBlock({

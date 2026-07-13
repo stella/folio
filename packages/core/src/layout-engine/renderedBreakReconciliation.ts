@@ -56,12 +56,13 @@ export const reconcileBreakBeforeBlock = ({
     (state.type === "pageAdvance" &&
       (continuesNumberedSequence(previousBlock, block) ||
         continuesTabbedParagraphSequence(previousBlock, block)));
+  // A keep-with-next paragraph carries the marker boundary into its linked
+  // content, so its own height is not enough to classify the marker as stale.
+  const markerNeedsSnap = renderedBreakNeedsSnap || block.attrs?.keepNext === true;
 
   return {
     forcePageBreak:
-      renderedBreakNeedsSnap &&
-      !markerAlreadySatisfied &&
-      pageHasVisibleBodyContent(page, blocksById),
+      markerNeedsSnap && !markerAlreadySatisfied && pageHasVisibleBodyContent(page, blocksById),
     state: INITIAL_RENDERED_BREAK_STATE,
   };
 };
