@@ -379,6 +379,12 @@ export type ParagraphAttrs = {
    * inheritance assumed) when the field is absent.
    */
   spacingExplicit?: { before?: boolean; after?: boolean };
+  /**
+   * Whether an empty paragraph carries direct paragraph formatting in its
+   * source `w:pPr`. Word treats such a blank as authored and keeps its
+   * inherited spacing; a bare empty paragraph still collapses that spacing.
+   */
+  hasDirectParagraphFormatting?: boolean;
   indent?: ParagraphIndent;
   keepNext?: boolean;
   keepLines?: boolean;

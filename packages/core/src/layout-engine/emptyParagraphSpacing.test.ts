@@ -11,11 +11,10 @@ import type {
   PageMargins,
 } from "./types";
 
-// Issue #402 (eigenpal): Word collapses style-inherited spacing on empty
-// paragraphs (only direct `<w:pPr><w:spacing>` formatting survives). The
-// engine consults `attrs.spacingExplicit` to distinguish: if the field for
-// `before`/`after` is falsy, an empty paragraph carries no spacing on that
-// side regardless of what the inherited style would have set.
+// Issue #402 (eigenpal): Word collapses style-inherited spacing on bare empty
+// paragraphs. Direct spacing, an explicitly selected style, or other authored
+// paragraph formatting makes the blank meaningful and preserves the inherited
+// spacing.
 
 const PAGE_SIZE = { w: 600, h: 1200 };
 const MARGINS: PageMargins = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -118,6 +117,24 @@ describe("empty-paragraph spacing collapse (issue #402)", () => {
 
     expect(fragments[1]!.y).toBe(16);
     expect(fragments[2]!.y).toBe(40);
+  });
+
+  test("inherited spacing on a directly formatted empty paragraph is honored", () => {
+    const blocks: FlowBlock[] = [
+      makePara(0, "Heading", { spacing: { after: 0 } }),
+      makePara(1, "", {
+        spacing: { before: 0, after: 80 },
+        hasDirectParagraphFormatting: true,
+      }),
+      makePara(2, "Body", { spacing: { before: 0 } }),
+    ];
+    const measures: Measure[] = [makeMeasure(16), makeMeasure(16), makeMeasure(16)];
+
+    const layout = layoutDocument(blocks, measures, layoutOptions);
+    const fragments = layout.pages[0]!.fragments;
+
+    expect(fragments[1]!.y).toBe(16);
+    expect(fragments[2]!.y).toBe(112);
   });
 
   test("non-empty paragraphs always carry their inherited spacing", () => {

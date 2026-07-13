@@ -87,9 +87,7 @@ export function collectSectionConfigs(
 
 /**
  * Whether a paragraph block has no visible content (no runs, or a single
- * empty text run). Word collapses style-inherited spacing on empty
- * paragraphs (only direct `<w:pPr><w:spacing>` formatting survives) — see
- * eigenpal #402.
+ * empty text run).
  */
 function isEmptyParagraph(block: ParagraphBlock): boolean {
   if (block.runs.length === 0) {
@@ -130,15 +128,20 @@ function pageHasVisibleBodyContent(
 /**
  * Get spacing before a paragraph block. Empty paragraphs whose
  * `before` came only from the implicit default paragraph style collapse to
- * zero. An explicit `w:pStyle` selection is authored paragraph formatting,
- * so Word keeps the selected style's spacing even when the paragraph is empty.
+ * zero. Word keeps inherited spacing when the empty paragraph itself is
+ * authored through direct `w:pPr` formatting or an explicit `w:pStyle`.
  */
 function getSpacingBefore(block: ParagraphBlock): number {
   const value = block.attrs?.spacing?.before ?? 0;
   if (value === 0) {
     return 0;
   }
-  if (isEmptyParagraph(block) && !block.attrs?.styleId && !block.attrs?.spacingExplicit?.before) {
+  if (
+    isEmptyParagraph(block) &&
+    !block.attrs?.styleId &&
+    !block.attrs?.hasDirectParagraphFormatting &&
+    !block.attrs?.spacingExplicit?.before
+  ) {
     return 0;
   }
   return value;
@@ -153,7 +156,12 @@ function getSpacingAfter(block: ParagraphBlock): number {
   if (value === 0) {
     return 0;
   }
-  if (isEmptyParagraph(block) && !block.attrs?.styleId && !block.attrs?.spacingExplicit?.after) {
+  if (
+    isEmptyParagraph(block) &&
+    !block.attrs?.styleId &&
+    !block.attrs?.hasDirectParagraphFormatting &&
+    !block.attrs?.spacingExplicit?.after
+  ) {
     return 0;
   }
   return value;

@@ -76,6 +76,29 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.defaultFontFamily).toBe("Arial");
   });
 
+  test("marks direct formatting on an empty paragraph for spacing layout", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", {
+        spaceAfter: 200,
+        _originalFormatting: { indentLeft: 720 },
+      }),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    expect(paragraph?.attrs?.hasDirectParagraphFormatting).toBe(true);
+  });
+
+  test("does not mark a bare empty paragraph as directly formatted", () => {
+    const doc = schema.node("doc", null, [schema.node("paragraph")]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    expect(paragraph?.attrs?.hasDirectParagraphFormatting).toBeUndefined();
+  });
+
   test("preserves Word rendered-page-break hints for layout", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { renderedPageBreakBefore: true }, [schema.text("Next page")]),
