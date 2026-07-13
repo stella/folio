@@ -416,7 +416,7 @@ test.describe("image", () => {
 });
 
 test.describe("rendered page-break hints", () => {
-  test("cached hints paginate without duplicating structural breaks", async ({ page }) => {
+  test("cached hints remain advisory without duplicating structural breaks", async ({ page }) => {
     await mountFixture(page, "sample.docx");
 
     const replaceDocument = async (
@@ -450,7 +450,7 @@ test.describe("rendered page-break hints", () => {
     };
 
     await replaceDocument("hintAfterContent");
-    await waitForPages(2);
+    await waitForPages(1);
 
     await replaceDocument("hintAfterBreak");
     await waitForPages(2);
