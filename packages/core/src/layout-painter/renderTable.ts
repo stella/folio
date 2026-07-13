@@ -356,7 +356,7 @@ function renderNestedTable(
 
   // Render all rows
   const columnsPinned = tableColumnsArePinned(block);
-  const cellGrid = buildTableCellGrid(block);
+  const cellGrid = buildTableCellGrid(block, measure.columnWidths.length);
   let y = 0;
   for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
     const row = block.rows[rowIndex];
@@ -565,7 +565,7 @@ type TableCellGrid = Map<string, TableCell>;
 const tableCellGridKey = (rowIndex: number, columnIndex: number): string =>
   `${rowIndex}:${columnIndex}`;
 
-function buildTableCellGrid(block: TableBlock): TableCellGrid {
+function buildTableCellGrid(block: TableBlock, columnCount: number): TableCellGrid {
   const grid: TableCellGrid = new Map();
 
   for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
@@ -581,10 +581,7 @@ function buildTableCellGrid(block: TableBlock): TableCellGrid {
       const colSpan = cell.colSpan ?? 1;
       const rowSpan = cell.rowSpan ?? 1;
       const rowEnd = Math.min(block.rows.length, rowIndex + rowSpan);
-      const columnEnd = Math.min(
-        block.columnWidths?.length ?? columnIndex + colSpan,
-        columnIndex + colSpan,
-      );
+      const columnEnd = Math.min(columnCount, columnIndex + colSpan);
       for (let gridRow = rowIndex; gridRow < rowEnd; gridRow++) {
         for (let gridColumn = columnIndex; gridColumn < columnEnd; gridColumn++) {
           grid.set(tableCellGridKey(gridRow, gridColumn), cell);
@@ -842,7 +839,7 @@ export function renderTableFragment(
   // Track spanning cells across rows
   const spanningCells = new Map<string, SpanningCell>();
   const columnsPinned = tableColumnsArePinned(block);
-  const cellGrid = buildTableCellGrid(block);
+  const cellGrid = buildTableCellGrid(block, measure.columnWidths.length);
 
   // Render repeated header rows for continuation fragments. For a mid-content
   // row break (eigenpal #698), keep repeated headers pinned to the fragment top
