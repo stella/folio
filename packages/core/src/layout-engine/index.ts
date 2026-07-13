@@ -606,7 +606,7 @@ export function layoutDocument(
       isVisibleBodyBlock &&
       paginator.getCurrentState().page.number > pageBeforeBlockLayout
     ) {
-      const previousPage = paginator.pages.find(({ number }) => number === pageBeforeBlockLayout);
+      const previousPage = paginator.pages[pageBeforeBlockLayout - 1];
       const blockContinuedAcrossBoundary = previousPage?.fragments.some(
         ({ blockId }) => blockId === block.id,
       );
