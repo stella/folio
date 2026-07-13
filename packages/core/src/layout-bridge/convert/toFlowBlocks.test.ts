@@ -99,6 +99,19 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.hasDirectParagraphFormatting).toBeUndefined();
   });
 
+  test("does not treat paragraph-mark character styling as paragraph formatting", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", {
+        _originalFormatting: { runProperties: { fontSize: 24 } },
+      }),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    expect(paragraph?.attrs?.hasDirectParagraphFormatting).toBeUndefined();
+  });
+
   test("preserves Word rendered-page-break hints for layout", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { renderedPageBreakBefore: true }, [schema.text("Next page")]),
