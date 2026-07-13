@@ -175,8 +175,29 @@ describe("calculateTabWidth", () => {
     expect(result.width).toBeCloseTo(twipsToPixels(4536 - firstStop));
   });
 
-  it("returns fallback when width would be too small", () => {
-    // When tab width calculates to less than 1, should use fallback
+  it("keeps a sub-pixel advance to an aligned explicit stop", () => {
+    const result = calculateTabWidth(
+      0,
+      { explicitStops: [{ val: "center", pos: 465 }] },
+      { followingWidth: 61 },
+    );
+
+    expect(result.alignment).toBe("center");
+    expect(result.width).toBeCloseTo(0.5);
+  });
+
+  it("falls back when aligned content would begin before the cursor", () => {
+    const result = calculateTabWidth(
+      0,
+      { explicitStops: [{ val: "center", pos: 465 }] },
+      { followingWidth: 64 },
+    );
+
+    expect(result.alignment).toBe("default");
+    expect(result.width).toBe(48);
+  });
+
+  it("keeps a positive default advance when close to a stop", () => {
     const result = calculateTabWidth(twipsToPixels(719), {}); // Just before 720
     expect(result.width).toBeGreaterThan(0);
   });
