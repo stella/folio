@@ -1151,6 +1151,8 @@ export type LayoutOptions = {
    * same extension.
    */
   firstPageMargins?: PageMargins;
+  /** Per-section body margins used on even section pages. */
+  sectionEvenPageMargins?: (PageMargins | undefined)[];
   /** Body-level final section page size. */
   finalPageSize?: { w: number; h: number };
   /** Body-level final section margins. */

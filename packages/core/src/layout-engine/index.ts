@@ -422,6 +422,9 @@ export function layoutDocument(
     ...(options.firstPageMargins !== undefined
       ? { firstPageMargins: options.firstPageMargins }
       : {}),
+    ...(options.sectionEvenPageMargins !== undefined
+      ? { sectionEvenPageMargins: options.sectionEvenPageMargins }
+      : {}),
     columns: initialConfig.columns ?? DEFAULT_COLUMNS,
     ...(options.footnoteReservedHeights !== undefined
       ? { footnoteReservedHeights: options.footnoteReservedHeights }

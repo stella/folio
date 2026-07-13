@@ -405,7 +405,8 @@ export type LayoutOptions = {
         h: number;
     }; /** Initial page margins. */
     margins: PageMargins;
-    firstPageMargins?: PageMargins; /** Body-level final section page size. */
+    firstPageMargins?: PageMargins; /** Per-section body margins used on even section pages. */
+    sectionEvenPageMargins?: (PageMargins | undefined)[]; /** Body-level final section page size. */
     finalPageSize?: {
         w: number;
         h: number;
@@ -543,7 +544,8 @@ export type PaginatorOptions = {
     }; /** Page margins. */
     margins: PageMargins; /** Swap left/right margins on even physical pages. */
     mirrorMargins?: boolean;
-    firstPageMargins?: PageMargins; /** Column configuration (optional). */
+    firstPageMargins?: PageMargins; /** Per-section body margins used on even section pages. */
+    sectionEvenPageMargins?: (PageMargins | undefined)[]; /** Column configuration (optional). */
     columns?: ColumnLayout; /** Per-page footnote reserved heights (pageNumber → height in pixels). */
     footnoteReservedHeights?: Map<number, number>; /** Header/footer refs by section index. */
     sectionHeaderFooterRefs?: PageHeaderFooterRefs[]; /** Callback when a new page is created. */

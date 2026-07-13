@@ -2355,7 +2355,7 @@ export function applySectionHeaderFooterOptions(
     if (useFirst) {
       return refs.headerFirst;
     }
-    if (useEven && refs.headerEven) {
+    if (useEven) {
       return refs.headerEven;
     }
     return refs.headerDefault;
@@ -2364,7 +2364,7 @@ export function applySectionHeaderFooterOptions(
     if (useFirst) {
       return refs.footerFirst;
     }
-    if (useEven && refs.footerEven) {
+    if (useEven) {
       return refs.footerEven;
     }
     return refs.footerDefault;

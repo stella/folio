@@ -626,6 +626,34 @@ describe("header and footer rendering", () => {
     });
   });
 
+  test("leaves enabled even-page slots blank when no even part exists", () => {
+    const pageOptions = {
+      headerContent: headerFooterTextContent("Odd header"),
+      footerContent: headerFooterTextContent("Odd footer"),
+    };
+    const applied = applySectionHeaderFooterOptions(
+      {
+        ...page,
+        number: 2,
+        sectionPageNumber: 2,
+        headerFooterRefs: {
+          evenAndOddHeaders: true,
+          headerDefault: "default-header",
+          footerDefault: "default-footer",
+        },
+        fragments: [],
+      },
+      pageOptions,
+      {
+        headerContentByRId: new Map([["default-header", headerFooterTextContent("Odd header")]]),
+        footerContentByRId: new Map([["default-footer", headerFooterTextContent("Odd footer")]]),
+      },
+    );
+
+    expect(applied).toBe(true);
+    expect(pageOptions).toEqual({});
+  });
+
   test("keeps top-and-bottom text boxes in header flow", () => {
     const textBoxBlock: TextBoxBlock = {
       kind: "textBox",

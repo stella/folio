@@ -298,6 +298,15 @@ const makeState = (): EditorState =>
     ]),
   });
 
+const makeTwoPageState = (): EditorState =>
+  EditorState.create({
+    doc: schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Odd page")]),
+      schema.node("pageBreak"),
+      schema.node("paragraph", null, [schema.text("Even page")]),
+    ]),
+  });
+
 const makeSectionedState = (): EditorState =>
   EditorState.create({
     doc: schema.node("doc", null, [
@@ -653,6 +662,37 @@ describe("runLayoutPipeline", () => {
 
     expect(outcome.layout?.pages.at(0)?.margins.top).toBe(MARGINS.top);
     expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(MARGINS.top);
+  });
+
+  test("uses authored margins for a blank even-page header and footer", () => {
+    const content = { type: "header", hdrFtrType: "default", content: [] } as const;
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        headerContent: content,
+        footerContent: { ...content, type: "footer" },
+        sectionHeaderFooterRefs: [
+          {
+            evenAndOddHeaders: true,
+            headerDefault: "odd-header",
+            footerDefault: "odd-footer",
+          },
+        ],
+        renderHfFromContentOrPm: (hf) => (hf ? makePreparedHeaderFooter(120) : undefined),
+        renderHeaderFooterContentByRId: (_source, _hfPMs, _width, metrics) =>
+          new Map([
+            [
+              metrics.section === "header" ? "odd-header" : "odd-footer",
+              makePreparedHeaderFooter(120),
+            ],
+          ]),
+      }),
+      makeTwoPageState(),
+    );
+
+    expect(outcome.layout?.pages).toHaveLength(2);
+    expect(outcome.layout?.pages[0]?.margins.top).toBe(MARGINS.header + 120);
+    expect(outcome.layout?.pages[0]?.margins.bottom).toBe(MARGINS.footer + 120);
+    expect(outcome.layout?.pages[1]?.margins).toEqual(MARGINS);
   });
 
   test("moves a section body between its referenced default header and footer", () => {

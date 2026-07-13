@@ -24,6 +24,21 @@ describe("paginator mirrored margins", () => {
   });
 });
 
+describe("paginator even-page margins", () => {
+  test("uses the section-specific clearance on even section pages", () => {
+    const evenMargins = { ...MARGINS, top: 30, bottom: 35 };
+    const paginator = createPaginator({
+      pageSize: SIZE,
+      margins: MARGINS,
+      sectionEvenPageMargins: [evenMargins],
+    });
+
+    expect(paginator.getCurrentState().page.margins).toEqual(MARGINS);
+    expect(paginator.forcePageBreak().page.margins).toEqual(evenMargins);
+    expect(paginator.forcePageBreak().page.margins).toEqual(MARGINS);
+  });
+});
+
 describe("paginator forcePageBreak", () => {
   test("two consecutive forcePageBreak calls preserve an explicit blank page", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });

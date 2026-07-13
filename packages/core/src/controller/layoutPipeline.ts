@@ -439,6 +439,21 @@ export function runLayoutPipeline<THfPMs>(
       hfMetricsFooter,
       hfOptions,
     );
+    const sectionPropertiesForMargins =
+      document?.package.document.sections?.map((section) => section.properties) ??
+      (sectionProperties ? [sectionProperties] : []);
+    const sectionEvenPageMargins = sectionHeaderFooterRefs?.map((refs, index) => {
+      if (refs.evenAndOddHeaders !== true) {
+        return undefined;
+      }
+      const properties = sectionPropertiesForMargins[index];
+      const authoredMargins = properties ? getMargins(properties) : margins;
+      return bodyMarginsClearHeaderFooter({
+        authoredMargins,
+        preparedHeader: refs.headerEven ? headerContentByRId?.get(refs.headerEven) : undefined,
+        preparedFooter: refs.footerEven ? footerContentByRId?.get(refs.footerEven) : undefined,
+      });
+    });
 
     newBlocks = bodyBlocksClearSectionHeaderFooter(newBlocks, {
       authoredMargins: margins,
@@ -575,6 +590,9 @@ export function runLayoutPipeline<THfPMs>(
       }
       if (sectionHeaderFooterRefs !== undefined) {
         nextLayoutOpts.sectionHeaderFooterRefs = sectionHeaderFooterRefs;
+      }
+      if (sectionEvenPageMargins !== undefined) {
+        nextLayoutOpts.sectionEvenPageMargins = sectionEvenPageMargins;
       }
       return nextLayoutOpts;
     };

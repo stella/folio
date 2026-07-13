@@ -62,6 +62,8 @@ export type PaginatorOptions = {
    * first-page header) vs. its body pages. Pages 2+ use `margins`.
    */
   firstPageMargins?: PageMargins;
+  /** Per-section body margins used on even section pages. */
+  sectionEvenPageMargins?: (PageMargins | undefined)[];
   /** Column configuration (optional). */
   columns?: ColumnLayout;
   /** Per-page footnote reserved heights (pageNumber → height in pixels). */
@@ -149,7 +151,10 @@ export function createPaginator(options: PaginatorOptions) {
     }
     return (
       arePageSizesEqual(state.page.size, pageSize) &&
-      areMarginsEqual(state.page.margins, getPageMargins(state.page.number))
+      areMarginsEqual(
+        state.page.margins,
+        getPageMargins(state.page.number, state.page.sectionPageNumber ?? currentSectionPageNumber),
+      )
     );
   }
 
@@ -178,11 +183,15 @@ export function createPaginator(options: PaginatorOptions) {
     recalculateColumnWidths();
   }
 
-  function getPageMargins(pageNumber: number): PageMargins {
+  function getPageMargins(pageNumber: number, sectionPageNumber: number): PageMargins {
+    const evenMargins =
+      sectionPageNumber % 2 === 0
+        ? options.sectionEvenPageMargins?.[currentSectionIndex]
+        : undefined;
     const pageMargins =
       pageNumber === 1 && options.firstPageMargins
         ? { ...options.firstPageMargins }
-        : { ...margins };
+        : { ...(evenMargins ?? margins) };
     if (options.mirrorMargins === true && pageNumber % 2 === 0) {
       return { ...pageMargins, left: pageMargins.right, right: pageMargins.left };
     }
@@ -200,7 +209,7 @@ export function createPaginator(options: PaginatorOptions) {
    * Get X position for a given column index.
    */
   function getColumnX(columnIndex: number): number {
-    const activeLeftMargin = states.at(-1)?.page.margins.left ?? getPageMargins(1).left;
+    const activeLeftMargin = states.at(-1)?.page.margins.left ?? getPageMargins(1, 1).left;
     let x = activeLeftMargin;
     for (let index = 0; index < columnIndex; index++) {
       x += (columnWidths[index] ?? columnWidths[0] ?? 0) + gapAfterColumn(columns, index);
@@ -224,7 +233,7 @@ export function createPaginator(options: PaginatorOptions) {
     // every page in the section would inherit page 1's title-page top
     // margin, leaving large empty space at the top of pages 2+ on
     // first-page-header docs (NVCA-style templates).
-    const pageMargins = getPageMargins(pageNumber);
+    const pageMargins = getPageMargins(pageNumber, currentSectionPageNumber);
     const topMargin = pageMargins.top;
     const contentBottom = pageSize.h - pageMargins.bottom;
 
@@ -462,7 +471,7 @@ export function createPaginator(options: PaginatorOptions) {
       applyPendingLayout();
     }
 
-    const pageMargins = getPageMargins(current.page.number);
+    const pageMargins = getPageMargins(current.page.number, 1);
     const topMargin = pageMargins.top;
     const rawContentBottom = pageSize.h - pageMargins.bottom;
     const footnoteHeight = options.footnoteReservedHeights?.get(current.page.number) ?? 0;
