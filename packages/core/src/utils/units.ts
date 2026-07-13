@@ -43,7 +43,7 @@ export const PIXELS_PER_INCH = STANDARD_DPI;
  * The value is empirical (Word's rendered auto gap), not derivable from a
  * twips conversion. See eigenpal/docx-editor#823.
  */
-export const AUTO_PARAGRAPH_SPACING_PX = (14 / POINTS_PER_INCH) * PIXELS_PER_INCH;
+export const AUTO_PARAGRAPH_SPACING_PX = pointsToPixels(14);
 
 // ============================================================================
 // TWIPS CONVERSIONS
