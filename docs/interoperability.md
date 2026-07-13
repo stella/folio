@@ -51,6 +51,8 @@ release and re-check its licence before adding it to CI or a hosted service.
   opt-in and identified by name and version in every report.
 - Comparisons use synthetic, public, or explicitly authorized fixtures. Do not
   upload customer or legal documents to third-party services.
+- Treat documents as untrusted parser input. Keep reference applications
+  patched, and use a disposable environment for corpora from unknown sources.
 - Record renderer version, conversion path, fonts, and document hash. A result
   without provenance is not reproducible evidence.
 - Treat font substitutions and platform-specific metrics as environment data,

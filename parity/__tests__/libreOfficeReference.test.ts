@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { buildLibreOfficeExportArgs } from "../libreOfficeTruth";
+import { buildLibreOfficeExportArgs } from "../libreOfficeReference";
 
 describe("LibreOffice reference renderer", () => {
   test("uses headless PDF export with an isolated user profile", () => {

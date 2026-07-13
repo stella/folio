@@ -243,7 +243,7 @@ const runPipeline = async (
       try {
         // oxlint-disable-next-line no-await-in-loop -- references are rendered sequentially for deterministic app automation
         const referenceGeom = limitGeomPages(
-          await referenceRenderer.getTruth(doc, { refresh: flags.refreshReference }),
+          await referenceRenderer.getGeometry(doc, { refresh: flags.refreshReference }),
           flags.maxPages,
         );
 

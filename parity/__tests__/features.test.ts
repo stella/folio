@@ -572,7 +572,7 @@ describe("assessFontEnvironment", () => {
     });
   });
 
-  test("rejects a renderer mismatch even when Word used the requested font", () => {
+  test("rejects a renderer mismatch even when the reference used the requested font", () => {
     const assessment = assessFontEnvironment(
       ["Arial"],
       fontGeom("word", [["Same text", "ArialMT"]]),

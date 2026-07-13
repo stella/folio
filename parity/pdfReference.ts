@@ -55,7 +55,7 @@ export const readCachedGeom = async (
 
 export const extractPdfGeometry = async (pdfPath: string, xmlPath: string): Promise<PageGeom[]> => {
   const proc = Bun.spawn(["mutool", "draw", "-F", "stext", "-o", xmlPath, pdfPath], {
-    stdout: "pipe",
+    stdout: "ignore",
     stderr: "pipe",
   });
   const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
@@ -103,7 +103,7 @@ const renderPagePngs = async (
       pdfPath,
       ...pageRange,
     ],
-    { stdout: "pipe", stderr: "pipe" },
+    { stdout: "ignore", stderr: "pipe" },
   );
   const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
   if (exitCode !== 0) {

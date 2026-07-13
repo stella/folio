@@ -2,10 +2,10 @@
 
 import {
   getLibreOfficePagePngs,
-  getLibreOfficeTruth,
+  getLibreOfficeGeometry,
   getLibreOfficeVersion,
   isLibreOfficeAvailable,
-} from "./libreOfficeTruth";
+} from "./libreOfficeReference";
 import type { DocGeom, ReferenceRendererId } from "./types";
 import { getWordPagePngs, getWordTruth, getWordVersion, isWordAvailable } from "./wordTruth";
 
@@ -15,7 +15,7 @@ export type ReferenceRenderer = {
   installHint: string;
   isAvailable: () => Promise<boolean>;
   getVersion: () => Promise<string | null>;
-  getTruth: (docxPath: string, options?: { refresh?: boolean }) => Promise<DocGeom>;
+  getGeometry: (docxPath: string, options?: { refresh?: boolean }) => Promise<DocGeom>;
   getPagePngs: (docxPath: string, options?: { maxPages?: number }) => Promise<string[]>;
 };
 
@@ -25,7 +25,7 @@ const LIBREOFFICE_RENDERER: ReferenceRenderer = {
   installHint: "Install LibreOffice from https://www.libreoffice.org/download/",
   isAvailable: isLibreOfficeAvailable,
   getVersion: getLibreOfficeVersion,
-  getTruth: getLibreOfficeTruth,
+  getGeometry: getLibreOfficeGeometry,
   getPagePngs: getLibreOfficePagePngs,
 };
 
@@ -35,7 +35,7 @@ const WORD_RENDERER: ReferenceRenderer = {
   installHint: "Install Word for Mac from https://www.microsoft.com/microsoft-365/word",
   isAvailable: isWordAvailable,
   getVersion: getWordVersion,
-  getTruth: getWordTruth,
+  getGeometry: getWordTruth,
   getPagePngs: getWordPagePngs,
 };
 
@@ -43,6 +43,10 @@ export const isReferenceRendererId = (value: string): value is ReferenceRenderer
   value === "libreoffice" || value === "word";
 
 export const getReferenceRenderer = (id: ReferenceRendererId): ReferenceRenderer => {
-  if (id === "libreoffice") return LIBREOFFICE_RENDERER;
-  return WORD_RENDERER;
+  switch (id) {
+    case "libreoffice":
+      return LIBREOFFICE_RENDERER;
+    case "word":
+      return WORD_RENDERER;
+  }
 };

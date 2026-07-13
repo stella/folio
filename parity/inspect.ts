@@ -185,7 +185,7 @@ const main = async (): Promise<void> => {
   const maxPages = flags.maxPages ?? Math.max(flags.page, 1);
   const referenceRenderer = getReferenceRenderer(flags.referenceId);
 
-  const referenceGeom = await referenceRenderer.getTruth(doc, {});
+  const referenceGeom = await referenceRenderer.getGeometry(doc, {});
   const extractor = await createFolioExtractor();
   let folio: FolioExtractResult;
   try {

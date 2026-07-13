@@ -311,7 +311,15 @@ export const getWordTruth = async (
   await exportViaWord(absDocxPath, pdfPath);
 
   const xmlPath = path.join(dir, STEXT_XML_FILENAME);
-  const pages = await extractPdfGeometry(pdfPath, xmlPath);
+  let pages;
+  try {
+    pages = await extractPdfGeometry(pdfPath, xmlPath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new WordTruthError(message, "extract");
+  }
+
+  await rm(path.join(dir, PAGES_DIRNAME), { recursive: true, force: true });
 
   const [wordVersion, mutoolVersion] = await Promise.all([getWordVersion(), getMutoolVersion()]);
   const geom: DocGeom = {
@@ -343,14 +351,19 @@ export const getWordPagePngs = async (
   const pdfPath = path.join(dir, PDF_FILENAME);
 
   if (!(await Bun.file(pdfPath).exists())) {
-    await getWordTruth(absDocxPath);
+    await getWordTruth(absDocxPath, { refresh: true });
   }
 
   const pagesDir = path.join(dir, PAGES_DIRNAME);
   await mkdir(pagesDir, { recursive: true });
-  return await getPdfPagePngs({
-    pdfPath,
-    pagesDir,
-    ...(options.maxPages === undefined ? {} : { maxPages: options.maxPages }),
-  });
+  try {
+    return await getPdfPagePngs({
+      pdfPath,
+      pagesDir,
+      ...(options.maxPages === undefined ? {} : { maxPages: options.maxPages }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new WordTruthError(message, "extract");
+  }
 };

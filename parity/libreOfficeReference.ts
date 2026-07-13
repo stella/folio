@@ -26,14 +26,14 @@ const STEXT_XML_FILENAME = "libreoffice-stext.xml";
 const GEOM_JSON_FILENAME = "libreoffice-geom.json";
 const PAGES_DIRNAME = "libreoffice-pages";
 
-export type LibreOfficeTruthStage = "availability" | "export" | "extract";
+export type LibreOfficeReferenceStage = "availability" | "export" | "extract";
 
-export class LibreOfficeTruthError extends Error {
-  readonly stage: LibreOfficeTruthStage;
+export class LibreOfficeReferenceError extends Error {
+  readonly stage: LibreOfficeReferenceStage;
 
-  constructor(message: string, stage: LibreOfficeTruthStage) {
+  constructor(message: string, stage: LibreOfficeReferenceStage) {
     super(message);
-    this.name = "LibreOfficeTruthError";
+    this.name = "LibreOfficeReferenceError";
     this.stage = stage;
   }
 }
@@ -60,7 +60,7 @@ export const getLibreOfficeVersion = async (): Promise<string | null> => {
 
   const proc = Bun.spawn([binary, "--headless", "--version"], {
     stdout: "pipe",
-    stderr: "pipe",
+    stderr: "ignore",
   });
   const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
   const version = stdout.trim().replace(/^LibreOffice\s+/u, "");
@@ -98,7 +98,7 @@ export const buildLibreOfficeExportArgs = ({
 const exportViaLibreOffice = async (docxPath: string, destPdfPath: string): Promise<void> => {
   const binary = await getLibreOfficeBinary();
   if (binary === null) {
-    throw new LibreOfficeTruthError(
+    throw new LibreOfficeReferenceError(
       "LibreOffice is not available on this machine.",
       "availability",
     );
@@ -134,13 +134,13 @@ const exportViaLibreOffice = async (docxPath: string, destPdfPath: string): Prom
     clearTimeout(timeout);
 
     if (timedOut) {
-      throw new LibreOfficeTruthError(
+      throw new LibreOfficeReferenceError(
         `LibreOffice export timed out after ${EXPORT_TIMEOUT_MS}ms for ${docxPath}`,
         "export",
       );
     }
     if (exitCode !== 0) {
-      throw new LibreOfficeTruthError(
+      throw new LibreOfficeReferenceError(
         `LibreOffice export failed for ${docxPath} (exit ${exitCode})`,
         "export",
       );
@@ -148,7 +148,7 @@ const exportViaLibreOffice = async (docxPath: string, destPdfPath: string): Prom
 
     const output = Bun.file(outputPath);
     if (!(await output.exists()) || output.size === 0) {
-      throw new LibreOfficeTruthError(
+      throw new LibreOfficeReferenceError(
         `LibreOffice export produced no PDF for ${docxPath}`,
         "export",
       );
@@ -159,7 +159,7 @@ const exportViaLibreOffice = async (docxPath: string, destPdfPath: string): Prom
   }
 };
 
-export const getLibreOfficeTruth = async (
+export const getLibreOfficeGeometry = async (
   docxPath: string,
   options: { refresh?: boolean } = {},
 ): Promise<DocGeom> => {
@@ -175,7 +175,7 @@ export const getLibreOfficeTruth = async (
   }
 
   if (!(await isLibreOfficeAvailable())) {
-    throw new LibreOfficeTruthError(
+    throw new LibreOfficeReferenceError(
       "LibreOffice and/or mutool are not available on this machine.",
       "availability",
     );
@@ -190,8 +190,10 @@ export const getLibreOfficeTruth = async (
     pages = await extractPdfGeometry(pdfPath, xmlPath);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new LibreOfficeTruthError(message, "extract");
+    throw new LibreOfficeReferenceError(message, "extract");
   }
+
+  await rm(path.join(dir, PAGES_DIRNAME), { recursive: true, force: true });
 
   const [libreOfficeVersion, mutoolVersion] = await Promise.all([
     getLibreOfficeVersion(),
@@ -223,14 +225,19 @@ export const getLibreOfficePagePngs = async (
   const pdfPath = path.join(dir, PDF_FILENAME);
 
   if (!(await Bun.file(pdfPath).exists())) {
-    await getLibreOfficeTruth(absDocxPath);
+    await getLibreOfficeGeometry(absDocxPath, { refresh: true });
   }
 
   const pagesDir = path.join(dir, PAGES_DIRNAME);
   await mkdir(pagesDir, { recursive: true });
-  return await getPdfPagePngs({
-    pdfPath,
-    pagesDir,
-    ...(options.maxPages === undefined ? {} : { maxPages: options.maxPages }),
-  });
+  try {
+    return await getPdfPagePngs({
+      pdfPath,
+      pagesDir,
+      ...(options.maxPages === undefined ? {} : { maxPages: options.maxPages }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new LibreOfficeReferenceError(message, "extract");
+  }
 };
