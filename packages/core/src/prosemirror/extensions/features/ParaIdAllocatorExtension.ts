@@ -75,20 +75,21 @@ const mapKeeperPositions = (
       return true;
     }
     const id = node.attrs["paraId"];
-    if (isUsableParaId(id) && !keepers.has(id)) {
-      let mapped = pos;
-      let deleted = false;
-      for (const tr of transactions) {
-        const result = tr.mapping.mapResult(mapped);
-        if (result.deleted) {
-          deleted = true;
-          break;
-        }
-        mapped = result.pos;
+    if (!isUsableParaId(id) || keepers.has(id)) {
+      return false;
+    }
+    let mapped = pos;
+    let deleted = false;
+    for (const tr of transactions) {
+      const result = tr.mapping.mapResult(mapped);
+      if (result.deleted) {
+        deleted = true;
+        break;
       }
-      if (!deleted) {
-        keepers.set(id, mapped);
-      }
+      mapped = result.pos;
+    }
+    if (!deleted) {
+      keepers.set(id, mapped);
     }
     return false;
   });
