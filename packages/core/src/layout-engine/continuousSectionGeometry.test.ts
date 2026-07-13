@@ -145,6 +145,62 @@ describe("continuous section break geometry", () => {
     expect(secondColumnFragment?.width).toBe(300);
   });
 
+  test("content after a continuous column section resumes below its tallest column", () => {
+    const intro = paragraph("intro", 100);
+    const firstBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "first-break",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+    };
+    const first = paragraph("first", 100);
+    const second = paragraph("second", 100);
+    const columnBreak: ColumnBreakBlock = { kind: "columnBreak", id: "column-break" };
+    const third = paragraph("third", 50);
+    const secondBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "second-break",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      columns: { count: 2, gap: 20 },
+    };
+    const outro = paragraph("outro", 100);
+    const blocks: FlowBlock[] = [
+      intro.block,
+      firstBreak,
+      first.block,
+      second.block,
+      columnBreak,
+      third.block,
+      secondBreak,
+      outro.block,
+    ];
+    const measures = [
+      intro.measure,
+      { kind: "sectionBreak" },
+      first.measure,
+      second.measure,
+      { kind: "columnBreak" },
+      third.measure,
+      { kind: "sectionBreak" },
+      outro.measure,
+    ] as never;
+
+    const result = layoutDocument(blocks, measures, {
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      finalPageSize: { w: 800, h: 1000 },
+      finalMargins: { top: 50, right: 50, bottom: 50, left: 50 },
+    });
+
+    const outroFragment = result.pages[0]?.fragments.find(
+      (fragment) => fragment.kind === "paragraph" && fragment.blockId === "outro",
+    );
+    expect(outroFragment?.y).toBe(350);
+  });
+
   test("current page keeps old geometry and overflow page picks up new geometry", () => {
     const first = paragraph("a", 200);
     const sectionBreak: SectionBreakBlock = {

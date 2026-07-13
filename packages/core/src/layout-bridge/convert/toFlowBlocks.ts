@@ -2535,10 +2535,11 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
         const hasListFormatting =
           (pmAttrs.numPr !== null && pmAttrs.numPr !== undefined) ||
           (pmAttrs.listMarker !== null && pmAttrs.listMarker !== undefined);
-        const onlyChild = node.childCount === 1 ? node.firstChild : null;
-        const isStandaloneColumnBreak =
-          onlyChild?.type.name === "hardBreak" &&
-          expectHardBreakAttrs(onlyChild).breakType === "column";
+        const firstChild = node.firstChild;
+        const startsWithColumnBreak =
+          firstChild?.type.name === "hardBreak" &&
+          expectHardBreakAttrs(firstChild).breakType === "column";
+        const isStandaloneColumnBreak = node.childCount === 1 && startsWithColumnBreak;
 
         if (isStandaloneColumnBreak) {
           const columnBreak: ColumnBreakBlock = {
@@ -2548,6 +2549,20 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
             pmEnd: pos + node.nodeSize,
           };
           trackedPush(columnBreak);
+        } else if (startsWithColumnBreak && firstChild) {
+          const columnBreak: ColumnBreakBlock = {
+            kind: "columnBreak",
+            id: nextBlockId(),
+            pmStart: pos + 1,
+            pmEnd: pos + 1 + firstChild.nodeSize,
+          };
+          trackedPush(columnBreak);
+
+          const paragraph = convertParagraph(node, pos, opts);
+          if (paragraph.runs.at(0)?.kind === "lineBreak") {
+            paragraph.runs.shift();
+          }
+          trackedPush(paragraph);
         } else if (node.content.size > 0 || hasListFormatting || !hasSectionBreak) {
           // An empty paragraph carrying w:sectPr is Word's structural section
           // marker; it does not paint an additional blank line. Text-bearing

@@ -57,6 +57,25 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(blocks.at(1)).toMatchObject({ kind: "columnBreak", pmStart: 14, pmEnd: 17 });
   });
 
+  test("emits a structural break before text after a leading column break", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("First column")]),
+      schema.node("paragraph", null, [
+        schema.node("hardBreak", { breakType: "column" }),
+        schema.text("Second column"),
+      ]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "columnBreak", "paragraph"]);
+    expect(blocks.at(1)).toMatchObject({ kind: "columnBreak", pmStart: 15, pmEnd: 16 });
+    expect(blocks.at(2)).toMatchObject({
+      kind: "paragraph",
+      runs: [{ kind: "text", text: "Second column" }],
+    });
+  });
+
   test("empty paragraph measurement uses direct paragraph-mark font metrics", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", {

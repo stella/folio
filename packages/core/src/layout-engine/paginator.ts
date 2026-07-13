@@ -194,6 +194,7 @@ export function createPaginator(options: PaginatorOptions) {
   // (continuous section break). When advanceColumn moves to the next column,
   // it resets cursorY to this value instead of topMargin.
   let columnRegionTop = margins.top;
+  let columnRegionMaxBottom = margins.top;
 
   /**
    * Get X position for a given column index.
@@ -262,6 +263,7 @@ export function createPaginator(options: PaginatorOptions) {
 
     // Reset column region to page top on new page
     columnRegionTop = topMargin;
+    columnRegionMaxBottom = topMargin;
 
     if (options.onNewPage) {
       options.onNewPage(state);
@@ -306,6 +308,7 @@ export function createPaginator(options: PaginatorOptions) {
   function advanceColumn(state: PageState): PageState {
     // Check if there are more columns on this page
     if (state.columnIndex < columns.count - 1) {
+      columnRegionMaxBottom = Math.max(columnRegionMaxBottom, state.cursorY);
       state.columnIndex += 1;
       state.cursorY = columnRegionTop;
       state.trailingSpacing = 0;
@@ -506,11 +509,14 @@ export function createPaginator(options: PaginatorOptions) {
    * column advancement stays below existing content (for continuous breaks).
    */
   function updateColumns(newColumns: ColumnLayout): void {
+    const previousColumnCount = columns.count;
+    const state = getCurrentState();
+    const previousRegionBottom = Math.max(columnRegionMaxBottom, state.cursorY);
+
     columns = newColumns;
     recalculateColumnWidths();
 
     // Update current page's column info for rendering
-    const state = getCurrentState();
     if (columns.count > 1) {
       state.page.columns = { ...columns };
     } else {
@@ -521,10 +527,15 @@ export function createPaginator(options: PaginatorOptions) {
     // physical page boundary before starting the next column layout.
     state.contentBottom = state.rawContentBottom - state.footnoteHeight;
 
+    if (previousColumnCount > 1) {
+      state.cursorY = previousRegionBottom;
+    }
+
     // Set column region top to current cursor position.
     // This ensures that when advancing columns, new columns start
     // at the same Y as where the multi-column content began (not page top).
     columnRegionTop = state.cursorY;
+    columnRegionMaxBottom = state.cursorY;
 
     // Reset to column 0 for the new column layout
     state.columnIndex = 0;
