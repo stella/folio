@@ -70,6 +70,10 @@ export function mergeParagraphFormatting(
     copyDefinedParagraphProperty(result, source, key);
   }
 
+  if (source.indentFirstLine !== undefined) {
+    result.hangingIndent = source.hangingIndent === true;
+  }
+
   const mergedRunProperties = mergeTextFormatting(result.runProperties, source.runProperties);
   if (mergedRunProperties) {
     result.runProperties = mergedRunProperties;

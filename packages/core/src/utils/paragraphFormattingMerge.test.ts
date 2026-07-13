@@ -40,6 +40,16 @@ describe("mergeParagraphFormatting", () => {
     expect(result?.numPr).toEqual({ numId: 4, ilvl: 2 });
   });
 
+  test("explicit first-line indent clears an inherited hanging indent", () => {
+    const result = mergeParagraphFormatting(
+      { indentFirstLine: -360, hangingIndent: true },
+      { indentFirstLine: 720 },
+    );
+
+    expect(result?.indentFirstLine).toBe(720);
+    expect(result?.hangingIndent).toBe(false);
+  });
+
   test("replaces tab collections and merges paragraph mark run properties", () => {
     const sourceTabs: NonNullable<ParagraphFormatting["tabs"]> = [
       { position: 720, alignment: "left" },
