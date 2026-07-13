@@ -780,7 +780,7 @@ describe("left-aligned table placement", () => {
     const { block, measure } = tallTable(1);
     block.rows[0]!.cells[0]!.padding.left = 7;
 
-    const fragment = tableFragments(block, measure)[0];
+    const fragment = tableFragments(block, measure).at(0);
 
     expect(fragment?.x).toBe(OPTIONS.margins.left - 7);
     expect((fragment?.x ?? 0) + block.rows[0]!.cells[0]!.padding.left).toBe(OPTIONS.margins.left);
@@ -791,7 +791,7 @@ describe("left-aligned table placement", () => {
     block.indent = 10;
     block.rows[0]!.cells[0]!.padding.left = 7;
 
-    const fragment = tableFragments(block, measure)[0];
+    const fragment = tableFragments(block, measure).at(0);
 
     expect(fragment?.x).toBe(OPTIONS.margins.left + 10);
   });
@@ -801,7 +801,7 @@ describe("left-aligned table placement", () => {
     block.indent = 0;
     block.rows[0]!.cells[0]!.padding.left = 7;
 
-    const fragment = tableFragments(block, measure)[0];
+    const fragment = tableFragments(block, measure).at(0);
 
     expect(fragment?.x).toBe(OPTIONS.margins.left);
   });
@@ -812,7 +812,7 @@ describe("floating table placement", () => {
     const { block, measure } = tallTable(1);
     block.floating = { horzAnchor: "page", tblpX: 80 };
 
-    const fragment = tableFragments(block, measure)[0];
+    const fragment = tableFragments(block, measure).at(0);
 
     expect(fragment?.x).toBe(80);
   });
