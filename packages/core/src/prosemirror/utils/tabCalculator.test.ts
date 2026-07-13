@@ -197,6 +197,17 @@ describe("calculateTabWidth", () => {
     expect(result.width).toBe(48);
   });
 
+  it("falls back instead of creating a zero-width aligned tab", () => {
+    const result = calculateTabWidth(
+      0,
+      { explicitStops: [{ val: "center", pos: 465 }] },
+      { followingWidth: 62 },
+    );
+
+    expect(result.alignment).toBe("default");
+    expect(result.width).toBe(48);
+  });
+
   it("keeps a positive default advance when close to a stop", () => {
     const result = calculateTabWidth(twipsToPixels(719), {}); // Just before 720
     expect(result.width).toBeGreaterThan(0);

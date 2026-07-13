@@ -264,9 +264,9 @@ export function calculateTabWidth(
     };
   }
 
-  // A sub-pixel advance is still a valid aligned stop. Fall back only when
-  // anchoring the following content would place it before the cursor.
-  if (width < 0) {
+  // A positive sub-pixel advance is still a valid aligned stop. Fall back when
+  // anchoring the following content would place it at or before the cursor.
+  if (width <= 0) {
     const defaultTabPx = twipsToPixels(defaultTabInterval);
     let fallbackWidth = defaultTabPx - (currentXPx % defaultTabPx);
     if (fallbackWidth <= 0) {
