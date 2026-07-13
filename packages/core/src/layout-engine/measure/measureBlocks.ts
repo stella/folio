@@ -199,7 +199,7 @@ export function measureTableBlock(
     // already wider, Word preserves that grid instead of scaling it down.
     const preserveExpandedGrid =
       tableBlock.layout !== "fixed" &&
-      tableBlock.widthType === "dxa" &&
+      (tableBlock.widthType === undefined || tableBlock.widthType === "dxa") &&
       totalWidth - explicitWidthPx > 1;
     if (!preserveExpandedGrid && totalWidth > 0 && Math.abs(totalWidth - explicitWidthPx) > 1) {
       const scale = explicitWidthPx / totalWidth;

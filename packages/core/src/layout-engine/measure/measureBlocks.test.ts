@@ -473,13 +473,12 @@ describe("measureTableBlock row height", () => {
 });
 
 describe("measureTableBlock preferred width", () => {
-  const tableWithPreferredWidth = (layout?: TableBlock["layout"]): TableBlock => ({
+  const tableWithPreferredWidth = (widthType?: TableBlock["widthType"]): TableBlock => ({
     kind: "table",
     id: "t",
     columnWidths: [60],
     width: 750,
-    widthType: "dxa",
-    ...(layout ? { layout } : {}),
+    ...(widthType ? { widthType } : {}),
     rows: [
       {
         id: "r",
@@ -496,6 +495,15 @@ describe("measureTableBlock preferred width", () => {
 
   test("preserves an autofit grid that exceeds the preferred dxa width", () => {
     withFakeTextMeasure(() => {
+      const measure = measureTableBlock(tableWithPreferredWidth("dxa"), 500);
+
+      expect(measure.columnWidths).toEqual([60]);
+      expect(measure.totalWidth).toBe(60);
+    }, fakeMeasure);
+  });
+
+  test("uses dxa preferred-width semantics when the width type is omitted", () => {
+    withFakeTextMeasure(() => {
       const measure = measureTableBlock(tableWithPreferredWidth(), 500);
 
       expect(measure.columnWidths).toEqual([60]);
@@ -505,7 +513,9 @@ describe("measureTableBlock preferred width", () => {
 
   test("continues to scale a fixed grid to its explicit dxa width", () => {
     withFakeTextMeasure(() => {
-      const measure = measureTableBlock(tableWithPreferredWidth("fixed"), 500);
+      const table = tableWithPreferredWidth("dxa");
+      table.layout = "fixed";
+      const measure = measureTableBlock(table, 500);
 
       expect(measure.columnWidths).toEqual([50]);
       expect(measure.totalWidth).toBe(50);
