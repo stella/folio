@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "ecma-376-part-1",
+      "title": "ECMA-376 Part 1: Fundamentals and Markup Language Reference",
+      "publisher": "Ecma International",
+      "version": "5th edition (December 2016)",
+      "profiles": ["strict"],
+      "sourceType": "artifact",
+      "url": "https://ecma-international.org/wp-content/uploads/ECMA-376-1_5th_edition_december_2016.zip",
+      "sha256": "9d0bcad9cf06054785b03762fcfadbf6bab7e54a5f9d69434e34b7fd464d4129",
+      "bytes": 43501721,
+      "cachePath": ".cache/specifications/ecma-376-part-1.zip",
+      "license": {
+        "auditStatus": "reviewed",
+        "notice": "Ecma default copyright notice",
+        "noticeUrl": "https://ecma-international.org/policies/by-ipr/ecma-text-copyright-policy/",
+        "redistribution": "cache-only",
+        "generatedOutput": "implementation-facts-only"
+      }
+    },
+    {
+      "id": "ecma-376-part-2-opc",
+      "title": "ECMA-376 Part 2: Open Packaging Conventions",
+      "publisher": "Ecma International",
+      "version": "5th edition (December 2021)",
+      "profiles": ["opc"],
+      "sourceType": "artifact",
+      "url": "https://ecma-international.org/wp-content/uploads/ECMA-376-2_5th_edition_december_2021.zip",
+      "sha256": "1d489dc491168ea1f9e9a59063acc8dd5f02b4ad1d21aa7ec19ba9a58d020c70",
+      "bytes": 1899204,
+      "cachePath": ".cache/specifications/ecma-376-part-2.zip",
+      "license": {
+        "auditStatus": "reviewed",
+        "notice": "Ecma default copyright notice",
+        "noticeUrl": "https://ecma-international.org/policies/by-ipr/ecma-text-copyright-policy/",
+        "redistribution": "cache-only",
+        "generatedOutput": "implementation-facts-only"
+      }
+    },
+    {
+      "id": "ecma-376-part-3-mce",
+      "title": "ECMA-376 Part 3: Markup Compatibility and Extensibility",
+      "publisher": "Ecma International",
+      "version": "5th edition (December 2015)",
+      "profiles": ["mce"],
+      "sourceType": "artifact",
+      "url": "https://ecma-international.org/wp-content/uploads/ECMA-376-3_5th_edition_december_2015.zip",
+      "sha256": "42294159fbbbe9393ccadac95b859d7729cc68d908898bcbe31034dda059daa8",
+      "bytes": 741741,
+      "cachePath": ".cache/specifications/ecma-376-part-3.zip",
+      "license": {
+        "auditStatus": "reviewed",
+        "notice": "Ecma default copyright notice",
+        "noticeUrl": "https://ecma-international.org/policies/by-ipr/ecma-text-copyright-policy/",
+        "redistribution": "cache-only",
+        "generatedOutput": "implementation-facts-only"
+      }
+    },
+    {
+      "id": "ecma-376-part-4-transitional",
+      "title": "ECMA-376 Part 4: Transitional Migration Features",
+      "publisher": "Ecma International",
+      "version": "5th edition (December 2016)",
+      "profiles": ["transitional"],
+      "sourceType": "artifact",
+      "url": "https://ecma-international.org/wp-content/uploads/ECMA-376-4_5th_edition_december_2016.zip",
+      "sha256": "bd25da1109f73762356596918bf5ff8b74a1331642dba5f1c1d1dfc6bed34ecd",
+      "bytes": 8471820,
+      "cachePath": ".cache/specifications/ecma-376-part-4.zip",
+      "license": {
+        "auditStatus": "reviewed",
+        "notice": "Ecma default copyright notice",
+        "noticeUrl": "https://ecma-international.org/policies/by-ipr/ecma-text-copyright-policy/",
+        "redistribution": "cache-only",
+        "generatedOutput": "implementation-facts-only"
+      }
+    },
+    {
+      "id": "ms-docx-extensions",
+      "title": "[MS-DOCX] DOCX extensions",
+      "publisher": "Microsoft Corporation",
+      "version": "2025-11-13",
+      "profiles": ["extensions", "transitional"],
+      "sourceType": "artifact",
+      "url": "https://officeprotocoldoc.z19.web.core.windows.net/files/MS-DOCX/%5BMS-DOCX%5D.pdf",
+      "sha256": "0ca370086064e4c32d821c00220f218df4104a895677e5539dc3e320485861f7",
+      "bytes": 2970201,
+      "cachePath": ".cache/specifications/ms-docx-2025-11-13.pdf",
+      "license": {
+        "auditStatus": "reviewed",
+        "notice": "Microsoft Open Specifications copyright notice",
+        "noticeUrl": "https://learn.microsoft.com/en-us/openspecs/office_standards/ms-docx/b839fe1f-e1ca-4fa6-8c26-5954d0abbccd#intellectual-property-rights-notice-for-open-specifications-documentation",
+        "redistribution": "cache-only",
+        "generatedOutput": "implementation-facts-only"
+      }
+    },
+    {
+      "id": "ms-oi29500-implementation-notes",
+      "title": "[MS-OI29500] ISO/IEC 29500 implementation information",
+      "publisher": "Microsoft Corporation",
+      "version": "2026-05-19",
+      "profiles": ["implementation-notes", "strict", "transitional"],
+      "sourceType": "artifact",
+      "url": "https://officeprotocoldoc.z19.web.core.windows.net/files/MS-OI29500/%5BMS-OI29500%5D.pdf",
+      "sha256": "e55146bb9568ed6f1e421cf45221f9413a3551b42ff1bda651e29312ab5abf86",
+      "bytes": 17395035,
+      "cachePath": ".cache/specifications/ms-oi29500-2026-05-19.pdf",
+      "license": {
+        "auditStatus": "reviewed",
+        "notice": "Microsoft Open Specifications copyright notice",
+        "noticeUrl": "https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/1fd4a662-8623-49c0-82f0-18fa91b413b8#intellectual-property-rights-notice-for-open-specifications-documentation",
+        "redistribution": "cache-only",
+        "generatedOutput": "implementation-facts-only"
+      }
+    },
+    {
+      "id": "office-js-api-reference",
+      "title": "Office.js API reference repository",
+      "publisher": "Microsoft Corporation",
+      "version": "2026-07-08",
+      "profiles": ["api"],
+      "sourceType": "git",
+      "repository": "https://github.com/OfficeDev/office-js-docs-reference.git",
+      "commit": "3f63c8ec84be5e671bb51ff8cf72e41a34a4e19a",
+      "tree": "4c902e4949b59dd5deeb573eab15ec1538ea208c",
+      "cachePath": ".cache/specifications/office-js-docs-reference",
+      "license": {
+        "auditStatus": "reviewed",
+        "notice": "MIT",
+        "noticeUrl": "https://github.com/OfficeDev/office-js-docs-reference/blob/3f63c8ec84be5e671bb51ff8cf72e41a34a4e19a/LICENSE",
+        "redistribution": "license-compliant",
+        "generatedOutput": "license-compliant"
+      }
+    },
+    {
+      "id": "ooxml-dev-reference",
+      "title": "ooxml-dev reference repository",
+      "publisher": "superdoc-dev",
+      "version": "2026-05-12",
+      "profiles": ["implementation-notes", "strict", "transitional"],
+      "sourceType": "git",
+      "repository": "https://github.com/superdoc-dev/ooxml-dev.git",
+      "commit": "921aada4a18ed1f59694ffe8dbf4446997f58786",
+      "tree": "3e905c10d7f92acfa6c53098e1e05fb7e142f7a8",
+      "cachePath": ".cache/specifications/ooxml-dev",
+      "license": {
+        "auditStatus": "needs-review",
+        "notice": "MIT asserted in README; no license file at the pinned revision",
+        "noticeUrl": "https://github.com/superdoc-dev/ooxml-dev/blob/921aada4a18ed1f59694ffe8dbf4446997f58786/README.md#license",
+        "redistribution": "reference-only",
+        "generatedOutput": "review-required"
+      }
+    }
+  ]
+}

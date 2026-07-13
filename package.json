@@ -22,6 +22,8 @@
     "check:parity-contract": "node scripts/check-parity-contract.mjs",
     "check:export-parity": "node scripts/check-export-parity.mjs",
     "check:react-compiler": "bun scripts/react-compiler-bailouts.ts --check",
+    "specifications:check": "bun scripts/specification-sources.ts check",
+    "specifications:fetch": "bun scripts/specification-sources.ts fetch",
     "test:e2e:vue": "bunx playwright test --project=vue",
     "test:e2e:parity": "bunx playwright test --project=parity",
     "build": "bun --filter '@stll/docx-core' build && bun --filter '@stll/folio-core' build && bun --filter '@stll/folio-react' build && bun --filter '@stll/folio-agents' build && bun --filter '@stll/folio-vue' build && bun --filter '@stll/folio-nuxt' build",
