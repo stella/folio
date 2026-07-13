@@ -164,7 +164,7 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
  */
 export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): FolioAgentBridge => {
   const { ref, author, getComments, setComments } = options;
-  const undoDocumentOperations = ref.undoDocumentOperations;
+  const undoDocumentOperations = ref.undoDocumentOperations?.bind(ref);
   const mode = options.mode ?? "tracked-changes";
 
   const requireSnapshot = (): FolioAIEditSnapshot => {

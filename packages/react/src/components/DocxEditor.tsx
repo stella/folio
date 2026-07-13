@@ -2851,7 +2851,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const existingUndoEntry = documentOperationUndoEntriesRef.current.at(-1);
         if (
           existingUndoEntry &&
-          (view.state !== existingUndoEntry.afterState ||
+          (!view.state.doc.eq(existingUndoEntry.afterState.doc) ||
             commentsRef.current !== existingUndoEntry.commentsAfter)
         ) {
           documentOperationUndoEntriesRef.current.length = 0;
@@ -2914,7 +2914,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         if (!entry || !view) {
           return { status: "rejected", undoHandle, reason: "unknownHandle" };
         }
-        if (view.state !== entry.afterState || commentsRef.current !== entry.commentsAfter) {
+        if (
+          !view.state.doc.eq(entry.afterState.doc) ||
+          commentsRef.current !== entry.commentsAfter
+        ) {
           return { status: "rejected", undoHandle, reason: "documentChanged" };
         }
         if (!(pagedEditorRef.current?.undo() ?? false)) {

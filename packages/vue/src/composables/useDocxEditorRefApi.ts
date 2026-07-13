@@ -344,7 +344,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const existingUndoEntry = documentOperationUndoEntries.at(-1);
       if (
         existingUndoEntry &&
-        (view.state !== existingUndoEntry.afterState ||
+        (!view.state.doc.eq(existingUndoEntry.afterState.doc) ||
           opts.getComments() !== existingUndoEntry.commentsAfter)
       ) {
         documentOperationUndoEntries.length = 0;
@@ -395,7 +395,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (!entry || !view) {
         return { status: "rejected", undoHandle, reason: "unknownHandle" };
       }
-      if (view.state !== entry.afterState || opts.getComments() !== entry.commentsAfter) {
+      if (!view.state.doc.eq(entry.afterState.doc) || opts.getComments() !== entry.commentsAfter) {
         return { status: "rejected", undoHandle, reason: "documentChanged" };
       }
       if (!opts.editor.undo()) {
