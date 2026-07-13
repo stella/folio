@@ -105,6 +105,14 @@ const scoreForEmptyWordDoc = (folioLineCount: number): number => (folioLineCount
 
 const stripSpaces = (text: string): string => text.replaceAll(" ", "");
 
+/**
+ * Word PDF extraction reports glyph-ink bounds while Folio reports the line
+ * box. Punctuation-only rows (signature rules, ellipses, separators) have no
+ * stable cap-height edge, so their top coordinates cannot establish or verify
+ * a baseline offset. Horizontal geometry remains comparable.
+ */
+const hasStableVerticalInk = (line: LineBox): boolean => /[\p{L}\p{N}]/u.test(line.normText);
+
 /** Minimum vertical-overlap ratio (of the shorter box) for two boxes to count
  * as the same visual row. */
 const ROW_OVERLAP_RATIO = 0.5;
@@ -503,7 +511,15 @@ const pageRegionMedianYOffsets = (
   for (const m of matches) {
     const w = wordFlat[m.wordIdx];
     const f = folioFlat[m.folioIdx];
-    if (!w || !f || w.page !== f.page) continue;
+    if (
+      !w ||
+      !f ||
+      w.page !== f.page ||
+      !hasStableVerticalInk(w.line) ||
+      !hasStableVerticalInk(f.line)
+    ) {
+      continue;
+    }
     const key = matchedPageRegionKey(w, f);
     const deltas = deltasByPageRegion.get(key) ?? [];
     deltas.push(f.line.yPt - w.line.yPt);
@@ -589,7 +605,7 @@ const diffMatches = ({
       }
 
       let yDelta: number | null = null;
-      if (samePage) {
+      if (samePage && hasStableVerticalInk(w.line) && hasStableVerticalInk(f.line)) {
         yDelta = checkYDrift(
           w.line,
           f.line,

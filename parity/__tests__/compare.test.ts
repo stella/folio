@@ -242,6 +242,60 @@ describe("compareGeoms", () => {
     expect(result.score).toBeCloseTo(2 / 3);
   });
 
+  test("punctuation-only rows do not create y-drift or bias the extractor offset", () => {
+    const word = makeDoc("word", [
+      makePage({
+        lines: [
+          makeLine({ text: "____________________", yPt: 72 }),
+          makeLine({ text: "....................", yPt: 90 }),
+          makeLine({ text: "Baseline text", yPt: 108 }),
+        ],
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({ text: "____________________", yPt: 82 }),
+          makeLine({ text: "....................", yPt: 100 }),
+          makeLine({ text: "Baseline text", yPt: 114 }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(word, folio);
+
+    expect(result.divergences.filter((divergence) => divergence.kind === "y-drift")).toEqual([]);
+    expect(result.medianYOffsetPt).toBe(6);
+    expect(result.score).toBe(1);
+  });
+
+  test("punctuation-only rows still report horizontal geometry drift", () => {
+    const word = makeDoc("word", [
+      makePage({
+        lines: [
+          makeLine({ text: "Baseline text", yPt: 72 }),
+          makeLine({ text: "____________________", yPt: 90, widthPt: 100 }),
+        ],
+      }),
+    ]);
+    const folio = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({ text: "Baseline text", yPt: 72 }),
+          makeLine({ text: "____________________", yPt: 96, widthPt: 120 }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(word, folio);
+
+    expect(result.divergences.filter((divergence) => divergence.kind === "y-drift")).toEqual([]);
+    expect(
+      result.divergences.filter((divergence) => divergence.kind === "width-drift"),
+    ).toHaveLength(1);
+    expect(result.score).toBe(0.5);
+  });
+
   test("absorbs each page's extractor offset independently", () => {
     const word = makeDoc("word", [
       makePage({
