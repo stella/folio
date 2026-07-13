@@ -501,13 +501,13 @@ describe("runLayoutPipeline", () => {
     expect(layoutErrors).toHaveLength(0);
   });
 
-  test("keeps authored body margins when footer content extends beyond them", () => {
+  test("moves body content above an overflowing default footer", () => {
     const state = makeState();
-    const baseline = runLayoutPipeline(makeDeps(createLayoutSession()), state);
-    const withTallFooter = runLayoutPipeline(
+    const outcome = runLayoutPipeline(
       makeDeps(createLayoutSession(), {
-        renderHfFromContentOrPm: (_hf, _rId, _hfPMs, _contentWidth, metrics) =>
-          metrics.section === "footer"
+        footerContent: { type: "footer", hdrFtrType: "default", content: [] },
+        renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
+          hf && metrics.section === "footer"
             ? {
                 blocks: [],
                 measures: [],
@@ -522,12 +522,31 @@ describe("runLayoutPipeline", () => {
       state,
     );
 
-    expect(withTallFooter.layout?.pages.map((page) => page.margins)).toEqual(
-      baseline.layout?.pages.map((page) => page.margins),
+    expect(outcome.layout?.pages.at(0)?.margins.bottom).toBe(MARGINS.footer + 120);
+  });
+
+  test("keeps authored body margin when a default footer stays below it", () => {
+    const state = makeState();
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        footerContent: { type: "footer", hdrFtrType: "default", content: [] },
+        renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
+          hf && metrics.section === "footer"
+            ? {
+                blocks: [],
+                measures: [],
+                height: 20,
+                visualTop: 0,
+                visualBottom: 20,
+                marginPushTop: 0,
+                marginPushBottom: 20,
+              }
+            : undefined,
+      }),
+      state,
     );
-    expect(withTallFooter.layout?.pages.map((page) => page.fragments.map(({ y }) => y))).toEqual(
-      baseline.layout?.pages.map((page) => page.fragments.map(({ y }) => y)),
-    );
+
+    expect(outcome.layout?.pages.at(0)?.margins.bottom).toBe(MARGINS.bottom);
   });
 
   test("moves body content below an overflowing default header", () => {
@@ -611,6 +630,35 @@ describe("runLayoutPipeline", () => {
     );
   });
 
+  test("moves only the title-page body above an overflowing first-page footer", () => {
+    const state = makeState();
+    const baseline = runLayoutPipeline(makeDeps(createLayoutSession()), state);
+    const withTallFirstFooter = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        sectionProperties: { titlePg: true },
+        firstPageFooterContent: { type: "footer", hdrFtrType: "first", content: [] },
+        renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
+          hf && metrics.section === "footer"
+            ? {
+                blocks: [],
+                measures: [],
+                height: 120,
+                visualTop: 0,
+                visualBottom: 120,
+                marginPushTop: 0,
+                marginPushBottom: 120,
+              }
+            : undefined,
+      }),
+      state,
+    );
+
+    const baselineFirstPage = baseline.layout?.pages.at(0);
+    const pushedFirstPage = withTallFirstFooter.layout?.pages.at(0);
+    expect(pushedFirstPage?.margins.bottom).toBe(MARGINS.footer + 120);
+    expect(pushedFirstPage?.margins.bottom).toBeGreaterThan(baselineFirstPage?.margins.bottom ?? 0);
+  });
+
   test("threads the final section geometry into layout", () => {
     const document = createEmptyDocument();
     document.package.document.sections = [
@@ -631,6 +679,51 @@ describe("runLayoutPipeline", () => {
     const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document }), makeState());
 
     expect(outcome.layout?.pages.at(0)?.size).toEqual({ w: 1124, h: 795 });
+  });
+
+  test("uses the referenced final-section footer for body clearance", () => {
+    const document = createEmptyDocument();
+    document.package.document.sections = [
+      {
+        properties: {
+          pageWidth: 12_240,
+          pageHeight: 15_840,
+          marginTop: 1_080,
+          marginRight: 1_080,
+          marginBottom: 1_440,
+          marginLeft: 1_080,
+          footerDistance: 720,
+        },
+        content: [],
+      },
+    ];
+
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document,
+        sectionHeaderFooterRefs: [{ footerDefault: "final-footer" }],
+        renderHeaderFooterContentByRId: (_source, _hfPMs, _contentWidth, metrics) =>
+          metrics.section === "footer"
+            ? new Map([
+                [
+                  "final-footer",
+                  {
+                    blocks: [],
+                    measures: [],
+                    height: 120,
+                    visualTop: 0,
+                    visualBottom: 120,
+                    marginPushTop: 0,
+                    marginPushBottom: 120,
+                  },
+                ],
+              ])
+            : undefined,
+      }),
+      makeState(),
+    );
+
+    expect(outcome.layout?.pages.at(0)?.margins.bottom).toBe(168);
   });
 
   test("discards the outcome and leaves the session unmutated when the paint phase throws", () => {

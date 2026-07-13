@@ -150,19 +150,29 @@ export type LayoutPipelineDeps<THfPMs> = {
   emptyTemplatePreviewEntries: readonly TemplatePreviewEntry[];
 };
 
-function bodyMarginsBelowHeader(
-  authoredMargins: PageMargins,
-  preparedHeader: HeaderFooterContent | undefined,
-): PageMargins {
-  if (!preparedHeader) {
+type BodyMarginClearanceOptions = {
+  authoredMargins: PageMargins;
+  preparedHeader: HeaderFooterContent | undefined;
+  preparedFooter: HeaderFooterContent | undefined;
+};
+
+function bodyMarginsClearHeaderFooter({
+  authoredMargins,
+  preparedHeader,
+  preparedFooter,
+}: BodyMarginClearanceOptions): PageMargins {
+  const headerBottom = preparedHeader
+    ? (authoredMargins.header ?? 0) + (preparedHeader.marginPushBottom ?? preparedHeader.height)
+    : authoredMargins.top;
+  const footerClearance = preparedFooter
+    ? (authoredMargins.footer ?? 0) + (preparedFooter.marginPushBottom ?? preparedFooter.height)
+    : authoredMargins.bottom;
+  const top = Math.max(authoredMargins.top, headerBottom);
+  const bottom = Math.max(authoredMargins.bottom, footerClearance);
+  if (top === authoredMargins.top && bottom === authoredMargins.bottom) {
     return authoredMargins;
   }
-  const headerBottom =
-    (authoredMargins.header ?? 0) + (preparedHeader.marginPushBottom ?? preparedHeader.height);
-  if (headerBottom <= authoredMargins.top) {
-    return authoredMargins;
-  }
-  return { ...authoredMargins, top: headerBottom };
+  return { ...authoredMargins, top, bottom };
 }
 
 export function runLayoutPipeline<THfPMs>(
@@ -383,12 +393,16 @@ export function runLayoutPipeline<THfPMs>(
       hfOptions,
     );
 
-    const initialBodyMargins = bodyMarginsBelowHeader(margins, headerContentForRender);
+    const initialBodyMargins = bodyMarginsClearHeaderFooter({
+      authoredMargins: margins,
+      preparedHeader: headerContentForRender,
+      preparedFooter: footerContentForRender,
+    });
 
     recordPhaseDuration("header-footer", phaseStartedAt);
 
     // Compute per-block widths and band geometry from the effective body
-    // margins after normal in-flow header content has been accounted for.
+    // margins after normal in-flow header/footer content has been accounted for.
     phaseStartedAt = performance.now();
     const bodyLayoutConfig: SectionLayoutConfig = {
       pageSize,
@@ -405,10 +419,21 @@ export function runLayoutPipeline<THfPMs>(
     } else if (sectionHeaderFooterRefs !== undefined) {
       finalHeaderForLayout = undefined;
     }
+    const finalFooterRId = sectionHeaderFooterRefs?.at(-1)?.footerDefault;
+    let finalFooterForLayout = footerContentForRender;
+    if (finalFooterRId) {
+      finalFooterForLayout = footerContentByRId?.get(finalFooterRId);
+    } else if (sectionHeaderFooterRefs !== undefined) {
+      finalFooterForLayout = undefined;
+    }
     const finalLayoutConfig: SectionLayoutConfig = finalSectionProperties
       ? {
           pageSize: getPageSize(finalSectionProperties),
-          margins: bodyMarginsBelowHeader(getMargins(finalSectionProperties), finalHeaderForLayout),
+          margins: bodyMarginsClearHeaderFooter({
+            authoredMargins: getMargins(finalSectionProperties),
+            preparedHeader: finalHeaderForLayout,
+            preparedFooter: finalFooterForLayout,
+          }),
         }
       : bodyLayoutConfig;
     const finalColumns = getColumns(finalSectionProperties);
@@ -473,7 +498,11 @@ export function runLayoutPipeline<THfPMs>(
         mirrorMargins,
       };
       if (hasTitlePg) {
-        nextLayoutOpts.firstPageMargins = bodyMarginsBelowHeader(margins, firstPageHeaderForRender);
+        nextLayoutOpts.firstPageMargins = bodyMarginsClearHeaderFooter({
+          authoredMargins: margins,
+          preparedHeader: firstPageHeaderForRender,
+          preparedFooter: firstPageFooterForRender,
+        });
       }
       if (finalSectionProperties) {
         nextLayoutOpts.finalPageSize = finalLayoutConfig.pageSize;
