@@ -441,6 +441,52 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
+  test("does not count non-breaking spaces toward justified shrink capacity", () => {
+    const fixedSpaceText = `${"a".repeat(99)}\u00a0bbb`;
+
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-fixed-space",
+            runs: [{ kind: "text", text: fixedSpaceText }],
+            attrs: { alignment: "justify" },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: fractionalWidth,
+      },
+    );
+  });
+
+  test("keeps regular spaces available for justified shrink beside a fixed space", () => {
+    const mixedSpaceText = `${"a".repeat(97)}  \u00a0bbb`;
+
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-mixed-spaces",
+            runs: [{ kind: "text", text: mixedSpaceText }],
+            attrs: { alignment: "justify" },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(1);
+      },
+      {
+        charWidth: (char) => (char === "b" ? 0.55 : 1),
+      },
+    );
+  });
+
   test("ignores unused tab stops when choosing justified prose shrink tolerance", () => {
     withFakeTextMeasure(
       () => {

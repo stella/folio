@@ -556,6 +556,26 @@ function uppercaseLetterRatio(text: string): number {
   return letters === 0 ? 0 : uppercase / letters;
 }
 
+type FixedSpaceAdjustedShrinkToleranceOptions = {
+  tolerance: number;
+  regularSpaceCount: number;
+  nonBreakingSpaceCount: number;
+};
+
+function fixedSpaceAdjustedShrinkTolerance({
+  tolerance,
+  regularSpaceCount,
+  nonBreakingSpaceCount,
+}: FixedSpaceAdjustedShrinkToleranceOptions): number {
+  const totalSpaces = regularSpaceCount + nonBreakingSpaceCount;
+  if (totalSpaces === 0) {
+    return tolerance;
+  }
+  // The reference layout contracts ordinary spaces during justification, but
+  // keeps NBSPs fixed. Scale the allowance to the share that can shrink.
+  return Math.max(JUSTIFY_SHRINK_TOLERANCE_RATIO, tolerance * (regularSpaceCount / totalSpaces));
+}
+
 function justifyShrinkToleranceRatio(
   block: ParagraphBlock,
   isFirstLine: boolean,
@@ -572,14 +592,11 @@ function justifyShrinkToleranceRatio(
         ? JUSTIFY_SHRINK_TOLERANCE_RATIO
         : JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO;
     }
-    const totalSpaces = regularSpaceCount + nonBreakingSpaceCount;
-    if (totalSpaces === 0) {
-      return JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO;
-    }
-    return Math.max(
-      JUSTIFY_SHRINK_TOLERANCE_RATIO,
-      JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO * (regularSpaceCount / totalSpaces),
-    );
+    return fixedSpaceAdjustedShrinkTolerance({
+      tolerance: JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO,
+      regularSpaceCount,
+      nonBreakingSpaceCount,
+    });
   }
   const hasTabStops = (block.attrs?.tabs?.length ?? 0) > 0;
   const hasTabRuns = block.runs.some(isTabRun);
@@ -600,7 +617,11 @@ function justifyShrinkToleranceRatio(
     return JUSTIFY_SHRINK_TOLERANCE_RATIO;
   }
 
-  return JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO;
+  return fixedSpaceAdjustedShrinkTolerance({
+    tolerance: JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO,
+    regularSpaceCount,
+    nonBreakingSpaceCount,
+  });
 }
 
 function trimTrailingSpacesAndTabs(text: string): string {
