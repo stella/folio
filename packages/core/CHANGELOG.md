@@ -1,5 +1,61 @@
 # @stll/folio-core
 
+## 0.7.0
+
+### Minor Changes
+
+- [#232](https://github.com/stella/folio/pull/232) [`d249b94`](https://github.com/stella/folio/commit/d249b94c0e0d5d9c3d26bef4abaad2747ad3a151) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add structured DOCX text extraction to the server API.
+
+### Patch Changes
+
+- [#211](https://github.com/stella/folio/pull/211) [`d34a999`](https://github.com/stella/folio/commit/d34a9999f20981d61cf9e8196f110e8b3fd27b55) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve inherited spacing on empty paragraphs with direct paragraph formatting.
+
+- [#228](https://github.com/stella/folio/pull/228) [`fb6ddd0`](https://github.com/stella/folio/commit/fb6ddd0588c6700bec8a04f173a8b64ad9cc9d07) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Suppress automatic paragraph gaps inside continuous numbered sequences.
+
+- [#202](https://github.com/stella/folio/pull/202) [`c10c424`](https://github.com/stella/folio/commit/c10c424f10d108363187da60d641e38800bd925f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Balance short paragraph-only continuous multi-column sections across their columns.
+
+- [#222](https://github.com/stella/folio/pull/222) [`c375fd4`](https://github.com/stella/folio/commit/c375fd40477832a9cb52baebfa7237f744eaa5ff) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Match reference leading empty-outline height and avoid replaying cached page breaks after a natural paragraph continuation.
+
+- [#217](https://github.com/stella/folio/pull/217) [`3019259`](https://github.com/stella/folio/commit/30192590594b90c85c29ae655f5417a1f16fe2f5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep trailing table separators with following page content.
+
+- [#221](https://github.com/stella/folio/pull/221) [`58879bd`](https://github.com/stella/folio/commit/58879bd0a162d99eb78fcf1aeed85d926b701e1c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Coalesce cached page markers with pages opened by keep-next chains and paragraph continuations.
+
+- [#210](https://github.com/stella/folio/pull/210) [`a16bc87`](https://github.com/stella/folio/commit/a16bc87d9a06f861474ed8fada3391b6b15058c0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align explicitly indented table borders with reference DOCX layout.
+
+- [#215](https://github.com/stella/folio/pull/215) [`7d09ea8`](https://github.com/stella/folio/commit/7d09ea889078646c16153de2196de16bf8dca2f6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve hanging-indent body tab positions during line wrapping.
+
+- [#205](https://github.com/stella/folio/pull/205) [`073f521`](https://github.com/stella/folio/commit/073f5216ce51871b6fc422cb220cf02524f93435) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored zero table indentation through style resolution and layout.
+
+- [#214](https://github.com/stella/folio/pull/214) [`2225367`](https://github.com/stella/folio/commit/22253678fa469806ba3a75c5c3df219f8d814ac7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Collapse paintless trailing spaces when positioning aligned paragraph lines.
+
+- [#219](https://github.com/stella/folio/pull/219) [`ae636c8`](https://github.com/stella/folio/commit/ae636c8ea0fc87caed45fe680cf5ee79081c5216) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Collapse paintless ordinary spaces at soft-wrapped line starts.
+
+- [#227](https://github.com/stella/folio/pull/227) [`b6442f5`](https://github.com/stella/folio/commit/b6442f50658c11267144980b65ac2a0f662abea3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render grouped OOXML pictures within their authored coordinate system and extent.
+
+- [#229](https://github.com/stella/folio/pull/229) [`43ddcd4`](https://github.com/stella/folio/commit/43ddcd43a10b6ede1c66192bf0bb09538ee9bac3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep body content below the in-flow extent of default headers.
+
+- [#224](https://github.com/stella/folio/pull/224) [`e346c20`](https://github.com/stella/folio/commit/e346c20bbac92b84399a2c8f6e17b9d09e146b78) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Exclude non-breaking spaces from the shrink capacity of justified prose.
+
+- [#213](https://github.com/stella/folio/pull/213) [`2de1c11`](https://github.com/stella/folio/commit/2de1c1157c448fccb522f3a02de5c4e2bcf226be) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use normal justified prose wrapping when tab-stop metadata has no corresponding tab content.
+
+- [#226](https://github.com/stella/folio/pull/226) [`621e1c4`](https://github.com/stella/folio/commit/621e1c4aafd37ed7d83dbc60e415fada4a5917af) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep justified inset list continuations within their authored body width.
+
+- [#218](https://github.com/stella/folio/pull/218) [`20cbba3`](https://github.com/stella/folio/commit/20cbba3f8846378b4391cf565e7d17df869aff94) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve valid sub-pixel advances when positioning aligned tab content.
+
+- [#223](https://github.com/stella/folio/pull/223) [`15f021a`](https://github.com/stella/folio/commit/15f021a1f337c75ea7434d6cda461224f9cb4ec9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Allow numeric floating-table offsets to extend into page margins.
+
+- [#203](https://github.com/stella/folio/pull/203) [`655b698`](https://github.com/stella/folio/commit/655b6983942a0afac930f84386a3824eaf5e068c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Match prose justification tolerance on numbered-list continuation lines.
+
+- [#216](https://github.com/stella/folio/pull/216) [`5ed7452`](https://github.com/stella/folio/commit/5ed7452ffc1ead26da2ecb5403b364cb389ba9ba) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Prevent paintless terminal table anchors from creating blank pages.
+
+- [#208](https://github.com/stella/folio/pull/208) [`2e8fe27`](https://github.com/stella/folio/commit/2e8fe27d0ad031a0d5ebd81402171a9118aaae5c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor leading authored column breaks and resume continuous-section content below the tallest column.
+
+- [#220](https://github.com/stella/folio/pull/220) [`43c9bc7`](https://github.com/stella/folio/commit/43c9bc7d251ecad3a1558e6682ca3bb57e90f224) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Avoid whitespace-only lines when preserved spaces overflow a soft wrap.
+
+- [#209](https://github.com/stella/folio/pull/209) [`4e479e2`](https://github.com/stella/folio/commit/4e479e2d0d7c6f9f48d25ae4a4d511143e6ce834) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Avoid painting an extra blank line for empty structural section-break paragraphs.
+
+- [#204](https://github.com/stella/folio/pull/204) [`1e8aff9`](https://github.com/stella/folio/commit/1e8aff947b9bca3c58ab997b25687e31d43bf6a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render automatic paragraph spacing using the reference 14pt gap.
+
 ## 0.6.1
 
 ### Patch Changes
