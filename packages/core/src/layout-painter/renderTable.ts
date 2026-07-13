@@ -236,6 +236,7 @@ function renderCellContent(
       textBoxEl.style.top = "0";
       contentEl.append(textBoxEl);
       cumulativeY += textBoxMeasure.height;
+      anchorParagraphY = cumulativeY;
     }
   }
 

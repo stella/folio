@@ -1830,8 +1830,12 @@ function convertTableCell(
       contentNodes.push(
         ...convertParagraphWithTextBoxes(content, styleResolver, {
           textBoxGroupId: context.nextTextBoxGroupId(),
-          extraRunFormatting: conditionalStyle?.rPr,
-          tableParagraphOverlay: conditionalStyle?.pPr,
+          ...(conditionalStyle?.rPr !== undefined
+            ? { extraRunFormatting: conditionalStyle.rPr }
+            : {}),
+          ...(conditionalStyle?.pPr !== undefined
+            ? { tableParagraphOverlay: conditionalStyle.pPr }
+            : {}),
         }),
       );
     } else {

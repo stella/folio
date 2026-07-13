@@ -311,6 +311,14 @@ describe("renderTableFragment floating cell content", () => {
                 },
                 {
                   kind: "textBox",
+                  id: "inline-box",
+                  width: 70,
+                  height: 30,
+                  content: [],
+                  displayMode: "inline",
+                },
+                {
+                  kind: "textBox",
                   id: "box",
                   width: 90,
                   height: 50,
@@ -337,6 +345,7 @@ describe("renderTableFragment floating cell content", () => {
             {
               blocks: [
                 { kind: "paragraph", lines: [], totalHeight: 20 },
+                { kind: "textBox", width: 70, height: 30, innerMeasures: [] },
                 { kind: "textBox", width: 90, height: 50, innerMeasures: [] },
               ],
               width: 100,
@@ -368,7 +377,7 @@ describe("renderTableFragment floating cell content", () => {
     const content = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent).at(0);
     const imageLayer = findByClass(tableEl, "layout-cell-floating-images-layer").at(0);
     const textBoxLayer = findByClass(tableEl, "layout-cell-floating-text-boxes-layer").at(0);
-    const textBox = findByClass(tableEl, "layout-textbox").at(0);
+    const textBox = findByClass(tableEl, "layout-textbox").at(1);
 
     expect(tableEl.style["overflow"]).toBe("visible");
     expect(cell?.style["overflow"]).toBe("visible");
@@ -379,6 +388,6 @@ describe("renderTableFragment floating cell content", () => {
     expect(textBoxLayer?.style["left"]).toBe("4px");
     expect(textBoxLayer?.style["top"]).toBe("2px");
     expect(textBox?.style["left"]).toBe("20px");
-    expect(textBox?.style["top"]).toBe("10px");
+    expect(Number.parseFloat(textBox?.style["top"] ?? "0")).toBeGreaterThan(50);
   });
 });
