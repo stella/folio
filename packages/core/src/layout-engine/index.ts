@@ -14,13 +14,16 @@ import {
   hasPageBreakBefore,
 } from "./keep-together";
 import { measuredLineAdvance } from "./lineFlow";
+import { continuesNumberedSequence } from "./paragraphSequence";
 import { FOOTNOTE_SEPARATOR_HEIGHT, createPaginator } from "./paginator";
 import { getParagraphFragmentPmRange } from "./paragraphFragmentRange";
+import { getParagraphSpacingAfter, getParagraphSpacingBefore } from "./paragraphSpacing";
 import {
-  getParagraphSpacingAfter,
-  getParagraphSpacingBefore,
-  isEmptyParagraph,
-} from "./paragraphSpacing";
+  INITIAL_RENDERED_BREAK_STATE,
+  reconcileAfterBlock,
+  reconcileBreakBeforeBlock,
+  recordReflowBoundary,
+} from "./renderedBreakReconciliation";
 import { buildTableRowBreakInfo, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
 import { floatingTextBoxReservesBand } from "./types";
@@ -29,7 +32,6 @@ import type {
   Measure,
   Layout,
   LayoutOptions,
-  Page,
   PageMargins,
   ColumnLayout,
   ParagraphBlock,
@@ -90,102 +92,6 @@ export function collectSectionConfigs(
   return { configs, breakIndices };
 }
 
-function isPaginationEmptyParagraph(block: ParagraphBlock): boolean {
-  return block.runs.every((run) => {
-    if (run.kind === "text") {
-      return run.text.trim().length === 0;
-    }
-    return run.kind === "tab" || run.kind === "lineBreak";
-  });
-}
-
-function pageHasVisibleBodyContent(
-  page: Page,
-  blocksById: ReadonlyMap<string, FlowBlock>,
-): boolean {
-  for (const fragment of page.fragments) {
-    if (fragment.kind !== "paragraph") {
-      return true;
-    }
-    const block = blocksById.get(String(fragment.blockId));
-    if (block?.kind !== "paragraph" || !isPaginationEmptyParagraph(block)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function continuesNumberedSequence(previous: FlowBlock | undefined, current: FlowBlock): boolean {
-  if (previous?.kind !== "paragraph" || current.kind !== "paragraph") {
-    return false;
-  }
-  const previousNumPr = previous.attrs?.numPr;
-  const currentNumPr = current.attrs?.numPr;
-  if (previousNumPr?.numId === undefined || currentNumPr?.numId === undefined) {
-    return false;
-  }
-  return previousNumPr.numId === currentNumPr.numId && previousNumPr.ilvl === currentNumPr.ilvl;
-}
-
-function continuesTabbedParagraphSequence(
-  previous: FlowBlock | undefined,
-  current: FlowBlock,
-): boolean {
-  if (previous?.kind !== "paragraph" || current.kind !== "paragraph") {
-    return false;
-  }
-  if (!previous.attrs?.styleId || previous.attrs.styleId !== current.attrs?.styleId) {
-    return false;
-  }
-  if (
-    !previous.runs.some((run) => run.kind === "tab") ||
-    !current.runs.some((run) => run.kind === "tab")
-  ) {
-    return false;
-  }
-  const previousIndent = previous.attrs.indent;
-  const currentIndent = current.attrs.indent;
-  if (
-    previousIndent?.left !== currentIndent?.left ||
-    previousIndent?.right !== currentIndent?.right ||
-    previousIndent?.firstLine !== currentIndent?.firstLine ||
-    previousIndent?.hanging !== currentIndent?.hanging
-  ) {
-    return false;
-  }
-  const previousTabs = previous.attrs.tabs ?? [];
-  const currentTabs = current.attrs.tabs ?? [];
-  return (
-    previousTabs.length === currentTabs.length &&
-    previousTabs.every((tab, index) => {
-      const currentTab = currentTabs[index];
-      if (!currentTab) {
-        return false;
-      }
-      return (
-        tab.val === currentTab.val && tab.pos === currentTab.pos && tab.leader === currentTab.leader
-      );
-    })
-  );
-}
-
-type NaturalPageAdvance = "none" | "ordinary" | "reflowBoundary";
-
-function pageStartsWithPreviousParagraphContinuation(
-  page: Page,
-  previousBlock: FlowBlock | undefined,
-): boolean {
-  if (previousBlock?.kind !== "paragraph") {
-    return false;
-  }
-
-  return page.fragments.some(
-    (fragment) =>
-      fragment.kind === "paragraph" &&
-      String(fragment.blockId) === String(previousBlock.id) &&
-      fragment.continuesFromPrev === true,
-  );
-}
 /**
  * Estimate the height of a short paragraph-only multi-column section so its
  * final page can use Word-style balanced columns. Sections containing tables,
@@ -499,48 +405,26 @@ export function layoutDocument(
   let activeSectionMarginTop = initialConfig.margins.top;
   let activeSectionPageHeight = initialConfig.pageSize.h;
   let activeSectionMarginBottom = initialConfig.margins.bottom;
-  let naturalPageAdvanceSinceRenderedBreak: NaturalPageAdvance = "none";
+  let renderedBreakState = INITIAL_RENDERED_BREAK_STATE;
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
 
-    // A cached pagination marker is advisory after layout inputs change. Snap
-    // to it only when the marked paragraph would cross the current page; if the
-    // paragraph still fits, forcing the stale boundary can create a mostly empty
-    // extra page after reflow. A structural or natural break that already opened
-    // the destination page also satisfies the marker.
-    const hasRenderedPageBreak =
-      block.kind === "paragraph" && block.attrs?.renderedPageBreakBefore === true;
-    if (hasPageBreakBefore(block)) {
+    const renderedBreakNeedsSnap =
+      measure.kind === "paragraph" && !paginator.fits(measure.totalHeight);
+    const breakDecision = reconcileBreakBeforeBlock({
+      state: renderedBreakState,
+      block,
+      previousBlock: blocks[i - 1],
+      page: paginator.getCurrentState().page,
+      blocksById,
+      hasExplicitPageBreak: hasPageBreakBefore(block),
+      renderedBreakNeedsSnap,
+    });
+    if (breakDecision.forcePageBreak) {
       paginator.forcePageBreak();
-    } else if (hasRenderedPageBreak) {
-      const state = paginator.getCurrentState();
-      const renderedBreakNeedsSnap =
-        measure.kind === "paragraph" && !paginator.fits(measure.totalHeight);
-      const previousParagraphAlreadyCrossedMarker = pageStartsWithPreviousParagraphContinuation(
-        state.page,
-        blocks[i - 1],
-      );
-      const naturalAdvanceAlreadyCrossedMarker =
-        previousParagraphAlreadyCrossedMarker ||
-        naturalPageAdvanceSinceRenderedBreak === "reflowBoundary" ||
-        (block.kind === "paragraph" &&
-          isPaginationEmptyParagraph(block) &&
-          naturalPageAdvanceSinceRenderedBreak !== "none") ||
-        (naturalPageAdvanceSinceRenderedBreak !== "none" &&
-          (continuesNumberedSequence(blocks[i - 1], block) ||
-            continuesTabbedParagraphSequence(blocks[i - 1], block)));
-      if (
-        !naturalAdvanceAlreadyCrossedMarker &&
-        renderedBreakNeedsSnap &&
-        pageHasVisibleBodyContent(state.page, blocksById)
-      ) {
-        paginator.forcePageBreak();
-      }
     }
-    if (hasRenderedPageBreak || hasPageBreakBefore(block)) {
-      naturalPageAdvanceSinceRenderedBreak = "none";
-    }
+    renderedBreakState = breakDecision.state;
 
     // Handle keepNext chains - if this is a chain start, check if chain fits
     const chain = keepNextChains.get(i);
@@ -551,7 +435,7 @@ export function layoutDocument(
       if (paginator.getCurrentState().page.number > pageBeforeChainLayout) {
         // The chain moved as one unit across the cached boundary. A rendered
         // marker immediately after it describes the page Folio just opened.
-        naturalPageAdvanceSinceRenderedBreak = "reflowBoundary";
+        renderedBreakState = recordReflowBoundary(renderedBreakState, true);
       }
     }
 
@@ -644,28 +528,13 @@ export function layoutDocument(
         break;
     }
 
-    const isVisibleBodyBlock =
-      block.kind === "paragraph"
-        ? !isEmptyParagraph(block)
-        : block.kind !== "pageBreak" &&
-          block.kind !== "columnBreak" &&
-          block.kind !== "sectionBreak";
-    const isStructuralBreak =
-      block.kind === "pageBreak" || block.kind === "columnBreak" || block.kind === "sectionBreak";
-    if (isStructuralBreak) {
-      naturalPageAdvanceSinceRenderedBreak = "none";
-    } else if (
-      isVisibleBodyBlock &&
-      paginator.getCurrentState().page.number > pageBeforeBlockLayout
-    ) {
-      const previousPage = paginator.pages[pageBeforeBlockLayout - 1];
-      const blockContinuedAcrossBoundary = previousPage?.fragments.some(
-        ({ blockId }) => blockId === block.id,
-      );
-      naturalPageAdvanceSinceRenderedBreak = blockContinuedAcrossBoundary
-        ? "reflowBoundary"
-        : "ordinary";
-    }
+    renderedBreakState = reconcileAfterBlock({
+      state: renderedBreakState,
+      block,
+      pageNumberBefore: pageBeforeBlockLayout,
+      pageNumberAfter: paginator.getCurrentState().page.number,
+      previousPage: paginator.pages[pageBeforeBlockLayout - 1],
+    });
   }
 
   // Ensure at least one page exists
