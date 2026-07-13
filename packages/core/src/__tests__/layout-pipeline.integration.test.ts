@@ -523,10 +523,7 @@ describe("Layout Engine - Page Production", () => {
       ];
       const measures: Measure[] = [
         makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 800)]),
-        makeParagraphMeasure([
-          makeLine(0, 0, 0, 31, 200, 40),
-          makeLine(0, 32, 0, 64, 200, 40),
-        ]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 31, 200, 40), makeLine(0, 32, 0, 64, 200, 40)]),
         makeParagraphMeasure([makeLine(0, 0, 0, 15, 100, 24)]),
       ];
 
