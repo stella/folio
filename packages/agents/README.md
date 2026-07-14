@@ -181,6 +181,21 @@ The natural shape is a host-side tool keyed by version identifiers instead
 (e.g. a server tool the model calls with two stored version ids, which your
 backend resolves to buffers, diffs, and returns the formatted text for).
 
+To produce a reviewable package from the same pair of buffers, use
+`generateRedlineDocx`. Optional package-metadata privacy transforms are applied
+to the generated output and returned as a structured report:
+
+```ts
+import { generateRedlineDocx } from "@stll/folio-agents";
+
+const result = await generateRedlineDocx(previousVersionBuffer, currentVersionBuffer, {
+  privacy: { transforms: ["remove-attribution", "remove-timestamps"] },
+});
+
+await storeGeneratedPackage(result.buffer);
+console.log(result.privacyReport);
+```
+
 ## TanStack AI
 
 TanStack AI's `toolDefinition` accepts a raw JSON Schema object as

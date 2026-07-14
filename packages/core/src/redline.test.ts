@@ -26,6 +26,8 @@ import { createEmptyDocument } from "./utils/createDocument";
 
 type ParagraphSpec = { text: string; paraId?: string };
 
+const CORE_PROPERTIES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="urn:properties" xmlns:dc="urn:descriptive" xmlns:dcterms="urn:terms"><dc:title>Private title</dc:title><dc:creator>Private creator</dc:creator><cp:lastModifiedBy>Private modifier</cp:lastModifiedBy><cp:revision>7</cp:revision><dcterms:created>2026-07-01T10:30:00Z</dcterms:created><dcterms:modified>2026-07-02T11:45:00Z</dcterms:modified></cp:coreProperties>`;
+
 const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuffer> => {
   const template = createEmptyDocument();
   return createDocx({
@@ -46,6 +48,12 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
 
 const blockTexts = (reviewer: FolioDocxReviewer): string[] =>
   reviewer.snapshot().blocks.map((block) => block.text);
+
+const withCoreProperties = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(buffer);
+  zip.file("docProps/core.xml", CORE_PROPERTIES_XML);
+  return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
+};
 
 const storyParagraph = (text: string, paraId: string): Paragraph => ({
   type: "paragraph",
@@ -420,6 +428,30 @@ describe("generateRedlineDocx", () => {
         reason: "missing-base-story",
       },
     ]);
+  });
+
+  test("applies package-metadata privacy transforms and returns their report", async () => {
+    const base = await withCoreProperties(
+      await buildDocxBuffer([{ text: "Base text.", paraId: "00000001" }]),
+    );
+    const revised = await buildDocxBuffer([{ text: "Revised text.", paraId: "00000001" }]);
+
+    const result = await generateRedlineDocx(base, revised, {
+      privacy: { transforms: ["remove-attribution", "remove-timestamps"] },
+    });
+
+    expect(result.privacyReport).toEqual({
+      appliedTransforms: ["remove-attribution", "remove-timestamps"],
+      removedMetadataProperties: ["creator", "lastModifiedBy", "created", "modified"],
+    });
+    const zip = await JSZip.loadAsync(result.buffer);
+    const coreProperties = await zip.file("docProps/core.xml")?.async("text");
+    expect(coreProperties).not.toContain("Private creator");
+    expect(coreProperties).not.toContain("Private modifier");
+    expect(coreProperties).not.toContain("dcterms:created");
+    expect(coreProperties).not.toContain("dcterms:modified");
+    expect(coreProperties).toContain("Private title");
+    expect(coreProperties).toContain("<cp:revision>7</cp:revision>");
   });
 
   test("rejects unresolved markup as an input view", async () => {

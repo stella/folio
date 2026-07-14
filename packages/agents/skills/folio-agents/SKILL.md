@@ -136,6 +136,10 @@ currentBuffer)` + `formatVersionDiffForLLM(diff)`. Both are plain async
   host-side tool keyed by version identifiers instead — the model calls it
   with two version ids, your backend resolves the buffers and returns the
   formatted diff text.
+- **Reviewable output between two saved versions** —
+  `generateRedlineDocx(previousBuffer, currentBuffer, options)` returns the
+  generated package, operation results, unmatched stories, and a structured
+  package-metadata privacy report.
 
 `compareDocxVersions` compares the AS-ACCEPTED view of each buffer: any
 tracked changes already pending in either one count as already applied before

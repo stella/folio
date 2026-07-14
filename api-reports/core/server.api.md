@@ -836,7 +836,8 @@ export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, opti
 export type GenerateRedlineDocxOptions = {
     author?: string; /** Resolved base input state. (default: `"final"`) */
     baseView?: FolioResolvedReviewedView; /** Resolved revised input state. (default: `"final"`) */
-    revisedView?: FolioResolvedReviewedView;
+    revisedView?: FolioResolvedReviewedView; /** Optional output-only package-metadata privacy transforms. */
+    privacy?: FolioDocumentPrivacyOptions;
 };
 
 // @public
@@ -844,7 +845,8 @@ export type GenerateRedlineDocxResult = {
     buffer: ArrayBuffer; /** Operations applied across every matched story. */
     applied: FolioAIEditAppliedOperation[]; /** Block operations that could not be applied. */
     skipped: FolioAIEditSkippedOperation[]; /** Package parts that could not be represented as story-scoped text edits. */
-    unprocessedStories: GenerateRedlineUnprocessedStory[];
+    unprocessedStories: GenerateRedlineUnprocessedStory[]; /** Privacy transforms applied to the generated package. */
+    privacyReport: FolioDocumentPrivacyReport;
 };
 
 // @public (undocumented)

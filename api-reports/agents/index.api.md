@@ -29,6 +29,8 @@ import { FolioDocxReviewer } from '@stll/folio-core/server';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioVersionDiff } from '@stll/folio-core/server';
 import { FolioVersionDiffSegment } from '@stll/folio-core/server';
+import { GenerateRedlineDocxOptions } from '@stll/folio-core/server';
+import { GenerateRedlineDocxResult } from '@stll/folio-core/server';
 
 // @public
 export type AnthropicToolDefinition = {
@@ -1665,6 +1667,12 @@ export type FolioAgentEditorRefLike = {
     showInDocument?(target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot): boolean;
 };
 
+// @public
+export type FolioAgentGenerateRedlineDocxOptions = GenerateRedlineDocxOptions;
+
+// @public
+export type FolioAgentGenerateRedlineDocxResult = GenerateRedlineDocxResult;
+
 // @public (undocumented)
 export type FolioAgentOutlineEntry = FolioDocumentOutlineEntry & {
     page?: number;
@@ -1745,6 +1753,9 @@ export type FolioToolCallResult = {
 
 // @public
 export const formatVersionDiffForLLM: (diff: FolioAgentVersionDiff) => string;
+
+// @public
+export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, options?: FolioAgentGenerateRedlineDocxOptions) => Promise<FolioAgentGenerateRedlineDocxResult>;
 
 // @public
 export const getFolioToolDefinitions: () => FolioAgentToolDefinition[];

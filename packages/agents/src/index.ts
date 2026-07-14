@@ -10,10 +10,12 @@ export { createReviewerBridge } from "./bridges/reviewer";
 export type {
   FolioAgentBlockDiff,
   FolioAgentCompareDocxVersionsOptions,
+  FolioAgentGenerateRedlineDocxOptions,
+  FolioAgentGenerateRedlineDocxResult,
   FolioAgentVersionDiff,
   FolioAgentVersionDiffSegment,
 } from "./compare";
-export { compareDocxVersions, formatVersionDiffForLLM } from "./compare";
+export { compareDocxVersions, formatVersionDiffForLLM, generateRedlineDocx } from "./compare";
 export { executeFolioToolCall } from "./execute";
 export {
   FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA,

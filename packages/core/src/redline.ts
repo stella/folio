@@ -25,6 +25,12 @@ import type {
 } from "./ai-edits/types";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "./document-operations";
 import { pairFolioDocumentStories } from "./document-stories";
+import {
+  resolveFolioDocumentPrivacyTransforms,
+  rewriteDocxMetadataPrivacy,
+  type FolioDocumentPrivacyOptions,
+  type FolioDocumentPrivacyReport,
+} from "./docx/metadataPrivacy";
 import { alignFolioBlocks, type FolioAlignedBlockEvent } from "./version-comparison";
 
 /** Options for {@link generateRedlineDocx}. */
@@ -35,6 +41,8 @@ export type GenerateRedlineDocxOptions = {
   baseView?: FolioResolvedReviewedView;
   /** Resolved revised input state. (default: `"final"`) */
   revisedView?: FolioResolvedReviewedView;
+  /** Optional output-only package-metadata privacy transforms. */
+  privacy?: FolioDocumentPrivacyOptions;
 };
 
 export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
@@ -61,6 +69,8 @@ export type GenerateRedlineDocxResult = {
   skipped: FolioAIEditSkippedOperation[];
   /** Package parts that could not be represented as story-scoped text edits. */
   unprocessedStories: GenerateRedlineUnprocessedStory[];
+  /** Privacy transforms applied to the generated package. */
+  privacyReport: FolioDocumentPrivacyReport;
 };
 
 const nextBaseBlockIdByIndex = (events: readonly FolioAlignedBlockEvent[]): (string | null)[] => {
@@ -183,6 +193,9 @@ export const generateRedlineDocx = async (
 ): Promise<GenerateRedlineDocxResult> => {
   const baseView = resolveInputView(options.baseView, "baseView");
   const revisedView = resolveInputView(options.revisedView, "revisedView");
+  const privacyTransforms = resolveFolioDocumentPrivacyTransforms(
+    options.privacy?.transforms ?? [],
+  );
   const [baseReviewer, revisedReviewer] = await Promise.all([
     FolioDocxReviewer.fromBuffer(base, { author: options.author ?? "folio compare" }),
     FolioDocxReviewer.fromBuffer(revised),
@@ -245,10 +258,19 @@ export const generateRedlineDocx = async (
     skipped.push(...result.skipped);
   }
 
+  const redlineBuffer = await baseReviewer.toBuffer();
+  const privacyResult =
+    privacyTransforms.length === 0
+      ? {
+          buffer: redlineBuffer,
+          privacyReport: { appliedTransforms: [], removedMetadataProperties: [] },
+        }
+      : await rewriteDocxMetadataPrivacy(redlineBuffer, { transforms: privacyTransforms });
   return {
-    buffer: await baseReviewer.toBuffer(),
+    buffer: privacyResult.buffer,
     applied,
     skipped,
     unprocessedStories,
+    privacyReport: privacyResult.privacyReport,
   };
 };
