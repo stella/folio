@@ -152,13 +152,7 @@ export function formattingEquals(
 }
 
 function languageEquals(a: TextFormatting["language"], b: TextFormatting["language"]): boolean {
-  if (!a && !b) {
-    return true;
-  }
-  if (!a || !b) {
-    return false;
-  }
-  return a.val === b.val && a.eastAsia === b.eastAsia && a.bidi === b.bidi;
+  return a?.val === b?.val && a?.eastAsia === b?.eastAsia && a?.bidi === b?.bidi;
 }
 
 /**
