@@ -1,7 +1,7 @@
 # Corpus fixtures — provenance & licensing
 
-Every `.docx` file in this directory was **synthesised for this test suite** by
-`packages/folio/scripts/build-corpus-fixtures.ts`. They are hand-written OOXML
+Most `.docx` files in this directory were **synthesised for this test suite** by
+`packages/core/scripts/build-corpus-fixtures.ts`. They are hand-written OOXML
 packages wrapped in `JSZip`; no third-party templates were copied.
 
 Because the content was authored from scratch as a documentation artefact for
@@ -9,12 +9,24 @@ testing the parser/serializer, the fixtures are released under the same
 **Apache-2.0** license as the rest of the package (see the repository
 `LICENSE` file).
 
-To re-generate after editing the script:
+To regenerate those fixtures after editing the script:
 
 ```sh
-cd packages/folio
-bun run scripts/build-corpus-fixtures.ts
+bun packages/core/scripts/build-corpus-fixtures.ts
 ```
+
+Four baseline fixtures are copied from the archived upstream
+[test fixture directory](https://github.com/mhurhangee/docx-editor/tree/7ce79b8e6c93a2bd4befafaad43719e3d3ce6c5e/e2e/fixtures)
+at commit `7ce79b8e6c93a2bd4befafaad43719e3d3ce6c5e`. They were generated from
+hand-written OOXML by that repository's fixture generator and are covered by
+its Apache-2.0 license.
+
+| File                           | SHA-256                                                            |
+| ------------------------------ | ------------------------------------------------------------------ |
+| `upstream-empty.docx`          | `a580137f03c6f27a8396bdb3777e5ea3272ea11355a05b2c4d6a847fe9e4ef32` |
+| `upstream-styled-content.docx` | `6830e894e1168c172e2933db4b7e6d7e679f38d53d939356e67703cffbe82e34` |
+| `upstream-with-tables.docx`    | `8d2a6ab28dfaff8b8e5999eab26b95931dded7c01c0d0efc63f7a307ca1d1f3f` |
+| `upstream-complex-styles.docx` | `cf529767f921698fc68ca68cda69894d886efeca8ab7c1389f7bb10ef8026338` |
 
 ## Inventory
 
@@ -45,6 +57,10 @@ bun run scripts/build-corpus-fixtures.ts
 | `sdt-without-sdtpr.docx`              | `<w:sdt>` with no `<w:sdtPr>` child; default-property tolerance                                          |
 | `sdt-self-closing.docx`               | Self-closing `<w:sdt/>` with no `<w:sdtPr>` and no content                                               |
 | `placeholder-without-docpart.docx`    | `<w:placeholder/>` with no `<w:docPart>` child; spec-non-conformant tolerance                            |
+| `upstream-empty.docx`                 | Empty-document mutation and package-preservation baseline                                                |
+| `upstream-styled-content.docx`        | Mixed run formatting, font sizes, and paragraph alignment                                                |
+| `upstream-with-tables.docx`           | Body text and a three-by-three table                                                                     |
+| `upstream-complex-styles.docx`        | Paragraph styles, font families, colors, and highlighting                                                |
 
 All fixtures are under 30 KB.
 
