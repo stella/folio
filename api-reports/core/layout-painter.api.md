@@ -10,6 +10,7 @@ import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
+import { TableCellFormatting } from '@stll/docx-core/model';
 import { TableWidthType } from '@stll/docx-core/model';
 
 // @public

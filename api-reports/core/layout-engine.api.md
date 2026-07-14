@@ -10,6 +10,7 @@ import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
+import { TableCellFormatting } from '@stll/docx-core/model';
 import { TableWidthType } from '@stll/docx-core/model';
 
 // @public
@@ -836,6 +837,7 @@ export type TableCell = {
     rowSpan?: number;
     width?: number;
     verticalAlign?: "top" | "center" | "bottom";
+    textDirection?: NonNullable<TableCellFormatting["textDirection"]>;
     background?: string;
     borders?: CellBorders; /** Per-cell padding in pixels (from w:tcMar or table-level w:tblCellMar) */
     padding?: {
