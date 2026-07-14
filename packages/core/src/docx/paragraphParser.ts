@@ -1825,6 +1825,9 @@ export function parseParagraph(
         if (level.rPr?.fontSize) {
           listRendering.markerFontSize = level.rPr.fontSize / 2;
         }
+        if (level.rPr?.bold !== undefined) {
+          listRendering.markerBold = level.rPr.bold;
+        }
         if (level.rPr?.allCaps) {
           listRendering.markerAllCaps = true;
         }

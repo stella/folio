@@ -2732,7 +2732,11 @@ export function renderParagraphFragment(
       // 2. First text run's font (paragraph content)
       // 3. Paragraph default font (from style)
       let firstTextRun: TextRun | undefined;
-      if (!block.attrs.listMarkerFontFamily || !block.attrs.listMarkerFontSize) {
+      if (
+        !block.attrs.listMarkerFontFamily ||
+        !block.attrs.listMarkerFontSize ||
+        block.attrs.listMarkerBold === undefined
+      ) {
         for (let ri = line.fromRun; ri <= line.toRun; ri++) {
           const r = block.runs[ri];
           if (r && r.kind === "text") {
@@ -2747,6 +2751,7 @@ export function renderParagraphFragment(
         block.attrs.defaultFontFamily;
       const markerFontSize =
         block.attrs.listMarkerFontSize ?? firstTextRun?.fontSize ?? block.attrs.defaultFontSize;
+      const markerBold = block.attrs.listMarkerBold ?? firstTextRun?.bold;
 
       const marker = renderListMarker(
         block.attrs.listMarker,
@@ -2755,6 +2760,7 @@ export function renderParagraphFragment(
         doc,
         markerFontFamily,
         markerFontSize,
+        markerBold,
         block.attrs.listMarkerRevision,
         block.attrs.listMarkerSecondSlotOffsetTwips,
       );
@@ -2797,6 +2803,7 @@ function renderListMarker(
   doc: Document,
   fontFamily?: string,
   fontSize?: number,
+  bold?: boolean,
   revision?: ParagraphAttrs["listMarkerRevision"],
   secondSlotOffsetTwips?: number,
 ): HTMLElement {
@@ -2812,6 +2819,9 @@ function renderListMarker(
   if (fontSize) {
     // 1pt = 96/72 px
     span.style.fontSize = `${(fontSize * 96) / 72}px`;
+  }
+  if (bold !== undefined) {
+    span.style.fontWeight = bold ? DOCX_BOLD_FONT_WEIGHT : "normal";
   }
 
   // `text-align-last` inherits, so a justified paragraph would distribute the

@@ -122,3 +122,22 @@ test("computeListRendering carries parent and current level starts", () => {
 
   expect(computeListRendering({ numId: 3, ilvl: 1 }, numbering)?.levelStarts).toEqual([3, 3]);
 });
+
+test("computeListRendering preserves explicit marker bold states", () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering ${W}>
+  <w:abstractNum w:abstractNumId="9">
+    <w:lvl w:ilvl="0">
+      <w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:rPr><w:b/></w:rPr>
+    </w:lvl>
+    <w:lvl w:ilvl="1">
+      <w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%2."/><w:rPr><w:b w:val="0"/></w:rPr>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="4"><w:abstractNumId w:val="9"/></w:num>
+</w:numbering>`;
+  const numbering = parseNumbering(xml);
+
+  expect(computeListRendering({ numId: 4, ilvl: 0 }, numbering)?.markerBold).toBe(true);
+  expect(computeListRendering({ numId: 4, ilvl: 1 }, numbering)?.markerBold).toBe(false);
+});

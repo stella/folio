@@ -447,6 +447,7 @@ export type ParagraphAttrs = {
   listMarkerHidden?: boolean; // w:vanish on numbering level rPr
   listMarkerFontFamily?: string; // from numbering level rPr (w:rFonts)
   listMarkerFontSize?: number; // from numbering level rPr, in points
+  listMarkerBold?: boolean; // from numbering level rPr (w:b)
   /** Horizontal alignment of the marker around the paragraph's list anchor. */
   listMarkerAlignment?: "left" | "center" | "right";
   /**

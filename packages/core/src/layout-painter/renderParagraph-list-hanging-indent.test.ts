@@ -83,6 +83,7 @@ const fakeDocument = {
 function renderListItem(
   indent: { left: number; hanging: number },
   listMarkerAlignment?: "left" | "center" | "right",
+  listMarkerBold?: boolean,
 ): {
   line: HTMLElement;
   marker: HTMLElement | undefined;
@@ -91,7 +92,7 @@ function renderListItem(
     kind: "paragraph",
     id: "p1",
     runs: [{ kind: "text", text: "TEST1" }],
-    attrs: { listMarker: "1.", indent, listMarkerAlignment },
+    attrs: { listMarker: "1.", indent, listMarkerAlignment, listMarkerBold },
   };
   const measure: ParagraphMeasure = {
     kind: "paragraph",
@@ -149,6 +150,14 @@ function renderListItem(
 }
 
 describe("Issue #729 — list hanging indent exceeding left indent", () => {
+  test("marker bold state reaches the painted element", () => {
+    const bold = renderListItem({ left: 48, hanging: 24 }, undefined, true).marker;
+    const regular = renderListItem({ left: 48, hanging: 24 }, undefined, false).marker;
+
+    expect(bold?.style.fontWeight).toBe("800");
+    expect(regular?.style.fontWeight).toBe("normal");
+  });
+
   test("right-aligned marker paints before its anchor without moving body text", () => {
     const { marker } = renderListItem({ left: 48, hanging: 24 }, "right");
 

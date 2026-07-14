@@ -966,6 +966,9 @@ export function computeListRendering(
   if (level.rPr?.fontSize) {
     rendering.markerFontSize = level.rPr.fontSize / 2;
   }
+  if (level.rPr?.bold !== undefined) {
+    rendering.markerBold = level.rPr.bold;
+  }
   if (level.rPr?.allCaps) {
     rendering.markerAllCaps = true;
   }
