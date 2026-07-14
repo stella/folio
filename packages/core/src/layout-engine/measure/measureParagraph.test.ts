@@ -786,6 +786,7 @@ describe("automatic hyphenation", () => {
 
 describe("measureParagraph justified shrink tolerance", () => {
   const fractionalWidth = (char: string): number => (char === "b" ? 0.6 : 1);
+  const ordinarySpaceRichWidth = (char: string): number => (char === "b" ? 0.4 : 1);
   const text = `${"a".repeat(99)} bbb`;
   const spaceRichText = `${"a ".repeat(20)}${"a".repeat(60)}bbb`;
 
@@ -815,7 +816,7 @@ describe("measureParagraph justified shrink tolerance", () => {
         expect(spacePoorMeasure.lines).toHaveLength(2);
       },
       {
-        charWidth: fractionalWidth,
+        charWidth: ordinarySpaceRichWidth,
       },
     );
   });
@@ -887,6 +888,31 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
+  test("bounds ordinary prose contraction at the measured space budget", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-prose-space-contraction-boundary",
+            runs: [{ kind: "text", text: "a a a a a a a b" }],
+            attrs: { alignment: "justify" },
+          },
+          80,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: (char) => {
+          if (char === " ") return 1;
+          if (char === "b") return 3.6;
+          return 10;
+        },
+      },
+    );
+  });
+
   test("ignores unused tab stops when choosing justified prose shrink tolerance", () => {
     withFakeTextMeasure(
       () => {
@@ -907,7 +933,7 @@ describe("measureParagraph justified shrink tolerance", () => {
         expect(measure.lines).toHaveLength(1);
       },
       {
-        charWidth: fractionalWidth,
+        charWidth: ordinarySpaceRichWidth,
       },
     );
   });
@@ -956,7 +982,7 @@ describe("measureParagraph justified shrink tolerance", () => {
         expect(measure.lines).toHaveLength(1);
       },
       {
-        charWidth: fractionalWidth,
+        charWidth: ordinarySpaceRichWidth,
       },
     );
   });
@@ -1199,7 +1225,7 @@ describe("measureParagraph justified shrink tolerance", () => {
           runs: [{ kind: "text", text: "x" }, run],
           attrs: { alignment: "justify" },
         },
-        21,
+        21.3,
       );
     const measureResolvedField = () =>
       measureParagraph(
@@ -1217,7 +1243,7 @@ describe("measureParagraph justified shrink tolerance", () => {
           ],
           attrs: { alignment: "justify" },
         },
-        21,
+        21.3,
         { fieldValues: new Map([[1, opaqueSpaceRichText]]) },
       );
 

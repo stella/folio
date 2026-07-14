@@ -16,6 +16,7 @@ the paired manifest can validate the exact DOCX SHA-256.
 - adjacent closing punctuation and inline formatting-run boundaries;
 - a document-specific prohibited line-start replacement list;
 - automatic hyphenation across an inline formatting-run boundary.
+- common justification, indentation, tab-stop, numbering, table-cell, and mixed-format layouts.
 
 Slovak remains covered by deterministic dictionary unit tests, not this Word
 baseline. Word hyphenation for a language depends on the proofing dictionaries

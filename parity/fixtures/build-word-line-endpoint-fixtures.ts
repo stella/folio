@@ -22,6 +22,7 @@ const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>
 </Types>`;
 
 const PACKAGE_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -33,6 +34,7 @@ const DOCUMENT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>
 </Relationships>`;
 
 const SETTINGS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -61,6 +63,24 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:name w:val="Normal"/>
   </w:style>
 </w:styles>`;
+
+const NUMBERING_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="0">
+    <w:multiLevelType w:val="singleLevel"/>
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1."/>
+      <w:lvlJc w:val="left"/>
+      <w:pPr>
+        <w:tabs><w:tab w:val="num" w:pos="720"/></w:tabs>
+        <w:ind w:left="720" w:hanging="360"/>
+      </w:pPr>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
+</w:numbering>`;
 
 const narrowParagraph = (text: string, language: string, extraProperties = ""): string => `
     <w:p>
@@ -110,6 +130,66 @@ const heading = (text: string): string => `
         <w:rPr><w:b/><w:lang w:val="en-US"/></w:rPr>
         <w:t>${text}</w:t>
       </w:r>
+    </w:p>`;
+
+const commonLayoutParagraph = (text: string, extraProperties: string): string => `
+    <w:p>
+      <w:pPr>
+        <w:suppressAutoHyphens/>
+        ${extraProperties}
+      </w:pPr>
+      <w:r><w:t>${text}</w:t></w:r>
+    </w:p>`;
+
+const tabStopProbe = (): string => `
+    <w:p>
+      <w:pPr>
+        <w:suppressAutoHyphens/>
+        <w:ind w:right="2880"/>
+        <w:tabs>
+          <w:tab w:val="left" w:pos="1440"/>
+          <w:tab w:val="right" w:pos="5760"/>
+        </w:tabs>
+      </w:pPr>
+      <w:r><w:t>Service item</w:t><w:tab/><w:t>Annual renewal and support plan</w:t><w:tab/><w:t>1,250.00</w:t></w:r>
+    </w:p>`;
+
+const numberedProbe = (): string => `
+    <w:p>
+      <w:pPr>
+        <w:suppressAutoHyphens/>
+        <w:ind w:right="3600"/>
+        <w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>
+      </w:pPr>
+      <w:r><w:t>The supplier must preserve records, provide audit access, and notify the customer before deleting retained material.</w:t></w:r>
+    </w:p>`;
+
+const tableCellProbe = (): string => `
+    <w:tbl>
+      <w:tblPr>
+        <w:tblW w:w="4320" w:type="dxa"/>
+        <w:tblLayout w:type="fixed"/>
+      </w:tblPr>
+      <w:tblGrid><w:gridCol w:w="4320"/></w:tblGrid>
+      <w:tr>
+        <w:tc>
+          <w:tcPr><w:tcW w:w="4320" w:type="dxa"/></w:tcPr>
+          <w:p>
+            <w:pPr><w:suppressAutoHyphens/></w:pPr>
+            <w:r><w:t>Payment is due within thirty days after receipt of a valid invoice and supporting records.</w:t></w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+    </w:tbl>`;
+
+const mixedFormattingProbe = (): string => `
+    <w:p>
+      <w:pPr><w:suppressAutoHyphens/><w:ind w:right="4320"/></w:pPr>
+      <w:r><w:t xml:space="preserve">The agreement requires </w:t></w:r>
+      <w:r><w:rPr><w:b/></w:rPr><w:t>written notice</w:t></w:r>
+      <w:r><w:t xml:space="preserve"> before either party may </w:t></w:r>
+      <w:r><w:rPr><w:i/></w:rPr><w:t>terminate for convenience</w:t></w:r>
+      <w:r><w:t>. Additional obligations continue.</w:t></w:r>
     </w:p>`;
 
 const pageBreak = (): string => `
@@ -187,6 +267,22 @@ const cases = [
         <w:t>甲乙丙丁</w:t>
       </w:r>`,
   )}`,
+  `${heading("Justified common paragraph")}${commonLayoutParagraph(
+    "Contract clauses allocate risk between parties and describe notice requirements, payment timing, remedies, and termination rights.",
+    '<w:ind w:right="3600"/><w:jc w:val="both"/>',
+  )}`,
+  `${heading("First-line paragraph indent")}${commonLayoutParagraph(
+    "Contract clauses allocate risk between parties and describe notice requirements, payment timing, remedies, and termination rights.",
+    '<w:ind w:left="720" w:right="3600" w:firstLine="720"/>',
+  )}`,
+  `${heading("Explicit tab stops")}${tabStopProbe()}`,
+  `${heading("Wrapped numbered item")}${numberedProbe()}`,
+  `${heading("Constrained table cell")}${tableCellProbe()}`,
+  `${heading("Mixed emphasis runs")}${mixedFormattingProbe()}`,
+  `${heading("Left-aligned control paragraph")}${commonLayoutParagraph(
+    "Contract clauses allocate risk between parties and describe notice requirements, payment timing, remedies, and termination rights.",
+    '<w:ind w:right="3600"/>',
+  )}`,
 ];
 
 const DOCUMENT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -212,6 +308,7 @@ const build = async (): Promise<void> => {
   addXml(zip, "word/document.xml", DOCUMENT_XML);
   addXml(zip, "word/settings.xml", SETTINGS_XML);
   addXml(zip, "word/styles.xml", STYLES_XML);
+  addXml(zip, "word/numbering.xml", NUMBERING_XML);
 
   const fixture = await zip.generateAsync({
     type: "uint8array",

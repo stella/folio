@@ -3,11 +3,11 @@
   "version": 1,
   "source": {
     "fileName": "word-hyphenation-hanging.docx",
-    "sha256": "c881a1e218ae77c64ae5095f3af19a8086ec457880be3cd7b4f92515255c319a"
+    "sha256": "1e63c15179e446e83b2e718426afa5a3e6f986c9a7fa84f3f1dcd78b97c1d7a8"
   },
   "reference": {
     "renderer": "word",
-    "capturedAt": "2026-07-14T13:13:06.812Z",
+    "capturedAt": "2026-07-14T15:32:06.485Z",
     "wordVersion": "16.112",
     "mutoolVersion": "mutool version 1.28.0"
   },
@@ -273,6 +273,145 @@
         },
         {
           "text": "甲乙丙丁",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 14,
+      "lines": [
+        {
+          "text": "Justified common paragraph",
+          "region": "unknown"
+        },
+        {
+          "text": "Contract clauses allocate risk between parties and",
+          "region": "unknown"
+        },
+        {
+          "text": "describe notice requirements, payment timing, remedies,",
+          "region": "unknown"
+        },
+        {
+          "text": "and termination rights.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 15,
+      "lines": [
+        {
+          "text": "First-line paragraph indent",
+          "region": "unknown"
+        },
+        {
+          "text": "Contract clauses allocate risk between",
+          "region": "unknown"
+        },
+        {
+          "text": "parties and describe notice requirements, payment",
+          "region": "unknown"
+        },
+        {
+          "text": "timing, remedies, and termination rights.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 16,
+      "lines": [
+        {
+          "text": "Explicit tab stops",
+          "region": "unknown"
+        },
+        {
+          "text": "Service item Annual renewal and support plan 1,250.00",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 17,
+      "lines": [
+        {
+          "text": "Wrapped numbered item",
+          "region": "unknown"
+        },
+        {
+          "text": "1. The supplier must preserve records, provide audit",
+          "region": "unknown"
+        },
+        {
+          "text": "access, and notify the customer before deleting",
+          "region": "unknown"
+        },
+        {
+          "text": "retained material.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 18,
+      "lines": [
+        {
+          "text": "Constrained table cell",
+          "region": "unknown"
+        },
+        {
+          "text": "Payment is due within thirty days after",
+          "region": "unknown"
+        },
+        {
+          "text": "receipt of a valid invoice and supporting",
+          "region": "unknown"
+        },
+        {
+          "text": "records.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 19,
+      "lines": [
+        {
+          "text": "Mixed emphasis runs",
+          "region": "unknown"
+        },
+        {
+          "text": "The agreement requires written notice before",
+          "region": "unknown"
+        },
+        {
+          "text": "either party may terminate for convenience.",
+          "region": "unknown"
+        },
+        {
+          "text": "Additional obligations continue.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 20,
+      "lines": [
+        {
+          "text": "Left-aligned control paragraph",
+          "region": "unknown"
+        },
+        {
+          "text": "Contract clauses allocate risk between parties and",
+          "region": "unknown"
+        },
+        {
+          "text": "describe notice requirements, payment timing, remedies,",
+          "region": "unknown"
+        },
+        {
+          "text": "and termination rights.",
           "region": "unknown"
         }
       ]
