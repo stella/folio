@@ -736,7 +736,7 @@ function trailingHangingPunctuationWidth(
   policy: LineBreakPolicy,
   enabled: boolean | undefined,
 ): number {
-  if (!enabled || text.length === 0) {
+  if (enabled === false || text.length === 0) {
     return 0;
   }
   const boundaries = findGraphemeBreaks(text, policy);

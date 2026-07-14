@@ -2181,20 +2181,24 @@ describe("CJK line breaking", () => {
     );
   });
 
-  test("allows trailing punctuation to hang when w:overflowPunct is enabled", () => {
+  test("defaults to hanging punctuation unless w:overflowPunct is disabled", () => {
     withFakeTextMeasure(
       () => {
-        const paragraph = (overflowPunctuation: boolean): ParagraphBlock => ({
+        const paragraph = (overflowPunctuation?: boolean): ParagraphBlock => ({
           kind: "paragraph",
-          id: `cjk-overflow-punctuation-${overflowPunctuation}`,
+          id: `cjk-overflow-punctuation-${String(overflowPunctuation)}`,
           runs: [{ kind: "text", text: "中文。", language: { eastAsia: "zh-CN" } }],
-          attrs: { overflowPunctuation },
+          ...(overflowPunctuation === undefined ? {} : { attrs: { overflowPunctuation } }),
         });
 
         expect(measureParagraph(paragraph(false), 20).lines).toHaveLength(2);
-        const hanging = measureParagraph(paragraph(true), 20);
-        expect(hanging.lines).toHaveLength(1);
-        expect(hanging.lines[0]?.width).toBe(30);
+        for (const hanging of [
+          measureParagraph(paragraph(), 20),
+          measureParagraph(paragraph(true), 20),
+        ]) {
+          expect(hanging.lines).toHaveLength(1);
+          expect(hanging.lines[0]?.width).toBe(30);
+        }
       },
       { charWidth: fixedCharWidth(10) },
     );

@@ -567,7 +567,7 @@ export type PaginatorOptions = {
 // @public
 export type ParagraphAttrs = {
     alignment?: "left" | "center" | "right" | "justify"; /** East Asian first/last-character restrictions (`w:kinsoku`). */
-    kinsoku?: boolean; /** Hanging punctuation (`w:overflowPunct`), retained for layout policy. */
+    kinsoku?: boolean; /** Hanging punctuation (`w:overflowPunct`); defaults to enabled when omitted. */
     overflowPunctuation?: boolean; /** Exempt this paragraph from document automatic hyphenation. */
     suppressAutoHyphens?: boolean; /** Document-wide automatic hyphenation controls retained for line layout. */
     automaticHyphenation?: {
