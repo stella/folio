@@ -1425,15 +1425,13 @@ type RenderLineOptions = {
  */
 const RIGHT_EDGE_EPSILON_PX = 0.5;
 
-function countShrinkableSpaces(runs: Run[]): number {
+function countShrinkableSpaces(runs: Run[], context: RenderContext | undefined): number {
   let count = 0;
   for (const run of runs) {
     if (isTextRun(run)) {
       count += countCompressibleSpaces(run.text ?? "");
     } else if (isFieldRun(run)) {
-      count += countCompressibleSpaces(run.fallback ?? "");
-    } else if (isMathRun(run)) {
-      count += countCompressibleSpaces(run.plainText ?? "");
+      count += countCompressibleSpaces(resolveFieldText(run, context));
     }
   }
   return count;
@@ -1879,6 +1877,7 @@ export function renderLine(
       const overfullPx = line.width - justifyCapacityPx;
       const shrinkableSpaces = countShrinkableSpaces(
         runsForLine.filter((run) => !isTextRun(run) || !isCollapsedLineEdgeSpaceRun(run)),
+        options.context,
       );
       if (overfullPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
         lineEl.style.textAlign = "left";

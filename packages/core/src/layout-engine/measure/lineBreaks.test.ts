@@ -40,12 +40,18 @@ describe("findWordBreaks", () => {
     expect(() => findWordBreaks("hello world", { locale: "not_a_locale" })).not.toThrow();
   });
 
-  test("keeps Czech nonsyllabic one-letter prepositions with the following word", () => {
+  test("keeps Czech one-letter prepositions with the following word", () => {
     const text = "text v  text";
 
     expect(findWordBreaks(text, { locale: "cs-CZ" })).toEqual([5]);
     expect(findWordBreaks(text, { locale: "en-US" })).toEqual([5, 7, 8]);
     expect(findWordBreaks("textov text", { locale: "cs-CZ" })).toEqual([7]);
+    expect(findWordBreaks("text o text", { locale: "cs-CZ" })).toEqual([5]);
+    expect(findWordBreaks("text u text", { locale: "cs-CZ" })).toEqual([5]);
+    expect(findWordBreaks("text O text", { locale: "cs-CZ" })).toEqual([5]);
+    expect(findWordBreaks("text U text", { locale: "cs-CZ" })).toEqual([5]);
+    expect(findWordBreaks("text a text", { locale: "cs-CZ" })).toEqual([5, 7]);
+    expect(findWordBreaks("text i text", { locale: "cs-CZ" })).toEqual([5, 7]);
   });
 
   test("keeps prohibited CJK punctuation off the next line", () => {

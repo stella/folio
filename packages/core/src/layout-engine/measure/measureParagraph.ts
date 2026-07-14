@@ -62,10 +62,11 @@ const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing 
 // Prevents premature line breaks due to measurement rounding
 const WIDTH_TOLERANCE = 0.5;
 const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
+const JUSTIFY_SPACE_CONTRACTION_RATIO = 0.1;
 const JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO = 0.195;
+const JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO = 0.23;
 const JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO = 0.015;
 const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
-const JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO = 0.02;
 const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
 const DEFAULT_LIST_HANGING_INDENT_PX = 24;
 const ALL_CAPS_RATIO_THRESHOLD = 0.8;
@@ -133,11 +134,7 @@ type LineState = {
   /** Width of collapsible ASCII whitespace at the current line tail. */
   trailingWhitespaceWidth: number;
   /** Spaces the layout may compress while justifying this line. */
-  regularSpaceCount: number;
-  /** Measured width of the compressible spaces on this line. */
   regularSpaceWidth: number;
-  /** Fixed-width spaces excluded from the line's justification budget. */
-  nonBreakingSpaceCount: number;
   maxFontSize: number;
   maxFontMetrics: FontMetrics | null;
   /** Maximum inline image height in pixels (already in px, not points) */
@@ -620,86 +617,78 @@ function uppercaseLetterRatio(text: string): number {
   return letters === 0 ? 0 : uppercase / letters;
 }
 
-type FixedSpaceAdjustedShrinkToleranceOptions = {
-  tolerance: number;
-  regularSpaceCount: number;
-  nonBreakingSpaceCount: number;
+type JustifyFitStrategy =
+  | { type: "rounding" }
+  | { type: "space"; ratio: number }
+  | { type: "width"; ratio: number };
+
+type JustificationProfile = {
+  hasTabRuns: boolean;
+  uppercaseRatio: number;
 };
 
-function fixedSpaceAdjustedShrinkTolerance({
-  tolerance,
-  regularSpaceCount,
-  nonBreakingSpaceCount,
-}: FixedSpaceAdjustedShrinkToleranceOptions): number {
-  const totalSpaces = regularSpaceCount + nonBreakingSpaceCount;
-  if (totalSpaces === 0) {
-    return tolerance;
-  }
-  // The reference layout contracts ordinary spaces during justification, but
-  // keeps NBSPs fixed. Scale the allowance to the share that can shrink.
-  return Math.max(JUSTIFY_SHRINK_TOLERANCE_RATIO, tolerance * (regularSpaceCount / totalSpaces));
-}
-
-function justifyShrinkToleranceRatio(
+function resolveJustifyFitStrategy(
   block: ParagraphBlock,
   isFirstLine: boolean,
-  regularSpaceCount: number,
-  nonBreakingSpaceCount: number,
-): number {
+  profile: JustificationProfile,
+): JustifyFitStrategy {
+  if (isShallowFullHangingListContinuation(block, isFirstLine)) {
+    return { type: "rounding" };
+  }
+
   if (block.attrs?.listMarker !== undefined) {
-    // Marker lines and continuation lines use separate compression budgets.
-    // Fixed non-breaking spaces reduce the continuation-line allowance.
     const hanging = block.attrs.indent?.hanging ?? 0;
     if (isFirstLine) {
       return hanging <= DEFAULT_LIST_HANGING_INDENT_PX
-        ? JUSTIFY_SHRINK_TOLERANCE_RATIO
-        : JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO;
+        ? { type: "space", ratio: JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO }
+        : { type: "width", ratio: JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO };
     }
     const left = block.attrs.indent?.left ?? 0;
     if (hanging > 0 && left > hanging) {
-      // A marker that remains inset leaves a narrower continuation body.
-      // Keep those lines on the marker-line allowance; full-hanging lists
-      // retain the broader prose allowance below.
-      return JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO;
+      return { type: "width", ratio: JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO };
     }
-    return fixedSpaceAdjustedShrinkTolerance({
-      tolerance: JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO,
-      regularSpaceCount,
-      nonBreakingSpaceCount,
-    });
+    return { type: "space", ratio: JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO };
   }
+
   const hasTabStops = (block.attrs?.tabs?.length ?? 0) > 0;
-  const hasTabRuns = block.runs.some(isTabRun);
-  if (isFirstLine && hasTabRuns && (block.attrs?.indent?.hanging ?? 0) > 0) {
-    return JUSTIFY_SHRINK_TOLERANCE_RATIO;
+  if (isFirstLine && profile.hasTabRuns && (block.attrs?.indent?.hanging ?? 0) > 0) {
+    return { type: "width", ratio: JUSTIFY_SHRINK_TOLERANCE_RATIO };
   }
-  if (!isFirstLine && hasTabRuns && !hasTabStops) {
-    return JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO;
+  if (!isFirstLine && profile.hasTabRuns && !hasTabStops) {
+    return { type: "width", ratio: JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO };
   }
-  if (hasTabRuns && (isFirstLine || hasTabStops)) {
-    return (block.attrs?.indent?.firstLine ?? 0) === 0
-      ? JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO
-      : JUSTIFY_SHRINK_TOLERANCE_RATIO;
+  if (profile.hasTabRuns && (isFirstLine || hasTabStops)) {
+    return {
+      type: "width",
+      ratio:
+        (block.attrs?.indent?.firstLine ?? 0) === 0
+          ? JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO
+          : JUSTIFY_SHRINK_TOLERANCE_RATIO,
+    };
   }
-
-  const text = block.runs.map((run) => (isTextRun(run) ? (run.text ?? "") : "")).join("");
-  if (uppercaseLetterRatio(text) > ALL_CAPS_RATIO_THRESHOLD) {
-    return JUSTIFY_SHRINK_TOLERANCE_RATIO;
+  if (profile.uppercaseRatio > ALL_CAPS_RATIO_THRESHOLD) {
+    return { type: "width", ratio: JUSTIFY_SHRINK_TOLERANCE_RATIO };
   }
-
-  return fixedSpaceAdjustedShrinkTolerance({
-    tolerance: JUSTIFY_PROSE_SHRINK_TOLERANCE_RATIO,
-    regularSpaceCount,
-    nonBreakingSpaceCount,
-  });
+  return { type: "space", ratio: JUSTIFY_SPACE_CONTRACTION_RATIO };
 }
 
-function usesSpaceBasedListMarkerTolerance(block: ParagraphBlock, isFirstLine: boolean): boolean {
-  return (
-    isFirstLine &&
-    block.attrs?.listMarker !== undefined &&
-    (block.attrs.indent?.hanging ?? 0) <= DEFAULT_LIST_HANGING_INDENT_PX
-  );
+function compressibleSpaceWidth(text: string, style: FontStyle): number {
+  const count = countCompressibleSpaces(text);
+  return count === 0 ? 0 : count * measureTextWidth(" ", style);
+}
+
+function justifyFitTolerance(
+  line: LineState,
+  strategy: JustifyFitStrategy,
+  candidateSpaceWidth: number,
+): number {
+  if (strategy.type === "rounding") {
+    return WIDTH_TOLERANCE;
+  }
+  if (strategy.type === "width") {
+    return Math.max(WIDTH_TOLERANCE, line.availableWidth * strategy.ratio);
+  }
+  return Math.max(WIDTH_TOLERANCE, (line.regularSpaceWidth + candidateSpaceWidth) * strategy.ratio);
 }
 
 function isShallowFullHangingListContinuation(
@@ -767,23 +756,82 @@ function computeTrailingGlueWidths(block: ParagraphBlock): number[] {
       widths[index] = widths[index + 1] ?? 0;
       continue;
     }
-    if (isSpaceOrTab(text[0])) {
+    if (isSpaceOrTab(text.at(0))) {
       continue;
     }
 
     const style = runToFontStyle(nextRun);
     const breaks = findWordBreaks(text, lineBreakPolicy(block, nextRun));
-    if (breaks.length === 0) {
-      widths[index] = measureTextWidth(text, style) + (widths[index + 1] ?? 0);
+    const firstBreak = breaks.at(0);
+    const leading =
+      firstBreak === undefined ? text : trimTrailingSpacesAndTabs(text.slice(0, firstBreak));
+    widths[index] =
+      measureTextWidth(leading, style) + (firstBreak === undefined ? (widths[index + 1] ?? 0) : 0);
+  }
+  return widths;
+}
+
+function computeProtectedCrossRunGlueWidths(block: ParagraphBlock): number[] {
+  const widths = Array.from({ length: block.runs.length }, () => 0);
+  for (let index = 0; index < block.runs.length; index++) {
+    const run = block.runs[index];
+    if (!run || !isTextRun(run)) {
+      continue;
+    }
+    const trailing = /(\S+)(\s*)$/u.exec(run.text ?? "");
+    const token = trailing?.[1];
+    const policy = lineBreakPolicy(block, run);
+    if (!token || token.length !== 1 || !policy.locale?.toLocaleLowerCase().startsWith("cs")) {
       continue;
     }
 
-    const firstBreak = breaks[0];
-    if (firstBreak === undefined) {
+    let separator = trailing[2] ?? "";
+    let glueWidth = separator.length > 0 ? measureTextWidth(separator, runToFontStyle(run)) : 0;
+    let followingWord = "";
+    let unseparatedFollowingText = false;
+    for (let nextIndex = index + 1; nextIndex < block.runs.length; nextIndex++) {
+      const nextRun = block.runs[nextIndex];
+      if (!nextRun || !isTextRun(nextRun)) {
+        break;
+      }
+      const text = nextRun.text ?? "";
+      let consumed = "";
+      for (const char of text) {
+        const isWhitespace = /\s/u.test(char);
+        if (followingWord.length > 0 && isWhitespace) {
+          break;
+        }
+        if (separator.length === 0 && !isWhitespace) {
+          unseparatedFollowingText = true;
+          break;
+        }
+        consumed += char;
+        if (isWhitespace) {
+          separator += char;
+        } else {
+          followingWord += char;
+        }
+      }
+      if (consumed.length > 0) {
+        glueWidth += measureTextWidth(consumed, runToFontStyle(nextRun));
+      }
+      if (unseparatedFollowingText) {
+        break;
+      }
+      if (followingWord.length > 0 && consumed.length < text.length) {
+        break;
+      }
+    }
+    if (unseparatedFollowingText || separator.length === 0 || followingWord.length === 0) {
       continue;
     }
-    const leading = trimTrailingSpacesAndTabs(text.slice(0, firstBreak));
-    widths[index] = measureTextWidth(leading, style);
+
+    const boundary = token.length + separator.length;
+    const probe = token + separator + followingWord;
+    const breaks = findWordBreaks(probe, policy);
+    if (!breaks.includes(boundary)) {
+      widths[index] = glueWidth;
+    }
   }
   return widths;
 }
@@ -985,6 +1033,18 @@ export function measureParagraph(
   const attrs = block.attrs;
   const spacing = attrs?.spacing;
   const isJustifiedParagraph = attrs?.alignment === "justify";
+  const justificationProfile: JustificationProfile = {
+    hasTabRuns: isJustifiedParagraph && runs.some(isTabRun),
+    uppercaseRatio: isJustifiedParagraph
+      ? uppercaseLetterRatio(runs.map((run) => (isTextRun(run) ? (run.text ?? "") : "")).join(""))
+      : 0,
+  };
+  const firstLineJustifyFitStrategy = resolveJustifyFitStrategy(block, true, justificationProfile);
+  const continuationJustifyFitStrategy = resolveJustifyFitStrategy(
+    block,
+    false,
+    justificationProfile,
+  );
 
   // Floating image support
   const floatingZones = options?.floatingZones;
@@ -1170,6 +1230,7 @@ export function measureParagraph(
   }
 
   const trailingGlueWidths = computeTrailingGlueWidths(block);
+  const protectedCrossRunGlueWidths = computeProtectedCrossRunGlueWidths(block);
 
   // Initialize line state
   let currentLine: LineState = {
@@ -1179,9 +1240,7 @@ export function measureParagraph(
     toChar: 0,
     width: 0,
     trailingWhitespaceWidth: 0,
-    regularSpaceCount: 0,
     regularSpaceWidth: 0,
-    nonBreakingSpaceCount: 0,
     maxFontSize: DEFAULT_FONT_SIZE,
     maxFontMetrics: null,
     maxImageHeightPx: 0,
@@ -1344,9 +1403,7 @@ export function measureParagraph(
       toChar: charIndex,
       width: 0,
       trailingWhitespaceWidth: 0,
-      regularSpaceCount: 0,
       regularSpaceWidth: 0,
-      nonBreakingSpaceCount: 0,
       maxFontSize: DEFAULT_FONT_SIZE,
       maxFontMetrics: null,
       maxImageHeightPx: 0,
@@ -1587,15 +1644,24 @@ export function measureParagraph(
       updateMaxFont(style);
 
       const fieldWidth = measureTextWidth(fallback, style);
+      const fieldSpaceWidth = compressibleSpaceWidth(fallback, style);
+      const fieldTolerance = isJustifiedParagraph
+        ? justifyFitTolerance(
+            currentLine,
+            lines.length === 0 ? firstLineJustifyFitStrategy : continuationJustifyFitStrategy,
+            fieldSpaceWidth,
+          )
+        : WIDTH_TOLERANCE;
       if (
         currentLine.width > 0 &&
-        currentLine.width + fieldWidth > currentLine.availableWidth + WIDTH_TOLERANCE
+        currentLine.width + fieldWidth > currentLine.availableWidth + fieldTolerance
       ) {
         startNewLine(runIndex, 0);
         updateMaxFont(style);
       }
 
       currentLine.width += fieldWidth;
+      currentLine.regularSpaceWidth += fieldSpaceWidth;
       currentLine.trailingWhitespaceWidth = 0;
       currentLine.toRun = runIndex;
       currentLine.toChar = 1;
@@ -1616,7 +1682,8 @@ export function measureParagraph(
         ...(run.italic !== undefined ? { italic: run.italic } : {}),
       };
       updateMaxFont(style);
-      const mathWidth = measureTextWidth(run.plainText || "[equation]", style);
+      const mathText = run.plainText || "[equation]";
+      const mathWidth = measureTextWidth(mathText, style);
       const mathFootprintPx = estimateMathFootprintPx(run);
       if (
         currentLine.width > 0 &&
@@ -1689,30 +1756,15 @@ export function measureParagraph(
           breakPolicy,
           block.attrs?.overflowPunctuation,
         );
-        const regularSpaces = countCompressibleSpaces(measuredWord);
-        const nonBreakingSpaces = measuredWord.split("\u00a0").length - 1;
         const isFirstLine = lines.length === 0;
-        const usesMarkerSpaceTolerance = usesSpaceBasedListMarkerTolerance(block, isFirstLine);
-        const regularSpaceWidth =
-          regularSpaces > 0 && usesMarkerSpaceTolerance
-            ? regularSpaces * measureTextWidth(" ", style)
-            : 0;
-        const widthTolerance =
-          isJustifiedParagraph && !isShallowFullHangingListContinuation(block, isFirstLine)
-            ? Math.max(
-                WIDTH_TOLERANCE,
-                usesMarkerSpaceTolerance
-                  ? (currentLine.regularSpaceWidth + regularSpaceWidth) *
-                      JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO
-                  : currentLine.availableWidth *
-                      justifyShrinkToleranceRatio(
-                        block,
-                        isFirstLine,
-                        currentLine.regularSpaceCount + regularSpaces,
-                        currentLine.nonBreakingSpaceCount + nonBreakingSpaces,
-                      ),
-              )
-            : WIDTH_TOLERANCE;
+        const regularSpaceWidth = compressibleSpaceWidth(measuredWord, style);
+        const widthTolerance = isJustifiedParagraph
+          ? justifyFitTolerance(
+              currentLine,
+              isFirstLine ? firstLineJustifyFitStrategy : continuationJustifyFitStrategy,
+              regularSpaceWidth,
+            )
+          : WIDTH_TOLERANCE;
 
         const automaticHyphenation = block.attrs?.automaticHyphenation;
         const consecutiveLineLimit = automaticHyphenation?.consecutiveLineLimit ?? 0;
@@ -1858,16 +1910,7 @@ export function measureParagraph(
             currentLine.width += chunkWidth;
             currentLine.trailingWhitespaceWidth =
               chunkWidth - measureTextWidth(trimTrailingSpacesAndTabs(chunk), style);
-            const chunkRegularSpaceCount = countCompressibleSpaces(chunk);
-            currentLine.regularSpaceCount += chunkRegularSpaceCount;
-            if (
-              chunkRegularSpaceCount > 0 &&
-              usesSpaceBasedListMarkerTolerance(block, lines.length === 0)
-            ) {
-              currentLine.regularSpaceWidth +=
-                chunkRegularSpaceCount * measureTextWidth(" ", style);
-            }
-            currentLine.nonBreakingSpaceCount += chunk.split("\u00a0").length - 1;
+            currentLine.regularSpaceWidth += compressibleSpaceWidth(chunk, style);
             currentLine.toRun = runIndex;
             currentLine.toChar = charIndex + chunkEnd;
 
@@ -1881,15 +1924,7 @@ export function measureParagraph(
           const trailingWhitespaceWidth = fullWordWidth - wordWidth;
           currentLine.width += trailingWhitespaceWidth;
           currentLine.trailingWhitespaceWidth = trailingWhitespaceWidth;
-          const wordRegularSpaceCount = countCompressibleSpaces(word);
-          currentLine.regularSpaceCount += wordRegularSpaceCount;
-          if (
-            wordRegularSpaceCount > 0 &&
-            usesSpaceBasedListMarkerTolerance(block, lines.length === 0)
-          ) {
-            currentLine.regularSpaceWidth += wordRegularSpaceCount * measureTextWidth(" ", style);
-          }
-          currentLine.nonBreakingSpaceCount += word.split("\u00a0").length - 1;
+          currentLine.regularSpaceWidth += compressibleSpaceWidth(word, style);
           currentLine.toChar = nextBreak;
 
           charIndex = nextBreak;
@@ -1900,10 +1935,11 @@ export function measureParagraph(
         // run and the next run starts without whitespace, include that glued
         // width in the wrap decision so a note marker or format-only word
         // split is not stranded on the next line (eigenpal/docx-editor#991).
+        const wordTail = word.at(-1);
+        const protectedGlueWidth = protectedCrossRunGlueWidths[runIndex] ?? 0;
         const rawGlueWidth =
-          // eslint-disable-next-line unicorn/prefer-at -- hot path: direct index avoids .at() overhead.
-          isRunTail && word.length > 0 && !isBreakChar(word[word.length - 1])
-            ? (trailingGlueWidths[runIndex] ?? 0)
+          isRunTail && wordTail !== undefined && (!isBreakChar(wordTail) || protectedGlueWidth > 0)
+            ? Math.max(trailingGlueWidths[runIndex] ?? 0, protectedGlueWidth)
             : 0;
         const glueWidth =
           rawGlueWidth > 0 &&
@@ -1935,15 +1971,7 @@ export function measureParagraph(
           wordWidth === 0
             ? currentLine.trailingWhitespaceWidth + wordTrailingWhitespaceWidth
             : wordTrailingWhitespaceWidth;
-        const wordRegularSpaceCount = countCompressibleSpaces(word);
-        currentLine.regularSpaceCount += wordRegularSpaceCount;
-        if (
-          wordRegularSpaceCount > 0 &&
-          usesSpaceBasedListMarkerTolerance(block, lines.length === 0)
-        ) {
-          currentLine.regularSpaceWidth += wordRegularSpaceCount * measureTextWidth(" ", style);
-        }
-        currentLine.nonBreakingSpaceCount += word.split("\u00a0").length - 1;
+        currentLine.regularSpaceWidth += compressibleSpaceWidth(word, style);
         currentLine.toRun = runIndex;
         currentLine.toChar = nextBreak;
 

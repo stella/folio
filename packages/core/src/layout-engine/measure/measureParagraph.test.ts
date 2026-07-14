@@ -374,6 +374,73 @@ describe("measureParagraph cross-run line breaking", () => {
     }, fakeMeasure);
   });
 
+  test("keeps a Czech one-letter preposition with a following formatted run", () => {
+    withFakeTextMeasure(() => {
+      const sameRunWhitespace: Run[] = [
+        { kind: "text", text: "alpha o ", language: { val: "cs-CZ" } },
+        { kind: "text", text: "beta", bold: true, language: { val: "cs-CZ" } },
+      ];
+      const sameRunMeasure = measureParagraph(paragraph(sameRunWhitespace), width("alpha o"));
+
+      expect(lineStartsAt(sameRunMeasure.lines, 0, "alpha ".length)).toBe(true);
+      expect(lineStartsAtRun(sameRunMeasure.lines, 1)).toBe(false);
+
+      const splitCases: { runs: Run[]; followingRun: number }[] = [
+        {
+          runs: [
+            { kind: "text", text: "alpha " },
+            { kind: "text", text: "o", language: { val: "cs-CZ" } },
+            { kind: "text", text: " beta", bold: true },
+          ],
+          followingRun: 2,
+        },
+        {
+          runs: [
+            { kind: "text", text: "alpha " },
+            { kind: "text", text: "o", language: { val: "cs-CZ" } },
+            { kind: "text", text: " " },
+            { kind: "text", text: "beta", bold: true },
+          ],
+          followingRun: 3,
+        },
+        {
+          runs: [
+            { kind: "text", text: "alpha " },
+            { kind: "text", text: "o ", language: { val: "cs-CZ" } },
+            { kind: "text", text: "" },
+            { kind: "text", text: "beta", bold: true },
+          ],
+          followingRun: 3,
+        },
+      ];
+
+      for (const splitCase of splitCases) {
+        const { lines } = measureParagraph(paragraph(splitCase.runs), width("alpha o"));
+
+        expect(lineStartsAtRun(lines, 1)).toBe(true);
+        expect(lineStartsAtRun(lines, splitCase.followingRun)).toBe(false);
+      }
+    }, fakeMeasure);
+  });
+
+  test("bounds protected-break scanning for fragmented Czech runs", () => {
+    withFakeTextMeasure(
+      () => {
+        const runs: Run[] = Array.from({ length: 500 }, () => ({
+          kind: "text",
+          text: "o",
+          language: { val: "cs-CZ" },
+        }));
+        const startedAt = performance.now();
+
+        measureParagraph(paragraph(runs), 10_000);
+
+        expect(performance.now() - startedAt).toBeLessThan(1_500);
+      },
+      { charWidth: fixedCharWidth(1) },
+    );
+  });
+
   test("allows a normal wrap when whitespace precedes the footnote marker", () => {
     withFakeTextMeasure(() => {
       const runs: Run[] = [
@@ -720,21 +787,32 @@ describe("automatic hyphenation", () => {
 describe("measureParagraph justified shrink tolerance", () => {
   const fractionalWidth = (char: string): number => (char === "b" ? 0.6 : 1);
   const text = `${"a".repeat(99)} bbb`;
+  const spaceRichText = `${"a ".repeat(20)}${"a".repeat(60)}bbb`;
 
-  test("allows normal justified prose to use reference-layout shrink before wrapping", () => {
+  test("bases ordinary justified shrink on measured compressible spaces", () => {
     withFakeTextMeasure(
       () => {
-        const measure = measureParagraph(
+        const spaceRichMeasure = measureParagraph(
           {
             kind: "paragraph",
             id: "justified-prose-shrink",
+            runs: [{ kind: "text", text: spaceRichText }],
+            attrs: { alignment: "justify" },
+          },
+          100,
+        );
+        const spacePoorMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-prose-small-space-budget",
             runs: [{ kind: "text", text }],
             attrs: { alignment: "justify" },
           },
           100,
         );
 
-        expect(measure.lines).toHaveLength(1);
+        expect(spaceRichMeasure.lines).toHaveLength(1);
+        expect(spacePoorMeasure.lines).toHaveLength(2);
       },
       {
         charWidth: fractionalWidth,
@@ -766,7 +844,7 @@ describe("measureParagraph justified shrink tolerance", () => {
   });
 
   test("keeps regular spaces available for justified shrink beside a fixed space", () => {
-    const mixedSpaceText = `${"a".repeat(97)}  \u00a0bbb`;
+    const mixedSpaceText = `${"a ".repeat(15)}${"a".repeat(68)}\u00a0bbb`;
 
     withFakeTextMeasure(
       () => {
@@ -816,7 +894,7 @@ describe("measureParagraph justified shrink tolerance", () => {
           {
             kind: "paragraph",
             id: "justified-unused-tab-stop",
-            runs: [{ kind: "text", text }],
+            runs: [{ kind: "text", text: spaceRichText }],
             attrs: {
               alignment: "justify",
               indent: { firstLine: 48 },
@@ -858,14 +936,14 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("allows hanging tabbed justified prose a small additional shrink", () => {
+  test("uses measured spaces with configured but unused tab stops", () => {
     withFakeTextMeasure(
       () => {
         const measure = measureParagraph(
           {
             kind: "paragraph",
             id: "justified-hanging-tab",
-            runs: [{ kind: "text", text }],
+            runs: [{ kind: "text", text: spaceRichText }],
             attrs: {
               alignment: "justify",
               indent: { firstLine: 0 },
@@ -978,13 +1056,30 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("uses prose shrink tolerance for justified list continuation lines", () => {
+  test("bases full-hanging list continuation shrink on measured spaces", () => {
     withFakeTextMeasure(
       () => {
-        const measure = measureParagraph(
+        const spaceRichMeasure = measureParagraph(
           {
             kind: "paragraph",
             id: "justified-list-continuation",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: spaceRichText },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 36 },
+            },
+          },
+          136,
+        );
+        const spacePoorMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-small-continuation-budget",
             runs: [
               { kind: "text", text: "first line" },
               { kind: "lineBreak" },
@@ -999,7 +1094,8 @@ describe("measureParagraph justified shrink tolerance", () => {
           136,
         );
 
-        expect(measure.lines).toHaveLength(2);
+        expect(spaceRichMeasure.lines).toHaveLength(2);
+        expect(spacePoorMeasure.lines).toHaveLength(3);
       },
       {
         charWidth: fractionalWidth,
@@ -1063,7 +1159,7 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("keeps full-hanging list continuation lines on the prose tolerance", () => {
+  test("uses the measured-space budget for full-hanging list continuations", () => {
     withFakeTextMeasure(
       () => {
         const measure = measureParagraph(
@@ -1073,7 +1169,7 @@ describe("measureParagraph justified shrink tolerance", () => {
             runs: [
               { kind: "text", text: "first line" },
               { kind: "lineBreak" },
-              { kind: "text", text },
+              { kind: "text", text: spaceRichText },
             ],
             attrs: {
               alignment: "justify",
@@ -1089,6 +1185,68 @@ describe("measureParagraph justified shrink tolerance", () => {
       {
         charWidth: fractionalWidth,
       },
+    );
+  });
+
+  test("counts spaces inside opaque field runs but not native math", () => {
+    const opaqueSpaceRichText = `${"a ".repeat(10)}b`;
+    const opaqueSpacePoorText = `${"a".repeat(19)} b`;
+    const measureOpaqueRun = (run: Run) =>
+      measureParagraph(
+        {
+          kind: "paragraph",
+          id: "justified-opaque-run-space-budget",
+          runs: [{ kind: "text", text: "x" }, run],
+          attrs: { alignment: "justify" },
+        },
+        21,
+      );
+    const measureResolvedField = () =>
+      measureParagraph(
+        {
+          kind: "paragraph",
+          id: "justified-resolved-field-space-budget",
+          runs: [
+            { kind: "text", text: "x" },
+            {
+              kind: "field",
+              fieldType: "OTHER",
+              fallback: opaqueSpacePoorText,
+              pmStart: 1,
+            },
+          ],
+          attrs: { alignment: "justify" },
+        },
+        21,
+        { fieldValues: new Map([[1, opaqueSpaceRichText]]) },
+      );
+
+    withFakeTextMeasure(
+      () => {
+        const fieldRich = measureOpaqueRun({
+          kind: "field",
+          fieldType: "OTHER",
+          fallback: opaqueSpaceRichText,
+        });
+        const fieldPoor = measureOpaqueRun({
+          kind: "field",
+          fieldType: "OTHER",
+          fallback: opaqueSpacePoorText,
+        });
+        const mathRich = measureOpaqueRun({
+          kind: "math",
+          display: "inline",
+          ommlXml:
+            '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><m:r><m:t>a b</m:t></m:r></m:oMath>',
+          plainText: opaqueSpaceRichText,
+        });
+
+        expect(fieldRich.lines).toHaveLength(1);
+        expect(fieldPoor.lines).toHaveLength(2);
+        expect(measureResolvedField().lines).toHaveLength(1);
+        expect(mathRich.lines).toHaveLength(2);
+      },
+      { charWidth: fixedCharWidth(1) },
     );
   });
 

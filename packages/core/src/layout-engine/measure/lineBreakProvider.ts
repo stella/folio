@@ -76,7 +76,7 @@ const BREAK_AFTER_CHARACTER = new Set([
   "\u200B", // zero-width space
   "\u00AD", // soft hyphen
 ]);
-const CZECH_NONSYLLABIC_ONE_LETTER_PREPOSITIONS = new Set(["k", "s", "v", "z"]);
+const CZECH_ONE_LETTER_PREPOSITIONS = new Set(["k", "o", "s", "u", "v", "z"]);
 
 // ECMA-376 kinsoku defaults are language-specific and can be overridden by
 // settings.xml. This conservative common set covers punctuation excluded from
@@ -217,8 +217,7 @@ const czechProtectedBreaks = (text: string, policy?: LineBreakPolicy): Set<numbe
 
     const token = text.slice(tokenStart, index);
     const protectsNextWord =
-      [...token].length === 1 &&
-      CZECH_NONSYLLABIC_ONE_LETTER_PREPOSITIONS.has(token.toLocaleLowerCase("cs"));
+      token.length === 1 && CZECH_ONE_LETTER_PREPOSITIONS.has(token.toLocaleLowerCase("cs"));
     while (index < text.length) {
       const whitespace = firstCodePoint(text, index);
       if (whitespace === undefined || !/\s/u.test(whitespace)) {

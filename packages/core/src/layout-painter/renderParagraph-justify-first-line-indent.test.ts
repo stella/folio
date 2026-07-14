@@ -185,6 +185,84 @@ describe("Issue #868 — justify first line to full content width on indented pa
     expect(lineEl.style.wordSpacing).toBe("-5px");
   });
 
+  test("counts resolved field text when compressing an overfull line", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-resolved-field-spaces",
+      runs: [
+        {
+          kind: "field",
+          fieldType: "OTHER",
+          instruction: "REF target",
+          fallback: "fallback",
+          pmStart: 1,
+        },
+      ],
+      attrs: { alignment: "justify" },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 1,
+      width: 110,
+      ascent: 10,
+      descent: 3,
+      lineHeight: 14,
+    };
+
+    const lineEl = renderLine(block, line, "justify", fakeDocument, {
+      availableWidth: 100,
+      isLastLine: false,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      context: {
+        pageNumber: 1,
+        totalPages: 1,
+        section: "body",
+        bookmarkText: new Map([["target", "alpha beta gamma"]]),
+      },
+    });
+
+    expect(lineEl.style.wordSpacing).toBe("-5px");
+  });
+
+  test("does not treat native math spaces as compressible line spaces", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-native-math-spaces",
+      runs: [
+        {
+          kind: "math",
+          display: "inline",
+          ommlXml:
+            '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><m:r><m:t>a b</m:t></m:r></m:oMath>',
+          plainText: "a b",
+        },
+      ],
+      attrs: { alignment: "justify" },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 1,
+      width: 110,
+      ascent: 10,
+      descent: 3,
+      lineHeight: 14,
+    };
+
+    const lineEl = renderLine(block, line, "justify", fakeDocument, {
+      availableWidth: 100,
+      isLastLine: false,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+    });
+
+    expect(lineEl.style.wordSpacing).toBeUndefined();
+  });
+
   test("underfull justified tab lines distribute their remaining width explicitly", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
