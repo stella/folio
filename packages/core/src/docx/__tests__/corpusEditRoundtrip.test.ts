@@ -5,9 +5,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import JSZip from "jszip";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import type { Node as ProseMirrorNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
@@ -69,6 +71,82 @@ const expectUnrelatedPartsPreserved = async ({
   }
 };
 
+type TextMatch = {
+  from: number;
+  node: ProseMirrorNode;
+  parent: ProseMirrorNode | null;
+};
+
+const findUniqueText = (doc: ProseMirrorNode, text: string): TextMatch => {
+  const matches: TextMatch[] = [];
+
+  doc.descendants((node, from, parent) => {
+    if (node.isText && node.text === text) {
+      matches.push({ from, node, parent });
+    }
+  });
+
+  if (matches.length !== 1) {
+    panic(`Expected one text node matching "${text}", found ${matches.length}`);
+  }
+
+  return matches[0];
+};
+
+type ReplaceUniqueTextOptions = {
+  doc: ProseMirrorNode;
+  text: string;
+  replacement: string;
+};
+
+const replaceUniqueText = ({
+  doc,
+  text,
+  replacement,
+}: ReplaceUniqueTextOptions): ProseMirrorNode => {
+  const match = findUniqueText(doc, text);
+  const replacementNode = doc.type.schema.text(replacement, match.node.marks);
+  const state = EditorState.create({ doc });
+  return state.apply(
+    state.tr.replaceWith(match.from, match.from + match.node.nodeSize, replacementNode),
+  ).doc;
+};
+
+type EditFixtureTextOptions = {
+  filename: string;
+  text: string;
+  replacement: string;
+};
+
+const editFixtureText = async ({ filename, text, replacement }: EditFixtureTextOptions) => {
+  const originalBytes = readFixture(filename);
+  const parsed = await parseDocx(originalBytes);
+  const editedPm = replaceUniqueText({
+    doc: toProseDoc(parsed),
+    text,
+    replacement,
+  });
+  const savedBytes = await repackDocx(fromProseDoc(editedPm, parsed), {
+    updateModifiedDate: false,
+  });
+
+  return {
+    originalBytes,
+    savedBytes,
+    reopenedPm: toProseDoc(await parseDocx(savedBytes)),
+  };
+};
+
+const nodesOfType = (doc: ProseMirrorNode, type: string): ProseMirrorNode[] => {
+  const matches: ProseMirrorNode[] = [];
+  doc.descendants((node) => {
+    if (node.type.name === type) {
+      matches.push(node);
+    }
+  });
+  return matches;
+};
+
 describe("corpus edit/save/reopen", () => {
   test("corpus fixtures are present", () => {
     expect(FIXTURE_FILES.length).toBeGreaterThan(0);
@@ -93,5 +171,46 @@ describe("corpus edit/save/reopen", () => {
     expect(reopenedPm.textContent).toBe(`${originalPm.textContent}${marker}`);
     expect(reopenedPm.childCount).toBe(originalPm.childCount + 1);
     await expectUnrelatedPartsPreserved({ originalBytes, savedBytes });
+  });
+});
+
+describe("structured corpus edits", () => {
+  test("edits text inside a table cell", async () => {
+    const result = await editFixtureText({
+      filename: "upstream-with-tables.docx",
+      text: "B2",
+      replacement: "B2 edited",
+    });
+    const tables = nodesOfType(result.reopenedPm, "table");
+
+    expect(tables).toHaveLength(1);
+    expect(tables[0].textContent).toContain("B2 edited");
+    expect(nodesOfType(tables[0], "tableRow")).toHaveLength(3);
+    expect(nodesOfType(tables[0], "tableCell")).toHaveLength(9);
+    await expectUnrelatedPartsPreserved(result);
+  });
+
+  test("preserves bold formatting on edited text", async () => {
+    const result = await editFixtureText({
+      filename: "upstream-styled-content.docx",
+      text: "Bold text. ",
+      replacement: "Bold text edited. ",
+    });
+    const match = findUniqueText(result.reopenedPm, "Bold text edited. ");
+
+    expect(match.node.marks.map((mark) => mark.type.name)).toContain("bold");
+    await expectUnrelatedPartsPreserved(result);
+  });
+
+  test("preserves the paragraph style on edited heading text", async () => {
+    const result = await editFixtureText({
+      filename: "upstream-complex-styles.docx",
+      text: "Heading 1",
+      replacement: "Heading 1 edited",
+    });
+    const match = findUniqueText(result.reopenedPm, "Heading 1 edited");
+
+    expect(match.parent?.attrs["styleId"]).toBe("Heading1");
+    await expectUnrelatedPartsPreserved(result);
   });
 });
