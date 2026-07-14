@@ -99,11 +99,7 @@ describe("inline content-control tracked changes", () => {
     expect(sdtContent).toContain("<w:ins ");
 
     const parsed = await parsedInlineSdt(buffer);
-    expect(parsed.content.map((content) => content.type)).toEqual([
-      "run",
-      "deletion",
-      "insertion",
-    ]);
+    expect(parsed.content.map((content) => content.type)).toEqual(["run", "deletion", "insertion"]);
   });
 
   test("accept and reject keep the content control with the correct text", async () => {

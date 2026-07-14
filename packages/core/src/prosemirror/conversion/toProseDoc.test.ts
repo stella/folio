@@ -1416,10 +1416,7 @@ describe("toProseDoc", () => {
           moveKind: mark.attrs.moveKind,
         })),
       ),
-    ).toEqual([
-      [{ type: "insertion", moveKind: null }],
-      [{ type: "deletion", moveKind: null }],
-    ]);
+    ).toEqual([[{ type: "insertion", moveKind: null }], [{ type: "deletion", moveKind: null }]]);
   });
 
   test("anchors point comments to nearby text for display", () => {

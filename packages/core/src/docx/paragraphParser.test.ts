@@ -363,10 +363,7 @@ describe("parseParagraph SDT content preservation", () => {
     if (sdt?.type !== "inlineSdt") {
       return;
     }
-    expect(sdt.content.map((content) => content.type)).toEqual([
-      "insertion",
-      "deletion",
-    ]);
+    expect(sdt.content.map((content) => content.type)).toEqual(["insertion", "deletion"]);
   });
 
   test("keeps a simple field that lives inside an inline SDT", () => {
