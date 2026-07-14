@@ -96,6 +96,10 @@ export function applyImageVisualAttrs(img: HTMLImageElement, v: ImageVisualAttrs
   const fh = 1 / remainingH;
   img.style.width = `${fw * 100}%`;
   img.style.height = `${fh * 100}%`;
+  // Cropping deliberately enlarges the bitmap beyond its visible frame.
+  // Opt out of host image resets that cap replaced elements to their parent.
+  img.style.maxWidth = "none";
+  img.style.maxHeight = "none";
   img.style.marginLeft = `${-left * fw * 100}%`;
   const existingTransform = img.style.transform;
   if (existingTransform) {

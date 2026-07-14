@@ -111,6 +111,18 @@ const findImageDescendant = (el: FakeElement): FakeElement | undefined => {
   return undefined;
 };
 
+describe("applyImageVisualAttrs crop sizing", () => {
+  test("lets a horizontally cropped bitmap expand beyond its frame", () => {
+    const image = fakeDocument.createElement("img");
+
+    applyImageVisualAttrs(image, { cropLeft: 0.2, cropRight: 0.3 });
+
+    expect(Number.parseFloat(image.style.width)).toBeCloseTo(200, 6);
+    expect(image.style.maxWidth).toBe("none");
+    expect(image.style.maxHeight).toBe("none");
+  });
+});
+
 describe("renderImageFragment opacity (floating block path)", () => {
   test("emits CSS opacity for a floating image with opacity 0.5", () => {
     const block = baseImageBlock({ opacity: 0.5 });

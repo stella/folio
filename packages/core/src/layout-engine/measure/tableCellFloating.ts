@@ -1,5 +1,5 @@
 import { emuToPixels } from "../../utils/units";
-import type { TableCell, TableCellMeasure } from "../types";
+import type { ImageRun, TableCell, TableCellMeasure } from "../types";
 import { isFloatingImageRun } from "../types";
 import { clampFloatingWrapMargins } from "./clampFloatingWrapMargins";
 import type { FloatingImageZone } from "./floatingZones";
@@ -10,6 +10,11 @@ export type TableCellFloatingImage = {
   height: number;
   alt?: string;
   transform?: string;
+  opacity?: number;
+  cropTop?: number;
+  cropRight?: number;
+  cropBottom?: number;
+  cropLeft?: number;
   x: number;
   y: number;
   side: "left" | "right";
@@ -21,6 +26,13 @@ export type TableCellFloatingImage = {
   pmStart?: number;
   pmEnd?: number;
 };
+
+type TableCellFloatingPosition = Pick<TableCellFloatingImage, "x" | "y" | "side">;
+
+export type ResolveTableCellFloatingPosition = (
+  run: ImageRun,
+  paragraphY: number,
+) => TableCellFloatingPosition;
 
 export function getTableCellContentWidth(
   cell: TableCell | undefined,
@@ -35,6 +47,7 @@ export function getTableCellFloatingImages(
   cell: TableCell,
   cellMeasure: TableCellMeasure,
   contentWidth: number,
+  resolvePosition?: ResolveTableCellFloatingPosition,
 ): TableCellFloatingImage[] {
   const result: TableCellFloatingImage[] = [];
   let paragraphY = 0;
@@ -60,37 +73,42 @@ export function getTableCellFloatingImages(
       const distLeft = run.distLeft ?? 12;
       const distRight = run.distRight ?? 12;
 
-      let side: "left" | "right" = "left";
-      let x = 0;
-      if (position?.horizontal) {
-        const horizontal = position.horizontal;
-        if (horizontal.align === "right") {
+      let side: "left" | "right";
+      let x: number;
+      let y: number;
+      if (resolvePosition) {
+        ({ side, x, y } = resolvePosition(run, paragraphY));
+      } else {
+        side = "left";
+        x = 0;
+        if (position?.horizontal) {
+          const horizontal = position.horizontal;
+          if (horizontal.align === "right") {
+            side = "right";
+            x = contentWidth - run.width;
+          } else if (horizontal.align === "center") {
+            x = (contentWidth - run.width) / 2;
+          } else if (horizontal.posOffset !== undefined) {
+            x = emuToPixels(horizontal.posOffset);
+            side = x > contentWidth / 2 ? "right" : "left";
+          }
+        } else if (run.cssFloat === "right") {
           side = "right";
           x = contentWidth - run.width;
-        } else if (horizontal.align === "left") {
-          x = 0;
-        } else if (horizontal.align === "center") {
-          x = (contentWidth - run.width) / 2;
-        } else if (horizontal.posOffset !== undefined) {
-          x = emuToPixels(horizontal.posOffset);
-          side = x > contentWidth / 2 ? "right" : "left";
         }
-      } else if (run.cssFloat === "right") {
-        side = "right";
-        x = contentWidth - run.width;
-      }
 
-      let y = paragraphY;
-      if (position?.vertical) {
-        const vertical = position.vertical;
-        if (vertical.posOffset !== undefined) {
-          y = paragraphY + emuToPixels(vertical.posOffset);
-        } else if (vertical.align === "top") {
-          y = 0;
+        y = paragraphY;
+        if (position?.vertical) {
+          const vertical = position.vertical;
+          if (vertical.posOffset !== undefined) {
+            y = paragraphY + emuToPixels(vertical.posOffset);
+          } else if (vertical.align === "top") {
+            y = 0;
+          }
         }
-      }
 
-      x = Math.max(0, Math.min(x, contentWidth - run.width));
+        x = Math.max(0, Math.min(x, contentWidth - run.width));
+      }
 
       let wrapText: "bothSides" | "left" | "right" | "largest" = "bothSides";
       if (run.cssFloat === "left") {
@@ -105,6 +123,11 @@ export function getTableCellFloatingImages(
         height: run.height,
         ...(run.alt !== undefined ? { alt: run.alt } : {}),
         ...(run.transform !== undefined ? { transform: run.transform } : {}),
+        ...(run.opacity != null ? { opacity: run.opacity } : {}),
+        ...(run.cropTop != null ? { cropTop: run.cropTop } : {}),
+        ...(run.cropRight != null ? { cropRight: run.cropRight } : {}),
+        ...(run.cropBottom != null ? { cropBottom: run.cropBottom } : {}),
+        ...(run.cropLeft != null ? { cropLeft: run.cropLeft } : {}),
         x,
         y,
         side,

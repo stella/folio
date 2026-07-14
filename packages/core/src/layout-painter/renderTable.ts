@@ -35,7 +35,9 @@ import {
   tableColumnsArePinned,
 } from "../layout-engine/types";
 import { emuToPixels } from "../utils/units";
+import { resolveAnchoredImagePosition, type PageGeometry } from "./anchoredImagePosition";
 import { getAutomaticTextColorForBackground } from "./documentColors";
+import { applyImageVisualAttrs, hasImageVisualAttrs } from "./renderImage";
 import { renderParagraphFragment } from "./renderParagraph";
 import { renderTextBoxFragment } from "./renderTextBox";
 import type { RenderContext } from "./renderUtils";
@@ -61,6 +63,13 @@ const CELL_DIAGONAL_BORDER_CLASS = "layout-table-cell-diagonal-border";
  */
 export type RenderTableFragmentOptions = {
   document?: Document;
+  pageGeometry?: PageGeometry;
+};
+
+type PageContentPosition = {
+  geometry: PageGeometry;
+  x: number;
+  y: number;
 };
 
 /**
@@ -77,6 +86,7 @@ type RenderCellContentOptions = {
   context: RenderContext;
   doc: Document;
   contentWidthOverride?: number;
+  pageContentPosition?: PageContentPosition;
 };
 
 type CellContentClip = {
@@ -90,6 +100,7 @@ function renderCellContent({
   context,
   doc,
   contentWidthOverride,
+  pageContentPosition,
 }: RenderCellContentOptions): RenderedCellContent {
   const contentEl = doc.createElement("div");
   contentEl.className = TABLE_CLASS_NAMES.cellContent;
@@ -101,7 +112,25 @@ function renderCellContent({
   contentEl.style.width = `${contentWidth}px`;
 
   // Extract floating images from cell paragraphs
-  const cellFloatingImages = getTableCellFloatingImages(cell, cellMeasure, contentWidth);
+  const cellFloatingImages = getTableCellFloatingImages(
+    cell,
+    cellMeasure,
+    contentWidth,
+    pageContentPosition
+      ? (run, paragraphY) => {
+          const position = resolveAnchoredImagePosition(
+            run,
+            pageContentPosition.y + paragraphY,
+            pageContentPosition.geometry,
+          );
+          return {
+            x: position.x - pageContentPosition.x,
+            y: position.y - pageContentPosition.y,
+            side: position.side,
+          };
+        }
+      : undefined,
+  );
 
   // Build floating zones for measurement and render floating layer
   const floatingZones = buildTableCellFloatingZones(cellFloatingImages, contentWidth);
@@ -138,11 +167,19 @@ function renderCellContent({
       imgEl.style.width = `${img.width}px`;
       imgEl.style.height = `${img.height}px`;
       imgEl.style.display = "block";
+      imgEl.style.maxWidth = "none";
+      imgEl.style.maxHeight = "none";
       if (img.alt) {
         imgEl.alt = img.alt;
       }
       if (img.transform) {
         imgEl.style.transform = img.transform;
+      }
+      if (hasImageVisualAttrs(img)) {
+        imgContainer.style.width = `${img.width}px`;
+        imgContainer.style.height = `${img.height}px`;
+        imgContainer.style.overflow = "hidden";
+        applyImageVisualAttrs(imgEl, img);
       }
       imgContainer.append(imgEl);
       floatingLayer.append(imgContainer);
@@ -514,6 +551,7 @@ type RenderTableCellOptions = {
   context: RenderContext;
   doc: Document;
   contentClip?: CellContentClip;
+  pageContentPosition?: PageContentPosition;
 };
 
 function renderTableCell({
@@ -526,6 +564,7 @@ function renderTableCell({
   context,
   doc,
   contentClip,
+  pageContentPosition,
 }: RenderTableCellOptions): HTMLElement {
   const cellEl = doc.createElement("div");
   cellEl.className = TABLE_CLASS_NAMES.cell;
@@ -614,6 +653,15 @@ function renderTableCell({
     context,
     doc,
     ...(contentWidthOverride !== undefined ? { contentWidthOverride } : {}),
+    ...(pageContentPosition
+      ? {
+          pageContentPosition: {
+            geometry: pageContentPosition.geometry,
+            x: pageContentPosition.x + padLeft,
+            y: pageContentPosition.y + padTop,
+          },
+        }
+      : {}),
   });
   if (cell.textDirection === "btLr") {
     renderedContent.content.style.position = "absolute";
@@ -748,6 +796,7 @@ type RenderTableRowOptions = {
   columnsPinned?: boolean;
   cellGrid?: TableCellGrid;
   contentClip?: CellContentClip;
+  pageContentPosition?: PageContentPosition;
 };
 
 function renderTableRow({
@@ -766,6 +815,7 @@ function renderTableRow({
   columnsPinned = false,
   cellGrid,
   contentClip,
+  pageContentPosition,
 }: RenderTableRowOptions): HTMLElement {
   const rowEl = doc.createElement("div");
   rowEl.className = TABLE_CLASS_NAMES.row;
@@ -865,6 +915,15 @@ function renderTableRow({
       context,
       doc,
       ...(contentClip ? { contentClip } : {}),
+      ...(pageContentPosition
+        ? {
+            pageContentPosition: {
+              geometry: pageContentPosition.geometry,
+              x: pageContentPosition.x + cellLeft,
+              y: pageContentPosition.y,
+            },
+          }
+        : {}),
     });
     cellEl.dataset["cellIndex"] = String(cellIndex);
     cellEl.dataset["columnIndex"] = String(columnIndex);
@@ -925,6 +984,13 @@ export function renderTableFragment(
   options: RenderTableFragmentOptions = {},
 ): HTMLElement {
   const doc = options.document ?? document;
+  const tablePageContentPosition = options.pageGeometry
+    ? {
+        geometry: options.pageGeometry,
+        x: fragment.x - options.pageGeometry.marginLeft,
+        y: fragment.y - options.pageGeometry.marginTop,
+      }
+    : undefined;
 
   const tableEl = doc.createElement("div");
   tableEl.className = TABLE_CLASS_NAMES.table;
@@ -1025,6 +1091,14 @@ export function renderTableFragment(
         bidi: block.bidi === true,
         columnsPinned,
         cellGrid,
+        ...(tablePageContentPosition
+          ? {
+              pageContentPosition: {
+                ...tablePageContentPosition,
+                y: tablePageContentPosition.y + y,
+              },
+            }
+          : {}),
       });
       rowEl.dataset["repeatedHeader"] = "true";
       tableEl.append(rowEl);
@@ -1093,6 +1167,14 @@ export function renderTableFragment(
       columnsPinned,
       cellGrid,
       ...(contentClip ? { contentClip } : {}),
+      ...(tablePageContentPosition
+        ? {
+            pageContentPosition: {
+              ...tablePageContentPosition,
+              y: tablePageContentPosition.y + y,
+            },
+          }
+        : {}),
     });
 
     contentParent.append(rowEl);

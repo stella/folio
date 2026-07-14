@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { withFakeTextMeasure } from "../layout-engine/measure/__tests__/fakeTextMeasure";
-import type { TableBlock, TableFragment, TableMeasure } from "../layout-engine/types";
+import type { ImageRun, TableBlock, TableFragment, TableMeasure } from "../layout-engine/types";
+import type { PageGeometry } from "./anchoredImagePosition";
 import { renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
 import type { RenderContext } from "./renderUtils";
 
@@ -59,6 +60,17 @@ const renderContext: RenderContext = {
   pageNumber: 1,
   totalPages: 1,
   section: "body",
+};
+
+const pageGeometry: PageGeometry = {
+  pageWidth: 816,
+  pageHeight: 1056,
+  marginLeft: 96,
+  marginTop: 96,
+  marginRight: 96,
+  marginBottom: 96,
+  contentWidth: 624,
+  contentHeight: 864,
 };
 
 function findRows(element: FakeElement): FakeElement[] {
@@ -805,5 +817,114 @@ describe("renderTableFragment floating cell content", () => {
     expect(textBoxLayer?.style["top"]).toBe("2px");
     expect(textBox?.style["left"]).toBe("20px");
     expect(Number.parseFloat(textBox?.style["top"] ?? "0")).toBeGreaterThan(50);
+  });
+});
+
+describe("renderTableFragment cell floating images", () => {
+  const renderFloatingImage = (
+    image: ImageRun,
+    options: { pageGeometry?: PageGeometry } = {},
+  ): FakeElement => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "table",
+      rows: [
+        {
+          id: "row",
+          cells: [
+            {
+              id: "cell",
+              padding: { top: 10, right: 10, bottom: 10, left: 10 },
+              blocks: [{ kind: "paragraph", id: "anchor", runs: [image] }],
+            },
+          ],
+        },
+      ],
+      columnWidths: [220],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [
+            {
+              blocks: [{ kind: "paragraph", lines: [], totalHeight: 40 }],
+              width: 220,
+              height: 80,
+            },
+          ],
+          height: 80,
+        },
+      ],
+      columnWidths: [220],
+      totalWidth: 220,
+      totalHeight: 80,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "table",
+      x: 196,
+      y: 196,
+      width: 220,
+      height: 80,
+      fromRow: 0,
+      toRow: 1,
+    };
+
+    let rendered = new FakeElement("div");
+    withFakeTextMeasure(() => {
+      rendered = renderTableFragment(fragment, block, measure, renderContext, {
+        document: fakeDocument,
+        ...options,
+      }) as unknown as FakeElement;
+    });
+    return rendered;
+  };
+
+  test("resolves negative margin-relative offsets against page geometry", () => {
+    const table = renderFloatingImage(
+      {
+        kind: "image",
+        src: "floating.png",
+        width: 80,
+        height: 30,
+        displayMode: "float",
+        wrapType: "inFront",
+        position: {
+          horizontal: { relativeTo: "margin", posOffset: -457_200 },
+          vertical: { relativeTo: "paragraph", posOffset: 0 },
+        },
+      },
+      { pageGeometry },
+    );
+
+    const image = findByClass(table, "layout-cell-floating-image").at(0);
+    // The cell content starts 110px into the content area. The authored
+    // margin-relative offset is -48px, so the cell-local result is -158px.
+    expect(image?.style["left"]).toBe("-158px");
+    expect(image?.style["top"]).toBe("0px");
+  });
+
+  test("applies crop and opacity attributes in the cell floating layer", () => {
+    const table = renderFloatingImage({
+      kind: "image",
+      src: "cropped.png",
+      width: 120,
+      height: 40,
+      displayMode: "float",
+      wrapType: "inFront",
+      cropLeft: 0.2,
+      cropRight: 0.1,
+      opacity: 0.6,
+    });
+
+    const container = findByClass(table, "layout-cell-floating-image").at(0);
+    const image = container?.children.at(0);
+    expect(container?.style["width"]).toBe("120px");
+    expect(container?.style["height"]).toBe("40px");
+    expect(container?.style["overflow"]).toBe("hidden");
+    expect(Number.parseFloat(image?.style["width"] ?? "")).toBeCloseTo((1 / 0.7) * 100, 6);
+    expect(image?.style["opacity"]).toBe("0.6");
+    expect(image?.style["objectFit"]).toBe("fill");
   });
 });
