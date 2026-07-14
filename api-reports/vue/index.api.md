@@ -49,6 +49,8 @@ import { createDocx } from '@stll/folio-core/docx/rezip';
 import { createEmptyDocument } from '@stll/folio-core/utils/createDocument';
 import { CreateEmptyDocumentOptions } from '@stll/folio-core/utils/createDocument';
 import { createFolioAIEditSnapshot } from '@stll/folio-core/ai-edits';
+import { createStellaStyleDocumentPreset } from '@stll/folio-core/style-sets/stellaStyle';
+import { createStellaStyleSet } from '@stll/folio-core/style-sets/stellaStyle';
 import { CSSProperties } from 'vue';
 import { DEFAULT_AI_SUGGESTION_PRESETS } from '@stll/folio-core/ai-suggestions/types';
 import { DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -59,12 +61,21 @@ import { diffWordSegments } from '@stll/folio-core/ai-edits';
 import { DirectiveKind } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
 import { DirectiveRange } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
 import { Document as Document_2 } from '@stll/folio-core/types/document';
+import { DOCUMENT_PRESET_VERSION } from '@stll/folio-core/style-sets/types';
+import { DOCUMENT_STYLE_SET_VERSION } from '@stll/folio-core/style-sets/types';
+import { DocumentPreset } from '@stll/folio-core/style-sets/types';
+import { DocumentStyleCatalog } from '@stll/folio-core/style-sets/extract';
+import { DocumentStyleCatalogEntry } from '@stll/folio-core/style-sets/extract';
+import { DocumentStyleSet } from '@stll/folio-core/style-sets/types';
 import { DocxCompatibility } from '@stll/folio-core/docx/compatibility';
 import { default as DocxEditor } from './components/DocxEditor.vue';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorMode } from '@stll/folio-core/managers/EditorModeManager';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
+import { extractDocumentStyleSet } from '@stll/folio-core/style-sets/extract';
+import { extractDocumentStyleSetFromDocx } from '@stll/folio-core/style-sets/extract';
+import { ExtractDocumentStyleSetOptions } from '@stll/folio-core/style-sets/extract';
 import { ExtractPropTypes } from 'vue';
 import { finishAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { FolioAIBlock } from '@stll/folio-core/ai-edits';
@@ -109,6 +120,8 @@ import { insertImageFromFile } from '@stll/folio-core/prosemirror';
 import { insertPageBreakInView } from '@stll/folio-core/prosemirror';
 import { insertTableInView } from '@stll/folio-core/prosemirror';
 import { insertTableOfContentsInView } from '@stll/folio-core/prosemirror';
+import { inspectDocumentStyles } from '@stll/folio-core/style-sets/extract';
+import { inspectDocumentStylesFromDocx } from '@stll/folio-core/style-sets/extract';
 import { isFolioBlockId } from '@stll/folio-core/types/block-id';
 import { isSequentialFolioBlockId } from '@stll/folio-core/types/block-id';
 import { isSuggestionStale } from '@stll/folio-core/ai-suggestions/conflict';
@@ -143,6 +156,7 @@ import { setFocusedSuggestionMeta } from '@stll/folio-core/prosemirror/plugins/a
 import { setTemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { shouldTriggerAutocomplete } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { startAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
+import { STELLA_STYLE_SET_NAME } from '@stll/folio-core/style-sets/stellaStyle';
 import { TemplatePreviewSpan } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValue } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
@@ -245,6 +259,10 @@ export { CreateEmptyDocumentOptions }
 
 export { createFolioAIEditSnapshot }
 
+export { createStellaStyleDocumentPreset }
+
+export { createStellaStyleSet }
+
 export { DEFAULT_AI_SUGGESTION_PRESETS }
 
 export { DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES }
@@ -263,6 +281,18 @@ export { DirectiveKind }
 export { DirectiveRange }
 
 export { Document_2 as Document }
+
+export { DOCUMENT_PRESET_VERSION }
+
+export { DOCUMENT_STYLE_SET_VERSION }
+
+export { DocumentPreset }
+
+export { DocumentStyleCatalog }
+
+export { DocumentStyleCatalogEntry }
+
+export { DocumentStyleSet }
 
 export { DocxCompatibility }
 
@@ -449,6 +479,12 @@ export type EditorHandle = {
 
 export { EditorMode }
 
+export { extractDocumentStyleSet }
+
+export { extractDocumentStyleSetFromDocx }
+
+export { ExtractDocumentStyleSetOptions }
+
 // @public
 export const FindReplaceDialog: any;
 
@@ -614,6 +650,10 @@ export { insertTableInView }
 
 export { insertTableOfContentsInView }
 
+export { inspectDocumentStyles }
+
+export { inspectDocumentStylesFromDocx }
+
 export { isFolioBlockId }
 
 export { isSequentialFolioBlockId }
@@ -688,6 +728,8 @@ export { shouldTriggerAutocomplete }
 export const SplitCellDialog: any;
 
 export { startAutocompleteSuggestion }
+
+export { STELLA_STYLE_SET_NAME }
 
 // @public (undocumented)
 export const TablePropertiesDialog: any;

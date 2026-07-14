@@ -50,6 +50,7 @@ import {
 } from "./modelValidation";
 import { extractMetafileRaster, isMetafileMimeType } from "./metafileRaster";
 import { parseNumbering } from "./numberingParser";
+import { parseFontTable } from "./fontTableParser";
 import type { NumberingMap } from "./numberingParser";
 import { normalizeNumberingReferences } from "./numberingReferenceNormalization";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
@@ -195,6 +196,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     // ========================================================================
     onProgress("Parsing numbering...", 30);
     const numbering = timeStage("numbering", () => parseNumbering(raw.numberingXml));
+    const fontTable = timeStage("fontTable", () => parseFontTable(raw.fontTableXml));
     onProgress("Parsed numbering", 35);
 
     // ========================================================================
@@ -379,6 +381,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(styleDefinitions !== undefined ? { styles: styleDefinitions } : {}),
       theme,
       numbering: numbering.definitions,
+      ...(fontTable ? { fontTable } : {}),
       ...(headers !== undefined ? { headers } : {}),
       ...(footers !== undefined ? { footers } : {}),
       ...(footnotes !== undefined ? { footnotes } : {}),

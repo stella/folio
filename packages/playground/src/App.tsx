@@ -5,6 +5,7 @@ import { IntlProvider } from "use-intl";
 import {
   DocxEditor,
   createEmptyDocument,
+  createStellaStyleDocumentPreset,
   insertImageFromFile,
   insertPageBreakInView,
   insertTableInView,
@@ -21,6 +22,9 @@ const DEFAULT_LOCALE = "en";
 // Only Arabic in the bundled set needs RTL; flip the shell so the editor chrome
 // (built on logical CSS properties) mirrors.
 const RTL_LOCALES = new Set<string>(["ar", "he"]);
+
+const createStellaStyleDocument = (): FolioDocument =>
+  createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
 
 const languageLabel = (locale: string): string => {
   const name = new Intl.DisplayNames([locale], { type: "language" }).of(
@@ -392,12 +396,12 @@ export function App() {
       setFileName(`Generated ${paragraphCount} paragraphs.docx`);
       return;
     }
-    setCurrentDocument(createEmptyDocument());
+    setCurrentDocument(createStellaStyleDocument());
     setFileName("Untitled.docx");
   }, []);
 
   const handleNewDocument = useCallback(() => {
-    setCurrentDocument(createEmptyDocument());
+    setCurrentDocument(createStellaStyleDocument());
     setDocumentBuffer(null);
     setFileName("Untitled.docx");
     setStatus("");

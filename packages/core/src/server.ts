@@ -44,6 +44,26 @@ export {
 export { replyToComment, type CreateCommentReplyInput } from "./docx/replyToComment";
 export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
 export {
+  extractDocumentStyleSet,
+  extractDocumentStyleSetFromDocx,
+  inspectDocumentStyles,
+  inspectDocumentStylesFromDocx,
+  type DocumentStyleCatalog,
+  type DocumentStyleCatalogEntry,
+  type ExtractDocumentStyleSetOptions,
+} from "./style-sets/extract";
+export {
+  createStellaStyleDocumentPreset,
+  createStellaStyleSet,
+  STELLA_STYLE_SET_NAME,
+} from "./style-sets/stellaStyle";
+export {
+  DOCUMENT_PRESET_VERSION,
+  DOCUMENT_STYLE_SET_VERSION,
+  type DocumentPreset,
+  type DocumentStyleSet,
+} from "./style-sets/types";
+export {
   FolioDocxReviewer,
   applyFolioAIEditsToBuffer,
   type ApplyFolioAIEditsToBufferOptions,

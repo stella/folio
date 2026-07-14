@@ -5,17 +5,24 @@
  */
 
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import { panic } from "better-result";
 
-import {
-  type Document,
-  type DocxPackage,
-  type DocumentBody,
-  type Paragraph,
-  type Run,
-  type TextContent,
-  type SectionProperties,
-  type Style,
+import type {
+  Document,
+  DocxPackage,
+  DocumentBody,
+  Paragraph,
+  Run,
+  TextContent,
+  SectionProperties,
+  Style,
 } from "../types/document";
+import {
+  DOCUMENT_PRESET_VERSION,
+  DOCUMENT_STYLE_SET_VERSION,
+  type DocumentPreset,
+  type DocumentStyleSet,
+} from "../style-sets/types";
 
 // ============================================================================
 // DEFAULT STYLES
@@ -219,7 +226,7 @@ function getDefaultSectionProperties(): SectionProperties {
 /**
  * Options for creating an empty document
  */
-export type CreateEmptyDocumentOptions = {
+type CreateEmptyDocumentBaseOptions = {
   /** Page width in twips (default: 12240 = 8.5 inches) */
   pageWidth?: number;
   /** Page height in twips (default: 15840 = 11 inches) */
@@ -237,6 +244,24 @@ export type CreateEmptyDocumentOptions = {
   /** Initial text content (default: empty string) */
   initialText?: string;
 };
+
+type CreateEmptyDocumentStyleOptions =
+  | {
+      /** Reusable formatting resources for the new document. */
+      styleSet?: DocumentStyleSet;
+      preset?: never;
+    }
+  | {
+      /** Style resources plus page-level defaults for the new document. */
+      preset: DocumentPreset;
+      styleSet?: never;
+    };
+
+export type CreateEmptyDocumentOptions = CreateEmptyDocumentBaseOptions &
+  CreateEmptyDocumentStyleOptions;
+
+type CreateDocumentWithTextOptions = Omit<CreateEmptyDocumentBaseOptions, "initialText"> &
+  CreateEmptyDocumentStyleOptions;
 
 /**
  * Create an empty document with a single paragraph
@@ -262,7 +287,15 @@ export type CreateEmptyDocumentOptions = {
  * ```
  */
 export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): Document {
-  const sectionProps = getDefaultSectionProperties();
+  const styleSet = options.preset?.styleSet ?? options.styleSet;
+  validateDocumentStyleSet(styleSet);
+  if (options.preset?.version !== undefined && options.preset.version !== DOCUMENT_PRESET_VERSION) {
+    return panic(`Unsupported document preset version: ${options.preset.version}`);
+  }
+
+  const sectionProps = structuredClone(
+    options.preset?.sectionProperties ?? getDefaultSectionProperties(),
+  );
 
   // Twips are integer-typed in OOXML, and callers typically compute them as
   // `inches * 1440` which produces drift like `0.7 * 1440 === 1008.0000000000001`.
@@ -290,28 +323,23 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
   }
 
   // Create initial paragraph content
+  const initialText = options.initialText ?? "";
   const textContent: TextContent = {
     type: "text",
-    text: options.initialText || "",
+    text: initialText,
   };
 
   const run: Run = {
     type: "run",
-    content: options.initialText ? [textContent] : [],
-    formatting: {
-      fontSize: 22, // 11pt (half-points) - Google Docs default
-      fontFamily: {
-        ascii: "Arial",
-        hAnsi: "Arial",
-      },
-    },
+    content: initialText ? [textContent] : [],
+    formatting: {},
   };
 
   const paragraph: Paragraph = {
     type: "paragraph",
     content: [run],
     formatting: {
-      lineSpacing: 276, // 1.15 line spacing (default Word)
+      styleId: styleSet?.initialParagraphStyleId ?? "Normal",
     },
   };
 
@@ -322,25 +350,38 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
   };
 
   // Create package with default styles
+  const defaultStyleDefinitions = {
+    docDefaults: {
+      rPr: {
+        fontSize: 22,
+        fontFamily: {
+          ascii: "Arial",
+          hAnsi: "Arial",
+        },
+      },
+      pPr: {
+        lineSpacing: 276,
+      },
+    },
+    styles: getDefaultStyles(),
+  };
   const docxPackage: DocxPackage = {
     conformanceClass: DOCX_CONFORMANCE_CLASSES.TRANSITIONAL,
     document: documentBody,
-    styles: {
-      docDefaults: {
-        rPr: {
-          fontSize: 22, // 11pt (Google Docs default)
-          fontFamily: {
-            ascii: "Arial",
-            hAnsi: "Arial",
-          },
-        },
-        pPr: {
-          lineSpacing: 276, // 1.15 line spacing
-        },
-      },
-      styles: getDefaultStyles(),
-    },
+    styles: structuredClone(styleSet?.styles ?? defaultStyleDefinitions),
   };
+  if (styleSet?.numbering) {
+    docxPackage.numbering = structuredClone(styleSet.numbering);
+  }
+  if (styleSet?.theme) {
+    docxPackage.theme = structuredClone(styleSet.theme);
+  }
+  if (styleSet?.fontTable) {
+    docxPackage.fontTable = structuredClone(styleSet.fontTable);
+  }
+  if (styleSet?.settings) {
+    docxPackage.settings = structuredClone(styleSet.settings);
+  }
 
   // Create document
   const document: Document = {
@@ -352,6 +393,26 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
   return document;
 }
 
+const validateDocumentStyleSet = (styleSet: DocumentStyleSet | undefined): void => {
+  if (!styleSet) {
+    return;
+  }
+  if (styleSet.version !== DOCUMENT_STYLE_SET_VERSION) {
+    return panic(`Unsupported document style set version: ${styleSet.version}`);
+  }
+  if (styleSet.name.trim().length === 0) {
+    return panic("Document style set name cannot be empty");
+  }
+  const initialStyle = styleSet.styles.styles.find(
+    (style) => style.styleId === styleSet.initialParagraphStyleId,
+  );
+  if (initialStyle?.type !== "paragraph") {
+    return panic(
+      `Initial paragraph style "${styleSet.initialParagraphStyleId}" is missing from style set "${styleSet.name}"`,
+    );
+  }
+};
+
 /**
  * Create a document with a single paragraph containing the given text
  *
@@ -361,7 +422,7 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
  */
 export function createDocumentWithText(
   text: string,
-  options: Omit<CreateEmptyDocumentOptions, "initialText"> = {},
+  options: CreateDocumentWithTextOptions = {},
 ): Document {
   return createEmptyDocument({ ...options, initialText: text });
 }

@@ -42,20 +42,17 @@ export function createDocx(doc: import__stll_docx_core_model.Document): Promise<
 // @public
 export function createEmptyDocument(options?: CreateEmptyDocumentOptions): import__stll_docx_core_model.Document;
 
-// @public
-export type CreateEmptyDocumentOptions = {
-    pageWidth?: number; /** Page height in twips (default: 15840 = 11 inches) */
-    pageHeight?: number; /** Page orientation (default: 'portrait') */
-    orientation?: "portrait" | "landscape"; /** Top margin in twips (default: 1440 = 1 inch) */
-    marginTop?: number; /** Bottom margin in twips (default: 1440 = 1 inch) */
-    marginBottom?: number; /** Left margin in twips (default: 1440 = 1 inch) */
-    marginLeft?: number; /** Right margin in twips (default: 1440 = 1 inch) */
-    marginRight?: number; /** Initial text content (default: empty string) */
-    initialText?: string;
-};
+// @public (undocumented)
+export type CreateEmptyDocumentOptions = CreateEmptyDocumentBaseOptions & CreateEmptyDocumentStyleOptions;
 
 // @public (undocumented)
 export const createFolioAITextRangeHandle: (input: CreateFolioAITextRangeHandleOptions) => FolioAITextRangeHandle | null;
+
+// @public (undocumented)
+export const createStellaStyleDocumentPreset: () => DocumentPreset;
+
+// @public
+export const createStellaStyleSet: () => DocumentStyleSet;
 
 // @public (undocumented)
 export const deriveBlockId: (input: DeriveBlockIdInput) => FolioBlockId;
@@ -65,6 +62,48 @@ export type DeriveBlockIdInput = {
     paraId: string | null; /** 1-based document order for the paragraph being derived. */
     index: number;
     taken: ReadonlySet<string>;
+};
+
+// @public (undocumented)
+export const DOCUMENT_PRESET_VERSION: 1;
+
+// @public (undocumented)
+export const DOCUMENT_STYLE_SET_VERSION: 1;
+
+// @public
+export type DocumentPreset = {
+    version: typeof DOCUMENT_PRESET_VERSION;
+    name: string;
+    styleSet: DocumentStyleSet;
+    sectionProperties: import__stll_docx_core_model.SectionProperties;
+};
+
+// @public (undocumented)
+export type DocumentStyleCatalog = {
+    defaultParagraphStyleId?: string;
+    styles: DocumentStyleCatalogEntry[];
+};
+
+// @public (undocumented)
+export type DocumentStyleCatalogEntry = {
+    styleId: string;
+    name: string;
+    type: import__stll_docx_core_model.Style["type"];
+    role: "default" | "quick" | "available" | "supporting";
+    dependencies: string[];
+    numberingId?: number;
+};
+
+// @public
+export type DocumentStyleSet = {
+    version: typeof DOCUMENT_STYLE_SET_VERSION;
+    name: string;
+    initialParagraphStyleId: string;
+    styles: import__stll_docx_core_model.StyleDefinitions;
+    numbering?: import__stll_docx_core_model.NumberingDefinitions;
+    theme?: import__stll_docx_core_model.Theme;
+    fontTable?: import__stll_docx_core_model.FontTable;
+    settings?: import__stll_docx_core_model.DocumentSettings;
 };
 
 // @public
@@ -90,6 +129,19 @@ export type EnsureParaIdsResult = {
     assigned: number; /** Duplicate paraIds reassigned (the first occurrence keeps the id). */
     deduplicated: number; /** True when the input already had full, unique coverage. */
     alreadyComplete: boolean;
+};
+
+// @public
+export const extractDocumentStyleSet: (document: import__stll_docx_core_model.Document, options: ExtractDocumentStyleSetOptions) => DocumentStyleSet;
+
+// @public (undocumented)
+export const extractDocumentStyleSetFromDocx: (input: DocxInput, options: ExtractDocumentStyleSetOptions) => Promise<DocumentStyleSet>;
+
+// @public (undocumented)
+export type ExtractDocumentStyleSetOptions = {
+    name: string; /** Style IDs selected by the user. Omit to extract every style. */
+    styleIds?: readonly string[]; /** Defaults to the source document's default paragraph style. */
+    initialParagraphStyleId?: string;
 };
 
 // @public
@@ -642,6 +694,12 @@ export const getFolioDocumentOutline: (snapshot: FolioAIEditSnapshot) => FolioDo
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
 
 // @public (undocumented)
+export const inspectDocumentStyles: (document: import__stll_docx_core_model.Document) => DocumentStyleCatalog;
+
+// @public (undocumented)
+export const inspectDocumentStylesFromDocx: (input: DocxInput) => Promise<DocumentStyleCatalog>;
+
+// @public (undocumented)
 export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
 
 // @public
@@ -664,6 +722,9 @@ export const readFolioDocumentSection: (snapshot: FolioAIEditSnapshot, handle: F
 
 // @public
 export const replyToComment: (doc: import__stll_docx_core_model.Document, parentCommentId: number, input: CreateCommentReplyInput) => import__stll_docx_core_model.Comment | null;
+
+// @public (undocumented)
+export const STELLA_STYLE_SET_NAME = "Stella Style";
 
 // @public (undocumented)
 export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}

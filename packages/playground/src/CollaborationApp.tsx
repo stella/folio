@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IntlProvider } from "use-intl";
 
-import { DocxEditor, createEmptyDocument } from "@stll/folio-react";
+import {
+  DocxEditor,
+  createEmptyDocument,
+  createStellaStyleDocumentPreset,
+} from "@stll/folio-react";
 import { getFolioMessages } from "@stll/folio-react/messages";
 
 import { AvatarStack } from "./collaboration/AvatarStack";
@@ -49,7 +53,10 @@ export function CollaborationApp() {
   );
 
   const { collaboration, users, status, comments, setComments } = useCollaboration(room, user);
-  const seedDocument = useMemo(() => createEmptyDocument(), []);
+  const seedDocument = useMemo(
+    () => createEmptyDocument({ preset: createStellaStyleDocumentPreset() }),
+    [],
+  );
 
   const handleCopyShareLink = useCallback(async () => {
     try {

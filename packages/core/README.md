@@ -32,6 +32,45 @@ bun add @stll/folio-core
 | `@stll/folio-core/server`   | DOM-free helpers for server-side use (block-id derivation, document creation, re-zip)                                                                              |
 | `@stll/folio-core/*`        | the source-mirrored module tree (e.g. `@stll/folio-core/types/document`, `@stll/folio-core/prosemirror/schema`) for adapters that need lower-level building blocks |
 
+## New documents and reusable style sets
+
+Create a legal-shaped blank document with the built-in preset:
+
+```ts
+import { createDocx, createEmptyDocument, createStellaStyleDocumentPreset } from "@stll/folio-core";
+
+const document = createEmptyDocument({
+  preset: createStellaStyleDocumentPreset(),
+});
+const docx = await createDocx(document);
+```
+
+Style sets are content-free JSON values. Inspect a source file before presenting
+styles for selection, extract the selected dependency closure, persist the
+result, and load it into any later document:
+
+```ts
+import {
+  createEmptyDocument,
+  extractDocumentStyleSetFromDocx,
+  inspectDocumentStylesFromDocx,
+} from "@stll/folio-core";
+
+const catalog = await inspectDocumentStylesFromDocx(sourceDocx);
+const styleSet = await extractDocumentStyleSetFromDocx(sourceDocx, {
+  name: "Firm contract styles",
+  styleIds: catalog.styles
+    .filter(({ role }) => role === "default" || role === "quick")
+    .map(({ styleId }) => styleId),
+});
+
+const document = createEmptyDocument({ styleSet });
+```
+
+Extraction excludes document content, metadata, relationships, media, comments,
+and revision data. It keeps only the selected styles and the numbering, theme,
+font-table, and settings data required to reproduce their formatting.
+
 ## License
 
 [Apache-2.0](./LICENSE)

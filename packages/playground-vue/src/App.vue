@@ -26,7 +26,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 
-import { DocxEditor, createEmptyDocument } from "@stll/folio-vue";
+import { DocxEditor, createEmptyDocument, createStellaStyleDocumentPreset } from "@stll/folio-vue";
 import type { DocxEditorRef, Document as FolioDocument } from "@stll/folio-vue";
 
 import type { FolioParityBridge } from "./parityBridge";
@@ -54,7 +54,9 @@ onBeforeUnmount(() => {
 async function loadFromQuery(): Promise<void> {
   const fixtureFile = new URLSearchParams(window.location.search).get("file");
   if (!fixtureFile) {
-    currentDocument.value = createEmptyDocument();
+    currentDocument.value = createEmptyDocument({
+      preset: createStellaStyleDocumentPreset(),
+    });
     return;
   }
   try {

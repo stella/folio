@@ -7,6 +7,26 @@
 // entry re-exports all of this and adds the React components on top.
 
 export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
+export {
+  extractDocumentStyleSet,
+  extractDocumentStyleSetFromDocx,
+  inspectDocumentStyles,
+  inspectDocumentStylesFromDocx,
+  type DocumentStyleCatalog,
+  type DocumentStyleCatalogEntry,
+  type ExtractDocumentStyleSetOptions,
+} from "./style-sets/extract";
+export {
+  createStellaStyleDocumentPreset,
+  createStellaStyleSet,
+  STELLA_STYLE_SET_NAME,
+} from "./style-sets/stellaStyle";
+export {
+  DOCUMENT_PRESET_VERSION,
+  DOCUMENT_STYLE_SET_VERSION,
+  type DocumentPreset,
+  type DocumentStyleSet,
+} from "./style-sets/types";
 export { createDocx } from "./docx/rezip";
 export { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 export type { Document, DocxConformanceClass } from "./types/document";

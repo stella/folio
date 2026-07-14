@@ -248,20 +248,17 @@ export function createDocx(doc: import__stll_docx_core_model.Document): Promise<
 // @public
 export function createEmptyDocument(options?: CreateEmptyDocumentOptions): import__stll_docx_core_model.Document;
 
-// @public
-export type CreateEmptyDocumentOptions = {
-    pageWidth?: number; /** Page height in twips (default: 15840 = 11 inches) */
-    pageHeight?: number; /** Page orientation (default: 'portrait') */
-    orientation?: "portrait" | "landscape"; /** Top margin in twips (default: 1440 = 1 inch) */
-    marginTop?: number; /** Bottom margin in twips (default: 1440 = 1 inch) */
-    marginBottom?: number; /** Left margin in twips (default: 1440 = 1 inch) */
-    marginLeft?: number; /** Right margin in twips (default: 1440 = 1 inch) */
-    marginRight?: number; /** Initial text content (default: empty string) */
-    initialText?: string;
-};
+// @public (undocumented)
+export type CreateEmptyDocumentOptions = CreateEmptyDocumentBaseOptions & CreateEmptyDocumentStyleOptions;
 
 // @public (undocumented)
 export const createFolioAIEditSnapshot: (doc: Node_2) => FolioAIEditSnapshot;
+
+// @public (undocumented)
+export const createStellaStyleDocumentPreset: () => DocumentPreset;
+
+// @public
+export const createStellaStyleSet: () => DocumentStyleSet;
 
 // @public
 export const DEFAULT_AI_SUGGESTION_PRESETS: AISuggestionPreset[];
@@ -297,6 +294,48 @@ export type DirectiveRange = {
 // @public (undocumented)
 type Document_2 = import__stll_docx_core_model.Document;
 export { Document_2 as Document }
+
+// @public (undocumented)
+export const DOCUMENT_PRESET_VERSION: 1;
+
+// @public (undocumented)
+export const DOCUMENT_STYLE_SET_VERSION: 1;
+
+// @public
+export type DocumentPreset = {
+    version: typeof DOCUMENT_PRESET_VERSION;
+    name: string;
+    styleSet: DocumentStyleSet;
+    sectionProperties: import__stll_docx_core_model.SectionProperties;
+};
+
+// @public (undocumented)
+export type DocumentStyleCatalog = {
+    defaultParagraphStyleId?: string;
+    styles: DocumentStyleCatalogEntry[];
+};
+
+// @public (undocumented)
+export type DocumentStyleCatalogEntry = {
+    styleId: string;
+    name: string;
+    type: import__stll_docx_core_model.Style["type"];
+    role: "default" | "quick" | "available" | "supporting";
+    dependencies: string[];
+    numberingId?: number;
+};
+
+// @public
+export type DocumentStyleSet = {
+    version: typeof DOCUMENT_STYLE_SET_VERSION;
+    name: string;
+    initialParagraphStyleId: string;
+    styles: import__stll_docx_core_model.StyleDefinitions;
+    numbering?: import__stll_docx_core_model.NumberingDefinitions;
+    theme?: import__stll_docx_core_model.Theme;
+    fontTable?: import__stll_docx_core_model.FontTable;
+    settings?: import__stll_docx_core_model.DocumentSettings;
+};
 
 export { DOCX_CONFORMANCE_CLASSES }
 
@@ -357,6 +396,19 @@ export type EmbeddedFontParts = {
     fontTableXml: string | null | undefined; /** Raw `word/_rels/fontTable.xml.rels`. */
     fontTableRelsXml: string | null | undefined; /** Unzipped font binaries keyed by package path (e.g. `word/fonts/font1.odttf`). */
     fonts: ReadonlyMap<string, ArrayBuffer>;
+};
+
+// @public
+export const extractDocumentStyleSet: (document: import__stll_docx_core_model.Document, options: ExtractDocumentStyleSetOptions) => DocumentStyleSet;
+
+// @public (undocumented)
+export const extractDocumentStyleSetFromDocx: (input: DocxInput, options: ExtractDocumentStyleSetOptions) => Promise<DocumentStyleSet>;
+
+// @public (undocumented)
+export type ExtractDocumentStyleSetOptions = {
+    name: string; /** Style IDs selected by the user. Omit to extract every style. */
+    styleIds?: readonly string[]; /** Defaults to the source document's default paragraph style. */
+    initialParagraphStyleId?: string;
 };
 
 // @public
@@ -740,6 +792,12 @@ export type ImageRef = {
 } & ImageMeta;
 
 // @public (undocumented)
+export const inspectDocumentStyles: (document: import__stll_docx_core_model.Document) => DocumentStyleCatalog;
+
+// @public (undocumented)
+export const inspectDocumentStylesFromDocx: (input: DocxInput) => Promise<DocumentStyleCatalog>;
+
+// @public (undocumented)
 export const inspectDocxCompatibility: (doc: import__stll_docx_core_model.Document, options?: InspectDocxCompatibilityOptions) => DocxCompatibility;
 
 // @public (undocumented)
@@ -866,6 +924,9 @@ export const shouldTriggerAutocomplete: (state: EditorState, options?: Autocompl
 
 // @public (undocumented)
 export const startAutocompleteSuggestion: (tr: Transaction, anchor: number, requestId: string) => Transaction;
+
+// @public (undocumented)
+export const STELLA_STYLE_SET_NAME = "Stella Style";
 
 // @public
 export type TemplatePreviewSpan = {

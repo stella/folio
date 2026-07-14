@@ -88,6 +88,26 @@ export {
   createEmptyDocument,
   type CreateEmptyDocumentOptions,
 } from "@stll/folio-core/utils/createDocument";
+export {
+  extractDocumentStyleSet,
+  extractDocumentStyleSetFromDocx,
+  inspectDocumentStyles,
+  inspectDocumentStylesFromDocx,
+  type DocumentStyleCatalog,
+  type DocumentStyleCatalogEntry,
+  type ExtractDocumentStyleSetOptions,
+} from "@stll/folio-core/style-sets/extract";
+export {
+  createStellaStyleDocumentPreset,
+  createStellaStyleSet,
+  STELLA_STYLE_SET_NAME,
+} from "@stll/folio-core/style-sets/stellaStyle";
+export {
+  DOCUMENT_PRESET_VERSION,
+  DOCUMENT_STYLE_SET_VERSION,
+  type DocumentPreset,
+  type DocumentStyleSet,
+} from "@stll/folio-core/style-sets/types";
 export { createDocx } from "@stll/folio-core/docx/rezip";
 export type { Document } from "@stll/folio-core/types/document";
 export type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";

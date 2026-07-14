@@ -55,6 +55,10 @@ import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
+import { serializeFontTableXml } from "./serializer/fontTableSerializer";
+import { serializeSettingsXml } from "./serializer/settingsSerializer";
+import { serializeStylesXml } from "./serializer/stylesSerializer";
+import { serializeThemeXml } from "./serializer/themeSerializer";
 import { escapeXml } from "./serializer/xmlUtils";
 import { isPreservableDocxEntry } from "./unzip";
 import type { RawDocxContent } from "./unzip";
@@ -2114,7 +2118,7 @@ export function createEmptyDocx(): Promise<ArrayBuffer> {
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
   <Application>EigenPal DOCX Editor</Application>
-  <AppVersion>1.0.0</AppVersion>
+  <AppVersion>1.0000</AppVersion>
 </Properties>`,
   );
 
@@ -2132,8 +2136,7 @@ export function createEmptyDocx(): Promise<ArrayBuffer> {
  * @returns Promise resolving to DOCX as ArrayBuffer
  */
 export async function createDocx(doc: Document): Promise<ArrayBuffer> {
-  // Start with an empty DOCX
-  const emptyBuffer = await createEmptyDocx();
+  const emptyBuffer = await createDocumentSeedDocx(doc);
 
   // Add document as original buffer
   const docWithBuffer: Document = {
@@ -2144,6 +2147,124 @@ export async function createDocx(doc: Document): Promise<ArrayBuffer> {
   // Repack with the document content
   return repackDocx(docWithBuffer);
 }
+
+const createDocumentSeedDocx = async (doc: Document): Promise<ArrayBuffer> => {
+  const buffer = await createEmptyDocx();
+  const zip = await JSZip.loadAsync(buffer);
+  const relationships: string[] = [
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>',
+  ];
+  const overrides: string[] = [];
+  let nextRelationshipId = 2;
+
+  if (doc.package.styles) {
+    assertStyleNumberingReferences(doc);
+    zip.file("word/styles.xml", serializeStylesXml(doc.package.styles));
+  }
+
+  const numbering = doc.package.numbering;
+  if (numbering && (numbering.abstractNums.length > 0 || numbering.nums.length > 0)) {
+    zip.file("word/numbering.xml", serializeNumberingXml(numbering));
+    relationships.push(relationshipXml(nextRelationshipId, "numbering", "numbering.xml"));
+    overrides.push(
+      overrideXml(
+        "/word/numbering.xml",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+      ),
+    );
+    nextRelationshipId += 1;
+  }
+
+  if (doc.package.theme) {
+    zip.file("word/theme/theme1.xml", serializeThemeXml(doc.package.theme));
+    relationships.push(relationshipXml(nextRelationshipId, "theme", "theme/theme1.xml"));
+    overrides.push(
+      overrideXml(
+        "/word/theme/theme1.xml",
+        "application/vnd.openxmlformats-officedocument.theme+xml",
+      ),
+    );
+    nextRelationshipId += 1;
+  }
+
+  if (doc.package.fontTable && doc.package.fontTable.fonts.length > 0) {
+    zip.file("word/fontTable.xml", serializeFontTableXml(doc.package.fontTable));
+    relationships.push(relationshipXml(nextRelationshipId, "fontTable", "fontTable.xml"));
+    overrides.push(
+      overrideXml(
+        "/word/fontTable.xml",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml",
+      ),
+    );
+    nextRelationshipId += 1;
+  }
+
+  if (doc.package.settings) {
+    zip.file("word/settings.xml", serializeSettingsXml(doc.package.settings));
+    relationships.push(relationshipXml(nextRelationshipId, "settings", "settings.xml"));
+    overrides.push(
+      overrideXml(
+        "/word/settings.xml",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml",
+      ),
+    );
+  }
+
+  zip.file(
+    "word/_rels/document.xml.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`,
+  );
+  if (overrides.length > 0) {
+    const contentTypesFile = zip.file("[Content_Types].xml");
+    if (!contentTypesFile) {
+      panic("Fresh DOCX seed is missing [Content_Types].xml");
+    }
+    const contentTypes = await contentTypesFile.async("string");
+    zip.file(
+      "[Content_Types].xml",
+      contentTypes.replace("</Types>", `${overrides.join("")}\n</Types>`),
+    );
+  }
+
+  return zip.generateAsync({
+    type: "arraybuffer",
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 },
+  });
+};
+
+const relationshipXml = (id: number, type: string, target: string): string =>
+  `<Relationship Id="rId${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${target}"/>`;
+
+const overrideXml = (partName: string, contentType: string): string =>
+  `<Override PartName="${partName}" ContentType="${contentType}"/>`;
+
+const assertStyleNumberingReferences = (doc: Document): void => {
+  const referenced = new Set<number>();
+  for (const style of doc.package.styles?.styles ?? []) {
+    const numId = style.pPr?.numPr?.numId;
+    if (numId !== undefined) {
+      referenced.add(numId);
+    }
+  }
+  if (referenced.size === 0) {
+    return;
+  }
+  const available = new Set(doc.package.numbering?.nums.map((numbering) => numbering.numId) ?? []);
+  for (const numId of referenced) {
+    if (!available.has(numId)) {
+      panic(`Style references missing numbering definition ${numId}`);
+    }
+  }
+  const availableAbstract = new Set(
+    doc.package.numbering?.abstractNums.map((numbering) => numbering.abstractNumId) ?? [],
+  );
+  for (const numbering of doc.package.numbering?.nums ?? []) {
+    if (!availableAbstract.has(numbering.abstractNumId)) {
+      panic(`Numbering definition ${numbering.numId} references missing abstract numbering`);
+    }
+  }
+};
 
 // ============================================================================
 // EXPORTS
