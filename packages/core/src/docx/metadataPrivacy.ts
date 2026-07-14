@@ -180,9 +180,9 @@ const rewriteCorePropertiesPrivacy = (
 /** Rewrite selected package metadata fields without changing other package parts. */
 export const rewriteDocxMetadataPrivacy = async (
   buffer: ArrayBuffer,
-  options: FolioDocumentPrivacyOptions,
+  { transforms }: FolioDocumentPrivacyOptions,
 ): Promise<RewriteDocxMetadataPrivacyResult> => {
-  const appliedTransforms = resolveFolioDocumentPrivacyTransforms(options.transforms);
+  const appliedTransforms = resolveFolioDocumentPrivacyTransforms(transforms);
   const zip = await loadPrivacyArchive(buffer);
   const coreProperties = zip.file("docProps/core.xml");
   if (!coreProperties) {
@@ -203,7 +203,7 @@ export const rewriteDocxMetadataPrivacy = async (
   }
   zip.file("docProps/core.xml", rewritten.xml);
   return {
-    buffer: await zip.generateAsync({ type: "arraybuffer" }),
+    buffer: await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" }),
     privacyReport: {
       appliedTransforms,
       removedMetadataProperties: rewritten.removedMetadataProperties,

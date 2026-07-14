@@ -18,6 +18,12 @@ describe("updateCoreProperties dcterms:modified", () => {
     expect(updateCoreProperties(xml, { updateModifiedDate: true })).toBe(xml);
   });
 
+  test("does not synthesize a missing modifier", () => {
+    const xml = "<cp:coreProperties><cp:revision>7</cp:revision></cp:coreProperties>";
+
+    expect(updateCoreProperties(xml, { modifiedBy: "Reviewer" })).toBe(xml);
+  });
+
   test("stays linear on malformed core.xml", () => {
     const evil = "<dcterms:modified".repeat(100_000);
     const start = performance.now();
