@@ -3,11 +3,11 @@
   "version": 1,
   "source": {
     "fileName": "word-hyphenation-hanging.docx",
-    "sha256": "8c17b4c43e21019c3afd17f0d9ec55b53e456ae36a9c252f813c0ceb489f9db8"
+    "sha256": "c881a1e218ae77c64ae5095f3af19a8086ec457880be3cd7b4f92515255c319a"
   },
   "reference": {
     "renderer": "word",
-    "capturedAt": "2026-07-14T10:37:27.283Z",
+    "capturedAt": "2026-07-14T13:13:06.812Z",
     "wordVersion": "16.112",
     "mutoolVersion": "mutool version 1.28.0"
   },
@@ -205,6 +205,74 @@
         },
         {
           "text": "demonstration compatibility.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "lines": [
+        {
+          "text": "Japanese overflow disabled",
+          "region": "unknown"
+        },
+        {
+          "text": "甲乙丙丁戊己庚辛壬癸子丑",
+          "region": "unknown"
+        },
+        {
+          "text": "寅。甲乙丙丁",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 11,
+      "lines": [
+        {
+          "text": "Japanese overflow enabled",
+          "region": "unknown"
+        },
+        {
+          "text": "甲乙丙丁戊己庚辛壬癸子丑寅。",
+          "region": "unknown"
+        },
+        {
+          "text": "甲乙丙丁",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 12,
+      "lines": [
+        {
+          "text": "Japanese closing pair",
+          "region": "unknown"
+        },
+        {
+          "text": "甲乙丙丁戊己庚辛壬癸子丑寅。",
+          "region": "unknown"
+        },
+        {
+          "text": "」甲乙丙丁",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 13,
+      "lines": [
+        {
+          "text": "Japanese split punctuation",
+          "region": "unknown"
+        },
+        {
+          "text": "甲乙丙丁戊己庚辛壬癸子丑寅。",
+          "region": "unknown"
+        },
+        {
+          "text": "甲乙丙丁",
           "region": "unknown"
         }
       ]

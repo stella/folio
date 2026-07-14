@@ -74,10 +74,32 @@ const narrowParagraph = (text: string, language: string, extraProperties = ""): 
       </w:r>
     </w:p>`;
 
-const narrowParagraphRuns = (runs: string): string => `
+const narrowParagraphRuns = (runs: string, extraProperties = ""): string => `
     <w:p>
       <w:pPr>
         <w:ind w:right="6480"/>
+        ${extraProperties}
+      </w:pPr>
+      ${runs}
+    </w:p>`;
+
+const hangingProbeParagraph = (text: string, extraProperties: string): string => `
+    <w:p>
+      <w:pPr>
+        <w:ind w:right="6500"/>
+        ${extraProperties}
+      </w:pPr>
+      <w:r>
+        <w:rPr><w:lang w:val="ja-JP" w:eastAsia="ja-JP"/></w:rPr>
+        <w:t>${text}</w:t>
+      </w:r>
+    </w:p>`;
+
+const hangingProbeRuns = (runs: string): string => `
+    <w:p>
+      <w:pPr>
+        <w:ind w:right="6500"/>
+        <w:kinsoku/><w:overflowPunct/>
       </w:pPr>
       ${runs}
     </w:p>`;
@@ -138,6 +160,33 @@ const cases = [
         <w:rPr><w:color w:val="C00000"/><w:lang w:val="en-US"/></w:rPr>
         <w:t>nalization characterization demonstration compatibility.</w:t>
       </w:r>`)}`,
+  `${heading("Japanese overflow disabled")}${hangingProbeParagraph(
+    "甲乙丙丁戊己庚辛壬癸子丑寅。甲乙丙丁",
+    '<w:kinsoku/><w:overflowPunct w:val="0"/>',
+  )}`,
+  `${heading("Japanese overflow enabled")}${hangingProbeParagraph(
+    "甲乙丙丁戊己庚辛壬癸子丑寅。甲乙丙丁",
+    "<w:kinsoku/><w:overflowPunct/>",
+  )}`,
+  `${heading("Japanese closing pair")}${hangingProbeParagraph(
+    "甲乙丙丁戊己庚辛壬癸子丑寅。」甲乙丙丁",
+    "<w:kinsoku/><w:overflowPunct/>",
+  )}`,
+  `${heading("Japanese split punctuation")}${hangingProbeRuns(
+    `
+      <w:r>
+        <w:rPr><w:lang w:val="ja-JP" w:eastAsia="ja-JP"/></w:rPr>
+        <w:t>甲乙丙丁戊己庚辛壬癸子丑寅</w:t>
+      </w:r>
+      <w:r>
+        <w:rPr><w:color w:val="C00000"/><w:lang w:val="ja-JP" w:eastAsia="ja-JP"/></w:rPr>
+        <w:t>。</w:t>
+      </w:r>
+      <w:r>
+        <w:rPr><w:lang w:val="ja-JP" w:eastAsia="ja-JP"/></w:rPr>
+        <w:t>甲乙丙丁</w:t>
+      </w:r>`,
+  )}`,
 ];
 
 const DOCUMENT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

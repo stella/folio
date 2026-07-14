@@ -32,7 +32,7 @@ describe("Word hyphenation and hanging-punctuation baseline", () => {
     const manifest = await readLineEndpointManifest(MANIFEST_PATH);
     const pages = manifest.pages.map(({ lines }) => lines.map(({ text }) => text));
 
-    expect(pages).toHaveLength(9);
+    expect(pages).toHaveLength(13);
     expect(pages[0]?.some((text) => text.endsWith("-"))).toBe(true);
     expect(pages[1]?.some((text) => text.endsWith("-"))).toBe(false);
     expect(pages[2]?.some((text) => text.endsWith("-"))).toBe(false);
@@ -42,5 +42,10 @@ describe("Word hyphenation and hanging-punctuation baseline", () => {
     expect(pages[6]?.slice(1).every((text) => !/^[、。）］]/u.test(text))).toBe(true);
     expect(pages[7]?.slice(1).every((text) => !text.startsWith("※"))).toBe(true);
     expect(pages[8]?.some((text) => text.endsWith("-"))).toBe(true);
+    expect(pages[9]?.at(1)).toBe("甲乙丙丁戊己庚辛壬癸子丑");
+    expect(pages[10]?.at(1)).toBe("甲乙丙丁戊己庚辛壬癸子丑寅。");
+    expect(pages[11]?.at(1)?.endsWith("。")).toBe(true);
+    expect(pages[11]?.at(2)?.startsWith("」")).toBe(true);
+    expect(pages[12]?.slice(1)).toEqual(pages[10]?.slice(1));
   });
 });

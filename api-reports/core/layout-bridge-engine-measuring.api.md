@@ -163,8 +163,8 @@ export function isWorkerFontMetricsEnabled(): boolean;
 // @public
 export type LineBreakPolicy = {
     locale?: string; /** Apply East Asian first/last-character restrictions (`w:kinsoku`). */
-    kinsoku?: boolean; /** Document override: characters that may not begin a line. */
-    noLineBreaksBefore?: string; /** Document override: characters that may not end a line. */
+    kinsoku?: boolean; /** Document replacement list: characters that may not begin a line. */
+    noLineBreaksBefore?: string; /** Document replacement list: characters that may not end a line. */
     noLineBreaksAfter?: string; /** Use the legacy Ethiopic/Amharic compatibility behavior. */
     useLegacyEthiopicAmharicRules?: boolean; /** Keep words made entirely of capital letters unhyphenated. */
     doNotHyphenateCaps?: boolean; /** The run renders with the DOCX all-caps transform. */

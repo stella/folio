@@ -12,8 +12,9 @@ the paired manifest can validate the exact DOCX SHA-256.
 - Czech automatic hyphenation;
 - paragraph-level hyphenation suppression;
 - the all-caps and consecutive-line hyphenation controls;
-- Japanese kinsoku and hanging punctuation;
-- a document-specific prohibited line-start character.
+- Japanese kinsoku and explicit hanging-punctuation controls;
+- adjacent closing punctuation and inline formatting-run boundaries;
+- a document-specific prohibited line-start replacement list;
 - automatic hyphenation across an inline formatting-run boundary.
 
 Slovak remains covered by deterministic dictionary unit tests, not this Word
