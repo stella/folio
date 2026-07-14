@@ -207,6 +207,133 @@ describe("renderTableFragment clipped header continuations", () => {
   });
 });
 
+describe("renderTableFragment split-row cell content", () => {
+  test("clips ordinary cell content to each intersecting row slice", () => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      rows: [
+        {
+          id: "row",
+          cells: [
+            {
+              id: "cell",
+              padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              blocks: [
+                {
+                  kind: "paragraph",
+                  id: "content",
+                  runs: [{ kind: "text", text: "Tall cell content" }],
+                },
+                {
+                  kind: "paragraph",
+                  id: "floating-anchor",
+                  runs: [
+                    {
+                      kind: "image",
+                      src: "floating.png",
+                      width: 20,
+                      height: 20,
+                      displayMode: "float",
+                      wrapType: "inFront",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      columnWidths: [100],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [
+            {
+              blocks: [
+                { kind: "paragraph", lines: [], totalHeight: 100 },
+                { kind: "paragraph", lines: [], totalHeight: 0 },
+              ],
+              width: 100,
+              height: 100,
+            },
+          ],
+          height: 100,
+        },
+      ],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 100,
+    };
+    const fragments: TableFragment[] = [
+      {
+        kind: "table",
+        blockId: "tbl",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 30,
+        fromRow: 0,
+        toRow: 1,
+        bottomClip: 30,
+        continuesOnNext: true,
+      },
+      {
+        kind: "table",
+        blockId: "tbl",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 40,
+        fromRow: 0,
+        toRow: 1,
+        topClip: 30,
+        bottomClip: 70,
+        continuesFromPrev: true,
+        continuesOnNext: true,
+      },
+      {
+        kind: "table",
+        blockId: "tbl",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 30,
+        fromRow: 0,
+        toRow: 1,
+        topClip: 70,
+        continuesFromPrev: true,
+      },
+    ];
+
+    let clipPaths: (string | undefined)[] = [];
+    withFakeTextMeasure(() => {
+      clipPaths = fragments.map((fragment) => {
+        const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
+          document: fakeDocument,
+        }) as unknown as FakeElement;
+        const content = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent).at(0);
+        const floatingLayer = findByClass(tableEl, "layout-cell-floating-images-layer").at(0);
+
+        expect(tableEl.style["overflow"]).toBe("visible");
+        expect(content?.style["height"]).toBe("100px");
+        expect(content?.style["overflow"]).toBe("hidden");
+        expect(floatingLayer?.style["clipPath"]).toBeUndefined();
+
+        return content?.style["clipPath"];
+      });
+    });
+
+    expect(clipPaths).toEqual([
+      "inset(0px 0 70px 0)",
+      "inset(30px 0 30px 0)",
+      "inset(70px 0 0px 0)",
+    ]);
+  });
+});
+
 describe("renderTableFragment cell paragraph spacing", () => {
   test("reserves measured paragraph spacing inside table cells", () => {
     const block: TableBlock = {

@@ -79,6 +79,11 @@ type RenderCellContentOptions = {
   contentWidthOverride?: number;
 };
 
+type CellContentClip = {
+  top: number;
+  bottom: number;
+};
+
 function renderCellContent({
   cell,
   cellMeasure,
@@ -382,22 +387,21 @@ function renderNestedTable(
       continue;
     }
 
-    const rowEl = renderTableRow(
+    const rowEl = renderTableRow({
       row,
       rowMeasure,
       rowIndex,
       y,
-      measure.columnWidths,
-      block.rows.length,
+      columnWidths: measure.columnWidths,
+      totalRows: block.rows.length,
       context,
       doc,
       spanningCells,
       rowYPositions,
-      undefined,
-      block.bidi,
+      bidi: block.bidi,
       columnsPinned,
       cellGrid,
-    );
+    });
     tableEl.append(rowEl);
     y += rowMeasure.height;
   }
@@ -495,21 +499,34 @@ function renderCellDiagonalBorder({
 /**
  * Render a single table cell
  */
-function renderTableCell(
-  cell: TableCell,
-  cellMeasure: TableCellMeasure,
-  x: number,
-  rowHeight: number,
+type RenderTableCellOptions = {
+  cell: TableCell;
+  cellMeasure: TableCellMeasure;
+  x: number;
+  rowHeight: number;
   borderFlags: {
     drawTop: boolean;
     isLastRow: boolean;
     drawLeft: boolean;
     isLastCol: boolean;
-  },
-  columnsPinned: boolean,
-  context: RenderContext,
-  doc: Document,
-): HTMLElement {
+  };
+  columnsPinned: boolean;
+  context: RenderContext;
+  doc: Document;
+  contentClip?: CellContentClip;
+};
+
+function renderTableCell({
+  cell,
+  cellMeasure,
+  x,
+  rowHeight,
+  borderFlags,
+  columnsPinned,
+  context,
+  doc,
+  contentClip,
+}: RenderTableCellOptions): HTMLElement {
   const cellEl = doc.createElement("div");
   cellEl.className = TABLE_CLASS_NAMES.cell;
 
@@ -609,6 +626,14 @@ function renderTableCell(
     renderedContent.content.style.overflow = "hidden";
     cellEl.style.overflow = "visible";
   }
+  if (contentClip) {
+    const contentHeight = Math.max(0, rowHeight - padTop - padBottom);
+    const clipTop = Math.min(contentHeight, Math.max(0, contentClip.top - padTop));
+    const clipBottom = Math.min(contentHeight, Math.max(clipTop, contentClip.bottom - padTop));
+    renderedContent.content.style.height = `${contentHeight}px`;
+    renderedContent.content.style.overflow = "hidden";
+    renderedContent.content.style.clipPath = `inset(${clipTop}px 0 ${contentHeight - clipBottom}px 0)`;
+  }
   cellEl.append(renderedContent.content);
   const topLeftToBottomRight = renderCellDiagonalBorder({
     border: cell.borders?.topLeftToBottomRight,
@@ -707,22 +732,41 @@ const hasVisibleBorder = (border: { width?: number; style?: string } | undefined
 /**
  * Render a table row with rowSpan support
  */
-function renderTableRow(
-  row: TableBlock["rows"][number],
-  rowMeasure: TableMeasure["rows"][number],
-  rowIndex: number,
-  y: number,
-  columnWidths: number[],
-  totalRows: number,
-  context: RenderContext,
-  doc: Document,
-  spanningCells?: Map<string, SpanningCell>,
-  rowYPositions?: number[],
-  isFirstRowInFragment?: boolean,
+type RenderTableRowOptions = {
+  row: TableBlock["rows"][number];
+  rowMeasure: TableMeasure["rows"][number];
+  rowIndex: number;
+  y: number;
+  columnWidths: number[];
+  totalRows: number;
+  context: RenderContext;
+  doc: Document;
+  spanningCells?: Map<string, SpanningCell>;
+  rowYPositions?: number[];
+  isFirstRowInFragment?: boolean;
+  bidi?: boolean;
+  columnsPinned?: boolean;
+  cellGrid?: TableCellGrid;
+  contentClip?: CellContentClip;
+};
+
+function renderTableRow({
+  row,
+  rowMeasure,
+  rowIndex,
+  y,
+  columnWidths,
+  totalRows,
+  context,
+  doc,
+  spanningCells,
+  rowYPositions,
+  isFirstRowInFragment,
   bidi = false,
   columnsPinned = false,
-  cellGrid?: TableCellGrid,
-): HTMLElement {
+  cellGrid,
+  contentClip,
+}: RenderTableRowOptions): HTMLElement {
   const rowEl = doc.createElement("div");
   rowEl.className = TABLE_CLASS_NAMES.row;
 
@@ -811,16 +855,17 @@ function renderTableRow(
     const drawTop = isFirstRow || !hasVisibleBorder(aboveCell?.borders?.bottom);
     const drawLeft = isFirstCol || !hasVisibleBorder(leftCell?.borders?.right);
 
-    const cellEl = renderTableCell(
+    const cellEl = renderTableCell({
       cell,
       cellMeasure,
-      cellLeft,
-      cellHeight,
-      { drawTop, isLastRow, drawLeft, isLastCol },
+      x: cellLeft,
+      rowHeight: cellHeight,
+      borderFlags: { drawTop, isLastRow, drawLeft, isLastCol },
       columnsPinned,
       context,
       doc,
-    );
+      contentClip,
+    });
     cellEl.dataset["cellIndex"] = String(cellIndex);
     cellEl.dataset["columnIndex"] = String(columnIndex);
 
@@ -965,22 +1010,22 @@ export function renderTableFragment(
         continue;
       }
 
-      const rowEl = renderTableRow(
-        hdrRow,
-        hdrRowMeasure,
-        hdrIdx,
+      const rowEl = renderTableRow({
+        row: hdrRow,
+        rowMeasure: hdrRowMeasure,
+        rowIndex: hdrIdx,
         y,
-        measure.columnWidths,
-        block.rows.length,
+        columnWidths: measure.columnWidths,
+        totalRows: block.rows.length,
         context,
         doc,
         spanningCells,
         rowYPositions,
-        hdrIdx === 0, // first header row draws top border
-        block.bidi,
+        isFirstRowInFragment: hdrIdx === 0,
+        bidi: block.bidi,
         columnsPinned,
         cellGrid,
-      );
+      });
       rowEl.dataset["repeatedHeader"] = "true";
       tableEl.append(rowEl);
       y += hdrRowMeasure.height;
@@ -1022,23 +1067,32 @@ export function renderTableFragment(
       headerRowCount > 0 && fragment.continuesFromPrev
         ? false // header rows already drawn, content rows are not "first"
         : fragment.continuesFromPrev && rowIndex === fragment.fromRow;
+    const contentClip =
+      rowIndex === fragment.fromRow &&
+      (fragment.topClip !== undefined || fragment.bottomClip !== undefined)
+        ? {
+            top: fragment.topClip ?? 0,
+            bottom: fragment.bottomClip ?? rowMeasure.height,
+          }
+        : undefined;
 
-    const rowEl = renderTableRow(
+    const rowEl = renderTableRow({
       row,
       rowMeasure,
       rowIndex,
       y,
-      measure.columnWidths,
-      block.rows.length,
+      columnWidths: measure.columnWidths,
+      totalRows: block.rows.length,
       context,
       doc,
       spanningCells,
       rowYPositions,
       isFirstRowInFragment,
-      block.bidi,
+      bidi: block.bidi,
       columnsPinned,
       cellGrid,
-    );
+      contentClip,
+    });
 
     contentParent.append(rowEl);
     y += rowMeasure.height;
