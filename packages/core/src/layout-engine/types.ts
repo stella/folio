@@ -379,6 +379,14 @@ export type ParagraphAttrs = {
   kinsoku?: boolean;
   /** Hanging punctuation (`w:overflowPunct`), retained for layout policy. */
   overflowPunctuation?: boolean;
+  /** Exempt this paragraph from document automatic hyphenation. */
+  suppressAutoHyphens?: boolean;
+  /** Document-wide automatic hyphenation controls retained for line layout. */
+  automaticHyphenation?: {
+    enabled: true;
+    doNotHyphenateCaps?: boolean;
+    consecutiveLineLimit?: number;
+  };
   /** Document-wide custom line-edge characters and compatibility behavior. */
   lineBreakRules?: {
     noLineBreaksBefore?: { language?: string; characters: string };
@@ -838,6 +846,8 @@ export type MeasuredLine = {
    * as marginTop on the line element; measurement adds it to totalHeight.
    */
   floatSkipBefore?: number;
+  /** Decorative hyphen inserted at a dictionary break without changing source text. */
+  discretionaryHyphen?: { runIndex: number };
 };
 
 /**

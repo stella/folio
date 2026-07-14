@@ -184,7 +184,8 @@ export type ParagraphAttrs = {
     textId?: string;
     alignment?: import__stll_docx_core_model.ParagraphAlignment; /** Effective East Asian line-edge policy (`w:kinsoku`). */
     kinsoku?: boolean; /** Effective hanging-punctuation policy (`w:overflowPunct`). */
-    overflowPunctuation?: boolean;
+    overflowPunctuation?: boolean; /** Effective paragraph opt-out from document automatic hyphenation. */
+    suppressAutoHyphens?: boolean;
     spaceBefore?: number;
     spaceAfter?: number;
     lineSpacing?: number;

@@ -90,6 +90,39 @@ describe("fromProseDoc", () => {
     expect(() => fromProseDoc(pmDoc)).toThrow("sdt.attrs.listItems[0].displayText");
   });
 
+  test("round-trips paragraph automatic-hyphenation suppression through ProseMirror", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { suppressAutoHyphens: true },
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Keep this paragraph unhyphenated" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const attrs = expectParagraphAttrs(pmDoc.child(0));
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const block = roundTripped.package.document.content.at(0);
+
+    expect(attrs.suppressAutoHyphens).toBe(true);
+    expect(block?.type).toBe("paragraph");
+    if (block?.type !== "paragraph") {
+      return;
+    }
+    expect(block.formatting?.suppressAutoHyphens).toBe(true);
+  });
+
   test("round-trips unedited inherited auto spacing without inlining the style value", () => {
     const document: Document = {
       package: {

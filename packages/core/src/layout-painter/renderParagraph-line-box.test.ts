@@ -60,6 +60,51 @@ function findTabEls(lineEl: FakeElement): FakeElement[] {
 }
 
 describe("renderLine box model", () => {
+  test("paints a discretionary hyphen without assigning it a document position", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "discretionary-hyphen",
+      runs: [
+        {
+          kind: "text",
+          text: "hyphenation",
+          pmStart: 10,
+          pmEnd: 21,
+          bold: true,
+        },
+      ],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 6,
+      width: 49,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+      discretionaryHyphen: { runIndex: 0 },
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 49,
+      isLastLine: false,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+    const [text, hyphen] = lineEl.children;
+
+    expect(text?.textContent).toBe("hyphen");
+    expect(text?.dataset["pmStart"]).toBe("10");
+    expect(text?.dataset["pmEnd"]).toBe("16");
+    expect(hyphen?.textContent).toBe("-");
+    expect(hyphen?.dataset["discretionaryHyphen"]).toBe("true");
+    expect(hyphen?.dataset["pmStart"]).toBeUndefined();
+    expect(hyphen?.dataset["pmEnd"]).toBeUndefined();
+    expect(hyphen?.style["fontWeight"]).toBe("800");
+  });
+
   test("paints pair kerning only when the authored threshold is met", () => {
     const line: MeasuredLine = {
       fromRun: 0,

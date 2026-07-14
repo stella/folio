@@ -611,6 +611,7 @@ function paragraphFormattingToAttrs(
     set("tabs", formatting?.tabs ?? stylePpr?.tabs);
     set("kinsoku", formatting?.kinsoku ?? stylePpr?.kinsoku);
     set("overflowPunctuation", formatting?.overflowPunctuation ?? stylePpr?.overflowPunctuation);
+    set("suppressAutoHyphens", formatting?.suppressAutoHyphens ?? stylePpr?.suppressAutoHyphens);
 
     // Page break control
     set("pageBreakBefore", formatting?.pageBreakBefore ?? stylePpr?.pageBreakBefore);
@@ -659,6 +660,7 @@ function paragraphFormattingToAttrs(
     set("tabs", formatting?.tabs);
     set("kinsoku", formatting?.kinsoku);
     set("overflowPunctuation", formatting?.overflowPunctuation);
+    set("suppressAutoHyphens", formatting?.suppressAutoHyphens);
 
     // Page break control
     set("pageBreakBefore", formatting?.pageBreakBefore);

@@ -825,6 +825,25 @@ describe("runLayoutPipeline", () => {
     });
   });
 
+  test("threads document automatic-hyphenation settings into paragraph layout", () => {
+    const document = createEmptyDocument();
+    document.package.settings = {
+      defaultTabStop: 720,
+      autoHyphenation: true,
+      doNotHyphenateCaps: true,
+      consecutiveHyphenLimit: 2,
+    };
+
+    const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document }), makeState());
+    const paragraph = outcome.blocks?.find((block) => block.kind === "paragraph");
+
+    expect(paragraph?.attrs?.automaticHyphenation).toEqual({
+      enabled: true,
+      doNotHyphenateCaps: true,
+      consecutiveLineLimit: 2,
+    });
+  });
+
   test("uses the final section start mode for an implicit paragraph boundary", () => {
     const state = makeImplicitSectionBoundaryState();
     const continuous = runLayoutPipeline(

@@ -166,13 +166,17 @@ export type LineBreakPolicy = {
     kinsoku?: boolean; /** Document override: characters that may not begin a line. */
     noLineBreaksBefore?: string; /** Document override: characters that may not end a line. */
     noLineBreaksAfter?: string; /** Use the legacy Ethiopic/Amharic compatibility behavior. */
-    useLegacyEthiopicAmharicRules?: boolean;
+    useLegacyEthiopicAmharicRules?: boolean; /** Keep words made entirely of capital letters unhyphenated. */
+    doNotHyphenateCaps?: boolean; /** The run renders with the DOCX all-caps transform. */
+    renderedAllCaps?: boolean;
 };
 
 // @public (undocumented)
 export type LineBreakProvider = {
     findBreaks: (text: string, policy?: LineBreakPolicy) => number[]; /** Grapheme-safe emergency-wrap offsets, in ascending UTF-16 order. */
-    findGraphemeBreaks: (text: string, policy?: LineBreakPolicy) => number[];
+    findGraphemeBreaks: (text: string, policy?: LineBreakPolicy) => number[]; /** Dictionary-based discretionary hyphen offsets, in ascending UTF-16 order. */
+    findHyphenationBreaks?: (text: string, policy?: LineBreakPolicy) => number[]; /** Whether a trailing grapheme may overhang the line edge. */
+    isHangingPunctuation?: (text: string, policy?: LineBreakPolicy) => boolean;
 };
 
 // @public

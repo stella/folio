@@ -39,6 +39,7 @@ import type { HeaderFooter, StyleDefinitions, Theme } from "../../types/document
 import { emuToPixels } from "../../utils/units";
 import type { MeasureBlocksFn } from "./footnoteLayout";
 import { toFlowBlocks } from "./toFlowBlocks";
+import type { ToFlowBlocksOptions } from "./toFlowBlocks";
 
 // =============================================================================
 // 1. Page-level metrics passed in by the caller
@@ -650,6 +651,8 @@ export type ConvertHeaderFooterOptions = {
   measureBlocks: MeasureBlocksFn;
   /** Document-wide `w:defaultTabStop` in twips — forwarded to toFlowBlocks. */
   defaultTabStopTwips?: number;
+  lineBreakRules?: ToFlowBlocksOptions["lineBreakRules"];
+  automaticHyphenation?: ToFlowBlocksOptions["automaticHyphenation"];
   /**
    * Relationship id of the source HF part. Stamped onto the returned
    * `HeaderFooterContent.rId` so the painter can emit `data-rid` on the
@@ -690,15 +693,18 @@ export function convertHeaderFooterToContent(
     proseDocOptions.theme = options.theme;
   }
   const pmDoc = headerFooterToProseDoc(headerFooter.content, proseDocOptions);
-  const flowOptions: {
-    theme?: Theme | null;
-    defaultTabStopTwips?: number;
-  } = {};
+  const flowOptions: ToFlowBlocksOptions = {};
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
   }
   if (options.defaultTabStopTwips !== undefined) {
     flowOptions.defaultTabStopTwips = options.defaultTabStopTwips;
+  }
+  if (options.lineBreakRules) {
+    flowOptions.lineBreakRules = options.lineBreakRules;
+  }
+  if (options.automaticHyphenation) {
+    flowOptions.automaticHyphenation = options.automaticHyphenation;
   }
   const blocks = toFlowBlocks(pmDoc, flowOptions);
   return finalizeHeaderFooterContent(blocks, contentWidth, metrics, options);
@@ -728,15 +734,18 @@ export function convertHeaderFooterPmDocToContent(
   if (!pmDoc || pmDoc.content.size === 0) {
     return undefined;
   }
-  const flowOptions: {
-    theme?: Theme | null;
-    defaultTabStopTwips?: number;
-  } = {};
+  const flowOptions: ToFlowBlocksOptions = {};
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
   }
   if (options.defaultTabStopTwips !== undefined) {
     flowOptions.defaultTabStopTwips = options.defaultTabStopTwips;
+  }
+  if (options.lineBreakRules) {
+    flowOptions.lineBreakRules = options.lineBreakRules;
+  }
+  if (options.automaticHyphenation) {
+    flowOptions.automaticHyphenation = options.automaticHyphenation;
   }
   const blocks = toFlowBlocks(pmDoc, flowOptions);
   return finalizeHeaderFooterContent(blocks, contentWidth, metrics, options);

@@ -135,6 +135,8 @@ export type ToFlowBlocksOptions = {
     noLineBreaksAfter?: { language?: string; characters: string };
     useLegacyEthiopicAmharicRules?: boolean;
   };
+  /** Document-wide automatic hyphenation policy. */
+  automaticHyphenation?: NonNullable<ParagraphAttrs["automaticHyphenation"]>;
 };
 
 const DEFAULT_FONT = "Calibri";
@@ -1629,6 +1631,9 @@ function convertParagraphAttrs(
   if (pmAttrs.overflowPunctuation !== undefined && pmAttrs.overflowPunctuation !== null) {
     attrs.overflowPunctuation = pmAttrs.overflowPunctuation;
   }
+  if (pmAttrs.suppressAutoHyphens !== undefined && pmAttrs.suppressAutoHyphens !== null) {
+    attrs.suppressAutoHyphens = pmAttrs.suppressAutoHyphens;
+  }
   if (pmAttrs.renderedPageBreakBefore) {
     attrs.renderedPageBreakBefore = true;
   }
@@ -1857,6 +1862,9 @@ function convertParagraph(
   );
   if (options.lineBreakRules) {
     attrs.lineBreakRules = options.lineBreakRules;
+  }
+  if (options.automaticHyphenation) {
+    attrs.automaticHyphenation = options.automaticHyphenation;
   }
   const defaultTextFormatting = pmAttrs.defaultTextFormatting as TextFormatting | undefined;
   if (runs.length === 0) {

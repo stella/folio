@@ -488,6 +488,30 @@ describe("calculateHeaderFooterMarginPushBounds", () => {
 });
 
 describe("header/footer layout conversion", () => {
+  test("applies document line-breaking policy to header paragraphs", () => {
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Header hyphenation")]),
+    ]);
+
+    const result = convertHeaderFooterPmDocToContent(pmDoc, 600, metrics, {
+      measureBlocks,
+      automaticHyphenation: { enabled: true, consecutiveLineLimit: 2 },
+      lineBreakRules: {
+        noLineBreaksBefore: { language: "ja-JP", characters: "※" },
+      },
+    });
+
+    expect(result?.blocks.at(0)).toMatchObject({
+      kind: "paragraph",
+      attrs: {
+        automaticHyphenation: { enabled: true, consecutiveLineLimit: 2 },
+        lineBreakRules: {
+          noLineBreaksBefore: { language: "ja-JP", characters: "※" },
+        },
+      },
+    });
+  });
+
   test("derives flow height before margin push so floating text boxes do not seed the body push", () => {
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("Header")]),

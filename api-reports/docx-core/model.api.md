@@ -180,7 +180,11 @@ export type DocumentSettings = {
     themeFontLang?: {
         eastAsia?: string;
         bidi?: string;
-    }; /** Word/OOXML document-wide line-breaking overrides. */
+    }; /** Automatically hyphenate eligible paragraphs (`w:autoHyphenation`). */
+    autoHyphenation?: boolean; /** Keep all-capital words unhyphenated (`w:doNotHyphenateCaps`). */
+    doNotHyphenateCaps?: boolean; /** Maximum consecutive automatically hyphenated lines; zero means unlimited. */
+    consecutiveHyphenLimit?: number; /** Legacy hyphenation zone (`w:hyphenationZone`) in twips; retained for compatibility tooling. */
+    hyphenationZoneTwips?: number; /** Word/OOXML document-wide line-breaking overrides. */
     lineBreakRules?: {
         noLineBreaksBefore?: {
             language?: string;

@@ -303,6 +303,18 @@ export function runLayoutPipeline<THfPMs>(
     if (document?.package.settings?.lineBreakRules) {
       flowOpts.lineBreakRules = document.package.settings.lineBreakRules;
     }
+    const documentSettings = document?.package.settings;
+    if (documentSettings?.autoHyphenation === true) {
+      flowOpts.automaticHyphenation = {
+        enabled: true,
+        ...(documentSettings.doNotHyphenateCaps !== undefined
+          ? { doNotHyphenateCaps: documentSettings.doNotHyphenateCaps }
+          : {}),
+        ...(documentSettings.consecutiveHyphenLimit !== undefined
+          ? { consecutiveLineLimit: documentSettings.consecutiveHyphenLimit }
+          : {}),
+      };
+    }
     let newBlocks = toFlowBlocks(state.doc, flowOpts);
     // Template fill preview: substitute each matched {{marker}} range
     // with its typed value at the flow-block level so the pages lay out
@@ -388,6 +400,10 @@ export function runLayoutPipeline<THfPMs>(
         ...(_theme !== undefined ? { theme: _theme } : {}),
         measureBlocks: hfMeasureBlocks,
         ...(defaultTabStop !== undefined ? { defaultTabStopTwips: defaultTabStop } : {}),
+        ...(flowOpts.lineBreakRules ? { lineBreakRules: flowOpts.lineBreakRules } : {}),
+        ...(flowOpts.automaticHyphenation
+          ? { automaticHyphenation: flowOpts.automaticHyphenation }
+          : {}),
       };
     };
     const hfOptions = buildHfOptions(hfPageCountEstimate);
@@ -623,6 +639,12 @@ export function runLayoutPipeline<THfPMs>(
           }
           if (defaultTabStop !== undefined) {
             footnoteOptions.defaultTabStopTwips = defaultTabStop;
+          }
+          if (flowOpts.lineBreakRules) {
+            footnoteOptions.lineBreakRules = flowOpts.lineBreakRules;
+          }
+          if (flowOpts.automaticHyphenation) {
+            footnoteOptions.automaticHyphenation = flowOpts.automaticHyphenation;
           }
           return footnoteOptions;
         })(),

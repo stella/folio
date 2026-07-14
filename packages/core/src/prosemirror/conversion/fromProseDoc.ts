@@ -667,7 +667,12 @@ function isStyleSourcedNumPr(attrs: ParagraphAttrs): boolean {
 // "inherit", dropping the user's decision on save. Branch on `== null` so every
 // toggle routed through here preserves `false`. (Direction is handled
 // separately via the `direction` discriminated union, not this helper.)
-type BooleanToggleKey = "pageBreakBefore" | "widowControl" | "kinsoku" | "overflowPunctuation";
+type BooleanToggleKey =
+  | "pageBreakBefore"
+  | "widowControl"
+  | "kinsoku"
+  | "overflowPunctuation"
+  | "suppressAutoHyphens";
 
 function assignBooleanToggle(
   result: ParagraphFormatting,
@@ -772,6 +777,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     assignBooleanToggle(result, attrs, orig, "widowControl");
     assignBooleanToggle(result, attrs, orig, "kinsoku");
     assignBooleanToggle(result, attrs, orig, "overflowPunctuation");
+    assignBooleanToggle(result, attrs, orig, "suppressAutoHyphens");
     if (attrs.spacingExplicit !== orig.spacingExplicit) {
       if (attrs.spacingExplicit) {
         result.spacingExplicit = attrs.spacingExplicit;
@@ -823,7 +829,8 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     attrs.pageBreakBefore != null ||
     attrs.widowControl != null ||
     attrs.kinsoku != null ||
-    attrs.overflowPunctuation != null;
+    attrs.overflowPunctuation != null ||
+    attrs.suppressAutoHyphens != null;
 
   if (!hasFormatting) {
     return undefined;
@@ -903,6 +910,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   }
   if (attrs.overflowPunctuation != null) {
     f.overflowPunctuation = attrs.overflowPunctuation;
+  }
+  if (attrs.suppressAutoHyphens != null) {
+    f.suppressAutoHyphens = attrs.suppressAutoHyphens;
   }
   return f;
 }

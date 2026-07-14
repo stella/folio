@@ -5,7 +5,13 @@ import {
   resetLineBreakProvider,
   setLineBreakProvider,
 } from "./lineBreakProvider";
-import { findGraphemeBreaks, findWordBreaks, isBreakChar } from "./lineBreaks";
+import {
+  findGraphemeBreaks,
+  findHyphenationBreaks,
+  findWordBreaks,
+  isHangingPunctuation,
+  isBreakChar,
+} from "./lineBreaks";
 
 describe("findWordBreaks", () => {
   test("breaks after spaces and hyphens in Latin text", () => {
@@ -61,6 +67,59 @@ describe("findGraphemeBreaks", () => {
   test("never splits an emoji ZWJ sequence or combining character", () => {
     expect(findGraphemeBreaks("👨‍👩‍👧‍👦x")).toEqual([11, 12]);
     expect(findGraphemeBreaks("e\u0301x")).toEqual([2, 3]);
+  });
+});
+
+describe("findHyphenationBreaks", () => {
+  test("uses the dictionary selected by the exact Word language", () => {
+    expect(findHyphenationBreaks("hyphenation", { locale: "en-US" })).toEqual([2, 6]);
+    expect(findHyphenationBreaks("nejneobhospodářovávatelnější", { locale: "cs-CZ" })).toEqual([
+      3, 5, 7, 10, 12, 14, 16, 18, 20, 23, 26,
+    ]);
+  });
+
+  test("fails closed for unsupported or missing locales", () => {
+    expect(findHyphenationBreaks("hyphenation")).toEqual([]);
+    expect(findHyphenationBreaks("hyphenation", { locale: "en" })).toEqual([]);
+    expect(findHyphenationBreaks("hyphenation", { locale: "fr-FR" })).toEqual([]);
+    expect(() =>
+      findHyphenationBreaks("HYPHENATION", {
+        locale: "en-US-%%%",
+        doNotHyphenateCaps: true,
+      }),
+    ).not.toThrow();
+  });
+
+  test("bounds dictionary work for hostile oversized words", () => {
+    expect(findHyphenationBreaks("a".repeat(257), { locale: "en-US" })).toEqual([]);
+  });
+
+  test("honors the document all-caps setting", () => {
+    expect(findHyphenationBreaks("HYPHENATION", { locale: "en-US" })).not.toEqual([]);
+    expect(
+      findHyphenationBreaks("HYPHENATION", {
+        locale: "en-US",
+        doNotHyphenateCaps: true,
+      }),
+    ).toEqual([]);
+    expect(
+      findHyphenationBreaks("hyphenation", {
+        locale: "en-US",
+        doNotHyphenateCaps: true,
+        renderedAllCaps: true,
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("isHangingPunctuation", () => {
+  test("allows closing punctuation but not opening punctuation to overhang", () => {
+    expect(isHangingPunctuation("。", { locale: "zh-CN" })).toBe(true);
+    expect(isHangingPunctuation("（", { locale: "zh-CN" })).toBe(false);
+  });
+
+  test("includes document-specific prohibited line-start characters", () => {
+    expect(isHangingPunctuation("※", { noLineBreaksBefore: "※" })).toBe(true);
   });
 });
 

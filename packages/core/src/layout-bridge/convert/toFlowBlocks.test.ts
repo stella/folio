@@ -6,6 +6,33 @@ import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  test("retains paragraph suppression and stamps the document hyphenation policy", () => {
+    const paragraph = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("paragraph", { suppressAutoHyphens: true }, [schema.text("Hyphenation")]),
+      ]),
+      {
+        automaticHyphenation: {
+          enabled: true,
+          doNotHyphenateCaps: true,
+          consecutiveLineLimit: 2,
+        },
+      },
+    ).at(0);
+
+    expect(paragraph).toMatchObject({
+      kind: "paragraph",
+      attrs: {
+        suppressAutoHyphens: true,
+        automaticHyphenation: {
+          enabled: true,
+          doNotHyphenateCaps: true,
+          consecutiveLineLimit: 2,
+        },
+      },
+    });
+  });
+
   test("does not add a default list indent to an authored first-line position", () => {
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [

@@ -127,3 +127,50 @@ describe("parseSettings — document line-breaking rules", () => {
     ).toBeUndefined();
   });
 });
+
+describe("parseSettings — document automatic hyphenation", () => {
+  test("reads the Word hyphenation controls", () => {
+    expect(
+      parseSettings(
+        wrap(`
+          <w:autoHyphenation/>
+          <w:doNotHyphenateCaps/>
+          <w:consecutiveHyphenLimit w:val="2"/>
+          <w:hyphenationZone w:val="360"/>
+        `),
+      ),
+    ).toMatchObject({
+      autoHyphenation: true,
+      doNotHyphenateCaps: true,
+      consecutiveHyphenLimit: 2,
+      hyphenationZoneTwips: 360,
+    });
+  });
+
+  test("preserves explicit disabled on/off values", () => {
+    expect(
+      parseSettings(
+        wrap(`
+          <w:autoHyphenation w:val="0"/>
+          <w:doNotHyphenateCaps w:val="false"/>
+        `),
+      ),
+    ).toMatchObject({
+      autoHyphenation: false,
+      doNotHyphenateCaps: false,
+    });
+  });
+
+  test("ignores absent, malformed, negative, and out-of-range integer controls", () => {
+    expect(parseSettings(wrap("")).autoHyphenation).toBeUndefined();
+    const settings = parseSettings(
+      wrap(`
+        <w:consecutiveHyphenLimit w:val="-1"/>
+        <w:hyphenationZone w:val="31681"/>
+      `),
+    );
+
+    expect(settings.consecutiveHyphenLimit).toBeUndefined();
+    expect(settings.hyphenationZoneTwips).toBeUndefined();
+  });
+});
