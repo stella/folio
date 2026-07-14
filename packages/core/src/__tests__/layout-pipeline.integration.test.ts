@@ -413,6 +413,31 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[1]?.fragments[0]?.y).toBe(DEFAULT_MARGINS.top + 24);
     });
 
+    test("rendered page break consumes inherited spacing after a section boundary", () => {
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Before section", 1),
+        { kind: "sectionBreak", id: 1, type: "nextPage" },
+        {
+          ...makeParagraphBlock(2, "First paragraph in section", 17),
+          attrs: {
+            renderedPageBreakBefore: true,
+            spacing: { before: 24 },
+          },
+        },
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 14, 100, 24)]),
+        { kind: "sectionBreak" },
+        makeParagraphMeasure([makeLine(0, 0, 0, 26, 120, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(2);
+      expect(layout.pages[1]?.fragments[0]?.blockId).toBe(2);
+      expect(layout.pages[1]?.fragments[0]?.y).toBe(DEFAULT_MARGINS.top);
+    });
+
     test("stale rendered page break remains advisory when the paragraph fits", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Before break", 1),

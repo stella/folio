@@ -123,9 +123,13 @@ describe("rendered break reconciliation", () => {
     expect(decision.suppressSpaceBefore).toBe(true);
   });
 
-  test("a section boundary does not consume authored paragraph spacing", () => {
+  test("a section boundary preserves explicit paragraph spacing", () => {
     const previous: FlowBlock = { kind: "sectionBreak", id: 1, type: "nextPage" };
-    const marker = paragraph(2, { renderedPageBreakBefore: true });
+    const marker = paragraph(2, {
+      renderedPageBreakBefore: true,
+      spacing: { before: 24 },
+      spacingExplicit: { before: true },
+    });
     const decision = reconcileBreakBeforeBlock({
       state: INITIAL_RENDERED_BREAK_STATE,
       block: marker,
@@ -140,12 +144,35 @@ describe("rendered break reconciliation", () => {
     expect(decision.suppressSpaceBefore).toBe(false);
   });
 
+  test("a section boundary consumes inherited paragraph spacing", () => {
+    const previous: FlowBlock = { kind: "sectionBreak", id: 1, type: "nextPage" };
+    const marker = paragraph(2, {
+      renderedPageBreakBefore: true,
+      spacing: { before: 24 },
+    });
+    const decision = reconcileBreakBeforeBlock({
+      state: INITIAL_RENDERED_BREAK_STATE,
+      block: marker,
+      previousBlock: previous,
+      page: page(),
+      blocksById: new Map(),
+      hasExplicitPageBreak: false,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.suppressSpaceBefore).toBe(true);
+  });
+
   test("a continuous section boundary preserves spacing when the marker snaps", () => {
     const prior = paragraph(1);
     const previous: FlowBlock = { kind: "sectionBreak", id: 2, type: "continuous" };
     const decision = reconcileBreakBeforeBlock({
       state: INITIAL_RENDERED_BREAK_STATE,
-      block: paragraph(3, { renderedPageBreakBefore: true }),
+      block: paragraph(3, {
+        renderedPageBreakBefore: true,
+        spacingExplicit: { before: true },
+      }),
       previousBlock: previous,
       page: page([paragraphFragment(1)]),
       blocksById: new Map([["1", prior]]),
