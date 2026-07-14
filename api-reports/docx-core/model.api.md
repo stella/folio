@@ -195,7 +195,8 @@ export type DocumentSettings = {
             characters: string;
         };
         useLegacyEthiopicAmharicRules?: boolean;
-    };
+    }; /** Move a break-only paragraph mark onto the page after its hard page break. */
+    splitPageBreakAndParagraphMark?: boolean;
 };
 
 // @public
