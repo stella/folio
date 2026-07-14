@@ -22,6 +22,25 @@ describe("docDefaults presence (#909)", () => {
     const defs = parseStyleDefinitions(`<w:styles ${STYLES_NS}></w:styles>`, null);
     expect(defs.docDefaults).toBeUndefined();
   });
+
+  test("preserves document-default language metadata", () => {
+    const defs = parseStyleDefinitions(
+      `<w:styles ${STYLES_NS}>
+        <w:docDefaults>
+          <w:rPrDefault>
+            <w:rPr><w:lang w:val="cs-CZ" w:eastAsia="ja-JP" w:bidi="ar-SA"/></w:rPr>
+          </w:rPrDefault>
+        </w:docDefaults>
+      </w:styles>`,
+      null,
+    );
+
+    expect(defs.docDefaults?.rPr?.language).toEqual({
+      val: "cs-CZ",
+      eastAsia: "ja-JP",
+      bidi: "ar-SA",
+    });
+  });
 });
 
 describe("style table measurements", () => {

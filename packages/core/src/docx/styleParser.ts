@@ -285,6 +285,20 @@ function parseRunProperties(
     formatting.fontFamily = fontFamily;
   }
 
+  const lang = findChild(rPr, "w", "lang");
+  if (lang) {
+    const val = getAttribute(lang, "w", "val") || undefined;
+    const eastAsia = getAttribute(lang, "w", "eastAsia") || undefined;
+    const bidi = getAttribute(lang, "w", "bidi") || undefined;
+    if (val || eastAsia || bidi) {
+      formatting.language = {
+        ...(val ? { val } : {}),
+        ...(eastAsia ? { eastAsia } : {}),
+        ...(bidi ? { bidi } : {}),
+      };
+    }
+  }
+
   // Character spacing (in twips)
   const spacing = findChild(rPr, "w", "spacing");
   if (spacing) {

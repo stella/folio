@@ -34,6 +34,14 @@ describe("findWordBreaks", () => {
     expect(() => findWordBreaks("hello world", { locale: "not_a_locale" })).not.toThrow();
   });
 
+  test("keeps Czech nonsyllabic one-letter prepositions with the following word", () => {
+    const text = "text v  text";
+
+    expect(findWordBreaks(text, { locale: "cs-CZ" })).toEqual([5]);
+    expect(findWordBreaks(text, { locale: "en-US" })).toEqual([5, 7, 8]);
+    expect(findWordBreaks("textov text", { locale: "cs-CZ" })).toEqual([7]);
+  });
+
   test("keeps prohibited CJK punctuation off the next line", () => {
     expect(findWordBreaks("中文。测试", { locale: "zh-CN" })).toEqual([1, 3, 4, 5]);
   });
@@ -42,7 +50,7 @@ describe("findWordBreaks", () => {
     expect(findWordBreaks("中文測", { noLineBreaksBefore: "測" })).toEqual([1, 3]);
   });
 
-  test("applies Word's legacy Ethiopic and Amharic break opportunities", () => {
+  test("applies legacy Ethiopic and Amharic break opportunities", () => {
     const text = "ሀ፡ለ";
     expect(findWordBreaks(text)).toEqual([]);
     expect(findWordBreaks(text, { useLegacyEthiopicAmharicRules: true })).toEqual([2]);

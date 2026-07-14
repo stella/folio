@@ -4,7 +4,7 @@
  * Providers return UTF-16 offsets so their output composes directly with the
  * run and ProseMirror positions used by the rest of the layout pipeline. The
  * default provider uses the platform's Unicode segmenter, then applies the
- * Word/OOXML line-edge restrictions that are available in the flow model.
+ * OOXML line-edge restrictions that are available in the flow model.
  */
 
 export type LineBreakPolicy = {
@@ -56,11 +56,12 @@ const BREAK_AFTER_CHARACTER = new Set([
   "\u200B", // zero-width space
   "\u00AD", // soft hyphen
 ]);
+const CZECH_NONSYLLABIC_ONE_LETTER_PREPOSITIONS = new Set(["k", "s", "v", "z"]);
 
 // ECMA-376 kinsoku defaults are language-specific and can be overridden by
-// settings.xml. This conservative common set covers the punctuation Word does
-// not place at a line edge across Japanese and Chinese documents; document
-// overrides are layered on top below.
+// settings.xml. This conservative common set covers punctuation excluded from
+// line edges across Japanese and Chinese documents; document overrides are
+// layered on top below.
 const DEFAULT_PROHIBITED_LINE_START = new Set([
   "!",
   "%",
@@ -176,6 +177,43 @@ const isLegacyEthiopicBreakCharacter = (
   return codePoint !== undefined && codePoint >= 0x1361 && codePoint <= 0x1368;
 };
 
+const czechProtectedBreaks = (text: string, policy?: LineBreakPolicy): Set<number> => {
+  const breaks = new Set<number>();
+  if (segmenterLocale(policy?.locale) !== "cs") {
+    return breaks;
+  }
+
+  let tokenStart = 0;
+  let index = 0;
+  while (index < text.length) {
+    const character = firstCodePoint(text, index);
+    if (character === undefined) {
+      break;
+    }
+    if (!/\s/u.test(character)) {
+      index += character.length;
+      continue;
+    }
+
+    const token = text.slice(tokenStart, index);
+    const protectsNextWord =
+      [...token].length === 1 &&
+      CZECH_NONSYLLABIC_ONE_LETTER_PREPOSITIONS.has(token.toLocaleLowerCase("cs"));
+    while (index < text.length) {
+      const whitespace = firstCodePoint(text, index);
+      if (whitespace === undefined || !/\s/u.test(whitespace)) {
+        break;
+      }
+      index += whitespace.length;
+      if (protectsNextWord) {
+        breaks.add(index);
+      }
+    }
+    tokenStart = index;
+  }
+  return breaks;
+};
+
 const allowsBreak = (text: string, index: number, policy?: LineBreakPolicy): boolean => {
   const previous = previousCodePoint(text, index);
   const next = firstCodePoint(text, index);
@@ -254,7 +292,10 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
     }
   }
 
-  return [...new Set(breaks)].sort((left, right) => left - right);
+  const protectedBreaks = czechProtectedBreaks(text, policy);
+  return [...new Set(breaks)]
+    .filter((index) => !protectedBreaks.has(index))
+    .sort((left, right) => left - right);
 };
 
 export const defaultLineBreakProvider: LineBreakProvider = {
