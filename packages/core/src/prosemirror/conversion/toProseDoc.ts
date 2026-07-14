@@ -1707,14 +1707,14 @@ type ConvertTableCellOptions = {
   styleResolver: StyleEngine | null;
   context: TableConversionContext;
   isHeader: boolean;
-  gridWidthPercent?: number;
-  conditionalStyle?: TableConditionalStyle;
-  tableBorders?: TableBorders;
+  gridWidthPercent: number | undefined;
+  conditionalStyle: TableConditionalStyle | undefined;
+  tableBorders: TableBorders | undefined;
   position: TableCellPosition;
-  calculatedRowSpan?: number;
-  preserveVMergeRestart?: boolean;
-  vMergeContinuationCells?: TableCell[];
-  defaultCellMargins?: TableCellMarginsAttrs;
+  calculatedRowSpan: number | undefined;
+  preserveVMergeRestart: boolean | undefined;
+  vMergeContinuationCells: TableCell[] | undefined;
+  defaultCellMargins: TableCellMarginsAttrs | undefined;
 };
 
 /**

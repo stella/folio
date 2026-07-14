@@ -23,7 +23,7 @@ type EffectiveTableCellWidth =
       type: "value";
       source: "direct" | "grid";
       value: number;
-      widthType?: TableWidthType;
+      widthType: TableWidthType;
     };
 
 type EffectiveTableCellBackground =
@@ -33,8 +33,8 @@ type EffectiveTableCellBackground =
 type EffectiveTableCellFormatting = Readonly<{
   width: EffectiveTableCellWidth;
   background: EffectiveTableCellBackground;
-  borders?: TableCellBorders;
-  margins?: TableCellMarginsAttrs;
+  borders: TableCellBorders | undefined;
+  margins: TableCellMarginsAttrs | undefined;
 }>;
 
 export type TableCellPosition = {
@@ -45,13 +45,13 @@ export type TableCellPosition = {
 };
 
 type ResolveEffectiveTableCellFormattingOptions = {
-  directFormatting?: TableCellFormatting;
-  styleFormatting?: TableCellFormatting;
-  tableBorders?: TableBorders;
+  directFormatting: TableCellFormatting | undefined;
+  styleFormatting: TableCellFormatting | undefined;
+  tableBorders: TableBorders | undefined;
   position: TableCellPosition;
-  gridWidthPercent?: number;
-  defaultMargins?: TableCellMarginsAttrs;
-  theme?: Theme | null;
+  gridWidthPercent: number | undefined;
+  defaultMargins: TableCellMarginsAttrs | undefined;
+  theme: Theme | null | undefined;
 };
 
 const TABLE_BORDER_SIDES = [
@@ -101,13 +101,13 @@ const resolveEffectiveWidth = (
   directFormatting: TableCellFormatting | undefined,
   gridWidthPercent: number | undefined,
 ): EffectiveTableCellWidth => {
-  const directWidth = directFormatting?.width?.value;
-  if (directWidth !== undefined) {
+  const directWidth = directFormatting?.width;
+  if (directWidth) {
     return {
       type: "value",
       source: "direct",
-      value: directWidth,
-      widthType: directFormatting.width?.type,
+      value: directWidth.value,
+      widthType: directWidth.type,
     };
   }
   if (gridWidthPercent !== undefined) {

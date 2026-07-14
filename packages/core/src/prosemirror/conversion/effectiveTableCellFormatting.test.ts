@@ -3,6 +3,20 @@ import { describe, expect, test } from "bun:test";
 import type { Theme } from "../../types/document";
 import { resolveEffectiveTableCellFormatting } from "./effectiveTableCellFormatting";
 
+type ResolveOptions = Parameters<typeof resolveEffectiveTableCellFormatting>[0];
+
+const resolveFormatting = (overrides: Partial<ResolveOptions>) =>
+  resolveEffectiveTableCellFormatting({
+    directFormatting: undefined,
+    styleFormatting: undefined,
+    tableBorders: undefined,
+    position: {},
+    gridWidthPercent: undefined,
+    defaultMargins: undefined,
+    theme: undefined,
+    ...overrides,
+  });
+
 const theme: Theme = {
   colorScheme: {
     dk1: "000000",
@@ -22,12 +36,11 @@ const theme: Theme = {
 
 describe("resolveEffectiveTableCellFormatting", () => {
   test("keeps a direct no-fill distinct from an absent or inherited background", () => {
-    const result = resolveEffectiveTableCellFormatting({
+    const result = resolveFormatting({
       directFormatting: { shading: { pattern: "nil" } },
       styleFormatting: {
         shading: { pattern: "clear", fill: { themeColor: "accent1" } },
       },
-      position: {},
       theme,
     });
 
@@ -35,15 +48,11 @@ describe("resolveEffectiveTableCellFormatting", () => {
   });
 
   test("records whether width came from the authored cell or table grid", () => {
-    const direct = resolveEffectiveTableCellFormatting({
+    const direct = resolveFormatting({
       directFormatting: { width: { value: 1440, type: "dxa" } },
-      position: {},
       gridWidthPercent: 50,
     });
-    const grid = resolveEffectiveTableCellFormatting({
-      position: {},
-      gridWidthPercent: 50,
-    });
+    const grid = resolveFormatting({ gridWidthPercent: 50 });
 
     expect(direct.width).toEqual({
       type: "value",
@@ -60,7 +69,7 @@ describe("resolveEffectiveTableCellFormatting", () => {
   });
 
   test("applies direct, style, and table border precedence before resolving theme colors", () => {
-    const result = resolveEffectiveTableCellFormatting({
+    const result = resolveFormatting({
       directFormatting: {
         borders: { left: { style: "dashed", color: { rgb: "123456" } } },
       },
@@ -81,11 +90,10 @@ describe("resolveEffectiveTableCellFormatting", () => {
   });
 
   test("uses direct margins before style and table defaults", () => {
-    const result = resolveEffectiveTableCellFormatting({
+    const result = resolveFormatting({
       directFormatting: { margins: { left: { value: 120, type: "dxa" } } },
       styleFormatting: { margins: { left: { value: 240, type: "dxa" } } },
       defaultMargins: { left: 360 },
-      position: {},
     });
 
     expect(result.margins).toEqual({ left: 120 });
