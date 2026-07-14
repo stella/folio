@@ -387,6 +387,36 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[1].fragments[0].y).toBe(DEFAULT_MARGINS.top);
     });
 
+    test("rendered page break reuses an authored boundary across an empty carrier", () => {
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Before break", 1),
+        { kind: "pageBreak", id: 1, pmStart: 15, pmEnd: 16 },
+        {
+          ...makeParagraphBlock(2, "", 17),
+          runs: [],
+        },
+        {
+          ...makeParagraphBlock(3, "Cached next page", 18),
+          attrs: {
+            renderedPageBreakBefore: true,
+            spacing: { before: 24 },
+          },
+        },
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)]),
+        { kind: "pageBreak" },
+        makeParagraphMeasure([]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 16, 90, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(2);
+      expect(layout.pages[1]?.fragments.at(-1)?.blockId).toBe(3);
+      expect(layout.pages[1]?.fragments.at(-1)?.y).toBe(DEFAULT_MARGINS.top);
+    });
+
     test("rendered page break preserves leading spacing after a section boundary", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Before section", 1),

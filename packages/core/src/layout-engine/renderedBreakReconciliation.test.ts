@@ -204,6 +204,159 @@ describe("rendered break reconciliation", () => {
     expect(decision.suppressSpaceBefore).toBe(false);
   });
 
+  test("an authored page boundary remains satisfied across an empty carrier", () => {
+    const empty = paragraph(2, {}, []);
+    const boundaryState = reconcileAfterBlock({
+      state: INITIAL_RENDERED_BREAK_STATE,
+      block: { kind: "pageBreak", id: 1 },
+      pageNumberBefore: 1,
+      pageNumberAfter: 2,
+      previousPage: page(),
+    });
+    const carriedState = reconcileAfterBlock({
+      state: boundaryState,
+      block: empty,
+      pageNumberBefore: 2,
+      pageNumberAfter: 2,
+      previousPage: page(),
+    });
+    const decision = reconcileBreakBeforeBlock({
+      state: carriedState,
+      block: paragraph(3, {
+        renderedPageBreakBefore: true,
+        spacing: { before: 24 },
+      }),
+      previousBlock: empty,
+      page: page([paragraphFragment(2)]),
+      blocksById: new Map([["2", empty]]),
+      hasExplicitPageBreak: false,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.suppressSpaceBefore).toBe(true);
+    expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
+  });
+
+  test("an authored section boundary preserves explicit spacing across an empty carrier", () => {
+    const empty = paragraph(2, {}, []);
+    const boundaryState = reconcileAfterBlock({
+      state: INITIAL_RENDERED_BREAK_STATE,
+      block: { kind: "sectionBreak", id: 1, type: "nextPage" },
+      pageNumberBefore: 1,
+      pageNumberAfter: 2,
+      previousPage: page(),
+    });
+    const decision = reconcileBreakBeforeBlock({
+      state: reconcileAfterBlock({
+        state: boundaryState,
+        block: empty,
+        pageNumberBefore: 2,
+        pageNumberAfter: 2,
+        previousPage: page(),
+      }),
+      block: paragraph(3, {
+        renderedPageBreakBefore: true,
+        spacing: { before: 24 },
+        spacingExplicit: { before: true },
+      }),
+      previousBlock: empty,
+      page: page([paragraphFragment(2)]),
+      blocksById: new Map([["2", empty]]),
+      hasExplicitPageBreak: false,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(decision.suppressSpaceBefore).toBe(false);
+  });
+
+  test("a coalesced section boundary upgrades carried section-spacing semantics", () => {
+    const empty = paragraph(2, {}, []);
+    const pageBreakState = reconcileAfterBlock({
+      state: INITIAL_RENDERED_BREAK_STATE,
+      block: { kind: "pageBreak", id: 1 },
+      pageNumberBefore: 1,
+      pageNumberAfter: 2,
+      previousPage: page(),
+    });
+    const sectionState = reconcileAfterBlock({
+      state: pageBreakState,
+      block: { kind: "sectionBreak", id: 2, type: "continuous" },
+      pageNumberBefore: 2,
+      pageNumberAfter: 2,
+      previousPage: page(),
+    });
+    const decision = reconcileBreakBeforeBlock({
+      state: reconcileAfterBlock({
+        state: sectionState,
+        block: empty,
+        pageNumberBefore: 2,
+        pageNumberAfter: 2,
+        previousPage: page(),
+      }),
+      block: paragraph(3, {
+        renderedPageBreakBefore: true,
+        spacing: { before: 24 },
+        spacingExplicit: { before: true },
+      }),
+      previousBlock: empty,
+      page: page([paragraphFragment(2)]),
+      blocksById: new Map([["2", empty]]),
+      hasExplicitPageBreak: false,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(sectionState).toEqual({
+      type: "pageAdvance",
+      reason: "authoredBoundary",
+      boundary: "sectionBreak",
+    });
+    expect(decision.suppressSpaceBefore).toBe(false);
+  });
+
+  test("a same-page column boundary preserves carried hard-break semantics", () => {
+    const empty = paragraph(3, {}, []);
+    const pageBreakState = reconcileAfterBlock({
+      state: INITIAL_RENDERED_BREAK_STATE,
+      block: { kind: "pageBreak", id: 1 },
+      pageNumberBefore: 1,
+      pageNumberAfter: 2,
+      previousPage: page(),
+    });
+    const columnState = reconcileAfterBlock({
+      state: pageBreakState,
+      block: { kind: "columnBreak", id: 2 },
+      pageNumberBefore: 2,
+      pageNumberAfter: 2,
+      previousPage: page(),
+    });
+    const decision = reconcileBreakBeforeBlock({
+      state: reconcileAfterBlock({
+        state: columnState,
+        block: empty,
+        pageNumberBefore: 2,
+        pageNumberAfter: 2,
+        previousPage: page(),
+      }),
+      block: paragraph(4, {
+        renderedPageBreakBefore: true,
+        spacing: { before: 24 },
+      }),
+      previousBlock: empty,
+      page: page([paragraphFragment(3)]),
+      blocksById: new Map([["3", empty]]),
+      hasExplicitPageBreak: false,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(columnState).toEqual({
+      type: "pageAdvance",
+      reason: "authoredBoundary",
+      boundary: "hardBreak",
+    });
+    expect(decision.suppressSpaceBefore).toBe(true);
+  });
+
   test("a reflow boundary satisfies the next cached marker", () => {
     const previous = paragraph(1);
     const decision = reconcileBreakBeforeBlock({
@@ -309,7 +462,7 @@ describe("rendered break state transitions", () => {
     ).toEqual({ type: "pageAdvance", reason: "reflowBoundary" });
   });
 
-  test("structural breaks clear accumulated movement", () => {
+  test("page-breaking structural blocks record an authored boundary", () => {
     const block: FlowBlock = { kind: "pageBreak", id: 2 };
     expect(
       reconcileAfterBlock({
@@ -317,6 +470,90 @@ describe("rendered break state transitions", () => {
         block,
         pageNumberBefore: 1,
         pageNumberAfter: 2,
+        previousPage: page(),
+      }),
+    ).toEqual({
+      type: "pageAdvance",
+      reason: "authoredBoundary",
+      boundary: "hardBreak",
+    });
+  });
+
+  test("a visible block consumes an authored boundary before a later marker", () => {
+    expect(
+      reconcileAfterBlock({
+        state: {
+          type: "pageAdvance",
+          reason: "authoredBoundary",
+          boundary: "hardBreak",
+        },
+        block: paragraph(2),
+        pageNumberBefore: 2,
+        pageNumberAfter: 2,
+        previousPage: page(),
+      }),
+    ).toEqual(INITIAL_RENDERED_BREAK_STATE);
+  });
+
+  test("a visible list marker consumes an authored boundary on a run-empty paragraph", () => {
+    expect(
+      reconcileAfterBlock({
+        state: {
+          type: "pageAdvance",
+          reason: "authoredBoundary",
+          boundary: "hardBreak",
+        },
+        block: paragraph(2, { listMarker: "1." }, []),
+        pageNumberBefore: 2,
+        pageNumberAfter: 2,
+        previousPage: page(),
+      }),
+    ).toEqual(INITIAL_RENDERED_BREAK_STATE);
+  });
+
+  test("visible shading consumes an authored boundary on a run-empty paragraph", () => {
+    expect(
+      reconcileAfterBlock({
+        state: {
+          type: "pageAdvance",
+          reason: "authoredBoundary",
+          boundary: "hardBreak",
+        },
+        block: paragraph(2, { shading: "#FFFF00" }, []),
+        pageNumberBefore: 2,
+        pageNumberAfter: 2,
+        previousPage: page(),
+      }),
+    ).toEqual(INITIAL_RENDERED_BREAK_STATE);
+  });
+
+  test("a visible border consumes an authored boundary on a run-empty paragraph", () => {
+    expect(
+      reconcileAfterBlock({
+        state: {
+          type: "pageAdvance",
+          reason: "authoredBoundary",
+          boundary: "hardBreak",
+        },
+        block: paragraph(
+          2,
+          { borders: { bottom: { style: "solid", width: 1, color: "#000000" } } },
+          [],
+        ),
+        pageNumberBefore: 2,
+        pageNumberAfter: 2,
+        previousPage: page(),
+      }),
+    ).toEqual(INITIAL_RENDERED_BREAK_STATE);
+  });
+
+  test("a non-page-breaking structural block clears accumulated movement", () => {
+    expect(
+      reconcileAfterBlock({
+        state: { type: "pageAdvance", reason: "ordinary" },
+        block: { kind: "sectionBreak", id: 2, type: "continuous" },
+        pageNumberBefore: 1,
+        pageNumberAfter: 1,
         previousPage: page(),
       }),
     ).toEqual(INITIAL_RENDERED_BREAK_STATE);

@@ -1,10 +1,14 @@
-import { isEmptyParagraph } from "./paragraphSpacing";
 import { continuesNumberedSequence, continuesTabbedParagraphSequence } from "./paragraphSequence";
 import type { FlowBlock, Page, ParagraphBlock } from "./types";
 
 export type RenderedBreakState =
   | { type: "noPageAdvance" }
-  | { type: "pageAdvance"; reason: "ordinary" | "reflowBoundary" };
+  | { type: "pageAdvance"; reason: "ordinary" | "reflowBoundary" }
+  | {
+      type: "pageAdvance";
+      reason: "authoredBoundary";
+      boundary: "hardBreak" | "sectionBreak";
+    };
 
 export const INITIAL_RENDERED_BREAK_STATE: RenderedBreakState = {
   type: "noPageAdvance",
@@ -56,6 +60,7 @@ export const reconcileBreakBeforeBlock = ({
 
   const markerAlreadySatisfied =
     pageStartsWithPreviousParagraphContinuation(page, previousBlock) ||
+    (state.type === "pageAdvance" && state.reason === "authoredBoundary") ||
     (state.type === "pageAdvance" && state.reason === "reflowBoundary") ||
     (state.type === "pageAdvance" && isPaginationEmptyParagraph(block)) ||
     (state.type === "pageAdvance" &&
@@ -69,8 +74,13 @@ export const reconcileBreakBeforeBlock = ({
   const followsAuthoredPageBreak = previousBlock?.kind === "pageBreak";
   const followsSectionBreak = previousBlock?.kind === "sectionBreak";
   const followsPageBreakingSection = followsSectionBreak && previousBlock.type !== "continuous";
+  const followsCarriedSectionBoundary =
+    state.type === "pageAdvance" &&
+    state.reason === "authoredBoundary" &&
+    state.boundary === "sectionBreak";
   const preserveSectionLeadingSpacing =
-    followsSectionBreak && block.attrs?.spacingExplicit?.before === true;
+    (followsSectionBreak || followsCarriedSectionBoundary) &&
+    block.attrs?.spacingExplicit?.before === true;
   const markerAccountsForBoundary =
     forcePageBreak ||
     markerAlreadySatisfied ||
@@ -100,7 +110,7 @@ type ReconcileAfterBlockOptions = {
   previousPage: Page | undefined;
 };
 
-/** Record page movement caused by laying out a block, or reset at a structural break. */
+/** Record page movement and carry authored boundaries across pagination-empty paragraphs. */
 export const reconcileAfterBlock = ({
   state,
   block,
@@ -109,10 +119,25 @@ export const reconcileAfterBlock = ({
   previousPage,
 }: ReconcileAfterBlockOptions): RenderedBreakState => {
   if (isStructuralBreak(block)) {
-    return INITIAL_RENDERED_BREAK_STATE;
+    if (pageNumberAfter <= pageNumberBefore) {
+      if (state.type === "pageAdvance" && state.reason === "authoredBoundary") {
+        return block.kind === "sectionBreak" ? { ...state, boundary: "sectionBreak" } : state;
+      }
+      return INITIAL_RENDERED_BREAK_STATE;
+    }
+    return {
+      type: "pageAdvance",
+      reason: "authoredBoundary",
+      boundary: block.kind === "sectionBreak" ? "sectionBreak" : "hardBreak",
+    };
   }
-  if (!isVisibleBodyBlock(block) || pageNumberAfter <= pageNumberBefore) {
+  if (block.kind === "paragraph" && isPaginationEmptyParagraph(block)) {
     return state;
+  }
+  if (pageNumberAfter <= pageNumberBefore) {
+    return state.type === "pageAdvance" && state.reason === "authoredBoundary"
+      ? INITIAL_RENDERED_BREAK_STATE
+      : state;
   }
 
   const blockContinuedAcrossBoundary = previousPage?.fragments.some(
@@ -125,12 +150,33 @@ export const reconcileAfterBlock = ({
 };
 
 const isPaginationEmptyParagraph = (block: ParagraphBlock): boolean =>
+  !hasVisibleEmptyParagraphDecoration(block) &&
   block.runs.every((run) => {
     if (run.kind === "text") {
       return run.text.trim().length === 0;
     }
     return run.kind === "tab" || run.kind === "lineBreak";
   });
+
+const hasVisibleEmptyParagraphDecoration = (block: ParagraphBlock): boolean => {
+  if (
+    block.attrs?.listMarker !== undefined &&
+    block.attrs.listMarker.length > 0 &&
+    block.attrs.listMarkerHidden !== true
+  ) {
+    return true;
+  }
+  if (block.attrs?.shading) {
+    return true;
+  }
+  return Object.values(block.attrs?.borders ?? {}).some(
+    (border) =>
+      border !== undefined &&
+      border.style !== "none" &&
+      border.style !== "nil" &&
+      border.width !== 0,
+  );
+};
 
 const pageHasVisibleBodyContent = (
   page: Page,
@@ -166,10 +212,3 @@ const pageStartsWithPreviousParagraphContinuation = (
 
 const isStructuralBreak = (block: FlowBlock): boolean =>
   block.kind === "pageBreak" || block.kind === "columnBreak" || block.kind === "sectionBreak";
-
-const isVisibleBodyBlock = (block: FlowBlock): boolean => {
-  if (block.kind === "paragraph") {
-    return !isEmptyParagraph(block);
-  }
-  return !isStructuralBreak(block);
-};
