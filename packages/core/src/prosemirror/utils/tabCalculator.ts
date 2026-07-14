@@ -91,7 +91,9 @@ export function pixelsToTwips(pixels: number): number {
  * Compute the list of effective tab stops for a paragraph
  *
  * Merges explicit stops with default stops at regular intervals.
- * Filters out stops that fall before the left indent.
+ * Explicit stops before the left indent remain available to a hanging first
+ * line. Continuation lines naturally skip them because their cursor already
+ * starts at the left indent.
  *
  * @param context - Tab context with explicit stops and settings
  * @returns Sorted array of tab stops in twips
@@ -103,10 +105,9 @@ export function computeTabStops(context: TabContext): TabStop[] {
     leftIndent = 0,
   } = context;
 
-  // Filter out clear stops and those before left indent
-  const validExplicitStops = explicitStops
-    .filter((stop) => stop.val !== "clear")
-    .filter((stop) => stop.pos >= leftIndent);
+  // Clear stops suppress matching inherited/default positions but are not
+  // themselves destinations.
+  const validExplicitStops = explicitStops.filter((stop) => stop.val !== "clear");
 
   // Track cleared positions
   const clearPositions = explicitStops
@@ -125,22 +126,24 @@ export function computeTabStops(context: TabContext): TabStop[] {
   // For hanging indent paragraphs (where leftIndent > 0 and no explicit stops before it),
   // add the leftIndent position as an implicit tab stop.
   // This is standard Word behavior: tabs jump to the left margin for alignment.
-  if (leftIndent > 0 && !validExplicitStops.some((s) => s.pos <= leftIndent)) {
-    const hasLeftIndentClear = clearPositions.some((p) => Math.abs(p - leftIndent) < 20);
-    if (!hasLeftIndentClear) {
-      stops.push({
-        val: "start",
-        pos: leftIndent,
-        leader: "none",
-      });
-    }
+  const hasLeftIndentClear = clearPositions.some((p) => Math.abs(p - leftIndent) < 20);
+  const addsImplicitLeftIndent =
+    leftIndent > 0 &&
+    !hasLeftIndentClear &&
+    !validExplicitStops.some((stop) => stop.pos <= leftIndent);
+  if (addsImplicitLeftIndent) {
+    stops.push({
+      val: "start",
+      pos: leftIndent,
+      leader: "none",
+    });
   }
 
   // Generate default stops on the document-wide grid measured from the text
-  // area's left edge. An indent filters earlier stops, but must not shift the
-  // grid itself: a 1,134-twip indent still advances through 1,440, 2,160, ...,
-  // not 1,854, 2,574, ... . Start at the grid line at or before the rightmost
-  // explicit stop / indent; the loop advances to the first candidate after it.
+  // area's left edge. An indent must not shift the grid itself: a 1,134-twip
+  // indent still advances through 1,440, 2,160, ..., not 1,854, 2,574, ... .
+  // Start at the grid line at or before the rightmost explicit stop / indent;
+  // the loop advances to the next grid position.
   const searchStart = Math.max(maxExplicit, leftIndent);
   let pos = Math.floor(searchStart / defaultTabInterval) * defaultTabInterval;
   const limitPos = leftIndent + 14_400; // 14400 twips = 10 inches
@@ -164,8 +167,8 @@ export function computeTabStops(context: TabContext): TabStop[] {
         break;
       }
     }
-    // Skip if at leftIndent (already added above)
-    const isAtLeftIndent = leftIndent > 0 && Math.abs(pos - leftIndent) < 20;
+    // Skip if at leftIndent only when the implicit stop was added above.
+    const isAtLeftIndent = addsImplicitLeftIndent && Math.abs(pos - leftIndent) < 20;
 
     if (!hasExplicitStop && !hasClearStop && !isAtLeftIndent) {
       stops.push({

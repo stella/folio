@@ -5,6 +5,7 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  type TabContext,
   twipsToPixels,
   pixelsToTwips,
   computeTabStops,
@@ -77,7 +78,7 @@ describe("computeTabStops", () => {
     expect(stops[0].pos).not.toBe(720);
   });
 
-  it("filters stops before left indent", () => {
+  it("keeps explicit stops before a hanging indent", () => {
     const stops = computeTabStops({
       explicitStops: [
         { val: "start", pos: 100 }, // Before indent
@@ -86,9 +87,10 @@ describe("computeTabStops", () => {
       leftIndent: 500,
     });
 
-    // The stop at 100 should be filtered out
+    // A hanging first line may start before the paragraph's left indent and
+    // must still be able to advance through this authored stop.
     const stop100 = stops.find((s) => s.pos === 100);
-    expect(stop100).toBeUndefined();
+    expect(stop100).toBeDefined();
 
     // The stop at 1000 should remain
     const stop1000 = stops.find((s) => s.pos === 1000);
@@ -101,18 +103,28 @@ describe("computeTabStops", () => {
       leftIndent: 1134,
     });
 
-    expect(
-      stops
-        .filter((stop) => stop.pos >= 1134)
-        .slice(0, 3)
-        .map((stop) => stop.pos),
-    ).toEqual([1134, 1440, 2160]);
+    expect(stops.slice(0, 3).map((stop) => stop.pos)).toEqual([567, 1440, 2160]);
     expect(
       calculateTabWidth(twipsToPixels(1573), {
         explicitStops: [{ val: "start", pos: 567 }],
         leftIndent: 1134,
       }).width,
     ).toBeCloseTo(twipsToPixels(2160 - 1573), 5);
+  });
+
+  it("advances consecutive hanging-line tabs through a pre-indent stop", () => {
+    const context = {
+      explicitStops: [{ val: "start", pos: 1701 }],
+      defaultTabInterval: 709,
+      leftIndent: 2124,
+    } satisfies TabContext;
+    const firstCursor = twipsToPixels(600);
+    const first = calculateTabWidth(firstCursor, context);
+    const secondCursor = firstCursor + first.width;
+    const second = calculateTabWidth(secondCursor, context);
+
+    expect(pixelsToTwips(secondCursor)).toBeCloseTo(1701, 5);
+    expect(pixelsToTwips(secondCursor + second.width)).toBeCloseTo(2127, 5);
   });
 
   it("returns stops sorted by position", () => {

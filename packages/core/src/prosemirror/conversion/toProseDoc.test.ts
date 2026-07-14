@@ -167,6 +167,48 @@ describe("toProseDoc", () => {
     expect(doc.firstChild?.attrs.hangingIndent).toBe(false);
   });
 
+  test("direct tab clear retains inherited stops at other positions", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                styleId: "Footer",
+                tabs: [{ position: 4536, alignment: "clear" }],
+              },
+              content: [],
+            },
+          ],
+        },
+        styles: {
+          styles: [
+            {
+              styleId: "Footer",
+              type: "paragraph",
+              pPr: {
+                tabs: [
+                  { position: 1701, alignment: "left" },
+                  { position: 4536, alignment: "center" },
+                  { position: 9072, alignment: "right" },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+
+    expect(doc.firstChild?.attrs.tabs).toEqual([
+      { position: 1701, alignment: "left" },
+      { position: 4536, alignment: "clear" },
+      { position: 9072, alignment: "right" },
+    ]);
+  });
+
   test("applies paragraph-mark defaults to otherwise unformatted visible text", () => {
     const document: Document = {
       package: {
