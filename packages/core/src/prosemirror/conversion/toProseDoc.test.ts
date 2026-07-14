@@ -242,7 +242,7 @@ describe("toProseDoc", () => {
     expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(true);
     expect(text?.marks.some((mark) => mark.type.name === "italic")).toBe(false);
     expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(21);
-    expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe("Arial");
+    expect(text?.marks.some((mark) => mark.type.name === "fontFamily")).toBe(false);
   });
 
   test("keeps direct run formatting ahead of paragraph-mark defaults", () => {
@@ -409,6 +409,78 @@ describe("toProseDoc", () => {
 
     expect(paragraph?.attrs.defaultTextFormatting.fontSize).toBe(52);
     expect(text?.marks.find((mark) => mark.type.name === "fontSize")?.attrs.size).toBe(24);
+  });
+
+  test("does not leak a paragraph-mark font into directly formatted body text", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                runProperties: {
+                  fontFamily: { ascii: "Arial Narrow", hAnsi: "Arial Narrow" },
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: { boldCs: true },
+                  content: [{ type: "text", text: "Body text" }],
+                },
+              ],
+            },
+          ],
+        },
+        styles: {
+          docDefaults: {
+            rPr: { fontFamily: { ascii: "Arial", hAnsi: "Arial" } },
+          },
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+    const text = doc.firstChild?.firstChild;
+
+    expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe("Arial");
+  });
+
+  test("keeps the default style font on an unformatted body run", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                runProperties: {
+                  fontFamily: { ascii: "Arial Narrow", hAnsi: "Arial Narrow" },
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: {},
+                  content: [{ type: "text", text: "Body text" }],
+                },
+              ],
+            },
+          ],
+        },
+        styles: {
+          docDefaults: {
+            rPr: { fontFamily: { ascii: "Arial", hAnsi: "Arial" } },
+          },
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+    const text = doc.firstChild?.firstChild;
+
+    expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe("Arial");
   });
 
   test("keeps named paragraph style fonts ahead of paragraph-mark formatting", () => {

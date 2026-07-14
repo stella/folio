@@ -266,7 +266,8 @@ function convertParagraph(
   // paragraph glyph alone. Strip them from the body-run inheritance path.
   let inheritableParagraphRunFormatting: TextFormatting | undefined;
   if (paragraphRunFormatting && !isTocParagraph) {
-    inheritableParagraphRunFormatting = stripParagraphMarkOnlyFormatting(paragraphRunFormatting);
+    inheritableParagraphRunFormatting =
+      stripParagraphMarkFormattingForBodyRuns(paragraphRunFormatting);
   }
   const baseRunFormatting = mergeTextFormatting(styleRunFormatting, extraRunFormatting);
   // With a named paragraph style, w:pPr/w:rPr formats the paragraph mark and
@@ -941,6 +942,18 @@ function stripParagraphMarkOnlyFormatting(formatting: TextFormatting): TextForma
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
+function stripParagraphMarkFormattingForBodyRuns(
+  formatting: TextFormatting,
+): TextFormatting | undefined {
+  const paragraphMarkFormatting = stripParagraphMarkOnlyFormatting(formatting);
+  if (!paragraphMarkFormatting) {
+    return undefined;
+  }
+
+  const { fontFamily: _fontFamily, ...bodyRunFormatting } = paragraphMarkFormatting;
+  return Object.keys(bodyRunFormatting).length > 0 ? bodyRunFormatting : undefined;
+}
+
 function suppressParagraphMarkFormatting(
   base: TextFormatting | undefined,
   paragraphMark: TextFormatting | undefined,
@@ -985,7 +998,6 @@ function suppressParagraphMarkFormatting(
   ) {
     result.fontSizeCs = base.fontSizeCs;
   }
-
   if (paragraphMark.underline !== undefined && direct?.underline === undefined) {
     result.underline = { style: "none" };
   }
