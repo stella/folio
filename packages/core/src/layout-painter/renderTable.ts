@@ -398,7 +398,7 @@ function renderNestedTable(
       doc,
       spanningCells,
       rowYPositions,
-      bidi: block.bidi,
+      bidi: block.bidi === true,
       columnsPinned,
       cellGrid,
     });
@@ -864,7 +864,7 @@ function renderTableRow({
       columnsPinned,
       context,
       doc,
-      contentClip,
+      ...(contentClip ? { contentClip } : {}),
     });
     cellEl.dataset["cellIndex"] = String(cellIndex);
     cellEl.dataset["columnIndex"] = String(columnIndex);
@@ -1022,7 +1022,7 @@ export function renderTableFragment(
         spanningCells,
         rowYPositions,
         isFirstRowInFragment: hdrIdx === 0,
-        bidi: block.bidi,
+        bidi: block.bidi === true,
         columnsPinned,
         cellGrid,
       });
@@ -1066,7 +1066,7 @@ export function renderTableFragment(
     const isFirstRowInFragment =
       headerRowCount > 0 && fragment.continuesFromPrev
         ? false // header rows already drawn, content rows are not "first"
-        : fragment.continuesFromPrev && rowIndex === fragment.fromRow;
+        : fragment.continuesFromPrev === true && rowIndex === fragment.fromRow;
     const contentClip =
       rowIndex === fragment.fromRow &&
       (fragment.topClip !== undefined || fragment.bottomClip !== undefined)
@@ -1088,10 +1088,10 @@ export function renderTableFragment(
       spanningCells,
       rowYPositions,
       isFirstRowInFragment,
-      bidi: block.bidi,
+      bidi: block.bidi === true,
       columnsPinned,
       cellGrid,
-      contentClip,
+      ...(contentClip ? { contentClip } : {}),
     });
 
     contentParent.append(rowEl);
