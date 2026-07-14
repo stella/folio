@@ -167,6 +167,27 @@ const footnoteWithRowSpanTable: Footnote = {
 };
 
 describe("footnote layout", () => {
+  test("applies document line-breaking policy to footnote paragraphs", () => {
+    const content = convertFootnoteToContent(footnoteWithTable, 3, 400, {
+      measureBlocks: (blocks) =>
+        blocks.map(() => ({ kind: "paragraph" as const, lines: [], totalHeight: 12 })),
+      automaticHyphenation: { enabled: true, doNotHyphenateCaps: true },
+      lineBreakRules: {
+        noLineBreaksBefore: { language: "ja-JP", characters: "※" },
+      },
+    });
+
+    expect(content.blocks.at(0)).toMatchObject({
+      kind: "paragraph",
+      attrs: {
+        automaticHyphenation: { enabled: true, doNotHyphenateCaps: true },
+        lineBreakRules: {
+          noLineBreaksBefore: { language: "ja-JP", characters: "※" },
+        },
+      },
+    });
+  });
+
   test("routes footnotes through the body pipeline so tables survive", () => {
     const content = convertFootnoteToContent(footnoteWithTable, 3, 400, {
       measureBlocks(blocks) {

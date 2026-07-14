@@ -29,6 +29,7 @@ import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { Footnote, StyleDefinitions, Theme } from "../../types/document";
 import { measureParagraph } from "../engine/measuring";
 import { toFlowBlocks } from "./toFlowBlocks";
+import type { ToFlowBlocksOptions } from "./toFlowBlocks";
 
 // Re-exported for back-compat with existing callers that imported the
 // constants from this module before they moved to `layout-engine/types`.
@@ -45,6 +46,8 @@ export type ConvertFootnoteOptions = {
   measureBlocks?: MeasureBlocksFn;
   /** Document-wide `w:defaultTabStop` in twips — forwarded to toFlowBlocks. */
   defaultTabStopTwips?: number;
+  lineBreakRules?: ToFlowBlocksOptions["lineBreakRules"];
+  automaticHyphenation?: ToFlowBlocksOptions["automaticHyphenation"];
 };
 
 // ============================================================================
@@ -329,6 +332,12 @@ export function convertFootnoteToContent(
   }
   if (options.defaultTabStopTwips !== undefined) {
     flowOptions.defaultTabStopTwips = options.defaultTabStopTwips;
+  }
+  if (options.lineBreakRules) {
+    flowOptions.lineBreakRules = options.lineBreakRules;
+  }
+  if (options.automaticHyphenation) {
+    flowOptions.automaticHyphenation = options.automaticHyphenation;
   }
   const blocks = applyFootnotePresentation(toFlowBlocks(pmDoc, flowOptions), displayNumber);
 

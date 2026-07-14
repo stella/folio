@@ -2213,6 +2213,18 @@ export function renderLine(
     }
   }
 
+  if (line.discretionaryHyphen) {
+    const sourceRun = block.runs[line.discretionaryHyphen.runIndex];
+    if (sourceRun && isTextRun(sourceRun)) {
+      const hyphenRun = { ...sourceRun, text: "-" };
+      Reflect.deleteProperty(hyphenRun, "pmStart");
+      Reflect.deleteProperty(hyphenRun, "pmEnd");
+      const hyphenEl = renderTextRun(hyphenRun, doc);
+      hyphenEl.dataset["discretionaryHyphen"] = "true";
+      lineEl.append(hyphenEl);
+    }
+  }
+
   // A line whose in-flow runs are all line breaks (a blank row from consecutive
   // `<w:br/>`) renders as just a `<br>`, whose PM position the click/caret/
   // visual-line resolvers don't read — they query `span[data-pm-start]`. With no

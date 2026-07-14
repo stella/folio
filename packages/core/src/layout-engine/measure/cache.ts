@@ -339,6 +339,15 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     if (attrs.overflowPunctuation !== undefined) {
       parts.push(`overflow-punct:${attrs.overflowPunctuation}`);
     }
+    if (attrs.suppressAutoHyphens !== undefined) {
+      parts.push(`suppress-auto-hyphens:${attrs.suppressAutoHyphens}`);
+    }
+    const automaticHyphenation = attrs.automaticHyphenation;
+    if (automaticHyphenation) {
+      parts.push(
+        `auto-hyphens:${automaticHyphenation.doNotHyphenateCaps}|${automaticHyphenation.consecutiveLineLimit}`,
+      );
+    }
     const lineBreakRules = attrs.lineBreakRules;
     if (lineBreakRules) {
       parts.push(

@@ -61,6 +61,8 @@ export type ParagraphAttrs = {
   kinsoku?: boolean;
   /** Effective hanging-punctuation policy (`w:overflowPunct`). */
   overflowPunctuation?: boolean;
+  /** Effective paragraph opt-out from document automatic hyphenation. */
+  suppressAutoHyphens?: boolean;
 
   // Spacing (in twips)
   spaceBefore?: number;

@@ -119,6 +119,35 @@ describe("font metrics cache", () => {
       }),
     );
   });
+
+  test("keeps automatic hyphenation policy in the paragraph measurement cache key", () => {
+    const paragraph: ParagraphBlock = {
+      kind: "paragraph",
+      id: "hyphenation-cache",
+      runs: [{ kind: "text", text: "hyphenation", language: { val: "en-US" } }],
+    };
+
+    expect(hashParagraphBlock(paragraph)).not.toBe(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: { automaticHyphenation: { enabled: true } },
+      }),
+    );
+    expect(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: { automaticHyphenation: { enabled: true } },
+      }),
+    ).not.toBe(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: {
+          automaticHyphenation: { enabled: true },
+          suppressAutoHyphens: true,
+        },
+      }),
+    );
+  });
 });
 
 describe("empty paragraph line-height floor", () => {
@@ -553,6 +582,103 @@ describe("measureParagraph cross-run line breaking", () => {
       expect(leftMeasure.lines).toHaveLength(2);
       expect(justifiedMeasure.lines).toHaveLength(1);
     }, fakeMeasure);
+  });
+});
+
+describe("automatic hyphenation", () => {
+  const paragraph = (attrs?: ParagraphBlock["attrs"]): ParagraphBlock => ({
+    kind: "paragraph",
+    id: "automatic-hyphenation",
+    runs: [{ kind: "text", text: "hyphenation", language: { val: "en-US" } }],
+    attrs,
+  });
+
+  test("uses a dictionary break and accounts for the painted hyphen width", () => {
+    withFakeTextMeasure(
+      () => {
+        const measured = measureParagraph(
+          paragraph({ automaticHyphenation: { enabled: true } }),
+          70,
+        );
+
+        expect(measured.lines).toHaveLength(2);
+        expect(measured.lines[0]).toMatchObject({
+          fromChar: 0,
+          toChar: 6,
+          width: 70,
+          discretionaryHyphen: { runIndex: 0 },
+        });
+        expect(measured.lines[1]).toMatchObject({ fromChar: 6, toChar: 11, width: 50 });
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+  });
+
+  test("leaves the source offsets unchanged when automatic hyphenation is suppressed", () => {
+    withFakeTextMeasure(
+      () => {
+        const measured = measureParagraph(
+          paragraph({
+            automaticHyphenation: { enabled: true },
+            suppressAutoHyphens: true,
+          }),
+          70,
+        );
+
+        expect(measured.lines[0]).toMatchObject({ fromChar: 0, toChar: 7, width: 70 });
+        expect(measured.lines[0]?.discretionaryHyphen).toBeUndefined();
+        expect(measured.lines[1]).toMatchObject({ fromChar: 7, toChar: 11, width: 40 });
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+  });
+
+  test("honors the consecutive-line limit", () => {
+    withFakeTextMeasure(
+      () => {
+        const measured = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "consecutive-hyphen-limit",
+            runs: [{ kind: "text", text: "characteristically", language: { val: "en-US" } }],
+            attrs: {
+              automaticHyphenation: { enabled: true, consecutiveLineLimit: 1 },
+            },
+          },
+          50,
+        );
+
+        expect(measured.lines[0]?.discretionaryHyphen).toEqual({ runIndex: 0 });
+        expect(measured.lines[1]?.discretionaryHyphen).toBeUndefined();
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+  });
+
+  test("treats the DOCX all-caps transform as capitalized text", () => {
+    withFakeTextMeasure(
+      () => {
+        const measured = measureParagraph(
+          {
+            ...paragraph({
+              automaticHyphenation: { enabled: true, doNotHyphenateCaps: true },
+            }),
+            runs: [
+              {
+                kind: "text",
+                text: "hyphenation",
+                language: { val: "en-US" },
+                allCaps: true,
+              },
+            ],
+          },
+          70,
+        );
+
+        expect(measured.lines[0]?.discretionaryHyphen).toBeUndefined();
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
   });
 });
 
@@ -1793,6 +1919,43 @@ describe("CJK line breaking", () => {
         const hanging = measureParagraph(paragraph(true), 20);
         expect(hanging.lines).toHaveLength(1);
         expect(hanging.lines[0]?.width).toBe(30);
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+  });
+
+  test("does not hang opening punctuation", () => {
+    withFakeTextMeasure(
+      () => {
+        const paragraph: ParagraphBlock = {
+          kind: "paragraph",
+          id: "cjk-opening-punctuation",
+          runs: [{ kind: "text", text: "中文（", language: { eastAsia: "zh-CN" } }],
+          attrs: { overflowPunctuation: true },
+        };
+
+        expect(measureParagraph(paragraph, 20).lines.length).toBeGreaterThan(1);
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+  });
+
+  test("hangs a document-specific prohibited line-start character", () => {
+    withFakeTextMeasure(
+      () => {
+        const paragraph: ParagraphBlock = {
+          kind: "paragraph",
+          id: "custom-hanging-punctuation",
+          runs: [{ kind: "text", text: "中文※", language: { eastAsia: "zh-CN" } }],
+          attrs: {
+            overflowPunctuation: true,
+            lineBreakRules: {
+              noLineBreaksBefore: { language: "zh-CN", characters: "※" },
+            },
+          },
+        };
+
+        expect(measureParagraph(paragraph, 20).lines).toHaveLength(1);
       },
       { charWidth: fixedCharWidth(10) },
     );

@@ -249,6 +249,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalString(attrs, "styleId", "paragraph.attrs.styleId", issues);
   optionalBoolean(attrs, "kinsoku", "paragraph.attrs.kinsoku", issues);
   optionalBoolean(attrs, "overflowPunctuation", "paragraph.attrs.overflowPunctuation", issues);
+  optionalBoolean(attrs, "suppressAutoHyphens", "paragraph.attrs.suppressAutoHyphens", issues);
   optionalNumber(attrs, "spaceBefore", "paragraph.attrs.spaceBefore", issues);
   optionalNumber(attrs, "spaceAfter", "paragraph.attrs.spaceAfter", issues);
   optionalNumber(attrs, "lineSpacing", "paragraph.attrs.lineSpacing", issues);

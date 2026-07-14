@@ -39,7 +39,13 @@ import { getListMarkerInlineWidth } from "./listMarkerWidth";
 import { buildRunFontStyle, ptToPx } from "./measureHelpers";
 import { getFontMetrics, measureRun, measureTextWidth } from "./measureProvider";
 import type { FontMetrics, FontStyle } from "./measureTypes";
-import { findGraphemeBreaks, findWordBreaks, isBreakChar } from "./lineBreaks";
+import {
+  findGraphemeBreaks,
+  findHyphenationBreaks,
+  findWordBreaks,
+  isHangingPunctuation,
+  isBreakChar,
+} from "./lineBreaks";
 import type { LineBreakPolicy } from "./lineBreakProvider";
 import { countCompressibleSpaces } from "./textMeasurementPolicy";
 
@@ -146,6 +152,7 @@ type LineState = {
   rightOffset: number;
   /** Optional split segment zones from centered floating exclusions */
   segmentZones?: FloatingLineSegmentZone[];
+  discretionaryHyphen?: { runIndex: number };
 };
 
 /**
@@ -192,6 +199,10 @@ function lineBreakPolicy(block: ParagraphBlock, run: TextRun): LineBreakPolicy {
       ? { noLineBreaksAfter: after.characters }
       : {}),
     ...(rules?.useLegacyEthiopicAmharicRules ? { useLegacyEthiopicAmharicRules: true } : {}),
+    ...(block.attrs?.automaticHyphenation?.doNotHyphenateCaps !== undefined
+      ? { doNotHyphenateCaps: block.attrs.automaticHyphenation.doNotHyphenateCaps }
+      : {}),
+    ...(run.allCaps === true ? { renderedAllCaps: true } : {}),
   };
 }
 
@@ -730,7 +741,7 @@ function trailingHangingPunctuationWidth(
   const boundaries = findGraphemeBreaks(text, policy);
   const lastStart = boundaries.at(-2) ?? 0;
   const lastGrapheme = text.slice(lastStart);
-  if (!/^\p{Punctuation}+$/u.test(lastGrapheme)) {
+  if (!isHangingPunctuation(lastGrapheme, policy)) {
     return 0;
   }
   return measureTextWidth(lastGrapheme, style);
@@ -944,6 +955,7 @@ export function measureParagraph(
   );
 
   const lines: MeasuredLine[] = [];
+  let consecutiveHyphenatedLines = 0;
 
   // Handle empty paragraph
   if (runs.length === 0) {
@@ -1158,6 +1170,9 @@ export function measureParagraph(
       toChar: currentLine.toChar,
       width: Math.max(0, currentLine.width - currentLine.trailingWhitespaceWidth),
       ...finalTypography,
+      ...(currentLine.discretionaryHyphen
+        ? { discretionaryHyphen: currentLine.discretionaryHyphen }
+        : {}),
     };
 
     // Only add offsets if they're non-zero (for floating images)
@@ -1176,6 +1191,9 @@ export function measureParagraph(
     }
 
     lines.push(line);
+    consecutiveHyphenatedLines = currentLine.discretionaryHyphen
+      ? consecutiveHyphenatedLines + 1
+      : 0;
 
     // Update cumulative height for next line's floating zone calculation
     cumulativeHeight += finalTypography.lineHeight;
@@ -1517,6 +1535,9 @@ export function measureParagraph(
 
       // Process text word by word
       let charIndex = 0;
+      let activeHyphenationWord:
+        | { start: number; end: number; text: string; breaks: number[] }
+        | undefined;
 
       while (charIndex < text.length) {
         // Find next word boundary
@@ -1566,6 +1587,61 @@ export function measureParagraph(
                       ),
               )
             : WIDTH_TOLERANCE;
+
+        const automaticHyphenation = block.attrs?.automaticHyphenation;
+        const consecutiveLineLimit = automaticHyphenation?.consecutiveLineLimit ?? 0;
+        const mayHyphenateLine =
+          automaticHyphenation?.enabled === true &&
+          block.attrs?.suppressAutoHyphens !== true &&
+          (consecutiveLineLimit === 0 || consecutiveHyphenatedLines < consecutiveLineLimit);
+        if (
+          mayHyphenateLine &&
+          measuredWord.length > 0 &&
+          (activeHyphenationWord === undefined ||
+            charIndex < activeHyphenationWord.start ||
+            charIndex >= activeHyphenationWord.end)
+        ) {
+          const fullWordEnd = charIndex + measuredWord.length;
+          const fullWordText = text.slice(charIndex, fullWordEnd);
+          activeHyphenationWord = {
+            start: charIndex,
+            end: fullWordEnd,
+            text: fullWordText,
+            breaks: findHyphenationBreaks(fullWordText, breakPolicy),
+          };
+        }
+
+        const overflowsCurrentLine =
+          wordWidth > 0 &&
+          currentLine.width + wordWidth > currentLine.availableWidth + widthTolerance;
+        if (mayHyphenateLine && overflowsCurrentLine && activeHyphenationWord) {
+          const consumed = charIndex - activeHyphenationWord.start;
+          const spaceLeft = currentLine.availableWidth - currentLine.width + widthTolerance;
+          const hyphenWidth = measureTextWidth("-", style);
+          let fittingBreak: number | undefined;
+          for (const breakOffset of activeHyphenationWord.breaks) {
+            if (breakOffset <= consumed || breakOffset >= activeHyphenationWord.text.length) {
+              continue;
+            }
+            const prefix = activeHyphenationWord.text.slice(consumed, breakOffset);
+            if (measureTextWidth(prefix, style) + hyphenWidth <= spaceLeft) {
+              fittingBreak = breakOffset;
+            }
+          }
+          if (fittingBreak !== undefined) {
+            const absoluteBreak = activeHyphenationWord.start + fittingBreak;
+            const prefix = text.slice(charIndex, absoluteBreak);
+            currentLine.width += measureTextWidth(prefix, style) + hyphenWidth;
+            currentLine.trailingWhitespaceWidth = 0;
+            currentLine.toRun = runIndex;
+            currentLine.toChar = absoluteBreak;
+            currentLine.discretionaryHyphen = { runIndex };
+            startNewLine(runIndex, absoluteBreak);
+            updateMaxFont(lineHeightStyle);
+            charIndex = absoluteBreak;
+            continue;
+          }
+        }
 
         // If the word itself is longer than a line, hard-break by grapheme.
         // Use substring measurement (not char-by-char accumulation) to preserve

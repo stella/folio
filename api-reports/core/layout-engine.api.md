@@ -473,7 +473,10 @@ export type MeasuredLine = {
     lineHeight: number; /** Left offset from floating images (pixels from content left edge). */
     leftOffset?: number; /** Right offset from floating images (pixels from content right edge). */
     rightOffset?: number;
-    floatSkipBefore?: number;
+    floatSkipBefore?: number; /** Decorative hyphen inserted at a dictionary break without changing source text. */
+    discretionaryHyphen?: {
+        runIndex: number;
+    };
 };
 
 // @public
@@ -564,7 +567,13 @@ export type PaginatorOptions = {
 export type ParagraphAttrs = {
     alignment?: "left" | "center" | "right" | "justify"; /** East Asian first/last-character restrictions (`w:kinsoku`). */
     kinsoku?: boolean; /** Hanging punctuation (`w:overflowPunct`), retained for layout policy. */
-    overflowPunctuation?: boolean; /** Document-wide custom line-edge characters and compatibility behavior. */
+    overflowPunctuation?: boolean; /** Exempt this paragraph from document automatic hyphenation. */
+    suppressAutoHyphens?: boolean; /** Document-wide automatic hyphenation controls retained for line layout. */
+    automaticHyphenation?: {
+        enabled: true;
+        doNotHyphenateCaps?: boolean;
+        consecutiveLineLimit?: number;
+    }; /** Document-wide custom line-edge characters and compatibility behavior. */
     lineBreakRules?: {
         noLineBreaksBefore?: {
             language?: string;

@@ -1,4 +1,4 @@
-import { getLineBreakProvider } from "./lineBreakProvider";
+import { defaultLineBreakProvider, getLineBreakProvider } from "./lineBreakProvider";
 import type { LineBreakPolicy } from "./lineBreakProvider";
 import { isCjkCodePoint } from "../../utils/scriptSegments";
 
@@ -12,6 +12,15 @@ export const findWordBreaks = (text: string, policy?: LineBreakPolicy): number[]
 
 export const findGraphemeBreaks = (text: string, policy?: LineBreakPolicy): number[] =>
   getLineBreakProvider().findGraphemeBreaks(text, policy);
+
+export const findHyphenationBreaks = (text: string, policy?: LineBreakPolicy): number[] =>
+  getLineBreakProvider().findHyphenationBreaks?.(text, policy) ?? [];
+
+export const isHangingPunctuation = (text: string, policy?: LineBreakPolicy): boolean => {
+  const provider = getLineBreakProvider();
+  const classify = provider.isHangingPunctuation ?? defaultLineBreakProvider.isHangingPunctuation;
+  return classify?.(text, policy) ?? false;
+};
 
 export function isBreakChar(char: string | undefined): boolean {
   if (char === undefined) {

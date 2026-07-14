@@ -7,6 +7,16 @@
  * OOXML line-edge restrictions that are available in the flow model.
  */
 
+import czechHyphenation from "hyphen/cs";
+import britishEnglishHyphenation from "hyphen/en-gb";
+import americanEnglishHyphenation from "hyphen/en-us";
+import slovakHyphenation from "hyphen/sk";
+
+const { hyphenateSync: hyphenateCzech } = czechHyphenation;
+const { hyphenateSync: hyphenateBritishEnglish } = britishEnglishHyphenation;
+const { hyphenateSync: hyphenateAmericanEnglish } = americanEnglishHyphenation;
+const { hyphenateSync: hyphenateSlovak } = slovakHyphenation;
+
 export type LineBreakPolicy = {
   /** BCP-47 language tag resolved from `w:lang` for this run. */
   locale?: string;
@@ -18,6 +28,10 @@ export type LineBreakPolicy = {
   noLineBreaksAfter?: string;
   /** Use the legacy Ethiopic/Amharic compatibility behavior. */
   useLegacyEthiopicAmharicRules?: boolean;
+  /** Keep words made entirely of capital letters unhyphenated. */
+  doNotHyphenateCaps?: boolean;
+  /** The run renders with the DOCX all-caps transform. */
+  renderedAllCaps?: boolean;
 };
 
 export type LineBreakProvider = {
@@ -25,10 +39,16 @@ export type LineBreakProvider = {
   findBreaks: (text: string, policy?: LineBreakPolicy) => number[];
   /** Grapheme-safe emergency-wrap offsets, in ascending UTF-16 order. */
   findGraphemeBreaks: (text: string, policy?: LineBreakPolicy) => number[];
+  /** Dictionary-based discretionary hyphen offsets, in ascending UTF-16 order. */
+  findHyphenationBreaks?: (text: string, policy?: LineBreakPolicy) => number[];
+  /** Whether a trailing grapheme may overhang the line edge. */
+  isHangingPunctuation?: (text: string, policy?: LineBreakPolicy) => boolean;
 };
 
 const SEGMENTER_CACHE_LIMIT = 16;
 const DEFAULT_SEGMENTER_KEY = "";
+const SOFT_HYPHEN = "\u00AD";
+const MAX_HYPHENATION_WORD_LENGTH = 256;
 
 const wordSegmenters = new Map<string, Intl.Segmenter>();
 const graphemeSegmenters = new Map<string, Intl.Segmenter>();
@@ -298,9 +318,81 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
     .sort((left, right) => left - right);
 };
 
+type HyphenateWord = (text: string) => string;
+
+const hyphenatorFor = (locale?: string): HyphenateWord | undefined => {
+  const normalized = locale?.trim().replaceAll("_", "-").toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "en-gb" || normalized.startsWith("en-gb-")) {
+    return hyphenateBritishEnglish;
+  }
+  if (normalized === "en-us" || normalized.startsWith("en-us-")) {
+    return hyphenateAmericanEnglish;
+  }
+  if (normalized === "cs" || normalized.startsWith("cs-")) {
+    return hyphenateCzech;
+  }
+  if (normalized === "sk" || normalized.startsWith("sk-")) {
+    return hyphenateSlovak;
+  }
+  return undefined;
+};
+
+const isAllCapsWord = (text: string, locale?: string): boolean => {
+  const letters = [...text].filter((character) => /\p{Letter}/u.test(character)).join("");
+  if (letters.length === 0) {
+    return false;
+  }
+  const casingLocale = segmenterLocale(locale);
+  return (
+    letters === letters.toLocaleUpperCase(casingLocale) &&
+    letters !== letters.toLocaleLowerCase(casingLocale)
+  );
+};
+
+const findPatternHyphenationBreaks = (text: string, policy?: LineBreakPolicy): number[] => {
+  if (text.length > MAX_HYPHENATION_WORD_LENGTH || text.includes(SOFT_HYPHEN)) {
+    return [];
+  }
+  const hyphenate = hyphenatorFor(policy?.locale);
+  if (!hyphenate) {
+    return [];
+  }
+  if (
+    policy?.doNotHyphenateCaps &&
+    (policy.renderedAllCaps === true || isAllCapsWord(text, policy.locale))
+  ) {
+    return [];
+  }
+
+  const hyphenated = hyphenate(text);
+  const breaks: number[] = [];
+  let sourceOffset = 0;
+  for (const character of hyphenated) {
+    if (character === SOFT_HYPHEN) {
+      breaks.push(sourceOffset);
+      continue;
+    }
+    sourceOffset += character.length;
+  }
+  return sourceOffset === text.length ? breaks : [];
+};
+
+const isDefaultHangingPunctuation = (text: string, policy?: LineBreakPolicy): boolean => {
+  const characters = [...text];
+  return (
+    characters.length > 0 &&
+    characters.every((character) => isProhibitedLineStart(character, policy))
+  );
+};
+
 export const defaultLineBreakProvider: LineBreakProvider = {
   findBreaks: findUnicodeBreaks,
   findGraphemeBreaks: findUnicodeGraphemeBreaks,
+  findHyphenationBreaks: findPatternHyphenationBreaks,
+  isHangingPunctuation: isDefaultHangingPunctuation,
 };
 
 let activeLineBreakProvider = defaultLineBreakProvider;

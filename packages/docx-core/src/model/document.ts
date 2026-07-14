@@ -200,6 +200,14 @@ export type DocumentSettings = {
    * `<a:font script="…">` entries. Absent for non-CJK/bidi docs.
    */
   themeFontLang?: { eastAsia?: string; bidi?: string };
+  /** Automatically hyphenate eligible paragraphs (`w:autoHyphenation`). */
+  autoHyphenation?: boolean;
+  /** Keep all-capital words unhyphenated (`w:doNotHyphenateCaps`). */
+  doNotHyphenateCaps?: boolean;
+  /** Maximum consecutive automatically hyphenated lines; zero means unlimited. */
+  consecutiveHyphenLimit?: number;
+  /** Legacy hyphenation zone (`w:hyphenationZone`) in twips; retained for compatibility tooling. */
+  hyphenationZoneTwips?: number;
   /** Word/OOXML document-wide line-breaking overrides. */
   lineBreakRules?: {
     noLineBreaksBefore?: { language?: string; characters: string };

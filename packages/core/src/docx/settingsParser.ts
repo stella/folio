@@ -27,6 +27,8 @@ export const DEFAULT_TAB_STOP_TWIPS = 720;
  * we substitute the OOXML default instead.
  */
 const MAX_TAB_STOP_TWIPS = 31_680;
+const MAX_HYPHENATION_ZONE_TWIPS = 31_680;
+const MAX_CONSECUTIVE_HYPHEN_LIMIT = 255;
 
 export function parseSettings(xml: string | null): FolioDocumentSettings {
   const root = xml ? (parseXmlDocument(xml) as XmlElement | null) : null;
@@ -61,6 +63,31 @@ export function parseSettings(xml: string | null): FolioDocumentSettings {
     };
   }
 
+  const autoHyphenation = parseOnOffSetting(root, "autoHyphenation");
+  if (autoHyphenation !== undefined) {
+    settings.autoHyphenation = autoHyphenation;
+  }
+  const doNotHyphenateCaps = parseOnOffSetting(root, "doNotHyphenateCaps");
+  if (doNotHyphenateCaps !== undefined) {
+    settings.doNotHyphenateCaps = doNotHyphenateCaps;
+  }
+  const consecutiveHyphenLimit = parseIntegerSetting(
+    root,
+    "consecutiveHyphenLimit",
+    MAX_CONSECUTIVE_HYPHEN_LIMIT,
+  );
+  if (consecutiveHyphenLimit !== undefined) {
+    settings.consecutiveHyphenLimit = consecutiveHyphenLimit;
+  }
+  const hyphenationZoneTwips = parseIntegerSetting(
+    root,
+    "hyphenationZone",
+    MAX_HYPHENATION_ZONE_TWIPS,
+  );
+  if (hyphenationZoneTwips !== undefined) {
+    settings.hyphenationZoneTwips = hyphenationZoneTwips;
+  }
+
   const noLineBreaksBefore = parseKinsokuOverride(root, "noLineBreaksBefore");
   const noLineBreaksAfter = parseKinsokuOverride(root, "noLineBreaksAfter");
   const compat = root ? findChild(root, "w", "compat") : null;
@@ -76,6 +103,35 @@ export function parseSettings(xml: string | null): FolioDocumentSettings {
   }
 
   return settings;
+}
+
+type OnOffSettingName = "autoHyphenation" | "doNotHyphenateCaps";
+
+function parseOnOffSetting(root: XmlElement | null, name: OnOffSettingName): boolean | undefined {
+  if (!root) {
+    return undefined;
+  }
+  const element = findChild(root, "w", name);
+  return element ? parseBooleanElement(element) : undefined;
+}
+
+type IntegerSettingName = "consecutiveHyphenLimit" | "hyphenationZone";
+
+function parseIntegerSetting(
+  root: XmlElement | null,
+  name: IntegerSettingName,
+  maximum: number,
+): number | undefined {
+  if (!root) {
+    return undefined;
+  }
+  const element = findChild(root, "w", name);
+  const raw = element ? getAttribute(element, "w", "val") : null;
+  if (raw === null || !/^\d+$/u.test(raw)) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(parsed) && parsed <= maximum ? parsed : undefined;
 }
 
 function parseKinsokuOverride(
