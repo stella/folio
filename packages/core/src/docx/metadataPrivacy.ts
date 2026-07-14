@@ -17,6 +17,9 @@ export const FOLIO_DOCUMENT_METADATA_PROPERTIES = Object.freeze([
 
 export type FolioDocumentMetadataProperty = (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
 
+const isFolioDocumentMetadataProperty = (value: string): value is FolioDocumentMetadataProperty =>
+  FOLIO_DOCUMENT_METADATA_PROPERTIES.some((property) => property === value);
+
 export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS = Object.freeze([
   "remove-attribution",
   "remove-timestamps",
@@ -156,7 +159,7 @@ const rewriteCorePropertiesPrivacy = (
       return true;
     }
     const property = getLocalName(element.name ?? "");
-    if (!FOLIO_DOCUMENT_METADATA_PROPERTIES.some((candidate) => candidate === property)) {
+    if (!isFolioDocumentMetadataProperty(property)) {
       return true;
     }
     if (!propertiesToRemove.has(property)) {
