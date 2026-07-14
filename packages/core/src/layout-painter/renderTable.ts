@@ -68,19 +68,28 @@ type RenderedCellContent = {
   floatingLayers: HTMLElement[];
 };
 
-function renderCellContent(
-  cell: TableCell,
-  cellMeasure: TableCellMeasure,
-  context: RenderContext,
-  doc: Document,
-): RenderedCellContent {
+type RenderCellContentOptions = {
+  cell: TableCell;
+  cellMeasure: TableCellMeasure;
+  context: RenderContext;
+  doc: Document;
+  contentWidthOverride?: number;
+};
+
+function renderCellContent({
+  cell,
+  cellMeasure,
+  context,
+  doc,
+  contentWidthOverride,
+}: RenderCellContentOptions): RenderedCellContent {
   const contentEl = doc.createElement("div");
   contentEl.className = TABLE_CLASS_NAMES.cellContent;
   contentEl.style.position = "relative";
   // Content width must account for cell padding since the cell uses border-box sizing.
   // Without this, content is wider than the available area, causing centering and
   // clipping issues (especially for nested tables).
-  const contentWidth = getTableCellContentWidth(cell, cellMeasure);
+  const contentWidth = contentWidthOverride ?? getTableCellContentWidth(cell, cellMeasure);
   contentEl.style.width = `${contentWidth}px`;
 
   // Extract floating images from cell paragraphs
@@ -145,8 +154,8 @@ function renderCellContent(
       const paragraphBlock = block as ParagraphBlock;
       let paragraphMeasure = measure as ParagraphMeasure;
 
-      // Re-measure with floating zones if floating images exist in this cell
-      if (floatingZones.length > 0) {
+      // Re-measure when wrapping width changes or floating exclusions apply.
+      if (floatingZones.length > 0 || contentWidthOverride !== undefined) {
         paragraphMeasure = measureParagraph(paragraphBlock, contentWidth, {
           floatingZones,
           paragraphYOffset: cumulativeY,
@@ -516,7 +525,21 @@ function renderTableCell(
   }
 
   // Render cell content
-  const renderedContent = renderCellContent(cell, cellMeasure, context, doc);
+  const contentWidthOverride =
+    cell.textDirection === "btLr" ? Math.max(1, rowHeight - padTop - padBottom) : undefined;
+  const renderedContent = renderCellContent({
+    cell,
+    cellMeasure,
+    context,
+    doc,
+    ...(contentWidthOverride !== undefined ? { contentWidthOverride } : {}),
+  });
+  if (cell.textDirection === "btLr") {
+    renderedContent.content.style.position = "absolute";
+    renderedContent.content.style.left = "50%";
+    renderedContent.content.style.top = "50%";
+    renderedContent.content.style.transform = "translate(-50%, -50%) rotate(-90deg)";
+  }
   if (renderedContent.floatingLayers.length > 0) {
     renderedContent.content.style.height = "100%";
     renderedContent.content.style.overflow = "hidden";

@@ -11,6 +11,7 @@ import type {
   ShapeTextBody,
   SdtProperties,
   SdtType,
+  TableCellFormatting,
   TableWidthType,
 } from "@stll/docx-core/model";
 
@@ -535,6 +536,7 @@ export type TableCell = {
   rowSpan?: number;
   width?: number;
   verticalAlign?: "top" | "center" | "bottom";
+  textDirection?: NonNullable<TableCellFormatting["textDirection"]>;
   background?: string;
   borders?: CellBorders;
   /** Per-cell padding in pixels (from w:tcMar or table-level w:tblCellMar) */

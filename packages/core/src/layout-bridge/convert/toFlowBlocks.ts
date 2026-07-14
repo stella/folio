@@ -2196,6 +2196,9 @@ function convertTableCell(
   if (attrs.verticalAlign) {
     cell.verticalAlign = attrs.verticalAlign;
   }
+  if (attrs.textDirection) {
+    cell.textDirection = attrs.textDirection;
+  }
   if (attrs.backgroundColor) {
     cell.background = `#${attrs.backgroundColor}`;
   }

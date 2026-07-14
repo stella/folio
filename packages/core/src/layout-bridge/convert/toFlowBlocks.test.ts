@@ -979,6 +979,27 @@ describe("toFlowBlocks table cell formatting", () => {
     expect(row.cells.at(1)?.noWrap).toBeUndefined();
   });
 
+  test("threads the cell text direction into the engine TableCell", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", { textDirection: "btLr" }, [
+            schema.node("paragraph", null, [schema.text("Rotated cell")]),
+          ]),
+          schema.node("tableCell", null, [schema.node("paragraph")]),
+        ]),
+      ]),
+    ]);
+
+    const table = toFlowBlocks(doc).at(0);
+    if (table?.kind !== "table") {
+      throw new Error("Expected table block");
+    }
+
+    expect(table.rows.at(0)?.cells.at(0)?.textDirection).toBe("btLr");
+    expect(table.rows.at(0)?.cells.at(1)?.textDirection).toBeUndefined();
+  });
+
   test("suppresses a trailing empty paragraph after real cell content", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { withFakeTextMeasure } from "../layout-engine/measure/__tests__/fakeTextMeasure";
 import type { TableBlock, TableFragment, TableMeasure } from "../layout-engine/types";
 import { renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
 import type { RenderContext } from "./renderUtils";
@@ -275,6 +276,76 @@ describe("renderTableFragment cell paragraph spacing", () => {
     expect(paragraph?.style["height"]).toBe("30px");
     expect(paragraph?.style["paddingTop"]).toBe("6px");
     expect(paragraph?.style["boxSizing"]).toBe("border-box");
+  });
+});
+
+describe("renderTableFragment bottom-to-top cell text", () => {
+  test("rotates and centers content within the cell height", () => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      rows: [
+        {
+          id: "row",
+          cells: [
+            {
+              id: "cell",
+              textDirection: "btLr",
+              padding: { top: 2, right: 3, bottom: 4, left: 5 },
+              blocks: [
+                {
+                  kind: "paragraph",
+                  id: "para",
+                  runs: [{ kind: "text", text: "Rotated cell" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      columnWidths: [100],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [
+            {
+              blocks: [{ kind: "paragraph", lines: [], totalHeight: 20 }],
+              width: 100,
+              height: 80,
+            },
+          ],
+          height: 80,
+        },
+      ],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 80,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "tbl",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 80,
+      fromRow: 0,
+      toRow: 1,
+    };
+
+    withFakeTextMeasure(() => {
+      const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
+        document: fakeDocument,
+      }) as unknown as FakeElement;
+      const content = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent).at(0);
+
+      expect(content?.style["position"]).toBe("absolute");
+      expect(content?.style["left"]).toBe("50%");
+      expect(content?.style["top"]).toBe("50%");
+      expect(content?.style["width"]).toBe("74px");
+      expect(content?.style["transform"]).toBe("translate(-50%, -50%) rotate(-90deg)");
+    });
   });
 });
 
