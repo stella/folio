@@ -112,6 +112,31 @@ describe("getListMarkerInlineWidth", () => {
     }, fakeMeasure);
   });
 
+  test("uses marker bold state for right-aligned visual offset", () => {
+    withFakeTextMeasure(
+      () => {
+        const regular = getListMarkerVisualOffset(
+          listBlock({
+            listMarker: "1.",
+            listMarkerAlignment: "right",
+            listMarkerBold: false,
+          }),
+        );
+        const bold = getListMarkerVisualOffset(
+          listBlock({
+            listMarker: "1.",
+            listMarkerAlignment: "right",
+            listMarkerBold: true,
+          }),
+        );
+
+        expect(regular).toBe(-20);
+        expect(bold).toBe(-24);
+      },
+      { charWidth: (_char, font) => (font.includes("800") ? 12 : 10) },
+    );
+  });
+
   test("center-aligned marker straddles its anchor", () => {
     withFakeTextMeasure(() => {
       const block = listBlock({

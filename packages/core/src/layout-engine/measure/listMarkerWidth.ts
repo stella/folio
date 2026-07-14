@@ -158,8 +158,12 @@ export function getListMarkerVisualOffset(block: ParagraphBlock): number {
     return 0;
   }
 
-  const { fontFamily, fontSize } = resolveListMarkerFont(block);
-  const naturalWidth = measureTextWidth(attrs.listMarker, { fontFamily, fontSize });
+  const { fontFamily, fontSize, bold } = resolveListMarkerFont(block);
+  const naturalWidth = measureTextWidth(attrs.listMarker, {
+    fontFamily,
+    fontSize,
+    ...(bold !== undefined ? { bold } : {}),
+  });
   if (attrs.listMarkerAlignment === "right") {
     return -naturalWidth;
   }

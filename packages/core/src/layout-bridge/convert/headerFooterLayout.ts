@@ -938,6 +938,7 @@ function serializeParagraphAttrs(attrs: Record<string, unknown> | undefined): st
     "listMarker",
     "listIsBullet",
     "listMarkerHidden",
+    "listMarkerBold",
     "listMarkerAlignment",
     "listMarkerSuffix",
     "tabs",
