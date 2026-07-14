@@ -177,15 +177,17 @@ const previousCodePoint = (text: string, index: number): string | undefined => {
 
 const isProhibitedLineStart = (character: string | undefined, policy?: LineBreakPolicy): boolean =>
   character !== undefined &&
+  policy?.kinsoku !== false &&
   (policy?.noLineBreaksBefore !== undefined
     ? policy.noLineBreaksBefore.includes(character)
-    : policy?.kinsoku !== false && DEFAULT_PROHIBITED_LINE_START.has(character));
+    : DEFAULT_PROHIBITED_LINE_START.has(character));
 
 const isProhibitedLineEnd = (character: string | undefined, policy?: LineBreakPolicy): boolean =>
   character !== undefined &&
+  policy?.kinsoku !== false &&
   (policy?.noLineBreaksAfter !== undefined
     ? policy.noLineBreaksAfter.includes(character)
-    : policy?.kinsoku !== false && DEFAULT_PROHIBITED_LINE_END.has(character));
+    : DEFAULT_PROHIBITED_LINE_END.has(character));
 
 const isCjkLineBreakParticipant = (
   character: string | undefined,
