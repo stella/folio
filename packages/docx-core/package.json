@@ -1,6 +1,6 @@
 {
   "name": "@stll/docx-core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Typed OOXML/DOCX document model with parsing, validation, and serialization, plus a legal-source compiler that produces DOCX packages.",
   "keywords": [
     "document-model",
