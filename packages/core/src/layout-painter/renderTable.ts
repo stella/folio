@@ -1067,12 +1067,13 @@ export function renderTableFragment(
       headerRowCount > 0 && fragment.continuesFromPrev
         ? false // header rows already drawn, content rows are not "first"
         : fragment.continuesFromPrev === true && rowIndex === fragment.fromRow;
+    const rowTopClip = rowIndex === fragment.fromRow ? fragment.topClip : undefined;
+    const rowBottomClip = rowIndex === fragment.toRow - 1 ? fragment.bottomClip : undefined;
     const contentClip =
-      rowIndex === fragment.fromRow &&
-      (fragment.topClip !== undefined || fragment.bottomClip !== undefined)
+      rowTopClip !== undefined || rowBottomClip !== undefined
         ? {
-            top: fragment.topClip ?? 0,
-            bottom: fragment.bottomClip ?? rowMeasure.height,
+            top: rowTopClip ?? 0,
+            bottom: rowBottomClip ?? rowMeasure.height,
           }
         : undefined;
 
