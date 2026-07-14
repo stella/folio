@@ -364,34 +364,42 @@ export type FolioBlockDiff = {
     blockId: string;
     kind: string;
     text: string;
+    revisedHandle: FolioVersionBlockHandle;
 } | {
     type: "deleted";
     blockId: string;
     kind: string;
     text: string;
+    baseHandle: FolioVersionBlockHandle;
 } | {
     type: "modified";
     blockId: string;
     kind: string;
     segments: FolioVersionDiffSegment[];
+    baseHandle: FolioVersionBlockHandle;
+    revisedHandle: FolioVersionBlockHandle;
 } | {
     type: "formatChanged";
     blockId: string;
     kind: string;
     text: string;
     changedProperties: FolioFormatProperty[];
+    baseHandle: FolioVersionBlockHandle;
+    revisedHandle: FolioVersionBlockHandle;
 } | {
     type: "movedFrom";
     blockId: string;
     kind: string;
     text: string;
     moveGroupId: number;
+    baseHandle: FolioVersionBlockHandle;
 } | {
     type: "movedTo";
     blockId: string;
     kind: string;
     text: string;
     moveGroupId: number;
+    revisedHandle: FolioVersionBlockHandle;
 };
 
 // @public
@@ -708,16 +716,34 @@ export type FolioReviewReplyInput = {
 };
 
 // @public
+export type FolioStoryDiff = {
+    baseStory: FolioDocumentStoryHandle | null;
+    revisedStory: FolioDocumentStoryHandle | null;
+    changes: FolioBlockDiff[];
+    summaryCounts: FolioVersionDiffSummaryCounts;
+};
+
+// @public
+export type FolioVersionBlockHandle = {
+    story: FolioDocumentStoryHandle;
+    blockId: string;
+};
+
+// @public
 export type FolioVersionDiff = {
-    changes: FolioBlockDiff[]; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
-    summaryCounts: {
-        added: number;
-        deleted: number;
-        modified: number;
-        formatChanged: number;
-        moved: number;
-        unchanged: number;
-    };
+    changes: FolioBlockDiff[]; /** Per-story results in base order followed by stories added in the revised document. */
+    stories: FolioStoryDiff[]; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
+    summaryCounts: FolioVersionDiffSummaryCounts;
+};
+
+// @public (undocumented)
+export type FolioVersionDiffSummaryCounts = {
+    added: number;
+    deleted: number;
+    modified: number;
+    formatChanged: number;
+    moved: number;
+    unchanged: number;
 };
 
 // @public

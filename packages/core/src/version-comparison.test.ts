@@ -11,9 +11,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 
 import { FolioDocxReviewer } from "./ai-edits/headless";
+import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
+import { repackDocx } from "./docx/rezip";
+import type { HeaderFooter, Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 import { compareDocxVersions, exceedsLcsBudget } from "./version-comparison";
 import type { FolioBlockDiff } from "./version-comparison";
@@ -46,6 +50,82 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
       },
     },
   });
+};
+
+const storyParagraph = (text: string, paraId: string): Paragraph => ({
+  type: "paragraph",
+  paraId,
+  content: [{ type: "run", content: [{ type: "text", text }] }],
+});
+
+const headerFooterStory = (
+  type: "header" | "footer",
+  text: string,
+  paraId: string,
+): HeaderFooter => ({
+  type,
+  hdrFtrType: "default",
+  content: [storyParagraph(text, paraId)],
+});
+
+type StoryDocumentOptions = {
+  bodyText: string;
+  headerText: string;
+  footnoteText: string;
+  footerText?: string;
+};
+
+const buildStoryDocument = async ({
+  bodyText,
+  headerText,
+  footnoteText,
+  footerText,
+}: StoryDocumentOptions): Promise<ArrayBuffer> => {
+  const source = await buildDocxBuffer([{ text: bodyText, paraId: "A1000001" }]);
+  const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+  document.package.headers = new Map([
+    ["rIdHeader", headerFooterStory("header", headerText, "B1000001")],
+  ]);
+  document.package.document.finalSectionProperties = {
+    ...document.package.document.finalSectionProperties,
+    headerReferences: [{ type: "default", rId: "rIdHeader" }],
+  };
+  if (footerText !== undefined) {
+    document.package.footers = new Map([
+      ["rIdFooter", headerFooterStory("footer", footerText, "D1000001")],
+    ]);
+    document.package.document.finalSectionProperties.footerReferences = [
+      { type: "default", rId: "rIdFooter" },
+    ];
+  }
+  const materialized = await repackDocx(document, { updateModifiedDate: false });
+  const zip = await JSZip.loadAsync(materialized);
+  const contentTypesFile = zip.file("[Content_Types].xml");
+  const relationshipsFile = zip.file("word/_rels/document.xml.rels");
+  if (!contentTypesFile || !relationshipsFile) {
+    throw new Error("expected package metadata parts");
+  }
+  const contentTypes = await contentTypesFile.async("text");
+  const relationships = await relationshipsFile.async("text");
+  zip.file(
+    "[Content_Types].xml",
+    contentTypes.replace(
+      "</Types>",
+      '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/></Types>',
+    ),
+  );
+  zip.file(
+    "word/_rels/document.xml.rels",
+    relationships.replace(
+      "</Relationships>",
+      '<Relationship Id="rIdFootnotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/></Relationships>',
+    ),
+  );
+  zip.file(
+    "word/footnotes.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:footnote w:id="2"><w:p w14:paraId="C1000001"><w:r><w:t>${footnoteText}</w:t></w:r></w:p></w:footnote></w:footnotes>`,
+  );
+  return zip.generateAsync({ type: "arraybuffer" });
 };
 
 const findChange = (changes: readonly FolioBlockDiff[], blockId: string): FolioBlockDiff => {
@@ -102,6 +182,7 @@ describe("compareDocxVersions: real w14:paraId alignment", () => {
       blockId: "00000003",
       kind: "paragraph",
       text: "Gamma paragraph.",
+      baseHandle: { story: { type: "main" }, blockId: "00000003" },
     });
 
     const added = findChange(diff.changes, "00000006");
@@ -110,6 +191,63 @@ describe("compareDocxVersions: real w14:paraId alignment", () => {
       blockId: "00000006",
       kind: "paragraph",
       text: "Epsilon paragraph.",
+      revisedHandle: { story: { type: "main" }, blockId: "00000006" },
+    });
+  });
+});
+
+describe("compareDocxVersions: document stories", () => {
+  test("reports per-story changes with source-specific navigation handles", async () => {
+    const base = await buildStoryDocument({
+      bodyText: "Body text.",
+      headerText: "Header baseline.",
+      footnoteText: "Stable note.",
+    });
+    const revised = await buildStoryDocument({
+      bodyText: "Body text.",
+      headerText: "Header revised.",
+      footnoteText: "Stable note.",
+      footerText: "Added footer.",
+    });
+
+    const diff = await compareDocxVersions(base, revised);
+
+    expect(diff.summaryCounts).toEqual({
+      added: 1,
+      deleted: 0,
+      modified: 1,
+      formatChanged: 0,
+      moved: 0,
+      unchanged: 2,
+    });
+    expect(diff.stories).toHaveLength(4);
+
+    const header = diff.stories.find(({ revisedStory }) => revisedStory?.type === "header");
+    expect(header?.baseStory).toEqual({ type: "header", relationshipId: "rIdHeader" });
+    expect(header?.revisedStory).toEqual({ type: "header", relationshipId: "rIdHeader" });
+    const headerChange = header?.changes.at(0);
+    if (!headerChange || headerChange.type !== "modified") {
+      throw new Error("expected a modified header block");
+    }
+    expect(headerChange.baseHandle).toEqual({
+      story: { type: "header", relationshipId: "rIdHeader" },
+      blockId: "B1000001",
+    });
+    expect(headerChange.revisedHandle).toEqual({
+      story: { type: "header", relationshipId: "rIdHeader" },
+      blockId: "B1000001",
+    });
+
+    const footer = diff.stories.find(({ revisedStory }) => revisedStory?.type === "footer");
+    expect(footer?.baseStory).toBeNull();
+    expect(footer?.summaryCounts.added).toBe(1);
+    const footerChange = footer?.changes.at(0);
+    if (!footerChange || footerChange.type !== "added") {
+      throw new Error("expected an added footer block");
+    }
+    expect(footerChange.revisedHandle).toEqual({
+      story: { type: "footer", relationshipId: "rIdFooter" },
+      blockId: "D1000001",
     });
   });
 });

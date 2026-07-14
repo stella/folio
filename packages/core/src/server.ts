@@ -94,7 +94,10 @@ export {
   compareDocxVersions,
   type FolioBlockDiff,
   type FolioFormatProperty,
+  type FolioStoryDiff,
+  type FolioVersionBlockHandle,
   type FolioVersionDiff,
+  type FolioVersionDiffSummaryCounts,
   type FolioVersionDiffSegment,
 } from "./version-comparison";
 export {
