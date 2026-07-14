@@ -35,7 +35,6 @@ import type {
   TableCell,
   TableCellFormatting,
   TableBorders,
-  TableCellBorders,
   TableLook,
   SimpleField,
   ComplexField,
@@ -47,8 +46,6 @@ import type {
   MathEquation,
   Theme,
 } from "../../types/document";
-import { resolveColor } from "../../utils/colorResolver";
-import { resolveShadingFill } from "../../utils/formatToStyle";
 import {
   mergeParagraphFormatting,
   mergeParagraphTabStops,
@@ -67,6 +64,11 @@ import type {
   TableCellAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
+import {
+  resolveEffectiveTableCellFormatting,
+  type TableCellMarginsAttrs,
+  type TableCellPosition,
+} from "./effectiveTableCellFormatting";
 import { marksToTextFormatting } from "./fromProseDoc";
 import { shadingToRunShadingAttrs } from "./runShadingMark";
 
@@ -1285,9 +1287,9 @@ function convertTable(
     table.formatting?.cellMargins ??
     tableStyle?.tblPr?.cellMargins ??
     fallbackTableStyle?.tblPr?.cellMargins;
-  let cellMarginsAttr: { top?: number; bottom?: number; left?: number; right?: number } | undefined;
+  let cellMarginsAttr: TableCellMarginsAttrs | undefined;
   if (tableCellMargins) {
-    const m: { top?: number; bottom?: number; left?: number; right?: number } = {};
+    const m: TableCellMarginsAttrs = {};
     if (tableCellMargins.top?.value !== undefined) {
       m.top = tableCellMargins.top.value;
     }
@@ -1483,12 +1485,7 @@ function convertTableRow(
   totalRows?: number,
   totalColumns?: number,
   rowSpanMap?: Map<string, RowSpanInfo>,
-  defaultCellMargins?: {
-    top?: number;
-    bottom?: number;
-    left?: number;
-    right?: number;
-  },
+  defaultCellMargins?: TableCellMarginsAttrs,
 ): PMNode {
   const attrs: TableRowAttrs = {
     // isHeader controls header row REPETITION on page breaks.
@@ -1685,180 +1682,88 @@ function convertTableRow(
     }
 
     cells.push(
-      convertTableCell(
+      convertTableCell({
         cell,
         styleResolver,
         context,
-        isHeaderRow,
-        gridWidth,
-        cellConditionalStyle,
+        isHeader: isHeaderRow,
+        gridWidthPercent: gridWidth,
+        conditionalStyle: cellConditionalStyle,
         tableBorders,
-        isFirstRow,
-        isLastRow,
-        isFirstCol,
-        isLastCol,
+        position: { isFirstRow, isLastRow, isFirstColumn: isFirstCol, isLastColumn: isLastCol },
         calculatedRowSpan,
         preserveVMergeRestart,
-        rowSpanInfo?.continuationCells,
+        vMergeContinuationCells: rowSpanInfo?.continuationCells,
         defaultCellMargins,
-      ),
+      }),
     );
   }
 
   return schema.node("tableRow", attrs, cells);
 }
 
-const TABLE_BORDER_SIDES = [
-  "top",
-  "bottom",
-  "left",
-  "right",
-  "insideH",
-  "insideV",
-  "topLeftToBottomRight",
-  "topRightToBottomLeft",
-] as const satisfies readonly (keyof TableCellBorders)[];
-
-function resolveThemedBorderColors(
-  borders: TableCellBorders | undefined,
-  theme: Theme | null | undefined,
-): TableCellBorders | undefined {
-  if (!borders || !theme?.colorScheme) {
-    return borders;
-  }
-
-  let resolved: TableCellBorders | undefined;
-  for (const side of TABLE_BORDER_SIDES) {
-    const border = borders[side];
-    if (!border?.color?.themeColor || border.color.auto) {
-      continue;
-    }
-
-    resolved ??= { ...borders };
-    resolved[side] = {
-      ...border,
-      color: {
-        rgb: resolveColor(border.color, theme).replace(/^#/u, ""),
-      },
-    };
-  }
-
-  return resolved ?? borders;
-}
+type ConvertTableCellOptions = {
+  cell: TableCell;
+  styleResolver: StyleEngine | null;
+  context: TableConversionContext;
+  isHeader: boolean;
+  gridWidthPercent?: number;
+  conditionalStyle?: TableConditionalStyle;
+  tableBorders?: TableBorders;
+  position: TableCellPosition;
+  calculatedRowSpan?: number;
+  preserveVMergeRestart?: boolean;
+  vMergeContinuationCells?: TableCell[];
+  defaultCellMargins?: TableCellMarginsAttrs;
+};
 
 /**
  * Convert a TableCell to a ProseMirror table cell node
  */
-function convertTableCell(
-  cell: TableCell,
-  styleResolver: StyleEngine | null,
-  context: TableConversionContext,
-  isHeader: boolean,
-  gridWidthPercent?: number,
-  conditionalStyle?: TableConditionalStyle,
-  tableBorders?: TableBorders,
-  isFirstRow?: boolean,
-  isLastRow?: boolean,
-  isFirstCol?: boolean,
-  isLastCol?: boolean,
-  calculatedRowSpan?: number,
-  preserveVMergeRestart?: boolean,
-  vMergeContinuationCells?: TableCell[],
-  defaultCellMargins?: {
-    top?: number;
-    bottom?: number;
-    left?: number;
-    right?: number;
-  },
-): PMNode {
-  const { theme } = context;
+function convertTableCell({
+  cell,
+  styleResolver,
+  context,
+  isHeader,
+  gridWidthPercent,
+  conditionalStyle,
+  tableBorders,
+  position,
+  calculatedRowSpan,
+  preserveVMergeRestart,
+  vMergeContinuationCells,
+  defaultCellMargins,
+}: ConvertTableCellOptions): PMNode {
   const formatting = cell.formatting;
 
   // Use the pre-calculated rowSpan from vMerge analysis
   const rowspan = calculatedRowSpan ?? 1;
-
-  // Determine width: prefer cell's own width, fall back to grid width
-  let width = formatting?.width?.value;
-  let widthType = formatting?.width?.type;
-
-  // If cell doesn't have its own width, use the grid-calculated percentage
-  if (width === undefined && gridWidthPercent !== undefined) {
-    width = gridWidthPercent;
-    widthType = "pct";
-  }
-
-  // Direct cell shading overrides the table-style cascade even when it
-  // explicitly disables the inherited fill with `w:val="nil"`.
-  const effectiveShading = formatting?.shading ?? conditionalStyle?.tcPr?.shading;
-  const backgroundColor = resolveShadingFill(effectiveShading, theme).replace(/^#/u, "");
-
-  // Convert borders — preserve full BorderSpec per side
-  // Priority: cell borders > conditional style borders > table borders
-  const baseBorders = (() => {
-    if (tableBorders) {
-      return {
-        top: isFirstRow ? tableBorders.top : tableBorders.insideH,
-        bottom: isLastRow ? tableBorders.bottom : tableBorders.insideH,
-        left: isFirstCol ? tableBorders.left : tableBorders.insideV,
-        right: isLastCol ? tableBorders.right : tableBorders.insideV,
-      };
-    }
-    return undefined;
-  })();
-
-  const conditionalBorders = conditionalStyle?.tcPr?.borders;
-  const cellBorders = formatting?.borders;
-
-  const borders = resolveThemedBorderColors(
-    baseBorders || conditionalBorders || cellBorders
-      ? {
-          ...baseBorders,
-          ...conditionalBorders,
-          ...cellBorders,
-        }
-      : undefined,
-    theme,
-  );
-
-  // Helper to build margins object without undefined values
-  const buildMarginsAttr = (src: {
-    top?: { value: number };
-    bottom?: { value: number };
-    left?: { value: number };
-    right?: { value: number };
-  }): { top?: number; bottom?: number; left?: number; right?: number } => {
-    const m: { top?: number; bottom?: number; left?: number; right?: number } = {};
-    if (src.top?.value !== undefined) {
-      m.top = src.top.value;
-    }
-    if (src.bottom?.value !== undefined) {
-      m.bottom = src.bottom.value;
-    }
-    if (src.left?.value !== undefined) {
-      m.left = src.left.value;
-    }
-    if (src.right?.value !== undefined) {
-      m.right = src.right.value;
-    }
-    return m;
-  };
+  const effectiveFormatting = resolveEffectiveTableCellFormatting({
+    directFormatting: formatting,
+    styleFormatting: conditionalStyle?.tcPr,
+    tableBorders,
+    position,
+    gridWidthPercent,
+    defaultMargins: defaultCellMargins,
+    theme: context.theme,
+  });
 
   const attrs: TableCellAttrs = {
     colspan: formatting?.gridSpan ?? 1,
     rowspan,
   };
-  if (width !== undefined) {
-    attrs.width = width;
-  }
-  if (widthType) {
-    attrs.widthType = widthType;
+  if (effectiveFormatting.width.type === "value") {
+    attrs.width = effectiveFormatting.width.value;
+    if (effectiveFormatting.width.widthType) {
+      attrs.widthType = effectiveFormatting.width.widthType;
+    }
   }
   if (formatting?.verticalAlign) {
     attrs.verticalAlign = formatting.verticalAlign;
   }
-  if (backgroundColor) {
-    attrs.backgroundColor = backgroundColor;
-    attrs._resolvedBackgroundColor = backgroundColor;
+  if (effectiveFormatting.background.type === "color") {
+    attrs.backgroundColor = effectiveFormatting.background.rgb;
+    attrs._resolvedBackgroundColor = effectiveFormatting.background.rgb;
   }
   if (formatting?.textDirection) {
     attrs.textDirection = formatting.textDirection;
@@ -1866,15 +1771,11 @@ function convertTableCell(
   if (formatting?.noWrap !== undefined) {
     attrs.noWrap = formatting.noWrap;
   }
-  if (borders) {
-    attrs.borders = borders;
+  if (effectiveFormatting.borders) {
+    attrs.borders = effectiveFormatting.borders;
   }
-  if (formatting?.margins) {
-    attrs.margins = buildMarginsAttr(formatting.margins);
-  } else if (conditionalStyle?.tcPr?.margins) {
-    attrs.margins = buildMarginsAttr(conditionalStyle.tcPr.margins);
-  } else if (defaultCellMargins) {
-    attrs.margins = defaultCellMargins;
+  if (effectiveFormatting.margins) {
+    attrs.margins = effectiveFormatting.margins;
   }
   if (formatting) {
     attrs._originalFormatting = formatting;
