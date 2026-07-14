@@ -573,7 +573,8 @@ export type ParagraphAttrs = {
     automaticHyphenation?: {
         enabled: true;
         doNotHyphenateCaps?: boolean;
-        consecutiveLineLimit?: number;
+        consecutiveLineLimit?: number; /** Maximum tolerated line-end whitespace before hyphenation, in twips. */
+        hyphenationZoneTwips?: number;
     }; /** Document-wide custom line-edge characters and compatibility behavior. */
     lineBreakRules?: {
         noLineBreaksBefore?: {
