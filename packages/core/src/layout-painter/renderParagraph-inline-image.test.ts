@@ -151,7 +151,6 @@ describe("renderLine inline image handling", () => {
   // extent size, so the wrong region shows surrounded by blank bands. The
   // painter wraps the `<img>` in an overflow-hidden inline-block sized to
   // the visible extent and upscales the inner `<img>` by 1/(1-l-r) × 1/(1-t-b).
-  // Regression: gemini-code-assist + chatgpt-codex review on PR #510.
   test("wraps a cropped inline image and scales the inner <img>", () => {
     const imageRun: ImageRun = {
       kind: "image",
@@ -199,8 +198,9 @@ describe("renderLine inline image handling", () => {
     const imgEl = wrapperEl?.children[0] as FakeElement | undefined;
     expect(imgEl?.tagName).toBe("img");
     // The inner <img> is enlarged so the cropped region exactly covers the
-    // wrapper, with negative margins shifting the bitmap so the cropped
-    // top-left lands at the wrapper's origin. `object-fit: fill` keeps the
+    // wrapper, with a horizontal margin and bitmap-relative vertical
+    // translation shifting the cropped top-left to the wrapper's origin.
+    // `object-fit: fill` keeps the
     // bitmap stretched (no contain letterboxing) inside the enlarged box.
     // FP precision: the painter computes 1/(1-l-r) where l+r is FP-noisy, so
     // assert with a numeric tolerance on the parsed percent rather than the
@@ -208,15 +208,55 @@ describe("renderLine inline image handling", () => {
     const widthPct = Number.parseFloat(imgEl?.style.width ?? "");
     const heightPct = Number.parseFloat(imgEl?.style.height ?? "");
     const marginLeftPct = Number.parseFloat(imgEl?.style.marginLeft ?? "");
-    const marginTopPct = Number.parseFloat(imgEl?.style.marginTop ?? "");
     expect(widthPct).toBeCloseTo((1 / 0.65) * 100, 6);
     expect(heightPct).toBeCloseTo((1 / 0.85) * 100, 6);
     expect(marginLeftPct).toBeCloseTo((-0.15 / 0.65) * 100, 6);
-    expect(marginTopPct).toBeCloseTo((-0.1 / 0.85) * 100, 6);
+    expect(imgEl?.style.transform).toBe("translateY(-10%)");
+    expect(imgEl?.style.marginTop).toBeFalsy();
     expect(imgEl?.style.objectFit).toBe("fill");
     // The legacy clip-path approach must not be used.
     expect(imgEl?.style.clipPath).toBeFalsy();
     expect(wrapperEl?.style.clipPath).toBeFalsy();
+  });
+
+  test("positions a top crop from the bitmap height for a wide, shallow image", () => {
+    const imageRun: ImageRun = {
+      kind: "image",
+      src: "data:image/png;base64,",
+      width: 480,
+      height: 48,
+      cropTop: 0.2,
+      cropBottom: 0.1,
+      pmStart: 1,
+      pmEnd: 2,
+    };
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-wide-crop",
+      runs: [imageRun],
+      pmStart: 0,
+      pmEnd: 3,
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 1,
+      width: 480,
+      ascent: 48,
+      descent: 0,
+      lineHeight: 48,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument);
+    const wrapperEl = lineEl.children[0] as FakeElement | undefined;
+    const imgEl = wrapperEl?.children[0] as FakeElement | undefined;
+
+    expect(wrapperEl?.style.width).toBe("480px");
+    expect(wrapperEl?.style.height).toBe("48px");
+    expect(Number.parseFloat(imgEl?.style.height ?? "")).toBeCloseTo((1 / 0.7) * 100, 6);
+    expect(imgEl?.style.transform).toBe("translateY(-20%)");
+    expect(imgEl?.style.marginTop).toBeFalsy();
   });
 
   // Pathological crops (e.g. cropLeft + cropRight ≥ 1) would otherwise divide
@@ -299,8 +339,8 @@ describe("renderLine inline image handling", () => {
     expect(imageEl?.style.clipPath).toBeFalsy();
   });
 
-  // Regression chatgpt-codex on #410: the image+text flex branch fired on
-  // `runsForLine.some(isImageRun)`, which also matched FLOATING images. Those
+  // The image+text flex branch must not treat a floating image as inline.
+  // `runsForLine.some(isImageRun)` also matches floating images, but those
   // render in a page-level layer and `continue` in the main loop, so a line
   // that wraps around a floating image (text-only inline content) was being
   // forced into flex/baseline layout — changing alignment + indent + line

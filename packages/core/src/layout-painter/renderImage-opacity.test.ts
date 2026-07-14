@@ -235,4 +235,14 @@ describe("ImageVisualAttrs helpers", () => {
     applyImageVisualAttrs(img, attrs);
     expect((img as unknown as FakeElement).style["opacity"]).toBeUndefined();
   });
+
+  test("preserves an existing transform when positioning a top crop", () => {
+    const img = fakeDocument.createElement("img") as unknown as HTMLImageElement;
+    img.style.transform = "scaleX(-1)";
+
+    applyImageVisualAttrs(img, { cropTop: 0.25 });
+
+    expect((img as unknown as FakeElement).style["transform"]).toBe("scaleX(-1) translateY(-25%)");
+    expect((img as unknown as FakeElement).style["marginTop"]).toBeUndefined();
+  });
 });
