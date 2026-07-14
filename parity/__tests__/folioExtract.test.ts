@@ -6,10 +6,12 @@ import {
   computeZoomFactor,
   formatNavigationFailure,
   formatServerStartFailure,
+  isFullyClippedByAncestors,
   isPlausibleBaseline,
   meaningfulTextRange,
   parseCssFontFamilies,
   parseFirstFontFamily,
+  parseInsetClipPath,
   screenshotViewportHeight,
   toPageGeom,
 } from "../folioExtract";
@@ -153,6 +155,32 @@ describe("isPlausibleBaseline", () => {
   });
 });
 
+describe("CSS clipping geometry", () => {
+  test("parses computed inset shorthand in pixels and percentages", () => {
+    expect(parseInsetClipPath("inset(10px 5% 20px)", 200, 100)).toEqual({
+      top: 10,
+      right: 10,
+      bottom: 20,
+      left: 10,
+    });
+    expect(parseInsetClipPath("circle(50%)", 200, 100)).toBeNull();
+  });
+
+  test("scales inset clips from layout pixels to transformed visual pixels", () => {
+    const ancestor = {
+      rect: rect(0, 0, 100, 100),
+      offsetWidth: 200,
+      offsetHeight: 200,
+      clipsX: false,
+      clipsY: false,
+      clipPath: "inset(80px 0 40px)",
+    };
+
+    expect(isFullyClippedByAncestors(rect(10, 10, 50, 10), [ancestor])).toBe(true);
+    expect(isFullyClippedByAncestors(rect(10, 45, 50, 10), [ancestor])).toBe(false);
+  });
+});
+
 describe("parseFirstFontFamily", () => {
   test("takes the first family and strips double quotes", () => {
     expect(parseFirstFontFamily('"Calibri", "Arial", sans-serif')).toBe("Calibri");
@@ -271,6 +299,33 @@ describe("toPageGeom", () => {
     const page = toPageGeom(rawPage);
 
     expect(page.lines.map((line) => line.text)).toEqual(["Visible"]);
+  });
+
+  test("drops lines fully excluded by a CSS inset clip path", () => {
+    const clippingAncestor = {
+      rect: rect(0, 0, 100, 100),
+      offsetWidth: 100,
+      offsetHeight: 100,
+      clipsX: false,
+      clipsY: true,
+      clipPath: "inset(60px 0 0)",
+    };
+    const rawPage = makeRawPage({
+      lines: [
+        makeRawLine({
+          text: "Clipped",
+          rect: rect(0, 20, 100, 10),
+          clippingAncestors: [clippingAncestor],
+        }),
+        makeRawLine({
+          text: "Visible",
+          rect: rect(0, 70, 100, 10),
+          clippingAncestors: [clippingAncestor],
+        }),
+      ],
+    });
+
+    expect(toPageGeom(rawPage).lines.map((line) => line.text)).toEqual(["Visible"]);
   });
 
   test("drops lines whose normalized text is empty (whitespace-only / soft hyphen only)", () => {

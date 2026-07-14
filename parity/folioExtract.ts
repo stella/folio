@@ -179,6 +179,8 @@ export type RawLine = {
   region: Region;
   /** True when the line's ink box falls fully outside an overflow-clipping ancestor. */
   fullyClipped?: boolean;
+  /** CSS clipping ancestors, captured in visual pixels for visibility filtering. */
+  clippingAncestors?: RawClippingAncestor[];
   /** First actually available family from the computed CSS stack of the first
    * `.layout-run`; falls back to the computed stack when canvas probing is unavailable. */
   fontFamilyRaw?: string;
@@ -188,6 +190,15 @@ export type RawLine = {
   visualGroup?: string;
   /** Stable page-local identity of the originating `.layout-line`. */
   logicalLineGroup?: string;
+};
+
+export type RawClippingAncestor = {
+  rect: RawRect;
+  offsetWidth: number;
+  offsetHeight: number;
+  clipsX: boolean;
+  clipsY: boolean;
+  clipPath?: string;
 };
 
 /** One `.layout-page` element and its lines, extracted with DOM-only reads. */
@@ -230,6 +241,88 @@ export const isPlausibleBaseline = (baselineTop: number, rect: RawRect): boolean
   return offsetRatio >= MIN_BASELINE_OFFSET_RATIO && offsetRatio <= MAX_BASELINE_OFFSET_RATIO;
 };
 
+type InsetClip = { top: number; right: number; bottom: number; left: number };
+
+const cssInsetLength = (token: string, dimension: number): number | null => {
+  if (token === "0") return 0;
+  if (token.endsWith("px")) {
+    const value = Number.parseFloat(token);
+    return Number.isFinite(value) ? value : null;
+  }
+  if (token.endsWith("%")) {
+    const value = Number.parseFloat(token);
+    return Number.isFinite(value) ? (value / 100) * dimension : null;
+  }
+  return null;
+};
+
+/** Parse the computed form of a CSS `inset()` clip path. Unsupported units
+ * return null so the visibility filter remains conservative. */
+export const parseInsetClipPath = (
+  clipPath: string | undefined,
+  width: number,
+  height: number,
+): InsetClip | null => {
+  const match = clipPath?.match(/^inset\(([^)]*)\)$/u);
+  const value = match?.[1]?.split(/\s+round\s+/u)[0]?.trim();
+  if (!value) return null;
+
+  const tokens = value.split(/\s+/u);
+  if (tokens.length < 1 || tokens.length > 4) return null;
+  const [topToken, rightToken = topToken, bottomToken = topToken, leftToken = rightToken] = tokens;
+  if (!topToken || !rightToken || !bottomToken || !leftToken) return null;
+
+  const top = cssInsetLength(topToken, height);
+  const right = cssInsetLength(rightToken, width);
+  const bottom = cssInsetLength(bottomToken, height);
+  const left = cssInsetLength(leftToken, width);
+  if (top === null || right === null || bottom === null || left === null) return null;
+  return { top, right, bottom, left };
+};
+
+/** Whether a visual rect has no remaining area after all supported CSS clips
+ * are intersected. Clip-path lengths are layout pixels, so they are scaled to
+ * the post-transform visual rect before comparison. */
+export const isFullyClippedByAncestors = (
+  rect: RawRect,
+  ancestors: RawClippingAncestor[] | undefined,
+): boolean => {
+  let left = rect.left;
+  let top = rect.top;
+  let right = rect.left + rect.width;
+  let bottom = rect.top + rect.height;
+
+  for (const ancestor of ancestors ?? []) {
+    const ancestorRight = ancestor.rect.left + ancestor.rect.width;
+    const ancestorBottom = ancestor.rect.top + ancestor.rect.height;
+    if (ancestor.clipsX) {
+      left = Math.max(left, ancestor.rect.left);
+      right = Math.min(right, ancestorRight);
+    }
+    if (ancestor.clipsY) {
+      top = Math.max(top, ancestor.rect.top);
+      bottom = Math.min(bottom, ancestorBottom);
+    }
+
+    const inset = parseInsetClipPath(
+      ancestor.clipPath,
+      ancestor.offsetWidth,
+      ancestor.offsetHeight,
+    );
+    if (inset) {
+      const scaleX = ancestor.offsetWidth > 0 ? ancestor.rect.width / ancestor.offsetWidth : 1;
+      const scaleY = ancestor.offsetHeight > 0 ? ancestor.rect.height / ancestor.offsetHeight : 1;
+      left = Math.max(left, ancestor.rect.left + inset.left * scaleX);
+      right = Math.min(right, ancestorRight - inset.right * scaleX);
+      top = Math.max(top, ancestor.rect.top + inset.top * scaleY);
+      bottom = Math.min(bottom, ancestorBottom - inset.bottom * scaleY);
+    }
+
+    if (right <= left || bottom <= top) return true;
+  }
+  return false;
+};
+
 /** First font-family in a CSS `font-family` list, with surrounding quotes stripped. */
 export const parseFirstFontFamily = (fontFamilyRaw: string | undefined): string | undefined => {
   if (!fontFamilyRaw) {
@@ -264,7 +357,12 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
 
   const lines: LineBox[] = [];
   for (const rawLine of rawPage.lines) {
-    if (rawLine.fullyClipped || rawLine.rect.width <= 0 || rawLine.rect.height <= 0) {
+    if (
+      rawLine.fullyClipped ||
+      isFullyClippedByAncestors(rawLine.rect, rawLine.clippingAncestors) ||
+      rawLine.rect.width <= 0 ||
+      rawLine.rect.height <= 0
+    ) {
       continue;
     }
     const normText = normalizeLineText(rawLine.text);
@@ -576,7 +674,14 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
       const clippingValues = new Set(["auto", "clip", "hidden", "scroll"]);
       const ancestorClipCache = new Map<
         HTMLElement,
-        { clipsX: boolean; clipsY: boolean; rect?: DOMRect }
+        {
+          clipsX: boolean;
+          clipsY: boolean;
+          clipPath?: string;
+          rect?: DOMRect;
+          offsetWidth: number;
+          offsetHeight: number;
+        }
       >();
       const canvasContext = document.createElement("canvas").getContext("2d");
       const fontProbeText = "mmmmmmmmmmlliWW0123456789";
@@ -735,39 +840,60 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
           return text;
         };
 
-        const isFullyClipped = (sourceEl: HTMLElement | null, rect: DOMRect): boolean => {
-          let ancestor = (sourceEl ?? lineEl).parentElement;
+        const clippingAncestorsFor = (sourceEl: HTMLElement | null) => {
+          const clippingAncestors = [];
+          let ancestor: HTMLElement | null = sourceEl ?? lineEl;
           while (ancestor && el.contains(ancestor)) {
             let clipInfo = ancestorClipCache.get(ancestor);
             if (!clipInfo) {
               const computed = getComputedStyle(ancestor);
               const clipsX = clippingValues.has(computed.overflowX);
               const clipsY = clippingValues.has(computed.overflowY);
+              const clipPath = computed.clipPath === "none" ? undefined : computed.clipPath;
               clipInfo = {
                 clipsX,
                 clipsY,
-                ...(clipsX || clipsY ? { rect: ancestor.getBoundingClientRect() } : {}),
+                ...(clipPath !== undefined ? { clipPath } : {}),
+                ...(clipsX || clipsY || clipPath !== undefined
+                  ? { rect: ancestor.getBoundingClientRect() }
+                  : {}),
+                offsetWidth: ancestor.offsetWidth,
+                offsetHeight: ancestor.offsetHeight,
               };
               ancestorClipCache.set(ancestor, clipInfo);
             }
-            const { clipsX, clipsY, rect: ancestorRect } = clipInfo;
-            if (clipsX || clipsY) {
+            const {
+              clipsX,
+              clipsY,
+              clipPath,
+              rect: ancestorRect,
+              offsetWidth,
+              offsetHeight,
+            } = clipInfo;
+            if (clipsX || clipsY || clipPath !== undefined) {
               if (!ancestorRect) {
                 throw new Error("clipping ancestor is missing cached geometry");
               }
-              if (
-                (clipsX && (rect.right <= ancestorRect.left || rect.left >= ancestorRect.right)) ||
-                (clipsY && (rect.bottom <= ancestorRect.top || rect.top >= ancestorRect.bottom))
-              ) {
-                return true;
-              }
+              clippingAncestors.push({
+                rect: {
+                  left: ancestorRect.left,
+                  top: ancestorRect.top,
+                  width: ancestorRect.width,
+                  height: ancestorRect.height,
+                },
+                clipsX,
+                clipsY,
+                ...(clipPath !== undefined ? { clipPath } : {}),
+                offsetWidth,
+                offsetHeight,
+              });
             }
             if (ancestor === el) {
               break;
             }
             ancestor = ancestor.parentElement;
           }
-          return false;
+          return clippingAncestors;
         };
 
         const toRawLine = (text: string, rect: DOMRect, sourceEl: HTMLElement | null) => ({
@@ -775,7 +901,7 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
           rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
           ...(Number.isFinite(baselineTop) ? { baselineTop } : {}),
           region,
-          ...(isFullyClipped(sourceEl, rect) ? { fullyClipped: true } : {}),
+          clippingAncestors: clippingAncestorsFor(sourceEl),
           ...(visualGroup !== undefined ? { visualGroup } : {}),
           logicalLineGroup,
           ...fontFrom(sourceEl),

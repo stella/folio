@@ -479,29 +479,29 @@ const resolveOps = (
 };
 
 /**
- * A high-similarity prefix can be selected as a direct match before alignment
- * sees that the next segment completes the same visual row. Fold that trailing
- * segment back into a one-to-many row so geometry is compared over the full
- * row instead of reporting a text mismatch plus an extra line.
+ * A high-similarity prefix or suffix can be selected as a direct match before
+ * alignment sees that an adjacent segment completes the same visual row. Fold
+ * those segments back into a one-to-many row so geometry is compared over the
+ * full row instead of reporting a text mismatch plus a missing/extra line.
  */
 const reconcileMatchedRowSegments = (
   resolved: ResolvedItem[],
   referenceFlat: FlatLine[],
   candidateFlat: FlatLine[],
 ): ResolvedItem[] => {
-  const reconciled: ResolvedItem[] = [];
+  const trailingReconciled: ResolvedItem[] = [];
 
   for (let index = 0; index < resolved.length; index += 1) {
     const item = resolved[index];
     if (!item || item.kind !== "match") {
-      if (item) reconciled.push(item);
+      if (item) trailingReconciled.push(item);
       continue;
     }
 
     const next = resolved[index + 1];
     const trailingKind = next?.kind === "missing" || next?.kind === "extra" ? next.kind : null;
     if (!trailingKind) {
-      reconciled.push(item);
+      trailingReconciled.push(item);
       continue;
     }
 
@@ -510,7 +510,7 @@ const reconcileMatchedRowSegments = (
     const anchor =
       trailingKind === "missing" ? referenceFlat[item.wordIdx] : candidateFlat[item.folioIdx];
     if (!anchor) {
-      reconciled.push(item);
+      trailingReconciled.push(item);
       continue;
     }
 
@@ -536,12 +536,79 @@ const reconcileMatchedRowSegments = (
     }
 
     if (!equivalentSegmentedRows(referenceIdxs, candidateIdxs, referenceFlat, candidateFlat)) {
+      trailingReconciled.push(item);
+      continue;
+    }
+
+    trailingReconciled.push({
+      kind: "line-break",
+      wordIdxs: referenceIdxs,
+      folioIdxs: candidateIdxs,
+    });
+    index = cursor - 1;
+  }
+
+  const reconciled: ResolvedItem[] = [];
+  for (const item of trailingReconciled) {
+    if (item.kind !== "match") {
       reconciled.push(item);
       continue;
     }
 
+    const previous = reconciled.at(-1);
+    const leadingKind =
+      previous?.kind === "missing" || previous?.kind === "extra" ? previous.kind : null;
+    if (!leadingKind) {
+      reconciled.push(item);
+      continue;
+    }
+
+    const anchor =
+      leadingKind === "missing" ? referenceFlat[item.wordIdx] : candidateFlat[item.folioIdx];
+    if (!anchor) {
+      reconciled.push(item);
+      continue;
+    }
+
+    let leadingStart = reconciled.length;
+    while (leadingStart > 0) {
+      const leading = reconciled[leadingStart - 1];
+      if (!leading || leading.kind !== leadingKind) break;
+      const flatLine =
+        leading.kind === "missing"
+          ? referenceFlat[leading.wordIdx]
+          : candidateFlat[leading.folioIdx];
+      if (
+        !flatLine ||
+        flatLine.page !== anchor.page ||
+        flatLine.line.region !== anchor.line.region ||
+        !isSameVisualRow(anchor.line, flatLine.line)
+      ) {
+        break;
+      }
+      leadingStart -= 1;
+    }
+
+    const leadingItems = reconciled.slice(leadingStart);
+    const leadingReferenceIdxs: number[] = [];
+    const leadingCandidateIdxs: number[] = [];
+    for (const leading of leadingItems) {
+      if (leading.kind === "missing") {
+        leadingReferenceIdxs.push(leading.wordIdx);
+      } else if (leading.kind === "extra") {
+        leadingCandidateIdxs.push(leading.folioIdx);
+      }
+    }
+    const referenceIdxs = [...leadingReferenceIdxs, item.wordIdx];
+    const candidateIdxs = [...leadingCandidateIdxs, item.folioIdx];
+
+    if (!equivalentSegmentedRows(referenceIdxs, candidateIdxs, referenceFlat, candidateFlat)) {
+      reconciled.push(item);
+      continue;
+    }
+
+    reconciled.splice(leadingStart);
     reconciled.push({ kind: "line-break", wordIdxs: referenceIdxs, folioIdxs: candidateIdxs });
-    index = cursor - 1;
   }
 
   return reconciled;

@@ -650,6 +650,109 @@ describe("compareGeoms", () => {
     expect(result.score).toBe(1);
   });
 
+  test("reconciles a leading candidate segment before a matched suffix", () => {
+    const reference = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({
+            text: "ID: Primary registration 123",
+            xPt: 72,
+            yPt: 72,
+            widthPt: 188,
+          }),
+        ],
+      }),
+    ]);
+    const candidate = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({ text: "ID:", xPt: 72, yPt: 72, widthPt: 15 }),
+          makeLine({
+            text: "Primary registration 123",
+            xPt: 140,
+            yPt: 72,
+            widthPt: 120,
+          }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(reference, candidate);
+
+    expect(result.divergences).toEqual([]);
+    expect(result.matchedLines).toBe(1);
+    expect(result.score).toBe(1);
+  });
+
+  test("reconciles a leading reference segment before a matched suffix", () => {
+    const reference = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({ text: "ID:", xPt: 72, yPt: 72, widthPt: 15 }),
+          makeLine({
+            text: "Primary registration 123",
+            xPt: 140,
+            yPt: 72,
+            widthPt: 120,
+          }),
+        ],
+      }),
+    ]);
+    const candidate = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({
+            text: "ID: Primary registration 123",
+            xPt: 72,
+            yPt: 72,
+            widthPt: 188,
+          }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(reference, candidate);
+
+    expect(result.divergences).toEqual([]);
+    expect(result.matchedLines).toBe(2);
+    expect(result.score).toBe(1);
+  });
+
+  test("leaves an unrelated preceding row outside leading-segment reconciliation", () => {
+    const reference = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({ text: "Unrelated row", xPt: 72, yPt: 48, widthPt: 80 }),
+          makeLine({ text: "ID:", xPt: 72, yPt: 72, widthPt: 15 }),
+          makeLine({
+            text: "Primary registration 123",
+            xPt: 140,
+            yPt: 72,
+            widthPt: 120,
+          }),
+        ],
+      }),
+    ]);
+    const candidate = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({
+            text: "ID: Primary registration 123",
+            xPt: 72,
+            yPt: 72,
+            widthPt: 188,
+          }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(reference, candidate);
+
+    expect(result.divergences).toEqual([{ kind: "missing-line", page: 1, text: "Unrelated row" }]);
+    expect(result.matchedLines).toBe(2);
+    expect(result.score).toBeCloseTo(2 / 3);
+  });
+
   test("reconciles one segmented visual row inside a larger alignment gap", () => {
     const reference = makeDoc("folio", [
       makePage({
