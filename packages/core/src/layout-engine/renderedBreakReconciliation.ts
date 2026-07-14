@@ -68,16 +68,20 @@ export const reconcileBreakBeforeBlock = ({
     markerNeedsSnap && !markerAlreadySatisfied && pageHasVisibleBodyContent(page, blocksById);
   const followsAuthoredPageBreak = previousBlock?.kind === "pageBreak";
   const followsSectionBreak = previousBlock?.kind === "sectionBreak";
+  const followsPageBreakingSection = followsSectionBreak && previousBlock.type !== "continuous";
+  const preserveSectionLeadingSpacing =
+    followsSectionBreak && block.attrs?.spacingExplicit?.before === true;
+  const markerAccountsForBoundary =
+    forcePageBreak ||
+    markerAlreadySatisfied ||
+    followsAuthoredPageBreak ||
+    followsPageBreakingSection;
 
   return {
     forcePageBreak,
-    // Suppress spacing only when this cached marker accounts for the current
-    // page boundary. A section boundary can also leave the cursor at the page
-    // top, but it does not make the following paragraph's authored spacing
-    // redundant.
-    suppressSpaceBefore:
-      !followsSectionBreak &&
-      (forcePageBreak || markerAlreadySatisfied || followsAuthoredPageBreak),
+    // The boundary consumes inherited/default leading spacing. Preserve only
+    // spacing authored directly on the first paragraph of a section.
+    suppressSpaceBefore: markerAccountsForBoundary && !preserveSectionLeadingSpacing,
     state: INITIAL_RENDERED_BREAK_STATE,
   };
 };
