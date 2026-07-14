@@ -114,6 +114,12 @@ describe("Word line-endpoint manifests", () => {
         source: { ...valid.source, fileName: "/private/fixture.docx" },
       }),
     ).toThrow("source.fileName must be a basename");
+    expect(() =>
+      parseLineEndpointManifest({
+        ...valid,
+        reference: { ...valid.reference, wordVersion: null },
+      }),
+    ).toThrow("reference.wordVersion must be a non-empty string");
   });
 });
 

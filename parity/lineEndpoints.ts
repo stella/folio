@@ -154,16 +154,19 @@ const endpointPageToGeom = (page: LineEndpointPage): PageGeom => ({
   lines: page.lines.map(endpointToLineBox),
 });
 
-const endpointToLineBox = ({ text, region }: LineEndpoint, index: number): LineBox => ({
-  text,
-  normText: normalizeLineText(text),
-  xPt: 0,
-  yPt: index * 12,
-  baselinePt: index * 12 + 9,
-  widthPt: normalizeLineText(text).length,
-  heightPt: 10,
-  region,
-});
+const endpointToLineBox = ({ text, region }: LineEndpoint, index: number): LineBox => {
+  const normText = normalizeLineText(text);
+  return {
+    text,
+    normText,
+    xPt: 0,
+    yPt: index * 12,
+    baselinePt: index * 12 + 9,
+    widthPt: normText.length,
+    heightPt: 10,
+    region,
+  };
+};
 
 const isLineEndpointDivergence = (divergence: Divergence): divergence is LineEndpointDivergence => {
   switch (divergence.kind) {
