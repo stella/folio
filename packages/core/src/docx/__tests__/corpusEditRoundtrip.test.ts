@@ -147,12 +147,12 @@ const editFixtureText = async ({
   return {
     originalBytes,
     originalPm,
-    originalSectionProperties: parsed.package.document.sections.map(({ properties }) => properties),
+    originalSectionProperties:
+      parsed.package.document.sections?.map(({ properties }) => properties) ?? [],
     savedBytes,
     reopenedPm: toProseDoc(reopened),
-    reopenedSectionProperties: reopened.package.document.sections.map(
-      ({ properties }) => properties,
-    ),
+    reopenedSectionProperties:
+      reopened.package.document.sections?.map(({ properties }) => properties) ?? [],
   };
 };
 
