@@ -1063,7 +1063,7 @@ describe("toFlowBlocks table cell formatting", () => {
     expect(table.rows.at(0)?.cells.at(1)?.textDirection).toBeUndefined();
   });
 
-  test("suppresses a trailing empty paragraph after real cell content", () => {
+  test("keeps an authored trailing empty paragraph after prose cell content", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
         schema.node("tableRow", null, [
@@ -1082,8 +1082,32 @@ describe("toFlowBlocks table cell formatting", () => {
     }
 
     const cells = table.rows.at(0)?.cells;
-    expect(cells?.at(0)?.blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBe(true);
+    expect(cells?.at(0)?.blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
     expect(cells?.at(1)?.blocks.at(0)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+  });
+
+  test("suppresses the required trailing paragraph after a nested table", () => {
+    const nestedTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("nested")])]),
+      ]),
+    ]);
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [nestedTable, schema.node("paragraph")]),
+        ]),
+      ]),
+    ]);
+
+    const table = toFlowBlocks(doc).at(0);
+    if (table?.kind !== "table") {
+      throw new Error("Expected table block");
+    }
+
+    expect(table.rows.at(0)?.cells.at(0)?.blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBe(
+      true,
+    );
   });
 
   test("suppresses a terminal run of empty body paragraphs after a final table", () => {
