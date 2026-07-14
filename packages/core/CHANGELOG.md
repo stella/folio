@@ -1,5 +1,35 @@
 # @stll/folio-core
 
+## 0.10.0
+
+### Minor Changes
+
+- [#343](https://github.com/stella/folio/pull/343) [`fd5717b`](https://github.com/stella/folio/commit/fd5717b3465d12dd114467106ae552e10df96699) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add auditable privacy transforms for version comparison output.
+
+- [#340](https://github.com/stella/folio/pull/340) [`5b99d1e`](https://github.com/stella/folio/commit/5b99d1ed01d0c10cecce2850dc611fb336e3f725) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add immutable reviewed-view projections for document stories.
+
+- [#341](https://github.com/stella/folio/pull/341) [`21b7e0e`](https://github.com/stella/folio/commit/21b7e0e4ba6be4303cd351195e44e0ed305de105) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Compare document stories with source-specific block handles.
+
+- [#342](https://github.com/stella/folio/pull/342) [`8f8b569`](https://github.com/stella/folio/commit/8f8b569f29a2c5f78001e12c3536d8aa7b4227a5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add selectable text, formatting, and metadata comparison scopes.
+
+- [#338](https://github.com/stella/folio/pull/338) [`b324ce3`](https://github.com/stella/folio/commit/b324ce3154899d2e311529612d7855840b64afcc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add story-scoped document operations for footnotes and endnotes.
+
+- [#347](https://github.com/stella/folio/pull/347) [`d2e0c4a`](https://github.com/stella/folio/commit/d2e0c4a774381f5daae028839de9f639b8de2ad6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add auditable package-metadata privacy rewriting that persists through later saves.
+
+- [#349](https://github.com/stella/folio/pull/349) [`692528b`](https://github.com/stella/folio/commit/692528b42a3da66e425497cb4075f3cd82609524) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add package-metadata privacy options and reports to redline generation.
+
+- [#346](https://github.com/stella/folio/pull/346) [`b2f3885`](https://github.com/stella/folio/commit/b2f3885619c85a29f54a74be13a7d89a6dbee46c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Generate tracked changes across matched document stories with selectable resolved input views.
+
+### Patch Changes
+
+- [#333](https://github.com/stella/folio/pull/333) [`b77268b`](https://github.com/stella/folio/commit/b77268bb4cb4d57f2c892138ddeba97d8f16b028) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor table-cell positioning scope for anchored images.
+
+- [#336](https://github.com/stella/folio/pull/336) [`4a4b10f`](https://github.com/stella/folio/commit/4a4b10ff5b12cdeec66374f32daed84794bf5b9c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Tighten justified paragraph fitting using common-layout reference endpoints.
+
+- [#344](https://github.com/stella/folio/pull/344) [`d6df33d`](https://github.com/stella/folio/commit/d6df33d7b8fb536cdc4c8125dfbdd39fbd06ef49) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Default omitted paragraph hanging-punctuation settings to enabled during line layout.
+
+- [#339](https://github.com/stella/folio/pull/339) [`2337ae1`](https://github.com/stella/folio/commit/2337ae1b0548982775a93600260adb2f0aaa3ecc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor the document hyphenation zone when choosing automatic line breaks.
+
 ## 0.9.0
 
 ### Minor Changes
