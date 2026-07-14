@@ -29,6 +29,7 @@ import type {
   ParagraphSpacing,
 } from "../types";
 import { isFloatingImageRun } from "../types";
+import { resolveEffectiveLineBreakPolicy } from "./effectiveLineBreakPolicy";
 import {
   getFloatingAvailableWidth,
   getFloatingMargins,
@@ -70,7 +71,6 @@ const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
 const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
 const DEFAULT_LIST_HANGING_INDENT_PX = 24;
 const ALL_CAPS_RATIO_THRESHOLD = 0.8;
-const DEFAULT_HYPHENATION_ZONE_TWIPS = 360;
 
 /**
  * Find the longest prefix of `text` that fits within `maxWidth` pixels.
@@ -172,47 +172,6 @@ function exceedsHyphenationZone(line: LineState, zoneTwips: number): boolean {
  */
 function runToFontStyle(run: TextRun | TabRun | FieldRun | MathRun): FontStyle {
   return buildRunFontStyle(run, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE);
-}
-
-function languageMatches(ruleLanguage: string | undefined, locale: string | undefined): boolean {
-  if (!ruleLanguage) {
-    return true;
-  }
-  if (!locale) {
-    return false;
-  }
-  const rule = ruleLanguage.toLowerCase();
-  const active = locale.toLowerCase();
-  return active === rule || active.startsWith(`${rule}-`) || rule.startsWith(`${active}-`);
-}
-
-function lineBreakPolicy(block: ParagraphBlock, run: TextRun): LineBreakPolicy {
-  const language = run.language;
-  let locale = language?.val;
-  if (hasCjk(run.text)) {
-    locale = language?.eastAsia ?? language?.val;
-  } else if (run.rtl) {
-    locale = language?.bidi ?? language?.val;
-  }
-  const rules = block.attrs?.lineBreakRules;
-  const before = rules?.noLineBreaksBefore;
-  const after = rules?.noLineBreaksAfter;
-
-  return {
-    ...(locale ? { locale } : {}),
-    ...(block.attrs?.kinsoku !== undefined ? { kinsoku: block.attrs.kinsoku } : {}),
-    ...(before && languageMatches(before.language, locale)
-      ? { noLineBreaksBefore: before.characters }
-      : {}),
-    ...(after && languageMatches(after.language, locale)
-      ? { noLineBreaksAfter: after.characters }
-      : {}),
-    ...(rules?.useLegacyEthiopicAmharicRules ? { useLegacyEthiopicAmharicRules: true } : {}),
-    ...(block.attrs?.automaticHyphenation?.doNotHyphenateCaps !== undefined
-      ? { doNotHyphenateCaps: block.attrs.automaticHyphenation.doNotHyphenateCaps }
-      : {}),
-    ...(run.allCaps === true ? { renderedAllCaps: true } : {}),
-  };
 }
 
 /**
@@ -734,9 +693,9 @@ function trailingHangingPunctuationWidth(
   text: string,
   style: FontStyle,
   policy: LineBreakPolicy,
-  enabled: boolean | undefined,
+  enabled: boolean,
 ): number {
-  if (enabled === false || text.length === 0) {
+  if (!enabled || text.length === 0) {
     return 0;
   }
   const boundaries = findGraphemeBreaks(text, policy);
@@ -772,7 +731,10 @@ function computeTrailingGlueWidths(block: ParagraphBlock): number[] {
     }
 
     const style = runToFontStyle(nextRun);
-    const breaks = findWordBreaks(text, lineBreakPolicy(block, nextRun));
+    const breaks = findWordBreaks(
+      text,
+      resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run: nextRun }).provider,
+    );
     const firstBreak = breaks.at(0);
     const leading =
       firstBreak === undefined ? text : trimTrailingSpacesAndTabs(text.slice(0, firstBreak));
@@ -791,7 +753,7 @@ function computeProtectedCrossRunGlueWidths(block: ParagraphBlock): number[] {
     }
     const trailing = /(\S+)(\s*)$/u.exec(run.text ?? "");
     const token = trailing?.[1];
-    const policy = lineBreakPolicy(block, run);
+    const policy = resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run }).provider;
     if (!token || token.length !== 1 || !policy.locale?.toLocaleLowerCase().startsWith("cs")) {
       continue;
     }
@@ -895,7 +857,10 @@ function collectCrossRunWord({
 
     const remainingBudget = MAX_HYPHENATION_WORD_LENGTH - text.length;
     const boundedRemainder = remainder.slice(0, remainingBudget + 1);
-    const firstBreak = findWordBreaks(boundedRemainder, lineBreakPolicy(block, run)).at(0);
+    const firstBreak = findWordBreaks(
+      boundedRemainder,
+      resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run }).provider,
+    ).at(0);
     const segmentText = trimTrailingSpacesAndTabs(
       firstBreak === undefined ? boundedRemainder : boundedRemainder.slice(0, firstBreak),
     );
@@ -926,7 +891,10 @@ function collectCrossRunWord({
   return {
     text,
     width,
-    breaks: findHyphenationBreaks(text, lineBreakPolicy(block, firstRun)),
+    breaks: findHyphenationBreaks(
+      text,
+      resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run: firstRun }).provider,
+    ),
     segments,
   };
 }
@@ -1717,7 +1685,11 @@ export function measureParagraph(
       const textRun = run as TextRun;
       const text = textRun.text;
       const style = runToFontStyle(textRun);
-      const breakPolicy = lineBreakPolicy(block, textRun);
+      const effectiveLineBreakPolicy = resolveEffectiveLineBreakPolicy({
+        attrs: block.attrs,
+        run: textRun,
+      });
+      const breakPolicy = effectiveLineBreakPolicy.provider;
       // Line height comes from the CJK-aware style; width measurement below
       // keeps `style` so wrapping is unchanged.
       const lineHeightStyle = cjkLineHeightStyle(textRun, style);
@@ -1765,7 +1737,7 @@ export function measureParagraph(
           measuredWord,
           style,
           breakPolicy,
-          block.attrs?.overflowPunctuation,
+          effectiveLineBreakPolicy.hangingPunctuation,
         );
         const isFirstLine = lines.length === 0;
         const regularSpaceWidth = compressibleSpaceWidth(measuredWord, style);
@@ -1777,16 +1749,12 @@ export function measureParagraph(
             )
           : WIDTH_TOLERANCE;
 
-        const automaticHyphenation = block.attrs?.automaticHyphenation;
-        const consecutiveLineLimit = automaticHyphenation?.consecutiveLineLimit ?? 0;
+        const automaticHyphenation = effectiveLineBreakPolicy.automaticHyphenation;
         const mayHyphenateLine =
-          automaticHyphenation?.enabled === true &&
-          block.attrs?.suppressAutoHyphens !== true &&
-          (consecutiveLineLimit === 0 || consecutiveHyphenatedLines < consecutiveLineLimit) &&
-          exceedsHyphenationZone(
-            currentLine,
-            automaticHyphenation.hyphenationZoneTwips ?? DEFAULT_HYPHENATION_ZONE_TWIPS,
-          );
+          automaticHyphenation.type === "enabled" &&
+          (automaticHyphenation.consecutiveLineLimit === 0 ||
+            consecutiveHyphenatedLines < automaticHyphenation.consecutiveLineLimit) &&
+          exceedsHyphenationZone(currentLine, automaticHyphenation.hyphenationZoneTwips);
         const isRunTail = nextBreak === text.length;
         const crossRunWord =
           mayHyphenateLine && isRunTail && word.length > 0 && !isBreakChar(word.at(-1))

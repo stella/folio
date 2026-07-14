@@ -6,6 +6,7 @@
  */
 
 import type { ParagraphBlock, ParagraphMeasure } from "../types";
+import { lineBreakPolicyCacheParts } from "./effectiveLineBreakPolicy";
 import { getLineBreakProviderGeneration } from "./lineBreakProvider";
 
 // =============================================================================
@@ -333,27 +334,7 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     if (attrs.reserveEmptyOutlineHeight) {
       parts.push("outline-empty-reserve");
     }
-    if (attrs.kinsoku !== undefined) {
-      parts.push(`kinsoku:${attrs.kinsoku}`);
-    }
-    if (attrs.overflowPunctuation !== undefined) {
-      parts.push(`overflow-punct:${attrs.overflowPunctuation}`);
-    }
-    if (attrs.suppressAutoHyphens !== undefined) {
-      parts.push(`suppress-auto-hyphens:${attrs.suppressAutoHyphens}`);
-    }
-    const automaticHyphenation = attrs.automaticHyphenation;
-    if (automaticHyphenation) {
-      parts.push(
-        `auto-hyphens:${automaticHyphenation.doNotHyphenateCaps}|${automaticHyphenation.consecutiveLineLimit}|${automaticHyphenation.hyphenationZoneTwips}`,
-      );
-    }
-    const lineBreakRules = attrs.lineBreakRules;
-    if (lineBreakRules) {
-      parts.push(
-        `line-break-rules:${lineBreakRules.noLineBreaksBefore?.language}|${lineBreakRules.noLineBreaksBefore?.characters}|${lineBreakRules.noLineBreaksAfter?.language}|${lineBreakRules.noLineBreaksAfter?.characters}|${lineBreakRules.useLegacyEthiopicAmharicRules}`,
-      );
-    }
+    parts.push(...lineBreakPolicyCacheParts(attrs));
     const borders = attrs.borders;
     if (borders) {
       const signature = (border?: { width?: number; style?: string; color?: string }): string =>
