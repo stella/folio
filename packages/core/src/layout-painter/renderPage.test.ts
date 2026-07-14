@@ -554,7 +554,7 @@ describe("floating text box render zones", () => {
 });
 
 describe("header and footer rendering", () => {
-  test("dims header and footer chrome while editing body content", () => {
+  test("preserves authored header and footer colors", () => {
     const pageElement = renderPage(
       { ...page, fragments: [] },
       { pageNumber: 1, totalPages: 1, section: "body" },
@@ -563,10 +563,10 @@ describe("header and footer rendering", () => {
 
     expect(
       findByClass(pageElement as unknown as FakeElement, "layout-page-header")?.style.opacity,
-    ).toBe("0.62");
+    ).toBeUndefined();
     expect(
       findByClass(pageElement as unknown as FakeElement, "layout-page-footer")?.style.opacity,
-    ).toBe("0.62");
+    ).toBeUndefined();
   });
 
   test("ignores even footers unless odd/even headers are enabled", () => {

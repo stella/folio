@@ -2170,7 +2170,6 @@ export function renderPage(
     headerEl.style.width = `${headerContentWidth}px`;
     headerEl.style.height = `${interactiveHeaderHeight}px`;
     headerEl.style.minHeight = `${interactiveHeaderHeight}px`;
-    headerEl.style.opacity = "0.62";
 
     let shouldClipHeader = !headerOverflows && headerContentFitsBox;
     if (options.headerContent && options.headerContent.blocks.length > 0) {
@@ -2243,7 +2242,6 @@ export function renderPage(
     footerEl.style.width = `${footerContentWidth}px`;
     footerEl.style.height = `${interactiveFooterHeight}px`;
     footerEl.style.minHeight = `${interactiveFooterHeight}px`;
-    footerEl.style.opacity = "0.62";
 
     // As with the header, only clip when the content fits the shrunk box; a
     // floating object extending past the flow band must stay visible

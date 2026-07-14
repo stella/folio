@@ -673,17 +673,6 @@
   border-top: 1px dotted var(--doc-primary);
 }
 
-/* The painter dims every header/footer to 0.62 opacity (inline style in
-   renderPage). While editing a region, restore full opacity for the edited kind
-   so the typed text reads as black; `!important` beats the inline opacity.
-   Kept in sync with prosemirror-layer.css. */
-.paged-editor--editing-header .layout-page-header {
-  opacity: 1 !important;
-}
-.paged-editor--editing-footer .layout-page-footer {
-  opacity: 1 !important;
-}
-
 .paged-editor--hf-editing .layout-page-header:hover,
 .paged-editor--hf-editing .layout-page-footer:hover {
   background-color: transparent;

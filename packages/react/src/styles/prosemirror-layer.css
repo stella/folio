@@ -767,18 +767,6 @@
   border-top: 1px dotted var(--doc-primary);
 }
 
-/* The painter dims every header/footer to 0.62 opacity so it reads as secondary
-   chrome in normal mode (set as an INLINE style in renderPage). While the user
-   is editing a region, the text they are typing must read as full-opacity black,
-   so restore opacity 1 for the edited kind. `!important` is required to beat the
-   inline opacity; scoping to the edited kind leaves the other region dimmed. */
-.paged-editor--editing-header .layout-page-header {
-  opacity: 1 !important;
-}
-.paged-editor--editing-footer .layout-page-footer {
-  opacity: 1 !important;
-}
-
 /* Post-eigenpal#611 the painter is the sole visible HF renderer in edit mode
    too (the inline overlay no longer mounts its own PM), so the old
    `.paged-editor--editing-{header,footer} > * { visibility: hidden }` patch that
