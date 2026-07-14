@@ -493,6 +493,9 @@ export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected
 export type FolioDocumentOperationStory = "main" | {
     type: "header" | "footer";
     relationshipId: string;
+} | {
+    type: "footnote" | "endnote";
+    noteId: number;
 };
 
 // @public (undocumented)
@@ -613,9 +616,7 @@ export type FolioDocxReviewerOptions = {
 };
 
 // @public (undocumented)
-export type FolioEditableDocumentStoryHandle = Exclude<FolioDocumentStoryHandle, {
-    type: "footnote" | "endnote";
-}>;
+export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 
 // @public
 export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];

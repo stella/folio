@@ -1145,13 +1145,130 @@ const readNotesFixture = async (): Promise<ArrayBuffer> => {
   const footnotesXml = await footnotesFile.async("text");
   const injected = footnotesXml.replace(
     "</w:footnotes>",
-    '<w:footnote w:id="2"><w:p><w:r><w:t>Injected footnote body text.</w:t></w:r></w:p></w:footnote></w:footnotes>',
+    '<w:footnote w:id="2"><w:p w14:paraId="B2000001"><w:r><w:t>Injected footnote body text.</w:t></w:r></w:p></w:footnote></w:footnotes>',
   );
   zip.file("word/footnotes.xml", injected);
+  zip.file(
+    "word/endnotes.xml",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="B2000002"><w:r><w:t>Injected endnote body text.</w:t></w:r></w:p></w:endnote></w:endnotes>',
+  );
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
 describe("headless docx review notes read surface", () => {
+  test("edits a footnote through story-scoped document operations", async () => {
+    const baseline = await readNotesFixture();
+    const story = { type: "footnote", noteId: 2 } as const;
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const snapshot = reviewer.snapshotStory(story);
+    if (!snapshot) {
+      throw new Error("expected the footnote story");
+    }
+    const target = findBlock(snapshot.blocks, "Injected footnote body text.");
+
+    const result = reviewer.applyDocumentOperationsToStory({
+      story,
+      snapshot,
+      batch: {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "footnote-replace",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Injected footnote",
+            replace: "Updated footnote",
+          },
+        ],
+      },
+    });
+
+    expect(result.status).toBe("committed");
+    expect(result.receipts.at(0)?.affected.at(0)).toEqual({
+      type: "block",
+      story,
+      blockId: target.id,
+      effect: "updated",
+    });
+    expect(reviewer.readStory(story)?.text).toBe("Updated footnote body text.");
+    expect(reviewer.getNotesAsText()).toContain("[footnote #2] Updated footnote body text.");
+
+    const saved = await reviewer.toBuffer();
+    expect(await partText(saved, "word/footnotes.xml")).toContain("Updated footnote");
+    expect(await partBytes(saved, "word/document.xml")).toEqual(
+      await partBytes(baseline, "word/document.xml"),
+    );
+    expect(await partBytes(saved, "word/endnotes.xml")).toEqual(
+      await partBytes(baseline, "word/endnotes.xml"),
+    );
+
+    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    expect(reopened.readStory(story)?.text).toBe("Updated footnote body text.");
+  });
+
+  test("tracks and undoes an endnote operation batch", async () => {
+    const baseline = await readNotesFixture();
+    const story = { type: "endnote", noteId: 3 } as const;
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const snapshot = reviewer.snapshotStory(story);
+    if (!snapshot) {
+      throw new Error("expected the endnote story");
+    }
+    const target = findBlock(snapshot.blocks, "Injected endnote body text.");
+
+    const result = reviewer.applyDocumentOperationsToStory({
+      story,
+      snapshot,
+      batch: {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "endnote-replace",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Injected endnote",
+            replace: "Updated endnote",
+          },
+        ],
+      },
+    });
+
+    expect(result.status).toBe("committed");
+    const saved = await reviewer.toBuffer();
+    const endnotesXml = await partText(saved, "word/endnotes.xml");
+    expect(endnotesXml).toContain("Updated");
+    expect(endnotesXml).toContain("endnote body text.");
+    expect(endnotesXml).toContain("<w:ins ");
+    expect(endnotesXml).toContain("<w:del ");
+    expect(endnotesXml).toContain('w:author="Reviewer"');
+
+    if (!result.undoHandle) {
+      throw new Error("expected an undo handle");
+    }
+    expect(reviewer.undoDocumentOperations(result.undoHandle)).toEqual({
+      status: "undone",
+      undoHandle: result.undoHandle,
+    });
+    expect(reviewer.readStory(story)?.text).toBe("Injected endnote body text.");
+    expect(await partBytes(await reviewer.toBuffer(), "word/endnotes.xml")).toEqual(
+      await partBytes(baseline, "word/endnotes.xml"),
+    );
+  });
+
+  test("rejects a missing note story before applying operations", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await readNotesFixture());
+    const story = { type: "footnote", noteId: 999_999 } as const;
+    expect(reviewer.snapshotStory(story)).toBeNull();
+    expect(() =>
+      reviewer.applyDocumentOperationsToStory({
+        story,
+        batch: { version: 1, operations: [] },
+      }),
+    ).toThrow(FolioDocumentStoryNotFoundError);
+  });
+
   test("listStories discovers typed handles that readStory resolves", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await readNotesFixture());
     const stories = reviewer.listStories();
@@ -1159,6 +1276,9 @@ describe("headless docx review notes read surface", () => {
     const footnote = stories.find(({ handle }) => handle.type === "footnote");
     expect(footnote?.text).toBe("Injected footnote body text.");
     expect(footnote ? reviewer.readStory(footnote.handle) : null).toEqual(footnote);
+    const endnote = stories.find(({ handle }) => handle.type === "endnote");
+    expect(endnote?.text).toBe("Injected endnote body text.");
+    expect(endnote ? reviewer.readStory(endnote.handle) : null).toEqual(endnote);
     expect(reviewer.readStory({ type: "footnote", noteId: 999_999 })).toBeNull();
   });
 
@@ -1171,8 +1291,9 @@ describe("headless docx review notes read surface", () => {
     );
     expect(notes).toContain("[footer default]");
     expect(notes).toContain("[footnote #2] Injected footnote body text.");
+    expect(notes).toContain("[endnote #3] Injected endnote body text.");
     // Body content is not folded into the notes surface.
-    expect(notes).not.toContain("[endnote");
+    expect(notes).not.toContain("Project Goals");
   });
 
   test("getNotesAsText is empty for a document without headers/footers or notes", async () => {

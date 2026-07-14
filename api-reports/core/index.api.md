@@ -710,6 +710,9 @@ export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected
 export type FolioDocumentOperationStory = "main" | {
     type: "header" | "footer";
     relationshipId: string;
+} | {
+    type: "footnote" | "endnote";
+    noteId: number;
 };
 
 // @public (undocumented)

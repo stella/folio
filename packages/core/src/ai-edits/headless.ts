@@ -15,8 +15,7 @@
  * paragraphs in `document.xml` (leaving every untouched part byte-exact), with
  * a full repack as the fallback for structural edits.
  *
- * Scope: main, header, and footer blocks. Footnote and endnote bodies build on
- * the note serialization path separately.
+ * Scope: main, header, footer, footnote, and endnote blocks.
  */
 
 import { TaggedError } from "better-result";
@@ -43,7 +42,11 @@ import {
   rejectAllChanges,
 } from "../prosemirror/commands/comments";
 import { proseDocToBlocks, updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
-import { headerFooterToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import {
+  footnoteToProseDoc,
+  headerFooterToProseDoc,
+  toProseDoc,
+} from "../prosemirror/conversion/toProseDoc";
 import {
   getChangedParagraphIds,
   hasStructuralChanges,
@@ -52,7 +55,7 @@ import {
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
-import type { Document, HeaderFooter } from "../types/document";
+import type { Document, Endnote, Footnote, HeaderFooter } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
 import {
   applyFolioDocumentOperations,
@@ -206,10 +209,7 @@ export type FolioDocumentStoryHandle =
   | { type: "header" | "footer"; relationshipId: string }
   | { type: "footnote" | "endnote"; noteId: number };
 
-export type FolioEditableDocumentStoryHandle = Exclude<
-  FolioDocumentStoryHandle,
-  { type: "footnote" | "endnote" }
->;
+export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 
 export type FolioDocumentStory = {
   handle: FolioDocumentStoryHandle;
@@ -233,8 +233,15 @@ type FolioHeaderFooterStoryHandle = Extract<
   { type: "header" | "footer" }
 >;
 
-type FolioHeaderFooterStoryState = {
-  handle: FolioHeaderFooterStoryHandle;
+type FolioNoteStoryHandle = Extract<
+  FolioEditableDocumentStoryHandle,
+  { type: "footnote" | "endnote" }
+>;
+
+type FolioSecondaryStoryHandle = Exclude<FolioEditableDocumentStoryHandle, { type: "main" }>;
+
+type FolioSecondaryStoryState = {
+  handle: FolioSecondaryStoryHandle;
   initialState: EditorState;
   state: EditorState;
 };
@@ -250,6 +257,13 @@ const MAIN_STORY = Object.freeze({ type: "main" } as const);
 
 const headerFooterStoryKey = ({ type, relationshipId }: FolioHeaderFooterStoryHandle): string =>
   `${type}:${relationshipId}`;
+
+const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): string => `${type}:${noteId}`;
+
+const secondaryStoryKey = (story: FolioSecondaryStoryHandle): string =>
+  story.type === "header" || story.type === "footer"
+    ? headerFooterStoryKey(story)
+    : noteStoryKey(story);
 
 // The change shape and its pure reader now live in `./read` so a live editor
 // can produce the same `FolioReviewChange[]` from its own doc; the reviewer
@@ -369,7 +383,7 @@ export class FolioDocxReviewer {
   private readonly baseDocument: Document;
   private readonly originalBuffer: ArrayBuffer;
   private state: EditorState;
-  private readonly headerFooterStoryStates = new Map<string, FolioHeaderFooterStoryState>();
+  private readonly secondaryStoryStates = new Map<string, FolioSecondaryStoryState>();
   private readonly createdComments: Comment[] = [];
   private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] = [];
   /**
@@ -480,7 +494,7 @@ export class FolioDocxReviewer {
     });
   }
 
-  /** Apply a versioned operation batch to the main story, a header, or a footer. */
+  /** Apply a versioned operation batch to one editable document story. */
   applyDocumentOperationsToStory({
     story,
     batch,
@@ -615,9 +629,8 @@ export class FolioDocxReviewer {
   /**
    * Header / footer and footnote / endnote text as labeled, LLM-ready lines,
    * one per non-empty part: `[header default] …`, `[footer default] …`,
-   * `[footnote #N] …`, `[endnote #N] …`. Header and footer lines reflect
-   * in-memory edits; note bodies reflect the parsed source. Empty parts and
-   * separator notes are omitted.
+   * `[footnote #N] …`, `[endnote #N] …`. Lines reflect in-memory edits. Empty
+   * parts and separator notes are omitted.
    */
   getNotesAsText(): string {
     const pkg = this.baseDocument.package;
@@ -646,7 +659,8 @@ export class FolioDocxReviewer {
       if (isSeparatorFootnote(footnote)) {
         continue;
       }
-      const text = normalizeFolioAIBlockText(getFootnoteText(footnote));
+      const handle = { type: "footnote", noteId: footnote.id } as const;
+      const text = this.getNoteStoryText(handle, footnote);
       if (text.length > 0) {
         lines.push(`[footnote #${footnote.id}] ${text}`);
       }
@@ -655,7 +669,8 @@ export class FolioDocxReviewer {
       if (isSeparatorEndnote(endnote)) {
         continue;
       }
-      const text = normalizeFolioAIBlockText(getEndnoteText(endnote));
+      const handle = { type: "endnote", noteId: endnote.id } as const;
+      const text = this.getNoteStoryText(handle, endnote);
       if (text.length > 0) {
         lines.push(`[endnote #${endnote.id}] ${text}`);
       }
@@ -686,17 +701,19 @@ export class FolioDocxReviewer {
     }
     for (const footnote of pkg.footnotes ?? []) {
       if (!isSeparatorFootnote(footnote)) {
+        const handle = { type: "footnote", noteId: footnote.id } as const;
         stories.push({
-          handle: { type: "footnote", noteId: footnote.id },
-          text: normalizeFolioAIBlockText(getFootnoteText(footnote)),
+          handle,
+          text: this.getNoteStoryText(handle, footnote),
         });
       }
     }
     for (const endnote of pkg.endnotes ?? []) {
       if (!isSeparatorEndnote(endnote)) {
+        const handle = { type: "endnote", noteId: endnote.id } as const;
         stories.push({
-          handle: { type: "endnote", noteId: endnote.id },
-          text: normalizeFolioAIBlockText(getEndnoteText(endnote)),
+          handle,
+          text: this.getNoteStoryText(handle, endnote),
         });
       }
     }
@@ -899,7 +916,7 @@ export class FolioDocxReviewer {
   /** The current document model with edits merged back in. */
   toDocument(): Document {
     const document = updateDocumentContent(this.baseDocument, this.state.doc);
-    this.mergeEditedHeaderFooterStories(document);
+    this.mergeEditedSecondaryStories(document);
     if (this.createdComments.length > 0 || this.resolvedOverrides.size > 0) {
       document.package.document.comments = this.withResolvedOverrides([
         ...(document.package.document.comments ?? []),
@@ -931,11 +948,24 @@ export class FolioDocxReviewer {
    * is the graceful handling — no separate error surface is needed here.
    */
   private async trySelectiveSave(document: Document): Promise<ArrayBuffer | null> {
+    const changedParaIds = new Set(getChangedParagraphIds(this.state));
+    let structuralChange = hasStructuralChanges(this.state);
+    let untrackedChanges = hasUntrackedChanges(this.state);
+    for (const entry of this.secondaryStoryStates.values()) {
+      if (entry.handle.type !== "footnote" && entry.handle.type !== "endnote") {
+        continue;
+      }
+      for (const paraId of getChangedParagraphIds(entry.state)) {
+        changedParaIds.add(paraId);
+      }
+      structuralChange ||= hasStructuralChanges(entry.state);
+      untrackedChanges ||= hasUntrackedChanges(entry.state);
+    }
     try {
       return await attemptSelectiveSave(document, this.originalBuffer, {
-        changedParaIds: getChangedParagraphIds(this.state),
-        structuralChange: hasStructuralChanges(this.state),
-        hasUntrackedChanges: hasUntrackedChanges(this.state),
+        changedParaIds,
+        structuralChange,
+        hasUntrackedChanges: untrackedChanges,
       });
     } catch {
       return null;
@@ -946,30 +976,37 @@ export class FolioDocxReviewer {
     if (story.type === "main") {
       return this.state;
     }
-    const key = headerFooterStoryKey(story);
-    const existing = this.headerFooterStoryStates.get(key);
+    const key = secondaryStoryKey(story);
+    const existing = this.secondaryStoryStates.get(key);
     if (existing) {
       return existing.state;
     }
-    const source = this.getHeaderFooterStory(story);
+    const source =
+      story.type === "header" || story.type === "footer"
+        ? this.getHeaderFooterStory(story)
+        : this.getNoteStory(story);
     if (!source) {
       return null;
     }
+    const conversionOptions = {
+      ...(this.baseDocument.package.styles !== undefined && {
+        styles: this.baseDocument.package.styles,
+      }),
+      ...(this.baseDocument.package.theme !== undefined && {
+        theme: this.baseDocument.package.theme,
+      }),
+    };
     const state = ensureDeterministicParaIdsInState(
       EditorState.create({
         schema,
-        doc: headerFooterToProseDoc(source.content, {
-          ...(this.baseDocument.package.styles !== undefined && {
-            styles: this.baseDocument.package.styles,
-          }),
-          ...(this.baseDocument.package.theme !== undefined && {
-            theme: this.baseDocument.package.theme,
-          }),
-        }),
+        doc:
+          story.type === "header" || story.type === "footer"
+            ? headerFooterToProseDoc(source.content, conversionOptions)
+            : footnoteToProseDoc(source.content, conversionOptions),
         plugins: singletonManager.getPlugins(),
       }),
     );
-    this.headerFooterStoryStates.set(key, { handle: story, initialState: state, state });
+    this.secondaryStoryStates.set(key, { handle: story, initialState: state, state });
     return state;
   }
 
@@ -989,7 +1026,7 @@ export class FolioDocxReviewer {
       this.state = state;
       return;
     }
-    const entry = this.headerFooterStoryStates.get(headerFooterStoryKey(story));
+    const entry = this.secondaryStoryStates.get(secondaryStoryKey(story));
     if (!entry) {
       throw new FolioDocumentStoryNotFoundError({
         message: `Document story ${JSON.stringify(story)} was not found.`,
@@ -1007,39 +1044,95 @@ export class FolioDocxReviewer {
     return stories?.get(story.relationshipId);
   }
 
+  private getNoteStory(story: FolioNoteStoryHandle): Footnote | Endnote | undefined {
+    if (story.type === "footnote") {
+      return this.baseDocument.package.footnotes?.find(
+        (note) => note.id === story.noteId && !isSeparatorFootnote(note),
+      );
+    }
+    return this.baseDocument.package.endnotes?.find(
+      (note) => note.id === story.noteId && !isSeparatorEndnote(note),
+    );
+  }
+
   private getHeaderFooterStoryText(
     story: FolioHeaderFooterStoryHandle,
     source: HeaderFooter,
   ): string {
-    const state = this.headerFooterStoryStates.get(headerFooterStoryKey(story))?.state;
+    const state = this.secondaryStoryStates.get(headerFooterStoryKey(story))?.state;
     return normalizeFolioAIBlockText(state?.doc.textContent ?? getHeaderFooterText(source));
   }
 
-  private mergeEditedHeaderFooterStories(document: Document): void {
+  private getNoteStoryText(story: FolioNoteStoryHandle, source: Footnote | Endnote): string {
+    const state = this.secondaryStoryStates.get(noteStoryKey(story))?.state;
+    const sourceText =
+      source.type === "footnote" ? getFootnoteText(source) : getEndnoteText(source);
+    return normalizeFolioAIBlockText(state?.doc.textContent ?? sourceText);
+  }
+
+  private mergeEditedSecondaryStories(document: Document): void {
     let headers: Map<string, HeaderFooter> | undefined;
     let footers: Map<string, HeaderFooter> | undefined;
-    for (const entry of this.headerFooterStoryStates.values()) {
+    let footnotes: Footnote[] | undefined;
+    let endnotes: Endnote[] | undefined;
+    for (const entry of this.secondaryStoryStates.values()) {
       if (entry.state === entry.initialState) {
         continue;
       }
-      const source = this.getHeaderFooterStory(entry.handle);
+      if (entry.handle.type === "header" || entry.handle.type === "footer") {
+        const source = this.getHeaderFooterStory(entry.handle);
+        if (!source) {
+          continue;
+        }
+        const edited = { ...source, content: proseDocToBlocks(entry.state.doc) };
+        if (entry.handle.type === "header") {
+          headers ??= new Map(document.package.headers);
+          headers.set(entry.handle.relationshipId, edited);
+          continue;
+        }
+        footers ??= new Map(document.package.footers);
+        footers.set(entry.handle.relationshipId, edited);
+        continue;
+      }
+      if (entry.handle.type === "footnote") {
+        const source = this.baseDocument.package.footnotes?.find(
+          (note) => note.id === entry.handle.noteId && !isSeparatorFootnote(note),
+        );
+        if (!source) {
+          continue;
+        }
+        const edited = { ...source, content: proseDocToBlocks(entry.state.doc) };
+        footnotes ??= [...(document.package.footnotes ?? [])];
+        const index = footnotes.findIndex((note) => note.id === entry.handle.noteId);
+        if (index !== -1) {
+          footnotes[index] = edited;
+        }
+        continue;
+      }
+      const source = this.baseDocument.package.endnotes?.find(
+        (note) => note.id === entry.handle.noteId && !isSeparatorEndnote(note),
+      );
       if (!source) {
         continue;
       }
       const edited = { ...source, content: proseDocToBlocks(entry.state.doc) };
-      if (entry.handle.type === "header") {
-        headers ??= new Map(document.package.headers);
-        headers.set(entry.handle.relationshipId, edited);
-        continue;
+      endnotes ??= [...(document.package.endnotes ?? [])];
+      const index = endnotes.findIndex((note) => note.id === entry.handle.noteId);
+      if (index !== -1) {
+        endnotes[index] = edited;
       }
-      footers ??= new Map(document.package.footers);
-      footers.set(entry.handle.relationshipId, edited);
     }
     if (headers) {
       document.package.headers = headers;
     }
     if (footers) {
       document.package.footers = footers;
+    }
+    if (footnotes) {
+      document.package.footnotes = footnotes;
+    }
+    if (endnotes) {
+      document.package.endnotes = endnotes;
     }
   }
 

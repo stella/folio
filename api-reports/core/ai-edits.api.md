@@ -380,6 +380,9 @@ export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected
 export type FolioDocumentOperationStory = "main" | {
     type: "header" | "footer";
     relationshipId: string;
+} | {
+    type: "footnote" | "endnote";
+    noteId: number;
 };
 
 // @public (undocumented)
@@ -465,9 +468,7 @@ export type FolioDocumentStoryHandle = {
 export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundError_base {}
 
 // @public (undocumented)
-export type FolioEditableDocumentStoryHandle = Exclude<FolioDocumentStoryHandle, {
-    type: "footnote" | "endnote";
-}>;
+export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 
 // @public
 export type FolioReviewChange = {
