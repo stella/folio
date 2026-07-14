@@ -343,6 +343,12 @@ export type FolioAITextRangeHandle = {
 // @public
 export type FolioApplyDocumentOperationsOptions = Omit<FolioApplyOperationsOptions, "mode">;
 
+// @public (undocumented)
+export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOperationsOptions & {
+    story: FolioEditableDocumentStoryHandle;
+    batch: FolioDocumentOperationBatch;
+};
+
 // @public
 export type FolioApplyOperationsOptions = {
     mode?: FolioAIEditApplyMode;
@@ -403,16 +409,17 @@ export type FolioDocumentOperation = FolioAIEditOperation;
 // @public
 export type FolioDocumentOperationAffectedTarget = {
     type: "block";
-    story: "main";
+    story: FolioDocumentOperationStory;
     blockId: string;
     effect: "updated" | "deleted" | "commented";
 } | {
     type: "textRange";
     range: FolioAITextRangeHandle;
     effect: "formatted" | "commented";
+    story?: Exclude<FolioDocumentOperationStory, "main">;
 } | {
     type: "insertion";
-    story: "main";
+    story: FolioDocumentOperationStory;
     anchorBlockId: string;
     position: "before" | "after";
     content: "block" | "signatureTable";
@@ -481,6 +488,12 @@ export type FolioDocumentOperationResult = {
 
 // @public (undocumented)
 export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected";
+
+// @public (undocumented)
+export type FolioDocumentOperationStory = "main" | {
+    type: "header" | "footer";
+    relationshipId: string;
+};
 
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
@@ -561,11 +574,15 @@ export type FolioDocumentStoryHandle = {
     noteId: number;
 };
 
+// @public (undocumented)
+export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundError_base {}
+
 // @public
 export class FolioDocxReviewer {
     acceptAll(): number;
     acceptChange(target: FolioReviewChange | number): boolean;
     applyDocumentOperations(batch: FolioDocumentOperationBatch, options?: FolioApplyDocumentOperationsOptions): FolioDocumentOperationResult;
+    applyDocumentOperationsToStory(input: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult;
     applyOperations(operations: FolioAIEditOperation[], options?: FolioApplyOperationsOptions): FolioAIEditApplyResult;
     readonly author: string;
     static fromBuffer(buffer: ArrayBuffer, options?: FolioDocxReviewerOptions): Promise<FolioDocxReviewer>;
@@ -583,6 +600,7 @@ export class FolioDocxReviewer {
         resolved?: boolean;
     }): boolean;
     snapshot(): FolioAIEditSnapshot;
+    snapshotStory(story: FolioEditableDocumentStoryHandle): FolioAIEditSnapshot | null;
     toBuffer(): Promise<ArrayBuffer>;
     toDocument(): import__stll_docx_core_model.Document;
     undoDocumentOperations(undoHandle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult;
@@ -593,6 +611,11 @@ export type FolioDocxReviewerOptions = {
     author?: string; /** Password for Agile-encrypted .docx files (Office 2010+). */
     password?: string | undefined;
 };
+
+// @public (undocumented)
+export type FolioEditableDocumentStoryHandle = Exclude<FolioDocumentStoryHandle, {
+    type: "footnote" | "endnote";
+}>;
 
 // @public
 export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];

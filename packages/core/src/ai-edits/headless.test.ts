@@ -15,12 +15,18 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { parseDocx } from "../docx/parser";
-import { repackDocx } from "../docx/rezip";
+import { ensureParaIds } from "../docx/ensureParaIds";
+import { createEmptyDocx, repackDocx } from "../docx/rezip";
 import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { schema, singletonManager } from "../prosemirror/schema";
-import { FolioDocxReviewer, applyFolioAIEditsToBuffer } from "./headless";
+import type { HeaderFooter } from "../types/document";
+import {
+  FolioDocumentStoryNotFoundError,
+  FolioDocxReviewer,
+  applyFolioAIEditsToBuffer,
+} from "./headless";
 import type { FolioReviewChange } from "./headless";
 import type { FolioAIBlock } from "./types";
 
@@ -32,6 +38,40 @@ const FIXTURE = path.join(
 const readFixture = (): ArrayBuffer => {
   const bytes = readFileSync(FIXTURE);
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+};
+
+const HEADER_RELATIONSHIP_ID = "rId_header_story";
+const FOOTER_RELATIONSHIP_ID = "rId_footer_story";
+
+const textStory = (type: "header" | "footer", text: string, paraId: string): HeaderFooter => ({
+  type,
+  hdrFtrType: "default",
+  content: [
+    {
+      type: "paragraph",
+      paraId,
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    },
+  ],
+});
+
+const makeHeaderFooterBaseline = async (): Promise<ArrayBuffer> => {
+  const source = await createEmptyDocx();
+  const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+  document.package.headers = new Map([
+    [HEADER_RELATIONSHIP_ID, textStory("header", "Header text", "A1000001")],
+  ]);
+  document.package.footers = new Map([
+    [FOOTER_RELATIONSHIP_ID, textStory("footer", "Footer text", "A1000002")],
+  ]);
+  document.package.document.finalSectionProperties = {
+    ...document.package.document.finalSectionProperties,
+    headerReferences: [{ type: "default", rId: HEADER_RELATIONSHIP_ID }],
+    footerReferences: [{ type: "default", rId: FOOTER_RELATIONSHIP_ID }],
+  };
+  const materialized = await repackDocx(document, { updateModifiedDate: false });
+  const { docx } = await ensureParaIds(materialized);
+  return new Uint8Array(docx).buffer;
 };
 
 /**
@@ -94,6 +134,124 @@ const findBlock = (blocks: FolioAIBlock[], needle: string): FolioAIBlock => {
 };
 
 describe("headless docx review round-trip", () => {
+  test("edits a header through story-scoped document operations", async () => {
+    const baseline = await makeHeaderFooterBaseline();
+    const story = { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const;
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const snapshot = reviewer.snapshotStory(story);
+    if (!snapshot) {
+      throw new Error("expected the header story");
+    }
+    const target = findBlock(snapshot.blocks, "Header text");
+
+    const result = reviewer.applyDocumentOperationsToStory({
+      story,
+      snapshot,
+      batch: {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "header-replace",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Header text",
+            replace: "Updated header",
+          },
+        ],
+      },
+    });
+
+    expect(result.status).toBe("committed");
+    expect(result.applied.map(({ id }) => id)).toEqual(["header-replace"]);
+    expect(result.receipts.at(0)?.affected.at(0)).toEqual({
+      type: "block",
+      story,
+      blockId: target.id,
+      effect: "updated",
+    });
+    expect(reviewer.readStory(story)?.text).toBe("Updated header");
+    expect(reviewer.getNotesAsText()).toContain("[header default] Updated header");
+
+    const saved = await reviewer.toBuffer();
+    const headerXml = await partText(saved, "word/header1.xml");
+    expect(headerXml).toContain("Updated header");
+    expect(headerXml).not.toContain("Header text");
+    expect(headerXml).not.toContain("<w:ins ");
+    expect(headerXml).not.toContain("<w:del ");
+    expect(await partBytes(saved, "word/document.xml")).toEqual(
+      await partBytes(baseline, "word/document.xml"),
+    );
+    expect(await partBytes(saved, "word/footer1.xml")).toEqual(
+      await partBytes(baseline, "word/footer1.xml"),
+    );
+
+    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    expect(reopened.readStory(story)?.text).toBe("Updated header");
+  });
+
+  test("tracks and undoes a footer operation batch", async () => {
+    const baseline = await makeHeaderFooterBaseline();
+    const story = { type: "footer", relationshipId: FOOTER_RELATIONSHIP_ID } as const;
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const snapshot = reviewer.snapshotStory(story);
+    if (!snapshot) {
+      throw new Error("expected the footer story");
+    }
+    const target = findBlock(snapshot.blocks, "Footer text");
+
+    const result = reviewer.applyDocumentOperationsToStory({
+      story,
+      snapshot,
+      batch: {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "footer-replace",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Footer text",
+            replace: "Updated footer",
+          },
+        ],
+      },
+    });
+
+    expect(result.status).toBe("committed");
+    const saved = await reviewer.toBuffer();
+    const footerXml = await partText(saved, "word/footer1.xml");
+    expect(footerXml).toContain("Updated");
+    expect(footerXml).toContain("footer");
+    expect(footerXml).toContain("<w:ins ");
+    expect(footerXml).toContain("<w:del ");
+    expect(footerXml).toContain('w:author="Reviewer"');
+
+    if (!result.undoHandle) {
+      throw new Error("expected an undo handle");
+    }
+    expect(reviewer.undoDocumentOperations(result.undoHandle)).toEqual({
+      status: "undone",
+      undoHandle: result.undoHandle,
+    });
+    expect(reviewer.readStory(story)?.text).toBe("Footer text");
+    expect(await partBytes(await reviewer.toBuffer(), "word/footer1.xml")).toEqual(
+      await partBytes(baseline, "word/footer1.xml"),
+    );
+  });
+
+  test("rejects a missing editable story before applying operations", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await makeHeaderFooterBaseline());
+    const story = { type: "header", relationshipId: "missing" } as const;
+    expect(reviewer.snapshotStory(story)).toBeNull();
+    expect(() =>
+      reviewer.applyDocumentOperationsToStory({
+        story,
+        batch: { version: 1, operations: [] },
+      }),
+    ).toThrow(FolioDocumentStoryNotFoundError);
+  });
+
   test("replaceInBlock (direct) rewrites the text with no tracked marks", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI" });

@@ -120,6 +120,7 @@ export {
   type FolioDocumentOperationType,
   type FolioDocumentOperationResult,
   type FolioDocumentOperationStatus,
+  type FolioDocumentOperationStory,
   type FolioDocumentOperationUndoFailureReason,
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,

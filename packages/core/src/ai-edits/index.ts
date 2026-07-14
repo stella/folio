@@ -22,7 +22,13 @@ export {
 export { getFolioDocumentOutline, readFolioDocumentSection } from "./scoped-reading";
 export { getFolioParaIdFromBlockId } from "../types/block-id";
 export { diffWordSegments } from "./word-diff";
-export type { FolioDocumentStory, FolioDocumentStoryHandle } from "./headless";
+export {
+  FolioDocumentStoryNotFoundError,
+  type FolioApplyDocumentOperationsToStoryOptions,
+  type FolioDocumentStory,
+  type FolioDocumentStoryHandle,
+  type FolioEditableDocumentStoryHandle,
+} from "./headless";
 export type { WordDiffSegment } from "./word-diff";
 export type {
   FolioAIBlock,
@@ -81,6 +87,7 @@ export {
   type FolioDocumentOperationType,
   type FolioDocumentOperationResult,
   type FolioDocumentOperationStatus,
+  type FolioDocumentOperationStory,
   type FolioDocumentOperationUndoFailureReason,
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,

@@ -161,6 +161,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     view: FolioAIEditView;
     snapshot: FolioAIEditSnapshot;
     batch: FolioDocumentOperationBatch;
+    story?: FolioDocumentOperationStory;
     author?: string;
     createCommentId?: (text: string) => number;
     createUndoHandle?: () => FolioDocumentOperationUndoHandle;
@@ -625,16 +626,17 @@ export type FolioDocumentOperation = FolioAIEditOperation;
 // @public
 export type FolioDocumentOperationAffectedTarget = {
     type: "block";
-    story: "main";
+    story: FolioDocumentOperationStory;
     blockId: string;
     effect: "updated" | "deleted" | "commented";
 } | {
     type: "textRange";
     range: FolioAITextRangeHandle;
     effect: "formatted" | "commented";
+    story?: Exclude<FolioDocumentOperationStory, "main">;
 } | {
     type: "insertion";
-    story: "main";
+    story: FolioDocumentOperationStory;
     anchorBlockId: string;
     position: "before" | "after";
     content: "block" | "signatureTable";
@@ -703,6 +705,12 @@ export type FolioDocumentOperationResult = {
 
 // @public (undocumented)
 export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected";
+
+// @public (undocumented)
+export type FolioDocumentOperationStory = "main" | {
+    type: "header" | "footer";
+    relationshipId: string;
+};
 
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];

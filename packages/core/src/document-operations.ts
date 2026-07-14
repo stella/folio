@@ -607,11 +607,15 @@ export type FolioDocumentOperationIssue = {
   recovery: FolioDocumentOperationRecovery;
 };
 
+export type FolioDocumentOperationStory =
+  | "main"
+  | { type: "header" | "footer"; relationshipId: string };
+
 /** One typed target affected by a successfully applied document operation. */
 export type FolioDocumentOperationAffectedTarget =
   | {
       type: "block";
-      story: "main";
+      story: FolioDocumentOperationStory;
       blockId: string;
       effect: "updated" | "deleted" | "commented";
     }
@@ -619,10 +623,11 @@ export type FolioDocumentOperationAffectedTarget =
       type: "textRange";
       range: FolioAITextRangeHandle;
       effect: "formatted" | "commented";
+      story?: Exclude<FolioDocumentOperationStory, "main">;
     }
   | {
       type: "insertion";
-      story: "main";
+      story: FolioDocumentOperationStory;
       anchorBlockId: string;
       position: "before" | "after";
       content: "block" | "signatureTable";
@@ -710,32 +715,43 @@ export const getFolioDocumentOperationIssues = (
 
 const getPrimaryAffectedTarget = (
   operation: FolioDocumentOperation,
+  story: FolioDocumentOperationStory,
 ): FolioDocumentOperationAffectedTarget => {
   switch (operation.type) {
     case "replaceInBlock":
     case "replaceBlock":
       return {
         type: "block",
-        story: "main",
+        story,
         blockId: operation.blockId,
         effect: "updated",
       };
     case "replaceRange":
       return {
         type: "block",
-        story: "main",
+        story,
         blockId: operation.range.blockId,
         effect: "updated",
       };
     case "commentOnRange":
-      return { type: "textRange", range: operation.range, effect: "commented" };
+      return {
+        type: "textRange",
+        range: operation.range,
+        effect: "commented",
+        ...(story !== "main" && { story }),
+      };
     case "formatRange":
-      return { type: "textRange", range: operation.range, effect: "formatted" };
+      return {
+        type: "textRange",
+        range: operation.range,
+        effect: "formatted",
+        ...(story !== "main" && { story }),
+      };
     case "insertAfterBlock":
     case "insertBeforeBlock":
       return {
         type: "insertion",
-        story: "main",
+        story,
         anchorBlockId: operation.blockId,
         position: operation.type === "insertBeforeBlock" ? "before" : "after",
         content: "block",
@@ -743,21 +759,21 @@ const getPrimaryAffectedTarget = (
     case "deleteBlock":
       return {
         type: "block",
-        story: "main",
+        story,
         blockId: operation.blockId,
         effect: "deleted",
       };
     case "commentOnBlock":
       return {
         type: "block",
-        story: "main",
+        story,
         blockId: operation.blockId,
         effect: "commented",
       };
     case "insertSignatureTable":
       return {
         type: "insertion",
-        story: "main",
+        story,
         anchorBlockId: operation.blockId,
         position: operation.position ?? "after",
         content: "signatureTable",
@@ -769,7 +785,20 @@ const getPrimaryAffectedTarget = (
 export const getFolioDocumentOperationReceipts = (
   operations: readonly FolioDocumentOperation[],
   applied: readonly FolioAIEditAppliedOperation[],
-): FolioDocumentOperationReceipt[] => {
+): FolioDocumentOperationReceipt[] =>
+  getFolioDocumentOperationReceiptsForStory({ operations, applied, story: "main" });
+
+type GetFolioDocumentOperationReceiptsForStoryOptions = {
+  operations: readonly FolioDocumentOperation[];
+  applied: readonly FolioAIEditAppliedOperation[];
+  story: FolioDocumentOperationStory;
+};
+
+const getFolioDocumentOperationReceiptsForStory = ({
+  operations,
+  applied,
+  story,
+}: GetFolioDocumentOperationReceiptsForStoryOptions): FolioDocumentOperationReceipt[] => {
   const appliedById = new Map<string, FolioAIEditAppliedOperation>();
   applied.forEach((operation) => {
     appliedById.set(operation.id, operation);
@@ -780,7 +809,9 @@ export const getFolioDocumentOperationReceipts = (
     if (!appliedOperation) {
       return;
     }
-    const affected: FolioDocumentOperationAffectedTarget[] = [getPrimaryAffectedTarget(operation)];
+    const affected: FolioDocumentOperationAffectedTarget[] = [
+      getPrimaryAffectedTarget(operation, story),
+    ];
     if (appliedOperation.commentId !== undefined) {
       affected.push({ type: "comment", commentId: appliedOperation.commentId });
     }
@@ -793,6 +824,7 @@ export type ApplyFolioDocumentOperationsOptions = {
   view: FolioAIEditView;
   snapshot: FolioAIEditSnapshot;
   batch: FolioDocumentOperationBatch;
+  story?: FolioDocumentOperationStory;
   author?: string;
   createCommentId?: (text: string) => number;
   createUndoHandle?: () => FolioDocumentOperationUndoHandle;
@@ -808,6 +840,7 @@ export const applyFolioDocumentOperations = ({
   view,
   snapshot,
   batch,
+  story = "main",
   author,
   createCommentId,
   createUndoHandle,
@@ -864,7 +897,11 @@ export const applyFolioDocumentOperations = ({
       applied: previewResult.applied.map(({ id }) => ({ id })),
       skipped: previewResult.skipped,
       issues: getFolioDocumentOperationIssues(parsedBatch.operations, previewResult.skipped),
-      receipts: getFolioDocumentOperationReceipts(parsedBatch.operations, previewResult.applied),
+      receipts: getFolioDocumentOperationReceiptsForStory({
+        operations: parsedBatch.operations,
+        applied: previewResult.applied,
+        story,
+      }),
       undoHandle: null,
     };
   }
@@ -882,7 +919,11 @@ export const applyFolioDocumentOperations = ({
     status: "committed",
     ...result,
     issues: getFolioDocumentOperationIssues(parsedBatch.operations, result.skipped),
-    receipts: getFolioDocumentOperationReceipts(parsedBatch.operations, result.applied),
+    receipts: getFolioDocumentOperationReceiptsForStory({
+      operations: parsedBatch.operations,
+      applied: result.applied,
+      story,
+    }),
     undoHandle:
       result.applied.length > 0 && createUndoHandle !== undefined ? createUndoHandle() : null,
   };

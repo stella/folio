@@ -20,6 +20,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     view: FolioAIEditView;
     snapshot: FolioAIEditSnapshot;
     batch: FolioDocumentOperationBatch;
+    story?: FolioDocumentOperationStory;
     author?: string;
     createCommentId?: (text: string) => number;
     createUndoHandle?: () => FolioDocumentOperationUndoHandle;
@@ -269,6 +270,12 @@ export type FolioAITextRangeHandle = {
     selectedTextHash: string;
 };
 
+// @public (undocumented)
+export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOperationsOptions & {
+    story: FolioEditableDocumentStoryHandle;
+    batch: FolioDocumentOperationBatch;
+};
+
 // @public
 export type FolioCommentAnchor = {
     commentId: number; /** Stable id of the anchored body block, or `null` when the anchor is absent. */
@@ -289,16 +296,17 @@ export type FolioDocumentOperation = FolioAIEditOperation;
 // @public
 export type FolioDocumentOperationAffectedTarget = {
     type: "block";
-    story: "main";
+    story: FolioDocumentOperationStory;
     blockId: string;
     effect: "updated" | "deleted" | "commented";
 } | {
     type: "textRange";
     range: FolioAITextRangeHandle;
     effect: "formatted" | "commented";
+    story?: Exclude<FolioDocumentOperationStory, "main">;
 } | {
     type: "insertion";
-    story: "main";
+    story: FolioDocumentOperationStory;
     anchorBlockId: string;
     position: "before" | "after";
     content: "block" | "signatureTable";
@@ -367,6 +375,12 @@ export type FolioDocumentOperationResult = {
 
 // @public (undocumented)
 export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected";
+
+// @public (undocumented)
+export type FolioDocumentOperationStory = "main" | {
+    type: "header" | "footer";
+    relationshipId: string;
+};
 
 // @public (undocumented)
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
@@ -446,6 +460,14 @@ export type FolioDocumentStoryHandle = {
     type: "footnote" | "endnote";
     noteId: number;
 };
+
+// @public (undocumented)
+export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundError_base {}
+
+// @public (undocumented)
+export type FolioEditableDocumentStoryHandle = Exclude<FolioDocumentStoryHandle, {
+    type: "footnote" | "endnote";
+}>;
 
 // @public
 export type FolioReviewChange = {
