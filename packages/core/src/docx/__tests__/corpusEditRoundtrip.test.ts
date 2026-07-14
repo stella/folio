@@ -25,7 +25,7 @@ const FIXTURE_FILES = readdirSync(FIXTURES_DIR)
 
 const readFixture = (filename: string): ArrayBuffer => {
   const bytes = readFileSync(path.join(FIXTURES_DIR, filename));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return new Uint8Array(bytes).buffer;
 };
 
 const packageFileNames = (zip: JSZip): string[] =>
@@ -34,10 +34,15 @@ const packageFileNames = (zip: JSZip): string[] =>
     .map((file) => file.name)
     .sort();
 
-const expectUnrelatedPartsPreserved = async (
-  originalBytes: ArrayBuffer,
-  savedBytes: ArrayBuffer,
-): Promise<void> => {
+type ExpectUnrelatedPartsPreservedOptions = {
+  originalBytes: ArrayBuffer;
+  savedBytes: ArrayBuffer;
+};
+
+const expectUnrelatedPartsPreserved = async ({
+  originalBytes,
+  savedBytes,
+}: ExpectUnrelatedPartsPreservedOptions): Promise<void> => {
   const [originalZip, savedZip] = await Promise.all([
     JSZip.loadAsync(originalBytes),
     JSZip.loadAsync(savedBytes),
@@ -87,6 +92,6 @@ describe("corpus edit/save/reopen", () => {
 
     expect(reopenedPm.textContent).toBe(`${originalPm.textContent}${marker}`);
     expect(reopenedPm.childCount).toBe(originalPm.childCount + 1);
-    await expectUnrelatedPartsPreserved(originalBytes, savedBytes);
+    await expectUnrelatedPartsPreserved({ originalBytes, savedBytes });
   });
 });
