@@ -634,14 +634,14 @@ export type FolioDocxReviewerOptions = {
 // @public (undocumented)
 export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 
+// @public
+export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];
+
 // @public (undocumented)
 export type FolioReadReviewedStoryOptions = {
     story?: FolioEditableDocumentStoryHandle;
     view?: FolioReviewedView;
 };
-
-// @public
-export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];
 
 // @public
 export type FolioReviewChange = {
@@ -661,18 +661,6 @@ export type FolioReviewChangeFilter = {
 
 // @public (undocumented)
 export type FolioReviewChangeKind = "insertion" | "deletion";
-
-// @public (undocumented)
-export type FolioReviewedStory = {
-    story: FolioEditableDocumentStoryHandle;
-    view: FolioReviewedView;
-    snapshot: FolioAIEditSnapshot;
-    text: string;
-    changes: FolioReviewChange[];
-};
-
-// @public (undocumented)
-export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
 
 // @public
 export type FolioReviewComment = {
@@ -699,6 +687,18 @@ export type FolioReviewCommentReply = {
     date: string | null;
     text: string;
 };
+
+// @public (undocumented)
+export type FolioReviewedStory = {
+    story: FolioEditableDocumentStoryHandle;
+    view: FolioReviewedView;
+    snapshot: FolioAIEditSnapshot;
+    text: string;
+    changes: FolioReviewChange[];
+};
+
+// @public (undocumented)
+export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
 
 // @public
 export type FolioReviewReplyInput = {
