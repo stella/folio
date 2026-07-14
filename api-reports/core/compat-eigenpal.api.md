@@ -319,11 +319,6 @@ export type DocxCompatibilityContext = {
 // @public (undocumented)
 export type DocxCompatibilityIssue = {
     code: DocxCompatibilityReason;
-    capability: FolioDocxFeatureCapability;
-    coverage: {
-        host: "covered" | "unknown" | "unverified";
-        profile: "covered" | "unknown" | "unverified";
-    };
     location: DocxCompatibilityLocation;
 };
 
@@ -401,33 +396,6 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main"];
 
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
-
-// @public (undocumented)
-export const FOLIO_DOCX_CAPABILITY_HOSTS: readonly ["browser", "server"];
-
-// @public (undocumented)
-export const FOLIO_DOCX_CAPABILITY_IDS: readonly ["comments", "contentControls", "fields", "headersFooters", "hyperlinks", "images", "math", "notes", "numbering", "opaqueDrawing", "paragraphs", "sections", "styles", "tables", "trackedChanges"];
-
-// @public (undocumented)
-export const FOLIO_DOCX_CAPABILITY_MANIFEST: FolioDocxCapabilityManifest;
-
-// @public (undocumented)
-export const FOLIO_DOCX_CAPABILITY_MANIFEST_VERSION: 1;
-
-// @public (undocumented)
-export const FOLIO_DOCX_CAPABILITY_OPERATIONS: readonly ["create", "edit", "preserve", "read", "render"];
-
-// @public (undocumented)
-export const FOLIO_DOCX_COMPATIBILITY_HOSTS: readonly ["browser", "server", "unknown"];
-
-// @public (undocumented)
-export const FOLIO_DOCX_COMPATIBILITY_PROFILES: readonly ["strict", "transitional", "unknown"];
-
-// @public (undocumented)
-export const FOLIO_DOCX_PROFILES: readonly ["strict", "transitional"];
-
-// @public (undocumented)
-export const FOLIO_DOCX_SUPPORT_STATES: readonly ["supported", "partial", "unsupported"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -707,44 +675,10 @@ export type FolioDocumentOperationUndoResult = {
 };
 
 // @public (undocumented)
-export type FolioDocxCapabilityHost = (typeof FOLIO_DOCX_CAPABILITY_HOSTS)[number];
+export type FolioDocxCompatibilityHost = "browser" | "server" | "unknown";
 
 // @public (undocumented)
-export type FolioDocxCapabilityId = (typeof FOLIO_DOCX_CAPABILITY_IDS)[number];
-
-// @public (undocumented)
-export type FolioDocxCapabilityManifest = {
-    readonly version: typeof FOLIO_DOCX_CAPABILITY_MANIFEST_VERSION;
-    readonly capabilities: Readonly<Record<FolioDocxCapabilityId, FolioDocxFeatureCapability>>;
-};
-
-// @public (undocumented)
-export type FolioDocxCapabilityOperation = (typeof FOLIO_DOCX_CAPABILITY_OPERATIONS)[number];
-
-// @public (undocumented)
-export type FolioDocxCompatibilityHost = (typeof FOLIO_DOCX_COMPATIBILITY_HOSTS)[number];
-
-// @public (undocumented)
-export type FolioDocxCompatibilityProfile = (typeof FOLIO_DOCX_COMPATIBILITY_PROFILES)[number];
-
-// @public (undocumented)
-export type FolioDocxFeatureCapability = {
-    readonly id: FolioDocxCapabilityId;
-    readonly feature: "comments" | "contentControls" | "drawings" | "fields" | "headersFooters" | "hyperlinks" | "images" | "math" | "notes" | "numbering" | "paragraphs" | "revisions" | "sections" | "styles" | "tables";
-    readonly hosts: readonly FolioDocxCapabilityHost[];
-    readonly profiles: readonly FolioDocxProfile[];
-    readonly support: Readonly<Record<FolioDocxCapabilityOperation, FolioDocxSupportState>>;
-    readonly evidence: readonly {
-        readonly type: "test";
-        readonly path: string;
-    }[];
-};
-
-// @public (undocumented)
-export type FolioDocxProfile = (typeof FOLIO_DOCX_PROFILES)[number];
-
-// @public (undocumented)
-export type FolioDocxSupportState = (typeof FOLIO_DOCX_SUPPORT_STATES)[number];
+export type FolioDocxCompatibilityProfile = import__stll_docx_core_model.DocxConformanceClass;
 
 // @public
 export function fromMarkdown(markdown: string): import__stll_docx_core_model.Document;
@@ -769,9 +703,6 @@ export const getFolioDocumentOperationIssues: (operations: readonly FolioDocumen
 
 // @public
 export const getFolioDocumentOperationReceipts: (operations: readonly FolioDocumentOperation[], applied: readonly FolioAIEditAppliedOperation[]) => FolioDocumentOperationReceipt[];
-
-// @public (undocumented)
-export const getFolioDocxCapability: (id: unknown) => FolioDocxFeatureCapability;
 
 // @public
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
@@ -817,17 +748,11 @@ export type InspectDocxCompatibilityOptions = Partial<DocxCompatibilityContext>;
 // @public (undocumented)
 export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
 
-// @public (undocumented)
-export class InvalidFolioDocxCapabilityIdError extends InvalidFolioDocxCapabilityIdError_base {}
-
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
 
 // @public (undocumented)
 export const isFolioDocumentOperationModeSupported: (operationType: FolioDocumentOperationType, mode: FolioDocumentOperationMode) => boolean;
-
-// @public (undocumented)
-export const isFolioDocxCapabilityId: (value: unknown) => value is FolioDocxCapabilityId;
 
 // @public (undocumented)
 export const isSequentialFolioBlockId: (id: string) => boolean;

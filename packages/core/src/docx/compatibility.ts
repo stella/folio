@@ -3,19 +3,17 @@ import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import {
   type BlockContent,
   type Document,
+  type DocxConformanceClass,
   type Hyperlink,
   type HeaderFooter,
   type ParagraphContent,
   type Run,
 } from "../types/document";
-import {
-  getFolioDocxCapability,
-  type FolioDocxCompatibilityHost,
-  type FolioDocxCompatibilityProfile,
-  type FolioDocxFeatureCapability,
-} from "./capabilities";
 
 export type DocxCompatibilityReason = "opaqueDrawing";
+
+export type FolioDocxCompatibilityHost = "browser" | "server" | "unknown";
+export type FolioDocxCompatibilityProfile = DocxConformanceClass;
 
 export type DocxCompatibilityContext = {
   host: FolioDocxCompatibilityHost;
@@ -37,11 +35,6 @@ export type DocxCompatibilityLocation = {
 
 export type DocxCompatibilityIssue = {
   code: DocxCompatibilityReason;
-  capability: FolioDocxFeatureCapability;
-  coverage: {
-    host: "covered" | "unknown" | "unverified";
-    profile: "covered" | "unknown" | "unverified";
-  };
   location: DocxCompatibilityLocation;
 };
 
@@ -70,16 +63,6 @@ const resolveCompatibilityContext = (
   profile: options.profile ?? doc.package.conformanceClass ?? DOCX_CONFORMANCE_CLASSES.UNKNOWN,
 });
 
-const getCoverageState = (
-  value: string,
-  coveredValues: readonly string[],
-): "covered" | "unknown" | "unverified" => {
-  if (value === "unknown") {
-    return "unknown";
-  }
-  return coveredValues.includes(value) ? "covered" : "unverified";
-};
-
 export const inspectDocxCompatibility = (
   doc: Document,
   options: InspectDocxCompatibilityOptions = {},
@@ -90,15 +73,9 @@ export const inspectDocxCompatibility = (
 
   const record: RecordIssue = (location) => {
     const code = "opaqueDrawing";
-    const capability = getFolioDocxCapability(code);
     reasons.add(code);
     issues.push({
       code,
-      capability,
-      coverage: {
-        host: getCoverageState(context.host, capability.hosts),
-        profile: getCoverageState(context.profile, capability.profiles),
-      },
       location,
     });
   };
