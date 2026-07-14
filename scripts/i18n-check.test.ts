@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
-import { emptyBaseline, findUntranslated, isSorted, sortKeys, syncMessages } from "./i18n-check";
+import {
+  emptyBaseline,
+  findStaleIdenticalApprovals,
+  findUntranslated,
+  getTranslationCoverage,
+  isSorted,
+  sortKeys,
+  syncMessages,
+} from "./i18n-check";
 import type { CheckBaseline, NestedMessages } from "./i18n-check";
 
 describe("sortKeys", () => {
@@ -135,6 +143,55 @@ describe("findUntranslated", () => {
     expect(findUntranslated(en, target, "de", baseline)).toEqual([
       "folio.insertTable",
       "folio.zoomGroup",
+    ]);
+  });
+});
+
+describe("getTranslationCoverage", () => {
+  test("separates translations, approved identical values, neutral tokens, and missing keys", () => {
+    const source: NestedMessages = {
+      translated: "Save",
+      approved: "Insert table",
+      missing: "Delete",
+      neutral: "DOCX",
+    };
+    const target: NestedMessages = {
+      translated: "Uložiť",
+      approved: "Insert table",
+      neutral: "DOCX",
+    };
+    const baseline: CheckBaseline = {
+      ...emptyBaseline(),
+      identicalToSource: { approved: ["sk"] },
+    };
+
+    expect(getTranslationCoverage({ source, target, locale: "sk", baseline })).toEqual({
+      locale: "sk",
+      total: 3,
+      translated: 1,
+      identical: 1,
+      approvedIdentical: 1,
+      missing: 1,
+    });
+  });
+});
+
+describe("findStaleIdenticalApprovals", () => {
+  test("requires approvals to be removed after a value is translated", () => {
+    const baseline: CheckBaseline = {
+      ...emptyBaseline(),
+      identicalToSource: {
+        "folio.insertTable": ["de", "sk"],
+        "folio.zoomGroup": ["sk"],
+      },
+    };
+    const actualByLocale = new Map<string, ReadonlySet<string>>([
+      ["de", new Set(["folio.insertTable"])],
+      ["sk", new Set(["folio.zoomGroup"])],
+    ]);
+
+    expect(findStaleIdenticalApprovals(baseline, actualByLocale)).toEqual([
+      { key: "folio.insertTable", locale: "sk" },
     ]);
   });
 });

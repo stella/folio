@@ -366,6 +366,65 @@ export const findUntranslated = (
   return offenders;
 };
 
+export type TranslationCoverage = {
+  locale: string;
+  total: number;
+  translated: number;
+  identical: number;
+  approvedIdentical: number;
+  missing: number;
+};
+
+type TranslationCoverageOptions = {
+  source: NestedMessages;
+  target: NestedMessages;
+  locale: string;
+  baseline: CheckBaseline;
+};
+
+/** Translation progress after excluding language-neutral and locale-identical values. */
+export const getTranslationCoverage = ({
+  source,
+  target,
+  locale,
+  baseline,
+}: TranslationCoverageOptions): TranslationCoverage => {
+  let total = 0;
+  let translated = 0;
+  let identical = 0;
+  let approvedIdentical = 0;
+  let missing = 0;
+
+  for (const key of flattenKeys(source)) {
+    const sourceValue = getNestedValue(source, key);
+    if (
+      typeof sourceValue !== "string" ||
+      isTriviallyIdentical(sourceValue) ||
+      isIdenticalInLocale(sourceValue, locale)
+    ) {
+      continue;
+    }
+
+    total += 1;
+    const targetValue = getNestedValue(target, key);
+    if (typeof targetValue !== "string") {
+      missing += 1;
+      continue;
+    }
+    if (targetValue !== sourceValue) {
+      translated += 1;
+      continue;
+    }
+
+    identical += 1;
+    if (baseline.identicalToSource[key]?.includes(locale)) {
+      approvedIdentical += 1;
+    }
+  }
+
+  return { locale, total, translated, identical, approvedIdentical, missing };
+};
+
 /** Map of each `common.*` value to the first `common.*` key that holds it. */
 export const buildCommonValueMap = (source: NestedMessages): Map<string, string> => {
   const map = new Map<string, string>();
@@ -472,6 +531,28 @@ export const findSharedValueDuplicates = (
   return offenders.toSorted((a, b) => a.key.localeCompare(b.key));
 };
 
+type StaleIdenticalApproval = { key: string; locale: string };
+
+/** Baseline approvals that no longer describe an identical target value. */
+export const findStaleIdenticalApprovals = (
+  baseline: CheckBaseline,
+  actualByLocale: ReadonlyMap<string, ReadonlySet<string>>,
+): StaleIdenticalApproval[] => {
+  const stale: StaleIdenticalApproval[] = [];
+
+  for (const [key, locales] of Object.entries(baseline.identicalToSource)) {
+    for (const locale of locales) {
+      if (!actualByLocale.get(locale)?.has(key)) {
+        stale.push({ key, locale });
+      }
+    }
+  }
+
+  return stale.toSorted(
+    (left, right) => left.locale.localeCompare(right.locale) || left.key.localeCompare(right.key),
+  );
+};
+
 // --- CLI ---
 
 if (import.meta.main) {
@@ -541,6 +622,8 @@ if (import.meta.main) {
   }
 
   let hasIssues = false;
+  const actualUntranslatedByLocale = new Map<string, ReadonlySet<string>>();
+  const coverage: TranslationCoverage[] = [];
 
   // Check and sort en.json
   if (!isSorted(enRaw)) {
@@ -593,7 +676,12 @@ if (import.meta.main) {
     const missing = [...enKeys].filter((k) => !langKeys.has(k));
     const extra = [...langKeys].filter((k) => !enKeys.has(k));
     const unsorted = !isSorted(messages);
+    const actualUntranslated = findUntranslated(enMessages, messages, locale, emptyBaseline());
     const untranslated = shouldSync ? [] : findUntranslated(enMessages, messages, locale, baseline);
+    actualUntranslatedByLocale.set(locale, new Set(actualUntranslated));
+    coverage.push(
+      getTranslationCoverage({ source: enMessages, target: messages, locale, baseline }),
+    );
 
     if (missing.length === 0 && extra.length === 0 && !unsorted && untranslated.length === 0) {
       continue;
@@ -627,12 +715,52 @@ if (import.meta.main) {
     }
   }
 
+  if (!shouldSync) {
+    const staleIdentical = findStaleIdenticalApprovals(baseline, actualUntranslatedByLocale);
+    const actualCommonDuplicates = new Set(
+      findCommonDuplicates(enMessages, emptyBaseline()).map(({ key }) => key),
+    );
+    const staleCommon = baseline.duplicatesCommon.filter((key) => !actualCommonDuplicates.has(key));
+    const actualSharedDuplicates = new Set(
+      findSharedValueDuplicates(enMessages, emptyBaseline()).map(({ key }) => key),
+    );
+    const staleShared = baseline.duplicateValues.filter((key) => !actualSharedDuplicates.has(key));
+
+    if (staleIdentical.length > 0 || staleCommon.length > 0 || staleShared.length > 0) {
+      hasIssues = true;
+      console.log(`\n${baselinePath}:`);
+      for (const { key, locale } of staleIdentical) {
+        console.log(`  - stale identical approval: ${locale}: ${key}`);
+      }
+      for (const key of staleCommon) {
+        console.log(`  - stale common-duplicate approval: ${key}`);
+      }
+      for (const key of staleShared) {
+        console.log(`  - stale shared-value approval: ${key}`);
+      }
+    }
+
+    console.log("\nTranslation coverage:");
+    for (const row of coverage) {
+      const percentage =
+        row.total === 0 ? 100 : Math.round((row.translated / row.total) * 1000) / 10;
+      const details = [
+        row.identical > 0 ? `${row.identical} identical (${row.approvedIdentical} approved)` : null,
+        row.missing > 0 ? `${row.missing} missing` : null,
+      ].filter((detail) => detail !== null);
+      const suffix = details.length > 0 ? `; ${details.join(", ")}` : "";
+      console.log(
+        `  ${row.locale}: ${row.translated}/${row.total} translated (${percentage}%)${suffix}`,
+      );
+    }
+  }
+
   if (!hasIssues) {
     console.log("All locale files are in sync with en.json");
   } else if (!shouldSync) {
     console.log(
-      "\nError: locale files are out of sync with en.json.\n" +
-        "Untranslated/duplicate findings can be fixed, or grandfathered with `i18n-check <dir> --write-baseline`.",
+      "\nError: locale files or their approval baseline are out of sync with en.json.\n" +
+        "Fix untranslated/duplicate findings, remove stale approvals, or explicitly approve current debt with `i18n-check <dir> --write-baseline`.",
     );
     process.exit(1);
   }
