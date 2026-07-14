@@ -2101,7 +2101,12 @@ function extractCellBorders(
   for (const side of sides) {
     const border = borders[side];
     const converted = border ? convertBorderSpecToLayout(border, theme) : undefined;
-    result[side] = converted ?? { width: 0, style: "none" };
+    if (!converted) {
+      result[side] = { width: 0, style: "none" };
+      continue;
+    }
+
+    result[side] = border?.size === 0 ? { ...converted, width: 0 } : converted;
   }
 
   return Object.keys(result).length > 0 ? result : undefined;

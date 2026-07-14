@@ -409,10 +409,10 @@ function applyBorder(
     | "borderBottom"
     | "borderLeft";
 
-  if (!border || border.style === "none" || border.style === "nil" || border.width === 0) {
+  if (!border || border.style === "none" || border.style === "nil") {
     el.style[styleProp] = "none";
   } else {
-    const width = border.width ?? 1;
+    const width = Math.max(1, border.width ?? 1);
     const color = border.color ?? "#000000";
     const style = border.style ?? "solid";
     el.style[styleProp] = `${width}px ${style} ${color}`;
@@ -595,7 +595,7 @@ function buildTableCellGrid(block: TableBlock, columnCount: number): TableCellGr
 }
 
 const hasVisibleBorder = (border: { width?: number; style?: string } | undefined): boolean =>
-  border !== undefined && border.width !== 0 && border.style !== "none" && border.style !== "nil";
+  border !== undefined && border.style !== "none" && border.style !== "nil";
 
 /**
  * Render a table row with rowSpan support

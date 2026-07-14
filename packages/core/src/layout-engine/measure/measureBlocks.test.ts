@@ -489,6 +489,35 @@ describe("measureTableBlock row height", () => {
     }, fakeMeasure);
   });
 
+  test("does not add styled zero-width hairlines to row height", () => {
+    withFakeTextMeasure(() => {
+      const hairline = { width: 0, style: "solid" };
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [120],
+        rows: [
+          {
+            id: "r0",
+            cells: [
+              {
+                id: "cell",
+                blocks: [para("p", "One line")],
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                borders: { top: hairline, bottom: hairline },
+              },
+            ],
+          },
+        ],
+      };
+
+      const measure = measureTableBlock(table, 120);
+      const cellHeight = measure.rows.at(0)?.cells.at(0)?.height;
+
+      expect(measure.rows.at(0)?.height).toBe(cellHeight);
+    }, fakeMeasure);
+  });
+
   test("counts an interior top border when the cell above leaves the edge open", () => {
     withFakeTextMeasure(() => {
       const table: TableBlock = {
