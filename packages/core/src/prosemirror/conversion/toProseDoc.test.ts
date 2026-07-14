@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document, TableCell, Theme } from "../../types/document";
+import type { Document, ShadingProperties, TableCell, Theme } from "../../types/document";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -921,6 +921,211 @@ describe("toProseDoc", () => {
     expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe(
       "Open Sans Light",
     );
+  });
+
+  test("resolves themed table-cell fills while preserving their OOXML metadata", () => {
+    const shading = {
+      pattern: "clear",
+      fill: { themeColor: "accent1", themeTint: "33" },
+    } as const satisfies ShadingProperties;
+    const document: Document = {
+      package: {
+        theme: officeTheme,
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  cells: [
+                    {
+                      formatting: { shading },
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const attrs = firstTableCellAttrs(document);
+    const rebuilt = fromProseDoc(pmDoc, document);
+    const rebuiltTable = rebuilt.package.document.content.at(0);
+    const rebuiltCell =
+      rebuiltTable?.type === "table" ? rebuiltTable.rows.at(0)?.cells.at(0) : null;
+
+    expect(attrs["backgroundColor"]).toBe("DAE3F3");
+    expect(attrs["_resolvedBackgroundColor"]).toBe("DAE3F3");
+    expect(rebuiltCell?.formatting?.shading).toEqual(shading);
+  });
+
+  test("serializes an edited themed table-cell fill as direct RGB shading", () => {
+    const document: Document = {
+      package: {
+        theme: officeTheme,
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  cells: [
+                    {
+                      formatting: {
+                        shading: {
+                          pattern: "clear",
+                          fill: { themeColor: "accent1", themeTint: "33" },
+                        },
+                      },
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const pmDoc = toProseDoc(document);
+    const table = pmDoc.firstChild;
+    const row = table?.firstChild;
+    const cell = row?.firstChild;
+    if (!table || !row || !cell) {
+      throw new Error("Expected themed table cell");
+    }
+    const editedPmDoc = pmDoc.type.create(pmDoc.attrs, [
+      table.type.create(table.attrs, [
+        row.type.create(row.attrs, [
+          cell.type.create({ ...cell.attrs, backgroundColor: "123456" }, cell.content),
+        ]),
+      ]),
+    ]);
+
+    const rebuilt = fromProseDoc(editedPmDoc, document);
+    const rebuiltTable = rebuilt.package.document.content.at(0);
+    const rebuiltCell =
+      rebuiltTable?.type === "table" ? rebuiltTable.rows.at(0)?.cells.at(0) : null;
+
+    expect(rebuiltCell?.formatting?.shading).toEqual({ fill: { rgb: "123456" } });
+  });
+
+  test("resolves themed table-style fills without materializing direct cell shading", () => {
+    const document: Document = {
+      package: {
+        theme: officeTheme,
+        styles: {
+          styles: [
+            {
+              styleId: "ThemedTable",
+              type: "table",
+              tblStylePr: [
+                {
+                  type: "wholeTable",
+                  tcPr: {
+                    shading: {
+                      pattern: "clear",
+                      fill: { themeColor: "accent6" },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "table",
+              formatting: { styleId: "ThemedTable" },
+              rows: [
+                {
+                  cells: [{ content: [{ type: "paragraph", content: [] }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const attrs = firstTableCellAttrs(document);
+    const rebuilt = fromProseDoc(pmDoc, document);
+    const rebuiltTable = rebuilt.package.document.content.at(0);
+    const rebuiltCell =
+      rebuiltTable?.type === "table" ? rebuiltTable.rows.at(0)?.cells.at(0) : null;
+
+    expect(attrs["backgroundColor"]).toBe("70AD47");
+    expect(rebuiltCell?.formatting?.shading).toBeUndefined();
+
+    const table = pmDoc.firstChild;
+    const row = table?.firstChild;
+    const cell = row?.firstChild;
+    if (!table || !row || !cell) {
+      throw new Error("Expected themed table cell");
+    }
+    const clearedPmDoc = pmDoc.type.create(pmDoc.attrs, [
+      table.type.create(table.attrs, [
+        row.type.create(row.attrs, [
+          cell.type.create({ ...cell.attrs, backgroundColor: null }, cell.content),
+        ]),
+      ]),
+    ]);
+    const cleared = fromProseDoc(clearedPmDoc, document);
+    const clearedTable = cleared.package.document.content.at(0);
+    const clearedCell =
+      clearedTable?.type === "table" ? clearedTable.rows.at(0)?.cells.at(0) : null;
+
+    expect(clearedCell?.formatting?.shading).toEqual({ pattern: "nil" });
+  });
+
+  test("lets explicit nil cell shading suppress a themed table-style fill", () => {
+    const document: Document = {
+      package: {
+        theme: officeTheme,
+        styles: {
+          styles: [
+            {
+              styleId: "ThemedTable",
+              type: "table",
+              tcPr: {
+                shading: {
+                  pattern: "clear",
+                  fill: { themeColor: "accent2" },
+                },
+              },
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "table",
+              formatting: { styleId: "ThemedTable" },
+              rows: [
+                {
+                  cells: [
+                    {
+                      formatting: { shading: { pattern: "nil" } },
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const attrs = firstTableCellAttrs(document);
+
+    expect(attrs["backgroundColor"]).toBeNull();
   });
 
   test("resolves themed table-cell border colors against the document theme", () => {

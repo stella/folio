@@ -369,7 +369,8 @@ export type TableCellAttrs = {
     width?: number; /** Cell width type */
     widthType?: import__stll_docx_core_model.TableWidthType; /** Vertical alignment */
     verticalAlign?: "top" | "center" | "bottom"; /** Background color (RGB hex) */
-    backgroundColor?: string; /** OOXML text direction (e.g. 'tbRl', 'btLr') */
+    backgroundColor?: string; /** Resolved source color. PM-only; distinguishes theme rendering from a user override. */
+    _resolvedBackgroundColor?: string; /** OOXML text direction (e.g. 'tbRl', 'btLr') */
     textDirection?: NonNullable<import__stll_docx_core_model.TableCellFormatting["textDirection"]>; /** No text wrapping in cell */
     noWrap?: boolean; /** Cell borders — full BorderSpec per side (style, color, size) */
     borders?: import__stll_docx_core_model.TableCellBorders; /** Cell margins/padding in twips per side */

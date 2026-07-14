@@ -48,6 +48,7 @@ import type {
   Theme,
 } from "../../types/document";
 import { resolveColor } from "../../utils/colorResolver";
+import { resolveShadingFill } from "../../utils/formatToStyle";
 import {
   mergeParagraphFormatting,
   mergeParagraphTabStops,
@@ -1786,9 +1787,10 @@ function convertTableCell(
     widthType = "pct";
   }
 
-  // Determine background color: prefer cell's own shading, fall back to conditional style
-  const backgroundColor =
-    formatting?.shading?.fill?.rgb ?? conditionalStyle?.tcPr?.shading?.fill?.rgb;
+  // Direct cell shading overrides the table-style cascade even when it
+  // explicitly disables the inherited fill with `w:val="nil"`.
+  const effectiveShading = formatting?.shading ?? conditionalStyle?.tcPr?.shading;
+  const backgroundColor = resolveShadingFill(effectiveShading, theme).replace(/^#/u, "");
 
   // Convert borders — preserve full BorderSpec per side
   // Priority: cell borders > conditional style borders > table borders
@@ -1856,6 +1858,7 @@ function convertTableCell(
   }
   if (backgroundColor) {
     attrs.backgroundColor = backgroundColor;
+    attrs._resolvedBackgroundColor = backgroundColor;
   }
   if (formatting?.textDirection) {
     attrs.textDirection = formatting.textDirection;
