@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import type { FolioAgentVersionDiff } from "./compare";
 import { formatVersionDiffForLLM } from "./compare";
 
+const mainHandle = (blockId: string) => ({ story: { type: "main" } as const, blockId });
+
 describe("formatVersionDiffForLLM", () => {
   test("renders summary counts and word-diff markers", () => {
     const diff: FolioAgentVersionDiff = {
@@ -14,6 +16,7 @@ describe("formatVersionDiffForLLM", () => {
         moved: 1,
         unchanged: 2,
       },
+      stories: [],
       changes: [
         {
           type: "modified",
@@ -24,18 +27,22 @@ describe("formatVersionDiffForLLM", () => {
             { type: "del", text: "paragraph." },
             { type: "ins", text: "clause." },
           ],
+          baseHandle: mainHandle("00000002"),
+          revisedHandle: mainHandle("00000002"),
         },
         {
           type: "deleted",
           blockId: "00000003",
           kind: "paragraph",
           text: "Gamma paragraph.",
+          baseHandle: mainHandle("00000003"),
         },
         {
           type: "added",
           blockId: "00000006",
           kind: "paragraph",
           text: "Epsilon paragraph.",
+          revisedHandle: mainHandle("00000006"),
         },
         {
           type: "formatChanged",
@@ -43,6 +50,8 @@ describe("formatVersionDiffForLLM", () => {
           kind: "paragraph",
           text: "Delta paragraph.",
           changedProperties: ["bold", "color"],
+          baseHandle: mainHandle("00000007"),
+          revisedHandle: mainHandle("00000007"),
         },
         {
           type: "movedFrom",
@@ -50,6 +59,7 @@ describe("formatVersionDiffForLLM", () => {
           kind: "paragraph",
           text: "Zeta paragraph moved somewhere else.",
           moveGroupId: 1,
+          baseHandle: mainHandle("00000008"),
         },
         {
           type: "movedTo",
@@ -57,6 +67,7 @@ describe("formatVersionDiffForLLM", () => {
           kind: "paragraph",
           text: "Zeta paragraph moved somewhere else.",
           moveGroupId: 1,
+          revisedHandle: mainHandle("00000008"),
         },
       ],
     };

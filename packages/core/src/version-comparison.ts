@@ -73,7 +73,9 @@
  * `unchanged` rather than misattribute properties.
  */
 
-import { FolioDocxReviewer } from "./ai-edits/headless";
+import { panic } from "better-result";
+
+import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./ai-edits/headless";
 import type { FolioAIBlock, FolioAIBlockPreviewRun } from "./ai-edits/types";
 import { diffWordSegments, type WordDiffSegment } from "./ai-edits/word-diff";
 import { getFolioParaIdFromBlockId } from "./types/block-id";
@@ -95,34 +97,87 @@ const FORMAT_PROPERTIES = [
 /** A run-level formatting property that can differ in a `formatChanged` block. */
 export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];
 
+/** Stable location of one compared block within its source document. */
+export type FolioVersionBlockHandle = {
+  story: FolioDocumentStoryHandle;
+  blockId: string;
+};
+
 /** One block-level change between two document versions, in revised-side document order. */
 export type FolioBlockDiff =
-  | { type: "added"; blockId: string; kind: string; text: string }
-  | { type: "deleted"; blockId: string; kind: string; text: string }
-  | { type: "modified"; blockId: string; kind: string; segments: FolioVersionDiffSegment[] }
+  | {
+      type: "added";
+      blockId: string;
+      kind: string;
+      text: string;
+      revisedHandle: FolioVersionBlockHandle;
+    }
+  | {
+      type: "deleted";
+      blockId: string;
+      kind: string;
+      text: string;
+      baseHandle: FolioVersionBlockHandle;
+    }
+  | {
+      type: "modified";
+      blockId: string;
+      kind: string;
+      segments: FolioVersionDiffSegment[];
+      baseHandle: FolioVersionBlockHandle;
+      revisedHandle: FolioVersionBlockHandle;
+    }
   | {
       type: "formatChanged";
       blockId: string;
       kind: string;
       text: string;
       changedProperties: FolioFormatProperty[];
+      baseHandle: FolioVersionBlockHandle;
+      revisedHandle: FolioVersionBlockHandle;
     }
-  | { type: "movedFrom"; blockId: string; kind: string; text: string; moveGroupId: number }
-  | { type: "movedTo"; blockId: string; kind: string; text: string; moveGroupId: number };
+  | {
+      type: "movedFrom";
+      blockId: string;
+      kind: string;
+      text: string;
+      moveGroupId: number;
+      baseHandle: FolioVersionBlockHandle;
+    }
+  | {
+      type: "movedTo";
+      blockId: string;
+      kind: string;
+      text: string;
+      moveGroupId: number;
+      revisedHandle: FolioVersionBlockHandle;
+    };
+
+export type FolioVersionDiffSummaryCounts = {
+  added: number;
+  deleted: number;
+  modified: number;
+  formatChanged: number;
+  moved: number;
+  unchanged: number;
+};
+
+/** Changes within one matched, added, or deleted document story. */
+export type FolioStoryDiff = {
+  baseStory: FolioDocumentStoryHandle | null;
+  revisedStory: FolioDocumentStoryHandle | null;
+  changes: FolioBlockDiff[];
+  summaryCounts: FolioVersionDiffSummaryCounts;
+};
 
 /** Result of {@link compareDocxVersions}. */
 export type FolioVersionDiff = {
   /** Every changed block, in revised-side document order (deletions and move sources slotted where they sat). */
   changes: FolioBlockDiff[];
+  /** Per-story results in base order followed by stories added in the revised document. */
+  stories: FolioStoryDiff[];
   /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
-  summaryCounts: {
-    added: number;
-    deleted: number;
-    modified: number;
-    formatChanged: number;
-    moved: number;
-    unchanged: number;
-  };
+  summaryCounts: FolioVersionDiffSummaryCounts;
 };
 
 type BlockPair = { baseIndex: number; revisedIndex: number };
@@ -462,7 +517,8 @@ const meetsMoveWordCount = (text: string): boolean => {
  */
 const detectMoves = (
   changes: FolioBlockDiff[],
-  counts: FolioVersionDiff["summaryCounts"],
+  counts: FolioVersionDiffSummaryCounts,
+  firstMoveGroupId: number,
 ): void => {
   const deletedIndexesByText = new Map<string, number[]>();
   changes.forEach((change, index) => {
@@ -476,7 +532,7 @@ const detectMoves = (
     return;
   }
 
-  let moveGroupId = 0;
+  let moveGroupId = firstMoveGroupId - 1;
   changes.forEach((change, index) => {
     if (change.type !== "added") {
       return;
@@ -496,6 +552,7 @@ const detectMoves = (
       kind: deleted.kind,
       text: deleted.text,
       moveGroupId,
+      baseHandle: deleted.baseHandle,
     };
     changes[index] = {
       type: "movedTo",
@@ -503,11 +560,155 @@ const detectMoves = (
       kind: change.kind,
       text: change.text,
       moveGroupId,
+      revisedHandle: change.revisedHandle,
     };
     counts.deleted--;
     counts.added--;
     counts.moved++;
   });
+};
+
+const createSummaryCounts = (): FolioVersionDiffSummaryCounts => ({
+  added: 0,
+  deleted: 0,
+  modified: 0,
+  formatChanged: 0,
+  moved: 0,
+  unchanged: 0,
+});
+
+const addSummaryCounts = (
+  target: FolioVersionDiffSummaryCounts,
+  source: FolioVersionDiffSummaryCounts,
+): void => {
+  target.added += source.added;
+  target.deleted += source.deleted;
+  target.modified += source.modified;
+  target.formatChanged += source.formatChanged;
+  target.moved += source.moved;
+  target.unchanged += source.unchanged;
+};
+
+const storyKey = (story: FolioDocumentStoryHandle): string => {
+  if (story.type === "main") {
+    return story.type;
+  }
+  if (story.type === "header" || story.type === "footer") {
+    return `${story.type}:${story.relationshipId}`;
+  }
+  return `${story.type}:${String(story.noteId)}`;
+};
+
+type StoryPair = {
+  baseStory: FolioDocumentStoryHandle | null;
+  revisedStory: FolioDocumentStoryHandle | null;
+};
+
+const pairDocumentStories = (
+  baseStories: readonly FolioDocumentStoryHandle[],
+  revisedStories: readonly FolioDocumentStoryHandle[],
+): StoryPair[] => {
+  const revisedByKey = new Map(revisedStories.map((story) => [storyKey(story), story]));
+  const pairedKeys = new Set<string>();
+  const pairs: StoryPair[] = [];
+  for (const baseStory of baseStories) {
+    const key = storyKey(baseStory);
+    const revisedStory = revisedByKey.get(key) ?? null;
+    pairs.push({ baseStory, revisedStory });
+    if (revisedStory) {
+      pairedKeys.add(key);
+    }
+  }
+  for (const revisedStory of revisedStories) {
+    if (!pairedKeys.has(storyKey(revisedStory))) {
+      pairs.push({ baseStory: null, revisedStory });
+    }
+  }
+  return pairs;
+};
+
+type CompareStoryBlocksOptions = StoryPair & {
+  baseBlocks: readonly FolioAIBlock[];
+  revisedBlocks: readonly FolioAIBlock[];
+  firstMoveGroupId: number;
+};
+
+const compareStoryBlocks = ({
+  baseStory,
+  revisedStory,
+  baseBlocks,
+  revisedBlocks,
+  firstMoveGroupId,
+}: CompareStoryBlocksOptions): FolioStoryDiff => {
+  const changes: FolioBlockDiff[] = [];
+  const counts = createSummaryCounts();
+
+  for (const event of alignFolioBlocks(baseBlocks, revisedBlocks)) {
+    if (event.type === "pair") {
+      if (!baseStory || !revisedStory) {
+        panic("A paired comparison event requires both story handles");
+      }
+      const { baseBlock, revisedBlock } = event;
+      const baseHandle = { story: baseStory, blockId: baseBlock.id };
+      const revisedHandle = { story: revisedStory, blockId: revisedBlock.id };
+      if (baseBlock.text !== revisedBlock.text) {
+        counts.modified++;
+        changes.push({
+          type: "modified",
+          blockId: revisedBlock.id,
+          kind: revisedBlock.kind,
+          segments: diffWordSegments(baseBlock.text, revisedBlock.text),
+          baseHandle,
+          revisedHandle,
+        });
+        continue;
+      }
+      const changedProperties = diffPreviewRunFormatting(baseBlock, revisedBlock);
+      if (changedProperties.length > 0) {
+        counts.formatChanged++;
+        changes.push({
+          type: "formatChanged",
+          blockId: revisedBlock.id,
+          kind: revisedBlock.kind,
+          text: revisedBlock.text,
+          changedProperties,
+          baseHandle,
+          revisedHandle,
+        });
+        continue;
+      }
+      counts.unchanged++;
+      continue;
+    }
+    if (event.type === "baseOnly") {
+      if (!baseStory) {
+        panic("A base-only comparison event requires a base story handle");
+      }
+      counts.deleted++;
+      changes.push({
+        type: "deleted",
+        blockId: event.block.id,
+        kind: event.block.kind,
+        text: event.block.text,
+        baseHandle: { story: baseStory, blockId: event.block.id },
+      });
+      continue;
+    }
+    if (!revisedStory) {
+      panic("A revised-only comparison event requires a revised story handle");
+    }
+    counts.added++;
+    changes.push({
+      type: "added",
+      blockId: event.block.id,
+      kind: event.block.kind,
+      text: event.block.text,
+      revisedHandle: { story: revisedStory, blockId: event.block.id },
+    });
+  }
+
+  detectMoves(changes, counts, firstMoveGroupId);
+  return { baseStory, revisedStory, changes, summaryCounts: counts };
 };
 
 /**
@@ -524,67 +725,35 @@ export const compareDocxVersions = async (
     FolioDocxReviewer.fromBuffer(base),
     FolioDocxReviewer.fromBuffer(revised),
   ]);
-  const baseBlocks = baseReviewer.snapshot().blocks;
-  const revisedBlocks = revisedReviewer.snapshot().blocks;
-
   const changes: FolioBlockDiff[] = [];
-  const counts: FolioVersionDiff["summaryCounts"] = {
-    added: 0,
-    deleted: 0,
-    modified: 0,
-    formatChanged: 0,
-    moved: 0,
-    unchanged: 0,
-  };
+  const stories: FolioStoryDiff[] = [];
+  const counts = createSummaryCounts();
+  const baseStories = baseReviewer.listStories().map(({ handle }) => handle);
+  const revisedStories = revisedReviewer.listStories().map(({ handle }) => handle);
+  let nextMoveGroupId = 1;
 
-  for (const event of alignFolioBlocks(baseBlocks, revisedBlocks)) {
-    if (event.type === "pair") {
-      const { baseBlock, revisedBlock } = event;
-      if (baseBlock.text !== revisedBlock.text) {
-        counts.modified++;
-        changes.push({
-          type: "modified",
-          blockId: revisedBlock.id,
-          kind: revisedBlock.kind,
-          segments: diffWordSegments(baseBlock.text, revisedBlock.text),
-        });
-        continue;
-      }
-      const changedProperties = diffPreviewRunFormatting(baseBlock, revisedBlock);
-      if (changedProperties.length > 0) {
-        counts.formatChanged++;
-        changes.push({
-          type: "formatChanged",
-          blockId: revisedBlock.id,
-          kind: revisedBlock.kind,
-          text: revisedBlock.text,
-          changedProperties,
-        });
-        continue;
-      }
-      counts.unchanged++;
-      continue;
-    }
-    if (event.type === "baseOnly") {
-      counts.deleted++;
-      changes.push({
-        type: "deleted",
-        blockId: event.block.id,
-        kind: event.block.kind,
-        text: event.block.text,
-      });
-      continue;
-    }
-    counts.added++;
-    changes.push({
-      type: "added",
-      blockId: event.block.id,
-      kind: event.block.kind,
-      text: event.block.text,
+  for (const pair of pairDocumentStories(baseStories, revisedStories)) {
+    const baseBlocks = pair.baseStory
+      ? (baseReviewer.readReviewedStory({ story: pair.baseStory, view: "final" })?.snapshot
+          .blocks ?? [])
+      : [];
+    const revisedBlocks = pair.revisedStory
+      ? (revisedReviewer.readReviewedStory({ story: pair.revisedStory, view: "final" })?.snapshot
+          .blocks ?? [])
+      : [];
+    const storyDiff = compareStoryBlocks({
+      ...pair,
+      baseBlocks,
+      revisedBlocks,
+      firstMoveGroupId: nextMoveGroupId,
     });
+    stories.push(storyDiff);
+    for (const change of storyDiff.changes) {
+      changes.push(change);
+    }
+    addSummaryCounts(counts, storyDiff.summaryCounts);
+    nextMoveGroupId += storyDiff.summaryCounts.moved;
   }
 
-  detectMoves(changes, counts);
-
-  return { changes, summaryCounts: counts };
+  return { changes, stories, summaryCounts: counts };
 };
