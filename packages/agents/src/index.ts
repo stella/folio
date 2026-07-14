@@ -9,6 +9,7 @@ export type { CreateReviewerBridgeOptions } from "./bridges/reviewer";
 export { createReviewerBridge } from "./bridges/reviewer";
 export type {
   FolioAgentBlockDiff,
+  FolioAgentCompareDocxVersionsOptions,
   FolioAgentVersionDiff,
   FolioAgentVersionDiffSegment,
 } from "./compare";

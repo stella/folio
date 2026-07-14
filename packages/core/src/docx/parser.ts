@@ -39,6 +39,7 @@ import { convertTiffToPngDataUrl, isTiffMimeType } from "../utils/tiffConverter"
 import { parseComments } from "./commentParser";
 import { normalizeCommentReferences } from "./commentReferenceNormalization";
 import { detectDocxConformanceClass } from "./conformance";
+import { parseCoreProperties } from "./corePropertiesParser";
 import { parseDocumentBody, extractAllTemplateVariables } from "./documentParser";
 import { parseFootnotes, parseEndnotes } from "./footnoteParser";
 import { parseHeader, parseFooter } from "./headerFooterParser";
@@ -374,6 +375,8 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     // ========================================================================
     onProgress("Assembling document...", 95);
 
+    const properties = timeStage("coreProperties", () => parseCoreProperties(raw.corePropsXml));
+
     const pkg: DocxPackage = {
       conformanceClass: detectDocxConformanceClass(raw.documentXml),
       document: documentBody,
@@ -388,6 +391,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(endnotes !== undefined ? { endnotes } : {}),
       relationships: rels,
       media,
+      ...(properties !== undefined ? { properties } : {}),
     };
 
     const document: Document = {

@@ -14,9 +14,11 @@ describe("formatVersionDiffForLLM", () => {
         modified: 1,
         formatChanged: 1,
         moved: 1,
+        metadataChanged: 0,
         unchanged: 2,
       },
       stories: [],
+      metadataChanges: [],
       changes: [
         {
           type: "modified",
@@ -80,6 +82,32 @@ describe("formatVersionDiffForLLM", () => {
       "~ [00000007] format changed (bold, color): Delta paragraph.",
       "< [00000008] moved away (move 1): Zeta paragraph moved somewhere else.",
       "> [00000008] moved here (move 1): Zeta paragraph moved somewhere else.",
+    ]);
+  });
+
+  test("renders metadata changes when present", () => {
+    const diff: FolioAgentVersionDiff = {
+      summaryCounts: {
+        added: 0,
+        deleted: 0,
+        modified: 0,
+        formatChanged: 0,
+        moved: 0,
+        metadataChanged: 2,
+        unchanged: 1,
+      },
+      stories: [],
+      changes: [],
+      metadataChanges: [
+        { property: "title", baseValue: "Initial", revisedValue: "Revised" },
+        { property: "creator", baseValue: "Author", revisedValue: null },
+      ],
+    };
+
+    expect(formatVersionDiffForLLM(diff).split("\n")).toEqual([
+      "Version diff: 0 added, 0 deleted, 0 modified, 0 format-changed, 0 moved, 2 metadata-changed, 1 unchanged",
+      '~ metadata.title: "Initial" -> "Revised"',
+      '~ metadata.creator: "Author" -> null',
     ]);
   });
 });

@@ -20,6 +20,7 @@ import { repackDocx } from "./docx/rezip";
 import type { HeaderFooter, Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 import { compareDocxVersions, exceedsLcsBudget } from "./version-comparison";
+import { InvalidFolioVersionComparisonOptionsError } from "./version-comparison";
 import type { FolioBlockDiff } from "./version-comparison";
 
 type ParagraphSpec = {
@@ -50,6 +51,43 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
       },
     },
   });
+};
+
+type CorePropertiesFixture = {
+  title?: string;
+  creator?: string;
+  revision?: number;
+  created?: string;
+};
+
+const escapeXml = (value: string): string =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+
+const withCoreProperties = async (
+  buffer: ArrayBuffer,
+  properties: CorePropertiesFixture,
+): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(buffer);
+  const elements = [
+    properties.title === undefined ? "" : `<dc:title>${escapeXml(properties.title)}</dc:title>`,
+    properties.creator === undefined
+      ? ""
+      : `<dc:creator>${escapeXml(properties.creator)}</dc:creator>`,
+    properties.revision === undefined ? "" : `<cp:revision>${properties.revision}</cp:revision>`,
+    properties.created === undefined
+      ? ""
+      : `<dcterms:created>${escapeXml(properties.created)}</dcterms:created>`,
+  ].join("");
+  zip.file(
+    "docProps/core.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/">${elements}</cp:coreProperties>`,
+  );
+  return zip.generateAsync({ type: "arraybuffer" });
 };
 
 const storyParagraph = (text: string, paraId: string): Paragraph => ({
@@ -159,6 +197,7 @@ describe("compareDocxVersions: real w14:paraId alignment", () => {
       modified: 1,
       formatChanged: 0,
       moved: 0,
+      metadataChanged: 0,
       unchanged: 2,
     });
     // Unchanged blocks (Alpha, Zeta) never appear in `changes`.
@@ -218,6 +257,7 @@ describe("compareDocxVersions: document stories", () => {
       modified: 1,
       formatChanged: 0,
       moved: 0,
+      metadataChanged: 0,
       unchanged: 2,
     });
     expect(diff.stories).toHaveLength(4);
@@ -283,6 +323,7 @@ describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () =
       modified: 1,
       formatChanged: 0,
       moved: 0,
+      metadataChanged: 0,
       unchanged: 2,
     });
     expect(diff.changes.map((c) => c.type)).toEqual(["modified", "added"]);
@@ -323,8 +364,86 @@ describe("compareDocxVersions: no-op", () => {
       modified: 0,
       formatChanged: 0,
       moved: 0,
+      metadataChanged: 0,
       unchanged: 2,
     });
+  });
+});
+
+describe("compareDocxVersions: selected scopes", () => {
+  test("keeps metadata opt-in and returns typed metadata changes in stable order", async () => {
+    const base = await withCoreProperties(
+      await buildDocxBuffer([{ text: "Baseline text.", paraId: "00000001" }]),
+      {
+        title: "Initial title",
+        creator: "Initial author",
+        revision: 1,
+        created: "2026-07-01T10:30:00Z",
+      },
+    );
+    const revised = await withCoreProperties(
+      await buildDocxBuffer([{ text: "Revised text.", paraId: "00000001" }]),
+      {
+        title: "Revised title",
+        revision: 2,
+        created: "2026-07-01T10:30:00Z",
+      },
+    );
+
+    const defaultDiff = await compareDocxVersions(base, revised);
+    expect(defaultDiff.metadataChanges).toEqual([]);
+    expect(defaultDiff.summaryCounts.metadataChanged).toBe(0);
+    expect(defaultDiff.changes.map(({ type }) => type)).toEqual(["modified"]);
+
+    const metadataDiff = await compareDocxVersions(base, revised, { include: ["metadata"] });
+    expect(metadataDiff.changes).toEqual([]);
+    expect(metadataDiff.metadataChanges).toEqual([
+      { property: "title", baseValue: "Initial title", revisedValue: "Revised title" },
+      { property: "creator", baseValue: "Initial author", revisedValue: null },
+      { property: "revision", baseValue: 1, revisedValue: 2 },
+    ]);
+    expect(metadataDiff.summaryCounts).toEqual({
+      added: 0,
+      deleted: 0,
+      modified: 0,
+      formatChanged: 0,
+      moved: 0,
+      metadataChanged: 3,
+      unchanged: 1,
+    });
+  });
+
+  test("selects text and formatting independently", async () => {
+    const base = await buildDocxBuffer([
+      { text: "Baseline text.", paraId: "00000001" },
+      { text: "Stable text.", paraId: "00000002" },
+    ]);
+    const revised = await buildDocxBuffer([
+      { text: "Revised text.", paraId: "00000001" },
+      { text: "Stable text.", paraId: "00000002", formatting: { bold: true } },
+    ]);
+
+    const textDiff = await compareDocxVersions(base, revised, { include: ["text"] });
+    expect(textDiff.changes.map(({ type }) => type)).toEqual(["modified"]);
+    expect(textDiff.summaryCounts.modified).toBe(1);
+    expect(textDiff.summaryCounts.formatChanged).toBe(0);
+    expect(textDiff.summaryCounts.unchanged).toBe(1);
+
+    const formattingDiff = await compareDocxVersions(base, revised, {
+      include: ["formatting"],
+    });
+    expect(formattingDiff.changes.map(({ type }) => type)).toEqual(["formatChanged"]);
+    expect(formattingDiff.summaryCounts.modified).toBe(0);
+    expect(formattingDiff.summaryCounts.formatChanged).toBe(1);
+    expect(formattingDiff.summaryCounts.unchanged).toBe(1);
+  });
+
+  test("rejects an empty scope selection", async () => {
+    const buffer = await buildDocxBuffer([{ text: "Text.", paraId: "00000001" }]);
+
+    await expect(compareDocxVersions(buffer, buffer, { include: [] })).rejects.toBeInstanceOf(
+      InvalidFolioVersionComparisonOptionsError,
+    );
   });
 });
 
@@ -349,6 +468,7 @@ describe("compareDocxVersions: move detection", () => {
       modified: 0,
       formatChanged: 0,
       moved: 1,
+      metadataChanged: 0,
       unchanged: 2,
     });
     const movedTo = diff.changes.find((c) => c.type === "movedTo");
@@ -387,6 +507,7 @@ describe("compareDocxVersions: move detection", () => {
       modified: 0,
       formatChanged: 0,
       moved: 0,
+      metadataChanged: 0,
       unchanged: 2,
     });
     expect(diff.changes.map((c) => c.type).toSorted()).toEqual(["added", "deleted"]);
@@ -408,6 +529,7 @@ describe("compareDocxVersions: format-only changes", () => {
       modified: 0,
       formatChanged: 1,
       moved: 0,
+      metadataChanged: 0,
       unchanged: 0,
     });
     const [change] = diff.changes;
@@ -479,6 +601,7 @@ describe("compareDocxVersions: as-accepted semantics", () => {
       modified: 1,
       formatChanged: 0,
       moved: 0,
+      metadataChanged: 0,
       unchanged: 0,
     });
     const [change] = diff.changes;

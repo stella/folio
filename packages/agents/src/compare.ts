@@ -1,5 +1,6 @@
 import type {
   FolioBlockDiff,
+  FolioCompareDocxVersionsOptions,
   FolioVersionDiff,
   FolioVersionDiffSegment,
 } from "@stll/folio-core/server";
@@ -14,11 +15,15 @@ export type FolioAgentBlockDiff = FolioBlockDiff;
 /** Backward-compatible name for a structured core version diff. */
 export type FolioAgentVersionDiff = FolioVersionDiff;
 
+/** Backward-compatible name for core comparison options. */
+export type FolioAgentCompareDocxVersionsOptions = FolioCompareDocxVersionsOptions;
+
 /** Compare two `.docx` buffers using folio-core's version comparison semantics. */
 export const compareDocxVersions = (
   base: ArrayBuffer,
   revised: ArrayBuffer,
-): Promise<FolioAgentVersionDiff> => compareDocxVersionsCore(base, revised);
+  options: FolioAgentCompareDocxVersionsOptions = {},
+): Promise<FolioAgentVersionDiff> => compareDocxVersionsCore(base, revised, options);
 
 const ELLIPSIS = "…";
 const UNCHANGED_EDGE_CHARS = 30;
@@ -64,7 +69,13 @@ const formatChangeLine = (change: FolioBlockDiff): string => {
 
 /** Render a structured version diff as compact, deterministic model input. */
 export const formatVersionDiffForLLM = (diff: FolioAgentVersionDiff): string => {
-  const { added, deleted, modified, formatChanged, moved, unchanged } = diff.summaryCounts;
-  const header = `Version diff: ${added} added, ${deleted} deleted, ${modified} modified, ${formatChanged} format-changed, ${moved} moved, ${unchanged} unchanged`;
-  return [header, ...diff.changes.map(formatChangeLine)].join("\n");
+  const { added, deleted, modified, formatChanged, moved, metadataChanged, unchanged } =
+    diff.summaryCounts;
+  const metadataSummary = metadataChanged > 0 ? `, ${metadataChanged} metadata-changed` : "";
+  const header = `Version diff: ${added} added, ${deleted} deleted, ${modified} modified, ${formatChanged} format-changed, ${moved} moved${metadataSummary}, ${unchanged} unchanged`;
+  const metadataLines = diff.metadataChanges.map(
+    ({ property, baseValue, revisedValue }) =>
+      `~ metadata.${property}: ${JSON.stringify(baseValue)} -> ${JSON.stringify(revisedValue)}`,
+  );
+  return [header, ...diff.changes.map(formatChangeLine), ...metadataLines].join("\n");
 };

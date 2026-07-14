@@ -511,6 +511,23 @@ export class FolioDocxReviewer {
     return createFolioAIEditSnapshot(this.state.doc);
   }
 
+  /** Return parsed package metadata without exposing the mutable document model. */
+  getDocumentProperties(): Readonly<NonNullable<Document["package"]["properties"]>> | null {
+    const properties = this.baseDocument.package.properties;
+    if (!properties) {
+      return null;
+    }
+    return Object.freeze({
+      ...properties,
+      ...(properties.created !== undefined
+        ? { created: new Date(properties.created.getTime()) }
+        : {}),
+      ...(properties.modified !== undefined
+        ? { modified: new Date(properties.modified.getTime()) }
+        : {}),
+    });
+  }
+
   /** Snapshot one editable story into stable, operation-ready blocks. */
   snapshotStory(story: FolioEditableDocumentStoryHandle): FolioAIEditSnapshot | null {
     const state = this.getEditableStoryState(story);

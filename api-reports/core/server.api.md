@@ -26,7 +26,7 @@ export type ApplyFolioAIEditsToBufferResult = FolioAIEditApplyResult & {
 export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
 // @public
-export const compareDocxVersions: (base: ArrayBuffer, revised: ArrayBuffer) => Promise<FolioVersionDiff>;
+export const compareDocxVersions: (base: ArrayBuffer, revised: ArrayBuffer, options?: FolioCompareDocxVersionsOptions) => Promise<FolioVersionDiff>;
 
 // @public (undocumented)
 export type CreateCommentReplyInput = {
@@ -166,6 +166,9 @@ export type ExtractedDocxText = {
 };
 
 // @public (undocumented)
+export const FOLIO_DOCUMENT_METADATA_PROPERTIES: readonly ["title", "subject", "creator", "keywords", "description", "lastModifiedBy", "revision", "created", "modified"];
+
+// @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES: readonly ["best-effort", "atomic"];
 
 // @public (undocumented)
@@ -199,6 +202,9 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replac
 
 // @public (undocumented)
 export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "final"];
+
+// @public (undocumented)
+export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "metadata"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -406,6 +412,17 @@ export type FolioBlockDiff = {
 export type FolioBlockId = string & {
     readonly __brand: "folio.blockId";
 };
+
+// @public (undocumented)
+export type FolioCompareDocxVersionsOptions = {
+    include?: readonly FolioVersionComparisonScope[];
+};
+
+// @public (undocumented)
+export type FolioDocumentMetadataProperty = (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
+
+// @public (undocumented)
+export type FolioDocumentMetadataValue = string | number | null;
 
 // @public (undocumented)
 export type FolioDocumentNavigationTarget = {
@@ -616,6 +633,7 @@ export class FolioDocxReviewer {
     getComments(filter?: FolioReviewCommentFilter): FolioReviewComment[];
     getContent(): FolioAIBlock[];
     getContentAsText(options?: FolioGetContentAsTextOptions): string;
+    getDocumentProperties(): Readonly<NonNullable<import__stll_docx_core_model.Document["package"]["properties"]>> | null;
     getNotesAsText(): string;
     listStories(): FolioDocumentStory[];
     readReviewedStory(options?: FolioReadReviewedStoryOptions): FolioReviewedStory | null;
@@ -644,6 +662,13 @@ export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 
 // @public
 export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];
+
+// @public (undocumented)
+export type FolioMetadataDiff = {
+    property: FolioDocumentMetadataProperty;
+    baseValue: FolioDocumentMetadataValue;
+    revisedValue: FolioDocumentMetadataValue;
+};
 
 // @public (undocumented)
 export type FolioReadReviewedStoryOptions = {
@@ -729,10 +754,14 @@ export type FolioVersionBlockHandle = {
     blockId: string;
 };
 
+// @public (undocumented)
+export type FolioVersionComparisonScope = (typeof FOLIO_VERSION_COMPARISON_SCOPES)[number];
+
 // @public
 export type FolioVersionDiff = {
     changes: FolioBlockDiff[]; /** Per-story results in base order followed by stories added in the revised document. */
-    stories: FolioStoryDiff[]; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
+    stories: FolioStoryDiff[]; /** Changed package metadata fields in stable property order. */
+    metadataChanges: FolioMetadataDiff[]; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
     summaryCounts: FolioVersionDiffSummaryCounts;
 };
 
@@ -746,6 +775,7 @@ export type FolioVersionDiffSummaryCounts = {
     modified: number;
     formatChanged: number;
     moved: number;
+    metadataChanged: number;
     unchanged: number;
 };
 
@@ -786,6 +816,9 @@ export const inspectDocumentStylesFromDocx: (input: DocxInput) => Promise<Docume
 // @public (undocumented)
 export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
 
+// @public (undocumented)
+export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsError_base {}
+
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
 
@@ -794,6 +827,9 @@ export const isFolioDocumentOperationModeSupported: (operationType: FolioDocumen
 
 // @public (undocumented)
 export const isFolioReviewedView: (value: unknown) => value is FolioReviewedView;
+
+// @public (undocumented)
+export const isFolioVersionComparisonScope: (value: unknown) => value is FolioVersionComparisonScope;
 
 // @public (undocumented)
 export const isSequentialFolioBlockId: (id: string) => boolean;

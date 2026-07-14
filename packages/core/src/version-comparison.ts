@@ -73,7 +73,7 @@
  * `unchanged` rather than misattribute properties.
  */
 
-import { panic } from "better-result";
+import { panic, TaggedError } from "better-result";
 
 import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./ai-edits/headless";
 import type { FolioAIBlock, FolioAIBlockPreviewRun } from "./ai-edits/types";
@@ -82,6 +82,53 @@ import { getFolioParaIdFromBlockId } from "./types/block-id";
 
 /** One word-level diff segment within a `modified` block. Mirrors {@link WordDiffSegment}. */
 export type FolioVersionDiffSegment = WordDiffSegment;
+
+/** Independently selectable comparison scopes. */
+export const FOLIO_VERSION_COMPARISON_SCOPES = Object.freeze([
+  "text",
+  "formatting",
+  "metadata",
+] as const);
+
+export type FolioVersionComparisonScope = (typeof FOLIO_VERSION_COMPARISON_SCOPES)[number];
+
+export const isFolioVersionComparisonScope = (
+  value: unknown,
+): value is FolioVersionComparisonScope =>
+  FOLIO_VERSION_COMPARISON_SCOPES.some((scope) => scope === value);
+
+export type FolioCompareDocxVersionsOptions = {
+  /** Selected scopes; defaults to text and formatting. */
+  include?: readonly FolioVersionComparisonScope[];
+};
+
+export class InvalidFolioVersionComparisonOptionsError extends TaggedError(
+  "InvalidFolioVersionComparisonOptionsError",
+)<{
+  message: string;
+  receivedInclude: readonly unknown[];
+}>() {}
+
+export const FOLIO_DOCUMENT_METADATA_PROPERTIES = Object.freeze([
+  "title",
+  "subject",
+  "creator",
+  "keywords",
+  "description",
+  "lastModifiedBy",
+  "revision",
+  "created",
+  "modified",
+] as const);
+
+export type FolioDocumentMetadataProperty = (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
+export type FolioDocumentMetadataValue = string | number | null;
+
+export type FolioMetadataDiff = {
+  property: FolioDocumentMetadataProperty;
+  baseValue: FolioDocumentMetadataValue;
+  revisedValue: FolioDocumentMetadataValue;
+};
 
 /** Run-level formatting properties compared for `formatChanged` detection. */
 const FORMAT_PROPERTIES = [
@@ -159,6 +206,7 @@ export type FolioVersionDiffSummaryCounts = {
   modified: number;
   formatChanged: number;
   moved: number;
+  metadataChanged: number;
   unchanged: number;
 };
 
@@ -176,6 +224,8 @@ export type FolioVersionDiff = {
   changes: FolioBlockDiff[];
   /** Per-story results in base order followed by stories added in the revised document. */
   stories: FolioStoryDiff[];
+  /** Changed package metadata fields in stable property order. */
+  metadataChanges: FolioMetadataDiff[];
   /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
   summaryCounts: FolioVersionDiffSummaryCounts;
 };
@@ -574,6 +624,7 @@ const createSummaryCounts = (): FolioVersionDiffSummaryCounts => ({
   modified: 0,
   formatChanged: 0,
   moved: 0,
+  metadataChanged: 0,
   unchanged: 0,
 });
 
@@ -586,6 +637,7 @@ const addSummaryCounts = (
   target.modified += source.modified;
   target.formatChanged += source.formatChanged;
   target.moved += source.moved;
+  target.metadataChanged += source.metadataChanged;
   target.unchanged += source.unchanged;
 };
 
@@ -631,6 +683,8 @@ type CompareStoryBlocksOptions = StoryPair & {
   baseBlocks: readonly FolioAIBlock[];
   revisedBlocks: readonly FolioAIBlock[];
   firstMoveGroupId: number;
+  includeText: boolean;
+  includeFormatting: boolean;
 };
 
 const compareStoryBlocks = ({
@@ -639,6 +693,8 @@ const compareStoryBlocks = ({
   baseBlocks,
   revisedBlocks,
   firstMoveGroupId,
+  includeText,
+  includeFormatting,
 }: CompareStoryBlocksOptions): FolioStoryDiff => {
   const changes: FolioBlockDiff[] = [];
   const counts = createSummaryCounts();
@@ -652,6 +708,10 @@ const compareStoryBlocks = ({
       const baseHandle = { story: baseStory, blockId: baseBlock.id };
       const revisedHandle = { story: revisedStory, blockId: revisedBlock.id };
       if (baseBlock.text !== revisedBlock.text) {
+        if (!includeText) {
+          counts.unchanged++;
+          continue;
+        }
         counts.modified++;
         changes.push({
           type: "modified",
@@ -663,7 +723,9 @@ const compareStoryBlocks = ({
         });
         continue;
       }
-      const changedProperties = diffPreviewRunFormatting(baseBlock, revisedBlock);
+      const changedProperties = includeFormatting
+        ? diffPreviewRunFormatting(baseBlock, revisedBlock)
+        : [];
       if (changedProperties.length > 0) {
         counts.formatChanged++;
         changes.push({
@@ -681,6 +743,9 @@ const compareStoryBlocks = ({
       continue;
     }
     if (event.type === "baseOnly") {
+      if (!includeText) {
+        continue;
+      }
       if (!baseStory) {
         panic("A base-only comparison event requires a base story handle");
       }
@@ -692,6 +757,9 @@ const compareStoryBlocks = ({
         text: event.block.text,
         baseHandle: { story: baseStory, blockId: event.block.id },
       });
+      continue;
+    }
+    if (!includeText) {
       continue;
     }
     if (!revisedStory) {
@@ -711,6 +779,49 @@ const compareStoryBlocks = ({
   return { baseStory, revisedStory, changes, summaryCounts: counts };
 };
 
+const DEFAULT_COMPARISON_SCOPES = Object.freeze([
+  "text",
+  "formatting",
+] as const satisfies readonly FolioVersionComparisonScope[]);
+
+const resolveComparisonScopes = (
+  options: FolioCompareDocxVersionsOptions,
+): ReadonlySet<FolioVersionComparisonScope> => {
+  const include = options.include ?? DEFAULT_COMPARISON_SCOPES;
+  if (include.length === 0 || include.some((scope) => !isFolioVersionComparisonScope(scope))) {
+    throw new InvalidFolioVersionComparisonOptionsError({
+      message: "Version comparison requires at least one recognized scope",
+      receivedInclude: include,
+    });
+  }
+  return new Set(include);
+};
+
+type DocumentProperties = ReturnType<FolioDocxReviewer["getDocumentProperties"]>;
+
+const normalizeMetadataValue = (
+  properties: DocumentProperties,
+  property: FolioDocumentMetadataProperty,
+): FolioDocumentMetadataValue => {
+  const value = properties?.[property];
+  return value instanceof Date ? value.toISOString() : (value ?? null);
+};
+
+const compareMetadata = (
+  base: DocumentProperties,
+  revised: DocumentProperties,
+): FolioMetadataDiff[] => {
+  const changes: FolioMetadataDiff[] = [];
+  for (const property of FOLIO_DOCUMENT_METADATA_PROPERTIES) {
+    const baseValue = normalizeMetadataValue(base, property);
+    const revisedValue = normalizeMetadataValue(revised, property);
+    if (baseValue !== revisedValue) {
+      changes.push({ property, baseValue, revisedValue });
+    }
+  }
+  return changes;
+};
+
 /**
  * Compare two `.docx` buffers and return a structured, block-level diff.
  * See the module doc comment for the as-accepted comparison semantics, the
@@ -720,7 +831,9 @@ const compareStoryBlocks = ({
 export const compareDocxVersions = async (
   base: ArrayBuffer,
   revised: ArrayBuffer,
+  options: FolioCompareDocxVersionsOptions = {},
 ): Promise<FolioVersionDiff> => {
+  const scopes = resolveComparisonScopes(options);
   const [baseReviewer, revisedReviewer] = await Promise.all([
     FolioDocxReviewer.fromBuffer(base),
     FolioDocxReviewer.fromBuffer(revised),
@@ -746,6 +859,8 @@ export const compareDocxVersions = async (
       baseBlocks,
       revisedBlocks,
       firstMoveGroupId: nextMoveGroupId,
+      includeText: scopes.has("text"),
+      includeFormatting: scopes.has("formatting"),
     });
     stories.push(storyDiff);
     for (const change of storyDiff.changes) {
@@ -755,5 +870,10 @@ export const compareDocxVersions = async (
     nextMoveGroupId += storyDiff.summaryCounts.moved;
   }
 
-  return { changes, stories, summaryCounts: counts };
+  const metadataChanges = scopes.has("metadata")
+    ? compareMetadata(baseReviewer.getDocumentProperties(), revisedReviewer.getDocumentProperties())
+    : [];
+  counts.metadataChanged = metadataChanges.length;
+
+  return { changes, stories, metadataChanges, summaryCounts: counts };
 };
