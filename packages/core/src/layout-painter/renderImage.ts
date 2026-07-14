@@ -97,6 +97,15 @@ export function applyImageVisualAttrs(img: HTMLImageElement, v: ImageVisualAttrs
   img.style.width = `${fw * 100}%`;
   img.style.height = `${fh * 100}%`;
   img.style.marginLeft = `${-left * fw * 100}%`;
+  const existingTransform = img.style.transform;
+  if (existingTransform) {
+    // The enlarged bitmap's center differs from the visible crop frame's
+    // center when opposite crop amounts are asymmetric. Rotate or flip around
+    // the visible center so the cropped region stays aligned with its frame.
+    const visibleCenterX = (left + 1 - right) * 50;
+    const visibleCenterY = (top + 1 - bottom) * 50;
+    img.style.transformOrigin = `${visibleCenterX}% ${visibleCenterY}%`;
+  }
   if (top !== 0) {
     // Vertical percentage margins resolve against the containing block's
     // width, so they over-shift wide, shallow images. A percentage translate
@@ -104,8 +113,8 @@ export function applyImageVisualAttrs(img: HTMLImageElement, v: ImageVisualAttrs
     // exact source offset that must move above the clipped frame. Append the
     // translation so source cropping occurs before any image flip or rotation.
     const cropTransform = `translateY(${-top * 100}%)`;
-    img.style.transform = img.style.transform
-      ? `${img.style.transform} ${cropTransform}`
+    img.style.transform = existingTransform
+      ? `${existingTransform} ${cropTransform}`
       : cropTransform;
   }
   // Object-fit on the upscaled `<img>` would re-letterbox inside the

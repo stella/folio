@@ -240,9 +240,15 @@ describe("ImageVisualAttrs helpers", () => {
     const img = fakeDocument.createElement("img") as unknown as HTMLImageElement;
     img.style.transform = "scaleX(-1)";
 
-    applyImageVisualAttrs(img, { cropTop: 0.25 });
+    applyImageVisualAttrs(img, {
+      cropTop: 0.25,
+      cropRight: 0.125,
+      cropBottom: 0.125,
+      cropLeft: 0.25,
+    });
 
     expect((img as unknown as FakeElement).style["transform"]).toBe("scaleX(-1) translateY(-25%)");
+    expect((img as unknown as FakeElement).style["transformOrigin"]).toBe("56.25% 56.25%");
     expect((img as unknown as FakeElement).style["marginTop"]).toBeUndefined();
   });
 });
