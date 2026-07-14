@@ -36,13 +36,54 @@ export class DocxEncryptionError extends DocxEncryptionError_base {}
 export type DocxEncryptionErrorCode = (typeof DOCX_ENCRYPTION_ERROR_CODES)[keyof typeof DOCX_ENCRYPTION_ERROR_CODES];
 
 // @public (undocumented)
+export const FOLIO_DOCUMENT_METADATA_PROPERTIES: readonly ["title", "subject", "creator", "keywords", "description", "lastModifiedBy", "revision", "created", "modified"];
+
+// @public (undocumented)
+export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"];
+
+// @public (undocumented)
+export type FolioDocumentMetadataProperty = (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
+
+// @public (undocumented)
+export class FolioDocumentPrivacyArchiveError extends FolioDocumentPrivacyArchiveError_base {}
+
+// @public (undocumented)
+export type FolioDocumentPrivacyOptions = {
+    transforms: readonly FolioDocumentPrivacyTransform[];
+};
+
+// @public (undocumented)
+export type FolioDocumentPrivacyReport = {
+    appliedTransforms: FolioDocumentPrivacyTransform[];
+    removedMetadataProperties: FolioDocumentMetadataProperty[];
+};
+
+// @public (undocumented)
+export type FolioDocumentPrivacyTransform = (typeof FOLIO_DOCUMENT_PRIVACY_TRANSFORMS)[number];
+
+// @public (undocumented)
 export function getCachedNumberingMap(definitions: import__stll_docx_core_model.NumberingDefinitions): NumberingMap;
+
+// @public (undocumented)
+export class InvalidFolioDocumentPrivacyOptionsError extends InvalidFolioDocumentPrivacyOptionsError_base {}
 
 // @public (undocumented)
 export const isDocxEncryptionError: (error: unknown) => error is DocxEncryptionError;
 
+// @public (undocumented)
+export const isFolioDocumentPrivacyTransform: (value: unknown) => value is FolioDocumentPrivacyTransform;
+
 // @public
 export const openDocxBuffer: (data: ArrayBuffer | Uint8Array, options?: DecryptDocxOptions) => Promise<ArrayBuffer>;
+
+// @public
+export const rewriteDocxMetadataPrivacy: (buffer: ArrayBuffer, input: FolioDocumentPrivacyOptions) => Promise<RewriteDocxMetadataPrivacyResult>;
+
+// @public (undocumented)
+export type RewriteDocxMetadataPrivacyResult = {
+    buffer: ArrayBuffer;
+    privacyReport: FolioDocumentPrivacyReport;
+};
 
 // (No @packageDocumentation comment for this package)
 

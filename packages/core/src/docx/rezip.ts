@@ -1837,16 +1837,14 @@ function findNotePartEntry(zip: JSZip, conventionalLowerPath: string): JSZip.JSZ
 // UTILITY FUNCTIONS
 // ============================================================================
 
-/**
- * Update core properties XML with new modification date
- */
+/** Update existing core-property values without synthesizing absent metadata. */
 export function updateCoreProperties(
   corePropsXml: string,
-  options: { updateModifiedDate?: boolean; modifiedBy?: string },
+  { updateModifiedDate, modifiedBy }: { updateModifiedDate?: boolean; modifiedBy?: string },
 ): string {
   let result = corePropsXml;
 
-  if (options.updateModifiedDate) {
+  if (updateModifiedDate) {
     const now = new Date().toISOString();
 
     // Update dcterms:modified
@@ -1855,27 +1853,15 @@ export function updateCoreProperties(
         /<dcterms:modified[^<>]*>[^<]*<\/dcterms:modified>/u,
         `<dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>`,
       );
-    } else {
-      // Add modified date if not present
-      result = result.replace(
-        "</cp:coreProperties>",
-        `<dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`,
-      );
     }
   }
 
-  if (options.modifiedBy) {
+  if (modifiedBy) {
     // Update cp:lastModifiedBy
     if (result.includes("<cp:lastModifiedBy")) {
       result = result.replace(
         /<cp:lastModifiedBy>[^<]*<\/cp:lastModifiedBy>/u,
-        `<cp:lastModifiedBy>${escapeXml(options.modifiedBy)}</cp:lastModifiedBy>`,
-      );
-    } else {
-      // Add lastModifiedBy if not present
-      result = result.replace(
-        "</cp:coreProperties>",
-        `<cp:lastModifiedBy>${escapeXml(options.modifiedBy)}</cp:lastModifiedBy></cp:coreProperties>`,
+        `<cp:lastModifiedBy>${escapeXml(modifiedBy)}</cp:lastModifiedBy>`,
       );
     }
   }

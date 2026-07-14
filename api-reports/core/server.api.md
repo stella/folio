@@ -204,6 +204,9 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "foot
 export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
 
 // @public (undocumented)
+export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"];
+
+// @public (undocumented)
 export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
 
 // @public (undocumented)
@@ -579,6 +582,23 @@ export type FolioDocumentOutlineEntry = {
 };
 
 // @public (undocumented)
+export class FolioDocumentPrivacyArchiveError extends FolioDocumentPrivacyArchiveError_base {}
+
+// @public (undocumented)
+export type FolioDocumentPrivacyOptions = {
+    transforms: readonly FolioDocumentPrivacyTransform[];
+};
+
+// @public (undocumented)
+export type FolioDocumentPrivacyReport = {
+    appliedTransforms: FolioDocumentPrivacyTransform[];
+    removedMetadataProperties: FolioDocumentMetadataProperty[];
+};
+
+// @public (undocumented)
+export type FolioDocumentPrivacyTransform = (typeof FOLIO_DOCUMENT_PRIVACY_TRANSFORMS)[number];
+
+// @public (undocumented)
 export type FolioDocumentSection = {
     handle: FolioDocumentSectionHandle;
     heading: FolioDocumentOutlineEntry; /** Heading block followed by every block in its logical section. */
@@ -775,7 +795,7 @@ export type FolioVersionBlockHandle = {
 };
 
 // @public (undocumented)
-export type FolioVersionComparisonPrivacyTransform = (typeof FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS)[number];
+export type FolioVersionComparisonPrivacyTransform = FolioDocumentPrivacyTransform;
 
 // @public (undocumented)
 export type FolioVersionComparisonScope = (typeof FOLIO_VERSION_COMPARISON_SCOPES)[number];
@@ -790,15 +810,10 @@ export type FolioVersionDiff = {
 };
 
 // @public (undocumented)
-export type FolioVersionDiffPrivacyOptions = {
-    transforms: readonly FolioVersionComparisonPrivacyTransform[];
-};
+export type FolioVersionDiffPrivacyOptions = FolioDocumentPrivacyOptions;
 
 // @public (undocumented)
-export type FolioVersionDiffPrivacyReport = {
-    appliedTransforms: FolioVersionComparisonPrivacyTransform[];
-    removedMetadataProperties: FolioDocumentMetadataProperty[];
-};
+export type FolioVersionDiffPrivacyReport = FolioDocumentPrivacyReport;
 
 // @public
 export type FolioVersionDiffSegment = WordDiffSegment;
@@ -864,6 +879,9 @@ export const inspectDocumentStylesFromDocx: (input: DocxInput) => Promise<Docume
 export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
 
 // @public (undocumented)
+export class InvalidFolioDocumentPrivacyOptionsError extends InvalidFolioDocumentPrivacyOptionsError_base {}
+
+// @public (undocumented)
 export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsError_base {}
 
 // @public (undocumented)
@@ -874,6 +892,9 @@ export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
 
 // @public (undocumented)
 export const isFolioDocumentOperationModeSupported: (operationType: FolioDocumentOperationType, mode: FolioDocumentOperationMode) => boolean;
+
+// @public (undocumented)
+export const isFolioDocumentPrivacyTransform: (value: unknown) => value is FolioDocumentPrivacyTransform;
 
 // @public (undocumented)
 export const isFolioResolvedReviewedView: (value: unknown) => value is FolioResolvedReviewedView;
@@ -901,6 +922,15 @@ export const readFolioDocumentSection: (snapshot: FolioAIEditSnapshot, handle: F
 
 // @public
 export const replyToComment: (doc: import__stll_docx_core_model.Document, parentCommentId: number, input: CreateCommentReplyInput) => import__stll_docx_core_model.Comment | null;
+
+// @public
+export const rewriteDocxMetadataPrivacy: (buffer: ArrayBuffer, input: FolioDocumentPrivacyOptions) => Promise<RewriteDocxMetadataPrivacyResult>;
+
+// @public (undocumented)
+export type RewriteDocxMetadataPrivacyResult = {
+    buffer: ArrayBuffer;
+    privacyReport: FolioDocumentPrivacyReport;
+};
 
 // @public (undocumented)
 export const STELLA_STYLE_SET_NAME = "Stella Style";
