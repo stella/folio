@@ -91,11 +91,14 @@ export {
   type FolioReviewReplyInput,
 } from "./ai-edits/headless";
 export {
+  applyFolioVersionDiffPrivacy,
   compareDocxVersions,
   FOLIO_DOCUMENT_METADATA_PROPERTIES,
   FOLIO_VERSION_COMPARISON_SCOPES,
+  FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS,
   InvalidFolioVersionComparisonOptionsError,
   isFolioVersionComparisonScope,
+  isFolioVersionComparisonPrivacyTransform,
   type FolioBlockDiff,
   type FolioCompareDocxVersionsOptions,
   type FolioDocumentMetadataProperty,
@@ -105,7 +108,10 @@ export {
   type FolioStoryDiff,
   type FolioVersionBlockHandle,
   type FolioVersionComparisonScope,
+  type FolioVersionComparisonPrivacyTransform,
   type FolioVersionDiff,
+  type FolioVersionDiffPrivacyOptions,
+  type FolioVersionDiffPrivacyReport,
   type FolioVersionDiffSummaryCounts,
   type FolioVersionDiffSegment,
 } from "./version-comparison";

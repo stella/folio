@@ -19,6 +19,7 @@ describe("formatVersionDiffForLLM", () => {
       },
       stories: [],
       metadataChanges: [],
+      privacyReport: { appliedTransforms: [], removedMetadataProperties: [] },
       changes: [
         {
           type: "modified",
@@ -102,12 +103,41 @@ describe("formatVersionDiffForLLM", () => {
         { property: "title", baseValue: "Initial", revisedValue: "Revised" },
         { property: "creator", baseValue: "Author", revisedValue: null },
       ],
+      privacyReport: { appliedTransforms: [], removedMetadataProperties: [] },
     };
 
     expect(formatVersionDiffForLLM(diff).split("\n")).toEqual([
       "Version diff: 0 added, 0 deleted, 0 modified, 0 format-changed, 0 moved, 2 metadata-changed, 1 unchanged",
       '~ metadata.title: "Initial" -> "Revised"',
       '~ metadata.creator: "Author" -> null',
+    ]);
+  });
+
+  test("renders applied privacy transforms and their removal report", () => {
+    const diff: FolioAgentVersionDiff = {
+      summaryCounts: {
+        added: 0,
+        deleted: 0,
+        modified: 0,
+        formatChanged: 0,
+        moved: 0,
+        metadataChanged: 1,
+        unchanged: 1,
+      },
+      stories: [],
+      changes: [],
+      metadataChanges: [{ property: "revision", baseValue: 1, revisedValue: 2 }],
+      privacyReport: {
+        appliedTransforms: ["remove-attribution", "remove-timestamps"],
+        removedMetadataProperties: ["creator", "modified"],
+      },
+    };
+
+    expect(formatVersionDiffForLLM(diff).split("\n")).toEqual([
+      "Version diff: 0 added, 0 deleted, 0 modified, 0 format-changed, 0 moved, 1 metadata-changed, 1 unchanged",
+      "Privacy transforms: remove-attribution, remove-timestamps",
+      "Removed metadata fields: creator, modified",
+      "~ metadata.revision: 1 -> 2",
     ]);
   });
 });

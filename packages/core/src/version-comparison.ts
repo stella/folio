@@ -100,13 +100,16 @@ export const isFolioVersionComparisonScope = (
 export type FolioCompareDocxVersionsOptions = {
   /** Selected scopes; defaults to text and formatting. */
   include?: readonly FolioVersionComparisonScope[];
+  /** Optional output-only privacy transforms. Source buffers are never mutated. */
+  privacy?: FolioVersionDiffPrivacyOptions;
 };
 
 export class InvalidFolioVersionComparisonOptionsError extends TaggedError(
   "InvalidFolioVersionComparisonOptionsError",
 )<{
   message: string;
-  receivedInclude: readonly unknown[];
+  option: "include" | "privacy.transforms";
+  receivedValue: unknown;
 }>() {}
 
 export const FOLIO_DOCUMENT_METADATA_PROPERTIES = Object.freeze([
@@ -128,6 +131,29 @@ export type FolioMetadataDiff = {
   property: FolioDocumentMetadataProperty;
   baseValue: FolioDocumentMetadataValue;
   revisedValue: FolioDocumentMetadataValue;
+};
+
+export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS = Object.freeze([
+  "remove-attribution",
+  "remove-timestamps",
+  "remove-descriptive-metadata",
+] as const);
+
+export type FolioVersionComparisonPrivacyTransform =
+  (typeof FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS)[number];
+
+export const isFolioVersionComparisonPrivacyTransform = (
+  value: unknown,
+): value is FolioVersionComparisonPrivacyTransform =>
+  FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS.some((transform) => transform === value);
+
+export type FolioVersionDiffPrivacyOptions = {
+  transforms: readonly FolioVersionComparisonPrivacyTransform[];
+};
+
+export type FolioVersionDiffPrivacyReport = {
+  appliedTransforms: FolioVersionComparisonPrivacyTransform[];
+  removedMetadataProperties: FolioDocumentMetadataProperty[];
 };
 
 /** Run-level formatting properties compared for `formatChanged` detection. */
@@ -226,6 +252,8 @@ export type FolioVersionDiff = {
   stories: FolioStoryDiff[];
   /** Changed package metadata fields in stable property order. */
   metadataChanges: FolioMetadataDiff[];
+  /** Applied privacy policy and the fields it removed from this result. */
+  privacyReport: FolioVersionDiffPrivacyReport;
   /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
   summaryCounts: FolioVersionDiffSummaryCounts;
 };
@@ -791,10 +819,79 @@ const resolveComparisonScopes = (
   if (include.length === 0 || include.some((scope) => !isFolioVersionComparisonScope(scope))) {
     throw new InvalidFolioVersionComparisonOptionsError({
       message: "Version comparison requires at least one recognized scope",
-      receivedInclude: include,
+      option: "include",
+      receivedValue: include,
     });
   }
   return new Set(include);
+};
+
+const PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM = {
+  "remove-attribution": ["creator", "lastModifiedBy"],
+  "remove-timestamps": ["created", "modified"],
+  "remove-descriptive-metadata": ["title", "subject", "keywords", "description"],
+} as const satisfies Record<
+  FolioVersionComparisonPrivacyTransform,
+  readonly FolioDocumentMetadataProperty[]
+>;
+
+const resolvePrivacyTransforms = (
+  transforms: unknown,
+): FolioVersionComparisonPrivacyTransform[] => {
+  if (
+    !Array.isArray(transforms) ||
+    transforms.some((transform) => !isFolioVersionComparisonPrivacyTransform(transform))
+  ) {
+    throw new InvalidFolioVersionComparisonOptionsError({
+      message: "Version comparison received an unrecognized privacy transform",
+      option: "privacy.transforms",
+      receivedValue: transforms,
+    });
+  }
+  const requested = new Set(transforms);
+  return FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS.filter((transform) =>
+    requested.has(transform),
+  );
+};
+
+/** Apply auditable, output-only privacy transforms to a structured version diff. */
+export const applyFolioVersionDiffPrivacy = (
+  diff: FolioVersionDiff,
+  options: FolioVersionDiffPrivacyOptions,
+): FolioVersionDiff => {
+  const requestedTransforms = resolvePrivacyTransforms(options.transforms);
+  const appliedTransformSet = new Set([
+    ...diff.privacyReport.appliedTransforms,
+    ...requestedTransforms,
+  ]);
+  const appliedTransforms = FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS.filter((transform) =>
+    appliedTransformSet.has(transform),
+  );
+  const removedPropertySet = new Set<FolioDocumentMetadataProperty>();
+  for (const transform of appliedTransforms) {
+    for (const property of PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM[transform]) {
+      removedPropertySet.add(property);
+    }
+  }
+  const actuallyRemovedPropertySet = new Set([
+    ...diff.privacyReport.removedMetadataProperties,
+    ...diff.metadataChanges
+      .filter(({ property }) => removedPropertySet.has(property))
+      .map(({ property }) => property),
+  ]);
+  const removedMetadataProperties = FOLIO_DOCUMENT_METADATA_PROPERTIES.filter((property) =>
+    actuallyRemovedPropertySet.has(property),
+  );
+  const metadataChanges = diff.metadataChanges.filter(
+    ({ property }) => !removedPropertySet.has(property),
+  );
+
+  return {
+    ...diff,
+    metadataChanges,
+    privacyReport: { appliedTransforms, removedMetadataProperties },
+    summaryCounts: { ...diff.summaryCounts, metadataChanged: metadataChanges.length },
+  };
 };
 
 type DocumentProperties = ReturnType<FolioDocxReviewer["getDocumentProperties"]>;
@@ -875,5 +972,15 @@ export const compareDocxVersions = async (
     : [];
   counts.metadataChanged = metadataChanges.length;
 
-  return { changes, stories, metadataChanges, summaryCounts: counts };
+  const diff: FolioVersionDiff = {
+    changes,
+    stories,
+    metadataChanges,
+    privacyReport: {
+      appliedTransforms: [],
+      removedMetadataProperties: [],
+    },
+    summaryCounts: counts,
+  };
+  return options.privacy ? applyFolioVersionDiffPrivacy(diff, options.privacy) : diff;
 };

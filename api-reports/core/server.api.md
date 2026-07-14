@@ -22,6 +22,9 @@ export type ApplyFolioAIEditsToBufferResult = FolioAIEditApplyResult & {
     buffer: ArrayBuffer;
 };
 
+// @public
+export const applyFolioVersionDiffPrivacy: (diff: FolioVersionDiff, options: FolioVersionDiffPrivacyOptions) => FolioVersionDiff;
+
 // @public (undocumented)
 export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
@@ -202,6 +205,9 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replac
 
 // @public (undocumented)
 export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "final"];
+
+// @public (undocumented)
+export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS: readonly ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"];
 
 // @public
 export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "metadata"];
@@ -415,7 +421,8 @@ export type FolioBlockId = string & {
 
 // @public (undocumented)
 export type FolioCompareDocxVersionsOptions = {
-    include?: readonly FolioVersionComparisonScope[];
+    include?: readonly FolioVersionComparisonScope[]; /** Optional output-only privacy transforms. Source buffers are never mutated. */
+    privacy?: FolioVersionDiffPrivacyOptions;
 };
 
 // @public (undocumented)
@@ -755,14 +762,29 @@ export type FolioVersionBlockHandle = {
 };
 
 // @public (undocumented)
+export type FolioVersionComparisonPrivacyTransform = (typeof FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS)[number];
+
+// @public (undocumented)
 export type FolioVersionComparisonScope = (typeof FOLIO_VERSION_COMPARISON_SCOPES)[number];
 
 // @public
 export type FolioVersionDiff = {
     changes: FolioBlockDiff[]; /** Per-story results in base order followed by stories added in the revised document. */
     stories: FolioStoryDiff[]; /** Changed package metadata fields in stable property order. */
-    metadataChanges: FolioMetadataDiff[]; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
+    metadataChanges: FolioMetadataDiff[]; /** Applied privacy policy and the fields it removed from this result. */
+    privacyReport: FolioVersionDiffPrivacyReport; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
     summaryCounts: FolioVersionDiffSummaryCounts;
+};
+
+// @public (undocumented)
+export type FolioVersionDiffPrivacyOptions = {
+    transforms: readonly FolioVersionComparisonPrivacyTransform[];
+};
+
+// @public (undocumented)
+export type FolioVersionDiffPrivacyReport = {
+    appliedTransforms: FolioVersionComparisonPrivacyTransform[];
+    removedMetadataProperties: FolioDocumentMetadataProperty[];
 };
 
 // @public
@@ -827,6 +849,9 @@ export const isFolioDocumentOperationModeSupported: (operationType: FolioDocumen
 
 // @public (undocumented)
 export const isFolioReviewedView: (value: unknown) => value is FolioReviewedView;
+
+// @public (undocumented)
+export const isFolioVersionComparisonPrivacyTransform: (value: unknown) => value is FolioVersionComparisonPrivacyTransform;
 
 // @public (undocumented)
 export const isFolioVersionComparisonScope: (value: unknown) => value is FolioVersionComparisonScope;
