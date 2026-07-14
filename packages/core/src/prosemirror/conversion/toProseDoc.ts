@@ -2453,6 +2453,7 @@ function convertImage(image: Image, rawXml?: string): PMNode {
     cropBottom: image.crop?.bottom,
     cropLeft: image.crop?.left,
     position,
+    layoutInCell: image.layoutInCell,
     borderWidth,
     borderColor,
     borderStyle,

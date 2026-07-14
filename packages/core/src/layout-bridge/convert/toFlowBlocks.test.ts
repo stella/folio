@@ -1895,6 +1895,29 @@ describe("toFlowBlocks image attribute normalization", () => {
     expect(imageRun.opacity).toBe(0.5);
   });
 
+  test("preserves authored table-cell anchor scope on image runs", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.nodes.image.create({
+          src: "media/image.png",
+          width: 100,
+          height: 100,
+          wrapType: "square",
+          displayMode: "float",
+          layoutInCell: false,
+        }),
+      ]),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph block");
+    }
+    const imageRun = paragraph.runs.find((run) => run.kind === "image");
+
+    expect(imageRun?.layoutInCell).toBe(false);
+  });
+
   test("marks embedded-object previews for exact line-height measurement", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [

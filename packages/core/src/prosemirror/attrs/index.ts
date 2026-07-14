@@ -514,6 +514,7 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalNumber(attrs, "distLeft", "image.attrs.distLeft", issues);
   optionalNumber(attrs, "distRight", "image.attrs.distRight", issues);
   optionalImagePosition(attrs, "position", "image.attrs.position", issues);
+  optionalBoolean(attrs, "layoutInCell", "image.attrs.layoutInCell", issues);
   optionalNumber(attrs, "borderWidth", "image.attrs.borderWidth", issues);
   optionalString(attrs, "borderColor", "image.attrs.borderColor", issues);
   optionalString(attrs, "borderStyle", "image.attrs.borderStyle", issues);

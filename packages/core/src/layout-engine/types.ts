@@ -209,6 +209,8 @@ export type ImageRun = {
   opacity?: number;
   /** Position for floating/anchored images */
   position?: ImageRunPosition;
+  /** Whether a table-cell anchor uses the cell as its positioning scope. Undefined defaults true. */
+  layoutInCell?: boolean;
   /** Wrap type from DOCX (inline, square, tight, through, topAndBottom, etc.) */
   wrapType?: ImageWrap["type"];
   /** Display mode for CSS rendering */

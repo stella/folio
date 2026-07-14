@@ -140,7 +140,8 @@ export type ImageAttrs = {
     cropRight?: number;
     cropBottom?: number;
     cropLeft?: number; /** Position for floating images (horizontal and vertical alignment) */
-    position?: ImagePositionAttrs; /** Border width in pixels */
+    position?: ImagePositionAttrs; /** Use the containing table cell as the anchor's positioning scope (the OOXML default). */
+    layoutInCell?: boolean; /** Border width in pixels */
     borderWidth?: number; /** Border color as CSS color string */
     borderColor?: string; /** Border style (CSS border-style value) */
     borderStyle?: string; /** Wrap text setting from DOCX (left, right, bothSides, largest) for round-trip */

@@ -1737,6 +1737,9 @@ function createImageRun(node: PMNode): Run {
   if (imagePosition) {
     image.position = imagePosition;
   }
+  if (attrs.layoutInCell !== undefined) {
+    image.layoutInCell = attrs.layoutInCell;
+  }
 
   // Round-trip border/outline
   if (attrs.borderWidth && attrs.borderWidth > 0) {

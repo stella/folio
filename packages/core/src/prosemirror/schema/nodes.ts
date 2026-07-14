@@ -306,6 +306,8 @@ export type ImageAttrs = {
   cropLeft?: number;
   /** Position for floating images (horizontal and vertical alignment) */
   position?: ImagePositionAttrs;
+  /** Use the containing table cell as the anchor's positioning scope (the OOXML default). */
+  layoutInCell?: boolean;
   /** Border width in pixels */
   borderWidth?: number;
   /** Border color as CSS color string */

@@ -35,6 +35,7 @@ export const ImageExtension = createNodeExtension({
       cropBottom: { default: null },
       cropLeft: { default: null },
       position: { default: null },
+      layoutInCell: { default: null },
       borderWidth: { default: null },
       borderColor: { default: null },
       borderStyle: { default: null },

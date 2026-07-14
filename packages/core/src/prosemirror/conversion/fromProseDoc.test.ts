@@ -10,6 +10,56 @@ import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 describe("fromProseDoc", () => {
+  test("round-trips authored table-cell anchor scope through the editor model", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  content: [
+                    {
+                      type: "drawing",
+                      image: {
+                        type: "image",
+                        rId: "rId1",
+                        size: { width: 914_400, height: 914_400 },
+                        wrap: { type: "square" },
+                        layoutInCell: true,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const imageNode = pmDoc.firstChild?.firstChild;
+    expect(imageNode?.attrs["layoutInCell"]).toBe(true);
+
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const paragraph = roundTripped.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    const run = paragraph.content.at(0);
+    if (run?.type !== "run") {
+      throw new Error("Expected run");
+    }
+    const drawing = run.content.at(0);
+    if (drawing?.type !== "drawing" || drawing.image?.type !== "image") {
+      throw new Error("Expected image drawing");
+    }
+    expect(drawing.image.layoutInCell).toBe(true);
+  });
+
   test("rejects malformed paragraph attrs at the conversion boundary", () => {
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", { paraId: 12 }, [schema.text("invalid")]),

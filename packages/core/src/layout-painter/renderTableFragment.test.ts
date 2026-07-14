@@ -894,7 +894,32 @@ describe("renderTableFragment cell floating images", () => {
     return rendered;
   };
 
-  test("resolves negative margin-relative offsets against page geometry", () => {
+  test("resolves cell-escaping offsets against page geometry", () => {
+    const table = renderFloatingImage(
+      {
+        kind: "image",
+        src: "floating.png",
+        width: 80,
+        height: 30,
+        displayMode: "float",
+        wrapType: "inFront",
+        layoutInCell: false,
+        position: {
+          horizontal: { relativeTo: "margin", posOffset: -457_200 },
+          vertical: { relativeTo: "paragraph", posOffset: 0 },
+        },
+      },
+      { pageGeometry },
+    );
+
+    const image = findByClass(table, "layout-cell-floating-image").at(0);
+    // The cell content starts 110px into the content area. The authored
+    // margin-relative offset is -48px, so the cell-local result is -158px.
+    expect(image?.style["left"]).toBe("-158px");
+    expect(image?.style["top"]).toBe("0px");
+  });
+
+  test("resolves default table-cell anchor offsets from the cell origin", () => {
     const table = renderFloatingImage(
       {
         kind: "image",
@@ -912,9 +937,7 @@ describe("renderTableFragment cell floating images", () => {
     );
 
     const image = findByClass(table, "layout-cell-floating-image").at(0);
-    // The cell content starts 110px into the content area. The authored
-    // margin-relative offset is -48px, so the cell-local result is -158px.
-    expect(image?.style["left"]).toBe("-158px");
+    expect(image?.style["left"]).toBe("-48px");
     expect(image?.style["top"]).toBe("0px");
   });
 

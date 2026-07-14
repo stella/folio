@@ -337,7 +337,8 @@ export type ImageRun = {
     alt?: string; /** CSS transform string (rotation, flip) */
     transform?: string;
     opacity?: number; /** Position for floating/anchored images */
-    position?: ImageRunPosition; /** Wrap type from DOCX (inline, square, tight, through, topAndBottom, etc.) */
+    position?: ImageRunPosition; /** Whether a table-cell anchor uses the cell as its positioning scope. Undefined defaults true. */
+    layoutInCell?: boolean; /** Wrap type from DOCX (inline, square, tight, through, topAndBottom, etc.) */
     wrapType?: ImageWrap["type"]; /** Display mode for CSS rendering */
     displayMode?: "inline" | "block" | "float"; /** CSS float direction */
     cssFloat?: "left" | "right" | "none"; /** Wrap distances in pixels */

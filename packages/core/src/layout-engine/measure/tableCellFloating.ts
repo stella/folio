@@ -35,6 +35,53 @@ export type ResolveTableCellFloatingPosition = (
   paragraphY: number,
 ) => TableCellFloatingPosition;
 
+type ResolveCellScopedPositionOptions = {
+  run: ImageRun;
+  paragraphY: number;
+  contentWidth: number;
+};
+
+const resolveCellScopedPosition = ({
+  run,
+  paragraphY,
+  contentWidth,
+}: ResolveCellScopedPositionOptions): TableCellFloatingPosition => {
+  const position = run.position;
+  let side: "left" | "right" = "left";
+  let x = 0;
+  if (position?.horizontal) {
+    const horizontal = position.horizontal;
+    if (horizontal.align === "right") {
+      side = "right";
+      x = contentWidth - run.width;
+    } else if (horizontal.align === "center") {
+      x = (contentWidth - run.width) / 2;
+    } else if (horizontal.posOffset !== undefined) {
+      x = emuToPixels(horizontal.posOffset);
+      side = x > contentWidth / 2 ? "right" : "left";
+    }
+  } else if (run.cssFloat === "right") {
+    side = "right";
+    x = contentWidth - run.width;
+  }
+
+  let y = paragraphY;
+  if (position?.vertical) {
+    const vertical = position.vertical;
+    if (vertical.posOffset !== undefined) {
+      y = paragraphY + emuToPixels(vertical.posOffset);
+    } else if (vertical.align === "top") {
+      y = 0;
+    }
+  }
+
+  return {
+    side,
+    x,
+    y,
+  };
+};
+
 export function getTableCellContentWidth(
   cell: TableCell | undefined,
   cellMeasure: TableCellMeasure,
@@ -69,48 +116,21 @@ export function getTableCellFloatingImages(
         continue;
       }
 
-      const position = run.position;
       const distTop = run.distTop ?? 0;
       const distBottom = run.distBottom ?? 0;
       const distLeft = run.distLeft ?? 12;
       const distRight = run.distRight ?? 12;
+      const verticalOriginY =
+        run.position?.vertical?.relativeTo === "paragraph" ? placement.top : placement.contentTop;
 
-      let side: "left" | "right";
-      let x: number;
-      let y: number;
-      if (resolvePosition) {
-        ({ side, x, y } = resolvePosition(run, placement.contentTop));
-      } else {
-        side = "left";
-        x = 0;
-        if (position?.horizontal) {
-          const horizontal = position.horizontal;
-          if (horizontal.align === "right") {
-            side = "right";
-            x = contentWidth - run.width;
-          } else if (horizontal.align === "center") {
-            x = (contentWidth - run.width) / 2;
-          } else if (horizontal.posOffset !== undefined) {
-            x = emuToPixels(horizontal.posOffset);
-            side = x > contentWidth / 2 ? "right" : "left";
-          }
-        } else if (run.cssFloat === "right") {
-          side = "right";
-          x = contentWidth - run.width;
-        }
-
-        y = placement.contentTop;
-        if (position?.vertical) {
-          const vertical = position.vertical;
-          if (vertical.posOffset !== undefined) {
-            y = placement.contentTop + emuToPixels(vertical.posOffset);
-          } else if (vertical.align === "top") {
-            y = 0;
-          }
-        }
-
-        x = Math.max(0, Math.min(x, contentWidth - run.width));
-      }
+      const resolved =
+        run.layoutInCell === false && resolvePosition
+          ? resolvePosition(run, verticalOriginY)
+          : resolveCellScopedPosition({
+              run,
+              paragraphY: verticalOriginY,
+              contentWidth,
+            });
 
       let wrapText: "bothSides" | "left" | "right" | "largest" = "bothSides";
       if (run.cssFloat === "left") {
@@ -130,9 +150,9 @@ export function getTableCellFloatingImages(
         ...(run.cropRight != null ? { cropRight: run.cropRight } : {}),
         ...(run.cropBottom != null ? { cropBottom: run.cropBottom } : {}),
         ...(run.cropLeft != null ? { cropLeft: run.cropLeft } : {}),
-        x,
-        y,
-        side,
+        x: resolved.x,
+        y: resolved.y,
+        side: resolved.side,
         distTop,
         distBottom,
         distLeft,

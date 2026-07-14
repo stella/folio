@@ -74,7 +74,7 @@ describe("table cell block flow", () => {
     expect(finishTableCellFlow(state)).toBe(28);
   });
 
-  test("uses collapsed paragraph placement for floating anchors", () => {
+  test("uses the paragraph box before leading spacing as its anchor origin", () => {
     const image: ImageRun = {
       kind: "image",
       src: "floating.png",
@@ -101,15 +101,78 @@ describe("table cell block flow", () => {
       width: 100,
       height: 32,
     };
-    let resolvedAnchor = 0;
+    let pageResolverCalled = false;
 
     const images = getTableCellFloatingImages(cell, cellMeasure, 100, (_run, paragraphY) => {
-      resolvedAnchor = paragraphY;
+      pageResolverCalled = true;
       return { side: "left", x: 0, y: paragraphY };
     });
 
-    expect(resolvedAnchor).toBe(22);
-    expect(images.at(0)?.y).toBe(22);
+    expect(pageResolverCalled).toBe(false);
+    expect(images.at(0)?.y).toBe(10);
+  });
+
+  test("delegates anchors that explicitly escape the table cell", () => {
+    const image: ImageRun = {
+      kind: "image",
+      src: "floating.png",
+      width: 20,
+      height: 20,
+      displayMode: "float",
+      wrapType: "square",
+      layoutInCell: false,
+      position: { vertical: { relativeTo: "paragraph", posOffset: 0 } },
+    };
+    const cell: TableCell = {
+      id: "cell",
+      blocks: [{ kind: "paragraph", id: "anchor", runs: [image] }],
+    };
+    const cellMeasure: TableCellMeasure = {
+      blocks: [measure(10)],
+      width: 100,
+      height: 10,
+    };
+
+    const images = getTableCellFloatingImages(cell, cellMeasure, 100, (_run, paragraphY) => ({
+      side: "right",
+      x: -40,
+      y: paragraphY + 5,
+    }));
+
+    expect(images.at(0)).toMatchObject({ x: -40, y: 5, side: "right" });
+  });
+
+  test("resolves default table-cell anchor offsets from the cell content origin", () => {
+    const image: ImageRun = {
+      kind: "image",
+      src: "floating.png",
+      width: 20,
+      height: 20,
+      displayMode: "float",
+      wrapType: "square",
+      position: {
+        horizontal: { relativeTo: "margin", posOffset: -914_400 },
+        vertical: { relativeTo: "paragraph", posOffset: 0 },
+      },
+    };
+    const cell: TableCell = {
+      id: "cell",
+      blocks: [{ kind: "paragraph", id: "anchor", runs: [image] }],
+    };
+    const cellMeasure: TableCellMeasure = {
+      blocks: [measure(10)],
+      width: 100,
+      height: 10,
+    };
+    let pageResolverCalled = false;
+
+    const images = getTableCellFloatingImages(cell, cellMeasure, 100, () => {
+      pageResolverCalled = true;
+      return { side: "left", x: -96, y: 0 };
+    });
+
+    expect(pageResolverCalled).toBe(false);
+    expect(images.at(0)).toMatchObject({ x: -96, y: 0, side: "left" });
   });
 
   test("keeps consecutive authored empty paragraphs as independent spacers", () => {

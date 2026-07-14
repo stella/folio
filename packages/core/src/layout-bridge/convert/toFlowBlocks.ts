@@ -916,6 +916,9 @@ function buildImageRun(
   if (attrs.position !== undefined) {
     run.position = attrs.position;
   }
+  if (attrs.layoutInCell !== undefined) {
+    run.layoutInCell = attrs.layoutInCell;
+  }
   if (trackedChange?.isInsertion) {
     run.isInsertion = true;
   }
