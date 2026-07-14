@@ -27,6 +27,8 @@ import type {
   TableStructuralChangeInfo,
   TableMeasurement,
   TableBorders,
+  TableCellBorders,
+  BorderSpec,
   TableLook,
   CellMargins,
   FloatingTableProperties,
@@ -97,60 +99,56 @@ function serializeMeasurement(
 /**
  * Serialize table borders (w:tblBorders or w:tcBorders)
  */
+function serializeTableBorderParts(borders: TableBorders): string[] {
+  const parts: string[] = [];
+
+  const appendBorder = (border: BorderSpec | undefined, name: string): void => {
+    const xml = serializeBorder(border, name);
+    if (xml) {
+      parts.push(xml);
+    }
+  };
+
+  appendBorder(borders.top, "top");
+  appendBorder(borders.left, "left");
+  appendBorder(borders.bottom, "bottom");
+  appendBorder(borders.right, "right");
+  appendBorder(borders.insideH, "insideH");
+  appendBorder(borders.insideV, "insideV");
+
+  return parts;
+}
+
 function serializeTableBorders(borders: TableBorders | undefined, elementName: string): string {
   if (!borders) {
     return "";
   }
 
-  const parts: string[] = [];
-
-  if (borders.top) {
-    const topXml = serializeBorder(borders.top, "top");
-    if (topXml) {
-      parts.push(topXml);
-    }
-  }
-
-  if (borders.left) {
-    const leftXml = serializeBorder(borders.left, "left");
-    if (leftXml) {
-      parts.push(leftXml);
-    }
-  }
-
-  if (borders.bottom) {
-    const bottomXml = serializeBorder(borders.bottom, "bottom");
-    if (bottomXml) {
-      parts.push(bottomXml);
-    }
-  }
-
-  if (borders.right) {
-    const rightXml = serializeBorder(borders.right, "right");
-    if (rightXml) {
-      parts.push(rightXml);
-    }
-  }
-
-  if (borders.insideH) {
-    const insideHXml = serializeBorder(borders.insideH, "insideH");
-    if (insideHXml) {
-      parts.push(insideHXml);
-    }
-  }
-
-  if (borders.insideV) {
-    const insideVXml = serializeBorder(borders.insideV, "insideV");
-    if (insideVXml) {
-      parts.push(insideVXml);
-    }
-  }
+  const parts = serializeTableBorderParts(borders);
 
   if (parts.length === 0) {
     return "";
   }
 
   return `<w:${elementName}>${parts.join("")}</w:${elementName}>`;
+}
+
+function serializeTableCellBorders(borders: TableCellBorders | undefined): string {
+  if (!borders) {
+    return "";
+  }
+
+  const parts = serializeTableBorderParts(borders);
+  const topLeftToBottomRight = serializeBorder(borders.topLeftToBottomRight, "tl2br");
+  if (topLeftToBottomRight) {
+    parts.push(topLeftToBottomRight);
+  }
+  const topRightToBottomLeft = serializeBorder(borders.topRightToBottomLeft, "tr2bl");
+  if (topRightToBottomLeft) {
+    parts.push(topRightToBottomLeft);
+  }
+
+  return parts.length > 0 ? `<w:tcBorders>${parts.join("")}</w:tcBorders>` : "";
 }
 
 // ============================================================================
@@ -651,7 +649,7 @@ export function serializeTableCellFormatting(
     }
 
     // Cell borders
-    const bordersXml = serializeTableBorders(formatting.borders, "tcBorders");
+    const bordersXml = serializeTableCellBorders(formatting.borders);
     if (bordersXml) {
       parts.push(bordersXml);
     }

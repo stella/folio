@@ -397,6 +397,16 @@ export type TableBorders = {
 };
 
 /**
+ * Table cell borders, including the two diagonals permitted by w:tcBorders.
+ */
+export type TableCellBorders = TableBorders & {
+  /** Border from the top-left corner to the bottom-right corner (w:tl2br) */
+  topLeftToBottomRight?: BorderSpec;
+  /** Border from the top-right corner to the bottom-left corner (w:tr2bl) */
+  topRightToBottomLeft?: BorderSpec;
+};
+
+/**
  * Cell margins
  */
 export type CellMargins = {
@@ -536,7 +546,7 @@ export type TableCellFormatting = {
   /** Cell width */
   width?: TableMeasurement;
   /** Cell borders */
-  borders?: TableBorders;
+  borders?: TableCellBorders;
   /** Cell margins (override table default) */
   margins?: CellMargins;
   /** Cell shading/background */

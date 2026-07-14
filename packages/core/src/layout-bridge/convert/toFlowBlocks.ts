@@ -2109,6 +2109,15 @@ function extractCellBorders(
     result[side] = border?.size === 0 ? { ...converted, width: 0 } : converted;
   }
 
+  const diagonalSides = ["topLeftToBottomRight", "topRightToBottomLeft"] as const;
+  for (const side of diagonalSides) {
+    const border = borders[side];
+    const converted = border ? convertBorderSpecToLayout(border, theme) : undefined;
+    if (converted) {
+      result[side] = converted;
+    }
+  }
+
   return Object.keys(result).length > 0 ? result : undefined;
 }
 

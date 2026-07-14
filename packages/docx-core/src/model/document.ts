@@ -41,6 +41,7 @@ export type {
   TableWidthType,
   TableMeasurement,
   TableBorders,
+  TableCellBorders,
   CellMargins,
   TableLook,
   FloatingTableProperties,

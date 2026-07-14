@@ -23,6 +23,7 @@ import type {
   TextFormatting,
   NumberFormat,
   TableBorders,
+  TableCellBorders,
   TableFormatting,
   TablePropertyChange,
   TableRowFormatting,
@@ -615,12 +616,7 @@ export type TableCellAttrs = {
   /** No text wrapping in cell */
   noWrap?: boolean;
   /** Cell borders — full BorderSpec per side (style, color, size) */
-  borders?: {
-    top?: BorderSpec;
-    bottom?: BorderSpec;
-    left?: BorderSpec;
-    right?: BorderSpec;
-  };
+  borders?: TableCellBorders;
   /** Cell margins/padding in twips per side */
   margins?: { top?: number; bottom?: number; left?: number; right?: number };
   /** Original cell formatting from DOCX for lossless round-trip serialization */

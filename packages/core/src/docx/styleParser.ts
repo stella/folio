@@ -31,6 +31,7 @@ import type {
   ShadingProperties,
   TabStop,
   TableBorders,
+  TableCellBorders,
   CellMargins,
   TableLook,
   TableMeasurement,
@@ -870,6 +871,26 @@ function parseTableBorders(tblBorders: XmlElement | null): TableBorders | undefi
   return Object.keys(borders).length > 0 ? borders : undefined;
 }
 
+/** Parse cell-only diagonal borders in addition to the shared table sides. */
+function parseTableCellBorders(tcBorders: XmlElement | null): TableCellBorders | undefined {
+  if (!tcBorders) {
+    return undefined;
+  }
+
+  const borders: TableCellBorders = { ...parseTableBorders(tcBorders) };
+  const topLeftToBottomRight = parseBorderSpec(findChild(tcBorders, "w", "tl2br"));
+  if (topLeftToBottomRight) {
+    borders.topLeftToBottomRight = topLeftToBottomRight;
+  }
+
+  const topRightToBottomLeft = parseBorderSpec(findChild(tcBorders, "w", "tr2bl"));
+  if (topRightToBottomLeft) {
+    borders.topRightToBottomLeft = topRightToBottomLeft;
+  }
+
+  return Object.keys(borders).length > 0 ? borders : undefined;
+}
+
 /**
  * Parse cell margins
  */
@@ -1158,7 +1179,7 @@ function parseTableCellProperties(
   // Cell borders
   const tcBorders = findChild(tcPr, "w", "tcBorders");
   if (tcBorders) {
-    const bordersResult = parseTableBorders(tcBorders);
+    const bordersResult = parseTableCellBorders(tcBorders);
     if (bordersResult) {
       formatting.borders = bordersResult;
     }

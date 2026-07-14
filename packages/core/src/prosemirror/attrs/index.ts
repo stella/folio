@@ -462,6 +462,8 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
     "bottom",
     "left",
     "right",
+    "topLeftToBottomRight",
+    "topRightToBottomLeft",
   ]);
   optionalInsetMap(attrs, "margins", "tableCell.attrs.margins", issues);
   optionalRecord(attrs, "_originalFormatting", "tableCell.attrs._originalFormatting", issues);

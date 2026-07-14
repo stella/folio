@@ -35,6 +35,7 @@ import type {
   TableCell,
   TableCellFormatting,
   TableBorders,
+  TableCellBorders,
   TableLook,
   SimpleField,
   ComplexField,
@@ -1679,17 +1680,19 @@ const TABLE_BORDER_SIDES = [
   "right",
   "insideH",
   "insideV",
-] as const satisfies readonly (keyof TableBorders)[];
+  "topLeftToBottomRight",
+  "topRightToBottomLeft",
+] as const satisfies readonly (keyof TableCellBorders)[];
 
 function resolveThemedBorderColors(
-  borders: TableBorders | undefined,
+  borders: TableCellBorders | undefined,
   theme: Theme | null | undefined,
-): TableBorders | undefined {
+): TableCellBorders | undefined {
   if (!borders || !theme?.colorScheme) {
     return borders;
   }
 
-  let resolved: TableBorders | undefined;
+  let resolved: TableCellBorders | undefined;
   for (const side of TABLE_BORDER_SIDES) {
     const border = borders[side];
     if (!border?.color?.themeColor || border.color.auto) {

@@ -34,6 +34,7 @@ import type {
   TableMeasurement,
   TableWidthType,
   TableBorders,
+  TableCellBorders,
   TableLook,
   CellMargins,
   FloatingTableProperties,
@@ -265,6 +266,26 @@ export function parseTableBorders(bordersElement: XmlElement | null): TableBorde
   }
 
   return borders;
+}
+
+/** Parse cell-only diagonal borders in addition to the shared table sides. */
+function parseTableCellBorders(bordersElement: XmlElement | null): TableCellBorders | undefined {
+  if (!bordersElement) {
+    return undefined;
+  }
+
+  const borders: TableCellBorders = { ...parseTableBorders(bordersElement) };
+  const topLeftToBottomRight = parseBorderSpec(findChild(bordersElement, "w", "tl2br"));
+  if (topLeftToBottomRight) {
+    borders.topLeftToBottomRight = topLeftToBottomRight;
+  }
+
+  const topRightToBottomLeft = parseBorderSpec(findChild(bordersElement, "w", "tr2bl"));
+  if (topRightToBottomLeft) {
+    borders.topRightToBottomLeft = topRightToBottomLeft;
+  }
+
+  return Object.keys(borders).length > 0 ? borders : undefined;
 }
 
 // ============================================================================
@@ -1055,7 +1076,7 @@ export function parseTableCellProperties(
   }
 
   // Cell borders (w:tcBorders)
-  const borders = parseTableBorders(findChild(tcPrElement, "w", "tcBorders"));
+  const borders = parseTableCellBorders(findChild(tcPrElement, "w", "tcBorders"));
   if (borders) {
     formatting.borders = borders;
   }
