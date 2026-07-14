@@ -1635,10 +1635,10 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
   }
 
   // Extract content from the sdt node's children. OOXML allows runs,
-  // hyperlinks, simple/complex fields, nested SDTs, and math here — keep
-  // all of them so docProps-bound fields and similar template content
-  // survive a round-trip through the editor. Keep this filter in sync
-  // with the exhaustive switch in `serializeInlineSdt`.
+  // hyperlinks, simple/complex fields, nested SDTs, tracked changes,
+  // and math here. Keep all of them so docProps-bound fields and reviewed
+  // template content survive a round-trip through the editor. Keep this
+  // filter in sync with the exhaustive switch in `serializeInlineSdt`.
   const sdtContent = extractParagraphContent(node);
   const content = sdtContent.filter(
     (c): c is InlineSdt["content"][number] =>
@@ -1647,6 +1647,8 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
       c.type === "simpleField" ||
       c.type === "complexField" ||
       c.type === "inlineSdt" ||
+      c.type === "insertion" ||
+      c.type === "deletion" ||
       c.type === "mathEquation",
   );
 

@@ -2031,6 +2031,14 @@ function convertInlineSdt(
       if (nestedSdt) {
         inlineNodes.push(nestedSdt);
       }
+    } else if (content.type === "insertion") {
+      inlineNodes.push(
+        ...convertTrackedChange(content, "insertion", getInheritedRunFormatting, styleResolver),
+      );
+    } else if (content.type === "deletion") {
+      inlineNodes.push(
+        ...convertTrackedChange(content, "deletion", getInheritedRunFormatting, styleResolver),
+      );
     } else {
       // content.type === "mathEquation" — narrowed by exhaustion of the
       // InlineSdt['content'] union above.
