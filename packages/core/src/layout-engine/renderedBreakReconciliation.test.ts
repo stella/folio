@@ -184,6 +184,26 @@ describe("rendered break reconciliation", () => {
     expect(decision.suppressSpaceBefore).toBe(false);
   });
 
+  test("a continuous section boundary preserves inherited spacing without a page advance", () => {
+    const prior = paragraph(1);
+    const previous: FlowBlock = { kind: "sectionBreak", id: 2, type: "continuous" };
+    const decision = reconcileBreakBeforeBlock({
+      state: INITIAL_RENDERED_BREAK_STATE,
+      block: paragraph(3, {
+        renderedPageBreakBefore: true,
+        spacing: { before: 24 },
+      }),
+      previousBlock: previous,
+      page: page([paragraphFragment(1)]),
+      blocksById: new Map([["1", prior]]),
+      hasExplicitPageBreak: false,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.suppressSpaceBefore).toBe(false);
+  });
+
   test("a reflow boundary satisfies the next cached marker", () => {
     const previous = paragraph(1);
     const decision = reconcileBreakBeforeBlock({

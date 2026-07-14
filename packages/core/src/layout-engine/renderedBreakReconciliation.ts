@@ -68,10 +68,14 @@ export const reconcileBreakBeforeBlock = ({
     markerNeedsSnap && !markerAlreadySatisfied && pageHasVisibleBodyContent(page, blocksById);
   const followsAuthoredPageBreak = previousBlock?.kind === "pageBreak";
   const followsSectionBreak = previousBlock?.kind === "sectionBreak";
+  const followsPageBreakingSection = followsSectionBreak && previousBlock.type !== "continuous";
   const preserveSectionLeadingSpacing =
     followsSectionBreak && block.attrs?.spacingExplicit?.before === true;
   const markerAccountsForBoundary =
-    forcePageBreak || markerAlreadySatisfied || followsAuthoredPageBreak || followsSectionBreak;
+    forcePageBreak ||
+    markerAlreadySatisfied ||
+    followsAuthoredPageBreak ||
+    followsPageBreakingSection;
 
   return {
     forcePageBreak,
