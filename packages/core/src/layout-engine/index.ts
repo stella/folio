@@ -24,7 +24,7 @@ import {
   reconcileBreakBeforeBlock,
   recordReflowBoundary,
 } from "./renderedBreakReconciliation";
-import { buildTableRowBreakInfo, snapRowBreak } from "./tableRowBreak";
+import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
 import { floatingTextBoxReservesBand } from "./types";
 import type {
@@ -1005,7 +1005,12 @@ function layoutTable(
           slice = (next ?? splittableRow.height) - consumed;
         }
         const sliceBottom = consumed + slice;
-        const reachesRowEnd = sliceBottom >= splittableRow.height;
+        const continuationSkip =
+          sliceBottom < splittableRow.height
+            ? getRowContinuationSkip(breakInfo, currentRowIndex, sliceBottom)
+            : 0;
+        const nextConsumed = Math.min(splittableRow.height, sliceBottom + continuationSkip);
+        const reachesRowEnd = nextConsumed >= splittableRow.height;
         const moreAfter = !reachesRowEnd || currentRowIndex + 1 < rows.length;
         const fragmentHeight = headerOverhead + slice;
         const sliceFragment: TableFragment = {
@@ -1023,13 +1028,13 @@ function layoutTable(
           ...(moreAfter ? { continuesOnNext: true } : {}),
           ...(repeatHeaderRows ? { headerRowCount } : {}),
           ...(consumed > 0 ? { topClip: consumed } : {}),
-          ...(reachesRowEnd ? {} : { bottomClip: sliceBottom }),
+          ...(sliceBottom >= splittableRow.height ? {} : { bottomClip: sliceBottom }),
           ...(block.sdtGroups ? { sdtGroups: block.sdtGroups } : {}),
         };
         const sliceResult = paginator.addFragment(sliceFragment, fragmentHeight, 0, 0);
         sliceFragment.y = sliceResult.y;
         sliceFragment.x = computeTableX(sliceResult.state.columnIndex);
-        consumed = sliceBottom;
+        consumed = nextConsumed;
         if (consumed < splittableRow.height) {
           paginator.forceColumnBreak();
         }

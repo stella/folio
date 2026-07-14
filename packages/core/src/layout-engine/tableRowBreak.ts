@@ -20,6 +20,7 @@ import {
   getTableCellFloatingImages,
 } from "./measure/tableCellFloating";
 import { createTableCellFlowState, placeTableCellBlock } from "./measure/tableCellFlow";
+import { isEmptyParagraph } from "./paragraphSpacing";
 import type { TableBlock, TableCell, TableCellMeasure, TableMeasure } from "./types";
 
 type UnsafeBreakRange = {
@@ -30,7 +31,10 @@ type UnsafeBreakRange = {
 type CellBreakGeometry = {
   bottoms: number[];
   unsafeRanges: UnsafeBreakRange[];
+  suppressibleLeadingRanges: UnsafeBreakRange[];
 };
+
+const BREAK_OFFSET_EPSILON = 0.01;
 
 const DEFAULT_TABLE_CELL_PADDING_TOP = 1;
 
@@ -63,6 +67,10 @@ function shiftCellGeometry(geometry: CellBreakGeometry, offset: number): CellBre
       top: range.top + offset,
       bottom: range.bottom + offset,
     })),
+    suppressibleLeadingRanges: geometry.suppressibleLeadingRanges.map((range) => ({
+      top: range.top + offset,
+      bottom: range.bottom + offset,
+    })),
   };
 }
 
@@ -75,6 +83,7 @@ function cellBreakGeometry(
   // aligned with both glyph boundaries and inter-paragraph whitespace.
   const bottoms: number[] = [];
   const unsafeRanges: UnsafeBreakRange[] = [];
+  const suppressibleLeadingRanges: UnsafeBreakRange[] = [];
   const cellBlocks = cell?.blocks;
   const blockMeasures = measure.blocks;
   const padTop = cell?.padding?.top ?? DEFAULT_TABLE_CELL_PADDING_TOP;
@@ -99,6 +108,12 @@ function cellBreakGeometry(
         });
       }
       const placement = placeTableCellBlock(flowState, block, blockMeasure);
+      if (placement.leadingSpacing > 0 && isEmptyParagraph(block)) {
+        suppressibleLeadingRanges.push({
+          top: padTop + placement.top,
+          bottom: padTop + placement.contentTop,
+        });
+      }
       // Paragraph lines paint after the resolved leading spacing, matching the
       // paragraph fragment's top padding in the cell painter.
       let y = padTop + placement.contentTop;
@@ -128,8 +143,42 @@ function cellBreakGeometry(
       }
     }
   }
-  return { bottoms, unsafeRanges };
+  return { bottoms, unsafeRanges, suppressibleLeadingRanges };
 }
+
+const continuationSkipForCell = (
+  geometry: CellBreakGeometry,
+  offset: number,
+): number | undefined => {
+  const hasRemainingContent = geometry.unsafeRanges.some(
+    ({ bottom }) => bottom > offset + BREAK_OFFSET_EPSILON,
+  );
+  if (!hasRemainingContent) {
+    return undefined;
+  }
+
+  const leadingRange = geometry.suppressibleLeadingRanges.find(
+    ({ top, bottom }) =>
+      top <= offset + BREAK_OFFSET_EPSILON && bottom > offset + BREAK_OFFSET_EPSILON,
+  );
+  return leadingRange ? leadingRange.bottom - offset : 0;
+};
+
+/**
+ * Leading spacing before an empty paragraph is consumed when a split row
+ * resumes at the top of a fresh flow region. Only a whitespace band shared by
+ * every cell with remaining content is suppressible; non-empty paragraphs,
+ * line boxes, cell padding, and explicit row height retain authored space.
+ */
+const continuationSkipAfter = (geometries: CellBreakGeometry[], offset: number): number => {
+  const skips = geometries
+    .map((geometry) => continuationSkipForCell(geometry, offset))
+    .filter((skip): skip is number => skip !== undefined);
+  if (skips.length === 0 || skips.some((skip) => skip <= BREAK_OFFSET_EPSILON)) {
+    return 0;
+  }
+  return Math.min(...skips);
+};
 
 /** Precomputed break geometry for a table. */
 export type TableRowBreakInfo = {
@@ -141,6 +190,8 @@ export type TableRowBreakInfo = {
    * final boundary.
    */
   breakOffsets: number[][];
+  /** Suppressible leading paragraph whitespace after each matching break offset. */
+  continuationSkips: number[][];
 };
 
 /** Build break geometry for a table from its block + measure. */
@@ -158,6 +209,7 @@ export function buildTableRowBreakInfo(
   rowTops.push(acc);
 
   const breakOffsets: number[][] = [];
+  const continuationSkips: number[][] = [];
   for (let r = 0; r < rowCount; r++) {
     const rowHeight = measure.rows[r]?.height ?? 0;
     const offsets = new Set<number>();
@@ -189,10 +241,31 @@ export function buildTableRowBreakInfo(
           geometry.unsafeRanges.every((range) => !isInsideRange(offset, range)),
         ),
     );
-    breakOffsets.push(safeOffsets.sort((a, b) => a - b));
+    const sortedOffsets = safeOffsets.sort((a, b) => a - b);
+    breakOffsets.push(sortedOffsets);
+    continuationSkips.push(
+      sortedOffsets.map((offset) => continuationSkipAfter(cellGeometries, offset)),
+    );
   }
 
-  return { rowTops, breakOffsets };
+  return { rowTops, breakOffsets, continuationSkips };
+}
+
+/** Leading empty-paragraph whitespace to consume when a row resumes after `offset`. */
+export function getRowContinuationSkip(
+  info: TableRowBreakInfo,
+  rowIndex: number,
+  offset: number,
+): number {
+  const offsets = info.breakOffsets[rowIndex];
+  const skips = info.continuationSkips[rowIndex];
+  const index = offsets?.findIndex(
+    (candidate) => Math.abs(candidate - offset) <= BREAK_OFFSET_EPSILON,
+  );
+  if (index === undefined || index < 0) {
+    return 0;
+  }
+  return skips?.[index] ?? 0;
 }
 
 /**

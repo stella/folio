@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { layoutDocument } from "./index";
 import { clearAllCaches } from "./measure";
 import { resetCanvasContext } from "./measure/measureContainer";
-import { buildTableRowBreakInfo, snapRowBreak } from "./tableRowBreak";
+import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import type {
   FlowBlock,
   LayoutOptions,
@@ -759,6 +759,128 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
     // Not even the first line fits.
     expect(snapRowBreak(info, 0, 0, 15)).toBe(0);
   });
+
+  test("marks leading spacing before an empty continuation paragraph as suppressible", () => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "t",
+      rows: [
+        {
+          id: "r0",
+          cells: [
+            {
+              id: "c0",
+              padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              blocks: [
+                {
+                  kind: "paragraph",
+                  id: "first",
+                  runs: [{ kind: "text", text: "first" }],
+                },
+                {
+                  kind: "paragraph",
+                  id: "second",
+                  attrs: { spacing: { before: 16, after: 8 }, styleId: "CellText" },
+                  runs: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      columnWidths: [220],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [
+            {
+              blocks: [paraMeasure(6), paraMeasure(1)],
+              width: 220,
+              height: 164,
+            },
+          ],
+          height: 164,
+        },
+      ],
+      columnWidths: [220],
+      totalWidth: 220,
+      totalHeight: 164,
+    };
+
+    const info = buildTableRowBreakInfo(block, measure);
+
+    expect(snapRowBreak(info, 0, 0, 120)).toBe(120);
+    expect(getRowContinuationSkip(info, 0, 120)).toBe(16);
+  });
+
+  test("does not suppress a shared row band while another cell starts content", () => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "t",
+      rows: [
+        {
+          id: "r0",
+          cells: [
+            {
+              id: "c0",
+              padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              blocks: [
+                {
+                  kind: "paragraph",
+                  id: "left-first",
+                  runs: [{ kind: "text", text: "first" }],
+                },
+                {
+                  kind: "paragraph",
+                  id: "left-second",
+                  attrs: { spacing: { before: 16 }, styleId: "CellText" },
+                  runs: [],
+                },
+              ],
+            },
+            {
+              id: "c1",
+              padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              blocks: [
+                {
+                  kind: "paragraph",
+                  id: "right-first",
+                  runs: [{ kind: "text", text: "first" }],
+                },
+                {
+                  kind: "paragraph",
+                  id: "right-second",
+                  runs: [{ kind: "text", text: "second" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      columnWidths: [110, 110],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [
+            { blocks: [paraMeasure(6), paraMeasure(1)], width: 110, height: 156 },
+            { blocks: [paraMeasure(6), paraMeasure(1)], width: 110, height: 140 },
+          ],
+          height: 156,
+        },
+      ],
+      columnWidths: [110, 110],
+      totalWidth: 220,
+      totalHeight: 156,
+    };
+
+    const info = buildTableRowBreakInfo(block, measure);
+
+    expect(getRowContinuationSkip(info, 0, 120)).toBe(0);
+  });
 });
 
 const OPTIONS: LayoutOptions = {
@@ -846,6 +968,57 @@ describe("floating table placement", () => {
 });
 
 describe("oversized table row splits across pages (#570)", () => {
+  test("consumes empty-paragraph leading spacing when a split row resumes", () => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "t",
+      rows: [
+        {
+          id: "r0",
+          cells: [
+            {
+              id: "c0",
+              padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              blocks: [
+                {
+                  kind: "paragraph",
+                  id: "first",
+                  runs: [{ kind: "text", text: "first" }],
+                },
+                {
+                  kind: "paragraph",
+                  id: "second",
+                  attrs: { spacing: { before: 16, after: 8 }, styleId: "CellText" },
+                  runs: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      columnWidths: [220],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [{ blocks: [paraMeasure(6), paraMeasure(1)], width: 220, height: 164 }],
+          height: 164,
+        },
+      ],
+      columnWidths: [220],
+      totalWidth: 220,
+      totalHeight: 164,
+    };
+
+    const fragments = tableFragments(block, measure);
+
+    expect(fragments).toHaveLength(2);
+    expect(fragments[0]).toMatchObject({ height: 120, bottomClip: 120 });
+    expect(fragments[1]).toMatchObject({ height: 28, topClip: 136 });
+    expect(fragments[1]?.bottomClip).toBeUndefined();
+  });
+
   test("a row taller than a page breaks at line boundaries with no content lost", () => {
     // 15 lines = 300px row, page content height = 120px (6 lines).
     const { block, measure } = tallTable(15);
