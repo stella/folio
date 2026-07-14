@@ -38,6 +38,37 @@ The HTML report lands in `parity/report/index.html` and identifies the selected
 renderer and its version. Reports describe the renderer as a **reference**, not
 as a specification oracle.
 
+## Word line-endpoint regression manifests
+
+The focused line-endpoint validator separates Word capture from Folio
+validation. Capture requires the local Word adapter, but validation reads a
+versioned JSON manifest and does not launch or require Word. This makes a
+reviewed reference capture reusable on machines and CI runners where Word is
+not installed.
+
+```sh
+# On a licensed Mac with Microsoft Word and mutool
+bun run parity:line-endpoints capture path/to/fixture.docx \
+  --output path/to/fixture.word-lines.json
+
+# Anywhere Folio's playground can run; Word is not opened
+bun run parity:line-endpoints validate path/to/fixture.docx \
+  --manifest path/to/fixture.word-lines.json
+```
+
+The manifest records the exact DOCX SHA-256, Word and extraction versions, and
+the normalized text occupying each visual line. Validation fails fast if the
+DOCX hash differs, then reports only page placement and line-ending
+differences; x/y/width geometry is intentionally excluded. Because normalized
+line text can still contain sensitive document content, do not commit manifests
+captured from confidential or personal documents. Use synthetic or explicitly
+public fixtures for repository baselines.
+
+This is a clean-room interoperability check: Word runs only as an external
+reference renderer during capture. No Word code, APIs, or runtime dependency
+ships in Folio. A captured result is evidence about one documented Word version
+and font environment, not proof of OOXML conformance.
+
 For repeated runs in one worktree, start a current-source playground once and
 explicitly reuse it:
 
