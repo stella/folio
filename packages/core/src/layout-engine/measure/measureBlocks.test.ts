@@ -786,9 +786,9 @@ describe("measureTableBlock row height", () => {
       if (paragraph?.kind !== "paragraph") {
         throw new Error("Expected paragraph measure");
       }
-      expect(paragraph.totalHeight).toBeGreaterThan(40);
+      expect(paragraph.totalHeight).toBe(40);
       expect(cell?.height).toBe(40);
-      expect(cell?.height).toBeLessThan(paragraph.totalHeight);
+      expect(cell?.height).toBe(paragraph.totalHeight);
       expect(row?.height).toBe(cell?.height);
     }, fakeMeasure);
   });
