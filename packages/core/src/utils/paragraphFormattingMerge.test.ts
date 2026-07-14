@@ -50,7 +50,7 @@ describe("mergeParagraphFormatting", () => {
     expect(result?.hangingIndent).toBe(false);
   });
 
-  test("replaces tab collections and merges paragraph mark run properties", () => {
+  test("merges tab stops by position and merges paragraph mark run properties", () => {
     const sourceTabs: NonNullable<ParagraphFormatting["tabs"]> = [
       { position: 720, alignment: "left" },
     ];
@@ -68,11 +68,36 @@ describe("mergeParagraphFormatting", () => {
       },
     );
 
-    expect(result?.tabs).toEqual(sourceTabs);
+    expect(result?.tabs).toEqual([
+      { position: 360, alignment: "center" },
+      { position: 720, alignment: "left" },
+    ]);
     expect(result?.tabs).not.toBe(sourceTabs);
     expect(result?.runProperties?.underline).toEqual({
       style: "double",
       color: { rgb: "FF0000" },
     });
+  });
+
+  test("retains inherited stops while direct clear removes one position", () => {
+    const inherited = mergeParagraphFormatting(
+      { tabs: [{ position: 1701, alignment: "left" }] },
+      {
+        tabs: [
+          { position: 4536, alignment: "center" },
+          { position: 9072, alignment: "right" },
+        ],
+      },
+    );
+
+    const resolved = mergeParagraphFormatting(inherited, {
+      tabs: [{ position: 4536, alignment: "clear" }],
+    });
+
+    expect(resolved?.tabs).toEqual([
+      { position: 1701, alignment: "left" },
+      { position: 4536, alignment: "clear" },
+      { position: 9072, alignment: "right" },
+    ]);
   });
 });

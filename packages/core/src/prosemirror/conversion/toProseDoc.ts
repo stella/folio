@@ -48,7 +48,10 @@ import type {
   Theme,
 } from "../../types/document";
 import { resolveColor } from "../../utils/colorResolver";
-import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
+import {
+  mergeParagraphFormatting,
+  mergeParagraphTabStops,
+} from "../../utils/paragraphFormattingMerge";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { emuToPixels } from "../../utils/units";
 import { setAutospacingBaseValue } from "../autospacingBase";
@@ -625,7 +628,7 @@ function paragraphFormattingToAttrs(
     set("hangingIndent", effectiveIndent?.hangingIndent);
     set("borders", formatting?.borders ?? stylePpr?.borders);
     set("shading", formatting?.shading ?? stylePpr?.shading);
-    set("tabs", formatting?.tabs ?? stylePpr?.tabs);
+    set("tabs", mergeParagraphTabStops(stylePpr?.tabs, formatting?.tabs));
     set("kinsoku", formatting?.kinsoku ?? stylePpr?.kinsoku);
     set("overflowPunctuation", formatting?.overflowPunctuation ?? stylePpr?.overflowPunctuation);
     set("suppressAutoHyphens", formatting?.suppressAutoHyphens ?? stylePpr?.suppressAutoHyphens);

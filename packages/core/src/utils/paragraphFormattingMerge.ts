@@ -1,4 +1,4 @@
-import type { ParagraphFormatting } from "../types/document";
+import type { ParagraphFormatting, TabStop } from "../types/document";
 import { mergeTextFormatting } from "./textFormattingMerge";
 
 const PARAGRAPH_REPLACE_KEYS = [
@@ -44,12 +44,48 @@ const copyDefinedParagraphProperty = <K extends ParagraphReplaceKey>(
 };
 
 /**
+ * Merge custom tab stops across OOXML paragraph-property layers.
+ *
+ * Tabs cascade by position rather than replacing the inherited collection:
+ * a higher-priority stop supersedes the stop at the same position, while a
+ * `clear` stop removes that inherited position during layout. Keeping the
+ * clear entry also lets the tab calculator suppress an automatic stop at the
+ * same position.
+ */
+export function mergeParagraphTabStops(
+  inherited: TabStop[] | undefined,
+  direct: TabStop[],
+): TabStop[];
+export function mergeParagraphTabStops(
+  inherited: TabStop[] | undefined,
+  direct: TabStop[] | undefined,
+): TabStop[] | undefined;
+export function mergeParagraphTabStops(
+  inherited: TabStop[] | undefined,
+  direct: TabStop[] | undefined,
+): TabStop[] | undefined {
+  if (direct === undefined) {
+    return inherited === undefined ? undefined : [...inherited];
+  }
+
+  const stopsByPosition = new Map<number, TabStop>();
+  for (const stop of inherited ?? []) {
+    stopsByPosition.set(stop.position, stop);
+  }
+  for (const stop of direct) {
+    stopsByPosition.set(stop.position, stop);
+  }
+
+  return [...stopsByPosition.values()].toSorted((a, b) => a.position - b.position);
+}
+
+/**
  * Merge paragraph properties for OOXML style cascade resolution.
  *
  * The source is the higher-priority layer. Most `w:pPr` properties replace an
  * inherited value when present; nested child containers merge by child field;
- * tabs replace as a complete ordered collection; paragraph mark `w:rPr` uses
- * the run-formatting merge rules.
+ * tabs merge by position; paragraph mark `w:rPr` uses the run-formatting
+ * merge rules.
  */
 export function mergeParagraphFormatting(
   target: ParagraphFormatting | undefined,
@@ -91,7 +127,7 @@ export function mergeParagraphFormatting(
     result.frame = { ...result.frame, ...source.frame };
   }
   if (source.tabs !== undefined) {
-    result.tabs = [...source.tabs];
+    result.tabs = mergeParagraphTabStops(result.tabs, source.tabs);
   }
 
   return result;
