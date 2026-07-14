@@ -83,10 +83,7 @@ export const getTableCellVerticalBorderHeight = (
     sourceColumn === undefined ? undefined : getSourceCellAt(grid, rowIndex - 1, sourceColumn);
   const aboveBottom = aboveCell?.borders?.bottom;
   const aboveOwnsEdge =
-    aboveBottom !== undefined &&
-    aboveBottom.width !== 0 &&
-    aboveBottom.style !== "none" &&
-    aboveBottom.style !== "nil";
+    aboveBottom !== undefined && aboveBottom.style !== "none" && aboveBottom.style !== "nil";
   const top = rowIndex === 0 || !aboveOwnsEdge ? (cell?.borders?.top?.width ?? 0) : 0;
   const bottom = cell?.borders?.bottom?.width ?? 0;
   return top + bottom;

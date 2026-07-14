@@ -73,4 +73,17 @@ describe("table cell grid", () => {
 
     expect(getTableCellVerticalBorderHeight(grid, below, 1)).toBe(7);
   });
+
+  test("lets a styled zero-width hairline own a shared edge without adding height", () => {
+    const above = cell(1, { borders: { bottom: { width: 0, style: "solid" } } });
+    const below = cell(2, {
+      borders: {
+        top: { width: 3, style: "solid" },
+        bottom: { width: 4, style: "solid" },
+      },
+    });
+    const grid = buildTableCellGrid([row(10, [above]), row(11, [below])], 1);
+
+    expect(getTableCellVerticalBorderHeight(grid, below, 1)).toBe(4);
+  });
 });

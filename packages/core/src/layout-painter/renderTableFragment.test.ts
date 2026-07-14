@@ -279,6 +279,57 @@ describe("renderTableFragment cell paragraph spacing", () => {
 });
 
 describe("renderTableFragment interior border ownership", () => {
+  test("paints a zero-width styled edge as one visible hairline", () => {
+    const hairline = { width: 0, style: "solid", color: "#000000" };
+    const paragraph = {
+      kind: "paragraph" as const,
+      id: "p",
+      runs: [{ kind: "text" as const, text: "content" }],
+    };
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      rows: [
+        {
+          id: "row",
+          cells: [{ id: "cell", borders: { top: hairline }, blocks: [paragraph] }],
+        },
+      ],
+      columnWidths: [100],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [
+            { blocks: [{ kind: "paragraph", lines: [], totalHeight: 20 }], width: 100, height: 20 },
+          ],
+          height: 20,
+        },
+      ],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 20,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "tbl",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 20,
+      fromRow: 0,
+      toRow: 1,
+    };
+
+    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+    const cell = findRows(tableEl).at(0)?.children.at(0);
+
+    expect(cell?.style["borderTop"]).toBe("1px solid #000000");
+  });
+
   test("retains top and left edges when adjacent cells leave them unclaimed", () => {
     const border = { width: 1, style: "solid", color: "#000000" };
     const paragraph = (id: string) => ({

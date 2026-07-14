@@ -908,6 +908,29 @@ describe("toFlowBlocks TOC hyperlink style strip", () => {
 });
 
 describe("toFlowBlocks table cell formatting", () => {
+  test("preserves a zero-size styled cell border as a layout-free hairline", () => {
+    const hairline = { style: "single", size: 0, color: { rgb: "000000" } };
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", { borders: { top: hairline } }, [
+            schema.node("paragraph", null, [schema.text("content")]),
+          ]),
+        ]),
+      ]),
+    ]);
+
+    const table = toFlowBlocks(doc).at(0);
+    if (table?.kind !== "table") {
+      throw new Error("Expected table block");
+    }
+
+    expect(table.rows.at(0)?.cells.at(0)?.borders?.top).toMatchObject({
+      width: 0,
+      style: "solid",
+    });
+  });
+
   test("carries cantSplit row formatting into layout blocks", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
