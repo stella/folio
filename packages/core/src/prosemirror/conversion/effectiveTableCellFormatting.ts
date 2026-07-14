@@ -1,5 +1,6 @@
 import type {
   CellMargins,
+  ShadingProperties,
   TableBorders,
   TableCellBorders,
   TableCellFormatting,
@@ -126,13 +127,32 @@ const resolveEffectiveBackground = ({
   theme,
 }: ResolveEffectiveBackgroundOptions): EffectiveTableCellBackground => {
   const directShading = directFormatting?.shading;
+  if (directShading !== undefined) {
+    return resolveBackgroundColor({ shading: directShading, source: "direct", theme });
+  }
+
   const styleShading = styleFormatting?.shading;
-  const source =
-    directShading !== undefined ? "direct" : styleShading !== undefined ? "style" : "none";
-  const shading = directShading ?? styleShading;
+  if (styleShading !== undefined) {
+    return resolveBackgroundColor({ shading: styleShading, source: "style", theme });
+  }
+
+  return { type: "none", source: "none" };
+};
+
+type ResolveBackgroundColorOptions = {
+  shading: ShadingProperties;
+  source: "direct" | "style";
+  theme: Theme | null | undefined;
+};
+
+const resolveBackgroundColor = ({
+  shading,
+  source,
+  theme,
+}: ResolveBackgroundColorOptions): EffectiveTableCellBackground => {
   const rgb = resolveShadingFill(shading, theme).replace(/^#/u, "");
 
-  if (!rgb || source === "none") {
+  if (!rgb) {
     return { type: "none", source };
   }
   return { type: "color", source, rgb };
