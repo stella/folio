@@ -397,12 +397,11 @@ export type TableBorders = {
 };
 
 /**
- * Table cell borders, including the two diagonals permitted by w:tcBorders.
+ * Table cell borders, including w:tl2br (top-left to bottom-right) and
+ * w:tr2bl (top-right to bottom-left).
  */
 export type TableCellBorders = TableBorders & {
-  /** Border from the top-left corner to the bottom-right corner (w:tl2br) */
   topLeftToBottomRight?: BorderSpec;
-  /** Border from the top-right corner to the bottom-left corner (w:tr2bl) */
   topRightToBottomLeft?: BorderSpec;
 };
 

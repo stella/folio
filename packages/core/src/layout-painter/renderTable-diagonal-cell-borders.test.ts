@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { TableBlock, TableFragment, TableMeasure } from "../layout-engine/types";
-import { renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
+import { renderTableFragment } from "./renderTable";
 import type { RenderContext } from "./renderUtils";
 
 class FakeElement {
@@ -105,7 +105,7 @@ describe("table cell diagonal border painting", () => {
     const rendered = renderTableFragment(fragment, block, measure, renderContext, {
       document: fakeDocument,
     }) as unknown as FakeElement;
-    const diagonals = findByClass(rendered, TABLE_CLASS_NAMES.cellDiagonalBorder);
+    const diagonals = findByClass(rendered, "layout-table-cell-diagonal-border");
 
     expect(diagonals).toHaveLength(2);
     expect(diagonals.at(0)?.dataset["direction"]).toBe("top-left-to-bottom-right");

@@ -369,12 +369,7 @@ export type TableCellAttrs = {
     backgroundColor?: string; /** OOXML text direction (e.g. 'tbRl', 'btLr') */
     textDirection?: NonNullable<import__stll_docx_core_model.TableCellFormatting["textDirection"]>; /** No text wrapping in cell */
     noWrap?: boolean; /** Cell borders — full BorderSpec per side (style, color, size) */
-    borders?: {
-        top?: import__stll_docx_core_model.BorderSpec;
-        bottom?: import__stll_docx_core_model.BorderSpec;
-        left?: import__stll_docx_core_model.BorderSpec;
-        right?: import__stll_docx_core_model.BorderSpec;
-    }; /** Cell margins/padding in twips per side */
+    borders?: import__stll_docx_core_model.TableCellBorders; /** Cell margins/padding in twips per side */
     margins?: {
         top?: number;
         bottom?: number;

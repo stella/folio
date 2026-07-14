@@ -52,8 +52,9 @@ export const TABLE_CLASS_NAMES = {
   rowResizeHandle: "layout-table-row-resize-handle",
   tableEdgeHandleBottom: "layout-table-edge-handle-bottom",
   tableEdgeHandleRight: "layout-table-edge-handle-right",
-  cellDiagonalBorder: "layout-table-cell-diagonal-border",
 };
+
+const CELL_DIAGONAL_BORDER_CLASS = "layout-table-cell-diagonal-border";
 
 /**
  * Options for rendering a table fragment
@@ -449,7 +450,7 @@ function renderCellDiagonalBorder(
   const length = Math.hypot(cellWidth, cellHeight);
   const angle = Math.atan2(cellHeight, cellWidth);
 
-  line.className = TABLE_CLASS_NAMES.cellDiagonalBorder;
+  line.className = CELL_DIAGONAL_BORDER_CLASS;
   line.dataset["direction"] = direction;
   line.style.position = "absolute";
   line.style.left = "0";

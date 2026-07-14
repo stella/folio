@@ -1079,9 +1079,15 @@ export type TableCell = {
 };
 
 // @public
+export type TableCellBorders = TableBorders & {
+    topLeftToBottomRight?: BorderSpec;
+    topRightToBottomLeft?: BorderSpec;
+};
+
+// @public
 export type TableCellFormatting = {
     width?: TableMeasurement; /** Cell borders */
-    borders?: TableBorders; /** Cell margins (override table default) */
+    borders?: TableCellBorders; /** Cell margins (override table default) */
     margins?: CellMargins; /** Cell shading/background */
     shading?: ShadingProperties; /** Vertical alignment */
     verticalAlign?: "top" | "center" | "bottom"; /** Text direction */

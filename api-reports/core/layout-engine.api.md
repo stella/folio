@@ -49,6 +49,8 @@ export type CellBorders = {
     bottom?: CellBorderSpec;
     left?: CellBorderSpec;
     right?: CellBorderSpec;
+    topLeftToBottomRight?: CellBorderSpec;
+    topRightToBottomLeft?: CellBorderSpec;
 };
 
 // @public
