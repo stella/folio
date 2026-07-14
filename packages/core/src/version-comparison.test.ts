@@ -19,7 +19,11 @@ import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
 import type { HeaderFooter, Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
-import { compareDocxVersions, exceedsLcsBudget } from "./version-comparison";
+import {
+  applyFolioVersionDiffPrivacy,
+  compareDocxVersions,
+  exceedsLcsBudget,
+} from "./version-comparison";
 import { InvalidFolioVersionComparisonOptionsError } from "./version-comparison";
 import type { FolioBlockDiff } from "./version-comparison";
 
@@ -55,9 +59,14 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
 
 type CorePropertiesFixture = {
   title?: string;
+  subject?: string;
   creator?: string;
+  keywords?: string;
+  description?: string;
+  lastModifiedBy?: string;
   revision?: number;
   created?: string;
+  modified?: string;
 };
 
 const escapeXml = (value: string): string =>
@@ -75,13 +84,28 @@ const withCoreProperties = async (
   const zip = await JSZip.loadAsync(buffer);
   const elements = [
     properties.title === undefined ? "" : `<dc:title>${escapeXml(properties.title)}</dc:title>`,
+    properties.subject === undefined
+      ? ""
+      : `<dc:subject>${escapeXml(properties.subject)}</dc:subject>`,
     properties.creator === undefined
       ? ""
       : `<dc:creator>${escapeXml(properties.creator)}</dc:creator>`,
+    properties.keywords === undefined
+      ? ""
+      : `<cp:keywords>${escapeXml(properties.keywords)}</cp:keywords>`,
+    properties.description === undefined
+      ? ""
+      : `<dc:description>${escapeXml(properties.description)}</dc:description>`,
+    properties.lastModifiedBy === undefined
+      ? ""
+      : `<cp:lastModifiedBy>${escapeXml(properties.lastModifiedBy)}</cp:lastModifiedBy>`,
     properties.revision === undefined ? "" : `<cp:revision>${properties.revision}</cp:revision>`,
     properties.created === undefined
       ? ""
       : `<dcterms:created>${escapeXml(properties.created)}</dcterms:created>`,
+    properties.modified === undefined
+      ? ""
+      : `<dcterms:modified>${escapeXml(properties.modified)}</dcterms:modified>`,
   ].join("");
   zip.file(
     "docProps/core.xml",
@@ -436,6 +460,58 @@ describe("compareDocxVersions: selected scopes", () => {
     expect(formattingDiff.summaryCounts.modified).toBe(0);
     expect(formattingDiff.summaryCounts.formatChanged).toBe(1);
     expect(formattingDiff.summaryCounts.unchanged).toBe(1);
+  });
+
+  test("removes selected metadata values and reports each applied transform", async () => {
+    const base = await withCoreProperties(
+      await buildDocxBuffer([{ text: "Stable text.", paraId: "00000001" }]),
+      {
+        title: "Initial title",
+        creator: "Initial author",
+        lastModifiedBy: "Initial reviewer",
+        description: "Initial description",
+        revision: 1,
+        created: "2026-07-01T10:30:00Z",
+        modified: "2026-07-02T10:30:00Z",
+      },
+    );
+    const revised = await withCoreProperties(
+      await buildDocxBuffer([{ text: "Stable text.", paraId: "00000001" }]),
+      {
+        title: "Revised title",
+        creator: "Revised author",
+        lastModifiedBy: "Revised reviewer",
+        description: "Revised description",
+        revision: 2,
+        created: "2026-07-03T10:30:00Z",
+        modified: "2026-07-04T10:30:00Z",
+      },
+    );
+
+    const diff = await compareDocxVersions(base, revised, {
+      include: ["metadata"],
+      privacy: {
+        transforms: ["remove-descriptive-metadata", "remove-timestamps", "remove-attribution"],
+      },
+    });
+
+    expect(diff.metadataChanges).toEqual([{ property: "revision", baseValue: 1, revisedValue: 2 }]);
+    expect(diff.summaryCounts.metadataChanged).toBe(1);
+    expect(diff.privacyReport).toEqual({
+      appliedTransforms: ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"],
+      removedMetadataProperties: [
+        "title",
+        "creator",
+        "description",
+        "lastModifiedBy",
+        "created",
+        "modified",
+      ],
+    });
+
+    expect(
+      applyFolioVersionDiffPrivacy(diff, { transforms: ["remove-attribution"] }).privacyReport,
+    ).toEqual(diff.privacyReport);
   });
 
   test("rejects an empty scope selection", async () => {

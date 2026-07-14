@@ -77,5 +77,14 @@ export const formatVersionDiffForLLM = (diff: FolioAgentVersionDiff): string => 
     ({ property, baseValue, revisedValue }) =>
       `~ metadata.${property}: ${JSON.stringify(baseValue)} -> ${JSON.stringify(revisedValue)}`,
   );
-  return [header, ...diff.changes.map(formatChangeLine), ...metadataLines].join("\n");
+  const privacyLines =
+    diff.privacyReport.appliedTransforms.length === 0
+      ? []
+      : [
+          `Privacy transforms: ${diff.privacyReport.appliedTransforms.join(", ")}`,
+          `Removed metadata fields: ${diff.privacyReport.removedMetadataProperties.join(", ") || "none"}`,
+        ];
+  return [header, ...privacyLines, ...diff.changes.map(formatChangeLine), ...metadataLines].join(
+    "\n",
+  );
 };
