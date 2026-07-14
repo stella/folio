@@ -45,6 +45,7 @@ const LOCALES = [
 const messagesDir = path.resolve(import.meta.dir, "../packages/core/src/i18n/messages");
 const outputPath = path.join(messagesDir, "catalogs.gen.ts");
 const checkOnly = process.argv.includes("--check");
+const normalizeLineEndings = (value: string) => value.replaceAll("\r\n", "\n");
 
 const entries = LOCALES.map((locale) => {
   const json = readFileSync(path.join(messagesDir, `${locale}.json`), "utf8");
@@ -69,7 +70,7 @@ const contents = `${banner}\nexport const CATALOGS = {\n${entries},\n} as const;
 
 if (checkOnly) {
   const existing = existsSync(outputPath) ? readFileSync(outputPath, "utf8") : "";
-  if (existing !== contents) {
+  if (normalizeLineEndings(existing) !== normalizeLineEndings(contents)) {
     console.error(
       `Error: ${path.relative(process.cwd(), outputPath)} is out of sync with the locale JSON catalogs. Run \`bun run i18n:sync\`.`,
     );
