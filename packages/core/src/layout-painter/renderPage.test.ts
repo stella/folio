@@ -569,6 +569,35 @@ describe("header and footer rendering", () => {
     ).toBeUndefined();
   });
 
+  test("keeps horizontal paragraph rule endpoints visible outside the text band", () => {
+    const content: HeaderFooterContent = {
+      blocks: [
+        {
+          kind: "paragraph",
+          id: "header-rule",
+          attrs: { borders: { bottom: { width: 1 / 3, style: "solid", color: "#000000" } } },
+          runs: [{ kind: "text", text: "Header" }],
+        },
+      ],
+      measures: [{ kind: "paragraph", lines: [], totalHeight: 16 }],
+      height: 16,
+      visualTop: 0,
+      visualBottom: 16,
+    };
+    const pageElement = renderPage(
+      { ...page, fragments: [] },
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      { document: fakeDocument, headerContent: content },
+    ) as unknown as FakeElement;
+    const header = findByClass(pageElement, "layout-page-header");
+    const rule = findByClass(pageElement, "layout-paragraph-border");
+
+    expect(header?.style.overflow).toBe("clip");
+    expect(header?.style.overflowClipMargin).toBe("2px");
+    expect(rule?.style.left).toBe("-2px");
+    expect(rule?.style.right).toBe("-2px");
+  });
+
   test("ignores even footers unless odd/even headers are enabled", () => {
     const pageOptions = {};
     const applied = applySectionHeaderFooterOptions(

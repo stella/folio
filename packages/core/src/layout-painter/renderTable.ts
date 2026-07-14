@@ -41,6 +41,7 @@ import {
 } from "../layout-engine/types";
 import { emuToPixels } from "../utils/units";
 import { resolveAnchoredImagePosition, type PageGeometry } from "./anchoredImagePosition";
+import { borderStrokeToCss, resolveCssBorderStroke } from "./borderStroke";
 import { getAutomaticTextColorForBackground } from "./documentColors";
 import { applyImageVisualAttrs, hasImageCrop, hasImageVisualAttrs } from "./renderImage";
 import { renderParagraphFragment } from "./renderParagraph";
@@ -484,10 +485,7 @@ function applyBorder(
   if (!border || border.style === "none" || border.style === "nil") {
     el.style[styleProp] = "none";
   } else {
-    const width = Math.max(1, border.width ?? 1);
-    const color = border.color ?? "#000000";
-    const style = border.style ?? "solid";
-    el.style[styleProp] = `${width}px ${style} ${color}`;
+    el.style[styleProp] = borderStrokeToCss(border);
   }
 }
 
@@ -513,8 +511,9 @@ function renderCellDiagonalBorder({
   }
 
   const line = doc.createElement("div");
-  const strokeWidth = Math.max(1, border?.width ?? 1);
-  const color = border?.color ?? "#000000";
+  const stroke = resolveCssBorderStroke(border ?? {});
+  const strokeWidth = stroke.width;
+  const color = stroke.color;
   const length = Math.hypot(cellWidth, cellHeight);
   const angle = Math.atan2(cellHeight, cellWidth);
 

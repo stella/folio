@@ -149,6 +149,8 @@ export const PAGE_CLASS_NAMES = {
   footer: "layout-page-footer",
 };
 
+const HEADER_FOOTER_RULE_CLIP_MARGIN = pointsToPixels(1.5);
+
 // RenderContext is re-exported from renderUtils
 export type { RenderContext } from "./renderUtils";
 
@@ -2051,7 +2053,8 @@ export function renderPage(
     }
     if (shouldClipHeader) {
       headerEl.style.maxHeight = `${availableHeaderHeight}px`;
-      headerEl.style.overflow = "hidden";
+      headerEl.style.overflow = "clip";
+      headerEl.style.overflowClipMargin = `${HEADER_FOOTER_RULE_CLIP_MARGIN}px`;
     }
     pageEl.append(headerEl);
 
@@ -2129,7 +2132,8 @@ export function renderPage(
     }
     if (shouldClipFooter) {
       footerEl.style.maxHeight = `${availableFooterHeight}px`;
-      footerEl.style.overflow = "hidden";
+      footerEl.style.overflow = "clip";
+      footerEl.style.overflowClipMargin = `${HEADER_FOOTER_RULE_CLIP_MARGIN}px`;
     }
     pageEl.append(footerEl);
     moveBehindHeaderFooterElementsToPage(footerEl, pageEl, footerNaturalTop, page.margins.left);

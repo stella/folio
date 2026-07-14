@@ -2041,9 +2041,7 @@ function reserveLeadingEmptyOutlineHeight(blocks: FlowBlock[]): void {
  * OOXML stores border widths in eighths of a point.
  */
 function borderWidthToPixels(eighthsOfPoint: number): number {
-  // 1 point = 1.333 pixels at 96 DPI
-  // eighths of a point: divide by 8 first
-  return Math.max(1, Math.round((eighthsOfPoint / 8) * 1.333));
+  return pointsToPixels(eighthsOfPoint / 8);
 }
 
 // OOXML border style → CSS border-style mapping
@@ -2088,7 +2086,7 @@ export function convertBorderSpecToLayout(
   }
   const result: BorderStyle = {
     style: OOXML_TO_CSS_BORDER[border.style] || "solid",
-    width: borderWidthToPixels(border.size ?? 0),
+    width: border.size === undefined ? 1 : borderWidthToPixels(border.size),
     color: border.color
       ? resolveColor(border.color as Parameters<typeof resolveColor>[0], theme)
       : "#000000",
