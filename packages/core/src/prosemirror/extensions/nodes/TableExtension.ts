@@ -41,7 +41,7 @@ import { createNodeExtension, createExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime, AnyExtension } from "../types";
 
 type TableCellBorders = NonNullable<TableCellAttrs["borders"]>;
-type TableCellBorderSide = keyof TableCellBorders;
+type TableCellBorderSide = "top" | "bottom" | "left" | "right";
 
 // ============================================================================
 // CSS PASTE HELPERS — Extract formatting from inline styles (Google Docs, etc.)
