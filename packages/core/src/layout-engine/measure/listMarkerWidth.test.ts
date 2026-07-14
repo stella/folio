@@ -61,6 +61,31 @@ describe("getListMarkerInlineWidth", () => {
     }, fakeMeasure);
   });
 
+  test("uses marker bold state for natural-width measurement", () => {
+    withFakeTextMeasure(
+      () => {
+        const regular = getListMarkerInlineWidth(
+          listBlock({
+            listMarker: "1.",
+            listMarkerBold: false,
+            listMarkerSuffix: "nothing",
+          }),
+        );
+        const bold = getListMarkerInlineWidth(
+          listBlock({
+            listMarker: "1.",
+            listMarkerBold: true,
+            listMarkerSuffix: "nothing",
+          }),
+        );
+
+        expect(regular).toBe(20);
+        expect(bold).toBe(24);
+      },
+      { charWidth: (_char, font) => (font.includes("800") ? 12 : 10) },
+    );
+  });
+
   test('w:suff="space" → natural + one space glyph', () => {
     withFakeTextMeasure(() => {
       const width = getListMarkerInlineWidth(
@@ -85,6 +110,31 @@ describe("getListMarkerInlineWidth", () => {
       expect(getListMarkerInlineWidth(block)).toBe(0);
       expect(getListMarkerVisualOffset(block)).toBe(-20);
     }, fakeMeasure);
+  });
+
+  test("uses marker bold state for right-aligned visual offset", () => {
+    withFakeTextMeasure(
+      () => {
+        const regular = getListMarkerVisualOffset(
+          listBlock({
+            listMarker: "1.",
+            listMarkerAlignment: "right",
+            listMarkerBold: false,
+          }),
+        );
+        const bold = getListMarkerVisualOffset(
+          listBlock({
+            listMarker: "1.",
+            listMarkerAlignment: "right",
+            listMarkerBold: true,
+          }),
+        );
+
+        expect(regular).toBe(-20);
+        expect(bold).toBe(-24);
+      },
+      { charWidth: (_char, font) => (font.includes("800") ? 12 : 10) },
+    );
   });
 
   test("center-aligned marker straddles its anchor", () => {

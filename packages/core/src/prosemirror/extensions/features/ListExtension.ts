@@ -63,6 +63,7 @@ const LIST_FORMATTING_ATTRS = [
   "listMarkerHidden",
   "listMarkerFontFamily",
   "listMarkerFontSize",
+  "listMarkerBold",
   "listMarkerAlignment",
   "listMarkerSuffix",
   "listLevelNumFmts",

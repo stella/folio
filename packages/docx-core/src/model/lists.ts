@@ -176,6 +176,8 @@ export type ListRendering = {
   markerFontFamily?: string;
   /** Marker font size from numbering level rPr, in points */
   markerFontSize?: number;
+  /** Marker bold state from numbering level rPr */
+  markerBold?: boolean;
   /** Horizontal alignment of the marker around the paragraph's list anchor. */
   markerAlignment?: "left" | "center" | "right";
   /**

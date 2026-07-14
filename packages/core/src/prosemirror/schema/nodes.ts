@@ -110,6 +110,8 @@ export type ParagraphAttrs = {
   listMarkerFontFamily?: string;
   /** Marker font size from numbering level rPr, in points */
   listMarkerFontSize?: number;
+  /** Marker bold state from numbering level rPr */
+  listMarkerBold?: boolean;
   /** Horizontal alignment of the marker around the paragraph's list anchor. */
   listMarkerAlignment?: "left" | "center" | "right";
   /**

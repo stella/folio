@@ -1301,6 +1301,11 @@ function toPreviousListAttrs(previousFormatting: Record<string, unknown>): PMPar
     attrs.listMarkerFontSize = listMarkerFontSize;
   }
 
+  const listMarkerBold = previousFormatting["listMarkerBold"];
+  if (typeof listMarkerBold === "boolean") {
+    attrs.listMarkerBold = listMarkerBold;
+  }
+
   const listMarkerAlignment = readListMarkerAlignment(previousFormatting["listMarkerAlignment"]);
   if (listMarkerAlignment) {
     attrs.listMarkerAlignment = listMarkerAlignment;
@@ -1382,6 +1387,9 @@ function applyDeletedListMarkerAttrs(
   }
   if (previousListAttrs.listMarkerFontSize) {
     attrs.listMarkerFontSize = previousListAttrs.listMarkerFontSize;
+  }
+  if (previousListAttrs.listMarkerBold !== undefined) {
+    attrs.listMarkerBold = previousListAttrs.listMarkerBold;
   }
   if (previousListAttrs.listMarkerAlignment) {
     attrs.listMarkerAlignment = previousListAttrs.listMarkerAlignment;
@@ -1765,6 +1773,9 @@ function convertParagraphAttrs(
   }
   if (pmAttrs.listMarkerFontSize) {
     attrs.listMarkerFontSize = pmAttrs.listMarkerFontSize;
+  }
+  if (pmAttrs.listMarkerBold !== null && pmAttrs.listMarkerBold !== undefined) {
+    attrs.listMarkerBold = pmAttrs.listMarkerBold;
   }
   if (pmAttrs.listMarkerAlignment) {
     attrs.listMarkerAlignment = pmAttrs.listMarkerAlignment;

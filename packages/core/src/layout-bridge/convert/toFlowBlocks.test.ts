@@ -64,6 +64,20 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.indent).toEqual({ left: 96, hanging: 24 });
   });
 
+  test("keeps an explicit list-marker bold override", () => {
+    const paragraph = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          { numPr: { numId: 1, ilvl: 0 }, listMarker: "%1.", listMarkerBold: false },
+          [schema.text("List item")],
+        ),
+      ]),
+    ).at(0);
+
+    expect(paragraph?.attrs?.listMarkerBold).toBe(false);
+  });
+
   test("preserves native frame wrap spacing on the positioned container", () => {
     const frame = {
       width: 3600,

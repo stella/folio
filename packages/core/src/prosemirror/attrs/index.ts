@@ -272,6 +272,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalBoolean(attrs, "listMarkerHidden", "paragraph.attrs.listMarkerHidden", issues);
   optionalString(attrs, "listMarkerFontFamily", "paragraph.attrs.listMarkerFontFamily", issues);
   optionalNumber(attrs, "listMarkerFontSize", "paragraph.attrs.listMarkerFontSize", issues);
+  optionalBoolean(attrs, "listMarkerBold", "paragraph.attrs.listMarkerBold", issues);
   optionalOneOf(attrs, "listMarkerAlignment", "paragraph.attrs.listMarkerAlignment", issues, [
     "left",
     "center",

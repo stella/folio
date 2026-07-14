@@ -39,6 +39,7 @@ const TWIPS_TO_PX = 96 / 1440;
 export function resolveListMarkerFont(block: ParagraphBlock): {
   fontFamily: string;
   fontSize: number;
+  bold?: boolean;
 } {
   const attrs = block.attrs;
   const firstTextRun = block.runs.find((r): r is TextRun => r.kind === "text");
@@ -52,7 +53,8 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
     firstTextRun?.fontSize ??
     attrs?.defaultFontSize ??
     DEFAULT_FONT_SIZE;
-  return { fontFamily, fontSize };
+  const bold = attrs?.listMarkerBold ?? firstTextRun?.bold;
+  return { fontFamily, fontSize, ...(bold !== undefined ? { bold } : {}) };
 }
 
 /**
@@ -79,8 +81,8 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
     return 0;
   }
 
-  const { fontFamily, fontSize } = resolveListMarkerFont(block);
-  const style: FontStyle = { fontFamily, fontSize };
+  const { fontFamily, fontSize, bold } = resolveListMarkerFont(block);
+  const style: FontStyle = { fontFamily, fontSize, ...(bold !== undefined ? { bold } : {}) };
   const naturalWidth = measureTextWidth(attrs.listMarker, style);
   const markerEndOffset = getMarkerEndOffset(naturalWidth, attrs.listMarkerAlignment);
 
@@ -156,8 +158,12 @@ export function getListMarkerVisualOffset(block: ParagraphBlock): number {
     return 0;
   }
 
-  const { fontFamily, fontSize } = resolveListMarkerFont(block);
-  const naturalWidth = measureTextWidth(attrs.listMarker, { fontFamily, fontSize });
+  const { fontFamily, fontSize, bold } = resolveListMarkerFont(block);
+  const naturalWidth = measureTextWidth(attrs.listMarker, {
+    fontFamily,
+    fontSize,
+    ...(bold !== undefined ? { bold } : {}),
+  });
   if (attrs.listMarkerAlignment === "right") {
     return -naturalWidth;
   }
