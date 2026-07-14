@@ -26,11 +26,15 @@ const serializeFont = (font: FontInfo): string => {
     parts.push(`<w:pitch w:val="${font.pitch}"/>`);
   }
   if (font.sig) {
-    const attrs = Object.entries(font.sig)
-      .map(([key, value]) => `w:${key}="${escapeXml(value)}"`)
-      .join(" ");
+    const attrs: string[] = [];
+    for (const [key, value] of Object.entries(font.sig)) {
+      if (value === undefined) {
+        continue;
+      }
+      attrs.push(`w:${key}="${escapeXml(value)}"`);
+    }
     if (attrs.length > 0) {
-      parts.push(`<w:sig ${attrs}/>`);
+      parts.push(`<w:sig ${attrs.join(" ")}/>`);
     }
   }
   return `<w:font w:name="${escapeXml(font.name)}">${parts.join("")}</w:font>`;
