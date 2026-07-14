@@ -1097,29 +1097,31 @@ export class FolioDocxReviewer {
         continue;
       }
       if (entry.handle.type === "footnote") {
+        const { noteId } = entry.handle;
         const source = this.baseDocument.package.footnotes?.find(
-          (note) => note.id === entry.handle.noteId && !isSeparatorFootnote(note),
+          (note) => note.id === noteId && !isSeparatorFootnote(note),
         );
         if (!source) {
           continue;
         }
         const edited = { ...source, content: proseDocToBlocks(entry.state.doc) };
         footnotes ??= [...(document.package.footnotes ?? [])];
-        const index = footnotes.findIndex((note) => note.id === entry.handle.noteId);
+        const index = footnotes.findIndex((note) => note.id === noteId);
         if (index !== -1) {
           footnotes[index] = edited;
         }
         continue;
       }
+      const { noteId } = entry.handle;
       const source = this.baseDocument.package.endnotes?.find(
-        (note) => note.id === entry.handle.noteId && !isSeparatorEndnote(note),
+        (note) => note.id === noteId && !isSeparatorEndnote(note),
       );
       if (!source) {
         continue;
       }
       const edited = { ...source, content: proseDocToBlocks(entry.state.doc) };
       endnotes ??= [...(document.package.endnotes ?? [])];
-      const index = endnotes.findIndex((note) => note.id === entry.handle.noteId);
+      const index = endnotes.findIndex((note) => note.id === noteId);
       if (index !== -1) {
         endnotes[index] = edited;
       }
