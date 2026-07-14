@@ -25,6 +25,7 @@ import type { HeaderFooter } from "../types/document";
 import {
   FolioDocumentStoryNotFoundError,
   FolioDocxReviewer,
+  UnsupportedFolioReviewedViewError,
   applyFolioAIEditsToBuffer,
 } from "./headless";
 import type { FolioReviewChange } from "./headless";
@@ -1087,6 +1088,45 @@ describe("headless docx review discovery + resolve", () => {
 });
 
 describe("headless docx review annotated read surface", () => {
+  test("reads original, current-markup, and final views without mutating the reviewer", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    reviewer.applyOperations([
+      {
+        id: "reviewed-view-replace",
+        type: "replaceInBlock",
+        blockId: target.id,
+        find: "Heading",
+        replace: "Intro",
+      },
+    ]);
+    const changesBefore = reviewer.getChanges();
+
+    const original = reviewer.readReviewedStory({ view: "original" });
+    const currentMarkup = reviewer.readReviewedStory({ view: "current-markup" });
+    const final = reviewer.readReviewedStory({ view: "final" });
+
+    expect(original?.text).toContain("Heading paragraph.");
+    expect(original?.text).not.toContain("Intro paragraph.");
+    expect(original?.changes).toEqual([]);
+    expect(currentMarkup?.text).toContain('<ins author="Reviewer">Intro</ins>');
+    expect(currentMarkup?.text).toContain('<del author="Reviewer">Heading</del>');
+    expect(currentMarkup?.changes).toEqual(changesBefore);
+    expect(final?.text).toContain("Intro paragraph.");
+    expect(final?.text).not.toContain("Heading paragraph.");
+    expect(final?.changes).toEqual([]);
+    expect(reviewer.getChanges()).toEqual(changesBefore);
+    expect(reviewer.getContentAsText()).toContain("Intro paragraph.");
+  });
+
+  test("rejects an unsupported reviewed view at the public boundary", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await makeParaIdBaseline(readFixture()));
+    expect(() =>
+      Reflect.apply(reviewer.readReviewedStory, reviewer, [{ view: "unsupported" }]),
+    ).toThrow(UnsupportedFolioReviewedViewError);
+  });
+
   test("getContentAsText({ annotated }) inlines redline + comment tags; default stays clean", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
@@ -1236,6 +1276,15 @@ describe("headless docx review notes read surface", () => {
     });
 
     expect(result.status).toBe("committed");
+    expect(reviewer.readReviewedStory({ story, view: "original" })?.text).toContain(
+      "Injected endnote body text.",
+    );
+    expect(reviewer.readReviewedStory({ story, view: "current-markup" })?.text).toContain(
+      '<ins author="Reviewer">Updated</ins>',
+    );
+    expect(reviewer.readReviewedStory({ story, view: "final" })?.text).toContain(
+      "Updated endnote body text.",
+    );
     const saved = await reviewer.toBuffer();
     const endnotesXml = await partText(saved, "word/endnotes.xml");
     expect(endnotesXml).toContain("Updated");
@@ -1261,6 +1310,7 @@ describe("headless docx review notes read surface", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await readNotesFixture());
     const story = { type: "footnote", noteId: 999_999 } as const;
     expect(reviewer.snapshotStory(story)).toBeNull();
+    expect(reviewer.readReviewedStory({ story, view: "final" })).toBeNull();
     expect(() =>
       reviewer.applyDocumentOperationsToStory({
         story,

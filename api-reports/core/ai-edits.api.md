@@ -83,6 +83,9 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "foot
 export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
 
 // @public (undocumented)
+export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "final"];
+
+// @public (undocumented)
 export type FolioAIBlock = {
     id: string;
     kind: FolioAIBlockKind;
@@ -482,6 +485,12 @@ export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundE
 // @public (undocumented)
 export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 
+// @public (undocumented)
+export type FolioReadReviewedStoryOptions = {
+    story?: FolioEditableDocumentStoryHandle;
+    view?: FolioReviewedView;
+};
+
 // @public
 export type FolioReviewChange = {
     id: number;
@@ -494,6 +503,18 @@ export type FolioReviewChange = {
 
 // @public (undocumented)
 export type FolioReviewChangeKind = "insertion" | "deletion";
+
+// @public (undocumented)
+export type FolioReviewedStory = {
+    story: FolioEditableDocumentStoryHandle;
+    view: FolioReviewedView;
+    snapshot: FolioAIEditSnapshot;
+    text: string;
+    changes: FolioReviewChange[];
+};
+
+// @public (undocumented)
+export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
 
 // @public
 export const getCommentAnchorsFromDoc: (doc: Node_2) => FolioCommentAnchor[];
@@ -526,6 +547,9 @@ export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumen
 export const isFolioDocumentOperationModeSupported: (operationType: FolioDocumentOperationType, mode: FolioDocumentOperationMode) => boolean;
 
 // @public (undocumented)
+export const isFolioReviewedView: (value: unknown) => value is FolioReviewedView;
+
+// @public (undocumented)
 export const isSupportedFolioDocumentOperationVersion: (value: unknown) => value is typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
 // @public (undocumented)
@@ -545,6 +569,9 @@ export const resolveFolioAITextRange: (input: ResolveFolioAITextRangeOptions) =>
 
 // @public (undocumented)
 export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}
+
+// @public (undocumented)
+export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewError_base {}
 
 // @public
 export type WordDiffSegment = {

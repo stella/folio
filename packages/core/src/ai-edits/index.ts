@@ -23,11 +23,17 @@ export { getFolioDocumentOutline, readFolioDocumentSection } from "./scoped-read
 export { getFolioParaIdFromBlockId } from "../types/block-id";
 export { diffWordSegments } from "./word-diff";
 export {
+  FOLIO_REVIEWED_VIEWS,
   FolioDocumentStoryNotFoundError,
+  UnsupportedFolioReviewedViewError,
+  isFolioReviewedView,
   type FolioApplyDocumentOperationsToStoryOptions,
   type FolioDocumentStory,
   type FolioDocumentStoryHandle,
   type FolioEditableDocumentStoryHandle,
+  type FolioReadReviewedStoryOptions,
+  type FolioReviewedStory,
+  type FolioReviewedView,
 } from "./headless";
 export type { WordDiffSegment } from "./word-diff";
 export type {

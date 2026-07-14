@@ -204,6 +204,10 @@ export type FolioGetContentAsTextOptions = {
   annotated?: boolean;
 };
 
+export const FOLIO_REVIEWED_VIEWS = Object.freeze(["original", "current-markup", "final"] as const);
+
+export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
+
 export type FolioDocumentStoryHandle =
   | { type: "main" }
   | { type: "header"; relationshipId: string }
@@ -217,6 +221,26 @@ export type FolioDocumentStory = {
   handle: FolioDocumentStoryHandle;
   text: string;
 };
+
+export type FolioReadReviewedStoryOptions = {
+  story?: FolioEditableDocumentStoryHandle;
+  view?: FolioReviewedView;
+};
+
+export type FolioReviewedStory = {
+  story: FolioEditableDocumentStoryHandle;
+  view: FolioReviewedView;
+  snapshot: FolioAIEditSnapshot;
+  text: string;
+  changes: FolioReviewChange[];
+};
+
+export class UnsupportedFolioReviewedViewError extends TaggedError(
+  "UnsupportedFolioReviewedViewError",
+)<{
+  message: string;
+  receivedView: unknown;
+}>() {}
 
 export class FolioDocumentStoryNotFoundError extends TaggedError(
   "FolioDocumentStoryNotFoundError",
@@ -266,6 +290,43 @@ const secondaryStoryKey = (story: FolioSecondaryStoryHandle): string =>
   story.type === "header" || story.type === "footer"
     ? headerFooterStoryKey(story)
     : noteStoryKey(story);
+
+export const isFolioReviewedView = (value: unknown): value is FolioReviewedView =>
+  FOLIO_REVIEWED_VIEWS.some((view) => view === value);
+
+const applyCommandToState = (state: EditorState, command: Command): EditorState => {
+  let nextState = state;
+  command(state, (transaction) => {
+    nextState = nextState.apply(transaction);
+  });
+  return nextState;
+};
+
+const resolveReviewedState = (state: EditorState, view: FolioReviewedView): EditorState => {
+  if (view === "current-markup") {
+    return state;
+  }
+  return applyCommandToState(state, view === "original" ? rejectAllChanges() : acceptAllChanges());
+};
+
+const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string => {
+  const snapshot = createFolioAIEditSnapshot(state.doc);
+  if (!annotated) {
+    return snapshot.blocks.map(formatBlockForLLM).join("\n");
+  }
+  const startById = new Map<string, number>();
+  for (const anchor of Object.values(snapshot.anchors)) {
+    startById.set(anchor.id, anchor.from);
+  }
+  return snapshot.blocks
+    .map((block) => {
+      const from = startById.get(block.id);
+      const node = from === undefined ? null : state.doc.nodeAt(from);
+      const text = node ? buildAnnotatedBlockText(node) : block.text;
+      return formatBlockLine(block, text);
+    })
+    .join("\n");
+};
 
 // The change shape and its pure reader now live in `./read` so a live editor
 // can produce the same `FolioReviewChange[]` from its own doc; the reviewer
@@ -456,6 +517,30 @@ export class FolioDocxReviewer {
     return state ? createFolioAIEditSnapshot(state.doc) : null;
   }
 
+  /** Read one story through an immutable reviewed-view projection. */
+  readReviewedStory(options: FolioReadReviewedStoryOptions = {}): FolioReviewedStory | null {
+    const story = options.story ?? MAIN_STORY;
+    const view = options.view ?? "final";
+    if (!isFolioReviewedView(view)) {
+      throw new UnsupportedFolioReviewedViewError({
+        message: "Unsupported reviewed document view.",
+        receivedView: view,
+      });
+    }
+    const sourceState = this.getEditableStoryState(story);
+    if (!sourceState) {
+      return null;
+    }
+    const state = resolveReviewedState(sourceState, view);
+    return {
+      story,
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      text: formatStoryStateForLLM(state, view === "current-markup"),
+      changes: getTrackedChangesFromDoc(state.doc),
+    };
+  }
+
   /**
    * Apply operations against the current state. Reuses the live-editor applier
    * verbatim via a headless `{ state, dispatch }` seam; the resulting state
@@ -610,22 +695,7 @@ export class FolioDocxReviewer {
    * (clean) output flattens tracked changes and is unchanged.
    */
   getContentAsText(options: FolioGetContentAsTextOptions = {}): string {
-    if (!options.annotated) {
-      return this.getContent().map(formatBlockForLLM).join("\n");
-    }
-    const snapshot = this.snapshot();
-    const startById = new Map<string, number>();
-    for (const anchor of Object.values(snapshot.anchors)) {
-      startById.set(anchor.id, anchor.from);
-    }
-    return snapshot.blocks
-      .map((block) => {
-        const from = startById.get(block.id);
-        const node = from === undefined ? null : this.state.doc.nodeAt(from);
-        const text = node ? buildAnnotatedBlockText(node) : block.text;
-        return formatBlockLine(block, text);
-      })
-      .join("\n");
+    return formatStoryStateForLLM(this.state, options.annotated === true);
   }
 
   /**

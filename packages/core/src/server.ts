@@ -64,9 +64,12 @@ export {
   type DocumentStyleSet,
 } from "./style-sets/types";
 export {
+  FOLIO_REVIEWED_VIEWS,
   FolioDocxReviewer,
   FolioDocumentStoryNotFoundError,
+  UnsupportedFolioReviewedViewError,
   applyFolioAIEditsToBuffer,
+  isFolioReviewedView,
   type ApplyFolioAIEditsToBufferOptions,
   type ApplyFolioAIEditsToBufferResult,
   type FolioApplyOperationsOptions,
@@ -76,6 +79,9 @@ export {
   type FolioDocumentStory,
   type FolioDocumentStoryHandle,
   type FolioEditableDocumentStoryHandle,
+  type FolioReadReviewedStoryOptions,
+  type FolioReviewedStory,
+  type FolioReviewedView,
   type FolioReviewChange,
   type FolioReviewChangeFilter,
   type FolioReviewChangeKind,
