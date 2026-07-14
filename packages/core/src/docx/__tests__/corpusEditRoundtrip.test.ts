@@ -19,8 +19,10 @@ import { repackDocx } from "../rezip";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "__fixtures__", "corpus");
 const REGRESSION_FIXTURES_DIR = path.join(import.meta.dir, "__fixtures__", "regressions");
+const VISUAL_FIXTURES_DIR = path.resolve(import.meta.dir, "../../../../../tests/visual/fixtures");
 const EDIT_MARKER_PREFIX = "Folio corpus edit: ";
 const BODY_PART = "word/document.xml";
+const REVIEW_MARK_TYPES = new Set(["comment", "deletion", "insertion"]);
 
 const FIXTURE_FILES = readdirSync(FIXTURES_DIR)
   .filter((name) => name.endsWith(".docx"))
@@ -146,11 +148,13 @@ const editFixtureText = async ({
 
   return {
     originalBytes,
+    originalComments: parsed.package.document.comments ?? [],
     originalPm,
     originalSectionProperties:
       parsed.package.document.sections?.map(({ properties }) => properties) ?? [],
     savedBytes,
     reopenedPm: toProseDoc(reopened),
+    reopenedComments: reopened.package.document.comments ?? [],
     reopenedSectionProperties:
       reopened.package.document.sections?.map(({ properties }) => properties) ?? [],
   };
@@ -175,6 +179,28 @@ const sectionBreakProperties = (doc: ProseMirrorNode): unknown[] => {
     }
   });
   return properties;
+};
+
+type ReviewMarkSnapshot = {
+  attrs: Readonly<Record<string, unknown>>;
+  text: string;
+  type: string;
+};
+
+const reviewMarkSnapshots = (doc: ProseMirrorNode): ReviewMarkSnapshot[] => {
+  const snapshots: ReviewMarkSnapshot[] = [];
+  doc.descendants((node) => {
+    if (!node.isText || node.text === null) {
+      return;
+    }
+
+    for (const mark of node.marks) {
+      if (REVIEW_MARK_TYPES.has(mark.type.name)) {
+        snapshots.push({ attrs: mark.attrs, text: node.text, type: mark.type.name });
+      }
+    }
+  });
+  return snapshots;
 };
 
 describe("corpus edit/save/reopen", () => {
@@ -277,6 +303,41 @@ describe("structured corpus edits", () => {
     expect(result.originalSectionProperties).toHaveLength(8);
     expect(result.reopenedSectionProperties).toEqual(result.originalSectionProperties);
     findUniqueText(result.reopenedPm, "2026-PU-036A");
+    await expectUnrelatedPartsPreserved(result);
+  });
+
+  test("preserves comments and revisions after an unrelated text edit", async () => {
+    const result = await editFixtureText({
+      directory: VISUAL_FIXTURES_DIR,
+      filename: "docx-editor-demo.docx",
+      text: "Project Charter & Contributor Agreement",
+      replacement: "Project Charter & Contributor Agreement updated",
+    });
+    const originalReviewMarks = reviewMarkSnapshots(result.originalPm);
+
+    expect(originalReviewMarks.filter(({ type }) => type === "comment")).toHaveLength(1);
+    expect(originalReviewMarks.filter(({ type }) => type === "deletion")).toHaveLength(3);
+    expect(originalReviewMarks.filter(({ type }) => type === "insertion")).toHaveLength(3);
+    expect(reviewMarkSnapshots(result.reopenedPm)).toEqual(originalReviewMarks);
+    expect(result.originalComments).toHaveLength(5);
+    expect(result.reopenedComments).toEqual(result.originalComments);
+    findUniqueText(result.reopenedPm, "Project Charter & Contributor Agreement updated");
+    await expectUnrelatedPartsPreserved(result);
+  });
+
+  test("preserves a comment range wrapper after editing its content", async () => {
+    const result = await editFixtureText({
+      filename: "extraspec-commentrange-sibling.docx",
+      text: "Inside commented sdt.",
+      replacement: "Inside edited commented sdt.",
+    });
+    const originalWrappers = nodesOfType(result.originalPm, "blockSdt");
+    const reopenedWrappers = nodesOfType(result.reopenedPm, "blockSdt");
+
+    expect(originalWrappers).toHaveLength(1);
+    expect(reopenedWrappers).toHaveLength(1);
+    expect(reopenedWrappers[0].attrs).toEqual(originalWrappers[0].attrs);
+    expect(reopenedWrappers[0].textContent).toBe("Inside edited commented sdt.");
     await expectUnrelatedPartsPreserved(result);
   });
 });
