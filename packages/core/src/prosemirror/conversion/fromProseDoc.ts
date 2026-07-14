@@ -2707,6 +2707,11 @@ function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts):
  * Convert ProseMirror table cell attrs to TableCellFormatting
  * Borders are stored as full BorderSpec objects — no conversion needed.
  */
+type CellShading = NonNullable<TableCellFormatting["shading"]>;
+
+const cellShadingFromAttrs = (attrs: TableCellAttrs): CellShading =>
+  attrs.backgroundColor ? { fill: { rgb: attrs.backgroundColor } } : { pattern: "nil" };
+
 function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting | undefined {
   const backgroundChanged = attrs.backgroundColor !== attrs._resolvedBackgroundColor;
 
@@ -2742,9 +2747,7 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
       }
     }
     if (backgroundChanged) {
-      result.shading = attrs.backgroundColor
-        ? { fill: { rgb: attrs.backgroundColor } }
-        : { pattern: "nil" };
+      result.shading = cellShadingFromAttrs(attrs);
     }
     if (attrs.borders) {
       result.borders = attrs.borders;
@@ -2770,7 +2773,6 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
     attrs.rowspan > 1 ||
     cellWidth !== undefined ||
     attrs.verticalAlign ||
-    attrs.backgroundColor ||
     backgroundChanged ||
     attrs.borders ||
     attrs.margins ||
@@ -2800,9 +2802,7 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
     f.textDirection = attrs.textDirection;
   }
   if (backgroundChanged) {
-    f.shading = attrs.backgroundColor
-      ? { fill: { rgb: attrs.backgroundColor } }
-      : { pattern: "nil" };
+    f.shading = cellShadingFromAttrs(attrs);
   }
   if (attrs.borders) {
     f.borders = attrs.borders;
