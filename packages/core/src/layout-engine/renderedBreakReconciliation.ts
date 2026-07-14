@@ -22,6 +22,7 @@ type ReconcileBeforeBlockOptions = {
 
 type BreakDecision = {
   forcePageBreak: boolean;
+  suppressSpaceBefore: boolean;
   state: RenderedBreakState;
 };
 
@@ -43,10 +44,14 @@ export const reconcileBreakBeforeBlock = ({
   renderedBreakNeedsSnap,
 }: ReconcileBeforeBlockOptions): BreakDecision => {
   if (hasExplicitPageBreak) {
-    return { forcePageBreak: true, state: INITIAL_RENDERED_BREAK_STATE };
+    return {
+      forcePageBreak: true,
+      suppressSpaceBefore: false,
+      state: INITIAL_RENDERED_BREAK_STATE,
+    };
   }
   if (block.kind !== "paragraph" || block.attrs?.renderedPageBreakBefore !== true) {
-    return { forcePageBreak: false, state };
+    return { forcePageBreak: false, suppressSpaceBefore: false, state };
   }
 
   const markerAlreadySatisfied =
@@ -59,10 +64,20 @@ export const reconcileBreakBeforeBlock = ({
   // A keep-with-next paragraph carries the marker boundary into its linked
   // content, so its own height is not enough to classify the marker as stale.
   const markerNeedsSnap = renderedBreakNeedsSnap || block.attrs?.keepNext === true;
+  const forcePageBreak =
+    markerNeedsSnap && !markerAlreadySatisfied && pageHasVisibleBodyContent(page, blocksById);
+  const followsAuthoredPageBreak = previousBlock?.kind === "pageBreak";
+  const followsSectionBreak = previousBlock?.kind === "sectionBreak";
 
   return {
-    forcePageBreak:
-      markerNeedsSnap && !markerAlreadySatisfied && pageHasVisibleBodyContent(page, blocksById),
+    forcePageBreak,
+    // Suppress spacing only when this cached marker accounts for the current
+    // page boundary. A section boundary can also leave the cursor at the page
+    // top, but it does not make the following paragraph's authored spacing
+    // redundant.
+    suppressSpaceBefore:
+      !followsSectionBreak &&
+      (forcePageBreak || markerAlreadySatisfied || followsAuthoredPageBreak),
     state: INITIAL_RENDERED_BREAK_STATE,
   };
 };

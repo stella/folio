@@ -51,6 +51,7 @@ describe("rendered break reconciliation", () => {
 
     expect(decision).toEqual({
       forcePageBreak: true,
+      suppressSpaceBefore: false,
       state: INITIAL_RENDERED_BREAK_STATE,
     });
   });
@@ -69,6 +70,7 @@ describe("rendered break reconciliation", () => {
     });
 
     expect(decision.forcePageBreak).toBe(true);
+    expect(decision.suppressSpaceBefore).toBe(true);
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
 
@@ -85,6 +87,7 @@ describe("rendered break reconciliation", () => {
     });
 
     expect(decision.forcePageBreak).toBe(false);
+    expect(decision.suppressSpaceBefore).toBe(false);
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
 
@@ -117,6 +120,41 @@ describe("rendered break reconciliation", () => {
     });
 
     expect(decision.forcePageBreak).toBe(false);
+    expect(decision.suppressSpaceBefore).toBe(true);
+  });
+
+  test("a section boundary does not consume authored paragraph spacing", () => {
+    const previous: FlowBlock = { kind: "sectionBreak", id: 1, type: "nextPage" };
+    const marker = paragraph(2, { renderedPageBreakBefore: true });
+    const decision = reconcileBreakBeforeBlock({
+      state: INITIAL_RENDERED_BREAK_STATE,
+      block: marker,
+      previousBlock: previous,
+      page: page(),
+      blocksById: new Map(),
+      hasExplicitPageBreak: false,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.suppressSpaceBefore).toBe(false);
+  });
+
+  test("a continuous section boundary preserves spacing when the marker snaps", () => {
+    const prior = paragraph(1);
+    const previous: FlowBlock = { kind: "sectionBreak", id: 2, type: "continuous" };
+    const decision = reconcileBreakBeforeBlock({
+      state: INITIAL_RENDERED_BREAK_STATE,
+      block: paragraph(3, { renderedPageBreakBefore: true }),
+      previousBlock: previous,
+      page: page([paragraphFragment(1)]),
+      blocksById: new Map([["1", prior]]),
+      hasExplicitPageBreak: false,
+      renderedBreakNeedsSnap: true,
+    });
+
+    expect(decision.forcePageBreak).toBe(true);
+    expect(decision.suppressSpaceBefore).toBe(false);
   });
 
   test("a reflow boundary satisfies the next cached marker", () => {

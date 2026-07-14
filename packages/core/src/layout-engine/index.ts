@@ -447,11 +447,7 @@ export function layoutDocument(
           paginator,
           contentWidth: paginator.columnWidth,
           footnoteHeightById: options.footnoteHeightById,
-          suppressSpaceBefore:
-            block.attrs?.renderedPageBreakBefore === true &&
-            !hasExplicitPageBreak &&
-            (breakDecision.forcePageBreak ||
-              paginator.getCurrentState().cursorY === paginator.getCurrentState().topMargin),
+          suppressSpaceBefore: breakDecision.suppressSpaceBefore,
         });
         break;
 
