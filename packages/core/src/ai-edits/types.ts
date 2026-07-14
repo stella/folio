@@ -25,6 +25,8 @@ export type FolioAIBlock = {
 export type FolioAIEditSnapshot = {
   blocks: FolioAIBlock[];
   anchors: Record<string, FolioAIBlockAnchor>;
+  /** Hidden empty paragraph used to anchor insertions when `blocks` is empty. */
+  emptyDocumentAnchorId?: string;
 };
 
 export type FolioAIBlockAnchor = {

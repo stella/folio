@@ -98,7 +98,7 @@ export const generateRedlineDocx = async (
   const operations: FolioAIEditOperation[] = [];
   let operationSeq = 0;
   const nextOperationId = () => `redline-${++operationSeq}`;
-  /** Additions past the last base block, inserted after it in reverse so the final order matches the revised document. */
+  /** Additions past the last base block, kept in revised-document order. */
   const trailingAdditions: { text: string; styleId?: string }[] = [];
   const lastBaseBlockId = baseSnapshot.blocks.at(-1)?.id ?? null;
 
@@ -139,14 +139,24 @@ export const generateRedlineDocx = async (
     });
   });
 
-  for (const addition of trailingAdditions.toReversed()) {
+  if (lastBaseBlockId === null && baseSnapshot.emptyDocumentAnchorId !== undefined) {
+    const firstAddition = trailingAdditions.shift();
+    if (firstAddition !== undefined) {
+      operations.push({
+        id: nextOperationId(),
+        type: "replaceBlock",
+        blockId: baseSnapshot.emptyDocumentAnchorId,
+        text: firstAddition.text,
+        ...(firstAddition.styleId !== undefined && { styleId: firstAddition.styleId }),
+      });
+    }
+  }
+
+  for (const addition of trailingAdditions) {
     operations.push({
       id: nextOperationId(),
       type: "insertAfterBlock",
-      // An empty base document has no anchor block at all; an unresolvable
-      // id makes the shared applier report the addition in `skipped`
-      // (missingBlock) instead of dropping it silently.
-      blockId: lastBaseBlockId ?? "redline-unanchored",
+      blockId: lastBaseBlockId ?? baseSnapshot.emptyDocumentAnchorId ?? "redline-unanchored",
       text: addition.text,
       ...(addition.styleId !== undefined && { styleId: addition.styleId }),
     });

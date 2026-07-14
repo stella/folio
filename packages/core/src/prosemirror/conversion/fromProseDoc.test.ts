@@ -476,6 +476,36 @@ describe("fromProseDoc", () => {
     expect(run.formatting?.vertAlign).toBe("subscript");
   });
 
+  test("keeps a deleted footnote reference inside the tracked-change wrapper", () => {
+    const footnoteRef = schema.mark("footnoteRef", {
+      id: "7",
+      noteType: "footnote",
+      vertAlign: "superscript",
+    });
+    const deletion = schema.mark("deletion", {
+      revisionId: 42,
+      author: "Reviewer",
+      date: null,
+    });
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("7", [footnoteRef, deletion])]),
+    ]);
+
+    const roundTripped = fromProseDoc(pmDoc);
+    const block = roundTripped.package.document.content.at(0);
+
+    expect(block?.type).toBe("paragraph");
+    if (block?.type !== "paragraph") {
+      return;
+    }
+    const trackedChange = block.content.at(0);
+    expect(trackedChange?.type).toBe("deletion");
+    if (trackedChange?.type !== "deletion") {
+      return;
+    }
+    expect(trackedChange.content.at(0)?.content).toEqual([{ type: "footnoteRef", id: 7 }]);
+  });
+
   test("round-trips tracked-change image atoms", () => {
     const document: Document = {
       package: {

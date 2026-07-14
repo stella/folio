@@ -1113,14 +1113,25 @@ const resolveOperation = ({
   if (operation.type === "deleteBlock" || operation.type === "replaceBlock") {
     const range = getTextRangeFromCleanBlock(cleanBlock);
     if (!range) {
-      // Empty block. The AI never sees these — the snapshot
-      // explicitly skips blocks whose normalised text is empty,
-      // so by construction the resolver only ever lands here on a
-      // block that was non-empty at snapshot time and got emptied
-      // between snapshot and apply. The textHash gate above already
-      // rejects that case as `changedBlock`, so this branch is
-      // unreachable through the real flow; keeping the skip as a
-      // defensive guard.
+      const insertionPoint = cleanBlock.offsets.at(0);
+      if (
+        operation.type === "replaceBlock" &&
+        currentText.length === 0 &&
+        operation.text.length > 0 &&
+        insertionPoint !== undefined
+      ) {
+        return {
+          type: "resolved",
+          operation: {
+            operation,
+            from: insertionPoint,
+            to: insertionPoint,
+            blockFrom,
+            blockTo,
+            blockNode,
+          },
+        };
+      }
       return { type: "skip", reason: "unsupportedBlock" };
     }
     // The model occasionally emits replaceBlock with text identical

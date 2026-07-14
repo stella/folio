@@ -25,6 +25,7 @@ export const FootnoteRefExtension = createMarkExtension({
   name: "footnoteRef",
   schemaMarkName: "footnoteRef",
   markSpec: {
+    inclusive: false,
     attrs: {
       id: {},
       noteType: { default: "footnote" },
