@@ -48,7 +48,7 @@ describe("document operation contract", () => {
         insertSignatureTable: ["direct"],
       },
       preconditions: ["blockTextHash"],
-      stories: ["main"],
+      stories: ["main", "header", "footer", "footnote", "endnote"],
     });
   });
 
