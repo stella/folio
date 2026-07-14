@@ -616,6 +616,40 @@ describe("compareGeoms", () => {
     expect(result.score).toBe(1);
   });
 
+  test("reconciles a matched prefix with a trailing segment on the same visual row", () => {
+    const reference = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({
+            text: "Primary registration 123 VAT:",
+            xPt: 72,
+            yPt: 72,
+            widthPt: 180,
+          }),
+        ],
+      }),
+    ]);
+    const candidate = makeDoc("folio", [
+      makePage({
+        lines: [
+          makeLine({
+            text: "Primary registration 123",
+            xPt: 72,
+            yPt: 72,
+            widthPt: 120,
+          }),
+          makeLine({ text: "VAT:", xPt: 222, yPt: 72, widthPt: 30 }),
+        ],
+      }),
+    ]);
+
+    const result = compareGeoms(reference, candidate);
+
+    expect(result.divergences).toEqual([]);
+    expect(result.matchedLines).toBe(1);
+    expect(result.score).toBe(1);
+  });
+
   test("reconciles one segmented visual row inside a larger alignment gap", () => {
     const reference = makeDoc("folio", [
       makePage({

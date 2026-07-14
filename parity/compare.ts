@@ -475,7 +475,76 @@ const resolveOps = (
     }
   }
   flushGap();
-  return resolved;
+  return reconcileMatchedRowSegments(resolved, wordFlat, folioFlat);
+};
+
+/**
+ * A high-similarity prefix can be selected as a direct match before alignment
+ * sees that the next segment completes the same visual row. Fold that trailing
+ * segment back into a one-to-many row so geometry is compared over the full
+ * row instead of reporting a text mismatch plus an extra line.
+ */
+const reconcileMatchedRowSegments = (
+  resolved: ResolvedItem[],
+  referenceFlat: FlatLine[],
+  candidateFlat: FlatLine[],
+): ResolvedItem[] => {
+  const reconciled: ResolvedItem[] = [];
+
+  for (let index = 0; index < resolved.length; index += 1) {
+    const item = resolved[index];
+    if (!item || item.kind !== "match") {
+      if (item) reconciled.push(item);
+      continue;
+    }
+
+    const next = resolved[index + 1];
+    const trailingKind = next?.kind === "missing" || next?.kind === "extra" ? next.kind : null;
+    if (!trailingKind) {
+      reconciled.push(item);
+      continue;
+    }
+
+    const referenceIdxs = [item.wordIdx];
+    const candidateIdxs = [item.folioIdx];
+    const anchor =
+      trailingKind === "missing" ? referenceFlat[item.wordIdx] : candidateFlat[item.folioIdx];
+    if (!anchor) {
+      reconciled.push(item);
+      continue;
+    }
+
+    let cursor = index + 1;
+    while (cursor < resolved.length) {
+      const trailing = resolved[cursor];
+      if (!trailing || trailing.kind !== trailingKind) break;
+      const flatLine =
+        trailing.kind === "missing"
+          ? referenceFlat[trailing.wordIdx]
+          : candidateFlat[trailing.folioIdx];
+      if (
+        !flatLine ||
+        flatLine.page !== anchor.page ||
+        flatLine.line.region !== anchor.line.region ||
+        !isSameVisualRow(anchor.line, flatLine.line)
+      ) {
+        break;
+      }
+      if (trailing.kind === "missing") referenceIdxs.push(trailing.wordIdx);
+      else candidateIdxs.push(trailing.folioIdx);
+      cursor += 1;
+    }
+
+    if (!equivalentSegmentedRows(referenceIdxs, candidateIdxs, referenceFlat, candidateFlat)) {
+      reconciled.push(item);
+      continue;
+    }
+
+    reconciled.push({ kind: "line-break", wordIdxs: referenceIdxs, folioIdxs: candidateIdxs });
+    index = cursor - 1;
+  }
+
+  return reconciled;
 };
 
 /**
