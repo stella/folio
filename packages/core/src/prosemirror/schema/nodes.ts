@@ -617,6 +617,8 @@ export type TableCellAttrs = {
   verticalAlign?: "top" | "center" | "bottom";
   /** Background color (RGB hex) */
   backgroundColor?: string;
+  /** Resolved source color. PM-only; distinguishes theme rendering from a user override. */
+  _resolvedBackgroundColor?: string;
   /** OOXML text direction (e.g. 'tbRl', 'btLr') */
   textDirection?: NonNullable<TableCellFormatting["textDirection"]>;
   /** No text wrapping in cell */

@@ -451,6 +451,12 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
     TABLE_CELL_VERTICAL_ALIGNMENT_VALUES,
   );
   optionalString(attrs, "backgroundColor", "tableCell.attrs.backgroundColor", issues);
+  optionalString(
+    attrs,
+    "_resolvedBackgroundColor",
+    "tableCell.attrs._resolvedBackgroundColor",
+    issues,
+  );
   optionalOneOf(
     attrs,
     "textDirection",

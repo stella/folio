@@ -2708,6 +2708,8 @@ function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts):
  * Borders are stored as full BorderSpec objects — no conversion needed.
  */
 function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting | undefined {
+  const backgroundChanged = attrs.backgroundColor !== attrs._resolvedBackgroundColor;
+
   // If we have the original formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like vMerge, fitText,
   // hideMark, conditionalFormat that aren't tracked as PM attrs.
@@ -2739,11 +2741,10 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
         delete result.verticalAlign;
       }
     }
-    if (attrs.backgroundColor) {
-      result.shading = { fill: { rgb: attrs.backgroundColor } };
-    } else if (!attrs.backgroundColor && orig.shading) {
-      // User cleared the background color
-      delete result.shading;
+    if (backgroundChanged) {
+      result.shading = attrs.backgroundColor
+        ? { fill: { rgb: attrs.backgroundColor } }
+        : { pattern: "nil" };
     }
     if (attrs.borders) {
       result.borders = attrs.borders;
@@ -2770,6 +2771,7 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
     cellWidth !== undefined ||
     attrs.verticalAlign ||
     attrs.backgroundColor ||
+    backgroundChanged ||
     attrs.borders ||
     attrs.margins ||
     attrs.textDirection;
@@ -2797,8 +2799,10 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
   if (attrs.textDirection) {
     f.textDirection = attrs.textDirection;
   }
-  if (attrs.backgroundColor) {
-    f.shading = { fill: { rgb: attrs.backgroundColor } };
+  if (backgroundChanged) {
+    f.shading = attrs.backgroundColor
+      ? { fill: { rgb: attrs.backgroundColor } }
+      : { pattern: "nil" };
   }
   if (attrs.borders) {
     f.borders = attrs.borders;
