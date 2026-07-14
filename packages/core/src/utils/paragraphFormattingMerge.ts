@@ -54,6 +54,14 @@ const copyDefinedParagraphProperty = <K extends ParagraphReplaceKey>(
  */
 export function mergeParagraphTabStops(
   inherited: TabStop[] | undefined,
+  direct: TabStop[],
+): TabStop[];
+export function mergeParagraphTabStops(
+  inherited: TabStop[] | undefined,
+  direct: TabStop[] | undefined,
+): TabStop[] | undefined;
+export function mergeParagraphTabStops(
+  inherited: TabStop[] | undefined,
   direct: TabStop[] | undefined,
 ): TabStop[] | undefined {
   if (direct === undefined) {
