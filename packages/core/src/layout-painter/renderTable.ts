@@ -433,13 +433,21 @@ function applyBorder(
 
 type CellDiagonalDirection = "top-left-to-bottom-right" | "top-right-to-bottom-left";
 
-function renderCellDiagonalBorder(
-  border: CellBorderSpec | undefined,
-  direction: CellDiagonalDirection,
-  cellWidth: number,
-  cellHeight: number,
-  doc: Document,
-): HTMLElement | null {
+type RenderCellDiagonalBorderOptions = {
+  border: CellBorderSpec | undefined;
+  direction: CellDiagonalDirection;
+  cellWidth: number;
+  cellHeight: number;
+  doc: Document;
+};
+
+function renderCellDiagonalBorder({
+  border,
+  direction,
+  cellWidth,
+  cellHeight,
+  doc,
+}: RenderCellDiagonalBorderOptions): HTMLElement | null {
   if (!hasVisibleBorder(border)) {
     return null;
   }
@@ -602,23 +610,23 @@ function renderTableCell(
     cellEl.style.overflow = "visible";
   }
   cellEl.append(renderedContent.content);
-  const topLeftToBottomRight = renderCellDiagonalBorder(
-    cell.borders?.topLeftToBottomRight,
-    "top-left-to-bottom-right",
-    cellMeasure.width,
-    rowHeight,
+  const topLeftToBottomRight = renderCellDiagonalBorder({
+    border: cell.borders?.topLeftToBottomRight,
+    direction: "top-left-to-bottom-right",
+    cellWidth: cellMeasure.width,
+    cellHeight: rowHeight,
     doc,
-  );
+  });
   if (topLeftToBottomRight) {
     cellEl.append(topLeftToBottomRight);
   }
-  const topRightToBottomLeft = renderCellDiagonalBorder(
-    cell.borders?.topRightToBottomLeft,
-    "top-right-to-bottom-left",
-    cellMeasure.width,
-    rowHeight,
+  const topRightToBottomLeft = renderCellDiagonalBorder({
+    border: cell.borders?.topRightToBottomLeft,
+    direction: "top-right-to-bottom-left",
+    cellWidth: cellMeasure.width,
+    cellHeight: rowHeight,
     doc,
-  );
+  });
   if (topRightToBottomLeft) {
     cellEl.append(topRightToBottomLeft);
   }
