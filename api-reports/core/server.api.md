@@ -736,6 +736,9 @@ export type FolioVersionDiff = {
     summaryCounts: FolioVersionDiffSummaryCounts;
 };
 
+// @public
+export type FolioVersionDiffSegment = WordDiffSegment;
+
 // @public (undocumented)
 export type FolioVersionDiffSummaryCounts = {
     added: number;
@@ -745,9 +748,6 @@ export type FolioVersionDiffSummaryCounts = {
     moved: number;
     unchanged: number;
 };
-
-// @public
-export type FolioVersionDiffSegment = WordDiffSegment;
 
 // @public
 export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, options?: GenerateRedlineDocxOptions) => Promise<GenerateRedlineDocxResult>;
