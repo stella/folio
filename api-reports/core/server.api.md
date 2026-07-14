@@ -924,7 +924,7 @@ export const readFolioDocumentSection: (snapshot: FolioAIEditSnapshot, handle: F
 export const replyToComment: (doc: import__stll_docx_core_model.Document, parentCommentId: number, input: CreateCommentReplyInput) => import__stll_docx_core_model.Comment | null;
 
 // @public
-export const rewriteDocxMetadataPrivacy: (buffer: ArrayBuffer, options: FolioDocumentPrivacyOptions) => Promise<RewriteDocxMetadataPrivacyResult>;
+export const rewriteDocxMetadataPrivacy: (buffer: ArrayBuffer, input: FolioDocumentPrivacyOptions) => Promise<RewriteDocxMetadataPrivacyResult>;
 
 // @public (undocumented)
 export type RewriteDocxMetadataPrivacyResult = {

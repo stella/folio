@@ -77,7 +77,7 @@ export const isFolioDocumentPrivacyTransform: (value: unknown) => value is Folio
 export const openDocxBuffer: (data: ArrayBuffer | Uint8Array, options?: DecryptDocxOptions) => Promise<ArrayBuffer>;
 
 // @public
-export const rewriteDocxMetadataPrivacy: (buffer: ArrayBuffer, options: FolioDocumentPrivacyOptions) => Promise<RewriteDocxMetadataPrivacyResult>;
+export const rewriteDocxMetadataPrivacy: (buffer: ArrayBuffer, input: FolioDocumentPrivacyOptions) => Promise<RewriteDocxMetadataPrivacyResult>;
 
 // @public (undocumented)
 export type RewriteDocxMetadataPrivacyResult = {
