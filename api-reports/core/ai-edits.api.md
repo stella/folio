@@ -378,10 +378,16 @@ export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected
 
 // @public (undocumented)
 export type FolioDocumentOperationStory = "main" | {
-    type: "header" | "footer";
+    type: "header";
     relationshipId: string;
 } | {
-    type: "footnote" | "endnote";
+    type: "footer";
+    relationshipId: string;
+} | {
+    type: "footnote";
+    noteId: number;
+} | {
+    type: "endnote";
     noteId: number;
 };
 
@@ -457,10 +463,16 @@ export type FolioDocumentStory = {
 export type FolioDocumentStoryHandle = {
     type: "main";
 } | {
-    type: "header" | "footer";
+    type: "header";
     relationshipId: string;
 } | {
-    type: "footnote" | "endnote";
+    type: "footer";
+    relationshipId: string;
+} | {
+    type: "footnote";
+    noteId: number;
+} | {
+    type: "endnote";
     noteId: number;
 };
 

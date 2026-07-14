@@ -206,8 +206,10 @@ export type FolioGetContentAsTextOptions = {
 
 export type FolioDocumentStoryHandle =
   | { type: "main" }
-  | { type: "header" | "footer"; relationshipId: string }
-  | { type: "footnote" | "endnote"; noteId: number };
+  | { type: "header"; relationshipId: string }
+  | { type: "footer"; relationshipId: string }
+  | { type: "footnote"; noteId: number }
+  | { type: "endnote"; noteId: number };
 
 export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 

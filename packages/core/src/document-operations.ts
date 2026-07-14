@@ -615,8 +615,10 @@ export type FolioDocumentOperationIssue = {
 
 export type FolioDocumentOperationStory =
   | "main"
-  | { type: "header" | "footer"; relationshipId: string }
-  | { type: "footnote" | "endnote"; noteId: number };
+  | { type: "header"; relationshipId: string }
+  | { type: "footer"; relationshipId: string }
+  | { type: "footnote"; noteId: number }
+  | { type: "endnote"; noteId: number };
 
 /** One typed target affected by a successfully applied document operation. */
 export type FolioDocumentOperationAffectedTarget =
