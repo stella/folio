@@ -12,6 +12,12 @@ describe("updateCoreProperties dcterms:modified", () => {
     expect(out).toContain("<dcterms:modified");
   });
 
+  test("does not synthesize a missing modified date", () => {
+    const xml = "<cp:coreProperties><cp:revision>7</cp:revision></cp:coreProperties>";
+
+    expect(updateCoreProperties(xml, { updateModifiedDate: true })).toBe(xml);
+  });
+
   test("stays linear on malformed core.xml", () => {
     const evil = "<dcterms:modified".repeat(100_000);
     const start = performance.now();

@@ -1837,9 +1837,7 @@ function findNotePartEntry(zip: JSZip, conventionalLowerPath: string): JSZip.JSZ
 // UTILITY FUNCTIONS
 // ============================================================================
 
-/**
- * Update core properties XML with new modification date
- */
+/** Update existing core-property values without synthesizing absent metadata. */
 export function updateCoreProperties(
   corePropsXml: string,
   options: { updateModifiedDate?: boolean; modifiedBy?: string },
@@ -1854,12 +1852,6 @@ export function updateCoreProperties(
       result = result.replace(
         /<dcterms:modified[^<>]*>[^<]*<\/dcterms:modified>/u,
         `<dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>`,
-      );
-    } else {
-      // Add modified date if not present
-      result = result.replace(
-        "</cp:coreProperties>",
-        `<dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`,
       );
     }
   }

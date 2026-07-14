@@ -79,6 +79,16 @@ import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./ai-edits/hea
 import type { FolioAIBlock, FolioAIBlockPreviewRun } from "./ai-edits/types";
 import { diffWordSegments, type WordDiffSegment } from "./ai-edits/word-diff";
 import { pairFolioDocumentStories, type FolioDocumentStoryPair } from "./document-stories";
+import {
+  FOLIO_DOCUMENT_METADATA_PROPERTIES,
+  FOLIO_DOCUMENT_PRIVACY_TRANSFORMS,
+  isFolioDocumentPrivacyTransform,
+  PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM,
+  type FolioDocumentMetadataProperty,
+  type FolioDocumentPrivacyOptions,
+  type FolioDocumentPrivacyReport,
+  type FolioDocumentPrivacyTransform,
+} from "./docx/metadataPrivacy";
 import { getFolioParaIdFromBlockId } from "./types/block-id";
 
 /** One word-level diff segment within a `modified` block. Mirrors {@link WordDiffSegment}. */
@@ -113,19 +123,8 @@ export class InvalidFolioVersionComparisonOptionsError extends TaggedError(
   receivedValue: unknown;
 }>() {}
 
-export const FOLIO_DOCUMENT_METADATA_PROPERTIES = Object.freeze([
-  "title",
-  "subject",
-  "creator",
-  "keywords",
-  "description",
-  "lastModifiedBy",
-  "revision",
-  "created",
-  "modified",
-] as const);
-
-export type FolioDocumentMetadataProperty = (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
+export { FOLIO_DOCUMENT_METADATA_PROPERTIES };
+export type { FolioDocumentMetadataProperty };
 export type FolioDocumentMetadataValue = string | number | null;
 
 export type FolioMetadataDiff = {
@@ -134,28 +133,17 @@ export type FolioMetadataDiff = {
   revisedValue: FolioDocumentMetadataValue;
 };
 
-export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS = Object.freeze([
-  "remove-attribution",
-  "remove-timestamps",
-  "remove-descriptive-metadata",
-] as const);
+export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS = FOLIO_DOCUMENT_PRIVACY_TRANSFORMS;
 
-export type FolioVersionComparisonPrivacyTransform =
-  (typeof FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS)[number];
+export type FolioVersionComparisonPrivacyTransform = FolioDocumentPrivacyTransform;
 
 export const isFolioVersionComparisonPrivacyTransform = (
   value: unknown,
-): value is FolioVersionComparisonPrivacyTransform =>
-  FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS.some((transform) => transform === value);
+): value is FolioVersionComparisonPrivacyTransform => isFolioDocumentPrivacyTransform(value);
 
-export type FolioVersionDiffPrivacyOptions = {
-  transforms: readonly FolioVersionComparisonPrivacyTransform[];
-};
+export type FolioVersionDiffPrivacyOptions = FolioDocumentPrivacyOptions;
 
-export type FolioVersionDiffPrivacyReport = {
-  appliedTransforms: FolioVersionComparisonPrivacyTransform[];
-  removedMetadataProperties: FolioDocumentMetadataProperty[];
-};
+export type FolioVersionDiffPrivacyReport = FolioDocumentPrivacyReport;
 
 /** Run-level formatting properties compared for `formatChanged` detection. */
 const FORMAT_PROPERTIES = [
@@ -788,15 +776,6 @@ const resolveComparisonScopes = (
   }
   return new Set(include);
 };
-
-const PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM = {
-  "remove-attribution": ["creator", "lastModifiedBy"],
-  "remove-timestamps": ["created", "modified"],
-  "remove-descriptive-metadata": ["title", "subject", "keywords", "description"],
-} as const satisfies Record<
-  FolioVersionComparisonPrivacyTransform,
-  readonly FolioDocumentMetadataProperty[]
->;
 
 const resolvePrivacyTransforms = (
   transforms: unknown,

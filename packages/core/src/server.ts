@@ -174,3 +174,14 @@ export {
   type ExtractedDocxText,
 } from "./docx/server/extractDocxText";
 export { DocxArchiveError } from "./docx/server/boundedArchive";
+export {
+  FOLIO_DOCUMENT_PRIVACY_TRANSFORMS,
+  FolioDocumentPrivacyArchiveError,
+  InvalidFolioDocumentPrivacyOptionsError,
+  isFolioDocumentPrivacyTransform,
+  rewriteDocxMetadataPrivacy,
+  type FolioDocumentPrivacyOptions,
+  type FolioDocumentPrivacyReport,
+  type FolioDocumentPrivacyTransform,
+  type RewriteDocxMetadataPrivacyResult,
+} from "./docx/metadataPrivacy";
