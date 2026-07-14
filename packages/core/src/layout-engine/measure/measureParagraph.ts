@@ -36,7 +36,7 @@ import {
   type FloatingLineSegmentZone,
 } from "./floatingZones";
 import { getListMarkerInlineWidth } from "./listMarkerWidth";
-import { buildRunFontStyle, ptToPx } from "./measureHelpers";
+import { buildRunFontStyle, ptToPx, twipsToPx } from "./measureHelpers";
 import { getFontMetrics, measureRun, measureTextWidth } from "./measureProvider";
 import type { FontMetrics, FontStyle } from "./measureTypes";
 import {
@@ -70,6 +70,7 @@ const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
 const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
 const DEFAULT_LIST_HANGING_INDENT_PX = 24;
 const ALL_CAPS_RATIO_THRESHOLD = 0.8;
+const DEFAULT_HYPHENATION_ZONE_TWIPS = 360;
 
 /**
  * Find the longest prefix of `text` that fits within `maxWidth` pixels.
@@ -152,6 +153,16 @@ type LineState = {
   segmentZones?: FloatingLineSegmentZone[];
   discretionaryHyphen?: { runIndex: number };
 };
+
+function exceedsHyphenationZone(line: LineState, zoneTwips: number): boolean {
+  if (line.width <= 0) {
+    return true;
+  }
+
+  const visibleWidth = Math.max(0, line.width - line.trailingWhitespaceWidth);
+  const unusedWidth = Math.max(0, line.availableWidth - visibleWidth);
+  return unusedWidth > twipsToPx(zoneTwips) + WIDTH_TOLERANCE;
+}
 
 /**
  * Extract FontStyle from a run that carries RunFormatting (text, tab, or
@@ -1771,7 +1782,11 @@ export function measureParagraph(
         const mayHyphenateLine =
           automaticHyphenation?.enabled === true &&
           block.attrs?.suppressAutoHyphens !== true &&
-          (consecutiveLineLimit === 0 || consecutiveHyphenatedLines < consecutiveLineLimit);
+          (consecutiveLineLimit === 0 || consecutiveHyphenatedLines < consecutiveLineLimit) &&
+          exceedsHyphenationZone(
+            currentLine,
+            automaticHyphenation.hyphenationZoneTwips ?? DEFAULT_HYPHENATION_ZONE_TWIPS,
+          );
         const isRunTail = nextBreak === text.length;
         const crossRunWord =
           mayHyphenateLine && isRunTail && word.length > 0 && !isBreakChar(word.at(-1))

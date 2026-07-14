@@ -147,6 +147,21 @@ describe("font metrics cache", () => {
         },
       }),
     );
+    expect(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: {
+          automaticHyphenation: { enabled: true, hyphenationZoneTwips: 360 },
+        },
+      }),
+    ).not.toBe(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: {
+          automaticHyphenation: { enabled: true, hyphenationZoneTwips: 720 },
+        },
+      }),
+    );
   });
 });
 
@@ -713,6 +728,48 @@ describe("automatic hyphenation", () => {
         expect(measured.lines[1]).toMatchObject({ fromRun: 1, fromChar: 1 });
       },
       { charWidth: fixedCharWidth(10) },
+    );
+  });
+
+  test("attempts hyphenation only when line-end whitespace exceeds the document zone", () => {
+    const measureWithZone = (hyphenationZoneTwips?: number) =>
+      measureParagraph(
+        {
+          kind: "paragraph",
+          id: "automatic-hyphenation-zone",
+          runs: [
+            {
+              kind: "text",
+              text: "aaaaaaaaaaaaaaaa hyphenation",
+              language: { val: "en-US" },
+            },
+          ],
+          attrs: {
+            automaticHyphenation: {
+              enabled: true,
+              ...(hyphenationZoneTwips !== undefined ? { hyphenationZoneTwips } : {}),
+            },
+          },
+        },
+        100,
+      );
+
+    withFakeTextMeasure(
+      () => {
+        const defaultZone = measureWithZone();
+        const zeroZone = measureWithZone(0);
+
+        expect(defaultZone.lines[0]).toMatchObject({
+          toChar: "aaaaaaaaaaaaaaaa ".length,
+          width: 80,
+        });
+        expect(defaultZone.lines[0]?.discretionaryHyphen).toBeUndefined();
+        expect(zeroZone.lines[0]).toMatchObject({
+          toChar: "aaaaaaaaaaaaaaaa hy".length,
+          discretionaryHyphen: { runIndex: 0 },
+        });
+      },
+      { charWidth: fixedCharWidth(5) },
     );
   });
 

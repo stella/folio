@@ -313,6 +313,9 @@ export function runLayoutPipeline<THfPMs>(
         ...(documentSettings.consecutiveHyphenLimit !== undefined
           ? { consecutiveLineLimit: documentSettings.consecutiveHyphenLimit }
           : {}),
+        ...(documentSettings.hyphenationZoneTwips !== undefined
+          ? { hyphenationZoneTwips: documentSettings.hyphenationZoneTwips }
+          : {}),
       };
     }
     let newBlocks = toFlowBlocks(state.doc, flowOpts);

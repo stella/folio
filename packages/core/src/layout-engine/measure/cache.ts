@@ -345,7 +345,7 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     const automaticHyphenation = attrs.automaticHyphenation;
     if (automaticHyphenation) {
       parts.push(
-        `auto-hyphens:${automaticHyphenation.doNotHyphenateCaps}|${automaticHyphenation.consecutiveLineLimit}`,
+        `auto-hyphens:${automaticHyphenation.doNotHyphenateCaps}|${automaticHyphenation.consecutiveLineLimit}|${automaticHyphenation.hyphenationZoneTwips}`,
       );
     }
     const lineBreakRules = attrs.lineBreakRules;

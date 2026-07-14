@@ -832,6 +832,7 @@ describe("runLayoutPipeline", () => {
       autoHyphenation: true,
       doNotHyphenateCaps: true,
       consecutiveHyphenLimit: 2,
+      hyphenationZoneTwips: 720,
     };
 
     const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document }), makeState());
@@ -841,6 +842,7 @@ describe("runLayoutPipeline", () => {
       enabled: true,
       doNotHyphenateCaps: true,
       consecutiveLineLimit: 2,
+      hyphenationZoneTwips: 720,
     });
   });
 
