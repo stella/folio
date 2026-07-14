@@ -208,6 +208,10 @@ export const FOLIO_REVIEWED_VIEWS = Object.freeze(["original", "current-markup",
 
 export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
 
+export const FOLIO_RESOLVED_REVIEWED_VIEWS = Object.freeze(["original", "final"] as const);
+
+export type FolioResolvedReviewedView = (typeof FOLIO_RESOLVED_REVIEWED_VIEWS)[number];
+
 export type FolioDocumentStoryHandle =
   | { type: "main" }
   | { type: "header"; relationshipId: string }
@@ -225,6 +229,11 @@ export type FolioDocumentStory = {
 export type FolioReadReviewedStoryOptions = {
   story?: FolioEditableDocumentStoryHandle;
   view?: FolioReviewedView;
+};
+
+export type FolioResolveReviewedStoryOptions = {
+  story?: FolioEditableDocumentStoryHandle;
+  view: FolioResolvedReviewedView;
 };
 
 export type FolioReviewedStory = {
@@ -293,6 +302,9 @@ const secondaryStoryKey = (story: FolioSecondaryStoryHandle): string =>
 
 export const isFolioReviewedView = (value: unknown): value is FolioReviewedView =>
   FOLIO_REVIEWED_VIEWS.some((view) => view === value);
+
+export const isFolioResolvedReviewedView = (value: unknown): value is FolioResolvedReviewedView =>
+  FOLIO_RESOLVED_REVIEWED_VIEWS.some((view) => view === value);
 
 const applyCommandToState = (state: EditorState, command: Command): EditorState => {
   let nextState = state;
@@ -556,6 +568,22 @@ export class FolioDocxReviewer {
       text: formatStoryStateForLLM(state, view === "current-markup"),
       changes: getTrackedChangesFromDoc(state.doc),
     };
+  }
+
+  /** Resolve one editable story to its original or final state. */
+  resolveReviewedStory({ story = MAIN_STORY, view }: FolioResolveReviewedStoryOptions): boolean {
+    if (!isFolioResolvedReviewedView(view)) {
+      throw new UnsupportedFolioReviewedViewError({
+        message: "Only original and final views can replace editable story state.",
+        receivedView: view,
+      });
+    }
+    const sourceState = this.getEditableStoryState(story);
+    if (!sourceState) {
+      return false;
+    }
+    this.setEditableStoryState(story, resolveReviewedState(sourceState, view));
+    return true;
   }
 
   /**

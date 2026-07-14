@@ -23,15 +23,19 @@ export { getFolioDocumentOutline, readFolioDocumentSection } from "./scoped-read
 export { getFolioParaIdFromBlockId } from "../types/block-id";
 export { diffWordSegments } from "./word-diff";
 export {
+  FOLIO_RESOLVED_REVIEWED_VIEWS,
   FOLIO_REVIEWED_VIEWS,
   FolioDocumentStoryNotFoundError,
   UnsupportedFolioReviewedViewError,
+  isFolioResolvedReviewedView,
   isFolioReviewedView,
   type FolioApplyDocumentOperationsToStoryOptions,
   type FolioDocumentStory,
   type FolioDocumentStoryHandle,
   type FolioEditableDocumentStoryHandle,
   type FolioReadReviewedStoryOptions,
+  type FolioResolveReviewedStoryOptions,
+  type FolioResolvedReviewedView,
   type FolioReviewedStory,
   type FolioReviewedView,
 } from "./headless";

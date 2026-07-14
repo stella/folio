@@ -204,6 +204,9 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "foot
 export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
 
 // @public (undocumented)
+export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
+
+// @public (undocumented)
 export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "final"];
 
 // @public (undocumented)
@@ -651,6 +654,7 @@ export class FolioDocxReviewer {
     resolveComment(commentId: string, options?: {
         resolved?: boolean;
     }): boolean;
+    resolveReviewedStory(input: FolioResolveReviewedStoryOptions): boolean;
     snapshot(): FolioAIEditSnapshot;
     snapshotStory(story: FolioEditableDocumentStoryHandle): FolioAIEditSnapshot | null;
     toBuffer(): Promise<ArrayBuffer>;
@@ -681,6 +685,15 @@ export type FolioMetadataDiff = {
 export type FolioReadReviewedStoryOptions = {
     story?: FolioEditableDocumentStoryHandle;
     view?: FolioReviewedView;
+};
+
+// @public (undocumented)
+export type FolioResolvedReviewedView = (typeof FOLIO_RESOLVED_REVIEWED_VIEWS)[number];
+
+// @public (undocumented)
+export type FolioResolveReviewedStoryOptions = {
+    story?: FolioEditableDocumentStoryHandle;
+    view: FolioResolvedReviewedView;
 };
 
 // @public
@@ -806,12 +819,24 @@ export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, opti
 
 // @public
 export type GenerateRedlineDocxOptions = {
-    author?: string;
+    author?: string; /** Resolved base input state. (default: `"final"`) */
+    baseView?: FolioResolvedReviewedView; /** Resolved revised input state. (default: `"final"`) */
+    revisedView?: FolioResolvedReviewedView;
 };
 
 // @public
-export type GenerateRedlineDocxResult = FolioAIEditApplyResult & {
-    buffer: ArrayBuffer;
+export type GenerateRedlineDocxResult = {
+    buffer: ArrayBuffer; /** Operations applied across every matched story. */
+    applied: FolioAIEditAppliedOperation[]; /** Block operations that could not be applied. */
+    skipped: FolioAIEditSkippedOperation[]; /** Package parts that could not be represented as story-scoped text edits. */
+    unprocessedStories: GenerateRedlineUnprocessedStory[];
+};
+
+// @public (undocumented)
+export type GenerateRedlineUnprocessedStory = {
+    baseStory: FolioDocumentStoryHandle | null;
+    revisedStory: FolioDocumentStoryHandle | null;
+    reason: "missing-base-story" | "missing-revised-story";
 };
 
 // @public (undocumented)
@@ -841,11 +866,17 @@ export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumen
 // @public (undocumented)
 export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsError_base {}
 
+// @public (undocumented)
+export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsError_base {}
+
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
 
 // @public (undocumented)
 export const isFolioDocumentOperationModeSupported: (operationType: FolioDocumentOperationType, mode: FolioDocumentOperationMode) => boolean;
+
+// @public (undocumented)
+export const isFolioResolvedReviewedView: (value: unknown) => value is FolioResolvedReviewedView;
 
 // @public (undocumented)
 export const isFolioReviewedView: (value: unknown) => value is FolioReviewedView;
