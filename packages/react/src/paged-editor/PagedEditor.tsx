@@ -2723,12 +2723,24 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
     useEffect(
       () => () => {
+        selectionOverlayRequestGate.invalidate();
+        anonymizationOverlayRequestGate.invalidate();
+        autocompleteOverlayRequestGate.invalidate();
+        directivesOverlayRequestGate.invalidate();
+        aiSuggestionsOverlayRequestGate.invalidate();
+
         if (revealSelectionOverlayTimerRef.current !== null) {
           window.clearTimeout(revealSelectionOverlayTimerRef.current);
           revealSelectionOverlayTimerRef.current = null;
         }
       },
-      [],
+      [
+        aiSuggestionsOverlayRequestGate,
+        anonymizationOverlayRequestGate,
+        autocompleteOverlayRequestGate,
+        directivesOverlayRequestGate,
+        selectionOverlayRequestGate,
+      ],
     );
 
     // =========================================================================
