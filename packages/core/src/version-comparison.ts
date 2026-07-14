@@ -78,6 +78,7 @@ import { panic, TaggedError } from "better-result";
 import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./ai-edits/headless";
 import type { FolioAIBlock, FolioAIBlockPreviewRun } from "./ai-edits/types";
 import { diffWordSegments, type WordDiffSegment } from "./ai-edits/word-diff";
+import { pairFolioDocumentStories, type FolioDocumentStoryPair } from "./document-stories";
 import { getFolioParaIdFromBlockId } from "./types/block-id";
 
 /** One word-level diff segment within a `modified` block. Mirrors {@link WordDiffSegment}. */
@@ -669,45 +670,7 @@ const addSummaryCounts = (
   target.unchanged += source.unchanged;
 };
 
-const storyKey = (story: FolioDocumentStoryHandle): string => {
-  if (story.type === "main") {
-    return story.type;
-  }
-  if (story.type === "header" || story.type === "footer") {
-    return `${story.type}:${story.relationshipId}`;
-  }
-  return `${story.type}:${String(story.noteId)}`;
-};
-
-type StoryPair = {
-  baseStory: FolioDocumentStoryHandle | null;
-  revisedStory: FolioDocumentStoryHandle | null;
-};
-
-const pairDocumentStories = (
-  baseStories: readonly FolioDocumentStoryHandle[],
-  revisedStories: readonly FolioDocumentStoryHandle[],
-): StoryPair[] => {
-  const revisedByKey = new Map(revisedStories.map((story) => [storyKey(story), story]));
-  const pairedKeys = new Set<string>();
-  const pairs: StoryPair[] = [];
-  for (const baseStory of baseStories) {
-    const key = storyKey(baseStory);
-    const revisedStory = revisedByKey.get(key) ?? null;
-    pairs.push({ baseStory, revisedStory });
-    if (revisedStory) {
-      pairedKeys.add(key);
-    }
-  }
-  for (const revisedStory of revisedStories) {
-    if (!pairedKeys.has(storyKey(revisedStory))) {
-      pairs.push({ baseStory: null, revisedStory });
-    }
-  }
-  return pairs;
-};
-
-type CompareStoryBlocksOptions = StoryPair & {
+type CompareStoryBlocksOptions = FolioDocumentStoryPair & {
   baseBlocks: readonly FolioAIBlock[];
   revisedBlocks: readonly FolioAIBlock[];
   firstMoveGroupId: number;
@@ -942,7 +905,7 @@ export const compareDocxVersions = async (
   const revisedStories = revisedReviewer.listStories().map(({ handle }) => handle);
   let nextMoveGroupId = 1;
 
-  for (const pair of pairDocumentStories(baseStories, revisedStories)) {
+  for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
     const baseBlocks = pair.baseStory
       ? (baseReviewer.readReviewedStory({ story: pair.baseStory, view: "final" })?.snapshot
           .blocks ?? [])

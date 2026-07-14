@@ -14,10 +14,14 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 
 import { FolioDocxReviewer } from "./ai-edits/headless";
+import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
-import { generateRedlineDocx } from "./redline";
+import { repackDocx } from "./docx/rezip";
+import { generateRedlineDocx, InvalidGenerateRedlineDocxOptionsError } from "./redline";
+import type { HeaderFooter, Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 
 type ParagraphSpec = { text: string; paraId?: string };
@@ -42,6 +46,136 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
 
 const blockTexts = (reviewer: FolioDocxReviewer): string[] =>
   reviewer.snapshot().blocks.map((block) => block.text);
+
+const storyParagraph = (text: string, paraId: string): Paragraph => ({
+  type: "paragraph",
+  paraId,
+  content: [{ type: "run", content: [{ type: "text", text }] }],
+});
+
+const headerFooterStory = (
+  type: "header" | "footer",
+  text: string,
+  paraId: string,
+): HeaderFooter => ({
+  type,
+  hdrFtrType: "default",
+  content: [storyParagraph(text, paraId)],
+});
+
+type StoryDocumentOptions = {
+  bodyText: string;
+  headerText?: string;
+  footerText?: string;
+  footnoteText?: string;
+  endnoteText?: string;
+};
+
+const buildStoryDocument = async ({
+  bodyText,
+  headerText,
+  footerText,
+  footnoteText,
+  endnoteText,
+}: StoryDocumentOptions): Promise<ArrayBuffer> => {
+  const source = await buildDocxBuffer([{ text: bodyText, paraId: "A1000001" }]);
+  const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+  if (headerText !== undefined) {
+    document.package.headers = new Map([
+      ["rIdHeader", headerFooterStory("header", headerText, "B1000001")],
+    ]);
+    document.package.document.finalSectionProperties = {
+      ...document.package.document.finalSectionProperties,
+      headerReferences: [{ type: "default", rId: "rIdHeader" }],
+    };
+  }
+  if (footerText !== undefined) {
+    document.package.footers = new Map([
+      ["rIdFooter", headerFooterStory("footer", footerText, "C1000001")],
+    ]);
+    document.package.document.finalSectionProperties = {
+      ...document.package.document.finalSectionProperties,
+      footerReferences: [{ type: "default", rId: "rIdFooter" }],
+    };
+  }
+  const materialized = await repackDocx(document, { updateModifiedDate: false });
+  if (footnoteText === undefined && endnoteText === undefined) {
+    return materialized;
+  }
+
+  const zip = await JSZip.loadAsync(materialized);
+  const contentTypesFile = zip.file("[Content_Types].xml");
+  const relationshipsFile = zip.file("word/_rels/document.xml.rels");
+  if (!contentTypesFile || !relationshipsFile) {
+    throw new Error("expected package metadata parts");
+  }
+  const contentTypes = await contentTypesFile.async("text");
+  const relationships = await relationshipsFile.async("text");
+  const contentTypeOverrides = [
+    footnoteText === undefined
+      ? ""
+      : '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>',
+    endnoteText === undefined
+      ? ""
+      : '<Override PartName="/word/endnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml"/>',
+  ].join("");
+  const noteRelationships = [
+    footnoteText === undefined
+      ? ""
+      : '<Relationship Id="rIdFootnotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/>',
+    endnoteText === undefined
+      ? ""
+      : '<Relationship Id="rIdEndnotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes" Target="endnotes.xml"/>',
+  ].join("");
+  zip.file(
+    "[Content_Types].xml",
+    contentTypes.replace("</Types>", `${contentTypeOverrides}</Types>`),
+  );
+  zip.file(
+    "word/_rels/document.xml.rels",
+    relationships.replace("</Relationships>", `${noteRelationships}</Relationships>`),
+  );
+  if (footnoteText !== undefined) {
+    zip.file(
+      "word/footnotes.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:footnote w:id="2"><w:p w14:paraId="D1000001"><w:r><w:t>${footnoteText}</w:t></w:r></w:p></w:footnote></w:footnotes>`,
+    );
+  }
+  if (endnoteText !== undefined) {
+    zip.file(
+      "word/endnotes.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="E1000001"><w:r><w:t>${endnoteText}</w:t></w:r></w:p></w:endnote></w:endnotes>`,
+    );
+  }
+  return zip.generateAsync({ type: "arraybuffer" });
+};
+
+const storyTextByType = (
+  reviewer: FolioDocxReviewer,
+  view: "original" | "final",
+): Record<string, string> => {
+  const texts: Record<string, string> = {};
+  for (const { handle } of reviewer.listStories()) {
+    const story = reviewer.readReviewedStory({ story: handle, view });
+    if (story) {
+      texts[handle.type] = story.snapshot.blocks.map(({ text }) => text).join("\n");
+    }
+  }
+  return texts;
+};
+
+const withPendingMainChange = async (source: ArrayBuffer, text: string): Promise<ArrayBuffer> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Source reviewer" });
+  const target = reviewer.snapshot().blocks.at(0);
+  if (!target) {
+    throw new Error("expected a main-story block");
+  }
+  reviewer.applyOperations(
+    [{ id: "source-change", type: "replaceBlock", blockId: target.id, text }],
+    { mode: "tracked-changes" },
+  );
+  return reviewer.toBuffer();
+};
 
 describe("generateRedlineDocx", () => {
   test("accept-all reproduces the revised document; reject-all restores the base", async () => {
@@ -77,6 +211,7 @@ describe("generateRedlineDocx", () => {
     const result = await generateRedlineDocx(base, revised);
 
     expect(result.skipped).toEqual([]);
+    expect(result.unprocessedStories).toEqual([]);
     expect(result.applied.length).toBeGreaterThan(0);
 
     // The redline carries real tracked changes attributed to the default author.
@@ -197,5 +332,105 @@ describe("generateRedlineDocx", () => {
     const view = await FolioDocxReviewer.fromBuffer(result.buffer);
     const authors = new Set(view.getChanges().map((change) => change.author));
     expect(authors).toEqual(new Set(["Jan Kubica"]));
+  });
+
+  test("redlines matched body, header, footer, footnote, and endnote stories", async () => {
+    const base = await buildStoryDocument({
+      bodyText: "Body baseline.",
+      headerText: "Header baseline.",
+      footerText: "Footer baseline.",
+      footnoteText: "Footnote baseline.",
+      endnoteText: "Endnote baseline.",
+    });
+    const revised = await buildStoryDocument({
+      bodyText: "Body revised.",
+      headerText: "Header revised.",
+      footerText: "Footer revised.",
+      footnoteText: "Footnote revised.",
+      endnoteText: "Endnote revised.",
+    });
+
+    const result = await generateRedlineDocx(base, revised);
+
+    expect(result.skipped).toEqual([]);
+    expect(result.unprocessedStories).toEqual([]);
+    expect(result.applied).toHaveLength(5);
+    const output = await FolioDocxReviewer.fromBuffer(result.buffer);
+    expect(storyTextByType(output, "original")).toEqual({
+      main: "Body baseline.",
+      header: "Header baseline.",
+      footer: "Footer baseline.",
+      footnote: "Footnote baseline.",
+      endnote: "Endnote baseline.",
+    });
+    expect(storyTextByType(output, "final")).toEqual({
+      main: "Body revised.",
+      header: "Header revised.",
+      footer: "Footer revised.",
+      footnote: "Footnote revised.",
+      endnote: "Endnote revised.",
+    });
+  });
+
+  test("selects original or final input views independently", async () => {
+    const base = await withPendingMainChange(
+      await buildDocxBuffer([{ text: "Base original.", paraId: "00000001" }]),
+      "Base final.",
+    );
+    const revised = await withPendingMainChange(
+      await buildDocxBuffer([{ text: "Revised original.", paraId: "00000001" }]),
+      "Revised final.",
+    );
+
+    const result = await generateRedlineDocx(base, revised, {
+      baseView: "original",
+      revisedView: "original",
+    });
+    const output = await FolioDocxReviewer.fromBuffer(result.buffer);
+
+    expect(output.readReviewedStory({ view: "original" })?.snapshot.blocks.at(0)?.text).toBe(
+      "Base original.",
+    );
+    expect(output.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.text).toBe(
+      "Revised original.",
+    );
+  });
+
+  test("reports package parts that exist on only one side", async () => {
+    const base = await buildStoryDocument({
+      bodyText: "Body text.",
+      headerText: "Removed header.",
+    });
+    const revised = await buildStoryDocument({
+      bodyText: "Body text.",
+      footerText: "Added footer.",
+    });
+
+    const result = await generateRedlineDocx(base, revised);
+
+    expect(result.unprocessedStories).toEqual([
+      {
+        baseStory: { type: "header", relationshipId: "rIdHeader" },
+        revisedStory: null,
+        reason: "missing-revised-story",
+      },
+      {
+        baseStory: null,
+        revisedStory: { type: "footer", relationshipId: "rIdFooter" },
+        reason: "missing-base-story",
+      },
+    ]);
+  });
+
+  test("rejects unresolved markup as an input view", async () => {
+    const document = await buildDocxBuffer([{ text: "Body text.", paraId: "00000001" }]);
+
+    await expect(
+      Reflect.apply(generateRedlineDocx, undefined, [
+        document,
+        document,
+        { baseView: "current-markup" },
+      ]),
+    ).rejects.toBeInstanceOf(InvalidGenerateRedlineDocxOptionsError);
   });
 });

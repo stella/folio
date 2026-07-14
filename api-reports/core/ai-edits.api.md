@@ -83,6 +83,9 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "foot
 export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
 
 // @public (undocumented)
+export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
+
+// @public (undocumented)
 export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "final"];
 
 // @public (undocumented)
@@ -491,6 +494,15 @@ export type FolioReadReviewedStoryOptions = {
     view?: FolioReviewedView;
 };
 
+// @public (undocumented)
+export type FolioResolvedReviewedView = (typeof FOLIO_RESOLVED_REVIEWED_VIEWS)[number];
+
+// @public (undocumented)
+export type FolioResolveReviewedStoryOptions = {
+    story?: FolioEditableDocumentStoryHandle;
+    view: FolioResolvedReviewedView;
+};
+
 // @public
 export type FolioReviewChange = {
     id: number;
@@ -545,6 +557,9 @@ export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumen
 
 // @public (undocumented)
 export const isFolioDocumentOperationModeSupported: (operationType: FolioDocumentOperationType, mode: FolioDocumentOperationMode) => boolean;
+
+// @public (undocumented)
+export const isFolioResolvedReviewedView: (value: unknown) => value is FolioResolvedReviewedView;
 
 // @public (undocumented)
 export const isFolioReviewedView: (value: unknown) => value is FolioReviewedView;

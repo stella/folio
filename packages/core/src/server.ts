@@ -64,11 +64,13 @@ export {
   type DocumentStyleSet,
 } from "./style-sets/types";
 export {
+  FOLIO_RESOLVED_REVIEWED_VIEWS,
   FOLIO_REVIEWED_VIEWS,
   FolioDocxReviewer,
   FolioDocumentStoryNotFoundError,
   UnsupportedFolioReviewedViewError,
   applyFolioAIEditsToBuffer,
+  isFolioResolvedReviewedView,
   isFolioReviewedView,
   type ApplyFolioAIEditsToBufferOptions,
   type ApplyFolioAIEditsToBufferResult,
@@ -80,6 +82,8 @@ export {
   type FolioDocumentStoryHandle,
   type FolioEditableDocumentStoryHandle,
   type FolioReadReviewedStoryOptions,
+  type FolioResolveReviewedStoryOptions,
+  type FolioResolvedReviewedView,
   type FolioReviewedStory,
   type FolioReviewedView,
   type FolioReviewChange,
@@ -117,8 +121,10 @@ export {
 } from "./version-comparison";
 export {
   generateRedlineDocx,
+  InvalidGenerateRedlineDocxOptionsError,
   type GenerateRedlineDocxOptions,
   type GenerateRedlineDocxResult,
+  type GenerateRedlineUnprocessedStory,
 } from "./redline";
 export type {
   FolioAIComment,
