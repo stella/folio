@@ -959,8 +959,12 @@ export class FolioDocxReviewer {
       EditorState.create({
         schema,
         doc: headerFooterToProseDoc(source.content, {
-          styles: this.baseDocument.package.styles,
-          theme: this.baseDocument.package.theme,
+          ...(this.baseDocument.package.styles !== undefined && {
+            styles: this.baseDocument.package.styles,
+          }),
+          ...(this.baseDocument.package.theme !== undefined && {
+            theme: this.baseDocument.package.theme,
+          }),
         }),
         plugins: singletonManager.getPlugins(),
       }),
