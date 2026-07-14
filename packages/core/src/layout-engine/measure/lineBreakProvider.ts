@@ -48,7 +48,7 @@ export type LineBreakProvider = {
 const SEGMENTER_CACHE_LIMIT = 16;
 const DEFAULT_SEGMENTER_KEY = "";
 const SOFT_HYPHEN = "\u00AD";
-const MAX_HYPHENATION_WORD_LENGTH = 256;
+export const MAX_HYPHENATION_WORD_LENGTH = 256;
 
 const wordSegmenters = new Map<string, Intl.Segmenter>();
 const graphemeSegmenters = new Map<string, Intl.Segmenter>();

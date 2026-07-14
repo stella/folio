@@ -46,6 +46,7 @@ import {
   isHangingPunctuation,
   isBreakChar,
 } from "./lineBreaks";
+import { MAX_HYPHENATION_WORD_LENGTH } from "./lineBreakProvider";
 import type { LineBreakPolicy } from "./lineBreakProvider";
 import { countCompressibleSpaces } from "./textMeasurementPolicy";
 
@@ -787,6 +788,125 @@ function computeTrailingGlueWidths(block: ParagraphBlock): number[] {
   return widths;
 }
 
+type CrossRunWordSegment = {
+  runIndex: number;
+  startChar: number;
+  text: string;
+  run: TextRun;
+  style: FontStyle;
+};
+
+type CrossRunWord = {
+  text: string;
+  width: number;
+  breaks: number[];
+  segments: CrossRunWordSegment[];
+};
+
+type CollectCrossRunWordOptions = {
+  block: ParagraphBlock;
+  startRunIndex: number;
+  startChar: number;
+};
+
+/** Collect one lexical word continued through adjacent formatting runs. */
+function collectCrossRunWord({
+  block,
+  startRunIndex,
+  startChar,
+}: CollectCrossRunWordOptions): CrossRunWord | undefined {
+  const segments: CrossRunWordSegment[] = [];
+  let text = "";
+  let width = 0;
+
+  for (let runIndex = startRunIndex; runIndex < block.runs.length; runIndex++) {
+    const run = block.runs[runIndex];
+    if (!run || !isTextRun(run)) {
+      break;
+    }
+
+    const start = runIndex === startRunIndex ? startChar : 0;
+    const remainder = run.text.slice(start);
+    if (remainder.length === 0) {
+      continue;
+    }
+    if (runIndex !== startRunIndex && isSpaceOrTab(remainder[0])) {
+      break;
+    }
+
+    const remainingBudget = MAX_HYPHENATION_WORD_LENGTH - text.length;
+    const boundedRemainder = remainder.slice(0, remainingBudget + 1);
+    const firstBreak = findWordBreaks(boundedRemainder, lineBreakPolicy(block, run)).at(0);
+    const segmentText = trimTrailingSpacesAndTabs(
+      firstBreak === undefined ? boundedRemainder : boundedRemainder.slice(0, firstBreak),
+    );
+    if (segmentText.length === 0) {
+      break;
+    }
+    if (segmentText.length > remainingBudget) {
+      return undefined;
+    }
+
+    const style = runToFontStyle(run);
+    segments.push({ runIndex, startChar: start, text: segmentText, run, style });
+    text += segmentText;
+    width += measureTextWidth(segmentText, style);
+
+    if (firstBreak !== undefined) {
+      break;
+    }
+  }
+
+  if (segments.length < 2) {
+    return undefined;
+  }
+  const firstRun = segments[0]?.run;
+  if (!firstRun) {
+    return undefined;
+  }
+  return {
+    text,
+    width,
+    breaks: findHyphenationBreaks(text, lineBreakPolicy(block, firstRun)),
+    segments,
+  };
+}
+
+type CrossRunPrefix = {
+  width: number;
+  endRunIndex: number;
+  endChar: number;
+  hyphenStyle: FontStyle;
+  segments: CrossRunWordSegment[];
+};
+
+function measureCrossRunPrefix(
+  word: CrossRunWord,
+  breakOffset: number,
+): CrossRunPrefix | undefined {
+  let width = 0;
+  let remaining = breakOffset;
+  const measuredSegments: CrossRunWordSegment[] = [];
+  for (const segment of word.segments) {
+    const length = Math.min(remaining, segment.text.length);
+    if (length > 0) {
+      width += measureTextWidth(segment.text.slice(0, length), segment.style);
+      measuredSegments.push(segment);
+    }
+    if (remaining <= segment.text.length) {
+      return {
+        width,
+        endRunIndex: segment.runIndex,
+        endChar: segment.startChar + remaining,
+        hyphenStyle: segment.style,
+        segments: measuredSegments,
+      };
+    }
+    remaining -= segment.text.length;
+  }
+  return undefined;
+}
+
 /**
  * Minimum horizontal room a line must offer before we treat it as usable for
  * body text. Below this threshold the line is bumped past obstructing floats
@@ -1270,8 +1390,13 @@ export function measureParagraph(
     }
   };
 
+  let crossRunResume: { runIndex: number; charIndex: number } | undefined;
+
   // Process each run
   for (let runIndex = 0; runIndex < runs.length; runIndex++) {
+    if (crossRunResume && runIndex < crossRunResume.runIndex) {
+      continue;
+    }
     // SAFETY: runIndex is bounded by runs.length
     const run = runs[runIndex]!;
 
@@ -1534,7 +1659,10 @@ export function measureParagraph(
       const wordBreaks = findWordBreaks(text, breakPolicy);
 
       // Process text word by word
-      let charIndex = 0;
+      let charIndex = crossRunResume?.runIndex === runIndex ? crossRunResume.charIndex : 0;
+      if (crossRunResume?.runIndex === runIndex) {
+        crossRunResume = undefined;
+      }
       let activeHyphenationWord:
         | { start: number; end: number; text: string; breaks: number[] }
         | undefined;
@@ -1594,8 +1722,14 @@ export function measureParagraph(
           automaticHyphenation?.enabled === true &&
           block.attrs?.suppressAutoHyphens !== true &&
           (consecutiveLineLimit === 0 || consecutiveHyphenatedLines < consecutiveLineLimit);
+        const isRunTail = nextBreak === text.length;
+        const crossRunWord =
+          mayHyphenateLine && isRunTail && word.length > 0 && !isBreakChar(word.at(-1))
+            ? collectCrossRunWord({ block, startRunIndex: runIndex, startChar: charIndex })
+            : undefined;
         if (
           mayHyphenateLine &&
+          crossRunWord === undefined &&
           measuredWord.length > 0 &&
           (activeHyphenationWord === undefined ||
             charIndex < activeHyphenationWord.start ||
@@ -1639,6 +1773,51 @@ export function measureParagraph(
             startNewLine(runIndex, absoluteBreak);
             updateMaxFont(lineHeightStyle);
             charIndex = absoluteBreak;
+            continue;
+          }
+        }
+
+        if (
+          crossRunWord &&
+          currentLine.width + crossRunWord.width > currentLine.availableWidth + widthTolerance
+        ) {
+          const spaceLeft = currentLine.availableWidth - currentLine.width + widthTolerance;
+          let fittingPrefix: CrossRunPrefix | undefined;
+          for (let breakIndex = crossRunWord.breaks.length - 1; breakIndex >= 0; breakIndex -= 1) {
+            const breakOffset = crossRunWord.breaks[breakIndex];
+            if (breakOffset === undefined) {
+              continue;
+            }
+            if (breakOffset <= 0 || breakOffset >= crossRunWord.text.length) {
+              continue;
+            }
+            const prefix = measureCrossRunPrefix(crossRunWord, breakOffset);
+            if (prefix && prefix.width + measureTextWidth("-", prefix.hyphenStyle) <= spaceLeft) {
+              fittingPrefix = prefix;
+              break;
+            }
+          }
+          if (fittingPrefix) {
+            for (const segment of fittingPrefix.segments) {
+              updateMaxFont(cjkLineHeightStyle(segment.run, segment.style));
+            }
+            currentLine.width +=
+              fittingPrefix.width + measureTextWidth("-", fittingPrefix.hyphenStyle);
+            currentLine.trailingWhitespaceWidth = 0;
+            currentLine.toRun = fittingPrefix.endRunIndex;
+            currentLine.toChar = fittingPrefix.endChar;
+            currentLine.discretionaryHyphen = { runIndex: fittingPrefix.endRunIndex };
+            startNewLine(fittingPrefix.endRunIndex, fittingPrefix.endChar);
+            if (fittingPrefix.endRunIndex === runIndex) {
+              updateMaxFont(lineHeightStyle);
+              charIndex = fittingPrefix.endChar;
+              continue;
+            }
+            crossRunResume = {
+              runIndex: fittingPrefix.endRunIndex,
+              charIndex: fittingPrefix.endChar,
+            };
+            charIndex = text.length;
             continue;
           }
         }
@@ -1723,7 +1902,6 @@ export function measureParagraph(
         // run and the next run starts without whitespace, include that glued
         // width in the wrap decision so a note marker or format-only word
         // split is not stranded on the next line (eigenpal/docx-editor#991).
-        const isRunTail = nextBreak === text.length;
         const rawGlueWidth =
           // eslint-disable-next-line unicorn/prefer-at -- hot path: direct index avoids .at() overhead.
           isRunTail && word.length > 0 && !isBreakChar(word[word.length - 1])

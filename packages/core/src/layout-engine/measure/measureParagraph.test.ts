@@ -614,6 +614,41 @@ describe("automatic hyphenation", () => {
     );
   });
 
+  test("hyphenates one lexical word across formatting runs", () => {
+    withFakeTextMeasure(
+      () => {
+        const measured = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "cross-run-automatic-hyphenation",
+            runs: [
+              { kind: "text", text: "xx inte", language: { val: "en-US" } },
+              {
+                kind: "text",
+                text: "rnationalization",
+                color: "#c00000",
+                language: { val: "en-US" },
+              },
+            ],
+            attrs: { automaticHyphenation: { enabled: true } },
+          },
+          90,
+        );
+
+        expect(measured.lines[0]).toMatchObject({
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 1,
+          toChar: 1,
+          width: 90,
+          discretionaryHyphen: { runIndex: 1 },
+        });
+        expect(measured.lines[1]).toMatchObject({ fromRun: 1, fromChar: 1 });
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+  });
+
   test("leaves the source offsets unchanged when automatic hyphenation is suppressed", () => {
     withFakeTextMeasure(
       () => {

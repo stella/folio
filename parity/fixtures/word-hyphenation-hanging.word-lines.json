@@ -3,11 +3,11 @@
   "version": 1,
   "source": {
     "fileName": "word-hyphenation-hanging.docx",
-    "sha256": "4df0b4627820970aa93d50bb8dd6e94bc36e3d65922cefbbcbeb9996daec852d"
+    "sha256": "8c17b4c43e21019c3afd17f0d9ec55b53e456ae36a9c252f813c0ceb489f9db8"
   },
   "reference": {
     "renderer": "word",
-    "capturedAt": "2026-07-14T10:21:24.057Z",
+    "capturedAt": "2026-07-14T10:37:27.283Z",
     "wordVersion": "16.112",
     "mutoolVersion": "mutool version 1.28.0"
   },
@@ -184,6 +184,27 @@
         },
         {
           "text": "丁※甲乙丙丁",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "lines": [
+        {
+          "text": "EN split formatting",
+          "region": "unknown"
+        },
+        {
+          "text": "Representation international-",
+          "region": "unknown"
+        },
+        {
+          "text": "ization characterization",
+          "region": "unknown"
+        },
+        {
+          "text": "demonstration compatibility.",
           "region": "unknown"
         }
       ]

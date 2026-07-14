@@ -74,6 +74,14 @@ const narrowParagraph = (text: string, language: string, extraProperties = ""): 
       </w:r>
     </w:p>`;
 
+const narrowParagraphRuns = (runs: string): string => `
+    <w:p>
+      <w:pPr>
+        <w:ind w:right="6480"/>
+      </w:pPr>
+      ${runs}
+    </w:p>`;
+
 const heading = (text: string): string => `
     <w:p>
       <w:r>
@@ -121,6 +129,15 @@ const cases = [
     "ja-JP",
     "<w:kinsoku/><w:overflowPunct/>",
   )}`,
+  `${heading("EN split formatting")}${narrowParagraphRuns(`
+      <w:r>
+        <w:rPr><w:lang w:val="en-US"/></w:rPr>
+        <w:t xml:space="preserve">Representation internatio</w:t>
+      </w:r>
+      <w:r>
+        <w:rPr><w:color w:val="C00000"/><w:lang w:val="en-US"/></w:rPr>
+        <w:t>nalization characterization demonstration compatibility.</w:t>
+      </w:r>`)}`,
 ];
 
 const DOCUMENT_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
