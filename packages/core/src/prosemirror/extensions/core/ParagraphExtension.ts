@@ -358,6 +358,7 @@ const paragraphNodeSpec: NodeSpec = {
     tabs: { default: null },
     pageBreakBefore: { default: null },
     renderedPageBreakBefore: { default: null },
+    _pageBreakCarrier: { default: null },
     keepNext: { default: null },
     keepLines: { default: null },
     widowControl: { default: null },

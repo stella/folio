@@ -91,6 +91,12 @@ export function parseSettings(xml: string | null): FolioDocumentSettings {
   const noLineBreaksBefore = parseKinsokuOverride(root, "noLineBreaksBefore");
   const noLineBreaksAfter = parseKinsokuOverride(root, "noLineBreaksAfter");
   const compat = root ? findChild(root, "w", "compat") : null;
+  const splitPageBreakAndParagraphMark = compat
+    ? findChild(compat, "w", "splitPgBreakAndParaMark")
+    : null;
+  if (splitPageBreakAndParagraphMark && parseBooleanElement(splitPageBreakAndParagraphMark)) {
+    settings.splitPageBreakAndParagraphMark = true;
+  }
   const applyBreakingRules = compat ? findChild(compat, "w", "applyBreakingRules") : null;
   const useLegacyEthiopicAmharicRules =
     applyBreakingRules !== null && parseBooleanElement(applyBreakingRules);

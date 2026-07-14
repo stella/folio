@@ -174,3 +174,17 @@ describe("parseSettings — document automatic hyphenation", () => {
     expect(settings.hyphenationZoneTwips).toBeUndefined();
   });
 });
+
+describe("parseSettings — break-only paragraph placement", () => {
+  test("records only an enabled splitPgBreakAndParaMark compatibility flag", () => {
+    expect(
+      parseSettings(wrap(`<w:compat><w:splitPgBreakAndParaMark/></w:compat>`))
+        .splitPageBreakAndParagraphMark,
+    ).toBe(true);
+    expect(
+      parseSettings(wrap(`<w:compat><w:splitPgBreakAndParaMark w:val="0"/></w:compat>`))
+        .splitPageBreakAndParagraphMark,
+    ).toBeUndefined();
+    expect(parseSettings(wrap("")).splitPageBreakAndParagraphMark).toBeUndefined();
+  });
+});

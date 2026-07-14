@@ -1909,6 +1909,18 @@ function convertParagraph(
       attrs.listMarkerHidden = true;
     }
   }
+  const hasVisibleParagraphPayload =
+    (attrs.listMarker !== undefined && !attrs.listMarkerHidden) ||
+    attrs.borders?.top !== undefined ||
+    attrs.borders?.bottom !== undefined ||
+    attrs.borders?.left !== undefined ||
+    attrs.borders?.right !== undefined ||
+    attrs.borders?.between !== undefined ||
+    attrs.borders?.bar !== undefined ||
+    attrs.shading !== undefined;
+  if (runs.length === 0 && pmAttrs._pageBreakCarrier === true && !hasVisibleParagraphPayload) {
+    attrs.suppressEmptyParagraphHeight = true;
+  }
 
   const bookmarkNames = pmAttrs.bookmarks?.map((b) => b.name);
 

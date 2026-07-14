@@ -166,6 +166,8 @@ export type ParagraphAttrs = {
   pageBreakBefore?: boolean;
   /** Word's cached rendered-page-break marker; preserved for round-trip only. */
   renderedPageBreakBefore?: boolean;
+  /** Internal import marker for a paragraph whose only run content is a hard page break. */
+  _pageBreakCarrier?: boolean;
   keepNext?: boolean;
   keepLines?: boolean;
   widowControl?: boolean;

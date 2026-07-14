@@ -51,7 +51,65 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     };
 
     const pmDoc = toProseDoc(document);
-    expect(childTypeNames(pmDoc)).toContain("pageBreak");
+    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "pageBreak", "paragraph", "paragraph"]);
+    expect(pmDoc.child(2).attrs["_pageBreakCarrier"]).toBe(true);
+  });
+
+  test("keeps an enabled split break-only paragraph as authored page content", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "break", breakType: "page" }],
+                },
+              ],
+            },
+            { type: "paragraph", content: [] },
+          ],
+        },
+        settings: {
+          defaultTabStop: 720,
+          splitPageBreakAndParagraphMark: true,
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+
+    expect(childTypeNames(pmDoc)).toEqual(["pageBreak", "paragraph", "paragraph"]);
+    expect(pmDoc.child(1).attrs["_pageBreakCarrier"]).toBeNull();
+    expect(pmDoc.child(2).attrs["_pageBreakCarrier"]).toBeNull();
+  });
+
+  test("does not classify a separate authored empty paragraph as a break carrier", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "break", breakType: "page" }],
+                },
+              ],
+            },
+            { type: "paragraph", content: [] },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+
+    expect(pmDoc.child(1).attrs["_pageBreakCarrier"]).toBe(true);
+    expect(pmDoc.child(2).attrs["_pageBreakCarrier"]).toBeNull();
   });
 
   test("emits pageBreak after text for a paragraph with text followed by a break", () => {

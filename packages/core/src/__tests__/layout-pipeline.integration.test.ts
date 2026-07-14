@@ -367,7 +367,11 @@ describe("Layout Engine - Page Production", () => {
         { kind: "pageBreak", id: 1, pmStart: 15, pmEnd: 16 },
         {
           ...makeParagraphBlock(2, "Cached next page", 17),
-          attrs: { renderedPageBreakBefore: true },
+          attrs: {
+            renderedPageBreakBefore: true,
+            spacing: { before: 24 },
+            spacingExplicit: { before: true },
+          },
         },
       ];
       const measures: Measure[] = [
@@ -380,6 +384,7 @@ describe("Layout Engine - Page Production", () => {
 
       expect(layout.pages.length).toBe(2);
       expect(layout.pages[1].fragments[0].blockId).toBe(2);
+      expect(layout.pages[1].fragments[0].y).toBe(DEFAULT_MARGINS.top);
     });
 
     test("stale rendered page break remains advisory when the paragraph fits", () => {
@@ -446,6 +451,53 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages).toHaveLength(2);
       expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0]);
       expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1]);
+    });
+
+    test("rendered page break does not reapply leading spacing after snapping", () => {
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Nearly fills page one", 1),
+        {
+          ...makeParagraphBlock(1, "Cached next page", 23),
+          attrs: {
+            renderedPageBreakBefore: true,
+            spacing: { before: 24 },
+            spacingExplicit: { before: true },
+          },
+        },
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 820)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 16, 90, 80)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(2);
+      expect(layout.pages[1]?.fragments[0]?.y).toBe(DEFAULT_MARGINS.top);
+    });
+
+    test("authored pageBreakBefore keeps leading spacing", () => {
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Before break", 1),
+        {
+          ...makeParagraphBlock(1, "Authored next page", 14),
+          attrs: {
+            pageBreakBefore: true,
+            renderedPageBreakBefore: true,
+            spacing: { before: 24 },
+            spacingExplicit: { before: true },
+          },
+        },
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 12, 100, 24)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 18, 90, 24)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(2);
+      expect(layout.pages[1]?.fragments[0]?.y).toBe(DEFAULT_MARGINS.top + 24);
     });
 
     test("rendered page break does not add a blank page at a natural overflow", () => {

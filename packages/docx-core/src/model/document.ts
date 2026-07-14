@@ -214,6 +214,8 @@ export type DocumentSettings = {
     noLineBreaksAfter?: { language?: string; characters: string };
     useLegacyEthiopicAmharicRules?: boolean;
   };
+  /** Move a break-only paragraph mark onto the page after its hard page break. */
+  splitPageBreakAndParagraphMark?: boolean;
 };
 
 /** DOCX package conformance classes. */

@@ -410,13 +410,14 @@ export function layoutDocument(
 
     const renderedBreakNeedsSnap =
       measure.kind === "paragraph" && !paginator.fits(measure.totalHeight);
+    const hasExplicitPageBreak = hasPageBreakBefore(block);
     const breakDecision = reconcileBreakBeforeBlock({
       state: renderedBreakState,
       block,
       previousBlock: blocks[i - 1],
       page: paginator.getCurrentState().page,
       blocksById,
-      hasExplicitPageBreak: hasPageBreakBefore(block),
+      hasExplicitPageBreak,
       renderedBreakNeedsSnap,
     });
     if (breakDecision.forcePageBreak) {
@@ -440,13 +441,18 @@ export function layoutDocument(
     const pageBeforeBlockLayout = paginator.getCurrentState().page.number;
     switch (block.kind) {
       case "paragraph":
-        layoutParagraph(
+        layoutParagraph({
           block,
-          measure as ParagraphMeasure,
+          measure: measure as ParagraphMeasure,
           paginator,
-          paginator.columnWidth,
-          options.footnoteHeightById,
-        );
+          contentWidth: paginator.columnWidth,
+          footnoteHeightById: options.footnoteHeightById,
+          suppressSpaceBefore:
+            block.attrs?.renderedPageBreakBefore === true &&
+            !hasExplicitPageBreak &&
+            (breakDecision.forcePageBreak ||
+              paginator.getCurrentState().cursorY === paginator.getCurrentState().topMargin),
+        });
         break;
 
       case "table":
@@ -602,17 +608,27 @@ function getLineFootnoteRefs(
  * lacks room for both — preventing footnote overflow without the
  * static-reservation iteration loop.
  */
-function layoutParagraph(
-  block: ParagraphBlock,
-  measure: ParagraphMeasure,
-  paginator: ReturnType<typeof createPaginator>,
-  contentWidth: number,
-  footnoteHeightById?: Map<number, number>,
-): void {
+type LayoutParagraphOptions = {
+  block: ParagraphBlock;
+  measure: ParagraphMeasure;
+  paginator: ReturnType<typeof createPaginator>;
+  contentWidth: number;
+  footnoteHeightById: Map<number, number> | undefined;
+  suppressSpaceBefore: boolean;
+};
+
+function layoutParagraph({
+  block,
+  measure,
+  paginator,
+  contentWidth,
+  footnoteHeightById,
+  suppressSpaceBefore,
+}: LayoutParagraphOptions): void {
   const lines = measure.lines;
   if (lines.length === 0) {
     // Empty paragraph - still takes up space based on spacing
-    const spaceBefore = getParagraphSpacingBefore(block);
+    const spaceBefore = suppressSpaceBefore ? 0 : getParagraphSpacingBefore(block);
     const spaceAfter = getParagraphSpacingAfter(block);
     const state = paginator.getCurrentState();
 
@@ -635,7 +651,7 @@ function layoutParagraph(
     return;
   }
 
-  const spaceBefore = getParagraphSpacingBefore(block);
+  const spaceBefore = suppressSpaceBefore ? 0 : getParagraphSpacingBefore(block);
   const spaceAfter = getParagraphSpacingAfter(block);
 
   // Try to fit all lines on current page/column

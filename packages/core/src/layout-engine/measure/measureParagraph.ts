@@ -1095,23 +1095,21 @@ export function measureParagraph(
     if (inlineObjectHeight > finalTypography.lineHeight) {
       const objectHeight = inlineObjectHeight;
       const buffer = finalTypography.descent;
-      // `fromRun === toRun` with a tall inline object present means the line
-      // holds exactly that one object (no flowing text/tabs). Must stay paired
-      // with the painter's image-only `runsForLine.length === 1 && isImageRun(...)`
-      // test in renderLine — the two pick paired line-height + alignment
-      // strategies and disagreeing reintroduces the floating-label bug.
-      if (line.fromRun === line.toRun) {
-        if (line.maxExactImageHeightPx >= objectHeight) {
-          finalTypography.lineHeight = objectHeight;
-          finalTypography.ascent = objectHeight;
-          finalTypography.descent = 0;
-          return finalTypography;
-        }
-        // Object alone on the line: grow to the object height plus the
-        // parent font's descent on BOTH sides so the row has visible
-        // breathing room above and below it.
-        finalTypography.lineHeight = objectHeight + buffer * 2;
-        finalTypography.ascent = objectHeight + buffer;
+      // An image-only line uses the authored image footprint directly. There
+      // is no text baseline that needs font descent above or below the image;
+      // adding one silently grows large diagrams and can change pagination.
+      // Keep this paired with the painter's image-only flex alignment.
+      const soleRun = line.fromRun === line.toRun ? runs[line.fromRun] : undefined;
+      if (line.maxExactImageHeightPx >= objectHeight) {
+        finalTypography.lineHeight = objectHeight;
+        finalTypography.ascent = objectHeight;
+        finalTypography.descent = 0;
+        return finalTypography;
+      }
+      if (soleRun && isImageRun(soleRun)) {
+        finalTypography.lineHeight = objectHeight;
+        finalTypography.ascent = objectHeight;
+        finalTypography.descent = 0;
       } else {
         // Object flowing with text/tabs (e.g. a logo + label header line):
         // the full object height sits above the baseline and only the text

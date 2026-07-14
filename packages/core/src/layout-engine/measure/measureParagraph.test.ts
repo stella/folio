@@ -1173,7 +1173,7 @@ describe("measureParagraph document default tab interval", () => {
 });
 
 describe("inline image paragraph measurement", () => {
-  test("image-only line reserves descender room above and below image", () => {
+  test("image-only line uses the authored image footprint", () => {
     const imageHeight = 29;
     const measure = measureParagraph(
       {
@@ -1199,9 +1199,9 @@ describe("inline image paragraph measurement", () => {
       600,
     );
 
-    expect(measure.lines[0]?.lineHeight).toBeGreaterThan(imageHeight);
-    expect(measure.lines[0]?.ascent).toBeGreaterThan(imageHeight);
-    expect(measure.lines[0]?.descent).toBeGreaterThan(0);
+    expect(measure.lines[0]?.lineHeight).toBe(imageHeight);
+    expect(measure.lines[0]?.ascent).toBe(imageHeight);
+    expect(measure.lines[0]?.descent).toBe(0);
   });
 
   test("advances floating-zone y offsets by image-inflated line height", () => {
@@ -1276,7 +1276,7 @@ describe("inline image paragraph measurement", () => {
     }, fakeMeasure);
   });
 
-  test("image-only line keeps imageH + descent*2 breathing-room band", () => {
+  test("image-only line does not add text descent", () => {
     const imageHeight = 40;
     const measure = measureParagraph(
       {
@@ -1300,9 +1300,9 @@ describe("inline image paragraph measurement", () => {
 
     const line = measure.lines.at(0);
     expect(line).toBeDefined();
-    const descent = line?.descent ?? 0;
-    expect(line?.lineHeight).toBe(imageHeight + descent * 2);
-    expect(line?.ascent).toBe(imageHeight + descent);
+    expect(line?.lineHeight).toBe(imageHeight);
+    expect(line?.ascent).toBe(imageHeight);
+    expect(line?.descent).toBe(0);
   });
 
   test("embedded-object preview uses its authored box as the exact line height", () => {

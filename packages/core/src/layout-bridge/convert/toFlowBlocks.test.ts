@@ -650,6 +650,28 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.listMarkerHidden).toBe(true);
   });
 
+  test("suppresses a paintless imported page-break carrier", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { _pageBreakCarrier: true, spaceBefore: 360 }),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.attrs?.suppressEmptyParagraphHeight).toBe(true);
+  });
+
+  test("keeps authored empty paragraphs and visible break-carrier markers", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { spaceBefore: 360 }),
+      schema.node("paragraph", { _pageBreakCarrier: true, listMarker: "1." }),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.at(0)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+    expect(blocks.at(1)?.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+  });
+
   test("preserves explicit automatic line spacing", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { lineSpacing: 240, lineSpacingRule: "auto" }, [

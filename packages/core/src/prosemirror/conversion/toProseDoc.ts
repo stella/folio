@@ -111,11 +111,25 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
         if (pbPos === "before") {
           out.push(schema.node("pageBreak"));
         }
-        out.push(
-          ...convertParagraphWithTextBoxes(block, styleResolver, {
-            textBoxGroupId: nextTextBoxGroupId(),
-          }),
-        );
+        const converted = convertParagraphWithTextBoxes(block, styleResolver, {
+          textBoxGroupId: nextTextBoxGroupId(),
+        });
+        const firstConverted = converted.at(0);
+        if (
+          pbPos === "before" &&
+          converted.length === 1 &&
+          firstConverted?.type.name === "paragraph" &&
+          firstConverted.content.size === 0 &&
+          document.package.settings?.splitPageBreakAndParagraphMark !== true
+        ) {
+          const paragraph = firstConverted;
+          converted[0] = paragraph.type.create(
+            { ...paragraph.attrs, _pageBreakCarrier: true },
+            paragraph.content,
+            paragraph.marks,
+          );
+        }
+        out.push(...converted);
         if (pbPos === "after") {
           out.push(schema.node("pageBreak"));
         }
