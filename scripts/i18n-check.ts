@@ -237,7 +237,60 @@ const ALLOWED_IDENTICAL = new Set<string>([
   "Word",
   "Excel",
   "Markdown",
+  "px",
+  "tw",
+  "in",
+  "A3",
+  "A4",
+  "A5",
+  "B5",
+  "https://example.com",
+  "a, b, c, ...",
+  "i, ii, iii, ...",
+  "A, B, C, ...",
+  "I, II, III, ...",
 ]);
+
+// Some localized UI terms are spelled exactly like their English source.
+// Keep these semantic equivalents separate from the universal token allowlist:
+// a value accepted for one locale must still be translated in every other
+// locale unless it is listed there too.
+const ALLOWED_IDENTICAL_BY_LOCALE = new Map<string, ReadonlySet<string>>([
+  ["cs", new Set(["Executive", "Legal", "Letter", "Text"])],
+  ["de", new Set(["Format", "Horizontal", "Legal", "Orange", "Position", "Text"])],
+  ["es", new Set(["Color", "Diagonal", "Horizontal", "Legal", "Normal", "Vertical"])],
+  ["et", new Set(["Executive", "Font"])],
+  ["he", new Set(["Letter"])],
+  [
+    "fr",
+    new Set([
+      "Dimensions",
+      "Double",
+      "Format",
+      "Horizontal",
+      "Image",
+      "Normal",
+      "Options",
+      "Orange",
+      "Orientation",
+      "Page",
+      "Portrait",
+      "Position",
+      "Style",
+      "Type",
+      "Vertical",
+    ]),
+  ],
+  ["hu", new Set(["Executive", "Legal", "Letter"])],
+  ["lt", new Set(["Executive", "Legal", "Letter"])],
+  ["lv", new Set(["Executive", "Legal", "Letter"])],
+  ["pl", new Set(["Executive", "Format", "Legal", "Letter"])],
+  ["pt-BR", new Set(["Diagonal", "Horizontal", "Normal", "Vertical"])],
+  ["sk", new Set(["Executive", "Legal", "Letter", "Text"])],
+  ["tr", new Set(["Executive", "Legal", "Letter", "Normal", "Sans Serif", "Serif"])],
+]);
+
+const KEYBOARD_SHORTCUT = /^(?:(?:Alt|Ctrl|Meta|Shift)\+)*(?:Del|[A-Z])$/u;
 
 const stripIcuPlaceholders = (value: string): string => {
   const literal: string[] = [];
@@ -275,8 +328,13 @@ const isTriviallyIdentical = (value: string): boolean => {
   // Exempt only language-neutral content: no letters (numbers, punctuation,
   // placeholder-only) or an explicit allowed token. Do NOT blanket-exempt by
   // length — short words like "To"/"as" are translatable.
-  return !HAS_LETTER.test(literal) || ALLOWED_IDENTICAL.has(trimmed);
+  return (
+    !HAS_LETTER.test(literal) || ALLOWED_IDENTICAL.has(trimmed) || KEYBOARD_SHORTCUT.test(trimmed)
+  );
 };
+
+const isIdenticalInLocale = (value: string, locale: string): boolean =>
+  ALLOWED_IDENTICAL_BY_LOCALE.get(locale)?.has(value.trim()) ?? false;
 
 /**
  * Keys whose locale value byte-equals the English source (untranslated),
@@ -296,7 +354,7 @@ export const findUntranslated = (
     if (typeof sourceValue !== "string" || sourceValue !== targetValue) {
       continue;
     }
-    if (isTriviallyIdentical(sourceValue)) {
+    if (isTriviallyIdentical(sourceValue) || isIdenticalInLocale(sourceValue, locale)) {
       continue;
     }
     if (baseline.identicalToSource[key]?.includes(locale)) {

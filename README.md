@@ -7,6 +7,10 @@
 </p>
 
 <p align="center">
+  English &middot; <a href="./README.zh-CN.md">简体中文</a> &middot; <a href="./README.pt-BR.md">Português (Brasil)</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/stella/stella">stella</a> &middot;
   <a href="https://www.npmjs.com/package/@stll/folio-core">npm</a> &middot;
   <a href="https://github.com/stella/folio/issues">Issues</a> &middot;

@@ -13,7 +13,13 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 // Stable toolbar Bold aria-label per locale (FormattingBar `ariaLabel={t("bold")}`).
-const BOLD_LABEL = { en: "Bold", de: "Fett", ar: "عريض" } as const;
+const BOLD_LABEL = {
+  en: "Bold",
+  de: "Fett",
+  ar: "عريض",
+  "pt-BR": "Negrito",
+  "zh-CN": "加粗",
+} as const;
 
 async function openPlayground(page: Page): Promise<void> {
   await page.goto("/");
@@ -35,6 +41,17 @@ test("toolbar localizes to German via the bundled catalog", async ({ page }) => 
   // The English label is gone: it rendered the translation, not the source key.
   await expect(page.locator(`[aria-label="${BOLD_LABEL.en}"]`)).toHaveCount(0);
 });
+
+for (const locale of ["pt-BR", "zh-CN"] as const) {
+  test(`toolbar localizes to ${locale} via the bundled catalog`, async ({ page }) => {
+    await openPlayground(page);
+
+    await switchLocale(page, locale);
+
+    await expect(page.locator(`[aria-label="${BOLD_LABEL[locale]}"]`)).toBeVisible();
+    await expect(page.locator(`[aria-label="${BOLD_LABEL.en}"]`)).toHaveCount(0);
+  });
+}
 
 test("toolbar localizes to Arabic and flips the shell to RTL", async ({ page }) => {
   await openPlayground(page);

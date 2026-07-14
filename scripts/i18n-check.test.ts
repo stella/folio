@@ -102,6 +102,19 @@ describe("findUntranslated", () => {
     expect(findUntranslated(en, target, "sk", emptyBaseline())).toEqual([]);
   });
 
+  test("accepts universal UI tokens without treating ordinary words as universal", () => {
+    const source: NestedMessages = {
+      shortcut: "Ctrl+Shift+V",
+      paperSize: "A4",
+      unit: "px",
+      sequence: "a, b, c, ...",
+      position: "Position",
+    };
+
+    expect(findUntranslated(source, source, "de", emptyBaseline())).toEqual([]);
+    expect(findUntranslated(source, source, "cs", emptyBaseline())).toEqual(["position"]);
+  });
+
   test("respects the per-locale baseline grandfathering", () => {
     const target: NestedMessages = {
       folio: {

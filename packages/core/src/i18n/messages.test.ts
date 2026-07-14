@@ -112,6 +112,8 @@ describe("getFolioMessages", () => {
     expect(folioOf("cs").get("bold")).toBe("Tučné");
     expect(folioOf("ar").get("bold")).toBe("عريض");
     expect(folioOf("ar").get("bold")).toMatch(/\p{Script=Arabic}/u);
+    expect(folioOf("pt-BR").get("bold")).toBe("Negrito");
+    expect(folioOf("zh-CN").get("bold")).toBe("加粗");
 
     const english = englishKeys.get("bold");
     for (const locale of FOLIO_LOCALES) {
@@ -128,6 +130,8 @@ describe("getFolioMessages", () => {
     expect(folioOf("en").get("clearDate")).toBe("Clear date");
     expect(folioOf("de").get("clearDate")).toBe("Datum löschen");
     expect(folioOf("ar").get("clearDate")).toMatch(/\p{Script=Arabic}/u);
+    expect(folioOf("pt-BR").get("clearDate")).toBe("Limpar data");
+    expect(folioOf("zh-CN").get("clearDate")).toBe("清除日期");
   });
 
   test("the post-extraction keys are translated (not the English source) in every non-English locale", () => {
