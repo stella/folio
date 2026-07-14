@@ -740,6 +740,44 @@ describe("measureTableBlock row height", () => {
     }, fakeMeasure);
   });
 
+  test("collapses adjacent paragraph spacing within a cell", () => {
+    withFakeTextMeasure(() => {
+      const first = para("first", "First");
+      first.attrs = { spacing: { after: 8 } };
+      const second = para("second", "Second");
+      second.attrs = { spacing: { before: 8 } };
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [240],
+        rows: [
+          {
+            id: "row",
+            cells: [
+              {
+                id: "cell",
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                blocks: [first, second],
+              },
+            ],
+          },
+        ],
+      };
+
+      const measure = measureTableBlock(table, 240);
+      const cell = measure.rows.at(0)?.cells.at(0);
+      const firstMeasure = cell?.blocks.at(0);
+      const secondMeasure = cell?.blocks.at(1);
+      if (firstMeasure?.kind !== "paragraph" || secondMeasure?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measures");
+      }
+      const summedParagraphHeights = firstMeasure.totalHeight + secondMeasure.totalHeight;
+
+      expect(cell?.height).toBe(summedParagraphHeights - 8);
+      expect(measure.rows.at(0)?.height).toBe(cell?.height);
+    }, fakeMeasure);
+  });
+
   test("image-only table cell paragraphs use the image visual height", () => {
     withFakeTextMeasure(() => {
       const table: TableBlock = {

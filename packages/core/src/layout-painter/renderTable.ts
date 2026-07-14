@@ -14,6 +14,11 @@ import {
   getTableCellContentWidth,
   getTableCellFloatingImages,
 } from "../layout-engine/measure/tableCellFloating";
+import {
+  createTableCellFlowState,
+  finishTableCellFlow,
+  placeTableCellBlock,
+} from "../layout-engine/measure/tableCellFlow";
 import type {
   TableFragment,
   TableBlock,
@@ -190,7 +195,7 @@ function renderCellContent({
     floatingLayers.push(floatingLayer);
   }
 
-  let cumulativeY = 0;
+  const flowState = createTableCellFlowState();
   let anchorParagraphY = 0;
   let floatingTextBoxesLayer: HTMLElement | undefined;
   for (let i = 0; i < cell.blocks.length; i++) {
@@ -203,11 +208,14 @@ function renderCellContent({
 
       // Re-measure when wrapping width changes or floating exclusions apply.
       if (floatingZones.length > 0 || contentWidthOverride !== undefined) {
+        const previewState = { ...flowState };
+        const preview = placeTableCellBlock(previewState, paragraphBlock, paragraphMeasure);
         paragraphMeasure = measureParagraph(paragraphBlock, contentWidth, {
           floatingZones,
-          paragraphYOffset: cumulativeY,
+          paragraphYOffset: preview.contentTop,
         });
       }
+      const placement = placeTableCellBlock(flowState, paragraphBlock, paragraphMeasure);
 
       // Create synthetic fragment for the paragraph
       const syntheticFragment: ParagraphFragment = {
@@ -216,7 +224,7 @@ function renderCellContent({
         x: 0,
         y: 0,
         width: contentWidth,
-        height: paragraphMeasure.totalHeight,
+        height: placement.contentHeight,
         fromLine: 0,
         toLine: paragraphMeasure.lines.length,
         ...(paragraphBlock.pmStart !== undefined ? { pmStart: paragraphBlock.pmStart } : {}),
@@ -234,14 +242,12 @@ function renderCellContent({
 
       fragEl.style.position = "relative";
       fragEl.style.boxSizing = "border-box";
-      fragEl.style.height = `${paragraphMeasure.totalHeight}px`;
-      const spaceBefore = paragraphBlock.attrs?.spacing?.before ?? 0;
-      if (spaceBefore > 0) {
-        fragEl.style.paddingTop = `${spaceBefore}px`;
+      fragEl.style.height = `${placement.leadingSpacing + placement.contentHeight}px`;
+      if (placement.leadingSpacing > 0) {
+        fragEl.style.paddingTop = `${placement.leadingSpacing}px`;
       }
       contentEl.append(fragEl);
-      anchorParagraphY = cumulativeY;
-      cumulativeY += paragraphMeasure.totalHeight;
+      anchorParagraphY = placement.contentTop;
     } else if (block?.kind === "table" && measure?.kind === "table") {
       // Nested table - render in normal document flow.
       // Avoid cumulative marginTop offsets here: cell content already flows vertically,
@@ -251,13 +257,18 @@ function renderCellContent({
 
       const nestedTableEl = renderNestedTable(tableBlock, tableMeasure, context, doc);
       nestedTableEl.style.position = "relative";
+      const placement = placeTableCellBlock(flowState, tableBlock, tableMeasure);
+      if (placement.leadingSpacing > 0) {
+        const spacer = doc.createElement("div");
+        spacer.style.height = `${placement.leadingSpacing}px`;
+        contentEl.append(spacer);
+      }
       contentEl.append(nestedTableEl);
-      cumulativeY += (measure as TableMeasure).totalHeight;
       // A standalone anchored shape after a nested table belongs to a
       // shape-only host paragraph at the current flow position. That host is
       // omitted from the ProseMirror cell, so the nested table's bottom is the
       // anchor Y for the following floating text box.
-      anchorParagraphY = cumulativeY;
+      anchorParagraphY = flowState.height;
     } else if (block?.kind === "textBox" && measure?.kind === "textBox") {
       const textBoxBlock = block as TextBoxBlock;
       const textBoxMeasure = measure as TextBoxMeasure;
@@ -288,14 +299,20 @@ function renderCellContent({
         continue;
       }
 
+      const placement = placeTableCellBlock(flowState, textBoxBlock, textBoxMeasure);
+      if (placement.leadingSpacing > 0) {
+        const spacer = doc.createElement("div");
+        spacer.style.height = `${placement.leadingSpacing}px`;
+        contentEl.append(spacer);
+      }
       textBoxEl.style.position = "relative";
       textBoxEl.style.left = "0";
       textBoxEl.style.top = "0";
       contentEl.append(textBoxEl);
-      cumulativeY += textBoxMeasure.height;
-      anchorParagraphY = cumulativeY;
+      anchorParagraphY = flowState.height;
     }
   }
+  contentEl.style.height = `${finishTableCellFlow(flowState)}px`;
 
   if (floatingTextBoxesLayer) {
     floatingLayers.push(floatingTextBoxesLayer);

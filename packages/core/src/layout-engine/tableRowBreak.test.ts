@@ -292,7 +292,7 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
 
     const info = buildTableRowBreakInfo(block, measure);
 
-    expect(info.breakOffsets[0]).toEqual([20, 40, 60, 80, 96]);
+    expect(info.breakOffsets[0]).toEqual([28, 48, 68, 88, 96]);
   });
 
   test("treats height-based cell blocks as atomic break offsets", () => {

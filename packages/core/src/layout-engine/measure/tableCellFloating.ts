@@ -1,4 +1,5 @@
 import { emuToPixels } from "../../utils/units";
+import { createTableCellFlowState, placeTableCellBlock } from "./tableCellFlow";
 import type { ImageRun, TableCell, TableCellMeasure } from "../types";
 import { isFloatingImageRun } from "../types";
 import { clampFloatingWrapMargins } from "./clampFloatingWrapMargins";
@@ -50,15 +51,16 @@ export function getTableCellFloatingImages(
   resolvePosition?: ResolveTableCellFloatingPosition,
 ): TableCellFloatingImage[] {
   const result: TableCellFloatingImage[] = [];
-  let paragraphY = 0;
+  const flowState = createTableCellFlowState();
 
   for (let blockIndex = 0; blockIndex < cell.blocks.length; blockIndex++) {
     const block = cell.blocks[blockIndex];
-    if (block?.kind !== "paragraph") {
-      const blockMeasure = cellMeasure.blocks[blockIndex];
-      if (blockMeasure?.kind === "table") {
-        paragraphY += blockMeasure.totalHeight;
-      }
+    const blockMeasure = cellMeasure.blocks[blockIndex];
+    if (!block || !blockMeasure) {
+      continue;
+    }
+    const placement = placeTableCellBlock(flowState, block, blockMeasure);
+    if (block.kind !== "paragraph") {
       continue;
     }
 
@@ -77,7 +79,7 @@ export function getTableCellFloatingImages(
       let x: number;
       let y: number;
       if (resolvePosition) {
-        ({ side, x, y } = resolvePosition(run, paragraphY));
+        ({ side, x, y } = resolvePosition(run, placement.contentTop));
       } else {
         side = "left";
         x = 0;
@@ -97,11 +99,11 @@ export function getTableCellFloatingImages(
           x = contentWidth - run.width;
         }
 
-        y = paragraphY;
+        y = placement.contentTop;
         if (position?.vertical) {
           const vertical = position.vertical;
           if (vertical.posOffset !== undefined) {
-            y = paragraphY + emuToPixels(vertical.posOffset);
+            y = placement.contentTop + emuToPixels(vertical.posOffset);
           } else if (vertical.align === "top") {
             y = 0;
           }
@@ -139,11 +141,6 @@ export function getTableCellFloatingImages(
         ...(run.pmStart !== undefined ? { pmStart: run.pmStart } : {}),
         ...(run.pmEnd !== undefined ? { pmEnd: run.pmEnd } : {}),
       });
-    }
-
-    const blockMeasure = cellMeasure.blocks[blockIndex];
-    if (blockMeasure?.kind === "paragraph") {
-      paragraphY += blockMeasure.totalHeight;
     }
   }
 

@@ -431,7 +431,7 @@ describe("renderTableFragment split-row cell content", () => {
 });
 
 describe("renderTableFragment cell paragraph spacing", () => {
-  test("reserves measured paragraph spacing inside table cells", () => {
+  test("keeps trailing spacing in the cell flow instead of the paragraph box", () => {
     const block: TableBlock = {
       kind: "table",
       id: "tbl",
@@ -464,7 +464,18 @@ describe("renderTableFragment cell paragraph spacing", () => {
               blocks: [
                 {
                   kind: "paragraph",
-                  lines: [],
+                  lines: [
+                    {
+                      fromRun: 0,
+                      fromChar: 0,
+                      toRun: 0,
+                      toChar: 9,
+                      width: 50,
+                      ascent: 9,
+                      descent: 3,
+                      lineHeight: 12,
+                    },
+                  ],
                   totalHeight: 30,
                 },
               ],
@@ -495,10 +506,12 @@ describe("renderTableFragment cell paragraph spacing", () => {
     }) as unknown as FakeElement;
 
     const paragraph = findByClass(tableEl, "layout-paragraph").at(0);
+    const cellContent = findByClass(tableEl, "layout-table-cell-content").at(0);
 
-    expect(paragraph?.style["height"]).toBe("30px");
+    expect(paragraph?.style["height"]).toBe("18px");
     expect(paragraph?.style["paddingTop"]).toBe("6px");
     expect(paragraph?.style["boxSizing"]).toBe("border-box");
+    expect(cellContent?.style["height"]).toBe("30px");
   });
 });
 

@@ -1,12 +1,16 @@
 import { recordMeasureBlock, recordMeasureBlockError } from "../layoutInstrumentation";
 import { isParagraphFrameTextBox } from "../paragraphFrame";
+import {
+  createTableCellFlowState,
+  finishTableCellFlow,
+  placeTableCellBlock,
+} from "./tableCellFlow";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "../textBoxFlow";
 import { getTextBoxGroupId } from "../textBoxGroup";
 import {
   DEFAULT_TEXTBOX_MARGINS,
   floatingTextBoxReservesBand,
   floatingTextBoxWrapsText,
-  isFloatingTextBoxBlock,
   tableColumnsArePinned,
 } from "../types";
 import type {
@@ -103,75 +107,6 @@ function resolveTableWidthPx(
     return Math.round((width / 20) * 1.333);
   }
   return undefined;
-}
-
-function isInlineFlowImageRun(run: ImageRun): boolean {
-  if (run.displayMode === "float") {
-    return false;
-  }
-
-  if (
-    run.wrapType === "square" ||
-    run.wrapType === "tight" ||
-    run.wrapType === "through" ||
-    run.wrapType === "behind" ||
-    run.wrapType === "inFront"
-  ) {
-    return false;
-  }
-
-  if (run.displayMode === "block" || run.wrapType === "topAndBottom") {
-    return false;
-  }
-
-  return true;
-}
-
-export function measureTableCellBlockVisualHeight(block: FlowBlock, blockMeasure: Measure): number {
-  if (block.kind === "textBox" && isFloatingTextBoxBlock(block)) {
-    return 0;
-  }
-
-  if (block.kind !== "paragraph" || blockMeasure.kind !== "paragraph") {
-    if ("totalHeight" in blockMeasure) {
-      return blockMeasure.totalHeight;
-    }
-    if ("height" in blockMeasure) {
-      return blockMeasure.height;
-    }
-    return 0;
-  }
-
-  const paragraphBlock = block;
-  const paragraphMeasure = blockMeasure;
-  const nonEmptyRuns = paragraphBlock.runs.filter(
-    (run) => run.kind !== "text" || run.text.replace(/\u00a0/gu, " ").trim().length > 0,
-  );
-  if (paragraphMeasure.lines.length !== 1 || nonEmptyRuns.length === 0) {
-    return paragraphMeasure.totalHeight;
-  }
-
-  const inlineImageRuns: ImageRun[] = [];
-  for (const run of nonEmptyRuns) {
-    if (run.kind !== "image" || !isInlineFlowImageRun(run)) {
-      return paragraphMeasure.totalHeight;
-    }
-    inlineImageRuns.push(run);
-  }
-
-  let maxImageHeight = 0;
-  for (const run of inlineImageRuns) {
-    maxImageHeight = Math.max(maxImageHeight, run.height);
-  }
-  if (inlineImageRuns.length === 1) {
-    const spacingBefore = paragraphBlock.attrs?.spacing?.before ?? 0;
-    const spacingAfter = paragraphBlock.attrs?.spacing?.after ?? 0;
-    return spacingBefore + maxImageHeight + spacingAfter;
-  }
-  const spacingBefore = paragraphBlock.attrs?.spacing?.before ?? 0;
-  const spacingAfter = paragraphBlock.attrs?.spacing?.after ?? 0;
-
-  return spacingBefore + maxImageHeight + spacingAfter;
 }
 
 export function measureTableBlock(
@@ -293,14 +228,16 @@ export function measureTableBlock(
       const cell = row.cells[cellIdx]!; // SAFETY: cellIdx < row.cells.length
       const sourceCell = sourceRowCells?.[cellIdx];
       cell.height = 0;
+      const flowState = createTableCellFlowState();
       for (let blockIdx = 0; blockIdx < cell.blocks.length; blockIdx++) {
         const sourceBlock = sourceCell?.blocks[blockIdx];
         const blockMeasure = cell.blocks[blockIdx];
         if (!sourceBlock || !blockMeasure) {
           continue;
         }
-        cell.height += measureTableCellBlockVisualHeight(sourceBlock, blockMeasure);
+        placeTableCellBlock(flowState, sourceBlock, blockMeasure);
       }
+      cell.height = finishTableCellFlow(flowState);
       const padTop = sourceCell?.padding?.top ?? DEFAULT_CELL_PADDING_Y;
       const padBottom = sourceCell?.padding?.bottom ?? DEFAULT_CELL_PADDING_Y;
       cell.height += padTop + padBottom;

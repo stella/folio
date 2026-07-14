@@ -19,8 +19,8 @@ import {
   getTableCellContentWidth,
   getTableCellFloatingImages,
 } from "./measure/tableCellFloating";
-import type { Measure, TableBlock, TableCell, TableCellMeasure, TableMeasure } from "./types";
-import { isFloatingTextBoxBlock } from "./types";
+import { createTableCellFlowState, placeTableCellBlock } from "./measure/tableCellFlow";
+import type { TableBlock, TableCell, TableCellMeasure, TableMeasure } from "./types";
 
 type UnsafeBreakRange = {
   top: number;
@@ -33,16 +33,6 @@ type CellBreakGeometry = {
 };
 
 const DEFAULT_TABLE_CELL_PADDING_TOP = 1;
-
-function getAtomicBlockHeight(measure: Measure): number {
-  if ("totalHeight" in measure) {
-    return measure.totalHeight;
-  }
-  if ("height" in measure) {
-    return measure.height;
-  }
-  return 0;
-}
 
 function isInsideRange(offset: number, range: UnsafeBreakRange): boolean {
   return offset > range.top && offset < range.bottom;
@@ -81,11 +71,8 @@ function cellBreakGeometry(
   cell: TableCell | undefined,
   measure: TableCellMeasure,
 ): CellBreakGeometry {
-  // Mirror the PAINTER's cell-content stacking (renderCellContent), not just the
-  // cell-height model: each block advances by its `totalHeight` (which bundles
-  // space-before/after), but its lines paint from the block top with no leading
-  // space-before. Seating line bottoms this way keeps them on the painted line
-  // boundaries so an oversized-row break never cuts through a glyph row.
+  // Mirror the painter's shared cell-flow placement so clean row breaks stay
+  // aligned with both glyph boundaries and inter-paragraph whitespace.
   const bottoms: number[] = [];
   const unsafeRanges: UnsafeBreakRange[] = [];
   const cellBlocks = cell?.blocks;
@@ -95,27 +82,26 @@ function cellBreakGeometry(
   const floatingImages =
     cell !== undefined ? getTableCellFloatingImages(cell, measure, contentWidth) : [];
   const floatingZones = buildTableCellFloatingZones(floatingImages, contentWidth);
-  let y = padTop;
-  let paragraphY = 0;
+  const flowState = createTableCellFlowState();
   for (let i = 0; i < blockMeasures.length; i++) {
     let blockMeasure = blockMeasures[i];
     if (blockMeasure?.kind === "paragraph") {
       const block = cellBlocks?.[i];
-      if (block?.kind === "paragraph" && floatingZones.length > 0) {
+      if (block?.kind !== "paragraph") {
+        continue;
+      }
+      if (floatingZones.length > 0) {
+        const previewState = { ...flowState };
+        const preview = placeTableCellBlock(previewState, block, blockMeasure);
         blockMeasure = measureParagraph(block, contentWidth, {
           floatingZones,
-          paragraphYOffset: paragraphY,
+          paragraphYOffset: preview.contentTop,
         });
       }
-      // The painter (renderCellContent) stacks each cell paragraph by its full
-      // measured height (`totalHeight`, which bundles space-before/after) yet
-      // paints the lines from the fragment top with NO leading space-before; the
-      // before/after surface as trailing space. Mirror that exactly: seat line
-      // bottoms from the block top and advance by `totalHeight`. Offsetting the
-      // lines by `spacing.before` (as the cell-height model does) shifted every
-      // break offset off the painted line boundary, so an oversized row split
-      // through the middle of a glyph row across the page break.
-      const blockTop = y;
+      const placement = placeTableCellBlock(flowState, block, blockMeasure);
+      // Paragraph lines paint after the resolved leading spacing, matching the
+      // paragraph fragment's top padding in the cell painter.
+      let y = padTop + placement.contentTop;
       for (const line of blockMeasure.lines) {
         y += line.floatSkipBefore ?? 0;
         const top = y;
@@ -123,19 +109,20 @@ function cellBreakGeometry(
         unsafeRanges.push({ top, bottom: y });
         bottoms.push(y);
       }
-      y = blockTop + blockMeasure.totalHeight;
-      paragraphY += blockMeasure.totalHeight;
+      // Inter-paragraph spacing is also a safe break band. Recording the box
+      // boundary lets pagination use available whitespace instead of backing
+      // up to the preceding glyph line.
+      bottoms.push(padTop + flowState.height);
     } else if (blockMeasure) {
       const block = cellBlocks?.[i];
-      if (block?.kind === "textBox" && isFloatingTextBoxBlock(block)) {
+      if (!block) {
         continue;
       }
-      // Nested table / non-paragraph: one atomic block (break only at its bottom).
-      const blockHeight = getAtomicBlockHeight(blockMeasure);
+      const placement = placeTableCellBlock(flowState, block, blockMeasure);
+      const blockHeight = placement.contentHeight;
       if (blockHeight > 0) {
-        const top = y;
-        y += blockHeight;
-        paragraphY += blockHeight;
+        const top = padTop + placement.contentTop;
+        const y = top + blockHeight;
         unsafeRanges.push({ top, bottom: y });
         bottoms.push(y);
       }
