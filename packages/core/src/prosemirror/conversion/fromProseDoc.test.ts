@@ -90,6 +90,50 @@ describe("fromProseDoc", () => {
     expect(() => fromProseDoc(pmDoc)).toThrow("sdt.attrs.listItems[0].displayText");
   });
 
+  test("keeps tracked run changes inside inline content controls", () => {
+    const insertion = schema.mark("insertion", {
+      revisionId: 11,
+      author: "Reviewer",
+      date: "2026-07-14T08:00:00Z",
+      moveKind: null,
+    });
+    const deletion = schema.mark("deletion", {
+      revisionId: 12,
+      author: "Reviewer",
+      date: null,
+      moveKind: null,
+    });
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.node("sdt", { sdtType: "richText", tag: "reviewed-control" }, [
+          schema.text("added", [insertion]),
+          schema.text("removed", [deletion]),
+        ]),
+      ]),
+    ]);
+
+    const document = fromProseDoc(pmDoc);
+    const paragraph = document.package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") {
+      return;
+    }
+    const sdt = paragraph.content.at(0);
+    expect(sdt?.type).toBe("inlineSdt");
+    if (sdt?.type !== "inlineSdt") {
+      return;
+    }
+    expect(sdt.content.map((content) => content.type)).toEqual(["insertion", "deletion"]);
+    expect(sdt.content.at(0)).toMatchObject({
+      type: "insertion",
+      info: { id: 11, author: "Reviewer", date: "2026-07-14T08:00:00Z" },
+    });
+    expect(sdt.content.at(1)).toMatchObject({
+      type: "deletion",
+      info: { id: 12, author: "Reviewer" },
+    });
+  });
+
   test("round-trips paragraph automatic-hyphenation suppression through ProseMirror", () => {
     const document: Document = {
       package: {

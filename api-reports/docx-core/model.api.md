@@ -467,7 +467,7 @@ export type ImageWrap = {
 export type InlineSdt = {
     type: "inlineSdt"; /** SDT properties */
     properties: SdtProperties; /** Inline content held inside the control */
-    content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | MathEquation)[];
+    content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | Insertion | Deletion | MathEquation)[];
 };
 
 // @public

@@ -344,6 +344,31 @@ describe("parseParagraph spacing explicit flags", () => {
 // docProps-bound title fields (and similar template content) lost their
 // wrapper on parse.
 describe("parseParagraph SDT content preservation", () => {
+  test("keeps tracked run changes inside an inline SDT", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:sdt>
+          <w:sdtPr><w:alias w:val="reviewed-control"/></w:sdtPr>
+          <w:sdtContent>
+            <w:ins w:id="1" w:author="Reviewer"><w:r><w:t>added</w:t></w:r></w:ins>
+            <w:del w:id="2" w:author="Reviewer"><w:r><w:delText>removed</w:delText></w:r></w:del>
+          </w:sdtContent>
+        </w:sdt>
+      </w:p>
+    `);
+
+    expect(paragraph.content).toHaveLength(1);
+    const sdt = paragraph.content.at(0);
+    expect(sdt?.type).toBe("inlineSdt");
+    if (sdt?.type !== "inlineSdt") {
+      return;
+    }
+    expect(sdt.content.map((content) => content.type)).toEqual([
+      "insertion",
+      "deletion",
+    ]);
+  });
+
   test("keeps a simple field that lives inside an inline SDT", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

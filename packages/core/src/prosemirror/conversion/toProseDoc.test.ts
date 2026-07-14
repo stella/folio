@@ -1375,6 +1375,53 @@ describe("toProseDoc", () => {
     expect(sdt?.firstChild?.text).toBe("Controlled");
   });
 
+  test("converts tracked run changes inside inline content controls", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "inlineSdt",
+                  properties: { sdtType: "richText" },
+                  content: [
+                    {
+                      type: "insertion",
+                      info: { id: 1, author: "Reviewer" },
+                      content: [{ type: "run", content: [{ type: "text", text: "added" }] }],
+                    },
+                    {
+                      type: "deletion",
+                      info: { id: 2, author: "Reviewer" },
+                      content: [{ type: "run", content: [{ type: "text", text: "removed" }] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const sdt = toProseDoc(document).firstChild?.firstChild;
+    expect(sdt?.type.name).toBe("sdt");
+    expect(sdt?.textContent).toBe("addedremoved");
+    expect(
+      Array.from({ length: sdt?.childCount ?? 0 }, (_, index) =>
+        sdt?.child(index).marks.map((mark) => ({
+          type: mark.type.name,
+          moveKind: mark.attrs.moveKind,
+        })),
+      ),
+    ).toEqual([
+      [{ type: "insertion", moveKind: null }],
+      [{ type: "deletion", moveKind: null }],
+    ]);
+  });
+
   test("anchors point comments to nearby text for display", () => {
     const document: Document = {
       package: {
