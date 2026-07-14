@@ -203,7 +203,7 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replac
 // @public (undocumented)
 export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "final"];
 
-// @public (undocumented)
+// @public
 export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "metadata"];
 
 // @public (undocumented)

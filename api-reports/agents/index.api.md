@@ -12,8 +12,8 @@ import { FolioAIEditOperation } from '@stll/folio-core/server';
 import { FolioAIEditSnapshot } from '@stll/folio-core/server';
 import { FolioAITextRangeHandle } from '@stll/folio-core/server';
 import { FolioBlockDiff } from '@stll/folio-core/server';
-import { FolioCompareDocxVersionsOptions } from '@stll/folio-core/server';
 import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
+import { FolioCompareDocxVersionsOptions } from '@stll/folio-core/server';
 import { FolioDocumentNavigationTarget } from '@stll/folio-core/server';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
 import { FolioDocumentOperationIssue } from '@stll/folio-core/server';
@@ -1579,9 +1579,6 @@ export type FolioAgentBlock = {
 export type FolioAgentBlockDiff = FolioBlockDiff;
 
 // @public
-export type FolioAgentCompareDocxVersionsOptions = FolioCompareDocxVersionsOptions;
-
-// @public
 export type FolioAgentBridge = {
     snapshot(): FolioAIEditSnapshot;
     applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult; /** Undo the latest unchanged batch when the execution surface supports it. */
@@ -1629,6 +1626,9 @@ export type FolioAgentCommentReply = {
     author: string;
     text: string;
 };
+
+// @public
+export type FolioAgentCompareDocxVersionsOptions = FolioCompareDocxVersionsOptions;
 
 // @public (undocumented)
 export type FolioAgentDocumentOutline = {
