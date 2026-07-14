@@ -927,4 +927,23 @@ describe("renderTableFragment cell floating images", () => {
     expect(image?.style["opacity"]).toBe("0.6");
     expect(image?.style["objectFit"]).toBe("fill");
   });
+
+  test("does not clip an uncropped image that only has opacity", () => {
+    const table = renderFloatingImage({
+      kind: "image",
+      src: "transparent.png",
+      width: 120,
+      height: 40,
+      displayMode: "float",
+      wrapType: "inFront",
+      opacity: 0.6,
+      transform: "rotate(10deg)",
+    });
+
+    const container = findByClass(table, "layout-cell-floating-image").at(0);
+    const image = container?.children.at(0);
+    expect(container?.style["overflow"]).toBeUndefined();
+    expect(container?.style["width"]).toBeUndefined();
+    expect(image?.style["opacity"]).toBe("0.6");
+  });
 });

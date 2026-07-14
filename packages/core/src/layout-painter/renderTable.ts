@@ -37,7 +37,7 @@ import {
 import { emuToPixels } from "../utils/units";
 import { resolveAnchoredImagePosition, type PageGeometry } from "./anchoredImagePosition";
 import { getAutomaticTextColorForBackground } from "./documentColors";
-import { applyImageVisualAttrs, hasImageVisualAttrs } from "./renderImage";
+import { applyImageVisualAttrs, hasImageCrop, hasImageVisualAttrs } from "./renderImage";
 import { renderParagraphFragment } from "./renderParagraph";
 import { renderTextBoxFragment } from "./renderTextBox";
 import type { RenderContext } from "./renderUtils";
@@ -176,9 +176,11 @@ function renderCellContent({
         imgEl.style.transform = img.transform;
       }
       if (hasImageVisualAttrs(img)) {
-        imgContainer.style.width = `${img.width}px`;
-        imgContainer.style.height = `${img.height}px`;
-        imgContainer.style.overflow = "hidden";
+        if (hasImageCrop(img)) {
+          imgContainer.style.width = `${img.width}px`;
+          imgContainer.style.height = `${img.height}px`;
+          imgContainer.style.overflow = "hidden";
+        }
         applyImageVisualAttrs(imgEl, img);
       }
       imgContainer.append(imgEl);

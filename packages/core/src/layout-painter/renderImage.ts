@@ -51,6 +51,10 @@ export function hasImageVisualAttrs(v: ImageVisualAttrs): boolean {
   if (v.opacity != null && v.opacity < 1) {
     return true;
   }
+  return hasImageCrop(v);
+}
+
+export function hasImageCrop(v: ImageVisualAttrs): boolean {
   return Boolean(v.cropTop || v.cropRight || v.cropBottom || v.cropLeft);
 }
 
