@@ -3,11 +3,16 @@
  * of the diff must normalise identically or alignment falls apart.
  */
 
-/** NFC-normalise, drop soft hyphens and zero-width characters, fold all
- * whitespace (incl. NBSP variants and tabs) to single spaces, trim. */
+/** NFC-normalise, fold known PDF glyph aliases, drop soft hyphens and
+ * zero-width characters, fold all whitespace (incl. NBSP variants and tabs)
+ * to single spaces, trim. */
 export const normalizeLineText = (text: string): string =>
   text
     .normalize("NFC")
+    // Some CJK PDF font maps expose an ordinary ideograph as the equivalent
+    // Kangxi radical (for example 乙 as U+2F04). The visual glyph and line
+    // endpoint are unchanged, so canonicalize only that compatibility block.
+    .replace(/[⼀-⿕]/gu, (character) => character.normalize("NFKC"))
     .replace(/[­​-‍﻿]/gu, "")
     .replace(/\uf0e3/gu, "ã")
     .replace(/\s*\.{3,}\s*/gu, " … ")

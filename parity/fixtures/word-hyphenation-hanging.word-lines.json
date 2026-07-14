@@ -1,0 +1,192 @@
+{
+  "schema": "folio.word-line-endpoints",
+  "version": 1,
+  "source": {
+    "fileName": "word-hyphenation-hanging.docx",
+    "sha256": "4df0b4627820970aa93d50bb8dd6e94bc36e3d65922cefbbcbeb9996daec852d"
+  },
+  "reference": {
+    "renderer": "word",
+    "capturedAt": "2026-07-14T10:21:24.057Z",
+    "wordVersion": "16.112",
+    "mutoolVersion": "mutool version 1.28.0"
+  },
+  "pages": [
+    {
+      "number": 1,
+      "lines": [
+        {
+          "text": "EN automatic",
+          "region": "unknown"
+        },
+        {
+          "text": "Representation international-",
+          "region": "unknown"
+        },
+        {
+          "text": "ization characterization",
+          "region": "unknown"
+        },
+        {
+          "text": "demonstration compatibility.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "lines": [
+        {
+          "text": "EN paragraph suppression",
+          "region": "unknown"
+        },
+        {
+          "text": "Representation",
+          "region": "unknown"
+        },
+        {
+          "text": "internationalization",
+          "region": "unknown"
+        },
+        {
+          "text": "characterization",
+          "region": "unknown"
+        },
+        {
+          "text": "demonstration compatibility.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "lines": [
+        {
+          "text": "EN all caps",
+          "region": "unknown"
+        },
+        {
+          "text": "INTERNATIONALIZATION",
+          "region": "unknown"
+        },
+        {
+          "text": "CHARACTERIZATION",
+          "region": "unknown"
+        },
+        {
+          "text": "REPRESENTATION",
+          "region": "unknown"
+        },
+        {
+          "text": "COMPATIBILITY",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "lines": [
+        {
+          "text": "EN consecutive limit",
+          "region": "unknown"
+        },
+        {
+          "text": "Internationalization charac-",
+          "region": "unknown"
+        },
+        {
+          "text": "terization representation",
+          "region": "unknown"
+        },
+        {
+          "text": "demonstration compatibility",
+          "region": "unknown"
+        },
+        {
+          "text": "localization.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "lines": [
+        {
+          "text": "Czech automatic",
+          "region": "unknown"
+        },
+        {
+          "text": "Nejpravděpodobnější charak-",
+          "region": "unknown"
+        },
+        {
+          "text": "teristika internacionalizace",
+          "region": "unknown"
+        },
+        {
+          "text": "dokumentace.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "lines": [
+        {
+          "text": "British English automatic",
+          "region": "unknown"
+        },
+        {
+          "text": "Characterisation internation-",
+          "region": "unknown"
+        },
+        {
+          "text": "alisation localisation",
+          "region": "unknown"
+        },
+        {
+          "text": "standardisation documenta-",
+          "region": "unknown"
+        },
+        {
+          "text": "tion.",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "lines": [
+        {
+          "text": "Japanese hanging punctuation",
+          "region": "unknown"
+        },
+        {
+          "text": "契約条件（重要事項）。契約",
+          "region": "unknown"
+        },
+        {
+          "text": "条件、重要事項）契約条件。",
+          "region": "unknown"
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "lines": [
+        {
+          "text": "Custom prohibited character",
+          "region": "unknown"
+        },
+        {
+          "text": "甲乙丙丁※甲乙丙丁※甲乙丙",
+          "region": "unknown"
+        },
+        {
+          "text": "丁※甲乙丙丁",
+          "region": "unknown"
+        }
+      ]
+    }
+  ]
+}

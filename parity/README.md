@@ -56,6 +56,25 @@ bun run parity:line-endpoints validate path/to/fixture.docx \
   --manifest path/to/fixture.word-lines.json
 ```
 
+The repository baseline for automatic hyphenation and hanging punctuation is
+fully synthetic and reproducible:
+
+```sh
+bun run parity:build-line-endpoint-fixtures
+bun run parity:line-endpoints capture \
+  parity/fixtures/word-hyphenation-hanging.docx \
+  --output parity/fixtures/word-hyphenation-hanging.word-lines.json \
+  --refresh-word
+bun run parity:line-endpoints validate \
+  parity/fixtures/word-hyphenation-hanging.docx \
+  --manifest parity/fixtures/word-hyphenation-hanging.word-lines.json
+```
+
+Rebuilding the DOCX is deterministic. Recapturing the manifest is not a
+routine snapshot update: inspect the line texts, record the local Word and
+`mutool` versions already embedded in the manifest, and confirm the change is
+an intended reference-behavior update before committing it.
+
 The manifest records the exact DOCX SHA-256, Word and extraction versions, and
 the normalized text occupying each visual line. Validation fails fast if the
 DOCX hash differs, then reports only page placement and line-ending

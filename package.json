@@ -59,6 +59,7 @@
     "bench:cross-language": "bun benchmarks/cross-language/run.ts",
     "parity": "bun parity/cli.ts",
     "parity:line-endpoints": "bun parity/lineEndpointsCli.ts",
+    "parity:build-line-endpoint-fixtures": "bun parity/fixtures/build-word-line-endpoint-fixtures.ts",
     "test:visual": "bunx playwright test",
     "test:interactions": "bunx playwright test --project=interactions",
     "test:differential": "cd packages/core && bun test src/docx/__tests__/differential.test.ts",
