@@ -354,6 +354,12 @@ export type UseDocxEditorOptions = {
   onSelectionUpdate?: (state: EditorState) => void;
   /** Callback when the hidden EditorView is created or torn down. */
   onEditorViewReady?: (view: EditorView | null) => void;
+  /** Fires when the editor receives a copy event. */
+  onCopy?: () => void;
+  /** Fires when an editable editor receives a cut event. */
+  onCut?: () => void;
+  /** Fires when an editable editor receives a paste event. */
+  onPaste?: () => void;
   /** Callback when a read-only user action would mutate the document. */
   onReadOnlyEditAttempt?: () => void;
   /**
@@ -456,6 +462,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     onError,
     onSelectionUpdate,
     onEditorViewReady,
+    onCopy,
+    onCut,
+    onPaste,
     onReadOnlyEditAttempt,
     featureFlags,
     onSelectiveSaveTripwire,
@@ -729,6 +738,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       });
     },
     onKeyDown: () => false,
+    onCopy: () => onCopy?.(),
+    onCut: () => onCut?.(),
+    onPaste: () => onPaste?.(),
     onReadOnlyEditAttempt: () => onReadOnlyEditAttempt?.(),
     onEditorViewReady: handleEditorViewReady,
     onEditorViewDestroy: () => {

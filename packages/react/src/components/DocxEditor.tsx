@@ -465,9 +465,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     showTableInsert = true,
     onInsertPageBreak,
     onInsertTOC,
-    onCopy: _onCopy,
-    onCut: _onCut,
-    onPaste: _onPaste,
+    onCopy,
+    onCut,
+    onPaste,
     mode: modeProp,
     onModeChange,
     onReadonlyEditAttempt,
@@ -2417,14 +2417,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           // Copy selected text to clipboard, then delete selection
           const { from, to } = view.state.selection;
           const text = view.state.doc.textBetween(from, to, "\n");
-          void navigator.clipboard.writeText(text);
+          void navigator.clipboard.writeText(text).catch(() => undefined);
           view.dispatch(view.state.tr.deleteSelection());
+          onCut?.();
           break;
         }
         case "copy": {
           const { from: cf, to: ct } = view.state.selection;
           const copied = view.state.doc.textBetween(cf, ct, "\n");
-          void navigator.clipboard.writeText(copied);
+          void navigator.clipboard.writeText(copied).catch(() => undefined);
+          onCopy?.();
           break;
         }
         case "paste": {
@@ -2464,6 +2466,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
               const text = await navigator.clipboard.readText();
               if (text) {
                 view.dispatch(view.state.tr.insertText(text));
+                onPaste?.();
               }
             } catch {
               // Clipboard access denied
@@ -2481,6 +2484,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
               // insertText would flatten them into one paragraph.
               const slice = buildPlainTextSlice(text, view.state.schema);
               view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+              onPaste?.();
             }
           } catch {
             // Surface the failure instead of leaving a dead menu action.
@@ -2581,6 +2585,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       getActiveEditorView,
       focusActiveEditor,
       onCustomContextAction,
+      onCopy,
+      onCut,
+      onPaste,
       readOnly,
       contextMenu.selectionRange.from,
       contextMenu.selectionRange.to,
@@ -4148,6 +4155,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                         readOnly={readOnly}
                         onDocumentChange={handleDocumentChange}
                         extensionManager={extensionManager}
+                        {...(onCopy !== undefined ? { onCopy } : {})}
+                        {...(onCut !== undefined ? { onCut } : {})}
+                        {...(onPaste !== undefined ? { onPaste } : {})}
                         {...(onReadonlyEditAttempt !== undefined
                           ? { onReadOnlyEditAttempt: onReadonlyEditAttempt }
                           : {})}

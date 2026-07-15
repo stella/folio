@@ -356,11 +356,46 @@ export type HiddenEditorManagerDeps = {
   onTransaction: (transaction: Transaction, newState: EditorState) => void;
   onSelectionChange: (state: EditorState) => void;
   onKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
+  onCopy?: () => void;
+  onCut?: () => void;
+  onPaste?: () => void;
   onReadOnlyEditAttempt: () => void;
   onEditorViewReady: (view: EditorView) => void;
   onEditorViewDestroy: () => void;
   onRemoteSelectionsChange: (selections: HiddenProseMirrorRemoteSelection[]) => void;
 };
+
+type PreventableDomEvent = { preventDefault: () => void };
+
+export const createHiddenEditorClipboardHandlers = (
+  deps: Pick<
+    HiddenEditorManagerDeps,
+    "getReadOnly" | "onCopy" | "onCut" | "onPaste" | "onReadOnlyEditAttempt"
+  >,
+) => ({
+  copy: () => {
+    deps.onCopy?.();
+    return false;
+  },
+  cut: (_view: unknown, event: PreventableDomEvent) => {
+    if (!deps.getReadOnly()) {
+      deps.onCut?.();
+      return false;
+    }
+    deps.onReadOnlyEditAttempt();
+    event.preventDefault();
+    return true;
+  },
+  paste: (_view: unknown, event: PreventableDomEvent) => {
+    if (!deps.getReadOnly()) {
+      deps.onPaste?.();
+      return false;
+    }
+    deps.onReadOnlyEditAttempt();
+    event.preventDefault();
+    return true;
+  },
+});
 
 export type HiddenEditorManager = {
   /** Request the view (sets the requested flag, then attempts creation). */
@@ -480,15 +515,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       handleDOMEvents: {
         focus: () => false,
         blur: () => false,
+        ...createHiddenEditorClipboardHandlers(deps),
         beforeinput: (_view, event) => {
-          if (!deps.getReadOnly()) {
-            return false;
-          }
-          deps.onReadOnlyEditAttempt();
-          event.preventDefault();
-          return true;
-        },
-        paste: (_view, event) => {
           if (!deps.getReadOnly()) {
             return false;
           }

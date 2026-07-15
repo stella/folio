@@ -73,6 +73,8 @@ export type FolioParityBridge = {
   countSelectionRects: () => number;
   /** Replace the live document with dropdown and date content controls. */
   setupContentControls: () => boolean;
+  /** Dispatch a clipboard DOM event and return the matching host callback count. */
+  dispatchClipboardEvent: (kind: "copy" | "cut" | "paste") => number;
   /** Insert a rows×cols table at the selection (core helper). Returns success. */
   insertTable: (rows: number, cols: number) => boolean;
   /** Count `table` nodes in the live document (0 with no live view). */
@@ -110,7 +112,10 @@ export type FolioParityBridge = {
   getPageNumberForSelection: () => number;
 };
 
-function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridge {
+function buildParityBridge(
+  getRef: () => DocxEditorRef | null,
+  getClipboardCallbackCount: (kind: "copy" | "cut" | "paste") => number,
+): FolioParityBridge {
   const liveView = () => getRef()?.getEditor()?.getView() ?? null;
   return {
     getTotalPages: () => getRef()?.getTotalPages() ?? 0,
@@ -207,6 +212,14 @@ function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridg
       ]);
       view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, [dropdown, date]));
       return true;
+    },
+    dispatchClipboardEvent: (kind) => {
+      const view = liveView();
+      if (!view) {
+        return 0;
+      }
+      view.dom.dispatchEvent(new ClipboardEvent(kind, { bubbles: true, cancelable: true }));
+      return getClipboardCallbackCount(kind);
     },
     insertTable: (rows, cols) => {
       const view = liveView();
@@ -430,6 +443,7 @@ export function App() {
   }
 
   const editorRef = useRef<DocxEditorRef>(null);
+  const clipboardCallbackCountsRef = useRef({ copy: 0, cut: 0, paste: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(null);
   const [documentBuffer, setDocumentBuffer] = useState<ArrayBuffer | null>(null);
@@ -589,7 +603,10 @@ export function App() {
     globalThis.__folioPlayground = {
       getEditorRef: () => editorRef.current,
     };
-    globalThis.__folioParity = buildParityBridge(() => editorRef.current);
+    globalThis.__folioParity = buildParityBridge(
+      () => editorRef.current,
+      (kind) => clipboardCallbackCountsRef.current[kind],
+    );
     return () => {
       globalThis.__folioPlayground = undefined;
       globalThis.__folioParity = undefined;
@@ -620,6 +637,9 @@ export function App() {
             showTableInsert={true}
             onInsertPageBreak={handleInsertPageBreak}
             onInsertTOC={handleInsertTOC}
+            onCopy={() => clipboardCallbackCountsRef.current.copy++}
+            onCut={() => clipboardCallbackCountsRef.current.cut++}
+            onPaste={() => clipboardCallbackCountsRef.current.paste++}
           />
         </main>
 

@@ -18,6 +18,9 @@
         :show-ruler="true"
         :initial-zoom="1"
         :collaboration="collaboration"
+        :on-copy="() => clipboardCallbackCounts.copy++"
+        :on-cut="() => clipboardCallbackCounts.cut++"
+        :on-paste="() => clipboardCallbackCounts.paste++"
       />
     </main>
     <p v-if="status" class="pg-vue-status">{{ status }}</p>
@@ -60,6 +63,7 @@ const editorRef = ref<DocxEditorRef | null>(null);
 const documentBuffer = shallowRef<ArrayBuffer | null>(null);
 const currentDocument = shallowRef<FolioDocument | null>(null);
 const status = ref("");
+const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const collaborationEnabled = new URLSearchParams(window.location.search).has("collaboration");
 const collaborationDocument = collaborationEnabled ? new Y.Doc() : null;
 const collaborationAwareness = collaborationDocument ? new Awareness(collaborationDocument) : null;
@@ -90,7 +94,10 @@ collaborationAwareness?.setLocalStateField("user", {
 
 onMounted(() => {
   void loadFromQuery();
-  globalThis.__folioParity = buildParityBridge(() => editorRef.value);
+  globalThis.__folioParity = buildParityBridge(
+    () => editorRef.value,
+    (kind) => clipboardCallbackCounts[kind],
+  );
   if (collaboration) {
     globalThis.__folioVueCollaboration = {
       getSharedText: () => {

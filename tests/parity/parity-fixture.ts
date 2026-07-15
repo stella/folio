@@ -23,6 +23,7 @@ type FolioParityBridge = {
   selectFirstWord: () => boolean;
   countSelectionRects: () => number;
   setupContentControls: () => boolean;
+  dispatchClipboardEvent: (kind: "copy" | "cut" | "paste") => number;
   insertTable: (rows: number, cols: number) => boolean;
   countTables: () => number;
   commentFirstWord: () => boolean;

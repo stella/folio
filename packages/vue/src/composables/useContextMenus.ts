@@ -97,6 +97,9 @@ export type UseContextMenusOptions = {
    * selection, so the captured range is preferred when non-empty.
    */
   onCustomContextAction?: (id: string, selectionRange: { from: number; to: number }) => void;
+  onCopy?: () => void;
+  onCut?: () => void;
+  onPaste?: () => void;
 };
 
 export type UseContextMenusReturn = {
@@ -322,6 +325,7 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
           if (node) {
             view.dispatch(view.state.tr.delete(pos, pos + node.nodeSize));
             opts.selectedImage.value = null;
+            opts.onCut?.();
           }
         } else {
           // Focus the hidden PM first so the browser's clipboard op targets it.
@@ -335,20 +339,26 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
       case "copy":
         if (opts.selectedImage.value) {
           copyImageToClipboard(view, opts.selectedImage.value.pmPos);
+          opts.onCopy?.();
         } else {
           view.focus();
           document.execCommand("copy");
         }
         break;
       case "paste":
-        void pasteFromClipboard(view);
+        void pasteFromClipboard(view)
+          .then(() => opts.onPaste?.())
+          .catch(() => undefined);
         break;
       case "pasteAsPlainText":
         // Strip all formatting — insert the clipboard's text/plain only.
         navigator.clipboard
           .readText()
           .then((text) => {
-            if (text) view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+            if (text) {
+              view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+              opts.onPaste?.();
+            }
             return undefined;
           })
           .catch(() => {
