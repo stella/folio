@@ -42,8 +42,8 @@ export const visitDocxParagraphs = (
       if (content.type !== "shape" || !content.shape.textBody) {
         continue;
       }
-      for (const paragraph of content.shape.textBody.content) {
-        visitParagraph(paragraph);
+      for (const block of content.shape.textBody.content) {
+        visitBlock(block);
       }
     }
   };

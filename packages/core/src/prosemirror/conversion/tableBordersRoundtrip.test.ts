@@ -12,6 +12,7 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import { serializeTable } from "../../docx/serializer/tableSerializer";
+import { serializeParagraph } from "../../docx/serializer/paragraphSerializer";
 import type { Document, Table, TableBorders } from "../../types/document";
 import { schema, singletonManager } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
@@ -134,7 +135,7 @@ describe("w:tblBorders round-trip", () => {
     const document = makeDocumentWithTableBorders(borders);
     const roundTripped = fromProseDoc(toProseDoc(document), document);
 
-    const xml = serializeTable(expectFirstTable(roundTripped));
+    const xml = serializeTable(expectFirstTable(roundTripped), serializeParagraph);
     expect(xml).toContain(
       '<w:tblBorders><w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="none"/><w:insideH w:val="none"/><w:insideV w:val="none"/></w:tblBorders>',
     );
@@ -166,7 +167,7 @@ describe("w:tblBorders round-trip", () => {
       insideV: wordDefault,
     });
 
-    const xml = serializeTable(table);
+    const xml = serializeTable(table, serializeParagraph);
     expect(xml).toContain(
       '<w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>',
     );
@@ -200,7 +201,7 @@ describe("w:tblBorders round-trip", () => {
       insideV: none,
     });
 
-    const xml = serializeTable(table);
+    const xml = serializeTable(table, serializeParagraph);
     expect(xml).toContain(
       '<w:tblBorders><w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="none"/><w:insideH w:val="none"/><w:insideV w:val="none"/></w:tblBorders>',
     );

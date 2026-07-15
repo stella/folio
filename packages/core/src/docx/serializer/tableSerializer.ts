@@ -37,8 +37,9 @@ import type {
   Paragraph,
 } from "../../types/document";
 import { serializeBorder } from "./borderSerializer";
-import { serializeParagraph } from "./paragraphSerializer";
 import { escapeXml, intAttr } from "./xmlUtils";
+
+type ParagraphSerializer = (paragraph: Paragraph) => string;
 
 function normalizeTrackedChangeInfo(info: { id: number; author: string; date?: string }): {
   id: number;
@@ -754,14 +755,17 @@ function serializeTableGrid(columnWidths: number[] | undefined): string {
 /**
  * Serialize cell content (paragraphs, nested tables)
  */
-function serializeCellContent(content: (Paragraph | Table)[]): string {
+function serializeCellContent(
+  content: (Paragraph | Table)[],
+  serializeParagraph: ParagraphSerializer,
+): string {
   const parts: string[] = [];
 
   for (const item of content) {
     if (item.type === "paragraph") {
       parts.push(serializeParagraph(item));
     } else {
-      parts.push(serializeTable(item));
+      parts.push(serializeTable(item, serializeParagraph));
     }
   }
 
@@ -780,7 +784,10 @@ function serializeCellContent(content: (Paragraph | Table)[]): string {
 /**
  * Serialize a table cell (w:tc)
  */
-export function serializeTableCell(cell: TableCell): string {
+export function serializeTableCell(
+  cell: TableCell,
+  serializeParagraph: ParagraphSerializer,
+): string {
   const parts: string[] = [];
 
   // Cell properties
@@ -794,7 +801,7 @@ export function serializeTableCell(cell: TableCell): string {
   }
 
   // Cell content
-  parts.push(serializeCellContent(cell.content));
+  parts.push(serializeCellContent(cell.content, serializeParagraph));
 
   return `<w:tc>${parts.join("")}</w:tc>`;
 }
@@ -806,7 +813,7 @@ export function serializeTableCell(cell: TableCell): string {
 /**
  * Serialize a table row (w:tr)
  */
-export function serializeTableRow(row: TableRow): string {
+export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSerializer): string {
   const parts: string[] = [];
 
   // Row properties
@@ -821,7 +828,7 @@ export function serializeTableRow(row: TableRow): string {
 
   // Cells
   for (const cell of row.cells) {
-    parts.push(serializeTableCell(cell));
+    parts.push(serializeTableCell(cell, serializeParagraph));
   }
 
   return `<w:tr>${parts.join("")}</w:tr>`;
@@ -837,7 +844,7 @@ export function serializeTableRow(row: TableRow): string {
  * @param table - The table to serialize
  * @returns XML string for the table
  */
-export function serializeTable(table: Table): string {
+export function serializeTable(table: Table, serializeParagraph: ParagraphSerializer): string {
   const parts: string[] = [];
 
   // Table properties
@@ -854,7 +861,7 @@ export function serializeTable(table: Table): string {
 
   // Rows
   for (const row of table.rows) {
-    parts.push(serializeTableRow(row));
+    parts.push(serializeTableRow(row, serializeParagraph));
   }
 
   return `<w:tbl>${parts.join("")}</w:tbl>`;
@@ -866,8 +873,8 @@ export function serializeTable(table: Table): string {
  * @param tables - The tables to serialize
  * @returns XML string for all tables
  */
-export function serializeTables(tables: Table[]): string {
-  return tables.map(serializeTable).join("");
+export function serializeTables(tables: Table[], serializeParagraph: ParagraphSerializer): string {
+  return tables.map((table) => serializeTable(table, serializeParagraph)).join("");
 }
 
 // ============================================================================

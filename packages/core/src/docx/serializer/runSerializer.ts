@@ -34,12 +34,13 @@ import type {
   ShapeOutline,
   ImagePosition,
   ImageWrap,
-  Paragraph,
+  BlockContent,
   RunPropertyChange,
 } from "../../types/document";
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
+import { serializeTable } from "./tableSerializer";
 import { escapeXml, intAttr } from "./xmlUtils";
 
 // ============================================================================
@@ -892,8 +893,16 @@ function serializeDrawingContent(content: DrawingContent): string {
 }
 
 /** Serialize text body content for shapes/textboxes */
-function serializeShapeTextBody(paragraphs: Paragraph[]): string {
-  return paragraphs.map((p) => serializeParagraph(p)).join("");
+function serializeShapeTextBody(
+  blocks: Extract<BlockContent, { type: "paragraph" | "table" }>[],
+): string {
+  return blocks
+    .map((block) =>
+      block.type === "paragraph"
+        ? serializeParagraph(block)
+        : serializeTable(block, serializeParagraph),
+    )
+    .join("");
 }
 
 /**

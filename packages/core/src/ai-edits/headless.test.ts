@@ -21,7 +21,7 @@ import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { schema, singletonManager } from "../prosemirror/schema";
-import type { HeaderFooter } from "../types/document";
+import type { Document, HeaderFooter, Shape } from "../types/document";
 import {
   FolioDocumentStoryNotFoundError,
   FolioDocxReviewer,
@@ -73,6 +73,94 @@ const makeHeaderFooterBaseline = async (): Promise<ArrayBuffer> => {
   const materialized = await repackDocx(document, { updateModifiedDate: false });
   const { docx } = await ensureParaIds(materialized);
   return new Uint8Array(docx).buffer;
+};
+
+const makeTextBoxTableBaseline = async (): Promise<ArrayBuffer> => {
+  const source = await createEmptyDocx();
+  const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+  document.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "A2000001",
+      content: [
+        {
+          type: "run",
+          content: [
+            {
+              type: "shape",
+              shape: {
+                type: "shape",
+                shapeType: "textBox",
+                id: "42",
+                size: { width: 1_828_800, height: 914_400 },
+                textBody: {
+                  margins: { top: 45_720, bottom: 45_720, left: 91_440, right: 91_440 },
+                  content: [
+                    {
+                      type: "paragraph",
+                      paraId: "A2000002",
+                      content: [{ type: "run", content: [{ type: "text", text: "Before table" }] }],
+                    },
+                    {
+                      type: "table",
+                      rows: [
+                        {
+                          type: "tableRow",
+                          cells: [
+                            {
+                              type: "tableCell",
+                              content: [
+                                {
+                                  type: "paragraph",
+                                  paraId: "A2000003",
+                                  content: [
+                                    {
+                                      type: "run",
+                                      content: [{ type: "text", text: "Cell value" }],
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      type: "paragraph",
+                      paraId: "A2000004",
+                      content: [{ type: "run", content: [{ type: "text", text: "After table" }] }],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  return repackDocx(document, { updateModifiedDate: false });
+};
+
+const findTextBoxShape = (document: Document): Shape => {
+  for (const block of document.package.document.content) {
+    if (block.type !== "paragraph") {
+      continue;
+    }
+    for (const content of block.content) {
+      if (content.type !== "run") {
+        continue;
+      }
+      for (const runContent of content.content) {
+        if (runContent.type === "shape" && runContent.shape.textBody) {
+          return runContent.shape;
+        }
+      }
+    }
+  }
+  throw new Error("expected a shape with text content");
 };
 
 /**
@@ -135,6 +223,61 @@ const findBlock = (blocks: FolioAIBlock[], needle: string): FolioAIBlock => {
 };
 
 describe("headless docx review round-trip", () => {
+  test("edits a table cell inside shape text and preserves its container", async () => {
+    const baseline = await makeTextBoxTableBaseline();
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const target = findBlock(reviewer.snapshot().blocks, "Cell value");
+
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: "replace-shape-table-cell",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Cell value",
+          replace: "Updated value",
+        },
+      ],
+      { mode: "direct" },
+    );
+
+    expect(result.applied.map(({ id }) => id)).toEqual(["replace-shape-table-cell"]);
+    expect(result.skipped).toEqual([]);
+
+    const saved = await reviewer.toBuffer();
+    const documentXml = await partText(saved, "word/document.xml");
+    expect(documentXml).toContain("<wps:txbx><w:txbxContent>");
+    expect(documentXml).toContain("<w:tbl>");
+    expect(documentXml).toContain("Updated value");
+    expect(documentXml).not.toContain("Cell value");
+
+    const reparsed = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
+    const shape = findTextBoxShape(reparsed);
+    expect(shape.size).toEqual({ width: 1_828_800, height: 914_400 });
+    expect(shape.textBody?.margins).toEqual({
+      top: 45_720,
+      bottom: 45_720,
+      left: 91_440,
+      right: 91_440,
+    });
+    expect(shape.textBody?.content.map(({ type }) => type)).toEqual([
+      "paragraph",
+      "table",
+      "paragraph",
+    ]);
+
+    const table = shape.textBody?.content.at(1);
+    expect(table?.type).toBe("table");
+    if (table?.type !== "table") {
+      throw new Error("expected a nested table");
+    }
+    const cellParagraph = table.rows.at(0)?.cells.at(0)?.content.at(0);
+    expect(cellParagraph?.type).toBe("paragraph");
+    expect(
+      await FolioDocxReviewer.fromBuffer(saved).then((reopened) => reopened.getContentAsText()),
+    ).toContain("Updated value");
+  });
+
   test("edits a header through story-scoped document operations", async () => {
     const baseline = await makeHeaderFooterBaseline();
     const story = { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const;

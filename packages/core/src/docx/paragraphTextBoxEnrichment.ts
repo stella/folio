@@ -18,6 +18,7 @@ import {
   parseTextBox,
   parseTextBoxContent,
 } from "./textBoxParser";
+import type { TableParserFn } from "./textBoxParser";
 import {
   findDeep,
   getAttribute,
@@ -154,6 +155,7 @@ export const enrichParagraphTextBoxes = (
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  parseTable: TableParserFn,
 ): void => {
   const xmlChildren = getChildElements(paraXml);
   let parsedIndex = 0;
@@ -190,12 +192,12 @@ export const enrichParagraphTextBoxes = (
           textBox.content = parseTextBoxContent(
             txbxContentEl,
             parseParagraph,
-            null,
+            parseTable,
             styles,
             theme,
             numbering,
-            rels ?? undefined,
-            media ?? undefined,
+            rels,
+            media,
           );
         }
       }
@@ -231,7 +233,7 @@ export const enrichParagraphTextBoxes = (
     }
 
     for (const pictEl of vmlTextBoxes) {
-      const shape = parseVmlTextBoxShape(pictEl, styles, theme, numbering, rels, media);
+      const shape = parseVmlTextBoxShape(pictEl, styles, theme, numbering, rels, media, parseTable);
       if (!shape) {
         continue;
       }
@@ -328,6 +330,7 @@ const parseVmlTextBoxShape = (
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
+  parseTable: TableParserFn,
 ): Shape | null => {
   const shapeEl = findDeep(pictEl, "v", "shape");
   const textBoxEl = shapeEl ? findDeep(shapeEl, "v", "textbox") : null;
@@ -359,12 +362,12 @@ const parseVmlTextBoxShape = (
       content: parseTextBoxContent(
         contentEl,
         parseParagraph,
-        null,
+        parseTable,
         styles,
         theme,
         numbering,
-        rels ?? undefined,
-        media ?? undefined,
+        rels,
+        media,
       ),
       ...(margins === undefined ? {} : { margins }),
     },

@@ -6,7 +6,7 @@ import type { Document, Paragraph, Table, TableCell } from "../../types/document
 import { pixelsToEmu } from "../../utils/units";
 import { expectHardBreakAttrs, expectParagraphAttrs } from "../attrs";
 import { schema } from "../schema";
-import { fromProseDoc } from "./fromProseDoc";
+import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 describe("fromProseDoc", () => {
@@ -1248,6 +1248,32 @@ describe("fromProseDoc", () => {
     expect(firstRunContent.shape.shapeType).toBe("textBox");
     expect(firstRunContent.shape.textBody?.content).toHaveLength(1);
     expect(firstRunContent.shape.textBody?.autoFit).toBe("shape");
+  });
+
+  test("converts tables inside text boxes back to shape content", () => {
+    const textBoxDoc = schema.node("doc", null, [
+      schema.node("textBox", { width: 160, height: 90, textBoxId: "table-box" }, [
+        schema.node("paragraph", null, [schema.text("Before")]),
+        schema.node("table", null, [
+          schema.node("tableRow", null, [
+            schema.node("tableCell", null, [
+              schema.node("paragraph", null, [schema.text("Cell text")]),
+            ]),
+          ]),
+        ]),
+      ]),
+    ]);
+
+    const blocks = proseDocToBlocks(textBoxDoc);
+    const host = blocks.at(0);
+    const run = host?.type === "paragraph" ? host.content.at(0) : undefined;
+    const shape = run?.type === "run" ? run.content.at(0) : undefined;
+
+    expect(shape?.type).toBe("shape");
+    if (shape?.type !== "shape") {
+      return;
+    }
+    expect(shape.shape.textBody?.content.map(({ type }) => type)).toEqual(["paragraph", "table"]);
   });
 
   test("preserves textBox wrap and position attrs on save", () => {

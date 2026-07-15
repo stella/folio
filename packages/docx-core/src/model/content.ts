@@ -748,8 +748,8 @@ export type ShapeTextBody = {
     left?: number;
     right?: number;
   };
-  /** Paragraphs inside the shape */
-  content: Paragraph[];
+  /** Block content inside the shape */
+  content: (Paragraph | Table)[];
 };
 
 /**
@@ -798,8 +798,8 @@ export type TextBox = {
   fill?: ShapeFill;
   /** Outline */
   outline?: ShapeOutline;
-  /** Text content */
-  content: Paragraph[];
+  /** Text and table content */
+  content: (Paragraph | Table)[];
   /** Text fitting behavior */
   autoFit?: ShapeTextBody["autoFit"];
   /** Internal margins */

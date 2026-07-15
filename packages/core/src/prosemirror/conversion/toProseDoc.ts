@@ -119,6 +119,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
         }
         const converted = convertParagraphWithTextBoxes(block, styleResolver, {
           textBoxGroupId: nextTextBoxGroupId(),
+          context: { theme, nextTextBoxGroupId },
         });
         const firstConverted = converted.at(0);
         if (
@@ -1798,6 +1799,7 @@ function convertTableCell({
       contentNodes.push(
         ...convertParagraphWithTextBoxes(content, styleResolver, {
           textBoxGroupId: context.nextTextBoxGroupId(),
+          context,
           ...(conditionalStyle?.rPr !== undefined
             ? { extraRunFormatting: conditionalStyle.rPr }
             : {}),
@@ -2742,6 +2744,7 @@ function convertShape(shape: Shape): PMNode {
  */
 type ConvertParagraphWithTextBoxesOptions = {
   textBoxGroupId: string;
+  context: TableConversionContext;
   extraRunFormatting?: TextFormatting;
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay;
 };
@@ -2751,6 +2754,7 @@ function convertParagraphWithTextBoxes(
   styleResolver: StyleEngine | null,
   {
     textBoxGroupId,
+    context,
     extraRunFormatting,
     tableParagraphOverlay,
   }: ConvertParagraphWithTextBoxesOptions,
@@ -2776,6 +2780,7 @@ function convertParagraphWithTextBoxes(
         placement:
           isEmptyAfterExtraction && !keepWrapperParagraph ? "standalone" : "inlineWithPrevious",
         groupId: textBoxGroupId,
+        context,
       }),
     );
   }
@@ -2851,7 +2856,8 @@ function convertTextBox(
   options: {
     placement?: "standalone" | "inlineWithPrevious";
     groupId?: string;
-  } = {},
+    context: TableConversionContext;
+  },
 ): PMNode {
   const textBoxData: { size?: Partial<TextBox["size"]> } = textBox;
   const textBoxSize = textBoxData.size;
@@ -2883,10 +2889,19 @@ function convertTextBox(
   const marginLeft = textBox.margins?.left !== undefined ? emuToPixels(textBox.margins.left) : 7;
   const marginRight = textBox.margins?.right !== undefined ? emuToPixels(textBox.margins.right) : 7;
 
-  // Convert text box content (paragraphs) to PM nodes
+  // Convert text box content to PM nodes
   const contentNodes: PMNode[] = [];
-  for (const para of textBox.content) {
-    contentNodes.push(convertParagraph(para, styleResolver));
+  for (const block of textBox.content) {
+    if (block.type === "paragraph") {
+      contentNodes.push(
+        ...convertParagraphWithTextBoxes(block, styleResolver, {
+          textBoxGroupId: options.context.nextTextBoxGroupId(),
+          context: options.context,
+        }),
+      );
+      continue;
+    }
+    contentNodes.push(convertTable(block, styleResolver, options.context));
   }
 
   // Ensure at least one paragraph
@@ -3019,6 +3034,7 @@ export function headerFooterToProseDoc(
         out.push(
           ...convertParagraphWithTextBoxes(block, styleResolver, {
             textBoxGroupId: nextTextBoxGroupId(),
+            context: { theme, nextTextBoxGroupId },
           }),
         );
       } else if (block.type === "table") {
