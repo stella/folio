@@ -2152,6 +2152,34 @@ describe("Folio AI edit operations", () => {
     expect(updatedInnerTable.textContent).toBe("InnerNew inner");
   });
 
+  test("skips column insertion when a cell has no table ancestors", () => {
+    const shallowCell = schema.nodes.tableCell.create(null, [
+      schema.node("paragraph", { paraId: "shallow-column" }, [schema.text("Cell")]),
+    ]);
+    const malformedDoc = schema.nodes.doc.create(null, [shallowCell]);
+    const state = EditorState.create({ schema, doc: malformedDoc });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "insert-column",
+          type: "insertTableColumn",
+          blockId: "shallow-column",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result).toEqual({
+      applied: [],
+      skipped: [{ id: "insert-column", reason: "unsupportedBlock" }],
+    });
+    expect(view.state.doc).toEqual(malformedDoc);
+  });
+
   test("orders same-boundary and distinct column inserts against the original table", () => {
     const makeTableState = () => {
       const rows = [

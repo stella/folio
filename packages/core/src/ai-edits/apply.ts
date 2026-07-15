@@ -282,6 +282,9 @@ const findTableColumnInsertion = (
     }
     const rowDepth = cellDepth - 1;
     const tableDepth = rowDepth - 1;
+    if (tableDepth < 0) {
+      return null;
+    }
     if (
       resolved.node(rowDepth).type.spec["tableRole"] !== "row" ||
       resolved.node(tableDepth).type.spec["tableRole"] !== "table"
