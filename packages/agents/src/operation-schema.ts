@@ -120,7 +120,7 @@ const blockIdProperty = {
 
 /**
  * JSON Schema (draft-07 compatible) for ONE document operation: the full
- * ten-variant union accepted by `parseFolioDocumentOperationBatch` in
+ * eleven-variant union accepted by `parseFolioDocumentOperationBatch` in
  * `@stll/folio-core`, one `oneOf` variant per entry in
  * `FOLIO_DOCUMENT_OPERATION_TYPES`. Intended for LLM tool definitions and
  * other consumers that need the contract's wire shape without re-declaring
@@ -327,6 +327,27 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
       required: ["id", "type", "blockId", "parties"],
       additionalProperties: false,
     },
+    {
+      type: "object",
+      description: "Insert a row next to the row containing the anchor block. Direct mode only.",
+      properties: {
+        ...operationMetaProperties,
+        type: { type: "string", enum: ["insertTableRow"] },
+        blockId: blockIdProperty,
+        position: {
+          type: "string",
+          enum: ["after", "before"],
+          description: 'Insert after the anchor row (default) or before it. Defaults to "after".',
+        },
+        cellTexts: {
+          type: "array",
+          description: "Initial text for physical cells in source order; omitted cells stay empty.",
+          items: { type: "string" },
+        },
+      },
+      required: ["id", "type", "blockId"],
+      additionalProperties: false,
+    },
   ],
 } as const;
 
@@ -359,8 +380,8 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       enum: FOLIO_DOCUMENT_OPERATION_MODES,
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
-        '"direct" applies immediately. `formatRange` and `insertSignatureTable` support ' +
-        '"direct" only.',
+        '"direct" applies immediately. `formatRange`, `insertSignatureTable`, and ' +
+        '`insertTableRow` support "direct" only.',
     },
     atomic: {
       type: "boolean",

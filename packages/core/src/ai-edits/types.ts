@@ -222,6 +222,15 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         parties: FolioAISignatureParty[];
         comment?: FolioAIComment;
       }
+    | {
+        id: string;
+        type: "insertTableRow";
+        /** Stable paragraph anchor inside the row that receives the new sibling. */
+        blockId: string;
+        position?: "after" | "before";
+        /** Initial text for each physical cell in source order; omitted cells stay empty. */
+        cellTexts?: string[];
+      }
   );
 
 export type FolioAIEditApplyMode = "direct" | "tracked-changes";

@@ -394,6 +394,13 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     position: "before",
     parties: [{ name: "Acme s.r.o.", signatory: "Jane Doe", title: "CEO" }],
   },
+  insertTableRow: {
+    id: "op-insert-table-row",
+    type: "insertTableRow",
+    blockId: "0304003A",
+    position: "before",
+    cellTexts: ["First", "Second"],
+  },
 };
 
 const variantTypeOf = (variant: JsonSchemaNode): unknown => variant.properties?.["type"]?.enum?.[0];

@@ -31,6 +31,7 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "deleteBlock",
   "commentOnBlock",
   "insertSignatureTable",
+  "insertTableRow",
 ] as const satisfies readonly FolioAIEditOperation["type"][]);
 
 export const FOLIO_DOCUMENT_OPERATION_MODES = Object.freeze([
@@ -72,6 +73,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   deleteBlock: DIRECT_AND_TRACKED_MODES,
   commentOnBlock: DIRECT_AND_TRACKED_MODES,
   insertSignatureTable: DIRECT_ONLY_MODES,
+  insertTableRow: DIRECT_ONLY_MODES,
 } as const satisfies Readonly<
   Record<FolioDocumentOperationType, readonly FolioDocumentOperationMode[]>
 >);
@@ -215,6 +217,26 @@ const readOptionalBoolean = (
     return candidate;
   }
   return invalidBatch(`${path}.${key}`, "expected a boolean when provided");
+};
+
+const readOptionalStringArray = (
+  value: Record<string, unknown>,
+  key: string,
+  path: string,
+): string[] | undefined => {
+  const candidate = value[key];
+  if (candidate === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(candidate)) {
+    return invalidBatch(`${path}.${key}`, "expected an array when provided");
+  }
+  return candidate.map((item, index) => {
+    if (typeof item === "string") {
+      return item;
+    }
+    return invalidBatch(`${path}.${key}[${index}]`, "expected a string");
+  });
 };
 
 const readNonNegativeInteger = (
@@ -558,6 +580,23 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     };
   }
 
+  if (type === "insertTableRow") {
+    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "position", "cellTexts"]);
+    const position = value["position"];
+    if (position !== undefined && position !== "after" && position !== "before") {
+      return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
+    }
+    const cellTexts = readOptionalStringArray(value, "cellTexts", path);
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      ...(position !== undefined && { position }),
+      ...(cellTexts !== undefined && { cellTexts }),
+    };
+  }
+
   return invalidBatch(`${path}.type`, `unsupported operation type "${type}"`);
 };
 
@@ -639,7 +678,7 @@ export type FolioDocumentOperationAffectedTarget =
       story: FolioDocumentOperationStory;
       anchorBlockId: string;
       position: "before" | "after";
-      content: "block" | "signatureTable";
+      content: "block" | "signatureTable" | "tableRow";
     }
   | {
       type: "comment";
@@ -786,6 +825,14 @@ const getPrimaryAffectedTarget = (
         anchorBlockId: operation.blockId,
         position: operation.position ?? "after",
         content: "signatureTable",
+      };
+    case "insertTableRow":
+      return {
+        type: "insertion",
+        story,
+        anchorBlockId: operation.blockId,
+        position: operation.position ?? "after",
+        content: "tableRow",
       };
   }
 };

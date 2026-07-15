@@ -31,6 +31,7 @@ describe("document operation contract", () => {
         "deleteBlock",
         "commentOnBlock",
         "insertSignatureTable",
+        "insertTableRow",
       ],
       modes: ["direct", "tracked-changes"],
       batchModes: ["best-effort", "atomic"],
@@ -46,6 +47,7 @@ describe("document operation contract", () => {
         deleteBlock: ["direct", "tracked-changes"],
         commentOnBlock: ["direct", "tracked-changes"],
         insertSignatureTable: ["direct"],
+        insertTableRow: ["direct"],
       },
       preconditions: ["blockTextHash"],
       stories: ["main", "header", "footer", "footnote", "endnote"],
@@ -103,6 +105,13 @@ describe("document operation contract", () => {
         blockId: "paragraph-5",
         parties: [{ name: "Party" }],
       },
+      {
+        id: "row",
+        type: "insertTableRow",
+        blockId: "paragraph-6",
+        position: "before",
+        cellTexts: ["A", "B"],
+      },
     ] as const satisfies readonly FolioDocumentOperation[];
 
     expect(
@@ -113,6 +122,7 @@ describe("document operation contract", () => {
         { id: "insert" },
         { id: "comment", commentId: 18 },
         { id: "delete" },
+        { id: "row" },
       ]),
     ).toEqual([
       {
@@ -179,6 +189,19 @@ describe("document operation contract", () => {
           },
         ],
       },
+      {
+        operationId: "row",
+        operationIndex: 6,
+        affected: [
+          {
+            type: "insertion",
+            story: "main",
+            anchorBlockId: "paragraph-6",
+            position: "before",
+            content: "tableRow",
+          },
+        ],
+      },
     ]);
   });
 
@@ -235,6 +258,13 @@ describe("document operation contract", () => {
           parties: [{ name: "Party", signatory: "Signer", title: "Director" }],
           severity: "high",
           area: "Execution",
+        },
+        {
+          id: "8",
+          type: "insertTableRow",
+          blockId: "a",
+          position: "after",
+          cellTexts: ["First", "Second"],
         },
       ],
     };
@@ -335,6 +365,21 @@ describe("document operation contract", () => {
         ],
       },
       "$.operations[0].parties[0].name",
+      "expected a string",
+    ],
+    [
+      {
+        version: 1,
+        operations: [
+          {
+            id: "1",
+            type: "insertTableRow",
+            blockId: "a",
+            cellTexts: ["valid", 42],
+          },
+        ],
+      },
+      "$.operations[0].cellTexts[1]",
       "expected a string",
     ],
   ] as const;

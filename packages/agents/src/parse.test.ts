@@ -289,7 +289,12 @@ describe("parseSuggestChangesInput", () => {
       const result = parseSuggestChangesInput({ operations: [supersetOperation(type)] });
       expect(result.ok, type).toBe(true);
     }
-    for (const excludedType of ["formatRange", "commentOnBlock", "insertSignatureTable"]) {
+    for (const excludedType of [
+      "formatRange",
+      "commentOnBlock",
+      "insertSignatureTable",
+      "insertTableRow",
+    ]) {
       const result = parseSuggestChangesInput({ operations: [supersetOperation(excludedType)] });
       expect(result.ok, excludedType).toBe(false);
     }

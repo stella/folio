@@ -28,12 +28,20 @@ const schema = new Schema({
     table: {
       content: "tableRow+",
       group: "block",
+      tableRole: "table",
     },
     tableRow: {
       content: "tableCell+",
+      tableRole: "row",
     },
     tableCell: {
-      content: "paragraph+",
+      content: "block+",
+      tableRole: "cell",
+      attrs: {
+        colspan: { default: 1 },
+        rowspan: { default: 1 },
+        colwidth: { default: null },
+      },
     },
   },
   marks: {
@@ -1743,5 +1751,130 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc.child(2).type.name).toBe("table");
     expect(view.state.doc.child(2).textContent).toContain("Buyer");
     expect(view.state.doc.child(3).textContent).toBe("After.");
+  });
+
+  test("inserts ordered rows while preserving cells that span the insertion boundary", () => {
+    const spanningCell = schema.node("tableCell", { colspan: 2, rowspan: 2 }, [
+      schema.node("paragraph", { paraId: "cell-a" }, [schema.text("A")]),
+    ]);
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        spanningCell,
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "cell-b" }, [schema.text("B")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "cell-c" }, [schema.text("C")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const snapshot = createFolioAIEditSnapshot(state.doc);
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "insert-first-row",
+          type: "insertTableRow",
+          blockId: "cell-c",
+          position: "before",
+          cellTexts: ["First"],
+        },
+        {
+          id: "insert-second-row",
+          type: "insertTableRow",
+          blockId: "cell-c",
+          position: "before",
+          cellTexts: ["Second"],
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "insert-first-row",
+      "insert-second-row",
+    ]);
+    const updatedTable = view.state.doc.child(0);
+    expect(updatedTable.childCount).toBe(4);
+    expect(updatedTable.child(0).child(0).attrs["rowspan"]).toBe(4);
+    expect(updatedTable.child(1).childCount).toBe(1);
+    expect(updatedTable.child(1).textContent).toBe("First");
+    expect(updatedTable.child(2).textContent).toBe("Second");
+    expect(updatedTable.child(3).textContent).toBe("C");
+  });
+
+  test("targets the nearest row when the anchor is inside a nested table", () => {
+    const innerTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "inner-cell" }, [schema.text("Inner")]),
+        ]),
+      ]),
+    ]);
+    const outerTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Outer")]),
+          innerTable,
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [outerTable]) });
+    const snapshot = createFolioAIEditSnapshot(state.doc);
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "insert-inner-row",
+          type: "insertTableRow",
+          blockId: "inner-cell",
+          cellTexts: ["New inner"],
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    const updatedOuterTable = view.state.doc.child(0);
+    expect(updatedOuterTable.childCount).toBe(1);
+    const updatedInnerTable = updatedOuterTable.child(0).child(0).child(1);
+    expect(updatedInnerTable.childCount).toBe(2);
+    expect(updatedInnerTable.child(1).textContent).toBe("New inner");
+  });
+
+  test("table-row inserts are skipped in tracked-changes mode", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-cell" }, [schema.text("Cell")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const snapshot = createFolioAIEditSnapshot(state.doc);
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [{ id: "insert-row", type: "insertTableRow", blockId: "tracked-cell" }],
+      mode: "tracked-changes",
+    });
+
+    expect(result).toEqual({
+      applied: [],
+      skipped: [{ id: "insert-row", reason: "unsupportedMode" }],
+    });
+    expect(view.state.doc.child(0).childCount).toBe(1);
   });
 });

@@ -1,5 +1,6 @@
 import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
+import { rowIsHeader, TableMap, tableNodeTypes } from "prosemirror-tables";
 
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { buildCleanBlockText } from "./clean-text";
@@ -56,6 +57,7 @@ type ResolvedOperation = {
   blockTo: number;
   blockNode: PMNode;
   insertText?: string;
+  tableRowInsertion?: TableRowInsertion;
   commentId?: number;
   /**
    * Position in the input `operations` array, used as a secondary
@@ -211,6 +213,116 @@ const findEnclosingTableBoundary = (doc: PMNode, blockFrom: number): TableBounda
     }
   }
   return null;
+};
+
+type TableRowInsertion = {
+  tableStart: number;
+  rowPosition: number;
+  rowType: PMNode["type"];
+  cells: readonly PMNode[];
+  rowspanUpdates: readonly number[];
+};
+
+const buildTableRowInsertion = (
+  map: TableMap,
+  table: PMNode,
+  tableStart: number,
+  rowIndex: number,
+): TableRowInsertion | null => {
+  const cells: PMNode[] = [];
+  const rowspanUpdates: number[] = [];
+  let referenceRow: number | null = rowIndex > 0 ? -1 : 0;
+  if (rowIsHeader(map, table, rowIndex + referenceRow)) {
+    referenceRow = rowIndex === 0 || rowIndex === map.height ? null : 0;
+  }
+  for (let col = 0, index = map.width * rowIndex; col < map.width; col++, index++) {
+    if (rowIndex > 0 && rowIndex < map.height && map.map[index] === map.map[index - map.width]) {
+      const cellPosition = map.map[index];
+      if (cellPosition === undefined) {
+        return null;
+      }
+      const cell = table.nodeAt(cellPosition);
+      const colspan: unknown = cell?.attrs["colspan"];
+      if (typeof colspan !== "number" || colspan < 1) {
+        return null;
+      }
+      if (!cell) {
+        return null;
+      }
+      rowspanUpdates.push(cellPosition);
+      col += colspan - 1;
+      index += colspan - 1;
+      continue;
+    }
+    const referencePosition =
+      referenceRow === null ? undefined : map.map[index + referenceRow * map.width];
+    const cellType =
+      referencePosition === undefined
+        ? tableNodeTypes(table.type.schema).cell
+        : table.nodeAt(referencePosition)?.type;
+    const cell = cellType?.createAndFill();
+    if (!cell) {
+      return null;
+    }
+    cells.push(cell);
+  }
+  if (cells.length === 0) {
+    return null;
+  }
+  let rowPosition = tableStart;
+  for (let index = 0; index < rowIndex; index++) {
+    rowPosition += table.child(index).nodeSize;
+  }
+  return {
+    tableStart,
+    rowPosition,
+    rowType: tableNodeTypes(table.type.schema).row,
+    cells,
+    rowspanUpdates,
+  };
+};
+
+const findTableRowInsertion = (
+  doc: PMNode,
+  blockFrom: number,
+  position: "after" | "before",
+): TableRowInsertion | null => {
+  const resolved = doc.resolve(blockFrom);
+  for (let rowDepth = resolved.depth; rowDepth > 0; rowDepth--) {
+    if (resolved.node(rowDepth).type.spec.tableRole !== "row") {
+      continue;
+    }
+    const tableDepth = rowDepth - 1;
+    const table = resolved.node(tableDepth);
+    if (table.type.spec.tableRole !== "table") {
+      return null;
+    }
+    const map = TableMap.get(table);
+    const anchorRowIndex = resolved.index(tableDepth);
+    const rowIndex = position === "before" ? anchorRowIndex : anchorRowIndex + 1;
+    const tableStart = resolved.start(tableDepth);
+    return buildTableRowInsertion(map, table, tableStart, rowIndex);
+  }
+  return null;
+};
+
+const populateTableRow = (row: PMNode, cellTexts: readonly string[] | undefined): PMNode => {
+  if (cellTexts === undefined) {
+    return row;
+  }
+  const cells: PMNode[] = [];
+  row.forEach((cell, _offset, index) => {
+    const paragraph = cell.firstChild;
+    if (!paragraph?.isTextblock) {
+      cells.push(cell);
+      return;
+    }
+    const text = cellTexts[index] ?? "";
+    const content = text.length > 0 ? row.type.schema.text(text) : null;
+    const nextParagraph = paragraph.type.create(stripIdentityAttrs(paragraph.attrs), content);
+    cells.push(cell.type.create(cell.attrs, nextParagraph));
+  });
+  return row.type.create(row.attrs, cells);
 };
 
 /**
@@ -391,7 +503,10 @@ const applyFolioAIEditOperationsInternal = ({
   const liveBlocksByParaId = collectLiveBlocksByParaId(view.state.doc);
 
   for (const [index, operation] of operations.entries()) {
-    if (mode === "tracked-changes" && operation.type === "formatRange") {
+    if (
+      mode === "tracked-changes" &&
+      (operation.type === "formatRange" || operation.type === "insertTableRow")
+    ) {
       skipped.push({ id: operation.id, reason: "unsupportedMode" });
       continue;
     }
@@ -655,6 +770,34 @@ const applyFolioAIEditOperationsInternal = ({
         // tracked-changes for new tables is a separate future
         // concern.
         tr = tr.insert(item.from, node);
+        break;
+      }
+      case "insertTableRow": {
+        const insertion = item.tableRowInsertion;
+        if (!insertion) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
+        for (const updatePosition of insertion.rowspanUpdates) {
+          const cellPosition = insertion.tableStart + updatePosition;
+          const liveCell = tr.doc.nodeAt(cellPosition);
+          if (!liveCell) {
+            continue;
+          }
+          const rowspan: unknown = liveCell.attrs["rowspan"];
+          if (typeof rowspan !== "number") {
+            continue;
+          }
+          tr = tr.setNodeMarkup(cellPosition, undefined, {
+            ...liveCell.attrs,
+            rowspan: rowspan + 1,
+          });
+        }
+        const row = insertion.rowType.create(null, insertion.cells);
+        tr = tr.insert(insertion.rowPosition, populateTableRow(row, item.operation.cellTexts));
         break;
       }
       case "deleteBlock": {
@@ -1106,6 +1249,26 @@ const resolveOperation = ({
         blockFrom,
         blockTo,
         blockNode,
+      },
+    };
+  }
+
+  if (operation.type === "insertTableRow") {
+    const position = operation.position ?? "after";
+    const insertion = findTableRowInsertion(doc, blockFrom, position);
+    if (!insertion || (operation.cellTexts?.length ?? 0) > insertion.cells.length) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    return {
+      type: "resolved",
+      operation: {
+        operation,
+        from: insertion.rowPosition,
+        to: insertion.rowPosition,
+        blockFrom,
+        blockTo,
+        blockNode,
+        tableRowInsertion: insertion,
       },
     };
   }
