@@ -120,6 +120,9 @@ export type UseDocxEditorOptions = {
     onError?: (error: Error) => void;
     onSelectionUpdate?: (state: EditorState) => void;
     onEditorViewReady?: (view: EditorView | null) => void;
+    onCopy?: () => void;
+    onCut?: () => void;
+    onPaste?: () => void;
     onReadOnlyEditAttempt?: () => void;
     featureFlags?: MaybeRefOrGetter<FolioSelectiveSaveFlags | undefined>;
     onSelectiveSaveTripwire?: ((result: TripwireResult) => void) | undefined;
