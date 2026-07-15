@@ -33,6 +33,7 @@ import type { EditorView } from "prosemirror-view";
 import {
   collectRemoteSelections,
   createHiddenEditorManager,
+  type CollaborationModules,
   type HiddenEditorManager,
   type HiddenProseMirrorCollaboration,
   type HiddenProseMirrorRemoteSelection,
