@@ -2827,7 +2827,7 @@ function hasParagraphBoundaryPayload(block: Paragraph, pmParagraph: PMNode): boo
  */
 type ExtractedTextBox = {
   textBox: TextBox;
-  trackedChange?: NonNullable<TextBoxAttrs["_docxTrackedChange"]>;
+  trackedChange: NonNullable<TextBoxAttrs["_docxTrackedChange"]> | undefined;
 };
 
 function extractTextBoxesFromParagraph(paragraph: Paragraph): ExtractedTextBox[] {
@@ -2912,7 +2912,7 @@ function convertTextBox(
     placement?: "standalone" | "inlineWithPrevious";
     groupId?: string;
     context: TableConversionContext;
-    trackedChange?: NonNullable<TextBoxAttrs["_docxTrackedChange"]>;
+    trackedChange: NonNullable<TextBoxAttrs["_docxTrackedChange"]> | undefined;
   },
 ): PMNode {
   const textBoxData: { size?: Partial<TextBox["size"]> } = textBox;
