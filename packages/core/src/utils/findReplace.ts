@@ -224,16 +224,16 @@ const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null;
 
 const isParagraph = (value: unknown): value is Paragraph =>
-  isRecord(value) && value.type === "paragraph" && Array.isArray(value.content);
+  isRecord(value) && value["type"] === "paragraph" && Array.isArray(value["content"]);
 
 const isTable = (value: unknown): value is Table =>
-  isRecord(value) && value.type === "table" && Array.isArray(value.rows);
+  isRecord(value) && value["type"] === "table" && Array.isArray(value["rows"]);
 
 const isTableRow = (value: unknown): value is TableRow =>
-  isRecord(value) && Array.isArray(value.cells);
+  isRecord(value) && Array.isArray(value["cells"]);
 
 const isTableCell = (value: unknown): value is TableCell =>
-  isRecord(value) && Array.isArray(value.content);
+  isRecord(value) && Array.isArray(value["content"]);
 
 const isBlockSdt = (value: unknown): value is Extract<BlockContent, { type: "blockSdt" }> =>
-  isRecord(value) && value.type === "blockSdt" && Array.isArray(value.content);
+  isRecord(value) && value["type"] === "blockSdt" && Array.isArray(value["content"]);
