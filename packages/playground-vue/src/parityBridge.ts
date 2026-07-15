@@ -127,7 +127,8 @@ export function buildParityBridge(getRef: () => DocxEditorRef | null): FolioPari
       if (!range) {
         return false;
       }
-      editor.setSelection(range.from, range.to);
+      const { from, to } = range;
+      editor.setSelection(from, to);
       return true;
     },
     countSelectionRects: () => document.querySelectorAll("[data-folio-selection-rect]").length,
