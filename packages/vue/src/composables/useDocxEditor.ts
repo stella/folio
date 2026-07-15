@@ -34,6 +34,11 @@ import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
+import { createHeaderFooterEditorManager } from "@stll/folio-core/controller/headerFooterEditorManager";
+import type {
+  HeaderFooterEditorManager,
+  HeaderFooterPartKind,
+} from "@stll/folio-core/controller/headerFooterEditorManager";
 import {
   collectRemoteSelections,
   createHiddenEditorManager,
@@ -105,6 +110,7 @@ import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/te
 import type { Footnote } from "@stll/folio-core/types/content";
 import type { Document, HeaderFooter, SectionProperties } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
+import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter";
 
 // ============================================================================
 // CONSTANTS (mirror React PagedEditor.tsx)
@@ -122,12 +128,7 @@ const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 // run would defeat the pipeline's identity checks.
 const EMPTY_TEMPLATE_PREVIEW_ENTRIES: readonly TemplatePreviewEntry[] = [];
 
-// The layout pipeline threads the hidden header/footer PM handle opaquely. The
-// persistent-HF-PM surface (one off-screen EditorView per rId) is not wired in
-// this composable yet — see the PORT-BLOCKED note on `syncHfPMs` below — so we
-// pass `null`, which makes `renderHfFromContentOrPm` fall back to painting HF
-// content straight from the document blocks.
-type HfPmsHandle = { getView: (rId: string) => EditorView | null } | null;
+type HfPmsHandle = Pick<HeaderFooterEditorManager, "getView"> | null;
 
 // ============================================================================
 // HELPERS (ported from React PagedEditor.tsx — pure, framework-neutral)
@@ -149,71 +150,6 @@ function getColumns(sectionProps: SectionProperties | null | undefined): ColumnL
     cols.separator = sectionProps.separator;
   }
   return cols;
-}
-
-/** One resolved header/footer slot: its `HeaderFooter` and relationship id. */
-type ResolvedHfSlot = { hf: HeaderFooter | null; rId: string | null };
-type ResolvedHeaderFooters = {
-  header: ResolvedHfSlot;
-  footer: ResolvedHfSlot;
-  firstHeader: ResolvedHfSlot;
-  firstFooter: ResolvedHfSlot;
-};
-
-const EMPTY_HF_SLOT: ResolvedHfSlot = { hf: null, rId: null };
-
-/**
- * Resolve the header/footer parts a section references into concrete
- * `HeaderFooter` objects + rIds. Minimal single-section resolution: the
- * default part (all pages, or pages 2+ under titlePg) and the first-page part.
- * The full HF-editing surface (persistent PMs, even/odd, per-section swaps)
- * lives in React's `useHeaderFooterEditor` and is not ported here.
- */
-function resolveHeaderFooters(
-  documentModel: Document | null,
-  sectionProps: SectionProperties | null,
-): ResolvedHeaderFooters {
-  const pkg = documentModel?.package;
-  if (!pkg || !sectionProps) {
-    return {
-      header: EMPTY_HF_SLOT,
-      footer: EMPTY_HF_SLOT,
-      firstHeader: EMPTY_HF_SLOT,
-      firstFooter: EMPTY_HF_SLOT,
-    };
-  }
-  const headers = pkg.headers;
-  const footers = pkg.footers;
-  const lookupHeader = (rId: string | null): HeaderFooter | null =>
-    rId ? (headers?.get(rId) ?? null) : null;
-  const lookupFooter = (rId: string | null): HeaderFooter | null =>
-    rId ? (footers?.get(rId) ?? null) : null;
-
-  let headerRId: string | null = null;
-  let firstHeaderRId: string | null = null;
-  for (const hfRef of sectionProps.headerReferences ?? []) {
-    if (hfRef.type === "default") {
-      headerRId = hfRef.rId;
-    } else if (hfRef.type === "first") {
-      firstHeaderRId = hfRef.rId;
-    }
-  }
-  let footerRId: string | null = null;
-  let firstFooterRId: string | null = null;
-  for (const hfRef of sectionProps.footerReferences ?? []) {
-    if (hfRef.type === "default") {
-      footerRId = hfRef.rId;
-    } else if (hfRef.type === "first") {
-      firstFooterRId = hfRef.rId;
-    }
-  }
-
-  return {
-    header: { hf: lookupHeader(headerRId), rId: headerRId },
-    footer: { hf: lookupFooter(footerRId), rId: footerRId },
-    firstHeader: { hf: lookupHeader(firstHeaderRId), rId: firstHeaderRId },
-    firstFooter: { hf: lookupFooter(firstFooterRId), rId: firstFooterRId },
-  };
 }
 
 /**
@@ -365,6 +301,8 @@ function documentFontsAreLoaded(): boolean {
 export type UseDocxEditorOptions = {
   /** Container element that hosts the off-screen ProseMirror editor. */
   hiddenContainer: Ref<HTMLElement | null>;
+  /** Optional separate host for persistent header/footer ProseMirror views. */
+  hiddenHeaderFooterContainer?: Ref<HTMLElement | null>;
   /** Container element the paginated pages are painted into. */
   pagesContainer: Ref<HTMLElement | null>;
   /** Whether the editor is read-only. Reactive. */
@@ -436,6 +374,13 @@ export type UseDocxEditorCollaboration = HiddenProseMirrorCollaboration & {
   plugins?: Plugin[] | undefined;
 };
 
+export type HeaderFooterSelectionState = {
+  from: number;
+  kind: HeaderFooterPartKind;
+  rId: string;
+  to: number;
+};
+
 export type UseDocxEditorReturn = {
   /** The headless controller (imperative API + layout access + events). */
   editor: FolioEditor;
@@ -445,6 +390,8 @@ export type UseDocxEditorReturn = {
   editorState: Ref<EditorState | null>;
   /** Remote collaborative cursors decoded into body ProseMirror positions. */
   remoteSelections: Ref<HiddenProseMirrorRemoteSelection[]>;
+  /** Selection in the currently active persistent header/footer view. */
+  headerFooterSelection: Ref<HeaderFooterSelectionState | null>;
   /** True once the hidden view is mounted and a document is loaded. */
   isReady: Ref<boolean>;
   /**
@@ -474,6 +421,10 @@ export type UseDocxEditorReturn = {
   getDocument: () => Document | null;
   /** Publish a fresh Document object (e.g. after HF materialisation). */
   setDocument: (doc: Document) => void;
+  /** Resolve a persistent header/footer EditorView by relationship id. */
+  getHeaderFooterView: (rId: string) => EditorView | null;
+  /** Synchronize persistent header/footer views after a document-model change. */
+  syncHeaderFooterViews: () => void;
   /** Access the extension command map for invoking marks / nodes / features. */
   getCommands: () => CommandMap;
   /** Focus the hidden ProseMirror view. */
@@ -487,6 +438,7 @@ export type UseDocxEditorReturn = {
 export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorReturn {
   const {
     hiddenContainer,
+    hiddenHeaderFooterContainer,
     pagesContainer,
     readOnly = false,
     pageGap = DEFAULT_PAGE_GAP,
@@ -508,6 +460,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     featureFlags,
     onSelectiveSaveTripwire,
   } = options;
+  const headerFooterHost = hiddenHeaderFooterContainer ?? hiddenContainer;
 
   // ---- Reactive state -----------------------------------------------------
   // `docModel` (not `document`) so the global `document` stays reachable for the
@@ -517,6 +470,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const editorState = shallowRef<EditorState | null>(null);
   const collaborationModules = shallowRef<CollaborationModules | null>(null);
   const remoteSelections = shallowRef<HiddenProseMirrorRemoteSelection[]>([]);
+  const headerFooterSelection = shallowRef<HeaderFooterSelectionState | null>(null);
   const layout = shallowRef<Layout | null>(null);
   // Latest flow blocks + measures — the range-projection fallback (off-screen /
   // not-yet-painted ranges) needs them; the primary DOM-rect path does not.
@@ -582,6 +536,28 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const syncCoordinator = new LayoutSelectionGate();
   const session = createLayoutSession();
   const painter = new LayoutPainter({ pageGap, showShadow: true });
+  const headerFooterManager = createHeaderFooterEditorManager({
+    getHost: () => headerFooterHost.value,
+    getDocument: () => docModel.value,
+    getStyles: () => docModel.value?.package.styles ?? null,
+    getTheme: () => docModel.value?.package.theme ?? null,
+    onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
+      if (docChanged) {
+        isDirty.value = true;
+        const bodyView = editorView.value;
+        if (bodyView) {
+          scheduler.schedule(bodyView.state, null);
+        }
+      }
+      if (docChanged || selectionChanged) {
+        const { from, to } = view.state.selection;
+        headerFooterSelection.value = { from, kind, rId, to };
+        onSelectionUpdate?.(view.state);
+        emitter.emit("selectionChange", { from, to });
+      }
+      syncCoordinator.requestRender();
+    },
+  });
 
   // ---- Layout pipeline ----------------------------------------------------
 
@@ -633,7 +609,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       documentSettings !== undefined &&
       "mirrorMargins" in documentSettings &&
       documentSettings.mirrorMargins === true;
-    const hf = resolveHeaderFooters(model, sectionProps);
+    const hf = resolveHeaderFooterContent(model?.package);
 
     try {
       const outcome = runLayoutPipelineCompute<HfPmsHandle>(
@@ -644,14 +620,14 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           margins,
           pageGap,
           syncCoordinator,
-          headerContent: hf.header.hf,
-          footerContent: hf.footer.hf,
-          firstPageHeaderContent: hf.firstHeader.hf,
-          firstPageFooterContent: hf.firstFooter.hf,
-          headerContentRId: hf.header.rId,
-          footerContentRId: hf.footer.rId,
-          firstPageHeaderContentRId: hf.firstHeader.rId,
-          firstPageFooterContentRId: hf.firstFooter.rId,
+          headerContent: hf.headerContent,
+          footerContent: hf.footerContent,
+          firstPageHeaderContent: hf.firstPageHeaderContent,
+          firstPageFooterContent: hf.firstPageFooterContent,
+          headerContentRId: hf.activeHeaderRId,
+          footerContentRId: hf.activeFooterRId,
+          firstPageHeaderContentRId: hf.activeFirstHeaderRId,
+          firstPageFooterContentRId: hf.activeFirstFooterRId,
           sectionHeaderFooterRefs: resolveSectionHeaderFooterRefs(model),
           theme,
           sectionProperties: sectionProps,
@@ -660,7 +636,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           mirrorMargins,
           styles,
           layout: layout.value,
-          hfPMs: null,
+          hfPMs: headerFooterManager,
           painter,
           pagesContainer: paintTarget,
           session,
@@ -707,6 +683,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     try {
       const updated = fromProseDoc(view.state.doc, base);
       docModel.value = updated;
+      headerFooterManager.sync();
       onChange?.(updated);
       emitter.emit("docChange", updated);
     } catch (err) {
@@ -948,8 +925,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // The freshly loaded document has no unsaved edits yet (mirrors React
     // clearing its dirty signals on document reset).
     isDirty.value = false;
+    headerFooterSelection.value = null;
     scheduler.dispose();
     manager.destroyView();
+    headerFooterManager.sync();
     manager.ensureView();
     if (!manager.getView()) {
       // Host not mounted yet: paint from a precomputed state so the pages show
@@ -986,11 +965,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   // Recreate / repaint whenever the host mounts or the document identity flips.
   watch(
-    [hiddenContainer, pagesContainer],
+    [hiddenContainer, pagesContainer, headerFooterHost],
     () => {
       if (hiddenContainer.value && docModel.value && !manager.getView()) {
         mountView();
       }
+      headerFooterManager.sync();
     },
     { flush: "post" },
   );
@@ -1021,10 +1001,11 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   async function save(saveOptions?: { selective?: boolean }): Promise<Blob | null> {
     const view = editorView.value;
-    const base = docModel.value;
-    if (!view || !base) {
+    const currentDocument = docModel.value;
+    if (!view || !currentDocument) {
       return null;
     }
+    const base = headerFooterManager.snapshotDocument(currentDocument);
 
     // Snapshot the editor state once, before any awaited dynamic imports, so
     // the document we serialize and the selective-save change signals are all
@@ -1089,6 +1070,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // selective-save baseline; see the featureFlags parity note.) The comment-
     // list dirty flag lives in useCommentManagement and is cleared by the ref
     // API's save wrapper, the single public save entry point.
+    docModel.value = updatedDoc;
+    headerFooterManager.sync();
     isDirty.value = false;
 
     return new Blob([buffer], {
@@ -1097,11 +1080,21 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   function getDocument(): Document | null {
-    return docModel.value;
+    const document = docModel.value;
+    return document ? headerFooterManager.snapshotDocument(document) : null;
   }
 
   function setDocument(doc: Document): void {
     docModel.value = doc;
+    headerFooterManager.sync();
+  }
+
+  function getHeaderFooterView(rId: string): EditorView | null {
+    return headerFooterManager.getView(rId);
+  }
+
+  function syncHeaderFooterViews(): void {
+    headerFooterManager.sync();
   }
 
   function getCommands(): CommandMap {
@@ -1127,6 +1120,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     }
     manager.destroyView();
     remoteSelections.value = [];
+    headerFooterManager.destroy();
     extensionManager.destroy();
     editorState.value = null;
     layout.value = null;
@@ -1141,6 +1135,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     editorView,
     editorState,
     remoteSelections,
+    headerFooterSelection,
     isReady,
     isDirty,
     parseError,
@@ -1153,6 +1148,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     save,
     getDocument,
     setDocument,
+    getHeaderFooterView,
+    syncHeaderFooterViews,
     getCommands,
     focus,
     reLayout,

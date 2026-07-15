@@ -15,9 +15,8 @@ import type { Document } from "@stll/folio-core/types/document";
  * `useDocxEditorRefApi.ts` synthesizes one from the primitives it already
  * holds (the headless `FolioEditor` controller, `editorView`, `layout`, and
  * the pages-scroll helpers) rather than tearing a component ref off a
- * component that does not exist. `getHfView` is the one method with no
- * backing implementation yet (no persistent hidden header/footer PM view in
- * Vue) and stays a documented no-op; see its call site for the exact reason.
+ * component that does not exist. `getHfView` delegates to the shared
+ * persistent header/footer editor manager.
  *
  * TODO(vue): re-home to the Vue PagedEditor component when it lands.
  */

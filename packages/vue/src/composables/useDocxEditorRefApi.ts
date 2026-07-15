@@ -15,10 +15,8 @@
  * controller (`opts.editor`), which already implements the hidden-editor
  * imperative API 1:1 with React's `PagedEditorRef`; the scroll/page methods
  * reuse this file's own `scrollToPage` / `scrollToParaId` /
- * `scrollVisiblePositionIntoView`. `getHfView` stays a documented no-op:
- * `useDocxEditor`'s layout pipeline always passes `hfPMs: null`, so there is no
- * persistent hidden header/footer `EditorView` to look up by `rId` yet
- * (PORT-BLOCKED, see that method's note). The AI-edit and content-control
+ * `scrollVisiblePositionIntoView`. Header/footer view lookup delegates to the
+ * shared persistent-view manager owned by `useDocxEditor`. The AI-edit and content-control
  * methods are wired over folio-core directly, mirroring the React adapter.
  * `hasPendingChanges` is wired from the doc-dirty flag (`useDocxEditor`) OR-ed
  * with the comment-list dirty flag (`useCommentManagement`); see its
@@ -140,6 +138,7 @@ export type UseDocxEditorRefApiOptions = {
   // Action handles from useDocxEditor.
   focus: () => void;
   getDocument: () => Document | null;
+  getHeaderFooterView: (rId: string) => EditorView | null;
   setZoom: (zoom: number) => void;
   /** useDocxEditor.save returns a Blob; the ref surface exposes an ArrayBuffer. */
   save: (options?: { selective?: boolean }) => Promise<Blob | null>;
@@ -211,12 +210,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       getDocument: () => opts.editor.getDocument(),
       getState: () => opts.editor.getState(),
       getView: () => opts.editor.getView(),
-      // PORT-BLOCKED: no persistent hidden header/footer EditorView to look up
-      // by rId yet. useDocxEditor's layout pipeline always calls
-      // runLayoutPipelineCompute with `hfPMs: null` (see HfPmsHandle there),
-      // so header/footer content is rendered straight from the document model
-      // rather than a live PM view. Returns null until that lands.
-      getHfView: () => null,
+      getHfView: (rId) => opts.getHeaderFooterView(rId),
       // The fork's controller ensureView() takes no focus argument yet; the
       // { focus } option is accepted for React parity but ignored, matching
       // ensureEditorView above (PORT-BLOCKED).

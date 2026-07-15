@@ -13,10 +13,11 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef, type Ref, type ShallowRef } from "vue";
 import { TextSelection, NodeSelection, type Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import type { HeaderFooter, BlockContent } from "@stll/folio-core/types/content";
-import type { Document, SectionProperties } from "@stll/folio-core/types/document";
+import type { Document } from "@stll/folio-core/types/document";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findImageElement } from "@stll/folio-core/layout-painter/imageLayout";
+import { clickToPositionInHfSlot } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
+import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
   detectTableInsertHover,
   TABLE_INSERT_HIDE_DELAY_MS,
@@ -25,6 +26,13 @@ import {
   createCellDragTracker,
   findCellPosFromPmPos,
 } from "@stll/folio-core/prosemirror/cellDragSelection";
+import {
+  createEmptyHeaderFooter,
+  pickActiveHeaderFooterRId,
+  removeHeaderFooter,
+  resolveHeaderFooterContent,
+  saveHeaderFooterContent,
+} from "@stll/folio-core/utils/headerFooter";
 import {
   scrollVisiblePositionIntoView as scrollVisiblePositionIntoViewImpl,
   resolvePos as resolvePosImpl,
@@ -51,9 +59,10 @@ export type TableInsertButton = {
 };
 
 export type HfEditState = {
+  isFirstPage: boolean;
+  pageNumber: number;
   position: "header" | "footer";
   rId: string | null;
-  headerFooter: HeaderFooter | null;
   targetRect: { top: number; left: number; width: number; height: number } | null;
 };
 
@@ -71,29 +80,25 @@ export type UsePagesPointerOptions = {
   imageInteracting: Ref<boolean>;
   hyperlinkPopupData: Ref<HyperlinkPopupData | null>;
   readOnly: Ref<boolean>;
+  showHeaderFooterEditing: Ref<boolean>;
   zoom: Ref<number>;
   layout: Ref<Layout | null>;
   tableResize: TableResizeApi;
   getCommands: () => Commands;
   getDocument: () => Document | null;
   reLayout: () => void;
-  emit: (event: string, ...args: unknown[]) => void;
+  onDocumentChange: (document: Document) => void;
   clearOverlay: () => void;
-  /**
-   * Re-mount HF EditorViews when `package.headers/footers` content changes —
-   * exposed by `useDocxEditor.syncHfPMs`. Called after every save so the
-   * persistent PM points at the new HeaderFooter object. Optional so existing
-   * consumers can no-op until they wire it through.
-   */
-  syncHfPMs?: () => void;
+  /** Synchronize persistent header/footer views after document-model changes. */
+  syncHfPMs: () => void;
   /** Resolve the persistent EditorView for an HF instance (for click routing). */
-  getHfPmView?: (hf: HeaderFooter) => EditorView | null;
+  getHfPmView: (rId: string) => EditorView | null;
   /**
    * Replace the loaded Document — used by HF materialisation to publish a
    * fresh Document object instead of mutating in place. Optional; if absent,
    * callers fall back to in-place mutation + `syncHfPMs()`.
    */
-  setDocument?: (doc: Document) => void;
+  setDocument: (doc: Document) => void;
 };
 
 const MULTI_CLICK_DELAY = 500;
@@ -112,7 +117,7 @@ export type UsePagesPointerReturn = {
   handlePagesDoubleClick: (event: MouseEvent) => void;
   handleTableInsertClick: (event: MouseEvent) => void;
   clearTableInsertTimer: () => void;
-  handleHfSave: (content: BlockContent[]) => void;
+  handleHfSave: () => void;
   handleHfRemove: () => void;
 };
 
@@ -128,8 +133,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   // ─── Inline header/footer editor ────────────────────────────────────────
-  // shallowRef so the nested `headerFooter` reference stays identity-equal
-  // to the instance in `Document.package.headers/footers`.
+  // The edit descriptor is replaced atomically when the active painted page changes.
   const hfEdit = shallowRef<HfEditState | null>(null);
 
   // ─── Multi-click detection (double = word, triple = paragraph) ──────────
@@ -166,11 +170,25 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
    */
   function activeView(): EditorView | null {
     const hf = hfEdit.value;
-    if (hf?.headerFooter && opts.getHfPmView) {
-      const v = opts.getHfPmView(hf.headerFooter);
+    if (hf?.rId) {
+      const v = opts.getHfPmView(hf.rId);
       if (v) return v;
     }
     return opts.editorView.value;
+  }
+
+  function resolvePointerPos(clientX: number, clientY: number): number | null {
+    const edit = hfEdit.value;
+    const pages = opts.pagesRef.value;
+    const view = activeView();
+    if (edit?.rId && pages && view !== opts.editorView.value) {
+      const position = clickToPositionInHfSlot(pages, edit.position, edit.rId, clientX, clientY);
+      if (position === null || position < 0) {
+        return null;
+      }
+      return Math.min(position, view?.state.doc.content.size ?? position);
+    }
+    return resolvePos(clientX, clientY);
   }
 
   function setPmSelection(anchor: number, head?: number) {
@@ -340,6 +358,8 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function handlePagesDoubleClick(event: MouseEvent) {
+    if (opts.readOnly.value || !opts.showHeaderFooterEditing.value) return;
+    if (hfEdit.value) return;
     if (!(event.target instanceof HTMLElement)) return;
     const target = event.target;
     const headerEl = target.closest<HTMLElement>(".layout-page-header");
@@ -354,86 +374,24 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     const doc = opts.getDocument();
     if (!doc?.package) return;
 
-    // Resolve the HF for the current section.
-    const sp =
-      doc.package.document?.sections?.[0]?.properties ??
-      doc.package.document?.finalSectionProperties ??
-      null;
-    const refs = position === "header" ? sp?.headerReferences : sp?.footerReferences;
-    const map = position === "header" ? doc.package.headers : doc.package.footers;
-    // Default ref takes priority; fall back to `first` if the doc only ships first.
-    const refEntry =
-      refs?.find((r) => r.type === "default") ?? refs?.find((r) => r.type === "first") ?? null;
-    let rId: string | null = refEntry?.rId ?? null;
-    let hf: HeaderFooter | null = rId ? (map?.get(rId) ?? null) : null;
+    const pageElement = hfEl.closest<HTMLElement>("[data-page-number]");
+    const pageNumber = Number.parseInt(pageElement?.dataset["pageNumber"] ?? "1", 10);
+    let resolution = resolveHeaderFooterContent(doc.package);
+    const isFirstPage = resolution.hasTitlePg && pageNumber === 1;
+    let rId = pickActiveHeaderFooterRId(resolution, position, isFirstPage);
 
-    // Materialise an empty HF part if none exists for this section yet.
-    // Without this, double-clicking an empty header is a no-op.
-    if (!hf) {
-      if (!sp) return;
-      const hdrFtrType = "default" as const;
-      const newRId = `rId_new_${position}_${hdrFtrType}`;
-      const emptyHf: HeaderFooter = {
-        type: position,
-        hdrFtrType,
-        content: [{ type: "paragraph", content: [] }],
-      };
-      const mapKey = position === "header" ? "headers" : "footers";
-      const refKey = position === "header" ? "headerReferences" : "footerReferences";
-      const newMap = new Map(doc.package[mapKey] ?? []);
-      newMap.set(newRId, emptyHf);
-
-      // Register a relationship so the serializer emits content types + doc rels.
-      const existingRels = doc.package.relationships;
-      const usedTargets = new Set<string>();
-      for (const rel of existingRels?.values() ?? []) {
-        if (rel.target) usedTargets.add(rel.target);
-      }
-      let targetNum = 1;
-      while (usedTargets.has(`${position}${targetNum}.xml`)) targetNum++;
-      const relType =
-        position === "header"
-          ? "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
-          : "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer";
-      const newRels = new Map(existingRels);
-      newRels.set(newRId, {
-        id: newRId,
-        type: relType,
-        target: `${position}${targetNum}.xml`,
-      });
-
-      // Create a fresh Document with the new HF wired in so any computeds
-      // watching document identity refire and undo/redo can track the event.
-      const newRef = { type: hdrFtrType, rId: newRId };
-      const newSp: SectionProperties = { ...sp, [refKey]: [...(sp[refKey] ?? []), newRef] };
-      const prevBody = doc.package.document;
-      const mappedSections = prevBody?.sections?.map((s, i) =>
-        i === 0 ? { ...s, properties: newSp } : s,
-      );
-      const newFinal =
-        prevBody?.finalSectionProperties === sp ? newSp : prevBody?.finalSectionProperties;
-      const newDoc: Document = {
-        ...doc,
-        package: {
-          ...doc.package,
-          [mapKey]: newMap,
-          relationships: newRels,
-          document: prevBody
-            ? {
-                ...prevBody,
-                ...(mappedSections !== undefined && { sections: mappedSections }),
-                ...(newFinal !== undefined && { finalSectionProperties: newFinal }),
-              }
-            : prevBody,
-        },
-      };
-      rId = newRId;
-      hf = emptyHf;
-      opts.setDocument?.(newDoc);
-      opts.syncHfPMs?.();
+    if (!rId) {
+      const materialized = createEmptyHeaderFooter(doc, position, isFirstPage);
+      if (!materialized) return;
+      opts.setDocument(materialized);
+      opts.syncHfPMs();
       opts.reLayout();
-      opts.emit("change", newDoc);
+      opts.onDocumentChange(materialized);
+      resolution = resolveHeaderFooterContent(materialized.package);
+      rId = pickActiveHeaderFooterRId(resolution, position, isFirstPage);
     }
+    if (!rId) return;
+    const activeRId = rId;
 
     // Bounding rect relative to the pages-viewport. zoom is applied via
     // CSS transform on the viewport, so use the unscaled element coords.
@@ -443,9 +401,10 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     const vpRect = viewport.getBoundingClientRect();
     const z = opts.zoom.value || 1;
     hfEdit.value = {
+      isFirstPage,
+      pageNumber,
       position,
-      rId,
-      headerFooter: hf,
+      rId: activeRId,
       targetRect: {
         top: (elRect.top - vpRect.top + viewport.scrollTop) / z,
         left: (elRect.left - vpRect.left + viewport.scrollLeft) / z,
@@ -453,24 +412,43 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
         height: elRect.height / z,
       },
     };
+    requestAnimationFrame(() => {
+      const view = opts.getHfPmView(activeRId);
+      if (!view) return;
+      const pos = clickToPositionInHfSlot(
+        opts.pagesRef.value ?? hfEl,
+        position,
+        activeRId,
+        event.clientX,
+        event.clientY,
+      );
+      if (pos !== null) {
+        const clamped = Math.max(0, Math.min(pos, view.state.doc.content.size));
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, clamped)));
+      }
+      view.focus();
+    });
   }
 
-  function handleHfSave(content: BlockContent[]) {
+  function handleHfSave() {
     const doc = opts.getDocument();
     const edit = hfEdit.value;
-    if (!doc?.package || !edit) return;
-    const map = edit.position === "header" ? doc.package.headers : doc.package.footers;
-    if (!map || !edit.rId) return;
-    const existing = map.get(edit.rId);
-    if (existing) {
-      existing.content = content;
-    }
-    // After the inline overlay writes back into `pkg.headers/footers[rId]
-    // .content`, re-sync re-mounts the persistent HF EditorView from the new
-    // content so the painter sees the saved version.
-    opts.syncHfPMs?.();
+    if (!doc?.package || !edit?.rId) return;
+    const view = opts.getHfPmView(edit.rId);
+    if (!view) return;
+    const updated = saveHeaderFooterContent({
+      document: doc,
+      position: edit.position,
+      isFirstPage: edit.isFirstPage,
+      activeRId: edit.rId,
+      blocks: proseDocToBlocks(view.state.doc),
+    });
+    if (!updated) return;
+    hfEdit.value = null;
+    opts.setDocument(updated);
+    opts.syncHfPMs();
     opts.reLayout();
-    opts.emit("change", doc);
+    opts.onDocumentChange(updated);
   }
 
   function handleHfRemove() {
@@ -484,54 +462,17 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     // map AND strip every section reference that points at it. Clearing
     // `content` alone left an empty header/footer still referenced by the
     // section, so it kept rendering.
-    const mapKey = edit.position === "header" ? "headers" : "footers";
-    const refKey = edit.position === "header" ? "headerReferences" : "footerReferences";
-    const rId = edit.rId;
-
-    const newMap = new Map(doc.package[mapKey] ?? []);
-    newMap.delete(rId);
-
-    // Strip the reference everywhere a section can carry it: each
-    // sections[].properties, finalSectionProperties, and any mid-body section
-    // break (a paragraph's pPr/sectPr in body.content).
-    const stripRefs = (sp: SectionProperties): SectionProperties => ({
-      ...sp,
-      [refKey]: (sp[refKey] ?? []).filter((r) => r.rId !== rId),
+    const newDoc = removeHeaderFooter({
+      document: doc,
+      position: edit.position,
+      activeRId: edit.rId,
     });
-    const stripBlock = <T extends BlockContent>(block: T): T =>
-      "sectionProperties" in block && block.sectionProperties
-        ? { ...block, sectionProperties: stripRefs(block.sectionProperties) }
-        : block;
-
-    const body = doc.package.document;
-    const strippedSections = body?.sections?.map((s) => ({
-      ...s,
-      properties: stripRefs(s.properties),
-    }));
-    const strippedFinal = body?.finalSectionProperties
-      ? stripRefs(body.finalSectionProperties)
-      : undefined;
-    const newDoc: Document = {
-      ...doc,
-      package: {
-        ...doc.package,
-        [mapKey]: newMap,
-        document: body
-          ? {
-              ...body,
-              content: body.content.map(stripBlock),
-              ...(strippedSections !== undefined && { sections: strippedSections }),
-              ...(strippedFinal !== undefined && { finalSectionProperties: strippedFinal }),
-            }
-          : body,
-      },
-    };
 
     hfEdit.value = null;
-    opts.setDocument?.(newDoc);
-    opts.syncHfPMs?.();
+    opts.setDocument(newDoc);
+    opts.syncHfPMs();
     opts.reLayout();
-    opts.emit("change", newDoc);
+    opts.onDocumentChange(newDoc);
   }
 
   function handlePagesMouseDown(event: MouseEvent) {
@@ -550,11 +491,32 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       const isInHfArea =
         targetEl.closest(".layout-page-header") ||
         targetEl.closest(".layout-page-footer") ||
-        targetEl.closest(".hf-editor");
+        targetEl.closest(".hf-inline-editor");
       if (!isInHfArea) {
-        hfEdit.value = null;
+        handleHfSave();
         body.focus();
         // Fall through — body-selection path resolves cursor at click coord.
+      } else {
+        const edit = hfEdit.value;
+        const slot = targetEl.closest<HTMLElement>(`.layout-page-${edit.position}`);
+        const page = slot?.closest<HTMLElement>("[data-page-number]");
+        const viewport = opts.pagesViewportRef.value;
+        if (slot && page && viewport) {
+          const pageNumber = Number.parseInt(page.dataset["pageNumber"] ?? "1", 10);
+          const slotRect = slot.getBoundingClientRect();
+          const viewportRect = viewport.getBoundingClientRect();
+          const scale = opts.zoom.value || 1;
+          hfEdit.value = {
+            ...edit,
+            pageNumber,
+            targetRect: {
+              top: (slotRect.top - viewportRect.top + viewport.scrollTop) / scale,
+              left: (slotRect.left - viewportRect.left + viewport.scrollLeft) / scale,
+              width: slotRect.width / scale,
+              height: slotRect.height / scale,
+            },
+          };
+        }
       }
     }
 
@@ -597,7 +559,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
 
     event.preventDefault();
 
-    const pos = resolvePos(event.clientX, event.clientY);
+    const pos = resolvePointerPos(event.clientX, event.clientY);
     if (pos === null) {
       view.focus();
       return;
@@ -636,7 +598,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
 
   function handleMouseMove(event: MouseEvent) {
     if (!isDragging || dragAnchor === null) return;
-    const pos = resolvePos(event.clientX, event.clientY);
+    const pos = resolvePointerPos(event.clientX, event.clientY);
     if (pos !== null) {
       const view = activeView();
       // A drag that crosses cell boundaries becomes a CellSelection; when it
