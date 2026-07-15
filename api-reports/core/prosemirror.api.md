@@ -294,7 +294,8 @@ export type ParagraphAttrs = {
     lineSpacing?: number;
     lineSpacingRule?: import__stll_docx_core_model.LineSpacingRule;
     spacingExplicit?: SpacingExplicit; /** Layout provenance: document defaults survive on empty paragraphs. */
-    spacingFromDocDefaults?: SpacingExplicit;
+    spacingFromDocDefaults?: SpacingExplicit; /** Layout provenance: implicit default-style spacing survives on empty paragraphs. */
+    spacingFromImplicitDefaultStyle?: SpacingExplicit;
     indentLeft?: number;
     indentRight?: number;
     indentFirstLine?: number;
