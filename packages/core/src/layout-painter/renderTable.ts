@@ -238,7 +238,7 @@ function renderCellContent({
         paragraphBlock,
         paragraphMeasure,
         cellContext,
-        { document: doc, renderTable: renderNestedTable },
+        { document: doc },
       );
 
       fragEl.style.position = "relative";
@@ -288,7 +288,7 @@ function renderCellContent({
         textBoxBlock,
         textBoxMeasure,
         { ...context, insideTableCell: true },
-        { document: doc },
+        { document: doc, renderTable: renderNestedTable },
       );
 
       if (isFloatingTextBoxBlock(textBoxBlock)) {
