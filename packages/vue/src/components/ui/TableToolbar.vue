@@ -84,6 +84,10 @@ const props = defineProps<{
   theme?: Theme | null;
 }>();
 
+const emit = defineEmits<{
+  (event: "open-table-properties"): void;
+}>();
+
 // Single source of truth for the table-context state the toolbar reads —
 // recomputed on every editor transaction. `isInTable` and the "more"
 // dropdown's gating/active state all derive from this one walk.
@@ -238,9 +242,10 @@ const moreActionMap: Partial<Record<TableAction, [string, ...unknown[]]>> = {
 };
 
 function onMoreAction(action: TableAction) {
-  // Dialog action is a v1.x followup — explicit no-op so the menu
-  // closes cleanly without dispatching a phantom command.
-  if (action === "tableProperties") return;
+  if (action === "tableProperties") {
+    emit("open-table-properties");
+    return;
+  }
   const mapped = moreActionMap[action];
   if (mapped) exec(...mapped);
   else exec(action);

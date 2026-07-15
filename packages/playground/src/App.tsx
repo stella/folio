@@ -75,6 +75,12 @@ export type FolioParityBridge = {
   setupContentControls: () => boolean;
   /** Dispatch a clipboard DOM event and return the matching host callback count. */
   dispatchClipboardEvent: (kind: "copy" | "cut" | "paste") => number;
+  /** Table properties at the live selection, or null outside a table. */
+  getCurrentTableProperties: () => {
+    width: number | null;
+    widthType: string | null;
+    justification: string | null;
+  } | null;
   /** Insert a rows×cols table at the selection (core helper). Returns success. */
   insertTable: (rows: number, cols: number) => boolean;
   /** Count `table` nodes in the live document (0 with no live view). */
@@ -220,6 +226,28 @@ function buildParityBridge(
       }
       view.dom.dispatchEvent(new ClipboardEvent(kind, { bubbles: true, cancelable: true }));
       return getClipboardCallbackCount(kind);
+    },
+    getCurrentTableProperties: () => {
+      const view = liveView();
+      if (!view) {
+        return null;
+      }
+      const { $from } = view.state.selection;
+      for (let depth = $from.depth; depth >= 0; depth--) {
+        const node = $from.node(depth);
+        if (node.type.name !== "table") {
+          continue;
+        }
+        const width = node.attrs["width"];
+        const widthType = node.attrs["widthType"];
+        const justification = node.attrs["justification"];
+        return {
+          width: typeof width === "number" ? width : null,
+          widthType: typeof widthType === "string" ? widthType : null,
+          justification: typeof justification === "string" ? justification : null,
+        };
+      }
+      return null;
     },
     insertTable: (rows, cols) => {
       const view = liveView();

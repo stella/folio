@@ -95,6 +95,7 @@
             :get-commands="getCommands"
             :state-tick="stateTick"
             :theme="theme ?? null"
+            @open-table-properties="showTableProperties = true"
           />
         </template>
         <template v-if="$slots['toolbar-extra'] || toolbarExtra" #toolbar-extra>
@@ -111,15 +112,18 @@
       v-model:show-insert-symbol="showInsertSymbol"
       v-model:show-image-properties="showImageProperties"
       v-model:show-page-setup="showPageSetup"
+      v-model:show-table-properties="showTableProperties"
       :view="activeEditorView"
       :scroll-visible-position-into-view="scrollVisiblePositionIntoView"
       :bookmarks="bookmarks"
       :selected-image-pm-pos="selectedImage?.pmPos ?? null"
       :section-properties="currentSectionProps"
+      :table-properties="currentTableProperties"
       @insert-symbol="handleInsertSymbol"
       @hyperlink-submit="handleHyperlinkSubmit"
       @hyperlink-remove="handleHyperlinkRemove"
       @page-setup-apply="handlePageSetupApply"
+      @table-properties-apply="handleTablePropertiesApply"
     />
 
     <div v-if="parseError" class="docx-editor-vue__error">{{ parseError }}</div>
@@ -403,6 +407,7 @@ import {
   insertTableInView,
   insertTableOfContentsInView,
 } from "@stll/folio-core/prosemirror";
+import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import {
@@ -594,6 +599,7 @@ const showKeyboardShortcuts = ref(false);
 const showInsertSymbol = ref(false);
 const showImageProperties = ref(false);
 const showPageSetup = ref(false);
+const showTableProperties = ref(false);
 const showOutline = ref(props.showOutline);
 const showSidebar = ref(false);
 const activeSidebarItem = ref<string | null>(null);
@@ -977,6 +983,32 @@ const currentSectionProps = computed<SectionProperties | null>(() => {
   return body.finalSectionProperties ?? body.sections?.[0]?.properties ?? null;
 });
 
+const currentTableProperties = computed(() => {
+  void stateTick.value;
+  const view = editorView.value;
+  if (!view) {
+    return {};
+  }
+  const table = getTableContext(view.state).table;
+  if (!table) {
+    return {};
+  }
+  const current: { width?: number; widthType?: string; justification?: string } = {};
+  const width = table.attrs["width"];
+  const widthType = table.attrs["widthType"];
+  const justification = table.attrs["justification"];
+  if (typeof width === "number") {
+    current.width = width;
+  }
+  if (typeof widthType === "string") {
+    current.widthType = widthType;
+  }
+  if (typeof justification === "string") {
+    current.justification = justification;
+  }
+  return current;
+});
+
 // Optional Toolbar props that must be OMITTED (not passed as `undefined`) under
 // exactOptionalPropertyTypes: bind via `v-bind` so an absent value drops the key.
 const toolbarDynamicProps = computed(() => {
@@ -1193,6 +1225,23 @@ function handleMenuAction(action: string): void {
 // it honors the host `onInsertTable` prop or falls back to the core helper.
 function handleMenuTableInsert(rows: number, cols: number): void {
   handleInsertTableAction(rows, cols);
+}
+
+type TablePropertiesUpdate = {
+  width?: number | null;
+  widthType?: string | null;
+  justification?: "left" | "center" | "right" | null;
+};
+
+function handleTablePropertiesApply(properties: TablePropertiesUpdate): void {
+  const view = editorView.value;
+  const factory = getCommands()["setTableProperties"];
+  if (!view || !factory) {
+    return;
+  }
+  const command = factory(properties);
+  command(view.state, (transaction) => view.dispatch(transaction), view);
+  view.focus();
 }
 
 // ---- Loading + lifecycle -------------------------------------------------
