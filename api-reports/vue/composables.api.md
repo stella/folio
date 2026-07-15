@@ -22,6 +22,7 @@ import { FlowBlock } from '@stll/folio-core/layout-engine/types';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { getSelectionRuns } from '@stll/folio-core/managers/ClipboardManager';
+import { HeaderFooterPartKind } from '@stll/folio-core/controller/headerFooterEditorManager';
 import { HiddenProseMirrorCollaboration } from '@stll/folio-core/controller/hiddenEditorManager';
 import { HiddenProseMirrorRemoteSelection } from '@stll/folio-core/controller/hiddenEditorManager';
 import { Layout } from '@stll/folio-core/layout-engine/types';
@@ -91,8 +92,17 @@ export type UseDocxEditorCollaboration = HiddenProseMirrorCollaboration & {
 };
 
 // @public (undocumented)
+export type HeaderFooterSelectionState = {
+    from: number;
+    kind: HeaderFooterPartKind;
+    rId: string;
+    to: number;
+};
+
+// @public (undocumented)
 export type UseDocxEditorOptions = {
     hiddenContainer: Ref<HTMLElement | null>;
+    hiddenHeaderFooterContainer?: Ref<HTMLElement | null>;
     pagesContainer: Ref<HTMLElement | null>;
     readOnly?: MaybeRefOrGetter<boolean>;
     pageGap?: number;
@@ -121,6 +131,7 @@ export type UseDocxEditorReturn = {
     editorView: Ref<EditorView | null>;
     editorState: Ref<EditorState | null>;
     remoteSelections: Ref<HiddenProseMirrorRemoteSelection[]>;
+    headerFooterSelection: Ref<HeaderFooterSelectionState | null>;
     isReady: Ref<boolean>;
     isDirty: Ref<boolean>;
     parseError: Ref<string | null>;
@@ -135,6 +146,8 @@ export type UseDocxEditorReturn = {
     }) => Promise<Blob | null>;
     getDocument: () => Document_2 | null;
     setDocument: (doc: Document_2) => void;
+    getHeaderFooterView: (rId: string) => EditorView | null;
+    syncHeaderFooterViews: () => void;
     getCommands: () => CommandMap;
     focus: () => void;
     reLayout: () => void;
