@@ -289,12 +289,12 @@ const findTableRowInsertion = (
 ): TableRowInsertion | null => {
   const resolved = doc.resolve(blockFrom);
   for (let rowDepth = resolved.depth; rowDepth > 0; rowDepth--) {
-    if (resolved.node(rowDepth).type.spec.tableRole !== "row") {
+    if (resolved.node(rowDepth).type.spec["tableRole"] !== "row") {
       continue;
     }
     const tableDepth = rowDepth - 1;
     const table = resolved.node(tableDepth);
-    if (table.type.spec.tableRole !== "table") {
+    if (table.type.spec["tableRole"] !== "table") {
       return null;
     }
     const map = TableMap.get(table);
