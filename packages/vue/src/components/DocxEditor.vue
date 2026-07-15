@@ -24,18 +24,13 @@
   comment/tracked-change sidebar (`useTrackedChanges` + `useCommentSidebarItems`
   inside `UnifiedSidebar`), and the table context toolbar (`TableToolbar`).
 
-  PORT-BLOCKED (fork has not ported the backing composable/component yet):
-   - externalPlugins / i18n-locale props: not on the fork's `DocxEditorProps`, so
-     `externalPlugins` is `[]` and the locale defaults to `en`.
+  Remaining adapter-specific surfaces:
+   - externalPlugins / i18n-locale props are not on `DocxEditorProps`, so the
+     host plugin list is empty and the locale defaults to `en`.
    - colorMode prop + useColorMode: dark mode is fixed light here.
-   - Comment lifecycle/management (add/reply/resolve): `useCommentManagement` is
-     absent, so the sidebar renders comments/tracked changes but its mutation
-     emits are inert; document comment extraction is not ported either.
-   - Header/footer inline editing, decoration/anonymization overlays, and
-     rulers: not ported, so those chrome affordances stay inert. The title-bar
-     MenuBar is wired (File/Format/Insert/Help), including the insert flow
-     (image/table/page-break/TOC via host props or core view-level helpers);
-     the watermark item stays inert (no watermark dialog ported).
+   - Header/footer inline editing is not available yet. The title-bar MenuBar is
+     wired (File/Format/Insert/Help), including image/table/page-break/TOC.
+     The watermark item remains unavailable until its dialog is implemented.
 -->
 <template>
   <div
@@ -439,6 +434,7 @@ import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
 import { useOutlineSidebar } from "../composables/useOutlineSidebar";
 import { usePageSetupControls } from "../composables/usePageSetupControls";
 import { usePagesPointer } from "../composables/usePagesPointer";
+import { useRemoteSelectionSync } from "../composables/useRemoteSelectionSync";
 import { useSelectionSync } from "../composables/useSelectionSync";
 import { provideDocxPortalClass } from "../composables/usePortalClass";
 import { useTableResize } from "../composables/useTableResize";
@@ -567,8 +563,8 @@ const rulerVisible = computed(() => props.showRuler ?? false);
 const stateTick = ref(0);
 const showFindReplace = ref(false);
 const showHyperlink = ref(false);
-// PORT-BLOCKED: no KeyboardShortcutsDialog component ported yet, so F1 / Ctrl+/
-// toggle inert local state (mirrors the colorMode / externalPlugins stubs above).
+// The keyboard-shortcuts dialog is not available yet, so F1 / Ctrl+/ only
+// preserves the intended open state for the future dialog surface.
 const showKeyboardShortcuts = ref(false);
 const showInsertSymbol = ref(false);
 const showImageProperties = ref(false);
@@ -622,6 +618,7 @@ const {
   editor,
   editorView,
   editorState,
+  remoteSelections,
   isReady,
   isDirty,
   parseError,
@@ -644,8 +641,8 @@ const {
   author: () => props.author,
   password: () => props.password,
   documentKey: () => props.documentKey,
-  // PORT-BLOCKED: no externalPlugins prop on the fork's DocxEditorProps yet.
   externalPlugins: [],
+  collaboration: () => props.collaboration,
   // Anonymization highlights + template directives are driven by the overlay
   // components below; these thread the plugin callbacks and the directive gate.
   onAnonymizationMatchesChange: (matches) => props.onAnonymizationMatchesChange?.(matches),
@@ -761,6 +758,13 @@ const selectionSync = useSelectionSync({
   selectedImage,
   syncCoordinator,
   imageInteracting,
+});
+
+useRemoteSelectionSync({
+  pagesRef,
+  remoteSelections,
+  syncCoordinator,
+  zoom,
 });
 
 const {

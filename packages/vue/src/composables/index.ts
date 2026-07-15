@@ -4,8 +4,7 @@
  * Vue composables mirroring the React `hooks` subpath — history, table
  * selection, find/replace, clipboard, zoom, tracked-changes, visual-line
  * navigation, and the high-level `useDocxEditor` host composable. Only the
- * composables the fork has ported are re-exported (React's `useAutoSave` and
- * `useCommentSidebarItems` have no Vue equivalent yet).
+ * composables the fork has ported are re-exported.
  *
  * @example
  * ```ts

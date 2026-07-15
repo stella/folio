@@ -17,6 +17,7 @@
         :show-toolbar="true"
         :show-ruler="true"
         :initial-zoom="1"
+        :collaboration="collaboration"
       />
     </main>
     <p v-if="status" class="pg-vue-status">{{ status }}</p>
@@ -25,9 +26,25 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
+import {
+  applyAwarenessUpdate,
+  Awareness,
+  encodeAwarenessUpdate,
+} from "y-protocols/awareness";
+import {
+  initProseMirrorDoc,
+  yCursorPlugin,
+  ySyncPlugin,
+  yUndoPlugin,
+} from "y-prosemirror";
+import * as Y from "yjs";
 
 import { DocxEditor, createEmptyDocument, createStellaStyleDocumentPreset } from "@stll/folio-vue";
-import type { DocxEditorRef, Document as FolioDocument } from "@stll/folio-vue";
+import type {
+  DocxEditorCollaboration,
+  DocxEditorRef,
+  Document as FolioDocument,
+} from "@stll/folio-vue";
 
 import type { FolioParityBridge } from "./parityBridge";
 import { buildParityBridge } from "./parityBridge";
@@ -35,20 +52,105 @@ import { buildParityBridge } from "./parityBridge";
 declare global {
   // eslint-disable-next-line no-var
   var __folioParity: FolioParityBridge | undefined;
+  // eslint-disable-next-line no-var
+  var __folioVueCollaboration:
+    | {
+        getSharedText: () => string;
+        showRemoteSelection: () => boolean;
+        wasSeeded: () => boolean;
+      }
+    | undefined;
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
 
 const editorRef = ref<DocxEditorRef | null>(null);
 const documentBuffer = shallowRef<ArrayBuffer | null>(null);
 const currentDocument = shallowRef<FolioDocument | null>(null);
 const status = ref("");
+const collaborationEnabled = new URLSearchParams(window.location.search).has("collaboration");
+const collaborationDocument = collaborationEnabled ? new Y.Doc() : null;
+const collaborationAwareness = collaborationDocument
+  ? new Awareness(collaborationDocument)
+  : null;
+let collaborationWasSeeded = false;
+const remoteCollaborationDocuments: Y.Doc[] = [];
+const remoteCollaborationAwareness: Awareness[] = [];
+const collaboration: DocxEditorCollaboration | undefined =
+  collaborationDocument && collaborationAwareness
+    ? {
+        awareness: collaborationAwareness,
+        onSeeded: () => {
+          collaborationWasSeeded = true;
+        },
+        plugins: [
+          ySyncPlugin(collaborationDocument.getXmlFragment("prosemirror")),
+          yCursorPlugin(collaborationAwareness),
+          yUndoPlugin(),
+        ],
+        shouldSeed: true,
+        yXmlFragment: collaborationDocument.getXmlFragment("prosemirror"),
+      }
+    : undefined;
+
+collaborationAwareness?.setLocalStateField("user", {
+  color: "#2563eb",
+  name: "Vue collaborator",
+});
 
 onMounted(() => {
   void loadFromQuery();
   globalThis.__folioParity = buildParityBridge(() => editorRef.value);
+  if (collaboration) {
+    globalThis.__folioVueCollaboration = {
+      getSharedText: () => {
+        const view = editorRef.value?.getEditor()?.getView();
+        if (!view) {
+          return "";
+        }
+        return initProseMirrorDoc(collaboration.yXmlFragment, view.state.schema).doc.textContent;
+      },
+      showRemoteSelection: () => {
+        if (!globalThis.__folioParity?.selectFirstWord() || !collaborationAwareness) {
+          return false;
+        }
+        const localState = collaborationAwareness.getLocalState();
+        if (!isRecord(localState) || !isRecord(localState["cursor"])) {
+          return false;
+        }
+
+        const remoteDocument = new Y.Doc();
+        const remoteAwareness = new Awareness(remoteDocument);
+        remoteAwareness.setLocalState({
+          cursor: localState["cursor"],
+          user: { color: "#dc2626", name: "Remote collaborator" },
+        });
+        applyAwarenessUpdate(
+          collaborationAwareness,
+          encodeAwarenessUpdate(remoteAwareness, [remoteAwareness.clientID]),
+          "parity-test",
+        );
+        remoteCollaborationDocuments.push(remoteDocument);
+        remoteCollaborationAwareness.push(remoteAwareness);
+        return true;
+      },
+      wasSeeded: () => collaborationWasSeeded,
+    };
+  }
 });
 
 onBeforeUnmount(() => {
   globalThis.__folioParity = undefined;
+  globalThis.__folioVueCollaboration = undefined;
+  collaborationAwareness?.destroy();
+  collaborationDocument?.destroy();
+  for (const awareness of remoteCollaborationAwareness) {
+    awareness.destroy();
+  }
+  for (const document of remoteCollaborationDocuments) {
+    document.destroy();
+  }
 });
 
 async function loadFromQuery(): Promise<void> {

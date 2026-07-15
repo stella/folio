@@ -33,11 +33,18 @@ import type { EditorView } from "prosemirror-view";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
+import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import {
+  collectRemoteSelections,
   createHiddenEditorManager,
   createHiddenEditorState,
 } from "@stll/folio-core/controller/hiddenEditorManager";
-import type { HiddenEditorManager } from "@stll/folio-core/controller/hiddenEditorManager";
+import type {
+  CollaborationModules,
+  HiddenEditorManager,
+  HiddenProseMirrorCollaboration,
+  HiddenProseMirrorRemoteSelection,
+} from "@stll/folio-core/controller/hiddenEditorManager";
 import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
 import type { LayoutOutcome, LayoutRunOptions } from "@stll/folio-core/controller/layoutPipeline";
 import { browserClock, createLayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
@@ -381,6 +388,8 @@ export type UseDocxEditorOptions = {
   author?: MaybeRefOrGetter<string>;
   /** External ProseMirror plugins supplied by the host app. */
   externalPlugins?: Plugin[];
+  /** Reactive Yjs collaboration owner and the ProseMirror binding plugins. */
+  collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | undefined>;
   /**
    * Fires with the anonymization decoration plugin's current match list on
    * mount, term push, and every doc edit. The anonymization plugin is always
@@ -423,6 +432,10 @@ export type UseDocxEditorOptions = {
   onSelectiveSaveTripwire?: ((result: TripwireResult) => void) | undefined;
 };
 
+export type UseDocxEditorCollaboration = HiddenProseMirrorCollaboration & {
+  plugins?: Plugin[] | undefined;
+};
+
 export type UseDocxEditorReturn = {
   /** The headless controller (imperative API + layout access + events). */
   editor: FolioEditor;
@@ -430,6 +443,8 @@ export type UseDocxEditorReturn = {
   editorView: Ref<EditorView | null>;
   /** Latest editor state, updated on each transaction. */
   editorState: Ref<EditorState | null>;
+  /** Remote collaborative cursors decoded into body ProseMirror positions. */
+  remoteSelections: Ref<HiddenProseMirrorRemoteSelection[]>;
   /** True once the hidden view is mounted and a document is loaded. */
   isReady: Ref<boolean>;
   /**
@@ -480,6 +495,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     editorMode,
     author,
     externalPlugins = [],
+    collaboration,
     onAnonymizationMatchesChange,
     showTemplateDirectives,
     onSlashMenuChange,
@@ -499,6 +515,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const docModel = shallowRef<Document | null>(null);
   const editorView = shallowRef<EditorView | null>(null);
   const editorState = shallowRef<EditorState | null>(null);
+  const collaborationModules = shallowRef<CollaborationModules | null>(null);
+  const remoteSelections = shallowRef<HiddenProseMirrorRemoteSelection[]>([]);
   const layout = shallowRef<Layout | null>(null);
   // Latest flow blocks + measures — the range-projection fallback (off-screen /
   // not-yet-painted ranges) needs them; the primary DOM-rect path does not.
@@ -553,6 +571,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     return [
       suggestionPlugin,
       ...externalPlugins,
+      ...(toValue(collaboration)?.plugins ?? []),
       anonymizationPlugin,
       ...(templatePluginsEnabled() ? [templateDirectivesPlugin, templateSlashMenu] : []),
       templatePreviewPlugin,
@@ -717,8 +736,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getStyles: () => docModel.value?.package.styles ?? null,
     getExtensionManager: () => extensionManager,
     getExternalPlugins: buildExternalPlugins,
-    getCollaboration: () => undefined,
-    getCollaborationModules: () => null,
+    getCollaboration: () => toValue(collaboration),
+    getCollaborationModules: () => collaborationModules.value,
     getPrecomputedInitialState: () => null,
     getReadOnly: () => toValue(readOnly),
     getDocumentKey: () => toValue(documentKey),
@@ -740,10 +759,78 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       isReady.value = false;
       onEditorViewReady?.(null);
     },
-    onRemoteSelectionsChange: () => {
-      // Collaboration remote selections are not wired in the Vue adapter yet.
+    onRemoteSelectionsChange: (selections) => {
+      remoteSelections.value = selections;
     },
   });
+
+  const publishRemoteSelections = (): void => {
+    const awareness = toValue(collaboration)?.awareness;
+    const modules = collaborationModules.value;
+    const view = manager.getView();
+    remoteSelections.value =
+      awareness && modules && view ? collectRemoteSelections(view.state, awareness, modules) : [];
+  };
+
+  watch(
+    () => toValue(collaboration),
+    (activeCollaboration, _previousCollaboration, onCleanup) => {
+      remoteSelections.value = [];
+      if (!activeCollaboration) {
+        collaborationModules.value = null;
+        manager.retryViewCreation();
+        manager.syncExternalDocument();
+        return;
+      }
+
+      let cancelled = false;
+      onCleanup(() => {
+        cancelled = true;
+      });
+      collaborationModules.value = null;
+      void loadCollaborationModules().then(
+        (modules) => {
+          if (cancelled) {
+            return;
+          }
+          collaborationModules.value = modules;
+          manager.retryViewCreation();
+          manager.syncExternalDocument();
+          publishRemoteSelections();
+        },
+        (error: unknown) => {
+          if (cancelled) {
+            return;
+          }
+          collaborationModules.value = null;
+          onError?.(error instanceof Error ? error : new Error(String(error)));
+        },
+      );
+    },
+    { immediate: true },
+  );
+
+  watch(
+    () => ({
+      awareness: toValue(collaboration)?.awareness,
+      modules: collaborationModules.value,
+      view: editorView.value,
+    }),
+    ({ awareness, modules, view }, _previous, onCleanup) => {
+      if (!awareness || !modules || !view) {
+        remoteSelections.value = [];
+        return;
+      }
+
+      awareness.on("change", publishRemoteSelections);
+      publishRemoteSelections();
+      onCleanup(() => {
+        awareness.off("change", publishRemoteSelections);
+        remoteSelections.value = [];
+      });
+    },
+    { flush: "post" },
+  );
 
   function handleTransaction(transaction: Transaction, newState: EditorState): void {
     editorState.value = newState;
@@ -876,7 +963,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
    */
   function paintFromPrecomputedState(): void {
     const model = docModel.value;
-    if (!model) {
+    if (!model || toValue(collaboration)) {
       return;
     }
     try {
@@ -1037,6 +1124,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       docChangeTimer = null;
     }
     manager.destroyView();
+    remoteSelections.value = [];
     extensionManager.destroy();
     editorState.value = null;
     layout.value = null;
@@ -1050,6 +1138,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     editor,
     editorView,
     editorState,
+    remoteSelections,
     isReady,
     isDirty,
     parseError,

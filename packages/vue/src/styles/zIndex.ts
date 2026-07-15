@@ -10,6 +10,7 @@
 export const Z_INDEX = {
   selectionOverlay: 10,
   decorationLayer: 11,
+  remoteSelection: 12,
   imageOverlay: 15,
   hfInlineEditor: 10,
   ruler: 30,

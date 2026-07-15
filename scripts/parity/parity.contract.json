@@ -7,6 +7,7 @@
       "author",
       "autoOpenReviewSidebar",
       "className",
+      "collaboration",
       "comments",
       "components",
       "customContextMenuItems",
@@ -68,7 +69,6 @@
       "toolbarExtra"
     ],
     "deferredInVue": {
-      "collaboration": "Yjs collaboration owner is not threaded through the Vue pipeline yet.",
       "showHeaderFooterEditing": "Header/footer inline editing is not ported to Vue."
     },
     "pairedNotes": {
