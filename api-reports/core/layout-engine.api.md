@@ -949,8 +949,8 @@ export type TextBoxBlock = {
         bottom: number;
         left: number;
         right: number;
-    }; /** Paragraph blocks inside the text box */
-    content: ParagraphBlock[]; /** Display mode copied from the ProseMirror text box node. */
+    }; /** Flow blocks inside the text box */
+    content: (ParagraphBlock | TableBlock)[]; /** Display mode copied from the ProseMirror text box node. */
     displayMode?: "inline" | "float" | "block"; /** CSS float direction copied from the ProseMirror text box node. */
     cssFloat?: "left" | "right" | "none"; /** OOXML wrap type for anchored text boxes. */
     wrapType?: ImageWrap["type"]; /** OOXML wrapText direction for anchored text boxes. */
@@ -977,8 +977,8 @@ export type TextBoxFragment = FragmentBase & {
 export type TextBoxMeasure = {
     kind: "textBox";
     width: number;
-    height: number; /** Pre-measured inner paragraph measures (avoids re-measuring during render) */
-    innerMeasures: ParagraphMeasure[];
+    height: number; /** Pre-measured inner content (avoids re-measuring during render) */
+    innerMeasures: (ParagraphMeasure | TableMeasure)[];
 };
 
 // @public

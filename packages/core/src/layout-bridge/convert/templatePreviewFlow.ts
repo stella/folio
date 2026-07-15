@@ -122,10 +122,13 @@ function transformTextBox(
   mode: TemplatePreviewFlowOptions["mode"],
 ): TextBoxBlock {
   let changed = false;
-  const content: ParagraphBlock[] = [];
-  for (const paragraph of block.content) {
-    const transformed = transformParagraph(paragraph, entries, mode);
-    changed ||= transformed !== paragraph;
+  const content: TextBoxBlock["content"] = [];
+  for (const contentBlock of block.content) {
+    const transformed =
+      contentBlock.kind === "table"
+        ? transformTable(contentBlock, entries, mode)
+        : transformParagraph(contentBlock, entries, mode);
+    changed ||= transformed !== contentBlock;
     content.push(transformed);
   }
   return changed ? { ...block, content } : block;

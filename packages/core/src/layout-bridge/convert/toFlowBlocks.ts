@@ -2532,14 +2532,18 @@ function convertTextBoxNode(
   opts: ToFlowBlocksOptions,
 ): TextBoxBlock {
   const attrs = expectTextBoxAttrs(node);
-  const contentBlocks: ParagraphBlock[] = [];
+  const contentBlocks: (ParagraphBlock | TableBlock)[] = [];
 
-  // Convert child paragraphs inside the text box
+  // Convert child blocks inside the text box
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child, offset) => {
+    const childPos = startPos + 1 + offset;
     if (child.type.name === "paragraph") {
-      const block = convertParagraph(child, startPos + 1 + offset, opts);
-      contentBlocks.push(block);
+      contentBlocks.push(convertParagraph(child, childPos, opts));
+      return;
+    }
+    if (child.type.name === "table") {
+      contentBlocks.push(convertTable(child, childPos, opts));
     }
   });
 

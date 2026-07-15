@@ -238,7 +238,7 @@ function renderCellContent({
         paragraphBlock,
         paragraphMeasure,
         cellContext,
-        { document: doc },
+        { document: doc, renderTable: renderNestedTable },
       );
 
       fragEl.style.position = "relative";
@@ -383,7 +383,7 @@ function tableHasFloatingCellContent(block: TableBlock): boolean {
 /**
  * Render a nested table (within a cell)
  */
-function renderNestedTable(
+export function renderNestedTable(
   block: TableBlock,
   measure: TableMeasure,
   context: RenderContext,

@@ -28,6 +28,7 @@ import {
 import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { Footnote, StyleDefinitions, Theme } from "../../types/document";
 import { measureParagraph } from "../engine/measuring";
+import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import { toFlowBlocks } from "./toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./toFlowBlocks";
 
@@ -192,34 +193,40 @@ function remapNoteMarkerBlock(block: FlowBlock, maps: NoteDisplayNumberMaps): Fl
     return remapNoteMarkerParagraph(block, maps);
   }
   if (block.kind === "table") {
-    let tableChanged = false;
-    const rows = block.rows.map((row) => {
-      let rowChanged = false;
-      const cells = row.cells.map((cell) => {
-        let cellChanged = false;
-        const cellBlocks = cell.blocks.map((cellBlock) => {
-          const remapped = remapNoteMarkerBlock(cellBlock, maps);
-          cellChanged ||= remapped !== cellBlock;
-          return remapped;
-        });
-        return cellChanged ? { ...cell, blocks: cellBlocks } : cell;
-      });
-      rowChanged = cells.some((cell, index) => cell !== row.cells[index]);
-      tableChanged ||= rowChanged;
-      return rowChanged ? { ...row, cells } : row;
-    });
-    return tableChanged ? { ...block, rows } : block;
+    return remapNoteMarkerTable(block, maps);
   }
   if (block.kind === "textBox") {
     let boxChanged = false;
-    const content = block.content.map((paragraph) => {
-      const remapped = remapNoteMarkerParagraph(paragraph, maps);
-      boxChanged ||= remapped !== paragraph;
+    const content = block.content.map((contentBlock) => {
+      const remapped =
+        contentBlock.kind === "table"
+          ? remapNoteMarkerTable(contentBlock, maps)
+          : remapNoteMarkerParagraph(contentBlock, maps);
+      boxChanged ||= remapped !== contentBlock;
       return remapped;
     });
     return boxChanged ? { ...block, content } : block;
   }
   return block;
+}
+
+function remapNoteMarkerTable(block: TableBlock, maps: NoteDisplayNumberMaps): TableBlock {
+  let tableChanged = false;
+  const rows = block.rows.map((row) => {
+    const cells = row.cells.map((cell) => {
+      let cellChanged = false;
+      const cellBlocks = cell.blocks.map((cellBlock) => {
+        const remapped = remapNoteMarkerBlock(cellBlock, maps);
+        cellChanged ||= remapped !== cellBlock;
+        return remapped;
+      });
+      return cellChanged ? { ...cell, blocks: cellBlocks } : cell;
+    });
+    const rowChanged = cells.some((cell, index) => cell !== row.cells[index]);
+    tableChanged ||= rowChanged;
+    return rowChanged ? { ...row, cells } : row;
+  });
+  return tableChanged ? { ...block, rows } : block;
 }
 
 function remapNoteMarkerParagraph(
@@ -388,13 +395,13 @@ function measureFootnoteBlock(block: FlowBlock, contentWidth: number): Measure {
       const margins = block.margins ?? TEXTBOX_MARGINS;
       const width = block.width;
       const innerWidth = Math.max(1, width - margins.left - margins.right);
-      const innerMeasures = block.content.map((paragraph) =>
-        measureParagraph(paragraph, innerWidth),
-      );
-      let contentHeight = 0;
-      for (const measure of innerMeasures) {
-        contentHeight += measure.totalHeight;
-      }
+      const innerMeasures = block.content.map((contentBlock) => {
+        if (contentBlock.kind === "table") {
+          return measureFootnoteTable(contentBlock, innerWidth);
+        }
+        return measureParagraph(contentBlock, innerWidth);
+      });
+      const contentHeight = layoutTextBoxContent(block.content, innerMeasures).totalHeight;
 
       return {
         kind: "textBox",
@@ -627,24 +634,32 @@ function applyFootnoteBlockPresentation(block: FlowBlock): FlowBlock {
     return applyFootnoteParagraphPresentation(block);
   }
   if (block.kind === "table") {
-    return {
-      ...block,
-      rows: block.rows.map((row) => ({
-        ...row,
-        cells: row.cells.map((cell) => ({
-          ...cell,
-          blocks: cell.blocks.map(applyFootnoteBlockPresentation),
-        })),
-      })),
-    };
+    return applyFootnoteTablePresentation(block);
   }
   if (block.kind === "textBox") {
     return {
       ...block,
-      content: block.content.map(applyFootnoteParagraphPresentation),
+      content: block.content.map((contentBlock) =>
+        contentBlock.kind === "table"
+          ? applyFootnoteTablePresentation(contentBlock)
+          : applyFootnoteParagraphPresentation(contentBlock),
+      ),
     };
   }
   return block;
+}
+
+function applyFootnoteTablePresentation(block: TableBlock): TableBlock {
+  return {
+    ...block,
+    rows: block.rows.map((row) => ({
+      ...row,
+      cells: row.cells.map((cell) => ({
+        ...cell,
+        blocks: cell.blocks.map(applyFootnoteBlockPresentation),
+      })),
+    })),
+  };
 }
 
 function applyFootnoteParagraphPresentation(block: ParagraphBlock): ParagraphBlock {

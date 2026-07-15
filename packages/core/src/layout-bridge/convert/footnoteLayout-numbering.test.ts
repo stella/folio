@@ -177,7 +177,11 @@ describe("remapNoteMarkerText", () => {
     if (remappedBox?.kind !== "textBox") {
       throw new Error("Expected a text box block");
     }
-    expect(remappedBox.content.at(0)?.runs.at(0)).toMatchObject({ text: "2", footnoteRefId: 9 });
+    const boxParagraph = remappedBox.content.at(0);
+    if (boxParagraph?.kind !== "paragraph") {
+      throw new Error("Expected a paragraph in the text box");
+    }
+    expect(boxParagraph.runs.at(0)).toMatchObject({ text: "2", footnoteRefId: 9 });
   });
 
   test("remaps endnote markers independently of footnote markers", () => {

@@ -90,4 +90,55 @@ describe("textBoxModule", () => {
     expect(el.style["padding"]).toBe("4px 6px 4px 6px");
     expect(el.dataset["blockId"]).toBe("tb1");
   });
+
+  test("renders nested tables in text box content", () => {
+    const fragment: TextBoxFragment = {
+      kind: "textBox",
+      blockId: "tb-table",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 100,
+    };
+    const block: TextBoxBlock = {
+      kind: "textBox",
+      id: "tb-table",
+      width: 200,
+      height: 100,
+      margins: { top: 0, right: 0, bottom: 0, left: 0 },
+      content: [
+        {
+          kind: "table",
+          id: "nested-table",
+          rows: [],
+        },
+      ],
+    };
+    const measure: TextBoxMeasure = {
+      kind: "textBox",
+      width: 200,
+      height: 100,
+      innerMeasures: [
+        {
+          kind: "table",
+          rows: [],
+          columnWidths: [],
+          totalWidth: 160,
+          totalHeight: 20,
+        },
+      ],
+    };
+
+    const el = textBoxModule.render({
+      fragment,
+      block,
+      measure,
+      context: ctx,
+      doc: fakeDocument,
+    }) as unknown as FakeElement;
+
+    expect(el.children).toHaveLength(1);
+    expect(el.children.at(0)?.className).toContain("layout-table");
+    expect(el.children.at(0)?.dataset["blockId"]).toBe("nested-table");
+  });
 });

@@ -5,7 +5,13 @@ import {
   fixedCharWidth,
   withFakeTextMeasure,
 } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
-import type { FlowBlock, ParagraphBlock, TableBlock, TextRun } from "../../layout-engine/types";
+import type {
+  FlowBlock,
+  ParagraphBlock,
+  TableBlock,
+  TextBoxBlock,
+  TextRun,
+} from "../../layout-engine/types";
 import { applyTemplatePreviewToBlocks, templatePreviewDirtyRange } from "./templatePreviewFlow";
 
 const textRun = (text: string, pmStart: number, extra: Partial<TextRun> = {}): TextRun => ({
@@ -147,7 +153,7 @@ describe("applyTemplatePreviewToBlocks", () => {
     expect(runTexts(block!)).toEqual(["v"]);
   });
 
-  test("substitutes markers inside table cell paragraphs", () => {
+  test("substitutes markers inside a text box table cell", () => {
     const table: TableBlock = {
       kind: "table",
       id: "t1",
@@ -165,15 +171,25 @@ describe("applyTemplatePreviewToBlocks", () => {
         },
       ],
     };
-    const [block] = applyTemplatePreviewToBlocks([table], {
+    const textBox: TextBoxBlock = {
+      kind: "textBox",
+      id: "tb1",
+      width: 200,
+      content: [table],
+    };
+    const [block] = applyTemplatePreviewToBlocks([textBox], {
       entries: [{ from: 3, to: 8, value: "cell value" }],
       mode: "plain",
     });
 
-    if (block!.kind !== "table") {
-      throw new Error("expected table");
+    if (block?.kind !== "textBox") {
+      throw new Error("expected text box");
     }
-    const cellParagraph = block!.rows[0]!.cells[0]!.blocks[0]!;
+    const contentBlock = block.content.at(0);
+    if (contentBlock?.kind !== "table") {
+      throw new Error("expected table in text box");
+    }
+    const cellParagraph = contentBlock.rows[0]!.cells[0]!.blocks[0]!;
     expect(runTexts(cellParagraph)).toEqual(["cell value"]);
   });
 

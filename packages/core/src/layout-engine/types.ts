@@ -718,7 +718,7 @@ export const DEFAULT_TEXTBOX_MARGINS = { top: 4, bottom: 4, left: 7, right: 7 };
 export const DEFAULT_TEXTBOX_WIDTH = 200;
 
 /**
- * Text box block — positioned container with paragraph content.
+ * Text box block — positioned container with block content.
  */
 export type TextBoxBlock = {
   kind: "textBox";
@@ -739,8 +739,8 @@ export type TextBoxBlock = {
   outlineStyle?: OutlineStyleAttr;
   /** Internal padding */
   margins?: { top: number; bottom: number; left: number; right: number };
-  /** Paragraph blocks inside the text box */
-  content: ParagraphBlock[];
+  /** Flow blocks inside the text box */
+  content: (ParagraphBlock | TableBlock)[];
   /** Display mode copied from the ProseMirror text box node. */
   displayMode?: "inline" | "float" | "block";
   /** CSS float direction copied from the ProseMirror text box node. */
@@ -940,8 +940,8 @@ export type TextBoxMeasure = {
   kind: "textBox";
   width: number;
   height: number;
-  /** Pre-measured inner paragraph measures (avoids re-measuring during render) */
-  innerMeasures: ParagraphMeasure[];
+  /** Pre-measured inner content (avoids re-measuring during render) */
+  innerMeasures: (ParagraphMeasure | TableMeasure)[];
 };
 
 /**

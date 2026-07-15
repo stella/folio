@@ -122,6 +122,35 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(textBox.distRight).toBeCloseTo(9.6);
   });
 
+  test("preserves tables in text box source order and position space", () => {
+    const first = schema.node("paragraph", null, [schema.text("Before")]);
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Cell")])]),
+      ]),
+    ]);
+    const last = schema.node("paragraph", null, [schema.text("After")]);
+    const doc = schema.node("doc", null, [
+      schema.node("textBox", { width: 240 }, [first, table, last]),
+    ]);
+
+    const textBox = toFlowBlocks(doc).at(0);
+    if (textBox?.kind !== "textBox") {
+      throw new Error("Expected text box block");
+    }
+
+    expect(textBox.content.map((block) => block.kind)).toEqual(["paragraph", "table", "paragraph"]);
+    expect(textBox.content.map((block) => block.pmStart)).toEqual([
+      1,
+      1 + first.nodeSize,
+      1 + first.nodeSize + table.nodeSize,
+    ]);
+    expect(textBox.content.at(1)).toMatchObject({
+      kind: "table",
+      rows: [{ cells: [{ blocks: [{ kind: "paragraph" }] }] }],
+    });
+  });
+
   test("keeps drop-cap frames in normal paragraph flow", () => {
     const blocks = toFlowBlocks(
       schema.node("doc", null, [
@@ -366,7 +395,11 @@ describe("toFlowBlocks paragraph formatting", () => {
         vertical: { relativeTo: "page", posOffset: 914_400 },
       },
     });
-    expect(framed.content.map((paragraph) => paragraph.runs.at(0))).toMatchObject([
+    expect(
+      framed.content.map((contentBlock) =>
+        contentBlock.kind === "paragraph" ? contentBlock.runs.at(0) : undefined,
+      ),
+    ).toMatchObject([
       { kind: "text", text: "first" },
       { kind: "text", text: "second" },
     ]);
@@ -1733,7 +1766,12 @@ describe("toFlowBlocks list numbering", () => {
     if (textBox?.kind !== "textBox") {
       throw new Error("Expected textBox block");
     }
-    expect(textBox.content.at(0)?.attrs?.listMarker).toBe("2.");
+    const contentBlock = textBox.content.at(0);
+    expect(contentBlock?.kind).toBe("paragraph");
+    if (contentBlock?.kind !== "paragraph") {
+      throw new Error("Expected paragraph in text box");
+    }
+    expect(contentBlock.attrs?.listMarker).toBe("2.");
   });
 
   test("carries anchored text-box position into flow blocks", () => {

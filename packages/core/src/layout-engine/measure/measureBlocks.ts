@@ -34,7 +34,7 @@ import {
   getFirstAvailableColumn,
   getTableCellVerticalBorderHeight,
 } from "./tableCellGrid";
-import { layoutTextBoxParagraphs } from "./textBoxParagraphLayout";
+import { layoutTextBoxContent } from "./textBoxParagraphLayout";
 
 /**
  * Pseudo-infinite measurement width (px) used for `w:noWrap` table cells so
@@ -822,10 +822,13 @@ export function measureTextBoxBlock(
 ): TextBoxMeasure {
   const margins = tb.margins ?? DEFAULT_TEXTBOX_MARGINS;
   const innerWidth = tb.width - margins.left - margins.right;
-  const innerMeasures = tb.content.map((p) =>
-    measureParagraph(p, innerWidth, fieldValues ? { fieldValues } : undefined),
-  );
-  const contentHeight = layoutTextBoxParagraphs(tb.content, innerMeasures).totalHeight;
+  const innerMeasures = tb.content.map((block) => {
+    if (block.kind === "table") {
+      return measureTableBlock(block, innerWidth, fieldValues);
+    }
+    return measureParagraph(block, innerWidth, fieldValues ? { fieldValues } : undefined);
+  });
+  const contentHeight = layoutTextBoxContent(tb.content, innerMeasures).totalHeight;
   const contentBoxHeight = contentHeight + margins.top + margins.bottom;
   const totalHeight =
     tb.autoFit === "shape"

@@ -144,10 +144,13 @@ const resolveParagraphSequenceSpacing = (
   };
 };
 
-const resolveParagraphSpacingSequence = (blocks: ParagraphBlock[]): ParagraphBlock[] => {
+const resolveTextBoxContentSpacing = (blocks: TextBoxBlock["content"]): TextBoxBlock["content"] => {
   let changed = false;
   const resolved = blocks.map((block, index) => {
-    const next = resolveParagraphSequenceSpacing(blocks, index, block);
+    const next =
+      block.kind === "table"
+        ? resolveTableSpacing(block)
+        : resolveParagraphSequenceSpacing(blocks, index, block);
     if (next !== block) {
       changed = true;
     }
@@ -178,7 +181,7 @@ const resolveTableSpacing = (block: TableBlock): TableBlock => {
 };
 
 const resolveTextBoxSpacing = (block: TextBoxBlock): TextBoxBlock => {
-  const content = resolveParagraphSpacingSequence(block.content);
+  const content = resolveTextBoxContentSpacing(block.content);
   if (content === block.content) {
     return block;
   }

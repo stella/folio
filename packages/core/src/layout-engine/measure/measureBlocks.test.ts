@@ -50,6 +50,51 @@ describe("measureBlock dispatch", () => {
 });
 
 describe("text box fitting", () => {
+  test("measures tables as part of shape-fitted text box content", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "inner-table",
+        columnWidths: [100],
+        rows: [
+          {
+            cells: [
+              {
+                blocks: [para("cell-paragraph", "Cell content")],
+              },
+            ],
+          },
+        ],
+      };
+      const block: TextBoxBlock = {
+        kind: "textBox",
+        id: "box",
+        width: 120,
+        height: 1,
+        autoFit: "shape",
+        margins: { top: 2, right: 10, bottom: 2, left: 10 },
+        content: [para("before", "Before"), table, para("after", "After")],
+      };
+
+      const measure = measureBlock(block, 500);
+      if (measure.kind !== "textBox") {
+        throw new Error("Expected text box measure");
+      }
+
+      expect(measure.innerMeasures.map((innerMeasure) => innerMeasure.kind)).toEqual([
+        "paragraph",
+        "table",
+        "paragraph",
+      ]);
+      const tableMeasure = measure.innerMeasures.at(1);
+      expect(tableMeasure?.kind).toBe("table");
+      if (tableMeasure?.kind !== "table") {
+        return;
+      }
+      expect(measure.height).toBeGreaterThan(tableMeasure.totalHeight);
+    }, fakeMeasure);
+  });
+
   test("shape fitting expands past the authored height without shrinking a larger box", () => {
     withFakeTextMeasure(() => {
       const fixed: TextBoxBlock = {

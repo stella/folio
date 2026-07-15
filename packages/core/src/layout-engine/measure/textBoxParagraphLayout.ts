@@ -6,37 +6,56 @@ import {
   getParagraphSpacingAfter,
   getParagraphSpacingBefore,
 } from "../paragraphSpacing";
-import type { ParagraphBlock, ParagraphMeasure } from "../types";
+import type { ParagraphBlock, ParagraphMeasure, TableBlock, TableMeasure } from "../types";
 
-export type TextBoxParagraphPlacement = {
+export type TextBoxContentPlacement = {
   leadingSpacing: number;
   contentHeight: number;
 };
 
-export type TextBoxParagraphLayout = {
-  placements: TextBoxParagraphPlacement[];
+export type TextBoxContentLayout = {
+  placements: TextBoxContentPlacement[];
   totalHeight: number;
 };
 
+type TextBoxContentBlock = ParagraphBlock | TableBlock;
+type TextBoxContentMeasure = ParagraphMeasure | TableMeasure;
+
 /**
- * Lay out a text box's paragraph story as one unpaginated flow. Adjacent
+ * Lay out a text box's block story as one unpaginated flow. Adjacent paragraph
  * before/after spacing collapses to the larger value, matching body flow.
  */
-export function layoutTextBoxParagraphs(
-  blocks: readonly ParagraphBlock[],
-  measures: readonly ParagraphMeasure[],
-): TextBoxParagraphLayout {
+export function layoutTextBoxContent(
+  blocks: readonly TextBoxContentBlock[],
+  measures: readonly TextBoxContentMeasure[],
+): TextBoxContentLayout {
   if (blocks.length !== measures.length) {
-    panic("layoutTextBoxParagraphs: block and measure counts must match");
+    panic("layoutTextBoxContent: block and measure counts must match");
   }
 
-  const placements: TextBoxParagraphPlacement[] = [];
+  const placements: TextBoxContentPlacement[] = [];
   let totalHeight = 0;
   let trailingSpacing = 0;
 
   for (let index = 0; index < blocks.length; index += 1) {
     const block = blocks[index]!; // SAFETY: index < blocks.length
     const measure = measures[index]!; // SAFETY: equal lengths checked above
+
+    if (block.kind === "table") {
+      if (measure.kind !== "table") {
+        panic("layoutTextBoxContent: block and measure kinds must match");
+      }
+      const leadingSpacing = trailingSpacing;
+      const contentHeight = measure.totalHeight;
+      placements.push({ leadingSpacing, contentHeight });
+      totalHeight += leadingSpacing + contentHeight;
+      trailingSpacing = 0;
+      continue;
+    }
+
+    if (measure.kind !== "paragraph") {
+      panic("layoutTextBoxContent: block and measure kinds must match");
+    }
 
     const leadingSpacing = collapseParagraphSpacing({
       before: getParagraphSpacingBefore(block),

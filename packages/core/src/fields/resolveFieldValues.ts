@@ -363,12 +363,8 @@ function collectFieldRuns(block: FlowBlock, out: FieldRun[]): void {
       }
     }
   } else if (block.kind === "textBox") {
-    for (const paragraph of block.content) {
-      for (const run of paragraph.runs) {
-        if (run.kind === "field") {
-          out.push(run);
-        }
-      }
+    for (const child of block.content) {
+      collectFieldRuns(child, out);
     }
   }
 }

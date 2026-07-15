@@ -56,7 +56,7 @@ import type { BlockLookup } from "./index";
 import { renderFragment } from "./renderFragment";
 import { applyImageVisualAttrs, hasImageVisualAttrs, renderImageFragment } from "./renderImage";
 import { renderParagraphFragment } from "./renderParagraph";
-import { renderTableFragment } from "./renderTable";
+import { renderNestedTable, renderTableFragment } from "./renderTable";
 import { renderTextBoxFragment } from "./renderTextBox";
 import { emuToPixels, isFloatingImageRun, isTextWrappingFloatingImageRun } from "./renderUtils";
 import type { RenderContext } from "./renderUtils";
@@ -1155,6 +1155,7 @@ function renderHeaderFooterContent(
       };
       const fragEl = renderTextBoxFragment(syntheticFragment, block, measure, hfContext, {
         document: doc,
+        renderTable: renderNestedTable,
       });
       const textBoxTop = block.position
         ? resolveHeaderFooterFloatTop(
@@ -1433,6 +1434,7 @@ function renderFootnoteBlock(
     };
     const element = renderTextBoxFragment(fragment, renderBlock, measure, context, {
       document: doc,
+      renderTable: renderNestedTable,
     });
     positionFootnoteBlock(element, y, measure.width, measure.height);
     return element;
@@ -1446,11 +1448,7 @@ function stripFootnotePmAnchors(block: FlowBlock): FlowBlock {
     case "paragraph":
       return stripFootnoteParagraphPmAnchors(block);
     case "table": {
-      const { pmStart: _pmStart, pmEnd: _pmEnd, ...table } = block;
-      return {
-        ...table,
-        rows: table.rows.map(stripFootnoteTableRowPmAnchors),
-      };
+      return stripFootnoteTablePmAnchors(block);
     }
     case "image": {
       const { pmStart: _pmStart, pmEnd: _pmEnd, ...image } = block;
@@ -1460,7 +1458,11 @@ function stripFootnotePmAnchors(block: FlowBlock): FlowBlock {
       const { pmStart: _pmStart, pmEnd: _pmEnd, ...textBox } = block;
       return {
         ...textBox,
-        content: textBox.content.map(stripFootnoteParagraphPmAnchors),
+        content: textBox.content.map((contentBlock) =>
+          contentBlock.kind === "table"
+            ? stripFootnoteTablePmAnchors(contentBlock)
+            : stripFootnoteParagraphPmAnchors(contentBlock),
+        ),
       };
     }
     case "pageBreak":
@@ -1473,6 +1475,14 @@ function stripFootnotePmAnchors(block: FlowBlock): FlowBlock {
     default:
       return block;
   }
+}
+
+function stripFootnoteTablePmAnchors(block: TableBlock): TableBlock {
+  const { pmStart: _pmStart, pmEnd: _pmEnd, ...table } = block;
+  return {
+    ...table,
+    rows: table.rows.map(stripFootnoteTableRowPmAnchors),
+  };
 }
 
 function stripFootnoteTableRowPmAnchors(row: TableRow): TableRow {
@@ -1914,7 +1924,7 @@ export function renderPage(
           blockData.block as TextBoxBlock,
           blockData.measure as TextBoxMeasure,
           fragmentContext,
-          { document: doc },
+          { document: doc, renderTable: renderNestedTable },
         );
         prevParagraphBorders = undefined;
       } else {

@@ -144,10 +144,11 @@ describe("resolveEffectiveParagraphSpacingTree", () => {
         ?.cells.at(0)
         ?.blocks.map((block) => block.attrs?.spacing),
     ).toEqual([{ after: 0 }, { before: 0 }]);
-    expect(resolvedTextBox.content.map((block) => block.attrs?.spacing)).toEqual([
-      { after: 0 },
-      { before: 0 },
-    ]);
+    expect(
+      resolvedTextBox.content.map((block) =>
+        block.kind === "paragraph" ? block.attrs?.spacing : undefined,
+      ),
+    ).toEqual([{ after: 0 }, { before: 0 }]);
     expect(tableFirst.attrs?.spacing?.after).toBe(8);
     expect(textBoxFirst.attrs?.spacing?.after).toBe(9);
   });

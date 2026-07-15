@@ -5,12 +5,20 @@
  * - Background fill color
  * - Border/outline
  * - Internal padding (margins)
- * - Paragraph content inside the box (using pre-measured data)
+ * - Block content inside the box (using pre-measured data)
  */
 
+import { panic } from "better-result";
+
 import { DEFAULT_TEXTBOX_MARGINS } from "../layout-engine/types";
-import type { TextBoxFragment, TextBoxBlock, TextBoxMeasure } from "../layout-engine/types";
-import { layoutTextBoxParagraphs } from "../layout-engine/measure/textBoxParagraphLayout";
+import type {
+  TableBlock,
+  TableMeasure,
+  TextBoxFragment,
+  TextBoxBlock,
+  TextBoxMeasure,
+} from "../layout-engine/types";
+import { layoutTextBoxContent } from "../layout-engine/measure/textBoxParagraphLayout";
 import { renderParagraphFragment } from "./renderParagraph";
 import type { RenderContext } from "./renderUtils";
 
@@ -26,6 +34,12 @@ export const TEXTBOX_CLASS_NAMES = {
  */
 export type RenderTextBoxFragmentOptions = {
   document?: Document;
+  renderTable?: (
+    block: TableBlock,
+    measure: TableMeasure,
+    context: RenderContext,
+    document: Document,
+  ) => HTMLElement;
 };
 
 /**
@@ -75,34 +89,51 @@ export function renderTextBoxFragment(
     containerEl.dataset["pmEnd"] = String(fragment.pmEnd);
   }
 
-  // Render inner paragraph content using pre-measured data
+  // Render inner content using pre-measured data
   const innerWidth = fragment.width - margins.left - margins.right;
-  const paragraphLayout = layoutTextBoxParagraphs(block.content, measure.innerMeasures);
+  const contentLayout = layoutTextBoxContent(block.content, measure.innerMeasures);
 
   for (let i = 0; i < block.content.length; i++) {
-    const paraBlock = block.content[i];
-    const paraMeasure = measure.innerMeasures[i];
-    const placement = paragraphLayout.placements[i];
-    if (!paraBlock || !paraMeasure || !placement) {
+    const contentBlock = block.content[i];
+    const contentMeasure = measure.innerMeasures[i];
+    const placement = contentLayout.placements[i];
+    if (!contentBlock || !contentMeasure || !placement) {
+      continue;
+    }
+
+    if (contentBlock.kind === "table" && contentMeasure.kind === "table") {
+      if (!options.renderTable) {
+        panic("renderTextBoxFragment: a nested table renderer is required for table content");
+      }
+      const tableEl = options.renderTable(contentBlock, contentMeasure, context, doc);
+      tableEl.style.marginTop = `${placement.leadingSpacing}px`;
+      containerEl.append(tableEl);
+      continue;
+    }
+
+    if (contentBlock.kind !== "paragraph" || contentMeasure.kind !== "paragraph") {
       continue;
     }
 
     const paraFragment = {
       kind: "paragraph" as const,
-      blockId: paraBlock.id,
+      blockId: contentBlock.id,
       x: 0,
       y: 0,
       width: innerWidth,
       height: placement.contentHeight,
-      ...(paraBlock.pmStart !== undefined ? { pmStart: paraBlock.pmStart } : {}),
-      ...(paraBlock.pmEnd !== undefined ? { pmEnd: paraBlock.pmEnd } : {}),
+      ...(contentBlock.pmStart !== undefined ? { pmStart: contentBlock.pmStart } : {}),
+      ...(contentBlock.pmEnd !== undefined ? { pmEnd: contentBlock.pmEnd } : {}),
       fromLine: 0,
-      toLine: paraMeasure.lines.length,
+      toLine: contentMeasure.lines.length,
     };
 
-    const prevBorders = block.content[i - 1]?.attrs?.borders;
-    const nextBorders = block.content[i + 1]?.attrs?.borders;
-    const paraEl = renderParagraphFragment(paraFragment, paraBlock, paraMeasure, context, {
+    const previousBlock = block.content[i - 1];
+    const nextBlock = block.content[i + 1];
+    const prevBorders =
+      previousBlock?.kind === "paragraph" ? previousBlock.attrs?.borders : undefined;
+    const nextBorders = nextBlock?.kind === "paragraph" ? nextBlock.attrs?.borders : undefined;
+    const paraEl = renderParagraphFragment(paraFragment, contentBlock, contentMeasure, context, {
       document: doc,
       ...(prevBorders !== undefined ? { prevBorders } : {}),
       ...(nextBorders !== undefined ? { nextBorders } : {}),
