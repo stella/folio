@@ -5,7 +5,13 @@
   ones resolve `dialogs.findReplace.*`.
 -->
 <template>
-  <div v-if="isOpen" class="find-replace-dialog" @mousedown.stop @keydown.stop>
+  <div
+    v-if="isOpen"
+    class="find-replace-dialog"
+    data-testid="find-replace-dialog"
+    @mousedown.stop
+    @keydown.stop
+  >
     <div class="find-replace-dialog__header">
       <span class="find-replace-dialog__title">{{
         replaceMode ? t("findReplace.findAndReplace") : t("findReplace.find")
@@ -28,6 +34,7 @@
           ref="searchInputRef"
           v-model="searchText"
           class="find-replace-dialog__input"
+          data-testid="find-input"
           :placeholder="t('findReplace.findPlaceholder')"
           :aria-label="t('findReplace.findText')"
           @keydown="handleSearchKeyDown"
@@ -78,6 +85,7 @@
         </label>
         <FolioButton
           class="find-replace-dialog__toggle"
+          data-testid="find-replace-toggle"
           variant="ghost"
           size="xs"
           :class="{ active: replaceMode }"
@@ -93,6 +101,7 @@
         <FolioInput
           v-model="replaceText"
           class="find-replace-dialog__input"
+          data-testid="replace-input"
           :placeholder="t('findReplace.replacePlaceholder')"
           :aria-label="t('findReplace.replaceText')"
           @keydown.enter.prevent="handleReplace"
@@ -100,6 +109,7 @@
         <FolioButton
           variant="ghost"
           size="xs"
+          data-testid="replace-current"
           :title="t('findReplace.replaceCurrent')"
           @mousedown.prevent="handleReplace"
         >
@@ -108,6 +118,7 @@
         <FolioButton
           variant="ghost"
           size="xs"
+          data-testid="replace-all"
           :title="t('findReplace.replaceAll')"
           @mousedown.prevent="handleReplaceAll"
         >
@@ -119,11 +130,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from "vue";
+import { computed, nextTick, ref, toRef, watch } from "vue";
 import type { EditorView } from "prosemirror-view";
-import { TextSelection } from "prosemirror-state";
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
+import { useFindReplace } from "../../composables/useFindReplace";
 
 const { t } = useTranslation();
 
@@ -143,16 +154,25 @@ const emit = defineEmits<{
 }>();
 
 const searchInputRef = ref<HTMLInputElement | null>(null);
-const searchText = ref("");
-const replaceText = ref("");
-const matchCase = ref(false);
-const matchWholeWord = ref(false);
 const replaceMode = ref(false);
-
-// Match state
-type Match = { from: number; to: number };
-const matches = ref<Match[]>([]);
-const currentIndex = ref(-1);
+const {
+  searchText,
+  replaceText,
+  options,
+  matches,
+  currentIndex,
+  performSearch,
+  findNext,
+  findPrevious,
+  replaceCurrent: handleReplace,
+  replaceAll: handleReplaceAll,
+  clear: clearHighlights,
+} = useFindReplace({
+  editorView: toRef(props, "view"),
+  scrollVisiblePositionIntoView: (pmPos) => props.scrollVisiblePositionIntoView?.(pmPos),
+});
+const matchCase = toRef(options, "matchCase");
+const matchWholeWord = toRef(options, "matchWholeWord");
 
 const matchCountText = computed(() => {
   if (!searchText.value.trim()) return "";
@@ -183,156 +203,6 @@ watch(
 function close() {
   clearHighlights();
   emit("close");
-}
-
-/**
- * Search through PM doc using textBetween to get accurate positions.
- * We walk each text block and find matches within it.
- */
-function performSearch() {
-  matches.value = [];
-  currentIndex.value = -1;
-
-  const view = props.view;
-  if (!view || !searchText.value.trim()) {
-    clearHighlights();
-    return;
-  }
-
-  const doc = view.state.doc;
-  const search = searchText.value;
-  const caseInsensitive = !matchCase.value;
-
-  // Collect all text blocks with their PM positions
-  const found: Match[] = [];
-
-  doc.descendants((node, pos) => {
-    if (!node.isTextblock) return true;
-
-    // Get the full text of this text block
-    const blockText = doc.textBetween(pos + 1, pos + node.nodeSize - 1, "", "");
-    if (!blockText) return false;
-
-    const searchStr = caseInsensitive ? search.toLowerCase() : search;
-    const haystack = caseInsensitive ? blockText.toLowerCase() : blockText;
-
-    let searchFrom = 0;
-    while (searchFrom < haystack.length) {
-      let idx: number;
-
-      if (matchWholeWord.value) {
-        // Whole word matching with regex
-        const escaped = searchStr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const flags = caseInsensitive ? "gi" : "g";
-        const regex = new RegExp(`\\b${escaped}\\b`, flags);
-        regex.lastIndex = searchFrom;
-        const m = regex.exec(haystack);
-        if (!m) break;
-        idx = m.index;
-      } else {
-        idx = haystack.indexOf(searchStr, searchFrom);
-        if (idx === -1) break;
-      }
-
-      // pos+1 is the start of text content inside the text block node
-      const from = pos + 1 + idx;
-      const to = from + search.length;
-      found.push({ from, to });
-      searchFrom = idx + Math.max(1, search.length);
-    }
-
-    return false; // Don't descend into inline nodes
-  });
-
-  matches.value = found;
-  if (found.length > 0) {
-    currentIndex.value = 0;
-    goToMatch(0);
-  }
-}
-
-function goToMatch(index: number) {
-  const view = props.view;
-  if (!view || matches.value.length === 0) return;
-
-  const match = matches.value.at(index);
-  if (!match) return;
-
-  currentIndex.value = index;
-
-  // Set PM selection to the match
-  const { from, to } = match;
-  try {
-    const $from = view.state.doc.resolve(from);
-    const $to = view.state.doc.resolve(to);
-    const sel = TextSelection.between($from, $to);
-    view.dispatch(view.state.tr.setSelection(sel));
-    props.scrollVisiblePositionIntoView?.(from);
-  } catch {
-    // Position might be invalid after edits
-  }
-}
-
-function findNext() {
-  if (matches.value.length === 0) {
-    performSearch();
-    return;
-  }
-  const next = (currentIndex.value + 1) % matches.value.length;
-  goToMatch(next);
-}
-
-function findPrevious() {
-  if (matches.value.length === 0) return;
-  const prev = (currentIndex.value - 1 + matches.value.length) % matches.value.length;
-  goToMatch(prev);
-}
-
-function handleReplace() {
-  const view = props.view;
-  if (!view || currentIndex.value < 0 || matches.value.length === 0) return;
-
-  const match = matches.value.at(currentIndex.value);
-  if (!match) return;
-
-  try {
-    const tr = replaceText.value
-      ? view.state.tr.replaceWith(match.from, match.to, view.state.schema.text(replaceText.value))
-      : view.state.tr.delete(match.from, match.to);
-    view.dispatch(tr);
-  } catch {
-    // Position might be invalid
-  }
-
-  // Re-search and advance
-  performSearch();
-}
-
-function handleReplaceAll() {
-  const view = props.view;
-  if (!view || matches.value.length === 0) return;
-
-  // Replace in reverse order to preserve positions
-  const sorted = [...matches.value].sort((a, b) => b.from - a.from);
-  let tr = view.state.tr;
-
-  for (const match of sorted) {
-    try {
-      tr = replaceText.value
-        ? tr.replaceWith(match.from, match.to, view.state.schema.text(replaceText.value))
-        : tr.delete(match.from, match.to);
-    } catch {
-      // Skip invalid positions
-    }
-  }
-
-  view.dispatch(tr);
-  performSearch();
-}
-
-function clearHighlights() {
-  matches.value = [];
-  currentIndex.value = -1;
 }
 
 function handleSearchKeyDown(e: KeyboardEvent) {

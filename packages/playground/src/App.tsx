@@ -83,6 +83,8 @@ export type FolioParityBridge = {
   aiSnapshotBlockCount: () => number;
   /** Reveal the first stable snapshot block and report target/current pages. */
   navigateToFirstBlock: () => { shown: boolean; targetPage: number; currentPage: number };
+  /** Plain text of the current live editor selection. */
+  getSelectedText: () => string;
   /** Apply and undo one direct document-operation batch; true only when content restores. */
   applyAndUndoDocumentOperation: () => boolean;
   /** Push an anonymization term matching the first word. Returns whether one was pushed. */
@@ -248,6 +250,7 @@ function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridg
       const shown = ref.showInDocument(target, snapshot);
       return { shown, targetPage, currentPage: ref.getCurrentPage() };
     },
+    getSelectedText: () => getRef()?.getSelectionText() ?? "",
     applyAndUndoDocumentOperation: () => {
       const ref = getRef();
       const firstSnapshot = ref?.createAIEditSnapshot();

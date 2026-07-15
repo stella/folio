@@ -118,6 +118,7 @@
       v-model:show-image-properties="showImageProperties"
       v-model:show-page-setup="showPageSetup"
       :view="editorView"
+      :scroll-visible-position-into-view="scrollVisiblePositionIntoView"
       :bookmarks="bookmarks"
       :selected-image-pm-pos="selectedImage?.pmPos ?? null"
       :section-properties="currentSectionProps"
