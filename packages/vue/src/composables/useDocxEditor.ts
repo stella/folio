@@ -791,19 +791,21 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       void loadCollaborationModules().then(
         (modules) => {
           if (cancelled) {
-            return;
+            return undefined;
           }
           collaborationModules.value = modules;
           manager.retryViewCreation();
           manager.syncExternalDocument();
           publishRemoteSelections();
+          return undefined;
         },
         (error: unknown) => {
           if (cancelled) {
-            return;
+            return undefined;
           }
           collaborationModules.value = null;
           onError?.(error instanceof Error ? error : new Error(String(error)));
+          return undefined;
         },
       );
     },
