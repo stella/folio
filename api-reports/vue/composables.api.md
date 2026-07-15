@@ -55,6 +55,14 @@ export { extractTrackedChanges }
 
 export { getSelectionRuns }
 
+// @public (undocumented)
+export type HeaderFooterSelectionState = {
+    from: number;
+    kind: HeaderFooterPartKind;
+    rId: string;
+    to: number;
+};
+
 export { runsToClipboardContent }
 
 export { TrackedChangeEntry }
@@ -89,14 +97,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 // @public (undocumented)
 export type UseDocxEditorCollaboration = HiddenProseMirrorCollaboration & {
     plugins?: Plugin_2[] | undefined;
-};
-
-// @public (undocumented)
-export type HeaderFooterSelectionState = {
-    from: number;
-    kind: HeaderFooterPartKind;
-    rId: string;
-    to: number;
 };
 
 // @public (undocumented)
