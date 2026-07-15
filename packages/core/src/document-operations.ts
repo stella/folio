@@ -33,6 +33,7 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "insertSignatureTable",
   "insertTableRow",
   "deleteTableRow",
+  "insertTableColumn",
 ] as const satisfies readonly FolioAIEditOperation["type"][]);
 
 export const FOLIO_DOCUMENT_OPERATION_MODES = Object.freeze([
@@ -76,6 +77,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   insertSignatureTable: DIRECT_ONLY_MODES,
   insertTableRow: DIRECT_ONLY_MODES,
   deleteTableRow: DIRECT_ONLY_MODES,
+  insertTableColumn: DIRECT_ONLY_MODES,
 } as const satisfies Readonly<
   Record<FolioDocumentOperationType, readonly FolioDocumentOperationMode[]>
 >);
@@ -604,6 +606,23 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     return { ...operationMeta, id, type, blockId };
   }
 
+  if (type === "insertTableColumn") {
+    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "position", "cellTexts"]);
+    const position = value["position"];
+    if (position !== undefined && position !== "after" && position !== "before") {
+      return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
+    }
+    const cellTexts = readOptionalStringArray(value, "cellTexts", path);
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      ...(position !== undefined && { position }),
+      ...(cellTexts !== undefined && { cellTexts }),
+    };
+  }
+
   return invalidBatch(`${path}.type`, `unsupported operation type "${type}"`);
 };
 
@@ -685,7 +704,7 @@ export type FolioDocumentOperationAffectedTarget =
       story: FolioDocumentOperationStory;
       anchorBlockId: string;
       position: "before" | "after";
-      content: "block" | "signatureTable" | "tableRow";
+      content: "block" | "signatureTable" | "tableRow" | "tableColumn";
     }
   | {
       type: "comment";
@@ -853,6 +872,14 @@ const getPrimaryAffectedTarget = (
         story,
         anchorBlockId: operation.blockId,
         effect: "deleted",
+      };
+    case "insertTableColumn":
+      return {
+        type: "insertion",
+        story,
+        anchorBlockId: operation.blockId,
+        position: operation.position ?? "after",
+        content: "tableColumn",
       };
   }
 };

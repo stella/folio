@@ -237,6 +237,15 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /** Stable paragraph anchor inside the row to delete. */
         blockId: string;
       }
+    | {
+        id: string;
+        type: "insertTableColumn";
+        /** Stable paragraph anchor inside the cell that receives the new sibling column. */
+        blockId: string;
+        position?: "after" | "before";
+        /** Initial text for newly created physical cells in row order. */
+        cellTexts?: string[];
+      }
   );
 
 export type FolioAIEditApplyMode = "direct" | "tracked-changes";

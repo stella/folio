@@ -1,6 +1,13 @@
 import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { removeRow, rowIsHeader, TableMap, tableNodeTypes } from "prosemirror-tables";
+import {
+  addColSpan,
+  columnIsHeader,
+  removeRow,
+  rowIsHeader,
+  TableMap,
+  tableNodeTypes,
+} from "prosemirror-tables";
 
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { buildCleanBlockText } from "./clean-text";
@@ -59,6 +66,7 @@ type ResolvedOperation = {
   insertText?: string;
   tableRowInsertion?: TableRowInsertion;
   tableRowDeletion?: TableRowDeletion;
+  tableColumnInsertion?: TableColumnInsertion;
   commentId?: number;
   /**
    * Position in the input `operations` array, used as a secondary
@@ -234,6 +242,11 @@ type TableRowTarget = {
 
 type TableRowDeletion = Omit<TableRowTarget, "table">;
 
+type TableColumnInsertion = {
+  tablePosition: number;
+  columnIndex: number;
+};
+
 const findEnclosingTableRow = (doc: PMNode, blockFrom: number): TableRowTarget | null => {
   const resolved = doc.resolve(blockFrom);
   for (let rowDepth = resolved.depth; rowDepth > 0; rowDepth--) {
@@ -251,6 +264,39 @@ const findEnclosingTableRow = (doc: PMNode, blockFrom: number): TableRowTarget |
       tablePosition: resolved.before(tableDepth),
       rowIndex: resolved.index(tableDepth),
       rowPosition: resolved.before(rowDepth),
+    };
+  }
+  return null;
+};
+
+const findTableColumnInsertion = (
+  doc: PMNode,
+  blockFrom: number,
+  position: "after" | "before",
+): (TableColumnInsertion & { boundaryPosition: number }) | null => {
+  const resolved = doc.resolve(blockFrom);
+  for (let cellDepth = resolved.depth; cellDepth > 0; cellDepth--) {
+    const cell = resolved.node(cellDepth);
+    const tableRole = cell.type.spec["tableRole"];
+    if (tableRole !== "cell" && tableRole !== "header_cell") {
+      continue;
+    }
+    const rowDepth = cellDepth - 1;
+    const tableDepth = rowDepth - 1;
+    if (
+      resolved.node(rowDepth).type.spec["tableRole"] !== "row" ||
+      resolved.node(tableDepth).type.spec["tableRole"] !== "table"
+    ) {
+      return null;
+    }
+    const table = resolved.node(tableDepth);
+    const tableStart = resolved.start(tableDepth);
+    const cellPosition = resolved.before(cellDepth);
+    const cellRect = TableMap.get(table).findCell(cellPosition - tableStart);
+    return {
+      tablePosition: resolved.before(tableDepth),
+      columnIndex: position === "before" ? cellRect.left : cellRect.right,
+      boundaryPosition: position === "before" ? cellPosition : cellPosition + cell.nodeSize,
     };
   }
   return null;
@@ -368,6 +414,96 @@ const populateTableRow = (row: PMNode, cellTexts: readonly string[] | undefined)
     cells.push(cell.type.create(cell.attrs, nextParagraph));
   });
   return row.type.create(row.attrs, cells);
+};
+
+const getInsertedPhysicalColumnRows = (map: TableMap, columnIndex: number): number[] => {
+  const rows: number[] = [];
+  for (let row = 0; row < map.height; row++) {
+    const index = row * map.width + columnIndex;
+    const crossesColspan =
+      columnIndex > 0 && columnIndex < map.width && map.map[index - 1] === map.map[index];
+    if (!crossesColspan) {
+      rows.push(row);
+    }
+  }
+  return rows;
+};
+
+type TableColumnInsertionAction =
+  | { type: "insertCell"; position: number; cell: PMNode }
+  | { type: "setColspan"; position: number; cell: PMNode; colspanOffset: number };
+
+const populateTableCell = (cell: PMNode, text: string): PMNode | null => {
+  const paragraph = cell.firstChild;
+  if (!paragraph?.isTextblock) {
+    return null;
+  }
+  const content = text.length > 0 ? cell.type.schema.text(text) : null;
+  const nextParagraph = paragraph.type.create(stripIdentityAttrs(paragraph.attrs), content);
+  return cell.type.create(cell.attrs, nextParagraph);
+};
+
+const buildTableColumnInsertionActions = (
+  map: TableMap,
+  table: PMNode,
+  columnIndex: number,
+  cellTexts: readonly string[] | undefined,
+): TableColumnInsertionAction[] | null => {
+  if (columnIndex < 0 || columnIndex > map.width) {
+    return null;
+  }
+  const physicalRows = getInsertedPhysicalColumnRows(map, columnIndex);
+  if ((cellTexts?.length ?? 0) > physicalRows.length) {
+    return null;
+  }
+  let referenceColumn: number | null = columnIndex > 0 ? -1 : 0;
+  if (columnIsHeader(map, table, columnIndex + referenceColumn)) {
+    referenceColumn = columnIndex === 0 || columnIndex === map.width ? null : 0;
+  }
+  const actions: TableColumnInsertionAction[] = [];
+  let physicalCellIndex = 0;
+  for (let row = 0; row < map.height; row++) {
+    const index = row * map.width + columnIndex;
+    if (columnIndex > 0 && columnIndex < map.width && map.map[index - 1] === map.map[index]) {
+      const position = map.map[index];
+      if (position === undefined) {
+        return null;
+      }
+      const cell = table.nodeAt(position);
+      if (!cell) {
+        return null;
+      }
+      actions.push({
+        type: "setColspan",
+        position,
+        cell,
+        colspanOffset: columnIndex - map.colCount(position),
+      });
+      row += Number(cell.attrs["rowspan"] ?? 1) - 1;
+      continue;
+    }
+    const referencePosition =
+      referenceColumn === null ? undefined : map.map[index + referenceColumn];
+    const cellType =
+      referencePosition === undefined
+        ? tableNodeTypes(table.type.schema).cell
+        : table.nodeAt(referencePosition)?.type;
+    const cell = cellType?.createAndFill();
+    if (!cell) {
+      return null;
+    }
+    const populatedCell = populateTableCell(cell, cellTexts?.[physicalCellIndex] ?? "");
+    if (!populatedCell) {
+      return null;
+    }
+    actions.push({
+      type: "insertCell",
+      position: map.positionAt(row, columnIndex, table),
+      cell: populatedCell,
+    });
+    physicalCellIndex++;
+  }
+  return actions;
 };
 
 /**
@@ -553,7 +689,8 @@ const applyFolioAIEditOperationsInternal = ({
       mode === "tracked-changes" &&
       (operation.type === "formatRange" ||
         operation.type === "insertTableRow" ||
-        operation.type === "deleteTableRow")
+        operation.type === "deleteTableRow" ||
+        operation.type === "insertTableColumn")
     ) {
       skipped.push({ id: operation.id, reason: "unsupportedMode" });
       continue;
@@ -609,6 +746,23 @@ const applyFolioAIEditOperationsInternal = ({
   // one ends up immediately after it, matching the AI's logical
   // sequence.
   for (const item of resolved.toSorted((left, right) => {
+    const leftColumn = left.tableColumnInsertion;
+    const rightColumn = right.tableColumnInsertion;
+    if (!leftColumn && rightColumn) {
+      return -1;
+    }
+    if (leftColumn && !rightColumn) {
+      return 1;
+    }
+    if (leftColumn && rightColumn) {
+      if (leftColumn.tablePosition !== rightColumn.tablePosition) {
+        return rightColumn.tablePosition - leftColumn.tablePosition;
+      }
+      if (leftColumn.columnIndex !== rightColumn.columnIndex) {
+        return rightColumn.columnIndex - leftColumn.columnIndex;
+      }
+      return right.originalIndex - left.originalIndex;
+    }
     if (left.from !== right.from) {
       return right.from - left.from;
     }
@@ -870,6 +1024,51 @@ const applyFolioAIEditOperationsInternal = ({
         }
         const row = insertion.rowType.create(null, insertion.cells);
         tr = tr.insert(insertion.rowPosition, populateTableRow(row, item.operation.cellTexts));
+        break;
+      }
+      case "insertTableColumn": {
+        const insertion = item.tableColumnInsertion;
+        const tablePosition = insertion ? tr.mapping.map(insertion.tablePosition, 1) : null;
+        const table = tablePosition === null ? null : tr.doc.nodeAt(tablePosition);
+        if (
+          !insertion ||
+          tablePosition === null ||
+          !table ||
+          table.type.spec["tableRole"] !== "table"
+        ) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
+        const map = TableMap.get(table);
+        const actions = buildTableColumnInsertionActions(
+          map,
+          table,
+          insertion.columnIndex,
+          item.operation.cellTexts,
+        );
+        if (!actions) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
+        const mapFrom = tr.mapping.maps.length;
+        for (const action of actions) {
+          const position = tr.mapping.slice(mapFrom).map(tablePosition + 1 + action.position);
+          if (action.type === "insertCell") {
+            tr = tr.insert(position, action.cell);
+            continue;
+          }
+          tr = tr.setNodeMarkup(
+            position,
+            undefined,
+            addColSpan(action.cell.attrs, action.colspanOffset),
+          );
+        }
         break;
       }
       case "deleteTableRow": {
@@ -1408,6 +1607,27 @@ const resolveOperation = ({
           rowIndex: target.rowIndex,
           rowPosition: target.rowPosition,
         },
+      },
+    };
+  }
+
+  if (operation.type === "insertTableColumn") {
+    const position = operation.position ?? "after";
+    const insertion = findTableColumnInsertion(doc, blockFrom, position);
+    if (!insertion) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    const { boundaryPosition, ...tableColumnInsertion } = insertion;
+    return {
+      type: "resolved",
+      operation: {
+        operation,
+        from: boundaryPosition,
+        to: boundaryPosition,
+        blockFrom,
+        blockTo,
+        blockNode,
+        tableColumnInsertion,
       },
     };
   }

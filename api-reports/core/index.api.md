@@ -441,6 +441,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly insertSignatureTable: readonly ["direct"];
     readonly insertTableRow: readonly ["direct"];
     readonly deleteTableRow: readonly ["direct"];
+    readonly insertTableColumn: readonly ["direct"];
 }>;
 
 // @public (undocumented)
@@ -450,7 +451,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "footer", "footnote", "endnote"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -582,6 +583,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     id: string;
     type: "deleteTableRow"; /** Stable paragraph anchor inside the row to delete. */
     blockId: string;
+} | {
+    id: string;
+    type: "insertTableColumn"; /** Stable paragraph anchor inside the cell that receives the new sibling column. */
+    blockId: string;
+    position?: "after" | "before"; /** Initial text for newly created physical cells in row order. */
+    cellTexts?: string[];
 });
 
 // @public (undocumented)
@@ -651,7 +658,7 @@ export type FolioDocumentOperationAffectedTarget = {
     story: FolioDocumentOperationStory;
     anchorBlockId: string;
     position: "before" | "after";
-    content: "block" | "signatureTable" | "tableRow";
+    content: "block" | "signatureTable" | "tableRow" | "tableColumn";
 } | {
     type: "comment";
     commentId: number;
