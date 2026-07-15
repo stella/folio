@@ -86,6 +86,17 @@ describe("canonical DOCX document model validation", () => {
     expect(() => assertValidDocumentModel(doc)).not.toThrow();
   });
 
+  test("accepts an explicitly empty comment author", () => {
+    const result = validateDocumentModel(
+      createDocument({
+        comments: [{ id: 1, author: "", content: [paragraph()] }],
+      }),
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
   test("rejects comment anchors without a matching comment", () => {
     const result = validateDocumentModel(
       createDocument({

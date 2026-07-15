@@ -604,7 +604,7 @@ const validateComments = (comments: readonly Comment[], ctx: ValidationContext):
     }
     seen.add(comment.id);
 
-    if (comment.author.trim() === "") {
+    if (comment.author !== "" && comment.author.trim() === "") {
       addError(ctx, `${path}.author`, "Comment author is empty.");
     }
 

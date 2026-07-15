@@ -52,4 +52,10 @@ describe("serializeComments", () => {
     expect(replyIndex).toBeGreaterThan(-1);
     expect(topIndex).toBeLessThan(replyIndex);
   });
+
+  test("preserves an explicitly empty author attribute", () => {
+    const xml = serializeComments([{ ...makeComment(1), author: "" }]);
+
+    expect(xml).toContain('<w:comment w:id="1" w:author=""');
+  });
 });

@@ -78,10 +78,10 @@ function serializeParagraphWithAnnotationRef(p: Paragraph): string {
 }
 
 function serializeComment(comment: Comment): string {
-  const attrs: string[] = [`w:id="${comment.id}"`];
-  if (comment.author) {
-    attrs.push(`w:author="${escapeXml(comment.author)}"`);
-  }
+  const attrs: string[] = [
+    `w:id="${comment.id}"`,
+    `w:author="${escapeXml(comment.author)}"`,
+  ];
   if (comment.initials) {
     attrs.push(`w:initials="${escapeXml(comment.initials)}"`);
   }
