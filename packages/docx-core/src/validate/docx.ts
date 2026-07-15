@@ -605,7 +605,7 @@ const validateComments = (comments: readonly Comment[], ctx: ValidationContext):
     seen.add(comment.id);
 
     if (comment.author !== "" && comment.author.trim() === "") {
-      addError(ctx, `${path}.author`, "Comment author is empty.");
+      addError(ctx, `${path}.author`, "Comment author cannot be whitespace-only.");
     }
 
     if (comment.parentId !== undefined && !ctx.commentIds.has(comment.parentId)) {

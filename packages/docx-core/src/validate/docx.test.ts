@@ -97,6 +97,21 @@ describe("canonical DOCX document model validation", () => {
     expect(result.issues).toEqual([]);
   });
 
+  test("rejects a whitespace-only comment author", () => {
+    const result = validateDocumentModel(
+      createDocument({
+        comments: [{ id: 1, author: "   ", content: [paragraph()] }],
+      }),
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.issues).toContainEqual({
+      path: "package.document.comments[0].author",
+      message: "Comment author cannot be whitespace-only.",
+      severity: "error",
+    });
+  });
+
   test("rejects comment anchors without a matching comment", () => {
     const result = validateDocumentModel(
       createDocument({
