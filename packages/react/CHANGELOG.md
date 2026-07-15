@@ -1,5 +1,18 @@
 # @stll/folio-react
 
+## 0.10.2
+
+### Patch Changes
+
+- [#353](https://github.com/stella/folio/pull/353) [`10f395e`](https://github.com/stella/folio/commit/10f395e216668f4a6779aa652f0d0b783e838f31) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Share find contracts and matching logic across adapters and add a functional Vue find/replace binding.
+
+- [#355](https://github.com/stella/folio/pull/355) [`f2abf34`](https://github.com/stella/folio/commit/f2abf34f20e32d1094f4459ab633720e9712e439) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Share persistent header and footer editing across the React and Vue adapters.
+
+- [#354](https://github.com/stella/folio/pull/354) [`fa23331`](https://github.com/stella/folio/commit/fa233311ff79811818ce11bab7f9854097698c93) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Share collaboration module loading and remote-selection painting, and complete the Vue collaboration pipeline.
+
+- Updated dependencies [[`10f395e`](https://github.com/stella/folio/commit/10f395e216668f4a6779aa652f0d0b783e838f31), [`f2abf34`](https://github.com/stella/folio/commit/f2abf34f20e32d1094f4459ab633720e9712e439), [`fa23331`](https://github.com/stella/folio/commit/fa233311ff79811818ce11bab7f9854097698c93), [`860a894`](https://github.com/stella/folio/commit/860a894e4ffe94c1492a04db8aa7fc9736f097df)]:
+  - @stll/folio-core@0.11.0
+
 ## 0.10.1
 
 ### Patch Changes
