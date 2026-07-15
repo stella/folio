@@ -736,7 +736,7 @@ const showLoadingIndicator = computed(
 // their absence. Mirrors React PagedEditor's hostFonts effect (same best-effort
 // FontFace path + font-ready re-layout).
 function remeasureForFontChange(): void {
-  const view = activeEditorView.value;
+  const view = editorView.value;
   if (!view) {
     return;
   }
@@ -1064,7 +1064,7 @@ function handleInsertPageBreakAction(): void {
     props.onInsertPageBreak();
     return;
   }
-  const view = activeEditorView.value;
+  const view = editorView.value;
   if (!view) {
     return;
   }
@@ -1077,7 +1077,7 @@ function handleInsertTOCAction(): void {
     props.onInsertTOC();
     return;
   }
-  const view = activeEditorView.value;
+  const view = editorView.value;
   if (!view) {
     return;
   }
