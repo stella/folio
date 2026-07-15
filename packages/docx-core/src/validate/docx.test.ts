@@ -151,6 +151,50 @@ describe("canonical DOCX document model validation", () => {
     );
   });
 
+  test("validates tables nested inside shape text", () => {
+    const result = validateDocumentModel(
+      createDocument({
+        content: [
+          paragraph([
+            {
+              type: "run",
+              content: [
+                {
+                  type: "shape",
+                  shape: {
+                    type: "shape",
+                    shapeType: "textBox",
+                    size: { width: 914_400, height: 457_200 },
+                    textBody: {
+                      content: [
+                        {
+                          type: "table",
+                          rows: [
+                            {
+                              type: "tableRow",
+                              cells: [{ type: "tableCell", content: [] }],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+          ]),
+        ],
+      }),
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.issues).toContainEqual({
+      path: "package.document.content[0].content[0].content[0].shape.textBody.content[0].rows[0].cells[0].content",
+      message: "Table cell must contain block content.",
+      severity: "error",
+    });
+  });
+
   test("rejects missing numbering definitions", () => {
     const result = validateDocumentModel(
       createDocument({

@@ -2828,13 +2828,14 @@ function convertPMTextBox(node: PMNode): Paragraph {
   const attrs = expectTextBoxAttrs(node);
 
   // Extract child paragraphs from the text box content
-  const childParagraphs: Paragraph[] = [];
+  const childBlocks: (Paragraph | Table)[] = [];
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
     if (child.type.name === "paragraph") {
-      childParagraphs.push(convertPMParagraph(child));
+      childBlocks.push(convertPMParagraph(child));
+    } else if (child.type.name === "table") {
+      childBlocks.push(convertPMTable(child));
     }
-    // Tables inside text boxes are currently not round-tripped
   });
 
   // Build shape with text body
@@ -2846,7 +2847,7 @@ function convertPMTextBox(node: PMNode): Paragraph {
       height: attrs.height ? pixelsToEmu(attrs.height) : 0,
     },
     textBody: {
-      content: childParagraphs.length > 0 ? childParagraphs : [{ type: "paragraph", content: [] }],
+      content: childBlocks.length > 0 ? childBlocks : [{ type: "paragraph", content: [] }],
       ...(attrs.autoFit !== undefined ? { autoFit: attrs.autoFit } : {}),
       margins: (() => {
         const m: {

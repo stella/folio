@@ -51,7 +51,7 @@ const repeatedPlaceholderNumberingXml = `${XML_DECLARATION}
 const numberedParagraphXml = (paraId: string, ilvl: number, text: string, numId = 9) =>
   `<w:p w14:paraId="${paraId}"><w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
 
-const textBoxDrawingXml = (text: string, bodyProperties = "<wps:bodyPr/>") => `
+const textBoxDrawingContentXml = (content: string, bodyProperties = "<wps:bodyPr/>") => `
   <w:drawing>
     <wp:inline>
       <wp:extent cx="914400" cy="457200"/>
@@ -65,7 +65,7 @@ const textBoxDrawingXml = (text: string, bodyProperties = "<wps:bodyPr/>") => `
             </wps:spPr>
             <wps:txbx>
               <w:txbxContent>
-                <w:p><w:r><w:t>${text}</w:t></w:r></w:p>
+                ${content}
               </w:txbxContent>
             </wps:txbx>
             ${bodyProperties}
@@ -74,6 +74,9 @@ const textBoxDrawingXml = (text: string, bodyProperties = "<wps:bodyPr/>") => `
       </a:graphic>
     </wp:inline>
   </w:drawing>`;
+
+const textBoxDrawingXml = (text: string, bodyProperties = "<wps:bodyPr/>") =>
+  textBoxDrawingContentXml(`<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`, bodyProperties);
 
 describe("parseDocumentBody list numbering", () => {
   test("renders legal multilevel numbering with decimal parent counters", () => {
@@ -164,6 +167,74 @@ describe("parseDocumentBody list numbering", () => {
 });
 
 describe("parseDocumentBody text box enrichment", () => {
+  test("keeps tables in text boxes in source order", () => {
+    const textBoxContent = `
+      <w:p w14:paraId="TXBI0001"><w:r><w:t>Before table</w:t></w:r></w:p>
+      <w:tbl>
+        <w:tblPr/>
+        <w:tblGrid><w:gridCol w:w="2400"/></w:tblGrid>
+        <w:tr><w:tc><w:tcPr/><w:p w14:paraId="TXBI0002"><w:r><w:t>Cell text</w:t></w:r></w:p></w:tc></w:tr>
+      </w:tbl>
+      <w:p w14:paraId="TXBI0003"><w:r><w:t>After table</w:t></w:r></w:p>`;
+    const body = parseDocumentBody(`${XML_DECLARATION}
+<w:document
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+  <w:body><w:p><w:r>${textBoxDrawingContentXml(textBoxContent)}</w:r></w:p></w:body>
+</w:document>`);
+
+    const host = body.content.at(0);
+    const run = host?.type === "paragraph" ? host.content.at(0) : undefined;
+    const shape = run?.type === "run" ? run.content.at(0) : undefined;
+
+    expect(shape?.type).toBe("shape");
+    if (shape?.type !== "shape") {
+      return;
+    }
+    expect(shape.shape.textBody?.content.map(({ type }) => type)).toEqual([
+      "paragraph",
+      "table",
+      "paragraph",
+    ]);
+    const table = shape.shape.textBody?.content.at(1);
+    expect(table?.type).toBe("table");
+    if (table?.type !== "table") {
+      return;
+    }
+    expect(table.rows.at(0)?.cells.at(0)?.content.at(0)).toMatchObject({
+      type: "paragraph",
+      paraId: "TXBI0002",
+    });
+  });
+
+  test("keeps tables in legacy text boxes", () => {
+    const body = parseDocumentBody(`${XML_DECLARATION}
+<w:document
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:v="urn:schemas-microsoft-com:vml">
+  <w:body><w:p><w:r><w:pict>
+    <v:shape style="width:2in;height:1in">
+      <v:textbox><w:txbxContent>
+        <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Legacy cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+      </w:txbxContent></v:textbox>
+    </v:shape>
+  </w:pict></w:r></w:p></w:body>
+</w:document>`);
+
+    const host = body.content.at(0);
+    const run = host?.type === "paragraph" ? host.content.at(0) : undefined;
+    const shape = run?.type === "run" ? run.content.at(0) : undefined;
+
+    expect(shape?.type).toBe("shape");
+    if (shape?.type !== "shape") {
+      return;
+    }
+    expect(shape.shape.textBody?.content.at(0)?.type).toBe("table");
+  });
+
   test("keeps text boxes from merged runs before following boundaries", () => {
     const body = parseDocumentBody(`${XML_DECLARATION}
 <w:document

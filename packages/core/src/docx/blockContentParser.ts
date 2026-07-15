@@ -340,7 +340,7 @@ const parseBlockContentWithState = (
     if (localName === "p") {
       const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, state.options);
       prependPendingBookmarkMarkers(paragraph, pendingBookmarkMarkers);
-      enrichParagraphTextBoxes(paragraph, child, styles, theme, numbering, rels, media);
+      enrichParagraphTextBoxes(paragraph, child, styles, theme, numbering, rels, media, parseTable);
       computeListMarker(paragraph, {
         numbering,
         listCounters: state.listCounters,

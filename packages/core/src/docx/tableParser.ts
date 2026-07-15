@@ -1220,7 +1220,7 @@ function parseCellContent(
     if (localName === "p") {
       // Parse paragraph
       const para = parseParagraph(child, styles, theme, numbering, rels, media, options);
-      enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media);
+      enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media, parseTable);
       prependPendingBookmarkMarkers(para, pendingBookmarkMarkers);
       content.push(para);
     } else if (localName === "tbl") {

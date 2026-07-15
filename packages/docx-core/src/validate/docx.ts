@@ -460,7 +460,7 @@ const validateShape = (shape: Shape, path: string, ctx: ValidationContext): void
   validateNonNegativeSize(shape.size.height, `${path}.size.height`, ctx);
 
   if (shape.textBody) {
-    validateParagraphs(shape.textBody.content, `${path}.textBody.content`, ctx);
+    validateBlocks(shape.textBody.content, `${path}.textBody.content`, ctx);
   }
 };
 

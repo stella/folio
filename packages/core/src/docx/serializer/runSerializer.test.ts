@@ -207,6 +207,70 @@ describe("shape EMU attributes are integer-only (issue #417)", () => {
 });
 
 describe("text box fitting serialization", () => {
+  test("keeps nested tables in source order", () => {
+    const run: Run = {
+      type: "run",
+      content: [
+        {
+          type: "shape",
+          shape: {
+            type: "shape",
+            shapeType: "textBox",
+            size: { width: 914_400, height: 457_200 },
+            textBody: {
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "run", content: [{ type: "text", text: "Before" }] }],
+                },
+                {
+                  type: "table",
+                  rows: [
+                    {
+                      type: "tableRow",
+                      cells: [
+                        {
+                          type: "tableCell",
+                          content: [
+                            {
+                              type: "paragraph",
+                              content: [
+                                {
+                                  type: "run",
+                                  content: [{ type: "text", text: "Cell value" }],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: "paragraph",
+                  content: [{ type: "run", content: [{ type: "text", text: "After" }] }],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+
+    const xml = serializeRun(run);
+    const before = xml.indexOf("Before");
+    const table = xml.indexOf("<w:tbl>");
+    const cell = xml.indexOf("Cell value");
+    const after = xml.indexOf("After");
+
+    expect(xml).toContain("<wps:txbx><w:txbxContent>");
+    expect(before).toBeGreaterThan(-1);
+    expect(table).toBeGreaterThan(before);
+    expect(cell).toBeGreaterThan(table);
+    expect(after).toBeGreaterThan(cell);
+  });
+
   test.each([
     ["shape", "<a:spAutoFit/>", "<a:normAutofit/>", "<a:noAutofit/>"],
     ["normal", "<a:normAutofit/>", "<a:spAutoFit/>", "<a:noAutofit/>"],
