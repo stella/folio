@@ -1,7 +1,11 @@
 import { panic } from "better-result";
 
 import { measuredLineRangeHeight } from "../lineFlow";
-import { getParagraphSpacingAfter, getParagraphSpacingBefore } from "../paragraphSpacing";
+import {
+  collapseParagraphSpacing,
+  getParagraphSpacingAfter,
+  getParagraphSpacingBefore,
+} from "../paragraphSpacing";
 import type { ParagraphBlock, ParagraphMeasure } from "../types";
 
 export type TextBoxParagraphPlacement = {
@@ -34,7 +38,10 @@ export function layoutTextBoxParagraphs(
     const block = blocks[index]!; // SAFETY: index < blocks.length
     const measure = measures[index]!; // SAFETY: equal lengths checked above
 
-    const leadingSpacing = Math.max(getParagraphSpacingBefore(block), trailingSpacing);
+    const leadingSpacing = collapseParagraphSpacing({
+      before: getParagraphSpacingBefore(block),
+      after: trailingSpacing,
+    });
     const contentHeight = measuredLineRangeHeight(measure.lines, 0, measure.lines.length);
     placements.push({ leadingSpacing, contentHeight });
     totalHeight += leadingSpacing + contentHeight;

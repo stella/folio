@@ -1,5 +1,6 @@
 import { measuredLineRangeHeight } from "../lineFlow";
 import {
+  collapseParagraphSpacing,
   getParagraphSpacingAfter,
   getParagraphSpacingBefore,
   isEmptyParagraph,
@@ -96,7 +97,7 @@ export const placeTableCellBlock = (
   const leadingSpacing =
     empty && state.previousParagraphWasEmpty
       ? spacing.before + state.trailingSpacing
-      : Math.max(spacing.before, state.trailingSpacing);
+      : collapseParagraphSpacing({ before: spacing.before, after: state.trailingSpacing });
   const contentTop = top + leadingSpacing;
   state.height = contentTop + contentHeight;
   state.previousParagraphWasEmpty = empty;

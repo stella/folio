@@ -41,6 +41,7 @@ import {
   measureSingleBlockWithoutFloatingZones,
 } from "../layout-engine/measure/measureBlocks";
 import { installCanvasMeasureProvider } from "../layout-engine/measure/measureContainer";
+import { resolveEffectiveParagraphSpacingTree } from "../layout-engine/paragraphSpacing";
 import type {
   FlowBlock,
   FootnoteContent,
@@ -560,6 +561,11 @@ export function runLayoutPipeline<THfPMs>(
         marginRight: blockMeasureInputs.marginRights,
         marginBottom: blockMeasureInputs.marginBottoms,
       });
+    // Match the historical post-measure suppression timing while keeping the
+    // authored flow tree immutable. Layout, painting, and cached artifacts all
+    // consume the same derived block identities from this point forward.
+    newBlocks = resolveEffectiveParagraphSpacingTree(newBlocks);
+    outcome.blocks = newBlocks;
     pendingArtifacts = {
       blocks: newBlocks,
       blockWidths,

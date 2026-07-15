@@ -60,10 +60,15 @@ describe("automatic numbered-list spacing", () => {
       automaticSpacing: { before: true },
     });
 
-    layoutDocument([first, second], [paragraphMeasure, paragraphMeasure], layoutOptions);
+    const layout = layoutDocument(
+      [first, second],
+      [paragraphMeasure, paragraphMeasure],
+      layoutOptions,
+    );
 
-    expect(first.attrs?.spacing).toEqual({ before: 18, after: 0 });
-    expect(second.attrs?.spacing).toEqual({ before: 0, after: 18 });
+    expect(layout.pages.at(0)?.fragments.map(({ y }) => y)).toEqual([18, 36]);
+    expect(first.attrs?.spacing).toEqual({ before: 18, after: 18 });
+    expect(second.attrs?.spacing).toEqual({ before: 18, after: 18 });
   });
 
   test("keeps automatic spacing at a sequence boundary", () => {

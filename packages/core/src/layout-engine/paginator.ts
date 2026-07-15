@@ -7,6 +7,7 @@
 
 import { panic } from "better-result";
 
+import { collapseParagraphSpacing } from "./paragraphSpacing";
 import type { Page, PageMargins, Fragment, ColumnLayout, PageHeaderFooterRefs } from "./types";
 import { FOOTNOTE_SEPARATOR_HEIGHT } from "./types";
 
@@ -368,7 +369,10 @@ export function createPaginator(options: PaginatorOptions) {
     // Word collapses adjacent paragraph spacing: the inter-paragraph gap is
     // the larger of the previous paragraph's `spaceAfter` and the next
     // paragraph's `spaceBefore`.
-    const effectiveSpaceBefore = Math.max(spaceBefore, initialState.trailingSpacing);
+    const effectiveSpaceBefore = collapseParagraphSpacing({
+      before: spaceBefore,
+      after: initialState.trailingSpacing,
+    });
     const totalHeight = effectiveSpaceBefore + height;
 
     // Ensure we have space

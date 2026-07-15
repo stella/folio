@@ -5,6 +5,7 @@
  * (keep all lines together) properties that affect pagination.
  */
 
+import { collapseParagraphSpacing } from "./paragraphSpacing";
 import type { FlowBlock, ParagraphBlock, Measure } from "./types";
 
 /**
@@ -203,7 +204,10 @@ export function calculateChainHeight(
       return totalHeight;
     }
 
-    totalHeight += Math.max(trailingSpacing, successorBlock.attrs?.spacing?.before ?? 0);
+    totalHeight += collapseParagraphSpacing({
+      before: successorBlock.attrs?.spacing?.before ?? 0,
+      after: trailingSpacing,
+    });
     const firstLine = successorMeasure.lines.at(0);
     if (!firstLine) {
       return totalHeight;
