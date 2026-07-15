@@ -380,6 +380,7 @@
       @close-image-context-menu="imageContextMenu = null"
       @open-image-properties="showImageProperties = true"
     />
+    <ContentControlWidgetsOverlay :view="editorView" />
   </div>
 </template>
 
@@ -416,6 +417,7 @@ import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 
 import AnonymizationRectsOverlay from "./AnonymizationRectsOverlay.vue";
 import CommentMarginMarkers from "./CommentMarginMarkers.vue";
+import ContentControlWidgetsOverlay from "./ContentControlWidgetsOverlay.vue";
 import DecorationLayer from "./DecorationLayer.vue";
 import DocumentOutline from "./DocumentOutline.vue";
 import DocxEditorDialogs from "./DocxEditor/DocxEditorDialogs.vue";

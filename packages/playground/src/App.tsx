@@ -71,6 +71,8 @@ export type FolioParityBridge = {
   selectFirstWord: () => boolean;
   /** Count painted range-selection rectangles. */
   countSelectionRects: () => number;
+  /** Replace the live document with dropdown and date content controls. */
+  setupContentControls: () => boolean;
   /** Insert a rows×cols table at the selection (core helper). Returns success. */
   insertTable: (rows: number, cols: number) => boolean;
   /** Count `table` nodes in the live document (0 with no live view). */
@@ -183,6 +185,29 @@ function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridg
       return true;
     },
     countSelectionRects: () => document.querySelectorAll("[data-folio-selection-rect]").length,
+    setupContentControls: () => {
+      const view = liveView();
+      if (!view) {
+        return false;
+      }
+      const dropdown = view.state.schema.node(
+        "blockSdt",
+        {
+          sdtType: "dropdown",
+          tag: "state",
+          listItems: JSON.stringify([
+            { displayText: "California", value: "ca" },
+            { displayText: "New York", value: "ny" },
+          ]),
+        },
+        [view.state.schema.node("paragraph", {}, [view.state.schema.text("California")])],
+      );
+      const date = view.state.schema.node("blockSdt", { sdtType: "date", tag: "effective" }, [
+        view.state.schema.node("paragraph", {}, [view.state.schema.text("2026-01-15")]),
+      ]);
+      view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, [dropdown, date]));
+      return true;
+    },
     insertTable: (rows, cols) => {
       const view = liveView();
       if (!view) {
