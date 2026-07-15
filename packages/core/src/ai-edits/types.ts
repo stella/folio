@@ -246,6 +246,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /** Initial text for newly created physical cells in row order. */
         cellTexts?: string[];
       }
+    | {
+        id: string;
+        type: "deleteTableColumn";
+        /** Stable paragraph anchor inside the column to delete. */
+        blockId: string;
+      }
   );
 
 export type FolioAIEditApplyMode = "direct" | "tracked-changes";

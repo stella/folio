@@ -34,6 +34,7 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "insertTableRow",
   "deleteTableRow",
   "insertTableColumn",
+  "deleteTableColumn",
 ] as const satisfies readonly FolioAIEditOperation["type"][]);
 
 export const FOLIO_DOCUMENT_OPERATION_MODES = Object.freeze([
@@ -78,6 +79,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   insertTableRow: DIRECT_ONLY_MODES,
   deleteTableRow: DIRECT_ONLY_MODES,
   insertTableColumn: DIRECT_ONLY_MODES,
+  deleteTableColumn: DIRECT_ONLY_MODES,
 } as const satisfies Readonly<
   Record<FolioDocumentOperationType, readonly FolioDocumentOperationMode[]>
 >);
@@ -623,6 +625,11 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     };
   }
 
+  if (type === "deleteTableColumn") {
+    assertAllowedKeys(value, path, COMMON_OPERATION_KEYS);
+    return { ...operationMeta, id, type, blockId };
+  }
+
   return invalidBatch(`${path}.type`, `unsupported operation type "${type}"`);
 };
 
@@ -712,6 +719,12 @@ export type FolioDocumentOperationAffectedTarget =
     }
   | {
       type: "tableRow";
+      story: FolioDocumentOperationStory;
+      anchorBlockId: string;
+      effect: "deleted";
+    }
+  | {
+      type: "tableColumn";
       story: FolioDocumentOperationStory;
       anchorBlockId: string;
       effect: "deleted";
@@ -880,6 +893,13 @@ const getPrimaryAffectedTarget = (
         anchorBlockId: operation.blockId,
         position: operation.position ?? "after",
         content: "tableColumn",
+      };
+    case "deleteTableColumn":
+      return {
+        type: "tableColumn",
+        story,
+        anchorBlockId: operation.blockId,
+        effect: "deleted",
       };
   }
 };

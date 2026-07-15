@@ -296,6 +296,7 @@ describe("parseSuggestChangesInput", () => {
       "insertTableRow",
       "deleteTableRow",
       "insertTableColumn",
+      "deleteTableColumn",
     ]) {
       const result = parseSuggestChangesInput({ operations: [supersetOperation(excludedType)] });
       expect(result.ok, excludedType).toBe(false);

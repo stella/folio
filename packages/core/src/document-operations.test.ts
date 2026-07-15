@@ -34,6 +34,7 @@ describe("document operation contract", () => {
         "insertTableRow",
         "deleteTableRow",
         "insertTableColumn",
+        "deleteTableColumn",
       ],
       modes: ["direct", "tracked-changes"],
       batchModes: ["best-effort", "atomic"],
@@ -52,6 +53,7 @@ describe("document operation contract", () => {
         insertTableRow: ["direct"],
         deleteTableRow: ["direct"],
         insertTableColumn: ["direct"],
+        deleteTableColumn: ["direct"],
       },
       preconditions: ["blockTextHash"],
       stories: ["main", "header", "footer", "footnote", "endnote"],
@@ -66,6 +68,7 @@ describe("document operation contract", () => {
     );
     expect(isFolioDocumentOperationModeSupported("deleteTableRow", "tracked-changes")).toBe(false);
     expect(isFolioDocumentOperationModeSupported("insertTableColumn", "direct")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("deleteTableColumn", "direct")).toBe(true);
     expect(
       Reflect.apply(isFolioDocumentOperationModeSupported, null, ["unknownOperation", "direct"]),
     ).toBe(false);
@@ -125,6 +128,7 @@ describe("document operation contract", () => {
         blockId: "paragraph-8",
         cellTexts: ["A", "B"],
       },
+      { id: "delete-column", type: "deleteTableColumn", blockId: "paragraph-9" },
     ] as const satisfies readonly FolioDocumentOperation[];
 
     expect(
@@ -138,6 +142,7 @@ describe("document operation contract", () => {
         { id: "row" },
         { id: "delete-row" },
         { id: "column" },
+        { id: "delete-column" },
       ]),
     ).toEqual([
       {
@@ -242,6 +247,18 @@ describe("document operation contract", () => {
           },
         ],
       },
+      {
+        operationId: "delete-column",
+        operationIndex: 9,
+        affected: [
+          {
+            type: "tableColumn",
+            story: "main",
+            anchorBlockId: "paragraph-9",
+            effect: "deleted",
+          },
+        ],
+      },
     ]);
   });
 
@@ -314,6 +331,7 @@ describe("document operation contract", () => {
           position: "before",
           cellTexts: ["Top", "Bottom"],
         },
+        { id: "11", type: "deleteTableColumn", blockId: "a" },
       ],
     };
 

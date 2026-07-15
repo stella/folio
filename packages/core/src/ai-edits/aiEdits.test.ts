@@ -2314,6 +2314,320 @@ describe("Folio AI edit operations", () => {
     expect(updatedTable.child(2).textContent).toBe("EF");
   });
 
+  test("deletes a column while preserving cells that span it", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2, colwidth: [100, 200] }, [
+          schema.node("paragraph", { paraId: "delete-column-span" }, [schema.text("A")]),
+        ]),
+        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("B")])]),
+      ]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "delete-column-left" }, [schema.text("C")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "delete-column-middle" }, [schema.text("D")]),
+        ]),
+        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("E")])]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "delete-column",
+          type: "deleteTableColumn",
+          blockId: "delete-column-middle",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result).toEqual({ applied: [{ id: "delete-column" }], skipped: [] });
+    const updatedTable = view.state.doc.child(0);
+    expect(TableMap.get(updatedTable).width).toBe(2);
+    expect(updatedTable.child(0).child(0).attrs["colspan"]).toBe(1);
+    expect(updatedTable.child(0).child(0).attrs["colwidth"]).toEqual([100]);
+    expect(updatedTable.child(0).textContent).toBe("AB");
+    expect(updatedTable.child(1).textContent).toBe("CE");
+  });
+
+  test("targets the nearest column for deletion inside a nested table", () => {
+    const innerTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "delete-inner-column" }, [schema.text("Inner A")]),
+        ]),
+        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Inner B")])]),
+      ]),
+    ]);
+    const outerTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Outer")]),
+          innerTable,
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [outerTable]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "delete-inner-column",
+          type: "deleteTableColumn",
+          blockId: "delete-inner-column",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    const updatedOuterTable = view.state.doc.child(0);
+    expect(updatedOuterTable.child(0).childCount).toBe(1);
+    const updatedInnerTable = updatedOuterTable.child(0).child(0).child(1);
+    expect(TableMap.get(updatedInnerTable).width).toBe(1);
+    expect(updatedInnerTable.textContent).toBe("Inner B");
+  });
+
+  test("keeps a valid parent when deleting the only table column", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "delete-only-column" }, [schema.text("Cell")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "delete-column",
+          type: "deleteTableColumn",
+          blockId: "delete-only-column",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result).toEqual({ applied: [{ id: "delete-column" }], skipped: [] });
+    expect(view.state.doc.childCount).toBe(1);
+    expect(view.state.doc.child(0).type.name).toBe("paragraph");
+    expect(view.state.doc.textContent).toBe("");
+  });
+
+  test("does not delete an extra column when a batch targets the same column twice", () => {
+    const rows = [
+      ["A", "B"],
+      ["C", "D"],
+    ].map((texts) =>
+      schema.node(
+        "tableRow",
+        null,
+        texts.map((text) =>
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: `duplicate-column-${text}` }, [schema.text(text)]),
+          ]),
+        ),
+      ),
+    );
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [schema.node("table", null, rows)]),
+    });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        { id: "delete-top", type: "deleteTableColumn", blockId: "duplicate-column-A" },
+        { id: "delete-bottom", type: "deleteTableColumn", blockId: "duplicate-column-C" },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.applied).toEqual([{ id: "delete-top" }]);
+    expect(result.skipped).toEqual([{ id: "delete-bottom", reason: "noopOperation" }]);
+    expect(TableMap.get(view.state.doc.child(0)).width).toBe(1);
+    expect(view.state.doc.child(0).textContent).toBe("BD");
+  });
+
+  test("recomputes table topology between column deletions in one batch", () => {
+    const rows = [
+      ["A", "B", "C"],
+      ["D", "E", "F"],
+    ].map((texts) =>
+      schema.node(
+        "tableRow",
+        null,
+        texts.map((text) =>
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: `batch-column-${text}` }, [schema.text(text)]),
+          ]),
+        ),
+      ),
+    );
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [schema.node("table", null, rows)]),
+    });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        { id: "delete-middle", type: "deleteTableColumn", blockId: "batch-column-B" },
+        { id: "delete-right", type: "deleteTableColumn", blockId: "batch-column-C" },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual([
+      "delete-middle",
+      "delete-right",
+    ]);
+    expect(TableMap.get(view.state.doc.child(0)).width).toBe(1);
+    expect(view.state.doc.child(0).textContent).toBe("AD");
+  });
+
+  test("keeps insertion and deletion targets stable at the same column boundary", () => {
+    const rows = [
+      ["A", "B"],
+      ["C", "D"],
+    ].map((texts) =>
+      schema.node(
+        "tableRow",
+        null,
+        texts.map((text) =>
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: `mixed-column-${text}` }, [schema.text(text)]),
+          ]),
+        ),
+      ),
+    );
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [schema.node("table", null, rows)]),
+    });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        { id: "delete-column", type: "deleteTableColumn", blockId: "mixed-column-B" },
+        {
+          id: "insert-column",
+          type: "insertTableColumn",
+          blockId: "mixed-column-B",
+          position: "before",
+          cellTexts: ["New top", "New bottom"],
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.child(0).child(0).textContent).toBe("ANew top");
+    expect(view.state.doc.child(0).child(1).textContent).toBe("CNew bottom");
+  });
+
+  test("maps column deletion through earlier operations in a mixed batch", () => {
+    const rows = [
+      ["A", "B"],
+      ["C", "D"],
+    ].map((texts) =>
+      schema.node(
+        "tableRow",
+        null,
+        texts.map((text) =>
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: `mapped-column-${text}` }, [schema.text(text)]),
+          ]),
+        ),
+      ),
+    );
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [schema.node("table", null, rows)]),
+    });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        { id: "delete-column", type: "deleteTableColumn", blockId: "mapped-column-C" },
+        {
+          id: "insert-row",
+          type: "insertTableRow",
+          blockId: "mapped-column-C",
+          cellTexts: ["E", "F"],
+        },
+        {
+          id: "insert-before-table",
+          type: "insertBeforeBlock",
+          blockId: "mapped-column-A",
+          text: "Before table",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.child(0).textContent).toBe("Before table");
+    const updatedTable = view.state.doc.child(1);
+    expect(TableMap.get(updatedTable).width).toBe(1);
+    expect(updatedTable.childCount).toBe(3);
+    expect(updatedTable.textContent).toBe("BDF");
+  });
+
+  test("table-column deletes are skipped in tracked-changes mode", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-delete-column" }, [schema.text("Cell")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "delete-column",
+          type: "deleteTableColumn",
+          blockId: "tracked-delete-column",
+        },
+      ],
+      mode: "tracked-changes",
+    });
+
+    expect(result).toEqual({
+      applied: [],
+      skipped: [{ id: "delete-column", reason: "unsupportedMode" }],
+    });
+    expect(view.state.doc.child(0).child(0).childCount).toBe(1);
+  });
+
   test("table-column inserts are skipped in tracked-changes mode", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [

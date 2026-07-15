@@ -2,6 +2,7 @@ import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import {
   columnIsHeader,
+  removeColumn,
   removeRow,
   rowIsHeader,
   TableMap,
@@ -66,6 +67,7 @@ type ResolvedOperation = {
   tableRowInsertion?: TableRowInsertion;
   tableRowDeletion?: TableRowDeletion;
   tableColumnInsertion?: TableColumnInsertion;
+  tableColumnDeletion?: TableColumnDeletion;
   commentId?: number;
   /**
    * Position in the input `operations` array, used as a secondary
@@ -246,6 +248,21 @@ type TableColumnInsertion = {
   columnIndex: number;
 };
 
+type TableColumnDeletion = TableColumnInsertion;
+
+const getTableColumnCoordinateKey = ({
+  tablePosition,
+  columnIndex,
+}: TableColumnInsertion): string => `${tablePosition}:${columnIndex}`;
+
+type TableCellTarget = {
+  tablePosition: number;
+  cellPosition: number;
+  cellEndPosition: number;
+  leftColumnIndex: number;
+  rightColumnIndex: number;
+};
+
 const findEnclosingTableRow = (doc: PMNode, blockFrom: number): TableRowTarget | null => {
   const resolved = doc.resolve(blockFrom);
   for (let rowDepth = resolved.depth; rowDepth > 0; rowDepth--) {
@@ -268,11 +285,7 @@ const findEnclosingTableRow = (doc: PMNode, blockFrom: number): TableRowTarget |
   return null;
 };
 
-const findTableColumnInsertion = (
-  doc: PMNode,
-  blockFrom: number,
-  position: "after" | "before",
-): (TableColumnInsertion & { boundaryPosition: number }) | null => {
+const findEnclosingTableCell = (doc: PMNode, blockFrom: number): TableCellTarget | null => {
   const resolved = doc.resolve(blockFrom);
   for (let cellDepth = resolved.depth; cellDepth > 0; cellDepth--) {
     const cell = resolved.node(cellDepth);
@@ -297,14 +310,32 @@ const findTableColumnInsertion = (
     const cellRect = TableMap.get(table).findCell(cellPosition - tableStart);
     return {
       tablePosition: resolved.before(tableDepth),
-      columnIndex: position === "before" ? cellRect.left : cellRect.right,
-      boundaryPosition: position === "before" ? cellPosition : cellPosition + cell.nodeSize,
+      cellPosition,
+      cellEndPosition: cellPosition + cell.nodeSize,
+      leftColumnIndex: cellRect.left,
+      rightColumnIndex: cellRect.right,
     };
   }
   return null;
 };
 
-const deleteSoleTableRow = (
+const findTableColumnInsertion = (
+  doc: PMNode,
+  blockFrom: number,
+  position: "after" | "before",
+): (TableColumnInsertion & { boundaryPosition: number }) | null => {
+  const target = findEnclosingTableCell(doc, blockFrom);
+  if (!target) {
+    return null;
+  }
+  return {
+    tablePosition: target.tablePosition,
+    columnIndex: position === "before" ? target.leftColumnIndex : target.rightColumnIndex,
+    boundaryPosition: position === "before" ? target.cellPosition : target.cellEndPosition,
+  };
+};
+
+const deleteTableNode = (
   tr: Transaction,
   tablePosition: number,
   table: PMNode,
@@ -707,6 +738,7 @@ const applyFolioAIEditOperationsInternal = ({
   const deletionType = view.state.schema.marks["deletion"];
   const commentType = view.state.schema.marks["comment"];
   const claimedTableRows = new Set<string>();
+  const claimedTableColumns = new Set<string>();
 
   if (mode === "tracked-changes" && (!insertionType || !deletionType)) {
     return {
@@ -731,7 +763,8 @@ const applyFolioAIEditOperationsInternal = ({
       (operation.type === "formatRange" ||
         operation.type === "insertTableRow" ||
         operation.type === "deleteTableRow" ||
-        operation.type === "insertTableColumn")
+        operation.type === "insertTableColumn" ||
+        operation.type === "deleteTableColumn")
     ) {
       skipped.push({ id: operation.id, reason: "unsupportedMode" });
       continue;
@@ -764,6 +797,16 @@ const applyFolioAIEditOperationsInternal = ({
       claimedTableRows.add(rowKey);
     }
 
+    const columnDeletion = resolution.operation.tableColumnDeletion;
+    if (columnDeletion) {
+      const columnKey = getTableColumnCoordinateKey(columnDeletion);
+      if (claimedTableColumns.has(columnKey)) {
+        skipped.push({ id: operation.id, reason: "noopOperation" });
+        continue;
+      }
+      claimedTableColumns.add(columnKey);
+    }
+
     const commentId = commentText !== undefined ? createCommentId?.(commentText) : undefined;
     resolved.push({
       ...resolution.operation,
@@ -779,16 +822,17 @@ const applyFolioAIEditOperationsInternal = ({
   let tr = view.state.tr;
   let revisionSeed = revisionIdSeed ?? nextRevisionSeed(resolved.length);
   const date = new Date().toISOString();
+  const insertedColumnCounts = new Map<string, number>();
 
-  // Sort right-to-left so each tr.insert / tr.delete leaves
-  // earlier positions intact. For ties on `from` we order by
-  // `originalIndex` DESC: applied in reverse, that means the
-  // earlier-listed op lands at the original anchor and the later
-  // one ends up immediately after it, matching the AI's logical
-  // sequence.
+  // Sort right-to-left so each tr.insert / tr.delete leaves earlier
+  // positions intact. Column insertions run before deletions at the
+  // same snapshot coordinate; the deletion path accounts for those
+  // inserted columns so it still removes the original target. Other
+  // ties use reverse input order so repeated insertions retain their
+  // requested sequence.
   for (const item of resolved.toSorted((left, right) => {
-    const leftColumn = left.tableColumnInsertion;
-    const rightColumn = right.tableColumnInsertion;
+    const leftColumn = left.tableColumnInsertion ?? left.tableColumnDeletion;
+    const rightColumn = right.tableColumnInsertion ?? right.tableColumnDeletion;
     if (!leftColumn && rightColumn) {
       return -1;
     }
@@ -801,6 +845,11 @@ const applyFolioAIEditOperationsInternal = ({
       }
       if (leftColumn.columnIndex !== rightColumn.columnIndex) {
         return rightColumn.columnIndex - leftColumn.columnIndex;
+      }
+      const leftIsInsertion = left.tableColumnInsertion !== undefined;
+      const rightIsInsertion = right.tableColumnInsertion !== undefined;
+      if (leftIsInsertion !== rightIsInsertion) {
+        return leftIsInsertion ? -1 : 1;
       }
       return right.originalIndex - left.originalIndex;
     }
@@ -1106,6 +1155,61 @@ const applyFolioAIEditOperationsInternal = ({
           }
           tr = tr.setNodeMarkup(position, undefined, action.attrs);
         }
+        const columnKey = getTableColumnCoordinateKey(insertion);
+        insertedColumnCounts.set(columnKey, (insertedColumnCounts.get(columnKey) ?? 0) + 1);
+        break;
+      }
+      case "deleteTableColumn": {
+        const deletion = item.tableColumnDeletion;
+        const tablePosition = deletion ? tr.mapping.map(deletion.tablePosition, 1) : null;
+        const table = tablePosition === null ? null : tr.doc.nodeAt(tablePosition);
+        if (
+          !deletion ||
+          tablePosition === null ||
+          !table ||
+          table.type.spec["tableRole"] !== "table"
+        ) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
+        const map = TableMap.get(table);
+        const columnKey = getTableColumnCoordinateKey(deletion);
+        const columnIndex = deletion.columnIndex + (insertedColumnCounts.get(columnKey) ?? 0);
+        if (columnIndex < 0 || columnIndex >= map.width) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
+        if (map.width === 1) {
+          const nextTr = deleteTableNode(tr, tablePosition, table);
+          if (!nextTr) {
+            skipped.push({
+              id: item.operation.id,
+              reason: "unsupportedBlock",
+            });
+            continue;
+          }
+          tr = nextTr;
+          break;
+        }
+        removeColumn(
+          tr,
+          {
+            map,
+            table,
+            tableStart: tablePosition + 1,
+            left: columnIndex,
+            top: 0,
+            right: columnIndex + 1,
+            bottom: map.height,
+          },
+          columnIndex,
+        );
         break;
       }
       case "deleteTableRow": {
@@ -1124,7 +1228,7 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         if (table.childCount === 1) {
-          const nextTr = deleteSoleTableRow(tr, deletion.tablePosition, table);
+          const nextTr = deleteTableNode(tr, deletion.tablePosition, table);
           if (!nextTr) {
             skipped.push({
               id: item.operation.id,
@@ -1665,6 +1769,28 @@ const resolveOperation = ({
         blockTo,
         blockNode,
         tableColumnInsertion,
+      },
+    };
+  }
+
+  if (operation.type === "deleteTableColumn") {
+    const target = findEnclosingTableCell(doc, blockFrom);
+    if (!target) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    return {
+      type: "resolved",
+      operation: {
+        operation,
+        from: target.cellPosition,
+        to: target.cellPosition,
+        blockFrom,
+        blockTo,
+        blockNode,
+        tableColumnDeletion: {
+          tablePosition: target.tablePosition,
+          columnIndex: target.leftColumnIndex,
+        },
       },
     };
   }

@@ -382,6 +382,17 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
       required: ["id", "type", "blockId"],
       additionalProperties: false,
     },
+    {
+      type: "object",
+      description: "Delete the column containing the anchor block. Direct mode only.",
+      properties: {
+        ...operationMetaProperties,
+        type: { type: "string", enum: ["deleteTableColumn"] },
+        blockId: blockIdProperty,
+      },
+      required: ["id", "type", "blockId"],
+      additionalProperties: false,
+    },
   ],
 } as const;
 
@@ -415,7 +426,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
         '"direct" applies immediately. `formatRange`, `insertSignatureTable`, `insertTableRow`, ' +
-        '`deleteTableRow`, and `insertTableColumn` support "direct" only.',
+        '`deleteTableRow`, `insertTableColumn`, and `deleteTableColumn` support "direct" only.',
     },
     atomic: {
       type: "boolean",
