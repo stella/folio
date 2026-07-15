@@ -231,6 +231,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /** Initial text for each physical cell in source order; omitted cells stay empty. */
         cellTexts?: string[];
       }
+    | {
+        id: string;
+        type: "deleteTableRow";
+        /** Stable paragraph anchor inside the row to delete. */
+        blockId: string;
+      }
   );
 
 export type FolioAIEditApplyMode = "direct" | "tracked-changes";

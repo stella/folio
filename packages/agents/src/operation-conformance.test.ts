@@ -401,6 +401,11 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     position: "before",
     cellTexts: ["First", "Second"],
   },
+  deleteTableRow: {
+    id: "op-delete-table-row",
+    type: "deleteTableRow",
+    blockId: "0304003A",
+  },
 };
 
 const variantTypeOf = (variant: JsonSchemaNode): unknown => variant.properties?.["type"]?.enum?.[0];

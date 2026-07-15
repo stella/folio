@@ -440,6 +440,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly commentOnBlock: readonly ["direct", "tracked-changes"];
     readonly insertSignatureTable: readonly ["direct"];
     readonly insertTableRow: readonly ["direct"];
+    readonly deleteTableRow: readonly ["direct"];
 }>;
 
 // @public (undocumented)
@@ -449,7 +450,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "footer", "footnote", "endnote"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable", "insertTableRow"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -577,6 +578,10 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     blockId: string;
     position?: "after" | "before"; /** Initial text for each physical cell in source order; omitted cells stay empty. */
     cellTexts?: string[];
+} | {
+    id: string;
+    type: "deleteTableRow"; /** Stable paragraph anchor inside the row to delete. */
+    blockId: string;
 });
 
 // @public (undocumented)
@@ -650,6 +655,11 @@ export type FolioDocumentOperationAffectedTarget = {
 } | {
     type: "comment";
     commentId: number;
+} | {
+    type: "tableRow";
+    story: FolioDocumentOperationStory;
+    anchorBlockId: string;
+    effect: "deleted";
 };
 
 // @public (undocumented)
