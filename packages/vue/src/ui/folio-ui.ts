@@ -26,10 +26,8 @@
  * prop contract; consumers override any subset through `DocxEditor`'s
  * `components` prop.
  *
- * Threading note: `DatePickerPopover`'s default exists and is injectable, but
- * no Vue chrome consumer renders it yet — the content-control widget overlay
- * (`ContentControlWidgetsOverlay` in React) that would use it is not ported to
- * Vue (a separate, pre-existing gap unrelated to UI injection).
+ * `DatePickerPopover` is consumed by the content-control widget overlay; hosts
+ * can replace it with the same `components` injection used by other chrome.
  */
 
 import { defineComponent, inject, provide, type Component, type InjectionKey } from "vue";
@@ -205,7 +203,7 @@ export type FolioCheckboxProps = {
  * `FolioDatePickerPopoverProps`: `value` accepts an ISO string, a `Date`, or
  * `null`; the component emits `change` with an ISO `yyyy-mm-dd` string (or
  * `null` when cleared). See the module docblock — no Vue chrome consumer
- * renders this yet (content-control widgets are not ported to Vue).
+ * renders this for date content controls.
  */
 export type FolioDatePickerPopoverProps = {
   value: string | Date | null;

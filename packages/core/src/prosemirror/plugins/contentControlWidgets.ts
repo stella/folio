@@ -19,6 +19,10 @@ import type { EditorView } from "prosemirror-view";
 import { ContentControlLockedError, ContentControlTypeError } from "../../content-controls";
 import { findBlockSdtMatch, setContentControlValueTr } from "../commands/contentControls";
 
+export type ContentControlWidgetAnchor = {
+  getBoundingClientRect: () => { bottom: number; left: number };
+};
+
 export type ContentControlWidgetEvent =
   | {
       kind: "dropdownOpen";
@@ -26,14 +30,14 @@ export type ContentControlWidgetEvent =
       /** PM position of the clicked SDT instance — disambiguates duplicates. */
       pmPos: number;
       sdtType: "dropdown" | "comboBox";
-      anchor: HTMLElement;
+      anchor: ContentControlWidgetAnchor;
       listItemsJson: string | undefined;
     }
   | {
       kind: "datePick";
       tag: string;
       pmPos: number;
-      anchor: HTMLElement;
+      anchor: ContentControlWidgetAnchor;
       currentValue: string | undefined;
     }
   | {
@@ -46,7 +50,7 @@ export type ContentControlWidgetEvent =
       tag: string;
       pmPos: number;
       sdtType: string;
-      anchor: HTMLElement;
+      anchor: ContentControlWidgetAnchor;
       error: ContentControlLockedError | ContentControlTypeError;
     };
 
@@ -56,11 +60,11 @@ export const contentControlWidgetsPluginKey = new PluginKey<unknown>("contentCon
 
 /**
  * CustomEvent name dispatched on the editor view DOM whenever the plugin
- * needs to surface a `ContentControlWidgetEvent` to the React shell. The
- * shell subscribes via `addEventListener` and renders the matching chrome.
+ * needs to surface a `ContentControlWidgetEvent` to an adapter shell. The
+ * adapter subscribes via `addEventListener` and renders the matching chrome.
  *
- * Using a CustomEvent keeps the plugin from owning a React reference and
- * makes the host's responsibility explicit: receive event → render UI →
+ * Using a CustomEvent keeps the plugin framework-neutral and makes the
+ * adapter's responsibility explicit: receive event → render UI →
  * call dispatchDropdownPick / dispatchDatePick.
  */
 export const CONTENT_CONTROL_WIDGET_EVENT_NAME = "folio:content-control-widget";
@@ -165,7 +169,7 @@ export function createContentControlWidgetsPlugin(
                 tag,
                 pmPos,
                 anchor,
-                currentValue: undefined,
+                currentValue: findBlockSdtMatch(view.state.doc, { pmPos })?.node.textContent,
               });
               event.preventDefault();
               return true;
@@ -233,7 +237,7 @@ export function dispatchDropdownPick(view: EditorView, pmPos: number, value: str
   } catch (error) {
     // The click-time preflight should have caught lock refusals, but the
     // doc could have changed mid-picker. Swallow the typed refusal so the
-    // React UI does not crash; return false so the caller knows the
+    // adapter UI does not crash; return false so the caller knows the
     // change was rejected.
     if (error instanceof ContentControlLockedError || error instanceof ContentControlTypeError) {
       return false;

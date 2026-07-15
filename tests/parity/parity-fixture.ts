@@ -22,6 +22,7 @@ type FolioParityBridge = {
   boldFirstWord: () => boolean;
   selectFirstWord: () => boolean;
   countSelectionRects: () => number;
+  setupContentControls: () => boolean;
   insertTable: (rows: number, cols: number) => boolean;
   countTables: () => number;
   commentFirstWord: () => boolean;

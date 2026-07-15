@@ -3,9 +3,8 @@
   inject one. Vue port of packages/react/src/ui/defaults/date-picker-popover.tsx:
   a native `<input type="date">` whose value is an ISO `yyyy-mm-dd` string;
   emits `change` with that string (or `null` when cleared), matching the
-  design-system picker contract. See ui/folio-ui.ts's module docblock — no Vue
-  chrome consumer renders this yet (content-control widgets are not ported to
-  Vue).
+  design-system picker contract. The content-control widget overlay uses this
+  default when a host does not inject its own date picker.
 -->
 <template>
   <input

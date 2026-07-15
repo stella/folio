@@ -119,6 +119,11 @@ footer relationship ids are persistent story identities: the shared
 `render-dom/HeaderFooterSelectionOverlay` projects its selection into painted
 page coordinates. React and Vue provide host refs and chrome only.
 
+Typed content-control chrome follows the same rule. The shared
+`ContentControlWidgetController` owns picker state, view binding, dismissal,
+and transaction dispatch for dropdown and date controls; adapters only render
+the discriminated snapshot with their native menu and date-picker primitives.
+
 ### Seam 7 — Operation / Edit API (the agentic surface)
 
 A stable, versioned, documented schema of edit operations over `Document`
