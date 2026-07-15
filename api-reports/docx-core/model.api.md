@@ -966,8 +966,8 @@ export type ShapeTextBody = {
         bottom?: number;
         left?: number;
         right?: number;
-    }; /** Paragraphs inside the shape */
-    content: Paragraph[];
+    }; /** Block content inside the shape */
+    content: (Paragraph | Table)[];
 };
 
 // @public
@@ -1214,8 +1214,8 @@ export type TextBox = {
     position?: ImagePosition; /** Wrap settings */
     wrap?: ImageWrap; /** Fill */
     fill?: ShapeFill; /** Outline */
-    outline?: ShapeOutline; /** Text content */
-    content: Paragraph[]; /** Text fitting behavior */
+    outline?: ShapeOutline; /** Text and table content */
+    content: (Paragraph | Table)[]; /** Text fitting behavior */
     autoFit?: ShapeTextBody["autoFit"]; /** Internal margins */
     margins?: {
         top?: number;
