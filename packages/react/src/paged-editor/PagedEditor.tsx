@@ -261,6 +261,12 @@ export type PagedEditorProps = {
   onDocumentChange?: (document: Document) => void;
   /** Callback when a readonly user action would mutate the document. */
   onReadOnlyEditAttempt?: () => void;
+  /** Fires when the editor receives a copy event. */
+  onCopy?: () => void;
+  /** Fires when an editable editor receives a cut event. */
+  onCut?: () => void;
+  /** Fires when an editable editor receives a paste event. */
+  onPaste?: () => void;
   /** Callback when selection changes. */
   onSelectionChange?: (from: number, to: number) => void;
   /**
@@ -1369,6 +1375,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       zoom = 1,
       onDocumentChange,
       onReadOnlyEditAttempt,
+      onCopy,
+      onCut,
+      onPaste,
       onSelectionChange,
       onSelectionTextChange,
       onEditorViewReady,
@@ -5740,6 +5749,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           onEditorViewReady={handleEditorViewReady}
           onEditorViewDestroy={handleEditorViewDestroy}
           onKeyDown={handleHiddenEditorKeyDown}
+          {...(onCopy !== undefined ? { onCopy } : {})}
+          {...(onCut !== undefined ? { onCut } : {})}
+          {...(onPaste !== undefined ? { onPaste } : {})}
           {...(styles !== undefined ? { styles } : {})}
           externalPlugins={externalPlugins}
           {...(collaboration !== undefined ? { collaboration } : {})}

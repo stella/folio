@@ -94,6 +94,12 @@ export type HiddenProseMirrorProps = {
   onEditorViewDestroy?: () => void;
   /** Intercept key events before ProseMirror processes them. Return true to prevent PM handling. */
   onKeyDown?: (view: EditorView, event: KeyboardEvent) => boolean;
+  /** Fires when the editor receives a copy event. */
+  onCopy?: () => void;
+  /** Fires when an editable editor receives a cut event. */
+  onCut?: () => void;
+  /** Fires when an editable editor receives a paste event. */
+  onPaste?: () => void;
   /** Callback when a readonly user action would mutate the document. */
   onReadOnlyEditAttempt?: () => void;
 };
@@ -199,6 +205,9 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
       onEditorViewReady,
       onEditorViewDestroy,
       onKeyDown,
+      onCopy,
+      onCut,
+      onPaste,
       onReadOnlyEditAttempt,
       onRemoteSelectionsChange,
       precomputedInitialState,
@@ -231,6 +240,9 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     const onEditorViewReadyRef = useRef(onEditorViewReady);
     const onEditorViewDestroyRef = useRef(onEditorViewDestroy);
     const onKeyDownRef = useRef(onKeyDown);
+    const onCopyRef = useRef(onCopy);
+    const onCutRef = useRef(onCut);
+    const onPasteRef = useRef(onPaste);
     const onReadOnlyEditAttemptRef = useRef(onReadOnlyEditAttempt);
     const onRemoteSelectionsChangeRef = useRef(onRemoteSelectionsChange);
 
@@ -245,6 +257,9 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     onEditorViewReadyRef.current = onEditorViewReady;
     onEditorViewDestroyRef.current = onEditorViewDestroy;
     onKeyDownRef.current = onKeyDown;
+    onCopyRef.current = onCopy;
+    onCutRef.current = onCut;
+    onPasteRef.current = onPaste;
     onReadOnlyEditAttemptRef.current = onReadOnlyEditAttempt;
     onRemoteSelectionsChangeRef.current = onRemoteSelectionsChange;
     collaborationRef.current = collaboration;
@@ -276,6 +291,9 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
         onTransaction: (transaction, newState) => onTransactionRef.current?.(transaction, newState),
         onSelectionChange: (state) => onSelectionChangeRef.current?.(state),
         onKeyDown: (view, event) => onKeyDownRef.current?.(view, event) ?? false,
+        onCopy: () => onCopyRef.current?.(),
+        onCut: () => onCutRef.current?.(),
+        onPaste: () => onPasteRef.current?.(),
         onReadOnlyEditAttempt: () => onReadOnlyEditAttemptRef.current?.(),
         onEditorViewReady: (view) => onEditorViewReadyRef.current?.(view),
         onEditorViewDestroy: () => onEditorViewDestroyRef.current?.(),

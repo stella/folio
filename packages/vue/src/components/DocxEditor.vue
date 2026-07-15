@@ -701,6 +701,9 @@ const {
     }
   },
   onEditorViewReady: (view) => props.onEditorViewReady?.(view),
+  onCopy: () => props.onCopy?.(),
+  onCut: () => props.onCut?.(),
+  onPaste: () => props.onPaste?.(),
   onReadOnlyEditAttempt: () => props.onReadonlyEditAttempt?.(),
   // Selective-save feature flags + tripwire observability, mirroring React's
   // DocxEditor save path. Read fresh on each save() so prop updates are honored.
@@ -916,6 +919,9 @@ const {
   // readOnly and never surfaces the custom list.
   customContextMenuItems: () => (readOnly.value ? undefined : props.customContextMenuItems),
   onCustomContextAction: (id, range) => props.onCustomContextAction?.(id, range),
+  onCopy: () => props.onCopy?.(),
+  onCut: () => props.onCut?.(),
+  onPaste: () => props.onPaste?.(),
 });
 
 // Tracked-change sidebar cards: derive entries from the live editor state via

@@ -124,6 +124,11 @@ Typed content-control chrome follows the same rule. The shared
 and transaction dispatch for dropdown and date controls; adapters only render
 the discriminated snapshot with their native menu and date-picker primitives.
 
+The shared hidden-editor manager also owns clipboard event reporting and the
+read-only refusal policy. Adapters thread host callbacks and cover only their
+explicit menu operations; native copy, cut, and paste events stay in the shared
+controller seam.
+
 ### Seam 7 — Operation / Edit API (the agentic surface)
 
 A stable, versioned, documented schema of edit operations over `Document`

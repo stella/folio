@@ -26,6 +26,8 @@ export type FolioParityBridge = {
   countSelectionRects: () => number;
   /** Replace the live document with dropdown and date content controls. */
   setupContentControls: () => boolean;
+  /** Dispatch a clipboard DOM event and return the matching host callback count. */
+  dispatchClipboardEvent: (kind: "copy" | "cut" | "paste") => number;
   /** Insert a rows×cols table at the selection (core helper). Returns success. */
   insertTable: (rows: number, cols: number) => boolean;
   /** Count `table` nodes in the live document (0 with no live view). */
@@ -63,7 +65,10 @@ export type FolioParityBridge = {
   getPageNumberForSelection: () => number;
 };
 
-export function buildParityBridge(getRef: () => DocxEditorRef | null): FolioParityBridge {
+export function buildParityBridge(
+  getRef: () => DocxEditorRef | null,
+  getClipboardCallbackCount: (kind: "copy" | "cut" | "paste") => number,
+): FolioParityBridge {
   const liveView = () => getRef()?.getEditor()?.getView() ?? null;
   return {
     getTotalPages: () => getRef()?.getTotalPages() ?? 0,
@@ -160,6 +165,14 @@ export function buildParityBridge(getRef: () => DocxEditorRef | null): FolioPari
       ]);
       view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, [dropdown, date]));
       return true;
+    },
+    dispatchClipboardEvent: (kind) => {
+      const view = liveView();
+      if (!view) {
+        return 0;
+      }
+      view.dom.dispatchEvent(new ClipboardEvent(kind, { bubbles: true, cancelable: true }));
+      return getClipboardCallbackCount(kind);
     },
     insertTable: (rows, cols) => {
       const view = liveView();

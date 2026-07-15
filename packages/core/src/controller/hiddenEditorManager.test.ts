@@ -4,6 +4,7 @@ import type { EditorView } from "prosemirror-view";
 
 import {
   createHiddenEditorManager,
+  createHiddenEditorClipboardHandlers,
   type HiddenEditorManagerDeps,
   type HiddenProseMirrorRemoteSelection,
 } from "./hiddenEditorManager";
@@ -24,6 +25,9 @@ const makeDeps = (
     onTransaction: { calls: 0 },
     onSelectionChange: { calls: 0 },
     onKeyDown: { calls: 0 },
+    onCopy: { calls: 0 },
+    onCut: { calls: 0 },
+    onPaste: { calls: 0 },
     onReadOnlyEditAttempt: { calls: 0 },
     onEditorViewReady: { calls: 0 },
     onEditorViewDestroy: { calls: 0 },
@@ -51,6 +55,15 @@ const makeDeps = (
     onKeyDown: (_view: EditorView, _event: KeyboardEvent) => {
       spies["onKeyDown"].calls += 1;
       return false;
+    },
+    onCopy: () => {
+      spies["onCopy"].calls += 1;
+    },
+    onCut: () => {
+      spies["onCut"].calls += 1;
+    },
+    onPaste: () => {
+      spies["onPaste"].calls += 1;
     },
     onReadOnlyEditAttempt: () => {
       spies["onReadOnlyEditAttempt"].calls += 1;
@@ -127,5 +140,41 @@ describe("createHiddenEditorManager", () => {
     expect(manager.api.getView()).toBeNull();
     expect(manager.api.getState()).toBeNull();
     expect(manager.api.getDocument()).toBeNull();
+  });
+});
+
+describe("createHiddenEditorClipboardHandlers", () => {
+  test("reports editable copy, cut, and paste without consuming the events", () => {
+    const { deps, spies } = makeDeps();
+    const handlers = createHiddenEditorClipboardHandlers(deps);
+    const event = { preventDefault: () => undefined };
+
+    expect(handlers.copy()).toBe(false);
+    expect(handlers.cut(undefined, event)).toBe(false);
+    expect(handlers.paste(undefined, event)).toBe(false);
+    expect(spies["onCopy"].calls).toBe(1);
+    expect(spies["onCut"].calls).toBe(1);
+    expect(spies["onPaste"].calls).toBe(1);
+    expect(spies["onReadOnlyEditAttempt"].calls).toBe(0);
+  });
+
+  test("allows copy but refuses mutating clipboard events in read-only mode", () => {
+    const { deps, spies } = makeDeps({ getReadOnly: () => true });
+    const handlers = createHiddenEditorClipboardHandlers(deps);
+    let prevented = 0;
+    const event = {
+      preventDefault: () => {
+        prevented += 1;
+      },
+    };
+
+    expect(handlers.copy()).toBe(false);
+    expect(handlers.cut(undefined, event)).toBe(true);
+    expect(handlers.paste(undefined, event)).toBe(true);
+    expect(spies["onCopy"].calls).toBe(1);
+    expect(spies["onCut"].calls).toBe(0);
+    expect(spies["onPaste"].calls).toBe(0);
+    expect(spies["onReadOnlyEditAttempt"].calls).toBe(2);
+    expect(prevented).toBe(2);
   });
 });
