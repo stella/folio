@@ -1,7 +1,6 @@
 import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import {
-  addColSpan,
   columnIsHeader,
   removeRow,
   rowIsHeader,
@@ -431,7 +430,42 @@ const getInsertedPhysicalColumnRows = (map: TableMap, columnIndex: number): numb
 
 type TableColumnInsertionAction =
   | { type: "insertCell"; position: number; cell: PMNode }
-  | { type: "setColspan"; position: number; cell: PMNode; colspanOffset: number };
+  | { type: "setColspan"; position: number; attrs: Record<string, unknown> };
+
+const expandTableCellColspan = (
+  cell: PMNode,
+  colspanOffset: number,
+): Record<string, unknown> | null => {
+  const colspan: unknown = cell.attrs["colspan"];
+  const rowspan: unknown = cell.attrs["rowspan"];
+  const colwidth: unknown = cell.attrs["colwidth"];
+  if (
+    typeof colspan !== "number" ||
+    !Number.isInteger(colspan) ||
+    colspan < 1 ||
+    typeof rowspan !== "number" ||
+    !Number.isInteger(rowspan) ||
+    rowspan < 1 ||
+    !Number.isInteger(colspanOffset) ||
+    colspanOffset < 0 ||
+    colspanOffset > colspan
+  ) {
+    return null;
+  }
+  if (colwidth !== null && !Array.isArray(colwidth)) {
+    return null;
+  }
+  if (Array.isArray(colwidth) && !colwidth.every((width) => typeof width === "number")) {
+    return null;
+  }
+  const nextColwidth = Array.isArray(colwidth) ? [...colwidth] : null;
+  nextColwidth?.splice(colspanOffset, 0, 0);
+  return {
+    ...cell.attrs,
+    colspan: colspan + 1,
+    colwidth: nextColwidth,
+  };
+};
 
 const populateTableCell = (cell: PMNode, text: string): PMNode | null => {
   const paragraph = cell.firstChild;
@@ -473,13 +507,17 @@ const buildTableColumnInsertionActions = (
       if (!cell) {
         return null;
       }
+      const colspanOffset = columnIndex - map.colCount(position);
+      const attrs = expandTableCellColspan(cell, colspanOffset);
+      if (!attrs) {
+        return null;
+      }
       actions.push({
         type: "setColspan",
         position,
-        cell,
-        colspanOffset: columnIndex - map.colCount(position),
+        attrs,
       });
-      row += Number(cell.attrs["rowspan"] ?? 1) - 1;
+      row += Number(cell.attrs["rowspan"]) - 1;
       continue;
     }
     const referencePosition =
@@ -1063,11 +1101,7 @@ const applyFolioAIEditOperationsInternal = ({
             tr = tr.insert(position, action.cell);
             continue;
           }
-          tr = tr.setNodeMarkup(
-            position,
-            undefined,
-            addColSpan(action.cell.attrs, action.colspanOffset),
-          );
+          tr = tr.setNodeMarkup(position, undefined, action.attrs);
         }
         break;
       }
