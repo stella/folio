@@ -65,6 +65,13 @@ export type { ColorPreset, FolioButtonProps, FolioUIComponents, OutlineItem } fr
 // i18n runtime (Vue-specific — React consumes `use-intl` directly). Locale-string
 // types live in the shared catalog; import them from `@stll/folio-core` if needed.
 export { defaultLocale, i18nPlugin, provideLocale, useTranslation } from "./i18n";
+export {
+  colorModePlugin,
+  defaultColorMode,
+  provideColorMode,
+  useColorMode,
+  type ColorMode,
+} from "./composables/useColorMode";
 
 // Wheel/keyboard zoom composable (Vue equivalent of React's `useWheelZoom` hook).
 export { useWheelZoom } from "./composables/useWheelZoom";

@@ -26,6 +26,7 @@ const STYLES_SUBPATH = "@stll/folio-vue/editor.css";
 // `packages/vue/src/composables/index.ts`.
 const VUE_COMPOSABLES = [
   "useClipboard",
+  "useColorMode",
   "useDocxEditor",
   "useDragAutoScroll",
   "useFixedDropdown",

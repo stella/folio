@@ -24,9 +24,7 @@
   inside `UnifiedSidebar`), and the table context toolbar (`TableToolbar`).
 
   Remaining adapter-specific surfaces:
-   - externalPlugins / i18n-locale props are not on `DocxEditorProps`, so the
-     host plugin list is empty and the locale defaults to `en`.
-   - colorMode prop + useColorMode: dark mode is fixed light here.
+   - externalPlugins are not on `DocxEditorProps`, so the host plugin list is empty.
    - The title-bar MenuBar is wired (File/Format/Insert/Help), including the insert flow
      (image/table/page-break/TOC via host props or core view-level helpers);
      the watermark item stays inert (no watermark dialog ported).
@@ -37,7 +35,7 @@
       'docx-editor-vue ep-root paged-editor',
       className,
       displayModeClass,
-      { 'paged-editor--readonly': readOnly },
+      { dark: isDark, 'paged-editor--readonly': readOnly },
     ]"
     :style="style"
   >
@@ -467,10 +465,11 @@ import { useSelectionSync } from "../composables/useSelectionSync";
 import { provideDocxPortalClass } from "../composables/usePortalClass";
 import { useTableResize } from "../composables/useTableResize";
 import { useTrackedChanges } from "../composables/useTrackedChanges";
+import { useColorMode } from "../composables/useColorMode";
 import { useZoom } from "../composables/useZoom";
 import type { FontOption } from "../utils/fontOptions";
 import { loadHostFontFaces, removeFontFaces } from "../utils/hostFonts";
-import { provideLocale, useTranslation } from "../i18n";
+import { useTranslation } from "../i18n";
 import { provideFolioUI } from "../ui/folio-ui";
 
 const props = withDefaults(defineProps<DocxEditorProps>(), {
@@ -500,15 +499,15 @@ const emit = defineEmits<{
   (e: "comments-change", comments: Comment[]): void;
 }>();
 
-// PORT-BLOCKED: no i18n/locale prop on the fork's DocxEditorProps yet — default to `en`.
-provideLocale();
 // Provide the consumer's UI-injection overrides (or the built-in defaults) to
 // the chrome subtree. Descendant chrome (Toolbar, FormattingBar) resolves the
 // injected primitives via `useFolioUI`, so `components.ColorPicker` etc. take
 // effect. Provided once at setup; the prop is not expected to change identity.
 provideFolioUI(props.components);
-// PORT-BLOCKED: no colorMode prop; share a fixed-light token scope with teleported chrome.
-const isDark = ref(false);
+// Inherit the host's reactive light/dark/system setting. With no provider the
+// composable preserves the editor's existing light default. Teleported chrome
+// receives the same resolved mode through the portal-class provider.
+const isDark = useColorMode();
 provideDocxPortalClass(isDark);
 
 const editorMode = ref<EditorMode>(props.mode);

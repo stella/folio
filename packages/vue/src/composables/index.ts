@@ -16,6 +16,7 @@
  */
 
 export * from "./useClipboard";
+export * from "./useColorMode";
 export * from "./useDocxEditor";
 export * from "./useDragAutoScroll";
 export * from "./useFindReplace";

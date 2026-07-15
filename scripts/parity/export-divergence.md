@@ -41,6 +41,14 @@ Vue-native runtime (no React equivalent — React consumes `use-intl` directly):
 - `provideLocale` — Vue i18n provide helper.
 - `useTranslation` — Vue i18n composable.
 
+Vue-native host color-mode runtime (React inherits its host's CSS token scope):
+
+- `ColorMode` — Vue color-mode setting type.
+- `colorModePlugin` — Vue app-level color-mode provider.
+- `defaultColorMode` — Vue standalone fallback.
+- `provideColorMode` — Vue component-level color-mode provider.
+- `useColorMode` — Vue reactive color-mode binding.
+
 Per-dialog prop/data type aliases (framework-idiom difference, not a port gap):
 React's dialogs are `.tsx` components that export a named props/data type alias
 per dialog from root, so React hosts can type their dialog usage. Vue's dialogs

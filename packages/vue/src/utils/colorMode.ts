@@ -1,8 +1,7 @@
 /**
- * Color-mode resolution shared by every adapter so the light/dark/auto logic
- * (and its SSR + prefers-color-scheme handling) can't drift between hosts. The
- * adapters keep only their framework binding (useState/useEffect vs
- * ref/watchEffect); the rules live here.
+ * Color-mode resolution for the Vue host binding. Pure resolution stays
+ * separate from Vue's provide/inject layer so browser capability checks and
+ * system-preference subscriptions remain independently testable.
  *
  * @packageDocumentation
  */
