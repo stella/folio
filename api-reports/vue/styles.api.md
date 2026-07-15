@@ -11,6 +11,7 @@ export const EDITOR_CSS_PATH = "@stll/folio-vue/editor.css";
 export const Z_INDEX: {
     readonly selectionOverlay: 10;
     readonly decorationLayer: 11;
+    readonly remoteSelection: 12;
     readonly imageOverlay: 15;
     readonly hfInlineEditor: 10;
     readonly ruler: 30;
