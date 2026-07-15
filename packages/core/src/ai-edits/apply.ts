@@ -781,19 +781,33 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
+        const liveRowspanUpdates: { position: number; cell: PMNode; rowspan: number }[] = [];
+        let invalidRowspanUpdate = false;
         for (const updatePosition of insertion.rowspanUpdates) {
           const cellPosition = insertion.tableStart + updatePosition;
           const liveCell = tr.doc.nodeAt(cellPosition);
           if (!liveCell) {
-            continue;
+            invalidRowspanUpdate = true;
+            break;
           }
           const rowspan: unknown = liveCell.attrs["rowspan"];
           if (typeof rowspan !== "number") {
-            continue;
+            invalidRowspanUpdate = true;
+            break;
           }
-          tr = tr.setNodeMarkup(cellPosition, undefined, {
-            ...liveCell.attrs,
-            rowspan: rowspan + 1,
+          liveRowspanUpdates.push({ position: cellPosition, cell: liveCell, rowspan });
+        }
+        if (invalidRowspanUpdate) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
+        for (const update of liveRowspanUpdates) {
+          tr = tr.setNodeMarkup(update.position, undefined, {
+            ...update.cell.attrs,
+            rowspan: update.rowspan + 1,
           });
         }
         const row = insertion.rowType.create(null, insertion.cells);
