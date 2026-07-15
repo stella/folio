@@ -94,6 +94,23 @@ export class FindReplaceManager<TMatch extends FindMatchPosition> {
   }
 
   /**
+   * Move the cursor to an explicit match index. Returns the selected match, or
+   * null when there is no active result or the index is out of bounds.
+   */
+  goTo(index: number): { match: TMatch; index: number } | null {
+    const result = this.result;
+    if (!result || index < 0 || index >= result.matches.length) {
+      return null;
+    }
+    const match = result.matches.at(index);
+    if (!match) {
+      return null;
+    }
+    this.result = { ...result, currentIndex: index };
+    return { match, index };
+  }
+
+  /**
    * Replace the current match's text. Returns the new document, or null when
    * there is no current match or the replace fails.
    */

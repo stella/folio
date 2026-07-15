@@ -31,10 +31,10 @@ export type UseFindReplaceReturn = {
   clear: () => void;
 };
 
-export const useFindReplace = ({
+export function useFindReplace({
   editorView,
   scrollVisiblePositionIntoView,
-}: UseFindReplaceOptions): UseFindReplaceReturn => {
+}: UseFindReplaceOptions): UseFindReplaceReturn {
   const manager = new FindReplaceManager<ProseMirrorFindMatch>();
   const searchText = ref("");
   const replaceText = ref("");
@@ -78,8 +78,8 @@ export const useFindReplace = ({
   };
 
   const goToMatch = (index: number): boolean => {
-    const match = matches.value.at(index);
-    return match ? revealMatch(match, index) : false;
+    const selected = manager.goTo(index);
+    return selected ? revealMatch(selected.match, selected.index) : false;
   };
 
   const navigate = (direction: "next" | "previous"): ProseMirrorFindMatch | null => {
@@ -132,7 +132,7 @@ export const useFindReplace = ({
     replaceAll,
     clear,
   };
-};
+}
 
 const createTextSelection = (view: EditorView, match: ProseMirrorFindMatch) => {
   const $from = view.state.doc.resolve(match.from);

@@ -66,4 +66,15 @@ describe("FindReplaceManager cursor", () => {
     expect(manager.getResult()).toBeNull();
     expect(manager.navigate("next")).toBeNull();
   });
+
+  test("keeps explicit jumps synchronized with subsequent navigation", () => {
+    const manager = new FindReplaceManager<TestMatch>();
+    const matches = [match("a", 0, 0), match("b", 0, 4), match("c", 0, 8)];
+    manager.setMatches(matches);
+
+    expect(manager.goTo(1)).toEqual({ match: matches[1]!, index: 1 });
+    expect(manager.navigate("next")).toEqual({ match: matches[2]!, index: 2 });
+    expect(manager.goTo(9)).toBeNull();
+    expect(manager.getResult()?.currentIndex).toBe(2);
+  });
 });
