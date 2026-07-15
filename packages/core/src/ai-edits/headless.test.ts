@@ -14,6 +14,7 @@ import { EditorState } from "prosemirror-state";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { buildTextBoxTableDocument, findTextBoxShape } from "../__tests__/textBoxTableDocument";
 import { parseDocx } from "../docx/parser";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createEmptyDocx, repackDocx } from "../docx/rezip";
@@ -21,7 +22,7 @@ import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { schema, singletonManager } from "../prosemirror/schema";
-import type { Document, HeaderFooter, Shape } from "../types/document";
+import type { HeaderFooter } from "../types/document";
 import {
   FolioDocumentStoryNotFoundError,
   FolioDocxReviewer,
@@ -73,94 +74,6 @@ const makeHeaderFooterBaseline = async (): Promise<ArrayBuffer> => {
   const materialized = await repackDocx(document, { updateModifiedDate: false });
   const { docx } = await ensureParaIds(materialized);
   return new Uint8Array(docx).buffer;
-};
-
-const makeTextBoxTableBaseline = async (): Promise<ArrayBuffer> => {
-  const source = await createEmptyDocx();
-  const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
-  document.package.document.content = [
-    {
-      type: "paragraph",
-      paraId: "A2000001",
-      content: [
-        {
-          type: "run",
-          content: [
-            {
-              type: "shape",
-              shape: {
-                type: "shape",
-                shapeType: "textBox",
-                id: "42",
-                size: { width: 1_828_800, height: 914_400 },
-                textBody: {
-                  margins: { top: 45_720, bottom: 45_720, left: 91_440, right: 91_440 },
-                  content: [
-                    {
-                      type: "paragraph",
-                      paraId: "A2000002",
-                      content: [{ type: "run", content: [{ type: "text", text: "Before table" }] }],
-                    },
-                    {
-                      type: "table",
-                      rows: [
-                        {
-                          type: "tableRow",
-                          cells: [
-                            {
-                              type: "tableCell",
-                              content: [
-                                {
-                                  type: "paragraph",
-                                  paraId: "A2000003",
-                                  content: [
-                                    {
-                                      type: "run",
-                                      content: [{ type: "text", text: "Cell value" }],
-                                    },
-                                  ],
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                    {
-                      type: "paragraph",
-                      paraId: "A2000004",
-                      content: [{ type: "run", content: [{ type: "text", text: "After table" }] }],
-                    },
-                  ],
-                },
-              },
-            },
-          ],
-        },
-      ],
-    },
-  ];
-
-  return repackDocx(document, { updateModifiedDate: false });
-};
-
-const findTextBoxShape = (document: Document): Shape => {
-  for (const block of document.package.document.content) {
-    if (block.type !== "paragraph") {
-      continue;
-    }
-    for (const content of block.content) {
-      if (content.type !== "run") {
-        continue;
-      }
-      for (const runContent of content.content) {
-        if (runContent.type === "shape" && runContent.shape.textBody) {
-          return runContent.shape;
-        }
-      }
-    }
-  }
-  throw new Error("expected a shape with text content");
 };
 
 /**
@@ -224,7 +137,7 @@ const findBlock = (blocks: FolioAIBlock[], needle: string): FolioAIBlock => {
 
 describe("headless docx review round-trip", () => {
   test("edits a table cell inside shape text and preserves its container", async () => {
-    const baseline = await makeTextBoxTableBaseline();
+    const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const target = findBlock(reviewer.snapshot().blocks, "Cell value");
 
