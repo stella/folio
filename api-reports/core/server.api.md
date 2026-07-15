@@ -192,6 +192,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly deleteBlock: readonly ["direct", "tracked-changes"];
     readonly commentOnBlock: readonly ["direct", "tracked-changes"];
     readonly insertSignatureTable: readonly ["direct"];
+    readonly insertTableRow: readonly ["direct"];
 }>;
 
 // @public (undocumented)
@@ -201,7 +202,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "footer", "footnote", "endnote"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable", "insertTableRow"];
 
 // @public (undocumented)
 export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"];
@@ -330,6 +331,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     position?: "after" | "before";
     parties: FolioAISignatureParty[];
     comment?: FolioAIComment;
+} | {
+    id: string;
+    type: "insertTableRow"; /** Stable paragraph anchor inside the row that receives the new sibling. */
+    blockId: string;
+    position?: "after" | "before"; /** Initial text for each physical cell in source order; omitted cells stay empty. */
+    cellTexts?: string[];
 });
 
 // @public (undocumented)
@@ -463,7 +470,7 @@ export type FolioDocumentOperationAffectedTarget = {
     story: FolioDocumentOperationStory;
     anchorBlockId: string;
     position: "before" | "after";
-    content: "block" | "signatureTable";
+    content: "block" | "signatureTable" | "tableRow";
 } | {
     type: "comment";
     commentId: number;
