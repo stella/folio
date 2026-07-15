@@ -9,7 +9,7 @@
 import type { ImageWrap, ShapeTextBody } from "../../../types/document";
 import { IMAGE_WRAP_TYPE_VALUES, type OutlineStyleAttr } from "../../../types/documentEnumValues";
 import { expectTextBoxAttrs } from "../../attrs";
-import type { ImagePositionAttrs } from "../../schema/nodes";
+import type { ImagePositionAttrs, TextBoxAttrs as SchemaTextBoxAttrs } from "../../schema/nodes";
 import { createNodeExtension } from "../create";
 
 export type TextBoxAttrs = {
@@ -61,6 +61,8 @@ export type TextBoxAttrs = {
   _docxPlacement?: "standalone" | "inlineWithPrevious";
   /** Original DOCX paragraph group for standalone text-box reconstruction. */
   _docxGroupId?: string;
+  /** Original run-level revision wrapper for save-path reconstruction. */
+  _docxTrackedChange?: SchemaTextBoxAttrs["_docxTrackedChange"];
 };
 
 function parseTextBoxPosition(raw: string | undefined): ImagePositionAttrs | undefined {
@@ -127,6 +129,7 @@ export const TextBoxExtension = createNodeExtension({
       position: { default: null },
       _docxPlacement: { default: null },
       _docxGroupId: { default: null },
+      _docxTrackedChange: { default: null },
     },
     parseDOM: [
       {

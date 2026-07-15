@@ -423,7 +423,20 @@ export type TextBoxAttrs = {
     distRight?: number; /** Position for floating/anchored text boxes */
     position?: ImagePositionAttrs; /** Original DOCX placement hint for save-path reconstruction. */
     _docxPlacement?: "standalone" | "inlineWithPrevious"; /** Original DOCX paragraph group for standalone text-box reconstruction. */
-    _docxGroupId?: string;
+    _docxGroupId?: string; /** Original run-level revision wrapper for save-path reconstruction. */
+    _docxTrackedChange?: {
+        type: "insertion";
+        info: import__stll_docx_core_model.TrackedChangeInfo;
+    } | {
+        type: "deletion";
+        info: import__stll_docx_core_model.TrackedChangeInfo;
+    } | {
+        type: "moveFrom";
+        info: import__stll_docx_core_model.TrackedChangeInfo;
+    } | {
+        type: "moveTo";
+        info: import__stll_docx_core_model.TrackedChangeInfo;
+    };
 };
 
 // @public

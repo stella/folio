@@ -38,6 +38,7 @@ import type {
   ShapeTextBody,
   SdtProperties,
   SdtType,
+  TrackedChangeInfo,
 } from "../../types/document";
 import type { OutlineStyleAttr } from "../../types/documentEnumValues";
 import type { SpacingExplicit } from "../../types/formatting";
@@ -548,6 +549,12 @@ export type TextBoxAttrs = {
   _docxPlacement?: "standalone" | "inlineWithPrevious";
   /** Original DOCX paragraph group for standalone text-box reconstruction. */
   _docxGroupId?: string;
+  /** Original run-level revision wrapper for save-path reconstruction. */
+  _docxTrackedChange?:
+    | { type: "insertion"; info: TrackedChangeInfo }
+    | { type: "deletion"; info: TrackedChangeInfo }
+    | { type: "moveFrom"; info: TrackedChangeInfo }
+    | { type: "moveTo"; info: TrackedChangeInfo };
 };
 
 /**

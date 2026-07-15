@@ -2,11 +2,13 @@ import type {
   ImagePosition,
   MediaFile,
   Paragraph,
+  ParagraphContent,
   RelationshipMap,
   Run,
   Shape,
   ShapeContent,
   Theme,
+  TrackedRunChange,
 } from "../types/document";
 import { pixelsToEmu } from "../utils/units";
 import type { NumberingMap } from "./numberingParser";
@@ -157,16 +159,74 @@ export const enrichParagraphTextBoxes = (
   media: Map<string, MediaFile> | null,
   parseTable: TableParserFn,
 ): void => {
-  const xmlChildren = getChildElements(paraXml);
+  enrichTextBoxRuns({
+    content: paragraph.content,
+    xmlChildren: getChildElements(paraXml),
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    parseTable,
+  });
+};
+
+type EnrichTextBoxRunsParams = {
+  content: ParagraphContent[];
+  xmlChildren: XmlElement[];
+  styles: StyleMap | null;
+  theme: Theme | null;
+  numbering: NumberingMap | null;
+  rels: RelationshipMap | null;
+  media: Map<string, MediaFile> | null;
+  parseTable: TableParserFn;
+};
+
+const trackedChangeTypeFromXml = (localName: string): TrackedRunChange["type"] | undefined => {
+  if (localName === "ins") {
+    return "insertion";
+  }
+  if (localName === "del") {
+    return "deletion";
+  }
+  if (localName === "moveFrom" || localName === "moveTo") {
+    return localName;
+  }
+  return undefined;
+};
+
+const enrichTextBoxRuns = ({
+  content,
+  xmlChildren,
+  styles,
+  theme,
+  numbering,
+  rels,
+  media,
+  parseTable,
+}: EnrichTextBoxRunsParams): void => {
   let parsedIndex = 0;
   let lastConsumedRun: Run | undefined;
 
   for (const xmlChild of xmlChildren) {
-    if (getLocalName(xmlChild.name ?? "") !== "r") {
-      if (
-        parsedIndex < paragraph.content.length &&
-        paragraph.content[parsedIndex]?.type !== "run"
-      ) {
+    const localName = getLocalName(xmlChild.name ?? "");
+    const trackedChangeType = trackedChangeTypeFromXml(localName);
+    const parsedContent = content[parsedIndex];
+    if (trackedChangeType && parsedContent?.type === trackedChangeType) {
+      enrichTextBoxRuns({
+        content: parsedContent.content,
+        xmlChildren: getChildElements(xmlChild),
+        styles,
+        theme,
+        numbering,
+        rels,
+        media,
+        parseTable,
+      });
+    }
+
+    if (localName !== "r") {
+      if (parsedIndex < content.length && parsedContent?.type !== "run") {
         parsedIndex += 1;
       }
       continue;
@@ -175,9 +235,10 @@ export const enrichParagraphTextBoxes = (
     const { textBoxDrawings, vmlTextBoxes, hasNonTextBoxContent } =
       scanRunForTextBoxDrawings(xmlChild);
 
-    const parsedContent = paragraph.content[parsedIndex];
     const parsedRun: Run | undefined = parsedContent?.type === "run" ? parsedContent : undefined;
     const targetRun = parsedRun ?? (hasNonTextBoxContent ? lastConsumedRun : undefined);
+    const targetRunMatchesXml =
+      targetRun !== undefined && (hasNonTextBoxContent || parsedRun?.content.length === 0);
 
     for (const runEl of textBoxDrawings) {
       const textBox = parseTextBox(runEl);
@@ -222,11 +283,11 @@ export const enrichParagraphTextBoxes = (
 
       const shapeContent: ShapeContent = { type: "shape", shape };
 
-      if (targetRun && hasNonTextBoxContent) {
+      if (targetRunMatchesXml) {
         targetRun.content.push(shapeContent);
       } else {
         const newRun: Run = { type: "run", content: [shapeContent] };
-        paragraph.content.splice(parsedIndex, 0, newRun);
+        content.splice(parsedIndex, 0, newRun);
         lastConsumedRun = newRun;
         parsedIndex += 1;
       }
@@ -238,11 +299,11 @@ export const enrichParagraphTextBoxes = (
         continue;
       }
       const shapeContent: ShapeContent = { type: "shape", shape };
-      if (targetRun && hasNonTextBoxContent) {
+      if (targetRunMatchesXml) {
         targetRun.content.push(shapeContent);
       } else {
         const newRun: Run = { type: "run", content: [shapeContent] };
-        paragraph.content.splice(parsedIndex, 0, newRun);
+        content.splice(parsedIndex, 0, newRun);
         lastConsumedRun = newRun;
         parsedIndex += 1;
       }

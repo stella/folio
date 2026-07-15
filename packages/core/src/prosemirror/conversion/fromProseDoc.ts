@@ -2910,10 +2910,13 @@ function convertPMTextBox(node: PMNode): Paragraph {
   // Wrap the shape in a paragraph with a run containing ShapeContent
   const shapeContent: ShapeContent = { type: "shape", shape };
   const run: Run = { type: "run", content: [shapeContent] };
+  const trackedChange = attrs._docxTrackedChange;
 
   return {
     type: "paragraph",
-    content: [run],
+    content: trackedChange
+      ? [{ type: trackedChange.type, info: trackedChange.info, content: [run] }]
+      : [run],
   };
 }
 

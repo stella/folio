@@ -332,6 +332,62 @@ describe("parseDocumentBody text box enrichment", () => {
     expect(middleRun.content.at(0)?.type).toBe("shape");
   });
 
+  test.each([
+    ["ins", "insertion"],
+    ["del", "deletion"],
+    ["moveFrom", "moveFrom"],
+    ["moveTo", "moveTo"],
+  ] as const)("enriches text boxes inside w:%s wrappers", (elementName, contentType) => {
+    const body = parseDocumentBody(`${XML_DECLARATION}
+<w:document
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+  <w:body>
+    <w:p w14:paraId="TXB00003">
+      <w:${elementName} w:id="41" w:author="Reviewer" w:date="2026-07-15T12:00:00Z">
+        <w:r>${textBoxDrawingXml("Tracked text box")}</w:r>
+      </w:${elementName}>
+    </w:p>
+  </w:body>
+</w:document>`);
+
+    const paragraph = body.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    const trackedChange = paragraph.content.at(0);
+    expect(trackedChange?.type).toBe(contentType);
+    if (
+      trackedChange?.type !== "insertion" &&
+      trackedChange?.type !== "deletion" &&
+      trackedChange?.type !== "moveFrom" &&
+      trackedChange?.type !== "moveTo"
+    ) {
+      throw new Error("Expected tracked change wrapper");
+    }
+    expect(trackedChange.info).toEqual({
+      id: 41,
+      author: "Reviewer",
+      date: "2026-07-15T12:00:00Z",
+    });
+
+    const run = trackedChange.content.at(0);
+    if (run?.type !== "run") {
+      throw new Error("Expected tracked run");
+    }
+    const shape = run.content.at(0);
+    if (shape?.type !== "shape") {
+      throw new Error("Expected text-box shape");
+    }
+    expect(shape.shape.textBody?.content.at(0)).toMatchObject({
+      type: "paragraph",
+      content: [{ type: "run", content: [{ type: "text", text: "Tracked text box" }] }],
+    });
+  });
+
   // Regression: Word stores anchored wps:wsp text boxes inside an
   // <mc:AlternateContent> block — Choice Requires="wps" holds the modern
   // shape, Fallback holds a VML rendering. scanRunForTextBoxDrawings only

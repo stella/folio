@@ -363,6 +363,7 @@ describe("ProseMirror attr readers", () => {
       cssFloat: "center",
       wrapType: "sideways",
       position: { vertical: { relativeTo: "ceiling" } },
+      _docxTrackedChange: { type: "replacement", info: { id: "41", author: 7 } },
     });
 
     const shapeResult = readShapeAttrs(shape);
@@ -389,6 +390,15 @@ describe("ProseMirror attr readers", () => {
       expect(textBoxResult.issues.map((issue) => issue.path)).toContain("textBox.attrs.wrapType");
       expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
         "textBox.attrs.position.vertical.relativeTo",
+      );
+      expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
+        "textBox.attrs._docxTrackedChange.type",
+      );
+      expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
+        "textBox.attrs._docxTrackedChange.info.id",
+      );
+      expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
+        "textBox.attrs._docxTrackedChange.info.author",
       );
     }
   });

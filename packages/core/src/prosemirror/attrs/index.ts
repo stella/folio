@@ -158,6 +158,13 @@ const TRACKED_CHANGE_MOVE_KINDS = ["moveTo", "moveFrom"] as const satisfies read
   TrackedChangeMarkAttrs["moveKind"]
 >[];
 
+const TEXT_BOX_TRACKED_CHANGE_TYPES = [
+  "insertion",
+  "deletion",
+  "moveFrom",
+  "moveTo",
+] as const satisfies readonly NonNullable<TextBoxAttrs["_docxTrackedChange"]>["type"][];
+
 const HARD_BREAK_TYPES = ["column"] as const satisfies readonly NonNullable<
   HardBreakAttrs["breakType"]
 >[];
@@ -725,6 +732,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
     TEXT_BOX_DOCX_PLACEMENTS,
   );
   optionalString(attrs, "_docxGroupId", "textBox.attrs._docxGroupId", issues);
+  optionalTextBoxTrackedChange(attrs, issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1499,6 +1507,39 @@ const optionalRecord = (
   if (value !== undefined && value !== null && !isRecord(value)) {
     issues.push({ path, message: "Expected an object." });
   }
+};
+
+const optionalTextBoxTrackedChange = (
+  attrs: Record<string, unknown>,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["_docxTrackedChange"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path: "textBox.attrs._docxTrackedChange", message: "Expected an object." });
+    return;
+  }
+
+  requiredOneOf(
+    value,
+    "type",
+    "textBox.attrs._docxTrackedChange.type",
+    issues,
+    TEXT_BOX_TRACKED_CHANGE_TYPES,
+  );
+  const info = value["info"];
+  if (!isRecord(info)) {
+    issues.push({
+      path: "textBox.attrs._docxTrackedChange.info",
+      message: "Expected an object.",
+    });
+    return;
+  }
+  requiredNumber(info, "id", "textBox.attrs._docxTrackedChange.info.id", issues);
+  requiredString(info, "author", "textBox.attrs._docxTrackedChange.info.author", issues);
+  optionalString(info, "date", "textBox.attrs._docxTrackedChange.info.date", issues);
 };
 
 const optionalAutospacingBase = (

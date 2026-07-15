@@ -44,6 +44,7 @@ import type {
   MoveFrom,
   MoveTo,
   MathEquation,
+  ShapeTextBody,
   Theme,
 } from "../../types/document";
 import {
@@ -62,6 +63,7 @@ import type {
   TableAttrs,
   TableRowAttrs,
   TableCellAttrs,
+  TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
 import {
@@ -2794,13 +2796,14 @@ function convertParagraphWithTextBoxes(
   if (!isEmptyAfterExtraction || keepWrapperParagraph) {
     nodes.push(pmParagraph);
   }
-  for (const tb of textBoxes) {
+  for (const { textBox, trackedChange } of textBoxes) {
     nodes.push(
-      convertTextBox(tb, styleResolver, {
+      convertTextBox(textBox, styleResolver, {
         placement:
           isEmptyAfterExtraction && !keepWrapperParagraph ? "standalone" : "inlineWithPrevious",
         groupId: textBoxGroupId,
         context,
+        trackedChange,
       }),
     );
   }
@@ -2820,51 +2823,83 @@ function hasParagraphBoundaryPayload(block: Paragraph, pmParagraph: PMNode): boo
 
 /**
  * Extract text boxes from paragraph runs.
- * Text boxes appear as ShapeContent where the shape has textBody,
- * or as DrawingContent that contains a text box instead of an image.
+ * Text boxes appear as ShapeContent where the shape has textBody.
  */
-function extractTextBoxesFromParagraph(paragraph: Paragraph): TextBox[] {
-  const textBoxes: TextBox[] = [];
+type ExtractedTextBox = {
+  textBox: TextBox;
+  trackedChange?: NonNullable<TextBoxAttrs["_docxTrackedChange"]>;
+};
+
+function extractTextBoxesFromParagraph(paragraph: Paragraph): ExtractedTextBox[] {
+  const textBoxes: ExtractedTextBox[] = [];
+  const extractFromRun = (
+    run: Run,
+    trackedChange?: NonNullable<TextBoxAttrs["_docxTrackedChange"]>,
+  ): void => {
+    for (const runContent of run.content) {
+      if (runContent.type !== "shape" || !runContent.shape.textBody) {
+        continue;
+      }
+      textBoxes.push({
+        textBox: textBoxFromShape(runContent.shape, runContent.shape.textBody),
+        trackedChange,
+      });
+    }
+  };
+
   for (const content of paragraph.content) {
     if (content.type === "run") {
-      for (const rc of content.content) {
-        if (rc.type === "shape") {
-          const shape = rc.shape as Shape;
-          if (shape.textBody) {
-            // Convert shape with text body to TextBox
-            const textBox: TextBox = {
-              type: "textBox",
-              size: shape.size,
-              content: shape.textBody.content,
-            };
-            if (shape.id) {
-              textBox.id = shape.id;
-            }
-            if (shape.position) {
-              textBox.position = shape.position;
-            }
-            if (shape.wrap) {
-              textBox.wrap = shape.wrap;
-            }
-            if (shape.fill) {
-              textBox.fill = shape.fill;
-            }
-            if (shape.outline) {
-              textBox.outline = shape.outline;
-            }
-            if (shape.textBody.margins) {
-              textBox.margins = shape.textBody.margins;
-            }
-            if (shape.textBody.autoFit) {
-              textBox.autoFit = shape.textBody.autoFit;
-            }
-            textBoxes.push(textBox);
-          }
-        }
+      extractFromRun(content);
+      continue;
+    }
+    if (
+      content.type !== "insertion" &&
+      content.type !== "deletion" &&
+      content.type !== "moveFrom" &&
+      content.type !== "moveTo"
+    ) {
+      continue;
+    }
+    const trackedChange = { type: content.type, info: content.info } as const satisfies NonNullable<
+      TextBoxAttrs["_docxTrackedChange"]
+    >;
+    for (const trackedContent of content.content) {
+      if (trackedContent.type === "run") {
+        extractFromRun(trackedContent, trackedChange);
       }
     }
   }
   return textBoxes;
+}
+
+function textBoxFromShape(shape: Shape, textBody: ShapeTextBody): TextBox {
+  const textBox: TextBox = {
+    type: "textBox",
+    size: shape.size,
+    content: textBody.content,
+  };
+  if (shape.id) {
+    textBox.id = shape.id;
+  }
+  if (shape.position) {
+    textBox.position = shape.position;
+  }
+  if (shape.wrap) {
+    textBox.wrap = shape.wrap;
+  }
+  if (shape.fill) {
+    textBox.fill = shape.fill;
+  }
+  if (shape.outline) {
+    textBox.outline = shape.outline;
+  }
+  if (textBody.margins) {
+    textBox.margins = textBody.margins;
+  }
+  if (textBody.autoFit) {
+    textBox.autoFit = textBody.autoFit;
+  }
+  return textBox;
 }
 
 /**
@@ -2877,6 +2912,7 @@ function convertTextBox(
     placement?: "standalone" | "inlineWithPrevious";
     groupId?: string;
     context: TableConversionContext;
+    trackedChange?: NonNullable<TextBoxAttrs["_docxTrackedChange"]>;
   },
 ): PMNode {
   const textBoxData: { size?: Partial<TextBox["size"]> } = textBox;
@@ -3024,6 +3060,7 @@ function convertTextBox(
       position,
       _docxPlacement: options.placement,
       _docxGroupId: options.groupId,
+      _docxTrackedChange: options.trackedChange,
     },
     contentNodes,
   );

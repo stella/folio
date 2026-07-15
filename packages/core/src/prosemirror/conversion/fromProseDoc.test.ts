@@ -2,7 +2,15 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import type { Document, Paragraph, Table, TableCell } from "../../types/document";
+import type {
+  Document,
+  Paragraph,
+  Run,
+  Table,
+  TableCell,
+  TrackedChangeInfo,
+  TrackedRunChange,
+} from "../../types/document";
 import { pixelsToEmu } from "../../utils/units";
 import { expectHardBreakAttrs, expectParagraphAttrs } from "../attrs";
 import { schema } from "../schema";
@@ -1416,6 +1424,58 @@ describe("fromProseDoc", () => {
     expect(firstShapeType(block)).toBe("textBox");
   });
 
+  test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(
+    "round-trips a text box inside the %s wrapper",
+    (type) => {
+      const document = documentWithTextBoxParagraph({ includeText: false });
+      const paragraph = document.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") {
+        throw new Error("Expected paragraph");
+      }
+      const run = paragraph.content.at(0);
+      if (run?.type !== "run") {
+        throw new Error("Expected text-box run");
+      }
+      const info = {
+        id: 41,
+        author: "Reviewer",
+        date: "2026-07-15T12:00:00Z",
+      } satisfies TrackedChangeInfo;
+      paragraph.content = [trackedTextBoxWrapper(type, info, run)];
+
+      const pmDoc = toProseDoc(document);
+      const textBoxNode = pmDoc.firstChild;
+      expect(textBoxNode?.type.name).toBe("textBox");
+      expect(textBoxNode?.attrs["_docxTrackedChange"]).toEqual({ type, info });
+
+      const roundTripped = fromProseDoc(pmDoc, document);
+      const block = roundTripped.package.document.content.at(0);
+      if (block?.type !== "paragraph") {
+        throw new Error("Expected round-tripped paragraph");
+      }
+      const trackedChange = block.content.at(0);
+      expect(trackedChange).toMatchObject({ type, info });
+      if (
+        trackedChange?.type !== "insertion" &&
+        trackedChange?.type !== "deletion" &&
+        trackedChange?.type !== "moveFrom" &&
+        trackedChange?.type !== "moveTo"
+      ) {
+        throw new Error("Expected round-tripped tracked change");
+      }
+      const trackedRun = trackedChange.content.at(0);
+      if (trackedRun?.type !== "run") {
+        throw new Error("Expected round-tripped tracked run");
+      }
+      const trackedShape = trackedRun.content.at(0);
+      expect(trackedShape?.type).toBe("shape");
+      if (trackedShape?.type !== "shape") {
+        throw new Error("Expected round-tripped text-box shape");
+      }
+      expect(trackedShape.shape.shapeType).toBe("textBox");
+    },
+  );
+
   test("keeps empty imported text boxes as text boxes", () => {
     const document = documentWithTextBoxParagraph({
       includeText: false,
@@ -2000,6 +2060,23 @@ function documentWithTextBoxParagraph({
       },
     },
   };
+}
+
+function trackedTextBoxWrapper(
+  type: TrackedRunChange["type"],
+  info: TrackedChangeInfo,
+  run: Run,
+): TrackedRunChange {
+  if (type === "insertion") {
+    return { type, info, content: [run] };
+  }
+  if (type === "deletion") {
+    return { type, info, content: [run] };
+  }
+  if (type === "moveFrom") {
+    return { type, info, content: [run] };
+  }
+  return { type, info, content: [run] };
 }
 
 function cellWithText(text: string): TableCell {
