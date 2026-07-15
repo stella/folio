@@ -1,31 +1,93 @@
-/**
- * Selection-overlay composable — owns the text-caret blink + selection-rect
- * painter, the cell-selection highlight, and the image-selection sync that
- * re-derives `selectedImage` from the live PM NodeSelection.
- *
- * PORT-BLOCKED (multiple absent dependencies):
- *   - `applyCellSelectionHighlight` — absent from our core. Upstream ships it in
- *     `layout-bridge/cellSelectionHighlight.ts`; our `layout-bridge` barrel does
- *     not expose it (see CORE-API-MAP Table 4, PORT). The multi-cell highlight
- *     branch cannot run without it.
- *   - `findImageElement` — absent from our core `layout-painter` barrel (which
- *     exposes only `renderPages`/`LayoutPainter`/registry); it is a PORT item.
- *     The image-overlay sync (`syncSelectedImageToSelection`) depends on it.
- *   - `../components/imageSelectionTypes` (`ImageSelectionInfo`) — the Vue-package
- *     image-selection type module has not been ported.
- *   - `../styles/zIndex` (`Z_INDEX`) — the Vue-package z-index token module does
- *     not exist in our fork (there is no `styles/` dir).
- *
- * The DOM primitives it also uses DO resolve, but at drifted paths
- * (`getSelectionRectsFromDom`/`getCaretPositionFromDom` →
- * `@stll/folio-core/layout-bridge/dom/clickToPositionDom`; `findBodyPmAnchor` →
- * `@stll/folio-core/layout-bridge/dom/findBodyPmSpans`). With the four blockers
- * above there is no coherent working subset, so the whole composable is blocked.
- *
- * Unblock: PORT `applyCellSelectionHighlight` and `findImageElement` into core
- * (or a core barrel), then port the `imageSelectionTypes` + `styles/zIndex`
- * Vue-package modules, and re-point the DOM-primitive imports to the drifted
- * paths above.
- */
+import { onScopeDispose, watch, type Ref, type ShallowRef } from "vue";
+import type { EditorView } from "prosemirror-view";
 
-export {};
+import { BodySelectionOverlay } from "@stll/folio-core/render-dom/BodySelectionOverlay";
+import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
+
+import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
+import { Z_INDEX } from "../styles/zIndex";
+
+export type UseSelectionSyncOptions = {
+  editorView: Ref<EditorView | null>;
+  pagesRef: Ref<HTMLElement | null>;
+  zoom: Ref<number>;
+  selectedImage: ShallowRef<ImageSelectionInfo | null>;
+  syncCoordinator: LayoutSelectionGate;
+  imageInteracting?: Ref<boolean>;
+};
+
+export type UseSelectionSyncReturn = {
+  clearOverlay: () => void;
+  updateSelectionOverlay: () => void;
+};
+
+export const useSelectionSync = (opts: UseSelectionSyncOptions): UseSelectionSyncReturn => {
+  const overlay = new BodySelectionOverlay();
+  let animationFrame: number | null = null;
+
+  const clearOverlay = (): void => {
+    if (animationFrame !== null) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
+    const pagesContainer = opts.pagesRef.value;
+    if (pagesContainer) {
+      overlay.clear(pagesContainer);
+    }
+  };
+
+  const updateSelectionOverlay = (): void => {
+    if (animationFrame !== null) {
+      cancelAnimationFrame(animationFrame);
+    }
+    animationFrame = requestAnimationFrame(() => {
+      animationFrame = null;
+      if (!opts.syncCoordinator.isSafeToRender()) {
+        return;
+      }
+      const pagesContainer = opts.pagesRef.value;
+      const view = opts.editorView.value;
+      if (!pagesContainer || !view) {
+        return;
+      }
+
+      const result = overlay.sync({
+        pagesContainer,
+        state: view.state,
+        zoom: opts.zoom.value,
+        zIndex: Z_INDEX.selectionOverlay,
+      });
+      if (result.type === "image") {
+        const current = opts.selectedImage.value;
+        const width = result.element.offsetWidth;
+        const height = result.element.offsetHeight;
+        if (
+          current?.element !== result.element ||
+          current.pmPos !== result.pmPos ||
+          current.width !== width ||
+          current.height !== height
+        ) {
+          opts.selectedImage.value = {
+            element: result.element,
+            pmPos: result.pmPos,
+            width,
+            height,
+          };
+        }
+        return;
+      }
+      if (!opts.imageInteracting?.value) {
+        opts.selectedImage.value = null;
+      }
+    });
+  };
+
+  const unsubscribeRender = opts.syncCoordinator.onRender(updateSelectionOverlay);
+  watch([opts.zoom, opts.editorView, opts.pagesRef], updateSelectionOverlay, { flush: "post" });
+  onScopeDispose(() => {
+    unsubscribeRender();
+    clearOverlay();
+  });
+
+  return { clearOverlay, updateSelectionOverlay };
+};

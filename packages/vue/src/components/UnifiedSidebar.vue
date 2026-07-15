@@ -85,11 +85,12 @@
 import { ref, computed, toRef, watch, onMounted, onBeforeUnmount, type CSSProperties } from "vue";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
+import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
+import { resolveSidebarItemPositions } from "@stll/folio-core/render-dom/resolveSidebarItemPositions";
 import CommentCard from "./sidebar/CommentCard.vue";
 import ResolvedCommentMarker from "./sidebar/ResolvedCommentMarker.vue";
 import TrackedChangeCard from "./sidebar/TrackedChangeCard.vue";
 import AddCommentCard from "./sidebar/AddCommentCard.vue";
-import { resolveItemPositions } from "./sidebar/resolveItemPositions";
 import { useCommentSidebarItems } from "../composables/useCommentSidebarItems";
 
 import { SIDEBAR_DOCUMENT_SHIFT, SIDEBAR_WIDTH } from "../utils/sidebarConstants";
@@ -289,13 +290,14 @@ function computePositions() {
   }
 
   const map = new Map<string, number>();
-  for (const { item, y } of resolveItemPositions(
-    list,
+  for (const { item, y } of resolveSidebarItemPositions({
+    items: list,
     anchorPositions,
-    1,
+    renderedDomContext: createRenderedDomContext(container),
+    zoom: 1,
     cardHeights,
     lastKnown,
-  )) {
+  })) {
     map.set(item.id, y);
   }
   resolvedY.value = map;

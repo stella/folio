@@ -447,6 +447,8 @@ export type UseDocxEditorReturn = {
   blocks: Ref<FlowBlock[]>;
   /** Measures from the latest layout pass — the range-projection fallback. */
   measures: Ref<Measure[]>;
+  /** Gate that schedules overlay work only after the matching layout paint. */
+  syncCoordinator: LayoutSelectionGate;
   /** Load a DOCX from a binary buffer / Blob / File. */
   loadBuffer: (buffer: DocxInput) => Promise<void>;
   /** Load an already-parsed `Document` directly. */
@@ -1054,6 +1056,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     layout,
     blocks,
     measures,
+    syncCoordinator,
     loadBuffer,
     loadDocument,
     save,

@@ -1,21 +1,3 @@
-// PORT-BLOCKED: divergent core API. Upstream's TableSelectionManager was a
-// lightweight cell tracker — `selectCell(coords)` (no document) with a
-// `{ selectedCell }` snapshot. Our fork's TableSelectionManager
-// (@stll/folio-core/managers/TableSelectionManager) is document-aware:
-// `selectCell(doc: Document, coords)` requires the live Document to derive a
-// full TableContext, and its snapshot is
-// `{ context, table, tableIndex, rowIndex, columnIndex }` with no
-// `selectedCell`. This composable takes no document and its handlers accept
-// only indices, so `handleCellClick` / `handleClickTarget` cannot call our
-// `selectCell` without inventing a new contract (threading a Document getter
-// through). The snapshot read and `isCellSelected` / `clearSelection` do map
-// onto our API, but the mutating cell-selection surface does not.
-//
-// Resolution options (out of scope for this port):
-//   - re-point this composable at the editor's Document (extend the signature
-//     to accept a `() => Document`), OR
-//   - add a doc-less cell-tracking manager to core for adapter parity.
-
 /**
  * useTableSelection — Vue composable wrapping TableSelectionManager from core.
  *
@@ -59,18 +41,17 @@ export function useTableSelection(): UseTableSelectionReturn {
 
   onScopeDispose(unsubscribe);
 
-  // PORT-BLOCKED: our `manager.selectCell` needs the live Document (see header).
-  // These handlers have no document to pass, so cell selection cannot be
-  // committed here. Left as documented no-ops pending the resolution above.
-  function handleCellClick(_tableIndex: number, _rowIndex: number, _columnIndex: number) {
-    // no-op: requires Document (divergent core API)
+  function handleCellClick(tableIndex: number, rowIndex: number, columnIndex: number) {
+    manager.selectCellCoordinates({ tableIndex, rowIndex, columnIndex });
   }
 
   function handleClickTarget(target: EventTarget | null, container?: HTMLElement | null) {
-    // `findTableFromClick` resolves cleanly; committing the selection does not.
     const coords = findTableFromClick(target, container);
-    if (!coords) manager.clearSelection();
-    // no-op on hit: requires Document (divergent core API)
+    if (!coords) {
+      manager.clearSelection();
+      return;
+    }
+    manager.selectCellCoordinates(coords);
   }
 
   function clearSelection() {

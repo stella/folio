@@ -1,11 +1,3 @@
-<!--
-  PORT-BLOCKED: `../plugin-api/RenderedDomContext` (createRenderedDomContext) is
-  absent from folio — the whole plugin-api subsystem is not yet ported to
-  @stll/folio-core (see CORE-API-MAP "UPSTREAM-ONLY-FEATURE"). It is stubbed
-  locally below to a no-op context so this overlay compiles and mounts without
-  painting decorations. TODO: replace the stub with the real RenderedDomContext
-  once core's plugin-api lands.
--->
 <template>
   <div ref="overlayRef" class="paged-editor__decoration-overlay" aria-hidden="true" />
 </template>
@@ -15,6 +7,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { EditorState } from "prosemirror-state";
 import type { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
+import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
 
 const props = defineProps<{
   getView: () => EditorView | null;
@@ -126,11 +119,9 @@ function collectDecorations(state: EditorState): CollectedDecoration[] {
     if (!decorationsFn) continue;
     const source = decorationsFn.call(plugin, state);
     if (!source) continue;
-    // A `DecorationSource` walks down to its leaf `DecorationSet`s via
-    // `forEachSet`. This overlay is a PORT-BLOCKED stub (see file header): read
-    // the traversal reflectively and skip the source rather than throw if a
-    // future/leaner prosemirror-view drops the method. The stub renders nothing
-    // regardless, so failing soft here keeps it from crashing the editor.
+    // A DecorationSource walks down to its leaf DecorationSets via forEachSet.
+    // ProseMirror does not expose the traversal on its public TypeScript shape,
+    // so narrow the runtime method before invoking it.
     const forEachSet = readField(source, "forEachSet");
     if (typeof forEachSet !== "function") continue;
     forEachSet.call(source, (set: DecorationSet) => {
@@ -178,28 +169,5 @@ function getDecorationAttrs(decoration: Decoration): Record<string, string> | nu
     if (typeof value === "string") out[name] = value;
   }
   return out;
-}
-
-// PORT-BLOCKED stub — see the file header. A no-op RenderedDomContext so the
-// component type-checks and mounts; it paints nothing until core's plugin-api
-// (createRenderedDomContext) is ported.
-type RenderedDomContextStub = {
-  getContainerOffset(): { x: number; y: number };
-  getCoordinatesForPosition(pos: number): { x: number; y: number; height: number } | null;
-  getRectsForRange(
-    from: number,
-    to: number,
-  ): Array<{ x: number; y: number; width: number; height: number }>;
-};
-
-function createRenderedDomContext(
-  _pagesContainer: HTMLElement,
-  _zoom: number,
-): RenderedDomContextStub {
-  return {
-    getContainerOffset: () => ({ x: 0, y: 0 }),
-    getCoordinatesForPosition: () => null,
-    getRectsForRange: () => [],
-  };
 }
 </script>

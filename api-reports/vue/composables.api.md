@@ -22,6 +22,7 @@ import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { getSelectionRuns } from '@stll/folio-core/managers/ClipboardManager';
 import { Layout } from '@stll/folio-core/layout-engine/types';
+import { LayoutSelectionGate } from '@stll/folio-core/paged-layout/LayoutSelectionGate';
 import { MaybeRefOrGetter } from 'vue';
 import { Measure } from '@stll/folio-core/layout-engine/types';
 import { ParsedClipboardContent } from '@stll/folio-core/utils/clipboard';
@@ -114,6 +115,7 @@ export type UseDocxEditorReturn = {
     layout: Ref<Layout | null>;
     blocks: Ref<FlowBlock[]>;
     measures: Ref<Measure[]>;
+    syncCoordinator: LayoutSelectionGate;
     loadBuffer: (buffer: DocxInput) => Promise<void>;
     loadDocument: (doc: Document_2) => void;
     save: (options?: {

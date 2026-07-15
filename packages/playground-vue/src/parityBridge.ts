@@ -20,6 +20,10 @@ export type FolioParityBridge = {
   insertText: (text: string) => boolean;
   /** Bold the first word of the document. Returns whether the mark applied. */
   boldFirstWord: () => boolean;
+  /** Select the first word through the shared editor controller. */
+  selectFirstWord: () => boolean;
+  /** Count painted range-selection rectangles. */
+  countSelectionRects: () => number;
   /** Insert a rows×cols table at the selection (core helper). Returns success. */
   insertTable: (rows: number, cols: number) => boolean;
   /** Count `table` nodes in the live document (0 with no live view). */
@@ -101,6 +105,33 @@ export function buildParityBridge(getRef: () => DocxEditorRef | null): FolioPari
       view.dispatch(view.state.tr.addMark(from, to, boldType.create()));
       return view.state.doc.rangeHasMark(from, to, boldType);
     },
+    selectFirstWord: () => {
+      const editor = getRef()?.getEditor();
+      const view = editor?.getView();
+      if (!editor || !view) {
+        return false;
+      }
+      let range: { from: number; to: number } | null = null;
+      view.state.doc.descendants((node, pos) => {
+        if (range || !node.isText || !node.text) {
+          return range === null;
+        }
+        const leading = node.text.length - node.text.trimStart().length;
+        const word = node.text.slice(leading).split(/\s+/u).at(0);
+        if (!word) {
+          return true;
+        }
+        range = { from: pos + leading, to: pos + leading + word.length };
+        return false;
+      });
+      if (!range) {
+        return false;
+      }
+      const { from, to } = range;
+      editor.setSelection(from, to);
+      return true;
+    },
+    countSelectionRects: () => document.querySelectorAll("[data-folio-selection-rect]").length,
     insertTable: (rows, cols) => {
       const view = liveView();
       if (!view) {
