@@ -5,6 +5,7 @@
 ```ts
 
 import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
+import { App } from 'vue';
 import { CellCoordinates } from '@stll/folio-core/managers/types';
 import { ClipboardSelection } from '@stll/folio-core/managers/ClipboardManager';
 import { CommandMap } from '@stll/folio-core/prosemirror/extensions/types';
@@ -43,7 +44,18 @@ import { TripwireResult } from '@stll/folio-core/docx/selectiveSaveTripwire';
 
 export { ClipboardSelection }
 
+// @public
+export type ColorMode = "light" | "dark" | "system";
+
+// @public
+export const colorModePlugin: {
+    install(app: App, colorMode?: MaybeRefOrGetter<ColorMode>): void;
+};
+
 export { createSelectionFromDOM }
+
+// @public
+export const defaultColorMode: ColorMode;
 
 // @public (undocumented)
 export type DragAutoScrollOptions = {
@@ -62,6 +74,9 @@ export type HeaderFooterSelectionState = {
     rId: string;
     to: number;
 };
+
+// @public
+export const provideColorMode: (colorMode?: MaybeRefOrGetter<ColorMode>) => void;
 
 export { runsToClipboardContent }
 
@@ -90,6 +105,9 @@ export type UseClipboardReturn = {
     isProcessing: Ref<boolean>;
     lastPastedContent: Ref<ParsedClipboardContent | null>;
 };
+
+// @public
+export function useColorMode(): ComputedRef<boolean>;
 
 // @public (undocumented)
 export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorReturn;

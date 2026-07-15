@@ -241,6 +241,14 @@ export { clearAutocompleteSuggestion }
 export { clearTemplateSlashMenu }
 
 // @public
+export type ColorMode = "light" | "dark" | "system";
+
+// @public
+export const colorModePlugin: {
+    install(app: App, colorMode?: MaybeRefOrGetter<ColorMode>): void;
+};
+
+// @public
 export type ColorPreset = {
     label: string;
     value: string;
@@ -266,6 +274,9 @@ export { createStellaStyleSet }
 export { DEFAULT_AI_SUGGESTION_PRESETS }
 
 export { DEFAULT_AUTOCOMPLETE_DEAD_ZONE_NODES }
+
+// @public
+export const defaultColorMode: ColorMode;
 
 // @public
 export const defaultLocale = "en";
@@ -686,6 +697,9 @@ export { PictureWatermark }
 export { PositionalText }
 
 // @public
+export const provideColorMode: (colorMode?: MaybeRefOrGetter<ColorMode>) => void;
+
+// @public
 export const provideLocale: (locale?: MaybeRefOrGetter<string>) => void;
 
 // @public
@@ -694,6 +708,7 @@ export const renderAsync: (input: DocxInput, container: HTMLElement, options?: R
 // @public
 export type RenderAsyncOptions = Omit<DocxEditorProps, "documentBuffer" | "document"> & {
     locale?: string;
+    colorMode?: ColorMode;
 };
 
 export { resetTemplateSlashQuery }
@@ -751,6 +766,9 @@ export { TextWatermark }
 export { toMarkdown }
 
 export { toMarkdownResult }
+
+// @public
+export function useColorMode(): ComputedRef<boolean>;
 
 // @public
 export const useTranslation: () => {
