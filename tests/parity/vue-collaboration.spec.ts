@@ -30,10 +30,6 @@ test("Vue collaboration seeds and synchronizes the shared document", async ({ pa
   await expect
     .poll(() => page.evaluate(() => window.__folioVueCollaboration?.showRemoteSelection() ?? false))
     .toBe(true);
-  await expect
-    .poll(() => page.locator(".folio-remote-selection-rect").count())
-    .toBeGreaterThan(0);
-  await expect(page.locator(".folio-remote-selection-label")).toContainText(
-    "Remote collaborator",
-  );
+  await expect.poll(() => page.locator(".folio-remote-selection-rect").count()).toBeGreaterThan(0);
+  await expect(page.locator(".folio-remote-selection-label")).toContainText("Remote collaborator");
 });

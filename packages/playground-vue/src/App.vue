@@ -26,17 +26,8 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
-import {
-  applyAwarenessUpdate,
-  Awareness,
-  encodeAwarenessUpdate,
-} from "y-protocols/awareness";
-import {
-  initProseMirrorDoc,
-  yCursorPlugin,
-  ySyncPlugin,
-  yUndoPlugin,
-} from "y-prosemirror";
+import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
+import { initProseMirrorDoc, yCursorPlugin, ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 import * as Y from "yjs";
 
 import { DocxEditor, createEmptyDocument, createStellaStyleDocumentPreset } from "@stll/folio-vue";
@@ -71,9 +62,7 @@ const currentDocument = shallowRef<FolioDocument | null>(null);
 const status = ref("");
 const collaborationEnabled = new URLSearchParams(window.location.search).has("collaboration");
 const collaborationDocument = collaborationEnabled ? new Y.Doc() : null;
-const collaborationAwareness = collaborationDocument
-  ? new Awareness(collaborationDocument)
-  : null;
+const collaborationAwareness = collaborationDocument ? new Awareness(collaborationDocument) : null;
 let collaborationWasSeeded = false;
 const remoteCollaborationDocuments: Y.Doc[] = [];
 const remoteCollaborationAwareness: Awareness[] = [];

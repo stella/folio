@@ -1,10 +1,6 @@
 import type { HiddenProseMirrorRemoteSelection } from "../controller/hiddenEditorManager";
 import { createRenderedDomContext } from "./RenderedDomContext";
-import type {
-  RenderedDomContext,
-  RenderedDomPoint,
-  RenderedDomRect,
-} from "./RenderedDomContext";
+import type { RenderedDomContext, RenderedDomPoint, RenderedDomRect } from "./RenderedDomContext";
 
 const CARET_CLASS = "folio-remote-selection-caret";
 const LABEL_CLASS = "folio-remote-selection-label";
