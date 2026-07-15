@@ -6,6 +6,9 @@
 
 import { CSSProperties } from 'react';
 import { EndnoteProperties } from '@stll/folio-core/types/document';
+import { FindMatch } from '@stll/folio-core/utils/findReplace';
+import { FindOptions } from '@stll/folio-core/utils/findReplace';
+import { FindResult } from '@stll/folio-core/utils/findReplace';
 import { FootnoteProperties } from '@stll/folio-core/types/document';
 import { JSX } from 'react';
 import { default as React_2 } from 'react';

@@ -263,20 +263,7 @@ for (const pkg of targets) {
 
 if (allDrifted.length > 0) {
   console.error(`\nPublic-API surface drift in ${allDrifted.length} entr(y/ies):`);
-  for (const entry of allDrifted) {
-    console.error(`  - ${entry.slug} (${entry.key})`);
-    for (const pkg of targets) {
-      const report = path.join(reportDirFor(pkg), `${entry.slug}.api.md`);
-      const generated = path.join(tempDirFor(pkg), `${entry.slug}.api.md`);
-      if (!existsSync(report) || !existsSync(generated)) {
-        continue;
-      }
-      const diff = Bun.spawnSync(["diff", "-u", report, generated]);
-      if (diff.exitCode === 1) {
-        console.error(new TextDecoder().decode(diff.stdout));
-      }
-    }
-  }
+  for (const e of allDrifted) console.error(`  - ${e.slug} (${e.key})`);
   console.error(`\nThe exported API changed but the committed snapshot did not.`);
   console.error(`Run \`bun run api:update\`, review the diff under api-reports/, and commit it.`);
   process.exit(1);
