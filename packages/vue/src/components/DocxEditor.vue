@@ -237,6 +237,13 @@
                 :blocks="blocks"
                 :measures="measures"
               />
+              <DecorationLayer
+                :get-view="() => editorView"
+                :get-pages-container="() => pagesRef"
+                :zoom="zoom"
+                :transaction-version="stateTick"
+                :sync-coordinator="syncCoordinator"
+              />
             </div>
           </div>
 
@@ -395,6 +402,7 @@ import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 
 import AnonymizationRectsOverlay from "./AnonymizationRectsOverlay.vue";
 import CommentMarginMarkers from "./CommentMarginMarkers.vue";
+import DecorationLayer from "./DecorationLayer.vue";
 import DocumentOutline from "./DocumentOutline.vue";
 import DocxEditorDialogs from "./DocxEditor/DocxEditorDialogs.vue";
 import DocxEditorMenuBar from "./DocxEditor/DocxEditorMenuBar.vue";
@@ -431,6 +439,7 @@ import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
 import { useOutlineSidebar } from "../composables/useOutlineSidebar";
 import { usePageSetupControls } from "../composables/usePageSetupControls";
 import { usePagesPointer } from "../composables/usePagesPointer";
+import { useSelectionSync } from "../composables/useSelectionSync";
 import { provideDocxPortalClass } from "../composables/usePortalClass";
 import { useTableResize } from "../composables/useTableResize";
 import { useTrackedChanges } from "../composables/useTrackedChanges";
@@ -619,6 +628,7 @@ const {
   layout,
   blocks,
   measures,
+  syncCoordinator,
   loadBuffer,
   loadDocument,
   save,
@@ -744,6 +754,15 @@ const {
   handleImageTransform,
 } = useImageActions({ editorView, zoom, stateTick, getCommands });
 
+const selectionSync = useSelectionSync({
+  editorView,
+  pagesRef,
+  zoom,
+  selectedImage,
+  syncCoordinator,
+  imageInteracting,
+});
+
 const {
   hyperlinkPopupData,
   handleHyperlinkSubmit,
@@ -786,7 +805,7 @@ const {
   getDocument,
   reLayout,
   emit: () => {},
-  clearOverlay: () => {},
+  clearOverlay: selectionSync.clearOverlay,
 });
 
 // Document Outline: heading collection + navigate-to-heading, driven off the
@@ -820,7 +839,7 @@ const {
   zoom,
   showImageProperties,
   getCommands,
-  clearOverlay: () => {},
+  clearOverlay: selectionSync.clearOverlay,
   setPmSelection,
   resolvePos,
   // Host `custom:` entries perform edits, so drop them in read-only mode —
@@ -1313,6 +1332,19 @@ defineExpose(exposed);
   height: 100%;
   pointer-events: none;
   z-index: 1;
+}
+@keyframes folio-caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  95% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 .docx-editor-vue__table-insert-btn {
   position: absolute;

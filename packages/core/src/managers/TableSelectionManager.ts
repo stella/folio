@@ -195,6 +195,21 @@ export class TableSelectionManager extends Subscribable<TableSelectionState> {
   }
 
   /**
+   * Track cell coordinates before a document model is available. This supports
+   * adapter pointer state without fabricating a table context; callers that
+   * need structural operations should use {@link selectCell} with a document.
+   */
+  selectCellCoordinates(coords: CellCoordinates): void {
+    this.setSnapshot({
+      context: null,
+      table: null,
+      tableIndex: coords.tableIndex,
+      rowIndex: coords.rowIndex,
+      columnIndex: coords.columnIndex,
+    });
+  }
+
+  /**
    * Select a cell within `doc`. Resolves the table at `coords.tableIndex` and
    * derives the full {@link TableContext}. Returns the context, or `null` (and
    * clears the selection) when that table no longer exists.
