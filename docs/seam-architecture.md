@@ -113,6 +113,12 @@ interface FolioEditor {
 Framework adapters only instantiate this, forward lifecycle/events, and render
 chrome. The editor _surface_ (pages) is painted imperatively by `render-dom`.
 
+The controller owns every editable story, not only the main body. Header and
+footer relationship ids are persistent story identities: the shared
+`HeaderFooterEditorManager` owns one ProseMirror view per id, while
+`render-dom/HeaderFooterSelectionOverlay` projects its selection into painted
+page coordinates. React and Vue provide host refs and chrome only.
+
 ### Seam 7 — Operation / Edit API (the agentic surface)
 
 A stable, versioned, documented schema of edit operations over `Document`

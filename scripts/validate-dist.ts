@@ -618,18 +618,13 @@ const reactSentinels = [
   "__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED",
 ];
 const leaked = reactSentinels.filter((s) => allJs.includes(s));
-// Each external must appear only as an import specifier, never bundled.
+// Runtime externals used by each built package must appear as import
+// specifiers, never bundled. Type-only dependencies do not survive in JS and
+// therefore cannot be asserted here.
 const externalsByTarget: Record<string, string[]> = {
   "docx-core": ["better-result", "jszip"],
   core: ["prosemirror-state", "prosemirror-model", "jszip"],
-  react: [
-    "react",
-    "react-dom",
-    "react/jsx-runtime",
-    "react-compiler-runtime",
-    "@stll/folio-core",
-    "prosemirror-view",
-  ],
+  react: ["react", "react-dom", "react/jsx-runtime", "react-compiler-runtime", "@stll/folio-core"],
   agents: ["@stll/folio-core"],
   vue: ["vue", "@stll/folio-core", "prosemirror-history", "prosemirror-state"],
 };

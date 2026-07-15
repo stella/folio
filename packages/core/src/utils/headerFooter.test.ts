@@ -144,6 +144,41 @@ describe("createEmptyHeaderFooter", () => {
     expect(next?.package.document.finalSectionProperties?.headerReferences).toEqual([
       { type: "default", rId },
     ]);
+    expect(next?.package.relationships?.get(rId)).toEqual({
+      id: rId,
+      type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+      target: "header1.xml",
+    });
+  });
+
+  test("allocates collision-free relationship ids and part targets", () => {
+    const body: DocumentBody = {
+      content: [paragraph],
+      finalSectionProperties: { marginTop: 1440 },
+    };
+    const document = docFromPackage(
+      body,
+      new Map([
+        ["rId_new_header_default", { type: "header", hdrFtrType: "default", content: [paragraph] }],
+      ]),
+    );
+    document.package.relationships = new Map([
+      [
+        "rIdExisting",
+        {
+          id: "rIdExisting",
+          type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+          target: "header1.xml",
+        },
+      ],
+    ]);
+
+    const next = createEmptyHeaderFooter(document, "header", false);
+
+    expect(next?.package.headers?.has("rId_new_header_default_2")).toBe(true);
+    expect(next?.package.relationships?.get("rId_new_header_default_2")?.target).toBe(
+      "header2.xml",
+    );
   });
 });
 

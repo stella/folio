@@ -10,7 +10,7 @@
   "packages/react/src/components/DocxEditor.tsx": 100,
   "packages/react/src/components/ErrorBoundary.tsx": 8,
   "packages/react/src/components/FormattingBar.tsx": 28,
-  "packages/react/src/components/HiddenHeaderFooterPMs.tsx": 1,
+  "packages/react/src/components/HiddenHeaderFooterPMs.tsx": 0,
   "packages/react/src/components/hooks/useHeaderFooterEditor.ts": 6,
   "packages/react/src/components/hooks/useKeyboardShortcuts.ts": 0,
   "packages/react/src/components/hooks/useZoomAndPageInfo.ts": 3,

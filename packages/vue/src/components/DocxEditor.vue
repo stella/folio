@@ -6,8 +6,7 @@
   by `DocxEditorRef` via `useDocxEditorRefApi`.
 
   Responsibilities (mirrors React's `DocxEditor`):
-   1. Owns the two template refs the pipeline paints against: `hiddenPmRef` (the
-      off-screen ProseMirror host) and `pagesRef` (the painted-pages
+   1. Owns the body and header/footer ProseMirror hosts plus `pagesRef` (the painted-pages
       `HTMLDivElement`).
    2. Drives loading from prop watchers on `documentBuffer` / `document` (via
       `useDocumentLifecycle`), calling `loadBuffer` / `loadDocument`.
@@ -28,9 +27,9 @@
    - externalPlugins / i18n-locale props are not on `DocxEditorProps`, so the
      host plugin list is empty and the locale defaults to `en`.
    - colorMode prop + useColorMode: dark mode is fixed light here.
-   - Header/footer inline editing is not available yet. The title-bar MenuBar is
-     wired (File/Format/Insert/Help), including image/table/page-break/TOC.
-     The watermark item remains unavailable until its dialog is implemented.
+   - The title-bar MenuBar is wired (File/Format/Insert/Help), including the insert flow
+     (image/table/page-break/TOC via host props or core view-level helpers);
+     the watermark item stays inert (no watermark dialog ported).
 -->
 <template>
   <div
@@ -55,7 +54,7 @@
 
       <Toolbar
         v-if="showToolbar"
-        :view="editorView"
+        :view="activeEditorView"
         :get-commands="getCommands"
         :state-tick="stateTick"
         :zoom-percent="zoomPercent"
@@ -92,7 +91,7 @@
       >
         <template #table-context>
           <TableToolbar
-            :view="editorView"
+            :view="activeEditorView"
             :get-commands="getCommands"
             :state-tick="stateTick"
             :theme="theme ?? null"
@@ -112,7 +111,7 @@
       v-model:show-insert-symbol="showInsertSymbol"
       v-model:show-image-properties="showImageProperties"
       v-model:show-page-setup="showPageSetup"
-      :view="editorView"
+      :view="activeEditorView"
       :scroll-visible-position-into-view="scrollVisiblePositionIntoView"
       :bookmarks="bookmarks"
       :selected-image-pm-pos="selectedImage?.pmPos ?? null"
@@ -138,6 +137,7 @@
     </div>
 
     <div ref="hiddenPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-pm" />
+    <div ref="hiddenHfPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-hf-pm" />
 
     <div ref="editorScrollRef" class="docx-editor-vue__editor-scroll" @scroll="handleEditorScroll">
       <div class="docx-editor-vue__editor-area">
@@ -185,6 +185,7 @@
           @mousedown="handlePagesMouseDown"
           @mousemove="handlePagesMouseMove"
           @click="handlePagesClick"
+          @dblclick="handlePagesDoubleClick"
           @contextmenu.prevent="handleContextMenu"
         >
           <div
@@ -198,8 +199,17 @@
           >
             <div
               ref="pagesRef"
-              class="docx-editor-vue__pages paged-editor__pages"
+              :class="[
+                'docx-editor-vue__pages paged-editor__pages',
+                hfEdit ? `paged-editor--hf-editing paged-editor--editing-${hfEdit.position}` : '',
+              ]"
               :style="pagesContainerStyle"
+            />
+
+            <HeaderFooterSelectionOverlay
+              :pages-container="pagesRef"
+              :selection="activeHeaderFooterSelection"
+              :zoom="zoom"
             />
 
             <!-- Decoration origin: the coordinate anchor core's range projection
@@ -243,10 +253,18 @@
             </div>
           </div>
 
+          <InlineHeaderFooterEditor
+            v-if="hfEdit"
+            :edit="hfEdit"
+            :get-view="getActiveHeaderFooterView"
+            @close="handleHfSave"
+            @remove="handleHfRemove"
+          />
+
           <ImageSelectionOverlay
             :image-info="selectedImage"
             :zoom="zoom"
-            :view="editorView"
+            :view="activeEditorView"
             @deselect="selectedImage = null"
             @interact-start="imageInteracting = true"
             @interact-end="imageInteracting = false"
@@ -410,6 +428,8 @@ import {
 } from "@stll/folio-core/managers/EditorModeManager";
 import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import ImageSelectionOverlay from "./ImageSelectionOverlay.vue";
+import HeaderFooterSelectionOverlay from "./HeaderFooterSelectionOverlay.vue";
+import InlineHeaderFooterEditor from "./InlineHeaderFooterEditor.vue";
 import OutlineToggleButton from "./OutlineToggleButton.vue";
 import PageIndicator from "./PageIndicator.vue";
 import TemplateDirectivesOverlay from "./TemplateDirectivesOverlay.vue";
@@ -459,6 +479,7 @@ const props = withDefaults(defineProps<DocxEditorProps>(), {
   showOutline: false,
   className: "",
   showTableInsert: true,
+  showHeaderFooterEditing: true,
 });
 
 const emit = defineEmits<{
@@ -551,6 +572,7 @@ watch(hasDocumentInput, (hasInput) => {
 
 // ---- Template refs (paint targets) --------------------------------------
 const hiddenPmRef = ref<HTMLElement | null>(null);
+const hiddenHfPmRef = ref<HTMLElement | null>(null);
 const pagesRef = ref<HTMLElement | null>(null);
 const pagesViewportRef = ref<HTMLElement | null>(null);
 const editorScrollRef = ref<HTMLElement | null>(null);
@@ -573,6 +595,7 @@ const showPageSetup = ref(false);
 const showOutline = ref(props.showOutline);
 const showSidebar = ref(false);
 const activeSidebarItem = ref<string | null>(null);
+const activeHeaderFooterRId = ref<string | null>(null);
 const bookmarks = shallowRef<{ name: string; label?: string }[]>([]);
 
 // Populated by `useOutlineSidebar` — collected lazily on outline open and
@@ -620,6 +643,7 @@ const {
   editorView,
   editorState,
   remoteSelections,
+  headerFooterSelection,
   isReady,
   isDirty,
   parseError,
@@ -631,11 +655,15 @@ const {
   loadDocument,
   save,
   getDocument,
+  setDocument,
+  getHeaderFooterView,
+  syncHeaderFooterViews,
   getCommands,
   focus,
   reLayout,
 } = useDocxEditor({
   hiddenContainer: hiddenPmRef,
+  hiddenHeaderFooterContainer: hiddenHfPmRef,
   pagesContainer: pagesRef,
   readOnly,
   editorMode,
@@ -683,6 +711,12 @@ const {
     ? (result) => props.onSelectiveSaveTripwire?.(result)
     : undefined,
 });
+
+const activeEditorView = computed(
+  () =>
+    (activeHeaderFooterRId.value ? getHeaderFooterView(activeHeaderFooterRId.value) : null) ??
+    editorView.value,
+);
 
 // Show the loading interstitial while a document is loading, EXCEPT when the host
 // opted into `preserveDocumentWhileLoading` and a prior document is already
@@ -750,7 +784,7 @@ const {
   imageToolbarContext,
   handleToolbarImageWrap,
   handleImageTransform,
-} = useImageActions({ editorView, zoom, stateTick, getCommands });
+} = useImageActions({ editorView: activeEditorView, zoom, stateTick, getCommands });
 
 const selectionSync = useSelectionSync({
   editorView,
@@ -775,15 +809,13 @@ const {
   handleHyperlinkPopupNavigate,
   handleHyperlinkPopupEdit,
   handleHyperlinkPopupRemove,
-} = useHyperlinkManagement({ editorView, getCommands });
+} = useHyperlinkManagement({ editorView: activeEditorView, getCommands });
 
 const tableResize = useTableResize();
 
-// Pages-area pointer gestures. Header/footer double-click is intentionally
-// omitted: the fork has no inline HF editor or persistent HF PMs, so the HF
-// `emit` (change) path and its handlers stay unused here.
 const {
   tableInsertButton,
+  hfEdit,
   scrollPageInfo,
   resolvePos,
   setPmSelection,
@@ -791,7 +823,10 @@ const {
   handlePagesMouseDown,
   handlePagesMouseMove,
   handlePagesClick,
+  handlePagesDoubleClick,
   handleTableInsertClick,
+  handleHfSave,
+  handleHfRemove,
 } = usePagesPointer({
   editorView,
   pagesRef,
@@ -800,6 +835,7 @@ const {
   imageInteracting,
   hyperlinkPopupData,
   readOnly,
+  showHeaderFooterEditing: computed(() => props.showHeaderFooterEditing),
   zoom,
   layout,
   tableResize: {
@@ -808,10 +844,36 @@ const {
   },
   getCommands,
   getDocument,
+  getHfPmView: getHeaderFooterView,
+  syncHfPMs: syncHeaderFooterViews,
+  setDocument,
   reLayout,
-  emit: () => {},
+  onDocumentChange: (doc) => {
+    props.onChange?.(doc);
+    emit("change", doc);
+    emit("update:document", doc);
+  },
   clearOverlay: selectionSync.clearOverlay,
 });
+
+const getActiveHeaderFooterView = () =>
+  hfEdit.value?.rId ? getHeaderFooterView(hfEdit.value.rId) : null;
+
+const activeHeaderFooterSelection = computed(() => {
+  const edit = hfEdit.value;
+  const selection = headerFooterSelection.value;
+  if (!edit?.rId || !selection || selection.rId !== edit.rId) return null;
+  return { ...selection, pageNumber: edit.pageNumber };
+});
+
+watch(
+  hfEdit,
+  (edit) => {
+    activeHeaderFooterRId.value = edit?.rId ?? null;
+    if (edit) selectionSync.clearOverlay();
+  },
+  { immediate: true },
+);
 
 // Document Outline: heading collection + navigate-to-heading, driven off the
 // visible pages viewport (the hidden PM is off-screen — see
@@ -839,7 +901,7 @@ const {
   handleImageWrapSelect,
   handleContextMenuAction,
 } = useContextMenus({
-  editorView,
+  editorView: activeEditorView,
   selectedImage,
   zoom,
   showImageProperties,
@@ -948,7 +1010,7 @@ const {
   handleInsertSectionBreakNextPage,
   handleInsertSectionBreakContinuous,
 } = useFormattingActions({
-  editorView,
+  editorView: activeEditorView,
   getDocument,
 });
 
@@ -960,7 +1022,7 @@ function handleInsertImageAction(): void {
     props.onInsertImage();
     return;
   }
-  const view = editorView.value;
+  const view = activeEditorView.value;
   if (!view) {
     return;
   }
@@ -989,7 +1051,7 @@ function handleInsertTableAction(rows: number, cols: number): void {
     props.onInsertTable(rows, cols);
     return;
   }
-  const view = editorView.value;
+  const view = activeEditorView.value;
   if (!view) {
     return;
   }
@@ -1057,7 +1119,7 @@ const {
 // Mirrors React's `state.paragraph*` ruler inputs.
 const paragraphIndent = computed(() => {
   void stateTick.value;
-  const view = editorView.value;
+  const view = activeEditorView.value;
   const pf = view ? extractSelectionContext(view.state).paragraphFormatting : {};
   return {
     indentLeft: pf.indentLeft ?? 0,
@@ -1279,6 +1341,7 @@ const { exposed } = useDocxEditorRefApi({
   setComments: commentManagement.setComments,
   focus,
   getDocument,
+  getHeaderFooterView,
   setZoom,
   save,
   loadDocument,
