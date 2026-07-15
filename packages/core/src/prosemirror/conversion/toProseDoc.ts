@@ -596,6 +596,26 @@ function paragraphFormattingToAttrs(
       ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
       : styleResolver.getDefaultParagraphStyle();
     const docDefaultSpacing = styleResolver.getDocDefaults()?.pPr;
+    const spacingFromImplicitDefaultStyle: NonNullable<
+      ParagraphAttrs["spacingFromImplicitDefaultStyle"]
+    > = {};
+    if (
+      !styleId &&
+      formatting?.spaceBefore === undefined &&
+      paragraphStyle?.pPr?.spaceBefore !== undefined
+    ) {
+      spacingFromImplicitDefaultStyle.before = true;
+    }
+    if (
+      !styleId &&
+      formatting?.spaceAfter === undefined &&
+      paragraphStyle?.pPr?.spaceAfter !== undefined
+    ) {
+      spacingFromImplicitDefaultStyle.after = true;
+    }
+    if (spacingFromImplicitDefaultStyle.before || spacingFromImplicitDefaultStyle.after) {
+      attrs.spacingFromImplicitDefaultStyle = spacingFromImplicitDefaultStyle;
+    }
     const spacingFromDocDefaults: NonNullable<ParagraphAttrs["spacingFromDocDefaults"]> = {};
     if (
       formatting?.spaceBefore === undefined &&

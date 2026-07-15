@@ -39,6 +39,7 @@ describe("ProseMirror attr readers", () => {
       numPr: { numId: 4, ilvl: 1 },
       bookmarks: [{ id: 7, name: "_Ref7" }],
       _autospacingBase: { before: 200, after: null },
+      spacingFromImplicitDefaultStyle: { after: true },
       _sectionProperties: { sectionStart: "nextPage" },
       _propertyChanges: [],
     });
@@ -53,6 +54,7 @@ describe("ProseMirror attr readers", () => {
     expect(result.value.bookmarks?.at(0)?.name).toBe("_Ref7");
     expect(result.value._autospacingBase?.before).toBe(200);
     expect(result.value._autospacingBase?.after).toBeNull();
+    expect(result.value.spacingFromImplicitDefaultStyle?.after).toBe(true);
     expect(expectParagraphAttrs(node).paraId).toBe("para-1");
   });
 

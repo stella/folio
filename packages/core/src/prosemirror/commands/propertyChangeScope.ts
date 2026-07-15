@@ -56,7 +56,7 @@ type AttrPatch = Record<string, unknown>;
  *   `runInWithNext` (`w:specVanish` lives in that rPr)
  * - load-time style/numbering bookkeeping the command layer cannot recompute
  *   without a style resolver: `numPrFromStyle`, the `list*` rendering attrs,
- *   `spacingFromDocDefaults`
+ *   `spacingFromDocDefaults`, `spacingFromImplicitDefaultStyle`
  */
 export const PPR_CHANGE_SCOPED_ATTR_KEYS = [
   "styleId",

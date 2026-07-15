@@ -329,6 +329,7 @@ const paragraphNodeSpec: NodeSpec = {
     lineSpacingRule: { default: null },
     spacingExplicit: { default: null },
     spacingFromDocDefaults: { default: null },
+    spacingFromImplicitDefaultStyle: { default: null },
     indentLeft: { default: null },
     indentRight: { default: null },
     indentFirstLine: { default: null },

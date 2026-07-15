@@ -1471,12 +1471,10 @@ function convertParagraphAttrs(
         ...(autoAfter ? { after: true } : {}),
       };
     }
-    // Propagate the `spacingExplicit` flag the PM schema carries — empty
-    // paragraphs inherit zero spacing unless the side was set inline (Word
-    // fidelity, eigenpal #402). Auto spacing counts as explicit: an imported
-    // empty paragraph whose only spacing is `w:beforeAutospacing`/
-    // `afterAutospacing` must keep the 14pt gap rather than collapse to zero
-    // (eigenpal/docx-editor#823).
+    // Preserve spacing sides whose source Word renders on an empty paragraph:
+    // direct formatting, document defaults, the implicit default paragraph
+    // style, and automatic spacing. Layout consumes the combined provenance;
+    // the authored PM attributes remain source-specific for serialization.
     const pmSpacingExplicit = pmAttrs.spacingExplicit as
       | { before?: boolean; after?: boolean }
       | null
@@ -1485,11 +1483,25 @@ function convertParagraphAttrs(
       | { before?: boolean; after?: boolean }
       | null
       | undefined;
+    const spacingFromImplicitDefaultStyle = pmAttrs.spacingFromImplicitDefaultStyle as
+      | { before?: boolean; after?: boolean }
+      | null
+      | undefined;
     const explicit: { before?: boolean; after?: boolean } = {};
-    if (autoBefore || pmSpacingExplicit?.before || spacingFromDocDefaults?.before) {
+    if (
+      autoBefore ||
+      pmSpacingExplicit?.before ||
+      spacingFromDocDefaults?.before ||
+      spacingFromImplicitDefaultStyle?.before
+    ) {
       explicit.before = true;
     }
-    if (autoAfter || pmSpacingExplicit?.after || spacingFromDocDefaults?.after) {
+    if (
+      autoAfter ||
+      pmSpacingExplicit?.after ||
+      spacingFromDocDefaults?.after ||
+      spacingFromImplicitDefaultStyle?.after
+    ) {
       explicit.after = true;
     }
     if (explicit.before !== undefined || explicit.after !== undefined) {

@@ -664,6 +664,26 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.spacingExplicit?.after).toBe(true);
   });
 
+  test("keeps implicit default-style spacing on an empty paragraph", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          spaceBefore: 120,
+          spaceAfter: 160,
+          spacingFromImplicitDefaultStyle: { before: true, after: true },
+        },
+        [],
+      ),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.attrs?.spacing?.before).toBe(120 / 15);
+    expect(paragraph?.attrs?.spacing?.after).toBe(160 / 15);
+    expect(paragraph?.attrs?.spacingExplicit).toEqual({ before: true, after: true });
+  });
+
   test("suppresses empty hidden list paragraphs and their markers", () => {
     const doc = schema.node("doc", null, [
       schema.node(

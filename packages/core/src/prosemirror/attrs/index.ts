@@ -333,6 +333,12 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalTabStops(attrs, "tabs", "paragraph.attrs.tabs", issues);
   optionalRecord(attrs, "spacingExplicit", "paragraph.attrs.spacingExplicit", issues);
   optionalRecord(attrs, "spacingFromDocDefaults", "paragraph.attrs.spacingFromDocDefaults", issues);
+  optionalRecord(
+    attrs,
+    "spacingFromImplicitDefaultStyle",
+    "paragraph.attrs.spacingFromImplicitDefaultStyle",
+    issues,
+  );
   optionalTextFormatting(
     attrs,
     "defaultTextFormatting",

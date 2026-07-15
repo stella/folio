@@ -136,6 +136,36 @@ describe("toProseDoc", () => {
     expect(doc.firstChild?.attrs.spacingExplicit).toBeNull();
   });
 
+  test("tracks implicit default-style spacing so empty paragraphs retain it during layout", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [{ type: "paragraph", content: [] }],
+        },
+        styles: {
+          styles: [
+            {
+              styleId: "Normal",
+              type: "paragraph",
+              default: true,
+              pPr: { spaceBefore: 120, spaceAfter: 160 },
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+
+    expect(doc.firstChild?.attrs.spaceBefore).toBe(120);
+    expect(doc.firstChild?.attrs.spaceAfter).toBe(160);
+    expect(doc.firstChild?.attrs.spacingFromImplicitDefaultStyle).toEqual({
+      before: true,
+      after: true,
+    });
+    expect(doc.firstChild?.attrs.spacingExplicit).toBeNull();
+  });
+
   test("direct first-line indent clears a hanging indent inherited from the paragraph style", () => {
     const document: Document = {
       package: {
