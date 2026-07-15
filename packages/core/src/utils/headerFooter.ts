@@ -295,7 +295,18 @@ export const createEmptyHeaderFooter = (
   }
 
   const hdrFtrType: "default" | "first" = isFirstPage ? "first" : "default";
-  const rId = `rId_new_${position}_${hdrFtrType}`;
+  const baseRId = `rId_new_${position}_${hdrFtrType}`;
+  const usedRIds = new Set([
+    ...(pkg.headers?.keys() ?? []),
+    ...(pkg.footers?.keys() ?? []),
+    ...(pkg.relationships?.keys() ?? []),
+  ]);
+  let rId = baseRId;
+  let rIdSuffix = 2;
+  while (usedRIds.has(rId)) {
+    rId = `${baseRId}_${rIdSuffix}`;
+    rIdSuffix++;
+  }
   const emptyHf: HeaderFooter = {
     type: position,
     hdrFtrType,
@@ -310,11 +321,33 @@ export const createEmptyHeaderFooter = (
   const existingRefs = sectionProps[refKey] ?? [];
   const newRef = { type: hdrFtrType, rId };
 
+  const usedTargets = new Set<string>();
+  for (const relationship of pkg.relationships?.values() ?? []) {
+    if (relationship.target) {
+      usedTargets.add(relationship.target);
+    }
+  }
+  let targetNumber = 1;
+  while (usedTargets.has(`${position}${targetNumber}.xml`)) {
+    targetNumber++;
+  }
+  const relationshipType =
+    position === "header"
+      ? "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
+      : "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer";
+  const relationships = new Map(pkg.relationships);
+  relationships.set(rId, {
+    id: rId,
+    type: relationshipType,
+    target: `${position}${targetNumber}.xml`,
+  });
+
   return {
     ...document,
     package: {
       ...pkg,
       [mapKey]: newMap,
+      relationships,
       document: {
         ...pkg.document,
         finalSectionProperties: {
