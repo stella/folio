@@ -170,5 +170,4 @@ function getDecorationAttrs(decoration: Decoration): Record<string, string> | nu
   }
   return out;
 }
-
 </script>

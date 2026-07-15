@@ -77,8 +77,7 @@ export const resolveSidebarItemPositions = <T extends RenderedSidebarItem>({
   const resolved: ResolvedSidebarItemPosition<T>[] = [];
   let previousBottom = 0;
   for (const position of positioned) {
-    const height =
-      cardHeights.get(position.item.id) ?? position.item.estimatedHeight ?? 80;
+    const height = cardHeights.get(position.item.id) ?? position.item.estimatedHeight ?? 80;
     const y = Math.max(position.targetY, previousBottom + MIN_CARD_GAP);
     resolved.push({ item: position.item, y });
     previousBottom = y + height;
