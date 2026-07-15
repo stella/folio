@@ -34,6 +34,8 @@ export type FolioParityBridge = {
   countCommentAnchors: () => number;
   /** Block count of the AI-edit snapshot over the live doc (0 with no live view). */
   aiSnapshotBlockCount: () => number;
+  /** Reveal the first stable snapshot block and report target/current pages. */
+  navigateToFirstBlock: () => { shown: boolean; targetPage: number; currentPage: number };
   /** Apply and undo one direct document-operation batch; true only when content restores. */
   applyAndUndoDocumentOperation: () => boolean;
   /** Push an anonymization term matching the first word. Returns whether one was pushed. */
@@ -187,6 +189,18 @@ export function buildParityBridge(getRef: () => DocxEditorRef | null): FolioPari
     countCommentAnchors: () =>
       document.querySelectorAll(".paged-editor__pages [data-comment-id]").length,
     aiSnapshotBlockCount: () => getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
+    navigateToFirstBlock: () => {
+      const ref = getRef();
+      const snapshot = ref?.createAIEditSnapshot();
+      const firstBlock = snapshot?.blocks.at(0);
+      if (!ref || !snapshot || !firstBlock) {
+        return { shown: false, targetPage: 0, currentPage: 0 };
+      }
+      const target = { type: "block", story: "main", blockId: firstBlock.id } as const;
+      const targetPage = ref.getTargetPage(target, snapshot) ?? 0;
+      const shown = ref.showInDocument(target, snapshot);
+      return { shown, targetPage, currentPage: ref.getCurrentPage() };
+    },
     applyAndUndoDocumentOperation: () => {
       const ref = getRef();
       const firstSnapshot = ref?.createAIEditSnapshot();
