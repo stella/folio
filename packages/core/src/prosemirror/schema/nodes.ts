@@ -72,6 +72,8 @@ export type ParagraphAttrs = {
   spacingExplicit?: SpacingExplicit;
   /** Layout provenance: document defaults survive on empty paragraphs. */
   spacingFromDocDefaults?: SpacingExplicit;
+  /** Layout provenance: implicit default-style spacing survives on empty paragraphs. */
+  spacingFromImplicitDefaultStyle?: SpacingExplicit;
 
   // Indentation (in twips)
   indentLeft?: number;
