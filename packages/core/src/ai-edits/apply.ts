@@ -242,11 +242,11 @@ const buildTableRowInsertion = (
         return null;
       }
       const cell = table.nodeAt(cellPosition);
-      const colspan: unknown = cell?.attrs["colspan"];
-      if (typeof colspan !== "number" || colspan < 1) {
+      if (!cell) {
         return null;
       }
-      if (!cell) {
+      const colspan: unknown = cell.attrs["colspan"];
+      if (typeof colspan !== "number" || colspan < 1) {
         return null;
       }
       rowspanUpdates.push(cellPosition);
