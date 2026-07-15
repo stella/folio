@@ -624,13 +624,7 @@ const leaked = reactSentinels.filter((s) => allJs.includes(s));
 const externalsByTarget: Record<string, string[]> = {
   "docx-core": ["better-result", "jszip"],
   core: ["prosemirror-state", "prosemirror-model", "jszip"],
-  react: [
-    "react",
-    "react-dom",
-    "react/jsx-runtime",
-    "react-compiler-runtime",
-    "@stll/folio-core",
-  ],
+  react: ["react", "react-dom", "react/jsx-runtime", "react-compiler-runtime", "@stll/folio-core"],
   agents: ["@stll/folio-core"],
   vue: ["vue", "@stll/folio-core", "prosemirror-history", "prosemirror-state"],
 };
