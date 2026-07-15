@@ -32,6 +32,7 @@ describe("document operation contract", () => {
         "commentOnBlock",
         "insertSignatureTable",
         "insertTableRow",
+        "deleteTableRow",
       ],
       modes: ["direct", "tracked-changes"],
       batchModes: ["best-effort", "atomic"],
@@ -48,6 +49,7 @@ describe("document operation contract", () => {
         commentOnBlock: ["direct", "tracked-changes"],
         insertSignatureTable: ["direct"],
         insertTableRow: ["direct"],
+        deleteTableRow: ["direct"],
       },
       preconditions: ["blockTextHash"],
       stories: ["main", "header", "footer", "footnote", "endnote"],
@@ -60,6 +62,7 @@ describe("document operation contract", () => {
     expect(isFolioDocumentOperationModeSupported("insertSignatureTable", "tracked-changes")).toBe(
       false,
     );
+    expect(isFolioDocumentOperationModeSupported("deleteTableRow", "tracked-changes")).toBe(false);
     expect(
       Reflect.apply(isFolioDocumentOperationModeSupported, null, ["unknownOperation", "direct"]),
     ).toBe(false);
@@ -112,6 +115,7 @@ describe("document operation contract", () => {
         position: "before",
         cellTexts: ["A", "B"],
       },
+      { id: "delete-row", type: "deleteTableRow", blockId: "paragraph-7" },
     ] as const satisfies readonly FolioDocumentOperation[];
 
     expect(
@@ -123,6 +127,7 @@ describe("document operation contract", () => {
         { id: "comment", commentId: 18 },
         { id: "delete" },
         { id: "row" },
+        { id: "delete-row" },
       ]),
     ).toEqual([
       {
@@ -202,6 +207,18 @@ describe("document operation contract", () => {
           },
         ],
       },
+      {
+        operationId: "delete-row",
+        operationIndex: 7,
+        affected: [
+          {
+            type: "tableRow",
+            story: "main",
+            anchorBlockId: "paragraph-7",
+            effect: "deleted",
+          },
+        ],
+      },
     ]);
   });
 
@@ -266,6 +283,7 @@ describe("document operation contract", () => {
           position: "after",
           cellTexts: ["First", "Second"],
         },
+        { id: "9", type: "deleteTableRow", blockId: "a" },
       ],
     };
 

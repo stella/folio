@@ -120,7 +120,7 @@ const blockIdProperty = {
 
 /**
  * JSON Schema (draft-07 compatible) for ONE document operation: the full
- * eleven-variant union accepted by `parseFolioDocumentOperationBatch` in
+ * twelve-variant union accepted by `parseFolioDocumentOperationBatch` in
  * `@stll/folio-core`, one `oneOf` variant per entry in
  * `FOLIO_DOCUMENT_OPERATION_TYPES`. Intended for LLM tool definitions and
  * other consumers that need the contract's wire shape without re-declaring
@@ -348,6 +348,17 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
       required: ["id", "type", "blockId"],
       additionalProperties: false,
     },
+    {
+      type: "object",
+      description: "Delete the row containing the anchor block. Direct mode only.",
+      properties: {
+        ...operationMetaProperties,
+        type: { type: "string", enum: ["deleteTableRow"] },
+        blockId: blockIdProperty,
+      },
+      required: ["id", "type", "blockId"],
+      additionalProperties: false,
+    },
   ],
 } as const;
 
@@ -380,8 +391,8 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       enum: FOLIO_DOCUMENT_OPERATION_MODES,
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
-        '"direct" applies immediately. `formatRange`, `insertSignatureTable`, and ' +
-        '`insertTableRow` support "direct" only.',
+        '"direct" applies immediately. `formatRange`, `insertSignatureTable`, `insertTableRow`, ' +
+        'and `deleteTableRow` support "direct" only.',
     },
     atomic: {
       type: "boolean",

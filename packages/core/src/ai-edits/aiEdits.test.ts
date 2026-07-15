@@ -1852,6 +1852,210 @@ describe("Folio AI edit operations", () => {
     expect(updatedInnerTable.child(1).textContent).toBe("New inner");
   });
 
+  test("deletes rows while preserving cells that span the deletion boundary", () => {
+    const makeMergedTableState = () => {
+      const spanningCell = schema.node("tableCell", { colspan: 2, rowspan: 2 }, [
+        schema.node("paragraph", { paraId: "delete-a" }, [schema.text("A")]),
+      ]);
+      const table = schema.node("table", null, [
+        schema.node("tableRow", null, [
+          spanningCell,
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: "delete-b" }, [schema.text("B")]),
+          ]),
+        ]),
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: "delete-c" }, [schema.text("C")]),
+          ]),
+        ]),
+      ]);
+      return EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    };
+
+    const originState = makeMergedTableState();
+    const originView = makeView(originState);
+    const originResult = applyFolioAIEditOperations({
+      view: originView,
+      snapshot: createFolioAIEditSnapshot(originState.doc),
+      operations: [{ id: "delete-origin", type: "deleteTableRow", blockId: "delete-a" }],
+      mode: "direct",
+    });
+
+    expect(originResult.skipped).toEqual([]);
+    const originTable = originView.state.doc.child(0);
+    expect(originTable.childCount).toBe(1);
+    expect(originTable.child(0).childCount).toBe(2);
+    expect(originTable.child(0).child(0).attrs["colspan"]).toBe(2);
+    expect(originTable.child(0).child(0).attrs["rowspan"]).toBe(1);
+    expect(originTable.textContent).toBe("AC");
+
+    const continuationState = makeMergedTableState();
+    const continuationView = makeView(continuationState);
+    const continuationResult = applyFolioAIEditOperations({
+      view: continuationView,
+      snapshot: createFolioAIEditSnapshot(continuationState.doc),
+      operations: [{ id: "delete-continuation", type: "deleteTableRow", blockId: "delete-c" }],
+      mode: "direct",
+    });
+
+    expect(continuationResult.skipped).toEqual([]);
+    const continuationTable = continuationView.state.doc.child(0);
+    expect(continuationTable.childCount).toBe(1);
+    expect(continuationTable.child(0).childCount).toBe(2);
+    expect(continuationTable.child(0).child(0).attrs["rowspan"]).toBe(1);
+    expect(continuationTable.textContent).toBe("AB");
+  });
+
+  test("deletes only the nearest table when the anchor is nested", () => {
+    const innerTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "delete-inner" }, [schema.text("Inner")]),
+        ]),
+      ]),
+    ]);
+    const outerTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Before")]),
+          innerTable,
+          schema.node("paragraph", null, [schema.text("After")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [outerTable]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "delete-inner-row", type: "deleteTableRow", blockId: "delete-inner" }],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.childCount).toBe(1);
+    const updatedOuterCell = view.state.doc.child(0).child(0).child(0);
+    expect(updatedOuterCell.childCount).toBe(2);
+    expect(updatedOuterCell.textContent).toBe("BeforeAfter");
+  });
+
+  test("keeps a valid parent when deleting the only row from the only table", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "delete-only" }, [schema.text("Only")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "delete-only-row", type: "deleteTableRow", blockId: "delete-only" }],
+      mode: "direct",
+    });
+
+    expect(result.applied).toEqual([{ id: "delete-only-row" }]);
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.childCount).toBe(1);
+    expect(view.state.doc.child(0).type.name).toBe("paragraph");
+    expect(view.state.doc.textContent).toBe("");
+  });
+
+  test("does not delete an extra row when a batch anchors the same row twice", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "same-row-a" }, [schema.text("A")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "same-row-b" }, [schema.text("B")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "other-row" }, [schema.text("C")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        { id: "delete-row-a", type: "deleteTableRow", blockId: "same-row-a" },
+        { id: "delete-row-b", type: "deleteTableRow", blockId: "same-row-b" },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.applied).toEqual([{ id: "delete-row-a" }]);
+    expect(result.skipped).toEqual([{ id: "delete-row-b", reason: "noopOperation" }]);
+    expect(view.state.doc.child(0).childCount).toBe(1);
+    expect(view.state.doc.textContent).toBe("C");
+  });
+
+  test("recomputes table topology between row deletions in one batch", () => {
+    const rows = ["A", "B", "C"].map((text) =>
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: `batch-${text}` }, [schema.text(text)]),
+        ]),
+      ]),
+    );
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [schema.node("table", null, rows)]),
+    });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        { id: "delete-middle", type: "deleteTableRow", blockId: "batch-B" },
+        { id: "delete-last", type: "deleteTableRow", blockId: "batch-C" },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["delete-last", "delete-middle"]);
+    expect(view.state.doc.child(0).childCount).toBe(1);
+    expect(view.state.doc.textContent).toBe("A");
+  });
+
+  test("table-row deletes are skipped in tracked-changes mode", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-delete" }, [schema.text("Cell")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "delete-row", type: "deleteTableRow", blockId: "tracked-delete" }],
+      mode: "tracked-changes",
+    });
+
+    expect(result).toEqual({
+      applied: [],
+      skipped: [{ id: "delete-row", reason: "unsupportedMode" }],
+    });
+    expect(view.state.doc.child(0).childCount).toBe(1);
+  });
+
   test("table-row inserts are skipped in tracked-changes mode", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [

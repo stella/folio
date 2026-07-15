@@ -278,6 +278,88 @@ describe("headless docx review round-trip", () => {
     expect(restoredTable.rows).toHaveLength(1);
   });
 
+  test("deletes, persists, and undoes a row inside shape text", async () => {
+    const baseline = await buildTextBoxTableDocument();
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const target = findBlock(reviewer.snapshot().blocks, "Cell value");
+
+    const rejected = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      atomic: true,
+      operations: [
+        {
+          id: "delete-row",
+          type: "deleteTableRow",
+          blockId: target.id,
+        },
+        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+      ],
+    });
+
+    expect(rejected.status).toBe("rejected");
+    expect(rejected.applied).toEqual([]);
+    expect(reviewer.getContentAsText()).toContain("Cell value");
+
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "delete-row",
+          type: "deleteTableRow",
+          blockId: target.id,
+        },
+      ],
+    });
+
+    expect(result.status).toBe("committed");
+    expect(result.applied).toEqual([{ id: "delete-row" }]);
+    expect(result.receipts).toEqual([
+      {
+        operationId: "delete-row",
+        operationIndex: 0,
+        affected: [
+          {
+            type: "tableRow",
+            story: "main",
+            anchorBlockId: target.id,
+            effect: "deleted",
+          },
+        ],
+      },
+    ]);
+
+    const saved = await reviewer.toBuffer();
+    const reparsed = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
+    expect(findTextBoxShape(reparsed).textBody?.content.map(({ type }) => type)).toEqual([
+      "paragraph",
+      "paragraph",
+    ]);
+    expect((await FolioDocxReviewer.fromBuffer(saved)).getContentAsText()).not.toContain(
+      "Cell value",
+    );
+
+    if (!result.undoHandle) {
+      throw new Error("expected an undo handle");
+    }
+    expect(reviewer.undoDocumentOperations(result.undoHandle)).toEqual({
+      status: "undone",
+      undoHandle: result.undoHandle,
+    });
+    expect(reviewer.getContentAsText()).toContain("Cell value");
+    const restored = await parseDocx(await reviewer.toBuffer(), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const restoredTable = findTextBoxShape(restored).textBody?.content.at(1);
+    expect(restoredTable?.type).toBe("table");
+    if (restoredTable?.type !== "table") {
+      throw new Error("expected a nested table");
+    }
+    expect(restoredTable.rows).toHaveLength(1);
+  });
+
   test("edits a header through story-scoped document operations", async () => {
     const baseline = await makeHeaderFooterBaseline();
     const story = { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const;
