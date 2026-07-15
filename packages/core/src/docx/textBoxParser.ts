@@ -142,7 +142,8 @@ export type ParagraphParserFn = (
   styles: StyleMap | null,
   theme: Theme | null,
   numbering: NumberingMap | null,
-  rels?: RelationshipMap | null,
+  rels: RelationshipMap | null,
+  media: Map<string, MediaFile> | null,
 ) => Paragraph;
 
 /**
@@ -153,8 +154,8 @@ export type TableParserFn = (
   styles: StyleMap | null,
   theme: Theme | null,
   numbering: NumberingMap | null,
-  rels?: RelationshipMap | null,
-  media?: Map<string, MediaFile>,
+  rels: RelationshipMap | null,
+  media: Map<string, MediaFile> | null,
 ) => Table;
 
 /**
@@ -168,8 +169,8 @@ export function parseTextBoxContent(
   styles: StyleMap | null,
   theme: Theme | null,
   numbering: NumberingMap | null,
-  rels?: RelationshipMap | null,
-  media?: Map<string, MediaFile>,
+  rels: RelationshipMap | null,
+  media: Map<string, MediaFile> | null,
 ): (Paragraph | Table)[] {
   if (!txbxContent) {
     return [];
@@ -185,7 +186,7 @@ export function parseTextBoxContent(
 
     if (localName === "p") {
       // Parse paragraph
-      const paragraph = parseParagraph(child, styles, theme, numbering, rels);
+      const paragraph = parseParagraph(child, styles, theme, numbering, rels, media);
       blocks.push(paragraph);
     } else if (localName === "tbl" && parseTable) {
       blocks.push(parseTable(child, styles, theme, numbering, rels, media));

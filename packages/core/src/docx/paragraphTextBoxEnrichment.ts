@@ -196,8 +196,8 @@ export const enrichParagraphTextBoxes = (
             styles,
             theme,
             numbering,
-            rels ?? undefined,
-            media ?? undefined,
+            rels,
+            media,
           );
         }
       }
@@ -366,8 +366,8 @@ const parseVmlTextBoxShape = (
         styles,
         theme,
         numbering,
-        rels ?? undefined,
-        media ?? undefined,
+        rels,
+        media,
       ),
       ...(margins === undefined ? {} : { margins }),
     },
