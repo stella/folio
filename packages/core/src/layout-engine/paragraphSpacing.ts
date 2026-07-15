@@ -123,18 +123,37 @@ const resolveParagraphSequenceSpacing = (
     ((block.attrs?.contextualSpacing === true && paragraphsShareStyle(block, next)) ||
       (block.attrs?.automaticSpacing?.after === true && continuesNumberedSequence(block, next)));
 
-  const before = suppressBefore ? 0 : spacing.before;
-  const after = suppressAfter ? 0 : spacing.after;
-  if (before === spacing.before && after === spacing.after) {
+  const beforeChanged = suppressBefore && spacing.before !== 0;
+  const afterChanged = suppressAfter && spacing.after !== 0;
+  if (!beforeChanged && !afterChanged) {
     return block;
+  }
+  const effectiveSpacing = { ...spacing };
+  if (beforeChanged) {
+    effectiveSpacing.before = 0;
+  }
+  if (afterChanged) {
+    effectiveSpacing.after = 0;
   }
   return {
     ...block,
     attrs: {
       ...block.attrs,
-      spacing: { ...spacing, before, after },
+      spacing: effectiveSpacing,
     },
   };
+};
+
+const resolveParagraphSpacingSequence = (blocks: ParagraphBlock[]): ParagraphBlock[] => {
+  let changed = false;
+  const resolved = blocks.map((block, index) => {
+    const next = resolveParagraphSequenceSpacing(blocks, index, block);
+    if (next !== block) {
+      changed = true;
+    }
+    return next;
+  });
+  return changed ? resolved : blocks;
 };
 
 const resolveTableSpacing = (block: TableBlock): TableBlock => {
@@ -143,7 +162,7 @@ const resolveTableSpacing = (block: TableBlock): TableBlock => {
     let rowChanged = false;
     const cells = row.cells.map((cell) => {
       const blocks = resolveEffectiveParagraphSpacingTree(cell.blocks);
-      if (blocks.every((candidate, index) => candidate === cell.blocks[index])) {
+      if (blocks === cell.blocks) {
         return cell;
       }
       rowChanged = true;
@@ -159,8 +178,8 @@ const resolveTableSpacing = (block: TableBlock): TableBlock => {
 };
 
 const resolveTextBoxSpacing = (block: TextBoxBlock): TextBoxBlock => {
-  const content = resolveEffectiveParagraphSpacingTree(block.content);
-  if (content.every((candidate, index) => candidate === block.content[index])) {
+  const content = resolveParagraphSpacingSequence(block.content);
+  if (content === block.content) {
     return block;
   }
   return { ...block, content };
