@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 
+import { ensureLiveView } from "../parity/parity-fixture";
+
 declare global {
   // eslint-disable-next-line typescript/consistent-type-definitions
   interface Window {
@@ -13,11 +15,7 @@ declare global {
 
 test("Vue collaboration seeds and synchronizes the shared document", async ({ page }) => {
   await page.goto("http://localhost:4201/?collaboration=1");
-  await expect
-    .poll(() => page.evaluate(() => window.__folioParity?.hasView() ?? false), {
-      timeout: 30_000,
-    })
-    .toBe(true);
+  await ensureLiveView(page);
   await expect
     .poll(() => page.evaluate(() => window.__folioVueCollaboration?.wasSeeded() ?? false))
     .toBe(true);
