@@ -1,6 +1,7 @@
 import {
   computed,
   inject,
+  onMounted,
   provide,
   ref,
   toValue,
@@ -10,12 +11,7 @@ import {
   type InjectionKey,
   type MaybeRefOrGetter,
 } from "vue";
-import {
-  prefersColorSchemeDark,
-  resolveIsDark,
-  subscribeSystemDark,
-  type ColorMode,
-} from "../utils/colorMode";
+import { resolveIsDark, subscribeSystemDark, type ColorMode } from "../utils/colorMode";
 
 /** Color mode used when a host does not provide one. */
 export const defaultColorMode: ColorMode = "light";
@@ -56,16 +52,20 @@ export function useColorMode(): ComputedRef<boolean> {
     COLOR_MODE_KEY,
     computed(() => defaultColorMode),
   );
-  const systemDark = ref(prefersColorSchemeDark());
+  const isMounted = ref(false);
+  const systemDark = ref(false);
+  onMounted(() => {
+    isMounted.value = true;
+  });
   watchEffect((onCleanup) => {
-    if (colorMode.value !== "system") return;
+    if (!isMounted.value || colorMode.value !== "system") return;
     onCleanup(
       subscribeSystemDark((dark) => {
         systemDark.value = dark;
       }),
     );
   });
-  return computed(() => resolveIsDark(colorMode.value, systemDark.value));
+  return computed(() => resolveIsDark(colorMode.value, isMounted.value && systemDark.value));
 }
 
 export type { ColorMode } from "../utils/colorMode";

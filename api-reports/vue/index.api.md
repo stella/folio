@@ -708,7 +708,7 @@ export const renderAsync: (input: DocxInput, container: HTMLElement, options?: R
 // @public
 export type RenderAsyncOptions = Omit<DocxEditorProps, "documentBuffer" | "document"> & {
     locale?: string;
-    colorMode?: ColorMode;
+    colorMode?: MaybeRefOrGetter<ColorMode>;
 };
 
 export { resetTemplateSlashQuery }

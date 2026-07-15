@@ -20,7 +20,7 @@
  * ```
  */
 
-import { createApp, h, ref, type App } from "vue";
+import { createApp, h, ref, type App, type MaybeRefOrGetter } from "vue";
 
 import type { Document } from "@stll/folio-core/types/document";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
@@ -57,7 +57,7 @@ export type RenderAsyncOptions = Omit<DocxEditorProps, "documentBuffer" | "docum
   /** BCP-47 locale for bundled folio UI strings (default: `en`). */
   locale?: string;
   /** Editor chrome color mode (default: `light`). */
-  colorMode?: ColorMode;
+  colorMode?: MaybeRefOrGetter<ColorMode>;
 };
 
 /**
