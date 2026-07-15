@@ -449,6 +449,7 @@ import UnifiedSidebar from "./UnifiedSidebar.vue";
 
 import { useCommentLifecycle } from "../composables/useCommentLifecycle";
 import { useCommentManagement } from "../composables/useCommentManagement";
+import { useColorMode } from "../composables/useColorMode";
 import { useContextMenus } from "../composables/useContextMenus";
 import { useDocumentLifecycle } from "../composables/useDocumentLifecycle";
 import { useDocxEditor } from "../composables/useDocxEditor";
@@ -465,7 +466,6 @@ import { useSelectionSync } from "../composables/useSelectionSync";
 import { provideDocxPortalClass } from "../composables/usePortalClass";
 import { useTableResize } from "../composables/useTableResize";
 import { useTrackedChanges } from "../composables/useTrackedChanges";
-import { useColorMode } from "../composables/useColorMode";
 import { useZoom } from "../composables/useZoom";
 import type { FontOption } from "../utils/fontOptions";
 import { loadHostFontFaces, removeFontFaces } from "../utils/hostFonts";
