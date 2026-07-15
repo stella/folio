@@ -1,5 +1,8 @@
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 
+import { findAllMatches } from "../utils/findReplace";
+import type { FindOptions } from "../utils/findReplace";
+
 /**
  * Positional fields of a document search match that the range resolver needs.
  *
@@ -22,44 +25,89 @@ export type FindMatchRange = {
   to: number;
 };
 
+export type ProseMirrorFindMatch = FindMatchPosition &
+  FindMatchRange & {
+    text: string;
+  };
+
 export function resolveFindMatchRange(
   doc: ProseMirrorNode,
   match: FindMatchPosition,
 ): FindMatchRange | null {
-  let paragraphIndex = 0;
   let resolved: FindMatchRange | null = null;
-
-  const visitParagraph = (node: ProseMirrorNode, pos: number): boolean => {
-    if (resolved) {
-      return false;
-    }
+  forEachSearchParagraph(doc, (paragraph, paragraphPos, paragraphIndex) => {
     if (paragraphIndex !== match.paragraphIndex) {
-      paragraphIndex++;
       return true;
     }
-
     resolved = resolveTextRangeInParagraph({
-      paragraph: node,
-      paragraphPos: pos,
+      paragraph,
+      paragraphPos,
       startOffset: match.startOffset,
       endOffset: match.endOffset,
     });
     return false;
-  };
+  });
 
+  return resolved;
+}
+
+export function findInProseMirrorDocument(
+  doc: ProseMirrorNode,
+  searchText: string,
+  options: FindOptions,
+): ProseMirrorFindMatch[] {
+  if (!searchText) {
+    return [];
+  }
+
+  const matches: ProseMirrorFindMatch[] = [];
+  forEachSearchParagraph(doc, (paragraph, paragraphPos, paragraphIndex) => {
+    const text = getSearchableParagraphText(paragraph);
+    for (const { start, end } of findAllMatches(text, searchText, options)) {
+      const range = resolveTextRangeInParagraph({
+        paragraph,
+        paragraphPos,
+        startOffset: start,
+        endOffset: end,
+      });
+      if (range) {
+        matches.push({
+          paragraphIndex,
+          startOffset: start,
+          endOffset: end,
+          text: text.slice(start, end),
+          ...range,
+        });
+      }
+    }
+    return true;
+  });
+  return matches;
+}
+
+type SearchParagraphVisitor = (
+  paragraph: ProseMirrorNode,
+  paragraphPos: number,
+  paragraphIndex: number,
+) => boolean;
+
+function forEachSearchParagraph(doc: ProseMirrorNode, visit: SearchParagraphVisitor): void {
+  let paragraphIndex = 0;
   const walkBlocks = (container: ProseMirrorNode, contentStart: number): boolean => {
     let offset = 0;
     for (let childIndex = 0; childIndex < container.childCount; childIndex++) {
       const child = container.child(childIndex);
       const childPos = contentStart + offset;
       if (child.type.name === "paragraph") {
-        if (!visitParagraph(child, childPos)) {
+        if (!visit(child, childPos, paragraphIndex)) {
           return false;
         }
+        paragraphIndex++;
       } else if (child.type.name === "table" && !walkTable(child, childPos)) {
         return false;
+      } else if (child.type.name === "blockSdt" && !walkBlocks(child, childPos + 1)) {
+        return false;
       }
-
       offset += child.nodeSize;
     }
     return true;
@@ -73,7 +121,6 @@ export function resolveFindMatchRange(
         rowOffset += row.nodeSize;
         continue;
       }
-
       const rowPos = tablePos + 1 + rowOffset;
       let cellOffset = 0;
       for (let cellIndex = 0; cellIndex < row.childCount; cellIndex++) {
@@ -82,22 +129,18 @@ export function resolveFindMatchRange(
           cellOffset += cell.nodeSize;
           continue;
         }
-
         const cellPos = rowPos + 1 + cellOffset;
         if (!walkBlocks(cell, cellPos + 1)) {
           return false;
         }
         cellOffset += cell.nodeSize;
       }
-
       rowOffset += row.nodeSize;
     }
     return true;
   };
 
   walkBlocks(doc, 0);
-
-  return resolved;
 }
 
 type ResolveTextRangeInParagraphOptions = {
@@ -154,4 +197,24 @@ function getSearchTextTokenLength(node: ProseMirrorNode): number {
   }
 
   return 0;
+}
+
+function getSearchableParagraphText(paragraph: ProseMirrorNode): string {
+  let text = "";
+  paragraph.descendants((node) => {
+    if (node.isText) {
+      text += node.text ?? "";
+      return false;
+    }
+    if (node.type.name === "tab") {
+      text += "\t";
+      return false;
+    }
+    if (node.type.name === "hardBreak") {
+      text += "\n";
+      return false;
+    }
+    return true;
+  });
+  return text;
 }
