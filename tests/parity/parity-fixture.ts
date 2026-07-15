@@ -27,6 +27,7 @@ type FolioParityBridge = {
   commentFirstWord: () => boolean;
   countCommentAnchors: () => number;
   aiSnapshotBlockCount: () => number;
+  navigateToFirstBlock: () => { shown: boolean; targetPage: number; currentPage: number };
   applyAndUndoDocumentOperation: () => boolean;
   anonymizeFirstWord: () => boolean;
   countAnonymizationRects: () => number;

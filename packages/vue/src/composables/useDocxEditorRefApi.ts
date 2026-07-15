@@ -77,6 +77,7 @@ import type { PagedEditorRef } from "../components/DocxEditor/pagedEditorRef";
 import {
   clampRangeToDocSize,
   resolveFolioAIBlockRange,
+  resolveFolioAITextRange,
 } from "@stll/folio-core/ai-edits/blockRange";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 
@@ -488,10 +489,29 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
       return true;
     },
-    // PORT-BLOCKED: Vue does not yet expose stable document-target navigation.
-    // Keep the imperative ref surface aligned with React while returning a
-    // deterministic failure until the backing Vue navigation bridge lands.
-    showInDocument: () => false,
+    showInDocument: (target, snapshot) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      const range =
+        target.type === "textRange"
+          ? resolveFolioAITextRange({ range: target, doc: view.state.doc, snapshot })
+          : resolveFolioAIBlockRange({
+              blockId: target.blockId,
+              doc: view.state.doc,
+              snapshot,
+            });
+      if (range === null) {
+        return false;
+      }
+      const { from, to } = range;
+      const $from = view.state.doc.resolve(from);
+      const $to = view.state.doc.resolve(to);
+      view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+      requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
+      return true;
+    },
     getTrackedChanges: () => {
       const view = opts.editorView.value;
       return view ? getTrackedChangesFromDoc(view.state.doc) : [];
@@ -511,9 +531,26 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       }
       return getPageTextFromLayout(opts.layout.value, view.state.doc, page);
     },
-    // PORT-BLOCKED: target-to-page resolution depends on the same stable
-    // document-target bridge as showInDocument. Return null until it lands.
-    getTargetPage: () => null,
+    getTargetPage: (target, snapshot) => {
+      const view = opts.editorView.value;
+      const currentLayout = opts.layout.value;
+      if (!view || !currentLayout) {
+        return null;
+      }
+      const range =
+        target.type === "textRange"
+          ? resolveFolioAITextRange({ range: target, doc: view.state.doc, snapshot })
+          : resolveFolioAIBlockRange({
+              blockId: target.blockId,
+              doc: view.state.doc,
+              snapshot,
+            });
+      if (range === null) {
+        return null;
+      }
+      const pageIndex = findPageIndexContainingPmPos(currentLayout, range.from);
+      return pageIndex == null ? null : pageIndex + 1;
+    },
     getContentControls: (filter = {}) => {
       const view = opts.editorView.value;
       if (!view) {
