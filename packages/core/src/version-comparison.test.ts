@@ -13,6 +13,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { buildTextBoxTableDocument } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
@@ -199,6 +200,31 @@ const findChange = (changes: readonly FolioBlockDiff[], blockId: string): FolioB
 };
 
 describe("compareDocxVersions: real w14:paraId alignment", () => {
+  test("reports a nested text-box table-cell edit with stable source handles", async () => {
+    const diff = await compareDocxVersions(
+      await buildTextBoxTableDocument("Original cell value"),
+      await buildTextBoxTableDocument("Revised cell value"),
+    );
+
+    expect(diff.summaryCounts).toMatchObject({ modified: 1 });
+    expect(diff.changes).toHaveLength(1);
+    const change = diff.changes.at(0);
+    expect(change).toMatchObject({
+      type: "modified",
+      blockId: "A2000003",
+      baseHandle: { story: { type: "main" }, blockId: "A2000003" },
+      revisedHandle: { story: { type: "main" }, blockId: "A2000003" },
+    });
+    if (change?.type !== "modified") {
+      throw new Error("expected a modified cell paragraph");
+    }
+    expect(change.segments).toEqual([
+      { type: "del", text: "Original" },
+      { type: "ins", text: "Revised" },
+      { type: "equal", text: " cell value" },
+    ]);
+  });
+
   test("classifies unchanged, modified, added, and deleted blocks by stable id", async () => {
     const base = await buildDocxBuffer([
       { text: "Alpha paragraph.", paraId: "00000001" },
