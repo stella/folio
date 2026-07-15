@@ -40,7 +40,6 @@ import type {
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
-// oxlint-disable-next-line import/no-cycle -- shape text boxes can contain tables whose cells contain shape runs
 import { serializeTable } from "./tableSerializer";
 import { escapeXml, intAttr } from "./xmlUtils";
 
@@ -899,7 +898,9 @@ function serializeShapeTextBody(
 ): string {
   return blocks
     .map((block) =>
-      block.type === "paragraph" ? serializeParagraph(block) : serializeTable(block),
+      block.type === "paragraph"
+        ? serializeParagraph(block)
+        : serializeTable(block, serializeParagraph),
     )
     .join("");
 }

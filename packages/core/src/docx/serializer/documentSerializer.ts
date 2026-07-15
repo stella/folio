@@ -115,7 +115,7 @@ function serializeBlockContent(block: BlockContent): string {
     return serializeParagraph(block);
   }
   if (block.type === "table") {
-    return serializeTable(block);
+    return serializeTable(block, serializeParagraph);
   }
   return serializeBlockSdt(block, serializeBlockContent);
 }
