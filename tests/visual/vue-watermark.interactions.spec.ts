@@ -16,7 +16,8 @@ test("Vue applies and clears a watermark from the Insert menu", async ({ page })
 
   const dialog = page.getByRole("dialog", { name: "Watermark" });
   await expect(dialog).toBeVisible();
-  await dialog.locator('input[type="text"]').first().fill("DRAFT");
+  await dialog.locator("select").selectOption("text");
+  await dialog.getByLabel("Text", { exact: true }).fill("DRAFT");
   await dialog.getByRole("button", { name: "Apply" }).click();
 
   await expect(dialog).toBeHidden();
