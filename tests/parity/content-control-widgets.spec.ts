@@ -7,13 +7,13 @@ forEachAdapter("edits dropdown and date content controls", async (adapter, { pag
     true,
   );
 
-  const dropdown = page.locator('[data-sdt-type="dropdown"]').first();
+  const dropdown = page.locator('.paged-editor__pages [data-sdt-type="dropdown"]').first();
   await expect(dropdown).toBeVisible();
   await dropdown.click();
   await page.getByRole("menuitem", { name: "New York" }).click();
   await expect(dropdown).toContainText("New York");
 
-  const date = page.locator('[data-sdt-type="date"]').first();
+  const date = page.locator('.paged-editor__pages [data-sdt-type="date"]').first();
   await expect(date).toBeVisible();
   await date.click();
   await page.locator('input[type="date"]').fill("2026-06-02");

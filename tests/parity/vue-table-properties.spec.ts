@@ -12,8 +12,14 @@ test("Vue applies table properties from the table options menu", async ({ page }
   await ensureLiveView(page);
   expect(await page.evaluate(() => window.__folioParity?.insertTable(2, 2) ?? false)).toBe(true);
 
-  await page.getByTitle("Table options").click();
-  await page.getByRole("button", { name: "Table properties" }).click();
+  const tableOptions = page.getByTitle("Table options");
+  await tableOptions.scrollIntoViewIfNeeded();
+  await tableOptions.click();
+
+  const tableProperties = page.getByRole("button", { name: "Table properties" });
+  await expect(tableProperties).toBeVisible();
+  await tableProperties.scrollIntoViewIfNeeded();
+  await tableProperties.click();
 
   const dialog = page.getByRole("dialog", { name: "Table Properties" });
   await expect(dialog).toBeVisible();

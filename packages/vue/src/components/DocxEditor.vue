@@ -389,7 +389,7 @@
       @close-image-context-menu="imageContextMenu = null"
       @open-image-properties="showImageProperties = true"
     />
-    <ContentControlWidgetsOverlay :view="editorView" />
+    <ContentControlWidgetsOverlay :event-root="readOnly ? null : pagesRef" :view="editorView" />
   </div>
 </template>
 

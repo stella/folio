@@ -12,7 +12,11 @@ import { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { schema, singletonManager } from "../schema";
-import { dispatchDatePick, dispatchDropdownPick } from "./contentControlWidgets";
+import {
+  dispatchDatePick,
+  dispatchDropdownPick,
+  handleContentControlWidgetClick,
+} from "./contentControlWidgets";
 
 type StubView = Pick<EditorView, "state" | "dispatch">;
 
@@ -24,6 +28,69 @@ function viewLike(stateRef: { state: EditorState }): StubView {
     },
   };
 }
+
+describe("handleContentControlWidgetClick", () => {
+  test("routes painted descendant clicks through the typed dropdown event", () => {
+    const listItems = JSON.stringify([
+      { value: "ca", displayText: "California" },
+      { value: "ny", displayText: "New York" },
+    ]);
+    const sdt = schema.node(
+      "blockSdt",
+      {
+        sdtType: "dropdown",
+        tag: "state",
+        listItems,
+      },
+      [schema.node("paragraph", {}, [schema.text("California")])],
+    );
+    const stateRef = {
+      state: EditorState.create({
+        doc: schema.node("doc", null, [sdt]),
+        schema,
+        plugins: [...singletonManager.getPlugins()],
+      }),
+    };
+    const anchor = {
+      dataset: {
+        sdtListItems: listItems,
+        sdtPmPos: "0",
+        sdtTag: "state",
+        sdtType: "dropdown",
+      },
+      getBoundingClientRect: () => ({ bottom: 80, left: 24 }),
+    };
+    const target = {
+      closest: (selector: string) => (selector === "[data-sdt-type]" ? anchor : null),
+    };
+    let prevented = false;
+    const events = [];
+
+    const handled = handleContentControlWidgetClick({
+      view: viewLike(stateRef),
+      event: {
+        target,
+        preventDefault: () => {
+          prevented = true;
+        },
+      },
+      onEvent: (event) => events.push(event),
+    });
+
+    expect(handled).toBe(true);
+    expect(prevented).toBe(true);
+    expect(events).toEqual([
+      {
+        kind: "dropdownOpen",
+        tag: "state",
+        pmPos: 0,
+        sdtType: "dropdown",
+        anchor,
+        listItemsJson: listItems,
+      },
+    ]);
+  });
+});
 
 describe("dispatchDropdownPick", () => {
   test("writes the picked value as the displayText", () => {

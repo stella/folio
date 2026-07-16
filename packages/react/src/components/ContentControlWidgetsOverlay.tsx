@@ -13,12 +13,16 @@ import { useFolioUI } from "../ui/folio-ui";
 type FolioMenuItem = ReturnType<typeof useFolioUI>["Menu"]["Item"];
 
 type ContentControlWidgetsOverlayProps = {
+  getEventRoot: () => HTMLElement | null;
   getEditorView: () => EditorView | null;
 };
 
-export function ContentControlWidgetsOverlay({ getEditorView }: ContentControlWidgetsOverlayProps) {
+export function ContentControlWidgetsOverlay({
+  getEventRoot,
+  getEditorView,
+}: ContentControlWidgetsOverlayProps) {
   const folioUI = useFolioUI();
-  const { Item: MenuItem } = folioUI.Menu;
+  const { Root: Menu, Item: MenuItem } = folioUI.Menu;
   const DatePickerPopover = folioUI.DatePickerPopover;
   const t = useTranslations("folio");
   const controller = useMemo(() => new ContentControlWidgetController(), []);
@@ -30,9 +34,9 @@ export function ContentControlWidgetsOverlay({ getEditorView }: ContentControlWi
   const view = getEditorView();
 
   useEffect(() => {
-    controller.bind(view);
+    controller.bind(view, getEventRoot());
     return () => controller.destroy();
-  }, [controller, view]);
+  }, [controller, getEventRoot, view]);
 
   const onDropdownPick = useCallback(
     (value: string) => controller.pickDropdown(value),
@@ -67,22 +71,24 @@ export function ContentControlWidgetsOverlay({ getEditorView }: ContentControlWi
         className="bg-popover text-popover-foreground min-w-[10rem] rounded-md border p-1 shadow-md"
       >
         {snapshot.status === "dropdown" && (
-          <div role="menu" className="flex flex-col">
-            {snapshot.items.length === 0 ? (
-              <div className="text-muted-foreground px-2 py-1 text-sm">
-                {t("contentControlDropdownNoOptions")}
-              </div>
-            ) : (
-              snapshot.items.map((item) => (
-                <ContentControlDropdownItem
-                  key={`${item.value}::${item.displayText}`}
-                  item={item}
-                  MenuItem={MenuItem}
-                  onPick={onDropdownPick}
-                />
-              ))
-            )}
-          </div>
+          <Menu>
+            <div role="menu" className="flex flex-col">
+              {snapshot.items.length === 0 ? (
+                <div className="text-muted-foreground px-2 py-1 text-sm">
+                  {t("contentControlDropdownNoOptions")}
+                </div>
+              ) : (
+                snapshot.items.map((item) => (
+                  <ContentControlDropdownItem
+                    key={`${item.value}::${item.displayText}`}
+                    item={item}
+                    MenuItem={MenuItem}
+                    onPick={onDropdownPick}
+                  />
+                ))
+              )}
+            </div>
+          </Menu>
         )}
         {snapshot.status === "date" && (
           <DatePickerPopover

@@ -1,10 +1,11 @@
 /**
  * Framework-neutral lifecycle and state owner for typed content-control pickers.
  *
- * The ProseMirror plugin owns click detection and document transactions. This
- * controller binds that plugin's DOM event to a stable, discriminated snapshot
- * that any adapter can render, then routes a selection back through the same
- * transaction helpers. Framework adapters only subscribe and provide chrome.
+ * The ProseMirror plugin owns widget interpretation and document transactions.
+ * This controller binds both the plugin's DOM event and the painted body click
+ * surface to a stable, discriminated snapshot that any adapter can render, then
+ * routes a selection back through the same transaction helpers. Framework
+ * adapters only subscribe, provide the painted root, and render chrome.
  */
 
 import type { EditorView } from "prosemirror-view";
@@ -13,6 +14,7 @@ import {
   CONTENT_CONTROL_WIDGET_EVENT_NAME,
   dispatchDatePick,
   dispatchDropdownPick,
+  handleContentControlWidgetClick,
 } from "../prosemirror/plugins/contentControlWidgets";
 import type { ContentControlWidgetEvent } from "../prosemirror/plugins/contentControlWidgets";
 import { Subscribable } from "../managers/Subscribable";
@@ -122,6 +124,7 @@ export class ContentControlWidgetController extends Subscribable<ContentControlW
   private readonly options: ContentControlWidgetControllerOptions;
   private view: EditorView | null = null;
   private viewDom: HTMLElement | null = null;
+  private eventRoot: HTMLElement | null = null;
   private ownerWindow: Window | null = null;
 
   constructor(options: ContentControlWidgetControllerOptions = {}) {
@@ -129,14 +132,16 @@ export class ContentControlWidgetController extends Subscribable<ContentControlW
     this.options = options;
   }
 
-  bind(view: EditorView | null): void {
-    if (this.view === view) {
+  bind(view: EditorView | null, eventRoot: HTMLElement | null = null): void {
+    if (this.view === view && this.eventRoot === eventRoot) {
       return;
     }
     this.unbindView();
     this.view = view;
     this.viewDom = view?.dom ?? null;
+    this.eventRoot = eventRoot;
     this.viewDom?.addEventListener(CONTENT_CONTROL_WIDGET_EVENT_NAME, this.onDomEvent);
+    this.eventRoot?.addEventListener("click", this.onPaintedClick);
   }
 
   handleWidgetEvent(event: ContentControlWidgetEvent): void {
@@ -204,6 +209,17 @@ export class ContentControlWidgetController extends Subscribable<ContentControlW
     }
   };
 
+  private readonly onPaintedClick = (event: MouseEvent): void => {
+    if (!this.view || !isPaintedBodyClick(event.target)) {
+      return;
+    }
+    handleContentControlWidgetClick({
+      view: this.view,
+      event,
+      onEvent: (widgetEvent) => this.handleWidgetEvent(widgetEvent),
+    });
+  };
+
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Escape") {
       this.close();
@@ -229,6 +245,20 @@ export class ContentControlWidgetController extends Subscribable<ContentControlW
   private unbindView(): void {
     this.close();
     this.viewDom?.removeEventListener(CONTENT_CONTROL_WIDGET_EVENT_NAME, this.onDomEvent);
+    this.eventRoot?.removeEventListener("click", this.onPaintedClick);
     this.viewDom = null;
+    this.eventRoot = null;
   }
 }
+
+const isPaintedBodyClick = (target: unknown): boolean => {
+  if (
+    typeof target !== "object" ||
+    target === null ||
+    !("closest" in target) ||
+    typeof target.closest !== "function"
+  ) {
+    return false;
+  }
+  return target.closest(".layout-page-content") !== null;
+};

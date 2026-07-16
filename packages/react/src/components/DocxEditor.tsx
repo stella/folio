@@ -3766,6 +3766,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [handleContextMenuAction],
   );
   const getBodyEditorView = useCallback(() => pagedEditorRef.current?.getView() ?? null, []);
+  const getContentControlEventRoot = useCallback(() => {
+    if (readOnly) {
+      return null;
+    }
+    const root = containerRef.current?.querySelector(".paged-editor__pages");
+    return root instanceof HTMLElement ? root : null;
+  }, [readOnly]);
 
   const closeTableProperties = useCallback(() => setTablePropsOpen(false), []);
   const applyTableProperties = useCallback(
@@ -4398,7 +4405,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             )}
 
             {/* Dropdown / date pickers for content controls */}
-            <ContentControlWidgetsOverlay getEditorView={getBodyEditorView} />
+            <ContentControlWidgetsOverlay
+              getEventRoot={getContentControlEventRoot}
+              getEditorView={getBodyEditorView}
+            />
 
             {/* Toast notifications */}
             {/* Toast notifications provided by host app */}

@@ -52,7 +52,10 @@ import { useDocxPortalClass } from "../composables/usePortalClass";
 import { useTranslation } from "../i18n";
 import { useFolioUI } from "../ui/folio-ui";
 
-const props = defineProps<{ view: EditorView | null }>();
+const props = defineProps<{
+  eventRoot: HTMLElement | null;
+  view: EditorView | null;
+}>();
 
 const { t } = useTranslation();
 const { Button: FolioButton, DatePickerPopover } = useFolioUI();
@@ -64,8 +67,8 @@ const unsubscribe = controller.subscribe(() => {
 });
 
 watch(
-  () => props.view,
-  (view) => controller.bind(view),
+  [() => props.view, () => props.eventRoot],
+  ([view, eventRoot]) => controller.bind(view, eventRoot),
   { immediate: true },
 );
 
