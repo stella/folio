@@ -86,6 +86,21 @@ export const contentControlWidgetsPluginKey = new PluginKey<unknown>("contentCon
  */
 export const CONTENT_CONTROL_WIDGET_EVENT_NAME = "folio:content-control-widget";
 
+const SDT_DATASET_KEY = {
+  checked: "sdtChecked",
+  listItems: "sdtListItems",
+  pmPos: "sdtPmPos",
+  tag: "sdtTag",
+  type: "sdtType",
+} as const;
+const SDT_TYPE = {
+  checkbox: "checkbox",
+  comboBox: "comboBox",
+  date: "date",
+  dropdown: "dropdown",
+} as const;
+const SDT_TYPE_SELECTOR = "[data-sdt-type]";
+
 const findClosest = (target: unknown, selector: string): unknown => {
   if (
     typeof target !== "object" ||
@@ -114,7 +129,7 @@ const isContentControlWidgetElement = (value: unknown): value is ContentControlW
 };
 
 const findSdtAncestor = (target: unknown): ContentControlWidgetElement | null => {
-  const candidate = findClosest(target, "[data-sdt-type]");
+  const candidate = findClosest(target, SDT_TYPE_SELECTOR);
   return isContentControlWidgetElement(candidate) ? candidate : null;
 };
 
@@ -132,12 +147,12 @@ export const handleContentControlWidgetClick = ({
   if (!anchor) {
     return false;
   }
-  const tag = anchor.dataset["sdtTag"] ?? "";
-  const sdtType = anchor.dataset["sdtType"];
+  const tag = anchor.dataset[SDT_DATASET_KEY.tag] ?? "";
+  const sdtType = anchor.dataset[SDT_DATASET_KEY.type];
   // pmPos is what addresses the clicked instance unambiguously. The
   // painter stamps it from the SdtGroup; tag is kept on the event
   // for telemetry but is no longer the addressing key.
-  const pmPosRaw = anchor.dataset["sdtPmPos"];
+  const pmPosRaw = anchor.dataset[SDT_DATASET_KEY.pmPos];
   const pmPos = pmPosRaw ? Number.parseInt(pmPosRaw, 10) : Number.NaN;
   if (!sdtType || Number.isNaN(pmPos)) {
     return false;
@@ -146,13 +161,13 @@ export const handleContentControlWidgetClick = ({
   // surface the click intent. Errors thrown by the helper are
   // caught here so the editor stays interactive even on refusal.
   try {
-    if (sdtType === "checkbox") {
-      const current = anchor.dataset["sdtChecked"] === "true";
+    if (sdtType === SDT_TYPE.checkbox) {
+      const current = anchor.dataset[SDT_DATASET_KEY.checked] === "true";
       const tr = setContentControlValueTr(
         view.state,
         { pmPos },
         {
-          kind: "checkbox",
+          kind: SDT_TYPE.checkbox,
           checked: !current,
         },
       );
@@ -161,7 +176,7 @@ export const handleContentControlWidgetClick = ({
         event.preventDefault();
         return true;
       }
-    } else if (sdtType === "dropdown" || sdtType === "comboBox") {
+    } else if (sdtType === SDT_TYPE.dropdown || sdtType === SDT_TYPE.comboBox) {
       const refusal = lockRefusalFor(view, pmPos);
       if (refusal) {
         onEvent({
@@ -181,11 +196,11 @@ export const handleContentControlWidgetClick = ({
         pmPos,
         sdtType,
         anchor,
-        listItemsJson: anchor.dataset["sdtListItems"],
+        listItemsJson: anchor.dataset[SDT_DATASET_KEY.listItems],
       });
       event.preventDefault();
       return true;
-    } else if (sdtType === "date") {
+    } else if (sdtType === SDT_TYPE.date) {
       const refusal = lockRefusalFor(view, pmPos);
       if (refusal) {
         onEvent({
