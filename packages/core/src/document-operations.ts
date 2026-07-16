@@ -35,6 +35,7 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "deleteTableRow",
   "insertTableColumn",
   "deleteTableColumn",
+  "mergeTableCells",
 ] as const satisfies readonly FolioAIEditOperation["type"][]);
 
 export const FOLIO_DOCUMENT_OPERATION_MODES = Object.freeze([
@@ -80,6 +81,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   deleteTableRow: DIRECT_ONLY_MODES,
   insertTableColumn: DIRECT_ONLY_MODES,
   deleteTableColumn: DIRECT_ONLY_MODES,
+  mergeTableCells: DIRECT_ONLY_MODES,
 } as const satisfies Readonly<
   Record<FolioDocumentOperationType, readonly FolioDocumentOperationMode[]>
 >);
@@ -630,6 +632,17 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     return { ...operationMeta, id, type, blockId };
   }
 
+  if (type === "mergeTableCells") {
+    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "endBlockId"]);
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      endBlockId: readString(value, "endBlockId", path),
+    };
+  }
+
   return invalidBatch(`${path}.type`, `unsupported operation type "${type}"`);
 };
 
@@ -728,6 +741,13 @@ export type FolioDocumentOperationAffectedTarget =
       story: FolioDocumentOperationStory;
       anchorBlockId: string;
       effect: "deleted";
+    }
+  | {
+      type: "tableCells";
+      story: FolioDocumentOperationStory;
+      anchorBlockId: string;
+      endAnchorBlockId: string;
+      effect: "merged";
     };
 
 /** Input-ordered effect receipt for one successfully applied operation. */
@@ -900,6 +920,14 @@ const getPrimaryAffectedTarget = (
         story,
         anchorBlockId: operation.blockId,
         effect: "deleted",
+      };
+    case "mergeTableCells":
+      return {
+        type: "tableCells",
+        story,
+        anchorBlockId: operation.blockId,
+        endAnchorBlockId: operation.endBlockId,
+        effect: "merged",
       };
   }
 };

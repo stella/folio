@@ -32,7 +32,7 @@ const schema = new Schema({
       tableRole: "table",
     },
     tableRow: {
-      content: "tableCell+",
+      content: "tableCell*",
       tableRole: "row",
     },
     tableCell: {
@@ -2651,6 +2651,328 @@ describe("Folio AI edit operations", () => {
       skipped: [{ id: "insert-column", reason: "unsupportedMode" }],
     });
     expect(view.state.doc.child(0).child(0).childCount).toBe(1);
+  });
+
+  test("merges a rectangular table region and preserves cell content order", () => {
+    const rows = [
+      ["A", "B"],
+      ["C", "D"],
+    ].map((texts) =>
+      schema.node(
+        "tableRow",
+        null,
+        texts.map((text) =>
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: `merge-${text}` }, [schema.text(text)]),
+          ]),
+        ),
+      ),
+    );
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [schema.node("table", null, rows)]),
+    });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "merge-cells",
+          type: "mergeTableCells",
+          blockId: "merge-A",
+          endBlockId: "merge-D",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result).toEqual({ applied: [{ id: "merge-cells" }], skipped: [] });
+    const table = view.state.doc.child(0);
+    expect(TableMap.get(table)).toMatchObject({ width: 2, height: 2 });
+    expect(table.child(0).childCount).toBe(1);
+    expect(table.child(1).childCount).toBe(0);
+    expect(table.child(0).child(0).attrs).toMatchObject({ colspan: 2, rowspan: 2 });
+    expect(table.child(0).child(0).textContent).toBe("ABCD");
+    expect(table.child(0).child(0).childCount).toBe(4);
+  });
+
+  test("merges a region that fully encloses an existing span", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [
+          schema.node("paragraph", { paraId: "merge-span-A" }, [schema.text("A")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "merge-span-B" }, [schema.text("B")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "merge-span-C" }, [schema.text("C")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "merge-span",
+          type: "mergeTableCells",
+          blockId: "merge-span-A",
+          endBlockId: "merge-span-C",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    const merged = view.state.doc.child(0).child(0).child(0);
+    expect(merged.attrs).toMatchObject({ colspan: 2, rowspan: 2 });
+    expect(merged.textContent).toBe("ABC");
+  });
+
+  test("rejects a merge that cuts through an existing span without mutation", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [
+          schema.node("paragraph", { paraId: "partial-A" }, [schema.text("A")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "partial-D" }, [schema.text("D")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "partial-B" }, [schema.text("B")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "partial-C" }, [schema.text("C")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "partial-E" }, [schema.text("E")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "partial-merge",
+          type: "mergeTableCells",
+          blockId: "partial-D",
+          endBlockId: "partial-C",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result).toEqual({
+      applied: [],
+      skipped: [{ id: "partial-merge", reason: "unsupportedBlock" }],
+    });
+    expect(view.state.doc).toEqual(state.doc);
+  });
+
+  test("applies cell text edits before merging and maps the table through earlier insertions", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "mapped-merge-A" }, [schema.text("A")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "mapped-merge-B" }, [schema.text("B")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "merge",
+          type: "mergeTableCells",
+          blockId: "mapped-merge-A",
+          endBlockId: "mapped-merge-B",
+        },
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId: "mapped-merge-B",
+          find: "B",
+          replace: "Changed",
+        },
+        {
+          id: "insert-before",
+          type: "insertBeforeBlock",
+          blockId: "mapped-merge-A",
+          text: "Before",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.child(0).textContent).toBe("Before");
+    const merged = view.state.doc.child(1).child(0).child(0);
+    expect(merged.attrs["colspan"]).toBe(2);
+    expect(merged.textContent).toBe("AChanged");
+  });
+
+  test("rejects conflicting or duplicate merge claims deterministically", () => {
+    const rows = [
+      ["A", "B", "C"],
+      ["D", "E", "F"],
+    ].map((texts) =>
+      schema.node(
+        "tableRow",
+        null,
+        texts.map((text) =>
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: `claim-${text}` }, [schema.text(text)]),
+          ]),
+        ),
+      ),
+    );
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [schema.node("table", null, rows)]),
+    });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "first",
+          type: "mergeTableCells",
+          blockId: "claim-A",
+          endBlockId: "claim-B",
+        },
+        {
+          id: "duplicate",
+          type: "mergeTableCells",
+          blockId: "claim-B",
+          endBlockId: "claim-A",
+        },
+        {
+          id: "overlap",
+          type: "mergeTableCells",
+          blockId: "claim-B",
+          endBlockId: "claim-C",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.applied).toEqual([{ id: "first" }]);
+    expect(result.skipped).toEqual([
+      { id: "duplicate", reason: "noopOperation" },
+      { id: "overlap", reason: "unsupportedBlock" },
+    ]);
+    expect(view.state.doc.child(0).child(0).child(0).textContent).toBe("AB");
+  });
+
+  test("skips a merge when the same batch changes that table's structure", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "structural-A" }, [schema.text("A")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "structural-B" }, [schema.text("B")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "merge",
+          type: "mergeTableCells",
+          blockId: "structural-A",
+          endBlockId: "structural-B",
+        },
+        {
+          id: "insert-column",
+          type: "insertTableColumn",
+          blockId: "structural-B",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.applied).toEqual([{ id: "insert-column" }]);
+    expect(result.skipped).toEqual([{ id: "merge", reason: "unsupportedBlock" }]);
+    expect(TableMap.get(view.state.doc.child(0)).width).toBe(3);
+  });
+
+  test("treats a same-cell merge as a no-op and rejects tracked mode", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "single-merge" }, [schema.text("A")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+
+    const directView = makeView(state);
+    expect(
+      applyFolioAIEditOperations({
+        view: directView,
+        snapshot: createFolioAIEditSnapshot(state.doc),
+        operations: [
+          {
+            id: "same-cell",
+            type: "mergeTableCells",
+            blockId: "single-merge",
+            endBlockId: "single-merge",
+          },
+        ],
+        mode: "direct",
+      }),
+    ).toEqual({
+      applied: [],
+      skipped: [{ id: "same-cell", reason: "noopOperation" }],
+    });
+
+    const trackedView = makeView(state);
+    expect(
+      applyFolioAIEditOperations({
+        view: trackedView,
+        snapshot: createFolioAIEditSnapshot(state.doc),
+        operations: [
+          {
+            id: "tracked-merge",
+            type: "mergeTableCells",
+            blockId: "single-merge",
+            endBlockId: "single-merge",
+          },
+        ],
+        mode: "tracked-changes",
+      }),
+    ).toEqual({
+      applied: [],
+      skipped: [{ id: "tracked-merge", reason: "unsupportedMode" }],
+    });
   });
 
   test("table-row deletes are skipped in tracked-changes mode", () => {

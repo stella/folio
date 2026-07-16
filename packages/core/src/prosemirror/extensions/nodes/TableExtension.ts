@@ -328,7 +328,7 @@ const tableSpec: NodeSpec = {
 };
 
 const tableRowSpec: NodeSpec = {
-  content: "(tableCell | tableHeader)+",
+  content: "(tableCell | tableHeader)*",
   tableRole: "row",
   attrs: {
     height: { default: null },

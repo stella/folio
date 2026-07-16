@@ -446,6 +446,181 @@ describe("headless docx review round-trip", () => {
     expect(restoredTable.rows.at(0)?.cells).toHaveLength(1);
   });
 
+  test("merges, persists, and undoes cells inside shape text", async () => {
+    const baseline = await buildTextBoxTableDocument();
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
+    const insertion = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "insert-column",
+          type: "insertTableColumn",
+          blockId: initialTarget.id,
+          cellTexts: ["Added value"],
+        },
+      ],
+    });
+    expect(insertion.status).toBe("committed");
+
+    const snapshot = reviewer.snapshot();
+    const startTarget = findBlock(snapshot.blocks, "Cell value");
+    const endTarget = findBlock(snapshot.blocks, "Added value");
+    const rejected = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      atomic: true,
+      operations: [
+        {
+          id: "merge-cells",
+          type: "mergeTableCells",
+          blockId: startTarget.id,
+          endBlockId: endTarget.id,
+        },
+        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+      ],
+    });
+
+    expect(rejected.status).toBe("rejected");
+    expect(rejected.applied).toEqual([]);
+    const afterRejected = await parseDocx(await reviewer.toBuffer(), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const rejectedTable = findTextBoxShape(afterRejected).textBody?.content.at(1);
+    expect(rejectedTable?.type).toBe("table");
+    if (rejectedTable?.type !== "table") {
+      throw new Error("expected a nested table");
+    }
+    expect(rejectedTable.rows.at(0)?.cells).toHaveLength(2);
+
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "merge-cells",
+          type: "mergeTableCells",
+          blockId: startTarget.id,
+          endBlockId: endTarget.id,
+        },
+      ],
+    });
+
+    expect(result.status).toBe("committed");
+    expect(result.applied).toEqual([{ id: "merge-cells" }]);
+    expect(result.receipts).toEqual([
+      {
+        operationId: "merge-cells",
+        operationIndex: 0,
+        affected: [
+          {
+            type: "tableCells",
+            story: "main",
+            anchorBlockId: startTarget.id,
+            endAnchorBlockId: endTarget.id,
+            effect: "merged",
+          },
+        ],
+      },
+    ]);
+
+    const saved = await reviewer.toBuffer();
+    const reparsed = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
+    const table = findTextBoxShape(reparsed).textBody?.content.at(1);
+    expect(table?.type).toBe("table");
+    if (table?.type !== "table") {
+      throw new Error("expected a nested table");
+    }
+    expect(table.rows.at(0)?.cells).toHaveLength(1);
+    expect((await FolioDocxReviewer.fromBuffer(saved)).getContentAsText()).toContain("Cell value");
+    expect((await FolioDocxReviewer.fromBuffer(saved)).getContentAsText()).toContain("Added value");
+
+    if (!result.undoHandle) {
+      throw new Error("expected an undo handle");
+    }
+    expect(reviewer.undoDocumentOperations(result.undoHandle)).toEqual({
+      status: "undone",
+      undoHandle: result.undoHandle,
+    });
+    const restored = await parseDocx(await reviewer.toBuffer(), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const restoredTable = findTextBoxShape(restored).textBody?.content.at(1);
+    expect(restoredTable?.type).toBe("table");
+    if (restoredTable?.type !== "table") {
+      throw new Error("expected a nested table");
+    }
+    expect(restoredTable.rows.at(0)?.cells).toHaveLength(2);
+  });
+
+  test("persists a vertical cell merge with continuation geometry", async () => {
+    const baseline = await buildTextBoxTableDocument();
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
+    const insertion = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "insert-row",
+          type: "insertTableRow",
+          blockId: initialTarget.id,
+          cellTexts: ["Added value"],
+        },
+      ],
+    });
+    expect(insertion.status).toBe("committed");
+
+    const snapshot = reviewer.snapshot();
+    const startTarget = findBlock(snapshot.blocks, "Cell value");
+    const endTarget = findBlock(snapshot.blocks, "Added value");
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "merge-cells",
+          type: "mergeTableCells",
+          blockId: startTarget.id,
+          endBlockId: endTarget.id,
+        },
+      ],
+    });
+
+    expect(result.status).toBe("committed");
+    const saved = await parseDocx(await reviewer.toBuffer(), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const table = findTextBoxShape(saved).textBody?.content.at(1);
+    expect(table?.type).toBe("table");
+    if (table?.type !== "table") {
+      throw new Error("expected a nested table");
+    }
+    expect(table.rows).toHaveLength(2);
+    expect(table.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe("restart");
+    expect(table.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBe("continue");
+
+    if (!result.undoHandle) {
+      throw new Error("expected an undo handle");
+    }
+    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe("undone");
+    const restored = await parseDocx(await reviewer.toBuffer(), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const restoredTable = findTextBoxShape(restored).textBody?.content.at(1);
+    expect(restoredTable?.type).toBe("table");
+    if (restoredTable?.type !== "table") {
+      throw new Error("expected a nested table");
+    }
+    expect(restoredTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+    expect(restoredTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+  });
+
   test("deletes, persists, and undoes a column inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);

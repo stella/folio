@@ -1,4 +1,4 @@
-import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
+import { Fragment, type Mark, type Node as PMNode, type Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import {
   columnIsHeader,
@@ -68,6 +68,7 @@ type ResolvedOperation = {
   tableRowDeletion?: TableRowDeletion;
   tableColumnInsertion?: TableColumnInsertion;
   tableColumnDeletion?: TableColumnDeletion;
+  tableCellMerge?: TableCellMerge;
   commentId?: number;
   /**
    * Position in the input `operations` array, used as a secondary
@@ -250,6 +251,18 @@ type TableColumnInsertion = {
 
 type TableColumnDeletion = TableColumnInsertion;
 
+type TableRectangle = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+};
+
+type TableCellMerge = {
+  tablePosition: number;
+  rectangle: TableRectangle;
+};
+
 const getTableColumnCoordinateKey = ({
   tablePosition,
   columnIndex,
@@ -261,6 +274,8 @@ type TableCellTarget = {
   cellEndPosition: number;
   leftColumnIndex: number;
   rightColumnIndex: number;
+  topRowIndex: number;
+  bottomRowIndex: number;
 };
 
 const findEnclosingTableRow = (doc: PMNode, blockFrom: number): TableRowTarget | null => {
@@ -314,9 +329,140 @@ const findEnclosingTableCell = (doc: PMNode, blockFrom: number): TableCellTarget
       cellEndPosition: cellPosition + cell.nodeSize,
       leftColumnIndex: cellRect.left,
       rightColumnIndex: cellRect.right,
+      topRowIndex: cellRect.top,
+      bottomRowIndex: cellRect.bottom,
     };
   }
   return null;
+};
+
+const tableRectanglesOverlap = (left: TableRectangle, right: TableRectangle): boolean =>
+  left.left < right.right &&
+  right.left < left.right &&
+  left.top < right.bottom &&
+  right.top < left.bottom;
+
+const tableRectanglesEqual = (left: TableRectangle, right: TableRectangle): boolean =>
+  left.left === right.left &&
+  left.top === right.top &&
+  left.right === right.right &&
+  left.bottom === right.bottom;
+
+const tableRectangleCutsMergedCell = (map: TableMap, rectangle: TableRectangle): boolean => {
+  for (let row = rectangle.top; row < rectangle.bottom; row++) {
+    const leftIndex = row * map.width + rectangle.left;
+    const rightIndex = row * map.width + rectangle.right - 1;
+    if (
+      (rectangle.left > 0 && map.map[leftIndex] === map.map[leftIndex - 1]) ||
+      (rectangle.right < map.width && map.map[rightIndex] === map.map[rightIndex + 1])
+    ) {
+      return true;
+    }
+  }
+  for (let column = rectangle.left; column < rectangle.right; column++) {
+    const topIndex = rectangle.top * map.width + column;
+    const bottomIndex = (rectangle.bottom - 1) * map.width + column;
+    if (
+      (rectangle.top > 0 && map.map[topIndex] === map.map[topIndex - map.width]) ||
+      (rectangle.bottom < map.height && map.map[bottomIndex] === map.map[bottomIndex + map.width])
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const isEmptyTableCell = (cell: PMNode): boolean =>
+  cell.childCount === 1 &&
+  cell.firstChild?.isTextblock === true &&
+  cell.firstChild.childCount === 0;
+
+const mergeTableRectangle = (
+  tr: Transaction,
+  tablePosition: number,
+  table: PMNode,
+  rectangle: TableRectangle,
+): Transaction | null => {
+  const map = TableMap.get(table);
+  if (
+    rectangle.left < 0 ||
+    rectangle.top < 0 ||
+    rectangle.right > map.width ||
+    rectangle.bottom > map.height ||
+    rectangle.left >= rectangle.right ||
+    rectangle.top >= rectangle.bottom ||
+    (rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1) ||
+    tableRectangleCutsMergedCell(map, rectangle)
+  ) {
+    return null;
+  }
+
+  const tableStart = tablePosition + 1;
+  const seen = new Set<number>();
+  const cells: { position: number; cell: PMNode }[] = [];
+  let appendedContent = Fragment.empty;
+  for (let row = rectangle.top; row < rectangle.bottom; row++) {
+    for (let column = rectangle.left; column < rectangle.right; column++) {
+      const cellPosition = map.map[row * map.width + column];
+      if (cellPosition === undefined || seen.has(cellPosition)) {
+        continue;
+      }
+      const cell = table.nodeAt(cellPosition);
+      if (!cell) {
+        return null;
+      }
+      seen.add(cellPosition);
+      cells.push({ position: cellPosition, cell });
+      if (cells.length > 1 && !isEmptyTableCell(cell)) {
+        appendedContent = appendedContent.append(cell.content);
+      }
+    }
+  }
+  const merged = cells.at(0);
+  if (!merged || cells.length < 2) {
+    return null;
+  }
+
+  const colspan: unknown = merged.cell.attrs["colspan"];
+  const rowspan: unknown = merged.cell.attrs["rowspan"];
+  const colwidth: unknown = merged.cell.attrs["colwidth"];
+  if (
+    typeof colspan !== "number" ||
+    !Number.isInteger(colspan) ||
+    colspan < 1 ||
+    typeof rowspan !== "number" ||
+    !Number.isInteger(rowspan) ||
+    rowspan < 1 ||
+    (colwidth !== null &&
+      (!Array.isArray(colwidth) ||
+        colwidth.length !== colspan ||
+        !colwidth.every((width) => typeof width === "number")))
+  ) {
+    return null;
+  }
+  const mergedColspan = rectangle.right - rectangle.left;
+  const nextColwidth = Array.isArray(colwidth) ? [...colwidth] : null;
+  while (nextColwidth && nextColwidth.length < mergedColspan) {
+    nextColwidth.push(0);
+  }
+  const mapFrom = tr.mapping.maps.length;
+  for (const { position: cellPosition, cell } of cells.slice(1)) {
+    const position = tr.mapping.slice(mapFrom).map(tableStart + cellPosition);
+    tr = tr.delete(position, position + cell.nodeSize);
+  }
+  const absoluteMergedPosition = tableStart + merged.position;
+  tr = tr.setNodeMarkup(absoluteMergedPosition, undefined, {
+    ...merged.cell.attrs,
+    colspan: mergedColspan,
+    rowspan: rectangle.bottom - rectangle.top,
+    colwidth: nextColwidth,
+  });
+  if (appendedContent.size > 0) {
+    const contentEnd = absoluteMergedPosition + 1 + merged.cell.content.size;
+    const contentStart = isEmptyTableCell(merged.cell) ? absoluteMergedPosition + 1 : contentEnd;
+    tr = tr.replaceWith(contentStart, contentEnd, appendedContent);
+  }
+  return tr;
 };
 
 const findTableColumnInsertion = (
@@ -764,7 +910,8 @@ const applyFolioAIEditOperationsInternal = ({
         operation.type === "insertTableRow" ||
         operation.type === "deleteTableRow" ||
         operation.type === "insertTableColumn" ||
-        operation.type === "deleteTableColumn")
+        operation.type === "deleteTableColumn" ||
+        operation.type === "mergeTableCells")
     ) {
       skipped.push({ id: operation.id, reason: "unsupportedMode" });
       continue;
@@ -815,12 +962,57 @@ const applyFolioAIEditOperationsInternal = ({
     });
   }
 
-  if (resolved.length === 0) {
+  const tableStructureMutations = new Set<number>();
+  for (const item of resolved) {
+    const tablePosition =
+      item.tableRowInsertion?.tableStart !== undefined
+        ? item.tableRowInsertion.tableStart - 1
+        : (item.tableRowDeletion?.tablePosition ??
+          item.tableColumnInsertion?.tablePosition ??
+          item.tableColumnDeletion?.tablePosition);
+    if (tablePosition !== undefined) {
+      tableStructureMutations.add(tablePosition);
+    }
+  }
+
+  const mergeRectanglesByTable = new Map<number, TableRectangle[]>();
+  const executableResolved: ResolvedOperation[] = [];
+  for (const item of resolved) {
+    const merge = item.tableCellMerge;
+    if (!merge) {
+      executableResolved.push(item);
+      continue;
+    }
+    if (tableStructureMutations.has(merge.tablePosition)) {
+      skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+      continue;
+    }
+    const claimedRectangles = mergeRectanglesByTable.get(merge.tablePosition) ?? [];
+    const duplicate = claimedRectangles.some((rectangle) =>
+      tableRectanglesEqual(rectangle, merge.rectangle),
+    );
+    if (duplicate) {
+      skipped.push({ id: item.operation.id, reason: "noopOperation" });
+      continue;
+    }
+    const overlap = claimedRectangles.some((rectangle) =>
+      tableRectanglesOverlap(rectangle, merge.rectangle),
+    );
+    if (overlap) {
+      skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+      continue;
+    }
+    claimedRectangles.push(merge.rectangle);
+    mergeRectanglesByTable.set(merge.tablePosition, claimedRectangles);
+    executableResolved.push(item);
+  }
+
+  if (executableResolved.length === 0) {
     return { applied, skipped };
   }
 
   let tr = view.state.tr;
-  let revisionSeed = revisionIdSeed ?? nextRevisionSeed(resolved.length);
+  let revisionSeed = revisionIdSeed ?? nextRevisionSeed(executableResolved.length);
   const date = new Date().toISOString();
   const insertedColumnCounts = new Map<string, number>();
 
@@ -830,7 +1022,27 @@ const applyFolioAIEditOperationsInternal = ({
   // inserted columns so it still removes the original target. Other
   // ties use reverse input order so repeated insertions retain their
   // requested sequence.
-  for (const item of resolved.toSorted((left, right) => {
+  for (const item of executableResolved.toSorted((left, right) => {
+    const leftMerge = left.tableCellMerge;
+    const rightMerge = right.tableCellMerge;
+    if (!leftMerge && rightMerge) {
+      return -1;
+    }
+    if (leftMerge && !rightMerge) {
+      return 1;
+    }
+    if (leftMerge && rightMerge) {
+      if (leftMerge.tablePosition !== rightMerge.tablePosition) {
+        return rightMerge.tablePosition - leftMerge.tablePosition;
+      }
+      if (leftMerge.rectangle.bottom !== rightMerge.rectangle.bottom) {
+        return rightMerge.rectangle.bottom - leftMerge.rectangle.bottom;
+      }
+      if (leftMerge.rectangle.right !== rightMerge.rectangle.right) {
+        return rightMerge.rectangle.right - leftMerge.rectangle.right;
+      }
+      return right.originalIndex - left.originalIndex;
+    }
     const leftColumn = left.tableColumnInsertion ?? left.tableColumnDeletion;
     const rightColumn = right.tableColumnInsertion ?? right.tableColumnDeletion;
     if (!leftColumn && rightColumn) {
@@ -1212,6 +1424,33 @@ const applyFolioAIEditOperationsInternal = ({
         );
         break;
       }
+      case "mergeTableCells": {
+        const merge = item.tableCellMerge;
+        const tablePosition = merge ? tr.mapping.map(merge.tablePosition, 1) : null;
+        const table = tablePosition === null ? null : tr.doc.nodeAt(tablePosition);
+        if (
+          !merge ||
+          tablePosition === null ||
+          !table ||
+          table.type.spec["tableRole"] !== "table"
+        ) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
+        const nextTr = mergeTableRectangle(tr, tablePosition, table, merge.rectangle);
+        if (!nextTr) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
+        tr = nextTr;
+        break;
+      }
       case "deleteTableRow": {
         const deletion = item.tableRowDeletion;
         const table = deletion ? tr.doc.nodeAt(deletion.tablePosition) : null;
@@ -1554,32 +1793,31 @@ type ResolveOperationArgs = {
   doc: PMNode;
 };
 
-const resolveOperation = ({
+type ResolveStableBlockArgs = Omit<ResolveOperationArgs, "operation" | "doc"> & {
+  blockId: string;
+};
+
+type StableBlockResolution = {
+  type: "resolved";
+  blockNode: PMNode;
+  blockFrom: number;
+  blockTo: number;
+  cleanBlock: ReturnType<typeof buildCleanBlockText>;
+  currentText: string;
+  currentTextHash: string;
+};
+
+const resolveStableBlock = ({
   snapshot,
-  operation,
+  blockId,
   liveBlocks,
   liveBlocksByParaId,
-  doc,
-}: ResolveOperationArgs):
-  | { type: "resolved"; operation: ResolvedBase }
-  | OperationResolutionSkip => {
-  const blockId =
-    operation.type === "replaceRange" ||
-    operation.type === "commentOnRange" ||
-    operation.type === "formatRange"
-      ? operation.range.blockId
-      : operation.blockId;
+}: ResolveStableBlockArgs): StableBlockResolution | OperationResolutionSkip => {
   const anchor = snapshot.anchors[blockId];
   if (!anchor) {
     return { type: "skip", reason: "missingBlock" };
   }
 
-  // Prefer a paraId-anchored lookup when the snapshot id encodes one.
-  // It survives structural edits, including an earlier-in-document
-  // duplicate of the same text appearing between snapshot and apply,
-  // which the hash+ordinal path would mis-target. Missing paraIds
-  // are stale anchors, so they skip rather than falling back to a
-  // same-text block that may be unrelated.
   const encodedParaId = getFolioParaIdFromBlockId(blockId);
   let live: LiveBlockEntry | undefined;
   if (encodedParaId !== null) {
@@ -1598,22 +1836,53 @@ const resolveOperation = ({
     return { type: "skip", reason: "changedBlock" };
   }
 
-  const blockNode = live.node;
-  const blockFrom = live.from;
-  const blockTo = live.to;
-  // Use the same post-tracked-changes view the AI was given, so its
-  // find / replaceBlock anchors line up with what it saw.
-  const cleanBlock = buildCleanBlockText(blockNode, blockFrom);
+  const cleanBlock = buildCleanBlockText(live.node, live.from);
   const currentText = cleanBlock.text;
   const currentTextHash = hashFolioAIBlockText(normalizeFolioAIBlockText(currentText));
+  if (currentTextHash !== anchor.textHash) {
+    return { type: "skip", reason: "changedBlock" };
+  }
+  return {
+    type: "resolved",
+    blockNode: live.node,
+    blockFrom: live.from,
+    blockTo: live.to,
+    cleanBlock,
+    currentText,
+    currentTextHash,
+  };
+};
+
+const resolveOperation = ({
+  snapshot,
+  operation,
+  liveBlocks,
+  liveBlocksByParaId,
+  doc,
+}: ResolveOperationArgs):
+  | { type: "resolved"; operation: ResolvedBase }
+  | OperationResolutionSkip => {
+  const blockId =
+    operation.type === "replaceRange" ||
+    operation.type === "commentOnRange" ||
+    operation.type === "formatRange"
+      ? operation.range.blockId
+      : operation.blockId;
+  const target = resolveStableBlock({
+    snapshot,
+    blockId,
+    liveBlocks,
+    liveBlocksByParaId,
+  });
+  if (target.type === "skip") {
+    return target;
+  }
+  const { blockNode, blockFrom, blockTo, cleanBlock, currentText, currentTextHash } = target;
   if (
     operation.precondition !== undefined &&
     currentTextHash !== operation.precondition.blockTextHash
   ) {
     return { type: "skip", reason: "preconditionFailed" };
-  }
-  if (currentTextHash !== anchor.textHash) {
-    return { type: "skip", reason: "changedBlock" };
   }
 
   if (
@@ -1790,6 +2059,61 @@ const resolveOperation = ({
         tableColumnDeletion: {
           tablePosition: target.tablePosition,
           columnIndex: target.leftColumnIndex,
+        },
+      },
+    };
+  }
+
+  if (operation.type === "mergeTableCells") {
+    const endTarget = resolveStableBlock({
+      snapshot,
+      blockId: operation.endBlockId,
+      liveBlocks,
+      liveBlocksByParaId,
+    });
+    if (endTarget.type === "skip") {
+      return endTarget;
+    }
+    const startCell = findEnclosingTableCell(doc, blockFrom);
+    const endCell = findEnclosingTableCell(doc, endTarget.blockFrom);
+    if (!startCell || !endCell || startCell.tablePosition !== endCell.tablePosition) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    const rectangle = {
+      left: Math.min(startCell.leftColumnIndex, endCell.leftColumnIndex),
+      top: Math.min(startCell.topRowIndex, endCell.topRowIndex),
+      right: Math.max(startCell.rightColumnIndex, endCell.rightColumnIndex),
+      bottom: Math.max(startCell.bottomRowIndex, endCell.bottomRowIndex),
+    };
+    const table = doc.nodeAt(startCell.tablePosition);
+    if (!table || table.type.spec["tableRole"] !== "table") {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    const map = TableMap.get(table);
+    if (
+      (rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1) ||
+      tableRectangleCutsMergedCell(map, rectangle)
+    ) {
+      return {
+        type: "skip",
+        reason:
+          rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1
+            ? "noopOperation"
+            : "unsupportedBlock",
+      };
+    }
+    return {
+      type: "resolved",
+      operation: {
+        operation,
+        from: Math.min(startCell.cellPosition, endCell.cellPosition),
+        to: Math.max(startCell.cellEndPosition, endCell.cellEndPosition),
+        blockFrom,
+        blockTo,
+        blockNode,
+        tableCellMerge: {
+          tablePosition: startCell.tablePosition,
+          rectangle,
         },
       },
     };

@@ -393,6 +393,22 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
       required: ["id", "type", "blockId"],
       additionalProperties: false,
     },
+    {
+      type: "object",
+      description:
+        "Merge the rectangular table region bounded by two cell anchors. Direct mode only.",
+      properties: {
+        ...operationMetaProperties,
+        type: { type: "string", enum: ["mergeTableCells"] },
+        blockId: blockIdProperty,
+        endBlockId: {
+          type: "string",
+          description: "Stable paragraph anchor inside the opposite corner cell.",
+        },
+      },
+      required: ["id", "type", "blockId", "endBlockId"],
+      additionalProperties: false,
+    },
   ],
 } as const;
 
@@ -426,7 +442,8 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
         '"direct" applies immediately. `formatRange`, `insertSignatureTable`, `insertTableRow`, ' +
-        '`deleteTableRow`, `insertTableColumn`, and `deleteTableColumn` support "direct" only.',
+        "`deleteTableRow`, `insertTableColumn`, `deleteTableColumn`, and `mergeTableCells` " +
+        'support "direct" only.',
     },
     atomic: {
       type: "boolean",

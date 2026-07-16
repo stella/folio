@@ -418,6 +418,12 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     type: "deleteTableColumn",
     blockId: "0304003A",
   },
+  mergeTableCells: {
+    id: "op-merge-table-cells",
+    type: "mergeTableCells",
+    blockId: "0304003A",
+    endBlockId: "0304003B",
+  },
 };
 
 const variantTypeOf = (variant: JsonSchemaNode): unknown => variant.properties?.["type"]?.enum?.[0];

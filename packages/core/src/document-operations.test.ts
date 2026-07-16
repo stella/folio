@@ -35,6 +35,7 @@ describe("document operation contract", () => {
         "deleteTableRow",
         "insertTableColumn",
         "deleteTableColumn",
+        "mergeTableCells",
       ],
       modes: ["direct", "tracked-changes"],
       batchModes: ["best-effort", "atomic"],
@@ -54,6 +55,7 @@ describe("document operation contract", () => {
         deleteTableRow: ["direct"],
         insertTableColumn: ["direct"],
         deleteTableColumn: ["direct"],
+        mergeTableCells: ["direct"],
       },
       preconditions: ["blockTextHash"],
       stories: ["main", "header", "footer", "footnote", "endnote"],
@@ -69,6 +71,7 @@ describe("document operation contract", () => {
     expect(isFolioDocumentOperationModeSupported("deleteTableRow", "tracked-changes")).toBe(false);
     expect(isFolioDocumentOperationModeSupported("insertTableColumn", "direct")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("deleteTableColumn", "direct")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("mergeTableCells", "direct")).toBe(true);
     expect(
       Reflect.apply(isFolioDocumentOperationModeSupported, null, ["unknownOperation", "direct"]),
     ).toBe(false);
@@ -129,6 +132,12 @@ describe("document operation contract", () => {
         cellTexts: ["A", "B"],
       },
       { id: "delete-column", type: "deleteTableColumn", blockId: "paragraph-9" },
+      {
+        id: "merge-cells",
+        type: "mergeTableCells",
+        blockId: "paragraph-10",
+        endBlockId: "paragraph-11",
+      },
     ] as const satisfies readonly FolioDocumentOperation[];
 
     expect(
@@ -143,6 +152,7 @@ describe("document operation contract", () => {
         { id: "delete-row" },
         { id: "column" },
         { id: "delete-column" },
+        { id: "merge-cells" },
       ]),
     ).toEqual([
       {
@@ -259,6 +269,19 @@ describe("document operation contract", () => {
           },
         ],
       },
+      {
+        operationId: "merge-cells",
+        operationIndex: 10,
+        affected: [
+          {
+            type: "tableCells",
+            story: "main",
+            anchorBlockId: "paragraph-10",
+            endAnchorBlockId: "paragraph-11",
+            effect: "merged",
+          },
+        ],
+      },
     ]);
   });
 
@@ -332,6 +355,12 @@ describe("document operation contract", () => {
           cellTexts: ["Top", "Bottom"],
         },
         { id: "11", type: "deleteTableColumn", blockId: "a" },
+        {
+          id: "12",
+          type: "mergeTableCells",
+          blockId: "a",
+          endBlockId: "b",
+        },
       ],
     };
 

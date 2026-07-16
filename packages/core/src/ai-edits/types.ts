@@ -252,6 +252,14 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /** Stable paragraph anchor inside the column to delete. */
         blockId: string;
       }
+    | {
+        id: string;
+        type: "mergeTableCells";
+        /** Stable paragraph anchor inside one corner cell. */
+        blockId: string;
+        /** Stable paragraph anchor inside the opposite corner cell. */
+        endBlockId: string;
+      }
   );
 
 export type FolioAIEditApplyMode = "direct" | "tracked-changes";

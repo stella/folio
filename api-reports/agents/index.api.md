@@ -1004,6 +1004,51 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                     };
                     readonly required: readonly ["id", "type", "blockId"];
                     readonly additionalProperties: false;
+                }, {
+                    readonly type: "object";
+                    readonly description: "Merge the rectangular table region bounded by two cell anchors. Direct mode only.";
+                    readonly properties: {
+                        readonly type: {
+                            readonly type: "string";
+                            readonly enum: readonly ["mergeTableCells"];
+                        };
+                        readonly blockId: {
+                            readonly type: "string";
+                            readonly description: "Id of the target block, from a prior document read.";
+                        };
+                        readonly endBlockId: {
+                            readonly type: "string";
+                            readonly description: "Stable paragraph anchor inside the opposite corner cell.";
+                        };
+                        readonly id: {
+                            readonly type: "string";
+                            readonly description: string;
+                        };
+                        readonly severity: {
+                            readonly type: "string";
+                            readonly enum: readonly ["low", "medium", "high"];
+                            readonly description: "Optional review severity for structured-review workflows.";
+                        };
+                        readonly area: {
+                            readonly type: "string";
+                            readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+                        };
+                        readonly precondition: {
+                            readonly type: "object";
+                            readonly description: string;
+                            readonly properties: {
+                                readonly blockTextHash: {
+                                    readonly type: "string";
+                                    readonly pattern: "^h[0-9a-z]+$";
+                                    readonly description: "Normalized hash of the target block's text.";
+                                };
+                            };
+                            readonly required: readonly ["blockTextHash"];
+                            readonly additionalProperties: false;
+                        };
+                    };
+                    readonly required: readonly ["id", "type", "blockId", "endBlockId"];
+                    readonly additionalProperties: false;
                 }];
             };
         };
@@ -1928,6 +1973,51 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
             };
         };
         readonly required: readonly ["id", "type", "blockId"];
+        readonly additionalProperties: false;
+    }, {
+        readonly type: "object";
+        readonly description: "Merge the rectangular table region bounded by two cell anchors. Direct mode only.";
+        readonly properties: {
+            readonly type: {
+                readonly type: "string";
+                readonly enum: readonly ["mergeTableCells"];
+            };
+            readonly blockId: {
+                readonly type: "string";
+                readonly description: "Id of the target block, from a prior document read.";
+            };
+            readonly endBlockId: {
+                readonly type: "string";
+                readonly description: "Stable paragraph anchor inside the opposite corner cell.";
+            };
+            readonly id: {
+                readonly type: "string";
+                readonly description: string;
+            };
+            readonly severity: {
+                readonly type: "string";
+                readonly enum: readonly ["low", "medium", "high"];
+                readonly description: "Optional review severity for structured-review workflows.";
+            };
+            readonly area: {
+                readonly type: "string";
+                readonly description: "Optional review area label (e.g. \"Penalty\") for structured-review workflows.";
+            };
+            readonly precondition: {
+                readonly type: "object";
+                readonly description: string;
+                readonly properties: {
+                    readonly blockTextHash: {
+                        readonly type: "string";
+                        readonly pattern: "^h[0-9a-z]+$";
+                        readonly description: "Normalized hash of the target block's text.";
+                    };
+                };
+                readonly required: readonly ["blockTextHash"];
+                readonly additionalProperties: false;
+            };
+        };
+        readonly required: readonly ["id", "type", "blockId", "endBlockId"];
         readonly additionalProperties: false;
     }];
 };
