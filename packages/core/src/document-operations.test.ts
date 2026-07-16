@@ -55,7 +55,7 @@ describe("document operation contract", () => {
         insertTableRow: ["direct", "tracked-changes"],
         deleteTableRow: ["direct", "tracked-changes"],
         insertTableColumn: ["direct", "tracked-changes"],
-        deleteTableColumn: ["direct"],
+        deleteTableColumn: ["direct", "tracked-changes"],
         mergeTableCells: ["direct"],
         splitTableCell: ["direct"],
       },
@@ -76,6 +76,9 @@ describe("document operation contract", () => {
       true,
     );
     expect(isFolioDocumentOperationModeSupported("deleteTableColumn", "direct")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("deleteTableColumn", "tracked-changes")).toBe(
+      true,
+    );
     expect(isFolioDocumentOperationModeSupported("mergeTableCells", "direct")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("splitTableCell", "direct")).toBe(true);
     expect(

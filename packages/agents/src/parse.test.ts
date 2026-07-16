@@ -207,6 +207,16 @@ describe("parseSuggestChangesInput", () => {
     });
   });
 
+  test("a tracked table-column deletion preserves the target block", () => {
+    const result = parseSuggestChangesInput({
+      operations: [{ type: "deleteTableColumn", blockId: "cell-1" }],
+    });
+    expect(result).toEqual({
+      ok: true,
+      operations: [{ id: "op-1", type: "deleteTableColumn", blockId: "cell-1" }],
+    });
+  });
+
   test("a tracked table-row insertion rejects invalid cell text", () => {
     const result = parseSuggestChangesInput({
       operations: [
@@ -387,7 +397,6 @@ describe("parseSuggestChangesInput", () => {
       "formatRange",
       "commentOnBlock",
       "insertSignatureTable",
-      "deleteTableColumn",
       "mergeTableCells",
       "splitTableCell",
     ]) {

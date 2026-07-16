@@ -827,6 +827,35 @@ const buildTableColumnInsertionActions = ({
   return actions;
 };
 
+const getTableColumnDeletionCellPositions = (
+  map: TableMap,
+  table: PMNode,
+  columnIndex: number,
+): number[] | null => {
+  if (columnIndex < 0 || columnIndex >= map.width) {
+    return null;
+  }
+  const positions = new Set<number>();
+  for (let row = 0; row < map.height; row++) {
+    const position = map.map[row * map.width + columnIndex];
+    if (position === undefined) {
+      return null;
+    }
+    const cell = table.nodeAt(position);
+    const tableRole = cell?.type.spec["tableRole"];
+    if (
+      !cell ||
+      (tableRole !== "cell" && tableRole !== "header_cell") ||
+      cell.attrs["colspan"] !== 1 ||
+      cell.attrs["cellMarker"] != null
+    ) {
+      return null;
+    }
+    positions.add(position);
+  }
+  return [...positions];
+};
+
 /**
  * The snapshot recorded an `hashOccurrenceCount` per anchor but
  * not which ordinal within that bucket the block was — recompute
@@ -1010,7 +1039,6 @@ const applyFolioAIEditOperationsInternal = ({
     if (
       mode === "tracked-changes" &&
       (operation.type === "formatRange" ||
-        operation.type === "deleteTableColumn" ||
         operation.type === "mergeTableCells" ||
         operation.type === "splitTableCell")
     ) {
@@ -1573,6 +1601,30 @@ const applyFolioAIEditOperationsInternal = ({
             reason: "unsupportedBlock",
           });
           continue;
+        }
+        if (mode === "tracked-changes") {
+          const cellPositions = getTableColumnDeletionCellPositions(map, table, columnIndex);
+          if (!cellPositions) {
+            skipped.push({
+              id: item.operation.id,
+              reason: "unsupportedBlock",
+            });
+            continue;
+          }
+          const revisionId = revisionSeed++;
+          for (const cellPosition of cellPositions) {
+            tr = tr.setNodeAttribute(tablePosition + 1 + cellPosition, "cellMarker", {
+              kind: "del",
+              info: {
+                revisionId,
+                author,
+                date,
+              },
+            });
+          }
+          markStructuralChange(tr);
+          appliedRevisionIds = [revisionId];
+          break;
         }
         if (map.width === 1) {
           const nextTr = deleteTableNode(tr, tablePosition, table);

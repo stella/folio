@@ -383,7 +383,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
     },
     {
       type: "object",
-      description: "Delete the column containing the anchor block. Direct mode only.",
+      description: "Delete the column containing the anchor block.",
       properties: {
         ...operationMetaProperties,
         type: { type: "string", enum: ["deleteTableColumn"] },
@@ -452,8 +452,8 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
         '"direct" applies immediately. `formatRange`, `insertSignatureTable`, ' +
-        "`deleteTableColumn`, `mergeTableCells`, and " +
-        '`splitTableCell` support "direct" only.',
+        "`mergeTableCells` and `splitTableCell` support " +
+        '"direct" only.',
     },
     atomic: {
       type: "boolean",

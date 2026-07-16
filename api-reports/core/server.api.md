@@ -195,7 +195,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly insertTableRow: readonly ["direct", "tracked-changes"];
     readonly deleteTableRow: readonly ["direct", "tracked-changes"];
     readonly insertTableColumn: readonly ["direct", "tracked-changes"];
-    readonly deleteTableColumn: readonly ["direct"];
+    readonly deleteTableColumn: readonly ["direct", "tracked-changes"];
     readonly mergeTableCells: readonly ["direct"];
     readonly splitTableCell: readonly ["direct"];
 }>;

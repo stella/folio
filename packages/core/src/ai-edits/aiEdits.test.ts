@@ -2604,11 +2604,119 @@ describe("Folio AI edit operations", () => {
     expect(updatedTable.textContent).toBe("BDF");
   });
 
-  test("table-column deletes are skipped in tracked-changes mode", () => {
+  test("table-column deletes create one revision across every removed cell", () => {
+    const makeTrackedColumnDeletionState = () => {
+      const rows = [
+        ["A", "B"],
+        ["C", "D"],
+      ].map((texts) =>
+        schema.node(
+          "tableRow",
+          null,
+          texts.map((text) =>
+            schema.node("tableCell", null, [
+              schema.node("paragraph", { paraId: `tracked-delete-column-${text}` }, [
+                schema.text(text),
+              ]),
+            ]),
+          ),
+        ),
+      );
+      return EditorState.create({
+        schema,
+        doc: schema.node("doc", null, [schema.node("table", null, rows)]),
+      });
+    };
+
+    const accepting = makeView(makeTrackedColumnDeletionState());
+    const acceptedResult = applyFolioAIEditOperations({
+      view: accepting,
+      snapshot: createFolioAIEditSnapshot(accepting.state.doc),
+      operations: [
+        {
+          id: "delete-column",
+          type: "deleteTableColumn",
+          blockId: "tracked-delete-column-B",
+        },
+      ],
+      mode: "tracked-changes",
+    });
+    const revisionId = acceptedResult.applied.at(0)?.revisionId;
+    if (revisionId === undefined) {
+      throw new Error("expected a column deletion revision");
+    }
+    expect(acceptedResult).toEqual({
+      applied: [{ id: "delete-column", revisionId, revisionIds: [revisionId] }],
+      skipped: [],
+    });
+    const pendingTable = accepting.state.doc.child(0);
+    expect(TableMap.get(pendingTable).width).toBe(2);
+    expect(pendingTable.child(0).child(1).attrs["cellMarker"]).toEqual({
+      kind: "del",
+      info: { revisionId, author: "AI", date: expect.any(String) },
+    });
+    expect(pendingTable.child(1).child(1).attrs["cellMarker"]).toEqual({
+      kind: "del",
+      info: { revisionId, author: "AI", date: expect.any(String) },
+    });
+    expect(
+      getTrackedChangesFromDoc(accepting.state.doc).filter(({ type }) => type === "cellDeleted"),
+    ).toEqual([
+      {
+        id: revisionId,
+        type: "cellDeleted",
+        author: "AI",
+        date: expect.any(String),
+        text: "B\nD",
+        blockId: expect.any(String),
+      },
+    ]);
+
+    expect(acceptAIEditRevision(revisionId)(accepting.state, accepting.dispatch)).toBe(true);
+    const acceptedTable = accepting.state.doc.child(0);
+    expect(TableMap.get(acceptedTable).width).toBe(1);
+    expect(acceptedTable.textContent).toBe("AC");
+
+    const rejecting = makeView(makeTrackedColumnDeletionState());
+    const rejectedResult = applyFolioAIEditOperations({
+      view: rejecting,
+      snapshot: createFolioAIEditSnapshot(rejecting.state.doc),
+      operations: [
+        {
+          id: "delete-column",
+          type: "deleteTableColumn",
+          blockId: "tracked-delete-column-B",
+        },
+      ],
+      mode: "tracked-changes",
+    });
+    const rejectedRevisionId = rejectedResult.applied.at(0)?.revisionId;
+    if (rejectedRevisionId === undefined) {
+      throw new Error("expected a column deletion revision");
+    }
+    expect(rejectAIEditRevision(rejectedRevisionId)(rejecting.state, rejecting.dispatch)).toBe(
+      true,
+    );
+    const rejectedTable = rejecting.state.doc.child(0);
+    expect(TableMap.get(rejectedTable).width).toBe(2);
+    expect(rejectedTable.textContent).toBe("ABCD");
+    expect(rejectedTable.child(0).child(1).attrs["cellMarker"]).toBeNull();
+    expect(rejectedTable.child(1).child(1).attrs["cellMarker"]).toBeNull();
+  });
+
+  test("tracked column deletion rejects a column crossed by a colspan", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [
+          schema.node("paragraph", { paraId: "tracked-delete-column-span" }, [schema.text("A")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-delete-column" }, [schema.text("Cell")]),
+          schema.node("paragraph", { paraId: "tracked-delete-column-left" }, [schema.text("B")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-delete-column-right" }, [schema.text("C")]),
         ]),
       ]),
     ]);
@@ -2622,7 +2730,7 @@ describe("Folio AI edit operations", () => {
         {
           id: "delete-column",
           type: "deleteTableColumn",
-          blockId: "tracked-delete-column",
+          blockId: "tracked-delete-column-right",
         },
       ],
       mode: "tracked-changes",
@@ -2630,9 +2738,9 @@ describe("Folio AI edit operations", () => {
 
     expect(result).toEqual({
       applied: [],
-      skipped: [{ id: "delete-column", reason: "unsupportedMode" }],
+      skipped: [{ id: "delete-column", reason: "unsupportedBlock" }],
     });
-    expect(view.state.doc.child(0).child(0).childCount).toBe(1);
+    expect(view.state.doc).toEqual(state.doc);
   });
 
   test("table-column inserts create one revision across every new cell", () => {

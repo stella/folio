@@ -81,7 +81,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   insertTableRow: DIRECT_AND_TRACKED_MODES,
   deleteTableRow: DIRECT_AND_TRACKED_MODES,
   insertTableColumn: DIRECT_AND_TRACKED_MODES,
-  deleteTableColumn: DIRECT_ONLY_MODES,
+  deleteTableColumn: DIRECT_AND_TRACKED_MODES,
   mergeTableCells: DIRECT_ONLY_MODES,
   splitTableCell: DIRECT_ONLY_MODES,
 } as const satisfies Readonly<
