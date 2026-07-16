@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Paragraph } from "../types/document";
+import type { Paragraph, Run } from "../types/document";
 import { parseDocumentBody } from "./documentParser";
 import { parseNumbering } from "./numberingParser";
 
@@ -385,6 +385,50 @@ describe("parseDocumentBody text box enrichment", () => {
     expect(shape.shape.textBody?.content.at(0)).toMatchObject({
       type: "paragraph",
       content: [{ type: "run", content: [{ type: "text", text: "Tracked text box" }] }],
+    });
+  });
+
+  test("enriches text boxes across inline content-control segments", () => {
+    const body = parseDocumentBody(`${XML_DECLARATION}
+<w:document
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+  <w:body>
+    <w:p w14:paraId="TXB00004">
+      <w:sdt>
+        <w:sdtPr><w:alias w:val="Summary"/><w:tag w:val="summary"/><w:richText/></w:sdtPr>
+        <w:sdtContent>
+          <w:r><w:t>Before</w:t></w:r>
+          <w:bookmarkStart w:id="7" w:name="inside-control"/>
+          <w:r>${textBoxDrawingXml("Controlled text box")}</w:r>
+          <w:bookmarkEnd w:id="7"/>
+          <w:r><w:t>After</w:t></w:r>
+        </w:sdtContent>
+      </w:sdt>
+    </w:p>
+  </w:body>
+</w:document>`);
+
+    const paragraph = body.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    const controlledRuns = paragraph.content.flatMap((content) =>
+      content.type === "inlineSdt"
+        ? content.content.filter((item): item is Run => item.type === "run")
+        : [],
+    );
+    const shapes = controlledRuns.flatMap((run) =>
+      run.content.filter((content) => content.type === "shape"),
+    );
+
+    expect(shapes).toHaveLength(1);
+    expect(shapes.at(0)?.shape.textBody?.content.at(0)).toMatchObject({
+      type: "paragraph",
+      content: [{ type: "run", content: [{ type: "text", text: "Controlled text box" }] }],
     });
   });
 

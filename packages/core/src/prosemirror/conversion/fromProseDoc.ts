@@ -107,6 +107,7 @@ import type {
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
 import { runShadingAttrsToShading } from "./runShadingMark";
+import { sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
 
 function normalizeShapeOutlineStyle(style: string | undefined): ShapeOutline["style"] | undefined {
   if (!style) {
@@ -468,7 +469,11 @@ function appendTextBoxBlock(
   const previousBlock = blocks.at(-1);
   if (attrs._docxPlacement === "inlineWithPrevious" && previousBlock?.type === "paragraph") {
     appendPageBreaks(previousBlock, options.pendingPageBreaks);
-    previousBlock.content.push(...paragraph.content);
+    if (
+      !mergeTextBoxIntoTrailingInlineSdts(previousBlock, paragraph, attrs._docxInlineSdts ?? [])
+    ) {
+      previousBlock.content.push(...paragraph.content);
+    }
     return null;
   }
 
@@ -477,7 +482,15 @@ function appendTextBoxBlock(
     attrs._docxGroupId &&
     options.previousStandaloneTextBox?.groupId === attrs._docxGroupId
   ) {
-    options.previousStandaloneTextBox.paragraph.content.push(...paragraph.content);
+    if (
+      !mergeTextBoxIntoTrailingInlineSdts(
+        options.previousStandaloneTextBox.paragraph,
+        paragraph,
+        attrs._docxInlineSdts ?? [],
+      )
+    ) {
+      options.previousStandaloneTextBox.paragraph.content.push(...paragraph.content);
+    }
     return options.previousStandaloneTextBox;
   }
 
@@ -486,6 +499,63 @@ function appendTextBoxBlock(
   return attrs._docxPlacement === "standalone" && attrs._docxGroupId
     ? { paragraph, groupId: attrs._docxGroupId }
     : null;
+}
+
+function mergeTextBoxIntoTrailingInlineSdts(
+  target: Paragraph,
+  incoming: Paragraph,
+  inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>,
+): boolean {
+  if (inlineSdts.length === 0 || incoming.content.length !== 1) {
+    return false;
+  }
+  const incomingSdt = incoming.content.at(0);
+  const outerAttrs = inlineSdts.at(0);
+  if (!outerAttrs || incomingSdt?.type !== "inlineSdt") {
+    return false;
+  }
+  const targetSdt = target.content.findLast(
+    (content) =>
+      content.type === "inlineSdt" && sdtPropertiesMatchAttrs(content.properties, outerAttrs),
+  );
+  if (!targetSdt) {
+    return false;
+  }
+  return mergeInlineSdtNodes(targetSdt, incomingSdt, inlineSdts, 0);
+}
+
+function mergeInlineSdtNodes(
+  target: InlineSdt,
+  incoming: InlineSdt,
+  inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>,
+  index: number,
+): boolean {
+  const attrs = inlineSdts[index];
+  if (
+    !attrs ||
+    !sdtPropertiesMatchAttrs(target.properties, attrs) ||
+    !sdtPropertiesMatchAttrs(incoming.properties, attrs)
+  ) {
+    return false;
+  }
+  if (index === inlineSdts.length - 1) {
+    target.content.push(...incoming.content);
+    return true;
+  }
+  const incomingNested = incoming.content.at(0);
+  const nestedAttrs = inlineSdts[index + 1];
+  if (!nestedAttrs || incomingNested?.type !== "inlineSdt") {
+    return false;
+  }
+  const targetNested = target.content.findLast(
+    (content) =>
+      content.type === "inlineSdt" && sdtPropertiesMatchAttrs(content.properties, nestedAttrs),
+  );
+  if (!targetNested) {
+    target.content.push(incomingNested);
+    return true;
+  }
+  return mergeInlineSdtNodes(targetNested, incomingNested, inlineSdts, index + 1);
 }
 
 /**
@@ -1587,52 +1657,7 @@ function createMathFromNode(node: PMNode): MathEquation {
  */
 function createInlineSdtFromNode(node: PMNode): InlineSdt {
   const attrs = expectSdtAttrs(node);
-
-  const properties: SdtProperties = {
-    sdtType: attrs.sdtType,
-  };
-  if (attrs.alias) {
-    properties.alias = attrs.alias;
-  }
-  if (attrs.tag) {
-    properties.tag = attrs.tag;
-  }
-  // `typeof` guards (not `!== undefined`) so a ProseMirror null default can
-  // never enter the `number` / `string` / `boolean`-typed model property,
-  // matching the block-SDT reader (`convertPMBlockSdt`).
-  if (typeof attrs.id === "number") {
-    properties.id = attrs.id;
-  }
-  if (attrs.lock) {
-    properties.lock = attrs.lock;
-  }
-  if (attrs.placeholder) {
-    properties.placeholder = attrs.placeholder;
-  }
-  if (attrs.showingPlaceholder !== undefined) {
-    properties.showingPlaceholder = attrs.showingPlaceholder;
-  }
-  if (attrs.dateFormat) {
-    properties.dateFormat = attrs.dateFormat;
-  }
-  if (attrs.dateValueISO) {
-    properties.dateValueISO = attrs.dateValueISO;
-  }
-  if (attrs.listItems) {
-    properties.listItems = parseSdtListItems(attrs.listItems);
-  }
-  if (typeof attrs.dropdownLastValue === "string") {
-    properties.dropdownLastValue = attrs.dropdownLastValue;
-  }
-  if (typeof attrs.checked === "boolean") {
-    properties.checked = attrs.checked;
-  }
-  if (attrs.rawPropertiesXml) {
-    properties.rawPropertiesXml = attrs.rawPropertiesXml;
-  }
-  if (attrs.rawEndPropertiesXml) {
-    properties.rawEndPropertiesXml = attrs.rawEndPropertiesXml;
-  }
+  const properties = sdtPropertiesFromAttrs(attrs);
 
   // Extract content from the sdt node's children. OOXML allows runs,
   // hyperlinks, simple/complex fields, nested SDTs, tracked changes,
@@ -1657,24 +1682,6 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
     properties,
     content,
   };
-}
-
-function parseSdtListItems(rawItems: string): NonNullable<SdtProperties["listItems"]> {
-  const parsed = JSON.parse(rawItems) as unknown;
-  if (!Array.isArray(parsed)) {
-    throw new TypeError("Invalid ProseMirror sdt attrs: listItems is not an array");
-  }
-
-  return parsed.map((item): NonNullable<SdtProperties["listItems"]>[number] => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new TypeError("Invalid ProseMirror sdt attrs: listItems contains an invalid item");
-    }
-    const itemAttrs = item as { displayText?: unknown; value?: unknown };
-    if (typeof itemAttrs.displayText !== "string" || typeof itemAttrs.value !== "string") {
-      throw new TypeError("Invalid ProseMirror sdt attrs: listItems contains an invalid item");
-    }
-    return { displayText: itemAttrs.displayText, value: itemAttrs.value };
-  });
 }
 
 /**
@@ -2932,6 +2939,28 @@ function convertPMTextBox(node: PMNode): Paragraph {
   const shapeContent: ShapeContent = { type: "shape", shape };
   const run: Run = { type: "run", content: [shapeContent] };
   const trackedChange = attrs._docxTrackedChange;
+  const inlineSdts = attrs._docxInlineSdts ?? [];
+  if (inlineSdts.length > 0) {
+    let wrapped: InlineSdt["content"][number] =
+      trackedChange?.type === "insertion" || trackedChange?.type === "deletion"
+        ? { type: trackedChange.type, info: trackedChange.info, content: [run] }
+        : run;
+    for (let index = inlineSdts.length - 1; index >= 0; index -= 1) {
+      const sdtAttrs = inlineSdts[index];
+      if (!sdtAttrs) {
+        continue;
+      }
+      wrapped = {
+        type: "inlineSdt",
+        properties: sdtPropertiesFromAttrs(sdtAttrs),
+        content: [wrapped],
+      };
+    }
+    return {
+      type: "paragraph",
+      content: [wrapped],
+    };
+  }
 
   return {
     type: "paragraph",

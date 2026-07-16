@@ -555,6 +555,8 @@ export type TextBoxAttrs = {
     | { type: "deletion"; info: TrackedChangeInfo }
     | { type: "moveFrom"; info: TrackedChangeInfo }
     | { type: "moveTo"; info: TrackedChangeInfo };
+  /** Original inline content-control ancestry for save-path reconstruction. */
+  _docxInlineSdts?: SdtAttrs[];
 };
 
 /**

@@ -364,6 +364,7 @@ describe("ProseMirror attr readers", () => {
       wrapType: "sideways",
       position: { vertical: { relativeTo: "ceiling" } },
       _docxTrackedChange: { type: "replacement", info: { id: "41", author: 7 } },
+      _docxInlineSdts: [{ sdtType: "custom", id: "forty-two" }],
     });
 
     const shapeResult = readShapeAttrs(shape);
@@ -399,6 +400,12 @@ describe("ProseMirror attr readers", () => {
       );
       expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
         "textBox.attrs._docxTrackedChange.info.author",
+      );
+      expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
+        "textBox.attrs._docxInlineSdts[0].sdtType",
+      );
+      expect(textBoxResult.issues.map((issue) => issue.path)).toContain(
+        "textBox.attrs._docxInlineSdts[0].id",
       );
     }
   });

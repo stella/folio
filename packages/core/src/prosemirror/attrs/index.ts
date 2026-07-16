@@ -587,21 +587,7 @@ export const readSdtAttrs = (node: PMNode): ReadProseMirrorAttrsResult<SdtAttrs>
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "sdt", issues);
-
-  requiredOneOf(attrs, "sdtType", "sdt.attrs.sdtType", issues, SDT_TYPE_VALUES);
-  optionalString(attrs, "alias", "sdt.attrs.alias", issues);
-  optionalString(attrs, "tag", "sdt.attrs.tag", issues);
-  optionalNumber(attrs, "id", "sdt.attrs.id", issues);
-  optionalOneOf(attrs, "lock", "sdt.attrs.lock", issues, SDT_LOCK_VALUES);
-  optionalString(attrs, "placeholder", "sdt.attrs.placeholder", issues);
-  optionalBoolean(attrs, "showingPlaceholder", "sdt.attrs.showingPlaceholder", issues);
-  optionalString(attrs, "dateFormat", "sdt.attrs.dateFormat", issues);
-  optionalString(attrs, "dateValueISO", "sdt.attrs.dateValueISO", issues);
-  optionalSdtListItems(attrs, "listItems", "sdt.attrs.listItems", issues);
-  optionalString(attrs, "dropdownLastValue", "sdt.attrs.dropdownLastValue", issues);
-  optionalBoolean(attrs, "checked", "sdt.attrs.checked", issues);
-  optionalString(attrs, "rawPropertiesXml", "sdt.attrs.rawPropertiesXml", issues);
-  optionalString(attrs, "rawEndPropertiesXml", "sdt.attrs.rawEndPropertiesXml", issues);
+  validateSdtAttrsRecord(attrs, "sdt.attrs", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -741,6 +727,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   );
   optionalString(attrs, "_docxGroupId", "textBox.attrs._docxGroupId", issues);
   optionalTextBoxTrackedChange(attrs, issues);
+  optionalTextBoxInlineSdts(attrs, issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1567,6 +1554,49 @@ const optionalTextBoxTrackedChange = (
   requiredNumber(info, "id", "textBox.attrs._docxTrackedChange.info.id", issues);
   requiredString(info, "author", "textBox.attrs._docxTrackedChange.info.author", issues);
   optionalString(info, "date", "textBox.attrs._docxTrackedChange.info.date", issues);
+};
+
+const optionalTextBoxInlineSdts = (
+  attrs: Record<string, unknown>,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["_docxInlineSdts"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    issues.push({ path: "textBox.attrs._docxInlineSdts", message: "Expected an array." });
+    return;
+  }
+  for (const [index, item] of value.entries()) {
+    const path = `textBox.attrs._docxInlineSdts[${index}]`;
+    if (!isRecord(item)) {
+      issues.push({ path, message: "Expected an object." });
+      continue;
+    }
+    validateSdtAttrsRecord(item, path, issues);
+  }
+};
+
+const validateSdtAttrsRecord = (
+  attrs: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  requiredOneOf(attrs, "sdtType", `${path}.sdtType`, issues, SDT_TYPE_VALUES);
+  optionalString(attrs, "alias", `${path}.alias`, issues);
+  optionalString(attrs, "tag", `${path}.tag`, issues);
+  optionalNumber(attrs, "id", `${path}.id`, issues);
+  optionalOneOf(attrs, "lock", `${path}.lock`, issues, SDT_LOCK_VALUES);
+  optionalString(attrs, "placeholder", `${path}.placeholder`, issues);
+  optionalBoolean(attrs, "showingPlaceholder", `${path}.showingPlaceholder`, issues);
+  optionalString(attrs, "dateFormat", `${path}.dateFormat`, issues);
+  optionalString(attrs, "dateValueISO", `${path}.dateValueISO`, issues);
+  optionalSdtListItems(attrs, "listItems", `${path}.listItems`, issues);
+  optionalString(attrs, "dropdownLastValue", `${path}.dropdownLastValue`, issues);
+  optionalBoolean(attrs, "checked", `${path}.checked`, issues);
+  optionalString(attrs, "rawPropertiesXml", `${path}.rawPropertiesXml`, issues);
+  optionalString(attrs, "rawEndPropertiesXml", `${path}.rawEndPropertiesXml`, issues);
 };
 
 const optionalAutospacingBase = (

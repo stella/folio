@@ -1595,6 +1595,113 @@ describe("fromProseDoc", () => {
     },
   );
 
+  test("round-trips text boxes through nested inline content controls", () => {
+    const document = documentWithTextBoxParagraph({ includeText: false });
+    const paragraph = document.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    const textBoxRun = paragraph.content.at(0);
+    if (textBoxRun?.type !== "run") {
+      throw new Error("Expected text-box run");
+    }
+    paragraph.content = [
+      {
+        type: "inlineSdt",
+        properties: {
+          sdtType: "richText",
+          alias: "Outer",
+          rawPropertiesXml: '<w:sdtPr><w:alias w:val="Outer"/><w:richText/></w:sdtPr>',
+        },
+        content: [
+          { type: "run", content: [{ type: "text", text: "Before " }] },
+          {
+            type: "inlineSdt",
+            properties: { sdtType: "plainText", alias: "Inner", tag: "inner" },
+            content: [
+              { type: "run", content: [{ type: "text", text: "inside " }] },
+              textBoxRun,
+              { type: "run", content: [{ type: "text", text: " after" }] },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const pmDoc = toProseDoc(document);
+    const textBoxNode = pmDoc.child(1);
+    expect(pmDoc.childCount).toBe(2);
+    expect(pmDoc.child(0).type.name).toBe("paragraph");
+    expect(textBoxNode.type.name).toBe("textBox");
+    expect(textBoxNode.attrs["_docxInlineSdts"]).toMatchObject([
+      { sdtType: "richText", alias: "Outer" },
+      { sdtType: "plainText", alias: "Inner", tag: "inner" },
+    ]);
+
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const block = roundTripped.package.document.content.at(0);
+    if (block?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+    const outer = block.content.at(0);
+    if (outer?.type !== "inlineSdt") {
+      throw new Error("Expected outer content control");
+    }
+    const inner = outer.content.find((content) => content.type === "inlineSdt");
+    if (inner?.type !== "inlineSdt") {
+      throw new Error("Expected inner content control");
+    }
+    const shapes = inner.content.flatMap((content) =>
+      content.type === "run"
+        ? content.content.filter((runContent) => runContent.type === "shape")
+        : [],
+    );
+
+    expect(block.content).toHaveLength(1);
+    expect(outer.properties.rawPropertiesXml).toContain('w:val="Outer"');
+    expect(inner.properties).toMatchObject({ sdtType: "plainText", alias: "Inner", tag: "inner" });
+    expect(shapes).toHaveLength(1);
+    expect(shapes.at(0)?.shape.shapeType).toBe("textBox");
+  });
+
+  test("keeps multiple standalone text boxes in one inline content control", () => {
+    const document = documentWithTextBoxParagraph({
+      includeText: false,
+      textBoxCount: 2,
+    });
+    const paragraph = document.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    paragraph.content = [
+      {
+        type: "inlineSdt",
+        properties: { sdtType: "richText", alias: "Cards" },
+        content: paragraph.content.filter((content): content is Run => content.type === "run"),
+      },
+    ];
+
+    const pmDoc = toProseDoc(document);
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const block = roundTripped.package.document.content.at(0);
+    if (block?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+    const sdt = block.content.at(0);
+    if (sdt?.type !== "inlineSdt") {
+      throw new Error("Expected content control");
+    }
+    const shapes = sdt.content.flatMap((content) =>
+      content.type === "run"
+        ? content.content.filter((runContent) => runContent.type === "shape")
+        : [],
+    );
+
+    expect(pmDoc.childCount).toBe(2);
+    expect(block.content).toHaveLength(1);
+    expect(shapes).toHaveLength(2);
+  });
+
   test("keeps empty imported text boxes as text boxes", () => {
     const document = documentWithTextBoxParagraph({
       includeText: false,

@@ -454,6 +454,8 @@ export type TextBoxAttrs = {
         type: "moveTo";
         info: import__stll_docx_core_model.TrackedChangeInfo;
     };
+    /** Original inline content-control ancestry for save-path reconstruction. */
+    _docxInlineSdts?: SdtAttrs[];
 };
 
 // @public

@@ -63,6 +63,8 @@ export type TextBoxAttrs = {
   _docxGroupId?: string;
   /** Original run-level revision wrapper for save-path reconstruction. */
   _docxTrackedChange?: SchemaTextBoxAttrs["_docxTrackedChange"];
+  /** Original inline content-control ancestry for save-path reconstruction. */
+  _docxInlineSdts?: SchemaTextBoxAttrs["_docxInlineSdts"];
 };
 
 function parseTextBoxPosition(raw: string | undefined): ImagePositionAttrs | undefined {
@@ -130,6 +132,7 @@ export const TextBoxExtension = createNodeExtension({
       _docxPlacement: { default: null },
       _docxGroupId: { default: null },
       _docxTrackedChange: { default: null },
+      _docxInlineSdts: { default: null },
     },
     parseDOM: [
       {

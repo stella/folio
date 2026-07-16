@@ -1,5 +1,6 @@
 import type {
   ImagePosition,
+  InlineSdt,
   MediaFile,
   Paragraph,
   ParagraphContent,
@@ -210,6 +211,9 @@ const enrichTextBoxRuns = ({
 
   for (const xmlChild of xmlChildren) {
     const localName = getLocalName(xmlChild.name ?? "");
+    if (localName === "pPr") {
+      continue;
+    }
     const trackedChangeType = trackedChangeTypeFromXml(localName);
     const parsedContent = content[parsedIndex];
     if (trackedChangeType && parsedContent?.type === trackedChangeType) {
@@ -223,6 +227,39 @@ const enrichTextBoxRuns = ({
         media,
         parseTable,
       });
+    }
+
+    if (localName === "sdt" && parsedContent?.type === "inlineSdt") {
+      const properties = parsedContent.properties;
+      const nestedContent: InlineSdt["content"] = [];
+      let lastSegmentIndex = parsedIndex;
+
+      for (let index = parsedIndex; index < content.length; index += 1) {
+        const candidate = content[index];
+        if (candidate?.type !== "inlineSdt" || candidate.properties !== properties) {
+          continue;
+        }
+        nestedContent.push(...candidate.content);
+        lastSegmentIndex = index;
+      }
+
+      const sdtContent = getChildElements(xmlChild).find(
+        (child) => getLocalName(child.name ?? "") === "sdtContent",
+      );
+      if (sdtContent) {
+        enrichTextBoxRuns({
+          content: nestedContent,
+          xmlChildren: getChildElements(sdtContent),
+          styles,
+          theme,
+          numbering,
+          rels,
+          media,
+          parseTable,
+        });
+      }
+      parsedIndex = lastSegmentIndex + 1;
+      continue;
     }
 
     if (localName !== "r") {

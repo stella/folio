@@ -21,6 +21,7 @@ import type {
   BlockSdt,
   Document,
   Paragraph,
+  ParagraphContent,
   ParagraphFormatting,
   Run,
   TextFormatting,
@@ -73,6 +74,7 @@ import {
 } from "./effectiveTableCellFormatting";
 import { marksToTextFormatting } from "./fromProseDoc";
 import { shadingToRunShadingAttrs } from "./runShadingMark";
+import { sdtAttrsFromProperties } from "./sdtAttrs";
 
 /**
  * Options for document conversion
@@ -1999,25 +2001,7 @@ function convertInlineSdt(
 
   return schema.node(
     "sdt",
-    {
-      sdtType: props.sdtType,
-      alias: props.alias ?? null,
-      tag: props.tag ?? null,
-      id: props.id ?? null,
-      lock: props.lock ?? null,
-      placeholder: props.placeholder ?? null,
-      showingPlaceholder: props.showingPlaceholder ?? false,
-      dateFormat: props.dateFormat ?? null,
-      dateValueISO: props.dateValueISO ?? null,
-      listItems: props.listItems ? JSON.stringify(props.listItems) : null,
-      dropdownLastValue: props.dropdownLastValue ?? null,
-      checked: props.checked ?? null,
-      // Pass the captured `w:sdtPr` / `w:sdtEndPr` through as attrs so the
-      // serializer replays them verbatim after a save, keeping unmodeled
-      // OOXML features lossless — the same contract as `convertBlockSdt`.
-      rawPropertiesXml: props.rawPropertiesXml ?? null,
-      rawEndPropertiesXml: props.rawEndPropertiesXml ?? null,
-    },
+    sdtAttrsFromProperties(props),
     inlineNodes.length > 0 ? inlineNodes : undefined,
   );
 }
@@ -2801,9 +2785,9 @@ function convertParagraphWithTextBoxes(
     tableParagraphOverlay,
   }: ConvertParagraphWithTextBoxesOptions,
 ): PMNode[] {
-  const textBoxes = extractTextBoxesFromParagraph(block);
+  const { paragraph, textBoxes } = extractTextBoxesFromParagraph(block);
   const pmParagraph = convertParagraph(
-    block,
+    paragraph,
     styleResolver,
     undefined,
     extraRunFormatting,
@@ -2816,7 +2800,7 @@ function convertParagraphWithTextBoxes(
   if (!isEmptyAfterExtraction || keepWrapperParagraph) {
     nodes.push(pmParagraph);
   }
-  for (const { textBox, trackedChange } of textBoxes) {
+  for (const { textBox, trackedChange, inlineSdts } of textBoxes) {
     nodes.push(
       convertTextBox(textBox, styleResolver, {
         placement:
@@ -2824,6 +2808,7 @@ function convertParagraphWithTextBoxes(
         groupId: textBoxGroupId,
         context,
         trackedChange,
+        inlineSdts,
       }),
     );
   }
@@ -2848,48 +2833,146 @@ function hasParagraphBoundaryPayload(block: Paragraph, pmParagraph: PMNode): boo
 type ExtractedTextBox = {
   textBox: TextBox;
   trackedChange: NonNullable<TextBoxAttrs["_docxTrackedChange"]> | undefined;
+  inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
 };
 
-function extractTextBoxesFromParagraph(paragraph: Paragraph): ExtractedTextBox[] {
+type TextBoxExtractionContext = {
+  trackedChange?: NonNullable<TextBoxAttrs["_docxTrackedChange"]>;
+  inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
+};
+
+type ExtractTextBoxesResult = {
+  paragraph: Paragraph;
+  textBoxes: ExtractedTextBox[];
+};
+
+function extractTextBoxesFromParagraph(paragraph: Paragraph): ExtractTextBoxesResult {
   const textBoxes: ExtractedTextBox[] = [];
-  const extractFromRun = (
-    run: Run,
-    trackedChange?: NonNullable<TextBoxAttrs["_docxTrackedChange"]>,
-  ): void => {
+  const stripRun = (run: Run, context: TextBoxExtractionContext): Run | undefined => {
+    const content: Run["content"] = [];
+    let removedTextBox = false;
     for (const runContent of run.content) {
       if (runContent.type !== "shape" || !runContent.shape.textBody) {
+        content.push(runContent);
         continue;
       }
+      removedTextBox = true;
       textBoxes.push({
         textBox: textBoxFromShape(runContent.shape, runContent.shape.textBody),
-        trackedChange,
+        trackedChange: context.trackedChange,
+        inlineSdts: context.inlineSdts,
       });
     }
+    if (!removedTextBox) {
+      return run;
+    }
+    if (content.length === 0) {
+      return undefined;
+    }
+    return { ...run, content };
   };
 
-  for (const content of paragraph.content) {
-    if (content.type === "run") {
-      extractFromRun(content);
+  const stripTrackedChange = (
+    change: Insertion | Deletion | MoveFrom | MoveTo,
+    context: TextBoxExtractionContext,
+  ): Insertion | Deletion | MoveFrom | MoveTo | undefined => {
+    const trackedChange = { type: change.type, info: change.info } as const satisfies NonNullable<
+      TextBoxAttrs["_docxTrackedChange"]
+    >;
+    const content = change.content.flatMap((item) => {
+      if (item.type !== "run") {
+        return [item];
+      }
+      const run = stripRun(item, { ...context, trackedChange });
+      return run ? [run] : [];
+    });
+    if (content.length === 0) {
+      return undefined;
+    }
+    if (change.type === "insertion") {
+      return { ...change, content };
+    }
+    if (change.type === "deletion") {
+      return { ...change, content };
+    }
+    if (change.type === "moveFrom") {
+      return { ...change, content };
+    }
+    return { ...change, content };
+  };
+
+  const stripInlineSdt = (
+    sdt: InlineSdt,
+    context: TextBoxExtractionContext,
+  ): InlineSdt | undefined => {
+    const inlineSdts = [...context.inlineSdts, sdtAttrsFromProperties(sdt.properties)];
+    const nestedContext = { ...context, inlineSdts };
+    const content: InlineSdt["content"] = [];
+
+    for (const item of sdt.content) {
+      if (item.type === "run") {
+        const run = stripRun(item, nestedContext);
+        if (run) {
+          content.push(run);
+        }
+        continue;
+      }
+      if (item.type === "inlineSdt") {
+        const nestedSdt = stripInlineSdt(item, nestedContext);
+        if (nestedSdt) {
+          content.push(nestedSdt);
+        }
+        continue;
+      }
+      if (item.type === "insertion" || item.type === "deletion") {
+        const change = stripTrackedChange(item, nestedContext);
+        if (change?.type === "insertion" || change?.type === "deletion") {
+          content.push(change);
+        }
+        continue;
+      }
+      content.push(item);
+    }
+
+    return content.length > 0 ? { ...sdt, content } : undefined;
+  };
+
+  const content: ParagraphContent[] = [];
+  const rootContext: TextBoxExtractionContext = { inlineSdts: [] };
+  for (const item of paragraph.content) {
+    if (item.type === "run") {
+      const run = stripRun(item, rootContext);
+      if (run) {
+        content.push(run);
+      }
+      continue;
+    }
+    if (item.type === "inlineSdt") {
+      const sdt = stripInlineSdt(item, rootContext);
+      if (sdt) {
+        content.push(sdt);
+      }
       continue;
     }
     if (
-      content.type !== "insertion" &&
-      content.type !== "deletion" &&
-      content.type !== "moveFrom" &&
-      content.type !== "moveTo"
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
     ) {
+      const change = stripTrackedChange(item, rootContext);
+      if (change) {
+        content.push(change);
+      }
       continue;
     }
-    const trackedChange = { type: content.type, info: content.info } as const satisfies NonNullable<
-      TextBoxAttrs["_docxTrackedChange"]
-    >;
-    for (const trackedContent of content.content) {
-      if (trackedContent.type === "run") {
-        extractFromRun(trackedContent, trackedChange);
-      }
-    }
+    content.push(item);
   }
-  return textBoxes;
+
+  return {
+    paragraph: { ...paragraph, content },
+    textBoxes,
+  };
 }
 
 function textBoxFromShape(shape: Shape, textBody: ShapeTextBody): TextBox {
@@ -2933,6 +3016,7 @@ function convertTextBox(
     groupId?: string;
     context: TableConversionContext;
     trackedChange: NonNullable<TextBoxAttrs["_docxTrackedChange"]> | undefined;
+    inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
   },
 ): PMNode {
   const textBoxData: { size?: Partial<TextBox["size"]> } = textBox;
@@ -3081,6 +3165,7 @@ function convertTextBox(
       _docxPlacement: options.placement,
       _docxGroupId: options.groupId,
       _docxTrackedChange: options.trackedChange,
+      _docxInlineSdts: options.inlineSdts.length > 0 ? options.inlineSdts : undefined,
     },
     contentNodes,
   );
