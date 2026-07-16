@@ -9,6 +9,7 @@ import {
   tableNodeTypes,
 } from "prosemirror-tables";
 
+import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { buildCleanBlockText } from "./clean-text";
 import {
@@ -1002,7 +1003,6 @@ const applyFolioAIEditOperationsInternal = ({
     if (
       mode === "tracked-changes" &&
       (operation.type === "formatRange" ||
-        operation.type === "deleteTableRow" ||
         operation.type === "insertTableColumn" ||
         operation.type === "deleteTableColumn" ||
         operation.type === "mergeTableCells" ||
@@ -1627,6 +1627,33 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "deleteTableRow": {
         const deletion = item.tableRowDeletion;
+        const rowPosition = deletion ? tr.mapping.map(deletion.rowPosition) : null;
+        const row = rowPosition === null ? null : tr.doc.nodeAt(rowPosition);
+        if (mode === "tracked-changes") {
+          if (
+            !deletion ||
+            rowPosition === null ||
+            !row ||
+            row.type.spec["tableRole"] !== "row" ||
+            row.attrs["trIns"] != null ||
+            row.attrs["trDel"] != null
+          ) {
+            skipped.push({
+              id: item.operation.id,
+              reason: "unsupportedBlock",
+            });
+            continue;
+          }
+          const revisionId = revisionSeed++;
+          tr = tr.setNodeAttribute(rowPosition, "trDel", {
+            revisionId,
+            author,
+            date,
+          });
+          markStructuralChange(tr);
+          appliedRevisionIds = [revisionId];
+          break;
+        }
         const table = deletion ? tr.doc.nodeAt(deletion.tablePosition) : null;
         if (
           !deletion ||

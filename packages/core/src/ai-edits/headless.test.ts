@@ -430,6 +430,73 @@ describe("headless docx review round-trip", () => {
     expect(restoredTable.rows).toHaveLength(1);
   });
 
+  test("tracks, persists, accepts, and rejects a row deletion", async () => {
+    const baseline = await buildTextBoxTableDocument();
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Cell value");
+
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "delete-row",
+          type: "deleteTableRow",
+          blockId: target.id,
+        },
+      ],
+    });
+
+    expect(result.status).toBe("committed");
+    expect(result.applied).toHaveLength(1);
+    expect(typeof result.applied.at(0)?.revisionId).toBe("number");
+    const pendingChange = reviewer.getChanges().find(({ type }) => type === "rowDeleted");
+    if (!pendingChange) {
+      throw new Error("expected a pending row deletion");
+    }
+    expect(pendingChange.author).toBe("Reviewer");
+    expect(pendingChange.text).toContain("Cell value");
+
+    const pending = await reviewer.toBuffer();
+    const pendingXml = await partText(pending, "word/document.xml");
+    expect(pendingXml).toContain("<w:del ");
+    expect(pendingXml).toContain("Cell value");
+
+    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopenedChange = reopened.getChanges().find(({ type }) => type === "rowDeleted");
+    if (!reopenedChange) {
+      throw new Error("expected the row deletion after reopen");
+    }
+
+    expect(reopened.acceptChange(reopenedChange)).toBe(true);
+    const accepted = await reopened.toBuffer();
+    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:del ");
+    expect(reopened.getContentAsText()).not.toContain("Cell value");
+    expect(
+      findTextBoxShape(
+        await parseDocx(accepted, { detectVariables: false, preloadFonts: false }),
+      ).textBody?.content.map(({ type }) => type),
+    ).toEqual(["paragraph", "paragraph"]);
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejectChange = rejecting.getChanges().find(({ type }) => type === "rowDeleted");
+    if (!rejectChange) {
+      throw new Error("expected the row deletion before rejection");
+    }
+    expect(rejecting.rejectChange(rejectChange)).toBe(true);
+    const rejected = await rejecting.toBuffer();
+    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:del ");
+    expect(rejecting.getContentAsText()).toContain("Cell value");
+    const rejectedTable = findTextBoxShape(
+      await parseDocx(rejected, { detectVariables: false, preloadFonts: false }),
+    ).textBody?.content.at(1);
+    expect(rejectedTable?.type).toBe("table");
+    if (rejectedTable?.type !== "table") {
+      throw new Error("expected a rejected table");
+    }
+    expect(rejectedTable.rows).toHaveLength(1);
+  });
+
   test("inserts, persists, and undoes a column inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);

@@ -440,7 +440,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly commentOnBlock: readonly ["direct", "tracked-changes"];
     readonly insertSignatureTable: readonly ["direct"];
     readonly insertTableRow: readonly ["direct", "tracked-changes"];
-    readonly deleteTableRow: readonly ["direct"];
+    readonly deleteTableRow: readonly ["direct", "tracked-changes"];
     readonly insertTableColumn: readonly ["direct"];
     readonly deleteTableColumn: readonly ["direct"];
     readonly mergeTableCells: readonly ["direct"];
