@@ -2636,7 +2636,7 @@ describe("Folio AI edit operations", () => {
   });
 
   test("table-column inserts create one revision across every new cell", () => {
-    const makeState = () => {
+    const makeTrackedColumnState = () => {
       const rows = [
         ["A", "B"],
         ["C", "D"],
@@ -2657,7 +2657,7 @@ describe("Folio AI edit operations", () => {
       });
     };
 
-    const accepting = makeView(makeState());
+    const accepting = makeView(makeTrackedColumnState());
     const acceptedResult = applyFolioAIEditOperations({
       view: accepting,
       snapshot: createFolioAIEditSnapshot(accepting.state.doc),
@@ -2707,7 +2707,7 @@ describe("Folio AI edit operations", () => {
     expect(acceptedTable.child(0).child(1).attrs["cellMarker"]).toBeNull();
     expect(acceptedTable.child(1).child(1).attrs["cellMarker"]).toBeNull();
 
-    const rejecting = makeView(makeState());
+    const rejecting = makeView(makeTrackedColumnState());
     const rejectedResult = applyFolioAIEditOperations({
       view: rejecting,
       snapshot: createFolioAIEditSnapshot(rejecting.state.doc),
