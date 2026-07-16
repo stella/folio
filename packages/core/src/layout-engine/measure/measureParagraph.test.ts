@@ -1139,6 +1139,47 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
+  test("allows the bounded first-line tolerance for deep hanging list markers", () => {
+    const firstLineText = `${"a".repeat(98)} bbb`;
+
+    withFakeTextMeasure(
+      () => {
+        const fittingMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-deep-hanging-list-marker",
+            runs: [{ kind: "text", text: firstLineText }],
+            attrs: {
+              alignment: "justify",
+              indent: { left: 36, hanging: 36 },
+              listMarker: "1.1.1",
+            },
+          },
+          136,
+        );
+        const overflowingMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-deep-hanging-list-marker-boundary",
+            runs: [{ kind: "text", text: firstLineText }],
+            attrs: {
+              alignment: "justify",
+              indent: { left: 36, hanging: 36 },
+              listMarker: "1.1.1",
+            },
+          },
+          135.9,
+        );
+
+        expect(fittingMeasure.lines).toHaveLength(1);
+        expect(overflowingMeasure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: (char) => (char === "b" ? 1.05 : 1),
+      },
+    );
+  });
+
   test("bases full-hanging list continuation shrink on measured spaces", () => {
     withFakeTextMeasure(
       () => {

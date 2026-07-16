@@ -65,6 +65,7 @@ const WIDTH_TOLERANCE = 0.5;
 const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
 const JUSTIFY_SPACE_CONTRACTION_RATIO = 0.075;
 const JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO = 0.195;
+const JUSTIFY_DEEP_HANGING_LIST_MARKER_SHRINK_TOLERANCE_RATIO = 0.022;
 // Full-hanging continuations allow stronger space contraction with bounded total shrink.
 const JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO = 0.32;
 const JUSTIFY_LIST_CONTINUATION_MAX_SHRINK_TOLERANCE_RATIO = 0.015;
@@ -613,7 +614,10 @@ function resolveJustifyFitStrategy(
     if (isFirstLine) {
       return hanging <= DEFAULT_LIST_HANGING_INDENT_PX
         ? { type: "space", ratio: JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO }
-        : { type: "width", ratio: JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO };
+        : {
+            type: "width",
+            ratio: JUSTIFY_DEEP_HANGING_LIST_MARKER_SHRINK_TOLERANCE_RATIO,
+          };
     }
     const left = block.attrs.indent?.left ?? 0;
     if (hanging > 0 && left > hanging) {
