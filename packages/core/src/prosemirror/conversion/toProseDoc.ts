@@ -2963,7 +2963,7 @@ function extractTextBoxesFromParagraph(paragraph: Paragraph): ExtractTextBoxesRe
       content.push(item);
     }
 
-    return content.length > 0 ? { ...sdt, content } : undefined;
+    return content.length > 0 || sdt.content.length === 0 ? { ...sdt, content } : undefined;
   };
 
   const content: ParagraphContent[] = [];
