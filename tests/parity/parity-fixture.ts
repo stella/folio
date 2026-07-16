@@ -18,6 +18,7 @@ type FolioParityBridge = {
   ensureView: () => void;
   hasView: () => boolean;
   getDocumentText: () => string;
+  getTextWatermark: () => string | null;
   insertText: (text: string) => boolean;
   boldFirstWord: () => boolean;
   selectFirstWord: () => boolean;

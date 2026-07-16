@@ -1,16 +1,14 @@
 /**
  * Global keyboard-shortcut composable — installs a window-level keydown
- * listener that opens the keyboard-shortcuts dialog on F1, threads
- * through zoom shortcuts (Ctrl+= / Ctrl+- / Ctrl+0), and toggles
- * Find/Replace (Ctrl+F / Ctrl+H), Hyperlink (Ctrl+K), and the
- * Keyboard-shortcuts dialog itself (Ctrl+/). Ownership of the listener
- * lives here so the SFC stays out of the lifecycle wiring.
+ * listener that threads through zoom shortcuts (Ctrl+= / Ctrl+- / Ctrl+0)
+ * and toggles Find/Replace (Ctrl+F / Ctrl+H) and Hyperlink (Ctrl+K).
+ * Ownership of the listener lives here so the SFC stays out of the lifecycle
+ * wiring.
  */
 
 import { onMounted, onBeforeUnmount, type Ref } from "vue";
 
 export type UseKeyboardShortcutsOptions = {
-  showKeyboardShortcuts: Ref<boolean>;
   showFindReplace: Ref<boolean>;
   showHyperlink: Ref<boolean>;
   /** From useZoom — handles Ctrl+= / Ctrl+- / Ctrl+0. */
@@ -33,13 +31,6 @@ export type UseKeyboardShortcutsOptions = {
 
 export function useKeyboardShortcuts(opts: UseKeyboardShortcutsOptions) {
   function handleKeyDown(e: KeyboardEvent) {
-    // F1 opens keyboard shortcuts
-    if (e.key === "F1") {
-      e.preventDefault();
-      opts.showKeyboardShortcuts.value = true;
-      return;
-    }
-
     // Zoom shortcuts (Ctrl+=/Ctrl+-/Ctrl+0)
     opts.handleZoomKeyDown(e);
 
@@ -58,9 +49,6 @@ export function useKeyboardShortcuts(opts: UseKeyboardShortcutsOptions) {
     } else if (e.key === "k") {
       e.preventDefault();
       opts.showHyperlink.value = true;
-    } else if (e.key === "/") {
-      e.preventDefault();
-      opts.showKeyboardShortcuts.value = !opts.showKeyboardShortcuts.value;
     }
   }
 
