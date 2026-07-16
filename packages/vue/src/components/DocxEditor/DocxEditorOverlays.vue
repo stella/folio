@@ -7,11 +7,6 @@
 
   Visibility is owned by the host's context-menu state; this component just routes
   events back so the host can dispatch into them.
-
-  Fork note: the fork has not ported a `useContextMenus` composable, so the host
-  currently drives this with a static closed state (PORT-BLOCKED). The
-  `TextContextMenuState` shape is declared locally here so the component stays
-  self-contained until that composable lands.
 -->
 <template>
   <TextContextMenu

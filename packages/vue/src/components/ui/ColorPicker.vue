@@ -7,11 +7,6 @@
 
   Theme-matrix generation and color resolution come from
   @stll/folio-core/utils/colorResolver so React and Vue stay in lockstep.
-
-  PORT-BLOCKED: `resolveColorToHex` (used by `isSelectedCell`) is not yet
-  exported from our core's `utils/colorResolver` (CORE-API-MAP Table 4 lists
-  it as a missing PORT). Import kept pointing at the target specifier; the
-  selected-cell highlight will not typecheck until that helper lands in core.
 -->
 <template>
   <div ref="containerRef" class="docx-color-picker" :class="className" :style="style">
@@ -174,7 +169,6 @@ import type { ColorValue, Theme } from "@stll/folio-core/types/document";
 import {
   generateThemeTintShadeMatrix,
   resolveColor,
-  // PORT-BLOCKED: resolveColorToHex is not exported by our core colorResolver yet.
   resolveColorToHex,
   resolveHighlightColor,
   type ThemeMatrixCell,
