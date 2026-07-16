@@ -140,13 +140,20 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
         const author = "author" in marker.info ? marker.info.author : undefined;
         const date = "date" in marker.info ? marker.info.date : undefined;
         const kind = marker.kind === "ins" ? "cellInserted" : "cellDeleted";
-        grouped.set(`cell:${kind}:${revisionId}:${String(pos)}`, {
+        const key = `cell:${kind}:${revisionId}`;
+        const text = node.textContent;
+        const blockId = firstBlockIdWithin({ node, nodePos: pos, blockStarts });
+        const existing = grouped.get(key);
+        grouped.set(key, {
           id: revisionId,
           type: kind,
           author: typeof author === "string" ? author : "",
           date: typeof date === "string" ? date : null,
-          text: node.textContent,
-          blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
+          text:
+            existing && existing.text.length > 0 && text.length > 0
+              ? `${existing.text}\n${text}`
+              : existing?.text || text,
+          blockId: existing?.blockId ?? blockId,
         });
       }
     }

@@ -33,7 +33,7 @@ const isNonEmptyString = (value: unknown): value is string =>
  */
 export const MAX_OPERATIONS_PER_CALL = 50;
 export const MAX_OPERATION_TEXT_LENGTH = 100_000;
-const MAX_TABLE_ROW_CELL_TEXTS = 256;
+const MAX_TABLE_INSERTION_CELL_TEXTS = 256;
 
 /** Plain-language error for a string argument over {@link MAX_OPERATION_TEXT_LENGTH}. */
 export const explainTextTooLong = (label: string, length: number): string =>
@@ -84,7 +84,7 @@ export const parseAddCommentInput = (args: unknown): ParseAddCommentResult => {
 };
 
 const OPERATION_TYPES =
-  "replaceInBlock, replaceRange, commentOnRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock, insertTableRow, deleteTableRow";
+  "replaceInBlock, replaceRange, commentOnRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock, insertTableRow, deleteTableRow, insertTableColumn";
 
 type SuggestedOperationType =
   | "replaceInBlock"
@@ -95,7 +95,8 @@ type SuggestedOperationType =
   | "replaceBlock"
   | "deleteBlock"
   | "insertTableRow"
-  | "deleteTableRow";
+  | "deleteTableRow"
+  | "insertTableColumn";
 
 const isOperationType = (value: unknown): value is SuggestedOperationType =>
   value === "replaceInBlock" ||
@@ -106,7 +107,8 @@ const isOperationType = (value: unknown): value is SuggestedOperationType =>
   value === "replaceBlock" ||
   value === "deleteBlock" ||
   value === "insertTableRow" ||
-  value === "deleteTableRow";
+  value === "deleteTableRow" ||
+  value === "insertTableColumn";
 
 const readTextRange = (value: unknown, index: number): FolioAITextRangeHandle | string => {
   const path = `operations[${index}].range`;
@@ -187,26 +189,26 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
     return `operations[${index}].blockId must be a non-empty string.`;
   }
 
-  if (type === "insertTableRow") {
+  if (type === "insertTableRow" || type === "insertTableColumn") {
     const position = raw["position"];
     if (position !== undefined && position !== "after" && position !== "before") {
-      return `operations[${index}] (insertTableRow) \`position\` must be "after" or "before" when provided.`;
+      return `operations[${index}] (${type}) \`position\` must be "after" or "before" when provided.`;
     }
     const rawCellTexts = raw["cellTexts"];
     if (rawCellTexts !== undefined && !Array.isArray(rawCellTexts)) {
-      return `operations[${index}] (insertTableRow) \`cellTexts\` must be an array of strings when provided.`;
+      return `operations[${index}] (${type}) \`cellTexts\` must be an array of strings when provided.`;
     }
-    if (rawCellTexts !== undefined && rawCellTexts.length > MAX_TABLE_ROW_CELL_TEXTS) {
-      return `operations[${index}] (insertTableRow) \`cellTexts\` has ${rawCellTexts.length.toLocaleString()} entries, over the ${MAX_TABLE_ROW_CELL_TEXTS.toLocaleString()}-cell limit.`;
+    if (rawCellTexts !== undefined && rawCellTexts.length > MAX_TABLE_INSERTION_CELL_TEXTS) {
+      return `operations[${index}] (${type}) \`cellTexts\` has ${rawCellTexts.length.toLocaleString()} entries, over the ${MAX_TABLE_INSERTION_CELL_TEXTS.toLocaleString()}-cell limit.`;
     }
     const cellTexts: string[] = [];
     for (const [cellIndex, cellText] of (rawCellTexts ?? []).entries()) {
       if (typeof cellText !== "string") {
-        return `operations[${index}] (insertTableRow) \`cellTexts[${cellIndex}]\` must be a string.`;
+        return `operations[${index}] (${type}) \`cellTexts[${cellIndex}]\` must be a string.`;
       }
       if (cellText.length > MAX_OPERATION_TEXT_LENGTH) {
         return explainTextTooLong(
-          `operations[${index}] (insertTableRow) \`cellTexts[${cellIndex}]\``,
+          `operations[${index}] (${type}) \`cellTexts[${cellIndex}]\``,
           cellText.length,
         );
       }

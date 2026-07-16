@@ -596,6 +596,76 @@ describe("headless docx review round-trip", () => {
     expect(rejecting.getContentAsText()).toContain("Cell value");
   });
 
+  test("tracks, persists, accepts, and rejects a column insertion", async () => {
+    const baseline = await buildTextBoxTableDocument();
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const target = findBlock(reviewer.snapshot().blocks, "Cell value");
+
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "insert-column",
+          type: "insertTableColumn",
+          blockId: target.id,
+          cellTexts: ["Added value"],
+        },
+      ],
+    });
+
+    expect(result.status).toBe("committed");
+    expect(result.applied).toHaveLength(1);
+    expect(typeof result.applied.at(0)?.revisionId).toBe("number");
+    const pendingChange = reviewer.getChanges().find(({ type }) => type === "cellInserted");
+    if (!pendingChange) {
+      throw new Error("expected a pending column insertion");
+    }
+    expect(pendingChange.author).toBe("Reviewer");
+    expect(pendingChange.text).toContain("Added value");
+
+    const pending = await reviewer.toBuffer();
+    const pendingXml = await partText(pending, "word/document.xml");
+    expect(pendingXml).toContain("<w:cellIns ");
+    expect(pendingXml).toContain("Added value");
+
+    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopenedChange = reopened.getChanges().find(({ type }) => type === "cellInserted");
+    if (!reopenedChange) {
+      throw new Error("expected the column insertion after reopen");
+    }
+    expect(reopened.acceptChange(reopenedChange)).toBe(true);
+    const accepted = await reopened.toBuffer();
+    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:cellIns ");
+    expect(reopened.getContentAsText()).toContain("Added value");
+    const acceptedTable = findTextBoxShape(
+      await parseDocx(accepted, { detectVariables: false, preloadFonts: false }),
+    ).textBody?.content.at(1);
+    expect(acceptedTable?.type).toBe("table");
+    if (acceptedTable?.type !== "table") {
+      throw new Error("expected an accepted table");
+    }
+    expect(acceptedTable.rows.at(0)?.cells).toHaveLength(2);
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejectChange = rejecting.getChanges().find(({ type }) => type === "cellInserted");
+    if (!rejectChange) {
+      throw new Error("expected the column insertion before rejection");
+    }
+    expect(rejecting.rejectChange(rejectChange)).toBe(true);
+    const rejected = await rejecting.toBuffer();
+    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:cellIns ");
+    expect(rejecting.getContentAsText()).not.toContain("Added value");
+    const rejectedTable = findTextBoxShape(
+      await parseDocx(rejected, { detectVariables: false, preloadFonts: false }),
+    ).textBody?.content.at(1);
+    expect(rejectedTable?.type).toBe("table");
+    if (rejectedTable?.type !== "table") {
+      throw new Error("expected a rejected table");
+    }
+    expect(rejectedTable.rows.at(0)?.cells).toHaveLength(1);
+  });
+
   test("inserts, persists, and undoes a column inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);

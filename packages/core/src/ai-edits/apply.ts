@@ -708,6 +708,13 @@ type TableColumnInsertionAction =
   | { type: "insertCell"; position: number; cell: PMNode }
   | { type: "setColspan"; position: number; attrs: Record<string, unknown> };
 
+type BuildTableColumnInsertionActionsOptions = {
+  map: TableMap;
+  table: PMNode;
+  columnIndex: number;
+  cellTexts: readonly string[] | undefined;
+};
+
 const expandTableCellColspan = (
   cell: PMNode,
   colspanOffset: number,
@@ -753,12 +760,12 @@ const populateTableCell = (cell: PMNode, text: string): PMNode | null => {
   return cell.type.create(cell.attrs, nextParagraph);
 };
 
-const buildTableColumnInsertionActions = (
-  map: TableMap,
-  table: PMNode,
-  columnIndex: number,
-  cellTexts: readonly string[] | undefined,
-): TableColumnInsertionAction[] | null => {
+const buildTableColumnInsertionActions = ({
+  map,
+  table,
+  columnIndex,
+  cellTexts,
+}: BuildTableColumnInsertionActionsOptions): TableColumnInsertionAction[] | null => {
   if (columnIndex < 0 || columnIndex > map.width) {
     return null;
   }
@@ -1003,7 +1010,6 @@ const applyFolioAIEditOperationsInternal = ({
     if (
       mode === "tracked-changes" &&
       (operation.type === "formatRange" ||
-        operation.type === "insertTableColumn" ||
         operation.type === "deleteTableColumn" ||
         operation.type === "mergeTableCells" ||
         operation.type === "splitTableCell")
@@ -1492,24 +1498,48 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         const map = TableMap.get(table);
-        const actions = buildTableColumnInsertionActions(
+        const actions = buildTableColumnInsertionActions({
           map,
           table,
-          insertion.columnIndex,
-          item.operation.cellTexts,
-        );
-        if (!actions) {
+          columnIndex: insertion.columnIndex,
+          cellTexts: item.operation.cellTexts,
+        });
+        if (
+          !actions ||
+          (mode === "tracked-changes" && actions.some(({ type }) => type === "setColspan"))
+        ) {
           skipped.push({
             id: item.operation.id,
             reason: "unsupportedBlock",
           });
           continue;
         }
+        const revisionId = mode === "tracked-changes" ? revisionSeed++ : null;
+        if (revisionId !== null) {
+          appliedRevisionIds = [revisionId];
+        }
         const mapFrom = tr.mapping.maps.length;
         for (const action of actions) {
           const position = tr.mapping.slice(mapFrom).map(tablePosition + 1 + action.position);
           if (action.type === "insertCell") {
-            tr = tr.insert(position, action.cell);
+            const cell =
+              revisionId === null
+                ? action.cell
+                : action.cell.type.create(
+                    {
+                      ...action.cell.attrs,
+                      cellMarker: {
+                        kind: "ins",
+                        info: {
+                          revisionId,
+                          author,
+                          date,
+                        },
+                      },
+                    },
+                    action.cell.content,
+                  );
+            tr = tr.insert(position, cell);
             continue;
           }
           tr = tr.setNodeMarkup(position, undefined, action.attrs);

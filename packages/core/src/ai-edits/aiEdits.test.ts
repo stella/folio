@@ -4,8 +4,9 @@ import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
-import { acceptAIEditRevision } from "../prosemirror/commands/comments";
+import { acceptAIEditRevision, rejectAIEditRevision } from "../prosemirror/commands/comments";
 import { applyFolioAIEditOperations } from "./apply";
+import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
 
 const schema = new Schema({
@@ -47,6 +48,7 @@ const schema = new Schema({
         colspan: { default: 1 },
         rowspan: { default: 1 },
         colwidth: { default: null },
+        cellMarker: { default: null },
       },
     },
   },
@@ -2633,11 +2635,119 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc.child(0).child(0).childCount).toBe(1);
   });
 
-  test("table-column inserts are skipped in tracked-changes mode", () => {
+  test("table-column inserts create one revision across every new cell", () => {
+    const makeState = () => {
+      const rows = [
+        ["A", "B"],
+        ["C", "D"],
+      ].map((texts) =>
+        schema.node(
+          "tableRow",
+          null,
+          texts.map((text) =>
+            schema.node("tableCell", null, [
+              schema.node("paragraph", { paraId: `tracked-column-${text}` }, [schema.text(text)]),
+            ]),
+          ),
+        ),
+      );
+      return EditorState.create({
+        schema,
+        doc: schema.node("doc", null, [schema.node("table", null, rows)]),
+      });
+    };
+
+    const accepting = makeView(makeState());
+    const acceptedResult = applyFolioAIEditOperations({
+      view: accepting,
+      snapshot: createFolioAIEditSnapshot(accepting.state.doc),
+      operations: [
+        {
+          id: "insert-column",
+          type: "insertTableColumn",
+          blockId: "tracked-column-A",
+          cellTexts: ["New top", "New bottom"],
+        },
+      ],
+      mode: "tracked-changes",
+    });
+    const revisionId = acceptedResult.applied.at(0)?.revisionId;
+    if (revisionId === undefined) {
+      throw new Error("expected a column insertion revision");
+    }
+    expect(acceptedResult).toEqual({
+      applied: [{ id: "insert-column", revisionId, revisionIds: [revisionId] }],
+      skipped: [],
+    });
+    const pendingTable = accepting.state.doc.child(0);
+    expect(pendingTable.child(0).child(1).attrs["cellMarker"]).toEqual({
+      kind: "ins",
+      info: { revisionId, author: "AI", date: expect.any(String) },
+    });
+    expect(pendingTable.child(1).child(1).attrs["cellMarker"]).toEqual({
+      kind: "ins",
+      info: { revisionId, author: "AI", date: expect.any(String) },
+    });
+    expect(
+      getTrackedChangesFromDoc(accepting.state.doc).filter(({ type }) => type === "cellInserted"),
+    ).toEqual([
+      {
+        id: revisionId,
+        type: "cellInserted",
+        author: "AI",
+        date: expect.any(String),
+        text: "New top\nNew bottom",
+        blockId: expect.any(String),
+      },
+    ]);
+
+    expect(acceptAIEditRevision(revisionId)(accepting.state, accepting.dispatch)).toBe(true);
+    const acceptedTable = accepting.state.doc.child(0);
+    expect(TableMap.get(acceptedTable).width).toBe(3);
+    expect(acceptedTable.child(0).child(1).attrs["cellMarker"]).toBeNull();
+    expect(acceptedTable.child(1).child(1).attrs["cellMarker"]).toBeNull();
+
+    const rejecting = makeView(makeState());
+    const rejectedResult = applyFolioAIEditOperations({
+      view: rejecting,
+      snapshot: createFolioAIEditSnapshot(rejecting.state.doc),
+      operations: [
+        {
+          id: "insert-column",
+          type: "insertTableColumn",
+          blockId: "tracked-column-A",
+          cellTexts: ["New top", "New bottom"],
+        },
+      ],
+      mode: "tracked-changes",
+    });
+    const rejectedRevisionId = rejectedResult.applied.at(0)?.revisionId;
+    if (rejectedRevisionId === undefined) {
+      throw new Error("expected a column insertion revision");
+    }
+    expect(accepting.state.doc.textContent).toBe("ANew topBCNew bottomD");
+    expect(rejecting.state.doc.textContent).toBe("ANew topBCNew bottomD");
+    expect(rejectAIEditRevision(rejectedRevisionId)(rejecting.state, rejecting.dispatch)).toBe(
+      true,
+    );
+    const rejectedTable = rejecting.state.doc.child(0);
+    expect(TableMap.get(rejectedTable).width).toBe(2);
+    expect(rejectedTable.textContent).toBe("ABCD");
+  });
+
+  test("tracked column insertion rejects a boundary crossed by a colspan", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [
+          schema.node("paragraph", { paraId: "tracked-column-span" }, [schema.text("A")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
         schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "tracked-column" }, [schema.text("Cell")]),
+          schema.node("paragraph", { paraId: "tracked-column-left" }, [schema.text("B")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-column-right" }, [schema.text("C")]),
         ]),
       ]),
     ]);
@@ -2647,15 +2757,21 @@ describe("Folio AI edit operations", () => {
     const result = applyFolioAIEditOperations({
       view,
       snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [{ id: "insert-column", type: "insertTableColumn", blockId: "tracked-column" }],
+      operations: [
+        {
+          id: "insert-column",
+          type: "insertTableColumn",
+          blockId: "tracked-column-left",
+        },
+      ],
       mode: "tracked-changes",
     });
 
     expect(result).toEqual({
       applied: [],
-      skipped: [{ id: "insert-column", reason: "unsupportedMode" }],
+      skipped: [{ id: "insert-column", reason: "unsupportedBlock" }],
     });
-    expect(view.state.doc.child(0).child(0).childCount).toBe(1);
+    expect(view.state.doc).toEqual(state.doc);
   });
 
   test("merges a rectangular table region and preserves cell content order", () => {

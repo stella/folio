@@ -182,6 +182,31 @@ describe("parseSuggestChangesInput", () => {
     });
   });
 
+  test("a tracked table-column insertion accepts position and initial cell text", () => {
+    const result = parseSuggestChangesInput({
+      operations: [
+        {
+          type: "insertTableColumn",
+          blockId: "cell-1",
+          position: "before",
+          cellTexts: ["First", "Second"],
+        },
+      ],
+    });
+    expect(result).toEqual({
+      ok: true,
+      operations: [
+        {
+          id: "op-1",
+          type: "insertTableColumn",
+          blockId: "cell-1",
+          position: "before",
+          cellTexts: ["First", "Second"],
+        },
+      ],
+    });
+  });
+
   test("a tracked table-row insertion rejects invalid cell text", () => {
     const result = parseSuggestChangesInput({
       operations: [
@@ -362,7 +387,6 @@ describe("parseSuggestChangesInput", () => {
       "formatRange",
       "commentOnBlock",
       "insertSignatureTable",
-      "insertTableColumn",
       "deleteTableColumn",
       "mergeTableCells",
       "splitTableCell",

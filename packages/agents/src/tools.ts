@@ -52,8 +52,8 @@ const scopedHandleSchema = {
 /**
  * `suggest_changes` deliberately narrows the full document-operation contract
  * (see `FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA` in `operation-schema.ts`):
- * - excluded types: `formatRange`, `insertSignatureTable`, `insertTableColumn`,
- *   `deleteTableColumn`, `mergeTableCells`, and `splitTableCell` (direct-only,
+ * - excluded types: `formatRange`, `insertSignatureTable`, `deleteTableColumn`,
+ *   `mergeTableCells`, and `splitTableCell` (direct-only,
  *   not representable as tracked changes for human review)
  *   and `commentOnBlock` (covered by the dedicated `add_comment` tool);
  * - `id` is optional here (auto-generated `op-1`, `op-2`, … by `parse.ts`)
@@ -69,7 +69,6 @@ const SUGGEST_CHANGES_EXCLUDED_OPERATION_TYPES: ReadonlySet<FolioDocumentOperati
   "formatRange",
   "commentOnBlock",
   "insertSignatureTable",
-  "insertTableColumn",
   "deleteTableColumn",
   "mergeTableCells",
   "splitTableCell",
@@ -127,12 +126,13 @@ const suggestChangesOperationSchema = {
     position: {
       type: "string",
       enum: ["after", "before"],
-      description: "For row insertion, place the new row after the anchor row or before it.",
+      description:
+        "For row or column insertion, place the new structure after the anchor or before it.",
     },
     cellTexts: {
       type: "array",
       description:
-        "For row insertion, initial text for physical cells in source order, up to 100,000 characters per cell.",
+        "For row or column insertion, initial text for new physical cells in source order, up to 100,000 characters per cell.",
       maxItems: 256,
       items: { type: "string" },
     },

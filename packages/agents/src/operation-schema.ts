@@ -361,8 +361,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
     },
     {
       type: "object",
-      description:
-        "Insert a column next to the column containing the anchor block. Direct mode only.",
+      description: "Insert a column next to the column containing the anchor block.",
       properties: {
         ...operationMetaProperties,
         type: { type: "string", enum: ["insertTableColumn"] },
@@ -453,7 +452,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
         '"direct" applies immediately. `formatRange`, `insertSignatureTable`, ' +
-        "`insertTableColumn`, `deleteTableColumn`, `mergeTableCells`, and " +
+        "`deleteTableColumn`, `mergeTableCells`, and " +
         '`splitTableCell` support "direct" only.',
     },
     atomic: {
