@@ -5,7 +5,8 @@
  */
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
-import type { Command, EditorState } from "prosemirror-state";
+import type { Command, EditorState, Transaction } from "prosemirror-state";
+import { removeRow, TableMap } from "prosemirror-tables";
 
 import type {
   SectionProperties,
@@ -94,9 +95,6 @@ function resolveChange(
   return (state, dispatch) => {
     const insertionType = state.schema.marks["insertion"];
     const deletionType = state.schema.marks["deletion"];
-    if (!insertionType && !deletionType) {
-      return false;
-    }
 
     const keepType = mode === "accept" ? insertionType : deletionType;
     const removeType = mode === "accept" ? deletionType : insertionType;
@@ -109,6 +107,7 @@ function resolveChange(
       const tr = state.tr;
       const deleteRanges: { from: number; to: number }[] = [];
       const pPrMarkOps: PPrMarkOp[] = [];
+      const tableRowStructuralOps: TableRowStructuralOp[] = [];
 
       state.doc.nodesBetween(from, to, (node, pos): boolean => {
         if (node.type.name === "paragraph") {
@@ -203,6 +202,13 @@ function resolveChange(
           return true;
         }
 
+        if (node.type.name === "tableRow" && rangeCoversNode(from, to, pos, node)) {
+          const op = collectTableRowStructuralOp(node, pos, mode, revisionSet);
+          if (op) {
+            tableRowStructuralOps.push(op);
+          }
+        }
+
         // Table property changes (w:tblPrChange / w:trPrChange / w:tcPrChange)
         // carried on the table / row / cell node attrs.
         const tableChangeAttrName = TABLE_PROPERTY_CHANGE_ATTR_BY_NODE[node.type.name];
@@ -279,6 +285,20 @@ function resolveChange(
         }
       }
 
+      tableRowStructuralOps.sort((left, right) => right.rowPos - left.rowPos);
+      for (const op of tableRowStructuralOps) {
+        const mappedPos = tr.mapping.map(op.rowPos);
+        const row = tr.doc.nodeAt(mappedPos);
+        if (!row || row.type.name !== "tableRow") {
+          continue;
+        }
+        if (op.action === "clear") {
+          tr.setNodeAttribute(mappedPos, op.attrName, null);
+          continue;
+        }
+        deleteTableRowAt(tr, mappedPos);
+      }
+
       if (tr.steps.length > 0) {
         dispatch(tr);
       }
@@ -291,6 +311,91 @@ type PPrMarkOp = {
   paragraphPos: number;
   action: "clear" | "join";
 };
+
+type TableRowStructuralOp = {
+  rowPos: number;
+  attrName: "trIns" | "trDel";
+  action: "clear" | "remove";
+};
+
+type TableRowRevisionAttr = {
+  revisionId: number;
+};
+
+function collectTableRowStructuralOp(
+  node: PMNode,
+  rowPos: number,
+  mode: "accept" | "reject",
+  revisionSet: Set<number> | null,
+): TableRowStructuralOp | null {
+  for (const attrName of ["trIns", "trDel"] as const) {
+    const marker = node.attrs[attrName];
+    if (!isTableRowRevisionAttr(marker)) {
+      continue;
+    }
+    if (revisionSet !== null && !revisionSet.has(marker.revisionId)) {
+      continue;
+    }
+    const keepsRow = (attrName === "trIns") === (mode === "accept");
+    return {
+      rowPos,
+      attrName,
+      action: keepsRow ? "clear" : "remove",
+    };
+  }
+  return null;
+}
+
+function isTableRowRevisionAttr(value: unknown): value is TableRowRevisionAttr {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { revisionId?: unknown }).revisionId === "number"
+  );
+}
+
+function deleteTableRowAt(tr: Transaction, rowPos: number): void {
+  const resolved = tr.doc.resolve(rowPos);
+  const table = resolved.parent;
+  if (table.type.spec["tableRole"] !== "table") {
+    return;
+  }
+  const rowIndex = resolved.index();
+  if (table.childCount > 1) {
+    const map = TableMap.get(table);
+    removeRow(
+      tr,
+      {
+        map,
+        table,
+        tableStart: resolved.start(),
+        left: 0,
+        top: rowIndex,
+        right: map.width,
+        bottom: rowIndex + 1,
+      },
+      rowIndex,
+    );
+    return;
+  }
+
+  const tablePosition = resolved.start() - 1;
+  const tableEnd = tablePosition + table.nodeSize;
+  const outerResolved = tr.doc.resolve(tablePosition);
+  const parent = outerResolved.parent;
+  const tableIndex = outerResolved.index();
+  if (parent.canReplace(tableIndex, tableIndex + 1)) {
+    tr.delete(tablePosition, tableEnd);
+    return;
+  }
+  const emptyParagraph = tr.doc.type.schema.nodes["paragraph"]?.createAndFill();
+  if (
+    emptyParagraph &&
+    parent.canReplaceWith(tableIndex, tableIndex + 1, emptyParagraph.type, emptyParagraph.marks)
+  ) {
+    tr.replaceWith(tablePosition, tableEnd, emptyParagraph);
+  }
+}
 
 export type ParagraphBoundaryChange = {
   from: number;
@@ -608,14 +713,26 @@ export function findAIEditRevisionRange(
 ): { from: number; to: number } | null {
   const insertionType = state.schema.marks["insertion"];
   const deletionType = state.schema.marks["deletion"];
-  if (!insertionType && !deletionType) {
-    return null;
-  }
   const idSet = new Set<number>(typeof revisionIds === "number" ? [revisionIds] : revisionIds);
 
   const range = { from: null as number | null, to: null as number | null };
 
   state.doc.descendants((node, pos) => {
+    if (node.type.name === "tableRow") {
+      for (const attrName of ["trIns", "trDel"] as const) {
+        const marker = node.attrs[attrName];
+        if (isTableRowRevisionAttr(marker) && idSet.has(marker.revisionId)) {
+          const start = pos;
+          const end = pos + node.nodeSize;
+          if (range.from === null || start < range.from) {
+            range.from = start;
+          }
+          if (range.to === null || end > range.to) {
+            range.to = end;
+          }
+        }
+      }
+    }
     // Widen from `isText` to `isInline` so an AI-edit revision on an inline
     // atom (image, shape) shows up in the matched range. eigenpal #641.
     if (!node.isInline) {

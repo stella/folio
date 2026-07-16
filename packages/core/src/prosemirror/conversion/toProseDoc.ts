@@ -1532,6 +1532,19 @@ function convertTableRow(
   if (row.propertyChanges && row.propertyChanges.length > 0) {
     attrs.trPrChange = [...row.propertyChanges];
   }
+  if (row.structuralChange?.type === "tableRowInsertion") {
+    attrs.trIns = {
+      revisionId: row.structuralChange.info.id,
+      author: row.structuralChange.info.author,
+      date: row.structuralChange.info.date ?? null,
+    };
+  } else if (row.structuralChange?.type === "tableRowDeletion") {
+    attrs.trDel = {
+      revisionId: row.structuralChange.info.id,
+      author: row.structuralChange.info.author,
+      date: row.structuralChange.info.date ?? null,
+    };
+  }
 
   const numCells = row.cells.length;
   const isFirstRow = rowIndex === 0;

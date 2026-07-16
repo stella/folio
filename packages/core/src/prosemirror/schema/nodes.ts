@@ -608,6 +608,16 @@ export type TableRowAttrs = {
   _originalFormatting?: TableRowFormatting;
   /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
   trPrChange?: TableRowPropertyChange[];
+  /** Tracked structural row insertion (w:trPr/w:ins). */
+  trIns?: TableRowRevisionAttrs;
+  /** Tracked structural row deletion (w:trPr/w:del). */
+  trDel?: TableRowRevisionAttrs;
+};
+
+export type TableRowRevisionAttrs = {
+  revisionId: number;
+  author: string;
+  date?: string | null;
 };
 
 /**

@@ -337,6 +337,8 @@ const tableRowSpec: NodeSpec = {
     hidden: { default: false },
     _originalFormatting: { default: null },
     trPrChange: { default: null },
+    trIns: { default: null },
+    trDel: { default: null },
   },
   parseDOM: [{ tag: "tr" }],
   toDOM(node) {

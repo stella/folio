@@ -58,6 +58,45 @@ const schema = new Schema({
   },
 });
 
+const tableSchema = new Schema({
+  nodes: {
+    doc: { content: "block+" },
+    paragraph: { content: "text*", group: "block" },
+    text: { group: "inline" },
+    table: { content: "tableRow+", group: "block", tableRole: "table" },
+    tableRow: {
+      content: "tableCell+",
+      tableRole: "row",
+      attrs: {
+        trIns: { default: null },
+        trDel: { default: null },
+        trPrChange: { default: null },
+      },
+    },
+    tableCell: {
+      content: "block+",
+      tableRole: "cell",
+      isolating: true,
+      attrs: {
+        colspan: { default: 1 },
+        rowspan: { default: 1 },
+        colwidth: { default: null },
+        tcPrChange: { default: null },
+      },
+    },
+  },
+  marks: {
+    insertion: {
+      attrs: { revisionId: {}, author: {}, date: {} },
+      excludes: "",
+    },
+    deletion: {
+      attrs: { revisionId: {}, author: {}, date: {} },
+      excludes: "",
+    },
+  },
+});
+
 const REV_A_ATTRS = { revisionId: 1, author: "AI", date: "2026-01-01" };
 const REV_B_ATTRS = { revisionId: 2, author: "AI", date: "2026-01-02" };
 
@@ -130,6 +169,89 @@ describe("AI revision accept/reject scoping", () => {
     // remaining insertion mark belongs to revision B alone.
     expect(view.state.doc.textContent).toBe(" middle beta");
     expect(insertionRevisionsAt(view.state)).toEqual([2]);
+  });
+});
+
+describe("table row structural revision resolution", () => {
+  const row = (
+    text: string,
+    marker:
+      | { trIns: { revisionId: number; author: string; date: string } }
+      | { trDel: { revisionId: number; author: string; date: string } }
+      | undefined,
+  ) =>
+    tableSchema.node("tableRow", marker, [
+      tableSchema.node("tableCell", null, [
+        tableSchema.node("paragraph", null, [tableSchema.text(text)]),
+      ]),
+    ]);
+
+  const stateWithRows = (
+    marker:
+      | { trIns: { revisionId: number; author: string; date: string } }
+      | { trDel: { revisionId: number; author: string; date: string } },
+  ) =>
+    EditorState.create({
+      schema: tableSchema,
+      doc: tableSchema.node("doc", null, [
+        tableSchema.node("table", null, [row("Original", undefined), row("Changed", marker)]),
+      ]),
+    });
+
+  test("accept keeps an inserted row and clears its marker", () => {
+    const view = dispatcher(
+      stateWithRows({
+        trIns: { revisionId: 31, author: "Reviewer", date: "2026-07-16" },
+      }),
+    );
+
+    expect(acceptAIEditRevision(31)(view.state, view.dispatch)).toBe(true);
+
+    const table = view.state.doc.firstChild;
+    expect(table?.childCount).toBe(2);
+    expect(table?.child(1).attrs["trIns"]).toBeNull();
+  });
+
+  test("reject removes an inserted row without consuming another row revision", () => {
+    const inserted = row("Changed", {
+      trIns: { revisionId: 31, author: "Reviewer", date: "2026-07-16" },
+    });
+    const pending = row("Pending", {
+      trIns: { revisionId: 32, author: "Reviewer", date: "2026-07-16" },
+    });
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [row("Original", undefined), inserted, pending]),
+        ]),
+      }),
+    );
+
+    expect(rejectAIEditRevision(31)(view.state, view.dispatch)).toBe(true);
+
+    const table = view.state.doc.firstChild;
+    expect(table?.childCount).toBe(2);
+    expect(table?.textContent).toBe("OriginalPending");
+    expect(table?.child(1).attrs["trIns"]).toEqual({
+      revisionId: 32,
+      author: "Reviewer",
+      date: "2026-07-16",
+    });
+  });
+
+  test("accept removes a deleted row and reject restores it", () => {
+    const marker = {
+      trDel: { revisionId: 41, author: "Reviewer", date: "2026-07-16" },
+    };
+    const accepting = dispatcher(stateWithRows(marker));
+    expect(acceptAIEditRevision(41)(accepting.state, accepting.dispatch)).toBe(true);
+    expect(accepting.state.doc.firstChild?.textContent).toBe("Original");
+
+    const rejecting = dispatcher(stateWithRows(marker));
+    expect(rejectAIEditRevision(41)(rejecting.state, rejecting.dispatch)).toBe(true);
+    expect(rejecting.state.doc.firstChild?.textContent).toBe("OriginalChanged");
+    expect(rejecting.state.doc.firstChild?.child(1).attrs["trDel"]).toBeNull();
   });
 });
 
