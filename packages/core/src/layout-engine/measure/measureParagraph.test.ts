@@ -1157,7 +1157,7 @@ describe("measureParagraph justified shrink tolerance", () => {
               indent: { left: 36, hanging: 36 },
             },
           },
-          136,
+          136.4,
         );
         const spacePoorMeasure = measureParagraph(
           {
@@ -1174,7 +1174,7 @@ describe("measureParagraph justified shrink tolerance", () => {
               indent: { left: 36, hanging: 36 },
             },
           },
-          136,
+          136.4,
         );
 
         expect(spaceRichMeasure.lines).toHaveLength(2);
@@ -1182,6 +1182,59 @@ describe("measureParagraph justified shrink tolerance", () => {
       },
       {
         charWidth: fractionalWidth,
+      },
+    );
+  });
+
+  test("allows Word-compatible space contraction on full-hanging list continuations", () => {
+    const continuationText = `${"a ".repeat(10)}bbb`;
+
+    withFakeTextMeasure(
+      () => {
+        const fittingMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-continuation-contraction",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: continuationText },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 36 },
+            },
+          },
+          136,
+        );
+        const overflowingMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-continuation-contraction-boundary",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: continuationText },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 36 },
+            },
+          },
+          135.8,
+        );
+
+        expect(fittingMeasure.lines).toHaveLength(2);
+        expect(overflowingMeasure.lines).toHaveLength(3);
+      },
+      {
+        charWidth: (char) => {
+          if (char === "b") return 5.3;
+          if (char === " ") return 0.55;
+          return 8;
+        },
       },
     );
   });
@@ -1260,7 +1313,7 @@ describe("measureParagraph justified shrink tolerance", () => {
               indent: { left: 24, hanging: 24 },
             },
           },
-          124,
+          124.4,
         );
 
         expect(measure.lines).toHaveLength(2);

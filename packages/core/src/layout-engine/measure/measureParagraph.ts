@@ -65,7 +65,9 @@ const WIDTH_TOLERANCE = 0.5;
 const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
 const JUSTIFY_SPACE_CONTRACTION_RATIO = 0.075;
 const JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO = 0.195;
-const JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO = 0.23;
+// Word contracts continuation spaces aggressively, but caps the total line shrink.
+const JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO = 0.32;
+const JUSTIFY_LIST_CONTINUATION_MAX_SHRINK_TOLERANCE_RATIO = 0.015;
 const JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO = 0.015;
 const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
 const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
@@ -589,7 +591,7 @@ function uppercaseLetterRatio(text: string): number {
 
 type JustifyFitStrategy =
   | { type: "rounding" }
-  | { type: "space"; ratio: number }
+  | { type: "space"; ratio: number; maxWidthRatio?: number }
   | { type: "width"; ratio: number };
 
 type JustificationProfile = {
@@ -617,7 +619,11 @@ function resolveJustifyFitStrategy(
     if (hanging > 0 && left > hanging) {
       return { type: "width", ratio: JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO };
     }
-    return { type: "space", ratio: JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO };
+    return {
+      type: "space",
+      ratio: JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO,
+      maxWidthRatio: JUSTIFY_LIST_CONTINUATION_MAX_SHRINK_TOLERANCE_RATIO,
+    };
   }
 
   const hasTabStops = (block.attrs?.tabs?.length ?? 0) > 0;
@@ -658,7 +664,12 @@ function justifyFitTolerance(
   if (strategy.type === "width") {
     return Math.max(WIDTH_TOLERANCE, line.availableWidth * strategy.ratio);
   }
-  return Math.max(WIDTH_TOLERANCE, (line.regularSpaceWidth + candidateSpaceWidth) * strategy.ratio);
+  const spaceTolerance = (line.regularSpaceWidth + candidateSpaceWidth) * strategy.ratio;
+  const boundedTolerance =
+    strategy.maxWidthRatio === undefined
+      ? spaceTolerance
+      : Math.min(spaceTolerance, line.availableWidth * strategy.maxWidthRatio);
+  return Math.max(WIDTH_TOLERANCE, boundedTolerance);
 }
 
 function isShallowFullHangingListContinuation(
