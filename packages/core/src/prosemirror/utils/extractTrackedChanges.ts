@@ -493,6 +493,21 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
     paragraphMarkDeletion: 2,
     paragraphPropertiesChanged: 2,
   };
+  const STRUCTURAL_FAMILY_BY_TYPE: Readonly<Record<string, string>> = {
+    tableInserted: "insertion",
+    rowInserted: "insertion",
+    cellInserted: "insertion",
+    paragraphMarkInsertion: "insertion",
+    tableDeleted: "deletion",
+    rowDeleted: "deletion",
+    cellDeleted: "deletion",
+    paragraphMarkDeletion: "deletion",
+    tablePropertiesChanged: "properties",
+    rowPropertiesChanged: "properties",
+    cellPropertiesChanged: "properties",
+    paragraphPropertiesChanged: "properties",
+    cellMerged: "merge",
+  };
   const isStructuralType = (t: TrackedChangeEntry["type"]) => t in STRUCTURAL_PRIORITY;
   const slotByKey = new Map<string, number>();
   const ordered: TrackedChangeEntry[] = [];
@@ -510,11 +525,12 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
       ordered.push(entry);
       continue;
     }
-    // Key by (author, date) only — foreign editors mint a fresh `w:id` per
-    // atomic edit, so triples that differ only in id are still one logical
-    // revision burst and should share a sidebar card. Same-author bursts
-    // at distinct ms-precision timestamps stay separate.
-    const key = `${entry.author}|${entry.date ?? ""}`;
+    // Foreign editors mint a fresh `w:id` per atomic edit, so compatible
+    // structural records in one revision burst share a card. Keep insertions,
+    // deletions, merges, and property changes in separate families even when
+    // their author and timestamp match.
+    const family = STRUCTURAL_FAMILY_BY_TYPE[entry.type] ?? entry.type;
+    const key = `${family}|${entry.author}|${entry.date ?? ""}`;
     const slot = slotByKey.get(key);
     if (slot === undefined) {
       slotByKey.set(key, ordered.push(entry) - 1);

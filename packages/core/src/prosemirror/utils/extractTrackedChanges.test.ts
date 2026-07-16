@@ -139,6 +139,32 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
     ]);
   });
 
+  test("opposing structural changes with the same author and timestamp stay separate", () => {
+    const cell = (kind: "ins" | "del", revisionId: number, text: string) =>
+      schema.nodes.tableCell.create(
+        {
+          cellMarker: {
+            kind,
+            info: { revisionId, author: AUTHOR, date: DATE },
+          },
+        },
+        [schema.nodes.paragraph.create({}, [schema.text(text)])],
+      );
+    const doc = schema.nodes.doc.create({}, [
+      schema.nodes.table.create({}, [
+        schema.nodes.tableRow.create({}, [cell("ins", 201, "Inserted")]),
+        schema.nodes.tableRow.create({}, [cell("del", 202, "Deleted")]),
+      ]),
+    ]);
+
+    const { entries } = extractTrackedChanges(makeState(doc));
+
+    expect(entries.map(({ type, revisionId }) => ({ type, revisionId }))).toEqual([
+      { type: "cellInserted", revisionId: 201 },
+      { type: "cellDeleted", revisionId: 202 },
+    ]);
+  });
+
   test("distinct (author, date) bursts stay as separate cards (we are not over-coalescing)", () => {
     const ins = (id: number, author: string, date: string, text: string) =>
       schema.text(text, [schema.marks.insertion.create({ revisionId: id, author, date })]);
