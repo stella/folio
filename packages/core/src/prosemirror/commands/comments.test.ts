@@ -431,6 +431,39 @@ describe("table cell structural revision resolution", () => {
     expect(rejecting.state.doc.firstChild?.firstChild?.textContent).toBe("Original");
   });
 
+  test("reject removes multiple inserted cells across rows", () => {
+    const markedCell = (text: string, revisionId: number) =>
+      cell(text, {
+        cellMarker: {
+          kind: "ins",
+          info: { revisionId, author: "Reviewer", date: "2026-07-16" },
+        },
+      });
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            tableSchema.node("tableRow", null, [
+              cell("First", undefined),
+              markedCell("Pending first", 78),
+            ]),
+            tableSchema.node("tableRow", null, [
+              cell("Second", undefined),
+              markedCell("Pending second", 79),
+            ]),
+          ]),
+        ]),
+      }),
+    );
+
+    expect(rejectAIEditRevision([78, 79])(view.state, view.dispatch)).toBe(true);
+    const table = view.state.doc.firstChild;
+    expect(table?.child(0).textContent).toBe("First");
+    expect(table?.child(1).textContent).toBe("Second");
+    expect(() => view.state.doc.check()).not.toThrow();
+  });
+
   test("resolving the only cell preserves a valid document", () => {
     const stateWithOnlyCell = (kind: "ins" | "del", revisionId: number) =>
       EditorState.create({
