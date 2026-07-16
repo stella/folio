@@ -157,6 +157,65 @@ describe("parseSuggestChangesInput", () => {
     expect(result.operations[0]?.id).toBe("custom-1");
   });
 
+  test("a tracked table-row insertion accepts position and initial cell text", () => {
+    const result = parseSuggestChangesInput({
+      operations: [
+        {
+          type: "insertTableRow",
+          blockId: "cell-1",
+          position: "before",
+          cellTexts: ["First", "Second"],
+        },
+      ],
+    });
+    expect(result).toEqual({
+      ok: true,
+      operations: [
+        {
+          id: "op-1",
+          type: "insertTableRow",
+          blockId: "cell-1",
+          position: "before",
+          cellTexts: ["First", "Second"],
+        },
+      ],
+    });
+  });
+
+  test("a tracked table-row insertion rejects invalid cell text", () => {
+    const result = parseSuggestChangesInput({
+      operations: [
+        {
+          type: "insertTableRow",
+          blockId: "cell-1",
+          cellTexts: ["First", 2],
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("expected ok:false");
+    }
+    expect(result.error).toContain("cellTexts[1]");
+  });
+
+  test("a tracked table-row insertion rejects an oversized cell list", () => {
+    const result = parseSuggestChangesInput({
+      operations: [
+        {
+          type: "insertTableRow",
+          blockId: "cell-1",
+          cellTexts: Array.from({ length: 257 }, () => ""),
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("expected ok:false");
+    }
+    expect(result.error).toContain("256-cell limit");
+  });
+
   test("an optional comment attaches a review comment to the operation", () => {
     const result = parseSuggestChangesInput({
       operations: [{ type: "deleteBlock", blockId: "b1", comment: "why this edit" }],
@@ -293,7 +352,6 @@ describe("parseSuggestChangesInput", () => {
       "formatRange",
       "commentOnBlock",
       "insertSignatureTable",
-      "insertTableRow",
       "deleteTableRow",
       "insertTableColumn",
       "deleteTableColumn",

@@ -1510,27 +1510,47 @@ function convertTableRow(
   rowSpanMap?: Map<string, RowSpanInfo>,
   defaultCellMargins?: TableCellMarginsAttrs,
 ): PMNode {
-  const attrs: TableRowAttrs = {
+  const attrsWithoutStructuralChange: Omit<TableRowAttrs, "trIns" | "trDel"> = {
     // isHeader controls header row REPETITION on page breaks.
     // Only w:tblHeader (row.formatting.header) should trigger this — NOT tblLook/firstRow
     // which is purely a conditional formatting flag (ECMA-376 §17.7.6.1).
     isHeader: !!row.formatting?.header,
   };
   if (row.formatting?.height?.value !== undefined) {
-    attrs.height = row.formatting.height.value;
+    attrsWithoutStructuralChange.height = row.formatting.height.value;
   }
   if (row.formatting?.heightRule) {
-    attrs.heightRule = row.formatting.heightRule;
+    attrsWithoutStructuralChange.heightRule = row.formatting.heightRule;
   }
   if (row.formatting?.hidden) {
-    attrs.hidden = true;
+    attrsWithoutStructuralChange.hidden = true;
   }
   if (row.formatting) {
-    attrs._originalFormatting = row.formatting;
+    attrsWithoutStructuralChange._originalFormatting = row.formatting;
   }
   // Carry `w:trPrChange` opaquely through PM for round-trip + accept/reject.
   if (row.propertyChanges && row.propertyChanges.length > 0) {
-    attrs.trPrChange = [...row.propertyChanges];
+    attrsWithoutStructuralChange.trPrChange = [...row.propertyChanges];
+  }
+  let attrs: TableRowAttrs = attrsWithoutStructuralChange;
+  if (row.structuralChange?.type === "tableRowInsertion") {
+    attrs = {
+      ...attrsWithoutStructuralChange,
+      trIns: {
+        revisionId: row.structuralChange.info.id,
+        author: row.structuralChange.info.author,
+        date: row.structuralChange.info.date ?? null,
+      },
+    };
+  } else if (row.structuralChange?.type === "tableRowDeletion") {
+    attrs = {
+      ...attrsWithoutStructuralChange,
+      trDel: {
+        revisionId: row.structuralChange.info.id,
+        author: row.structuralChange.info.author,
+        date: row.structuralChange.info.date ?? null,
+      },
+    };
   }
 
   const numCells = row.cells.length;

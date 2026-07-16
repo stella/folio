@@ -13,13 +13,13 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { createFolioAIEditSnapshot } from "./snapshot";
 
-export type FolioReviewChangeKind = "insertion" | "deletion";
+export type FolioReviewChangeKind = "insertion" | "deletion" | "rowInserted" | "rowDeleted";
 
-/** A tracked change (insertion or deletion) discovered in the document body. */
+/** A tracked change discovered in the document body. */
 export type FolioReviewChange = {
   /**
    * The tracked-change revision id — the OOXML `w:id` carried on the
-   * insertion / deletion mark. A replace produces two changes (a deletion side
+   * revision marker. A text replacement produces two changes (a deletion side
    * and an insertion side) with distinct ids.
    */
   id: number;
@@ -27,7 +27,7 @@ export type FolioReviewChange = {
   author: string;
   /** ISO date the change was authored, or `null` when the source omitted it. */
   date: string | null;
-  /** Inserted text for insertions, removed text for deletions. */
+  /** Affected text, including the row content for structural revisions. */
   text: string;
   /**
    * Stable id of the containing body block (Word `w14:paraId` or `seq-NNNN`).
@@ -55,10 +55,32 @@ const blockStartIdsFromDoc = (doc: PMNode): Map<number, string> => {
   return starts;
 };
 
+type FirstBlockIdWithinParams = {
+  node: PMNode;
+  nodePos: number;
+  blockStarts: ReadonlyMap<number, string>;
+};
+
+const firstBlockIdWithin = ({
+  node,
+  nodePos,
+  blockStarts,
+}: FirstBlockIdWithinParams): string | null => {
+  let blockId: string | null = null;
+  node.descendants((child, relativePos) => {
+    if (blockId !== null || !child.isTextblock) {
+      return blockId === null;
+    }
+    blockId = blockStarts.get(nodePos + 1 + relativePos) ?? null;
+    return false;
+  });
+  return blockId;
+};
+
 /**
- * The tracked changes (insertions and deletions) present in the body, read from
- * the `insertion` / `deletion` marks the editor renders. Runs of one revision
- * within a block fold into a single entry.
+ * The tracked changes present in the body, read from inline marks and
+ * structural node attributes. Runs of one inline revision within a block fold
+ * into a single entry.
  */
 export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
   const insertionType = doc.type.schema.marks["insertion"];
@@ -68,6 +90,33 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
   let currentBlockId: string | null = null;
 
   doc.descendants((node, pos) => {
+    if (node.type.name === "tableRow") {
+      for (const [attrName, kind] of [
+        ["trIns", "rowInserted"],
+        ["trDel", "rowDeleted"],
+      ] as const) {
+        const marker = node.attrs[attrName];
+        if (
+          typeof marker !== "object" ||
+          marker === null ||
+          !("revisionId" in marker) ||
+          typeof marker.revisionId !== "number"
+        ) {
+          continue;
+        }
+        const revisionId = marker.revisionId;
+        const author = "author" in marker ? marker.author : undefined;
+        const date = "date" in marker ? marker.date : undefined;
+        grouped.set(`row:${kind}:${revisionId}:${String(pos)}`, {
+          id: revisionId,
+          type: kind,
+          author: typeof author === "string" ? author : "",
+          date: typeof date === "string" ? date : null,
+          text: node.textContent,
+          blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
+        });
+      }
+    }
     if (node.isTextblock) {
       currentBlockId = blockStarts.get(pos) ?? null;
       return true;

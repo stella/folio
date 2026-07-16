@@ -608,7 +608,30 @@ export type TableRowAttrs = {
   _originalFormatting?: TableRowFormatting;
   /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
   trPrChange?: TableRowPropertyChange[];
-};
+} & (
+  | {
+      /** Tracked structural row insertion (w:trPr/w:ins). */
+      trIns: {
+        revisionId: number;
+        author: string;
+        date?: string | null;
+      };
+      trDel?: never;
+    }
+  | {
+      trIns?: never;
+      /** Tracked structural row deletion (w:trPr/w:del). */
+      trDel: {
+        revisionId: number;
+        author: string;
+        date?: string | null;
+      };
+    }
+  | {
+      trIns?: never;
+      trDel?: never;
+    }
+);
 
 /**
  * Table cell attributes

@@ -2586,6 +2586,25 @@ function convertPMTableRow(
   if (Array.isArray(attrs.trPrChange) && attrs.trPrChange.length > 0) {
     row.propertyChanges = [...attrs.trPrChange];
   }
+  if (attrs.trIns) {
+    row.structuralChange = {
+      type: "tableRowInsertion",
+      info: {
+        id: attrs.trIns.revisionId,
+        author: attrs.trIns.author,
+        ...(attrs.trIns.date != null && { date: attrs.trIns.date }),
+      },
+    };
+  } else if (attrs.trDel) {
+    row.structuralChange = {
+      type: "tableRowDeletion",
+      info: {
+        id: attrs.trDel.revisionId,
+        author: attrs.trDel.author,
+        ...(attrs.trDel.date != null && { date: attrs.trDel.date }),
+      },
+    };
+  }
   return row;
 }
 

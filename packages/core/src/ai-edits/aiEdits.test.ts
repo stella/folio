@@ -34,6 +34,10 @@ const schema = new Schema({
     tableRow: {
       content: "tableCell*",
       tableRole: "row",
+      attrs: {
+        trIns: { default: null },
+        trDel: { default: null },
+      },
     },
     tableCell: {
       content: "block+",
@@ -3217,7 +3221,7 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc.child(0).childCount).toBe(1);
   });
 
-  test("table-row inserts are skipped in tracked-changes mode", () => {
+  test("table-row inserts create one structural revision in tracked-changes mode", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
@@ -3236,10 +3240,43 @@ describe("Folio AI edit operations", () => {
       mode: "tracked-changes",
     });
 
+    expect(result.skipped).toEqual([]);
+    expect(result.applied).toHaveLength(1);
+    const revisionId = result.applied.at(0)?.revisionId;
+    expect(typeof revisionId).toBe("number");
+    expect(result.applied.at(0)?.revisionIds).toEqual([revisionId]);
+    const liveTable = view.state.doc.child(0);
+    expect(liveTable.childCount).toBe(2);
+    expect(liveTable.child(1).attrs["trIns"]).toEqual({
+      revisionId,
+      author: "AI",
+      date: expect.any(String),
+    });
+  });
+
+  test("tracked row insertion rejects a boundary crossed by a vertical span", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { rowspan: 2 }, [
+          schema.node("paragraph", { paraId: "spanned-cell" }, [schema.text("Cell")]),
+        ]),
+      ]),
+      schema.node("tableRow"),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "insert-row", type: "insertTableRow", blockId: "spanned-cell" }],
+      mode: "tracked-changes",
+    });
+
     expect(result).toEqual({
       applied: [],
-      skipped: [{ id: "insert-row", reason: "unsupportedMode" }],
+      skipped: [{ id: "insert-row", reason: "unsupportedBlock" }],
     });
-    expect(view.state.doc.child(0).childCount).toBe(1);
+    expect(view.state.doc).toEqual(state.doc);
   });
 });

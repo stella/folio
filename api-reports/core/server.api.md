@@ -192,7 +192,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly deleteBlock: readonly ["direct", "tracked-changes"];
     readonly commentOnBlock: readonly ["direct", "tracked-changes"];
     readonly insertSignatureTable: readonly ["direct"];
-    readonly insertTableRow: readonly ["direct"];
+    readonly insertTableRow: readonly ["direct", "tracked-changes"];
     readonly deleteTableRow: readonly ["direct"];
     readonly insertTableColumn: readonly ["direct"];
     readonly deleteTableColumn: readonly ["direct"];
@@ -777,7 +777,7 @@ export type FolioReviewChange = {
     id: number;
     type: FolioReviewChangeKind;
     author: string; /** ISO date the change was authored, or `null` when the source omitted it. */
-    date: string | null; /** Inserted text for insertions, removed text for deletions. */
+    date: string | null; /** Affected text, including the row content for structural revisions. */
     text: string;
     blockId: string | null;
 };
@@ -789,7 +789,7 @@ export type FolioReviewChangeFilter = {
 };
 
 // @public (undocumented)
-export type FolioReviewChangeKind = "insertion" | "deletion";
+export type FolioReviewChangeKind = "insertion" | "deletion" | "rowInserted" | "rowDeleted";
 
 // @public
 export type FolioReviewComment = {

@@ -862,10 +862,10 @@ export class FolioDocxReviewer {
   }
 
   /**
-   * The tracked changes (insertions and deletions) present in the body, read
-   * from the same `insertion` / `deletion` marks the editor renders. Each
-   * carries the revision id {@link acceptChange} / {@link rejectChange} resolve
-   * against. Runs of one revision within a block fold into a single entry.
+   * The tracked changes present in the body, including inline and structural
+   * revisions. Each carries the revision id {@link acceptChange} /
+   * {@link rejectChange} resolve against. Related revision sites fold into one
+   * entry where the document model identifies them as one authored change.
    */
   getChanges(filter?: FolioReviewChangeFilter): FolioReviewChange[] {
     const changes = getTrackedChangesFromDoc(this.state.doc);

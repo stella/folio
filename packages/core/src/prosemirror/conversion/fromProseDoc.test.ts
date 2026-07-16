@@ -18,6 +18,84 @@ import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 describe("fromProseDoc", () => {
+  test("round-trips table row structural revision markers through the editor model", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  structuralChange: {
+                    type: "tableRowInsertion",
+                    info: {
+                      id: 71,
+                      author: "Reviewer",
+                      date: "2026-07-16T08:00:00.000Z",
+                    },
+                  },
+                  cells: [
+                    {
+                      type: "tableCell",
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+                {
+                  type: "tableRow",
+                  structuralChange: {
+                    type: "tableRowDeletion",
+                    info: { id: 72, author: "Reviewer" },
+                  },
+                  cells: [
+                    {
+                      type: "tableCell",
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    expect(pmDoc.firstChild?.child(0).attrs["trIns"]).toEqual({
+      revisionId: 71,
+      author: "Reviewer",
+      date: "2026-07-16T08:00:00.000Z",
+    });
+    expect(pmDoc.firstChild?.child(1).attrs["trDel"]).toEqual({
+      revisionId: 72,
+      author: "Reviewer",
+      date: null,
+    });
+
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const table = roundTripped.package.document.content.at(0);
+    if (table?.type !== "table") {
+      throw new Error("Expected table");
+    }
+    expect(table.rows.map(({ structuralChange }) => structuralChange)).toEqual([
+      {
+        type: "tableRowInsertion",
+        info: {
+          id: 71,
+          author: "Reviewer",
+          date: "2026-07-16T08:00:00.000Z",
+        },
+      },
+      {
+        type: "tableRowDeletion",
+        info: { id: 72, author: "Reviewer" },
+      },
+    ]);
+  });
+
   test("round-trips authored table-cell anchor scope through the editor model", () => {
     const document: Document = {
       package: {
@@ -74,6 +152,47 @@ describe("fromProseDoc", () => {
     ]);
 
     expect(() => fromProseDoc(pmDoc)).toThrow("paragraph.attrs.paraId");
+  });
+
+  test("rejects malformed table row revision attrs at the conversion boundary", () => {
+    const invalidRevisionDoc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node(
+          "tableRow",
+          {
+            trIns: {
+              revisionId: "71",
+              author: "Reviewer",
+            },
+          },
+          [schema.node("tableCell", null, [schema.node("paragraph")])],
+        ),
+      ]),
+    ]);
+
+    const conflictingRevisionDoc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node(
+          "tableRow",
+          {
+            trIns: {
+              revisionId: 71,
+              author: "Reviewer",
+            },
+            trDel: {
+              revisionId: 72,
+              author: "Reviewer",
+            },
+          },
+          [schema.node("tableCell", null, [schema.node("paragraph")])],
+        ),
+      ]),
+    ]);
+
+    expect(() => fromProseDoc(invalidRevisionDoc)).toThrow("tableRow.attrs.trIns.revisionId");
+    expect(() => fromProseDoc(conflictingRevisionDoc)).toThrow(
+      "Expected at most one structural revision marker.",
+    );
   });
 
   test("rejects malformed hyperlink attrs at the conversion boundary", () => {
