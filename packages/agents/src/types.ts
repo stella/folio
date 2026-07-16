@@ -4,6 +4,7 @@ import type {
   FolioAITextRangeHandle,
   FolioDocumentOperationIssue,
   FolioDocumentOperationReceipt,
+  FolioReviewChange,
   FolioDocumentSectionHandle,
   FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
@@ -158,7 +159,7 @@ export type FolioAgentComment = {
 /** A pending tracked change, shaped to match {@link FolioDocxReviewer.getChanges}. */
 export type FolioAgentChange = {
   id: string;
-  type: "insertion" | "deletion" | "rowInserted" | "rowDeleted";
+  type: FolioReviewChange["type"];
   author: string;
   text: string;
   blockId: string | null;

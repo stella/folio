@@ -27,6 +27,7 @@ import { FolioDocumentStory } from '@stll/folio-core/server';
 import { FolioDocumentStoryHandle } from '@stll/folio-core/server';
 import { FolioDocxReviewer } from '@stll/folio-core/server';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
+import { FolioReviewChange as FolioReviewChange_2 } from '@stll/folio-core/server';
 import { FolioVersionDiff } from '@stll/folio-core/server';
 import { FolioVersionDiffSegment } from '@stll/folio-core/server';
 import { GenerateRedlineDocxOptions } from '@stll/folio-core/server';
@@ -2150,7 +2151,7 @@ export type FolioAgentBridge = {
 // @public
 export type FolioAgentChange = {
     id: string;
-    type: "insertion" | "deletion" | "rowInserted" | "rowDeleted";
+    type: FolioReviewChange_2["type"];
     author: string;
     text: string;
     blockId: string | null;
