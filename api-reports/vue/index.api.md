@@ -223,16 +223,16 @@ export { AutocompleteCaretOverlay }
 
 // @public (undocumented)
 export type AutocompleteCaretOverlayProps = {
-    caret: AutocompleteCaretRect | null; /** The full streamed ghost text so far. */
-    text: string; /** Whether tokens are still arriving. */
+    caret: AutocompleteCaretRect | null;
+    text: string;
     isStreaming: boolean;
 };
 
 // @public (undocumented)
 export type AutocompleteCaretRect = {
-    x: number; /** Overlay-relative pixel y (top of the cursor line). */
-    y: number; /** Line height in pixels at the anchor. */
-    lineHeight: number; /** Available width from the caret to the page's right content edge. */
+    x: number;
+    y: number;
+    lineHeight: number;
     maxWidth?: number | undefined;
 };
 
