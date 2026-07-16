@@ -22,7 +22,7 @@ import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { schema, singletonManager } from "../prosemirror/schema";
-import type { HeaderFooter } from "../types/document";
+import type { HeaderFooter, TableStructuralChangeInfo } from "../types/document";
 import {
   FolioDocumentStoryNotFoundError,
   FolioDocxReviewer,
@@ -110,6 +110,23 @@ const partBytes = async (buffer: ArrayBuffer, part: string): Promise<Uint8Array>
     throw new Error(`missing part: ${part}`);
   }
   return file.async("uint8array");
+};
+
+const buildTextBoxCellRevisionDocument = async (
+  structuralChange: TableStructuralChangeInfo,
+): Promise<ArrayBuffer> => {
+  const baseline = await buildTextBoxTableDocument();
+  const document = await parseDocx(baseline, { detectVariables: false, preloadFonts: false });
+  const table = findTextBoxShape(document).textBody?.content.find(({ type }) => type === "table");
+  if (table?.type !== "table") {
+    throw new Error("expected a text-box table");
+  }
+  const cell = table.rows.at(0)?.cells.at(0);
+  if (!cell) {
+    throw new Error("expected a text-box table cell");
+  }
+  cell.structuralChange = structuralChange;
+  return repackDocx(document, { updateModifiedDate: false });
 };
 
 /** Extract the `<w:p …>…</w:p>` element that contains `needle`. */
@@ -495,6 +512,88 @@ describe("headless docx review round-trip", () => {
       throw new Error("expected a rejected table");
     }
     expect(rejectedTable.rows).toHaveLength(1);
+  });
+
+  test("preserves and resolves a tracked cell insertion", async () => {
+    const baseline = await buildTextBoxCellRevisionDocument({
+      type: "tableCellInsertion",
+      info: {
+        id: 91,
+        author: "Reviewer",
+        date: "2026-07-16T10:00:00.000Z",
+      },
+    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const change = reviewer.getChanges().find(({ type }) => type === "cellInserted");
+    if (!change) {
+      throw new Error("expected a tracked cell insertion");
+    }
+    expect(change.author).toBe("Reviewer");
+    expect(change.text).toContain("Cell value");
+
+    const pending = await reviewer.toBuffer();
+    expect(await partText(pending, "word/document.xml")).toContain("<w:cellIns ");
+    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopenedChange = reopened.getChanges().find(({ type }) => type === "cellInserted");
+    if (!reopenedChange) {
+      throw new Error("expected the cell insertion after reopen");
+    }
+
+    expect(reopened.acceptChange(reopenedChange)).toBe(true);
+    const accepted = await reopened.toBuffer();
+    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:cellIns ");
+    expect(reopened.getContentAsText()).toContain("Cell value");
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejectChange = rejecting.getChanges().find(({ type }) => type === "cellInserted");
+    if (!rejectChange) {
+      throw new Error("expected the cell insertion before rejection");
+    }
+    expect(rejecting.rejectChange(rejectChange)).toBe(true);
+    const rejected = await rejecting.toBuffer();
+    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:cellIns ");
+    expect(rejecting.getContentAsText()).not.toContain("Cell value");
+  });
+
+  test("preserves and resolves a tracked cell deletion", async () => {
+    const baseline = await buildTextBoxCellRevisionDocument({
+      type: "tableCellDeletion",
+      info: {
+        id: 92,
+        author: "Reviewer",
+        date: "2026-07-16T10:30:00.000Z",
+      },
+    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const change = reviewer.getChanges().find(({ type }) => type === "cellDeleted");
+    if (!change) {
+      throw new Error("expected a tracked cell deletion");
+    }
+    expect(change.author).toBe("Reviewer");
+    expect(change.text).toContain("Cell value");
+
+    const pending = await reviewer.toBuffer();
+    expect(await partText(pending, "word/document.xml")).toContain("<w:cellDel ");
+    const reopened = await FolioDocxReviewer.fromBuffer(pending);
+    const reopenedChange = reopened.getChanges().find(({ type }) => type === "cellDeleted");
+    if (!reopenedChange) {
+      throw new Error("expected the cell deletion after reopen");
+    }
+
+    expect(reopened.acceptChange(reopenedChange)).toBe(true);
+    const accepted = await reopened.toBuffer();
+    expect(await partText(accepted, "word/document.xml")).not.toContain("<w:cellDel ");
+    expect(reopened.getContentAsText()).not.toContain("Cell value");
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    const rejectChange = rejecting.getChanges().find(({ type }) => type === "cellDeleted");
+    if (!rejectChange) {
+      throw new Error("expected the cell deletion before rejection");
+    }
+    expect(rejecting.rejectChange(rejectChange)).toBe(true);
+    const rejected = await rejecting.toBuffer();
+    expect(await partText(rejected, "word/document.xml")).not.toContain("<w:cellDel ");
+    expect(rejecting.getContentAsText()).toContain("Cell value");
   });
 
   test("inserts, persists, and undoes a column inside shape text", async () => {

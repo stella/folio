@@ -1829,6 +1829,25 @@ function convertTableCell({
   if (cell.propertyChanges && cell.propertyChanges.length > 0) {
     attrs.tcPrChange = [...cell.propertyChanges];
   }
+  if (cell.structuralChange?.type === "tableCellInsertion") {
+    attrs.cellMarker = {
+      kind: "ins",
+      info: {
+        revisionId: cell.structuralChange.info.id,
+        author: cell.structuralChange.info.author,
+        date: cell.structuralChange.info.date ?? null,
+      },
+    };
+  } else if (cell.structuralChange?.type === "tableCellDeletion") {
+    attrs.cellMarker = {
+      kind: "del",
+      info: {
+        revisionId: cell.structuralChange.info.id,
+        author: cell.structuralChange.info.author,
+        date: cell.structuralChange.info.date ?? null,
+      },
+    };
+  }
   if (preserveVMergeRestart) {
     attrs._preserveVMergeRestart = true;
   }

@@ -96,6 +96,86 @@ describe("fromProseDoc", () => {
     ]);
   });
 
+  test("round-trips table cell insertion and deletion markers through the editor model", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    {
+                      type: "tableCell",
+                      structuralChange: {
+                        type: "tableCellInsertion",
+                        info: {
+                          id: 81,
+                          author: "Reviewer",
+                          date: "2026-07-16T09:00:00.000Z",
+                        },
+                      },
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                    {
+                      type: "tableCell",
+                      structuralChange: {
+                        type: "tableCellDeletion",
+                        info: { id: 82, author: "Reviewer" },
+                      },
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const row = pmDoc.firstChild?.firstChild;
+    expect(row?.child(0).attrs["cellMarker"]).toEqual({
+      kind: "ins",
+      info: {
+        revisionId: 81,
+        author: "Reviewer",
+        date: "2026-07-16T09:00:00.000Z",
+      },
+    });
+    expect(row?.child(1).attrs["cellMarker"]).toEqual({
+      kind: "del",
+      info: {
+        revisionId: 82,
+        author: "Reviewer",
+        date: null,
+      },
+    });
+
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const table = roundTripped.package.document.content.at(0);
+    if (table?.type !== "table") {
+      throw new Error("Expected table");
+    }
+    expect(table.rows.at(0)?.cells.map(({ structuralChange }) => structuralChange)).toEqual([
+      {
+        type: "tableCellInsertion",
+        info: {
+          id: 81,
+          author: "Reviewer",
+          date: "2026-07-16T09:00:00.000Z",
+        },
+      },
+      {
+        type: "tableCellDeletion",
+        info: { id: 82, author: "Reviewer" },
+      },
+    ]);
+  });
+
   test("round-trips authored table-cell anchor scope through the editor model", () => {
     const document: Document = {
       package: {
@@ -193,6 +273,30 @@ describe("fromProseDoc", () => {
     expect(() => fromProseDoc(conflictingRevisionDoc)).toThrow(
       "Expected at most one structural revision marker.",
     );
+  });
+
+  test("rejects malformed table cell revision attrs at the conversion boundary", () => {
+    const pmDoc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node(
+            "tableCell",
+            {
+              cellMarker: {
+                kind: "ins",
+                info: {
+                  revisionId: "81",
+                  author: "Reviewer",
+                },
+              },
+            },
+            [schema.node("paragraph")],
+          ),
+        ]),
+      ]),
+    ]);
+
+    expect(() => fromProseDoc(pmDoc)).toThrow("tableCell.attrs.cellMarker.info.revisionId");
   });
 
   test("rejects malformed hyperlink attrs at the conversion boundary", () => {

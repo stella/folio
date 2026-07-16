@@ -84,6 +84,7 @@ const tableSchema = new Schema({
         rowspan: { default: 1 },
         colwidth: { default: null },
         tcPrChange: { default: null },
+        cellMarker: { default: null },
       },
     },
   },
@@ -306,6 +307,161 @@ describe("table row structural revision resolution", () => {
     expect(acceptAIEditRevision(62)(view.state, view.dispatch)).toBe(true);
     expect(view.state.doc.firstChild?.type.name).toBe("paragraph");
     expect(() => view.state.doc.check()).not.toThrow();
+  });
+});
+
+describe("table cell structural revision resolution", () => {
+  const cell = (
+    text: string,
+    marker:
+      | {
+          cellMarker: {
+            kind: "ins" | "del";
+            info: { revisionId: number; author: string; date: string };
+          };
+        }
+      | undefined,
+  ) =>
+    tableSchema.node("tableCell", marker, [
+      tableSchema.node("paragraph", null, [tableSchema.text(text)]),
+    ]);
+
+  const stateWithCells = (marker: {
+    cellMarker: {
+      kind: "ins" | "del";
+      info: { revisionId: number; author: string; date: string };
+    };
+  }) =>
+    EditorState.create({
+      schema: tableSchema,
+      doc: tableSchema.node("doc", null, [
+        tableSchema.node("table", null, [
+          tableSchema.node("tableRow", null, [
+            cell("Original", undefined),
+            cell("Changed", marker),
+          ]),
+        ]),
+      ]),
+    });
+
+  test("accept keeps an inserted cell and clears its marker", () => {
+    const view = dispatcher(
+      stateWithCells({
+        cellMarker: {
+          kind: "ins",
+          info: { revisionId: 71, author: "Reviewer", date: "2026-07-16" },
+        },
+      }),
+    );
+
+    expect(acceptAIEditRevision(71)(view.state, view.dispatch)).toBe(true);
+    const row = view.state.doc.firstChild?.firstChild;
+    expect(row?.childCount).toBe(2);
+    expect(row?.child(1).attrs["cellMarker"]).toBeNull();
+  });
+
+  test("reject removes an inserted cell without consuming another cell revision", () => {
+    const pending = cell("Pending", {
+      cellMarker: {
+        kind: "ins",
+        info: { revisionId: 73, author: "Reviewer", date: "2026-07-16" },
+      },
+    });
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            tableSchema.node("tableRow", null, [
+              cell("Original", undefined),
+              cell("Changed", {
+                cellMarker: {
+                  kind: "ins",
+                  info: { revisionId: 72, author: "Reviewer", date: "2026-07-16" },
+                },
+              }),
+              pending,
+            ]),
+          ]),
+        ]),
+      }),
+    );
+
+    expect(rejectAIEditRevision(72)(view.state, view.dispatch)).toBe(true);
+    const row = view.state.doc.firstChild?.firstChild;
+    expect(row?.childCount).toBe(2);
+    expect(row?.textContent).toBe("OriginalPending");
+    expect(row?.child(1).attrs["cellMarker"]).toEqual({
+      kind: "ins",
+      info: { revisionId: 73, author: "Reviewer", date: "2026-07-16" },
+    });
+  });
+
+  test("accept removes a deleted cell and reject restores it", () => {
+    const marker = {
+      cellMarker: {
+        kind: "del" as const,
+        info: { revisionId: 74, author: "Reviewer", date: "2026-07-16" },
+      },
+    };
+    const accepting = dispatcher(stateWithCells(marker));
+    expect(acceptAIEditRevision(74)(accepting.state, accepting.dispatch)).toBe(true);
+    expect(accepting.state.doc.firstChild?.firstChild?.textContent).toBe("Original");
+
+    const rejecting = dispatcher(stateWithCells(marker));
+    expect(rejectAIEditRevision(74)(rejecting.state, rejecting.dispatch)).toBe(true);
+    const row = rejecting.state.doc.firstChild?.firstChild;
+    expect(row?.textContent).toBe("OriginalChanged");
+    expect(row?.child(1).attrs["cellMarker"]).toBeNull();
+  });
+
+  test("bulk accept and reject resolve inserted cells", () => {
+    const marker = {
+      cellMarker: {
+        kind: "ins" as const,
+        info: { revisionId: 77, author: "Reviewer", date: "2026-07-16" },
+      },
+    };
+    const accepting = dispatcher(stateWithCells(marker));
+    expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(true);
+    expect(accepting.state.doc.firstChild?.firstChild?.child(1).attrs["cellMarker"]).toBeNull();
+
+    const rejecting = dispatcher(stateWithCells(marker));
+    expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(true);
+    expect(rejecting.state.doc.firstChild?.firstChild?.textContent).toBe("Original");
+  });
+
+  test("resolving the only cell preserves a valid document", () => {
+    const stateWithOnlyCell = (kind: "ins" | "del", revisionId: number) =>
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            tableSchema.node("tableRow", null, [
+              cell("Changed", {
+                cellMarker: {
+                  kind,
+                  info: { revisionId, author: "Reviewer", date: "2026-07-16" },
+                },
+              }),
+            ]),
+          ]),
+        ]),
+      });
+
+    const rejectingInsertion = dispatcher(stateWithOnlyCell("ins", 75));
+    expect(rejectAIEditRevision(75)(rejectingInsertion.state, rejectingInsertion.dispatch)).toBe(
+      true,
+    );
+    expect(rejectingInsertion.state.doc.firstChild?.type.name).toBe("paragraph");
+    expect(() => rejectingInsertion.state.doc.check()).not.toThrow();
+
+    const acceptingDeletion = dispatcher(stateWithOnlyCell("del", 76));
+    expect(acceptAIEditRevision(76)(acceptingDeletion.state, acceptingDeletion.dispatch)).toBe(
+      true,
+    );
+    expect(acceptingDeletion.state.doc.firstChild?.type.name).toBe("paragraph");
+    expect(() => acceptingDeletion.state.doc.check()).not.toThrow();
   });
 });
 

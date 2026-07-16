@@ -109,6 +109,7 @@ function resolveChange(
       const deleteRanges: { from: number; to: number }[] = [];
       const pPrMarkOps: PPrMarkOp[] = [];
       const tableRowStructuralOps: TableRowStructuralOp[] = [];
+      const tableCellStructuralOps: TableCellStructuralOp[] = [];
 
       state.doc.nodesBetween(from, to, (node, pos): boolean => {
         if (node.type.name === "paragraph") {
@@ -209,6 +210,15 @@ function resolveChange(
             tableRowStructuralOps.push(op);
           }
         }
+        if (
+          (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
+          rangeCoversNode(from, to, pos, node)
+        ) {
+          const op = collectTableCellStructuralOp(node, pos, mode, revisionSet);
+          if (op) {
+            tableCellStructuralOps.push(op);
+          }
+        }
 
         // Table property changes (w:tblPrChange / w:trPrChange / w:tcPrChange)
         // carried on the table / row / cell node attrs.
@@ -306,6 +316,26 @@ function resolveChange(
         markStructuralChange(tr);
       }
 
+      tableCellStructuralOps.sort((left, right) => right.cellPos - left.cellPos);
+      let resolvedTableCellStructure = false;
+      for (const op of tableCellStructuralOps) {
+        const mappedPos = tr.mapping.map(op.cellPos);
+        const cell = tr.doc.nodeAt(mappedPos);
+        if (!cell || (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")) {
+          continue;
+        }
+        if (op.action === "clear") {
+          tr.setNodeAttribute(mappedPos, "cellMarker", null);
+          resolvedTableCellStructure = true;
+          continue;
+        }
+        deleteTableCellAt(tr, mappedPos);
+        resolvedTableCellStructure = true;
+      }
+      if (resolvedTableCellStructure) {
+        markStructuralChange(tr);
+      }
+
       if (tr.steps.length > 0) {
         dispatch(tr);
       }
@@ -327,6 +357,18 @@ type TableRowStructuralOp = {
 
 type TableRowRevisionAttr = {
   revisionId: number;
+};
+
+type TableCellStructuralOp = {
+  cellPos: number;
+  action: "clear" | "remove";
+};
+
+type TableCellRevisionAttr = {
+  kind: "ins" | "del";
+  info: {
+    revisionId: number;
+  };
 };
 
 function collectTableRowStructuralOp(
@@ -360,6 +402,59 @@ function isTableRowRevisionAttr(value: unknown): value is TableRowRevisionAttr {
     "revisionId" in value &&
     typeof value.revisionId === "number"
   );
+}
+
+function collectTableCellStructuralOp(
+  node: PMNode,
+  cellPos: number,
+  mode: "accept" | "reject",
+  revisionSet: Set<number> | null,
+): TableCellStructuralOp | null {
+  const marker = node.attrs["cellMarker"];
+  if (!isTableCellRevisionAttr(marker)) {
+    return null;
+  }
+  if (revisionSet !== null && !revisionSet.has(marker.info.revisionId)) {
+    return null;
+  }
+  const keepsCell = (marker.kind === "ins") === (mode === "accept");
+  return {
+    cellPos,
+    action: keepsCell ? "clear" : "remove",
+  };
+}
+
+function isTableCellRevisionAttr(value: unknown): value is TableCellRevisionAttr {
+  if (typeof value !== "object" || value === null || !("kind" in value) || !("info" in value)) {
+    return false;
+  }
+  if (value.kind !== "ins" && value.kind !== "del") {
+    return false;
+  }
+  const info = value.info;
+  return (
+    typeof info === "object" &&
+    info !== null &&
+    "revisionId" in info &&
+    typeof info.revisionId === "number"
+  );
+}
+
+function deleteTableCellAt(tr: Transaction, cellPos: number): void {
+  const cell = tr.doc.nodeAt(cellPos);
+  if (!cell || (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")) {
+    return;
+  }
+  const resolved = tr.doc.resolve(cellPos);
+  const row = resolved.parent;
+  if (row.type.spec["tableRole"] !== "row") {
+    return;
+  }
+  if (row.childCount > 1) {
+    tr.delete(cellPos, cellPos + cell.nodeSize);
+    return;
+  }
+  deleteTableRowAt(tr, resolved.start() - 1);
 }
 
 function deleteTableRowAt(tr: Transaction, rowPos: number): void {
@@ -740,6 +835,20 @@ export function findAIEditRevisionRange(
           }
           return false;
         }
+      }
+    }
+    if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+      const marker = node.attrs["cellMarker"];
+      if (isTableCellRevisionAttr(marker) && idSet.has(marker.info.revisionId)) {
+        const start = pos;
+        const end = pos + node.nodeSize;
+        if (range.from === null || start < range.from) {
+          range.from = start;
+        }
+        if (range.to === null || end > range.to) {
+          range.to = end;
+        }
+        return false;
       }
     }
     // Widen from `isText` to `isInline` so an AI-edit revision on an inline

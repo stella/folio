@@ -496,6 +496,7 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
   ]);
   optionalInsetMap(attrs, "margins", "tableCell.attrs.margins", issues);
   optionalRecord(attrs, "_originalFormatting", "tableCell.attrs._originalFormatting", issues);
+  optionalTableCellRevision(attrs, issues);
   optionalBoolean(
     attrs,
     "_preserveVMergeRestart",
@@ -1521,6 +1522,30 @@ const optionalTableRowRevision = (
   requiredNumber(value, "revisionId", `${path}.revisionId`, issues);
   requiredString(value, "author", `${path}.author`, issues);
   optionalString(value, "date", `${path}.date`, issues);
+};
+
+const optionalTableCellRevision = (
+  attrs: Record<string, unknown>,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["cellMarker"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  const path = "tableCell.attrs.cellMarker";
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  requiredOneOf(value, "kind", `${path}.kind`, issues, ["ins", "del"] as const);
+  const info = value["info"];
+  if (!isRecord(info)) {
+    issues.push({ path: `${path}.info`, message: "Expected an object." });
+    return;
+  }
+  requiredNumber(info, "revisionId", `${path}.info.revisionId`, issues);
+  requiredString(info, "author", `${path}.info.author`, issues);
+  optionalString(info, "date", `${path}.info.date`, issues);
 };
 
 const optionalTextBoxTrackedChange = (

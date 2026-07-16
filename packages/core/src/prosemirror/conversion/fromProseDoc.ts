@@ -2739,6 +2739,16 @@ function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts):
   if (Array.isArray(attrs.tcPrChange) && attrs.tcPrChange.length > 0) {
     cell.propertyChanges = [...attrs.tcPrChange];
   }
+  if (attrs.cellMarker) {
+    cell.structuralChange = {
+      type: attrs.cellMarker.kind === "ins" ? "tableCellInsertion" : "tableCellDeletion",
+      info: {
+        id: attrs.cellMarker.info.revisionId,
+        author: attrs.cellMarker.info.author,
+        ...(attrs.cellMarker.info.date != null && { date: attrs.cellMarker.info.date }),
+      },
+    };
+  }
   return cell;
 }
 

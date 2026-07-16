@@ -13,7 +13,13 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { createFolioAIEditSnapshot } from "./snapshot";
 
-export type FolioReviewChangeKind = "insertion" | "deletion" | "rowInserted" | "rowDeleted";
+export type FolioReviewChangeKind =
+  | "insertion"
+  | "deletion"
+  | "rowInserted"
+  | "rowDeleted"
+  | "cellInserted"
+  | "cellDeleted";
 
 /** A tracked change discovered in the document body. */
 export type FolioReviewChange = {
@@ -27,7 +33,7 @@ export type FolioReviewChange = {
   author: string;
   /** ISO date the change was authored, or `null` when the source omitted it. */
   date: string | null;
-  /** Affected text, including the row content for structural revisions. */
+  /** Affected text, including row or cell content for structural revisions. */
   text: string;
   /**
    * Stable id of the containing body block (Word `w14:paraId` or `seq-NNNN`).
@@ -108,6 +114,33 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
         const author = "author" in marker ? marker.author : undefined;
         const date = "date" in marker ? marker.date : undefined;
         grouped.set(`row:${kind}:${revisionId}:${String(pos)}`, {
+          id: revisionId,
+          type: kind,
+          author: typeof author === "string" ? author : "",
+          date: typeof date === "string" ? date : null,
+          text: node.textContent,
+          blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
+        });
+      }
+    }
+    if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+      const marker = node.attrs["cellMarker"];
+      if (
+        typeof marker === "object" &&
+        marker !== null &&
+        "kind" in marker &&
+        (marker.kind === "ins" || marker.kind === "del") &&
+        "info" in marker &&
+        typeof marker.info === "object" &&
+        marker.info !== null &&
+        "revisionId" in marker.info &&
+        typeof marker.info.revisionId === "number"
+      ) {
+        const revisionId = marker.info.revisionId;
+        const author = "author" in marker.info ? marker.info.author : undefined;
+        const date = "date" in marker.info ? marker.info.date : undefined;
+        const kind = marker.kind === "ins" ? "cellInserted" : "cellDeleted";
+        grouped.set(`cell:${kind}:${revisionId}:${String(pos)}`, {
           id: revisionId,
           type: kind,
           author: typeof author === "string" ? author : "",
