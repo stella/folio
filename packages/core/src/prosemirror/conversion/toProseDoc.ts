@@ -2928,9 +2928,14 @@ function extractTextBoxesFromParagraph(paragraph: Paragraph): ExtractTextBoxesRe
         }
         continue;
       }
-      if (item.type === "insertion" || item.type === "deletion") {
+      if (
+        item.type === "insertion" ||
+        item.type === "deletion" ||
+        item.type === "moveFrom" ||
+        item.type === "moveTo"
+      ) {
         const change = stripTrackedChange(item, nestedContext);
-        if (change?.type === "insertion" || change?.type === "deletion") {
+        if (change) {
           content.push(change);
         }
         continue;

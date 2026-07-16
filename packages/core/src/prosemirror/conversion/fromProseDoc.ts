@@ -2949,10 +2949,9 @@ function convertPMTextBox(node: PMNode): Paragraph {
   const trackedChange = attrs._docxTrackedChange;
   const inlineSdts = attrs._docxInlineSdts ?? [];
   if (inlineSdts.length > 0) {
-    let wrapped: InlineSdt["content"][number] =
-      trackedChange?.type === "insertion" || trackedChange?.type === "deletion"
-        ? { type: trackedChange.type, info: trackedChange.info, content: [run] }
-        : run;
+    let wrapped: InlineSdt["content"][number] = trackedChange
+      ? { type: trackedChange.type, info: trackedChange.info, content: [run] }
+      : run;
     for (let index = inlineSdts.length - 1; index >= 0; index -= 1) {
       const sdtAttrs = inlineSdts[index];
       if (!sdtAttrs) {

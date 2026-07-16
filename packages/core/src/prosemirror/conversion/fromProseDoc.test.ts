@@ -1664,6 +1664,66 @@ describe("fromProseDoc", () => {
     expect(shapes.at(0)?.shape.shapeType).toBe("textBox");
   });
 
+  test.each(["moveFrom", "moveTo"] as const)(
+    "round-trips a text box inside an inline content control and %s wrapper",
+    (type) => {
+      const document = documentWithTextBoxParagraph({ includeText: false });
+      const paragraph = document.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") {
+        throw new Error("Expected paragraph");
+      }
+      const textBoxRun = paragraph.content.at(0);
+      if (textBoxRun?.type !== "run") {
+        throw new Error("Expected text-box run");
+      }
+      const info = {
+        id: 42,
+        author: "Reviewer",
+        date: "2026-07-16T12:00:00Z",
+      } satisfies TrackedChangeInfo;
+      paragraph.content = [
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText", alias: "Tracked shape" },
+          content: [trackedTextBoxWrapper(type, info, textBoxRun)],
+        },
+      ];
+
+      const pmDoc = toProseDoc(document);
+      const textBoxNode = pmDoc.firstChild;
+      expect(textBoxNode?.type.name).toBe("textBox");
+      expect(textBoxNode?.attrs["_docxTrackedChange"]).toEqual({ type, info });
+      expect(textBoxNode?.attrs["_docxInlineSdts"]).toMatchObject([
+        { sdtType: "richText", alias: "Tracked shape" },
+      ]);
+
+      const roundTripped = fromProseDoc(pmDoc, document);
+      const block = roundTripped.package.document.content.at(0);
+      if (block?.type !== "paragraph") {
+        throw new Error("Expected round-tripped paragraph");
+      }
+      const sdt = block.content.at(0);
+      if (sdt?.type !== "inlineSdt") {
+        throw new Error("Expected content control");
+      }
+      const trackedChange = sdt.content.at(0);
+      expect(trackedChange).toMatchObject({ type, info });
+      if (trackedChange?.type !== type) {
+        throw new Error("Expected round-tripped move wrapper");
+      }
+      const trackedRun = trackedChange.content.at(0);
+      if (trackedRun?.type !== "run") {
+        throw new Error("Expected round-tripped tracked run");
+      }
+      const trackedShape = trackedRun.content.at(0);
+      expect(trackedShape?.type).toBe("shape");
+      if (trackedShape?.type !== "shape") {
+        throw new Error("Expected round-tripped text-box shape");
+      }
+      expect(trackedShape.shape.shapeType).toBe("textBox");
+    },
+  );
+
   test("keeps multiple standalone text boxes in one inline content control", () => {
     const document = documentWithTextBoxParagraph({
       includeText: false,
