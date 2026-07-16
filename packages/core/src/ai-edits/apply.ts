@@ -827,11 +827,17 @@ const buildTableColumnInsertionActions = ({
   return actions;
 };
 
-const getTableColumnDeletionCellPositions = (
-  map: TableMap,
-  table: PMNode,
-  columnIndex: number,
-): number[] | null => {
+type GetTableColumnDeletionCellPositionsOptions = {
+  map: TableMap;
+  table: PMNode;
+  columnIndex: number;
+};
+
+const getTableColumnDeletionCellPositions = ({
+  map,
+  table,
+  columnIndex,
+}: GetTableColumnDeletionCellPositionsOptions): number[] | null => {
   if (columnIndex < 0 || columnIndex >= map.width) {
     return null;
   }
@@ -1603,7 +1609,11 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         if (mode === "tracked-changes") {
-          const cellPositions = getTableColumnDeletionCellPositions(map, table, columnIndex);
+          const cellPositions = getTableColumnDeletionCellPositions({
+            map,
+            table,
+            columnIndex,
+          });
           if (!cellPositions) {
             skipped.push({
               id: item.operation.id,
