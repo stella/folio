@@ -2728,6 +2728,8 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
     // Override properties that user may have changed via editor commands
     if (attrs.colspan > 1) {
       result.gridSpan = attrs.colspan;
+    } else {
+      delete result.gridSpan;
     }
     if (attrs.rowspan > 1) {
       result.vMerge = "restart";
