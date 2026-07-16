@@ -1,6 +1,11 @@
 import { test } from "@playwright/test";
 
-import { ensureLiveView, expect, openEditor, type AdapterFixture } from "./parity-fixture";
+import {
+  ensureLiveView,
+  expect,
+  openEditor,
+  type AdapterFixture,
+} from "../parity/parity-fixture";
 
 const VUE_ADAPTER = {
   name: "vue",
