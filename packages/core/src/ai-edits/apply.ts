@@ -1868,16 +1868,16 @@ const resolveOperation = ({
     operation.type === "formatRange"
       ? operation.range.blockId
       : operation.blockId;
-  const target = resolveStableBlock({
+  const primaryBlock = resolveStableBlock({
     snapshot,
     blockId,
     liveBlocks,
     liveBlocksByParaId,
   });
-  if (target.type === "skip") {
-    return target;
+  if (primaryBlock.type === "skip") {
+    return primaryBlock;
   }
-  const { blockNode, blockFrom, blockTo, cleanBlock, currentText, currentTextHash } = target;
+  const { blockNode, blockFrom, blockTo, cleanBlock, currentText, currentTextHash } = primaryBlock;
   if (
     operation.precondition !== undefined &&
     currentTextHash !== operation.precondition.blockTextHash
