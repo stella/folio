@@ -23,12 +23,9 @@
   comment/tracked-change sidebar (`useTrackedChanges` + `useCommentSidebarItems`
   inside `UnifiedSidebar`), and the table context toolbar (`TableToolbar`).
 
-  Remaining adapter-specific surfaces:
+  Remaining adapter-specific surface:
    - externalPlugins are not on `DocxEditorProps`; shared feature plugins are
      assembled by useDocxEditor and host plugins are not accepted yet.
-   - The title-bar MenuBar is wired (File/Format/Insert/Help), including the insert flow
-     (image/table/page-break/TOC via host props or core view-level helpers);
-     the watermark item stays inert (no watermark dialog ported).
 -->
 <template>
   <div
@@ -112,9 +109,11 @@
       v-model:show-image-properties="showImageProperties"
       v-model:show-page-setup="showPageSetup"
       v-model:show-table-properties="showTableProperties"
+      v-model:show-watermark="showWatermark"
       :view="activeEditorView"
       :scroll-visible-position-into-view="scrollVisiblePositionIntoView"
       :bookmarks="bookmarks"
+      :current-watermark="currentWatermark"
       :selected-image-pm-pos="selectedImage?.pmPos ?? null"
       :section-properties="currentSectionProps"
       :table-properties="currentTableProperties"
@@ -123,6 +122,7 @@
       @hyperlink-remove="handleHyperlinkRemove"
       @page-setup-apply="handlePageSetupApply"
       @table-properties-apply="handleTablePropertiesApply"
+      @watermark-apply="handleWatermarkApply"
     />
 
     <div v-if="parseError" class="docx-editor-vue__error">{{ parseError }}</div>
@@ -424,6 +424,11 @@ import { twipsToPixels } from "@stll/folio-core/paged-layout/sectionGeometry";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document, SectionProperties, Style } from "@stll/folio-core/types/document";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
+import {
+  getDocumentWatermark,
+  setDocumentWatermark,
+  type Watermark,
+} from "@stll/folio-core/watermark";
 
 import AnonymizationRectsOverlay from "./AnonymizationRectsOverlay.vue";
 import AutocompleteSuggestionOverlay from "./AutocompleteSuggestionOverlay.vue";
@@ -518,6 +523,12 @@ provideFolioUI(props.components);
 const isDark = useColorMode();
 provideDocxPortalClass(isDark);
 
+function notifyDocumentChange(doc: Document): void {
+  props.onChange?.(doc);
+  emit("change", doc);
+  emit("update:document", doc);
+}
+
 const editorMode = ref<EditorMode>(props.mode);
 const readOnly = computed(() => props.readOnly || editorMode.value === "viewing");
 
@@ -600,13 +611,11 @@ const rulerVisible = computed(() => props.showRuler ?? false);
 const stateTick = ref(0);
 const showFindReplace = ref(false);
 const showHyperlink = ref(false);
-// The keyboard-shortcuts dialog is not available yet, so F1 / Ctrl+/ only
-// preserves the intended open state for the future dialog surface.
-const showKeyboardShortcuts = ref(false);
 const showInsertSymbol = ref(false);
 const showImageProperties = ref(false);
 const showPageSetup = ref(false);
 const showTableProperties = ref(false);
+const showWatermark = ref(false);
 const showOutline = ref(props.showOutline);
 const showSidebar = ref(false);
 const activeSidebarItem = ref<string | null>(null);
@@ -639,14 +648,10 @@ function handleWheelZoomGated(event: WheelEvent): void {
   handleZoomWheel(event);
 }
 
-// Global keyboard shortcuts (F1 keyboard-shortcuts dialog, Ctrl+=/-/0 zoom,
-// Ctrl+F/H find-replace, Ctrl+K hyperlink, Ctrl+/ shortcuts toggle). Installs
-// its own window-level listener on mount and tears it down on unmount, so no
-// further wiring is needed here. Mirrors React's Cmd/Ctrl+F find-open path
-// (`useKeyboardShortcuts` in `packages/react/src/components/hooks`), extended
-// with the Vue adapter's additional shortcuts.
+// Global keyboard shortcuts (Ctrl+=/-/0 zoom, Ctrl+F/H find-replace, Ctrl+K
+// hyperlink). Installs its own window-level listener on mount and tears it down
+// on unmount, so no further wiring is needed here.
 useKeyboardShortcuts({
-  showKeyboardShortcuts,
   showFindReplace,
   showHyperlink,
   handleZoomKeyDown,
@@ -693,11 +698,7 @@ const {
   showTemplateDirectives: () => props.showTemplateDirectives,
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
   onSlashMenuKeyAction: (action) => props.onSlashMenuKeyAction?.(action) ?? false,
-  onChange: (doc) => {
-    props.onChange?.(doc);
-    emit("change", doc);
-    emit("update:document", doc);
-  },
+  onChange: notifyDocumentChange,
   onError: (err) => {
     props.onError?.(err);
     emit("error", err);
@@ -866,11 +867,7 @@ const {
   syncHfPMs: syncHeaderFooterViews,
   setDocument,
   reLayout,
-  onDocumentChange: (doc) => {
-    props.onChange?.(doc);
-    emit("change", doc);
-    emit("update:document", doc);
-  },
+  onDocumentChange: notifyDocumentChange,
   clearOverlay: selectionSync.clearOverlay,
 });
 
@@ -988,6 +985,12 @@ const currentSectionProps = computed<SectionProperties | null>(() => {
     return null;
   }
   return body.finalSectionProperties ?? body.sections?.[0]?.properties ?? null;
+});
+
+const currentWatermark = computed<Watermark | undefined>(() => {
+  void stateTick.value;
+  const doc = getDocument();
+  return doc ? getDocumentWatermark(doc) : undefined;
 });
 
 const currentTableProperties = computed(() => {
@@ -1154,11 +1157,7 @@ const {
   readOnly,
   stateTick,
   reLayout,
-  onChange: (doc) => {
-    props.onChange?.(doc);
-    emit("change", doc);
-    emit("update:document", doc);
-  },
+  onChange: notifyDocumentChange,
 });
 
 // Paragraph indent snapshot for the horizontal ruler's indent handles. Derived
@@ -1201,6 +1200,11 @@ function handleMenuAction(action: string): void {
     case "pageSetup":
       showPageSetup.value = true;
       break;
+    case "watermark":
+      if (!readOnly.value) {
+        showWatermark.value = true;
+      }
+      break;
     case "toggleOutline":
       outlineSidebar.handleToggleOutline();
       break;
@@ -1226,6 +1230,22 @@ function handleMenuAction(action: string): void {
       break;
   }
   emit("menu-action", action);
+}
+
+function handleWatermarkApply(watermark: Watermark | undefined): void {
+  if (readOnly.value) {
+    return;
+  }
+  const doc = getDocument();
+  if (!doc) {
+    return;
+  }
+  const next = setDocumentWatermark(doc, watermark);
+  setDocument(next);
+  isDirty.value = true;
+  stateTick.value++;
+  reLayout();
+  notifyDocumentChange(next);
 }
 
 // Insert > Table (menu grid picker) routes through the shared insert handler so

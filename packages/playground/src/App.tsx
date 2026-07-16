@@ -9,6 +9,7 @@ import {
   createEmptyDocument,
   createStellaStyleDocumentPreset,
   finishAutocompleteSuggestion,
+  getDocumentWatermark,
   insertImageFromFile,
   insertPageBreakInView,
   insertTableInView,
@@ -67,6 +68,8 @@ export type FolioParityBridge = {
   hasView: () => boolean;
   /** Concatenated document text (block separators collapse to empty). */
   getDocumentText: () => string;
+  /** Text watermark content, or null when none/a non-text watermark is active. */
+  getTextWatermark: () => string | null;
   /** Insert text at the current selection. Returns false with no live view. */
   insertText: (text: string) => boolean;
   /** Bold the first word of the document. Returns whether the mark applied. */
@@ -139,6 +142,14 @@ function buildParityBridge(
     ensureView: () => getRef()?.ensureEditorView({ focus: false }),
     hasView: () => liveView() !== null,
     getDocumentText: () => getRef()?.getEditor()?.getState()?.doc.textContent ?? "",
+    getTextWatermark: () => {
+      const document = getRef()?.getDocument();
+      if (!document) {
+        return null;
+      }
+      const watermark = getDocumentWatermark(document);
+      return watermark?.kind === "text" ? watermark.text : null;
+    },
     insertText: (text) => {
       const view = liveView();
       if (!view) {

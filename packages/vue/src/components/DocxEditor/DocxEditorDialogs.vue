@@ -1,18 +1,15 @@
 <!--
   Modal-dialog cluster for DocxEditor — collects the dialogs the editor surfaces
   (find/replace, hyperlink, insert symbol, image properties, page setup, table
-  properties) so the host template does not carry the dialog markup just to
+  properties, watermark) so the host template does not carry the dialog markup just to
   wire show-flags and close handlers. (Image insertion has no dialog — Insert >
   Image opens the OS file picker directly.)
 
   Visibility is passed via `v-model:show-*` so the host owns the boolean refs and
   dialogs close themselves through the standard `update:` emit pattern. Action
   emits (`insert-symbol`, `hyperlink-submit`, `page-setup-apply`,
-  `table-properties-apply`) bubble up so the host's feature composables keep
+  `table-properties-apply`, `watermark-apply`) bubble up so the host's feature composables keep
   ownership of the document mutations.
-
-  Fork note: the Watermark and Keyboard-Shortcuts dialogs are PORT-BLOCKED (not
-  ported to the fork's `dialogs/` set yet) and are omitted here.
 -->
 <template>
   <FindReplaceDialog
@@ -57,12 +54,20 @@
     @close="emit('update:showTableProperties', false)"
     @apply="(props) => emit('table-properties-apply', props)"
   />
+
+  <WatermarkDialog
+    :is-open="showWatermark"
+    :current-watermark="currentWatermark"
+    @close="emit('update:showWatermark', false)"
+    @apply="(watermark) => emit('watermark-apply', watermark)"
+  />
 </template>
 
 <script setup lang="ts">
 import type { EditorView } from "prosemirror-view";
 
 import type { SectionProperties } from "@stll/folio-core/types/document";
+import type { Watermark } from "@stll/folio-core/watermark";
 
 import FindReplaceDialog from "../dialogs/FindReplaceDialog.vue";
 import HyperlinkDialog from "../dialogs/HyperlinkDialog.vue";
@@ -70,6 +75,7 @@ import ImagePropertiesDialog from "../dialogs/ImagePropertiesDialog.vue";
 import InsertSymbolDialog from "../dialogs/InsertSymbolDialog.vue";
 import PageSetupDialog from "../dialogs/PageSetupDialog.vue";
 import TablePropertiesDialog from "../dialogs/TablePropertiesDialog.vue";
+import WatermarkDialog from "../dialogs/WatermarkDialog.vue";
 
 type BookmarkOption = {
   name: string;
@@ -107,6 +113,8 @@ defineProps<{
   showImageProperties: boolean;
   showPageSetup: boolean;
   showTableProperties: boolean;
+  showWatermark: boolean;
+  currentWatermark: Watermark | undefined;
   tableProperties: CurrentTableProperties;
 }>();
 
@@ -117,10 +125,12 @@ const emit = defineEmits<{
   (e: "update:showImageProperties", value: boolean): void;
   (e: "update:showPageSetup", value: boolean): void;
   (e: "update:showTableProperties", value: boolean): void;
+  (e: "update:showWatermark", value: boolean): void;
   (e: "insert-symbol", symbol: string): void;
   (e: "hyperlink-submit", data: HyperlinkSubmitPayload): void;
   (e: "hyperlink-remove"): void;
   (e: "page-setup-apply", props: Partial<SectionProperties>): void;
   (e: "table-properties-apply", props: TableProperties): void;
+  (e: "watermark-apply", watermark: Watermark | undefined): void;
 }>();
 </script>

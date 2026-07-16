@@ -94,7 +94,7 @@ type WatermarkMode = "none" | "text" | "picture";
 
 const props = defineProps<{
   isOpen: boolean;
-  currentWatermark?: Watermark;
+  currentWatermark?: Watermark | undefined;
 }>();
 
 const emit = defineEmits<{
