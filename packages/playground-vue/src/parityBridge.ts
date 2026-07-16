@@ -1,4 +1,11 @@
-import { insertTableInView, setAnonymizationTermsMeta } from "@stll/folio-vue";
+import {
+  appendAutocompleteToken,
+  clearAutocompleteSuggestion,
+  finishAutocompleteSuggestion,
+  insertTableInView,
+  setAnonymizationTermsMeta,
+  startAutocompleteSuggestion,
+} from "@stll/folio-vue";
 import type { DocxEditorRef } from "@stll/folio-vue";
 
 /**
@@ -54,6 +61,12 @@ export type FolioParityBridge = {
   anonymizeFirstWord: () => boolean;
   /** Count painted anonymization highlight rects in the overlay. */
   countAnonymizationRects: () => number;
+  /** Start a streaming autocomplete suggestion at the current selection. */
+  startAutocomplete: (text: string) => boolean;
+  /** Mark the active autocomplete suggestion as complete. */
+  finishAutocomplete: () => boolean;
+  /** Dismiss the active autocomplete suggestion. */
+  clearAutocomplete: () => boolean;
   /** Serialize to DOCX and return the byte length (0 on failure). */
   save: () => Promise<number>;
   /** Whether the live editor has edits not yet serialized by save(). */
@@ -75,6 +88,7 @@ export function buildParityBridge(
   getRef: () => DocxEditorRef | null,
   getClipboardCallbackCount: (kind: "copy" | "cut" | "paste") => number,
 ): FolioParityBridge {
+  const autocompleteRequestId = "parity-autocomplete";
   const liveView = () => getRef()?.getEditor()?.getView() ?? null;
   return {
     getTotalPages: () => getRef()?.getTotalPages() ?? 0,
@@ -357,6 +371,37 @@ export function buildParityBridge(
     countAnonymizationRects: () =>
       document.querySelectorAll("[data-folio-anonymization-overlay] .folio-anonymization-term")
         .length,
+    startAutocomplete: (text) => {
+      const view = liveView();
+      if (!view) {
+        return false;
+      }
+      view.dispatch(
+        startAutocompleteSuggestion(
+          view.state.tr,
+          view.state.selection.head,
+          autocompleteRequestId,
+        ),
+      );
+      view.dispatch(appendAutocompleteToken(view.state.tr, autocompleteRequestId, text));
+      return true;
+    },
+    finishAutocomplete: () => {
+      const view = liveView();
+      if (!view) {
+        return false;
+      }
+      view.dispatch(finishAutocompleteSuggestion(view.state.tr, autocompleteRequestId));
+      return true;
+    },
+    clearAutocomplete: () => {
+      const view = liveView();
+      if (!view) {
+        return false;
+      }
+      view.dispatch(clearAutocompleteSuggestion(view.state.tr));
+      return true;
+    },
     save: async () => {
       const buffer = await (getRef()?.save() ?? Promise.resolve(null));
       return buffer?.byteLength ?? 0;

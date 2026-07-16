@@ -24,7 +24,8 @@
   inside `UnifiedSidebar`), and the table context toolbar (`TableToolbar`).
 
   Remaining adapter-specific surfaces:
-   - externalPlugins are not on `DocxEditorProps`, so the host plugin list is empty.
+   - externalPlugins are not on `DocxEditorProps`; shared feature plugins are
+     assembled by useDocxEditor and host plugins are not accepted yet.
    - The title-bar MenuBar is wired (File/Format/Insert/Help), including the insert flow
      (image/table/page-break/TOC via host props or core view-level helpers);
      the watermark item stays inert (no watermark dialog ported).
@@ -245,6 +246,12 @@
                 :blocks="blocks"
                 :measures="measures"
               />
+              <AutocompleteSuggestionOverlay
+                :get-pages-container="() => pagesRef"
+                :editor-state="editorState"
+                :zoom="zoom"
+                :sync-coordinator="syncCoordinator"
+              />
               <DecorationLayer
                 :get-view="() => editorView"
                 :get-pages-container="() => pagesRef"
@@ -419,6 +426,7 @@ import type { Document, SectionProperties, Style } from "@stll/folio-core/types/
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 
 import AnonymizationRectsOverlay from "./AnonymizationRectsOverlay.vue";
+import AutocompleteSuggestionOverlay from "./AutocompleteSuggestionOverlay.vue";
 import CommentMarginMarkers from "./CommentMarginMarkers.vue";
 import ContentControlWidgetsOverlay from "./ContentControlWidgetsOverlay.vue";
 import DecorationLayer from "./DecorationLayer.vue";
