@@ -52,7 +52,7 @@ const scopedHandleSchema = {
 /**
  * `suggest_changes` deliberately narrows the full document-operation contract
  * (see `FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA` in `operation-schema.ts`):
- * - excluded types: `formatRange`, `insertSignatureTable`, `insertTableRow`, `deleteTableRow`,
+ * - excluded types: `formatRange`, `insertSignatureTable`, `deleteTableRow`,
  *   `insertTableColumn`, `deleteTableColumn`, `mergeTableCells`, and `splitTableCell` (direct-only,
  *   not representable as tracked changes for human review)
  *   and `commentOnBlock` (covered by the dedicated `add_comment` tool);
@@ -62,14 +62,13 @@ const scopedHandleSchema = {
  *   `{ text }` object;
  * - the review metadata (`severity`, `area`), `precondition` guard, and the
  *   insert/replace formatting knobs (`inheritFormatting`, `pageBreakBefore`,
- *   `preserveFormatting`, `styleId`, `position`, `parties`, `quote`,
+ *   `preserveFormatting`, `styleId`, `parties`, `quote`,
  *   `formatting`) are not exposed to the model.
  */
 const SUGGEST_CHANGES_EXCLUDED_OPERATION_TYPES: ReadonlySet<FolioDocumentOperationType> = new Set([
   "formatRange",
   "commentOnBlock",
   "insertSignatureTable",
-  "insertTableRow",
   "deleteTableRow",
   "insertTableColumn",
   "deleteTableColumn",
@@ -125,6 +124,17 @@ const suggestChangesOperationSchema = {
       type: "string",
       description:
         "Required for `insertAfterBlock` / `insertBeforeBlock` / `replaceBlock`: the text to insert or replace the block with, up to 100,000 characters.",
+    },
+    position: {
+      type: "string",
+      enum: ["after", "before"],
+      description: "For row insertion, place the new row after the anchor row or before it.",
+    },
+    cellTexts: {
+      type: "array",
+      description: "For row insertion, initial text for physical cells in source order.",
+      maxItems: 256,
+      items: { type: "string" },
     },
     comment: {
       type: "string",
@@ -283,7 +293,7 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
   {
     name: FOLIO_AGENT_TOOL_NAMES.readChanges,
     description:
-      "Read pending tracked changes (insertions and deletions) awaiting human review. Use this to see the effect " +
+      "Read pending tracked changes awaiting human review. Use this to see the effect " +
       "of edits already suggested via `suggest_changes` before proposing more.",
     inputSchema: {
       type: "object",

@@ -14,6 +14,7 @@ import type {
   TableFormatting,
   TableRowFormatting,
 } from "../../types/document";
+import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
 import {
   paragraphRejectAttrPatch,
   paragraphRejectOriginalFormatting,
@@ -286,6 +287,7 @@ function resolveChange(
       }
 
       tableRowStructuralOps.sort((left, right) => right.rowPos - left.rowPos);
+      let resolvedTableRowStructure = false;
       for (const op of tableRowStructuralOps) {
         const mappedPos = tr.mapping.map(op.rowPos);
         const row = tr.doc.nodeAt(mappedPos);
@@ -294,9 +296,14 @@ function resolveChange(
         }
         if (op.action === "clear") {
           tr.setNodeAttribute(mappedPos, op.attrName, null);
+          resolvedTableRowStructure = true;
           continue;
         }
         deleteTableRowAt(tr, mappedPos);
+        resolvedTableRowStructure = true;
+      }
+      if (resolvedTableRowStructure) {
+        markStructuralChange(tr);
       }
 
       if (tr.steps.length > 0) {

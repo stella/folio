@@ -155,10 +155,10 @@ export type FolioAgentComment = {
   replies: FolioAgentCommentReply[];
 };
 
-/** A pending tracked change (insertion or deletion), shaped to match {@link FolioDocxReviewer.getChanges}. */
+/** A pending tracked change, shaped to match {@link FolioDocxReviewer.getChanges}. */
 export type FolioAgentChange = {
   id: string;
-  type: "insertion" | "deletion";
+  type: "insertion" | "deletion" | "rowInserted" | "rowDeleted";
   author: string;
   text: string;
   blockId: string | null;

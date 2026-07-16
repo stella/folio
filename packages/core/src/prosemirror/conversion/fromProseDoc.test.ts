@@ -154,6 +154,47 @@ describe("fromProseDoc", () => {
     expect(() => fromProseDoc(pmDoc)).toThrow("paragraph.attrs.paraId");
   });
 
+  test("rejects malformed table row revision attrs at the conversion boundary", () => {
+    const invalidRevisionDoc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node(
+          "tableRow",
+          {
+            trIns: {
+              revisionId: "71",
+              author: "Reviewer",
+            },
+          },
+          [schema.node("tableCell", null, [schema.node("paragraph")])],
+        ),
+      ]),
+    ]);
+
+    const conflictingRevisionDoc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node(
+          "tableRow",
+          {
+            trIns: {
+              revisionId: 71,
+              author: "Reviewer",
+            },
+            trDel: {
+              revisionId: 72,
+              author: "Reviewer",
+            },
+          },
+          [schema.node("tableCell", null, [schema.node("paragraph")])],
+        ),
+      ]),
+    ]);
+
+    expect(() => fromProseDoc(invalidRevisionDoc)).toThrow("tableRow.attrs.trIns.revisionId");
+    expect(() => fromProseDoc(conflictingRevisionDoc)).toThrow(
+      "Expected at most one structural revision marker.",
+    );
+  });
+
   test("rejects malformed hyperlink attrs at the conversion boundary", () => {
     const hyperlinkMark = schema.mark("hyperlink", { href: 123 });
     const pmDoc = schema.node("doc", null, [

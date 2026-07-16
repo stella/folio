@@ -1002,7 +1002,6 @@ const applyFolioAIEditOperationsInternal = ({
     if (
       mode === "tracked-changes" &&
       (operation.type === "formatRange" ||
-        operation.type === "insertTableRow" ||
         operation.type === "deleteTableRow" ||
         operation.type === "insertTableColumn" ||
         operation.type === "deleteTableColumn" ||
@@ -1424,6 +1423,13 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
+        if (mode === "tracked-changes" && insertion.rowspanUpdates.length > 0) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
         const liveRowspanUpdates: { position: number; cell: PMNode; rowspan: number }[] = [];
         let invalidRowspanUpdate = false;
         for (const updatePosition of insertion.rowspanUpdates) {
@@ -1453,7 +1459,19 @@ const applyFolioAIEditOperationsInternal = ({
             rowspan: update.rowspan + 1,
           });
         }
-        const row = insertion.rowType.create(null, insertion.cells);
+        let rowAttrs: Record<string, unknown> | null = null;
+        if (mode === "tracked-changes") {
+          const revisionId = revisionSeed++;
+          rowAttrs = {
+            trIns: {
+              revisionId,
+              author,
+              date,
+            },
+          };
+          appliedRevisionIds = [revisionId];
+        }
+        const row = insertion.rowType.create(rowAttrs, insertion.cells);
         tr = tr.insert(insertion.rowPosition, populateTableRow(row, item.operation.cellTexts));
         break;
       }

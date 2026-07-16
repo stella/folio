@@ -25,6 +25,7 @@ export const paragraphChangeTrackerKey = new PluginKey<ParagraphChangeTrackerSta
 
 const CLEAR_META = "clear";
 const IGNORE_META = "ignore";
+const STRUCTURAL_META = "structural";
 
 export type ParagraphChangeTrackerState = {
   /** Set of paraIds that were modified since last clear */
@@ -160,7 +161,7 @@ function createParagraphChangeTrackerPlugin(): Plugin<ParagraphChangeTrackerStat
         // Clone previous state
         const newState: ParagraphChangeTrackerState = {
           changedParaIds: new Set(prevState.changedParaIds),
-          structuralChange: prevState.structuralChange,
+          structuralChange: prevState.structuralChange || meta === STRUCTURAL_META,
           hasUntrackedChanges: prevState.hasUntrackedChanges,
           paragraphCount: newCount,
         };
@@ -274,6 +275,10 @@ export function clearTrackedChanges(state: EditorState): Transaction {
 
 export function ignoreTrackedChanges(tr: Transaction): Transaction {
   return tr.setMeta(paragraphChangeTrackerKey, IGNORE_META);
+}
+
+export function markStructuralChange(tr: Transaction): Transaction {
+  return tr.setMeta(paragraphChangeTrackerKey, STRUCTURAL_META);
 }
 
 export const ParagraphChangeTrackerExtension = createExtension({

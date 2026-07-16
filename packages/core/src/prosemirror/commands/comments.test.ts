@@ -7,11 +7,13 @@ import type { Command, Transaction } from "prosemirror-state";
 
 import {
   acceptChange,
+  acceptAllChanges,
   acceptAIEditRevision,
   findChangeAtPosition,
   findNextChange,
   findPreviousChange,
   rejectAIEditRevision,
+  rejectAllChanges,
   rejectChange,
 } from "./comments";
 
@@ -252,6 +254,20 @@ describe("table row structural revision resolution", () => {
     expect(rejectAIEditRevision(41)(rejecting.state, rejecting.dispatch)).toBe(true);
     expect(rejecting.state.doc.firstChild?.textContent).toBe("OriginalChanged");
     expect(rejecting.state.doc.firstChild?.child(1).attrs["trDel"]).toBeNull();
+  });
+
+  test("bulk accept and reject resolve inserted rows", () => {
+    const marker = {
+      trIns: { revisionId: 51, author: "Reviewer", date: "2026-07-16" },
+    };
+    const accepting = dispatcher(stateWithRows(marker));
+    expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(true);
+    expect(accepting.state.doc.firstChild?.childCount).toBe(2);
+    expect(accepting.state.doc.firstChild?.child(1).attrs["trIns"]).toBeNull();
+
+    const rejecting = dispatcher(stateWithRows(marker));
+    expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(true);
+    expect(rejecting.state.doc.firstChild?.textContent).toBe("Original");
   });
 });
 

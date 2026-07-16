@@ -52,7 +52,7 @@ describe("document operation contract", () => {
         deleteBlock: ["direct", "tracked-changes"],
         commentOnBlock: ["direct", "tracked-changes"],
         insertSignatureTable: ["direct"],
-        insertTableRow: ["direct"],
+        insertTableRow: ["direct", "tracked-changes"],
         deleteTableRow: ["direct"],
         insertTableColumn: ["direct"],
         deleteTableColumn: ["direct"],

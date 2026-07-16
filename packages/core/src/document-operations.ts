@@ -78,7 +78,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   deleteBlock: DIRECT_AND_TRACKED_MODES,
   commentOnBlock: DIRECT_AND_TRACKED_MODES,
   insertSignatureTable: DIRECT_ONLY_MODES,
-  insertTableRow: DIRECT_ONLY_MODES,
+  insertTableRow: DIRECT_AND_TRACKED_MODES,
   deleteTableRow: DIRECT_ONLY_MODES,
   insertTableColumn: DIRECT_ONLY_MODES,
   deleteTableColumn: DIRECT_ONLY_MODES,

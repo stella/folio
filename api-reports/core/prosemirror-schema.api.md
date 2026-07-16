@@ -396,7 +396,24 @@ export type TableRowAttrs = {
     hidden?: boolean; /** Original row formatting from DOCX for lossless round-trip serialization */
     _originalFormatting?: import__stll_docx_core_model.TableRowFormatting; /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
     trPrChange?: import__stll_docx_core_model.TableRowPropertyChange[];
-};
+} & ({
+    trIns: {
+        revisionId: number;
+        author: string;
+        date?: string | null;
+    };
+    trDel?: never;
+} | {
+    trIns?: never; /** Tracked structural row deletion (w:trPr/w:del). */
+    trDel: {
+        revisionId: number;
+        author: string;
+        date?: string | null;
+    };
+} | {
+    trIns?: never;
+    trDel?: never;
+});
 
 // @public
 export type TextBoxAttrs = {

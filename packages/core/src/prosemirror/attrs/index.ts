@@ -437,6 +437,14 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
   optionalBoolean(attrs, "isHeader", "tableRow.attrs.isHeader", issues);
   optionalBoolean(attrs, "hidden", "tableRow.attrs.hidden", issues);
   optionalRecord(attrs, "_originalFormatting", "tableRow.attrs._originalFormatting", issues);
+  optionalTableRowRevision(attrs, "trIns", issues);
+  optionalTableRowRevision(attrs, "trDel", issues);
+  if (attrs["trIns"] != null && attrs["trDel"] != null) {
+    issues.push({
+      path: "tableRow.attrs",
+      message: "Expected at most one structural revision marker.",
+    });
+  }
 
   return attrsResult(attrs, issues);
 };
@@ -1507,6 +1515,25 @@ const optionalRecord = (
   if (value !== undefined && value !== null && !isRecord(value)) {
     issues.push({ path, message: "Expected an object." });
   }
+};
+
+const optionalTableRowRevision = (
+  attrs: Record<string, unknown>,
+  key: "trIns" | "trDel",
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  const path = `tableRow.attrs.${key}`;
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  requiredNumber(value, "revisionId", `${path}.revisionId`, issues);
+  requiredString(value, "author", `${path}.author`, issues);
+  optionalString(value, "date", `${path}.date`, issues);
 };
 
 const optionalTextBoxTrackedChange = (
