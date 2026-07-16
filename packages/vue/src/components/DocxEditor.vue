@@ -523,6 +523,12 @@ provideFolioUI(props.components);
 const isDark = useColorMode();
 provideDocxPortalClass(isDark);
 
+function notifyDocumentChange(doc: Document): void {
+  props.onChange?.(doc);
+  emit("change", doc);
+  emit("update:document", doc);
+}
+
 const editorMode = ref<EditorMode>(props.mode);
 const readOnly = computed(() => props.readOnly || editorMode.value === "viewing");
 
@@ -692,11 +698,7 @@ const {
   showTemplateDirectives: () => props.showTemplateDirectives,
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
   onSlashMenuKeyAction: (action) => props.onSlashMenuKeyAction?.(action) ?? false,
-  onChange: (doc) => {
-    props.onChange?.(doc);
-    emit("change", doc);
-    emit("update:document", doc);
-  },
+  onChange: notifyDocumentChange,
   onError: (err) => {
     props.onError?.(err);
     emit("error", err);
@@ -865,11 +867,7 @@ const {
   syncHfPMs: syncHeaderFooterViews,
   setDocument,
   reLayout,
-  onDocumentChange: (doc) => {
-    props.onChange?.(doc);
-    emit("change", doc);
-    emit("update:document", doc);
-  },
+  onDocumentChange: notifyDocumentChange,
   clearOverlay: selectionSync.clearOverlay,
 });
 
@@ -1159,11 +1157,7 @@ const {
   readOnly,
   stateTick,
   reLayout,
-  onChange: (doc) => {
-    props.onChange?.(doc);
-    emit("change", doc);
-    emit("update:document", doc);
-  },
+  onChange: notifyDocumentChange,
 });
 
 // Paragraph indent snapshot for the horizontal ruler's indent handles. Derived
@@ -1251,9 +1245,7 @@ function handleWatermarkApply(watermark: Watermark | undefined): void {
   isDirty.value = true;
   stateTick.value++;
   reLayout();
-  props.onChange?.(next);
-  emit("change", next);
-  emit("update:document", next);
+  notifyDocumentChange(next);
 }
 
 // Insert > Table (menu grid picker) routes through the shared insert handler so
