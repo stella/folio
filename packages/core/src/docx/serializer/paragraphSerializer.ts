@@ -869,6 +869,10 @@ function serializeInlineSdt(sdt: InlineSdt): string {
           return serializeTrackedChange("ins", item);
         case "deletion":
           return serializeTrackedChange("del", item);
+        case "moveFrom":
+          return serializeTrackedChange("moveFrom", item);
+        case "moveTo":
+          return serializeTrackedChange("moveTo", item);
         case "mathEquation":
           // Round-trip the raw OMML XML directly
           return item.ommlXml || "";

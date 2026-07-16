@@ -1222,7 +1222,7 @@ export type SdtProperties = {
  * Inline SDT (content control within a paragraph).
  *
  * OOXML allows runs, hyperlinks, simple/complex fields, nested SDTs,
- * tracked insertions/deletions, and math at this level. All of them must survive
+ * tracked insertions/deletions/moves, and math at this level. All of them must survive
  * parse → edit → save so docProps-bound fields and reviewed template
  * content do not lose their wrapper on round-trip.
  */
@@ -1239,6 +1239,8 @@ export type InlineSdt = {
     | InlineSdt
     | Insertion
     | Deletion
+    | MoveFrom
+    | MoveTo
     | MathEquation
   )[];
 };

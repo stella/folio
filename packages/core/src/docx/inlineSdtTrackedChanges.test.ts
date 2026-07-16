@@ -49,6 +49,45 @@ const reviewedDocument = (): Document => {
   };
 };
 
+const movedDocument = (): Document => {
+  const template = createEmptyDocument();
+  return {
+    ...template,
+    package: {
+      ...template.package,
+      document: {
+        ...template.package.document,
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "inlineSdt",
+                properties: {
+                  sdtType: "richText",
+                  alias: "Moved clause",
+                },
+                content: [
+                  {
+                    type: "moveFrom",
+                    info: { id: 3, author: "Reviewer", date: "2026-07-16T08:00:00Z" },
+                    content: [{ type: "run", content: [{ type: "text", text: "old" }] }],
+                  },
+                  {
+                    type: "moveTo",
+                    info: { id: 4, author: "Reviewer", date: "2026-07-16T08:01:00Z" },
+                    content: [{ type: "run", content: [{ type: "text", text: "new" }] }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+};
+
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
   const zip = await JSZip.loadAsync(buffer);
   const part = zip.file("word/document.xml");
@@ -100,6 +139,18 @@ describe("inline content-control tracked changes", () => {
 
     const parsed = await parsedInlineSdt(buffer);
     expect(parsed.content.map((content) => content.type)).toEqual(["run", "deletion", "insertion"]);
+  });
+
+  test("round-trips move wrappers inside w:sdtContent", async () => {
+    const buffer = await createDocx(movedDocument());
+    const xml = await documentXml(buffer);
+    const sdtContent = xml.match(/<w:sdtContent>([\s\S]*?)<\/w:sdtContent>/u)?.at(1) ?? "";
+
+    expect(sdtContent).toContain("<w:moveFrom ");
+    expect(sdtContent).toContain("<w:moveTo ");
+
+    const parsed = await parsedInlineSdt(buffer);
+    expect(parsed.content.map((content) => content.type)).toEqual(["moveFrom", "moveTo"]);
   });
 
   test("accept and reject keep the content control with the correct text", async () => {

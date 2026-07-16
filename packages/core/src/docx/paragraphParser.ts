@@ -1018,7 +1018,7 @@ function isTrackedChangeWrapperChild(content: ParagraphContent): content is Run 
 
 // Mirror of upstream eigenpal/docx-editor PR #482 (commit 29f95751d):
 // OOXML allows runs, hyperlinks, simple/complex fields, nested SDTs,
-// tracked insertions/deletions, and math equations directly inside
+// tracked insertions/deletions/moves, and math equations directly inside
 // `<w:sdtContent>`. Anything else that the paragraph parser produced
 // (bookmarks, comment markers, tracked-change range markers, ...) is
 // lifted out as a sibling of the SDT so the SDT wrapper itself stays
@@ -1032,6 +1032,8 @@ function isInlineSdtContent(content: ParagraphContent): content is InlineSdt["co
     content.type === "inlineSdt" ||
     content.type === "insertion" ||
     content.type === "deletion" ||
+    content.type === "moveFrom" ||
+    content.type === "moveTo" ||
     content.type === "mathEquation"
   );
 }

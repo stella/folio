@@ -1989,6 +1989,26 @@ function convertInlineSdt(
       inlineNodes.push(
         ...convertTrackedChange(content, "deletion", getInheritedRunFormatting, styleResolver),
       );
+    } else if (content.type === "moveTo") {
+      inlineNodes.push(
+        ...convertTrackedChange(
+          content,
+          "insertion",
+          getInheritedRunFormatting,
+          styleResolver,
+          "moveTo",
+        ),
+      );
+    } else if (content.type === "moveFrom") {
+      inlineNodes.push(
+        ...convertTrackedChange(
+          content,
+          "deletion",
+          getInheritedRunFormatting,
+          styleResolver,
+          "moveFrom",
+        ),
+      );
     } else {
       // content.type === "mathEquation" — narrowed by exhaustion of the
       // InlineSdt['content'] union above.

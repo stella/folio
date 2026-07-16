@@ -1682,6 +1682,8 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
       c.type === "inlineSdt" ||
       c.type === "insertion" ||
       c.type === "deletion" ||
+      c.type === "moveFrom" ||
+      c.type === "moveTo" ||
       c.type === "mathEquation",
   );
 
