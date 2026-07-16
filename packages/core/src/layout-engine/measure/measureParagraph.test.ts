@@ -1186,7 +1186,7 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("allows Word-compatible space contraction on full-hanging list continuations", () => {
+  test("allows bounded space contraction on full-hanging list continuations", () => {
     const continuationText = `${"a ".repeat(10)}bbb`;
 
     withFakeTextMeasure(

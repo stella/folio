@@ -65,7 +65,7 @@ const WIDTH_TOLERANCE = 0.5;
 const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
 const JUSTIFY_SPACE_CONTRACTION_RATIO = 0.075;
 const JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO = 0.195;
-// Word contracts continuation spaces aggressively, but caps the total line shrink.
+// Full-hanging continuations allow stronger space contraction with bounded total shrink.
 const JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO = 0.32;
 const JUSTIFY_LIST_CONTINUATION_MAX_SHRINK_TOLERANCE_RATIO = 0.015;
 const JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO = 0.015;
