@@ -514,10 +514,14 @@ function mergeTextBoxIntoTrailingInlineSdts(
   if (!outerAttrs || incomingSdt?.type !== "inlineSdt") {
     return false;
   }
-  const targetSdt = target.content.findLast(
-    (content) =>
-      content.type === "inlineSdt" && sdtPropertiesMatchAttrs(content.properties, outerAttrs),
-  );
+  let targetSdt: InlineSdt | undefined;
+  for (let index = target.content.length - 1; index >= 0; index -= 1) {
+    const content = target.content[index];
+    if (content?.type === "inlineSdt" && sdtPropertiesMatchAttrs(content.properties, outerAttrs)) {
+      targetSdt = content;
+      break;
+    }
+  }
   if (!targetSdt) {
     return false;
   }
@@ -547,10 +551,14 @@ function mergeInlineSdtNodes(
   if (!nestedAttrs || incomingNested?.type !== "inlineSdt") {
     return false;
   }
-  const targetNested = target.content.findLast(
-    (content) =>
-      content.type === "inlineSdt" && sdtPropertiesMatchAttrs(content.properties, nestedAttrs),
-  );
+  let targetNested: InlineSdt | undefined;
+  for (let nestedIndex = target.content.length - 1; nestedIndex >= 0; nestedIndex -= 1) {
+    const content = target.content[nestedIndex];
+    if (content?.type === "inlineSdt" && sdtPropertiesMatchAttrs(content.properties, nestedAttrs)) {
+      targetNested = content;
+      break;
+    }
+  }
   if (!targetNested) {
     target.content.push(incomingNested);
     return true;

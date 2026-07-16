@@ -2879,13 +2879,17 @@ function extractTextBoxesFromParagraph(paragraph: Paragraph): ExtractTextBoxesRe
     const trackedChange = { type: change.type, info: change.info } as const satisfies NonNullable<
       TextBoxAttrs["_docxTrackedChange"]
     >;
-    const content = change.content.flatMap((item) => {
+    const content: (Run | Hyperlink)[] = [];
+    for (const item of change.content) {
       if (item.type !== "run") {
-        return [item];
+        content.push(item);
+        continue;
       }
       const run = stripRun(item, { ...context, trackedChange });
-      return run ? [run] : [];
-    });
+      if (run) {
+        content.push(run);
+      }
+    }
     if (content.length === 0) {
       return undefined;
     }
