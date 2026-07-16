@@ -260,6 +260,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /** Stable paragraph anchor inside the opposite corner cell. */
         endBlockId: string;
       }
+    | {
+        id: string;
+        type: "splitTableCell";
+        /** Stable paragraph anchor inside the cell to split. */
+        blockId: string;
+      }
   );
 
 export type FolioAIEditApplyMode = "direct" | "tracked-changes";

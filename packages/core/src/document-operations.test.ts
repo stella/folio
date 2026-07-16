@@ -36,6 +36,7 @@ describe("document operation contract", () => {
         "insertTableColumn",
         "deleteTableColumn",
         "mergeTableCells",
+        "splitTableCell",
       ],
       modes: ["direct", "tracked-changes"],
       batchModes: ["best-effort", "atomic"],
@@ -56,6 +57,7 @@ describe("document operation contract", () => {
         insertTableColumn: ["direct"],
         deleteTableColumn: ["direct"],
         mergeTableCells: ["direct"],
+        splitTableCell: ["direct"],
       },
       preconditions: ["blockTextHash"],
       stories: ["main", "header", "footer", "footnote", "endnote"],
@@ -72,6 +74,7 @@ describe("document operation contract", () => {
     expect(isFolioDocumentOperationModeSupported("insertTableColumn", "direct")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("deleteTableColumn", "direct")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("mergeTableCells", "direct")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("splitTableCell", "direct")).toBe(true);
     expect(
       Reflect.apply(isFolioDocumentOperationModeSupported, null, ["unknownOperation", "direct"]),
     ).toBe(false);
@@ -138,6 +141,7 @@ describe("document operation contract", () => {
         blockId: "paragraph-10",
         endBlockId: "paragraph-11",
       },
+      { id: "split-cell", type: "splitTableCell", blockId: "paragraph-12" },
     ] as const satisfies readonly FolioDocumentOperation[];
 
     expect(
@@ -153,6 +157,7 @@ describe("document operation contract", () => {
         { id: "column" },
         { id: "delete-column" },
         { id: "merge-cells" },
+        { id: "split-cell" },
       ]),
     ).toEqual([
       {
@@ -282,6 +287,18 @@ describe("document operation contract", () => {
           },
         ],
       },
+      {
+        operationId: "split-cell",
+        operationIndex: 11,
+        affected: [
+          {
+            type: "tableCell",
+            story: "main",
+            anchorBlockId: "paragraph-12",
+            effect: "split",
+          },
+        ],
+      },
     ]);
   });
 
@@ -361,6 +378,7 @@ describe("document operation contract", () => {
           blockId: "a",
           endBlockId: "b",
         },
+        { id: "13", type: "splitTableCell", blockId: "a" },
       ],
     };
 

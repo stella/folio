@@ -2975,6 +2975,223 @@ describe("Folio AI edit operations", () => {
     });
   });
 
+  test("splits a rectangular cell while preserving content and column widths", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2, rowspan: 2, colwidth: [100, 200] }, [
+          schema.node("paragraph", { paraId: "split-all" }, [schema.text("Content")]),
+        ]),
+      ]),
+      schema.node("tableRow"),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "split-cell", type: "splitTableCell", blockId: "split-all" }],
+      mode: "direct",
+    });
+
+    expect(result).toEqual({ applied: [{ id: "split-cell" }], skipped: [] });
+    const updatedTable = view.state.doc.child(0);
+    expect(TableMap.get(updatedTable)).toMatchObject({ width: 2, height: 2 });
+    expect(updatedTable.child(0).childCount).toBe(2);
+    expect(updatedTable.child(1).childCount).toBe(2);
+    expect(updatedTable.child(0).child(0).textContent).toBe("Content");
+    expect(updatedTable.child(0).child(1).textContent).toBe("");
+    expect(updatedTable.child(1).textContent).toBe("");
+    expect(updatedTable.child(0).child(0).attrs).toMatchObject({
+      colspan: 1,
+      rowspan: 1,
+      colwidth: [100],
+    });
+    expect(updatedTable.child(0).child(1).attrs["colwidth"]).toEqual([200]);
+    expect(updatedTable.child(1).child(0).attrs["colwidth"]).toEqual([100]);
+    expect(updatedTable.child(1).child(1).attrs["colwidth"]).toEqual([200]);
+  });
+
+  test("applies cell text edits before splitting and maps through an earlier insertion", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [
+          schema.node("paragraph", { paraId: "mapped-split" }, [schema.text("Before")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        { id: "split", type: "splitTableCell", blockId: "mapped-split" },
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId: "mapped-split",
+          find: "Before",
+          replace: "Changed",
+        },
+        {
+          id: "insert-before",
+          type: "insertBeforeBlock",
+          blockId: "mapped-split",
+          text: "Outside",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.child(0).textContent).toBe("Outside");
+    const updatedRow = view.state.doc.child(1).child(0);
+    expect(updatedRow.childCount).toBe(2);
+    expect(updatedRow.child(0).textContent).toBe("Changed");
+    expect(updatedRow.child(1).textContent).toBe("");
+  });
+
+  test("splits distinct cells once and rejects duplicate targets", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [
+          schema.node("paragraph", { paraId: "split-left" }, [schema.text("A")]),
+        ]),
+        schema.node("tableCell", { colspan: 2 }, [
+          schema.node("paragraph", { paraId: "split-right" }, [schema.text("B")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        { id: "left", type: "splitTableCell", blockId: "split-left" },
+        { id: "left-again", type: "splitTableCell", blockId: "split-left" },
+        { id: "right", type: "splitTableCell", blockId: "split-right" },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["left", "right"]);
+    expect(result.skipped).toEqual([{ id: "left-again", reason: "noopOperation" }]);
+    expect(view.state.doc.child(0).child(0).childCount).toBe(4);
+    expect(view.state.doc.child(0).child(0).textContent).toBe("AB");
+  });
+
+  test("splits the nearest cell when the anchor is inside a nested table", () => {
+    const innerTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [
+          schema.node("paragraph", { paraId: "inner-split" }, [schema.text("Inner")]),
+        ]),
+      ]),
+    ]);
+    const outerTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Outer")]),
+          innerTable,
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [outerTable]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "split-inner", type: "splitTableCell", blockId: "inner-split" }],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    const updatedOuterTable = view.state.doc.child(0);
+    expect(updatedOuterTable.child(0).childCount).toBe(1);
+    const updatedInnerTable = updatedOuterTable.child(0).child(0).child(1);
+    expect(updatedInnerTable.child(0).childCount).toBe(2);
+    expect(updatedInnerTable.textContent).toBe("Inner");
+  });
+
+  test("rejects same-table split and merge operations as an ambiguous batch", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [
+          schema.node("paragraph", { paraId: "shape-A" }, [schema.text("A")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "shape-B" }, [schema.text("B")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        { id: "split", type: "splitTableCell", blockId: "shape-A" },
+        {
+          id: "merge",
+          type: "mergeTableCells",
+          blockId: "shape-A",
+          endBlockId: "shape-B",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual([
+      { id: "split", reason: "unsupportedBlock" },
+      { id: "merge", reason: "unsupportedBlock" },
+    ]);
+    expect(view.state.doc).toEqual(state.doc);
+  });
+
+  test("treats an unspanned split as a no-op and rejects tracked mode", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "plain-cell" }, [schema.text("A")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+
+    const directView = makeView(state);
+    expect(
+      applyFolioAIEditOperations({
+        view: directView,
+        snapshot: createFolioAIEditSnapshot(state.doc),
+        operations: [{ id: "plain", type: "splitTableCell", blockId: "plain-cell" }],
+        mode: "direct",
+      }),
+    ).toEqual({
+      applied: [],
+      skipped: [{ id: "plain", reason: "noopOperation" }],
+    });
+
+    const trackedView = makeView(state);
+    expect(
+      applyFolioAIEditOperations({
+        view: trackedView,
+        snapshot: createFolioAIEditSnapshot(state.doc),
+        operations: [{ id: "tracked", type: "splitTableCell", blockId: "plain-cell" }],
+        mode: "tracked-changes",
+      }),
+    ).toEqual({
+      applied: [],
+      skipped: [{ id: "tracked", reason: "unsupportedMode" }],
+    });
+  });
+
   test("table-row deletes are skipped in tracked-changes mode", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [

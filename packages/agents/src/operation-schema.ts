@@ -409,6 +409,17 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
       required: ["id", "type", "blockId", "endBlockId"],
       additionalProperties: false,
     },
+    {
+      type: "object",
+      description: "Split one spanned table cell into individual cells. Direct mode only.",
+      properties: {
+        ...operationMetaProperties,
+        type: { type: "string", enum: ["splitTableCell"] },
+        blockId: blockIdProperty,
+      },
+      required: ["id", "type", "blockId"],
+      additionalProperties: false,
+    },
   ],
 } as const;
 
@@ -442,8 +453,8 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
         '"direct" applies immediately. `formatRange`, `insertSignatureTable`, `insertTableRow`, ' +
-        "`deleteTableRow`, `insertTableColumn`, `deleteTableColumn`, and `mergeTableCells` " +
-        'support "direct" only.',
+        "`deleteTableRow`, `insertTableColumn`, `deleteTableColumn`, `mergeTableCells`, and " +
+        '`splitTableCell` support "direct" only.',
     },
     atomic: {
       type: "boolean",

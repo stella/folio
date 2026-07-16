@@ -36,6 +36,7 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "insertTableColumn",
   "deleteTableColumn",
   "mergeTableCells",
+  "splitTableCell",
 ] as const satisfies readonly FolioAIEditOperation["type"][]);
 
 export const FOLIO_DOCUMENT_OPERATION_MODES = Object.freeze([
@@ -82,6 +83,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   insertTableColumn: DIRECT_ONLY_MODES,
   deleteTableColumn: DIRECT_ONLY_MODES,
   mergeTableCells: DIRECT_ONLY_MODES,
+  splitTableCell: DIRECT_ONLY_MODES,
 } as const satisfies Readonly<
   Record<FolioDocumentOperationType, readonly FolioDocumentOperationMode[]>
 >);
@@ -643,6 +645,11 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     };
   }
 
+  if (type === "splitTableCell") {
+    assertAllowedKeys(value, path, COMMON_OPERATION_KEYS);
+    return { ...operationMeta, id, type, blockId };
+  }
+
   return invalidBatch(`${path}.type`, `unsupported operation type "${type}"`);
 };
 
@@ -748,6 +755,12 @@ export type FolioDocumentOperationAffectedTarget =
       anchorBlockId: string;
       endAnchorBlockId: string;
       effect: "merged";
+    }
+  | {
+      type: "tableCell";
+      story: FolioDocumentOperationStory;
+      anchorBlockId: string;
+      effect: "split";
     };
 
 /** Input-ordered effect receipt for one successfully applied operation. */
@@ -928,6 +941,13 @@ const getPrimaryAffectedTarget = (
         anchorBlockId: operation.blockId,
         endAnchorBlockId: operation.endBlockId,
         effect: "merged",
+      };
+    case "splitTableCell":
+      return {
+        type: "tableCell",
+        story,
+        anchorBlockId: operation.blockId,
+        effect: "split",
       };
   }
 };

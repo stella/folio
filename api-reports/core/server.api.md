@@ -197,6 +197,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly insertTableColumn: readonly ["direct"];
     readonly deleteTableColumn: readonly ["direct"];
     readonly mergeTableCells: readonly ["direct"];
+    readonly splitTableCell: readonly ["direct"];
 }>;
 
 // @public (undocumented)
@@ -206,7 +207,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "footer", "footnote", "endnote"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
 
 // @public (undocumented)
 export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"];
@@ -360,6 +361,10 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     type: "mergeTableCells"; /** Stable paragraph anchor inside one corner cell. */
     blockId: string; /** Stable paragraph anchor inside the opposite corner cell. */
     endBlockId: string;
+} | {
+    id: string;
+    type: "splitTableCell"; /** Stable paragraph anchor inside the cell to split. */
+    blockId: string;
 });
 
 // @public (undocumented)
@@ -513,6 +518,11 @@ export type FolioDocumentOperationAffectedTarget = {
     anchorBlockId: string;
     endAnchorBlockId: string;
     effect: "merged";
+} | {
+    type: "tableCell";
+    story: FolioDocumentOperationStory;
+    anchorBlockId: string;
+    effect: "split";
 };
 
 // @public (undocumented)

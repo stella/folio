@@ -424,6 +424,11 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     blockId: "0304003A",
     endBlockId: "0304003B",
   },
+  splitTableCell: {
+    id: "op-split-table-cell",
+    type: "splitTableCell",
+    blockId: "0304003A",
+  },
 };
 
 const variantTypeOf = (variant: JsonSchemaNode): unknown => variant.properties?.["type"]?.enum?.[0];

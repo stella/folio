@@ -69,6 +69,7 @@ type ResolvedOperation = {
   tableColumnInsertion?: TableColumnInsertion;
   tableColumnDeletion?: TableColumnDeletion;
   tableCellMerge?: TableCellMerge;
+  tableCellSplit?: TableCellSplit;
   commentId?: number;
   /**
    * Position in the input `operations` array, used as a secondary
@@ -262,6 +263,8 @@ type TableCellMerge = {
   tablePosition: number;
   rectangle: TableRectangle;
 };
+
+type TableCellSplit = TableCellMerge;
 
 const getTableColumnCoordinateKey = ({
   tablePosition,
@@ -464,6 +467,97 @@ const mergeTableRectangle = (
     tr = tr.replaceWith(contentStart, contentEnd, appendedContent);
   }
   return tr;
+};
+
+const splitTableRectangle = (
+  tr: Transaction,
+  tablePosition: number,
+  table: PMNode,
+  rectangle: TableRectangle,
+): Transaction | null => {
+  const map = TableMap.get(table);
+  if (
+    rectangle.left < 0 ||
+    rectangle.top < 0 ||
+    rectangle.right > map.width ||
+    rectangle.bottom > map.height ||
+    rectangle.left >= rectangle.right ||
+    rectangle.top >= rectangle.bottom ||
+    (rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1)
+  ) {
+    return null;
+  }
+  const cellPosition = map.map[rectangle.top * map.width + rectangle.left];
+  if (cellPosition === undefined) {
+    return null;
+  }
+  const cellRectangle = map.findCell(cellPosition);
+  if (!tableRectanglesEqual(cellRectangle, rectangle)) {
+    return null;
+  }
+  const cell = table.nodeAt(cellPosition);
+  if (!cell) {
+    return null;
+  }
+
+  const colspan: unknown = cell.attrs["colspan"];
+  const rowspan: unknown = cell.attrs["rowspan"];
+  const colwidth: unknown = cell.attrs["colwidth"];
+  if (
+    typeof colspan !== "number" ||
+    !Number.isInteger(colspan) ||
+    colspan !== rectangle.right - rectangle.left ||
+    typeof rowspan !== "number" ||
+    !Number.isInteger(rowspan) ||
+    rowspan !== rectangle.bottom - rectangle.top ||
+    (colwidth !== null &&
+      colwidth !== undefined &&
+      (!Array.isArray(colwidth) ||
+        colwidth.length !== colspan ||
+        !colwidth.every((width) => typeof width === "number")))
+  ) {
+    return null;
+  }
+
+  const baseAttrs = {
+    ...cell.attrs,
+    colspan: 1,
+    rowspan: 1,
+    _preserveVMergeRestart: null,
+    _docxVMergeContinuationCells: null,
+  };
+  const attrsByColumn = Array.from({ length: colspan }, (_, index) => ({
+    ...baseAttrs,
+    colwidth:
+      Array.isArray(colwidth) && typeof colwidth[index] === "number" && colwidth[index] > 0
+        ? [colwidth[index]]
+        : null,
+  }));
+  const tableStart = tablePosition + 1;
+  const insertions: { position: number; cell: PMNode }[] = [];
+  for (let row = rectangle.top; row < rectangle.bottom; row++) {
+    let position = map.positionAt(row, rectangle.left, table);
+    if (row === rectangle.top) {
+      position += cell.nodeSize;
+    }
+    for (let column = rectangle.left; column < rectangle.right; column++) {
+      if (row === rectangle.top && column === rectangle.left) {
+        continue;
+      }
+      const attrs = attrsByColumn[column - rectangle.left];
+      const nextCell = attrs ? cell.type.createAndFill(attrs) : null;
+      if (!nextCell) {
+        return null;
+      }
+      insertions.push({ position: tableStart + position, cell: nextCell });
+    }
+  }
+
+  const mapFrom = tr.mapping.maps.length;
+  for (const insertion of insertions) {
+    tr = tr.insert(tr.mapping.slice(mapFrom).map(insertion.position, 1), insertion.cell);
+  }
+  return tr.setNodeMarkup(tableStart + cellPosition, undefined, attrsByColumn.at(0));
 };
 
 const findTableColumnInsertion = (
@@ -912,7 +1006,8 @@ const applyFolioAIEditOperationsInternal = ({
         operation.type === "deleteTableRow" ||
         operation.type === "insertTableColumn" ||
         operation.type === "deleteTableColumn" ||
-        operation.type === "mergeTableCells")
+        operation.type === "mergeTableCells" ||
+        operation.type === "splitTableCell")
     ) {
       skipped.push({ id: operation.id, reason: "unsupportedMode" });
       continue;
@@ -976,35 +1071,68 @@ const applyFolioAIEditOperationsInternal = ({
     }
   }
 
+  const mergeTables = new Set(
+    resolved.flatMap((item) => (item.tableCellMerge ? [item.tableCellMerge.tablePosition] : [])),
+  );
+  const splitTables = new Set(
+    resolved.flatMap((item) => (item.tableCellSplit ? [item.tableCellSplit.tablePosition] : [])),
+  );
   const mergeRectanglesByTable = new Map<number, TableRectangle[]>();
+  const splitRectanglesByTable = new Map<number, TableRectangle[]>();
   const executableResolved: ResolvedOperation[] = [];
   for (const item of resolved) {
     const merge = item.tableCellMerge;
-    if (!merge) {
+    if (merge) {
+      if (
+        tableStructureMutations.has(merge.tablePosition) ||
+        splitTables.has(merge.tablePosition)
+      ) {
+        skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+        continue;
+      }
+      const claimedRectangles = mergeRectanglesByTable.get(merge.tablePosition) ?? [];
+      const duplicate = claimedRectangles.some((rectangle) =>
+        tableRectanglesEqual(rectangle, merge.rectangle),
+      );
+      if (duplicate) {
+        skipped.push({ id: item.operation.id, reason: "noopOperation" });
+        continue;
+      }
+      const overlap = claimedRectangles.some((rectangle) =>
+        tableRectanglesOverlap(rectangle, merge.rectangle),
+      );
+      if (overlap) {
+        skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+        continue;
+      }
+      claimedRectangles.push(merge.rectangle);
+      mergeRectanglesByTable.set(merge.tablePosition, claimedRectangles);
       executableResolved.push(item);
       continue;
     }
-    if (tableStructureMutations.has(merge.tablePosition)) {
-      skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
-      continue;
+    const split = item.tableCellSplit;
+    if (split) {
+      if (
+        tableStructureMutations.has(split.tablePosition) ||
+        mergeTables.has(split.tablePosition)
+      ) {
+        skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+        continue;
+      }
+      const claimedRectangles = splitRectanglesByTable.get(split.tablePosition) ?? [];
+      if (claimedRectangles.some((rectangle) => tableRectanglesEqual(rectangle, split.rectangle))) {
+        skipped.push({ id: item.operation.id, reason: "noopOperation" });
+        continue;
+      }
+      if (
+        claimedRectangles.some((rectangle) => tableRectanglesOverlap(rectangle, split.rectangle))
+      ) {
+        skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+        continue;
+      }
+      claimedRectangles.push(split.rectangle);
+      splitRectanglesByTable.set(split.tablePosition, claimedRectangles);
     }
-    const claimedRectangles = mergeRectanglesByTable.get(merge.tablePosition) ?? [];
-    const duplicate = claimedRectangles.some((rectangle) =>
-      tableRectanglesEqual(rectangle, merge.rectangle),
-    );
-    if (duplicate) {
-      skipped.push({ id: item.operation.id, reason: "noopOperation" });
-      continue;
-    }
-    const overlap = claimedRectangles.some((rectangle) =>
-      tableRectanglesOverlap(rectangle, merge.rectangle),
-    );
-    if (overlap) {
-      skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
-      continue;
-    }
-    claimedRectangles.push(merge.rectangle);
-    mergeRectanglesByTable.set(merge.tablePosition, claimedRectangles);
     executableResolved.push(item);
   }
 
@@ -1024,23 +1152,23 @@ const applyFolioAIEditOperationsInternal = ({
   // ties use reverse input order so repeated insertions retain their
   // requested sequence.
   for (const item of executableResolved.toSorted((left, right) => {
-    const leftMerge = left.tableCellMerge;
-    const rightMerge = right.tableCellMerge;
-    if (!leftMerge && rightMerge) {
+    const leftCellShape = left.tableCellMerge ?? left.tableCellSplit;
+    const rightCellShape = right.tableCellMerge ?? right.tableCellSplit;
+    if (!leftCellShape && rightCellShape) {
       return -1;
     }
-    if (leftMerge && !rightMerge) {
+    if (leftCellShape && !rightCellShape) {
       return 1;
     }
-    if (leftMerge && rightMerge) {
-      if (leftMerge.tablePosition !== rightMerge.tablePosition) {
-        return rightMerge.tablePosition - leftMerge.tablePosition;
+    if (leftCellShape && rightCellShape) {
+      if (leftCellShape.tablePosition !== rightCellShape.tablePosition) {
+        return rightCellShape.tablePosition - leftCellShape.tablePosition;
       }
-      if (leftMerge.rectangle.bottom !== rightMerge.rectangle.bottom) {
-        return rightMerge.rectangle.bottom - leftMerge.rectangle.bottom;
+      if (leftCellShape.rectangle.bottom !== rightCellShape.rectangle.bottom) {
+        return rightCellShape.rectangle.bottom - leftCellShape.rectangle.bottom;
       }
-      if (leftMerge.rectangle.right !== rightMerge.rectangle.right) {
-        return rightMerge.rectangle.right - leftMerge.rectangle.right;
+      if (leftCellShape.rectangle.right !== rightCellShape.rectangle.right) {
+        return rightCellShape.rectangle.right - leftCellShape.rectangle.right;
       }
       return right.originalIndex - left.originalIndex;
     }
@@ -1442,6 +1570,33 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         const nextTr = mergeTableRectangle(tr, tablePosition, table, merge.rectangle);
+        if (!nextTr) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
+        tr = nextTr;
+        break;
+      }
+      case "splitTableCell": {
+        const split = item.tableCellSplit;
+        const tablePosition = split ? tr.mapping.map(split.tablePosition, 1) : null;
+        const table = tablePosition === null ? null : tr.doc.nodeAt(tablePosition);
+        if (
+          !split ||
+          tablePosition === null ||
+          !table ||
+          table.type.spec["tableRole"] !== "table"
+        ) {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
+        }
+        const nextTr = splitTableRectangle(tr, tablePosition, table, split.rectangle);
         if (!nextTr) {
           skipped.push({
             id: item.operation.id,
@@ -2114,6 +2269,37 @@ const resolveOperation = ({
         blockNode,
         tableCellMerge: {
           tablePosition: startCell.tablePosition,
+          rectangle,
+        },
+      },
+    };
+  }
+
+  if (operation.type === "splitTableCell") {
+    const cell = findEnclosingTableCell(doc, blockFrom);
+    if (!cell) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    const rectangle = {
+      left: cell.leftColumnIndex,
+      top: cell.topRowIndex,
+      right: cell.rightColumnIndex,
+      bottom: cell.bottomRowIndex,
+    };
+    if (rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1) {
+      return { type: "skip", reason: "noopOperation" };
+    }
+    return {
+      type: "resolved",
+      operation: {
+        operation,
+        from: cell.cellPosition,
+        to: cell.cellEndPosition,
+        blockFrom,
+        blockTo,
+        blockNode,
+        tableCellSplit: {
+          tablePosition: cell.tablePosition,
           rectangle,
         },
       },

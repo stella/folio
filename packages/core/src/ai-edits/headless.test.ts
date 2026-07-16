@@ -621,6 +621,165 @@ describe("headless docx review round-trip", () => {
     expect(restoredTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
   });
 
+  test("splits, persists, and undoes a merged cell inside shape text", async () => {
+    const baseline = await buildTextBoxTableDocument();
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
+    expect(
+      reviewer.applyDocumentOperations({
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "insert-column",
+            type: "insertTableColumn",
+            blockId: initialTarget.id,
+            cellTexts: ["Added value"],
+          },
+        ],
+      }).status,
+    ).toBe("committed");
+    const mergeSnapshot = reviewer.snapshot();
+    const mergeStart = findBlock(mergeSnapshot.blocks, "Cell value");
+    const mergeEnd = findBlock(mergeSnapshot.blocks, "Added value");
+    expect(
+      reviewer.applyDocumentOperations({
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "merge",
+            type: "mergeTableCells",
+            blockId: mergeStart.id,
+            endBlockId: mergeEnd.id,
+          },
+        ],
+      }).status,
+    ).toBe("committed");
+
+    const splitTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
+    const rejected = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      atomic: true,
+      operations: [
+        { id: "split-cell", type: "splitTableCell", blockId: splitTarget.id },
+        { id: "missing", type: "deleteBlock", blockId: "para-missing" },
+      ],
+    });
+    expect(rejected.status).toBe("rejected");
+    expect(rejected.applied).toEqual([]);
+
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [{ id: "split-cell", type: "splitTableCell", blockId: splitTarget.id }],
+    });
+
+    expect(result.status).toBe("committed");
+    expect(result.applied).toEqual([{ id: "split-cell" }]);
+    expect(result.receipts).toEqual([
+      {
+        operationId: "split-cell",
+        operationIndex: 0,
+        affected: [
+          {
+            type: "tableCell",
+            story: "main",
+            anchorBlockId: splitTarget.id,
+            effect: "split",
+          },
+        ],
+      },
+    ]);
+    const saved = await parseDocx(await reviewer.toBuffer(), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const table = findTextBoxShape(saved).textBody?.content.at(1);
+    expect(table?.type).toBe("table");
+    if (table?.type !== "table") {
+      throw new Error("expected a nested table");
+    }
+    expect(table.rows.at(0)?.cells).toHaveLength(2);
+    expect(table.rows.at(0)?.cells.at(0)?.formatting?.gridSpan).toBeUndefined();
+    expect(table.rows.at(0)?.cells.at(1)?.formatting?.gridSpan).toBeUndefined();
+
+    if (!result.undoHandle) {
+      throw new Error("expected an undo handle");
+    }
+    expect(reviewer.undoDocumentOperations(result.undoHandle).status).toBe("undone");
+    const restored = await parseDocx(await reviewer.toBuffer(), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const restoredTable = findTextBoxShape(restored).textBody?.content.at(1);
+    expect(restoredTable?.type).toBe("table");
+    if (restoredTable?.type !== "table") {
+      throw new Error("expected a nested table");
+    }
+    expect(restoredTable.rows.at(0)?.cells).toHaveLength(1);
+    expect(restoredTable.rows.at(0)?.cells.at(0)?.formatting?.gridSpan).toBe(2);
+  });
+
+  test("clears vertical merge metadata when splitting a cell", async () => {
+    const baseline = await buildTextBoxTableDocument();
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
+    expect(
+      reviewer.applyDocumentOperations({
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "insert-row",
+            type: "insertTableRow",
+            blockId: initialTarget.id,
+            cellTexts: ["Added value"],
+          },
+        ],
+      }).status,
+    ).toBe("committed");
+    const mergeSnapshot = reviewer.snapshot();
+    const mergeStart = findBlock(mergeSnapshot.blocks, "Cell value");
+    const mergeEnd = findBlock(mergeSnapshot.blocks, "Added value");
+    expect(
+      reviewer.applyDocumentOperations({
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "merge",
+            type: "mergeTableCells",
+            blockId: mergeStart.id,
+            endBlockId: mergeEnd.id,
+          },
+        ],
+      }).status,
+    ).toBe("committed");
+
+    const splitTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [{ id: "split", type: "splitTableCell", blockId: splitTarget.id }],
+    });
+    expect(result.status).toBe("committed");
+
+    const saved = await parseDocx(await reviewer.toBuffer(), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const table = findTextBoxShape(saved).textBody?.content.at(1);
+    expect(table?.type).toBe("table");
+    if (table?.type !== "table") {
+      throw new Error("expected a nested table");
+    }
+    expect(table.rows).toHaveLength(2);
+    expect(table.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+    expect(table.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+  });
+
   test("deletes, persists, and undoes a column inside shape text", async () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
