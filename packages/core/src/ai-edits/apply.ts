@@ -434,6 +434,7 @@ const mergeTableRectangle = (
     !Number.isInteger(rowspan) ||
     rowspan < 1 ||
     (colwidth !== null &&
+      colwidth !== undefined &&
       (!Array.isArray(colwidth) ||
         colwidth.length !== colspan ||
         !colwidth.every((width) => typeof width === "number")))
