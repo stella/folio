@@ -55,11 +55,17 @@ const blockStartIdsFromDoc = (doc: PMNode): Map<number, string> => {
   return starts;
 };
 
-const firstBlockIdWithin = (
-  node: PMNode,
-  nodePos: number,
-  blockStarts: ReadonlyMap<number, string>,
-): string | null => {
+type FirstBlockIdWithinParams = {
+  node: PMNode;
+  nodePos: number;
+  blockStarts: ReadonlyMap<number, string>;
+};
+
+const firstBlockIdWithin = ({
+  node,
+  nodePos,
+  blockStarts,
+}: FirstBlockIdWithinParams): string | null => {
   let blockId: string | null = null;
   node.descendants((child, relativePos) => {
     if (blockId !== null || !child.isTextblock) {
@@ -93,20 +99,21 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
         if (
           typeof marker !== "object" ||
           marker === null ||
-          typeof (marker as { revisionId?: unknown }).revisionId !== "number"
+          !("revisionId" in marker) ||
+          typeof marker.revisionId !== "number"
         ) {
           continue;
         }
-        const revisionId = (marker as { revisionId: number }).revisionId;
-        const author = (marker as { author?: unknown }).author;
-        const date = (marker as { date?: unknown }).date;
+        const revisionId = marker.revisionId;
+        const author = "author" in marker ? marker.author : undefined;
+        const date = "date" in marker ? marker.date : undefined;
         grouped.set(`row:${kind}:${revisionId}:${String(pos)}`, {
           id: revisionId,
           type: kind,
           author: typeof author === "string" ? author : "",
           date: typeof date === "string" ? date : null,
           text: node.textContent,
-          blockId: firstBlockIdWithin(node, pos, blockStarts),
+          blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
         });
       }
     }

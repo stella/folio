@@ -357,7 +357,8 @@ function isTableRowRevisionAttr(value: unknown): value is TableRowRevisionAttr {
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof (value as { revisionId?: unknown }).revisionId === "number"
+    "revisionId" in value &&
+    typeof value.revisionId === "number"
   );
 }
 
@@ -737,6 +738,7 @@ export function findAIEditRevisionRange(
           if (range.to === null || end > range.to) {
             range.to = end;
           }
+          return false;
         }
       }
     }

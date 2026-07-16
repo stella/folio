@@ -2592,7 +2592,7 @@ function convertPMTableRow(
       info: {
         id: attrs.trIns.revisionId,
         author: attrs.trIns.author,
-        ...(attrs.trIns.date && { date: attrs.trIns.date }),
+        ...(attrs.trIns.date != null && { date: attrs.trIns.date }),
       },
     };
   } else if (attrs.trDel) {
@@ -2601,7 +2601,7 @@ function convertPMTableRow(
       info: {
         id: attrs.trDel.revisionId,
         author: attrs.trDel.author,
-        ...(attrs.trDel.date && { date: attrs.trDel.date }),
+        ...(attrs.trDel.date != null && { date: attrs.trDel.date }),
       },
     };
   }

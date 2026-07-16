@@ -269,6 +269,44 @@ describe("table row structural revision resolution", () => {
     expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(true);
     expect(rejecting.state.doc.firstChild?.textContent).toBe("Original");
   });
+
+  test("rejecting the only inserted row preserves a valid document", () => {
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            row("Changed", {
+              trIns: { revisionId: 61, author: "Reviewer", date: "2026-07-16" },
+            }),
+          ]),
+        ]),
+      }),
+    );
+
+    expect(rejectAIEditRevision(61)(view.state, view.dispatch)).toBe(true);
+    expect(view.state.doc.firstChild?.type.name).toBe("paragraph");
+    expect(() => view.state.doc.check()).not.toThrow();
+  });
+
+  test("accepting the only deleted row preserves a valid document", () => {
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            row("Changed", {
+              trDel: { revisionId: 62, author: "Reviewer", date: "2026-07-16" },
+            }),
+          ]),
+        ]),
+      }),
+    );
+
+    expect(acceptAIEditRevision(62)(view.state, view.dispatch)).toBe(true);
+    expect(view.state.doc.firstChild?.type.name).toBe("paragraph");
+    expect(() => view.state.doc.check()).not.toThrow();
+  });
 });
 
 describe("findChangeAtPosition", () => {

@@ -132,7 +132,8 @@ const suggestChangesOperationSchema = {
     },
     cellTexts: {
       type: "array",
-      description: "For row insertion, initial text for physical cells in source order.",
+      description:
+        "For row insertion, initial text for physical cells in source order, up to 100,000 characters per cell.",
       maxItems: 256,
       items: { type: "string" },
     },
