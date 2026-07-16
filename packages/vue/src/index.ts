@@ -16,6 +16,11 @@
 
 // ─── Editor component + imperative API (Vue-specific) ───────────────────────
 export { default as DocxEditor } from "./components/DocxEditor.vue";
+export { default as AutocompleteCaretOverlay } from "./components/AutocompleteCaretOverlay.vue";
+export type {
+  AutocompleteCaretOverlayProps,
+  AutocompleteCaretRect,
+} from "./components/AutocompleteCaretOverlay.types";
 // Standalone chrome components (mirror React's index): a host can render these
 // outside DocxEditor. Both are controlled — they own no editor view.
 export { default as FormattingBar } from "./components/FormattingBar.vue";

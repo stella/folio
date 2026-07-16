@@ -99,6 +99,7 @@ import {
 } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
+import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
 import { createTemplatePreviewValuesPlugin } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
 import type { TemplatePreviewEntry } from "@stll/folio-core/prosemirror/plugins/templatePreviewValues";
@@ -507,6 +508,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // definitions). Prepended to the host's external plugins so the hidden-editor
   // manager installs it on every (re)created state.
   const suggestionPlugin = createSuggestionModePlugin(false);
+  // Inline autocomplete is always installed and inert until a host dispatches
+  // start/token/finish metadata. Keep its keymap ahead of extension keymaps so
+  // Tab, Mod+ArrowRight, and Escape consume an active suggestion first.
+  const autocompletePlugin = autocompleteSuggestionPlugin({ keymap: true });
 
   // Anonymization-term highlights. Always installed (inert until the host pushes
   // terms via `setAnonymizationTermsMeta`), matching React. The callback is read
@@ -526,12 +531,13 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   const templatePluginsEnabled = (): boolean => toValue(showTemplateDirectives) === true;
 
-  // Plugin list installed on every (re)created hidden-editor state. Anonymization
-  // + preview are always present; the template directive/slash-menu pair is gated
-  // on `showTemplateDirectives`. The host's `externalPlugins` lead, matching the
-  // React adapter's ordering (host plugins before feature decorations).
+  // Plugin list installed on every (re)created hidden-editor state. Autocomplete
+  // leads so its active-suggestion keymap wins before extension keymaps;
+  // suggestion mode follows, then host/collaboration plugins and inert feature
+  // decorations. The template directive/slash-menu pair remains feature-gated.
   function buildExternalPlugins(): Plugin[] {
     return [
+      autocompletePlugin,
       suggestionPlugin,
       ...externalPlugins,
       ...(toValue(collaboration)?.plugins ?? []),

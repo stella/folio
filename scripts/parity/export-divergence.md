@@ -24,9 +24,6 @@ no React equivalent.
 
 Known Vue gaps (React-only chrome/components not yet ported to Vue):
 
-- `AutocompleteCaretOverlay` — React overlay component; no Vue equivalent yet.
-- `AutocompleteCaretOverlayProps` — type for the React-only overlay.
-- `AutocompleteCaretRect` — type for the React-only overlay.
 - `clampZoom` — standalone zoom util re-exported only from the React hook module.
 - `formatZoom` — standalone zoom util (React-only re-export).
 - `parseZoom` — standalone zoom util (React-only re-export).

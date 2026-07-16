@@ -26,6 +26,7 @@ import { appendAutocompleteToken } from '@stll/folio-core/prosemirror/plugins/au
 import { applyFolioAIEditOperations } from '@stll/folio-core/ai-edits';
 import { ApplyResult } from '@stll/folio-core/ai-suggestions/apply';
 import { applySuggestions } from '@stll/folio-core/ai-suggestions/apply';
+import { default as AutocompleteCaretOverlay } from './components/AutocompleteCaretOverlay.vue';
 import { autocompleteSuggestionKey } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { autocompleteSuggestionPlugin } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { AutocompleteSuggestionPluginOptions } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
@@ -217,6 +218,23 @@ export { applyFolioAIEditOperations }
 export { ApplyResult }
 
 export { applySuggestions }
+
+export { AutocompleteCaretOverlay }
+
+// @public (undocumented)
+export type AutocompleteCaretOverlayProps = {
+    caret: AutocompleteCaretRect | null; /** The full streamed ghost text so far. */
+    text: string; /** Whether tokens are still arriving. */
+    isStreaming: boolean;
+};
+
+// @public (undocumented)
+export type AutocompleteCaretRect = {
+    x: number; /** Overlay-relative pixel y (top of the cursor line). */
+    y: number; /** Line height in pixels at the anchor. */
+    lineHeight: number; /** Available width from the caret to the page's right content edge. */
+    maxWidth?: number | undefined;
+};
 
 export { autocompleteSuggestionKey }
 
