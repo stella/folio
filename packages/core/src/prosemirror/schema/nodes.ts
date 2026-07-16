@@ -638,15 +638,6 @@ export type TableRowAttrs = {
 /**
  * Table cell attributes
  */
-export type TableCellStructuralRevisionMarker = {
-  kind: "ins" | "del";
-  info: {
-    revisionId: number;
-    author: string;
-    date?: string | null;
-  };
-};
-
 export type TableCellAttrs = {
   /** Column span */
   colspan: number;
@@ -677,7 +668,14 @@ export type TableCellAttrs = {
   /** Tracked cell property changes (w:tcPrChange) for round-trip + accept/reject */
   tcPrChange?: TableCellPropertyChange[];
   /** Tracked cell insertion/deletion for round-trip + accept/reject. */
-  cellMarker?: TableCellStructuralRevisionMarker;
+  cellMarker?: {
+    kind: "ins" | "del";
+    info: {
+      revisionId: number;
+      author: string;
+      date?: string | null;
+    };
+  };
   /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
   _preserveVMergeRestart?: boolean;
   /** Original DOCX vMerge continuation cells skipped into this PM rowspan. */

@@ -383,7 +383,15 @@ export type TableCellAttrs = {
         right?: number;
     }; /** Original cell formatting from DOCX for lossless round-trip serialization */
     _originalFormatting?: import__stll_docx_core_model.TableCellFormatting; /** Tracked cell property changes (w:tcPrChange) for round-trip + accept/reject */
-    tcPrChange?: import__stll_docx_core_model.TableCellPropertyChange[]; /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
+    tcPrChange?: import__stll_docx_core_model.TableCellPropertyChange[]; /** Tracked cell insertion/deletion for round-trip + accept/reject. */
+    cellMarker?: {
+        kind: "ins" | "del";
+        info: {
+            revisionId: number;
+            author: string;
+            date?: string | null;
+        };
+    }; /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
     _preserveVMergeRestart?: boolean; /** Original DOCX vMerge continuation cells skipped into this PM rowspan. */
     _docxVMergeContinuationCells?: import__stll_docx_core_model.TableCell[];
 };
@@ -453,8 +461,7 @@ export type TextBoxAttrs = {
     } | {
         type: "moveTo";
         info: import__stll_docx_core_model.TrackedChangeInfo;
-    };
-    /** Original inline content-control ancestry for save-path reconstruction. */
+    }; /** Original inline content-control ancestry for save-path reconstruction. */
     _docxInlineSdts?: SdtAttrs[];
 };
 

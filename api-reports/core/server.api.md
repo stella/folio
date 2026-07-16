@@ -777,7 +777,7 @@ export type FolioReviewChange = {
     id: number;
     type: FolioReviewChangeKind;
     author: string; /** ISO date the change was authored, or `null` when the source omitted it. */
-    date: string | null; /** Affected text, including the row content for structural revisions. */
+    date: string | null; /** Affected text, including row or cell content for structural revisions. */
     text: string;
     blockId: string | null;
 };
@@ -789,7 +789,7 @@ export type FolioReviewChangeFilter = {
 };
 
 // @public (undocumented)
-export type FolioReviewChangeKind = "insertion" | "deletion" | "rowInserted" | "rowDeleted";
+export type FolioReviewChangeKind = "insertion" | "deletion" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted";
 
 // @public
 export type FolioReviewComment = {
