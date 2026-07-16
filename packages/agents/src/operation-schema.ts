@@ -350,7 +350,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
     },
     {
       type: "object",
-      description: "Delete the row containing the anchor block. Direct mode only.",
+      description: "Delete the row containing the anchor block.",
       properties: {
         ...operationMetaProperties,
         type: { type: "string", enum: ["deleteTableRow"] },
@@ -452,7 +452,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       enum: FOLIO_DOCUMENT_OPERATION_MODES,
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
-        '"direct" applies immediately. `formatRange`, `insertSignatureTable`, `deleteTableRow`, ' +
+        '"direct" applies immediately. `formatRange`, `insertSignatureTable`, ' +
         "`insertTableColumn`, `deleteTableColumn`, `mergeTableCells`, and " +
         '`splitTableCell` support "direct" only.',
     },

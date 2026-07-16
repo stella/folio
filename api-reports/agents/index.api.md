@@ -871,7 +871,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                     readonly additionalProperties: false;
                 }, {
                     readonly type: "object";
-                    readonly description: "Delete the row containing the anchor block. Direct mode only.";
+                    readonly description: "Delete the row containing the anchor block.";
                     readonly properties: {
                         readonly type: {
                             readonly type: "string";
@@ -1882,7 +1882,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
         readonly additionalProperties: false;
     }, {
         readonly type: "object";
-        readonly description: "Delete the row containing the anchor block. Direct mode only.";
+        readonly description: "Delete the row containing the anchor block.";
         readonly properties: {
             readonly type: {
                 readonly type: "string";

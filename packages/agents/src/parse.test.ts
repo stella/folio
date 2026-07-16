@@ -216,6 +216,16 @@ describe("parseSuggestChangesInput", () => {
     expect(result.error).toContain("256-cell limit");
   });
 
+  test("a tracked table-row deletion preserves the target block", () => {
+    const result = parseSuggestChangesInput({
+      operations: [{ type: "deleteTableRow", blockId: "cell-1" }],
+    });
+    expect(result).toEqual({
+      ok: true,
+      operations: [{ id: "op-1", type: "deleteTableRow", blockId: "cell-1" }],
+    });
+  });
+
   test("an optional comment attaches a review comment to the operation", () => {
     const result = parseSuggestChangesInput({
       operations: [{ type: "deleteBlock", blockId: "b1", comment: "why this edit" }],
@@ -352,7 +362,6 @@ describe("parseSuggestChangesInput", () => {
       "formatRange",
       "commentOnBlock",
       "insertSignatureTable",
-      "deleteTableRow",
       "insertTableColumn",
       "deleteTableColumn",
       "mergeTableCells",

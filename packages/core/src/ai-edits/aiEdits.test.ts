@@ -4,6 +4,7 @@ import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
+import { acceptAIEditRevision } from "../prosemirror/commands/comments";
 import { applyFolioAIEditOperations } from "./apply";
 import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
 
@@ -3196,11 +3197,16 @@ describe("Folio AI edit operations", () => {
     });
   });
 
-  test("table-row deletes are skipped in tracked-changes mode", () => {
+  test("table-row deletes create one structural revision in tracked-changes mode", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
           schema.node("paragraph", { paraId: "tracked-delete" }, [schema.text("Cell")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "untouched-row" }, [schema.text("Untouched")]),
         ]),
       ]),
     ]);
@@ -3214,11 +3220,99 @@ describe("Folio AI edit operations", () => {
       mode: "tracked-changes",
     });
 
+    expect(result.skipped).toEqual([]);
+    expect(result.applied).toHaveLength(1);
+    const revisionId = result.applied.at(0)?.revisionId;
+    expect(typeof revisionId).toBe("number");
+    expect(result.applied.at(0)?.revisionIds).toEqual([revisionId]);
+    const liveTable = view.state.doc.child(0);
+    expect(liveTable.childCount).toBe(2);
+    expect(liveTable.child(0).attrs["trDel"]).toEqual({
+      revisionId,
+      author: "AI",
+      date: expect.any(String),
+    });
+    expect(liveTable.child(1).attrs["trDel"]).toBeNull();
+  });
+
+  test("tracked row deletion rejects a row with a pending structural revision", () => {
+    const table = schema.node("table", null, [
+      schema.node(
+        "tableRow",
+        {
+          trIns: {
+            revisionId: 10,
+            author: "Reviewer",
+            date: "2026-07-16",
+          },
+        },
+        [
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: "pending-row" }, [schema.text("Cell")]),
+          ]),
+        ],
+      ),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "delete-row", type: "deleteTableRow", blockId: "pending-row" }],
+      mode: "tracked-changes",
+    });
+
     expect(result).toEqual({
       applied: [],
-      skipped: [{ id: "delete-row", reason: "unsupportedMode" }],
+      skipped: [{ id: "delete-row", reason: "unsupportedBlock" }],
     });
-    expect(view.state.doc.child(0).childCount).toBe(1);
+    expect(view.state.doc).toEqual(state.doc);
+  });
+
+  test("accepting a tracked row deletion repairs a vertical span", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2, rowspan: 2 }, [
+          schema.node("paragraph", { paraId: "tracked-span-origin" }, [schema.text("A")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-span-peer" }, [schema.text("B")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-span-continuation" }, [schema.text("C")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "delete-row",
+          type: "deleteTableRow",
+          blockId: "tracked-span-origin",
+        },
+      ],
+      mode: "tracked-changes",
+    });
+    const revisionId = result.applied.at(0)?.revisionId;
+    if (revisionId === undefined) {
+      throw new Error("expected a row deletion revision");
+    }
+
+    expect(acceptAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(true);
+    const acceptedTable = view.state.doc.child(0);
+    expect(acceptedTable.childCount).toBe(1);
+    expect(acceptedTable.child(0).childCount).toBe(2);
+    expect(acceptedTable.child(0).child(0).attrs["colspan"]).toBe(2);
+    expect(acceptedTable.child(0).child(0).attrs["rowspan"]).toBe(1);
+    expect(acceptedTable.textContent).toBe("AC");
   });
 
   test("table-row inserts create one structural revision in tracked-changes mode", () => {

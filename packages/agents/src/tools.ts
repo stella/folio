@@ -52,8 +52,8 @@ const scopedHandleSchema = {
 /**
  * `suggest_changes` deliberately narrows the full document-operation contract
  * (see `FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA` in `operation-schema.ts`):
- * - excluded types: `formatRange`, `insertSignatureTable`, `deleteTableRow`,
- *   `insertTableColumn`, `deleteTableColumn`, `mergeTableCells`, and `splitTableCell` (direct-only,
+ * - excluded types: `formatRange`, `insertSignatureTable`, `insertTableColumn`,
+ *   `deleteTableColumn`, `mergeTableCells`, and `splitTableCell` (direct-only,
  *   not representable as tracked changes for human review)
  *   and `commentOnBlock` (covered by the dedicated `add_comment` tool);
  * - `id` is optional here (auto-generated `op-1`, `op-2`, … by `parse.ts`)
@@ -69,7 +69,6 @@ const SUGGEST_CHANGES_EXCLUDED_OPERATION_TYPES: ReadonlySet<FolioDocumentOperati
   "formatRange",
   "commentOnBlock",
   "insertSignatureTable",
-  "deleteTableRow",
   "insertTableColumn",
   "deleteTableColumn",
   "mergeTableCells",

@@ -84,7 +84,7 @@ export const parseAddCommentInput = (args: unknown): ParseAddCommentResult => {
 };
 
 const OPERATION_TYPES =
-  "replaceInBlock, replaceRange, commentOnRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock, insertTableRow";
+  "replaceInBlock, replaceRange, commentOnRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock, insertTableRow, deleteTableRow";
 
 type SuggestedOperationType =
   | "replaceInBlock"
@@ -94,7 +94,8 @@ type SuggestedOperationType =
   | "insertBeforeBlock"
   | "replaceBlock"
   | "deleteBlock"
-  | "insertTableRow";
+  | "insertTableRow"
+  | "deleteTableRow";
 
 const isOperationType = (value: unknown): value is SuggestedOperationType =>
   value === "replaceInBlock" ||
@@ -104,7 +105,8 @@ const isOperationType = (value: unknown): value is SuggestedOperationType =>
   value === "insertBeforeBlock" ||
   value === "replaceBlock" ||
   value === "deleteBlock" ||
-  value === "insertTableRow";
+  value === "insertTableRow" ||
+  value === "deleteTableRow";
 
 const readTextRange = (value: unknown, index: number): FolioAITextRangeHandle | string => {
   const path = `operations[${index}].range`;
@@ -217,6 +219,10 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
       ...(position !== undefined && { position }),
       ...(rawCellTexts !== undefined && { cellTexts }),
     };
+  }
+
+  if (type === "deleteTableRow") {
+    return { id: opId, type, blockId };
   }
 
   if (type === "replaceInBlock") {
