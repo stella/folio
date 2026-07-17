@@ -655,30 +655,25 @@ function editTextBoxAnchorInContent(
       content.splice(index, 1, ...(replacement ? [replacement] : []));
       return true;
     }
-    if (item?.type === "inlineSdt") {
-      const hadContent = item.content.length > 0;
-      if (editTextBoxAnchorInContent(item.content, marker, replacement)) {
-        if (!replacement && hadContent && item.content.length === 0) {
-          content.splice(index, 1);
-        }
-        return true;
-      }
+    const nestedContent =
+      item?.type === "hyperlink"
+        ? item.children
+        : item?.type === "inlineSdt" ||
+            item?.type === "insertion" ||
+            item?.type === "deletion" ||
+            item?.type === "moveFrom" ||
+            item?.type === "moveTo"
+          ? item.content
+          : undefined;
+    if (!nestedContent) {
       continue;
     }
-    if (
-      item?.type === "insertion" ||
-      item?.type === "deletion" ||
-      item?.type === "moveFrom" ||
-      item?.type === "moveTo"
-    ) {
-      const markerIndex = item.content.findIndex((child) => child === marker);
-      if (markerIndex >= 0) {
-        item.content.splice(markerIndex, 1, ...(replacement ? [replacement] : []));
-        if (!replacement && item.content.length === 0) {
-          content.splice(index, 1);
-        }
-        return true;
+    const hadContent = nestedContent.length > 0;
+    if (editTextBoxAnchorInContent(nestedContent, marker, replacement)) {
+      if (!replacement && hadContent && nestedContent.length === 0) {
+        content.splice(index, 1);
       }
+      return true;
     }
   }
   return false;
@@ -1283,9 +1278,12 @@ function extractParagraphContent(
         return;
       }
       textBoxAnchorMarkers.set(anchorId, marker);
+      const anchoredContent: Run | Hyperlink = linkMark
+        ? { ...createHyperlink(linkMark), children: [marker] }
+        : marker;
       const changeMark = insertionMark ?? deletionMark;
       if (!changeMark) {
-        content.push(marker);
+        content.push(anchoredContent);
         return;
       }
       const changeAttrs = expectTrackedChangeMarkAttrs(changeMark);
@@ -1298,13 +1296,13 @@ function extractParagraphContent(
         content.push({
           type: changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion",
           info,
-          content: [marker],
+          content: [anchoredContent],
         });
       } else {
         content.push({
           type: changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion",
           info,
-          content: [marker],
+          content: [anchoredContent],
         });
       }
       return;
@@ -1326,6 +1324,9 @@ function extractParagraphContent(
       if (!run) {
         return;
       }
+      const trackedContent: Run | Hyperlink = linkMark
+        ? { ...createHyperlink(linkMark), children: [run] }
+        : run;
 
       const info: TrackedChangeInfo = {
         id: changeAttrs.revisionId,
@@ -1344,14 +1345,14 @@ function extractParagraphContent(
       // fuse into a phantom move pair.
       if (insertionMark) {
         if (changeAttrs.moveKind === "moveTo") {
-          content.push({ type: "moveTo", info, content: [run] });
+          content.push({ type: "moveTo", info, content: [trackedContent] });
         } else {
-          content.push({ type: "insertion", info, content: [run] });
+          content.push({ type: "insertion", info, content: [trackedContent] });
         }
       } else if (changeAttrs.moveKind === "moveFrom") {
-        content.push({ type: "moveFrom", info, content: [run] });
+        content.push({ type: "moveFrom", info, content: [trackedContent] });
       } else {
-        content.push({ type: "deletion", info, content: [run] });
+        content.push({ type: "deletion", info, content: [trackedContent] });
       }
       return;
     }

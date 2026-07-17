@@ -1959,6 +1959,53 @@ describe("fromProseDoc", () => {
     },
   );
 
+  test("preserves text-box order inside a hyperlink nested in a tracked change", () => {
+    const document = documentWithTextBoxParagraph({ includeText: false });
+    const paragraph = document.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    const textBoxRun = paragraph.content.at(0);
+    if (textBoxRun?.type !== "run") {
+      throw new Error("Expected text-box run");
+    }
+    paragraph.content = [
+      {
+        type: "insertion",
+        info: { id: 42, author: "Reviewer" },
+        content: [
+          {
+            type: "hyperlink",
+            href: "https://example.com",
+            children: [
+              { type: "run", content: [{ type: "text", text: "Before" }] },
+              textBoxRun,
+              { type: "run", content: [{ type: "text", text: "After" }] },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const block = roundTripped.package.document.content.at(0);
+    if (block?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+    expect(block.content).toHaveLength(3);
+    expect(
+      block.content.every(
+        (content) =>
+          content.type === "insertion" &&
+          content.content.every(
+            (trackedContent) =>
+              trackedContent.type === "hyperlink" && trackedContent.href === "https://example.com",
+          ),
+      ),
+    ).toBe(true);
+    expect(paragraphInlineOrder(block)).toEqual(["Before", "textBox", "After"]);
+  });
+
   test("round-trips text boxes through nested inline content controls", () => {
     const document = documentWithTextBoxParagraph({ includeText: false });
     const paragraph = document.package.document.content.at(0);

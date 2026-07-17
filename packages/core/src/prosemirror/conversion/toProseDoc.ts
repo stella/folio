@@ -342,12 +342,12 @@ function convertParagraph(
     } else if (content.type === "hyperlink") {
       const currentHyperlinkIndex = hyperlinkIndex;
       hyperlinkIndex += 1;
-      const linkNodes = convertHyperlink(
-        content,
+      const linkNodes = convertHyperlink(content, {
         getInheritedRunFormatting,
         styleResolver,
-        currentHyperlinkIndex,
-      );
+        hyperlinkIndex: currentHyperlinkIndex,
+        textBoxAnchors,
+      });
       if (linkNodes.length === 0) {
         emptyHyperlinks ??= [];
         emptyHyperlinks.push({
@@ -455,7 +455,12 @@ function convertTrackedChange(
       const currentHyperlinkIndex = hyperlinkIndex;
       hyperlinkIndex += 1;
       nodes.push(
-        ...convertHyperlink(item, getInheritedRunFormatting, styleResolver, currentHyperlinkIndex),
+        ...convertHyperlink(item, {
+          getInheritedRunFormatting,
+          styleResolver,
+          hyperlinkIndex: currentHyperlinkIndex,
+          textBoxAnchors,
+        }),
       );
     }
   }
@@ -2045,12 +2050,12 @@ function convertInlineSdt(
     } else if (content.type === "hyperlink") {
       const currentHyperlinkIndex = hyperlinkIndex;
       hyperlinkIndex += 1;
-      const linkNodes = convertHyperlink(
-        content,
+      const linkNodes = convertHyperlink(content, {
         getInheritedRunFormatting,
         styleResolver,
-        currentHyperlinkIndex,
-      );
+        hyperlinkIndex: currentHyperlinkIndex,
+        textBoxAnchors,
+      });
       inlineNodes.push(...linkNodes);
     } else if (content.type === "simpleField" || content.type === "complexField") {
       const fieldNode = convertField(content, getInheritedRunFormatting, styleResolver);
@@ -2525,13 +2530,23 @@ function convertImage(image: Image, rawXml?: string): PMNode {
  * Convert a Hyperlink to ProseMirror nodes with link mark
  *
  * @param hyperlink - The hyperlink to convert
- * @param getInheritedRunFormatting - Formatting inherited by each child run
+ * @param options - Formatting, source identity, and extracted text-box anchors
  */
+type ConvertHyperlinkOptions = {
+  getInheritedRunFormatting: RunFormattingResolver;
+  styleResolver?: StyleEngine | null;
+  hyperlinkIndex?: number;
+  textBoxAnchors?: ReadonlyMap<Shape, string>;
+};
+
 function convertHyperlink(
   hyperlink: Hyperlink,
-  getInheritedRunFormatting: RunFormattingResolver,
-  styleResolver?: StyleEngine | null,
-  hyperlinkIndex?: number,
+  {
+    getInheritedRunFormatting,
+    styleResolver,
+    hyperlinkIndex,
+    textBoxAnchors,
+  }: ConvertHyperlinkOptions,
 ): PMNode[] {
   const nodes: PMNode[] = [];
 
@@ -2561,7 +2576,7 @@ function convertHyperlink(
       // silently dropped TOC entries' tab between title and page number,
       // collapsing the right-aligned page number flush against the title.
       for (const content of child.content) {
-        nodes.push(...convertRunContent(content, allMarks, mergedFormatting));
+        nodes.push(...convertRunContent(content, allMarks, mergedFormatting, textBoxAnchors));
       }
     }
   }
@@ -3017,6 +3032,14 @@ function extractTextBoxesFromParagraph(
     }
   };
 
+  const visitHyperlink = (hyperlink: Hyperlink, context: TextBoxExtractionContext): void => {
+    for (const child of hyperlink.children) {
+      if (child.type === "run") {
+        visitRun(child, context);
+      }
+    }
+  };
+
   const visitTrackedChange = (
     change: Insertion | Deletion | MoveFrom | MoveTo,
     context: TextBoxExtractionContext,
@@ -3027,7 +3050,9 @@ function extractTextBoxesFromParagraph(
     for (const item of change.content) {
       if (item.type === "run") {
         visitRun(item, { ...context, trackedChange });
+        continue;
       }
+      visitHyperlink(item, { ...context, trackedChange });
     }
   };
 
@@ -3042,6 +3067,10 @@ function extractTextBoxesFromParagraph(
       }
       if (item.type === "inlineSdt") {
         visitInlineSdt(item, nestedContext);
+        continue;
+      }
+      if (item.type === "hyperlink") {
+        visitHyperlink(item, nestedContext);
         continue;
       }
       if (
@@ -3063,6 +3092,10 @@ function extractTextBoxesFromParagraph(
     }
     if (item.type === "inlineSdt") {
       visitInlineSdt(item, rootContext);
+      continue;
+    }
+    if (item.type === "hyperlink") {
+      visitHyperlink(item, rootContext);
       continue;
     }
     if (
