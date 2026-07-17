@@ -585,7 +585,7 @@ describe("toFlowBlocks style cascade", () => {
     }
   });
 
-  test("explicit zero cell margins fall through to table defaults", () => {
+  test("explicit zero cell margins override table defaults", () => {
     const table: Table = {
       type: "table",
       formatting: {
@@ -632,8 +632,8 @@ describe("toFlowBlocks style cascade", () => {
     expect(tableBlock?.kind).toBe("table");
     if (tableBlock?.kind === "table") {
       const padding = tableBlock.rows.at(0)?.cells.at(0)?.padding;
-      expect(padding?.left).toBeCloseTo(9.6, 1);
-      expect(padding?.right).toBeCloseTo(19.2, 1);
+      expect(padding?.left).toBe(0);
+      expect(padding?.right).toBe(0);
     }
   });
 });
