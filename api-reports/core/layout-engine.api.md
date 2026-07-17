@@ -477,7 +477,8 @@ export type MeasuredLine = {
     floatSkipBefore?: number; /** Decorative hyphen inserted at a dictionary break without changing source text. */
     discretionaryHyphen?: {
         runIndex: number;
-    };
+    }; /** A cached pagination boundary occurs immediately before this line. */
+    renderedPageBreakBefore?: boolean;
 };
 
 // @public
@@ -608,7 +609,7 @@ export type ParagraphAttrs = {
     keepNext?: boolean;
     keepLines?: boolean;
     widowControl?: boolean;
-    pageBreakBefore?: boolean; /** Word's cached pagination hint (`w:lastRenderedPageBreak`). */
+    pageBreakBefore?: boolean; /** Cached OOXML pagination hint (`w:lastRenderedPageBreak`). */
     renderedPageBreakBefore?: boolean;
     styleId?: string;
     contextualSpacing?: boolean;
@@ -697,11 +698,18 @@ export type ParagraphSpacing = {
     lineRule?: "auto" | "exact" | "atLeast";
 };
 
+// @public
+export type RenderedPageBreakRun = RunFormatting & {
+    kind: "renderedPageBreak";
+    pmStart?: number;
+    pmEnd?: number;
+};
+
 // @public (undocumented)
 export const resolveSectionHeaderFooterRefs: (documentModel: import__stll_docx_core_model.Document | null | undefined) => PageHeaderFooterRefs[] | undefined;
 
 // @public
-export type Run = TextRun | TabRun | ImageRun | LineBreakRun | FieldRun | MathRun;
+export type Run = TextRun | TabRun | ImageRun | LineBreakRun | RenderedPageBreakRun | FieldRun | MathRun;
 
 // @public
 export type RunFormatting = {

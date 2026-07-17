@@ -202,7 +202,7 @@ export type Run = {
 };
 
 // @public
-export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | DrawingContent | ShapeContent;
+export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | DrawingContent | ShapeContent;
 
 // @public (undocumented)
 export type SectionProperties = {
