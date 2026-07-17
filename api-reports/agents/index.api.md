@@ -1107,7 +1107,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
         };
         readonly mode: {
             readonly type: "string";
-            readonly enum: readonly ["direct", "tracked-changes"];
+            readonly enum: readonly ["direct", "tracked-changes", "suggested"];
             readonly description: string;
         };
         readonly atomic: {

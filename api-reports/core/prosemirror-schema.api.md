@@ -267,6 +267,7 @@ export type ParagraphAttrs = {
     _sectionProperties?: import__stll_docx_core_model.SectionProperties;
     _propertyChanges?: import__stll_docx_core_model.ParagraphPropertyChange[];
     pPrMark?: import__stll_docx_core_model.ParagraphMarkChange;
+    _suggestedInsert?: SuggestedStructuralMarker | null;
 };
 
 // @public (undocumented)
@@ -276,7 +277,9 @@ export type RunFormattingOverrideAttrs = { [K in keyof Pick<import__stll_docx_co
 
 // @public
 export type RunPropertyChangeMarkAttrs = {
-    changes: import__stll_docx_core_model.RunPropertyChange[];
+    changes: import__stll_docx_core_model.RunPropertyChange[]; /** See {@link TrackedChangeProvenance}. Defaults to `"user"`. */
+    provenance: TrackedChangeProvenance;
+    suggestionId?: string;
 };
 
 // @public
@@ -368,6 +371,7 @@ export type TableAttrs = {
     _resolvedIndent?: NonNullable<import__stll_docx_core_model.TableFormatting["indent"]>; /** Original table formatting from DOCX for lossless round-trip serialization */
     _originalFormatting?: import__stll_docx_core_model.TableFormatting; /** Tracked table property changes (w:tblPrChange) for round-trip + accept/reject */
     tblPrChange?: import__stll_docx_core_model.TablePropertyChange[];
+    _suggestedInsert?: SuggestedStructuralMarker | null;
 };
 
 // @public
@@ -398,6 +402,9 @@ export type TableCellAttrs = {
             revisionId: number;
             author: string;
             date?: string | null;
+            initials?: string | null; /** `"suggested"` marks this as an AI proposal (stripped until accepted). */
+            provenance?: TrackedChangeProvenance;
+            suggestionId?: string | null;
         };
     } | {
         kind: "merge";
@@ -405,6 +412,9 @@ export type TableCellAttrs = {
             revisionId: number;
             author: string;
             date?: string | null;
+            initials?: string | null;
+            provenance?: TrackedChangeProvenance;
+            suggestionId?: string | null;
         };
         verticalMerge?: "continue" | "rest";
         verticalMergeOriginal?: "continue" | "rest";
@@ -421,11 +431,15 @@ export type TableRowAttrs = {
     hidden?: boolean; /** Original row formatting from DOCX for lossless round-trip serialization */
     _originalFormatting?: import__stll_docx_core_model.TableRowFormatting; /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
     trPrChange?: import__stll_docx_core_model.TableRowPropertyChange[];
+    _suggestedInsert?: SuggestedStructuralMarker | null;
 } & ({
     trIns: {
         revisionId: number;
         author: string;
         date?: string | null;
+        initials?: string | null;
+        provenance?: TrackedChangeProvenance;
+        suggestionId?: string | null;
     };
     trDel?: never;
 } | {
@@ -434,6 +448,9 @@ export type TableRowAttrs = {
         revisionId: number;
         author: string;
         date?: string | null;
+        initials?: string | null;
+        provenance?: TrackedChangeProvenance;
+        suggestionId?: string | null;
     };
 } | {
     trIns?: never;
@@ -500,8 +517,11 @@ export type TextEffectAttrs = {
 export type TrackedChangeMarkAttrs = {
     revisionId: number;
     author: string;
-    date?: string;
-    moveKind?: "moveTo" | "moveFrom";
+    date?: string; /** Optional author initials (w:initials) carried through the round-trip. */
+    initials?: string;
+    moveKind?: "moveTo" | "moveFrom"; /** Defaults to `"user"`; `"suggested"` for AI-proposed, non-serialized edits. */
+    provenance: TrackedChangeProvenance;
+    suggestionId?: string;
 };
 
 // @public

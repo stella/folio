@@ -34,6 +34,7 @@ import { FolioDocumentOperationUndoResult } from '@stll/folio-core/server';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
+import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
 import { ForwardRefExoticComponent } from 'react';
 import { JSX } from 'react';
 import { Layout } from '@stll/folio-core/layout-engine/types';
@@ -49,6 +50,7 @@ import { Select } from '@base-ui/react/select';
 import { SelectionState } from '@stll/folio-core/prosemirror';
 import { SetContentControlContentInput } from '@stll/folio-core/content-controls';
 import { SetContentControlValueInput } from '@stll/folio-core/content-controls';
+import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comments';
 import { TemplateSlashMenuKeyAction } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { TemplateSlashMenuState } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { Theme } from '@stll/folio-core/types/document';
@@ -147,6 +149,15 @@ export type DocxEditorRef = {
     highlightPassage: (options: HighlightPassageOptions) => HighlightPassageResult; /** Clear the passage highlight painted by {@link highlightPassage}, if any. */
     clearPassageHighlight: () => void; /** Resolve a stable block or text-range target and reveal it in the editor. */
     showInDocument: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => boolean;
+    getSuggestions: () => FolioSuggestion[];
+    acceptSuggestion: (suggestionId: string, options?: {
+        author?: string;
+    }) => {
+        accepted: boolean;
+        appliedAs: SuggestionAppliedAs | null;
+    };
+    rejectSuggestion: (suggestionId: string) => boolean;
+    scrollToSuggestion: (suggestionId: string) => boolean;
     getTrackedChanges: () => FolioReviewChange[];
     getCommentAnchors: () => FolioCommentAnchor[];
     getSelectionText: () => string;

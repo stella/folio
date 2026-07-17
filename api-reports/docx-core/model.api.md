@@ -1351,6 +1351,7 @@ export type TrackedChangeInfo = {
     id: number; /** Author who made the change */
     author: string; /** Date of the change */
     date?: string;
+    initials?: string;
 };
 
 // @public

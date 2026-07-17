@@ -369,6 +369,7 @@ export type ParagraphAttrs = {
     _sectionProperties?: import__stll_docx_core_model.SectionProperties;
     _propertyChanges?: import__stll_docx_core_model.ParagraphPropertyChange[];
     pPrMark?: import__stll_docx_core_model.ParagraphMarkChange;
+    _suggestedInsert?: SuggestedStructuralMarker | null;
 };
 
 // @public (undocumented)
