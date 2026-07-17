@@ -31,6 +31,13 @@ describe("toFontFaceInputs", () => {
     expect(input?.descriptors).not.toHaveProperty("weight");
   });
 
+  test("preserves an italic style descriptor", () => {
+    const [input] = toFontFaceInputs([
+      { family: "Brand Sans", src: "/italic.woff2", style: "  italic  " },
+    ]);
+    expect(input?.descriptors.style).toBe("italic");
+  });
+
   test("trims surrounding whitespace on family and src", () => {
     const [input] = toFontFaceInputs([{ family: "  Brand Sans  ", src: "  /a.woff2  " }]);
     expect(input?.family).toBe("Brand Sans");
@@ -79,5 +86,15 @@ describe("toFontFaceInputs", () => {
     const [input] = toFontFaceInputs(withSymbolWeight);
     expect(input?.family).toBe("Sym");
     expect(input?.descriptors).not.toHaveProperty("weight");
+  });
+
+  test("drops a blank or non-string style instead of throwing", () => {
+    const malformed = [
+      { family: "Blank", src: "/blank.woff2", style: "  " },
+      { family: "Symbol", src: "/symbol.woff2", style: Symbol("italic") },
+    ] as unknown as ReadonlyArray<FontDefinition>;
+    const inputs = toFontFaceInputs(malformed);
+    expect(inputs[0]?.descriptors).not.toHaveProperty("style");
+    expect(inputs[1]?.descriptors).not.toHaveProperty("style");
   });
 });

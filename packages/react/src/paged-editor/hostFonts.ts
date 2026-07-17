@@ -24,6 +24,8 @@ export type FontDefinition = {
   src: string;
   /** CSS `font-weight` for this face (a number like `700`, or a keyword). Defaults to `normal`. */
   weight?: number | string;
+  /** CSS `font-style` for this face (for example `italic`). Defaults to `normal`. */
+  style?: string;
 };
 
 /** `FontFace` constructor inputs derived from a {@link FontDefinition}. */
@@ -73,6 +75,9 @@ export function toFontFaceInputs(
     // would even make `String()` throw) is dropped to the default.
     if (typeof font.weight === "number" || typeof font.weight === "string") {
       descriptors.weight = String(font.weight);
+    }
+    if (isNonEmptyString(font.style)) {
+      descriptors.style = font.style.trim();
     }
     inputs.push({
       family: font.family.trim(),
