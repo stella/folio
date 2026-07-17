@@ -173,7 +173,7 @@ export {
   type ExtractedDocxParagraph,
   type ExtractedDocxText,
 } from "./docx/server/extractDocxText";
-export { DocxArchiveError } from "./docx/server/boundedArchive";
+export { DocxArchiveError, type DocxArchiveOptions } from "./docx/server/boundedArchive";
 export {
   FOLIO_DOCX_CONFORMANCE_CHECKS,
   FOLIO_DOCX_CONFORMANCE_ISSUE_CODES,

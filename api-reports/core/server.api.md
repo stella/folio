@@ -112,6 +112,14 @@ export type DocumentStyleSet = {
 // @public
 export class DocxArchiveError extends DocxArchiveError_base {}
 
+// @public (undocumented)
+export type DocxArchiveOptions = {
+    maxInputBytes?: number;
+    maxEntryBytes?: number;
+    maxTotalBytes?: number;
+    maxEntries?: number;
+};
+
 // @public
 export type DocxParagraphSource = "header" | "body" | "footer";
 
@@ -211,6 +219,18 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replac
 
 // @public (undocumented)
 export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_CONFORMANCE_CHECKS: readonly ["archive-safety", "required-parts", "xml-well-formedness", "package-roots", "conformance-class", "canonical-model"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES: readonly ["archive-load-failed", "archive-input-too-large", "archive-too-many-entries", "archive-entry-too-large", "archive-total-too-large", "required-part-missing", "xml-doctype-forbidden", "xml-not-well-formed", "xml-read-failed", "required-xml-unreadable", "package-root-invalid", "conformance-class-unknown", "model-invalid", "model-warning", "parser-recovery", "parser-unsupported", "parser-failed", "encrypted-container", "container-not-zip"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_CONFORMANCE_PROFILE: "folio-supported-v1";
+
+// @public (undocumented)
+export const FOLIO_DOCX_CONFORMANCE_REPORT_VERSION: 1;
 
 // @public (undocumented)
 export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
@@ -716,6 +736,46 @@ export type FolioDocumentStoryHandle = {
 // @public (undocumented)
 export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundError_base {}
 
+// @public (undocumented)
+export type FolioDocxConformanceCheck = {
+    readonly id: FolioDocxConformanceCheckId;
+    readonly status: FolioDocxConformanceCheckStatus;
+};
+
+// @public (undocumented)
+export type FolioDocxConformanceCheckId = (typeof FOLIO_DOCX_CONFORMANCE_CHECKS)[number];
+
+// @public (undocumented)
+export type FolioDocxConformanceCheckStatus = "passed" | "failed" | "indeterminate" | "not-run";
+
+// @public (undocumented)
+export type FolioDocxConformanceIssue = {
+    readonly check: FolioDocxConformanceCheckId;
+    readonly code: FolioDocxConformanceIssueCode;
+    readonly message: string;
+    readonly severity: "error" | "warning";
+    readonly part?: string;
+    readonly modelPath?: string;
+    readonly count?: number;
+};
+
+// @public (undocumented)
+export type FolioDocxConformanceIssueCode = (typeof FOLIO_DOCX_CONFORMANCE_ISSUE_CODES)[number];
+
+// @public (undocumented)
+export type FolioDocxConformanceReport = {
+    readonly version: typeof FOLIO_DOCX_CONFORMANCE_REPORT_VERSION;
+    readonly profile: typeof FOLIO_DOCX_CONFORMANCE_PROFILE;
+    readonly status: FolioDocxConformanceStatus;
+    readonly conformanceClass: import__stll_docx_core_model.DocxConformanceClass;
+    readonly checks: readonly FolioDocxConformanceCheck[];
+    readonly issues: readonly FolioDocxConformanceIssue[];
+    readonly unverifiedStandardsDimensions: readonly ["complete-schema-constraints", "markup-compatibility-processing", "consumer-specific-rendering"];
+};
+
+// @public (undocumented)
+export type FolioDocxConformanceStatus = "invalid" | "conformant" | "indeterminate";
+
 // @public
 export class FolioDocxReviewer {
     acceptAll(): number;
@@ -1008,6 +1068,14 @@ export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFo
 
 // @public (undocumented)
 export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewError_base {}
+
+// @public
+export const validateDocxConformance: (bytes: ArrayBuffer | Uint8Array, options?: ValidateDocxConformanceOptions) => Promise<FolioDocxConformanceReport>;
+
+// @public (undocumented)
+export type ValidateDocxConformanceOptions = {
+    readonly archive?: DocxArchiveOptions;
+};
 
 // (No @packageDocumentation comment for this package)
 
