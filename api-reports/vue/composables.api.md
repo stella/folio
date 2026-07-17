@@ -30,6 +30,7 @@ import { Layout } from '@stll/folio-core/layout-engine/types';
 import { LayoutSelectionGate } from '@stll/folio-core/paged-layout/LayoutSelectionGate';
 import { MaybeRefOrGetter } from 'vue';
 import { Measure } from '@stll/folio-core/layout-engine/types';
+import { NoteStoryKey } from '@stll/folio-core/controller/noteEditorManager';
 import { ParsedClipboardContent } from '@stll/folio-core/utils/clipboard';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { ProseMirrorFindMatch } from '@stll/folio-core/prosemirror/findReplaceSelection';
@@ -121,6 +122,7 @@ export type UseDocxEditorCollaboration = HiddenProseMirrorCollaboration & {
 export type UseDocxEditorOptions = {
     hiddenContainer: Ref<HTMLElement | null>;
     hiddenHeaderFooterContainer?: Ref<HTMLElement | null>;
+    noteEditorContainer?: Ref<HTMLElement | null>;
     pagesContainer: Ref<HTMLElement | null>;
     readOnly?: MaybeRefOrGetter<boolean>;
     pageGap?: number;
@@ -155,6 +157,7 @@ export type UseDocxEditorReturn = {
     editorState: Ref<EditorState | null>;
     remoteSelections: Ref<HiddenProseMirrorRemoteSelection[]>;
     headerFooterSelection: Ref<HeaderFooterSelectionState | null>;
+    activeNoteStory: Ref<NoteStoryKey | null>;
     isReady: Ref<boolean>;
     isDirty: Ref<boolean>;
     parseError: Ref<string | null>;
@@ -171,6 +174,9 @@ export type UseDocxEditorReturn = {
     setDocument: (doc: Document_2) => void;
     getHeaderFooterView: (rId: string) => EditorView | null;
     syncHeaderFooterViews: () => void;
+    openNoteStory: (story: NoteStoryKey) => void;
+    closeNoteStory: () => void;
+    getActiveNoteView: () => EditorView | null;
     getCommands: () => CommandMap;
     focus: () => void;
     reLayout: () => void;
