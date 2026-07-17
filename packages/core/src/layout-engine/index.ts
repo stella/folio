@@ -893,6 +893,29 @@ const tableRowStartsWithRenderedPageBreak = (block: TableBlock, rowIndex: number
     return firstBlock?.kind === "paragraph" && firstBlock.attrs?.renderedPageBreakBefore === true;
   }) ?? false;
 
+const flowBlockHasTrackedChanges = (block: FlowBlock): boolean => {
+  if (block.kind === "paragraph") {
+    return block.runs.some((run) => {
+      if (run.kind === "lineBreak") {
+        return false;
+      }
+      return run.isInsertion || run.isDeletion;
+    });
+  }
+  if (block.kind === "table") {
+    return block.rows.some((row) =>
+      row.cells.some((cell) => cell.blocks.some(flowBlockHasTrackedChanges)),
+    );
+  }
+  if (block.kind === "textBox") {
+    return block.content.some(flowBlockHasTrackedChanges);
+  }
+  return false;
+};
+
+const tableRowHasTrackedChanges = (block: TableBlock, rowIndex: number): boolean =>
+  block.rows[rowIndex]?.cells.some((cell) => cell.blocks.some(flowBlockHasTrackedChanges)) ?? false;
+
 /**
  * Layout a table block onto pages.
  */
@@ -920,7 +943,6 @@ function layoutTable(
   const hasVerticalMerges = block.rows.some((row) =>
     row.cells.some((cell) => (cell.rowSpan ?? 1) > 1),
   );
-
   // X position from justification / indent, recomputed per fragment because the
   // active column can change across section breaks.
   const computeTableX = (columnIndex: number): number => {
@@ -1008,6 +1030,7 @@ function layoutTable(
     if (
       !rowStartsFreshPage &&
       tableRowStartsWithRenderedPageBreak(block, currentRowIndex) &&
+      !tableRowHasTrackedChanges(block, currentRowIndex) &&
       rows[currentRowIndex]!.height > rowAvailableHeight
     ) {
       paginator.forcePageBreak();

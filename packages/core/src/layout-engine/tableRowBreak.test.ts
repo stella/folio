@@ -1122,6 +1122,34 @@ describe("oversized table row splits across pages (#570)", () => {
     expect(frags[1]?.bottomClip).toBeUndefined();
   });
 
+  test("ignores a stale rendered row boundary when tracked content changes flow", () => {
+    const spacer: FlowBlock = {
+      kind: "paragraph",
+      id: "spacer",
+      runs: [{ kind: "text", text: "spacer" }],
+    };
+    const spacerMeasure = paraMeasureWithLineHeight(1, 70);
+    const { block, measure } = tallTable(5);
+    markFirstTableParagraphWithRenderedBreak(block);
+    const firstRun = block.rows.at(0)?.cells.at(0)?.blocks.at(0);
+    if (firstRun?.kind !== "paragraph" || firstRun.runs.at(0)?.kind !== "text") {
+      throw new Error("test table must start with a text run");
+    }
+    firstRun.runs[0]!.isInsertion = true;
+
+    const layout = layoutDocument(
+      [spacer, block as FlowBlock],
+      [spacerMeasure as Measure, measure as Measure],
+      OPTIONS,
+    );
+    const frags = layout.pages
+      .flatMap((page) => page.fragments)
+      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+
+    expect(frags.at(0)).toMatchObject({ fromRow: 0, toRow: 1, height: 40, bottomClip: 40 });
+    expect(frags.at(1)).toMatchObject({ fromRow: 0, toRow: 1, height: 60, topClip: 40 });
+  });
+
   test("moves a non-fitting row to its cached rendered page boundary", () => {
     const spacer: FlowBlock = {
       kind: "paragraph",
