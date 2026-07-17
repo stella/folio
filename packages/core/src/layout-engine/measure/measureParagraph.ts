@@ -2057,6 +2057,18 @@ export function measureParagraph(
     }
   }
 
+  const listParagraphMarkFontSize = attrs?.listParagraphMarkFontSize;
+  if (
+    listParagraphMarkFontSize !== undefined &&
+    listParagraphMarkFontSize > currentLine.maxFontSize
+  ) {
+    const fontFamily = currentLine.maxFontMetrics?.fontFamily ?? attrs?.defaultFontFamily;
+    updateMaxFont({
+      fontSize: listParagraphMarkFontSize,
+      ...(fontFamily === undefined ? {} : { fontFamily }),
+    });
+  }
+
   // Finalize the last line
   finalizeLine();
 

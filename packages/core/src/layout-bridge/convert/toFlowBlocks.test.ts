@@ -412,6 +412,30 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.defaultFontFamily).toBe("Arial Narrow");
   });
 
+  test("preserves a larger complex-script paragraph-mark size for visible lists", () => {
+    const listParagraph = schema.node(
+      "paragraph",
+      {
+        defaultTextFormatting: { fontSize: 21, fontSizeCs: 22 },
+        listIsBullet: true,
+        listMarker: "\u2022",
+        numPr: { numId: 1, ilvl: 0 },
+      },
+      [schema.text("List item")],
+    );
+    const ordinaryParagraph = schema.node(
+      "paragraph",
+      { defaultTextFormatting: { fontSize: 21, fontSizeCs: 22 } },
+      [schema.text("Ordinary paragraph")],
+    );
+
+    const blocks = toFlowBlocks(schema.node("doc", null, [listParagraph, ordinaryParagraph]));
+
+    expect(blocks.at(0)?.attrs?.defaultFontSize).toBe(10.5);
+    expect(blocks.at(0)?.attrs?.listParagraphMarkFontSize).toBe(11);
+    expect(blocks.at(1)?.attrs?.listParagraphMarkFontSize).toBeUndefined();
+  });
+
   test("does not reserve extra outline height away from the start of the story", () => {
     const blocks = toFlowBlocks(
       schema.node("doc", null, [

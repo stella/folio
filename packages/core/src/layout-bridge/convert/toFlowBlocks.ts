@@ -1884,6 +1884,14 @@ function convertParagraphAttrs(
       // fontSize in TextFormatting is in half-points, convert to points
       attrs.defaultFontSize = dtf.fontSize / 2;
     }
+    if (
+      attrs.listMarker !== undefined &&
+      !attrs.listMarkerHidden &&
+      dtf.fontSizeCs !== undefined &&
+      (dtf.fontSize === undefined || dtf.fontSizeCs > dtf.fontSize)
+    ) {
+      attrs.listParagraphMarkFontSize = dtf.fontSizeCs / 2;
+    }
     if (dtf.fontFamily) {
       const resolvedFamily = resolveWesternThemeFont(dtf.fontFamily, theme);
       if (resolvedFamily) {

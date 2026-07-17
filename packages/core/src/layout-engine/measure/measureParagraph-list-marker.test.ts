@@ -10,6 +10,30 @@ const DEFAULT_TAB_STOP_PX = (DEFAULT_TAB_STOP_TWIPS / 1440) * 96;
 const fakeMeasure = { charWidth: fixedCharWidth(10) };
 
 describe("measureParagraph reserves the marker's tab-stop footprint", () => {
+  test("a larger list paragraph mark raises only the final line box", () => {
+    withFakeTextMeasure(() => {
+      const block: ParagraphBlock = {
+        kind: "paragraph",
+        id: "p",
+        runs: [{ kind: "text", text: "aaaa aaaa", fontFamily: "Aptos", fontSize: 10.5 }],
+        attrs: {
+          defaultFontSize: 10.5,
+          defaultFontFamily: "Aptos",
+          listMarker: "\u2022",
+          listMarkerSuffix: "nothing",
+          listParagraphMarkFontSize: 11,
+          spacing: { line: 1.15, lineRule: "auto", lineUnit: "multiplier" },
+        },
+      };
+
+      const measure = measureParagraph(block, 60);
+
+      expect(measure.lines).toHaveLength(2);
+      expect(measure.lines.at(0)?.lineHeight).toBeCloseTo(10.5 * (96 / 72) * 1.2207 * 1.15, 3);
+      expect(measure.lines.at(1)?.lineHeight).toBeCloseTo(11 * (96 / 72) * 1.2207 * 1.15, 3);
+    }, fakeMeasure);
+  });
+
   // Regression for upstream #600: with the previous "+12 px gap" logic the
   // first line had `bodyWidth - markerWidth - 12` of text room. Long markers
   // like "1.1.1." therefore had too much budget — the painter pushed text

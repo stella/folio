@@ -471,6 +471,12 @@ export type ParagraphAttrs = {
   listMarkerHidden?: boolean; // w:vanish on numbering level rPr
   listMarkerFontFamily?: string; // from numbering level rPr (w:rFonts)
   listMarkerFontSize?: number; // from numbering level rPr, in points
+  /**
+   * Effective paragraph-mark size used only to measure a visible list
+   * paragraph's final line. Word lets the inherited complex-script size raise
+   * that line box without enlarging the marker or Western text glyphs.
+   */
+  listParagraphMarkFontSize?: number;
   listMarkerBold?: boolean; // from numbering level rPr (w:b)
   /** Horizontal alignment of the marker around the paragraph's list anchor. */
   listMarkerAlignment?: "left" | "center" | "right";
