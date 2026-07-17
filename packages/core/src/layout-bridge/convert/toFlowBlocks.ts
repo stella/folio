@@ -2706,6 +2706,32 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     blocks.push(block);
   };
 
+  const trailingPageBreakSectionPositions = new Set<number>();
+  const consumedPageBreakPositions = new Set<number>();
+  const collectTrailingPageBreakSections = (parent: PMNode, contentStart: number): void => {
+    let childStart = contentStart;
+    for (let index = 0; index < parent.childCount; index += 1) {
+      const child = parent.child(index);
+      const next = index + 1 < parent.childCount ? parent.child(index + 1) : undefined;
+      const paragraphAttrs =
+        child.type.name === "paragraph" ? expectParagraphAttrs(child) : undefined;
+      if (
+        paragraphAttrs &&
+        next?.type.name === "pageBreak" &&
+        paragraphAttrs._trailingPageBreak === true &&
+        (paragraphAttrs._sectionProperties || paragraphAttrs.sectionBreakType)
+      ) {
+        trailingPageBreakSectionPositions.add(childStart);
+        consumedPageBreakPositions.add(childStart + child.nodeSize);
+      }
+      if (child.type.name === "blockSdt") {
+        collectTrailingPageBreakSections(child, childStart + 1);
+      }
+      childStart += child.nodeSize;
+    }
+  };
+  collectTrailingPageBreakSections(doc, offset);
+
   // Refactored visit-style traversal so blockSdt can recurse into its
   // children without duplicating the per-block conversion code.
   const visit = (node: PMNode, pos: number): void => {
@@ -2854,6 +2880,34 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
 
         // Emit section break block if this paragraph ends a section
         if (hasSectionBreak) {
+          if (trailingPageBreakSectionPositions.has(pos)) {
+            const sourceParagraph = blocks.at(-1);
+            if (sourceParagraph?.kind === "paragraph" && sourceParagraph.pmStart === pos) {
+              const pageBreak: PageBreakBlock = {
+                kind: "pageBreak",
+                id: nextBlockId(),
+                pmStart: pos + node.nodeSize,
+                pmEnd: pos + node.nodeSize + 1,
+              };
+              trackedPush(pageBreak);
+              const carrierAttrs = { ...sourceParagraph.attrs };
+              if (carrierAttrs.spacing) {
+                carrierAttrs.spacing = { ...carrierAttrs.spacing };
+                delete carrierAttrs.spacing.before;
+              }
+              delete carrierAttrs.listMarker;
+              delete carrierAttrs.suppressEmptyParagraphHeight;
+              const carrier: ParagraphBlock = {
+                ...sourceParagraph,
+                id: nextBlockId(),
+                runs: [],
+                attrs: carrierAttrs,
+                pmStart: pos + node.nodeSize,
+                pmEnd: pos + node.nodeSize,
+              };
+              trackedPush(carrier);
+            }
+          }
           const sectionBreak: SectionBreakBlock = {
             kind: "sectionBreak",
             id: nextBlockId(),
@@ -2928,6 +2982,9 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
 
       case "horizontalRule":
       case "pageBreak": {
+        if (consumedPageBreakPositions.has(pos)) {
+          break;
+        }
         const pb: PageBreakBlock = {
           kind: "pageBreak",
           id: nextBlockId(),

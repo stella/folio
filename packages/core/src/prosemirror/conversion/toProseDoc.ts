@@ -139,6 +139,17 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
             paragraph.marks,
           );
         }
+        if (pbPos === "after") {
+          const paragraphIndex = converted.findIndex((node) => node.type.name === "paragraph");
+          const trailingParagraph = paragraphIndex >= 0 ? converted.at(paragraphIndex) : undefined;
+          if (trailingParagraph) {
+            converted[paragraphIndex] = trailingParagraph.type.create(
+              { ...trailingParagraph.attrs, _trailingPageBreak: true },
+              trailingParagraph.content,
+              trailingParagraph.marks,
+            );
+          }
+        }
         out.push(...converted);
         if (pbPos === "after") {
           out.push(schema.node("pageBreak"));

@@ -145,6 +145,7 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
 
     const pmDoc = toProseDoc(document);
     expect(childTypeNames(pmDoc)).toEqual(["paragraph", "pageBreak", "paragraph"]);
+    expect(pmDoc.child(0).attrs["_trailingPageBreak"]).toBe(true);
   });
 
   test("emits pageBreak when the break sits inside a hyperlink wrapper", () => {

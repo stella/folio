@@ -172,6 +172,8 @@ export type ParagraphAttrs = {
   renderedPageBreakBefore?: boolean;
   /** Internal import marker for a paragraph whose only run content is a hard page break. */
   _pageBreakCarrier?: boolean;
+  /** Internal import marker for a hard page break after this paragraph's text. */
+  _trailingPageBreak?: boolean;
   keepNext?: boolean;
   keepLines?: boolean;
   widowControl?: boolean;

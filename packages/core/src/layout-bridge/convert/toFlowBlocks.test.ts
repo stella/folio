@@ -44,6 +44,64 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(cellParagraph.attrs?.documentGridLinePitch).toBeUndefined();
   });
 
+  test("lays out a trailing page-break section mark on the following page", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          _sectionProperties: { sectionStart: "continuous" },
+          spaceBefore: 300,
+          spaceAfter: 40,
+          lineSpacing: 1_000,
+          lineSpacingRule: "exact",
+          _trailingPageBreak: true,
+        },
+        [schema.text("Section cover")],
+      ),
+      schema.node("pageBreak"),
+      schema.node("paragraph", null, [schema.text("Next page")]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+      "sectionBreak",
+      "paragraph",
+    ]);
+    const carrier = blocks.at(2);
+    expect(carrier?.kind).toBe("paragraph");
+    if (carrier?.kind !== "paragraph") {
+      return;
+    }
+    expect(carrier.runs).toEqual([]);
+    expect(carrier.attrs?.spacing?.after).toBeCloseTo(40 / 15);
+    expect(carrier.attrs?.spacing?.line).toBeCloseTo(1_000 / 15);
+    expect(carrier.attrs?.spacing?.before).toBeUndefined();
+  });
+
+  test("does not retain an imported trailing break after the break node is removed", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          _sectionProperties: { sectionStart: "continuous" },
+          _trailingPageBreak: true,
+        },
+        [schema.text("Section cover")],
+      ),
+      schema.node("paragraph", null, [schema.text("Next paragraph")]),
+    ]);
+
+    expect(toFlowBlocks(doc).map((block) => block.kind)).toEqual([
+      "paragraph",
+      "sectionBreak",
+      "paragraph",
+    ]);
+  });
+
   test("keeps text-box anchors out of paragraph layout", () => {
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [
