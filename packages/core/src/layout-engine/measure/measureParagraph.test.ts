@@ -2422,6 +2422,25 @@ describe("CJK line breaking", () => {
     );
   });
 
+  test("keeps Latin punctuation inside the line extent", () => {
+    withFakeTextMeasure(
+      () => {
+        const paragraph: ParagraphBlock = {
+          kind: "paragraph",
+          id: "latin-overflow-punctuation",
+          runs: [{ kind: "text", text: "AB,", language: { val: "en-US" } }],
+          attrs: { overflowPunctuation: true },
+        };
+
+        const measure = measureParagraph(paragraph, 20);
+
+        expect(measure.lines).toHaveLength(2);
+        expect(measure.lines[0]?.toChar).toBe(2);
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+  });
+
   test("does not hang opening punctuation", () => {
     withFakeTextMeasure(
       () => {

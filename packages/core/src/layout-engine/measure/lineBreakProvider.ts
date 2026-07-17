@@ -61,6 +61,11 @@ const segmenterLocale = (locale?: string): string | undefined => {
 const DICTIONARY_BREAK_SCRIPT =
   /[\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 const CJK_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+// Word limits overflow punctuation to runs whose language is Chinese,
+// Japanese, Korean, or Yi (treated as Simplified Chinese). Applying the
+// East-Asian punctuation set to Latin runs lets ordinary commas and periods
+// exceed a margin, changing otherwise unrelated line and page breaks.
+const WORD_HANGING_PUNCTUATION_LANGUAGES = new Set(["ii", "ja", "ko", "zh"]);
 const SIMPLE_BREAK_TEXT =
   /^[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{Number}\p{Punctuation}\p{White_Space}]*$/u;
 const BREAK_AFTER_CHARACTER = new Set([
@@ -426,6 +431,10 @@ const findPatternHyphenationBreaks = (text: string, policy?: LineBreakPolicy): n
 };
 
 const isDefaultHangingPunctuation = (text: string, policy?: LineBreakPolicy): boolean => {
+  const language = segmenterLocale(policy?.locale);
+  if (!language || !WORD_HANGING_PUNCTUATION_LANGUAGES.has(language)) {
+    return false;
+  }
   const characters = [...text];
   return (
     characters.length > 0 &&
