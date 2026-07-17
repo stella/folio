@@ -14,7 +14,8 @@ export class DocxArchiveError extends TaggedError("DocxArchiveError")<{
     | "input-too-large"
     | "too-many-entries"
     | "entry-too-large"
-    | "total-too-large";
+    | "total-too-large"
+    | "invalid-options";
   cause?: unknown;
 }>() {}
 
@@ -99,14 +100,47 @@ const getDeclaredUncompressedBytes = (entry: JSZip.JSZipObject): number | null =
   return typeof declaredBytes === "number" && Number.isFinite(declaredBytes) ? declaredBytes : null;
 };
 
+type ResolveByteLimitOptions = {
+  value: number | undefined;
+  fallback: number;
+  name: string;
+};
+
+const resolveByteLimit = ({ value, fallback, name }: ResolveByteLimitOptions): number => {
+  const limit = value ?? fallback;
+  if (!Number.isSafeInteger(limit) || limit < 0) {
+    throw new DocxArchiveError({
+      message: `${name} must be a non-negative safe integer`,
+      reason: "invalid-options",
+    });
+  }
+  return limit;
+};
+
 export const loadDocxArchive = async (
   bytes: ArrayBuffer | Uint8Array,
   options: DocxArchiveOptions = {},
 ): Promise<DocxArchive> => {
-  const maxInputBytes = options.maxInputBytes ?? DOCX_MAX_INPUT_BYTES;
-  const maxEntryBytes = options.maxEntryBytes ?? DOCX_MAX_ENTRY_BYTES;
-  const maxTotalBytes = options.maxTotalBytes ?? DOCX_MAX_TOTAL_BYTES;
-  const maxEntries = options.maxEntries ?? DOCX_MAX_ENTRIES;
+  const maxInputBytes = resolveByteLimit({
+    value: options.maxInputBytes,
+    fallback: DOCX_MAX_INPUT_BYTES,
+    name: "DOCX input byte limit",
+  });
+  const maxEntryBytes = resolveByteLimit({
+    value: options.maxEntryBytes,
+    fallback: DOCX_MAX_ENTRY_BYTES,
+    name: "DOCX entry byte limit",
+  });
+  const maxTotalBytes = resolveByteLimit({
+    value: options.maxTotalBytes,
+    fallback: DOCX_MAX_TOTAL_BYTES,
+    name: "DOCX cumulative byte limit",
+  });
+  const maxEntries = resolveByteLimit({
+    value: options.maxEntries,
+    fallback: DOCX_MAX_ENTRIES,
+    name: "DOCX entry limit",
+  });
 
   if (bytes.byteLength > maxInputBytes) {
     throw new DocxArchiveError({
@@ -167,6 +201,11 @@ export const loadDocxArchive = async (
     path: string,
     readOptions: DocxArchiveReadOptions = {},
   ): Promise<Buffer | null> => {
+    const requestedMaxBytes = resolveByteLimit({
+      value: readOptions.maxBytes,
+      fallback: maxEntryBytes,
+      name: "DOCX entry read byte limit",
+    });
     const work = async (): Promise<Buffer | null> => {
       const entry = zip.file(path);
       if (!entry) {
@@ -174,7 +213,7 @@ export const loadDocxArchive = async (
       }
       const buffer = await collectStream({
         stream: entry.nodeStream("nodebuffer"),
-        maxEntryBytes: Math.min(readOptions.maxBytes ?? maxEntryBytes, maxEntryBytes),
+        maxEntryBytes: Math.min(requestedMaxBytes, maxEntryBytes),
         remainingBytes: maxTotalBytes - totalBytesRead,
         maxTotalBytes,
         path,

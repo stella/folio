@@ -4,10 +4,13 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { createEmptyDocx } from "../rezip";
+import { DocxArchiveError } from "./boundedArchive";
 import {
   FOLIO_DOCX_PACKAGE_INSPECTION_VERSION,
   FolioDocxPackageInspectionError,
   inspectDocxPackage,
+  readRequestedXmlParts,
+  type FolioDocxPackagePart,
 } from "./inspectDocxPackage";
 
 type MutatePackage = (zip: JSZip) => void;
@@ -145,6 +148,42 @@ describe("inspectDocxPackage", () => {
     expect(count).toMatchObject({ code: "too-many-xml-parts" });
     expect(partBytes).toMatchObject({ code: "xml-part-too-large", part: "one.xml" });
     expect(totalBytes).toMatchObject({ code: "xml-total-too-large" });
+  });
+
+  test("constrains each XML read to the remaining cumulative budget", async () => {
+    const readLimits: number[] = [];
+    const part = {
+      path: "one.xml",
+      kind: "xml",
+      contentType: "application/xml",
+      declaredUncompressedBytes: null,
+    } as const satisfies FolioDocxPackagePart;
+    const partsByPath = new Map([
+      ["one.xml", part],
+      ["two.xml", { ...part, path: "two.xml" }],
+    ]);
+    const error = await rejection(
+      readRequestedXmlParts({
+        paths: ["one.xml", "two.xml"],
+        partsByPath,
+        limits: { maxXmlParts: 2, maxXmlPartBytes: 10, maxXmlTotalBytes: 12 },
+        readEntryUint8: (_path, { maxBytes }) => {
+          readLimits.push(maxBytes);
+          if (readLimits.length === 1) {
+            return Promise.resolve(new Uint8Array(6));
+          }
+          return Promise.reject(
+            new DocxArchiveError({
+              message: "Read exceeded its limit",
+              reason: "entry-too-large",
+            }),
+          );
+        },
+      }),
+    );
+
+    expect(readLimits).toEqual([10, 6]);
+    expect(error).toMatchObject({ code: "xml-total-too-large", part: "two.xml" });
   });
 
   test("rejects invalid limit values before loading the archive", async () => {

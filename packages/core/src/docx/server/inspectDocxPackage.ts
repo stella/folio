@@ -292,7 +292,7 @@ type ReadRequestedXmlPartsOptions = {
   readEntryUint8: (path: string, options: { maxBytes: number }) => Promise<Uint8Array | null>;
 };
 
-const readRequestedXmlParts = async ({
+export const readRequestedXmlParts = async ({
   paths,
   partsByPath,
   limits,
@@ -301,15 +301,20 @@ const readRequestedXmlParts = async ({
   const selected: FolioDocxInspectedXmlPart[] = [];
   let totalBytes = 0;
   for (const path of paths) {
+    const remainingTotalBytes = limits.maxXmlTotalBytes - totalBytes;
+    const readLimit = Math.min(limits.maxXmlPartBytes, remainingTotalBytes);
     let bytes: Uint8Array | null;
     try {
       // oxlint-disable-next-line no-await-in-loop -- request order defines the result order and cumulative budget
-      bytes = await readEntryUint8(path, { maxBytes: limits.maxXmlPartBytes });
+      bytes = await readEntryUint8(path, { maxBytes: readLimit });
     } catch (cause) {
       if (cause instanceof DocxArchiveError && cause.reason === "entry-too-large") {
+        const cumulativeLimitReached = readLimit < limits.maxXmlPartBytes;
         throw new FolioDocxPackageInspectionError({
-          message: `XML package part "${path}" exceeds the per-part inspection limit`,
-          code: "xml-part-too-large",
+          message: cumulativeLimitReached
+            ? "Requested XML package parts exceed the cumulative inspection limit"
+            : `XML package part "${path}" exceeds the per-part inspection limit`,
+          code: cumulativeLimitReached ? "xml-total-too-large" : "xml-part-too-large",
           part: path,
           cause,
         });

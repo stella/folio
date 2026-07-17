@@ -66,6 +66,28 @@ describe("loadDocxArchive", () => {
     expect(error).toMatchObject({ reason: "input-too-large" });
   });
 
+  test("rejects invalid archive and per-read limits", async () => {
+    const bytes = await makeZip({ entry: "content" });
+    const archiveErrors = await Promise.all(
+      [Number.NaN, -1, 1.5].map((maxEntryBytes) =>
+        rejection(loadDocxArchive(bytes, { maxEntryBytes })),
+      ),
+    );
+    const archive = await loadDocxArchive(bytes);
+    const readErrors = await Promise.all(
+      [Number.NaN, -1, 1.5].map((maxBytes) =>
+        rejection(archive.readEntryUint8("entry", { maxBytes })),
+      ),
+    );
+
+    expect(archiveErrors).toEqual(
+      archiveErrors.map(() => expect.objectContaining({ reason: "invalid-options" })),
+    );
+    expect(readErrors).toEqual(
+      readErrors.map(() => expect.objectContaining({ reason: "invalid-options" })),
+    );
+  });
+
   test("rejects declared entry and cumulative sizes", async () => {
     const bytes = await makeZip({ a: "12345", b: "67890" });
     const entryError = await rejection(loadDocxArchive(bytes, { maxEntryBytes: 4 }));
