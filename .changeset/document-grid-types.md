@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Honor document grid types and preserve section marks after trailing page breaks.
+Honor document grid types, preserve section marks after trailing page breaks, and reconcile cached page boundaries after tables.
