@@ -76,7 +76,9 @@ import {
   clampRangeToDocSize,
   resolveFolioAIBlockRange,
   resolveFolioAITextRange,
+  resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
+import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 
 type LiveDocumentOperationUndoEntry = {
@@ -124,6 +126,14 @@ export type UseDocxEditorRefApiOptions = {
    * Vue analogue of React's `PagedEditorRef.scrollToPosition`.
    */
   scrollVisiblePositionIntoView: (pmPos: number) => void;
+  /**
+   * Set (or clear, with `null`) the persistent passage-highlight range that the
+   * `PassageHighlightOverlay` projects and paints. Backs `highlightPassage` /
+   * `clearPassageHighlight`; the Vue analogue of React's
+   * `PagedEditorRef.setPassageHighlight`. The overlay is cleared automatically
+   * on the next doc-changing transaction (owned by DocxEditor.vue).
+   */
+  setPassageHighlight: (range: { from: number; to: number } | null) => void;
   /** Editor author, used as the default operation author for AI edits. */
   author: () => string;
   /**
@@ -260,6 +270,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       scrollToPosition: (pmPos: number) => opts.scrollVisiblePositionIntoView(pmPos),
       scrollToPage,
       scrollToParaId,
+      setPassageHighlight: opts.setPassageHighlight,
       getPageNumberForPmPos: (pmPos: number) => {
         const currentLayout = opts.layout.value;
         if (!currentLayout) {
@@ -513,6 +524,44 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
       requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
       return true;
+    },
+    highlightPassage: ({ blockId, text, snapshot }) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return "none";
+      }
+      const passageRange = resolvePassageRange({ blockId, text, doc: view.state.doc, snapshot });
+      if (passageRange !== null) {
+        // Passage matched: paint the range and scroll to it, but do NOT move the
+        // PM selection (unlike scrollToBlock) so the persistent highlight is not
+        // confused with a live selection.
+        opts.setPassageHighlight(passageRange);
+        requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(passageRange.from));
+        return "passage";
+      }
+      // Text did not match. Drop any prior passage highlight and fall back to the
+      // scroll-to-block behavior (scroll + whole-paragraph flash where a paraId
+      // exists), matching `scrollToBlock`.
+      opts.setPassageHighlight(null);
+      const blockRange = resolveFolioAIBlockRange({ blockId, doc: view.state.doc, snapshot });
+      if (blockRange === null) {
+        return "none";
+      }
+      const paraId = getFolioParaIdFromBlockId(blockId);
+      if (paraId !== null && scrollToParaId(paraId, { highlight: {} })) {
+        return "block";
+      }
+      // A `seq-*` id (or a paraId no longer in the live doc) has no paragraph to
+      // flash; scroll to the resolved block without a flash.
+      const { from, to } = blockRange;
+      const $from = view.state.doc.resolve(from);
+      const $to = view.state.doc.resolve(to);
+      view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+      requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
+      return "block";
+    },
+    clearPassageHighlight: () => {
+      opts.setPassageHighlight(null);
     },
     showInDocument: (target, snapshot) => {
       const view = opts.editorView.value;

@@ -832,6 +832,21 @@
     0 0 0 2px rgb(37 99 235 / 0.35);
 }
 
+/* Passage highlight — persistent translucent wash painted over a
+   text passage a consumer opened the document at (citation chip,
+   find-in-document, agent tool). Distinct from the yellow paragraph
+   flash (transient, whole-paragraph) and the blue anonymization
+   underline / AI-suggestion decorations: a soft accent fill so the
+   quoted span stays visible while the text underneath stays legible.
+   The colour is hoisted into a custom property so hosts can retint it. */
+.folio-passage-highlight {
+  --folio-passage-highlight-color: rgba(64, 158, 255, 0.28);
+  background-color: var(--folio-passage-highlight-color);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklch, var(--folio-passage-highlight-color) 55%, transparent);
+}
+
 /* AI prompt-bar caret suppression lives in apps/web (the bar is no
    longer part of folio); see file-viewer-with-ai.css. */
 

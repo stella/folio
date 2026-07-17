@@ -201,7 +201,9 @@ import {
   clampRangeToDocSize,
   resolveFolioAIBlockRange,
   resolveFolioAITextRange,
+  resolvePassageRange,
 } from "@stll/folio-core/ai-edits/blockRange";
+import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import { resolveCommentCreationRange } from "./commentAnchors";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 import { toast } from "./toast";
@@ -3103,6 +3105,57 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           pagedEditorRef.current?.scrollToPosition(from);
         });
         return true;
+      },
+      highlightPassage: ({ blockId, text, snapshot }) => {
+        const view = pagedEditorRef.current?.getView();
+        if (!view) {
+          return "none";
+        }
+        const passageRange = resolvePassageRange({
+          blockId,
+          text,
+          doc: view.state.doc,
+          snapshot,
+        });
+        if (passageRange !== null) {
+          // Passage matched: paint the range and scroll to it, but do NOT move
+          // the PM selection (unlike scrollToBlock) so the persistent highlight
+          // is not confused with a live selection.
+          pagedEditorRef.current?.setPassageHighlight(passageRange);
+          requestAnimationFrame(() => {
+            pagedEditorRef.current?.scrollToPosition(passageRange.from);
+          });
+          return "passage";
+        }
+        // Text did not match. Drop any prior passage highlight and fall back to
+        // the scroll-to-block behavior (scroll + whole-paragraph flash where a
+        // paraId exists), matching `scrollToBlock`.
+        pagedEditorRef.current?.setPassageHighlight(null);
+        const blockRange = resolveFolioAIBlockRange({
+          blockId,
+          doc: view.state.doc,
+          snapshot,
+        });
+        if (blockRange === null) {
+          return "none";
+        }
+        const paraId = getFolioParaIdFromBlockId(blockId);
+        if (paraId !== null && pagedEditorRef.current?.scrollToParaId(paraId, { highlight: {} })) {
+          return "block";
+        }
+        // A `seq-*` id (or a paraId no longer in the live doc) has no paragraph
+        // to flash; scroll to the resolved block without a flash.
+        const { from, to } = blockRange;
+        const $from = view.state.doc.resolve(from);
+        const $to = view.state.doc.resolve(to);
+        view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+        requestAnimationFrame(() => {
+          pagedEditorRef.current?.scrollToPosition(from);
+        });
+        return "block";
+      },
+      clearPassageHighlight: () => {
+        pagedEditorRef.current?.setPassageHighlight(null);
       },
       showInDocument: (target, snapshot) => {
         const view = pagedEditorRef.current?.getView();

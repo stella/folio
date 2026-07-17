@@ -236,6 +236,18 @@
                 :selected-canonical="props.selectedAnonymizationCanonical"
                 :selection-seq="props.anonymizationSelectionSeq"
               />
+              <!-- Passage highlight — a persistent translucent wash over the
+                   passage a consumer opened the document at (citation chip,
+                   find-in-document, agent tool). Renders nothing until a range
+                   is pushed in via the ref API. -->
+              <PassageHighlightOverlay
+                :range="passageHighlightRange"
+                :get-pages-container="() => pagesRef"
+                :zoom="zoom"
+                :layout="layout"
+                :blocks="blocks"
+                :measures="measures"
+              />
               <TemplateDirectivesOverlay
                 v-if="props.showTemplateDirectives"
                 :get-view="() => editorView"
@@ -447,6 +459,7 @@ import {
 } from "@stll/folio-core/watermark";
 
 import AnonymizationRectsOverlay from "./AnonymizationRectsOverlay.vue";
+import PassageHighlightOverlay from "./PassageHighlightOverlay.vue";
 import AutocompleteSuggestionOverlay from "./AutocompleteSuggestionOverlay.vue";
 import CommentMarginMarkers from "./CommentMarginMarkers.vue";
 import ContentControlWidgetsOverlay from "./ContentControlWidgetsOverlay.vue";
@@ -618,6 +631,12 @@ const pagesRef = ref<HTMLElement | null>(null);
 const pagesViewportRef = ref<HTMLElement | null>(null);
 const editorScrollRef = ref<HTMLElement | null>(null);
 
+// Passage highlight — ephemeral view state pushed in via the ref API
+// (`highlightPassage` / `clearPassageHighlight`) and painted by
+// `PassageHighlightOverlay`. Mirrors React's `PagedEditor.setPassageHighlight`
+// range ref. Cleared on the next doc-changing transaction below.
+const passageHighlightRange = ref<{ from: number; to: number } | null>(null);
+
 // Ruler visibility — driven by the `showRuler` prop (default off). Renders the
 // horizontal + vertical rulers, gated additionally on `!readOnly` (matching
 // React, which hides the rulers in read-only mode).
@@ -752,6 +771,17 @@ const {
   onSelectiveSaveTripwire: props.onSelectiveSaveTripwire
     ? (result) => props.onSelectiveSaveTripwire?.(result)
     : undefined,
+});
+
+// A passage highlight is a pointer into the pre-edit document; once the user
+// edits, drop it rather than remapping it (mirrors React's clear-on-docChanged
+// in PagedEditor's transaction handler — a citation highlight should simply
+// disappear once the doc changes). Selection-only transactions keep the same
+// doc node, so they leave the highlight in place.
+watch(editorState, (next, prev) => {
+  if (passageHighlightRange.value !== null && next && prev && !next.doc.eq(prev.doc)) {
+    passageHighlightRange.value = null;
+  }
 });
 
 const activeEditorView = computed(
@@ -1430,6 +1460,9 @@ const { exposed } = useDocxEditorRefApi({
   pagesViewportRef,
   zoom,
   scrollVisiblePositionIntoView,
+  setPassageHighlight: (range) => {
+    passageHighlightRange.value = range;
+  },
   author: () => props.author,
   // Mirror React's applyAIEditOperations comment closure: mint the comment,
   // append it to the thread list, and hand back its id for the tracked-change

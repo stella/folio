@@ -198,6 +198,7 @@ import { AnonymizationRectsOverlay } from "./AnonymizationRectsOverlay";
 import type { AnonymizationRectGroup } from "./AnonymizationRectsOverlay";
 import { AutocompleteCaretOverlay } from "./AutocompleteCaretOverlay";
 import type { AutocompleteCaretRect } from "./AutocompleteCaretOverlay";
+import { PassageHighlightOverlay } from "./PassageHighlightOverlay";
 import { loadEmbeddedFontFaces, removeFontFaces } from "./embeddedFonts";
 import { loadHostFontFaces, type FontDefinition } from "./hostFonts";
 import { createHiddenEditorState, HiddenProseMirror } from "./HiddenProseMirror";
@@ -418,6 +419,13 @@ export type PagedEditorRef = {
    * Returns whether a matching paragraph exists in the ProseMirror document.
    */
   scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean;
+  /**
+   * Set (or clear, with `null`) the persistent passage highlight overlay. The
+   * range is projected onto the painted pages and painted with a translucent
+   * wash; it does not move the PM selection. Replaces any previous highlight.
+   * The overlay is cleared automatically on the next doc-changing transaction.
+   */
+  setPassageHighlight: (range: { from: number; to: number } | null) => void;
   /** Resolve the page number (1-indexed) that contains the given PM position,
    *  or null if no layout is available yet. Works for unrendered pages too via
    *  the page shell map. */
@@ -1587,6 +1595,15 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       focusedId: string | null;
     }>({ suggestions: EMPTY_AI_SUGGESTIONS, focusedId: null });
     const [aiSuggestionsOverlayRequestGate] = useState(createLatestRequestGate);
+    // Passage highlight — an imperative, ephemeral view-state overlay. Unlike the
+    // plugin-driven overlays above, the range is pushed in via the ref method
+    // (`setPassageHighlight`), held in a ref, and projected to container-space
+    // rects. It is cleared on the next doc-changing transaction (a citation
+    // highlight should simply disappear once the user edits), so there is no
+    // recompute-on-edit path here.
+    const passageHighlightRangeRef = useRef<{ from: number; to: number } | null>(null);
+    const [passageHighlightRects, setPassageHighlightRects] = useState<SelectionRect[]>([]);
+    const [passageHighlightOverlayRequestGate] = useState(createLatestRequestGate);
     const [remoteSelections, setRemoteSelections] = useState<HiddenProseMirrorRemoteSelection[]>(
       [],
     );
@@ -2782,6 +2799,45 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       })();
     }, [aiSuggestionsOverlayRequestGate, layout, blocks, measures, zoom]);
 
+    // Project the current passage-highlight range (held in a ref, pushed via
+    // the ref method) onto container-space rects. Shares the projection pipeline
+    // with the anonymization / directive / AI-suggestion overlays.
+    const updatePassageHighlightOverlay = useCallback(() => {
+      const isCurrentRequest = passageHighlightOverlayRequestGate.begin();
+      const range = passageHighlightRangeRef.current;
+      const pagesContainer = pagesContainerRef.current;
+      if (range === null || !pagesContainer) {
+        setPassageHighlightRects((prev) => (prev.length === 0 ? prev : []));
+        return;
+      }
+      void (async () => {
+        const projected = await projectRangesToRects([range], {
+          pagesContainer,
+          zoom,
+          layout,
+          blocks,
+          measures,
+        });
+        if (!isCurrentRequest()) {
+          return;
+        }
+        setPassageHighlightRects(projected.at(0)?.rects ?? []);
+      })();
+    }, [passageHighlightOverlayRequestGate, layout, blocks, measures, zoom]);
+
+    const setPassageHighlightImpl = useCallback(
+      (range: { from: number; to: number } | null) => {
+        passageHighlightRangeRef.current = range;
+        if (range === null) {
+          passageHighlightOverlayRequestGate.invalidate();
+          setPassageHighlightRects((prev) => (prev.length === 0 ? prev : []));
+          return;
+        }
+        updatePassageHighlightOverlay();
+      },
+      [passageHighlightOverlayRequestGate, updatePassageHighlightOverlay],
+    );
+
     const hideSelectionOverlayDuringInput = useCallback(
       (state: EditorState) => {
         selectionOverlayRequestGate.invalidate();
@@ -2809,6 +2865,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         autocompleteOverlayRequestGate.invalidate();
         directivesOverlayRequestGate.invalidate();
         aiSuggestionsOverlayRequestGate.invalidate();
+        passageHighlightOverlayRequestGate.invalidate();
 
         if (revealSelectionOverlayTimerRef.current !== null) {
           window.clearTimeout(revealSelectionOverlayTimerRef.current);
@@ -2820,6 +2877,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         anonymizationOverlayRequestGate,
         autocompleteOverlayRequestGate,
         directivesOverlayRequestGate,
+        passageHighlightOverlayRequestGate,
         selectionOverlayRequestGate,
       ],
     );
@@ -2927,6 +2985,15 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           // Increment state sequence to signal document changed
           syncCoordinator.incrementStateSeq();
 
+          // A passage highlight is a pointer into the pre-edit document; once
+          // the user edits, drop it rather than trying to remap it (unlike the
+          // plugin-driven overlays, a citation highlight should just disappear).
+          if (passageHighlightRangeRef.current !== null) {
+            passageHighlightRangeRef.current = null;
+            passageHighlightOverlayRequestGate.invalidate();
+            setPassageHighlightRects((prev) => (prev.length === 0 ? prev : []));
+          }
+
           hideSelectionOverlayDuringInput(newState);
 
           // Content changed - schedule layout (coalesced via rAF)
@@ -2956,6 +3023,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         updateAutocompleteOverlay,
         updateDirectivesOverlay,
         updateAISuggestionsOverlay,
+        passageHighlightOverlayRequestGate,
         syncCoordinator,
       ],
       // NOTE: onDocumentChange removed from dependencies - accessed via ref to prevent infinite loops
@@ -5380,6 +5448,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       updateAISuggestionsOverlay();
     }, [updateAISuggestionsOverlay]);
 
+    // Re-project the passage highlight on every fresh layout (initial paint,
+    // zoom change) so it tracks reflow while it is set.
+    useEffect(() => {
+      updatePassageHighlightOverlay();
+    }, [updatePassageHighlightOverlay]);
+
     // Compute anchor Y positions for comments/revisions sidebar from the current
     // layout artifacts. Opening the sidebar or switching anchor modes does not
     // change page geometry, so this intentionally avoids a full layout pass.
@@ -5694,6 +5768,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         scrollToPosition: scrollToPositionImpl,
         scrollToPage: scrollToPageImpl,
         scrollToParaId: scrollToParaIdImpl,
+        setPassageHighlight: setPassageHighlightImpl,
         getPageNumberForPmPos(pmPos) {
           const container = pagesContainerRef.current;
           if (!container) {
@@ -5759,6 +5834,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         scrollToPageImpl,
         scrollToParaIdImpl,
         scrollToPositionImpl,
+        setPassageHighlightImpl,
       ],
     );
 
@@ -5922,6 +5998,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               selectedCanonical={selectedAnonymizationCanonical}
               selectionSeq={anonymizationSelectionSeq}
             />
+
+            {/* Passage highlight — a persistent translucent wash over the
+                passage a consumer opened the document at (citation chip,
+                find-in-document, agent tool). Ephemeral view state pushed in
+                via the ref; renders nothing until a range is set. */}
+            <PassageHighlightOverlay rects={passageHighlightRects} />
 
             {/* Inline autocomplete ghost-text + "stella" caret. The
               ProseMirror autocomplete plugin lives in the hidden
