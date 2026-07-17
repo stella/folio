@@ -276,6 +276,8 @@ function convertParagraph(
   if (styleResolver) {
     const resolved = styleResolver.resolveParagraphStyle(paragraph.formatting?.styleId);
     styleRunFormatting = resolved.runFormatting;
+    // Parsed style definitions already contain their cycle-safe `basedOn`
+    // cascade, so this rPr includes inherited named-style font slots too.
     const paragraphStyle = paragraph.formatting?.styleId
       ? styleResolver.getStyle(paragraph.formatting.styleId)
       : styleResolver.getDefaultParagraphStyle();

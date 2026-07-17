@@ -51,12 +51,10 @@ export const wordFontDefinitions = (fontDirectory: string): LocalFontDefinition[
 /** Fonts bundled with Word but not normally visible to Chromium. Missing
  * faces are skipped so an older Word installation remains usable. */
 export const getAvailableWordFonts = async (): Promise<LocalFontDefinition[]> => {
-  const available: LocalFontDefinition[] = [];
-  for (const font of wordFontDefinitions(WORD_FONT_DIR)) {
-    // oxlint-disable-next-line no-await-in-loop -- preserve manifest order for deterministic face registration
-    if (await Bun.file(font.filePath).exists()) {
-      available.push(font);
-    }
-  }
-  return available;
+  const available = await Promise.all(
+    wordFontDefinitions(WORD_FONT_DIR).map(async (font) =>
+      (await Bun.file(font.filePath).exists()) ? [font] : [],
+    ),
+  );
+  return available.flat();
 };
