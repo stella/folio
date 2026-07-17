@@ -55,6 +55,16 @@ const schema = new Schema({
         bidi: { default: null },
       },
     },
+    fontFamily: {
+      attrs: {
+        ascii: { default: null },
+        hAnsi: { default: null },
+        eastAsia: { default: null },
+        asciiTheme: { default: null },
+        hAnsiTheme: { default: null },
+        eastAsiaTheme: { default: null },
+      },
+    },
     textEffect: {
       attrs: { effect: {} },
     },
@@ -100,6 +110,25 @@ function firstRun(blocks: unknown[]): TextRun {
 }
 
 describe("toFlowBlocks run-level OOXML marks", () => {
+  test("resolves a theme font before its legacy fallback name", () => {
+    const doc = buildSingleRunDoc("text", "fontFamily", {
+      ascii: "Calibri",
+      hAnsi: "Calibri",
+      asciiTheme: "majorHAnsi",
+      hAnsiTheme: "majorHAnsi",
+    });
+
+    const themedRun = firstRun(
+      toFlowBlocks(doc, {
+        theme: { fontScheme: { majorFont: { latin: "Aptos" } } },
+      }),
+    );
+    const fallbackRun = firstRun(toFlowBlocks(doc, {}));
+
+    expect(themedRun.fontFamily).toBe("Aptos");
+    expect(fallbackRun.fontFamily).toBe("Calibri");
+  });
+
   test("propagates caps and text effect marks to run formatting", () => {
     for (const markName of [
       "allCaps",

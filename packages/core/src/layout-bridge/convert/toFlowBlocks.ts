@@ -83,6 +83,7 @@ import type {
 } from "../../types/document";
 import { NUMBER_FORMAT_VALUES } from "../../types/documentEnumValues";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
+import { resolveThemeFont } from "../../utils/fontResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
 import {
   AUTO_PARAGRAPH_SPACING_PX,
@@ -513,12 +514,13 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
 
       case "fontFamily": {
         const attrs = expectFontFamilyMarkAttrs(mark);
-        const font = attrs.ascii || attrs.hAnsi;
+        const font = resolveWesternThemeFont(attrs, theme);
         if (font) {
           formatting.fontFamily = font;
         }
-        if (attrs.eastAsia) {
-          formatting.eastAsiaFontFamily = attrs.eastAsia;
+        const eastAsiaFont = resolveEastAsiaThemeFont(attrs, theme);
+        if (eastAsiaFont) {
+          formatting.eastAsiaFontFamily = eastAsiaFont;
         }
         break;
       }
@@ -678,6 +680,34 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
   return formatting;
 }
 
+type ThemeFontAttributes = {
+  ascii?: string | null;
+  hAnsi?: string | null;
+  eastAsia?: string | null;
+  asciiTheme?: string | null;
+  hAnsiTheme?: string | null;
+  eastAsiaTheme?: string | null;
+};
+
+const resolveWesternThemeFont = (
+  fontFamily: ThemeFontAttributes,
+  theme?: Theme | null,
+): string | undefined => {
+  const themeRef = fontFamily.asciiTheme ?? fontFamily.hAnsiTheme;
+  const themedFont = themeRef ? resolveThemeFont(themeRef, theme?.fontScheme) : null;
+  return themedFont ?? fontFamily.ascii ?? fontFamily.hAnsi ?? undefined;
+};
+
+const resolveEastAsiaThemeFont = (
+  fontFamily: ThemeFontAttributes,
+  theme?: Theme | null,
+): string | undefined => {
+  const themedFont = fontFamily.eastAsiaTheme
+    ? resolveThemeFont(fontFamily.eastAsiaTheme, theme?.fontScheme)
+    : null;
+  return themedFont ?? fontFamily.eastAsia ?? undefined;
+};
+
 function isAutomaticTextColorValue(color: ColorValue): boolean {
   const rgb = color.rgb?.trim().toLowerCase();
   return color.auto === true || rgb === "auto" || (!rgb && !color.themeColor);
@@ -760,16 +790,20 @@ function paragraphRunDefaults(pmAttrs: PMParagraphAttrs, theme?: Theme | null): 
   }
 
   const result: RunFormatting = {};
-  const fontFamily =
-    defaultTextFormatting.fontFamily?.ascii ?? defaultTextFormatting.fontFamily?.hAnsi;
+  const fontFamily = defaultTextFormatting.fontFamily
+    ? resolveWesternThemeFont(defaultTextFormatting.fontFamily, theme)
+    : undefined;
   if (fontFamily) {
     result.fontFamily = fontFamily;
   }
   // East-Asian font inherited from the paragraph style / docDefaults, so CJK
   // runs without a direct `w:eastAsia` still get per-character EA selection. A
   // run's own fontFamily mark overrides this via mergeRunFormatting.
-  if (defaultTextFormatting.fontFamily?.eastAsia) {
-    result.eastAsiaFontFamily = defaultTextFormatting.fontFamily.eastAsia;
+  const eastAsiaFontFamily = defaultTextFormatting.fontFamily
+    ? resolveEastAsiaThemeFont(defaultTextFormatting.fontFamily, theme)
+    : undefined;
+  if (eastAsiaFontFamily) {
+    result.eastAsiaFontFamily = eastAsiaFontFamily;
   }
   if (defaultTextFormatting.language) {
     result.language = { ...defaultTextFormatting.language };
@@ -1828,16 +1862,14 @@ function convertParagraphAttrs(
     attrs.defaultTabStopTwips = defaultTabStopTwips;
   }
   // Default font for empty paragraph measurement (from style's rPr / pPr/rPr)
-  const dtf = pmAttrs.defaultTextFormatting as
-    | { fontSize?: number; fontFamily?: { ascii?: string; hAnsi?: string } }
-    | undefined;
+  const dtf = pmAttrs.defaultTextFormatting as TextFormatting | undefined;
   if (dtf) {
     if (dtf.fontSize !== undefined) {
       // fontSize in TextFormatting is in half-points, convert to points
       attrs.defaultFontSize = dtf.fontSize / 2;
     }
     if (dtf.fontFamily) {
-      const resolvedFamily = dtf.fontFamily.ascii || dtf.fontFamily.hAnsi;
+      const resolvedFamily = resolveWesternThemeFont(dtf.fontFamily, theme);
       if (resolvedFamily) {
         attrs.defaultFontFamily = resolvedFamily;
       }
@@ -1932,8 +1964,9 @@ function convertParagraph(
     if (paragraphMarkFormatting?.fontSize !== undefined) {
       attrs.defaultFontSize = paragraphMarkFormatting.fontSize / 2;
     }
-    const paragraphMarkFontFamily =
-      paragraphMarkFormatting?.fontFamily?.ascii ?? paragraphMarkFormatting?.fontFamily?.hAnsi;
+    const paragraphMarkFontFamily = paragraphMarkFormatting?.fontFamily
+      ? resolveWesternThemeFont(paragraphMarkFormatting.fontFamily, options.theme)
+      : undefined;
     if (paragraphMarkFontFamily) {
       attrs.defaultFontFamily = paragraphMarkFontFamily;
     }
