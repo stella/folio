@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
-import type { Watermark } from "@stll/folio-core/watermark";
+import { isAllowedExternalWatermarkImageUrl, type Watermark } from "@stll/folio-core/watermark";
 import { useFolioUI } from "../../ui/folio-ui";
 import {
   DIALOG_BACKDROP_CLASS,
@@ -104,10 +104,18 @@ export function WatermarkDialog({
     washout: `${id}-watermark-washout`,
   };
 
+  // An external target becomes a `TargetMode="External"` relationship in the
+  // saved package verbatim (see `docx/rezip.ts`); restrict it to http(s) so a
+  // `file:` URL or UNC path can't ride along in the exported `.docx`.
+  const imageTargetError =
+    mode === "picture" && imageTargetExternal && imageTarget.trim().length > 0
+      ? getExternalImageTargetError(imageTarget.trim())
+      : "";
+
   const canApply =
     mode === "none" ||
     (mode === "text" && text.trim().length > 0) ||
-    (mode === "picture" && imageRId.trim().length > 0);
+    (mode === "picture" && imageRId.trim().length > 0 && imageTargetError.length === 0);
 
   const handleApply = () => {
     if (!canApply) {
@@ -234,12 +242,16 @@ export function WatermarkDialog({
                 <label className="col-span-2 flex flex-col gap-1" htmlFor={fieldIds.imageTarget}>
                   <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.imageTarget")}</span>
                   <input
+                    aria-invalid={imageTargetError.length > 0}
                     className={DIALOG_INPUT_CLASS}
                     id={fieldIds.imageTarget}
                     onChange={(e) => setImageTarget(e.target.value)}
                     placeholder="word/media/image1.png"
                     value={imageTarget}
                   />
+                  {imageTargetError.length > 0 && (
+                    <span className="text-destructive text-xs">{imageTargetError}</span>
+                  )}
                 </label>
                 <label className="flex flex-col gap-1" htmlFor={fieldIds.scale}>
                   <span className={DIALOG_LABEL_CLASS}>{t("dialogs.watermark.scale")}</span>
@@ -316,6 +328,13 @@ function clampScalePercent(value: number): number {
 
 function stripHash(value: string): string {
   return value.startsWith("#") ? value.slice(1) : value;
+}
+
+/** Mirrors `HyperlinkDialog.tsx`'s `getUrlError` — a plain-English, untranslated
+ * field-level validation message (existing convention for this kind of inline
+ * error in this dialog family). */
+function getExternalImageTargetError(value: string): string {
+  return isAllowedExternalWatermarkImageUrl(value) ? "" : "Use a web address (http/https).";
 }
 
 function toColorInputValue(value: string | undefined): string {

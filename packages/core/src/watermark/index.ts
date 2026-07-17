@@ -19,6 +19,29 @@ import type {
 export type { Watermark, TextWatermark, PictureWatermark } from "../types/document";
 
 /**
+ * Schemes allowed for a picture watermark's external image target
+ * (`TargetMode="External"` in the saved package's relationships).
+ */
+const ALLOWED_EXTERNAL_IMAGE_SCHEMES = new Set(["http:", "https:"]);
+
+/**
+ * Whether `target` is safe to save as a watermark picture's external image
+ * relationship. A watermark dialog lets an author type an arbitrary string
+ * for this field; without a scheme check it becomes a `TargetMode="External"`
+ * relationship verbatim (see `docx/rezip.ts`), which would let a `file:` URL
+ * or UNC path (`\\host\share\...`) into the exported `.docx` — a resource
+ * whatever later opens the file (e.g. Word) would try to resolve. Only
+ * `http:`/`https:` targets are allowed.
+ */
+export function isAllowedExternalWatermarkImageUrl(target: string): boolean {
+  try {
+    return ALLOWED_EXTERNAL_IMAGE_SCHEMES.has(new URL(target).protocol);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Read the document's watermark. Walks every header part and returns
  * the first watermark encountered (header insertion order). Returns
  * `undefined` when no header carries one.

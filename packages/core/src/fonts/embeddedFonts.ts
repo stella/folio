@@ -18,13 +18,44 @@
 import { parseRelationships, resolveRelativePath } from "../docx/relsParser";
 import { unzipDocx } from "../docx/unzip";
 import type { RelationshipMap } from "../types";
+import { generateHexId } from "../utils/hexId";
 import { deobfuscateFont, isValidFontKey } from "./fontDeobfuscation";
 import { parseEmbeddedFontTable, type EmbeddedFontFaceRef } from "./embeddedFontTable";
 
+// A DOCX author controls both the embedded font bytes AND the `w:font
+// w:name` it's declared under — including names that collide with a real
+// installed/host font (e.g. "Arial", "Inter"). Registering an embedded face
+// under its raw name on the page-global `document.fonts` would let one
+// document's embedded bytes shadow that family for the WHOLE host page,
+// including host-page chrome that never opted into the DOCX's fonts. Every
+// face is therefore registered under a per-document SCOPED name instead —
+// see `scopeEmbeddedFontFamily` — and the raw name is never registered
+// anywhere; `buildEmbeddedFontFamilyMap` gives callers the original→scoped
+// mapping so the editor's own rendering can still resolve runs to it.
+const SCOPED_FAMILY_PREFIX = "folio-embedded";
+
+/**
+ * Build the per-document scoped family name an embedded face registers
+ * under. `docNonce` is fresh per document load (see {@link getEmbeddedFontFaces}),
+ * so the same original name in two different documents (or two loads of the
+ * same document) never collides.
+ */
+export function scopeEmbeddedFontFamily(docNonce: string, originalFamily: string): string {
+  return `${SCOPED_FAMILY_PREFIX}-${docNonce}-${originalFamily}`;
+}
+
 /** A single de-obfuscated embedded font face, ready to register as `@font-face`. */
 export type EmbeddedFont = {
-  /** Word font name to register the face under (`w:font w:name`). */
+  /**
+   * Family name to register the face under (`@font-face`/`FontFace`).
+   * Always a per-document SCOPED name (see {@link scopeEmbeddedFontFamily}) —
+   * never the raw `w:font w:name` from the DOCX. Use `originalFamily` (and
+   * {@link buildEmbeddedFontFamilyMap}) to resolve document runs, which
+   * still reference the font by its original DOCX name, to this family.
+   */
   family: string;
+  /** Original Word font name (`w:font w:name`), before scoping. */
+  originalFamily: string;
   /** CSS `font-style` the face maps to (`embed*Italic` → `italic`). */
   style: "normal" | "italic";
   /** CSS `font-weight` the face maps to (`embedBold*` → `700`). */
@@ -90,11 +121,12 @@ function lookupFontData(
 }
 
 function resolveFace(
-  family: string,
+  originalFamily: string,
   ref: EmbeddedFontFaceRef,
   kind: EmbedKind,
   fonts: ReadonlyMap<string, ArrayBuffer>,
   rels: RelationshipMap,
+  docNonce: string,
 ): EmbeddedFont | null {
   const target = rels.get(ref.relId)?.target;
   if (!target) {
@@ -118,7 +150,8 @@ function resolveFace(
         bytes;
 
   return {
-    family,
+    family: scopeEmbeddedFontFamily(docNonce, originalFamily),
+    originalFamily,
     style: kind.style,
     weight: kind.weight,
     bytes: data,
@@ -130,8 +163,16 @@ function resolveFace(
  * Resolve and de-obfuscate every embedded font face declared in a font table.
  * Pure and DOM-free. Faces whose relationship or binary is missing are skipped,
  * so the result only contains faces that produced usable bytes.
+ *
+ * `docNonce` scopes every face's registered family to one document load (see
+ * {@link scopeEmbeddedFontFamily}); defaults to a fresh random id so callers
+ * that don't care about a specific value still get per-call isolation. Pass
+ * an explicit value for deterministic tests.
  */
-export function getEmbeddedFontFaces(parts: EmbeddedFontParts): EmbeddedFont[] {
+export function getEmbeddedFontFaces(
+  parts: EmbeddedFontParts,
+  docNonce: string = generateHexId(),
+): EmbeddedFont[] {
   const entries = parseEmbeddedFontTable(parts.fontTableXml);
   if (entries.length === 0) {
     return [];
@@ -148,13 +189,30 @@ export function getEmbeddedFontFaces(parts: EmbeddedFontParts): EmbeddedFont[] {
       if (!ref) {
         continue;
       }
-      const face = resolveFace(entry.name, ref, kind, parts.fonts, rels);
+      const face = resolveFace(entry.name, ref, kind, parts.fonts, rels, docNonce);
       if (face) {
         faces.push(face);
       }
     }
   }
   return faces;
+}
+
+/**
+ * Build the original DOCX font name → scoped registered family map for a set
+ * of resolved embedded faces. Callers thread this into font resolution (see
+ * `utils/fontResolver.ts`'s `setEmbeddedFontFamilyMap`) so the document's own
+ * runs — which still carry the original name — keep resolving to the scoped
+ * face that was actually registered on `document.fonts`.
+ */
+export function buildEmbeddedFontFamilyMap(
+  faces: readonly EmbeddedFont[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const face of faces) {
+    map.set(face.originalFamily, face.family);
+  }
+  return map;
 }
 
 function findFontTableRels(allXml: ReadonlyMap<string, string>): string | undefined {
@@ -170,13 +228,19 @@ function findFontTableRels(allXml: ReadonlyMap<string, string>): string | undefi
  * Extract every embedded font face from a raw `.docx` buffer. Unzips the
  * package, then resolves + de-obfuscates the faces via
  * {@link getEmbeddedFontFaces}. Returns an empty list for documents with no
- * embedded fonts.
+ * embedded fonts. See {@link getEmbeddedFontFaces} for `docNonce`.
  */
-export async function extractEmbeddedFonts(buffer: ArrayBuffer): Promise<EmbeddedFont[]> {
+export async function extractEmbeddedFonts(
+  buffer: ArrayBuffer,
+  docNonce: string = generateHexId(),
+): Promise<EmbeddedFont[]> {
   const raw = await unzipDocx(buffer);
-  return getEmbeddedFontFaces({
-    fontTableXml: raw.fontTableXml,
-    fontTableRelsXml: findFontTableRels(raw.allXml),
-    fonts: raw.fonts,
-  });
+  return getEmbeddedFontFaces(
+    {
+      fontTableXml: raw.fontTableXml,
+      fontTableRelsXml: findFontTableRels(raw.allXml),
+      fonts: raw.fonts,
+    },
+    docNonce,
+  );
 }

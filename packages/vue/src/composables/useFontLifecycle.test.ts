@@ -23,7 +23,12 @@ describe("useFontLifecycle", () => {
 
     try {
       const face = createFontFace();
-      const loadEmbedded = mock((_buffer: ArrayBuffer) => Promise.resolve([face]));
+      const loadEmbedded = mock((_buffer: ArrayBuffer) =>
+        Promise.resolve({
+          faces: [face],
+          familyMap: new Map([["Document Sans", "folio-embedded-test-nonce-Document Sans"]]),
+        }),
+      );
       const remove = mock((_faces: readonly FontFace[]) => {});
       const remeasure = mock(() => {});
       const ready = ref(false);
@@ -81,7 +86,7 @@ describe("useFontLifecycle", () => {
 
     try {
       const face = createFontFace();
-      const pending = deferred<FontFace[]>();
+      const pending = deferred<{ faces: FontFace[]; familyMap: ReadonlyMap<string, string> }>();
       const remove = mock((_faces: readonly FontFace[]) => {});
       const remeasure = mock(() => {});
       const ready = ref(false);
@@ -107,7 +112,7 @@ describe("useFontLifecycle", () => {
       await nextTick();
       ready.value = false;
       await nextTick();
-      pending.resolve([face]);
+      pending.resolve({ faces: [face], familyMap: new Map() });
       await Promise.resolve();
 
       expect(remove).toHaveBeenCalledWith([face]);
@@ -151,7 +156,7 @@ describe("useFontLifecycle", () => {
             remeasure,
           },
           {
-            loadEmbedded: () => Promise.resolve([]),
+            loadEmbedded: () => Promise.resolve({ faces: [], familyMap: new Map() }),
             loadHost,
             remove,
           },

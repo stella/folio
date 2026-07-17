@@ -83,6 +83,18 @@ function getResolvedFallback(fontFamily: string): string {
 }
 
 /**
+ * Clear the resolved-font-family cache. `resolveFontFamily`'s output for a
+ * given key can change even when the raw font names don't — e.g. when the
+ * active document's embedded-font family map changes (see
+ * `utils/fontResolver.ts`'s `setEmbeddedFontFamilyMap`) — so this must be
+ * cleared whenever that happens, not just on font-name changes. Folded into
+ * `clearAllCaches` (`./cache.ts`) so callers get it for free.
+ */
+export function clearFontResolvedCache(): void {
+  fontResolvedCache.clear();
+}
+
+/**
  * Build a CSS font string from styling properties
  *
  * Font sizes are in points and need to be converted to pixels for canvas.

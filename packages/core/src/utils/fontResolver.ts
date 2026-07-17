@@ -739,8 +739,32 @@ export const setGoogleFontsEnabled = (enabled: boolean): void => {
 
 export const getGoogleFontsEnabled = (): boolean => googleFontsEnabled;
 
+// The active document's embedded-font original→scoped family map (see
+// `fonts/embeddedFonts.ts`). Embedded faces are never registered under their
+// raw DOCX name (that would let an embedded "Arial" shadow the host page's
+// own Arial via the global `document.fonts`); they register under a scoped
+// `folio-embedded-{docNonce}-{name}` family instead. `resolveFontFamily`
+// substitutes that scoped family in place of the raw name so the document's
+// own runs still resolve to their embedded face.
+//
+// Module-level like `googleFontsEnabled` above: the React/Vue font-lifecycle
+// effects call `setEmbeddedFontFamilyMap` once per loaded document, in the
+// same breath as their resolved-font cache invalidation (`clearAllCaches`,
+// which clears `fontResolvedCache` — see measure/measureHelpers.ts). A known
+// gap of this module-singleton approach: two editor instances with embedded
+// fonts mounted at the same time share one active map, so one instance's
+// layout pass could transiently resolve using the other's map. That is a
+// correctness edge case scoped to folio's own rendering, not a security one —
+// `document.fonts` itself never carries a raw/unscoped name either way.
+let embeddedFontFamilyMap: ReadonlyMap<string, string> | null = null;
+
+export const setEmbeddedFontFamilyMap = (map: ReadonlyMap<string, string> | null): void => {
+  embeddedFontFamilyMap = map;
+};
+
 export function resolveFontFamily(docxFontName: string): ResolvedFont {
   const normalizedName = docxFontName.trim().toLowerCase();
+  const scopedFamily = embeddedFontFamilyMap?.get(docxFontName) ?? null;
 
   // Direct mapping, or a romanized CJK spelling aliased to its native entry.
   const aliasTarget = CJK_FONT_ALIASES[normalizedName];
@@ -754,9 +778,15 @@ export function resolveFontFamily(docxFontName: string): ResolvedFont {
       aliasTarget && !mapping.fallbackStack.some((f) => f.toLowerCase() === normalizedName)
         ? [docxFontName, ...mapping.fallbackStack]
         : mapping.fallbackStack;
+    // An embedded face for this name takes priority over both the authored
+    // name and the mapped stack — it leads the list; the raw name is dropped
+    // entirely rather than also listed, since it was never registered.
+    const primaryStack = scopedFamily
+      ? [scopedFamily, ...fallbackStack.filter((f) => f.toLowerCase() !== normalizedName)]
+      : fallbackStack;
     return {
       googleFont: googleFontsEnabled ? mapping.googleFont : null,
-      cssFallback: withArabicFallback(fallbackStack.map(quoteFontName).join(", ")),
+      cssFallback: withArabicFallback(primaryStack.map(quoteFontName).join(", ")),
       originalFont: docxFontName,
       hasGoogleEquivalent: googleFontsEnabled,
       singleLineRatio: mapping.singleLineRatio,
@@ -766,10 +796,11 @@ export function resolveFontFamily(docxFontName: string): ResolvedFont {
   // No mapping - detect category and create fallback
   const category = detectFontCategory(docxFontName);
   const defaultFallback = DEFAULT_FALLBACKS[category];
+  const primaryName = scopedFamily ?? docxFontName;
 
   return {
     googleFont: null,
-    cssFallback: withArabicFallback(`${quoteFontName(docxFontName)}, ${defaultFallback}`),
+    cssFallback: withArabicFallback(`${quoteFontName(primaryName)}, ${defaultFallback}`),
     originalFont: docxFontName,
     hasGoogleEquivalent: false,
     singleLineRatio: DEFAULT_SINGLE_LINE_RATIO,

@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import type { Document, HeaderFooter, Watermark } from "../types/document";
-import { ensureWatermarkHeaderCoverage, getDocumentWatermark, setDocumentWatermark } from "./index";
+import {
+  ensureWatermarkHeaderCoverage,
+  getDocumentWatermark,
+  isAllowedExternalWatermarkImageUrl,
+  setDocumentWatermark,
+} from "./index";
 
 function makeDoc(headers: Record<string, HeaderFooter>): Document {
   return {
@@ -16,6 +21,32 @@ function makeDoc(headers: Record<string, HeaderFooter>): Document {
 function emptyHeader(): HeaderFooter {
   return { type: "header", hdrFtrType: "default", content: [] };
 }
+
+describe("isAllowedExternalWatermarkImageUrl", () => {
+  test("allows http/https URLs", () => {
+    expect(isAllowedExternalWatermarkImageUrl("https://example.com/watermark.png")).toBe(true);
+    expect(isAllowedExternalWatermarkImageUrl("http://example.com/watermark.png")).toBe(true);
+  });
+
+  test("rejects a file: URL", () => {
+    expect(isAllowedExternalWatermarkImageUrl("file:///etc/passwd")).toBe(false);
+  });
+
+  test("rejects a UNC path", () => {
+    expect(isAllowedExternalWatermarkImageUrl("\\\\attacker\\share\\payload.png")).toBe(false);
+  });
+
+  test("rejects an unparseable string", () => {
+    expect(isAllowedExternalWatermarkImageUrl("not a url")).toBe(false);
+    expect(isAllowedExternalWatermarkImageUrl("")).toBe(false);
+  });
+
+  test("rejects other schemes (javascript:, data:, ftp:)", () => {
+    expect(isAllowedExternalWatermarkImageUrl("javascript:alert(1)")).toBe(false);
+    expect(isAllowedExternalWatermarkImageUrl("data:text/plain;base64,aGk=")).toBe(false);
+    expect(isAllowedExternalWatermarkImageUrl("ftp://example.com/watermark.png")).toBe(false);
+  });
+});
 
 describe("getDocumentWatermark", () => {
   test("returns the first header's watermark", () => {

@@ -8,6 +8,7 @@
 import type { ParagraphBlock, ParagraphMeasure } from "../types";
 import { lineBreakPolicyCacheParts } from "./effectiveLineBreakPolicy";
 import { getLineBreakProviderGeneration } from "./lineBreakProvider";
+import { clearFontResolvedCache } from "./measureHelpers";
 
 // =============================================================================
 // TEXT WIDTH CACHE
@@ -449,6 +450,7 @@ export function clearAllCaches(): void {
   clearTextWidthCache();
   clearFontMetricsCache();
   clearParagraphMeasureCache();
+  clearFontResolvedCache();
 }
 
 /**

@@ -8,7 +8,27 @@
  * preventing one document's embedded family from bleeding into the next.
  */
 
-import { extractEmbeddedFonts, type EmbeddedFont } from "@stll/folio-core/fonts/embeddedFonts";
+import {
+  extractEmbeddedFonts,
+  buildEmbeddedFontFamilyMap,
+  type EmbeddedFont,
+} from "@stll/folio-core/fonts/embeddedFonts";
+
+/** Result of registering a document's embedded fonts with the browser. */
+export type LoadedEmbeddedFonts = {
+  /** The `FontFace` handles that loaded successfully, for later cleanup. */
+  faces: FontFace[];
+  /**
+   * Original DOCX font name (`w:font w:name`) → the per-document scoped
+   * family it was registered under (never the raw name — see
+   * `@stll/folio-core/fonts/embeddedFonts`). Callers activate this with
+   * `setEmbeddedFontFamilyMap` (`@stll/folio-core/utils/fontResolver`) so the
+   * document's own runs keep resolving to their embedded face.
+   */
+  familyMap: ReadonlyMap<string, string>;
+};
+
+const EMPTY_LOADED_EMBEDDED_FONTS: LoadedEmbeddedFonts = { faces: [], familyMap: new Map() };
 
 export function getDocumentFontSet(): FontFaceSet | null {
   if (typeof document === "undefined" || !("fonts" in document)) {
@@ -57,10 +77,10 @@ export async function registerFontFace(
  * faces the browser rejects (malformed/subsetted binaries) are dropped so the
  * run falls back to the CSS font stack.
  */
-export async function loadEmbeddedFontFaces(buffer: ArrayBuffer): Promise<FontFace[]> {
+export async function loadEmbeddedFontFaces(buffer: ArrayBuffer): Promise<LoadedEmbeddedFonts> {
   const fontSet = getDocumentFontSet();
   if (!fontSet) {
-    return [];
+    return EMPTY_LOADED_EMBEDDED_FONTS;
   }
 
   // Embedded fonts are best-effort: a corrupt/oversized package makes unzip
@@ -69,15 +89,17 @@ export async function loadEmbeddedFontFaces(buffer: ArrayBuffer): Promise<FontFa
   try {
     fonts = await extractEmbeddedFonts(buffer);
   } catch {
-    return [];
+    return EMPTY_LOADED_EMBEDDED_FONTS;
   }
   if (fonts.length === 0) {
-    return [];
+    return EMPTY_LOADED_EMBEDDED_FONTS;
   }
 
   const loaded: FontFace[] = [];
   await Promise.all(
     fonts.map(async (font) => {
+      // `font.family` is already the per-document scoped name, never the raw
+      // DOCX name (see `@stll/folio-core/fonts/embeddedFonts`).
       const face = await registerFontFace(fontSet, font.family, font.bytes, {
         weight: String(font.weight),
         style: font.style,
@@ -87,7 +109,11 @@ export async function loadEmbeddedFontFaces(buffer: ArrayBuffer): Promise<FontFa
       }
     }),
   );
-  return loaded;
+  // Built from every declared face, not just the ones that loaded — a face
+  // whose FontFace failed to load still reserves its scoped name; resolving
+  // a run to that (now-missing) scoped family just falls through the rest of
+  // the CSS fallback stack, same as any other unavailable custom font.
+  return { faces: loaded, familyMap: buildEmbeddedFontFamilyMap(fonts) };
 }
 
 /** Remove previously registered faces from the document font set. */

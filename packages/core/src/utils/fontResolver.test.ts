@@ -9,6 +9,7 @@ import {
   hasGoogleFontEquivalent,
   isCjkFont,
   resolveFontFamily,
+  setEmbeddedFontFamilyMap,
   setGoogleFontsEnabled,
 } from "./fontResolver";
 
@@ -244,6 +245,49 @@ describe("fontResolver — Google Fonts compatibility toggle", () => {
     } finally {
       setGoogleFontsEnabled(before);
     }
+  });
+});
+
+describe("fontResolver — embedded-font family scoping", () => {
+  // `quoteFontName` only wraps names with spaces/special chars, so
+  // "Calibri" (mapped branch) stays unquoted while "My Brand Sans"
+  // (unmapped/category branch) gets quoted — this exercises both forms.
+  test("an active map substitutes the scoped family and drops the raw name, for both mapped and unmapped fonts", () => {
+    try {
+      setEmbeddedFontFamilyMap(
+        new Map([
+          ["Calibri", "folio-embedded-doc1-Calibri"],
+          ["My Brand Sans", "folio-embedded-doc1-My Brand Sans"],
+        ]),
+      );
+
+      const calibri = resolveFontFamily("Calibri");
+      expect(calibri.cssFallback.startsWith("folio-embedded-doc1-Calibri,")).toBe(true);
+      expect(calibri.cssFallback).not.toMatch(/(^|,\s*)Calibri(,|$)/u);
+
+      const brand = resolveFontFamily("My Brand Sans");
+      expect(brand.cssFallback.startsWith('"folio-embedded-doc1-My Brand Sans",')).toBe(true);
+      expect(brand.cssFallback).not.toContain('"My Brand Sans"');
+    } finally {
+      setEmbeddedFontFamilyMap(null);
+    }
+  });
+
+  test("a font absent from the map resolves unscoped as usual", () => {
+    try {
+      setEmbeddedFontFamilyMap(new Map([["My Brand Sans", "folio-embedded-doc1-My Brand Sans"]]));
+      const resolved = resolveFontFamily("Calibri");
+      expect(resolved.cssFallback).not.toContain("folio-embedded");
+      expect(resolved.cssFallback.startsWith("Calibri,")).toBe(true);
+    } finally {
+      setEmbeddedFontFamilyMap(null);
+    }
+  });
+
+  test("clearing the map (null) falls back to the raw name", () => {
+    setEmbeddedFontFamilyMap(new Map([["Calibri", "folio-embedded-doc1-Calibri"]]));
+    setEmbeddedFontFamilyMap(null);
+    expect(resolveFontFamily("Calibri").cssFallback.startsWith("Calibri,")).toBe(true);
   });
 });
 

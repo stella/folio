@@ -3,7 +3,12 @@ import JSZip from "jszip";
 
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
-import { extractEmbeddedFonts, getEmbeddedFontFaces } from "./embeddedFonts";
+import {
+  extractEmbeddedFonts,
+  getEmbeddedFontFaces,
+  scopeEmbeddedFontFamily,
+  buildEmbeddedFontFamilyMap,
+} from "./embeddedFonts";
 import { parseEmbeddedFontTable } from "./embeddedFontTable";
 import { deobfuscateFont, isValidFontKey } from "./fontDeobfuscation";
 
@@ -153,21 +158,42 @@ describe("getEmbeddedFontFaces", () => {
       ["word/fonts/font1.odttf", obfuscated.buffer],
       ["word/fonts/font2.odttf", obfuscated.buffer],
     ]);
-    const faces = getEmbeddedFontFaces({
-      fontTableXml: FONT_TABLE_XML,
-      fontTableRelsXml: FONT_TABLE_RELS,
-      fonts,
-    });
+    const faces = getEmbeddedFontFaces(
+      {
+        fontTableXml: FONT_TABLE_XML,
+        fontTableRelsXml: FONT_TABLE_RELS,
+        fonts,
+      },
+      "nonce",
+    );
 
     expect(faces).toHaveLength(2);
     const regular = faces.find((f) => f.weight === 400 && f.style === "normal");
     const bold = faces.find((f) => f.weight === 700 && f.style === "normal");
-    expect(regular?.family).toBe("My Brand Sans");
+    // `family` is the per-document SCOPED name — never the raw DOCX name, so
+    // an embedded face cannot shadow a same-named host/system font (e.g. an
+    // embedded "Arial") via the global `document.fonts`.
+    expect(regular?.family).toBe(scopeEmbeddedFontFamily("nonce", "My Brand Sans"));
+    expect(regular?.originalFamily).toBe("My Brand Sans");
     expect(regular?.subsetted).toBe(true);
     expect(bold?.subsetted).toBe(false);
     // The de-obfuscated bytes are a valid SFNT font, byte-identical to the input.
     expect(hasSfntSignature(regular?.bytes ?? new Uint8Array())).toBe(true);
     expect(Array.from(regular?.bytes ?? new Uint8Array())).toEqual(Array.from(font));
+  });
+
+  test("two different docNonces never collide on the same original family", () => {
+    const fonts = new Map<string, ArrayBuffer>([["word/fonts/font1.odttf", obfuscated.buffer]]);
+    const facesA = getEmbeddedFontFaces(
+      { fontTableXml: FONT_TABLE_XML, fontTableRelsXml: FONT_TABLE_RELS, fonts },
+      "doc-a",
+    );
+    const facesB = getEmbeddedFontFaces(
+      { fontTableXml: FONT_TABLE_XML, fontTableRelsXml: FONT_TABLE_RELS, fonts },
+      "doc-b",
+    );
+    expect(facesA[0]?.family).not.toBe(facesB[0]?.family);
+    expect(facesA[0]?.originalFamily).toBe(facesB[0]?.originalFamily);
   });
 
   test("skips a face whose binary is missing, keeps the resolvable one", () => {
@@ -199,13 +225,17 @@ describe("getEmbeddedFontFaces", () => {
     // (`word/`) and must resolve to `word/fonts/font1.odttf`, matched even when
     // the ZIP entry carries a leading slash.
     const fonts = new Map<string, ArrayBuffer>([["/word/fonts/font1.odttf", obfuscated.buffer]]);
-    const faces = getEmbeddedFontFaces({
-      fontTableXml: FONT_TABLE_XML,
-      fontTableRelsXml: FONT_TABLE_RELS,
-      fonts,
-    });
+    const faces = getEmbeddedFontFaces(
+      {
+        fontTableXml: FONT_TABLE_XML,
+        fontTableRelsXml: FONT_TABLE_RELS,
+        fonts,
+      },
+      "nonce",
+    );
     expect(faces.map((f) => f.weight)).toEqual([400]);
-    expect(faces[0]?.family).toBe("My Brand Sans");
+    expect(faces[0]?.family).toBe(scopeEmbeddedFontFamily("nonce", "My Brand Sans"));
+    expect(faces[0]?.originalFamily).toBe("My Brand Sans");
   });
 
   test("resolves a leading-slash absolute rel target", () => {
@@ -239,15 +269,16 @@ describe("getEmbeddedFontFaces", () => {
 });
 
 describe("extractEmbeddedFonts (buffer)", () => {
-  test("end-to-end: unzips, resolves rels, de-obfuscates to a valid font", async () => {
+  test("end-to-end: unzips, resolves rels, de-obfuscates to a valid font, scopes the family", async () => {
     const font = makeFont();
     const obfuscated = deobfuscateFont(font, GUID);
     const buffer = await buildDocx({ regular: obfuscated, bold: obfuscated });
 
-    const faces = await extractEmbeddedFonts(buffer);
+    const faces = await extractEmbeddedFonts(buffer, "nonce");
     expect(faces).toHaveLength(2);
     const regular = faces.find((f) => f.weight === 400 && f.style === "normal");
-    expect(regular?.family).toBe("My Brand Sans");
+    expect(regular?.family).toBe(scopeEmbeddedFontFamily("nonce", "My Brand Sans"));
+    expect(regular?.originalFamily).toBe("My Brand Sans");
     expect(hasSfntSignature(regular?.bytes ?? new Uint8Array())).toBe(true);
     expect(Array.from(regular?.bytes ?? new Uint8Array())).toEqual(Array.from(font));
   });
@@ -259,6 +290,43 @@ describe("extractEmbeddedFonts (buffer)", () => {
     zip.file("word/document.xml", DOCUMENT_XML);
     const buffer = await zip.generateAsync({ type: "arraybuffer" });
     expect(await extractEmbeddedFonts(buffer)).toEqual([]);
+  });
+
+  test("two loads of the same buffer with no explicit docNonce never collide", async () => {
+    // Each call mints its own random nonce (see `getEmbeddedFontFaces`), so
+    // even reloading the identical document twice yields distinct scoped
+    // families — no stale registration can carry over.
+    const font = makeFont();
+    const obfuscated = deobfuscateFont(font, GUID);
+    const buffer = await buildDocx({ regular: obfuscated });
+
+    const [first, second] = await Promise.all([
+      extractEmbeddedFonts(buffer),
+      extractEmbeddedFonts(buffer),
+    ]);
+    expect(first[0]?.family).not.toBe(second[0]?.family);
+    expect(first[0]?.originalFamily).toBe(second[0]?.originalFamily);
+  });
+});
+
+describe("scopeEmbeddedFontFamily / buildEmbeddedFontFamilyMap", () => {
+  test("scoped family embeds both the nonce and the original name", () => {
+    expect(scopeEmbeddedFontFamily("abc123", "Arial")).toBe("folio-embedded-abc123-Arial");
+  });
+
+  test("buildEmbeddedFontFamilyMap maps every face's original name to its scoped family", () => {
+    const fonts = new Map<string, ArrayBuffer>([
+      ["word/fonts/font1.odttf", deobfuscateFont(makeFont(), GUID).buffer],
+      ["word/fonts/font2.odttf", deobfuscateFont(makeFont(), GUID).buffer],
+    ]);
+    const faces = getEmbeddedFontFaces(
+      { fontTableXml: FONT_TABLE_XML, fontTableRelsXml: FONT_TABLE_RELS, fonts },
+      "nonce",
+    );
+    const map = buildEmbeddedFontFamilyMap(faces);
+    expect(map.get("My Brand Sans")).toBe(scopeEmbeddedFontFamily("nonce", "My Brand Sans"));
+    // Never the raw name.
+    expect([...map.values()]).not.toContain("My Brand Sans");
   });
 });
 

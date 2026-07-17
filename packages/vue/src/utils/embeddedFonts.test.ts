@@ -11,7 +11,8 @@ const { loadEmbeddedFontFaces } = await import("./embeddedFonts");
 
 function fakeFont(): EmbeddedFont {
   return {
-    family: "Document Sans",
+    family: "folio-embedded-test-nonce-Document Sans",
+    originalFamily: "Document Sans",
     style: "normal",
     weight: 400,
     bytes: new Uint8Array([0x00, 0x01, 0x00, 0x00]),
@@ -92,33 +93,42 @@ afterEach(() => {
 
 describe("loadEmbeddedFontFaces", () => {
   test("registers faces extracted from the document", async () => {
-    const faces = await loadEmbeddedFontFaces(new ArrayBuffer(8));
+    const { faces, familyMap } = await loadEmbeddedFontFaces(new ArrayBuffer(8));
     expect(faces).toHaveLength(1);
     expect(addedFaces).toHaveLength(1);
     expect(deletedFaces).toHaveLength(0);
+    expect(familyMap.get("Document Sans")).toBe("folio-embedded-test-nonce-Document Sans");
   });
 
   test("falls back when extraction fails", async () => {
     extractImpl = () => Promise.reject(new Error("corrupt package"));
-    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual([]);
+    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual({
+      faces: [],
+      familyMap: new Map(),
+    });
     expect(addedFaces).toHaveLength(0);
   });
 
   test("skips a face rejected by the browser", async () => {
     fontFaceMode = "load-reject";
-    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual([]);
+    const { faces } = await loadEmbeddedFontFaces(new ArrayBuffer(8));
+    expect(faces).toEqual([]);
     expect(addedFaces).toHaveLength(1);
     expect(deletedFaces).toHaveLength(1);
   });
 
   test("skips invalid face descriptors", async () => {
     fontFaceMode = "ctor-throw";
-    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual([]);
+    const { faces } = await loadEmbeddedFontFaces(new ArrayBuffer(8));
+    expect(faces).toEqual([]);
     expect(addedFaces).toHaveLength(0);
   });
 
   test("is a no-op outside a browser document", async () => {
     stubGlobal("document", undefined);
-    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual([]);
+    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual({
+      faces: [],
+      familyMap: new Map(),
+    });
   });
 });

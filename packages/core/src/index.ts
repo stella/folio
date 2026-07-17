@@ -212,7 +212,13 @@ export {
 export {
   extractEmbeddedFonts,
   getEmbeddedFontFaces,
+  buildEmbeddedFontFamilyMap,
+  scopeEmbeddedFontFamily,
   type EmbeddedFont,
   type EmbeddedFontParts,
 } from "./fonts/embeddedFonts";
-export { getGoogleFontsEnabled, setGoogleFontsEnabled } from "./utils/fontResolver";
+export {
+  getGoogleFontsEnabled,
+  setGoogleFontsEnabled,
+  setEmbeddedFontFamilyMap,
+} from "./utils/fontResolver";

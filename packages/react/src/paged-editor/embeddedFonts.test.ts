@@ -13,7 +13,8 @@ const { loadEmbeddedFontFaces } = await import("./embeddedFonts");
 
 function fakeFont(): EmbeddedFont {
   return {
-    family: "My Brand Sans",
+    family: "folio-embedded-test-nonce-My Brand Sans",
+    originalFamily: "My Brand Sans",
     style: "normal",
     weight: 400,
     bytes: new Uint8Array([0x00, 0x01, 0x00, 0x00]),
@@ -101,33 +102,44 @@ afterEach(() => {
 
 describe("loadEmbeddedFontFaces (best-effort)", () => {
   test("registers and returns the loaded faces on success", async () => {
-    const faces = await loadEmbeddedFontFaces(new ArrayBuffer(8));
+    const { faces, familyMap } = await loadEmbeddedFontFaces(new ArrayBuffer(8));
     expect(faces).toHaveLength(1);
     expect(addedFaces).toHaveLength(1);
     expect(deletedFaces).toHaveLength(0);
+    // The face is registered under its scoped name, mapped from the original.
+    expect(addedFaces[0]).toMatchObject({ family: "folio-embedded-test-nonce-My Brand Sans" });
+    expect(familyMap.get("My Brand Sans")).toBe("folio-embedded-test-nonce-My Brand Sans");
   });
 
-  test("does not throw and returns [] when extraction throws", async () => {
+  test("does not throw and returns empty when extraction throws", async () => {
     extractImpl = () => Promise.reject(new Error("corrupt zip"));
-    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual([]);
+    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual({
+      faces: [],
+      familyMap: new Map(),
+    });
     expect(addedFaces).toHaveLength(0);
   });
 
   test("does not throw and skips a face when FontFace construction throws", async () => {
     fontFaceMode = "ctor-throw";
-    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual([]);
+    const { faces } = await loadEmbeddedFontFaces(new ArrayBuffer(8));
+    expect(faces).toEqual([]);
     expect(addedFaces).toHaveLength(0);
   });
 
   test("drops a face whose load() rejects", async () => {
     fontFaceMode = "load-reject";
-    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual([]);
+    const { faces } = await loadEmbeddedFontFaces(new ArrayBuffer(8));
+    expect(faces).toEqual([]);
     expect(addedFaces).toHaveLength(1);
     expect(deletedFaces).toHaveLength(1);
   });
 
-  test("returns [] outside a DOM (no document.fonts)", async () => {
+  test("returns empty outside a DOM (no document.fonts)", async () => {
     stubGlobal("document", undefined);
-    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual([]);
+    expect(await loadEmbeddedFontFaces(new ArrayBuffer(8))).toEqual({
+      faces: [],
+      familyMap: new Map(),
+    });
   });
 });

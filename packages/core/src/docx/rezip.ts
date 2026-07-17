@@ -62,6 +62,7 @@ import { serializeThemeXml } from "./serializer/themeSerializer";
 import { escapeXml } from "./serializer/xmlUtils";
 import { isPreservableDocxEntry } from "./unzip";
 import type { RawDocxContent } from "./unzip";
+import { isAllowedExternalWatermarkImageUrl } from "../watermark";
 
 export class DocxPackageFidelityError extends Error {
   constructor(message: string) {
@@ -1578,9 +1579,20 @@ async function rebindWatermarkRelIds(
     // a scan only for watermarks built without a parsed source.
     let canonical: CanonicalImage | undefined;
     if (watermark.imageTarget !== undefined) {
-      canonical = watermark.imageTargetExternal
-        ? { mode: "external", url: watermark.imageTarget }
-        : { mode: "internal", absolute: watermark.imageTarget };
+      if (watermark.imageTargetExternal) {
+        // Defense in depth: the watermark dialogs validate the scheme before
+        // calling onApply, but a `Watermark` can also arrive from a
+        // programmatically-built document (API/import). Never emit an
+        // external relationship for a non-http(s) target — that would let a
+        // `file:` URL or UNC path into the exported package's relationships.
+        // Fall back to whatever the rId already resolves to (or drop it,
+        // same as an orphaned rId) rather than trusting the raw string.
+        canonical = isAllowedExternalWatermarkImageUrl(watermark.imageTarget)
+          ? { mode: "external", url: watermark.imageTarget }
+          : resolveCanonical(watermark.imageRId);
+      } else {
+        canonical = { mode: "internal", absolute: watermark.imageTarget };
+      }
     } else {
       canonical = resolveCanonical(watermark.imageRId);
     }

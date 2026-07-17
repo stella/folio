@@ -52,7 +52,15 @@
         </label>
         <label class="field field--wide">
           <span class="field__label">Image target</span>
-          <input v-model="imageTarget" class="field__input" placeholder="word/media/image1.png" />
+          <input
+            v-model="imageTarget"
+            :aria-invalid="imageTargetError.length > 0"
+            class="field__input"
+            placeholder="word/media/image1.png"
+          />
+          <span v-if="imageTargetError.length > 0" class="field__error">{{
+            imageTargetError
+          }}</span>
         </label>
         <label class="field">
           <span class="field__label">Scale</span>
@@ -85,7 +93,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { Watermark } from "@stll/folio-core/watermark";
+import { isAllowedExternalWatermarkImageUrl, type Watermark } from "@stll/folio-core/watermark";
 import { useFolioUI } from "../../ui/folio-ui";
 
 const { Dialog: FolioDialog } = useFolioUI();
@@ -116,11 +124,22 @@ const imageTargetExternal = ref(false);
 const scalePercent = ref(100);
 const washout = ref(true);
 
+// An external target becomes a `TargetMode="External"` relationship in the
+// saved package verbatim (see `docx/rezip.ts`); restrict it to http(s) so a
+// `file:` URL or UNC path can't ride along in the exported `.docx`.
+const imageTargetError = computed(() =>
+  mode.value === "picture" && imageTargetExternal.value && imageTarget.value.trim().length > 0
+    ? getExternalImageTargetError(imageTarget.value.trim())
+    : "",
+);
+
 const canApply = computed(
   () =>
     mode.value === "none" ||
     (mode.value === "text" && text.value.trim().length > 0) ||
-    (mode.value === "picture" && imageRId.value.trim().length > 0),
+    (mode.value === "picture" &&
+      imageRId.value.trim().length > 0 &&
+      imageTargetError.value.length === 0),
 );
 
 watch(
@@ -201,6 +220,10 @@ function stripHash(value: string): string {
   return value.startsWith("#") ? value.slice(1) : value;
 }
 
+function getExternalImageTargetError(value: string): string {
+  return isAllowedExternalWatermarkImageUrl(value) ? "" : "Use a web address (http/https).";
+}
+
 function toColorInputValue(value: string | undefined): string {
   if (!value || value === "auto") return DEFAULT_TEXT_COLOR;
   return value.startsWith("#") ? value : `#${value}`;
@@ -259,6 +282,10 @@ function toColorInputValue(value: string | undefined): string {
 .field__input--color {
   min-height: 34px;
   padding: 2px;
+}
+.field__error {
+  font-size: 12px;
+  color: var(--doc-error);
 }
 .check {
   display: flex;
