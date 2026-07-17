@@ -33,6 +33,37 @@ describe("DOCX conformance detection", () => {
     expect(detectDocxConformanceClass(null)).toBe(DOCX_CONFORMANCE_CLASSES.UNKNOWN);
   });
 
+  test("reads only the actual root start tag", () => {
+    expect(
+      detectDocxConformanceClass(
+        `<?xml version="1.0"?>
+        <!-- <x:document xmlns:x="${STRICT_MAIN_NAMESPACE}"/> -->
+        <x:document data-comparison="1 > 0" xmlns:x = '${TRANSITIONAL_MAIN_NAMESPACE}'>
+          <x:body xmlns:x="${STRICT_MAIN_NAMESPACE}"/>
+        </x:document>`,
+      ),
+    ).toBe(DOCX_CONFORMANCE_CLASSES.TRANSITIONAL);
+  });
+
+  test("falls back to full parsing for uncommon content before the root", () => {
+    expect(
+      detectDocxConformanceClass(`not XML <x:document xmlns:x="${STRICT_MAIN_NAMESPACE}"/>`),
+    ).toBe(DOCX_CONFORMANCE_CLASSES.STRICT);
+    expect(
+      detectDocxConformanceClass(
+        `<!DOCTYPE x:document [<!ELEMENT x:document EMPTY>]><x:document xmlns:x="${STRICT_MAIN_NAMESPACE}"/>`,
+      ),
+    ).toBe(DOCX_CONFORMANCE_CLASSES.STRICT);
+  });
+
+  test("bounds the root scan without changing full-parser fallback behavior", () => {
+    expect(
+      detectDocxConformanceClass(
+        `<!-- ${"padding".repeat(10_000)} --><x:document xmlns:x="${STRICT_MAIN_NAMESPACE}"/>`,
+      ),
+    ).toBe(DOCX_CONFORMANCE_CLASSES.STRICT);
+  });
+
   test("stores the detected class on parsed package metadata", async () => {
     const zip = new JSZip();
     zip.file(
