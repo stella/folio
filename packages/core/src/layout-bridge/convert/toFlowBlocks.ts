@@ -1013,6 +1013,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
   const paragraphStyleId = pmAttrs.styleId;
   const inTocParagraph =
     typeof paragraphStyleId === "string" && TOC_STYLE_ID.test(paragraphStyleId);
+  let leadingRenderedPageBreakPending = pmAttrs.renderedPageBreakBefore === true;
 
   // Single dispatcher for one inline PM child. Recurses on `sdt` so nested
   // content controls keep contributing runs at the right pmStart/pmEnd.
@@ -1021,6 +1022,21 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
   // tab/image and silently dropped fields, math, and nested SDTs even
   // when the parser preserved them (see eigenpal #482).
   function pushRunsForChild(child: PMNode, childPos: number): void {
+    if (child.type.name === "renderedPageBreak") {
+      if (leadingRenderedPageBreakPending) {
+        leadingRenderedPageBreakPending = false;
+        return;
+      }
+      runs.push({
+        kind: "renderedPageBreak",
+        pmStart: childPos,
+        pmEnd: childPos + child.nodeSize,
+      });
+      return;
+    }
+    if (child.type.name !== "sdt") {
+      leadingRenderedPageBreakPending = false;
+    }
     if (child.isText && child.text) {
       const formatting = extractRunFormatting(child.marks, theme);
       if (inTocParagraph) {

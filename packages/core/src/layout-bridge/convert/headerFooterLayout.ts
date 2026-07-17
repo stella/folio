@@ -873,6 +873,8 @@ function blockSig(b: FlowBlock): string {
         text += `\\t|${serializeRunFmt(r)};`;
       } else if (r.kind === "lineBreak") {
         text += "\\n;";
+      } else if (r.kind === "renderedPageBreak") {
+        text += "R;";
       } else if (r.kind === "image") {
         // Include src + transform + wrapType so swapping the painted
         // image (different logo at the same dims) invalidates the

@@ -636,6 +636,19 @@ function layoutParagraph({
   while (currentLineIndex < lines.length) {
     const state = paginator.getCurrentState();
     const availableHeight = paginator.getAvailableHeight();
+    const currentLine = lines.at(currentLineIndex);
+    const markerAlreadySatisfied =
+      state.columnIndex === 0 &&
+      state.cursorY === state.topMargin &&
+      state.page.fragments.length === 0;
+    if (
+      currentLine?.renderedPageBreakBefore === true &&
+      !markerAlreadySatisfied &&
+      availableHeight <= measuredLineAdvance(currentLine) * RENDERED_BREAK_REFLOW_TOLERANCE_LINES
+    ) {
+      paginator.forcePageBreak();
+      continue;
+    }
 
     // If the paragraph cannot begin on this page solely because its leading
     // spacing collapses with the previous block's trailing spacing — spacing
@@ -678,6 +691,7 @@ function layoutParagraph({
     let linesFnHeight = 0;
     const linesFnIds: number[] = [];
     let fittingLines = 0;
+    let forcePageBreakAfterFragment = false;
 
     // The first fragment of a paragraph eats `spaceBefore` from the
     // available height for *every* line check, not only the first one.
@@ -701,6 +715,15 @@ function layoutParagraph({
     for (let j = currentLineIndex; j < lines.length; j++) {
       const line = lines[j]!; // SAFETY: j < lines.length
       const lineAdvance = measuredLineAdvance(line);
+      if (
+        j > currentLineIndex &&
+        line.renderedPageBreakBefore === true &&
+        availableHeight - (linesHeight + firstFragmentSpaceBefore + linesFnHeight) <=
+          lineAdvance * RENDERED_BREAK_REFLOW_TOLERANCE_LINES
+      ) {
+        forcePageBreakAfterFragment = true;
+        break;
+      }
       const lineRefs = getLineFootnoteRefs(block, line.fromRun, line.toRun, footnoteHeightById);
       const totalWithLine = linesHeight + lineAdvance;
       const withSpacing =
@@ -826,7 +849,9 @@ function layoutParagraph({
 
     // If more lines remain, advance to next column/page
     if (currentLineIndex < lines.length) {
-      if (forceBreakAfterFragment) {
+      if (forcePageBreakAfterFragment) {
+        paginator.forcePageBreak();
+      } else if (forceBreakAfterFragment) {
         paginator.forceColumnBreak();
       } else {
         paginator.ensureFits(measuredLineAdvance(lines[currentLineIndex]!)); // SAFETY: guarded by length check

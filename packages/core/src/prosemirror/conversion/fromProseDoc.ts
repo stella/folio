@@ -822,6 +822,7 @@ function convertPMParagraph(
     documentCounts,
     attrs._emptyHyperlinks ?? undefined,
     textBoxAnchorMarkers,
+    attrs.renderedPageBreakBefore === true,
   );
 
   // Emit BookmarkStart/End from bookmarks attr (for TOC anchors, cross-references)
@@ -1177,12 +1178,14 @@ function extractParagraphContent(
   _documentCounts?: TrackedChangeCounts,
   emptyHyperlinks?: NonNullable<ParagraphAttrs["_emptyHyperlinks"]>,
   textBoxAnchorMarkers?: Map<string, Run>,
+  skipLeadingRenderedPageBreak = false,
 ): ParagraphContent[] {
   const content: ParagraphContent[] = [];
   const sortedEmptyHyperlinks = (emptyHyperlinks ?? [])
     .map((attrs, order) => ({ attrs, order }))
     .toSorted((left, right) => left.attrs.offset - right.attrs.offset || left.order - right.order);
   let nextEmptyHyperlink = 0;
+  let leadingRenderedPageBreakPending = skipLeadingRenderedPageBreak;
 
   // Track current run being built
   let currentRun: Run | null = null;
@@ -1269,6 +1272,11 @@ function extractParagraphContent(
   };
 
   const processInlineNode = (node: PMNode, offset: number): void => {
+    if (node.type.name === "renderedPageBreak" && leadingRenderedPageBreakPending) {
+      leadingRenderedPageBreakPending = false;
+      return;
+    }
+    leadingRenderedPageBreakPending = false;
     syncCommentRanges(node, offset);
     const linkMark = node.marks.find((m) => m.type.name === "hyperlink");
 
@@ -1427,6 +1435,9 @@ function extractParagraphContent(
       // Tab ends current run
       flushCurrentInline();
       content.push(createTabRun());
+    } else if (node.type.name === "renderedPageBreak") {
+      flushCurrentInline();
+      content.push(createRenderedPageBreakRun());
     } else if (node.type.name === "field") {
       // Field ends current run and emits a field content item
       flushCurrentInline();
@@ -1513,6 +1524,9 @@ function createTrackedChangeRun(node: PMNode, marks: readonly Mark[]): Run | nul
   }
   if (node.type.name === "tab") {
     return createTabRun();
+  }
+  if (node.type.name === "renderedPageBreak") {
+    return createRenderedPageBreakRun();
   }
   return null;
 }
@@ -1661,6 +1675,11 @@ function addNodeToHyperlink(hyperlink: Hyperlink, node: PMNode): void {
     return;
   }
 
+  if (node.type.name === "renderedPageBreak") {
+    hyperlink.children.push(createRenderedPageBreakRun());
+    return;
+  }
+
   if (node.type.name === "image") {
     hyperlink.children.push(createImageRun(node));
     return;
@@ -1779,6 +1798,13 @@ function createBreakRun(
     run.formatting = formatting;
   }
   return run;
+}
+
+function createRenderedPageBreakRun(): Run {
+  return {
+    type: "run",
+    content: [{ type: "renderedPageBreak" }],
+  };
 }
 
 function readHardBreakType(node: PMNode): BreakContent["breakType"] {

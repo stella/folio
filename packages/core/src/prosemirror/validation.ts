@@ -129,6 +129,7 @@ const validateNodeAttrs = (
     case "text":
     case "horizontalRule":
     case "pageBreak":
+    case "renderedPageBreak":
     case "tab":
       return;
 

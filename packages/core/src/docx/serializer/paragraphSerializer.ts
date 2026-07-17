@@ -1118,8 +1118,18 @@ export function serializeParagraph(paragraph: Paragraph): string {
 
 function injectRenderedPageBreakIntoFirstRun(xml: string): string | null {
   const runOpeningTag = /<w:r(?=[\s>/])[^>]*>/u;
-  if (!runOpeningTag.test(xml)) {
+  const openingTag = runOpeningTag.exec(xml);
+  if (!openingTag) {
     return null;
+  }
+  const runEnd = xml.indexOf("</w:r>", openingTag.index + openingTag[0].length);
+  if (
+    runEnd !== -1 &&
+    xml
+      .slice(openingTag.index + openingTag[0].length, runEnd)
+      .includes("<w:lastRenderedPageBreak/>")
+  ) {
+    return xml;
   }
   return xml.replace(runOpeningTag, (match) => `${match}<w:lastRenderedPageBreak/>`);
 }

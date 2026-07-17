@@ -2306,6 +2306,9 @@ function convertRunContent(
       // Page breaks are represented as block separators by paragraphPageBreakPosition.
       return [];
 
+    case "renderedPageBreak":
+      return [schema.node("renderedPageBreak").mark(marks)];
+
     case "tab":
       // Convert to tab node for proper rendering. Keep the run marks because
       // Word commonly represents signature blanks as underlined tab runs.

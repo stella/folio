@@ -492,6 +492,42 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.renderedPageBreakBefore).toBe(true);
   });
 
+  test("preserves a cached page boundary inside a paragraph", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("First page"),
+        schema.node("renderedPageBreak"),
+        schema.text("Second page"),
+      ]),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind !== "paragraph") {
+      return;
+    }
+    expect(paragraph.runs.map((run) => run.kind)).toEqual(["text", "renderedPageBreak", "text"]);
+  });
+
+  test("does not duplicate a leading cached page boundary in flow runs", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { renderedPageBreakBefore: true }, [
+        schema.node("renderedPageBreak"),
+        schema.text("Next page"),
+      ]),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind !== "paragraph") {
+      return;
+    }
+    expect(paragraph.attrs?.renderedPageBreakBefore).toBe(true);
+    expect(paragraph.runs.map((run) => run.kind)).toEqual(["text"]);
+  });
+
   test("assigns stable block ids for repeated conversions of the same document", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("First paragraph")]),

@@ -1078,6 +1078,8 @@ function serializeRunContent(content: RunContent): string {
       return serializeSoftHyphen(content);
     case "noBreakHyphen":
       return serializeNoBreakHyphen(content);
+    case "renderedPageBreak":
+      return "<w:lastRenderedPageBreak/>";
     case "drawing":
       if (content.rawXml) {
         return content.rawXml;

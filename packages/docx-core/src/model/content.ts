@@ -116,6 +116,11 @@ export type NoBreakHyphenContent = {
   type: "noBreakHyphen";
 };
 
+/** Cached pagination boundary emitted by a previous layout pass. */
+export type RenderedPageBreakContent = {
+  type: "renderedPageBreak";
+};
+
 /**
  * Drawing/image reference
  */
@@ -149,6 +154,7 @@ export type RunContent =
   | InstrTextContent
   | SoftHyphenContent
   | NoBreakHyphenContent
+  | RenderedPageBreakContent
   | DrawingContent
   | ShapeContent;
 

@@ -990,7 +990,7 @@ function parseRunContents(
         break;
 
       case "lastRenderedPageBreak":
-        // Marker for last rendered page break - informational only
+        contents.push({ type: "renderedPageBreak" });
         break;
 
       case "cr": {

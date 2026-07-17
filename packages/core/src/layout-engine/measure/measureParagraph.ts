@@ -160,6 +160,7 @@ type LineState = {
   /** Optional split segment zones from centered floating exclusions */
   segmentZones?: FloatingLineSegmentZone[];
   discretionaryHyphen?: { runIndex: number };
+  renderedPageBreakBefore?: boolean;
 };
 
 function exceedsHyphenationZone(line: LineState, zoneTwips: number): boolean {
@@ -1398,6 +1399,7 @@ export function measureParagraph(
       ...(currentLine.discretionaryHyphen
         ? { discretionaryHyphen: currentLine.discretionaryHyphen }
         : {}),
+      ...(currentLine.renderedPageBreakBefore ? { renderedPageBreakBefore: true } : {}),
     };
 
     // Only add offsets if they're non-zero (for floating images)
@@ -1502,6 +1504,31 @@ export function measureParagraph(
     }
     // SAFETY: runIndex is bounded by runs.length
     const run = runs[runIndex]!;
+
+    if (run.kind === "renderedPageBreak") {
+      const hasFollowingContent = runs
+        .slice(runIndex + 1)
+        .some((followingRun) => followingRun.kind !== "renderedPageBreak");
+      if (!hasFollowingContent) {
+        currentLine.toRun = runIndex;
+        currentLine.toChar = 0;
+        continue;
+      }
+      const lineHasContent =
+        currentLine.width > 0 ||
+        currentLine.maxImageHeightPx > 0 ||
+        currentLine.maxMathHeightPx > 0;
+      if (lineHasContent) {
+        startNewLine(runIndex + 1, 0);
+      } else {
+        currentLine.fromRun = runIndex + 1;
+        currentLine.toRun = runIndex + 1;
+        currentLine.fromChar = 0;
+        currentLine.toChar = 0;
+      }
+      currentLine.renderedPageBreakBefore = true;
+      continue;
+    }
 
     if (isLineBreakRun(run)) {
       // Force line break

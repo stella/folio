@@ -554,6 +554,44 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1]);
     });
 
+    test("rendered page break reconciles a cached boundary inside a paragraph", () => {
+      const paragraph: ParagraphBlock = {
+        kind: "paragraph",
+        id: 1,
+        runs: [
+          { kind: "text", text: "before", pmStart: 2, pmEnd: 8 },
+          { kind: "renderedPageBreak", pmStart: 8, pmEnd: 9 },
+          { kind: "text", text: "after", pmStart: 9, pmEnd: 14 },
+        ],
+        pmStart: 1,
+        pmEnd: 15,
+      };
+      const markerLine = {
+        ...makeLine(2, 0, 2, 5, 50, 20),
+        renderedPageBreakBefore: true,
+      };
+      const blocks: FlowBlock[] = [makeParagraphBlock(0, "Nearly fills page one", 16), paragraph];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 790)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 6, 60, 20), markerLine]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(2);
+      expect(layout.pages[0]?.fragments.at(-1)).toMatchObject({
+        blockId: 1,
+        fromLine: 0,
+        toLine: 1,
+      });
+      expect(layout.pages[1]?.fragments.at(0)).toMatchObject({
+        blockId: 1,
+        fromLine: 1,
+        toLine: 2,
+        continuesFromPrev: true,
+      });
+    });
+
     test("rendered page break does not reapply leading spacing after snapping", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Nearly fills page one", 1),

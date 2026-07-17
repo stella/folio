@@ -336,6 +336,8 @@ const serializeRunContent = (content: RunContent): string => {
       return "<w:tab/>";
     case "break":
       return `<w:br${attr("w:type", content.breakType)}/>`;
+    case "renderedPageBreak":
+      return "<w:lastRenderedPageBreak/>";
     case "symbol":
       return `<w:sym w:font="${escapeXml(content.font)}" w:char="${escapeXml(content.char)}"/>`;
     case "footnoteRef":

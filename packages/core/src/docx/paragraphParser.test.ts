@@ -290,6 +290,10 @@ describe("parseParagraph rendered page break markers", () => {
     `);
 
     expect(paragraph.renderedPageBreakBefore).toBeUndefined();
+    expect(paragraph.content.at(0)).toMatchObject({
+      type: "run",
+      content: [{ type: "text", text: "Previous page text" }, { type: "renderedPageBreak" }],
+    });
   });
 
   test("lastRenderedPageBreak inside a hyperlink wrapper is honored", () => {

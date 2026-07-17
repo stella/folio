@@ -1171,6 +1171,14 @@ function renderRun(run: Run, doc: Document, context?: RenderContext): HTMLElemen
   if (isMathRun(run)) {
     return renderMathRun(run, doc);
   }
+  if (run.kind === "renderedPageBreak") {
+    const span = doc.createElement("span");
+    span.className = PARAGRAPH_CLASS_NAMES.run;
+    span.style.display = "none";
+    span.dataset["docxRenderedPageBreak"] = "true";
+    applyPmPositions(span, run.pmStart, run.pmEnd);
+    return span;
+  }
 
   // Fallback for unknown run types
   const span = doc.createElement("span");

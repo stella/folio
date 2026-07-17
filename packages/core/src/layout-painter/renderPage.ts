@@ -2629,6 +2629,9 @@ function runContentKey(run: Run): string {
   if (run.kind === "lineBreak") {
     return "lb";
   }
+  if (run.kind === "renderedPageBreak") {
+    return "rpb";
+  }
   if (run.kind === "image") {
     return `img:${run.src}|${run.width}x${run.height}${run.transform ? `|tr:${run.transform}` : ""}`;
   }

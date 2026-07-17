@@ -255,6 +255,13 @@ export type LineBreakRun = {
   pmEnd?: number;
 };
 
+/** Zero-width cached page boundary inside a paragraph. */
+export type RenderedPageBreakRun = RunFormatting & {
+  kind: "renderedPageBreak";
+  pmStart?: number;
+  pmEnd?: number;
+};
+
 /**
  * A field run (PAGE, NUMPAGES, etc.) that gets substituted at render time.
  */
@@ -297,7 +304,14 @@ export type MathRun = RunFormatting & {
 /**
  * Union of all run types.
  */
-export type Run = TextRun | TabRun | ImageRun | LineBreakRun | FieldRun | MathRun;
+export type Run =
+  | TextRun
+  | TabRun
+  | ImageRun
+  | LineBreakRun
+  | RenderedPageBreakRun
+  | FieldRun
+  | MathRun;
 
 /**
  * Paragraph spacing configuration.
@@ -430,7 +444,7 @@ export type ParagraphAttrs = {
   keepLines?: boolean;
   widowControl?: boolean;
   pageBreakBefore?: boolean;
-  /** Word's cached pagination hint (`w:lastRenderedPageBreak`). */
+  /** Cached OOXML pagination hint (`w:lastRenderedPageBreak`). */
   renderedPageBreakBefore?: boolean;
   styleId?: string;
   contextualSpacing?: boolean;
@@ -861,6 +875,8 @@ export type MeasuredLine = {
   floatSkipBefore?: number;
   /** Decorative hyphen inserted at a dictionary break without changing source text. */
   discretionaryHyphen?: { runIndex: number };
+  /** A cached pagination boundary occurs immediately before this line. */
+  renderedPageBreakBefore?: boolean;
 };
 
 /**

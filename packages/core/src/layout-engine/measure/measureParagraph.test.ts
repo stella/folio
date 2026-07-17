@@ -505,6 +505,33 @@ describe("empty paragraph line-height floor", () => {
   });
 });
 
+describe("inline rendered page boundaries", () => {
+  test("starts a measured line at a cached mid-paragraph boundary", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "inline-rendered-boundary",
+          runs: [
+            { kind: "text", text: "before" },
+            { kind: "renderedPageBreak" },
+            { kind: "text", text: "after" },
+          ],
+        },
+        600,
+      );
+
+      expect(measure.lines).toHaveLength(2);
+      expect(measure.lines.at(0)).toMatchObject({ fromRun: 0, toRun: 0 });
+      expect(measure.lines.at(1)).toMatchObject({
+        fromRun: 2,
+        toRun: 2,
+        renderedPageBreakBefore: true,
+      });
+    }, fakeMeasure);
+  });
+});
+
 describe("measureParagraph cross-run line breaking", () => {
   const style = { fontFamily: "Calibri", fontSize: 11 };
   const width = (text: string): number => measureTextWidth(text, style);

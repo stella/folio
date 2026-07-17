@@ -75,6 +75,7 @@ import { HorizontalRuleExtension } from "./nodes/HorizontalRuleExtension";
 import { ImageExtension } from "./nodes/ImageExtension";
 import { MathExtension } from "./nodes/MathExtension";
 import { PageBreakExtension } from "./nodes/PageBreakExtension";
+import { RenderedPageBreakExtension } from "./nodes/RenderedPageBreakExtension";
 import { SdtExtension } from "./nodes/SdtExtension";
 import { ShapeExtension } from "./nodes/ShapeExtension";
 import { TabExtension } from "./nodes/TabExtension";
@@ -171,6 +172,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("gapCursor", GapCursorExtension());
   add("horizontalRule", HorizontalRuleExtension());
   add("pageBreak", PageBreakExtension());
+  add("renderedPageBreak", RenderedPageBreakExtension());
   add("field", FieldExtension());
   add("sdt", SdtExtension());
   add("blockSdt", BlockSdtExtension());

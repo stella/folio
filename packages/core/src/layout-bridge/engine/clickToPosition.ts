@@ -147,7 +147,11 @@ function computeLinePmRange(
       // Before the line - count all characters
       if (run.kind === "text") {
         charOffset += run.text.length;
-      } else if (run.kind === "tab" || run.kind === "lineBreak") {
+      } else if (
+        run.kind === "tab" ||
+        run.kind === "lineBreak" ||
+        run.kind === "renderedPageBreak"
+      ) {
         charOffset += 1;
       } else if (run.kind === "image") {
         charOffset += 1;
@@ -182,7 +186,11 @@ function computeLinePmRange(
         const start = runIndex === line.fromRun ? line.fromChar : 0;
         const end = runIndex === line.toRun ? line.toChar : text.length;
         lineLength += end - start;
-      } else if (run.kind === "tab" || run.kind === "lineBreak") {
+      } else if (
+        run.kind === "tab" ||
+        run.kind === "lineBreak" ||
+        run.kind === "renderedPageBreak"
+      ) {
         lineLength += 1;
       } else if (run.kind === "image") {
         lineLength += 1;
