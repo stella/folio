@@ -269,7 +269,10 @@ const admits = (schema: JsonSchemaNode, value: unknown): boolean => {
   if (schema.oneOf !== undefined) {
     // oneOf semantics: exactly one variant must admit the value, so the union
     // stays a real discriminated union.
-    return schema.oneOf.filter((variant) => admits(variant, value)).length === 1;
+    const { oneOf, ...baseSchema } = schema;
+    return (
+      admits(baseSchema, value) && oneOf.filter((variant) => admits(variant, value)).length === 1
+    );
   }
   if (schema.enum !== undefined && !schema.enum.includes(value)) {
     return false;
@@ -299,7 +302,9 @@ const admits = (schema: JsonSchemaNode, value: unknown): boolean => {
     case "object":
       return admitsObject(schema, value);
     default:
-      return true;
+      return schema.required === undefined && schema.properties === undefined
+        ? true
+        : admitsObject(schema, value);
   }
 };
 
@@ -462,6 +467,30 @@ describe("document operation contract JSON schema conformance", () => {
       expect(admits(OPERATION_SCHEMA, operation), type).toBe(true);
       expect(admits(BATCH_SCHEMA, batch), type).toBe(true);
     }
+  });
+
+  test("cell merge targeting admits exactly one endpoint form", () => {
+    const anchored = CONTRACT_OPERATION_FIXTURES.mergeTableCells;
+    const counted = {
+      id: "op-merge-table-cells-down",
+      type: "mergeTableCells",
+      blockId: "0304003A",
+      rowCount: 3,
+    };
+    expect(admits(OPERATION_SCHEMA, counted)).toBe(true);
+    expect(
+      admits(OPERATION_SCHEMA, {
+        ...anchored,
+        rowCount: 3,
+      }),
+    ).toBe(false);
+    expect(
+      admits(OPERATION_SCHEMA, {
+        id: "op-merge-table-cells-missing-target",
+        type: "mergeTableCells",
+        blockId: "0304003A",
+      }),
+    ).toBe(false);
   });
 
   test("rejects a wrong contract version in both the parser and the schema", () => {

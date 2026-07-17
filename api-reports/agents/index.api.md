@@ -1007,7 +1007,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                     readonly additionalProperties: false;
                 }, {
                     readonly type: "object";
-                    readonly description: "Merge the rectangular table region bounded by two cell anchors. Direct mode only.";
+                    readonly description: "Merge a region targeted by an opposite-cell anchor or a downward row count. Tracked mode supports vertical-only regions with empty continuation cells.";
                     readonly properties: {
                         readonly type: {
                             readonly type: "string";
@@ -1019,7 +1019,13 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                         };
                         readonly endBlockId: {
                             readonly type: "string";
+                            readonly minLength: 1;
                             readonly description: "Stable paragraph anchor inside the opposite corner cell.";
+                        };
+                        readonly rowCount: {
+                            readonly type: "integer";
+                            readonly minimum: 2;
+                            readonly description: "Number of grid rows to merge downward from the anchored cell.";
                         };
                         readonly id: {
                             readonly type: "string";
@@ -1048,7 +1054,12 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                             readonly additionalProperties: false;
                         };
                     };
-                    readonly required: readonly ["id", "type", "blockId", "endBlockId"];
+                    readonly required: readonly ["id", "type", "blockId"];
+                    readonly oneOf: readonly [{
+                        readonly required: readonly ["endBlockId"];
+                    }, {
+                        readonly required: readonly ["rowCount"];
+                    }];
                     readonly additionalProperties: false;
                 }, {
                     readonly type: "object";
@@ -2018,7 +2029,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
         readonly additionalProperties: false;
     }, {
         readonly type: "object";
-        readonly description: "Merge the rectangular table region bounded by two cell anchors. Direct mode only.";
+        readonly description: "Merge a region targeted by an opposite-cell anchor or a downward row count. Tracked mode supports vertical-only regions with empty continuation cells.";
         readonly properties: {
             readonly type: {
                 readonly type: "string";
@@ -2030,7 +2041,13 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
             };
             readonly endBlockId: {
                 readonly type: "string";
+                readonly minLength: 1;
                 readonly description: "Stable paragraph anchor inside the opposite corner cell.";
+            };
+            readonly rowCount: {
+                readonly type: "integer";
+                readonly minimum: 2;
+                readonly description: "Number of grid rows to merge downward from the anchored cell.";
             };
             readonly id: {
                 readonly type: "string";
@@ -2059,7 +2076,12 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                 readonly additionalProperties: false;
             };
         };
-        readonly required: readonly ["id", "type", "blockId", "endBlockId"];
+        readonly required: readonly ["id", "type", "blockId"];
+        readonly oneOf: readonly [{
+            readonly required: readonly ["endBlockId"];
+        }, {
+            readonly required: readonly ["rowCount"];
+        }];
         readonly additionalProperties: false;
     }, {
         readonly type: "object";

@@ -84,7 +84,7 @@ export const parseAddCommentInput = (args: unknown): ParseAddCommentResult => {
 };
 
 const OPERATION_TYPES =
-  "replaceInBlock, replaceRange, commentOnRange, formatRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, splitTableCell";
+  "replaceInBlock, replaceRange, commentOnRange, formatRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, mergeTableCells, splitTableCell";
 
 type SuggestedOperationType =
   | "replaceInBlock"
@@ -99,6 +99,7 @@ type SuggestedOperationType =
   | "deleteTableRow"
   | "insertTableColumn"
   | "deleteTableColumn"
+  | "mergeTableCells"
   | "splitTableCell";
 
 const isOperationType = (value: unknown): value is SuggestedOperationType =>
@@ -114,6 +115,7 @@ const isOperationType = (value: unknown): value is SuggestedOperationType =>
   value === "deleteTableRow" ||
   value === "insertTableColumn" ||
   value === "deleteTableColumn" ||
+  value === "mergeTableCells" ||
   value === "splitTableCell";
 
 const readTextRange = (value: unknown, index: number): FolioAITextRangeHandle | string => {
@@ -252,6 +254,23 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
 
   if (type === "deleteTableRow" || type === "deleteTableColumn" || type === "splitTableCell") {
     return { id: opId, type, blockId };
+  }
+
+  if (type === "mergeTableCells") {
+    const endBlockId = raw["endBlockId"];
+    const rowCount = raw["rowCount"];
+    if (isNonEmptyString(endBlockId) && rowCount === undefined) {
+      return { id: opId, type, blockId, endBlockId };
+    }
+    if (
+      endBlockId === undefined &&
+      typeof rowCount === "number" &&
+      Number.isInteger(rowCount) &&
+      rowCount >= 2
+    ) {
+      return { id: opId, type, blockId, rowCount };
+    }
+    return `operations[${index}] (mergeTableCells) requires exactly one non-empty \`endBlockId\` or integer \`rowCount\` of at least 2.`;
   }
 
   if (type === "replaceInBlock") {

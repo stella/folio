@@ -11,7 +11,10 @@ import {
 } from "prosemirror-tables";
 
 import { expectRunPropertyChangeMarkAttrs, expectTableCellAttrs } from "../prosemirror/attrs";
-import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
+import {
+  marksToTextFormatting,
+  standaloneTableCellFromProseMirror,
+} from "../prosemirror/conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../prosemirror/conversion/toProseDoc";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
@@ -578,6 +581,110 @@ const mergeTableRectangle = (
     tr = tr.replaceWith(contentStart, contentEnd, appendedContent);
   }
   return tr;
+};
+
+type MergeTrackedVerticalTableCellsOptions = {
+  tr: Transaction;
+  tablePosition: number;
+  table: PMNode;
+  rectangle: TableRectangle;
+  revisionId: number;
+  author: string;
+  date: string;
+};
+
+const mergeTrackedVerticalTableCells = ({
+  tr,
+  tablePosition,
+  table,
+  rectangle,
+  revisionId,
+  author,
+  date,
+}: MergeTrackedVerticalTableCellsOptions): Transaction | null => {
+  const map = TableMap.get(table);
+  if (
+    rectangle.right - rectangle.left !== 1 ||
+    rectangle.bottom - rectangle.top < 2 ||
+    rectangle.left < 0 ||
+    rectangle.top < 0 ||
+    rectangle.right > map.width ||
+    rectangle.bottom > map.height ||
+    tableRectangleCutsMergedCell(map, rectangle)
+  ) {
+    return null;
+  }
+
+  const cells: { position: number; cell: PMNode }[] = [];
+  for (let row = rectangle.top; row < rectangle.bottom; row++) {
+    const position = map.map[row * map.width + rectangle.left];
+    if (position === undefined) {
+      return null;
+    }
+    const cell = table.nodeAt(position);
+    if (
+      !cell ||
+      !tableRectanglesEqual(map.findCell(position), {
+        left: rectangle.left,
+        top: row,
+        right: rectangle.right,
+        bottom: row + 1,
+      })
+    ) {
+      return null;
+    }
+    const attrs = expectTableCellAttrs(cell);
+    if (
+      attrs.colspan !== 1 ||
+      attrs.rowspan !== 1 ||
+      attrs.cellMarker !== undefined ||
+      attrs._docxVMergeContinuationCells !== undefined ||
+      attrs._preserveVMergeRestart === true ||
+      attrs._originalFormatting?.vMerge !== undefined
+    ) {
+      return null;
+    }
+    cells.push({ position, cell });
+  }
+
+  const origin = cells.at(0);
+  if (
+    !origin ||
+    cells.length !== rectangle.bottom - rectangle.top ||
+    cells.some(({ cell }) => cell.type !== origin.cell.type) ||
+    cells.slice(1).some(({ cell }) => !isEmptyTableCell(cell))
+  ) {
+    return null;
+  }
+
+  const continuationCells = cells.slice(1).map(({ cell }) => {
+    const continuation = standaloneTableCellFromProseMirror(cell);
+    return {
+      ...continuation,
+      formatting: {
+        ...continuation.formatting,
+        vMerge: "continue" as const,
+      },
+      structuralChange: {
+        type: "tableCellMerge" as const,
+        info: { id: revisionId, author, date },
+        verticalMerge: "continue" as const,
+        verticalMergeOriginal: "rest" as const,
+      },
+    };
+  });
+
+  const nextTr = mergeTableRectangle(tr, tablePosition, table, rectangle);
+  if (!nextTr) {
+    return null;
+  }
+  nextTr.setNodeAttribute(
+    tablePosition + 1 + origin.position,
+    "_docxVMergeContinuationCells",
+    continuationCells,
+  );
+  markStructuralChange(nextTr);
+  return nextTr;
 };
 
 const splitTableRectangle = (
@@ -1310,10 +1417,6 @@ const applyFolioAIEditOperationsInternal = ({
   const liveBlocksByParaId = collectLiveBlocksByParaId(view.state.doc);
 
   for (const [index, operation] of operations.entries()) {
-    if (mode === "tracked-changes" && operation.type === "mergeTableCells") {
-      skipped.push({ id: operation.id, reason: "unsupportedMode" });
-      continue;
-    }
     const commentText = getOperationCommentText(operation);
     if (commentText !== undefined && (!commentType || createCommentId === undefined)) {
       skipped.push({ id: operation.id, reason: "unsupportedBlock" });
@@ -1950,7 +2053,19 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        const nextTr = mergeTableRectangle(tr, tablePosition, table, merge.rectangle);
+        const revisionId = mode === "tracked-changes" ? revisionSeed : null;
+        const nextTr =
+          revisionId === null
+            ? mergeTableRectangle(tr, tablePosition, table, merge.rectangle)
+            : mergeTrackedVerticalTableCells({
+                tr,
+                tablePosition,
+                table,
+                rectangle: merge.rectangle,
+                revisionId,
+                author,
+                date,
+              });
         if (!nextTr) {
           skipped.push({
             id: item.operation.id,
@@ -1959,6 +2074,10 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         tr = nextTr;
+        if (revisionId !== null) {
+          revisionSeed++;
+          appliedRevisionIds = [revisionId];
+        }
         break;
       }
       case "splitTableCell": {
@@ -2645,31 +2764,62 @@ const resolveOperation = ({
   }
 
   if (operation.type === "mergeTableCells") {
-    const endTarget = resolveStableBlock({
-      snapshot,
-      blockId: operation.endBlockId,
-      liveBlocks,
-      liveBlocksByParaId,
-    });
-    if (endTarget.type === "skip") {
-      return endTarget;
-    }
     const startCell = findEnclosingTableCell(doc, blockFrom);
-    const endCell = findEnclosingTableCell(doc, endTarget.blockFrom);
-    if (!startCell || !endCell || startCell.tablePosition !== endCell.tablePosition) {
+    if (!startCell) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
-    const rectangle = {
-      left: Math.min(startCell.leftColumnIndex, endCell.leftColumnIndex),
-      top: Math.min(startCell.topRowIndex, endCell.topRowIndex),
-      right: Math.max(startCell.rightColumnIndex, endCell.rightColumnIndex),
-      bottom: Math.max(startCell.bottomRowIndex, endCell.bottomRowIndex),
-    };
     const table = doc.nodeAt(startCell.tablePosition);
     if (!table || table.type.spec["tableRole"] !== "table") {
       return { type: "skip", reason: "unsupportedBlock" };
     }
     const map = TableMap.get(table);
+    let rectangle: TableRectangle;
+    let endCellPosition: number;
+    let endCellEndPosition: number;
+    if (operation.rowCount !== undefined) {
+      rectangle = {
+        left: startCell.leftColumnIndex,
+        top: startCell.topRowIndex,
+        right: startCell.rightColumnIndex,
+        bottom: startCell.topRowIndex + operation.rowCount,
+      };
+      if (
+        rectangle.right - rectangle.left !== 1 ||
+        rectangle.bottom > map.height ||
+        operation.rowCount < 2
+      ) {
+        return { type: "skip", reason: "unsupportedBlock" };
+      }
+      const endRelativePosition = map.map[(rectangle.bottom - 1) * map.width + rectangle.left];
+      const endCell = endRelativePosition === undefined ? null : table.nodeAt(endRelativePosition);
+      if (!endCell || endRelativePosition === undefined) {
+        return { type: "skip", reason: "unsupportedBlock" };
+      }
+      endCellPosition = startCell.tablePosition + 1 + endRelativePosition;
+      endCellEndPosition = endCellPosition + endCell.nodeSize;
+    } else {
+      const endTarget = resolveStableBlock({
+        snapshot,
+        blockId: operation.endBlockId,
+        liveBlocks,
+        liveBlocksByParaId,
+      });
+      if (endTarget.type === "skip") {
+        return endTarget;
+      }
+      const endCell = findEnclosingTableCell(doc, endTarget.blockFrom);
+      if (!endCell || startCell.tablePosition !== endCell.tablePosition) {
+        return { type: "skip", reason: "unsupportedBlock" };
+      }
+      rectangle = {
+        left: Math.min(startCell.leftColumnIndex, endCell.leftColumnIndex),
+        top: Math.min(startCell.topRowIndex, endCell.topRowIndex),
+        right: Math.max(startCell.rightColumnIndex, endCell.rightColumnIndex),
+        bottom: Math.max(startCell.bottomRowIndex, endCell.bottomRowIndex),
+      };
+      endCellPosition = endCell.cellPosition;
+      endCellEndPosition = endCell.cellEndPosition;
+    }
     if (
       (rectangle.right - rectangle.left === 1 && rectangle.bottom - rectangle.top === 1) ||
       tableRectangleCutsMergedCell(map, rectangle)
@@ -2686,8 +2836,8 @@ const resolveOperation = ({
       type: "resolved",
       operation: {
         operation,
-        from: Math.min(startCell.cellPosition, endCell.cellPosition),
-        to: Math.max(startCell.cellEndPosition, endCell.cellEndPosition),
+        from: Math.min(startCell.cellPosition, endCellPosition),
+        to: Math.max(startCell.cellEndPosition, endCellEndPosition),
         blockFrom,
         blockTo,
         blockNode,

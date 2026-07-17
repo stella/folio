@@ -252,14 +252,23 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /** Stable paragraph anchor inside the column to delete. */
         blockId: string;
       }
-    | {
+    | ({
         id: string;
         type: "mergeTableCells";
-        /** Stable paragraph anchor inside one corner cell. */
+        /** Stable paragraph anchor inside the first cell. */
         blockId: string;
-        /** Stable paragraph anchor inside the opposite corner cell. */
-        endBlockId: string;
-      }
+      } & (
+        | {
+            /** Stable paragraph anchor inside the opposite corner cell. */
+            endBlockId: string;
+            rowCount?: never;
+          }
+        | {
+            /** Number of grid rows to merge downward from the anchored cell. */
+            rowCount: number;
+            endBlockId?: never;
+          }
+      ))
     | {
         id: string;
         type: "splitTableCell";

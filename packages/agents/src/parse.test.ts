@@ -376,6 +376,7 @@ describe("parseSuggestChangesInput", () => {
     const supersetOperation = (type: string) => ({
       type,
       blockId: "b1",
+      endBlockId: "b2",
       find: "old",
       replace: "new",
       text: "inserted",
@@ -394,9 +395,33 @@ describe("parseSuggestChangesInput", () => {
       const result = parseSuggestChangesInput({ operations: [supersetOperation(type)] });
       expect(result.ok, type).toBe(true);
     }
-    for (const excludedType of ["commentOnBlock", "insertSignatureTable", "mergeTableCells"]) {
+    for (const excludedType of ["commentOnBlock", "insertSignatureTable"]) {
       const result = parseSuggestChangesInput({ operations: [supersetOperation(excludedType)] });
       expect(result.ok, excludedType).toBe(false);
     }
+  });
+
+  test("accepts a row-count target for vertical cell merging", () => {
+    expect(
+      parseSuggestChangesInput({
+        operations: [
+          {
+            type: "mergeTableCells",
+            blockId: "b1",
+            rowCount: 3,
+          },
+        ],
+      }),
+    ).toEqual({
+      ok: true,
+      operations: [
+        {
+          id: "op-1",
+          type: "mergeTableCells",
+          blockId: "b1",
+          rowCount: 3,
+        },
+      ],
+    });
   });
 });
