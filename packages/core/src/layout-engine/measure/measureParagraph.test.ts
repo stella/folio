@@ -196,6 +196,12 @@ describe("font metrics cache", () => {
         attrs: { documentGridLinePitch: 24 },
       }),
     );
+    expect(hashParagraphBlock({ ...paragraph, attrs: { documentGridLinePitch: 24 } })).toBe(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: { documentGridLinePitch: 24, snapToGrid: true },
+      }),
+    );
     expect(hashParagraphBlock({ ...paragraph, attrs: { documentGridLinePitch: 24 } })).not.toBe(
       hashParagraphBlock({
         ...paragraph,

@@ -335,7 +335,7 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
       parts.push("outline-empty-reserve");
     }
     if (attrs.documentGridLinePitch !== undefined) {
-      parts.push(`documentGrid:${attrs.documentGridLinePitch}|${attrs.snapToGrid}`);
+      parts.push(`documentGrid:${attrs.documentGridLinePitch}|${attrs.snapToGrid !== false}`);
     }
     if (attrs.justificationCompatibility) {
       parts.push(`justify-compat:${attrs.justificationCompatibility.type}`);
