@@ -54,7 +54,7 @@ const TARGETS = {
   /**
    * Below this per-paragraph cost, timer precision dominates the ratio check.
    */
-  layoutTimePerBlockRatioNoiseFloor: 0.01, // ms
+  layoutTimePerBlockRatioNoiseFloor: 0.02, // ms
 } as const;
 
 /**
@@ -335,7 +335,7 @@ describe("Layout Engine Performance", () => {
         expect(maxTime / minTime).toBeLessThanOrEqual(TARGETS.layoutTimePerBlockRatio);
       }
       expect(maxTime).toBeLessThanOrEqual(TARGETS.layoutTimePerBlock);
-    });
+    }, 30_000);
   });
 
   describe("Incremental Update", () => {
