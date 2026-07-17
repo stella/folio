@@ -308,10 +308,62 @@ function stripSuggestedInlineMarks(marks: readonly Mark[]): readonly Mark[] {
 }
 
 /**
+ * Compute the node attrs a block/structural node keeps once its suggested
+ * revision markers are neutralized. Returns `null` when nothing changes.
+ *
+ * - a suggested `trDel` / `cellMarker` (deletion or merge) is cleared so the
+ *   row/cell serializes as though the proposed change never happened;
+ * - suggested INSERT markers are handled by the caller, which drops the whole
+ *   node instead of clearing an attr.
+ *
+ * Reads go through the typed attr readers (adapter-boundary convention).
+ */
+function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
+  const name = node.type.name;
+  if (name === "tableRow") {
+    const rowAttrs = expectTableRowAttrs(node);
+    if (rowAttrs.trDel?.provenance === "suggested") {
+      return { ...rowAttrs, trDel: null };
+    }
+    return null;
+  }
+  if (name === "tableCell" || name === "tableHeader") {
+    const cellAttrs = expectTableCellAttrs(node);
+    if (cellAttrs.cellMarker?.info.provenance === "suggested") {
+      return { ...cellAttrs, cellMarker: null };
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether a block/structural node is a suggested whole-node INSERT and must be
+ * dropped from serialization entirely (paragraph, table, row, or column cell).
+ */
+function isSuggestedInsertedNode(node: PMNode): boolean {
+  const name = node.type.name;
+  if (name === "paragraph") {
+    return expectParagraphAttrs(node)._suggestedInsert != null;
+  }
+  if (name === "table") {
+    return expectTableAttrs(node)._suggestedInsert != null;
+  }
+  if (name === "tableRow") {
+    return expectTableRowAttrs(node).trIns?.provenance === "suggested";
+  }
+  if (name === "tableCell" || name === "tableHeader") {
+    const marker = expectTableCellAttrs(node).cellMarker;
+    return marker?.kind === "ins" && marker.info.provenance === "suggested";
+  }
+  return false;
+}
+
+/**
  * Recursively rewrite a ProseMirror node tree, removing every suggested
- * tracked change. Returns `null` when the node itself must be dropped (a
- * suggested-inserted inline node); block/structural nodes are never dropped,
- * only rebuilt with their surviving children.
+ * tracked change. Returns `null` when the node itself must be dropped: a
+ * suggested-inserted inline node, or a suggested-inserted block/row/cell.
+ * Surviving block nodes are rebuilt with their suggested delete/merge markers
+ * cleared and their children stripped.
  */
 function mapSuggestionStrippedNode(node: PMNode): PMNode | null {
   if (node.isInline) {
@@ -322,8 +374,13 @@ function mapSuggestionStrippedNode(node: PMNode): PMNode | null {
     return marks === node.marks ? node : node.mark(marks);
   }
 
+  if (isSuggestedInsertedNode(node)) {
+    return null;
+  }
+
+  const nextAttrs = stripSuggestedNodeAttrs(node);
   const children: PMNode[] = [];
-  let changed = false;
+  let changed = nextAttrs !== null;
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
     const mapped = mapSuggestionStrippedNode(child);
@@ -336,7 +393,11 @@ function mapSuggestionStrippedNode(node: PMNode): PMNode | null {
     }
     children.push(mapped);
   });
-  return changed ? node.copy(Fragment.fromArray(children)) : node;
+  if (!changed) {
+    return node;
+  }
+  const content = Fragment.fromArray(children);
+  return nextAttrs === null ? node.copy(content) : node.type.create(nextAttrs, content, node.marks);
 }
 
 /**
@@ -1408,6 +1469,7 @@ function extractParagraphContent(
         id: changeAttrs.revisionId,
         author: changeAttrs.author || "Unknown",
         ...(changeAttrs.date ? { date: changeAttrs.date } : {}),
+        ...(changeAttrs.initials ? { initials: changeAttrs.initials } : {}),
       };
       if (insertionMark) {
         content.push({
@@ -1451,6 +1513,9 @@ function extractParagraphContent(
       };
       if (changeAttrs.date) {
         info.date = changeAttrs.date;
+      }
+      if (changeAttrs.initials) {
+        info.initials = changeAttrs.initials;
       }
       // The mark itself records whether it originated as a
       // `w:moveTo` / `w:moveFrom`. The previous "is there both an
@@ -2960,6 +3025,7 @@ function convertPMTableRow(
         id: attrs.trIns.revisionId,
         author: attrs.trIns.author,
         ...(attrs.trIns.date != null && { date: attrs.trIns.date }),
+        ...(attrs.trIns.initials != null && { initials: attrs.trIns.initials }),
       },
     };
   } else if (attrs.trDel) {
@@ -2969,6 +3035,7 @@ function convertPMTableRow(
         id: attrs.trDel.revisionId,
         author: attrs.trDel.author,
         ...(attrs.trDel.date != null && { date: attrs.trDel.date }),
+        ...(attrs.trDel.initials != null && { initials: attrs.trDel.initials }),
       },
     };
   }
@@ -3098,6 +3165,7 @@ function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts):
       id: attrs.cellMarker.info.revisionId,
       author: attrs.cellMarker.info.author,
       ...(attrs.cellMarker.info.date != null && { date: attrs.cellMarker.info.date }),
+      ...(attrs.cellMarker.info.initials != null && { initials: attrs.cellMarker.info.initials }),
     };
     if (attrs.cellMarker.kind === "merge") {
       cell.structuralChange = {

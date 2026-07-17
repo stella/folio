@@ -1095,7 +1095,25 @@ const SUGGESTION_MARK_NAMES = new Set(["insertion", "deletion", "runPropertyChan
 const isSuggestionMark = (mark: Mark): boolean =>
   mark.attrs["provenance"] === "suggested" && SUGGESTION_MARK_NAMES.has(mark.type.name);
 
-export type SuggestionKind = "insertion" | "deletion" | "formatting";
+export type SuggestionKind =
+  | "insertion"
+  | "deletion"
+  | "formatting"
+  | "insertBlock"
+  | "insertTable"
+  | "insertRow"
+  | "deleteRow"
+  | "insertColumn"
+  | "deleteColumn";
+
+/**
+ * How a suggestion is applied when accepted:
+ * - `"tracked"` — converts to a normal OOXML tracked change (`w:ins`/`w:del`,
+ *   paragraph-mark `w:ins`, row/cell `w:ins`/`w:del`);
+ * - `"direct"` — no OOXML tracked representation exists (a whole inserted
+ *   table), so accepting applies it directly.
+ */
+export type SuggestionAppliedAs = "tracked" | "direct";
 
 export type FolioSuggestion = {
   suggestionId: string;
@@ -1103,6 +1121,8 @@ export type FolioSuggestion = {
   ranges: readonly { from: number; to: number }[];
   /** Which kinds of change the suggestion contains (deduped, in a stable order). */
   kinds: readonly SuggestionKind[];
+  /** How accepting this suggestion applies it (see {@link SuggestionAppliedAs}). */
+  appliedAs: SuggestionAppliedAs;
 };
 
 const suggestionKindOf = (mark: Mark): SuggestionKind => {
@@ -1115,19 +1135,114 @@ const suggestionKindOf = (mark: Mark): SuggestionKind => {
   return "formatting";
 };
 
+/**
+ * A node-attr (block/table) suggestion read off a single node: a whole-node
+ * `_suggestedInsert`, or a suggested `trIns`/`trDel`/`cellMarker`.
+ */
+type StructuralSuggestion = {
+  suggestionId: string;
+  revisionId: number;
+  kind: SuggestionKind;
+  /** True for a whole-node insert (paragraph/table): rejected by node deletion. */
+  isNodeInsert: boolean;
+};
+
+const readSuggestedMarker = (
+  marker: unknown,
+): { suggestionId: string; revisionId: number } | null => {
+  if (
+    typeof marker !== "object" ||
+    marker === null ||
+    (marker as { provenance?: unknown }).provenance !== "suggested"
+  ) {
+    return null;
+  }
+  const suggestionId = (marker as { suggestionId?: unknown }).suggestionId;
+  const revisionId = (marker as { revisionId?: unknown }).revisionId;
+  if (typeof suggestionId !== "string" || typeof revisionId !== "number") {
+    return null;
+  }
+  return { suggestionId, revisionId };
+};
+
+const readStructuralSuggestion = (node: PMNode): StructuralSuggestion | null => {
+  const attrs = node.attrs;
+  const insertMarker = attrs["_suggestedInsert"];
+  if (typeof insertMarker === "object" && insertMarker !== null) {
+    const suggestionId = (insertMarker as { suggestionId?: unknown }).suggestionId;
+    const revisionId = (insertMarker as { revisionId?: unknown }).revisionId;
+    if (typeof suggestionId === "string" && typeof revisionId === "number") {
+      return {
+        suggestionId,
+        revisionId,
+        kind: node.type.name === "table" ? "insertTable" : "insertBlock",
+        isNodeInsert: true,
+      };
+    }
+  }
+  if (node.type.name === "tableRow") {
+    const ins = readSuggestedMarker(attrs["trIns"]);
+    if (ins) {
+      return { ...ins, kind: "insertRow", isNodeInsert: false };
+    }
+    const del = readSuggestedMarker(attrs["trDel"]);
+    if (del) {
+      return { ...del, kind: "deleteRow", isNodeInsert: false };
+    }
+  }
+  if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+    const cellMarker = attrs["cellMarker"];
+    if (typeof cellMarker === "object" && cellMarker !== null) {
+      const marker = readSuggestedMarker((cellMarker as { info?: unknown }).info);
+      if (marker) {
+        const kind: SuggestionKind =
+          (cellMarker as { kind?: unknown }).kind === "del" ? "deleteColumn" : "insertColumn";
+        return { ...marker, kind, isNodeInsert: false };
+      }
+    }
+  }
+  return null;
+};
+
 type SuggestionAccumulator = {
   segments: { from: number; to: number }[];
   kinds: Set<SuggestionKind>;
   revisionIds: Set<number>;
+  /** Positions of whole-node inserts (paragraph/table) belonging to this suggestion. */
+  insertNodePositions: number[];
 };
 
 const collectSuggestions = (state: EditorState): Map<string, SuggestionAccumulator> => {
   const runPropertyChangeType = state.schema.marks["runPropertyChange"];
   const bySuggestion = new Map<string, SuggestionAccumulator>();
+  const entryFor = (suggestionId: string): SuggestionAccumulator => {
+    const existing = bySuggestion.get(suggestionId);
+    if (existing) {
+      return existing;
+    }
+    const created: SuggestionAccumulator = {
+      segments: [],
+      kinds: new Set<SuggestionKind>(),
+      revisionIds: new Set<number>(),
+      insertNodePositions: [],
+    };
+    bySuggestion.set(suggestionId, created);
+    return created;
+  };
 
   state.doc.descendants((node, pos) => {
+    const structural = readStructuralSuggestion(node);
+    if (structural) {
+      const entry = entryFor(structural.suggestionId);
+      entry.segments.push({ from: pos, to: pos + node.nodeSize });
+      entry.kinds.add(structural.kind);
+      entry.revisionIds.add(structural.revisionId);
+      if (structural.isNodeInsert) {
+        entry.insertNodePositions.push(pos);
+      }
+    }
     if (!node.isInline) {
-      return;
+      return undefined;
     }
     for (const mark of node.marks) {
       if (!isSuggestionMark(mark)) {
@@ -1137,11 +1252,7 @@ const collectSuggestions = (state: EditorState): Map<string, SuggestionAccumulat
       if (typeof suggestionId !== "string" || suggestionId.length === 0) {
         continue;
       }
-      const entry = bySuggestion.get(suggestionId) ?? {
-        segments: [],
-        kinds: new Set<SuggestionKind>(),
-        revisionIds: new Set<number>(),
-      };
+      const entry = entryFor(suggestionId);
       entry.segments.push({ from: pos, to: pos + node.nodeSize });
       entry.kinds.add(suggestionKindOf(mark));
       if (mark.type === runPropertyChangeType) {
@@ -1151,13 +1262,16 @@ const collectSuggestions = (state: EditorState): Map<string, SuggestionAccumulat
       } else if (typeof mark.attrs["revisionId"] === "number") {
         entry.revisionIds.add(mark.attrs["revisionId"]);
       }
-      bySuggestion.set(suggestionId, entry);
     }
     return undefined;
   });
 
   return bySuggestion;
 };
+
+/** A whole inserted table has no OOXML tracked representation, so it accepts directly. */
+const suggestionAppliedAs = (kinds: ReadonlySet<SuggestionKind>): SuggestionAppliedAs =>
+  kinds.has("insertTable") ? "direct" : "tracked";
 
 /** Merge sorted, possibly adjacent/overlapping segments into contiguous ranges. */
 const mergeSegments = (
@@ -1176,11 +1290,22 @@ const mergeSegments = (
   return merged;
 };
 
-const SUGGESTION_KIND_ORDER: readonly SuggestionKind[] = ["insertion", "deletion", "formatting"];
+const SUGGESTION_KIND_ORDER: readonly SuggestionKind[] = [
+  "insertion",
+  "deletion",
+  "formatting",
+  "insertBlock",
+  "insertTable",
+  "insertRow",
+  "deleteRow",
+  "insertColumn",
+  "deleteColumn",
+];
 
 /**
  * List every suggestion in the document for host consumption: its id, the
- * contiguous ranges it covers, and which kinds of change it contains.
+ * contiguous ranges it covers, which kinds of change it contains, and how
+ * accepting it applies (tracked vs direct).
  */
 export function getSuggestions(state: EditorState): FolioSuggestion[] {
   const bySuggestion = collectSuggestions(state);
@@ -1190,6 +1315,7 @@ export function getSuggestions(state: EditorState): FolioSuggestion[] {
       suggestionId,
       ranges: mergeSegments(entry.segments),
       kinds: SUGGESTION_KIND_ORDER.filter((kind) => entry.kinds.has(kind)),
+      appliedAs: suggestionAppliedAs(entry.kinds),
     });
   }
   // Document order by first range start keeps output stable for the host.
@@ -1222,11 +1348,96 @@ export type AcceptSuggestionOptions = {
 };
 
 /**
- * Rewrite suggested marks to normal (`"user"`) tracked changes. `predicate`
- * selects which suggestion marks to convert (one id, or all).
+ * The node-attr patch that converts a suggested block/table revision into a
+ * normal (`"user"`) one authored by the accepting user. Returns `null` when the
+ * node carries no matching suggested revision. Position-stable (attr writes
+ * only), so callers can apply it during a single descendants walk.
  */
-const rewriteSuggestedMarksToUser = (
-  predicate: (mark: Mark) => boolean,
+const convertStructuralSuggestionAttrs = (
+  node: PMNode,
+  author: string,
+  date: string,
+): Record<string, unknown> | null => {
+  const attrs = node.attrs;
+  const userInfo = (marker: { revisionId?: unknown; info?: unknown }) => {
+    const source = (marker.info ?? marker) as {
+      revisionId?: unknown;
+      initials?: unknown;
+    };
+    return {
+      revisionId: source.revisionId,
+      author,
+      date,
+      ...(typeof source.initials === "string" ? { initials: source.initials } : {}),
+    };
+  };
+
+  const insertMarker = attrs["_suggestedInsert"];
+  if (typeof insertMarker === "object" && insertMarker !== null) {
+    const marker = insertMarker as { revisionId?: unknown; initials?: unknown };
+    if (node.type.name === "table") {
+      // Whole inserted table has no OOXML tracked form → accept applies it
+      // directly by clearing the suggestion marker (the table stays as content).
+      return { ...attrs, _suggestedInsert: null };
+    }
+    // Inserted paragraph → real inserted-paragraph tracked change: mark the
+    // paragraph break as `w:ins` (the inline runs are re-authored by the mark
+    // pass). Keeps the revision id so the halves stay paired.
+    if (typeof marker.revisionId === "number") {
+      return {
+        ...attrs,
+        _suggestedInsert: null,
+        pPrMark: {
+          kind: "ins",
+          info: {
+            id: marker.revisionId,
+            author,
+            date,
+            ...(typeof marker.initials === "string" ? { initials: marker.initials } : {}),
+          },
+        },
+      };
+    }
+  }
+  if (node.type.name === "tableRow") {
+    if (readSuggestedMarker(attrs["trIns"])) {
+      return { ...attrs, trIns: userInfo(attrs["trIns"] as { revisionId?: unknown }) };
+    }
+    if (readSuggestedMarker(attrs["trDel"])) {
+      return { ...attrs, trDel: userInfo(attrs["trDel"] as { revisionId?: unknown }) };
+    }
+  }
+  if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+    const cellMarker = attrs["cellMarker"] as
+      | { kind?: unknown; info?: unknown; verticalMerge?: unknown; verticalMergeOriginal?: unknown }
+      | null
+      | undefined;
+    if (cellMarker && readSuggestedMarker(cellMarker.info)) {
+      return {
+        ...attrs,
+        cellMarker: {
+          kind: cellMarker.kind,
+          info: userInfo(cellMarker as { info?: unknown }),
+          ...(cellMarker.verticalMerge !== undefined
+            ? { verticalMerge: cellMarker.verticalMerge }
+            : {}),
+          ...(cellMarker.verticalMergeOriginal !== undefined
+            ? { verticalMergeOriginal: cellMarker.verticalMergeOriginal }
+            : {}),
+        },
+      };
+    }
+  }
+  return null;
+};
+
+/**
+ * Convert suggested marks AND block/table node revisions to normal (`"user"`)
+ * tracked changes. `matchesSuggestion(id)` selects which suggestion to convert
+ * (one id, or all).
+ */
+const acceptSuggestions = (
+  matchesSuggestion: (suggestionId: string) => boolean,
   options: AcceptSuggestionOptions,
 ): Command => {
   return (state, dispatch) => {
@@ -1237,16 +1448,28 @@ const rewriteSuggestedMarksToUser = (
     const tr = state.tr;
     let changed = false;
 
-    // Mark steps do not shift positions, so the positions read from
-    // `state.doc` stay valid across the accumulated removeMark/addMark steps.
+    // Mark steps AND setNodeAttribute do not shift positions, so the positions
+    // read from `state.doc` stay valid across the accumulated steps.
     state.doc.descendants((node, pos) => {
+      const structural = readStructuralSuggestion(node);
+      if (structural && matchesSuggestion(structural.suggestionId)) {
+        const nextAttrs = convertStructuralSuggestionAttrs(node, options.author, date);
+        if (nextAttrs) {
+          tr.setNodeMarkup(pos, undefined, nextAttrs);
+          changed = true;
+        }
+      }
       if (!node.isInline) {
-        return;
+        return undefined;
       }
       const from = pos;
       const to = pos + node.nodeSize;
       for (const mark of node.marks) {
-        if (!isSuggestionMark(mark) || !predicate(mark)) {
+        if (
+          !isSuggestionMark(mark) ||
+          typeof mark.attrs["suggestionId"] !== "string" ||
+          !matchesSuggestion(mark.attrs["suggestionId"])
+        ) {
           continue;
         }
         changed = true;
@@ -1296,49 +1519,109 @@ const rewriteSuggestedMarksToUser = (
 };
 
 /**
- * Accept one suggestion: convert its marks into normal tracked changes authored
- * by `author` with a fresh date, keeping their revision ids.
+ * Accept one suggestion: convert its inline marks and block/table node
+ * revisions into normal tracked changes authored by `author`, keeping revision
+ * ids. A whole inserted table (which OOXML cannot track) is applied directly;
+ * everything else becomes a tracked change. See {@link getSuggestions} for the
+ * per-suggestion `appliedAs`.
  */
 export function acceptSuggestion(suggestionId: string, options: AcceptSuggestionOptions): Command {
-  return rewriteSuggestedMarksToUser(
-    (mark) => mark.attrs["suggestionId"] === suggestionId,
-    options,
-  );
+  return acceptSuggestions((id) => id === suggestionId, options);
 }
 
 /** Accept every suggestion in the document. */
 export function acceptAllSuggestions(options: AcceptSuggestionOptions): Command {
-  return rewriteSuggestedMarksToUser(() => true, options);
+  return acceptSuggestions(() => true, options);
 }
 
 /**
- * Reject one suggestion: inverse-apply its marks like `rejectChange` (delete
- * suggested-inserted text, drop suggested deletion marks so the text survives,
- * revert a suggested formatting change to its previous formatting).
+ * Reject one suggestion: inverse-apply it. Whole-node inserts (paragraph/table)
+ * are deleted; inline marks and suggested `trIns`/`trDel`/`cellMarker` revisions
+ * are inverse-applied through {@link resolveChange} (delete suggested-inserted
+ * text/rows/cells, drop suggested deletions/formatting).
  */
 export function rejectSuggestion(suggestionId: string): Command {
   return (state, dispatch) => {
-    const range = findSuggestionRange(state, suggestionId);
-    if (!range || range.revisionIds.length === 0) {
+    const entry = collectSuggestions(state).get(suggestionId);
+    if (!entry) {
       return false;
     }
-    return resolveChange(range.from, range.to, "reject", range.revisionIds)(state, dispatch);
+    // Whole-node inserts contain their own inline marks, so deleting the node
+    // removes everything belonging to this suggestion in one step.
+    if (entry.insertNodePositions.length > 0) {
+      const tr = state.tr;
+      for (const pos of [...entry.insertNodePositions].toSorted((a, b) => b - a)) {
+        const node = tr.doc.nodeAt(pos);
+        if (node) {
+          tr.delete(pos, pos + node.nodeSize);
+        }
+      }
+      if (tr.steps.length === 0) {
+        return false;
+      }
+      if (dispatch) {
+        dispatch(tr);
+      }
+      return true;
+    }
+    const ranges = mergeSegments(entry.segments);
+    const from = ranges[0]?.from ?? 0;
+    const to = ranges.at(-1)?.to ?? from;
+    if (entry.revisionIds.size === 0) {
+      return false;
+    }
+    return resolveChange(from, to, "reject", [...entry.revisionIds])(state, dispatch);
   };
 }
 
 /** Reject every suggestion in the document. */
 export function rejectAllSuggestions(): Command {
   return (state, dispatch) => {
+    const bySuggestion = collectSuggestions(state);
+    if (bySuggestion.size === 0) {
+      return false;
+    }
     const revisionIds = new Set<number>();
-    for (const entry of collectSuggestions(state).values()) {
+    for (const entry of bySuggestion.values()) {
       for (const id of entry.revisionIds) {
         revisionIds.add(id);
       }
     }
-    if (revisionIds.size === 0) {
+
+    // Resolve inline/structural revisions first (deletes suggested-inserted
+    // text/rows/cells, clears suggested deletions), capturing the transaction
+    // so whole-node inserts can be dropped from the same transaction below.
+    let tr: Transaction | null = null;
+    if (revisionIds.size > 0) {
+      resolveChange(0, state.doc.content.size, "reject", [...revisionIds])(state, (resolved) => {
+        tr = resolved;
+      });
+    }
+    const workingTr: Transaction = tr ?? state.tr;
+
+    // Drop any remaining whole-node inserts (empty inserted paragraphs whose
+    // inline text the resolve just removed, and whole inserted tables).
+    const positions: number[] = [];
+    workingTr.doc.descendants((node, pos) => {
+      if (readStructuralSuggestion(node)?.isNodeInsert) {
+        positions.push(pos);
+      }
+      return undefined;
+    });
+    for (const pos of positions.toSorted((a, b) => b - a)) {
+      const node = workingTr.doc.nodeAt(pos);
+      if (node) {
+        workingTr.delete(pos, pos + node.nodeSize);
+      }
+    }
+
+    if (workingTr.steps.length === 0) {
       return false;
     }
-    return resolveChange(0, state.doc.content.size, "reject", [...revisionIds])(state, dispatch);
+    if (dispatch) {
+      dispatch(workingTr);
+    }
+    return true;
   };
 }
 

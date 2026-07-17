@@ -126,19 +126,67 @@ describe("suggested apply mode", () => {
     ).toBe(true);
   });
 
-  test("block operations are unsupported under suggested mode", () => {
+  test("cell merge/split stay unsupported under suggested mode", () => {
     const view = makeView("keep me");
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
     const block = snapshot.blocks.at(0)!;
     const result = applyFolioAIEditOperations({
       view,
       snapshot,
-      operations: [{ id: "ins", type: "insertAfterBlock", blockId: block.id, text: "new block" }],
+      operations: [{ id: "split", type: "splitTableCell", blockId: block.id }],
       mode: "suggested",
       author: "AI",
     });
+    // Cell merge/split are not in the suggested-supported set, so they never
+    // apply as a suggestion (this one also lacks a table to resolve against).
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "ins", reason: "unsupportedMode" }]);
+    expect(result.skipped.at(0)?.id).toBe("split");
+  });
+
+  test("insertAfterBlock in suggested mode flags the block and strips it", () => {
+    const view = makeView("anchor block");
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    const block = snapshot.blocks.at(0)!;
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        { id: "ins", type: "insertAfterBlock", blockId: block.id, text: "proposed new block" },
+      ],
+      mode: "suggested",
+      author: "AI",
+    });
+    expect(result.applied.at(0)?.suggestionId).toBe("ins");
+
+    let flagged = false;
+    view.state.doc.descendants((node) => {
+      if (node.attrs["_suggestedInsert"]) {
+        flagged = true;
+      }
+      return undefined;
+    });
+    expect(flagged).toBe(true);
+
+    const model = fromProseDoc(view.state.doc);
+    expect(JSON.stringify(model.package.document.content)).not.toContain("proposed new block");
+  });
+
+  test("deleteBlock in suggested mode keeps the text after the serialization strip", () => {
+    const view = makeView("delete me please");
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    const block = snapshot.blocks.at(0)!;
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [{ id: "del", type: "deleteBlock", blockId: block.id }],
+      mode: "suggested",
+      author: "AI",
+    });
+    expect(result.applied.at(0)?.suggestionId).toBe("del");
+
+    const xml = serializeParagraph(firstParagraph(fromProseDoc(view.state.doc)));
+    expect(xml).toContain("delete me please");
+    expect(xml).not.toContain("<w:del");
   });
 
   test("suggested formatRange stamps runPropertyChange and reverts on serialize", () => {

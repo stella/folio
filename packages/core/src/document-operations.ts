@@ -63,16 +63,19 @@ export type FolioDocumentOperationMode = FolioAIEditApplyMode;
 export type FolioDocumentOperationPrecondition = FolioAIEditPrecondition;
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
-// Suggested mode is limited to the inline text/format operations whose marks
-// the serialization strip fully removes (see apply.ts); block/table operations
-// stay direct-and-tracked only until a follow-up phase covers them.
+// Suggested mode covers inline text/format edits and block/table structural
+// operations whose revisions the serialization strip removes (see apply.ts).
+// Comment ops (not tracked changes) and cell merge/split stay direct-and-tracked.
 const DIRECT_AND_TRACKED_MODES = Object.freeze([
   "direct",
   "tracked-changes",
 ] as const satisfies readonly FolioDocumentOperationMode[]);
 const DIRECT_TRACKED_AND_SUGGESTED_MODES = FOLIO_DOCUMENT_OPERATION_MODES;
-const DIRECT_ONLY_MODES = Object.freeze([
+// A whole inserted table has no OOXML tracked representation, so it supports
+// direct and suggested (accept applies it directly) but not tracked-changes.
+const DIRECT_AND_SUGGESTED_MODES = Object.freeze([
   "direct",
+  "suggested",
 ] as const satisfies readonly FolioDocumentOperationMode[]);
 
 export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
@@ -80,16 +83,16 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   replaceRange: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   commentOnRange: DIRECT_AND_TRACKED_MODES,
   formatRange: DIRECT_TRACKED_AND_SUGGESTED_MODES,
-  insertAfterBlock: DIRECT_AND_TRACKED_MODES,
-  insertBeforeBlock: DIRECT_AND_TRACKED_MODES,
-  replaceBlock: DIRECT_AND_TRACKED_MODES,
-  deleteBlock: DIRECT_AND_TRACKED_MODES,
+  insertAfterBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
+  insertBeforeBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
+  replaceBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
+  deleteBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   commentOnBlock: DIRECT_AND_TRACKED_MODES,
-  insertSignatureTable: DIRECT_ONLY_MODES,
-  insertTableRow: DIRECT_AND_TRACKED_MODES,
-  deleteTableRow: DIRECT_AND_TRACKED_MODES,
-  insertTableColumn: DIRECT_AND_TRACKED_MODES,
-  deleteTableColumn: DIRECT_AND_TRACKED_MODES,
+  insertSignatureTable: DIRECT_AND_SUGGESTED_MODES,
+  insertTableRow: DIRECT_TRACKED_AND_SUGGESTED_MODES,
+  deleteTableRow: DIRECT_TRACKED_AND_SUGGESTED_MODES,
+  insertTableColumn: DIRECT_TRACKED_AND_SUGGESTED_MODES,
+  deleteTableColumn: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   mergeTableCells: DIRECT_AND_TRACKED_MODES,
   splitTableCell: DIRECT_AND_TRACKED_MODES,
 } as const satisfies Readonly<

@@ -58,6 +58,8 @@ export const InsertionExtension = createMarkExtension({
       // re-emit the correct OOXML element without relying on
       // brittle revisionId pairing across the doc.
       moveKind: { default: null },
+      // Optional author initials (w:initials), carried for round-trip.
+      initials: { default: null },
       // `"suggested"` marks are AI-proposed edits: rendered like tracked
       // changes but stripped from serialized DOCX until accepted. Parsing
       // DOCX/HTML never sets this (see parseDOM), so provenance defaults to
@@ -126,6 +128,8 @@ export const DeletionExtension = createMarkExtension({
       // the correct OOXML element without relying on brittle
       // revisionId pairing across the doc.
       moveKind: { default: null },
+      // Optional author initials (w:initials), carried for round-trip.
+      initials: { default: null },
       // See the insertion mark: `"suggested"` is an AI proposal stripped
       // from serialized output until accepted.
       provenance: { default: "user" },

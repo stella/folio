@@ -29,7 +29,10 @@ import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
 import type { SelectionState, TableContextInfo } from "@stll/folio-core/prosemirror";
-import type { FolioSuggestion } from "@stll/folio-core/prosemirror/commands/comments";
+import type {
+  FolioSuggestion,
+  SuggestionAppliedAs,
+} from "@stll/folio-core/prosemirror/commands/comments";
 import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import type {
   TemplateSlashMenuKeyAction,
@@ -498,11 +501,16 @@ export type DocxEditorRef = {
    */
   getSuggestions: () => FolioSuggestion[];
   /**
-   * Accept a suggestion: convert its marks into normal tracked changes authored
-   * by `options.author` (defaults to the editor's configured author). Returns
-   * `false` when the suggestion is not present.
+   * Accept a suggestion: convert it into a normal tracked change authored by
+   * `options.author` (defaults to the editor's configured author). Whole
+   * inserted tables apply directly (`appliedAs: "direct"`); everything else
+   * becomes a tracked change (`"tracked"`). `accepted` is `false` (and
+   * `appliedAs` `null`) when the suggestion is not present.
    */
-  acceptSuggestion: (suggestionId: string, options?: { author?: string }) => boolean;
+  acceptSuggestion: (
+    suggestionId: string,
+    options?: { author?: string },
+  ) => { accepted: boolean; appliedAs: SuggestionAppliedAs | null };
   /**
    * Reject a suggestion: inverse-apply its marks (remove suggested-inserted
    * text, drop suggested deletions, revert suggested formatting). Returns

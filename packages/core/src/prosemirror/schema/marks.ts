@@ -130,6 +130,8 @@ export type TrackedChangeMarkAttrs = {
   revisionId: number;
   author: string;
   date?: string;
+  /** Optional author initials (w:initials) carried through the round-trip. */
+  initials?: string;
   moveKind?: "moveTo" | "moveFrom";
   /** Defaults to `"user"`; `"suggested"` for AI-proposed, non-serialized edits. */
   provenance: TrackedChangeProvenance;

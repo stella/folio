@@ -983,6 +983,7 @@ export const readTrackedChangeMarkAttrs = (
   requiredNumber(attrs, "revisionId", `${mark.type.name}.attrs.revisionId`, issues);
   requiredString(attrs, "author", `${mark.type.name}.attrs.author`, issues);
   optionalString(attrs, "date", `${mark.type.name}.attrs.date`, issues);
+  optionalString(attrs, "initials", `${mark.type.name}.attrs.initials`, issues);
   optionalOneOf(
     attrs,
     "moveKind",
@@ -1584,6 +1585,15 @@ const optionalTableRowRevision = (
   requiredNumber(value, "revisionId", `${path}.revisionId`, issues);
   requiredString(value, "author", `${path}.author`, issues);
   optionalString(value, "date", `${path}.date`, issues);
+  optionalString(value, "initials", `${path}.initials`, issues);
+  optionalOneOf(
+    value,
+    "provenance",
+    `${path}.provenance`,
+    issues,
+    TRACKED_CHANGE_PROVENANCE_VALUES,
+  );
+  optionalString(value, "suggestionId", `${path}.suggestionId`, issues);
 };
 
 const optionalTableCellRevision = (
@@ -1608,6 +1618,15 @@ const optionalTableCellRevision = (
   requiredNumber(info, "revisionId", `${path}.info.revisionId`, issues);
   requiredString(info, "author", `${path}.info.author`, issues);
   optionalString(info, "date", `${path}.info.date`, issues);
+  optionalString(info, "initials", `${path}.info.initials`, issues);
+  optionalOneOf(
+    info,
+    "provenance",
+    `${path}.info.provenance`,
+    issues,
+    TRACKED_CHANGE_PROVENANCE_VALUES,
+  );
+  optionalString(info, "suggestionId", `${path}.info.suggestionId`, issues);
   if (value["kind"] === "merge") {
     optionalOneOf(value, "verticalMerge", `${path}.verticalMerge`, issues, [
       "continue",

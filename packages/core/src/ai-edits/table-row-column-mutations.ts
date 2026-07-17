@@ -10,6 +10,7 @@ import {
 } from "prosemirror-tables";
 
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import type { TrackedChangeProvenance } from "../prosemirror/schema/marks";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import {
   findEnclosingTableCell,
@@ -38,6 +39,14 @@ export type TableStructureRevision = {
   revisionId: number;
   author: string;
   date: string;
+  /** Optional author initials (w:initials), carried for round-trip. */
+  initials?: string;
+  /**
+   * `"suggested"` marks the produced `trIns`/`trDel`/`cellMarker` as an AI
+   * proposal that is stripped from serialized DOCX until accepted.
+   */
+  provenance?: TrackedChangeProvenance;
+  suggestionId?: string;
 };
 
 type TableRowColumnMutationResult =

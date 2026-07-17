@@ -18,6 +18,7 @@ export type { EditorMode } from "./components/hooks/useEditorMode";
 export type {
   FolioSuggestion,
   SuggestionKind,
+  SuggestionAppliedAs,
 } from "@stll/folio-core/prosemirror/commands/comments";
 // Custom-font prop types: `fontFamilies` (picker list) + `fonts` (FontFace registration).
 export type { FontOption } from "./components/ui/FontPicker";

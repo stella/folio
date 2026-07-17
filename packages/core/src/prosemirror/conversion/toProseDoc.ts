@@ -71,6 +71,10 @@ import {
   type TableCellMarginsAttrs,
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
+// `toProseDoc` and `fromProseDoc` are the two halves of one round-trip and
+// reference each other's inverse converter at call time only (no init-order
+// hazard). See the matching suppression in `fromProseDoc.ts`.
+// oxlint-disable-next-line import/no-cycle
 import { marksToTextFormatting } from "./fromProseDoc";
 import { shadingToRunShadingAttrs } from "./runShadingMark";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
@@ -515,6 +519,7 @@ function convertTrackedChange(
     revisionId: change.info.id,
     author: change.info.author,
     date: change.info.date ?? null,
+    initials: change.info.initials ?? null,
     moveKind,
   });
 

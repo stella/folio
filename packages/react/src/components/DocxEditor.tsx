@@ -3193,12 +3193,18 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       acceptSuggestion: (suggestionId, options) => {
         const view = pagedEditorRef.current?.getView();
         if (!view) {
-          return false;
+          return { accepted: false, appliedAs: null };
         }
-        return acceptSuggestion(suggestionId, { author: options?.author ?? author })(
+        // Read how the suggestion applies (tracked vs direct) before it is
+        // resolved away, so the host can message the outcome.
+        const appliedAs =
+          getSuggestions(view.state).find((s) => s.suggestionId === suggestionId)?.appliedAs ??
+          null;
+        const accepted = acceptSuggestion(suggestionId, { author: options?.author ?? author })(
           view.state,
           view.dispatch,
         );
+        return { accepted, appliedAs: accepted ? appliedAs : null };
       },
       rejectSuggestion: (suggestionId) => {
         const view = pagedEditorRef.current?.getView();

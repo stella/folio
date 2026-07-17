@@ -149,4 +149,9 @@ export {
   rejectSuggestion,
   rejectAllSuggestions,
 } from "./comments";
-export type { FolioSuggestion, SuggestionKind, AcceptSuggestionOptions } from "./comments";
+export type {
+  FolioSuggestion,
+  SuggestionKind,
+  SuggestionAppliedAs,
+  AcceptSuggestionOptions,
+} from "./comments";

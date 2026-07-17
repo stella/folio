@@ -43,6 +43,7 @@ import type {
 import type { OutlineStyleAttr } from "../../types/documentEnumValues";
 import type { SpacingExplicit } from "../../types/formatting";
 import type { ParagraphDirection } from "../paragraphDirection";
+import type { TrackedChangeProvenance } from "./marks";
 
 export type HardBreakAttrs = {
   breakType?: "column";
@@ -250,6 +251,12 @@ export type ParagraphAttrs = {
    *  `del`. Stored as a discriminated union to mirror folio's
    *  `TrackedChangeWrapperType` model rather than two parallel attrs. */
   pPrMark?: ParagraphMarkChange;
+  /**
+   * Marks this whole paragraph as a *suggested* insertion (AI proposal). The
+   * paragraph is dropped from serialized DOCX until accepted; accepting turns
+   * it into a real inserted-paragraph tracked change (paragraph-mark `w:ins`).
+   */
+  _suggestedInsert?: SuggestedStructuralMarker | null;
 };
 
 /**
@@ -602,6 +609,12 @@ export type TableAttrs = {
   _originalFormatting?: TableFormatting;
   /** Tracked table property changes (w:tblPrChange) for round-trip + accept/reject */
   tblPrChange?: TablePropertyChange[];
+  /**
+   * Marks this whole table as a *suggested* insertion (AI proposal). The table
+   * is dropped from serialized DOCX until accepted; because OOXML has no tracked
+   * whole-table-insert primitive, accepting applies it directly.
+   */
+  _suggestedInsert?: SuggestedStructuralMarker | null;
 };
 
 /**
@@ -620,6 +633,12 @@ export type TableRowAttrs = {
   _originalFormatting?: TableRowFormatting;
   /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
   trPrChange?: TableRowPropertyChange[];
+  /**
+   * Marks this row as a whole-row *suggested* insertion (AI proposal). Present
+   * only in the editor; stripped from serialized DOCX until accepted, at which
+   * point it becomes a real `trIns`. See `SuggestedStructuralMarker`.
+   */
+  _suggestedInsert?: SuggestedStructuralMarker | null;
 } & (
   | {
       /** Tracked structural row insertion (w:trPr/w:ins). */
@@ -627,6 +646,9 @@ export type TableRowAttrs = {
         revisionId: number;
         author: string;
         date?: string | null;
+        initials?: string | null;
+        provenance?: TrackedChangeProvenance;
+        suggestionId?: string | null;
       };
       trDel?: never;
     }
@@ -637,6 +659,9 @@ export type TableRowAttrs = {
         revisionId: number;
         author: string;
         date?: string | null;
+        initials?: string | null;
+        provenance?: TrackedChangeProvenance;
+        suggestionId?: string | null;
       };
     }
   | {
@@ -644,6 +669,21 @@ export type TableRowAttrs = {
       trDel?: never;
     }
 );
+
+/**
+ * A whole-node *suggested* insertion marker (AI proposal) carried on a
+ * paragraph or table node. The node is dropped entirely from serialized DOCX
+ * until accepted; accepting converts it to a real tracked change (paragraph
+ * mark `w:ins`) or, where OOXML has no tracked representation (whole table),
+ * applies it directly.
+ */
+export type SuggestedStructuralMarker = {
+  suggestionId: string;
+  revisionId: number;
+  author: string;
+  date?: string | null;
+  initials?: string | null;
+};
 
 /**
  * Table cell attributes
@@ -687,6 +727,10 @@ export type TableCellAttrs = {
           revisionId: number;
           author: string;
           date?: string | null;
+          initials?: string | null;
+          /** `"suggested"` marks this as an AI proposal (stripped until accepted). */
+          provenance?: TrackedChangeProvenance;
+          suggestionId?: string | null;
         };
       }
     | {
@@ -695,6 +739,9 @@ export type TableCellAttrs = {
           revisionId: number;
           author: string;
           date?: string | null;
+          initials?: string | null;
+          provenance?: TrackedChangeProvenance;
+          suggestionId?: string | null;
         };
         verticalMerge?: "continue" | "rest";
         verticalMergeOriginal?: "continue" | "rest";

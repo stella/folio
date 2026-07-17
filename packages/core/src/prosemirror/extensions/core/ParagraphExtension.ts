@@ -382,6 +382,7 @@ const paragraphNodeSpec: NodeSpec = {
     _sectionProperties: { default: null },
     _propertyChanges: { default: null },
     pPrMark: { default: null },
+    _suggestedInsert: { default: null },
   },
   parseDOM: [
     {
