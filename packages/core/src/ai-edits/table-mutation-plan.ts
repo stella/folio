@@ -35,16 +35,18 @@ export const planTableMutations = <T>(
   const splitTables = new Set<number>();
 
   for (const { target } of candidates) {
-    if (target.type === "tableStructure") {
-      tableStructureMutations.add(target.tablePosition);
-      continue;
-    }
-    if (target.type === "mergeCells") {
-      mergeTables.add(target.tablePosition);
-      continue;
-    }
-    if (target.type === "splitCell") {
-      splitTables.add(target.tablePosition);
+    switch (target.type) {
+      case "tableStructure":
+        tableStructureMutations.add(target.tablePosition);
+        break;
+      case "mergeCells":
+        mergeTables.add(target.tablePosition);
+        break;
+      case "splitCell":
+        splitTables.add(target.tablePosition);
+        break;
+      case "none":
+        break;
     }
   }
 
@@ -105,6 +107,8 @@ export const planTableMutations = <T>(
       }
       claimedRectangles.push(target.rectangle);
       splitRectanglesByTable.set(target.tablePosition, claimedRectangles);
+      executable.push(candidate.item);
+      continue;
     }
 
     executable.push(candidate.item);
