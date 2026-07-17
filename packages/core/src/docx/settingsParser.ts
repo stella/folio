@@ -36,6 +36,21 @@ const MAX_TAB_STOP_TWIPS = 31_680;
 const MAX_HYPHENATION_ZONE_TWIPS = 31_680;
 const MAX_CONSECUTIVE_HYPHEN_LIMIT = 255;
 
+/**
+ * Floor on `w:defaultTabStop`, in twips (1/12 inch). A near-zero value would
+ * force the layout engine to generate thousands of tab stops across a
+ * single line; below this floor we substitute the OOXML default instead.
+ */
+const MIN_TAB_STOP_TWIPS = 120;
+
+/**
+ * Sanity cap on parsed `w:noLineBreaksBefore`/`w:noLineBreaksAfter`
+ * character lists. Typical kinsoku overrides list a handful of prohibited
+ * characters; anything past this is corruption or a hostile input crafted
+ * to inflate the per-character membership set built at measure time.
+ */
+const MAX_KINSOKU_CHARACTERS_LENGTH = 128;
+
 export function parseSettings(xml: string | null): FolioDocumentSettings {
   const root = xml ? (parseXmlDocument(xml) as XmlElement | null) : null;
   const settings: FolioDocumentSettings = {
@@ -179,7 +194,9 @@ function parseKinsokuOverride(
   }
   const language = getAttribute(element, "w", "lang") || undefined;
   return {
-    characters,
+    // Code-point safe truncation: slicing the raw string could split a
+    // surrogate pair in half.
+    characters: Array.from(characters).slice(0, MAX_KINSOKU_CHARACTERS_LENGTH).join(""),
     ...(language ? { language } : {}),
   };
 }
@@ -197,7 +214,7 @@ function parseDefaultTabStop(root: XmlElement | null): number {
     return DEFAULT_TAB_STOP_TWIPS;
   }
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > MAX_TAB_STOP_TWIPS) {
+  if (!Number.isFinite(parsed) || parsed < MIN_TAB_STOP_TWIPS || parsed > MAX_TAB_STOP_TWIPS) {
     return DEFAULT_TAB_STOP_TWIPS;
   }
   return parsed;

@@ -15,6 +15,7 @@ import {
   writeUint32Le,
 } from "./cryptoBytes";
 import { DOCX_ENCRYPTION_ERROR_CODES, DocxEncryptionError } from "./errors";
+import { MAX_SPIN_COUNT } from "./encryptionInfo";
 import type { AgileKeyMaterial } from "./encryptionInfo";
 
 /** [MS-OFFCRYPTO] 2.3.4.15 — block keys used during password verification. */
@@ -105,7 +106,15 @@ const decryptAesCbc = async (
   return new Uint8Array(decrypted).subarray(0, ciphertext.length);
 };
 
-/** [MS-OFFCRYPTO] 2.3.4.9 — iterated hash of password + salt. */
+/**
+ * [MS-OFFCRYPTO] 2.3.4.9 — iterated hash of password + salt.
+ *
+ * `iterations` is expected to already be validated by
+ * `encryptionInfo.ts`'s `spinCount` parsing, but this loop drives real
+ * WebCrypto work per iteration, so it is clamped again here as well —
+ * this function must stay safe to call with an untrusted iteration count
+ * regardless of caller.
+ */
 const hashPassword = async (
   password: string,
   salt: Uint8Array,
@@ -113,8 +122,9 @@ const hashPassword = async (
   hashName: string,
 ): Promise<Uint8Array> => {
   const algorithm = webHashName(hashName);
+  const boundedIterations = Math.min(Math.max(iterations, 0), MAX_SPIN_COUNT);
   let state = await digest(algorithm, joinBytes([salt, passwordToUtf16Le(password)]));
-  for (let i = 0; i < iterations; i++) {
+  for (let i = 0; i < boundedIterations; i++) {
     state = await digest(algorithm, joinBytes([writeUint32Le(i), state]));
   }
   return state;

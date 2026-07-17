@@ -900,6 +900,14 @@ type CollectCrossRunWordOptions = {
   startChar: number;
 };
 
+/**
+ * Cap on the number of runs `collectCrossRunWord` traverses per call. A
+ * paragraph split into many tiny (including empty) runs would otherwise let
+ * the search walk the full run list for every word-start position it is
+ * invoked from, without the per-word text-length budget ever kicking in.
+ */
+const MAX_CROSS_RUN_SEGMENTS = 64;
+
 /** Collect one lexical word continued through adjacent formatting runs. */
 function collectCrossRunWord({
   block,
@@ -911,6 +919,9 @@ function collectCrossRunWord({
   let width = 0;
 
   for (let runIndex = startRunIndex; runIndex < block.runs.length; runIndex++) {
+    if (runIndex - startRunIndex >= MAX_CROSS_RUN_SEGMENTS) {
+      return undefined;
+    }
     const run = block.runs[runIndex];
     if (!run || !isTextRun(run)) {
       break;

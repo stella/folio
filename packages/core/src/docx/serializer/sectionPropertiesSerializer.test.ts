@@ -13,6 +13,21 @@ const parseSectPr = (xml: string) => {
   return parseSectionProperties(node);
 };
 
+describe("parseSectionProperties", () => {
+  test("clamps a hostile column count and page size to sane maximums", () => {
+    const section = parseSectPr(`
+      <w:sectPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:pgSz w:w="2000000000" w:h="2000000000"/>
+        <w:cols w:num="2000000000"/>
+      </w:sectPr>
+    `);
+
+    expect(section.pageWidth).toBe(31_680);
+    expect(section.pageHeight).toBe(31_680);
+    expect(section.columnCount).toBe(45);
+  });
+});
+
 describe("serializeSectionProperties", () => {
   test("keeps titlePg before bidi in sectPr order", () => {
     const xml = serializeSectionProperties({

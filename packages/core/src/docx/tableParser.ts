@@ -83,6 +83,14 @@ import {
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
+/**
+ * Sanity cap on `w:gridSpan` (and the derived table column count). Word's
+ * practical column limit is 63; a hostile/corrupt value here would blow up
+ * every downstream structure sized by column count (TableMap, border grids,
+ * cell-grid arrays).
+ */
+export const MAX_TABLE_COLUMNS = 63;
+
 // ============================================================================
 // TABLE MEASUREMENT PARSING
 // ============================================================================
@@ -1143,7 +1151,7 @@ export function parseTableCellProperties(
   if (gridSpanElement) {
     const gridSpan = parseNumericAttribute(gridSpanElement, "w", "val");
     if (gridSpan !== undefined && gridSpan > 1) {
-      formatting.gridSpan = gridSpan;
+      formatting.gridSpan = Math.min(gridSpan, MAX_TABLE_COLUMNS);
     }
   }
 

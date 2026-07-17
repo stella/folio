@@ -32,6 +32,12 @@ describe("parseSettings — w:defaultTabStop (§17.6.13)", () => {
     );
   });
 
+  test("floors near-zero values that would force thousands of tab stops per line", () => {
+    expect(parseSettings(wrap(`<w:defaultTabStop w:val="1"/>`)).defaultTabStop).toBe(
+      DEFAULT_TAB_STOP_TWIPS,
+    );
+  });
+
   test("ignores non-numeric values", () => {
     expect(parseSettings(wrap(`<w:defaultTabStop w:val="banana"/>`)).defaultTabStop).toBe(
       DEFAULT_TAB_STOP_TWIPS,
@@ -125,6 +131,15 @@ describe("parseSettings — document line-breaking rules", () => {
         `),
       ).lineBreakRules,
     ).toBeUndefined();
+  });
+
+  test("caps a hostile prohibited-character list instead of carrying it in full", () => {
+    const hostileCharacters = "、".repeat(10_000);
+    const settings = parseSettings(
+      wrap(`<w:noLineBreaksBefore w:lang="ja-JP" w:val="${hostileCharacters}"/>`),
+    );
+
+    expect(settings.lineBreakRules?.noLineBreaksBefore?.characters).toHaveLength(128);
   });
 });
 

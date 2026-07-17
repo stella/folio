@@ -170,4 +170,34 @@ describe("parseGroupDrawing", () => {
     expect(svg).toContain('href="data:image/png;base64,c2Vjb25k"');
     expect(svg).toContain('<clipPath id="group-picture-1">');
   });
+
+  test("bounds a group of large text boxes instead of embedding every shape unbounded", () => {
+    const bigText = "x".repeat(20_000);
+    const shapes = Array.from(
+      { length: 256 },
+      () =>
+        `<wps:wsp><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1000" cy="1000"/></a:xfrm></wps:spPr><wps:txbx><w:txbxContent><w:p><w:r><w:t>${bigText}</w:t></w:r></w:p></w:txbxContent></wps:txbx></wps:wsp>`,
+    ).join("");
+    const drawing = parseXmlDocument(`
+      <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+        xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+        xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+        <wp:anchor>
+          <wp:extent cx="2000000" cy="1000000"/>
+          <wp:wrapTopAndBottom/>
+          <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup">
+            <wpg:wgp>${shapes}</wpg:wgp>
+          </a:graphicData></a:graphic>
+        </wp:anchor>
+      </w:drawing>
+    `);
+
+    if (!drawing) {
+      throw new Error("Expected drawing fixture");
+    }
+
+    expect(parseGroupDrawing(drawing)).toBeNull();
+  });
 });

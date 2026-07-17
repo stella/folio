@@ -45,6 +45,20 @@ import {
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
+/**
+ * Sanity cap on `w:cols/@w:num`. Word's column picker tops out well below
+ * this; a hostile/corrupt value here would force the layout engine to
+ * generate a proportional band per column.
+ */
+const MAX_SECTION_COLUMNS = 45;
+
+/**
+ * Sanity cap on `w:pgSz` `@w:w`/`@w:h`, in twips (~22in). Matches the
+ * existing `w:defaultTabStop` cap (`settingsParser.ts`) and bounds the
+ * ruler tick generators, which are sized off the page dimensions.
+ */
+const MAX_PAGE_DIMENSION_TWIPS = 31_680;
+
 const serializedSectionPropertyChildNames = new Set([
   "headerReference",
   "footerReference",
@@ -337,13 +351,13 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
     // Width in twips
     const w = parseNumericAttribute(pgSz, "w", "w");
     if (w !== undefined) {
-      props.pageWidth = w;
+      props.pageWidth = Math.min(w, MAX_PAGE_DIMENSION_TWIPS);
     }
 
     // Height in twips
     const h = parseNumericAttribute(pgSz, "w", "h");
     if (h !== undefined) {
-      props.pageHeight = h;
+      props.pageHeight = Math.min(h, MAX_PAGE_DIMENSION_TWIPS);
     }
 
     // Orientation
@@ -410,7 +424,7 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
     // Number of columns
     const num = parseNumericAttribute(cols, "w", "num");
     if (num !== undefined) {
-      props.columnCount = num;
+      props.columnCount = Math.min(num, MAX_SECTION_COLUMNS);
     }
 
     // Space between columns in twips

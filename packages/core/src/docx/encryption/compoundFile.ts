@@ -132,11 +132,24 @@ const loadSector = (file: Uint8Array, header: CompoundHeader, sectorId: number):
 
 const loadFatSectorIds = (file: Uint8Array, header: CompoundHeader): number[] => {
   const ids = [...header.headerDifat];
+  // A hostile `difatSectorCount` (up to 2^32-1) would otherwise force this
+  // loop to run far more times than the file could possibly contain DIFAT
+  // sectors; a chain that revisits a sector could spin for its full
+  // declared length even at a capped count. Bound the loop by the sectors
+  // the file can actually hold and guard against a cycle, mirroring
+  // `followSectorChain`.
+  const maxDifatSectors = Math.ceil(file.length / header.sectorBytes);
+  const stepLimit = Math.min(header.difatSectorCount, maxDifatSectors);
+  const seen = new Set<number>();
   let chain = header.difatStart;
-  for (let step = 0; step < header.difatSectorCount; step++) {
+  for (let step = 0; step < stepLimit; step++) {
     if (chain === SECTOR_END || chain === SECTOR_FREE) {
       break;
     }
+    if (seen.has(chain)) {
+      throw new Error(`DIFAT chain loop at sector ${chain}`);
+    }
+    seen.add(chain);
     const sector = loadSector(file, header, chain);
     const view = viewOf(sector);
     const slotsPerSector = header.sectorBytes / 4 - 1;

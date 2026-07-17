@@ -83,4 +83,15 @@ describe("DOCX conformance detection", () => {
       DOCX_CONFORMANCE_CLASSES.TRANSITIONAL,
     );
   });
+
+  test("scans a large quote-heavy tag prefix with no closing '>' in linear time", () => {
+    // A regex-based scanner with `(?:[^>"']|"[^"]*"|'[^']*')*` here is
+    // susceptible to catastrophic backtracking once no terminating `>`
+    // exists; the hand-rolled scanner must resolve this in one linear pass.
+    const hostile = `<x:document ${'"'.repeat(65_000)}`;
+    const start = performance.now();
+
+    expect(detectDocxConformanceClass(hostile)).toBe(DOCX_CONFORMANCE_CLASSES.UNKNOWN);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
 });

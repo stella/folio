@@ -130,6 +130,26 @@ const requireInt = (attrs: Record<string, string>, name: string, element: string
 const requireBase64 = (attrs: Record<string, string>, name: string, element: string): Uint8Array =>
   decodeBase64(requireAttr(attrs, name, element));
 
+/**
+ * Cap on `encryptedKey/@spinCount`. MS-OFFCRYPTO's documented default is
+ * 100,000; a hostile/corrupt value here would drive `hashPassword`'s
+ * per-iteration WebCrypto digest loop (agileDecryption.ts) an
+ * attacker-chosen number of times, so reject anything past a generous
+ * multiple of that default instead of trusting the file.
+ */
+export const MAX_SPIN_COUNT = 200_000;
+
+const requireSpinCount = (attrs: Record<string, string>, element: string): number => {
+  const spinCount = requireInt(attrs, "spinCount", element);
+  if (spinCount < 0 || spinCount > MAX_SPIN_COUNT) {
+    throw new DocxEncryptionError({
+      code: DOCX_ENCRYPTION_ERROR_CODES.DECRYPTION_FAILED,
+      message: `EncryptionInfo <${element}> attribute "spinCount" out of range: ${spinCount}`,
+    });
+  }
+  return spinCount;
+};
+
 const parseAgileXml = (xmlBytes: Uint8Array): AgileKeyMaterial => {
   const xml = new TextDecoder("utf-8").decode(xmlBytes);
   const keyDataTag = findElement(xml, "keyData");
@@ -154,7 +174,7 @@ const parseAgileXml = (xmlBytes: Uint8Array): AgileKeyMaterial => {
     cipherBlockBytes: requireInt(keyData, "blockSize", "keyData"),
     cipherName: requireAttr(keyData, "cipherAlgorithm", "keyData"),
     cipherMode: requireAttr(keyData, "cipherChaining", "keyData"),
-    passwordIterations: requireInt(encryptedKey, "spinCount", "encryptedKey"),
+    passwordIterations: requireSpinCount(encryptedKey, "encryptedKey"),
     passwordSalt: requireBase64(encryptedKey, "saltValue", "encryptedKey"),
     passwordHash: requireAttr(encryptedKey, "hashAlgorithm", "encryptedKey"),
     passwordKeyBits: requireInt(encryptedKey, "keyBits", "encryptedKey"),

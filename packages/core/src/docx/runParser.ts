@@ -73,6 +73,17 @@ import {
 import type { XmlElement } from "./xmlParser";
 
 /**
+ * Sanity cap on `w:lang` `@w:val`/`@w:eastAsia`/`@w:bidi` tag length. BCP-47
+ * tags top out well under this; a hostile/corrupt tag here would drive the
+ * hyphenation dictionary lookup and segmenter cache keying with an
+ * attacker-sized string per run.
+ */
+const MAX_LANGUAGE_TAG_LENGTH = 35;
+
+const truncateLanguageTag = (value: string | undefined): string | undefined =>
+  value === undefined ? undefined : value.slice(0, MAX_LANGUAGE_TAG_LENGTH);
+
+/**
  * Parse color value from attributes
  */
 function parseColorValue(
@@ -523,9 +534,9 @@ export function parseRunProperties(
 
   const lang = propertyChildren.lang;
   if (lang) {
-    const val = getAttribute(lang, "w", "val") || undefined;
-    const eastAsia = getAttribute(lang, "w", "eastAsia") || undefined;
-    const bidi = getAttribute(lang, "w", "bidi") || undefined;
+    const val = truncateLanguageTag(getAttribute(lang, "w", "val") || undefined);
+    const eastAsia = truncateLanguageTag(getAttribute(lang, "w", "eastAsia") || undefined);
+    const bidi = truncateLanguageTag(getAttribute(lang, "w", "bidi") || undefined);
     if (val || eastAsia || bidi) {
       formatting.language = {
         ...(val ? { val } : {}),

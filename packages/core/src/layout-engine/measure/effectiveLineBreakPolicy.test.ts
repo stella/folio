@@ -53,7 +53,7 @@ describe("resolveEffectiveLineBreakPolicy", () => {
     ).toEqual({
       locale: "ja-JP",
       kinsoku: true,
-      noLineBreaksBefore: "。",
+      noLineBreaksBefore: new Set(["。"]),
       useLegacyEthiopicAmharicRules: true,
     });
   });

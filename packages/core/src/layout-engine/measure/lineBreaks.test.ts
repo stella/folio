@@ -71,14 +71,14 @@ describe("findWordBreaks", () => {
   });
 
   test("applies document-specific kinsoku overrides", () => {
-    expect(findWordBreaks("中文測", { noLineBreaksBefore: "測" })).toEqual([1, 3]);
+    expect(findWordBreaks("中文測", { noLineBreaksBefore: new Set(["測"]) })).toEqual([1, 3]);
   });
 
   test("ignores custom kinsoku lists when kinsoku is disabled", () => {
     expect(
       findWordBreaks("中文測", {
         kinsoku: false,
-        noLineBreaksBefore: "測",
+        noLineBreaksBefore: new Set(["測"]),
       }),
     ).toEqual([1, 2, 3]);
   });
@@ -88,14 +88,14 @@ describe("findWordBreaks", () => {
       findWordBreaks("中文。」測", {
         locale: "ja-JP",
         kinsoku: true,
-        noLineBreaksBefore: "。",
+        noLineBreaksBefore: new Set(["。"]),
       }),
     ).toEqual([1, 3, 4, 5]);
     expect(
       findWordBreaks("中（文", {
         locale: "ja-JP",
         kinsoku: true,
-        noLineBreaksAfter: "測",
+        noLineBreaksAfter: new Set(["測"]),
       }),
     ).toEqual([1, 2, 3]);
   });
@@ -172,12 +172,14 @@ describe("isHangingPunctuation", () => {
   });
 
   test("includes document-specific prohibited line-start characters", () => {
-    expect(isHangingPunctuation("※", { locale: "ja-JP", noLineBreaksBefore: "※" })).toBe(true);
+    expect(
+      isHangingPunctuation("※", { locale: "ja-JP", noLineBreaksBefore: new Set(["※"]) }),
+    ).toBe(true);
     expect(
       isHangingPunctuation("※", {
         locale: "ja-JP",
         kinsoku: false,
-        noLineBreaksBefore: "※",
+        noLineBreaksBefore: new Set(["※"]),
       }),
     ).toBe(false);
   });
@@ -187,7 +189,7 @@ describe("isHangingPunctuation", () => {
       isHangingPunctuation("」", {
         locale: "ja-JP",
         kinsoku: true,
-        noLineBreaksBefore: "。",
+        noLineBreaksBefore: new Set(["。"]),
       }),
     ).toBe(false);
   });

@@ -50,6 +50,15 @@ describe("table cell marker visibility", () => {
   });
 });
 
+describe("table cell grid span cap", () => {
+  test("clamps a hostile gridSpan to the practical column cap", () => {
+    const root = parseXmlDocument(`<w:tcPr ${NS}><w:gridSpan w:val="2000000000"/></w:tcPr>`);
+    const formatting = parseTableCellProperties(root);
+
+    expect(formatting?.gridSpan).toBe(63);
+  });
+});
+
 describe("table cell merge revisions", () => {
   test("preserves original and applied vertical merge states", () => {
     const table = parseTableXml(`<w:tbl ${NS}>

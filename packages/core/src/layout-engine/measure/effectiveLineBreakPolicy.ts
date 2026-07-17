@@ -41,10 +41,10 @@ export const resolveEffectiveLineBreakPolicy = ({
     ...(locale ? { locale } : {}),
     ...(attrs?.kinsoku !== undefined ? { kinsoku: attrs.kinsoku } : {}),
     ...(before && languageMatches(before.language, locale)
-      ? { noLineBreaksBefore: before.characters }
+      ? { noLineBreaksBefore: toCodePointSet(before.characters) }
       : {}),
     ...(after && languageMatches(after.language, locale)
-      ? { noLineBreaksAfter: after.characters }
+      ? { noLineBreaksAfter: toCodePointSet(after.characters) }
       : {}),
     ...(rules?.useLegacyEthiopicAmharicRules ? { useLegacyEthiopicAmharicRules: true } : {}),
     ...(automaticHyphenation?.doNotHyphenateCaps !== undefined
@@ -126,3 +126,10 @@ const languageMatches = (ruleLanguage: string | undefined, locale: string | unde
   const active = locale.toLowerCase();
   return active === rule || active.startsWith(`${rule}-`) || rule.startsWith(`${active}-`);
 };
+
+/**
+ * Split an already length-capped kinsoku character list (settingsParser.ts)
+ * into a code-point Set so line-edge membership checks are O(1) instead of
+ * an O(n) `String.includes` scan per character measured.
+ */
+const toCodePointSet = (characters: string): ReadonlySet<string> => new Set(Array.from(characters));

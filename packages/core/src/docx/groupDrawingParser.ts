@@ -263,18 +263,27 @@ const createSvg = (
   media: Map<string, MediaFile> | undefined,
 ): string | null => {
   const children = getChildElements(group).slice(0, MAX_GROUP_SHAPES);
-  const content = children
-    .map((child, index) => {
-      const localName = getLocalName(child.name ?? "");
-      if (localName === "pic") {
-        return renderPicture(child, index, rels, media);
-      }
-      if (localName !== "wsp") {
-        return "";
-      }
-      return findChildByLocalName(child, "txbx") ? renderTextBox(child) : renderGeometry(child);
-    })
-    .join("");
+  // Accumulate incrementally and bail as soon as the budget is exceeded,
+  // rather than joining every child's markup (each of which can embed a
+  // large media data URL) and checking the total afterward — that would let
+  // a hostile group of otherwise-individually-bounded shapes build a
+  // multi-GB transient string before ever being rejected.
+  let content = "";
+  for (const [index, child] of children.entries()) {
+    const localName = getLocalName(child.name ?? "");
+    let piece: string;
+    if (localName === "pic") {
+      piece = renderPicture(child, index, rels, media);
+    } else if (localName === "wsp") {
+      piece = findChildByLocalName(child, "txbx") ? renderTextBox(child) : renderGeometry(child);
+    } else {
+      continue;
+    }
+    content += piece;
+    if (content.length > MAX_SVG_CHARACTERS) {
+      return null;
+    }
+  }
   if (!content) {
     return null;
   }

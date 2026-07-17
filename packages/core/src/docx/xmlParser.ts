@@ -886,6 +886,14 @@ export function findAllDeep(
 }
 
 /**
+ * Sanity cap on distinct `xmlns:*` declarations collected per element. Real
+ * documents declare a handful; a hostile element with thousands of unique
+ * prefixes would otherwise get replayed onto every captured `w:pict` rawXml
+ * subtree that inherits from it.
+ */
+const MAX_XMLNS_DECLARATIONS_PER_ELEMENT = 64;
+
+/**
  * Collect every `xmlns` / `xmlns:*` declaration from an element's attributes.
  *
  * The serializer's hard-coded root namespaces only cover canonical prefixes
@@ -901,6 +909,9 @@ export function collectXmlnsDeclarations(element: XmlElement): Record<string, st
     return out;
   }
   for (const [key, value] of Object.entries(attrs)) {
+    if (Object.keys(out).length >= MAX_XMLNS_DECLARATIONS_PER_ELEMENT) {
+      break;
+    }
     if ((key === "xmlns" || key.startsWith("xmlns:")) && value !== undefined) {
       out[key] = String(value);
     }

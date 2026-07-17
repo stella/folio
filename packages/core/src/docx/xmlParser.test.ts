@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { elementToXml, parseXmlDocument } from "./xmlParser";
+import { collectXmlnsDeclarations, elementToXml, parseXmlDocument } from "./xmlParser";
+import type { XmlElement } from "./xmlParser";
 
 describe("OOXML parsing", () => {
   test("preserves ordered nested elements and attributes", () => {
@@ -52,5 +53,17 @@ describe("OOXML parsing", () => {
     expect(document ? elementToXml(document) : "").toContain(
       '<w:binData w:name="image1">QUJDRA==</w:binData>',
     );
+  });
+});
+
+describe("collectXmlnsDeclarations", () => {
+  test("caps a hostile number of distinct xmlns declarations on one element", () => {
+    const attributes: Record<string, string> = {};
+    for (let i = 0; i < 10_000; i++) {
+      attributes[`xmlns:ns${i}`] = `urn:example:${i}`;
+    }
+    const element: XmlElement = { type: "element", name: "w:pict", attributes };
+
+    expect(Object.keys(collectXmlnsDeclarations(element))).toHaveLength(64);
   });
 });

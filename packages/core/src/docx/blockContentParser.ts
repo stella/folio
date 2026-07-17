@@ -124,6 +124,12 @@ type ComputeListMarkerOptions = {
   abstractCounters: Map<number, number[]>;
   restartedNumIds: Set<number>;
   previousList: PreviousListState;
+  /**
+   * `numId`s sharing each `abstractNumId`, populated as each `numId` is
+   * first seen. Lets resume-propagation below look up sibling instances
+   * directly instead of scanning every `numId` ever seen in the document.
+   */
+  siblingNumIdsByAbstractNumId: Map<number, Set<number>>;
 };
 
 const computeListMarker = (
@@ -134,6 +140,7 @@ const computeListMarker = (
     abstractCounters,
     restartedNumIds,
     previousList,
+    siblingNumIdsByAbstractNumId,
   }: ComputeListMarkerOptions,
 ): void => {
   const listRendering = paragraph.listRendering;
@@ -163,6 +170,14 @@ const computeListMarker = (
   }
 
   const abstractNumId = numbering.getAbstractNumId(numId);
+  if (firstEncounter && abstractNumId !== null) {
+    let siblingNumIds = siblingNumIdsByAbstractNumId.get(abstractNumId);
+    if (!siblingNumIds) {
+      siblingNumIds = new Set();
+      siblingNumIdsByAbstractNumId.set(abstractNumId, siblingNumIds);
+    }
+    siblingNumIds.add(numId);
+  }
   const styleNumbering = paragraph.formatting?.numPrFromStyle;
   let resumedAbstractCounters: number[] | undefined;
   const resumesRestartedInstance =
@@ -241,10 +256,12 @@ const computeListMarker = (
 
   if (abstractNumId !== null) {
     if (resumedAbstractCounters) {
-      for (const [otherNumId, otherCounters] of listCounters) {
+      const siblingNumIds = siblingNumIdsByAbstractNumId.get(abstractNumId);
+      for (const otherNumId of siblingNumIds ?? []) {
+        const otherCounters = listCounters.get(otherNumId);
         if (
           otherNumId === numId ||
-          numbering.getAbstractNumId(otherNumId) !== abstractNumId ||
+          !otherCounters ||
           !otherCounters.every((value, index) => Object.is(value, resumedAbstractCounters[index]))
         ) {
           continue;
@@ -295,6 +312,7 @@ type ParseBlockContentState = {
   abstractCounters: Map<number, number[]>;
   restartedNumIds: Set<number>;
   previousList: PreviousListState;
+  siblingNumIdsByAbstractNumId: Map<number, Set<number>>;
   options: ParseBlockContentOptions | undefined;
 };
 
@@ -312,6 +330,7 @@ export const parseBlockContent = (
     abstractCounters: new Map(),
     restartedNumIds: new Set(),
     previousList: { abstractNumId: null, fromStyle: false, numId: null },
+    siblingNumIdsByAbstractNumId: new Map(),
     // Accumulate the container's own xmlns onto the inherited in-scope set so a
     // captured VML `w:pict` replay resolves prefixes scoped on this level too.
     options: {
@@ -347,6 +366,7 @@ const parseBlockContentWithState = (
         abstractCounters: state.abstractCounters,
         restartedNumIds: state.restartedNumIds,
         previousList: state.previousList,
+        siblingNumIdsByAbstractNumId: state.siblingNumIdsByAbstractNumId,
       });
       content.push(paragraph);
       continue;

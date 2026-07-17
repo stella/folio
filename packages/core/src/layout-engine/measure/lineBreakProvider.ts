@@ -23,9 +23,9 @@ export type LineBreakPolicy = {
   /** Apply East Asian first/last-character restrictions (`w:kinsoku`). */
   kinsoku?: boolean;
   /** Document replacement list: characters that may not begin a line. */
-  noLineBreaksBefore?: string;
+  noLineBreaksBefore?: ReadonlySet<string>;
   /** Document replacement list: characters that may not end a line. */
-  noLineBreaksAfter?: string;
+  noLineBreaksAfter?: ReadonlySet<string>;
   /** Use the legacy Ethiopic/Amharic compatibility behavior. */
   useLegacyEthiopicAmharicRules?: boolean;
   /** Keep words made entirely of capital letters unhyphenated. */
@@ -186,14 +186,14 @@ const isProhibitedLineStart = (character: string | undefined, policy?: LineBreak
   character !== undefined &&
   policy?.kinsoku !== false &&
   (policy?.noLineBreaksBefore !== undefined
-    ? policy.noLineBreaksBefore.includes(character)
+    ? policy.noLineBreaksBefore.has(character)
     : DEFAULT_PROHIBITED_LINE_START.has(character));
 
 const isProhibitedLineEnd = (character: string | undefined, policy?: LineBreakPolicy): boolean =>
   character !== undefined &&
   policy?.kinsoku !== false &&
   (policy?.noLineBreaksAfter !== undefined
-    ? policy.noLineBreaksAfter.includes(character)
+    ? policy.noLineBreaksAfter.has(character)
     : DEFAULT_PROHIBITED_LINE_END.has(character));
 
 const isCjkLineBreakParticipant = (
@@ -201,11 +201,15 @@ const isCjkLineBreakParticipant = (
   policy?: LineBreakPolicy,
 ): boolean =>
   character !== undefined &&
+  // Basic CJK character-by-character breaking applies regardless of the
+  // kinsoku setting; only the prohibited-edge participant checks below are
+  // kinsoku-gated, matching `isProhibitedLineStart`/`isProhibitedLineEnd`.
   (CJK_SCRIPT.test(character) ||
-    DEFAULT_PROHIBITED_LINE_START.has(character) ||
-    DEFAULT_PROHIBITED_LINE_END.has(character) ||
-    policy?.noLineBreaksBefore?.includes(character) === true ||
-    policy?.noLineBreaksAfter?.includes(character) === true);
+    (policy?.kinsoku !== false &&
+      (DEFAULT_PROHIBITED_LINE_START.has(character) ||
+        DEFAULT_PROHIBITED_LINE_END.has(character) ||
+        policy?.noLineBreaksBefore?.has(character) === true ||
+        policy?.noLineBreaksAfter?.has(character) === true)));
 
 const isLegacyEthiopicBreakCharacter = (
   character: string | undefined,

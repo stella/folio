@@ -792,6 +792,23 @@ describe("measureParagraph cross-run line breaking", () => {
       expect(justifiedMeasure.lines).toHaveLength(1);
     }, fakeMeasure);
   });
+
+  test("bounds cross-run word collection for a word split across many tiny runs", () => {
+    withFakeTextMeasure(
+      () => {
+        // 100 single-character runs, well past MAX_CROSS_RUN_SEGMENTS (64),
+        // forming one word with no line-break opportunity.
+        const runs: Run[] = Array.from({ length: 100 }, (_, index) => ({
+          kind: "text",
+          text: String.fromCharCode(97 + (index % 26)),
+        }));
+        const { lines } = measureParagraph(paragraph(runs), 2000);
+
+        expect(lines).toHaveLength(1);
+      },
+      { charWidth: fixedCharWidth(10) },
+    );
+  });
 });
 
 describe("automatic hyphenation", () => {

@@ -45,6 +45,15 @@ import { layoutTextBoxContent } from "./textBoxParagraphLayout";
 const NO_WRAP_MEASURE_WIDTH = 1_000_000;
 
 /**
+ * Sanity cap on the table column count derived from summed cell colSpans
+ * when a table has no `tblGrid`/explicit column widths. Mirrors the
+ * `MAX_TABLE_COLUMNS` clamp applied to `w:gridSpan` at parse time
+ * (`docx/tableParser.ts`); enforced again here since a hostile colSpan sum
+ * would otherwise size the fallback column array and cell grid unbounded.
+ */
+const MAX_TABLE_COLUMNS = 63;
+
+/**
  * Check if an image run is a *text-wrapping* floating image — it
  * occupies an exclusion zone the body text should flow around.
  *
@@ -123,10 +132,13 @@ export function measureTableBlock(
 
   if (columnWidths.length === 0 && tableBlock.rows.length > 0) {
     // Determine total columns from first row's colSpans
-    const colCount = tableBlock.rows[0]!.cells.reduce(
-      // SAFETY: rows.length > 0
-      (sum, cell) => sum + (cell.colSpan ?? 1),
-      0,
+    const colCount = Math.min(
+      tableBlock.rows[0]!.cells.reduce(
+        // SAFETY: rows.length > 0
+        (sum, cell) => sum + (cell.colSpan ?? 1),
+        0,
+      ),
+      MAX_TABLE_COLUMNS,
     );
     const totalWidth = explicitWidthPx ?? contentWidth;
     const equalWidth = totalWidth / Math.max(1, colCount);
