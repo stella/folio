@@ -1169,8 +1169,8 @@ export function parseTableCellProperties(
 
   // Hide mark (w:hideMark)
   const hideMark = parseBooleanElement(findChild(tcPrElement, "w", "hideMark"));
-  if (hideMark) {
-    formatting.hideMark = true;
+  if (hideMark !== undefined) {
+    formatting.hideMark = hideMark;
   }
 
   // Conditional format style (w:cnfStyle)

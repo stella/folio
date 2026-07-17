@@ -4,7 +4,12 @@ import {
   serializeTableCellFormatting,
   serializeTableRowFormatting,
 } from "./serializer/tableSerializer";
-import { parseTable, parseTableMeasurement, parseTableRowProperties } from "./tableParser";
+import {
+  parseTable,
+  parseTableCellProperties,
+  parseTableMeasurement,
+  parseTableRowProperties,
+} from "./tableParser";
 import type { XmlElement } from "./xmlParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -32,6 +37,16 @@ describe("parseTableMeasurement", () => {
 
   test("keeps canonical pct integers unchanged", () => {
     expect(tblW("5000")).toEqual({ value: 5000, type: "pct" });
+  });
+});
+
+describe("table cell marker visibility", () => {
+  test("preserves an explicit false value so it can override a table style", () => {
+    const root = parseXmlDocument(`<w:tcPr ${NS}><w:hideMark w:val="false"/></w:tcPr>`);
+    const formatting = parseTableCellProperties(root);
+
+    expect(formatting?.hideMark).toBe(false);
+    expect(serializeTableCellFormatting(formatting)).toContain('<w:hideMark w:val="false"/>');
   });
 });
 

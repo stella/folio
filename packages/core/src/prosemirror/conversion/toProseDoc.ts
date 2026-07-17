@@ -1853,6 +1853,10 @@ function convertTableCell({
   if (formatting?.noWrap !== undefined) {
     attrs.noWrap = formatting.noWrap;
   }
+  const hideMark = formatting?.hideMark ?? conditionalStyle?.tcPr?.hideMark;
+  if (hideMark !== undefined) {
+    attrs.hideMark = hideMark;
+  }
   if (effectiveFormatting.borders) {
     attrs.borders = effectiveFormatting.borders;
   }

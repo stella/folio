@@ -1177,6 +1177,32 @@ describe("toFlowBlocks table cell formatting", () => {
     expect(row.cells.at(1)?.noWrap).toBeUndefined();
   });
 
+  test("suppresses an empty terminal paragraph when the cell marker is hidden", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", { hideMark: true }, [schema.node("paragraph")]),
+          schema.node("tableCell", null, [schema.node("paragraph")]),
+        ]),
+      ]),
+    ]);
+
+    const table = toFlowBlocks(doc).at(0);
+    if (table?.kind !== "table") {
+      throw new Error("Expected table block");
+    }
+    const hiddenMarkerParagraph = table.rows.at(0)?.cells.at(0)?.blocks.at(0);
+    const ordinaryParagraph = table.rows.at(0)?.cells.at(1)?.blocks.at(0);
+
+    expect(hiddenMarkerParagraph?.kind).toBe("paragraph");
+    expect(ordinaryParagraph?.kind).toBe("paragraph");
+    if (hiddenMarkerParagraph?.kind !== "paragraph" || ordinaryParagraph?.kind !== "paragraph") {
+      return;
+    }
+    expect(hiddenMarkerParagraph.attrs?.suppressEmptyParagraphHeight).toBe(true);
+    expect(ordinaryParagraph.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+  });
+
   test("threads the cell text direction into the engine TableCell", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [

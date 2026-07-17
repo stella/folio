@@ -2229,6 +2229,13 @@ function convertTableCell(
   }
 
   const attrs = expectTableCellAttrs(node);
+  if (
+    attrs.hideMark &&
+    trailingBlock?.kind === "paragraph" &&
+    trailingBlock.runs.every((run) => run.kind === "text" && run.text.length === 0)
+  ) {
+    trailingBlock.attrs = { ...trailingBlock.attrs, suppressEmptyParagraphHeight: true };
+  }
 
   // Convert cell margins (twips) to pixel padding
   // OOXML TableNormal defaults: top=0, bottom=0, left=108 twips (~7px), right=108 twips (~7px)

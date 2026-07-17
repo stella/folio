@@ -667,6 +667,8 @@ export type TableCellAttrs = {
   textDirection?: NonNullable<TableCellFormatting["textDirection"]>;
   /** No text wrapping in cell */
   noWrap?: boolean;
+  /** Effective end-of-cell marker suppression (`w:hideMark`). */
+  hideMark?: boolean;
   /** Cell borders — full BorderSpec per side (style, color, size) */
   borders?: TableCellBorders;
   /** Cell margins/padding in twips per side */
