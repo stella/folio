@@ -175,6 +175,7 @@ export type DocumentBody = {
 
 // @public
 export type DocumentSettings = {
+    compatibilityMode?: number;
     defaultTabStop: number;
     evenAndOddHeaders?: boolean;
     themeFontLang?: {
