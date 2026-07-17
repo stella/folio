@@ -974,7 +974,15 @@ describe("toProseDoc", () => {
             {
               styleId: "ShadedTable",
               type: "table",
-              rPr: { color: { rgb: "365F91" } },
+              rPr: {
+                color: { rgb: "365F91" },
+                fontFamily: {
+                  asciiTheme: "majorHAnsi",
+                  ascii: "Calibri",
+                  hAnsiTheme: "majorHAnsi",
+                  hAnsi: "Calibri",
+                },
+              },
               tblStylePr: [{ type: "firstRow", rPr: { bold: true } }],
             },
           ],

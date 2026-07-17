@@ -272,9 +272,16 @@ function convertParagraph(
 
   // Get style-based text formatting (font size, bold, color, etc.)
   let styleRunFormatting: TextFormatting | undefined;
+  let paragraphStyleRunFormatting: TextFormatting | undefined;
   if (styleResolver) {
     const resolved = styleResolver.resolveParagraphStyle(paragraph.formatting?.styleId);
     styleRunFormatting = resolved.runFormatting;
+    const paragraphStyle = paragraph.formatting?.styleId
+      ? styleResolver.getStyle(paragraph.formatting.styleId)
+      : styleResolver.getDefaultParagraphStyle();
+    if (paragraphStyle?.type === "paragraph") {
+      paragraphStyleRunFormatting = paragraphStyle.rPr;
+    }
   }
 
   const paragraphRunFormatting = resolveRunFormattingWithoutDefaults(
@@ -288,7 +295,17 @@ function convertParagraph(
     inheritableParagraphRunFormatting =
       stripParagraphMarkFormattingForBodyRuns(paragraphRunFormatting);
   }
-  const baseRunFormatting = mergeTextFormatting(styleRunFormatting, extraRunFormatting);
+  let baseRunFormatting = mergeTextFormatting(styleRunFormatting, extraRunFormatting);
+  // A table style can carry legacy theme/fallback fonts from the template
+  // that created it. Word keeps the paragraph style's authored font in that
+  // case while still applying the table style's color, emphasis, and size.
+  // Preserve the paragraph-style font slots over the table contribution;
+  // direct run formatting still wins later in getInheritedRunFormatting.
+  if (paragraphStyleRunFormatting?.fontFamily) {
+    baseRunFormatting = mergeTextFormatting(baseRunFormatting, {
+      fontFamily: paragraphStyleRunFormatting.fontFamily,
+    });
+  }
   // With a named paragraph style, w:pPr/w:rPr formats the paragraph mark and
   // only fills gaps in the style's body-run defaults. Style-less generated
   // documents use the paragraph mark as their highest-precedence run default.
