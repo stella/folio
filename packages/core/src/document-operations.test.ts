@@ -57,7 +57,7 @@ describe("document operation contract", () => {
         insertTableColumn: ["direct", "tracked-changes"],
         deleteTableColumn: ["direct", "tracked-changes"],
         mergeTableCells: ["direct"],
-        splitTableCell: ["direct"],
+        splitTableCell: ["direct", "tracked-changes"],
       },
       preconditions: ["blockTextHash"],
       stories: ["main", "header", "footer", "footnote", "endnote"],
@@ -82,6 +82,7 @@ describe("document operation contract", () => {
     );
     expect(isFolioDocumentOperationModeSupported("mergeTableCells", "direct")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("splitTableCell", "direct")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("splitTableCell", "tracked-changes")).toBe(true);
     expect(
       Reflect.apply(isFolioDocumentOperationModeSupported, null, ["unknownOperation", "direct"]),
     ).toBe(false);

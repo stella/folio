@@ -398,7 +398,6 @@ describe("parseSuggestChangesInput", () => {
       "commentOnBlock",
       "insertSignatureTable",
       "mergeTableCells",
-      "splitTableCell",
     ]) {
       const result = parseSuggestChangesInput({ operations: [supersetOperation(excludedType)] });
       expect(result.ok, excludedType).toBe(false);

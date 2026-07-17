@@ -1052,7 +1052,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                     readonly additionalProperties: false;
                 }, {
                     readonly type: "object";
-                    readonly description: "Split one spanned table cell into individual cells. Direct mode only.";
+                    readonly description: "Split one spanned table cell into individual cells. Tracked mode supports vertical-only spans.";
                     readonly properties: {
                         readonly type: {
                             readonly type: "string";
@@ -2063,7 +2063,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
         readonly additionalProperties: false;
     }, {
         readonly type: "object";
-        readonly description: "Split one spanned table cell into individual cells. Direct mode only.";
+        readonly description: "Split one spanned table cell into individual cells. Tracked mode supports vertical-only spans.";
         readonly properties: {
             readonly type: {
                 readonly type: "string";
