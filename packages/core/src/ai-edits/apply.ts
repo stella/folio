@@ -657,22 +657,21 @@ const mergeTrackedVerticalTableCells = ({
     return null;
   }
 
-  const continuationCells = cells.slice(1).map(({ cell }) => {
+  const continuationCells: TableCell[] = [];
+  for (const { cell } of cells.slice(1)) {
     const continuation = standaloneTableCellFromProseMirror(cell);
-    return {
-      ...continuation,
-      formatting: {
-        ...continuation.formatting,
-        vMerge: "continue" as const,
-      },
-      structuralChange: {
-        type: "tableCellMerge" as const,
-        info: { id: revisionId, author, date },
-        verticalMerge: "continue" as const,
-        verticalMergeOriginal: "rest" as const,
-      },
+    continuation.formatting = {
+      ...continuation.formatting,
+      vMerge: "continue",
     };
-  });
+    continuation.structuralChange = {
+      type: "tableCellMerge",
+      info: { id: revisionId, author, date },
+      verticalMerge: "continue",
+      verticalMergeOriginal: "rest",
+    };
+    continuationCells.push(continuation);
+  }
 
   const nextTr = mergeTableRectangle(tr, tablePosition, table, rectangle);
   if (!nextTr) {
