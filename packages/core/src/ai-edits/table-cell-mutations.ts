@@ -294,7 +294,7 @@ export const splitTableRectangle = ({
   for (const insertion of insertions) {
     tr = tr.insert(tr.mapping.slice(mapFrom).map(insertion.position, 1), insertion.cell);
   }
-  return tr.setNodeMarkup(tableStart + cellPosition, undefined, attrsByColumn.at(0));
+  return tr.setNodeMarkup(tableStart + cellPosition, undefined, attrsByColumn[0]);
 };
 
 export const splitTrackedVerticalTableCell = ({
@@ -357,7 +357,7 @@ export const splitTrackedVerticalTableCell = ({
       return null;
     }
     const insertedCell = source
-      ? trackedSplitCellFromStoredSource(cell, source, marker)
+      ? trackedSplitCellFromStoredSource({ origin: cell, source, marker })
       : cell.type.createAndFill({
           ...cell.attrs,
           rowspan: 1,
@@ -405,11 +405,17 @@ type TrackedSplitCellMarker = {
   verticalMergeOriginal: "continue";
 };
 
-const trackedSplitCellFromStoredSource = (
-  origin: PMNode,
-  source: TableCell,
-  marker: TrackedSplitCellMarker,
-): PMNode | null => {
+type TrackedSplitCellFromStoredSourceOptions = {
+  origin: PMNode;
+  source: TableCell;
+  marker: TrackedSplitCellMarker;
+};
+
+const trackedSplitCellFromStoredSource = ({
+  origin,
+  source,
+  marker,
+}: TrackedSplitCellFromStoredSourceOptions): PMNode | null => {
   const formatting = formattingWithoutVerticalMerge(source.formatting);
   const restoredSource: TableCell = {
     type: "tableCell",
