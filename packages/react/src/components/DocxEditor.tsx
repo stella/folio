@@ -36,7 +36,7 @@ import {
 // Paginated editor
 import type { Mark } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
-import { closeHistory } from "prosemirror-history";
+import { closeHistory, undo as historyUndo } from "prosemirror-history";
 import { useTranslations } from "use-intl";
 
 import {
@@ -564,6 +564,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const [outlineHeadings, setHeadingInfos] = useState<HeadingInfo[]>([]);
 
   const [, setTrackedChanges] = useState<TrackedChangeEntry[]>([]);
+  // Mirrors the tracked-change entries so the sidebar accept/reject handlers
+  // can resolve a specific `revisionId` from a (from, to) range without
+  // subscribing to the state value (avoids extra re-renders / dep churn).
+  const trackedChangesRef = useRef<TrackedChangeEntry[]>([]);
   const [anchorPositions, setAnchorPositions] =
     useState<Map<string, number>>(EMPTY_ANCHOR_POSITIONS);
 
@@ -633,6 +637,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         merged.push({ ...entry });
       }
     }
+    trackedChangesRef.current = merged;
     setTrackedChanges(merged);
   }, []);
 
@@ -2972,7 +2977,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         ) {
           return { status: "rejected", undoHandle, reason: "documentChanged" };
         }
-        if (!(pagedEditorRef.current?.undo() ?? false)) {
+        // Undo directly against the body view we just validated, rather than
+        // `pagedEditorRef.current.undo()`, which routes to whatever story
+        // (header/footer/note) currently has editor focus. Dispatching on
+        // `view` here is equivalent to what the routed undo would do when the
+        // body is active, but it can never accidentally undo an edit in a
+        // different story while reporting this AI operation as undone.
+        if (!historyUndo(view.state, view.dispatch)) {
           return { status: "rejected", undoHandle, reason: "documentChanged" };
         }
 
@@ -3815,16 +3826,32 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     setCommentSelectionRange(null);
     setAddCommentYPosition(null);
   }, [commentSelectionRange, setAddCommentYPosition, setCommentSelectionRange, setIsAddingComment]);
+  // Resolve the specific tracked-change `revisionId` for a (from, to) range
+  // reported by the sidebar. The 2-arg acceptChange/rejectChange commands
+  // treat a missing revisionId as "match every mark in range", which would
+  // also resolve an unrelated collaborator's tracked change sharing the same
+  // paragraph/row span — so callers below always resolve a revisionId first
+  // and go through the revision-scoped command instead.
+  const resolveSidebarChangeRevisionId = useCallback((from: number, to: number) => {
+    const entry = trackedChangesRef.current.find((candidate) => {
+      return candidate.from === from && candidate.to === to;
+    });
+    return entry?.revisionId ?? null;
+  }, []);
   const handleSidebarAcceptChange = useCallback(
     (from: number, to: number) => {
       const view = pagedEditorRef.current?.getView();
       if (!view) {
         return;
       }
-      acceptChange(from, to)(view.state, view.dispatch);
+      const revisionId = resolveSidebarChangeRevisionId(from, to);
+      if (revisionId === null) {
+        return;
+      }
+      acceptAIEditRevision(revisionId)(view.state, view.dispatch);
       extractTrackedChanges();
     },
-    [extractTrackedChanges],
+    [extractTrackedChanges, resolveSidebarChangeRevisionId],
   );
   const handleSidebarRejectChange = useCallback(
     (from: number, to: number) => {
@@ -3832,10 +3859,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       if (!view) {
         return;
       }
-      rejectChange(from, to)(view.state, view.dispatch);
+      const revisionId = resolveSidebarChangeRevisionId(from, to);
+      if (revisionId === null) {
+        return;
+      }
+      rejectAIEditRevision(revisionId)(view.state, view.dispatch);
       extractTrackedChanges();
     },
-    [extractTrackedChanges],
+    [extractTrackedChanges, resolveSidebarChangeRevisionId],
   );
   const commentsPageWidth = history.state?.package.document.finalSectionProperties?.pageWidth;
   const commentsSidebarOverlay = useMemo(() => {

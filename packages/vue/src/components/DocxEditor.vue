@@ -1043,7 +1043,7 @@ const currentWatermark = computed<Watermark | undefined>(() => {
 
 const currentTableProperties = computed(() => {
   void stateTick.value;
-  const view = editorView.value;
+  const view = activeEditorView.value;
   if (!view) {
     return {};
   }
@@ -1309,7 +1309,7 @@ type TablePropertiesUpdate = {
 };
 
 function handleTablePropertiesApply(properties: TablePropertiesUpdate): void {
-  const view = editorView.value;
+  const view = activeEditorView.value;
   const factory = getCommands()["setTableProperties"];
   if (!view || !factory) {
     return;
@@ -1466,9 +1466,13 @@ const { exposed } = useDocxEditorRefApi({
   author: () => props.author,
   // Mirror React's applyAIEditOperations comment closure: mint the comment,
   // append it to the thread list, and hand back its id for the tracked-change
-  // mark that references it.
-  createAIEditComment: (text) => {
-    const comment = commentManagement.createComment(text);
+  // mark that references it. `author` is the resolved per-call operation
+  // author (useDocxEditorRefApi's `operationAuthor`, defaulting to
+  // `props.author`) — without threading it through, every AI-edit comment
+  // would always be attributed to `props.author`, ignoring a caller-supplied
+  // override.
+  createAIEditComment: (text, author) => {
+    const comment = commentManagement.createComment(text, undefined, author);
     commentManagement.pushComment(comment);
     return comment.id;
   },

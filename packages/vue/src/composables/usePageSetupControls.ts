@@ -36,6 +36,7 @@ type MarginProperty = "marginLeft" | "marginRight" | "marginTop" | "marginBottom
 
 export function usePageSetupControls(opts: UsePageSetupControlsOptions) {
   function handlePageSetupApply(sp: Partial<SectionProperties>) {
+    if (opts.readOnly.value) return;
     const doc = opts.getDocument();
     if (!doc?.package?.document) return;
     const existing = doc.package.document.finalSectionProperties ?? {};

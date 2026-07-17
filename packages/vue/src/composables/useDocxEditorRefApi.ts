@@ -143,9 +143,12 @@ export type UseDocxEditorRefApiOptions = {
   /**
    * Mint a comment for an AI-edit operation that carries comment text, append
    * it to the thread list, and return its id (mirrors React's `createCommentId`
-   * closure over the comment manager). Wired from useCommentManagement.
+   * closure over the comment manager). Wired from useCommentManagement. The
+   * optional `author` lets each call site attribute the comment to the
+   * resolved per-call `operationAuthor` rather than always the editor's
+   * default author.
    */
-  createAIEditComment: (text: string) => number;
+  createAIEditComment: (text: string, author?: string) => number;
   /** Read and replace the current comment array for transactional undo. */
   getComments: () => Comment[];
   setComments: (comments: Comment[]) => void;
@@ -403,7 +406,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         snapshot,
         batch,
         author: operationAuthor,
-        createCommentId: opts.createAIEditComment,
+        createCommentId: (text) => opts.createAIEditComment(text, operationAuthor),
         createUndoHandle: () => ({
           type: "documentOperationUndo",
           id: `vue-${String(documentOperationUndoHandleCursor++)}`,
@@ -469,7 +472,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         operations,
         mode,
         author: operationAuthor,
-        createCommentId: opts.createAIEditComment,
+        createCommentId: (text) => opts.createAIEditComment(text, operationAuthor),
       });
     },
     acceptAIEditOperation: (revisionIds) => {

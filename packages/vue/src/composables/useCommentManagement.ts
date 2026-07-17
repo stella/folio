@@ -5,8 +5,9 @@
  * to our core primitives:
  *   - id allocation:      commentIdAllocator (createCommentIdAllocator, seed)
  *   - comment factory:    commentOps.createComment(allocator, ...)
- *   - accept / reject:    range-based acceptChange / rejectChange, located by
- *                         revisionId through queries.findChangeRange
+ *   - accept / reject:    revision-scoped acceptAIEditRevision / rejectAIEditRevision
+ *                         (by-id path) or range-based acceptChange / rejectChange
+ *                         (raw selection path)
  *
  * Controlled (`comments` prop set) vs uncontrolled: when controlled, the thread
  * list is read from the prop and every mutation only routes through
@@ -23,8 +24,12 @@ import {
   seedCommentAllocator,
 } from "@stll/folio-core/prosemirror/commentIdAllocator";
 import { createComment as coreCreateComment } from "@stll/folio-core/prosemirror/commentOps";
-import { findChangeRange } from "@stll/folio-core/prosemirror/queries";
-import { acceptChange, rejectChange } from "@stll/folio-core/prosemirror/commands/comments";
+import {
+  acceptChange,
+  rejectChange,
+  acceptAIEditRevision,
+  rejectAIEditRevision,
+} from "@stll/folio-core/prosemirror/commands/comments";
 
 export type UseCommentManagementOptions = {
   editorView: Ref<EditorView | null>;
@@ -51,8 +56,14 @@ export type UseCommentManagementReturn = {
   commentsDirty: ComputedRef<boolean>;
   /** Clear {@link commentsDirty} after a successful save. */
   clearCommentsDirty: () => void;
-  /** Build a comment with a freshly-allocated, collision-seeded id. */
-  createComment: (text: string, parentId?: number) => Comment;
+  /**
+   * Build a comment with a freshly-allocated, collision-seeded id.
+   * `authorOverride` lets a caller (AI-edit operations) mint a comment
+   * attributed to the resolved operation author instead of the editor's
+   * default `options.author()` — mirrors React's `applyAIEditOperations`
+   * closure, which creates each comment with the per-call `operationAuthor`.
+   */
+  createComment: (text: string, parentId?: number, authorOverride?: string) => Comment;
   /** Append a comment and emit the change. */
   pushComment: (comment: Comment) => void;
   /** Replace the whole list and emit the change (uncontrolled also stores it). */
@@ -104,11 +115,11 @@ export function useCommentManagement(
     setComments([...comments.value, comment]);
   }
 
-  function createComment(text: string, parentId?: number): Comment {
+  function createComment(text: string, parentId?: number, authorOverride?: string): Comment {
     // Raise the allocator above every id currently live in the model + doc so a
     // reply/new comment can never re-mint an existing comment or revision id.
     seedCommentAllocator(allocator, comments.value, options.editorView.value);
-    return coreCreateComment(allocator, text, options.author(), parentId);
+    return coreCreateComment(allocator, text, authorOverride ?? options.author(), parentId);
   }
 
   function seedFromDocument(): void {
@@ -155,10 +166,15 @@ export function useCommentManagement(
   function resolveChangeById(revisionId: number, accept: boolean): void {
     const view = options.editorView.value;
     if (!view) return;
-    const range = findChangeRange(view, revisionId);
-    if (!range) return;
-    const command = accept ? acceptChange : rejectChange;
-    command(range.from, range.to)(view.state, view.dispatch);
+    // Revision-scoped: acceptAIEditRevision/rejectAIEditRevision both locate
+    // the range for this specific revisionId AND thread it through as the
+    // match set, so only marks/structural changes carrying this id resolve.
+    // A plain range-based acceptChange(from, to)/rejectChange(from, to) here
+    // would treat the missing revisionId as "match everything in range,"
+    // which can also resolve an unrelated collaborator's tracked change
+    // sharing the same paragraph/row span.
+    const command = accept ? acceptAIEditRevision : rejectAIEditRevision;
+    command(revisionId)(view.state, view.dispatch);
   }
 
   function handleAcceptChangeById(revisionId: number): void {
