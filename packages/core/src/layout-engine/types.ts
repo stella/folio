@@ -377,6 +377,8 @@ export type ListNumPr = {
  */
 export type ParagraphAttrs = {
   alignment?: "left" | "center" | "right" | "justify";
+  /** Document-generation policy for justified line fitting. */
+  justificationCompatibility?: { type: "legacy" };
   /** East Asian first/last-character restrictions (`w:kinsoku`). */
   kinsoku?: boolean;
   /** Hanging punctuation (`w:overflowPunct`); defaults to enabled when omitted. */

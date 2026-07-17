@@ -334,6 +334,9 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     if (attrs.reserveEmptyOutlineHeight) {
       parts.push("outline-empty-reserve");
     }
+    if (attrs.justificationCompatibility) {
+      parts.push(`justify-compat:${attrs.justificationCompatibility.type}`);
+    }
     parts.push(...lineBreakPolicyCacheParts(attrs));
     const borders = attrs.borders;
     if (borders) {

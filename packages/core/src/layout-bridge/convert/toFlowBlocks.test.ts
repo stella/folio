@@ -33,6 +33,7 @@ describe("toFlowBlocks paragraph formatting", () => {
         schema.node("paragraph", { suppressAutoHyphens: true }, [schema.text("Hyphenation")]),
       ]),
       {
+        justificationCompatibility: { type: "legacy" },
         automaticHyphenation: {
           enabled: true,
           doNotHyphenateCaps: true,
@@ -45,6 +46,7 @@ describe("toFlowBlocks paragraph formatting", () => {
       kind: "paragraph",
       attrs: {
         suppressAutoHyphens: true,
+        justificationCompatibility: { type: "legacy" },
         automaticHyphenation: {
           enabled: true,
           doNotHyphenateCaps: true,

@@ -652,6 +652,7 @@ export type ConvertHeaderFooterOptions = {
   /** Document-wide `w:defaultTabStop` in twips — forwarded to toFlowBlocks. */
   defaultTabStopTwips?: number;
   lineBreakRules?: ToFlowBlocksOptions["lineBreakRules"];
+  justificationCompatibility?: ToFlowBlocksOptions["justificationCompatibility"];
   automaticHyphenation?: ToFlowBlocksOptions["automaticHyphenation"];
   /**
    * Relationship id of the source HF part. Stamped onto the returned
@@ -703,6 +704,9 @@ export function convertHeaderFooterToContent(
   if (options.lineBreakRules) {
     flowOptions.lineBreakRules = options.lineBreakRules;
   }
+  if (options.justificationCompatibility) {
+    flowOptions.justificationCompatibility = options.justificationCompatibility;
+  }
   if (options.automaticHyphenation) {
     flowOptions.automaticHyphenation = options.automaticHyphenation;
   }
@@ -743,6 +747,9 @@ export function convertHeaderFooterPmDocToContent(
   }
   if (options.lineBreakRules) {
     flowOptions.lineBreakRules = options.lineBreakRules;
+  }
+  if (options.justificationCompatibility) {
+    flowOptions.justificationCompatibility = options.justificationCompatibility;
   }
   if (options.automaticHyphenation) {
     flowOptions.automaticHyphenation = options.automaticHyphenation;

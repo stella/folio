@@ -135,6 +135,8 @@ export type ToFlowBlocksOptions = {
     noLineBreaksAfter?: { language?: string; characters: string };
     useLegacyEthiopicAmharicRules?: boolean;
   };
+  /** Document-generation policy for justified line fitting. */
+  justificationCompatibility?: NonNullable<ParagraphAttrs["justificationCompatibility"]>;
   /** Document-wide automatic hyphenation policy. */
   automaticHyphenation?: NonNullable<ParagraphAttrs["automaticHyphenation"]>;
 };
@@ -1888,6 +1890,9 @@ function convertParagraph(
   );
   if (options.lineBreakRules) {
     attrs.lineBreakRules = options.lineBreakRules;
+  }
+  if (options.justificationCompatibility) {
+    attrs.justificationCompatibility = options.justificationCompatibility;
   }
   if (options.automaticHyphenation) {
     attrs.automaticHyphenation = options.automaticHyphenation;

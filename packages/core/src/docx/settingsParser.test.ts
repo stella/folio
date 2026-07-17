@@ -128,6 +128,28 @@ describe("parseSettings — document line-breaking rules", () => {
   });
 });
 
+describe("parseSettings — application compatibility generation", () => {
+  test("parses the named compatibilityMode setting", () => {
+    expect(
+      parseSettings(
+        wrap(
+          `<w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="14"/></w:compat>`,
+        ),
+      ).compatibilityMode,
+    ).toBe(14);
+  });
+
+  test("ignores unrelated and malformed compatibility settings", () => {
+    expect(
+      parseSettings(
+        wrap(
+          `<w:compat><w:compatSetting w:name="other" w:val="14"/><w:compatSetting w:name="compatibilityMode" w:val="invalid"/></w:compat>`,
+        ),
+      ).compatibilityMode,
+    ).toBeUndefined();
+  });
+});
+
 describe("parseSettings — document automatic hyphenation", () => {
   test("reads the Word hyphenation controls", () => {
     expect(

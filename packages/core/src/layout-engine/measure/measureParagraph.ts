@@ -591,6 +591,7 @@ function uppercaseLetterRatio(text: string): number {
 }
 
 type JustifyFitStrategy =
+  | { type: "strict" }
   | { type: "rounding" }
   | { type: "space"; ratio: number; maxWidthRatio?: number }
   | { type: "width"; ratio: number };
@@ -605,6 +606,9 @@ function resolveJustifyFitStrategy(
   isFirstLine: boolean,
   profile: JustificationProfile,
 ): JustifyFitStrategy {
+  if (block.attrs?.justificationCompatibility?.type === "legacy") {
+    return { type: "strict" };
+  }
   if (isShallowFullHangingListContinuation(block, isFirstLine)) {
     return { type: "rounding" };
   }
@@ -662,6 +666,9 @@ function justifyFitTolerance(
   strategy: JustifyFitStrategy,
   candidateSpaceWidth: number,
 ): number {
+  if (strategy.type === "strict") {
+    return 0;
+  }
   if (strategy.type === "rounding") {
     return WIDTH_TOLERANCE;
   }

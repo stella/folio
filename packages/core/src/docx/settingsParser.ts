@@ -10,7 +10,13 @@
  */
 
 import type { DocumentSettings } from "../types/document";
-import { findChild, getAttribute, parseBooleanElement, parseXmlDocument } from "./xmlParser";
+import {
+  findChild,
+  findChildren,
+  getAttribute,
+  parseBooleanElement,
+  parseXmlDocument,
+} from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 export type FolioDocumentSettings = DocumentSettings & {
@@ -91,6 +97,10 @@ export function parseSettings(xml: string | null): FolioDocumentSettings {
   const noLineBreaksBefore = parseKinsokuOverride(root, "noLineBreaksBefore");
   const noLineBreaksAfter = parseKinsokuOverride(root, "noLineBreaksAfter");
   const compat = root ? findChild(root, "w", "compat") : null;
+  const compatibilityMode = parseCompatibilityMode(compat);
+  if (compatibilityMode !== undefined) {
+    settings.compatibilityMode = compatibilityMode;
+  }
   const splitPageBreakAndParagraphMark = compat
     ? findChild(compat, "w", "splitPgBreakAndParaMark")
     : null;
@@ -109,6 +119,21 @@ export function parseSettings(xml: string | null): FolioDocumentSettings {
   }
 
   return settings;
+}
+
+function parseCompatibilityMode(compat: XmlElement | null): number | undefined {
+  if (!compat) {
+    return undefined;
+  }
+  const setting = findChildren(compat, "w", "compatSetting").find(
+    (candidate) => getAttribute(candidate, "w", "name") === "compatibilityMode",
+  );
+  const raw = setting ? getAttribute(setting, "w", "val") : null;
+  if (raw === null || !/^\d+$/u.test(raw)) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 type OnOffSettingName = "autoHyphenation" | "doNotHyphenateCaps";

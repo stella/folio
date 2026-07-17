@@ -29,6 +29,7 @@ import type { ToFlowBlocksOptions } from "../layout-bridge/convert/toFlowBlocks"
 import { getColumns } from "../layout-bridge/sectionColumns";
 import { layoutDocument } from "../layout-engine";
 import type { ColumnLayout, SectionLayoutConfig } from "../layout-engine";
+import { resolveJustificationCompatibility } from "../layout-engine/justificationCompatibility";
 import {
   recordLayoutComplete,
   recordLayoutError,
@@ -305,6 +306,12 @@ export function runLayoutPipeline<THfPMs>(
       flowOpts.lineBreakRules = document.package.settings.lineBreakRules;
     }
     const documentSettings = document?.package.settings;
+    const justificationCompatibility = resolveJustificationCompatibility(
+      documentSettings?.compatibilityMode,
+    );
+    if (justificationCompatibility) {
+      flowOpts.justificationCompatibility = justificationCompatibility;
+    }
     if (documentSettings?.autoHyphenation === true) {
       flowOpts.automaticHyphenation = {
         enabled: true,
@@ -405,6 +412,9 @@ export function runLayoutPipeline<THfPMs>(
         measureBlocks: hfMeasureBlocks,
         ...(defaultTabStop !== undefined ? { defaultTabStopTwips: defaultTabStop } : {}),
         ...(flowOpts.lineBreakRules ? { lineBreakRules: flowOpts.lineBreakRules } : {}),
+        ...(flowOpts.justificationCompatibility
+          ? { justificationCompatibility: flowOpts.justificationCompatibility }
+          : {}),
         ...(flowOpts.automaticHyphenation
           ? { automaticHyphenation: flowOpts.automaticHyphenation }
           : {}),
@@ -651,6 +661,9 @@ export function runLayoutPipeline<THfPMs>(
           }
           if (flowOpts.lineBreakRules) {
             footnoteOptions.lineBreakRules = flowOpts.lineBreakRules;
+          }
+          if (flowOpts.justificationCompatibility) {
+            footnoteOptions.justificationCompatibility = flowOpts.justificationCompatibility;
           }
           if (flowOpts.automaticHyphenation) {
             footnoteOptions.automaticHyphenation = flowOpts.automaticHyphenation;

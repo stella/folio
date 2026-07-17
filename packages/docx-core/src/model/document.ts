@@ -183,6 +183,11 @@ export type {
  */
 export type DocumentSettings = {
   /**
+   * Application compatibility generation from
+   * `w:compat/w:compatSetting[@w:name="compatibilityMode"]`.
+   */
+  compatibilityMode?: number;
+  /**
    * `w:defaultTabStop` (§17.6.13) — interval in twips between default
    * tab stops applied when a paragraph has no custom `w:tabs`. Word
    * defaults to 720 twips (½ inch) when absent.

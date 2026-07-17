@@ -163,6 +163,25 @@ describe("font metrics cache", () => {
       }),
     );
   });
+
+  test("keeps justification compatibility in the paragraph measurement cache key", () => {
+    const paragraph = {
+      kind: "paragraph",
+      id: "compatibility-cache-key",
+      runs: [{ kind: "text", text: "Text" }],
+      attrs: { alignment: "justify" },
+    } as const satisfies ParagraphBlock;
+
+    expect(hashParagraphBlock(paragraph)).not.toBe(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: {
+          ...paragraph.attrs,
+          justificationCompatibility: { type: "legacy" },
+        },
+      }),
+    );
+  });
 });
 
 describe("empty paragraph line-height floor", () => {
@@ -823,6 +842,30 @@ describe("measureParagraph justified shrink tolerance", () => {
 
         expect(spaceRichMeasure.lines).toHaveLength(1);
         expect(spacePoorMeasure.lines).toHaveLength(2);
+      },
+      {
+        charWidth: ordinarySpaceRichWidth,
+      },
+    );
+  });
+
+  test("does not contract justified lines in legacy compatibility mode", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "legacy-justified-line-fit",
+            runs: [{ kind: "text", text: spaceRichText }],
+            attrs: {
+              alignment: "justify",
+              justificationCompatibility: { type: "legacy" },
+            },
+          },
+          100,
+        );
+
+        expect(measure.lines).toHaveLength(2);
       },
       {
         charWidth: ordinarySpaceRichWidth,
