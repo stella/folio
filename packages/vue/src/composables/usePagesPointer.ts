@@ -374,6 +374,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     if (noteStory) {
       event.preventDefault();
       event.stopPropagation();
+      if (hfEdit.value) handleHfSave();
       opts.openNoteStory(noteStory);
       return;
     }

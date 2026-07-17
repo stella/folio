@@ -51,6 +51,8 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
+import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
@@ -951,6 +953,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     canRedo: false,
     canUndo: false,
   });
+  const [activeNoteStory, setActiveNoteStory] = useState<NoteStoryKey | null>(null);
 
   // Measure toolbar height for positioning the outline panel below it
   const toolbarRefCallback = useCallback((el: HTMLDivElement | null) => {
@@ -1024,43 +1027,72 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     // already resolved internally for save / remove.
     getHfView: (rId) => pagedEditorRef.current?.getHfView(rId) ?? null,
   });
+  let activeHfRId = hfEditIsFirstPage ? activeFirstFooterRId : activeFooterRId;
+  if (hfEditPosition === "header") {
+    activeHfRId = hfEditIsFirstPage ? activeFirstHeaderRId : activeHeaderRId;
+  }
 
-  // Helper to get the active editor's view — returns HF editor view when in HF editing mode
-  const getActiveEditorView = useCallback(() => {
-    if (hfEditPosition && hfEditorRef.current) {
-      return hfEditorRef.current.getView();
-    }
-    return pagedEditorRef.current?.getActiveView();
-  }, [hfEditPosition]);
+  const getActiveEditorStory = useCallback(() => {
+    const bodyView = pagedEditorRef.current?.getView() ?? null;
+    return resolveActiveEditorStory({
+      bodyView,
+      headerFooterView:
+        hfEditPosition && hfEditorRef.current ? hfEditorRef.current.getView() : null,
+      noteView: activeNoteStory ? (pagedEditorRef.current?.getActiveView() ?? null) : null,
+    });
+  }, [activeNoteStory, hfEditPosition]);
+
+  const getActiveEditorView = useCallback(
+    () => getActiveEditorStory().view,
+    [getActiveEditorStory],
+  );
 
   // Helper to focus the active editor
   const focusActiveEditor = useCallback(() => {
-    if (hfEditPosition && hfEditorRef.current) {
+    if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
       hfEditorRef.current.focus();
     } else {
       pagedEditorRef.current?.focus();
     }
-  }, [hfEditPosition]);
+  }, [getActiveEditorStory]);
 
   // Helper to undo in the active editor
   const undoActiveEditor = useCallback(() => {
-    if (hfEditPosition && hfEditorRef.current) {
+    if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
       hfEditorRef.current.undo();
     } else {
       pagedEditorRef.current?.undo();
       requestAnimationFrame(refreshBodyHistoryAvailability);
     }
-  }, [hfEditPosition, refreshBodyHistoryAvailability]);
+  }, [getActiveEditorStory, refreshBodyHistoryAvailability]);
 
   // Helper to redo in the active editor
   const redoActiveEditor = useCallback(() => {
-    if (hfEditPosition && hfEditorRef.current) {
+    if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
       hfEditorRef.current.redo();
     } else {
       pagedEditorRef.current?.redo();
       requestAnimationFrame(refreshBodyHistoryAvailability);
     }
-  }, [hfEditPosition, refreshBodyHistoryAvailability]);
+  }, [getActiveEditorStory, refreshBodyHistoryAvailability]);
+
+  const handleActiveNoteStoryChange = useCallback(
+    (story: NoteStoryKey | null) => {
+      setActiveNoteStory(story);
+      if (story && hfEditPosition) {
+        handleBodyClick();
+      }
+    },
+    [handleBodyClick, hfEditPosition],
+  );
+
+  const handleHeaderFooterStoryOpen = useCallback(
+    (position: "header" | "footer", pageNumber?: number) => {
+      pagedEditorRef.current?.closeNoteStory();
+      handleHeaderFooterDoubleClick(position, pageNumber);
+    },
+    [handleHeaderFooterDoubleClick],
+  );
 
   // Find/Replace hook
   const findReplace = useFindReplaceState();
@@ -3002,9 +3034,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       // header/footer editor when one is being edited, otherwise the body.
       // Mirrors `undoActiveEditor`/`redoActiveEditor` but returns the
       // prosemirror-history result so a host can tell whether anything was
-      // reversed. Ports upstream docx-editor ff971a7b.
+      // reversed. Notes take precedence during the brief transition that
+      // saves and closes an active header/footer. Ports upstream docx-editor
+      // ff971a7b.
       undo: () => {
-        if (hfEditPosition && hfEditorRef.current) {
+        if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
           return hfEditorRef.current.undo();
         }
         const undone = pagedEditorRef.current?.undo() ?? false;
@@ -3012,7 +3046,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         return undone;
       },
       redo: () => {
-        if (hfEditPosition && hfEditorRef.current) {
+        if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
           return hfEditorRef.current.redo();
         }
         const redone = pagedEditorRef.current?.redo() ?? false;
@@ -3216,7 +3250,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       replaceComments,
       commentsRef,
       commentsDirtyRef,
-      hfEditPosition,
+      getActiveEditorStory,
       refreshBodyHistoryAvailability,
     ],
   );
@@ -3240,6 +3274,18 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     () => DISPLAY_MODES.map((mode) => ({ value: mode, label: t(DISPLAY_MODE_LABEL_KEYS[mode]) })),
     [t],
   );
+  const activeHistoryAvailability = (() => {
+    if (activeNoteStory) {
+      return {
+        canRedo: pagedEditorRef.current?.canRedo() ?? false,
+        canUndo: pagedEditorRef.current?.canUndo() ?? false,
+      };
+    }
+    if (hfEditPosition) {
+      return { canRedo: history.canRedo, canUndo: history.canUndo };
+    }
+    return bodyHistoryAvailability;
+  })();
 
   const toolbarChildren = toolbarExtra ?? null;
   const visibleCommentAuthorCount = commentAuthors.filter((commentAuthor) =>
@@ -3733,10 +3779,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     showCommentsSidebar,
     visibleComments,
   ]);
-  let activeHfRId = hfEditIsFirstPage ? activeFirstFooterRId : activeFooterRId;
-  if (hfEditPosition === "header") {
-    activeHfRId = hfEditIsFirstPage ? activeFirstHeaderRId : activeHeaderRId;
-  }
   const getActiveHfView = useCallback(
     () => (activeHfRId ? (pagedEditorRef.current?.getHfView(activeHfRId) ?? null) : null),
     [activeHfRId],
@@ -4001,8 +4043,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                       onFormat={handleFormat}
                       onUndo={undoActiveEditor}
                       onRedo={redoActiveEditor}
-                      canUndo={hfEditPosition ? history.canUndo : bodyHistoryAvailability.canUndo}
-                      canRedo={hfEditPosition ? history.canRedo : bodyHistoryAvailability.canRedo}
+                      canUndo={activeHistoryAvailability.canUndo}
+                      canRedo={activeHistoryAvailability.canRedo}
                       disabled={readOnly}
                       theme={history.state.package.theme || theme || null}
                       fontFamilies={fontFamilies}
@@ -4160,10 +4202,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           ? { styles: history.state.package.styles }
                           : {})}
                         onHeaderFooterDoubleClick={
-                          showHeaderFooterEditing ? handleHeaderFooterDoubleClick : undefined
+                          showHeaderFooterEditing ? handleHeaderFooterStoryOpen : undefined
                         }
                         hfEditMode={hfEditPosition}
+                        activeHeaderFooterRId={activeHfRId}
                         onBodyClick={handleBodyClick}
+                        onActiveNoteStoryChange={handleActiveNoteStoryChange}
                         zoom={zoom}
                         showMarginGuides={showMarginGuides}
                         {...(marginGuideColor !== undefined ? { marginGuideColor } : {})}

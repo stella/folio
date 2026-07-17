@@ -26,7 +26,7 @@ export type NoteStoryEditorRef = {
 
 export type NoteStoryEditorProps = {
   document: Document | null;
-  onActiveChange: (active: boolean) => void;
+  onActiveChange: (story: NoteStoryKey | null) => void;
   onDocumentChange: (document: Document) => void;
   onStoryChange: (view: EditorView, docChanged: boolean, selectionChanged: boolean) => void;
   plugins?: Plugin[];
@@ -132,7 +132,7 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
       manager.sync();
       if (active && !manager?.getActive()) {
         setActive(null);
-        onActiveChangeRef.current(false);
+        onActiveChangeRef.current(null);
       }
     }, [
       active,
@@ -168,7 +168,7 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
     const closeEditor = (): void => {
       managerRef.current?.activate(null);
       setActive(null);
-      onActiveChangeRef.current(false);
+      onActiveChangeRef.current(null);
     };
 
     useImperativeHandle(ref, () => ({
@@ -182,7 +182,7 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
         if (!view) return;
         setSuggestionMode(isSuggestionModeActive, view.state, view.dispatch, suggestionAuthor);
         setActive(story);
-        onActiveChangeRef.current(true);
+        onActiveChangeRef.current(story);
         requestAnimationFrame(() => view.focus());
       },
       snapshotDocument: (current) => managerRef.current?.snapshotDocument(current) ?? current,

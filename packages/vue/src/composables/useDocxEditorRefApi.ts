@@ -28,7 +28,7 @@ import type { Ref } from "vue";
 import { TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { closeHistory } from "prosemirror-history";
+import { closeHistory, redo as historyRedo, undo as historyUndo } from "prosemirror-history";
 
 import {
   applyFolioAIEditOperations,
@@ -138,6 +138,8 @@ export type UseDocxEditorRefApiOptions = {
   // Action handles from useDocxEditor.
   focus: () => void;
   getDocument: () => Document | null;
+  getActiveView: () => EditorView | null;
+  closeNoteStory: () => void;
   getHeaderFooterView: (rId: string) => EditorView | null;
   setZoom: (zoom: number) => void;
   /** useDocxEditor.save returns a Blob; the ref surface exposes an ArrayBuffer. */
@@ -204,25 +206,54 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   // which every method below already guards against).
   let pagedEditorRef: PagedEditorRef | null = null;
 
+  function undoActiveView(): boolean {
+    const view = opts.getActiveView();
+    return view ? historyUndo(view.state, view.dispatch) : false;
+  }
+
+  function redoActiveView(): boolean {
+    const view = opts.getActiveView();
+    return view ? historyRedo(view.state, view.dispatch) : false;
+  }
+
+  function canUndoActiveView(): boolean {
+    const view = opts.getActiveView();
+    return view ? historyUndo(view.state) : false;
+  }
+
+  function canRedoActiveView(): boolean {
+    const view = opts.getActiveView();
+    return view ? historyRedo(view.state) : false;
+  }
+
+  function blurActiveView(): void {
+    const view = opts.getActiveView();
+    if (view?.hasFocus() && view.dom instanceof HTMLElement) {
+      view.dom.blur();
+    }
+  }
+
   function getEditorRef(): PagedEditorRef {
     pagedEditorRef ??= {
       getEditor: () => opts.editor,
       getDocument: () => opts.editor.getDocument(),
       getState: () => opts.editor.getState(),
       getView: () => opts.editor.getView(),
+      getActiveView: opts.getActiveView,
+      closeNoteStory: opts.closeNoteStory,
       getHfView: (rId) => opts.getHeaderFooterView(rId),
       // The fork's controller ensureView() takes no focus argument yet; the
       // { focus } option is accepted for React parity but ignored, matching
       // ensureEditorView above (PORT-BLOCKED).
       ensureView: () => opts.editor.ensureView(),
-      focus: () => opts.editor.focus(),
-      blur: () => opts.editor.blur(),
-      isFocused: () => opts.editor.isFocused(),
+      focus: opts.focus,
+      blur: blurActiveView,
+      isFocused: () => opts.getActiveView()?.hasFocus() ?? false,
       dispatch: (tr: Transaction) => opts.editor.dispatch(tr),
-      undo: () => opts.editor.undo(),
-      redo: () => opts.editor.redo(),
-      canUndo: () => opts.editor.canUndo(),
-      canRedo: () => opts.editor.canRedo(),
+      undo: undoActiveView,
+      redo: redoActiveView,
+      canUndo: canUndoActiveView,
+      canRedo: canRedoActiveView,
       setSelection: (anchor: number, head?: number) => opts.editor.setSelection(anchor, head),
       getLayout: () => opts.editor.getLayout(),
       relayout: () => opts.editor.relayout(),
@@ -440,8 +471,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       }
       return rejectAIEditRevision(revisionIds)(view.state, view.dispatch);
     },
-    undo: () => opts.editor.undo(),
-    redo: () => opts.editor.redo(),
+    undo: undoActiveView,
+    redo: redoActiveView,
     scrollToAIEditOperation: (revisionIds) => {
       const view = opts.editorView.value;
       if (!view) {

@@ -430,6 +430,7 @@ import {
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
+import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
   clearAllCaches,
   resetCanvasContext,
@@ -699,7 +700,6 @@ const {
   closeNoteStory,
   getActiveNoteView,
   getCommands,
-  focus,
   reLayout,
 } = useDocxEditor({
   hiddenContainer: hiddenPmRef,
@@ -756,9 +756,13 @@ const {
 
 const activeEditorView = computed(
   () =>
-    getActiveNoteView() ??
-    (activeHeaderFooterRId.value ? getHeaderFooterView(activeHeaderFooterRId.value) : null) ??
-    editorView.value,
+    resolveActiveEditorStory({
+      bodyView: editorView.value,
+      headerFooterView: activeHeaderFooterRId.value
+        ? getHeaderFooterView(activeHeaderFooterRId.value)
+        : null,
+      noteView: getActiveNoteView(),
+    }).view,
 );
 
 const activeNoteStoryLabel = computed(() => {
@@ -1437,8 +1441,10 @@ const { exposed } = useDocxEditorRefApi({
   },
   getComments: () => commentManagement.comments.value,
   setComments: commentManagement.setComments,
-  focus,
+  focus: () => activeEditorView.value?.focus(),
   getDocument,
+  getActiveView: () => activeEditorView.value,
+  closeNoteStory,
   getHeaderFooterView,
   setZoom,
   save,

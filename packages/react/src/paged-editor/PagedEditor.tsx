@@ -42,6 +42,7 @@ import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
+import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { suggestionModeKey } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
 import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
@@ -80,6 +81,7 @@ import {
   findHfSlotKindForTarget,
 } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
 import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
+import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import { clickToPosition } from "@stll/folio-core/layout-bridge/engine/clickToPosition";
 import {
   hitTestFragment,
@@ -305,6 +307,8 @@ export type PagedEditorProps = {
   suggestionModeActive?: boolean;
   /** Author attached to tracked edits made inside note stories. */
   suggestionAuthor?: string;
+  /** Reports the visible note story so outer chrome can target its commands. */
+  onActiveNoteStoryChange?: ((story: NoteStoryKey | null) => void) | undefined;
   /** Callback when header or footer is double-clicked for editing. Pass
    * `undefined` to disable header/footer editing entirely. */
   onHeaderFooterDoubleClick?:
@@ -312,6 +316,8 @@ export type PagedEditorProps = {
     | undefined;
   /** Active header/footer editing mode (dims body, intercepts body clicks). */
   hfEditMode?: "header" | "footer" | null;
+  /** Relationship id of the active header/footer story. */
+  activeHeaderFooterRId?: string | null;
   /** Called when user clicks the body area while in HF editing mode. */
   onBodyClick?: () => void;
   /** Custom class name. */
@@ -365,8 +371,10 @@ export type PagedEditorRef = {
   getState: () => EditorState | null;
   /** Get the ProseMirror EditorView. */
   getView: () => EditorView | null;
-  /** Get the currently focused body or note-story view. */
+  /** Get the active body, header/footer, or note-story view. */
   getActiveView: () => EditorView | null;
+  /** Close the visible note story, if one is active. */
+  closeNoteStory: () => void;
   /**
    * Look up the persistent hidden HF EditorView by `rId`. Returns null when
    * the slot isn't mounted (e.g. document has no HF for that rId, or the
@@ -1405,8 +1413,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       extensionManager,
       suggestionModeActive = false,
       suggestionAuthor,
+      onActiveNoteStoryChange,
       onHeaderFooterDoubleClick,
       hfEditMode,
+      activeHeaderFooterRId,
       onBodyClick,
       className,
       style,
@@ -1445,6 +1455,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const noteStoryPlugins = useMemo(
       () => externalPlugins.filter(({ spec }) => spec.key === suggestionModeKey),
       [externalPlugins],
+    );
+    const handleActiveNoteStoryChange = useCallback(
+      (story: NoteStoryKey | null) => {
+        setNoteStoryActive(story !== null);
+        onActiveNoteStoryChange?.(story);
+      },
+      [onActiveNoteStoryChange],
     );
 
     useEffect(() => {
@@ -1994,6 +2011,18 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       });
     }
     const folioEditor = folioEditorRef.current;
+    const getActiveEditorStory = useCallback(
+      () =>
+        resolveActiveEditorStory({
+          bodyView: folioEditor.getView(),
+          headerFooterView:
+            hfEditMode && activeHeaderFooterRId
+              ? (hfPMsRef.current?.getView(activeHeaderFooterRId) ?? null)
+              : null,
+          noteView: noteEditorRef.current?.getActiveView() ?? null,
+        }),
+      [activeHeaderFooterRId, folioEditor, hfEditMode],
+    );
 
     const marginGuideSettingsInitializedRef = useRef(false);
     useEffect(() => {
@@ -5603,7 +5632,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           return folioEditor.getView();
         },
         getActiveView() {
-          return noteEditorRef.current?.getActiveView() ?? folioEditor.getView();
+          return getActiveEditorStory().view;
+        },
+        closeNoteStory() {
+          noteEditorRef.current?.close();
         },
         getHfView(rId: string) {
           return hfPMsRef.current?.getView(rId) ?? null;
@@ -5618,36 +5650,37 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           ensureHiddenEditorView(options);
         },
         focus() {
-          const noteView = noteEditorRef.current?.getActiveView();
-          if (noteView) noteView.focus();
-          else folioEditor.focus();
+          getActiveEditorStory().view?.focus();
           setIsFocused(true);
         },
         blur() {
-          folioEditor.blur();
+          const view = getActiveEditorStory().view;
+          if (view?.hasFocus() && view.dom instanceof HTMLElement) view.dom.blur();
           setIsFocused(false);
         },
         isFocused() {
-          return folioEditor.isFocused();
+          return getActiveEditorStory().view?.hasFocus() ?? false;
         },
         dispatch(tr: Transaction) {
           folioEditor.dispatch(tr);
         },
         undo() {
-          const noteView = noteEditorRef.current?.getActiveView();
-          return noteView ? historyUndo(noteView.state, noteView.dispatch) : folioEditor.undo();
+          const target = getActiveEditorStory();
+          if (target.type === "none") return false;
+          return historyUndo(target.view.state, target.view.dispatch);
         },
         redo() {
-          const noteView = noteEditorRef.current?.getActiveView();
-          return noteView ? historyRedo(noteView.state, noteView.dispatch) : folioEditor.redo();
+          const target = getActiveEditorStory();
+          if (target.type === "none") return false;
+          return historyRedo(target.view.state, target.view.dispatch);
         },
         canUndo() {
-          const noteView = noteEditorRef.current?.getActiveView();
-          return noteView ? historyUndo(noteView.state) : folioEditor.canUndo();
+          const target = getActiveEditorStory();
+          return target.type === "none" ? false : historyUndo(target.view.state);
         },
         canRedo() {
-          const noteView = noteEditorRef.current?.getActiveView();
-          return noteView ? historyRedo(noteView.state) : folioEditor.canRedo();
+          const target = getActiveEditorStory();
+          return target.type === "none" ? false : historyRedo(target.view.state);
         },
         setSelection(anchor: number, head?: number) {
           folioEditor.setSelection(anchor, head);
@@ -5722,6 +5755,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       [
         ensureHiddenEditorView,
         folioEditor,
+        getActiveEditorStory,
         scrollToPageImpl,
         scrollToParaIdImpl,
         scrollToPositionImpl,
@@ -5829,7 +5863,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         <NoteStoryEditor
           ref={noteEditorRef}
           document={document}
-          onActiveChange={setNoteStoryActive}
+          onActiveChange={handleActiveNoteStoryChange}
           onDocumentChange={handleNoteDocumentChange}
           onStoryChange={handleNoteStoryTransaction}
           plugins={noteStoryPlugins}

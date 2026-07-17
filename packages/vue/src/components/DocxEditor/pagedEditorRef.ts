@@ -29,6 +29,10 @@ export type PagedEditorRef = {
   getState: () => EditorState | null;
   /** Get the ProseMirror EditorView. */
   getView: () => EditorView | null;
+  /** Get the currently active body, header/footer, or note-story view. */
+  getActiveView: () => EditorView | null;
+  /** Close the visible note story, if one is active. */
+  closeNoteStory: () => void;
   /**
    * Look up the persistent hidden HF EditorView by `rId`. Returns null when the
    * slot isn't mounted (no HF for that rId, or the hidden host hasn't mounted).
