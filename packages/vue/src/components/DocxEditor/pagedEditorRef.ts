@@ -75,6 +75,13 @@ export type PagedEditorRef = {
    */
   scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean;
   /**
+   * Set (or clear, with `null`) the persistent passage highlight overlay. The
+   * range is projected onto the painted pages and painted with a translucent
+   * wash; it does not move the PM selection. Replaces any previous highlight.
+   * The overlay is cleared automatically on the next doc-changing transaction.
+   */
+  setPassageHighlight: (range: { from: number; to: number } | null) => void;
+  /**
    * Resolve the page number (1-indexed) that contains the given PM position, or
    * null if no layout is available yet. Works for unrendered pages too via the
    * page shell map.

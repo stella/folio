@@ -109,8 +109,8 @@
       "getTrackedChanges",
       "getZoom",
       "hasPendingChanges",
-      "highlightPassage",
       "clearPassageHighlight",
+      "highlightPassage",
       "loadDocument",
       "loadDocumentBuffer",
       "openPrintPreview",
@@ -162,6 +162,7 @@
       "scrollToPage",
       "scrollToParaId",
       "scrollToPosition",
+      "setPassageHighlight",
       "setSelection",
       "undo"
     ],

@@ -252,6 +252,19 @@ describe("resolvePassageRange", () => {
     expect(doc.textBetween(range.from, range.to)).toBe("Payment  is   due\ton receipt");
   });
 
+  test("ignores leading and trailing whitespace on the needle", () => {
+    const doc = makeRichDoc([
+      { paraId: "AAAA0001", runs: [{ text: "Payment is due on receipt" }] },
+    ]);
+
+    const range = resolvePassageRange({ blockId: "AAAA0001", text: "  is due\n", doc });
+
+    if (range === null) {
+      throw new Error("Expected a trimmed needle to resolve");
+    }
+    expect(doc.textBetween(range.from, range.to)).toBe("is due");
+  });
+
   test("falls back to a case-insensitive match when the exact case is absent", () => {
     const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Payment is due" }] }]);
 

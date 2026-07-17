@@ -270,6 +270,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       scrollToPosition: (pmPos: number) => opts.scrollVisiblePositionIntoView(pmPos),
       scrollToPage,
       scrollToParaId,
+      setPassageHighlight: opts.setPassageHighlight,
       getPageNumberForPmPos: (pmPos: number) => {
         const currentLayout = opts.layout.value;
         if (!currentLayout) {

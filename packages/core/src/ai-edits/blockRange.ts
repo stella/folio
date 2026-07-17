@@ -142,16 +142,19 @@ export const resolvePassageRange = ({
 
 /**
  * Turn a caller-supplied passage into a regex source that tolerates whitespace
- * variance. Regex metacharacters are escaped so the literal text matches, then
- * whitespace runs collapse to `\s+` (mirrors the anonymization matcher). Returns
- * null for empty / whitespace-only input so an empty needle can never match at
- * offset 0 and paint a zero-width highlight.
+ * variance. The needle is trimmed first (quoted passages routinely carry
+ * accidental leading/trailing whitespace that the block text won't reproduce),
+ * then regex metacharacters are escaped so the literal text matches, then
+ * whitespace runs collapse to `\s+` (mirrors the anonymization matcher).
+ * Returns null for empty / whitespace-only input so an empty needle can never
+ * match at offset 0 and paint a zero-width highlight.
  */
 const buildPassageNeedleSource = (text: string): string | null => {
-  if (text.trim().length === 0) {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
     return null;
   }
-  return text.replaceAll(/[\\^$.*+?()[\]{}|]/gu, "\\$&").replaceAll(/\s+/gu, "\\s+");
+  return trimmed.replaceAll(/[\\^$.*+?()[\]{}|]/gu, "\\$&").replaceAll(/\s+/gu, "\\s+");
 };
 
 type PassageMatch = { start: number; end: number };
