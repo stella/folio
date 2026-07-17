@@ -45,7 +45,7 @@ export type FolioDocxXmlReplacement = {
 
 export type FolioDocxXmlPatchProposal = {
   readonly version: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION;
-  readonly replacements: readonly FolioDocxXmlReplacement[];
+  readonly replacements: readonly [FolioDocxXmlReplacement, ...FolioDocxXmlReplacement[]];
 };
 
 export type FolioDocxXmlPatchProposalLimits = {
@@ -79,27 +79,31 @@ export type FolioDocxPreparedXmlReplacement = {
   readonly encoding: "utf-8";
 };
 
-type FolioDocxXmlPatchProposalEvaluationBase = {
-  readonly version: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION;
-  readonly profile: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE;
-  readonly producesOutput: false;
-  readonly limits: Required<FolioDocxXmlPatchProposalLimits>;
-};
-
 export type FolioDocxXmlPatchProposalEvaluation =
-  | (FolioDocxXmlPatchProposalEvaluationBase & {
+  | {
+      readonly version: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION;
+      readonly profile: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE;
       readonly status: "accepted";
+      readonly producesOutput: false;
       readonly issues: readonly [];
-      readonly replacements: readonly FolioDocxPreparedXmlReplacement[];
-    })
-  | (FolioDocxXmlPatchProposalEvaluationBase & {
+      readonly replacements: readonly [
+        FolioDocxPreparedXmlReplacement,
+        ...FolioDocxPreparedXmlReplacement[],
+      ];
+      readonly limits: Required<FolioDocxXmlPatchProposalLimits>;
+    }
+  | {
+      readonly version: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION;
+      readonly profile: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE;
       readonly status: "rejected";
+      readonly producesOutput: false;
       readonly issues: readonly [
         FolioDocxXmlPatchProposalIssue,
         ...FolioDocxXmlPatchProposalIssue[],
       ];
       readonly replacements: readonly [];
-    });
+      readonly limits: Required<FolioDocxXmlPatchProposalLimits>;
+    };
 
 export class InvalidFolioDocxXmlPatchProposalError extends TaggedError(
   "InvalidFolioDocxXmlPatchProposalError",
@@ -152,6 +156,19 @@ const readString = (value: Record<string, unknown>, key: string, path: string): 
   return result;
 };
 
+const parseXmlReplacement = (value: unknown, index: number): FolioDocxXmlReplacement => {
+  const path = `$.replacements[${index}]`;
+  if (!isPlainObject(value)) {
+    return invalidProposal(path, "expected an object");
+  }
+  assertAllowedKeys(value, path, ["path", "baseSha256", "replacementXml"]);
+  return {
+    path: readString(value, "path", path),
+    baseSha256: readString(value, "baseSha256", path),
+    replacementXml: readString(value, "replacementXml", path),
+  };
+};
+
 export const parseFolioDocxXmlPatchProposal = (value: unknown): FolioDocxXmlPatchProposal => {
   if (!isPlainObject(value)) {
     return invalidProposal("$", "expected an object");
@@ -171,20 +188,18 @@ export const parseFolioDocxXmlPatchProposal = (value: unknown): FolioDocxXmlPatc
     );
   }
 
+  const firstReplacement = replacements.at(0);
+  if (firstReplacement === undefined) {
+    return invalidProposal("$.replacements", "expected a non-empty array");
+  }
   return {
     version: FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION,
-    replacements: replacements.map((replacement, index) => {
-      const path = `$.replacements[${index}]`;
-      if (!isPlainObject(replacement)) {
-        return invalidProposal(path, "expected an object");
-      }
-      assertAllowedKeys(replacement, path, ["path", "baseSha256", "replacementXml"]);
-      return {
-        path: readString(replacement, "path", path),
-        baseSha256: readString(replacement, "baseSha256", path),
-        replacementXml: readString(replacement, "replacementXml", path),
-      };
-    }),
+    replacements: [
+      parseXmlReplacement(firstReplacement, 0),
+      ...replacements
+        .slice(1)
+        .map((replacement, index) => parseXmlReplacement(replacement, index + 1)),
+    ],
   };
 };
 
@@ -281,7 +296,7 @@ const rejectedEvaluation = ({
 });
 
 type AcceptedEvaluationOptions = {
-  replacements: readonly FolioDocxPreparedXmlReplacement[];
+  replacements: readonly [FolioDocxPreparedXmlReplacement, ...FolioDocxPreparedXmlReplacement[]];
   limits: Required<FolioDocxXmlPatchProposalLimits>;
 };
 
@@ -542,22 +557,27 @@ export const evaluateDocxXmlPatchProposal = async ({
     return rejectedEvaluation({ issues: [firstIssue, ...issues.slice(1)], limits });
   }
 
+  const preparedReplacements = proposal.replacements.map((replacement) => {
+    const replacementBytes = encodedByPath.get(replacement.path);
+    const current = inspectedByPath.get(replacement.path);
+    if (replacementBytes === undefined || current === undefined) {
+      return panic("Accepted XML replacement is missing prepared package data");
+    }
+    return {
+      path: replacement.path,
+      baseSha256: replacement.baseSha256,
+      currentSha256: current.sha256,
+      replacementSha256: createHash("sha256").update(replacementBytes).digest("hex"),
+      replacementByteLength: replacementBytes.byteLength,
+      encoding: "utf-8",
+    };
+  });
+  const firstPreparedReplacement = preparedReplacements.at(0);
+  if (firstPreparedReplacement === undefined) {
+    return panic("Accepted XML patch proposal is missing a prepared replacement");
+  }
   return acceptedEvaluation({
-    replacements: proposal.replacements.map((replacement) => {
-      const replacementBytes = encodedByPath.get(replacement.path);
-      const current = inspectedByPath.get(replacement.path);
-      if (replacementBytes === undefined || current === undefined) {
-        return panic("Accepted XML replacement is missing prepared package data");
-      }
-      return {
-        path: replacement.path,
-        baseSha256: replacement.baseSha256,
-        currentSha256: current.sha256,
-        replacementSha256: createHash("sha256").update(replacementBytes).digest("hex"),
-        replacementByteLength: replacementBytes.byteLength,
-        encoding: "utf-8",
-      };
-    }),
+    replacements: [firstPreparedReplacement, ...preparedReplacements.slice(1)],
     limits,
   });
 };

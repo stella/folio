@@ -909,19 +909,27 @@ export type FolioDocxReviewerOptions = {
 // @public (undocumented)
 export type FolioDocxXmlPatchProposal = {
     readonly version: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION;
-    readonly replacements: readonly FolioDocxXmlReplacement[];
+    readonly replacements: readonly [FolioDocxXmlReplacement, ...FolioDocxXmlReplacement[]];
 };
 
 // @public (undocumented)
-export type FolioDocxXmlPatchProposalEvaluation = (FolioDocxXmlPatchProposalEvaluationBase & {
+export type FolioDocxXmlPatchProposalEvaluation = {
+    readonly version: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION;
+    readonly profile: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE;
     readonly status: "accepted";
+    readonly producesOutput: false;
     readonly issues: readonly [];
-    readonly replacements: readonly FolioDocxPreparedXmlReplacement[];
-}) | (FolioDocxXmlPatchProposalEvaluationBase & {
+    readonly replacements: readonly [FolioDocxPreparedXmlReplacement, ...FolioDocxPreparedXmlReplacement[]];
+    readonly limits: Required<FolioDocxXmlPatchProposalLimits>;
+} | {
+    readonly version: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION;
+    readonly profile: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE;
     readonly status: "rejected";
+    readonly producesOutput: false;
     readonly issues: readonly [FolioDocxXmlPatchProposalIssue, ...FolioDocxXmlPatchProposalIssue[]];
     readonly replacements: readonly [];
-});
+    readonly limits: Required<FolioDocxXmlPatchProposalLimits>;
+};
 
 // @public (undocumented)
 export type FolioDocxXmlPatchProposalIssue = {
