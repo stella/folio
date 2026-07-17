@@ -37,6 +37,7 @@ export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES = Object.freeze([
   "required-part-missing",
   "xml-doctype-forbidden",
   "xml-not-well-formed",
+  "xml-read-failed",
   "required-xml-unreadable",
   "package-root-invalid",
   "conformance-class-unknown",
@@ -386,16 +387,17 @@ const validateCanonicalModel = async (
       preloadFonts: false,
     });
     const validation = validateFolioDocumentModel(document);
+    const warningCount = document.warnings?.length ?? 0;
     if (!validation.valid) {
       report.checks.set("canonical-model", "failed");
-    } else if ((document.warnings?.length ?? 0) > 0) {
+    } else if (warningCount > 0) {
       report.checks.set("canonical-model", "indeterminate");
       addIssue(report, {
         check: "canonical-model",
         code: "parser-recovery",
         message: "The canonical parser reported recovery or preservation warnings.",
         severity: "warning",
-        count: document.warnings?.length,
+        count: warningCount,
       });
     } else {
       report.checks.set("canonical-model", "passed");
