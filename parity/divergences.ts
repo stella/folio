@@ -14,11 +14,11 @@ import { normalizeLineText } from "./textNorm";
 import type { CorpusReport, Divergence, DivergenceKind } from "./types";
 
 type Flags = {
-  report?: string;
-  doc?: string;
-  page?: number;
-  kind?: DivergenceKind;
-  text?: string;
+  report?: string | undefined;
+  doc?: string | undefined;
+  page?: number | undefined;
+  kind?: DivergenceKind | undefined;
+  text?: string | undefined;
   limit: number;
 };
 

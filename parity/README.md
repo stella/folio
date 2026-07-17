@@ -123,7 +123,10 @@ Font preflight compares the family embedded in the reference PDF with
 Chromium's resolved CSS family. A requested font may be substituted without
 invalidating the run when both renderers use the same fallback. A
 `font-renderer-mismatch` means geometry may primarily reflect different font
-metrics and should not drive a layout change by itself.
+metrics and should not drive a layout change by itself. These runs retain their
+raw geometry for diagnosis, but the CLI and HTML report mark the headline score
+as `unscored` and exclude their divergences from cross-corpus layout clusters.
+Verified native fonts and shared substitutions remain scored normally.
 
 ## Interpreting disagreements
 

@@ -25,6 +25,7 @@ import type {
   LineBox,
   PageGeom,
 } from "./types";
+import { isGeometryScoreReliable } from "./types";
 
 export type DocAssets = {
   referencePagePngs: string[];
@@ -173,6 +174,25 @@ const scoreColor = (score: number): string => {
   return COLOR_BAD;
 };
 
+const scoreSummary = (result: FeatureAttributedResult): string => {
+  const rawScore = `${(result.score * 100).toFixed(1)}%`;
+  if (isGeometryScoreReliable(result.fontEnvironment)) {
+    return rawScore;
+  }
+  return `unscored (raw diagnostic ${rawScore})`;
+};
+
+const fontReliabilityMessage = (result: FeatureAttributedResult): string | undefined => {
+  const assessment = result.fontEnvironment;
+  if (assessment === undefined || isGeometryScoreReliable(assessment)) {
+    return undefined;
+  }
+  if (assessment.status === "unverified") {
+    return "Geometry is unscored because the renderer fonts could not be compared.";
+  }
+  return `Geometry is unscored because the reference and Folio fonts differ (${assessment.matchingLines}/${assessment.comparedLines} comparable lines share a family).`;
+};
+
 /** Representative text for a divergence, independent of its kind's exact shape. */
 const divergenceText = (divergence: Divergence): string => {
   switch (divergence.kind) {
@@ -281,12 +301,15 @@ ${clusterRows.length > 0 ? clusterRows : `<tr><td colspan="7">No clusters.</td><
 const renderIndexRow = (result: FeatureAttributedResult, slugs: Map<string, string>): string => {
   const slug = slugs.get(result.file) ?? "";
   const name = path.basename(result.file);
-  const pct = (result.score * 100).toFixed(1);
   const counts = compactDivergenceCounts(result.divergences);
+  const reliabilityMessage = fontReliabilityMessage(result);
+  const score = reliabilityMessage
+    ? `<span class="score score-unreliable" title="${escapeHtml(`${reliabilityMessage} Raw diagnostic score: ${(result.score * 100).toFixed(1)}%.`)}">unscored</span>`
+    : `<span class="score" style="color:${scoreColor(result.score)}">${scoreSummary(result)}</span>`;
 
   return `<tr>
 <td><a href="doc-${escapeHtml(slug)}.html">${escapeHtml(name)}</a></td>
-<td><span class="score" style="color:${scoreColor(result.score)}">${pct}%</span></td>
+<td>${score}</td>
 <td>${result.referencePages} / ${result.folioPages}</td>
 <td>${result.matchedLines} / ${result.totalReferenceLines}</td>
 <td>${result.medianYOffsetPt.toFixed(2)}</td>
@@ -337,9 +360,13 @@ const renderDocPage = ({
   ).join("\n");
 
   const banner =
-    result.divergences.length === 0
+    result.divergences.length === 0 && isGeometryScoreReliable(result.fontEnvironment)
       ? `<div class="banner-good">Full parity: no divergences detected.</div>`
       : "";
+  const reliabilityMessage = fontReliabilityMessage(result);
+  const reliabilityBanner = reliabilityMessage
+    ? `<div class="banner-warning">${escapeHtml(reliabilityMessage)} The raw geometry remains available below for diagnosis.</div>`
+    : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -352,9 +379,10 @@ const renderDocPage = ({
 <header>
 <p><a href="index.html">&larr; back to summary</a></p>
 <h1>${escapeHtml(name)}</h1>
-<p>Folio compared with ${escapeHtml(referenceDisplayName)} &middot; score ${(result.score * 100).toFixed(1)}% &middot; ${result.matchedLines}/${result.totalReferenceLines} lines matched &middot; median Y offset ${result.medianYOffsetPt.toFixed(2)}pt</p>
+<p>Folio compared with ${escapeHtml(referenceDisplayName)} &middot; score ${escapeHtml(scoreSummary(result))} &middot; ${result.matchedLines}/${result.totalReferenceLines} lines matched &middot; median Y offset ${result.medianYOffsetPt.toFixed(2)}pt</p>
 </header>
 <main>
+${reliabilityBanner}
 ${banner}
 <section class="pages">
 <h2>Pages</h2>
@@ -542,6 +570,8 @@ th { background: #f6f8fa; font-weight: 600; }
 a { color: #0969da; text-decoration: none; }
 a:hover { text-decoration: underline; }
 .banner-good { background: #dafbe1; border: 1px solid #1a7f37; color: #1a7f37; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-weight: 600; }
+.banner-warning { background: #fff8c5; border: 1px solid #9a6700; color: #633c01; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-weight: 600; }
+.score-unreliable { color: #57606a; }
 .page-pair { display: flex; gap: 16px; margin-bottom: 24px; align-items: flex-start; }
 .page-panel { flex: 1 1 0; min-width: 0; background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px; }
 .page-panel h3 { margin: 0 0 8px; font-size: 0.95rem; }

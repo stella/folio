@@ -45,6 +45,7 @@ import type {
   FeatureAttributedResult,
   ReferenceRendererId,
 } from "./types";
+import { isGeometryScoreReliable } from "./types";
 
 const EXIT_OK = 0;
 const EXIT_DIVERGENT = 1;
@@ -285,7 +286,10 @@ const runPipeline = async (
         } else if (fontEnvironment.status === "unverified") {
           process.stderr.write(`(${referenceRenderer.displayName}/Folio font parity unverified) `);
         }
-        const attributed = attributeDivergences(result, docFeatures);
+        const attributed = {
+          ...attributeDivergences(result, docFeatures),
+          fontEnvironment,
+        };
 
         // oxlint-disable-next-line no-await-in-loop -- sequential per-doc pipeline
         const referencePagePngs = limitPaths(
@@ -302,7 +306,10 @@ const runPipeline = async (
           folioGeom: folio.geom,
         });
 
-        process.stderr.write(`score ${result.score.toFixed(2)}\n`);
+        const scoreLabel = isGeometryScoreReliable(fontEnvironment)
+          ? result.score.toFixed(2)
+          : `unscored (raw diagnostic ${result.score.toFixed(2)})`;
+        process.stderr.write(`score ${scoreLabel}\n`);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
         process.stderr.write(`\n${label}: FAILED — ${err.name}: ${err.message}\n`);
@@ -349,7 +356,9 @@ const printHumanSummary = (report: CorpusReport, failures: DocFailure[]): void =
   );
 
   for (const result of report.results) {
-    const pct = `${(result.score * 100).toFixed(1)}%`;
+    const pct = isGeometryScoreReliable(result.fontEnvironment)
+      ? `${(result.score * 100).toFixed(1)}%`
+      : "unscored";
     const pages = `pages ${result.referencePages}/${result.folioPages}`;
     const counts = compactDivergenceCounts(result.divergences) || "no divergences";
     console.log(

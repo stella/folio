@@ -117,6 +117,12 @@ describe("writeHtmlReport", () => {
         },
       ],
       docFeatures: [],
+      fontEnvironment: {
+        status: "mismatch",
+        tags: ["font-renderer-mismatch"],
+        comparedLines: 12,
+        matchingLines: 2,
+      },
     };
 
     const report: CorpusReport = {
@@ -188,6 +194,8 @@ describe("writeHtmlReport", () => {
     expect(indexHtml).toContain("table");
     expect(indexHtml).toContain("spacing-atLeast");
     expect(indexHtml).toContain("2.35"); // lift 2.3456 -> 2 decimals
+    expect(indexHtml).toContain("unscored");
+    expect(indexHtml).toContain("Raw diagnostic score: 50.0%");
 
     // The hostile doc name must never appear unescaped.
     expect(indexHtml).not.toContain('<b>bold & "quoted"');
@@ -208,6 +216,10 @@ describe("writeHtmlReport", () => {
     if (!docBHref) throw new Error("expected doc B link");
 
     const detailBHtml = await readFile(path.join(REPORT_DIR, docBHref), "utf8");
+    expect(detailBHtml).toContain("score unscored (raw diagnostic 50.0%)");
+    expect(detailBHtml).toContain(
+      "Geometry is unscored because the reference and Folio fonts differ (2/12 comparable lines share a family).",
+    );
 
     // Interpolated divergence text is escaped, not raw.
     expect(detailBHtml).not.toContain("<script>missing</script>");

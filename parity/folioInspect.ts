@@ -12,9 +12,9 @@ import path from "node:path";
 import { createFolioExtractor } from "./folioExtract";
 
 type InspectFlags = {
-  doc?: string;
+  doc?: string | undefined;
   page: number;
-  text?: string;
+  text?: string | undefined;
   maxSpans: number;
 };
 

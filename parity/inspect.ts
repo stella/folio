@@ -15,10 +15,10 @@ import { normalizeLineText, textSimilarity } from "./textNorm";
 import type { DocGeom, LineBox, PageGeom, ReferenceRendererId } from "./types";
 
 type InspectFlags = {
-  doc?: string;
+  doc?: string | undefined;
   page: number;
-  text?: string;
-  maxPages?: number;
+  text?: string | undefined;
+  maxPages?: number | undefined;
   ledger: boolean;
   limit: number;
   referenceId: ReferenceRendererId;
@@ -33,18 +33,18 @@ type Candidate = {
 
 type LedgerRow = {
   index: number;
-  referenceText?: string;
-  folioText?: string;
-  similarity?: number;
-  referenceY?: number;
-  folioY?: number;
-  deltaY?: number;
-  referenceX?: number;
-  folioX?: number;
-  deltaX?: number;
-  referenceWidth?: number;
-  folioWidth?: number;
-  deltaWidth?: number;
+  referenceText?: string | undefined;
+  folioText?: string | undefined;
+  similarity?: number | undefined;
+  referenceY?: number | undefined;
+  folioY?: number | undefined;
+  deltaY?: number | undefined;
+  referenceX?: number | undefined;
+  folioX?: number | undefined;
+  deltaX?: number | undefined;
+  referenceWidth?: number | undefined;
+  folioWidth?: number | undefined;
+  deltaWidth?: number | undefined;
 };
 
 type FolioExtractResult = Awaited<

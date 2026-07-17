@@ -486,6 +486,36 @@ describe("clusterCorpus", () => {
     // observedRate = 2/2 = 1; baseline = 1/2 = 0.5; lift = 2.
     expect(cluster?.lift).toBeCloseTo(2, 5);
   });
+
+  test("font-mismatched documents do not contribute misleading geometry clusters", () => {
+    const corpusParagraphs: ParagraphFeatures[][] = [
+      [paragraph("mismatched font line", ["table"])],
+      [paragraph("comparable line", ["justify"])],
+    ];
+    const mismatched = makeResult(
+      "/font-mismatch.docx",
+      ["font-renderer-mismatch"],
+      [yDrift(1, "mismatched font line", 12, ["table"])],
+    );
+    mismatched.fontEnvironment = {
+      status: "mismatch",
+      tags: ["font-renderer-mismatch"],
+      comparedLines: 10,
+      matchingLines: 0,
+    };
+    const comparable = makeResult(
+      "/comparable.docx",
+      [],
+      [yDrift(1, "comparable line", 1, ["justify"])],
+    );
+
+    const clusters = clusterCorpus([mismatched, comparable], corpusParagraphs);
+
+    expect(clusters.some((cluster) => cluster.feature === "table")).toBe(false);
+    expect(clusters.find((cluster) => cluster.feature === "justify")?.docs).toEqual([
+      "/comparable.docx",
+    ]);
+  });
 });
 
 describe("computeFontSubstitutionTags", () => {

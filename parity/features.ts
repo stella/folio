@@ -25,9 +25,11 @@ import type {
   DivergenceKind,
   DocGeom,
   FeatureAttributedResult,
+  FontEnvironmentAssessment,
   LineBox,
   ParityResult,
 } from "./types";
+import { isGeometryScoreReliable } from "./types";
 
 /** Thrown for expected extraction failures (missing/unreadable zip part). */
 export class FeatureExtractError extends Error {
@@ -396,13 +398,6 @@ export const computeFontSubstitutionTags = (
   return tags;
 };
 
-export type FontEnvironmentAssessment = {
-  status: "native" | "shared-substitution" | "mismatch" | "unverified";
-  tags: string[];
-  comparedLines: number;
-  matchingLines: number;
-};
-
 /** Whether two renderer-reported names identify the same font family. PDF
  * PostScript names commonly carry style suffixes (`ArialMT`,
  * `Calibri-Bold`), while CSS reports the undecorated family. */
@@ -676,7 +671,13 @@ export const clusterCorpus = (
   // have no per-paragraph meaning, so they are baselined asymmetrically
   // against `results` instead: P(feature) = docs whose `docFeatures` carries
   // it / total docs. Both pools are floored at MIN_BASELINE_PREVALENCE.
-  const allParagraphs = corpusParagraphs.flat();
+  const comparableEntries = results.flatMap((result, index) =>
+    isGeometryScoreReliable(result.fontEnvironment)
+      ? [{ result, paragraphs: corpusParagraphs[index] ?? [] }]
+      : [],
+  );
+  const comparableResults = comparableEntries.map(({ result }) => result);
+  const allParagraphs = comparableEntries.flatMap(({ paragraphs }) => paragraphs);
   const totalParagraphs = allParagraphs.length;
   const paragraphFeatureCounts = new Map<string, number>();
   for (const paragraph of allParagraphs) {
@@ -685,9 +686,9 @@ export const clusterCorpus = (
     }
   }
 
-  const totalDocs = results.length;
+  const totalDocs = comparableResults.length;
   const docFeatureCounts = new Map<string, number>();
-  for (const result of results) {
+  for (const result of comparableResults) {
     for (const feature of result.docFeatures) {
       docFeatureCounts.set(feature, (docFeatureCounts.get(feature) ?? 0) + 1);
     }
@@ -707,7 +708,7 @@ export const clusterCorpus = (
   const buckets = new Map<string, Bucket>();
   const kindTotals = new Map<DivergenceKind, number>();
 
-  for (const result of results) {
+  for (const result of comparableResults) {
     for (const attributed of result.attributed) {
       const { kind } = attributed.divergence;
       kindTotals.set(kind, (kindTotals.get(kind) ?? 0) + 1);
@@ -729,7 +730,7 @@ export const clusterCorpus = (
     }
   }
 
-  const minCount = results.length < 5 ? 1 : 2;
+  const minCount = comparableResults.length < 5 ? 1 : 2;
   const clusters: Cluster[] = [];
   for (const [key, bucket] of buckets) {
     if (bucket.count < minCount) continue;

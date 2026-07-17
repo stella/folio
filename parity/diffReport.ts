@@ -8,8 +8,8 @@ import { isReferenceRendererId } from "./referenceRenderer";
 import type { CorpusReport, DivergenceKind, FeatureAttributedResult } from "./types";
 
 type DiffFlags = {
-  before?: string;
-  after?: string;
+  before?: string | undefined;
+  after?: string | undefined;
 };
 
 type DocSummary = {
@@ -43,6 +43,9 @@ const parseArgs = (argv: string[]): DiffFlags => {
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === undefined) {
+      continue;
+    }
     if (arg === "--before") {
       flags.before = argv[++i];
     } else if (arg === "--after") {
