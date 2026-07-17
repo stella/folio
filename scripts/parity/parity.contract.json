@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "comment": "Cross-adapter parity contract between @stll/folio-react and @stll/folio-vue. Drives `bun run check:parity-contract`, which parses each adapter's `DocxEditorProps` / `DocxEditorRef` from source and applies this contract, failing on any undocumented drift. `paired` = behavior matches between adapters: either both wire the prop functionally, or both intentionally no-op it identically (a prop React declares but never consumes, so Vue declaring + not consuming is the same behavior — see `pairedNotes` for the source-verified justification of each such entry). `deferredInVue` = declared in the Vue `DocxEditorProps` / `DocxEditorRef` type (so the type surface stays parity-complete and `satisfies DocxEditorRef` holds), but the Vue implementation does not match React yet — DocxEditor.vue ignores a prop React DOES consume, or useDocxEditorRefApi.ts stubs the method to a constant. Each deferred entry has a one-line reason. `pairedNotes` (optional, props only) records the source-verified reason a prop is paired when the pairing is a no-op-in-both or a different-idiom match rather than an obvious functional pairing. Adding a prop/method to either adapter without classifying it here fails the gate.",
+  "comment": "Cross-adapter parity contract between @stll/folio-react and @stll/folio-vue. Drives `bun run check:parity-contract`, which parses each adapter's `DocxEditorProps`, `DocxEditorRef`, and nested `PagedEditorRef` from source and applies this contract, failing on any undocumented drift. `paired` = behavior matches between adapters: either both wire the field functionally, or both intentionally no-op it identically. `deferredInVue` = declared in Vue's type surface but not implemented with matching behavior yet. Each deferred entry has a one-line reason. `pairedNotes` records source-verified reasons for non-obvious pairings. Adding a prop or method to either adapter without classifying it here fails the gate.",
   "props": {
     "paired": [
       "anonymizationSelectionSeq",
@@ -132,8 +132,37 @@
     "pairedNotes": {
       "applyDocumentOperations": "Both wired against the shared core `applyFolioDocumentOperations`, mirroring the adjacent (already-paired) `applyAIEditOperations`. Both assert the batch version (`assertSupportedFolioDocumentOperationVersion`), return an all-skipped `unsupportedBlock` result at the contract version when no view is mounted, and otherwise delegate to core with the same snapshot/batch/author. Comment-creation idiom differs like the AI-edit method: React's `createCommentId` closure calls `createComment` and folds the results in via `updateComments`, while Vue passes `opts.createAIEditComment`, which mints the comment and appends it to the thread list internally (from useCommentManagement) — same observable effect.",
       "hasPendingChanges": "Both wired, same set/clear points, different-idiom implementation. React derives it live each call from the ParagraphChangeTracker plugin (getChangedParagraphIds/hasStructuralChanges/hasUntrackedChanges) OR-ed with commentsDirtyRef, and clears the tracker after each successful save. Vue cannot read the tracker for this because it deliberately leaves the tracker uncleared across saves (the tracker is the selective-save baseline; see the featureFlags props note) and re-editing an already-tracked paragraph would not grow the set, so a tracker read could never go false after save. Instead Vue tracks two boolean flags with the same set/clear points as React's underlying signals: `isDirty` in useDocxEditor (set on every doc-changing transaction — the same signal that drives the writeback/onChange; cleared on a successful save() and on document load/swap) and `commentsDirty` in useCommentManagement (set on every user comment mutation add/reply/resolve/unresolve/delete; cleared on document load via seedFromDocument and on a successful save via the ref API's save wrapper). useDocxEditorRefApi returns `isDirty || commentsDirty` (false before the view mounts, matching React's no-view guard). Net semantics match: pending after typing or a comment edit, clean after save or load. Housekeeping transactions (paraId allocation, auto-bidi) only run as appendTransactions to a real user edit or imperatively at initial-state build (never through the runtime transaction handler on a plain load), so they never set isDirty spuriously.",
-      "getEditorRef": "Both wired with live handles. Vue synthesizes the PagedEditorRef shape from the shared controller and viewport primitives; getHfView delegates to the same relationship-id-keyed persistent header/footer manager that supplies the Vue layout pipeline, matching React's manager-backed lookup. Scroll, page, selection, history, dispatch, layout, and view methods remain direct controller bindings. ensureView accepts the parity {focus} option while the shared controller currently treats creation and focus as separate operations."
+      "getEditorRef": "Both wired with live handles. Vue synthesizes the PagedEditorRef shape from the shared controller and viewport primitives; getHfView delegates to the same relationship-id-keyed persistent header/footer manager that supplies the Vue layout pipeline, matching React's manager-backed lookup. Focus and history resolve the live active story; body selection, dispatch, layout, scroll, and page methods remain direct controller bindings. ensureView accepts the parity {focus} option while the shared controller currently treats creation and focus as separate operations."
     },
+    "deferredInVue": {}
+  },
+  "pagedRef": {
+    "comment": "Nested PagedEditorRef parity. Both adapters expose this handle through DocxEditorRef.getEditorRef(); every paired method must be implemented on both sides.",
+    "paired": [
+      "blur",
+      "canRedo",
+      "canUndo",
+      "closeNoteStory",
+      "dispatch",
+      "ensureView",
+      "focus",
+      "getActiveView",
+      "getDocument",
+      "getEditor",
+      "getHfView",
+      "getLayout",
+      "getPageNumberForPmPos",
+      "getState",
+      "getView",
+      "isFocused",
+      "redo",
+      "relayout",
+      "scrollToPage",
+      "scrollToParaId",
+      "scrollToPosition",
+      "setSelection",
+      "undo"
+    ],
     "deferredInVue": {}
   }
 }

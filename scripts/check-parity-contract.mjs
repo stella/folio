@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Cross-adapter parity check between @stll/folio-react and @stll/folio-vue.
 //
-// Reads the `DocxEditorProps` and `DocxEditorRef` member names directly from
-// each adapter's TypeScript source and applies `scripts/parity/parity.contract.json`.
+// Reads the `DocxEditorProps`, `DocxEditorRef`, and nested `PagedEditorRef`
+// member names directly from each adapter's TypeScript source and applies
+// `scripts/parity/parity.contract.json`.
 // (Upstream reads committed API-Extractor snapshots; the folio fork has no Vue
 // api-report yet, so we parse the source type declarations instead.)
 //
@@ -28,6 +29,11 @@ const repoRoot = path.resolve(__dirname, "..");
 
 const REACT_PROPS_SRC = path.join(repoRoot, "packages/react/src/components/DocxEditor.props.ts");
 const VUE_TYPES_SRC = path.join(repoRoot, "packages/vue/src/components/DocxEditor/types.ts");
+const REACT_PAGED_REF_SRC = path.join(repoRoot, "packages/react/src/paged-editor/PagedEditor.tsx");
+const VUE_PAGED_REF_SRC = path.join(
+  repoRoot,
+  "packages/vue/src/components/DocxEditor/pagedEditorRef.ts",
+);
 const CONTRACT_PATH = path.join(repoRoot, "scripts/parity/parity.contract.json");
 
 /**
@@ -99,6 +105,7 @@ function readJson(p) {
 const SECTION_SCHEMA = {
   props: { paired: "array", deferredInVue: "object" },
   ref: { paired: "array", deferredInVue: "object" },
+  pagedRef: { paired: "array", deferredInVue: "object" },
 };
 
 function validateContractShape(contract) {
@@ -167,7 +174,13 @@ function checkSection(kind, section, reactMembers, vueMembers, issues) {
 }
 
 function main() {
-  for (const f of [REACT_PROPS_SRC, VUE_TYPES_SRC, CONTRACT_PATH]) {
+  for (const f of [
+    REACT_PROPS_SRC,
+    VUE_TYPES_SRC,
+    REACT_PAGED_REF_SRC,
+    VUE_PAGED_REF_SRC,
+    CONTRACT_PATH,
+  ]) {
     if (!fs.existsSync(f)) {
       console.error(`Missing required file: ${f}`);
       process.exit(1);
@@ -176,6 +189,8 @@ function main() {
 
   const reactSrc = fs.readFileSync(REACT_PROPS_SRC, "utf8");
   const vueSrc = fs.readFileSync(VUE_TYPES_SRC, "utf8");
+  const reactPagedRefSrc = fs.readFileSync(REACT_PAGED_REF_SRC, "utf8");
+  const vuePagedRefSrc = fs.readFileSync(VUE_PAGED_REF_SRC, "utf8");
   const contract = readJson(CONTRACT_PATH);
 
   const shapeErrors = validateContractShape(contract);
@@ -190,6 +205,8 @@ function main() {
     ["Vue DocxEditorProps", vueSrc, "DocxEditorProps"],
     ["React DocxEditorRef", reactSrc, "DocxEditorRef"],
     ["Vue DocxEditorRef", vueSrc, "DocxEditorRef"],
+    ["React PagedEditorRef", reactPagedRefSrc, "PagedEditorRef"],
+    ["Vue PagedEditorRef", vuePagedRefSrc, "PagedEditorRef"],
   ];
   const parsed = {};
   for (const [label, src, typeName] of sources) {
@@ -216,16 +233,27 @@ function main() {
     parsed["Vue DocxEditorRef"],
     issues,
   );
+  checkSection(
+    "PAGED REF",
+    contract.pagedRef,
+    parsed["React PagedEditorRef"],
+    parsed["Vue PagedEditorRef"],
+    issues,
+  );
 
   console.log(`Parity contract: scripts/parity/parity.contract.json (v${contract.version})`);
   console.log(`  React DocxEditorProps: ${parsed["React DocxEditorProps"].size} fields`);
   console.log(`  Vue   DocxEditorProps: ${parsed["Vue DocxEditorProps"].size} fields`);
   console.log(`  React DocxEditorRef:   ${parsed["React DocxEditorRef"].size} members`);
   console.log(`  Vue   DocxEditorRef:   ${parsed["Vue DocxEditorRef"].size} members`);
+  console.log(`  React PagedEditorRef:  ${parsed["React PagedEditorRef"].size} members`);
+  console.log(`  Vue   PagedEditorRef:  ${parsed["Vue PagedEditorRef"].size} members`);
   console.log(`  Paired props:          ${contract.props.paired.length}`);
   console.log(`  Deferred-in-Vue props: ${Object.keys(contract.props.deferredInVue).length}`);
   console.log(`  Paired ref members:    ${contract.ref.paired.length}`);
   console.log(`  Deferred-in-Vue refs:  ${Object.keys(contract.ref.deferredInVue).length}`);
+  console.log(`  Paired paged refs:     ${contract.pagedRef.paired.length}`);
+  console.log(`  Deferred paged refs:  ${Object.keys(contract.pagedRef.deferredInVue).length}`);
 
   if (issues.length > 0) {
     console.error(`\nParity drift: ${issues.length} issue${issues.length === 1 ? "" : "s"}`);
