@@ -237,7 +237,8 @@ export type ParagraphAttrs = {
     tabs?: import__stll_docx_core_model.TabStop[];
     pageBreakBefore?: boolean; /** Word's cached rendered-page-break marker; preserved for round-trip only. */
     renderedPageBreakBefore?: boolean; /** Internal import marker for a paragraph whose only run content is a hard page break. */
-    _pageBreakCarrier?: boolean;
+    _pageBreakCarrier?: boolean; /** Internal import marker for a hard page break after this paragraph's text. */
+    _trailingPageBreak?: boolean;
     keepNext?: boolean;
     keepLines?: boolean;
     widowControl?: boolean; /** Contextual spacing — suppress space between same-style paragraphs */
