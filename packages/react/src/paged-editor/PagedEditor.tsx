@@ -1971,7 +1971,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     }
     const folioEditor = folioEditorRef.current;
 
+    const marginGuideSettingsInitializedRef = useRef(false);
     useEffect(() => {
+      if (!marginGuideSettingsInitializedRef.current) {
+        marginGuideSettingsInitializedRef.current = true;
+        return;
+      }
       folioEditor.relayout();
     }, [folioEditor, marginGuideColor, showMarginGuides]);
 
