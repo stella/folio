@@ -293,6 +293,7 @@ export type ParagraphAttrs = {
     spaceAfter?: number;
     lineSpacing?: number;
     lineSpacingRule?: import__stll_docx_core_model.LineSpacingRule;
+    snapToGrid?: boolean;
     spacingExplicit?: SpacingExplicit; /** Layout provenance: document defaults survive on empty paragraphs. */
     spacingFromDocDefaults?: SpacingExplicit; /** Layout provenance: implicit default-style spacing survives on empty paragraphs. */
     spacingFromImplicitDefaultStyle?: SpacingExplicit;

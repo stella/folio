@@ -191,6 +191,7 @@ export type ParagraphAttrs = {
     spaceAfter?: number;
     lineSpacing?: number;
     lineSpacingRule?: import__stll_docx_core_model.LineSpacingRule;
+    snapToGrid?: boolean;
     spacingExplicit?: SpacingExplicit; /** Layout provenance: document defaults survive on empty paragraphs. */
     spacingFromDocDefaults?: SpacingExplicit; /** Layout provenance: implicit default-style spacing survives on empty paragraphs. */
     spacingFromImplicitDefaultStyle?: SpacingExplicit;
@@ -379,7 +380,8 @@ export type TableCellAttrs = {
     backgroundColor?: string; /** Resolved source color. PM-only; distinguishes theme rendering from a user override. */
     _resolvedBackgroundColor?: string; /** OOXML text direction (e.g. 'tbRl', 'btLr') */
     textDirection?: NonNullable<import__stll_docx_core_model.TableCellFormatting["textDirection"]>; /** No text wrapping in cell */
-    noWrap?: boolean; /** Cell borders — full BorderSpec per side (style, color, size) */
+    noWrap?: boolean; /** Effective end-of-cell marker suppression (`w:hideMark`). */
+    hideMark?: boolean; /** Cell borders — full BorderSpec per side (style, color, size) */
     borders?: import__stll_docx_core_model.TableCellBorders; /** Cell margins/padding in twips per side */
     margins?: {
         top?: number;

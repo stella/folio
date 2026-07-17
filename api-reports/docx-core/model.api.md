@@ -661,7 +661,8 @@ export type ParagraphFormatting = {
     spaceBefore?: number; /** Spacing after in twips (w:spacing/@w:after) */
     spaceAfter?: number; /** Line spacing value (w:spacing/@w:line) */
     lineSpacing?: number; /** Line spacing rule (w:spacing/@w:lineRule) */
-    lineSpacingRule?: LineSpacingRule; /** Auto space before (w:spacing/@w:beforeAutospacing) */
+    lineSpacingRule?: LineSpacingRule; /** Whether the paragraph participates in the section document grid (w:snapToGrid). */
+    snapToGrid?: boolean; /** Auto space before (w:spacing/@w:beforeAutospacing) */
     beforeAutospacing?: boolean; /** Auto space after (w:spacing/@w:afterAutospacing) */
     afterAutospacing?: boolean; /** Which spacing sides came from this paragraph's own pPr. */
     spacingExplicit?: SpacingExplicit; /** Left indent in twips (w:ind/@w:left) */
