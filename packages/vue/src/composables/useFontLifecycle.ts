@@ -47,12 +47,13 @@ export function useFontLifecycle(
       void dependencies.loadEmbedded(buffer).then((faces) => {
         if (cancelled) {
           dependencies.remove(faces);
-          return;
+          return undefined;
         }
         registered = faces;
         if (faces.length > 0) {
           options.remeasure();
         }
+        return undefined;
       });
 
       onCleanup(() => {
@@ -75,12 +76,13 @@ export function useFontLifecycle(
       void dependencies.loadHost(fonts).then((faces) => {
         if (cancelled) {
           dependencies.remove(faces);
-          return;
+          return undefined;
         }
         registered = faces;
         if (faces.length > 0) {
           options.remeasure();
         }
+        return undefined;
       });
 
       onCleanup(() => {
