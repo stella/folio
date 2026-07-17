@@ -4,6 +4,7 @@ import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
 import type { TableCell, TableCellFormatting } from "../../types/document";
+import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 
@@ -150,28 +151,12 @@ const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean 
     continuationCells.push(...nestedContinuations);
   }
 
-  const cellWasEmpty =
-    cell.childCount === 1 &&
-    cell.firstChild?.isTextblock === true &&
-    cell.firstChild.childCount === 0;
-  const aboveCellWasEmpty =
-    aboveCell.childCount === 1 &&
-    aboveCell.firstChild?.isTextblock === true &&
-    aboveCell.firstChild.childCount === 0;
   tr.delete(cellPos, cellPos + cell.nodeSize);
   tr.setNodeMarkup(abovePos, undefined, {
     ...aboveCell.attrs,
     rowspan: aboveRowspan + cellRowspan,
     _docxVMergeContinuationCells: continuationCells,
   });
-  if (!cellWasEmpty) {
-    if (aboveCellWasEmpty) {
-      tr.replaceWith(abovePos + 1, abovePos + 1 + aboveCell.content.size, cell.content);
-      return true;
-    }
-    const contentEnd = abovePos + 1 + aboveCell.content.size;
-    tr.insert(contentEnd, cell.content);
-  }
   return true;
 };
 
@@ -185,24 +170,17 @@ const tableCellContinuationCells = (cell: PMNode, rowspan: number): TableCell[] 
 };
 
 const tableCellContinuationFromNode = (cell: PMNode): TableCell => {
-  const originalFormatting = cell.attrs["_originalFormatting"];
-  const formatting: TableCellFormatting =
-    typeof originalFormatting === "object" && originalFormatting !== null
-      ? { ...originalFormatting, vMerge: "continue" }
-      : { vMerge: "continue" };
+  const continuation = standaloneTableCellFromProseMirror(cell);
+  const formatting: TableCellFormatting = {
+    ...continuation.formatting,
+    vMerge: "continue",
+  };
   const colspan = cell.attrs["colspan"];
   if (typeof colspan === "number" && colspan > 1) {
     formatting.gridSpan = colspan;
   }
-  const continuation: TableCell = {
-    type: "tableCell",
-    formatting,
-    content: [{ type: "paragraph", content: [] }],
-  };
-  const propertyChanges = cell.attrs["tcPrChange"];
-  if (Array.isArray(propertyChanges) && propertyChanges.length > 0) {
-    continuation.propertyChanges = [...propertyChanges];
-  }
+  continuation.formatting = formatting;
+  delete continuation.structuralChange;
   return continuation;
 };
 

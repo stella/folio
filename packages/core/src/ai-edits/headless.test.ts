@@ -673,7 +673,9 @@ describe("headless docx review round-trip", () => {
       throw new Error("expected a pending table");
     }
     expect(pendingTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
-    expect(pendingTable.rows.at(1)?.cells.at(0)?.structuralChange).toMatchObject({
+    const pendingContinuation = pendingTable.rows.at(1)?.cells.at(0);
+    expect(pendingContinuation?.formatting?.verticalAlign).toBe("bottom");
+    expect(pendingContinuation?.structuralChange).toMatchObject({
       type: "tableCellMerge",
       verticalMergeOriginal: "continue",
     });
@@ -694,7 +696,9 @@ describe("headless docx review round-trip", () => {
       throw new Error("expected an accepted table");
     }
     expect(acceptedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
-    expect(acceptedTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+    const acceptedContinuation = acceptedTable.rows.at(1)?.cells.at(0);
+    expect(acceptedContinuation?.formatting?.verticalAlign).toBe("bottom");
+    expect(acceptedContinuation?.formatting?.vMerge).toBeUndefined();
 
     const rejecting = await FolioDocxReviewer.fromBuffer(pending);
     const rejectChange = rejecting.getChanges().find(({ type }) => type === "cellMerged");
@@ -712,7 +716,9 @@ describe("headless docx review round-trip", () => {
       throw new Error("expected a rejected table");
     }
     expect(rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe("restart");
-    expect(rejectedTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBe("continue");
+    const rejectedContinuation = rejectedTable.rows.at(1)?.cells.at(0);
+    expect(rejectedContinuation?.formatting?.verticalAlign).toBe("bottom");
+    expect(rejectedContinuation?.formatting?.vMerge).toBe("continue");
   });
 
   test("tracks, persists, accepts, and rejects a column insertion", async () => {

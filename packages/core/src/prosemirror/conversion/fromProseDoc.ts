@@ -2987,6 +2987,9 @@ function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts):
   return cell;
 }
 
+export const standaloneTableCellFromProseMirror = (node: PMNode): TableCell =>
+  convertPMTableCell(node);
+
 /**
  * Convert ProseMirror table cell attrs to TableCellFormatting
  * Borders are stored as full BorderSpec objects — no conversion needed.
