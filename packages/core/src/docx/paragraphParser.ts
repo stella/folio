@@ -795,67 +795,69 @@ function getLocalName(name: string | undefined): string {
   return colonIndex !== -1 ? name.slice(colonIndex + 1) : name;
 }
 
-function paragraphStartsWithRenderedPageBreak(node: XmlElement): boolean {
-  const inlineWrappers = new Set([
-    "hyperlink",
-    "smartTag",
-    "sdt",
-    "sdtContent",
-    "fldSimple",
-    "customXml",
-    "ins",
-    "del",
-    "moveFrom",
-    "moveTo",
-  ]);
-  const nonContentMarkers = new Set([
-    "pPr",
-    "proofErr",
-    "bookmarkStart",
-    "bookmarkEnd",
-    "commentRangeStart",
-    "commentRangeEnd",
-    "commentReference",
-    "permStart",
-    "permEnd",
-    "rsidR",
-  ]);
-  const visibleRunContent = new Set([
-    "t",
-    "tab",
-    "br",
-    "cr",
-    "sym",
-    "drawing",
-    "pict",
-    "object",
-    "softHyphen",
-    "noBreakHyphen",
-    "fldChar",
-    "instrText",
-    "pgNum",
-    "separator",
-    "continuationSeparator",
-    "footnoteRef",
-    "endnoteRef",
-    "footnoteReference",
-    "endnoteReference",
-    "ptab",
-    "monthShort",
-    "monthLong",
-    "yearShort",
-    "yearLong",
-    "dayShort",
-    "dayLong",
-  ]);
+const RENDERED_BREAK_INLINE_WRAPPERS = new Set([
+  "hyperlink",
+  "smartTag",
+  "sdt",
+  "sdtContent",
+  "fldSimple",
+  "customXml",
+  "ins",
+  "del",
+  "moveFrom",
+  "moveTo",
+]);
 
+const RENDERED_BREAK_NON_CONTENT_MARKERS = new Set([
+  "pPr",
+  "proofErr",
+  "bookmarkStart",
+  "bookmarkEnd",
+  "commentRangeStart",
+  "commentRangeEnd",
+  "commentReference",
+  "permStart",
+  "permEnd",
+  "rsidR",
+]);
+
+const RENDERED_BREAK_VISIBLE_RUN_CONTENT = new Set([
+  "t",
+  "tab",
+  "br",
+  "cr",
+  "sym",
+  "drawing",
+  "pict",
+  "object",
+  "softHyphen",
+  "noBreakHyphen",
+  "fldChar",
+  "instrText",
+  "pgNum",
+  "separator",
+  "continuationSeparator",
+  "footnoteRef",
+  "endnoteRef",
+  "footnoteReference",
+  "endnoteReference",
+  "ptab",
+  "monthShort",
+  "monthLong",
+  "yearShort",
+  "yearLong",
+  "dayShort",
+  "dayLong",
+]);
+
+function paragraphStartsWithRenderedPageBreak(node: XmlElement): boolean {
   type VisitResult = "forced" | "visible" | "continue";
   let sawRenderedPageBreak = false;
 
   const visit = (element: XmlElement): VisitResult => {
     for (const child of getChildElements(element)) {
       const childName = getLocalName(child.name);
-      if (nonContentMarkers.has(childName)) {
+      if (RENDERED_BREAK_NON_CONTENT_MARKERS.has(childName)) {
         continue;
       }
       if (childName === "lastRenderedPageBreak") {
@@ -875,13 +877,13 @@ function paragraphStartsWithRenderedPageBreak(node: XmlElement): boolean {
           if (runChildName === "br" && getAttribute(runChild, "w", "type") === "page") {
             return "forced";
           }
-          if (visibleRunContent.has(runChildName)) {
+          if (RENDERED_BREAK_VISIBLE_RUN_CONTENT.has(runChildName)) {
             return "visible";
           }
         }
         continue;
       }
-      if (inlineWrappers.has(childName)) {
+      if (RENDERED_BREAK_INLINE_WRAPPERS.has(childName)) {
         const result = visit(child);
         if (result !== "continue") {
           return result;

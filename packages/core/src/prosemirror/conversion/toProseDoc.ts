@@ -92,6 +92,9 @@ type RunFormattingResolver = (
 
 const TOC_STYLE_ID = /^TOC\d*$/iu;
 
+const isTocStyleId = (styleId: string | undefined): boolean =>
+  styleId !== undefined && TOC_STYLE_ID.test(styleId);
+
 /**
  * Convert a Document to a ProseMirror document
  *
@@ -244,7 +247,7 @@ function convertParagraph(
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode {
   const attrs = paragraphFormattingToAttrs(paragraph, styleResolver, tableParagraphOverlay);
-  const isTocParagraph = TOC_STYLE_ID.test(paragraph.formatting?.styleId ?? "");
+  const isTocParagraph = isTocStyleId(paragraph.formatting?.styleId);
   const inlineNodes: PMNode[] = [];
   let inlineOffset = 0;
   let bookmarksArr: { id: number; name: string }[] | undefined;
@@ -722,7 +725,7 @@ function paragraphFormattingToAttrs(
     set(
       "defaultTextFormatting",
       resolveParagraphDefaultTextFormatting(styleId, formatting, styleResolver, {
-        includeParagraphMarkRunProperties: !TOC_STYLE_ID.test(styleId ?? ""),
+        includeParagraphMarkRunProperties: !isTocStyleId(styleId),
       }),
     );
 
@@ -997,8 +1000,16 @@ function hasDirectRunFormatting(formatting: TextFormatting | undefined): boolean
     return false;
   }
 
-  const entries: [string, unknown][] = Object.entries(formatting);
-  return entries.some(([key, value]) => key !== "styleId" && value !== undefined);
+  for (const key in formatting) {
+    if (!Object.hasOwn(formatting, key)) {
+      continue;
+    }
+    const value = Reflect.get(formatting, key);
+    if (key !== "styleId" && value !== undefined) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function stripParagraphMarkOnlyFormatting(formatting: TextFormatting): TextFormatting | undefined {
@@ -3030,14 +3041,52 @@ type TextBoxExtractionContext = {
 };
 
 type ExtractTextBoxesResult = {
-  textBoxes: ExtractedTextBox[];
+  textBoxes: readonly ExtractedTextBox[];
   textBoxAnchors: ReadonlyMap<Shape, string>;
+};
+
+const NO_EXTRACTED_TEXT_BOXES: ExtractTextBoxesResult = {
+  textBoxes: [],
+  textBoxAnchors: new Map(),
 };
 
 function extractTextBoxesFromParagraph(
   paragraph: Paragraph,
   textBoxGroupId: string,
 ): ExtractTextBoxesResult {
+  if (!mayContainTextBox(paragraph)) {
+    return NO_EXTRACTED_TEXT_BOXES;
+  }
+
+  return extractTextBoxes(paragraph, textBoxGroupId);
+}
+
+function mayContainTextBox(paragraph: Paragraph): boolean {
+  for (const item of paragraph.content) {
+    if (item.type !== "run") {
+      if (
+        item.type === "inlineSdt" ||
+        item.type === "hyperlink" ||
+        item.type === "insertion" ||
+        item.type === "deletion" ||
+        item.type === "moveFrom" ||
+        item.type === "moveTo"
+      ) {
+        return true;
+      }
+      continue;
+    }
+
+    for (const content of item.content) {
+      if (content.type === "shape" && content.shape.textBody) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function extractTextBoxes(paragraph: Paragraph, textBoxGroupId: string): ExtractTextBoxesResult {
   const textBoxes: ExtractedTextBox[] = [];
   const textBoxAnchors = new Map<Shape, string>();
   const visitRun = (run: Run, context: TextBoxExtractionContext): void => {
@@ -3416,6 +3465,58 @@ export function footnoteToProseDoc(content: BlockContent[], options?: ToProseDoc
  *   null     — no page break found.
  */
 function paragraphPageBreakPosition(paragraph: Paragraph): "before" | "after" | null {
+  if (!mayContainPageBreak(paragraph)) {
+    return null;
+  }
+
+  return findParagraphPageBreakPosition(paragraph);
+}
+
+function mayContainPageBreak(paragraph: Paragraph): boolean {
+  for (const item of paragraph.content) {
+    if (item.type === "run") {
+      for (const content of item.content) {
+        if (content.type === "break" && content.breakType === "page") {
+          return true;
+        }
+      }
+      continue;
+    }
+
+    if (
+      item.type === "hyperlink" ||
+      item.type === "simpleField" ||
+      item.type === "complexField" ||
+      item.type === "inlineSdt" ||
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
+    ) {
+      return true;
+    }
+
+    if (
+      item.type === "bookmarkStart" ||
+      item.type === "bookmarkEnd" ||
+      item.type === "commentRangeStart" ||
+      item.type === "commentRangeEnd" ||
+      item.type === "commentReference" ||
+      item.type === "moveFromRangeStart" ||
+      item.type === "moveFromRangeEnd" ||
+      item.type === "moveToRangeStart" ||
+      item.type === "moveToRangeEnd" ||
+      item.type === "mathEquation"
+    ) {
+      continue;
+    }
+
+    item satisfies never;
+  }
+  return false;
+}
+
+function findParagraphPageBreakPosition(paragraph: Paragraph): "before" | "after" | null {
   // Mutated by visitRun during traversal. oxlint flow analysis can't see
   // closure mutations, so a plain `let` here trips no-unnecessary-condition;
   // wrap in an object to keep the flag genuinely opaque to the linter.

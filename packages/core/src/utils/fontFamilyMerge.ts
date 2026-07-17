@@ -2,6 +2,23 @@ import type { TextFormatting } from "../types/document";
 
 type FontFamily = NonNullable<TextFormatting["fontFamily"]>;
 
+const FONT_FAMILY_PAIRS = [
+  ["ascii", "asciiTheme"],
+  ["hAnsi", "hAnsiTheme"],
+  ["eastAsia", "eastAsiaTheme"],
+  ["cs", "csTheme"],
+] as const;
+
+const isFontFamilyPairKey = (key: string): boolean =>
+  key === "ascii" ||
+  key === "asciiTheme" ||
+  key === "hAnsi" ||
+  key === "hAnsiTheme" ||
+  key === "eastAsia" ||
+  key === "eastAsiaTheme" ||
+  key === "cs" ||
+  key === "csTheme";
+
 export function mergeFontFamily(target: FontFamily | undefined, source: FontFamily): FontFamily {
   const result: Record<string, unknown> = {};
   const src = source as Record<string, unknown>;
@@ -24,17 +41,7 @@ export function mergeFontFamily(target: FontFamily | undefined, source: FontFami
     }
   }
 
-  const pairs: [string, string][] = [
-    ["ascii", "asciiTheme"],
-    ["hAnsi", "hAnsiTheme"],
-    ["eastAsia", "eastAsiaTheme"],
-    ["cs", "csTheme"],
-  ];
-  const pairKeys = new Set<string>();
-
-  for (const [explicit, theme] of pairs) {
-    pairKeys.add(explicit);
-    pairKeys.add(theme);
+  for (const [explicit, theme] of FONT_FAMILY_PAIRS) {
     if (src[explicit] === undefined && src[theme] === undefined) {
       continue;
     }
@@ -47,7 +54,7 @@ export function mergeFontFamily(target: FontFamily | undefined, source: FontFami
   }
 
   for (const key of Object.keys(src)) {
-    if (!pairKeys.has(key) && src[key] !== undefined) {
+    if (!isFontFamilyPairKey(key) && src[key] !== undefined) {
       result[key] = src[key];
     }
   }

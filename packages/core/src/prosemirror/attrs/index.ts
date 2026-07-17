@@ -1132,17 +1132,35 @@ const attrsResult = <T>(
     return { ok: false, issues };
   }
 
-  const normalizedAttrs: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(attrs)) {
-    if (value !== null) {
-      normalizedAttrs[key] = value;
-    }
-  }
+  let normalizedAttrs: T | undefined;
+  return {
+    ok: true,
+    get value(): T {
+      if (normalizedAttrs !== undefined) {
+        return normalizedAttrs;
+      }
 
-  // SAFETY: this module is the ProseMirror FFI boundary. The checks above
-  // validate the attrs this code relies on before exposing the typed shape,
-  // and null ProseMirror defaults are normalized to absent optional fields.
-  return { ok: true, value: normalizedAttrs as T };
+      const presentAttrs: Record<string, unknown> = {};
+      for (const key in attrs) {
+        if (!Object.hasOwn(attrs, key)) {
+          continue;
+        }
+        const value = attrs[key];
+        if (value !== null) {
+          presentAttrs[key] = value;
+        }
+      }
+
+      // SAFETY: this module is the ProseMirror FFI boundary. The checks above
+      // validate the attrs this code relies on before exposing the typed shape,
+      // and null ProseMirror defaults are normalized to absent optional fields.
+      normalizedAttrs = presentAttrs as T;
+      return normalizedAttrs;
+    },
+    set value(value: T) {
+      normalizedAttrs = value;
+    },
+  };
 };
 
 const expectAttrs = <T>(result: ReadProseMirrorAttrsResult<T>, label: string): T => {
