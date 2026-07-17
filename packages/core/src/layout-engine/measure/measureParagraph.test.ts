@@ -182,9 +182,74 @@ describe("font metrics cache", () => {
       }),
     );
   });
+
+  test("keeps section line-grid state in the paragraph measurement cache key", () => {
+    const paragraph: ParagraphBlock = {
+      kind: "paragraph",
+      id: "grid-cache",
+      runs: [],
+    };
+
+    expect(hashParagraphBlock(paragraph)).not.toBe(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: { documentGridLinePitch: 24 },
+      }),
+    );
+    expect(hashParagraphBlock({ ...paragraph, attrs: { documentGridLinePitch: 24 } })).not.toBe(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: { documentGridLinePitch: 24, snapToGrid: false },
+      }),
+    );
+  });
 });
 
 describe("empty paragraph line-height floor", () => {
+  test("rounds participating lines up to the active document-grid pitch", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "grid",
+          runs: [{ kind: "text", text: "Grid line", fontSize: 11 }],
+          attrs: { documentGridLinePitch: 24 },
+        },
+        600,
+      );
+
+      expect(measure.lines.at(0)?.lineHeight).toBe(24);
+    }, fakeMeasure);
+  });
+
+  test("honors paragraph grid opt-outs and exact line spacing", () => {
+    const base: ParagraphBlock = {
+      kind: "paragraph",
+      id: "grid-override",
+      runs: [{ kind: "text", text: "Independent line", fontSize: 11 }],
+      attrs: { documentGridLinePitch: 24 },
+    };
+    withFakeTextMeasure(() => {
+      const unsnapped = measureParagraph(
+        { ...base, attrs: { ...base.attrs, snapToGrid: false } },
+        600,
+      );
+      const exact = measureParagraph(
+        {
+          ...base,
+          attrs: {
+            ...base.attrs,
+            spacing: { line: 18, lineUnit: "px", lineRule: "exact" },
+          },
+        },
+        600,
+      );
+
+      expect(unsnapped.lines.at(0)?.lineHeight).toBeLessThan(24);
+      expect(exact.lines.at(0)?.lineHeight).toBe(18);
+    }, fakeMeasure);
+  });
+
   test("empty paragraph with line=1.0 auto is floored to 1.15 times fontSize", () => {
     const measure = measureParagraph(
       {

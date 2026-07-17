@@ -6,6 +6,44 @@ import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  test("stamps each top-level paragraph with its section line pitch", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { _sectionProperties: { docGrid: { linePitch: 360 } } }, [
+        schema.text("First section"),
+      ]),
+      schema.node("paragraph", null, [schema.text("Final section")]),
+    ]);
+
+    const blocks = toFlowBlocks(doc, { finalSectionDocumentGridLinePitchTwips: 480 });
+    const paragraphs = blocks.filter((block) => block.kind === "paragraph");
+
+    expect(paragraphs.at(0)?.attrs?.documentGridLinePitch).toBe(24);
+    expect(paragraphs.at(1)?.attrs?.documentGridLinePitch).toBe(32);
+  });
+
+  test("does not apply the body line grid to table-cell paragraphs", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Cell")])]),
+      ]),
+    ]);
+    const blocks = toFlowBlocks(schema.node("doc", null, [table]), {
+      finalSectionDocumentGridLinePitchTwips: 360,
+    });
+    const tableBlock = blocks.at(0);
+
+    expect(tableBlock?.kind).toBe("table");
+    if (tableBlock?.kind !== "table") {
+      return;
+    }
+    const cellParagraph = tableBlock.rows.at(0)?.cells.at(0)?.blocks.at(0);
+    expect(cellParagraph?.kind).toBe("paragraph");
+    if (cellParagraph?.kind !== "paragraph") {
+      return;
+    }
+    expect(cellParagraph.attrs?.documentGridLinePitch).toBeUndefined();
+  });
+
   test("keeps text-box anchors out of paragraph layout", () => {
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [

@@ -909,6 +909,7 @@ function isStyleSourcedNumPr(attrs: ParagraphAttrs): boolean {
 type BooleanToggleKey =
   | "pageBreakBefore"
   | "widowControl"
+  | "snapToGrid"
   | "kinsoku"
   | "overflowPunctuation"
   | "suppressAutoHyphens";
@@ -1014,6 +1015,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     }
     assignBooleanToggle(result, attrs, orig, "pageBreakBefore");
     assignBooleanToggle(result, attrs, orig, "widowControl");
+    assignBooleanToggle(result, attrs, orig, "snapToGrid");
     assignBooleanToggle(result, attrs, orig, "kinsoku");
     assignBooleanToggle(result, attrs, orig, "overflowPunctuation");
     assignBooleanToggle(result, attrs, orig, "suppressAutoHyphens");
@@ -1051,6 +1053,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     beforeAutospacingEdited ||
     afterAutospacingEdited ||
     attrs.lineSpacing ||
+    attrs.snapToGrid != null ||
     attrs.indentLeft ||
     attrs.indentRight ||
     attrs.indentFirstLine ||
@@ -1096,6 +1099,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   }
   if (attrs.lineSpacingRule) {
     f.lineSpacingRule = attrs.lineSpacingRule;
+  }
+  if (attrs.snapToGrid != null) {
+    f.snapToGrid = attrs.snapToGrid;
   }
   if (attrs.spacingExplicit) {
     f.spacingExplicit = attrs.spacingExplicit;

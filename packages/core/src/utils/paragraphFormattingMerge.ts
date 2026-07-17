@@ -10,6 +10,7 @@ const PARAGRAPH_REPLACE_KEYS = [
   "spaceAfter",
   "lineSpacing",
   "lineSpacingRule",
+  "snapToGrid",
   "beforeAutospacing",
   "afterAutospacing",
   "spacingExplicit",

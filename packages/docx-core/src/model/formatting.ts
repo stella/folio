@@ -252,6 +252,8 @@ export type ParagraphFormatting = {
   lineSpacing?: number;
   /** Line spacing rule (w:spacing/@w:lineRule) */
   lineSpacingRule?: LineSpacingRule;
+  /** Whether the paragraph participates in the section document grid (w:snapToGrid). */
+  snapToGrid?: boolean;
   /** Auto space before (w:spacing/@w:beforeAutospacing) */
   beforeAutospacing?: boolean;
   /** Auto space after (w:spacing/@w:afterAutospacing) */

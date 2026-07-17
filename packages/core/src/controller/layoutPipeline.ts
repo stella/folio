@@ -330,6 +330,14 @@ export function runLayoutPipeline<THfPMs>(
           : {}),
       };
     }
+    const finalSectionDocumentGridLinePitchTwips =
+      document?.package.document.sections?.at(-1)?.properties.docGrid?.linePitch;
+    if (
+      finalSectionDocumentGridLinePitchTwips !== undefined &&
+      finalSectionDocumentGridLinePitchTwips > 0
+    ) {
+      flowOpts.finalSectionDocumentGridLinePitchTwips = finalSectionDocumentGridLinePitchTwips;
+    }
     let newBlocks = toFlowBlocks(state.doc, flowOpts);
     // Template fill preview: substitute each matched {{marker}} range
     // with its typed value at the flow-block level so the pages lay out

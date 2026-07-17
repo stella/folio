@@ -593,6 +593,11 @@ function parseParagraphProperties(
     formatting.bidi = parseBooleanElement(bidi);
   }
 
+  const snapToGrid = findChild(pPr, "w", "snapToGrid");
+  if (snapToGrid) {
+    formatting.snapToGrid = parseBooleanElement(snapToGrid);
+  }
+
   // Spacing
   const spacing = findChild(pPr, "w", "spacing");
   if (spacing) {

@@ -562,6 +562,34 @@ describe("fromProseDoc", () => {
     expect(block.formatting?.suppressAutoHyphens).toBe(true);
   });
 
+  test("round-trips an explicit document-grid opt-out through ProseMirror", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { snapToGrid: false },
+              content: [{ type: "run", content: [{ type: "text", text: "Independent line" }] }],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const attrs = expectParagraphAttrs(pmDoc.child(0));
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const block = roundTripped.package.document.content.at(0);
+
+    expect(attrs.snapToGrid).toBe(false);
+    expect(block?.type).toBe("paragraph");
+    if (block?.type !== "paragraph") {
+      return;
+    }
+    expect(block.formatting?.snapToGrid).toBe(false);
+  });
+
   test("round-trips unedited inherited auto spacing without inlining the style value", () => {
     const document: Document = {
       package: {

@@ -94,6 +94,9 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
       paragraphFormatting.lineSpacing = paragraph.attrs["lineSpacing"];
       paragraphFormatting.lineSpacingRule = paragraph.attrs["lineSpacingRule"];
     }
+    if (typeof paragraph.attrs["snapToGrid"] === "boolean") {
+      paragraphFormatting.snapToGrid = paragraph.attrs["snapToGrid"];
+    }
     if (paragraph.attrs["indentLeft"]) {
       paragraphFormatting.indentLeft = paragraph.attrs["indentLeft"];
     }

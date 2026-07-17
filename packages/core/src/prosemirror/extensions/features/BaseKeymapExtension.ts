@@ -98,6 +98,7 @@ const INHERITED_PARA_ATTRS = [
   "styleId",
   "lineSpacing",
   "lineSpacingRule",
+  "snapToGrid",
   "spaceAfter",
   "spaceBefore",
   "contextualSpacing",

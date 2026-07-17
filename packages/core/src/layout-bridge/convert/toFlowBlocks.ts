@@ -139,6 +139,8 @@ export type ToFlowBlocksOptions = {
   justificationCompatibility?: NonNullable<ParagraphAttrs["justificationCompatibility"]>;
   /** Document-wide automatic hyphenation policy. */
   automaticHyphenation?: NonNullable<ParagraphAttrs["automaticHyphenation"]>;
+  /** Line pitch for the final body section, whose properties live outside the PM body. */
+  finalSectionDocumentGridLinePitchTwips?: number;
 };
 
 const DEFAULT_FONT = "Calibri";
@@ -1447,6 +1449,9 @@ function convertParagraphAttrs(
   const spaceBefore = pmAttrs.spaceBefore;
   const spaceAfter = pmAttrs.spaceAfter;
   const lineSpacing = pmAttrs.lineSpacing;
+  if (typeof pmAttrs.snapToGrid === "boolean") {
+    attrs.snapToGrid = pmAttrs.snapToGrid;
+  }
   const autoBefore = autospacingMatchesBase(pmAttrs._autospacingBase, "before", spaceBefore);
   const autoAfter = autospacingMatchesBase(pmAttrs._autospacingBase, "after", spaceAfter);
   if (
@@ -2854,6 +2859,9 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
           }
 
           if (secProps) {
+            if (secProps.docGrid?.linePitch !== undefined && secProps.docGrid.linePitch > 0) {
+              sectionBreak.documentGridLinePitchTwips = secProps.docGrid.linePitch;
+            }
             // Populate page size
             if (secProps.pageWidth || secProps.pageHeight) {
               sectionBreak.pageSize = {
@@ -2936,7 +2944,48 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   reserveLeadingEmptyOutlineHeight(blocks);
   suppressTerminalEmptyParagraphsAfterTable(blocks);
   suppressFinalParagraphInRepeatedEmptySuffix(blocks);
-  return groupParagraphFrames(mergeRunInParagraphs(blocks), nextBlockId);
+  const mergedBlocks = mergeRunInParagraphs(blocks);
+  const griddedBlocks = applySectionDocumentGrid(
+    mergedBlocks,
+    opts.finalSectionDocumentGridLinePitchTwips,
+  );
+  return groupParagraphFrames(griddedBlocks, nextBlockId);
+}
+
+function applySectionDocumentGrid(
+  blocks: FlowBlock[],
+  finalLinePitchTwips: number | undefined,
+): FlowBlock[] {
+  const result = [...blocks];
+  let sectionStart = 0;
+
+  const stampSection = (end: number, linePitchTwips: number | undefined): void => {
+    if (linePitchTwips === undefined || linePitchTwips <= 0) {
+      return;
+    }
+    const linePitch = twipsToPixels(linePitchTwips);
+    for (let index = sectionStart; index < end; index += 1) {
+      const block = result[index];
+      if (block?.kind !== "paragraph") {
+        continue;
+      }
+      result[index] = {
+        ...block,
+        attrs: { ...block.attrs, documentGridLinePitch: linePitch },
+      };
+    }
+  };
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (block?.kind !== "sectionBreak") {
+      continue;
+    }
+    stampSection(index, block.documentGridLinePitchTwips);
+    sectionStart = index + 1;
+  }
+  stampSection(blocks.length, finalLinePitchTwips);
+  return result;
 }
 
 /**

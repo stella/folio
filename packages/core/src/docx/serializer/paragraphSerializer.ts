@@ -421,6 +421,7 @@ export function serializeParagraphFormatting(
 
     // Widow control
     pushToggle("widowControl", formatting.widowControl);
+    pushToggle("snapToGrid", formatting.snapToGrid);
 
     // Numbering. Skip numPr that still equals its style-sourced value (see
     // ParagraphFormatting.numPrFromStyle) — the parser materialized it from

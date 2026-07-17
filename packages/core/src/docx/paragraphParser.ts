@@ -380,6 +380,7 @@ type ParagraphPropertyChildren = {
   pStyle?: XmlElement;
   rPr?: XmlElement;
   shd?: XmlElement;
+  snapToGrid?: XmlElement;
   spacing?: XmlElement;
   suppressAutoHyphens?: XmlElement;
   suppressLineNumbers?: XmlElement;
@@ -443,6 +444,9 @@ function collectFirstParagraphPropertyChildren(pPr: XmlElement): ParagraphProper
         break;
       case "shd":
         children.shd ??= child;
+        break;
+      case "snapToGrid":
+        children.snapToGrid ??= child;
         break;
       case "spacing":
         children.spacing ??= child;
@@ -518,6 +522,11 @@ export function parseParagraphProperties(
   const bidi = propertyChildren.bidi;
   if (bidi) {
     formatting.bidi = parseBooleanElement(bidi);
+  }
+
+  const snapToGrid = propertyChildren.snapToGrid;
+  if (snapToGrid) {
+    formatting.snapToGrid = parseBooleanElement(snapToGrid);
   }
 
   // === Spacing ===

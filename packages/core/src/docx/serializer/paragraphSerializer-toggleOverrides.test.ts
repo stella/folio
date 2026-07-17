@@ -22,6 +22,7 @@ const BOOLEAN_TOGGLES = [
   "keepLines",
   "contextualSpacing",
   "pageBreakBefore",
+  "snapToGrid",
   "suppressLineNumbers",
   "suppressAutoHyphens",
   "kinsoku",
@@ -36,6 +37,7 @@ const TAG: Record<BooleanToggle, string> = {
   keepLines: "w:keepLines",
   contextualSpacing: "w:contextualSpacing",
   pageBreakBefore: "w:pageBreakBefore",
+  snapToGrid: "w:snapToGrid",
   suppressLineNumbers: "w:suppressLineNumbers",
   suppressAutoHyphens: "w:suppressAutoHyphens",
   kinsoku: "w:kinsoku",
@@ -87,6 +89,7 @@ describe("serializeParagraph — explicit-false paragraph toggles (eigenpal #687
           <w:keepNext w:val="0"/>
           <w:keepLines w:val="0"/>
           <w:pageBreakBefore w:val="0"/>
+          <w:snapToGrid w:val="0"/>
           <w:suppressLineNumbers w:val="0"/>
           <w:suppressAutoHyphens w:val="0"/>
           <w:kinsoku w:val="0"/>

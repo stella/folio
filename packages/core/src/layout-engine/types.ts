@@ -402,6 +402,10 @@ export type ParagraphAttrs = {
   /** OOXML outline level (`w:outlineLvl`), where zero is the top level. */
   outlineLevel?: number;
   spacing?: ParagraphSpacing;
+  /** Whether this paragraph participates in the active section line grid. */
+  snapToGrid?: boolean;
+  /** Active section line pitch in pixels; present only on top-level body paragraphs. */
+  documentGridLinePitch?: number;
   /** Spacing sides resolved from OOXML automatic paragraph spacing. */
   automaticSpacing?: { before?: boolean; after?: boolean };
   /**
@@ -680,6 +684,8 @@ export type SectionBreakBlock = {
   orientation?: "portrait" | "landscape";
   margins?: PageMargins;
   columns?: ColumnLayout;
+  /** Line pitch authored by the section properties that end at this boundary, in twips. */
+  documentGridLinePitchTwips?: number;
 };
 
 export type PageHeaderFooterRefs = {

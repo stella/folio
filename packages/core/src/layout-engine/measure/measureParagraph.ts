@@ -27,6 +27,7 @@ import type {
   FieldRun,
   MathRun,
   ParagraphSpacing,
+  ParagraphAttrs,
 } from "../types";
 import { isFloatingImageRun } from "../types";
 import { resolveEffectiveLineBreakPolicy } from "./effectiveLineBreakPolicy";
@@ -286,6 +287,7 @@ function calculateEmptyParagraphMetrics(
   fontSize: number,
   spacing?: ParagraphSpacing,
   fontFamily?: string,
+  attrs?: ParagraphAttrs,
 ): LineTypography {
   const metrics = getFontMetrics({
     fontSize,
@@ -298,10 +300,26 @@ function calculateEmptyParagraphMetrics(
     const fontSizePx = ptToPx(fontSize);
     const floor = fontSizePx * WORD_SINGLE_LINE_FLOOR;
     if (result.lineHeight < floor) {
-      return { ...result, lineHeight: floor };
+      return applyDocumentGrid({ ...result, lineHeight: floor }, attrs, spacing);
     }
   }
-  return result;
+  return applyDocumentGrid(result, attrs, spacing);
+}
+
+function applyDocumentGrid(
+  typography: LineTypography,
+  attrs: ParagraphAttrs | undefined,
+  spacing: ParagraphSpacing | undefined,
+): LineTypography {
+  const pitch = attrs?.documentGridLinePitch;
+  if (pitch === undefined || pitch <= 0 || attrs?.snapToGrid === false) {
+    return typography;
+  }
+  if (spacing?.lineRule === "exact") {
+    return typography;
+  }
+  const lineHeight = Math.ceil(typography.lineHeight / pitch - 1e-9) * pitch;
+  return lineHeight === typography.lineHeight ? typography : { ...typography, lineHeight };
 }
 
 /**
@@ -1161,7 +1179,12 @@ export function measureParagraph(
 
     const emptyFontSize = attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE;
     const emptyFontFamily = attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
-    const emptyMetrics = calculateEmptyParagraphMetrics(emptyFontSize, spacing, emptyFontFamily);
+    const emptyMetrics = calculateEmptyParagraphMetrics(
+      emptyFontSize,
+      spacing,
+      emptyFontFamily,
+      attrs,
+    );
     // Reference layout reserves a second line box for a story-leading empty top-level
     // outline paragraph. Keep it as one logical/caret line while expanding
     // the line's advance; later and ordinary empty paragraphs stay at the
@@ -1199,7 +1222,7 @@ export function measureParagraph(
   if (runs.length > 0 && runs.every((run) => isTextRun(run) && isEmptyTextRun(run))) {
     const fontSize = attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE;
     const fontFamily = attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
-    const emptyMetrics = calculateEmptyParagraphMetrics(fontSize, spacing, fontFamily);
+    const emptyMetrics = calculateEmptyParagraphMetrics(fontSize, spacing, fontFamily, attrs);
 
     lines.push({
       fromRun: 0,
@@ -1279,7 +1302,7 @@ export function measureParagraph(
         finalTypography.lineHeight = objectHeight;
         finalTypography.ascent = objectHeight;
         finalTypography.descent = 0;
-        return finalTypography;
+        return applyDocumentGrid(finalTypography, attrs, spacing);
       }
       if (soleRun && isImageRun(soleRun)) {
         finalTypography.lineHeight = objectHeight;
@@ -1296,7 +1319,7 @@ export function measureParagraph(
       }
     }
 
-    return finalTypography;
+    return applyDocumentGrid(finalTypography, attrs, spacing);
   };
 
   const getPostWrapAvailableWidth = (): number => {

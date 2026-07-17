@@ -327,6 +327,7 @@ const paragraphNodeSpec: NodeSpec = {
     spaceAfter: { default: null },
     lineSpacing: { default: null },
     lineSpacingRule: { default: null },
+    snapToGrid: { default: null },
     spacingExplicit: { default: null },
     spacingFromDocDefaults: { default: null },
     spacingFromImplicitDefaultStyle: { default: null },

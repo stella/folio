@@ -153,6 +153,9 @@ export function extractSelectionState(state: EditorState): SelectionState | null
       paragraphFormatting.lineSpacing = paragraph.attrs["lineSpacing"];
       paragraphFormatting.lineSpacingRule = paragraph.attrs["lineSpacingRule"];
     }
+    if (typeof paragraph.attrs["snapToGrid"] === "boolean") {
+      paragraphFormatting.snapToGrid = paragraph.attrs["snapToGrid"];
+    }
     if (paragraph.attrs["numPr"]) {
       paragraphFormatting.numPr = paragraph.attrs["numPr"];
     }
