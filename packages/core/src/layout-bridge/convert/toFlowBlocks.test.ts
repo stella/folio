@@ -1106,6 +1106,23 @@ describe("toFlowBlocks TOC hyperlink style strip", () => {
 });
 
 describe("toFlowBlocks table cell formatting", () => {
+  test("keeps explicit zero cell margins instead of restoring table defaults", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", { cellMargins: { left: 180, right: 180 } }, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", { margins: { left: 0, right: 0 } }, [schema.node("paragraph")]),
+        ]),
+      ]),
+    ]);
+
+    const table = toFlowBlocks(doc).at(0);
+    if (table?.kind !== "table") {
+      throw new Error("Expected table block");
+    }
+
+    expect(table.rows.at(0)?.cells.at(0)?.padding).toMatchObject({ left: 0, right: 0 });
+  });
+
   test("preserves a zero-size styled cell border as a layout-free hairline", () => {
     const hairline = { style: "single", size: 0, color: { rgb: "000000" } };
     const doc = schema.node("doc", null, [

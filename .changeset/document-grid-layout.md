@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Honor section line grids, paragraph grid opt-outs, and hidden table-cell markers during layout.
+Honor section line grids, paragraph grid opt-outs, hidden table-cell markers, and explicit zero cell margins during layout.

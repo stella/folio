@@ -2246,10 +2246,7 @@ function convertTableCell(
     tableTwips: number | undefined,
   ): number => {
     if (cellTwips !== undefined) {
-      const px = twipsToPixels(cellTwips);
-      if (px > 0) {
-        return px;
-      }
+      return twipsToPixels(cellTwips);
     }
     if (tableTwips !== undefined) {
       return twipsToPixels(tableTwips);
