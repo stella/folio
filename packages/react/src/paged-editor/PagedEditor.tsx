@@ -1443,7 +1443,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const [noteStoryActive, setNoteStoryActive] = useState(false);
     const painterRef = useRef<LayoutPainter | null>(null);
     const noteStoryPlugins = useMemo(
-      () => externalPlugins.filter(({ key }) => key === suggestionModeKey.key),
+      () => externalPlugins.filter(({ spec }) => spec.key === suggestionModeKey),
       [externalPlugins],
     );
 

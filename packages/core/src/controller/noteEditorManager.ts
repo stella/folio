@@ -262,9 +262,10 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         if (story.note.kind === "footnote") {
           const index = footnotes?.findIndex(({ id }) => id === story.note.noteId) ?? -1;
           const current = index === -1 ? null : footnotes?.at(index);
-          if (!current) continue;
+          if (!current || !footnotes) continue;
           if (!footnotesChanged) {
-            footnotes = [...(footnotes ?? [])];
+            const copiedFootnotes = [...footnotes];
+            footnotes = copiedFootnotes;
             footnotesChanged = true;
           }
           const updated: Footnote = { ...current, content: proseDocToBlocks(story.view.state.doc) };
@@ -280,9 +281,10 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         }
         const index = endnotes?.findIndex(({ id }) => id === story.note.noteId) ?? -1;
         const current = index === -1 ? null : endnotes?.at(index);
-        if (!current) continue;
+        if (!current || !endnotes) continue;
         if (!endnotesChanged) {
-          endnotes = [...(endnotes ?? [])];
+          const copiedEndnotes = [...endnotes];
+          endnotes = copiedEndnotes;
           endnotesChanged = true;
         }
         const updated: Endnote = { ...current, content: proseDocToBlocks(story.view.state.doc) };
