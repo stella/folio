@@ -8,9 +8,11 @@ import { toFlowBlocks } from "./toFlowBlocks";
 describe("toFlowBlocks paragraph formatting", () => {
   test("stamps each top-level paragraph with its section line pitch", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { _sectionProperties: { docGrid: { type: "lines", linePitch: 360 } } }, [
-        schema.text("First section"),
-      ]),
+      schema.node(
+        "paragraph",
+        { _sectionProperties: { docGrid: { type: "lines", linePitch: 360 } } },
+        [schema.text("First section")],
+      ),
       schema.node("paragraph", null, [schema.text("Final section")]),
     ]);
 
