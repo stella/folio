@@ -63,6 +63,9 @@ type RejectedProposalEvaluation = Extract<
 >;
 type ConformantReport = FolioDocxConformanceReport & { readonly status: "conformant" };
 
+const isConformantReport = (report: FolioDocxConformanceReport): report is ConformantReport =>
+  report.status === "conformant";
+
 export type FolioDocxXmlPatchApplication =
   | {
       readonly version: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_VERSION;
@@ -391,7 +394,7 @@ export const applyDocxXmlPatchProposal = async ({
   const conformance = await validateDocxConformance(output, {
     ...(policyArchive === undefined ? {} : { archive: policyArchive }),
   });
-  if (conformance.status !== "conformant") {
+  if (!isConformantReport(conformance)) {
     return outputRejected({ evaluation, conformance });
   }
   return applied({ input, output, evaluation, conformance });
