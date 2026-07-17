@@ -1527,7 +1527,7 @@ function restoreRunPropertyChanges(run: Run, marks: readonly Mark[]): void {
   if (changes.length === 0) {
     return;
   }
-  run.propertyChanges = changes.map((change) => ({ ...change }));
+  run.propertyChanges = [...changes];
 }
 
 function getRunFormattingFromMarks(marks: readonly Mark[] | undefined): TextFormatting | undefined {
