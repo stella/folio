@@ -58,6 +58,11 @@ export type {
   HighlightPassageResult,
 } from "./components/DocxEditor/types";
 export type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
+export type {
+  FolioSuggestion,
+  SuggestionKind,
+  SuggestionAppliedAs,
+} from "@stll/folio-core/prosemirror/commands/comments";
 // Custom-font prop types: `fontFamilies` (picker list) + `fonts` (FontFace registration).
 export type { FontOption } from "./utils/fontOptions";
 export type { FontDefinition } from "./components/DocxEditor/types";

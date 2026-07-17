@@ -1,8 +1,10 @@
 ---
 "@stll/folio-core": minor
 "@stll/folio-react": minor
+"@stll/folio-vue": minor
 "@stll/folio-agents": minor
 "@stll/docx-core": minor
+"@stll/folio-nuxt": patch
 ---
 
 Add a first-class suggestion layer to tracked changes. AI-proposed edits can be
@@ -27,7 +29,8 @@ New core commands (`getSuggestions`, `acceptSuggestion`, `acceptAllSuggestions`,
 editor-ref methods (`getSuggestions`, `acceptSuggestion` returning
 `{ accepted, appliedAs }`, `rejectSuggestion`, `scrollToSuggestion`) expose the
 layer to hosts; `getSuggestions` reports each suggestion's kinds and `appliedAs`
-(`"tracked"` vs `"direct"`).
+(`"tracked"` vs `"direct"`). The React and Vue adapters expose the same ref
+surface (the Nuxt module re-exports it).
 
 Tracked changes also gain an optional `initials` field, carried through the
 model and the ProseMirror marks/node attrs for UI attribution (hover, accept
