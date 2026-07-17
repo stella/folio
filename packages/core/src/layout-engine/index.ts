@@ -862,6 +862,12 @@ export function getHeaderRowsHeight(measure: TableMeasure, headerRowCount: numbe
   return height;
 }
 
+const tableRowStartsWithRenderedPageBreak = (block: TableBlock, rowIndex: number): boolean =>
+  block.rows[rowIndex]?.cells.some((cell) => {
+    const firstBlock = cell.blocks.at(0);
+    return firstBlock?.kind === "paragraph" && firstBlock.attrs?.renderedPageBreakBefore === true;
+  }) ?? false;
+
 /**
  * Layout a table block onto pages.
  */
@@ -960,6 +966,29 @@ function layoutTable(
   };
 
   while (currentRowIndex < rows.length) {
+    const rowState = paginator.getCurrentState();
+    const rowHeaderOverhead = shouldRepeatHeaderRows(currentRowIndex, 0, rowState)
+      ? headerRowsHeight
+      : 0;
+    const rowAvailableHeight =
+      paginator.getAvailableHeight() - rowHeaderOverhead - rowState.trailingSpacing;
+    const rowStartsFreshPage =
+      rowState.cursorY === rowState.topMargin && rowState.page.fragments.length === 0;
+
+    // A leading w:lastRenderedPageBreak is Word's cached boundary for this
+    // row. Keep the hint advisory while the row fits, but when Folio would
+    // otherwise split it in the remaining page space, snap the row to the
+    // cached page boundary. Oversized rows still split after reaching the
+    // fresh page, so the hint cannot create a retry loop.
+    if (
+      !rowStartsFreshPage &&
+      tableRowStartsWithRenderedPageBreak(block, currentRowIndex) &&
+      rows[currentRowIndex]!.height > rowAvailableHeight
+    ) {
+      paginator.forcePageBreak();
+      continue;
+    }
+
     // Break permitted rows between whole text lines when they exceed the current
     // flow region; rows taller than a full region use the same path repeatedly.
     const splittableRow = rows[currentRowIndex]!; // SAFETY: currentRowIndex < rows.length
