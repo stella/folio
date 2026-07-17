@@ -1,9 +1,12 @@
 /**
- * `w:initials` on tracked changes: serialization + PM round-trip.
+ * `w:initials` on tracked changes: standards-clean serialization + PM round-trip.
  *
- * NOTE: `w:initials` is not part of ECMA-376 `CT_TrackChange` (it is defined on
- * `w:comment`). Folio emits it as an optional attribution extension when the
- * source carries it; Word ignores unknown attributes on `w:ins`/`w:del`.
+ * `w:initials` is NOT part of ECMA-376 `CT_TrackChange` (it is defined on
+ * `w:comment`). Folio therefore NEVER emits it on `w:ins`/`w:del`/`w:*PrChange`
+ * or the table row/cell markers — output stays schema-strict for legal-document
+ * validators. Initials are still carried in-model and on the ProseMirror marks
+ * for UI attribution (hover, accept authoring), and the parser stays tolerant of
+ * an `initials` attribute if some external document supplies one.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -29,7 +32,7 @@ const firstParagraph = (model: Document): Paragraph => {
 };
 
 describe("tracked-change w:initials", () => {
-  test("a run insertion serializes w:initials", () => {
+  test("initials are NEVER emitted on a tracked-change element (schema-strict guard)", () => {
     const mark = schema.marks["insertion"]!.create({
       revisionId: 5,
       author: "Ann Author",
@@ -39,11 +42,13 @@ describe("tracked-change w:initials", () => {
     const xml = serializeParagraph(
       firstParagraph(fromProseDoc(paragraphOf([schema.text("hi", [mark])]))),
     );
+    // The tracked change still serializes — just without the non-standard attr.
     expect(xml).toContain("<w:ins");
-    expect(xml).toContain('w:initials="AA"');
+    expect(xml).toContain('w:author="Ann Author"');
+    expect(xml).not.toContain("w:initials");
   });
 
-  test("initials round-trip through the PM bridge (model -> PM -> model)", () => {
+  test("initials survive the PM bridge (model -> PM -> model) for UI attribution", () => {
     const model: Document = {
       package: {
         document: {
@@ -64,7 +69,7 @@ describe("tracked-change w:initials", () => {
     };
 
     const pmDoc = toProseDoc(model);
-    // The PM insertion mark carries initials.
+    // The PM insertion mark carries initials (drives hover / accept authoring).
     let markInitials: unknown;
     pmDoc.descendants((node) => {
       const mark = node.marks.find((m) => m.type.name === "insertion");
@@ -75,19 +80,10 @@ describe("tracked-change w:initials", () => {
     });
     expect(markInitials).toBe("AA");
 
-    // And it survives the trip back to the model.
+    // And it survives the trip back to the model — but is NOT written to XML.
     const roundTripped = firstParagraph(fromProseDoc(pmDoc));
     const insertion = roundTripped.content.find((item) => item.type === "insertion");
     expect(insertion?.type === "insertion" ? insertion.info.initials : undefined).toBe("AA");
-    expect(serializeParagraph(roundTripped)).toContain('w:initials="AA"');
-  });
-
-  test("no w:initials attribute when none is set", () => {
-    const mark = schema.marks["insertion"]!.create({ revisionId: 8, author: "Ann", date: DATE });
-    const xml = serializeParagraph(
-      firstParagraph(fromProseDoc(paragraphOf([schema.text("x", [mark])]))),
-    );
-    expect(xml).toContain("<w:ins");
-    expect(xml).not.toContain("w:initials");
+    expect(serializeParagraph(roundTripped)).not.toContain("w:initials");
   });
 });

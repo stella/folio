@@ -29,6 +29,9 @@ editor-ref methods (`getSuggestions`, `acceptSuggestion` returning
 layer to hosts; `getSuggestions` reports each suggestion's kinds and `appliedAs`
 (`"tracked"` vs `"direct"`).
 
-Tracked changes also gain an optional `initials` field (`w:initials`), threaded
-through the model, ProseMirror marks, the `fromProseDoc`/`toProseDoc` bridge, and
-the serializer/parser for round-trip.
+Tracked changes also gain an optional `initials` field, carried through the
+model and the ProseMirror marks/node attrs for UI attribution (hover, accept
+authoring). It is intentionally NOT serialized onto `w:ins`/`w:del`/`w:*PrChange`
+or table row/cell markers — `w:initials` is not part of ECMA-376
+`CT_TrackChange`, so output stays schema-strict — but the parser remains tolerant
+of it if an external document supplies one.
