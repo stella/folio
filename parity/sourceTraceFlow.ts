@@ -56,6 +56,8 @@ type TableRowFlowMatch = {
 
 export type FlowMatch = ParagraphFlowMatch | TableRowFlowMatch;
 
+type BlockTextReader = (block: FlowBlock) => string;
+
 const truncate = (value: string, max = 240): string =>
   value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 
@@ -104,29 +106,38 @@ const paragraphText = (block: ParagraphBlock): string =>
     })
     .join("");
 
-const blockText = (block: FlowBlock): string => {
-  if (block.kind === "paragraph") {
-    return paragraphText(block);
-  }
-  if (block.kind === "table") {
-    return block.rows
-      .flatMap((row) => row.cells)
-      .flatMap((cell) => cell.blocks)
-      .map(blockText)
-      .join(" ");
-  }
-  if (block.kind === "textBox") {
-    return block.content.map(blockText).join(" ");
-  }
-  return "";
+const createBlockTextReader = (): BlockTextReader => {
+  const cache = new WeakMap<FlowBlock, string>();
+  const blockText: BlockTextReader = (block) => {
+    const cached = cache.get(block);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    let text = "";
+    if (block.kind === "paragraph") {
+      text = paragraphText(block);
+    } else if (block.kind === "table") {
+      text = block.rows
+        .flatMap((row) => row.cells)
+        .flatMap((cell) => cell.blocks)
+        .map(blockText)
+        .join(" ");
+    } else if (block.kind === "textBox") {
+      text = block.content.map(blockText).join(" ");
+    }
+    cache.set(block, text);
+    return text;
+  };
+  return blockText;
 };
 
-const summarizeBlock = (block: FlowBlock): FlowBlockSummary => {
+const summarizeBlock = (block: FlowBlock, blockText: BlockTextReader): FlowBlockSummary => {
   if (block.kind === "paragraph") {
     return {
       type: "paragraph",
       id: block.id,
-      text: truncate(paragraphText(block)),
+      text: truncate(blockText(block)),
       attrs: block.attrs,
       runs: block.runs.map(summarizeRun),
     };
@@ -137,36 +148,47 @@ const summarizeBlock = (block: FlowBlock): FlowBlockSummary => {
   return { type: "block", id: block.id, kind: block.kind };
 };
 
-const summarizeCell = (cell: TableCell, cellIndex: number): TableCellSummary => ({
+type SummarizeCellOptions = {
+  cell: TableCell;
+  cellIndex: number;
+  blockText: BlockTextReader;
+};
+
+const summarizeCell = ({ cell, cellIndex, blockText }: SummarizeCellOptions): TableCellSummary => ({
   cellIndex,
   cellId: cell.id,
   text: truncate(cell.blocks.map(blockText).join(" ")),
-  blocks: cell.blocks.map(summarizeBlock),
+  blocks: cell.blocks.map((block) => summarizeBlock(block, blockText)),
 });
+
+type TraceContext = {
+  needle: string;
+  limit: number;
+  matches: FlowMatch[];
+  blockText: BlockTextReader;
+};
 
 type VisitBlocksOptions = {
   blocks: FlowBlock[];
   path: TracePathSegment[];
-  needle: string;
-  limit: number;
-  matches: FlowMatch[];
+  context: TraceContext;
 };
 
 type VisitTableOptions = Omit<VisitBlocksOptions, "blocks"> & {
   table: TableBlock;
 };
 
-const visitBlocks = ({ blocks, path, needle, limit, matches }: VisitBlocksOptions): void => {
+const visitBlocks = ({ blocks, path, context }: VisitBlocksOptions): void => {
   for (const [blockIndex, block] of blocks.entries()) {
-    if (matches.length >= limit) {
+    if (context.matches.length >= context.limit) {
       return;
     }
 
     const blockPath = [...path, blockIndex];
     if (block.kind === "paragraph") {
-      const text = paragraphText(block);
-      if (normalizedSearchText(text).includes(needle)) {
-        matches.push({
+      const text = context.blockText(block);
+      if (normalizedSearchText(text).includes(context.needle)) {
+        context.matches.push({
           type: "paragraph",
           path: blockPath,
           id: block.id,
@@ -179,7 +201,7 @@ const visitBlocks = ({ blocks, path, needle, limit, matches }: VisitBlocksOption
     }
 
     if (block.kind === "table") {
-      visitTable({ table: block, path: blockPath, needle, limit, matches });
+      visitTable({ table: block, path: blockPath, context });
       continue;
     }
 
@@ -187,30 +209,30 @@ const visitBlocks = ({ blocks, path, needle, limit, matches }: VisitBlocksOption
       visitBlocks({
         blocks: block.content,
         path: [...blockPath, "content"],
-        needle,
-        limit,
-        matches,
+        context,
       });
     }
   }
 };
 
-const visitTable = ({ table, path, needle, limit, matches }: VisitTableOptions): void => {
+const visitTable = ({ table, path, context }: VisitTableOptions): void => {
   for (const [rowIndex, row] of table.rows.entries()) {
-    if (matches.length >= limit) {
+    if (context.matches.length >= context.limit) {
       return;
     }
 
-    const text = row.cells.map((cell) => cell.blocks.map(blockText).join(" ")).join(" ");
-    if (normalizedSearchText(text).includes(needle)) {
-      matches.push({
+    const text = row.cells.map((cell) => cell.blocks.map(context.blockText).join(" ")).join(" ");
+    if (normalizedSearchText(text).includes(context.needle)) {
+      context.matches.push({
         type: "tableRow",
         path: [...path, "rows", rowIndex],
         tableId: table.id,
         rowId: row.id,
         rowIndex,
         text: truncate(text),
-        cells: row.cells.map(summarizeCell),
+        cells: row.cells.map((cell, cellIndex) =>
+          summarizeCell({ cell, cellIndex, blockText: context.blockText }),
+        ),
       });
     }
 
@@ -218,9 +240,7 @@ const visitTable = ({ table, path, needle, limit, matches }: VisitTableOptions):
       visitBlocks({
         blocks: cell.blocks,
         path: [...path, "rows", rowIndex, "cells", cellIndex, "blocks"],
-        needle,
-        limit,
-        matches,
+        context,
       });
     }
   }
@@ -237,9 +257,12 @@ export const traceFlowBlocks = ({ blocks, query, limit }: TraceFlowBlocksOptions
   visitBlocks({
     blocks,
     path: ["blocks"],
-    needle: normalizedSearchText(query),
-    limit,
-    matches,
+    context: {
+      needle: normalizedSearchText(query),
+      limit,
+      matches,
+      blockText: createBlockTextReader(),
+    },
   });
   return matches;
 };
