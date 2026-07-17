@@ -1,5 +1,14 @@
 # @stll/folio-nuxt
 
+## 0.3.6
+
+### Patch Changes
+
+- [#370](https://github.com/stella/folio/pull/370) [`45f1af9`](https://github.com/stella/folio/commit/45f1af998990c28fb82d9b22c76fcd1af90e9e2b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor inherited locales and add reactive light, dark, and system color-mode providers.
+
+- Updated dependencies [[`0056754`](https://github.com/stella/folio/commit/0056754d22202cf27e9cd734305b10e24cc8d899), [`f04bde1`](https://github.com/stella/folio/commit/f04bde1f25af45e7155c469255c900b242cd1f32), [`9648f04`](https://github.com/stella/folio/commit/9648f0406724b1f7f4478746f2a335162bb15bfc), [`930ffc8`](https://github.com/stella/folio/commit/930ffc8dc06604bd5279405f8d20bb720dc9673f), [`354b449`](https://github.com/stella/folio/commit/354b449f7f74f182c02b69eacb6c8eaaa193f483), [`908861b`](https://github.com/stella/folio/commit/908861ba38d1277d39bd50457dcdea14f0b45b91), [`d20fb9f`](https://github.com/stella/folio/commit/d20fb9fc7ae0777077e7daf5931539e63a6672cf), [`997f0c1`](https://github.com/stella/folio/commit/997f0c12d4418239ebd86e9b20d2058f71cbf0e1), [`a56ce7d`](https://github.com/stella/folio/commit/a56ce7d0018948e1e78a3139a00577e3c7858d09), [`2499909`](https://github.com/stella/folio/commit/24999097e3ad8f59a4a76b27fe96ea56bf247b1a), [`45f1af9`](https://github.com/stella/folio/commit/45f1af998990c28fb82d9b22c76fcd1af90e9e2b), [`1d90ce1`](https://github.com/stella/folio/commit/1d90ce1f6f4d3a2774c9e666b243254e6d835f1c), [`4d49285`](https://github.com/stella/folio/commit/4d4928544738a070bcc3b2053a89a0862b8477af)]:
+  - @stll/folio-vue@0.10.0
+
 ## 0.3.5
 
 ### Patch Changes

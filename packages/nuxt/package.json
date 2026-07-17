@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-nuxt",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Nuxt 3 & 4 module for folio: auto-imports an SSR-safe <DocxEditor> component built on @stll/folio-vue and ProseMirror.",
   "keywords": [
     "docx",
