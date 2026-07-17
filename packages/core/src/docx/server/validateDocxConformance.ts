@@ -112,7 +112,7 @@ type MutableReport = {
 
 const createMutableReport = (): MutableReport => ({
   conformanceClass: DOCX_CONFORMANCE_CLASSES.UNKNOWN,
-  checks: new Map(FOLIO_DOCX_CONFORMANCE_CHECKS.map((id) => [id, "not-run"])),
+  checks: new Map(FOLIO_DOCX_CONFORMANCE_CHECKS.map((id) => [id, "not-run"] as const)),
   issues: [],
 });
 
@@ -298,9 +298,10 @@ const hasMainDocumentRelationship = (packageRelationshipsXml: string): boolean =
         return false;
       }
       const type = getAttributeAnyPrefix(element, "Type");
+      const target = getAttributeAnyPrefix(element, "Target")?.replace(/^\.\//u, "");
       return (
         type?.endsWith("/officeDocument") === true &&
-        getAttributeAnyPrefix(element, "Target") === "word/document.xml" &&
+        target === "word/document.xml" &&
         getAttributeAnyPrefix(element, "TargetMode") !== "External"
       );
     }) ?? false
