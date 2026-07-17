@@ -175,6 +175,16 @@ export {
 } from "./docx/server/extractDocxText";
 export { DocxArchiveError, type DocxArchiveOptions } from "./docx/server/boundedArchive";
 export {
+  applyDocxXmlPatchProposal,
+  FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE,
+  FOLIO_DOCX_XML_PATCH_APPLICATION_VERSION,
+  FolioDocxXmlPatchApplicationError,
+  UnsupportedFolioDocxXmlPatchApplicationProfileError,
+  type ApplyDocxXmlPatchProposalArgs,
+  type FolioDocxXmlPatchApplication,
+  type FolioDocxXmlPatchApplicationReceipt,
+} from "./docx/server/applyDocxXmlPatchProposal";
+export {
   FOLIO_DOCX_PACKAGE_INSPECTION_DEFAULTS,
   FOLIO_DOCX_PACKAGE_INSPECTION_ERROR_CODES,
   FOLIO_DOCX_PACKAGE_INSPECTION_VERSION,

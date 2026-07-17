@@ -8,6 +8,19 @@ import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { TaggedErrorClass } from 'better-result';
 
 // @public
+export const applyDocxXmlPatchProposal: (input: ApplyDocxXmlPatchProposalArgs) => Promise<FolioDocxXmlPatchApplication>;
+
+// @public (undocumented)
+export type ApplyDocxXmlPatchProposalArgs = {
+    readonly bytes: ArrayBuffer | Uint8Array;
+    readonly proposal: unknown; /** Exact package paths authorized by the server-side caller. */
+    readonly allowedParts: readonly string[];
+    readonly validationProfile: typeof FOLIO_DOCX_CONFORMANCE_PROFILE;
+    readonly archive?: DocxArchiveOptions;
+    readonly limits?: FolioDocxXmlPatchProposalLimits;
+};
+
+// @public
 export const applyFolioAIEditsToBuffer: (buffer: ArrayBuffer, operations: FolioAIEditOperation[], options?: ApplyFolioAIEditsToBufferOptions) => Promise<ApplyFolioAIEditsToBufferResult>;
 
 // @public
@@ -256,6 +269,12 @@ export const FOLIO_DOCX_PACKAGE_INSPECTION_ERROR_CODES: readonly ["invalid-limit
 
 // @public (undocumented)
 export const FOLIO_DOCX_PACKAGE_INSPECTION_VERSION: 1;
+
+// @public (undocumented)
+export const FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE: "folio-xml-patch-application-v1";
+
+// @public (undocumented)
+export const FOLIO_DOCX_XML_PATCH_APPLICATION_VERSION: 1;
 
 // @public (undocumented)
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS: Readonly<{
@@ -907,6 +926,62 @@ export type FolioDocxReviewerOptions = {
 };
 
 // @public (undocumented)
+export type FolioDocxXmlPatchApplication = {
+    readonly version: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_VERSION;
+    readonly profile: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE;
+    readonly status: "proposal-rejected";
+    readonly producesOutput: false;
+    readonly evaluation: Extract<FolioDocxXmlPatchProposalEvaluation, {
+        status: "rejected";
+    }>;
+    readonly conformance: null;
+    readonly receipt: null;
+} | {
+    readonly version: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_VERSION;
+    readonly profile: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE;
+    readonly status: "output-rejected";
+    readonly producesOutput: false;
+    readonly evaluation: Extract<FolioDocxXmlPatchProposalEvaluation, {
+        status: "accepted";
+    }>;
+    readonly conformance: FolioDocxConformanceReport;
+    readonly receipt: null;
+} | {
+    readonly version: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_VERSION;
+    readonly profile: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE;
+    readonly status: "applied";
+    readonly producesOutput: true;
+    readonly evaluation: Extract<FolioDocxXmlPatchProposalEvaluation, {
+        status: "accepted";
+    }>;
+    readonly conformance: FolioDocxConformanceReport & {
+        readonly status: "conformant";
+    };
+    readonly receipt: FolioDocxXmlPatchApplicationReceipt;
+    readonly bytes: Uint8Array;
+};
+
+// @public (undocumented)
+export class FolioDocxXmlPatchApplicationError extends FolioDocxXmlPatchApplicationError_base {}
+
+// @public (undocumented)
+export type FolioDocxXmlPatchApplicationReceipt = {
+    readonly version: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_VERSION;
+    readonly profile: typeof FOLIO_DOCX_XML_PATCH_APPLICATION_PROFILE;
+    readonly proposalProfile: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE;
+    readonly validationProfile: typeof FOLIO_DOCX_CONFORMANCE_PROFILE;
+    readonly input: {
+        readonly sha256: string;
+        readonly byteLength: number;
+    };
+    readonly output: {
+        readonly sha256: string;
+        readonly byteLength: number;
+    };
+    readonly replacements: readonly [FolioDocxPreparedXmlReplacement, ...FolioDocxPreparedXmlReplacement[]];
+};
+
+// @public (undocumented)
 export type FolioDocxXmlPatchProposal = {
     readonly version: typeof FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION;
     readonly replacements: readonly [FolioDocxXmlReplacement, ...FolioDocxXmlReplacement[]];
@@ -1226,6 +1301,9 @@ export const STELLA_STYLE_SET_NAME = "Stella Style";
 
 // @public (undocumented)
 export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}
+
+// @public (undocumented)
+export class UnsupportedFolioDocxXmlPatchApplicationProfileError extends UnsupportedFolioDocxXmlPatchApplicationProfileError_base {}
 
 // @public (undocumented)
 export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewError_base {}
