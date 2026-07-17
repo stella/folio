@@ -1902,6 +1902,28 @@ function convertTableCell({
   return schema.node(nodeType, attrs, contentNodes);
 }
 
+export function standaloneTableCellToProseMirror(
+  cell: TableCell,
+  nodeType: "tableCell" | "tableHeader",
+): PMNode {
+  let textBoxGroupIndex = 0;
+  const nextTextBoxGroupId = (): string => String(textBoxGroupIndex++);
+  return convertTableCell({
+    cell,
+    styleResolver: null,
+    context: { theme: null, nextTextBoxGroupId },
+    isHeader: nodeType === "tableHeader",
+    gridWidthPercent: undefined,
+    conditionalStyle: undefined,
+    tableBorders: undefined,
+    position: {},
+    calculatedRowSpan: 1,
+    preserveVMergeRestart: undefined,
+    vMergeContinuationCells: undefined,
+    defaultCellMargins: undefined,
+  });
+}
+
 /**
  * Convert a SimpleField or ComplexField to a ProseMirror field node.
  * Preserves run formatting (bold, fontSize, color, etc.) as PM marks.

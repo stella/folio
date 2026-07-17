@@ -468,7 +468,34 @@ describe("table cell structural revision resolution", () => {
   });
 
   test("reject restores every cell removed by a pending vertical merge", () => {
-    const continuationCell = {
+    const formattedContinuationCell = {
+      type: "tableCell" as const,
+      formatting: { vMerge: "continue" as const, verticalAlign: "bottom" as const },
+      propertyChanges: [
+        {
+          type: "tableCellPropertyChange" as const,
+          info: { id: 79, author: "Reviewer" },
+          previousFormatting: { verticalAlign: "top" as const },
+        },
+      ],
+      structuralChange: {
+        type: "tableCellMerge" as const,
+        info: { id: 80, author: "Reviewer" },
+        verticalMerge: "continue" as const,
+      },
+      content: [
+        {
+          type: "paragraph" as const,
+          content: [
+            {
+              type: "run" as const,
+              content: [{ type: "text" as const, text: "Restored" }],
+            },
+          ],
+        },
+      ],
+    };
+    const emptyContinuationCell = {
       type: "tableCell" as const,
       formatting: { vMerge: "continue" as const },
       structuralChange: {
@@ -489,7 +516,7 @@ describe("table cell structural revision resolution", () => {
                 {
                   rowspan: 3,
                   _originalFormatting: { vMerge: "restart" },
-                  _docxVMergeContinuationCells: [continuationCell, continuationCell],
+                  _docxVMergeContinuationCells: [formattedContinuationCell, emptyContinuationCell],
                 },
                 [tableSchema.node("paragraph", null, [tableSchema.text("Top")])],
               ),
@@ -508,6 +535,17 @@ describe("table cell structural revision resolution", () => {
     expect(table?.child(2).childCount).toBe(1);
     expect(table?.child(1).firstChild?.attrs["cellMarker"]).toBeNull();
     expect(table?.child(2).firstChild?.attrs["cellMarker"]).toBeNull();
+    expect(table?.child(1).firstChild?.textContent).toBe("Restored");
+    expect(table?.child(1).firstChild?.attrs["_originalFormatting"]).toEqual({
+      verticalAlign: "bottom",
+    });
+    expect(table?.child(1).firstChild?.attrs["tcPrChange"]).toEqual([
+      {
+        type: "tableCellPropertyChange",
+        info: { id: 79, author: "Reviewer" },
+        previousFormatting: { verticalAlign: "top" },
+      },
+    ]);
     expect(() => view.state.doc.check()).not.toThrow();
   });
 
@@ -605,6 +643,40 @@ describe("table cell structural revision resolution", () => {
     expect(() => view.state.doc.check()).not.toThrow();
   });
 
+  test("reject replaces an empty origin paragraph with restored split content", () => {
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            tableSchema.node("tableRow", null, [
+              tableSchema.node("tableCell", null, [tableSchema.node("paragraph")]),
+            ]),
+            tableSchema.node("tableRow", null, [
+              tableSchema.node(
+                "tableCell",
+                {
+                  cellMarker: {
+                    kind: "merge",
+                    info: { revisionId: 83, author: "Reviewer", date: null },
+                    verticalMergeOriginal: "continue",
+                  },
+                },
+                [tableSchema.node("paragraph", null, [tableSchema.text("Restored")])],
+              ),
+            ]),
+          ]),
+        ]),
+      }),
+    );
+
+    expect(rejectAIEditRevision(83)(view.state, view.dispatch)).toBe(true);
+    const mergedCell = view.state.doc.firstChild?.firstChild?.firstChild;
+    expect(mergedCell?.childCount).toBe(1);
+    expect(mergedCell?.textContent).toBe("Restored");
+    expect(() => view.state.doc.check()).not.toThrow();
+  });
+
   test("reject keeps a split revision when no compatible cell exists above", () => {
     const marker = {
       kind: "merge",
@@ -626,8 +698,34 @@ describe("table cell structural revision resolution", () => {
       }),
     );
 
-    expect(rejectAIEditRevision(83)(view.state, view.dispatch)).toBe(true);
+    expect(rejectAIEditRevision(83)(view.state, view.dispatch)).toBe(false);
     expect(view.state.doc.firstChild?.firstChild?.firstChild?.attrs["cellMarker"]).toEqual(marker);
+  });
+
+  test("failed split resolution does not apply compatible cells from the same revision", () => {
+    const marker = {
+      kind: "merge",
+      info: { revisionId: 84, author: "Reviewer", date: null },
+      verticalMergeOriginal: "continue",
+    };
+    const doc = tableSchema.node("doc", null, [
+      tableSchema.node("table", null, [
+        tableSchema.node("tableRow", null, [
+          tableSchema.node("tableCell", { cellMarker: marker }, [tableSchema.node("paragraph")]),
+          cell("Top", undefined),
+        ]),
+        tableSchema.node("tableRow", null, [
+          cell("Left", undefined),
+          tableSchema.node("tableCell", { cellMarker: marker }, [
+            tableSchema.node("paragraph", null, [tableSchema.text("Bottom")]),
+          ]),
+        ]),
+      ]),
+    ]);
+    const view = dispatcher(EditorState.create({ schema: tableSchema, doc }));
+
+    expect(rejectAIEditRevision(84)(view.state, view.dispatch)).toBe(false);
+    expect(view.state.doc.eq(doc)).toBe(true);
   });
 
   test("resolving the only cell preserves a valid document", () => {

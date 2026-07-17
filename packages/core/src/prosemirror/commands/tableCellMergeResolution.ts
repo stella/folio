@@ -1,8 +1,10 @@
+import { Result } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
 import type { TableCell, TableCellFormatting } from "../../types/document";
+import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 
 export const hasMatchingCollapsedTableCellMerge = (
@@ -152,6 +154,10 @@ const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean 
     cell.childCount === 1 &&
     cell.firstChild?.isTextblock === true &&
     cell.firstChild.childCount === 0;
+  const aboveCellWasEmpty =
+    aboveCell.childCount === 1 &&
+    aboveCell.firstChild?.isTextblock === true &&
+    aboveCell.firstChild.childCount === 0;
   tr.delete(cellPos, cellPos + cell.nodeSize);
   tr.setNodeMarkup(abovePos, undefined, {
     ...aboveCell.attrs,
@@ -159,6 +165,10 @@ const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean 
     _docxVMergeContinuationCells: continuationCells,
   });
   if (!cellWasEmpty) {
+    if (aboveCellWasEmpty) {
+      tr.replaceWith(abovePos + 1, abovePos + 1 + aboveCell.content.size, cell.content);
+      return true;
+    }
     const contentEnd = abovePos + 1 + aboveCell.content.size;
     tr.insert(contentEnd, cell.content);
   }
@@ -297,19 +307,19 @@ export const resolveCollapsedTableCellMerge = (
 };
 
 const createRestoredTableCell = (origin: PMNode, source: TableCell): PMNode | null => {
-  const originalFormatting = source.formatting ? { ...source.formatting } : undefined;
-  if (originalFormatting) {
-    delete originalFormatting.vMerge;
+  const formatting = source.formatting ? { ...source.formatting } : undefined;
+  if (formatting) {
+    delete formatting.vMerge;
   }
-  const attrs = {
-    ...origin.attrs,
-    colspan: source.formatting?.gridSpan ?? origin.attrs["colspan"],
-    rowspan: 1,
-    cellMarker: null,
-    _preserveVMergeRestart: null,
-    _docxVMergeContinuationCells: null,
-    _originalFormatting: originalFormatting ?? null,
-    tcPrChange: source.propertyChanges ?? null,
+  const restoredSource: TableCell = {
+    type: "tableCell",
+    ...(formatting ? { formatting } : {}),
+    ...(source.propertyChanges ? { propertyChanges: source.propertyChanges } : {}),
+    content: source.content,
   };
-  return origin.type.createAndFill(attrs);
+  const restored = standaloneTableCellToProseMirror(
+    restoredSource,
+    origin.type.name === "tableHeader" ? "tableHeader" : "tableCell",
+  );
+  return Result.try(() => origin.type.schema.nodeFromJSON(restored.toJSON())).unwrapOr(null);
 };

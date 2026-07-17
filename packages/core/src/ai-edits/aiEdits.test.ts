@@ -199,8 +199,18 @@ describe("Folio AI edit operations", () => {
           schema.node(
             "tableCell",
             {
-              rowspan: 2,
+              rowspan: 3,
               _docxVMergeContinuationCells: [
+                {
+                  type: "tableCell",
+                  formatting: { vMerge: "continue" },
+                  structuralChange: {
+                    type: "tableCellMerge",
+                    info: { id: 90, author: "Reviewer", date: "2026-07-16" },
+                    verticalMerge: "continue",
+                  },
+                  content: [{ type: "paragraph", content: [] }],
+                },
                 {
                   type: "tableCell",
                   formatting: { vMerge: "continue" },
@@ -216,6 +226,7 @@ describe("Folio AI edit operations", () => {
             [schema.node("paragraph", { paraId: "merge-origin" }, [schema.text("Merged content")])],
           ),
         ]),
+        schema.node("tableRow"),
         schema.node("tableRow"),
       ]),
     ]);

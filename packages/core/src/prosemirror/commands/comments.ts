@@ -323,6 +323,7 @@ function resolveChange(
 
       tableCellStructuralOps.sort((left, right) => right.cellPos - left.cellPos);
       let resolvedTableCellStructure = false;
+      let failedTableCellMergeResolution = false;
       for (const op of tableCellStructuralOps) {
         const mappedPos = tr.mapping.map(op.cellPos);
         const cell = tr.doc.nodeAt(mappedPos);
@@ -334,6 +335,10 @@ function resolveChange(
             op.source === "collapsed"
               ? resolveCollapsedTableCellMerge(tr, mappedPos, op.mode, op.revisionSet)
               : resolveVisibleTableCellMerge(tr, mappedPos, op.mode);
+          if (!resolved) {
+            failedTableCellMergeResolution = true;
+            break;
+          }
           resolvedTableCellStructure ||= resolved;
           continue;
         }
@@ -344,6 +349,9 @@ function resolveChange(
         }
         deleteTableCellAt(tr, mappedPos);
         resolvedTableCellStructure = true;
+      }
+      if (failedTableCellMergeResolution) {
+        return false;
       }
       if (resolvedTableCellStructure) {
         markStructuralChange(tr);

@@ -95,6 +95,7 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
   const deletionType = doc.type.schema.marks["deletion"];
   const blockStarts = blockStartIdsFromDoc(doc);
   const grouped = new Map<string, FolioReviewChange>();
+  const structuralChangeCellPositions = new Map<string, Set<number>>();
   let currentBlockId: string | null = null;
 
   doc.descendants((node, pos) => {
@@ -151,17 +152,21 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
         const text = node.textContent;
         const blockId = firstBlockIdWithin({ node, nodePos: pos, blockStarts });
         const existing = grouped.get(key);
+        const cellPositions = structuralChangeCellPositions.get(key) ?? new Set<number>();
+        const shouldAppendText = existing !== undefined && !cellPositions.has(pos);
         grouped.set(key, {
           id: revisionId,
           type: kind,
           author: typeof author === "string" ? author : "",
           date: typeof date === "string" ? date : null,
           text:
-            existing && existing.text.length > 0 && text.length > 0
+            shouldAppendText && existing.text.length > 0 && text.length > 0
               ? `${existing.text}\n${text}`
               : existing?.text || text,
           blockId: existing?.blockId ?? blockId,
         });
+        cellPositions.add(pos);
+        structuralChangeCellPositions.set(key, cellPositions);
       }
       const continuationCells = node.attrs["_docxVMergeContinuationCells"];
       if (Array.isArray(continuationCells)) {
@@ -174,17 +179,21 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
           const key = `cell:cellMerged:${revisionId}`;
           const existing = grouped.get(key);
           const text = node.textContent;
+          const cellPositions = structuralChangeCellPositions.get(key) ?? new Set<number>();
+          const shouldAppendText = existing !== undefined && !cellPositions.has(pos);
           grouped.set(key, {
             id: revisionId,
             type: "cellMerged",
             author: change.info.author,
             date: change.info.date ?? null,
             text:
-              existing && existing.text.length > 0 && text.length > 0
+              shouldAppendText && existing.text.length > 0 && text.length > 0
                 ? `${existing.text}\n${text}`
                 : existing?.text || text,
             blockId: existing?.blockId ?? firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
           });
+          cellPositions.add(pos);
+          structuralChangeCellPositions.set(key, cellPositions);
         }
       }
     }
