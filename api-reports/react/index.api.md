@@ -596,7 +596,8 @@ export function FolioUIProvider(input: {
 export type FontDefinition = {
     family: string; /** URL to the font file (woff2, woff, ttf, or otf). */
     src: string; /** CSS `font-weight` for this face (a number like `700`, or a keyword). Defaults to `normal`. */
-    weight?: number | string;
+    weight?: number | string; /** CSS `font-style` for this face (for example `italic`). Defaults to `normal`. */
+    style?: string;
 };
 
 // @public
