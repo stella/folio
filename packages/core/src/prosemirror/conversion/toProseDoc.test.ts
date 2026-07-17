@@ -953,6 +953,70 @@ describe("toProseDoc", () => {
     );
   });
 
+  test("table style run properties do not import docDefault fonts over Normal", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          docDefaults: {
+            rPr: {
+              fontFamily: { ascii: "Cambria", hAnsi: "Cambria" },
+            },
+          },
+          styles: [
+            {
+              styleId: "Normal",
+              type: "paragraph",
+              default: true,
+              rPr: {
+                fontFamily: { ascii: "Aptos", hAnsi: "Aptos" },
+              },
+            },
+            {
+              styleId: "ShadedTable",
+              type: "table",
+              rPr: { color: { rgb: "365F91" } },
+              tblStylePr: [{ type: "firstRow", rPr: { bold: true } }],
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "table",
+              formatting: { styleId: "ShadedTable", look: { firstRow: true } },
+              rows: [
+                {
+                  cells: [
+                    {
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [
+                            {
+                              type: "run",
+                              content: [{ type: "text", text: "Styled cell" }],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+    const text = doc.firstChild?.firstChild?.firstChild?.firstChild?.firstChild;
+
+    expect(text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs.ascii).toBe("Aptos");
+    expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(true);
+    expect(text?.marks.find((mark) => mark.type.name === "textColor")?.attrs.rgb).toBe("365F91");
+  });
+
   test("resolves themed table-cell fills while preserving their OOXML metadata", () => {
     const shading = {
       pattern: "clear",

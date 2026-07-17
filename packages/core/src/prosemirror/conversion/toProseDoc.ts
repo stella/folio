@@ -266,7 +266,7 @@ function convertParagraph(
     styleRunFormatting = resolved.runFormatting;
   }
 
-  const paragraphRunFormatting = resolveParagraphMarkRunFormatting(
+  const paragraphRunFormatting = resolveRunFormattingWithoutDefaults(
     paragraph.formatting?.runProperties,
     styleResolver,
   );
@@ -859,10 +859,10 @@ function resolveTableStyleConditional(
   }
 
   const runPropsFromPpr = conditional.pPr?.runProperties
-    ? resolveTextFormatting(conditional.pPr.runProperties, styleResolver)
+    ? resolveRunFormattingWithoutDefaults(conditional.pPr.runProperties, styleResolver)
     : undefined;
   const resolvedRpr = conditional.rPr
-    ? resolveTextFormatting(conditional.rPr, styleResolver)
+    ? resolveRunFormattingWithoutDefaults(conditional.rPr, styleResolver)
     : undefined;
   const mergedRunProps = mergeTextFormatting(runPropsFromPpr, resolvedRpr);
   const paragraphSpacingOverlay = extractTableParagraphSpacingOverlay(conditional.pPr);
@@ -894,9 +894,11 @@ function resolveTableBaseStyle(
   }
 
   const runPropsFromPpr = style.pPr?.runProperties
-    ? resolveTextFormatting(style.pPr.runProperties, styleResolver)
+    ? resolveRunFormattingWithoutDefaults(style.pPr.runProperties, styleResolver)
     : undefined;
-  const resolvedRpr = style.rPr ? resolveTextFormatting(style.rPr, styleResolver) : undefined;
+  const resolvedRpr = style.rPr
+    ? resolveRunFormattingWithoutDefaults(style.rPr, styleResolver)
+    : undefined;
   const mergedRunProps = mergeTextFormatting(runPropsFromPpr, resolvedRpr);
   const paragraphSpacingOverlay = extractTableParagraphSpacingOverlay(style.pPr);
 
@@ -1110,7 +1112,12 @@ function resolveTextFormatting(
   return mergeTextFormatting(styleFormatting, formatting);
 }
 
-function resolveParagraphMarkRunFormatting(
+/**
+ * Resolve an embedded character-style reference without importing
+ * `docDefaults`. The caller already has the paragraph cascade, including
+ * document defaults, and will layer these own properties over it.
+ */
+function resolveRunFormattingWithoutDefaults(
   formatting: TextFormatting | undefined,
   styleResolver: StyleEngine | null,
 ): TextFormatting | undefined {
@@ -1144,7 +1151,7 @@ function resolveParagraphDefaultTextFormatting(
     options.includeParagraphMarkRunProperties === false ? undefined : formatting?.runProperties;
   const paragraphRunProperties = rawParagraphMarkRpr
     ? stripParagraphMarkOnlyFormatting(
-        resolveParagraphMarkRunFormatting(rawParagraphMarkRpr, styleResolver) ?? {},
+        resolveRunFormattingWithoutDefaults(rawParagraphMarkRpr, styleResolver) ?? {},
       )
     : undefined;
 
