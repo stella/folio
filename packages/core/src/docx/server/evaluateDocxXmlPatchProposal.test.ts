@@ -223,6 +223,31 @@ describe("evaluateDocxXmlPatchProposal", () => {
       "replacement-too-large",
       "replacements-too-large",
     ]);
+
+    const multibyteXml = "<r>é</r>";
+    const multibyte = await evaluateDocxXmlPatchProposal({
+      bytes: new Uint8Array(),
+      proposal: {
+        version: FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION,
+        replacements: [
+          {
+            path: "custom.xml",
+            baseSha256: "0".repeat(64),
+            replacementXml: multibyteXml,
+          },
+        ],
+      },
+      allowedParts: ["custom.xml"],
+      limits: {
+        maxPartBytes: multibyteXml.length,
+        maxTotalBytes: multibyteXml.length,
+      },
+    });
+
+    expect(multibyte.issues.map(({ code }) => code)).toEqual([
+      "replacement-too-large",
+      "replacements-too-large",
+    ]);
   });
 
   test("rejects oversized replacement arrays before parsing their entries", async () => {
@@ -285,9 +310,18 @@ describe("evaluateDocxXmlPatchProposal", () => {
       proposal: { version: 2, replacements: [] },
       allowedParts: [],
     });
+    const malformed = await evaluateDocxXmlPatchProposal({
+      bytes: new Uint8Array(),
+      proposal: { version: "2", replacements: [] },
+      allowedParts: [],
+    });
 
     expect(unsupported.issues.at(0)).toMatchObject({
       code: "unsupported-version",
+      proposalPath: "$.version",
+    });
+    expect(malformed.issues.at(0)).toMatchObject({
+      code: "invalid-proposal",
       proposalPath: "$.version",
     });
     await expect(

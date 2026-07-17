@@ -204,7 +204,11 @@ export const parseFolioDocxXmlPatchProposal = (value: unknown): FolioDocxXmlPatc
     return invalidProposal("$", "expected an object");
   }
   assertAllowedKeys(value, "$", ["version", "replacements"]);
-  if (value["version"] !== FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION) {
+  const version = value["version"];
+  if (typeof version !== "number" || !Number.isSafeInteger(version)) {
+    return invalidProposal("$.version", "expected an integer contract version");
+  }
+  if (version !== FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION) {
     return invalidProposal("$.version", "unsupported contract version");
   }
   const replacements = value["replacements"];
@@ -397,7 +401,13 @@ export const evaluateDocxXmlPatchProposal = async ({
     return rejectedEvaluation({
       issues: [
         {
-          code: error.path === "$.version" ? "unsupported-version" : "invalid-proposal",
+          code:
+            error.path === "$.version" &&
+            isPlainObject(rawProposal) &&
+            typeof rawProposal["version"] === "number" &&
+            Number.isSafeInteger(rawProposal["version"])
+              ? "unsupported-version"
+              : "invalid-proposal",
           message: error.message,
           proposalPath: error.path,
         },
@@ -471,25 +481,28 @@ export const evaluateDocxXmlPatchProposal = async ({
     }
 
     const replacementBytes = new TextEncoder().encode(replacement.replacementXml);
-    if (replacementBytes.byteLength > limits.maxPartBytes) {
+    const exceedsEncodedPart = replacementBytes.byteLength > limits.maxPartBytes;
+    const nextEncodedTotalBytes = encodedTotalBytes + replacementBytes.byteLength;
+    if (exceedsEncodedPart) {
       issues.push({
         code: "replacement-too-large",
         message: `Replacement XML exceeds the ${limits.maxPartBytes}-byte per-part limit.`,
         proposalPath: `${proposalPath}.replacementXml`,
         part: replacement.path,
       });
-      continue;
     }
-    if (encodedTotalBytes + replacementBytes.byteLength > limits.maxTotalBytes) {
+    if (nextEncodedTotalBytes > limits.maxTotalBytes) {
       totalLimitReported = true;
       issues.push({
         code: "replacements-too-large",
         message: `Replacement XML exceeds the ${limits.maxTotalBytes}-byte cumulative limit.`,
         proposalPath: "$.replacements",
       });
+    }
+    encodedTotalBytes = nextEncodedTotalBytes;
+    if (exceedsEncodedPart || totalLimitReported) {
       continue;
     }
-    encodedTotalBytes += replacementBytes.byteLength;
     encodedByPath.set(replacement.path, replacementBytes);
 
     const safetyIssue = getDocxXmlSafetyIssue(replacement.replacementXml);
