@@ -4,15 +4,22 @@ import JSZip from "jszip";
 export const DOCX_MAX_ENTRY_BYTES = 128 * 1024 * 1024;
 export const DOCX_MAX_TOTAL_BYTES = 256 * 1024 * 1024;
 export const DOCX_MAX_ENTRIES = 4096;
+export const DOCX_MAX_INPUT_BYTES = 50 * 1024 * 1024;
 
 /** Error raised when a DOCX archive cannot be loaded within configured limits. */
 export class DocxArchiveError extends TaggedError("DocxArchiveError")<{
   message: string;
-  reason: "load-failed" | "too-many-entries" | "entry-too-large" | "total-too-large";
+  reason:
+    | "load-failed"
+    | "input-too-large"
+    | "too-many-entries"
+    | "entry-too-large"
+    | "total-too-large";
   cause?: unknown;
 }>() {}
 
 export type DocxArchiveOptions = {
+  maxInputBytes?: number;
   maxEntryBytes?: number;
   maxTotalBytes?: number;
   maxEntries?: number;
@@ -76,9 +83,17 @@ export const loadDocxArchive = async (
   bytes: ArrayBuffer | Uint8Array,
   options: DocxArchiveOptions = {},
 ): Promise<DocxArchive> => {
+  const maxInputBytes = options.maxInputBytes ?? DOCX_MAX_INPUT_BYTES;
   const maxEntryBytes = options.maxEntryBytes ?? DOCX_MAX_ENTRY_BYTES;
   const maxTotalBytes = options.maxTotalBytes ?? DOCX_MAX_TOTAL_BYTES;
   const maxEntries = options.maxEntries ?? DOCX_MAX_ENTRIES;
+
+  if (bytes.byteLength > maxInputBytes) {
+    throw new DocxArchiveError({
+      message: `DOCX input contains ${bytes.byteLength} bytes (max ${maxInputBytes})`,
+      reason: "input-too-large",
+    });
+  }
 
   let zip: JSZip;
   try {
