@@ -441,8 +441,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     showZoomControl = true,
     showReviewControls = true,
     showHeaderFooterEditing = true,
-    showMarginGuides: _showMarginGuides = false,
-    marginGuideColor: _marginGuideColor,
+    showMarginGuides = false,
+    marginGuideColor,
     showRuler: showRulerProp = false,
     rulerUnit = "inch",
     initialZoom = 1,
@@ -4159,6 +4159,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                         hfEditMode={hfEditPosition}
                         onBodyClick={handleBodyClick}
                         zoom={zoom}
+                        showMarginGuides={showMarginGuides}
+                        {...(marginGuideColor !== undefined ? { marginGuideColor } : {})}
                         readOnly={readOnly}
                         onDocumentChange={handleDocumentChange}
                         extensionManager={extensionManager}

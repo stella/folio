@@ -102,6 +102,8 @@ export type LayoutPipelineDeps<THfPMs> = {
   pageSize: { w: number; h: number };
   margins: PageMargins;
   pageGap: number;
+  showMarginGuides: boolean;
+  marginGuideColor: string | undefined;
   syncCoordinator: LayoutSelectionGate;
   headerContent: HeaderFooter | null | undefined;
   footerContent: HeaderFooter | null | undefined;
@@ -235,6 +237,8 @@ export function runLayoutPipeline<THfPMs>(
     pageSize,
     margins,
     pageGap,
+    showMarginGuides,
+    marginGuideColor,
     syncCoordinator,
     headerContent,
     footerContent,
@@ -901,6 +905,12 @@ export function runLayoutPipeline<THfPMs>(
         blockLookup,
         titlePg: hasTitlePg,
       };
+      if (showMarginGuides) {
+        renderOpts.showMarginGuides = true;
+        if (marginGuideColor !== undefined) {
+          renderOpts.marginGuideColor = marginGuideColor;
+        }
+      }
       if (headerContentForRender) {
         renderOpts.headerContent = headerContentForRender;
       }

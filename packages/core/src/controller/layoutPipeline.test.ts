@@ -375,6 +375,8 @@ const makeDeps = (
   pageSize: PAGE_SIZE,
   margins: MARGINS,
   pageGap: 24,
+  showMarginGuides: false,
+  marginGuideColor: undefined,
   syncCoordinator: new LayoutSelectionGate(),
   headerContent: null,
   footerContent: null,

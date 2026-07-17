@@ -195,6 +195,10 @@ export type RenderPageOptions = {
   backgroundColor?: string;
   /** Drop shadow on pages */
   showShadow?: boolean;
+  /** Show the effective body-content boundary for each page. */
+  showMarginGuides?: boolean;
+  /** CSS color used for margin guides. */
+  marginGuideColor?: string;
   /** Header content to render (used for all pages, or pages 2+ when titlePg is set). */
   headerContent?: HeaderFooterContent;
   /** Footer content to render (used for all pages, or pages 2+ when titlePg is set). */
@@ -416,6 +420,47 @@ function renderPageBorderOverlay(
   applyPageBorderSide(overlay, pb.right, "Right", options.theme);
 
   return overlay;
+}
+
+function renderPageMarginGuideOverlay(
+  page: Page,
+  options: RenderPageOptions,
+  doc: Document,
+): HTMLElement | null {
+  if (options.showMarginGuides !== true) {
+    return null;
+  }
+
+  const overlay = doc.createElement("div");
+  overlay.className = "layout-page-margin-guide";
+  overlay.style.position = "absolute";
+  overlay.style.top = `${page.margins.top}px`;
+  overlay.style.right = `${page.margins.right}px`;
+  overlay.style.bottom = `${page.margins.bottom}px`;
+  overlay.style.left = `${page.margins.left}px`;
+  overlay.style.boxSizing = "border-box";
+  overlay.style.border = `1px dashed ${options.marginGuideColor ?? "#c0c0c0"}`;
+  overlay.style.pointerEvents = "none";
+  overlay.style.zIndex = "19";
+  return overlay;
+}
+
+function syncPageMarginGuideOverlay(
+  pageEl: HTMLElement,
+  page: Page,
+  options: RenderPageOptions,
+  doc: Document,
+): void {
+  for (const stale of Array.from(
+    pageEl.querySelectorAll<HTMLElement>(":scope > .layout-page-margin-guide"),
+  )) {
+    stale.remove();
+  }
+
+  const overlay = renderPageMarginGuideOverlay(page, options, doc);
+  if (overlay) {
+    pageEl.append(overlay);
+  }
 }
 
 /**
@@ -2152,6 +2197,10 @@ export function renderPage(
   if (pageBorderEl && options.pageBorders?.zOrder !== "back") {
     pageEl.append(pageBorderEl);
   }
+  const marginGuideEl = renderPageMarginGuideOverlay(page, options, doc);
+  if (marginGuideEl) {
+    pageEl.append(marginGuideEl);
+  }
 
   return pageEl;
 }
@@ -2762,6 +2811,9 @@ function computeOptionsHash(options: RenderPageOptions): string {
   if (options.pageBorders) {
     parts.push(`pb:${JSON.stringify(options.pageBorders)}`);
   }
+  if (options.showMarginGuides === true) {
+    parts.push(`mg:${options.marginGuideColor ?? "#c0c0c0"}`);
+  }
 
   // Header/footer distances
   if (options.headerDistance !== undefined) {
@@ -2902,6 +2954,7 @@ export function renderPages(
         prev.renderFingerprint = null;
         applyPageStyles(prev.element, page.size.w, page.size.h, options);
         syncPageBorderOverlay(prev.element, page, options, options.document ?? document);
+        syncPageMarginGuideOverlay(prev.element, page, options, options.document ?? document);
         prev.element.dataset["pageNumber"] = String(page.number);
         continue;
       }
@@ -2922,6 +2975,7 @@ export function renderPages(
         populatePageShell(shell, prevDataMap, totalPages, options);
         applyPageStyles(shell, page.size.w, page.size.h, options);
         syncPageBorderOverlay(shell, page, options, options.document ?? document);
+        syncPageMarginGuideOverlay(shell, page, options, options.document ?? document);
         shell.dataset["pageNumber"] = String(page.number);
         continue;
       }
@@ -2944,6 +2998,7 @@ export function renderPages(
       // Update page styles in case size changed
       applyPageStyles(shell, page.size.w, page.size.h, options);
       syncPageBorderOverlay(shell, page, options, options.document ?? document);
+      syncPageMarginGuideOverlay(shell, page, options, options.document ?? document);
       shell.dataset["pageNumber"] = String(page.number);
     }
 
@@ -2958,6 +3013,7 @@ export function renderPages(
         pageEl.dataset["pageIndex"] = String(i);
         applyPageStyles(pageEl, page.size.w, page.size.h, options);
         syncPageBorderOverlay(pageEl, page, options, doc);
+        syncPageMarginGuideOverlay(pageEl, page, options, doc);
         container.append(pageEl);
 
         prevShells.push({
@@ -3055,6 +3111,7 @@ export function renderPages(
       pageEl.dataset["pageIndex"] = String(i);
       applyPageStyles(pageEl, page.size.w, page.size.h, options);
       syncPageBorderOverlay(pageEl, page, options, doc);
+      syncPageMarginGuideOverlay(pageEl, page, options, doc);
     }
     container.insertBefore(pageEl, overlayBefore);
     pageShells.push(pageEl);

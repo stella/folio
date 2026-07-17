@@ -690,6 +690,8 @@ const {
   author: () => props.author,
   password: () => props.password,
   documentKey: () => props.documentKey,
+  showMarginGuides: () => props.showMarginGuides,
+  marginGuideColor: () => props.marginGuideColor,
   externalPlugins: [],
   collaboration: () => props.collaboration,
   // Anonymization highlights + template directives are driven by the overlay

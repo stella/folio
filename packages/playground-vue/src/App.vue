@@ -16,6 +16,8 @@
         author="Folio User"
         :show-toolbar="true"
         :show-ruler="true"
+        :show-margin-guides="showMarginGuides"
+        :margin-guide-color="marginGuideColor"
         :initial-zoom="1"
         :collaboration="collaboration"
         :on-copy="() => clipboardCallbackCounts.copy++"
@@ -64,7 +66,10 @@ const documentBuffer = shallowRef<ArrayBuffer | null>(null);
 const currentDocument = shallowRef<FolioDocument | null>(null);
 const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
-const collaborationEnabled = new URLSearchParams(window.location.search).has("collaboration");
+const query = new URLSearchParams(window.location.search);
+const collaborationEnabled = query.has("collaboration");
+const showMarginGuides = query.has("marginGuides");
+const marginGuideColor = query.get("marginGuideColor") ?? undefined;
 const collaborationDocument = collaborationEnabled ? new Y.Doc() : null;
 const collaborationAwareness = collaborationDocument ? new Awareness(collaborationDocument) : null;
 let collaborationWasSeeded = false;

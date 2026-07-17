@@ -310,6 +310,10 @@ export type UseDocxEditorOptions = {
   readOnly?: MaybeRefOrGetter<boolean>;
   /** Gap between pages in pixels. */
   pageGap?: number;
+  /** Whether to paint each page's effective body-content boundary. Reactive. */
+  showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
+  /** CSS color used for margin guides. Reactive. */
+  marginGuideColor?: MaybeRefOrGetter<string | undefined>;
   /**
    * Stable identity of the loaded document (same across internal edits, distinct
    * per loaded file). Threaded to the hidden-editor manager's external-load
@@ -449,6 +453,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     pagesContainer,
     readOnly = false,
     pageGap = DEFAULT_PAGE_GAP,
+    showMarginGuides,
+    marginGuideColor,
     documentKey,
     password,
     editorMode,
@@ -634,6 +640,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           pageSize,
           margins,
           pageGap,
+          showMarginGuides: toValue(showMarginGuides) === true,
+          marginGuideColor: toValue(marginGuideColor),
           syncCoordinator,
           headerContent: hf.headerContent,
           footerContent: hf.footerContent,
@@ -1129,6 +1137,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       runLayoutPipeline(view.state, { reason: "manual" });
     }
   }
+
+  watch([() => toValue(showMarginGuides), () => toValue(marginGuideColor)], () => reLayout());
 
   function destroy(): void {
     scheduler.dispose();

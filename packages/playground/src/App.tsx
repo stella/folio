@@ -532,6 +532,9 @@ export function App() {
   const [status, setStatus] = useState("");
   const [editorMode, setEditorMode] = useState<EditorMode>("editing");
   const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
+  const query = new URLSearchParams(window.location.search);
+  const showMarginGuides = query.has("marginGuides");
+  const marginGuideColor = query.get("marginGuideColor") ?? undefined;
 
   // Load fixture from ?file= query param (visual + interaction tests) or
   // generate a body from ?paragraphs= (performance tests).
@@ -710,6 +713,8 @@ export function App() {
             onError={handleError}
             showToolbar={true}
             showRuler={true}
+            showMarginGuides={showMarginGuides}
+            {...(marginGuideColor !== undefined ? { marginGuideColor } : {})}
             initialZoom={ZOOM_INITIAL}
             mode={editorMode}
             onModeChange={setEditorMode}

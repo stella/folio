@@ -278,6 +278,42 @@ const page: Page = {
   ],
 };
 
+describe("page margin guides", () => {
+  test("renders the effective content boundary without intercepting input", () => {
+    const rendered = renderPage(
+      {
+        ...page,
+        fragments: [],
+        margins: { top: 36, right: 54, bottom: 72, left: 90 },
+      },
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      {
+        document: fakeDocument,
+        showMarginGuides: true,
+        marginGuideColor: "rgb(12, 34, 56)",
+      },
+    ) as unknown as FakeElement;
+
+    const guide = findByClass(rendered, "layout-page-margin-guide");
+    expect(guide?.style.top).toBe("36px");
+    expect(guide?.style.right).toBe("54px");
+    expect(guide?.style.bottom).toBe("72px");
+    expect(guide?.style.left).toBe("90px");
+    expect(guide?.style.border).toBe("1px dashed rgb(12, 34, 56)");
+    expect(guide?.style.pointerEvents).toBe("none");
+  });
+
+  test("omits the overlay by default", () => {
+    const rendered = renderPage(
+      { ...page, fragments: [] },
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      { document: fakeDocument },
+    ) as unknown as FakeElement;
+
+    expect(findByClass(rendered, "layout-page-margin-guide")).toBeUndefined();
+  });
+});
+
 function blockWithComment(commentId?: number): ParagraphBlock {
   return {
     kind: "paragraph",

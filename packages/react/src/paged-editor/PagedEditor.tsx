@@ -257,6 +257,10 @@ export type PagedEditorProps = {
   pageGap?: number;
   /** Zoom level (1 = 100%). */
   zoom?: number;
+  /** Show the effective body-content boundary for each page. */
+  showMarginGuides?: boolean;
+  /** CSS color used for margin guides. */
+  marginGuideColor?: string;
   /** Callback when document changes. */
   onDocumentChange?: (document: Document) => void;
   /** Callback when a readonly user action would mutate the document. */
@@ -1373,6 +1377,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       readOnly = false,
       pageGap = DEFAULT_PAGE_GAP,
       zoom = 1,
+      showMarginGuides = false,
+      marginGuideColor,
       onDocumentChange,
       onReadOnlyEditAttempt,
       onCopy,
@@ -1863,6 +1869,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             pageSize,
             margins,
             pageGap,
+            showMarginGuides,
+            marginGuideColor,
             syncCoordinator,
             headerContent,
             footerContent,
@@ -1923,6 +1931,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         margins,
         pageGap,
         zoom,
+        showMarginGuides,
+        marginGuideColor,
         syncCoordinator,
         headerContent,
         footerContent,
@@ -1960,6 +1970,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       });
     }
     const folioEditor = folioEditorRef.current;
+
+    useEffect(() => {
+      folioEditor.relayout();
+    }, [folioEditor, marginGuideColor, showMarginGuides]);
 
     // =========================================================================
     // Coalesced Layout (rAF throttle)
