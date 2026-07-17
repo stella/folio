@@ -5,7 +5,11 @@ import { panic, TaggedError } from "better-result";
 import { getDocxXmlSafetyIssue } from "../xmlSafety";
 import type { DocxArchiveOptions } from "./boundedArchive";
 import { DocxArchiveError } from "./boundedArchive";
-import { FolioDocxPackageInspectionError, inspectDocxPackage } from "./inspectDocxPackage";
+import {
+  FolioDocxPackageInspectionError,
+  inspectDocxPackage,
+  type FolioDocxInspectedXmlPart,
+} from "./inspectDocxPackage";
 
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION = 1 as const;
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE = "folio-xml-patch-proposal-v1" as const;
@@ -124,6 +128,32 @@ const SHA256_PATTERN = /^[\da-f]{64}$/u;
 const XML_DECLARED_ENCODING_PATTERN =
   /^\uFEFF?<\?xml[^>]*\bencoding\s*=\s*["']([^"']+)["'][^>]*\?>/iu;
 const MAX_PACKAGE_PATH_CODE_UNITS = 1024;
+
+type PrepareXmlReplacementOptions = {
+  replacement: FolioDocxXmlReplacement;
+  encodedByPath: ReadonlyMap<string, Uint8Array>;
+  inspectedByPath: ReadonlyMap<string, FolioDocxInspectedXmlPart>;
+};
+
+const prepareXmlReplacement = ({
+  replacement,
+  encodedByPath,
+  inspectedByPath,
+}: PrepareXmlReplacementOptions): FolioDocxPreparedXmlReplacement => {
+  const replacementBytes = encodedByPath.get(replacement.path);
+  const current = inspectedByPath.get(replacement.path);
+  if (replacementBytes === undefined || current === undefined) {
+    return panic("Accepted XML replacement is missing prepared package data");
+  }
+  return {
+    path: replacement.path,
+    baseSha256: replacement.baseSha256,
+    currentSha256: current.sha256,
+    replacementSha256: createHash("sha256").update(replacementBytes).digest("hex"),
+    replacementByteLength: replacementBytes.byteLength,
+    encoding: "utf-8",
+  };
+};
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -507,7 +537,7 @@ export const evaluateDocxXmlPatchProposal = async ({
   let inspected;
   try {
     inspected = await inspectDocxPackage(bytes, {
-      archive,
+      ...(archive === undefined ? {} : { archive }),
       xmlParts: proposal.replacements.map(({ path }) => path),
       limits: {
         maxXmlParts: limits.maxReplacements,
@@ -557,21 +587,9 @@ export const evaluateDocxXmlPatchProposal = async ({
     return rejectedEvaluation({ issues: [firstIssue, ...issues.slice(1)], limits });
   }
 
-  const preparedReplacements = proposal.replacements.map((replacement) => {
-    const replacementBytes = encodedByPath.get(replacement.path);
-    const current = inspectedByPath.get(replacement.path);
-    if (replacementBytes === undefined || current === undefined) {
-      return panic("Accepted XML replacement is missing prepared package data");
-    }
-    return {
-      path: replacement.path,
-      baseSha256: replacement.baseSha256,
-      currentSha256: current.sha256,
-      replacementSha256: createHash("sha256").update(replacementBytes).digest("hex"),
-      replacementByteLength: replacementBytes.byteLength,
-      encoding: "utf-8",
-    };
-  });
+  const preparedReplacements = proposal.replacements.map((replacement) =>
+    prepareXmlReplacement({ replacement, encodedByPath, inspectedByPath }),
+  );
   const firstPreparedReplacement = preparedReplacements.at(0);
   if (firstPreparedReplacement === undefined) {
     return panic("Accepted XML patch proposal is missing a prepared replacement");
