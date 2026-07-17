@@ -175,6 +175,21 @@ export {
 } from "./docx/server/extractDocxText";
 export { DocxArchiveError } from "./docx/server/boundedArchive";
 export {
+  FOLIO_DOCX_CONFORMANCE_CHECKS,
+  FOLIO_DOCX_CONFORMANCE_ISSUE_CODES,
+  FOLIO_DOCX_CONFORMANCE_PROFILE,
+  FOLIO_DOCX_CONFORMANCE_REPORT_VERSION,
+  validateDocxConformance,
+  type FolioDocxConformanceCheck,
+  type FolioDocxConformanceCheckId,
+  type FolioDocxConformanceCheckStatus,
+  type FolioDocxConformanceIssue,
+  type FolioDocxConformanceIssueCode,
+  type FolioDocxConformanceReport,
+  type FolioDocxConformanceStatus,
+  type ValidateDocxConformanceOptions,
+} from "./docx/server/validateDocxConformance";
+export {
   FOLIO_DOCUMENT_PRIVACY_TRANSFORMS,
   FolioDocumentPrivacyArchiveError,
   InvalidFolioDocumentPrivacyOptionsError,
