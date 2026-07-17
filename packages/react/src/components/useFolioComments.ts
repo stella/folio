@@ -16,9 +16,54 @@ import {
   useState,
 } from "react";
 
-import type { Comment } from "@stll/folio-core/types/content";
+import type { Comment, Paragraph } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
+import { isValidHexId } from "@stll/folio-core/utils/hexId";
 import { PENDING_COMMENT_ID, getCommentAuthorKey, getCommentParentId } from "./commentsHelpers";
+
+/**
+ * Sanitize a `paraId`/`textId`-bearing paragraph: drop either field when it
+ * isn't a well-formed OOXML long-hex id (see `isValidHexId`), leaving
+ * everything else untouched. Comment paragraphs from a controlled
+ * `commentsProp` come from the host app rather than our own parser/
+ * serializer, so they aren't guaranteed to satisfy the id shape those trust.
+ */
+function sanitizeCommentParagraph(paragraph: Paragraph): Paragraph {
+  const paraIdValid = paragraph.paraId === undefined || isValidHexId(paragraph.paraId);
+  const textIdValid = paragraph.textId === undefined || isValidHexId(paragraph.textId);
+  if (paraIdValid && textIdValid) {
+    return paragraph;
+  }
+  const { paraId, textId, ...rest } = paragraph;
+  return {
+    ...rest,
+    ...(paraIdValid && paraId !== undefined ? { paraId } : {}),
+    ...(textIdValid && textId !== undefined ? { textId } : {}),
+  };
+}
+
+/**
+ * Validate a controlled `commentsProp` at the boundary before it becomes
+ * editor state. A host app (or a collaboration payload relayed through it)
+ * can hand back arbitrary JSON, so `id` isn't guaranteed numeric and
+ * paragraph `paraId`/`textId` aren't guaranteed to be real Word ids — both
+ * eventually reach XML/CSS-adjacent serialization (comment threading,
+ * `[data-comment-id]` selectors). Comments with a non-finite `id` are
+ * dropped entirely; malformed paraId/textId are stripped in place.
+ */
+function sanitizeControlledComments(comments: Comment[]): Comment[] {
+  const sanitized: Comment[] = [];
+  for (const comment of comments) {
+    if (!Number.isFinite(comment.id)) {
+      continue;
+    }
+    sanitized.push({
+      ...comment,
+      content: comment.content.map(sanitizeCommentParagraph),
+    });
+  }
+  return sanitized;
+}
 
 type UseFolioCommentsOptions = {
   /** Current document (history head); seeds comments on first load. */
@@ -50,8 +95,12 @@ export function useFolioComments({
   const [visibleCommentAuthors, setVisibleCommentAuthors] = useState<Set<string> | null>(null);
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [internalComments, setInternalComments] = useState<Comment[]>([]);
-  const isControlledComments = commentsProp !== undefined;
-  const comments = isControlledComments ? commentsProp : internalComments;
+  const sanitizedCommentsProp = useMemo(
+    () => (commentsProp !== undefined ? sanitizeControlledComments(commentsProp) : undefined),
+    [commentsProp],
+  );
+  const isControlledComments = sanitizedCommentsProp !== undefined;
+  const comments = isControlledComments ? sanitizedCommentsProp : internalComments;
 
   const commentsDirtyRef = useRef(false);
   const commentsRef = useRef(comments);

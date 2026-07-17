@@ -45,10 +45,10 @@ function serializeRunContent(run: Run): string {
 function commentParagraphOpenTag(p: Paragraph): string {
   const attrs: string[] = [];
   if (p.paraId) {
-    attrs.push(`w14:paraId="${p.paraId}"`);
+    attrs.push(`w14:paraId="${escapeXml(p.paraId)}"`);
   }
   if (p.textId) {
-    attrs.push(`w14:textId="${p.textId}"`);
+    attrs.push(`w14:textId="${escapeXml(p.textId)}"`);
   }
   return attrs.length > 0 ? `<w:p ${attrs.join(" ")}>` : "<w:p>";
 }
@@ -317,8 +317,10 @@ export function serializeCommentsExtended(comments: readonly Comment[]): string 
   let xml = COMMENTS_EXTENDED_HEADER;
   for (const entry of entries) {
     const parentAttr =
-      entry.paraIdParent !== undefined ? ` w15:paraIdParent="${entry.paraIdParent}"` : "";
-    xml += `<w15:commentEx w15:paraId="${entry.paraId}"${parentAttr} w15:done="${entry.done ? "1" : "0"}"/>`;
+      entry.paraIdParent !== undefined
+        ? ` w15:paraIdParent="${escapeXml(entry.paraIdParent)}"`
+        : "";
+    xml += `<w15:commentEx w15:paraId="${escapeXml(entry.paraId)}"${parentAttr} w15:done="${entry.done ? "1" : "0"}"/>`;
   }
   xml += "</w15:commentsEx>";
   return xml;

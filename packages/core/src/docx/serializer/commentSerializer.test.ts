@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Comment } from "../../types/content";
-import { serializeComments } from "./commentSerializer";
+import { serializeComments, serializeCommentsExtended } from "./commentSerializer";
 
 function makeComment(id: number, parentId?: number): Comment {
   return {
@@ -57,5 +57,37 @@ describe("serializeComments", () => {
     const xml = serializeComments([{ ...makeComment(1), author: "" }]);
 
     expect(xml).toContain('<w:comment w:id="1" w:author=""');
+  });
+
+  test("escapes a paragraph paraId that carries markup instead of a real Word id", () => {
+    // A malformed/attacker-supplied `paraId` (e.g. relayed through a
+    // collaboration payload) must not be able to break out of the
+    // `w14:paraId="..."` attribute and inject sibling XML.
+    const malicious = '12345678"/><script>alert(1)</script><w:p w14:paraId="';
+    const comment = makeComment(1);
+    comment.content[0]!.paraId = malicious;
+
+    const xml = serializeComments([comment]);
+
+    expect(xml).not.toContain("<script>");
+    expect(xml).toContain("w14:paraId=");
+    expect(xml).toContain("&lt;script&gt;");
+    expect(xml).toContain("&quot;");
+  });
+});
+
+describe("serializeCommentsExtended", () => {
+  test("escapes paraId/paraIdParent that carry markup instead of a real Word id", () => {
+    const malicious = '12345678" w15:done="1"><script>alert(1)</script';
+    const parent = makeComment(1);
+    parent.content[0]!.paraId = malicious;
+    parent.done = true;
+
+    const xml = serializeCommentsExtended([parent]);
+
+    expect(xml).not.toBeNull();
+    expect(xml).not.toContain("<script>");
+    expect(xml).toContain("&quot;");
+    expect(xml).toContain("&lt;script&gt;");
   });
 });

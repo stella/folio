@@ -38,6 +38,7 @@ import type {
   RunPropertyChange,
 } from "../../types/document";
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
+import { isValidHexColor } from "../../utils/colorResolver";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
@@ -89,20 +90,20 @@ function serializeColorElement(color: ColorValue | undefined): string {
 
   if (color.auto) {
     attrs.push('w:val="auto"');
-  } else if (color.rgb) {
-    attrs.push(`w:val="${color.rgb}"`);
+  } else if (color.rgb && isValidHexColor(color.rgb)) {
+    attrs.push(`w:val="${escapeXml(color.rgb)}"`);
   }
 
   if (color.themeColor) {
-    attrs.push(`w:themeColor="${color.themeColor}"`);
+    attrs.push(`w:themeColor="${escapeXml(color.themeColor)}"`);
   }
 
   if (color.themeTint) {
-    attrs.push(`w:themeTint="${color.themeTint}"`);
+    attrs.push(`w:themeTint="${escapeXml(color.themeTint)}"`);
   }
 
   if (color.themeShade) {
-    attrs.push(`w:themeShade="${color.themeShade}"`);
+    attrs.push(`w:themeShade="${escapeXml(color.themeShade)}"`);
   }
 
   if (attrs.length === 0) {
@@ -128,36 +129,36 @@ function serializeShading(shading: ShadingProperties | undefined): string {
 
   // Pattern/val
   if (shading.pattern) {
-    attrs.push(`w:val="${shading.pattern}"`);
+    attrs.push(`w:val="${escapeXml(shading.pattern)}"`);
   } else {
     attrs.push('w:val="clear"');
   }
 
   // Color (pattern color)
-  if (shading.color?.rgb) {
-    attrs.push(`w:color="${shading.color.rgb}"`);
+  if (shading.color?.rgb && isValidHexColor(shading.color.rgb)) {
+    attrs.push(`w:color="${escapeXml(shading.color.rgb)}"`);
   } else if (shading.color?.auto) {
     attrs.push('w:color="auto"');
   }
 
   // Fill (background color)
-  if (shading.fill?.rgb) {
-    attrs.push(`w:fill="${shading.fill.rgb}"`);
+  if (shading.fill?.rgb && isValidHexColor(shading.fill.rgb)) {
+    attrs.push(`w:fill="${escapeXml(shading.fill.rgb)}"`);
   } else if (shading.fill?.auto) {
     attrs.push('w:fill="auto"');
   }
 
   // Theme fill
   if (shading.fill?.themeColor) {
-    attrs.push(`w:themeFill="${shading.fill.themeColor}"`);
+    attrs.push(`w:themeFill="${escapeXml(shading.fill.themeColor)}"`);
   }
 
   if (shading.fill?.themeTint) {
-    attrs.push(`w:themeFillTint="${shading.fill.themeTint}"`);
+    attrs.push(`w:themeFillTint="${escapeXml(shading.fill.themeTint)}"`);
   }
 
   if (shading.fill?.themeShade) {
-    attrs.push(`w:themeFillShade="${shading.fill.themeShade}"`);
+    attrs.push(`w:themeFillShade="${escapeXml(shading.fill.themeShade)}"`);
   }
 
   if (attrs.length === 0) {
@@ -378,17 +379,17 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
   if (formatting.underline) {
     const uAttrs: string[] = [`w:val="${formatting.underline.style}"`];
     if (formatting.underline.color) {
-      if (formatting.underline.color.rgb) {
-        uAttrs.push(`w:color="${formatting.underline.color.rgb}"`);
+      if (formatting.underline.color.rgb && isValidHexColor(formatting.underline.color.rgb)) {
+        uAttrs.push(`w:color="${escapeXml(formatting.underline.color.rgb)}"`);
       }
       if (formatting.underline.color.themeColor) {
-        uAttrs.push(`w:themeColor="${formatting.underline.color.themeColor}"`);
+        uAttrs.push(`w:themeColor="${escapeXml(formatting.underline.color.themeColor)}"`);
       }
       if (formatting.underline.color.themeTint) {
-        uAttrs.push(`w:themeTint="${formatting.underline.color.themeTint}"`);
+        uAttrs.push(`w:themeTint="${escapeXml(formatting.underline.color.themeTint)}"`);
       }
       if (formatting.underline.color.themeShade) {
-        uAttrs.push(`w:themeShade="${formatting.underline.color.themeShade}"`);
+        uAttrs.push(`w:themeShade="${escapeXml(formatting.underline.color.themeShade)}"`);
       }
     }
     parts.push(`<w:u ${uAttrs.join(" ")}/>`);
@@ -596,15 +597,15 @@ function serializeDrawingColor(color: ColorValue | undefined): string {
   if (!color) {
     return "";
   }
-  if (color.rgb) {
-    return `<a:srgbClr val="${color.rgb.replace("#", "")}"/>`;
+  if (color.rgb && isValidHexColor(color.rgb)) {
+    return `<a:srgbClr val="${escapeXml(color.rgb.replace("#", ""))}"/>`;
   }
   if (color.themeColor) {
-    let clr = `<a:schemeClr val="${color.themeColor}"`;
+    let clr = `<a:schemeClr val="${escapeXml(color.themeColor)}"`;
     if (color.themeTint) {
-      clr += `><a:tint val="${color.themeTint}"/></a:schemeClr>`;
+      clr += `><a:tint val="${escapeXml(color.themeTint)}"/></a:schemeClr>`;
     } else if (color.themeShade) {
-      clr += `><a:shade val="${color.themeShade}"/></a:schemeClr>`;
+      clr += `><a:shade val="${escapeXml(color.themeShade)}"/></a:schemeClr>`;
     } else {
       clr += `/>`;
     }

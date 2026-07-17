@@ -22,6 +22,40 @@
 import type { ColorValue, Theme, ThemeColorSlot, ThemeColorScheme } from "../types/document";
 
 /**
+ * Strict hex-color validator shared by every OOXML → CSS color path in this
+ * module. OOXML readers are lenient about `w:val`/`w:fill` attribute content
+ * and theme swatch text, so a crafted `<w:color>`, table shading, or
+ * `themeN.xml` color-scheme entry can carry arbitrary text — including a CSS
+ * `url(...)` payload — instead of a real color. Accepts a 3, 6, or 8 digit
+ * hex string with an optional leading `#`; anything else (including the
+ * literal `"auto"`, which callers handle separately) is rejected.
+ */
+const HEX_COLOR_PATTERN = /^#?[0-9A-Fa-f]{3}(?:[0-9A-Fa-f]{3})?(?:[0-9A-Fa-f]{2})?$/u;
+
+/**
+ * Normalize a raw color string to a bare uppercase hex value (no `#`), or
+ * `undefined` when it is not a valid 3/6/8-digit hex color. This is the
+ * single choke point every resolved color passes through before becoming a
+ * CSS string — see {@link resolveColor} and {@link resolveColorToHex}.
+ */
+function normalizeHexColor(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return HEX_COLOR_PATTERN.test(value) ? value.replace(/^#/u, "").toUpperCase() : undefined;
+}
+
+/**
+ * Public form of the same hex-color check, for callers that read a color
+ * value from an untrusted surface (e.g. a pasted DOM node's `dataset`,
+ * which bypasses the CSSOM's own value validation) and must reject it
+ * before storing it as editor state.
+ */
+export function isValidHexColor(value: string | undefined | null): boolean {
+  return typeof value === "string" && normalizeHexColor(value) !== undefined;
+}
+
+/**
  * Default theme colors (Office 2016 default theme)
  */
 const DEFAULT_THEME_COLORS: ThemeColorScheme = {
@@ -274,14 +308,18 @@ export function resolveColor(
   theme: Theme | null | undefined,
   defaultColor: string = "000000",
 ): string {
+  // `defaultColor` is normally a hardcoded literal, but validate it too
+  // (defense in depth) so a bad caller-supplied fallback can't leak through.
+  const safeDefault = normalizeHexColor(defaultColor) ?? "000000";
+
   if (!color) {
-    return `#${defaultColor}`;
+    return `#${safeDefault}`;
   }
 
   // Handle "auto" color
   if (color.auto) {
     // Auto typically means black for text, but can be context-dependent
-    return `#${defaultColor}`;
+    return `#${safeDefault}`;
   }
 
   let hexColor: string;
@@ -312,8 +350,9 @@ export function resolveColor(
     hexColor = defaultColor;
   }
 
-  // Ensure proper format
-  return `#${hexColor.toUpperCase().replace(/^#/u, "")}`;
+  // Ensure proper format — falls back to the (already validated) default
+  // when the resolved value isn't a real hex color (see HEX_COLOR_PATTERN).
+  return `#${normalizeHexColor(hexColor) ?? safeDefault}`;
 }
 
 /**
@@ -340,7 +379,7 @@ export function resolveColorToHex(
   }
 
   if (color.rgb && color.rgb !== "auto") {
-    return color.rgb.toUpperCase().replace(/^#/, "");
+    return normalizeHexColor(color.rgb);
   }
 
   return undefined;

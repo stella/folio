@@ -411,3 +411,65 @@ describe("addColumn position mapping (collapsed caret)", () => {
     expect(rowCellCounts(state.doc)).toEqual([4, 4, 4]);
   });
 });
+
+// Pasted table cells carry their background color as `data-bgcolor` (our own
+// round-trip marker, written by tableCellSpec.toDOM) so it survives a
+// paste that goes through the browser's clipboard HTML rather than our own
+// serializer. Unlike `element.style.backgroundColor`, which the CSSOM
+// already normalizes to a real color, `dataset` is read back as opaque
+// text — a crafted clipboard payload can put anything there, including a
+// CSS `url(...)` fragment. `parseCellAttrsFromDOM` must reject a value
+// that isn't a real hex color rather than trusting it into
+// `background-color: #${backgroundColor}` at render time.
+describe("table cell paste — dataset.bgcolor validation", () => {
+  const fakeCellElement = (bgcolor: string) =>
+    ({
+      style: {
+        borderTopStyle: "",
+        borderTopColor: "",
+        borderTopWidth: "",
+        borderBottomStyle: "",
+        borderBottomColor: "",
+        borderBottomWidth: "",
+        borderLeftStyle: "",
+        borderLeftColor: "",
+        borderLeftWidth: "",
+        borderRightStyle: "",
+        borderRightColor: "",
+        borderRightWidth: "",
+        paddingTop: "",
+        paddingRight: "",
+        paddingBottom: "",
+        paddingLeft: "",
+        verticalAlign: "",
+        backgroundColor: "",
+      },
+      dataset: { bgcolor },
+      getAttribute: () => null,
+    }) as unknown as HTMLElement;
+
+  const getCellAttrs = (bgcolor: string): Record<string, unknown> => {
+    const rule = schema.nodes["tableCell"]?.spec.parseDOM?.[0];
+    // `rule.tag` is the ParseRule union's discriminant (TagParseRule.tag is a
+    // required string; StyleParseRule.tag is always undefined) — narrowing
+    // on it is what lets TS accept an HTMLElement argument to `getAttrs`.
+    if (!rule?.tag || !rule.getAttrs) {
+      throw new Error("Expected tableCell parseDOM tag rule with getAttrs");
+    }
+    const attrs = rule.getAttrs(fakeCellElement(bgcolor));
+    if (!attrs) {
+      throw new Error("Expected getAttrs to return an attrs object");
+    }
+    return attrs as Record<string, unknown>;
+  };
+
+  test("rejects a dataset.bgcolor carrying a CSS url() payload", () => {
+    const attrs = getCellAttrs("FFFFFF 0,red 1px),url(//x)");
+    expect(attrs["backgroundColor"]).toBeUndefined();
+  });
+
+  test("accepts a valid 6-digit hex dataset.bgcolor", () => {
+    const attrs = getCellAttrs("336699");
+    expect(attrs["backgroundColor"]).toBe("336699");
+  });
+});

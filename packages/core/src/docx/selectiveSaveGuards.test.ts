@@ -28,8 +28,8 @@ const PARAGRAPH = (id: string, text: string): string =>
 const DOCUMENT_XML = `${XML_DECL}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
-    ${PARAGRAPH("P0000001", "Hello world")}
-    ${PARAGRAPH("P0000002", "Second paragraph")}
+    ${PARAGRAPH("60000001", "Hello world")}
+    ${PARAGRAPH("60000002", "Second paragraph")}
     <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
   </w:body>
 </w:document>`;
@@ -150,7 +150,7 @@ describe("fallback contract", () => {
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
     const result = await attemptSelectiveSave(doc, buffer, {
-      changedParaIds: new Set(["P0000001"]),
+      changedParaIds: new Set(["60000001"]),
       structuralChange: true,
       hasUntrackedChanges: false,
     });
@@ -163,7 +163,7 @@ describe("fallback contract", () => {
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
     const result = await attemptSelectiveSave(doc, buffer, {
-      changedParaIds: new Set(["P0000001"]),
+      changedParaIds: new Set(["60000001"]),
       structuralChange: false,
       hasUntrackedChanges: true,
     });

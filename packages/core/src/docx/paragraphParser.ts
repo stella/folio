@@ -35,6 +35,7 @@ import type {
   TrackedChangeInfo,
   MathEquation,
 } from "../types/document";
+import { isValidHexId } from "../utils/hexId";
 import {
   parseBookmarkStart as parseBookmarkStartFromModule,
   parseBookmarkEnd as parseBookmarkEndFromModule,
@@ -1720,14 +1721,19 @@ export function parseParagraph(
     content: [],
   };
 
-  // Get paragraph ID attributes (Word 2010+ uses these for collaboration)
+  // Get paragraph ID attributes (Word 2010+ uses these for collaboration).
+  // OOXML types these as ST_LongHexNumber (exactly 8 hex digits); a value
+  // that doesn't match is not a real Word id and downstream code (paraId
+  // threading, XML serialization) must not trust it as one. Drop it rather
+  // than store a malformed value — comment threading already re-derives a
+  // fresh id when one is missing (see ensureThreadedCommentParaIds).
   const paraId = getAttribute(node, "w14", "paraId") ?? getAttribute(node, "w", "paraId");
-  if (paraId) {
+  if (paraId && isValidHexId(paraId)) {
     paragraph.paraId = paraId;
   }
 
   const textId = getAttribute(node, "w14", "textId") ?? getAttribute(node, "w", "textId");
-  if (textId) {
+  if (textId && isValidHexId(textId)) {
     paragraph.textId = textId;
   }
 

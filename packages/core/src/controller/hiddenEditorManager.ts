@@ -98,6 +98,17 @@ type AwarenessUser = {
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+/**
+ * A remote collaborator's awareness `user.color` is read from another
+ * peer's Yjs awareness state — effectively untrusted network input — and
+ * gets fed straight into `element.style.background`/`backgroundColor` (see
+ * `RemoteSelectionOverlay`). Restrict it to a plain 6-digit hex color before
+ * accepting it so a crafted value (e.g. a CSS `url(...)` payload) can't ride
+ * along as a CSS-injection / beacon vector; anything else falls back to the
+ * default selection color below.
+ */
+const AWARENESS_HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/u;
+
 const isYSyncState = (value: unknown, yjs: YjsModule): value is YSyncState => {
   if (!isObjectRecord(value)) {
     return false;
@@ -136,8 +147,13 @@ const readAwarenessUser = (state: unknown, clientId: number): AwarenessUser => {
   }
 
   const user = state["user"];
+  const rawColor = user["color"];
+  const color =
+    typeof rawColor === "string" && AWARENESS_HEX_COLOR_PATTERN.test(rawColor)
+      ? rawColor
+      : "var(--doc-image-selection)";
   return {
-    color: typeof user["color"] === "string" ? user["color"] : "var(--doc-image-selection)",
+    color,
     name: typeof user["name"] === "string" ? user["name"] : `User ${clientId}`,
   };
 };

@@ -27,7 +27,7 @@ import {
   TABLE_WIDTH_TYPE_VALUES,
 } from "../../../types/documentEnumValues";
 import type { TableBorders } from "../../../types/formatting";
-import { resolveColor } from "../../../utils/colorResolver";
+import { isValidHexColor, resolveColor } from "../../../utils/colorResolver";
 import {
   expectTableAttrs,
   expectTableCellAttrs,
@@ -238,8 +238,17 @@ function parseCellAttrsFromDOM(element: HTMLElement): TableCellAttrs {
   const valignFromData: TableCellAttrs["verticalAlign"] =
     rawValign === "top" || rawValign === "center" || rawValign === "bottom" ? rawValign : undefined;
   const verticalAlign = valignFromData ?? mapCssVerticalAlign(style.verticalAlign) ?? undefined;
+  // `dataset["bgcolor"]` is our own round-trip marker (see toDOM below), but
+  // it is read back from arbitrary pasted HTML — unlike `style.backgroundColor`,
+  // which the browser's CSSOM already normalizes to a real color, a raw
+  // dataset value could carry a crafted CSS payload (e.g. `url(...)`).
+  // Validate it as a hex color before trusting it; `toDOM` builds
+  // `background-color: #${backgroundColor}` directly from this attr.
+  const rawBgColor = element.dataset["bgcolor"];
   const backgroundColor =
-    element.dataset["bgcolor"] || parseCssColorToHex(style.backgroundColor) || undefined;
+    (isValidHexColor(rawBgColor) ? rawBgColor : undefined) ||
+    parseCssColorToHex(style.backgroundColor) ||
+    undefined;
   // getAttribute returns string|null; colSpan/rowSpan default to 1 per HTML spec
   const colspan = Number(element.getAttribute("colspan") ?? "1") || 1;
   const rowspan = Number(element.getAttribute("rowspan") ?? "1") || 1;

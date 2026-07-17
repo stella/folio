@@ -169,13 +169,13 @@ describe("parseDocumentBody list numbering", () => {
 describe("parseDocumentBody text box enrichment", () => {
   test("keeps tables in text boxes in source order", () => {
     const textBoxContent = `
-      <w:p w14:paraId="TXBI0001"><w:r><w:t>Before table</w:t></w:r></w:p>
+      <w:p w14:paraId="7B810001"><w:r><w:t>Before table</w:t></w:r></w:p>
       <w:tbl>
         <w:tblPr/>
         <w:tblGrid><w:gridCol w:w="2400"/></w:tblGrid>
-        <w:tr><w:tc><w:tcPr/><w:p w14:paraId="TXBI0002"><w:r><w:t>Cell text</w:t></w:r></w:p></w:tc></w:tr>
+        <w:tr><w:tc><w:tcPr/><w:p w14:paraId="7B810002"><w:r><w:t>Cell text</w:t></w:r></w:p></w:tc></w:tr>
       </w:tbl>
-      <w:p w14:paraId="TXBI0003"><w:r><w:t>After table</w:t></w:r></w:p>`;
+      <w:p w14:paraId="7B810003"><w:r><w:t>After table</w:t></w:r></w:p>`;
     const body = parseDocumentBody(`${XML_DECLARATION}
 <w:document
   xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -206,7 +206,7 @@ describe("parseDocumentBody text box enrichment", () => {
     }
     expect(table.rows.at(0)?.cells.at(0)?.content.at(0)).toMatchObject({
       type: "paragraph",
-      paraId: "TXBI0002",
+      paraId: "7B810002",
     });
   });
 

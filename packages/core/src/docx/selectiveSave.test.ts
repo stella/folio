@@ -114,7 +114,7 @@ const corePropertiesXml = `${XML_DECLARATION}
 </cp:coreProperties>`;
 
 const imageParagraphXml = (rId: string): string =>
-  `<w:p w14:paraId="I0000001"><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="9525" cy="9525"/><wp:docPr id="1" name="Test image" descr="Generated fixture image"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="1" name="image1.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9525" cy="9525"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  `<w:p w14:paraId="50000001"><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="9525" cy="9525"/><wp:docPr id="1" name="Test image" descr="Generated fixture image"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="1" name="image1.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9525" cy="9525"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
 
 const documentXml = ({
   paragraphCount = 4,
@@ -125,7 +125,7 @@ const documentXml = ({
 }: FixtureOptions): string => {
   const paragraphs: string[] = [];
   for (let index = 1; index <= paragraphCount; index++) {
-    const id = `P${String(index).padStart(7, "0")}`;
+    const id = `1${String(index).padStart(7, "0")}`;
     paragraphs.push(
       paragraphXml(
         id,
@@ -137,7 +137,7 @@ const documentXml = ({
 
   if (includeTable) {
     paragraphs.push(
-      `<w:tbl><w:tr><w:tc>${paragraphXml("T0000001", "Table cell text")}</w:tc></w:tr></w:tbl>`,
+      `<w:tbl><w:tr><w:tc>${paragraphXml("20000001", "Table cell text")}</w:tc></w:tr></w:tbl>`,
     );
   }
 
@@ -160,12 +160,12 @@ const documentXml = ({
 
 const headerXml = `${XML_DECLARATION}
 <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
-  ${paragraphXml("H0000001", "Header text")}
+  ${paragraphXml("30000001", "Header text")}
 </w:hdr>`;
 
 const footerXml = `${XML_DECLARATION}
 <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
-  ${paragraphXml("F0000001", "Footer text")}
+  ${paragraphXml("40000001", "Footer text")}
 </w:ftr>`;
 
 async function createFixtureDocx(options: FixtureOptions): Promise<ArrayBuffer> {

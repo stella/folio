@@ -18,6 +18,19 @@
 export const MAX_HEX_ID_EXCLUSIVE = 0x7fffffff;
 
 /**
+ * OOXML `ST_LongHexNumber` shape: exactly 8 hex digits (`xsd:hexBinary`,
+ * length 4 bytes). `w14:paraId` / `w14:textId` / comment `paraId` /
+ * `w15:paraIdParent` are all typed this way. A value that doesn't match this
+ * is not a real Word id — it must not be trusted as one (e.g. echoed
+ * unescaped into serialized XML attributes).
+ */
+export const HEX_ID_PATTERN = /^[0-9A-Fa-f]{8}$/u;
+
+/** Whether `value` is a well-formed 8-hex-digit OOXML long-hex id. */
+export const isValidHexId = (value: string | undefined | null): boolean =>
+  typeof value === "string" && HEX_ID_PATTERN.test(value);
+
+/**
  * Random 8-char uppercase hex id, matching Microsoft's `w14:paraId`
  * extension format (also reused for comment `paraId` / `durableId`).
  *

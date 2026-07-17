@@ -310,7 +310,11 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     // layout-computed map is the fallback for virtualized/non-rendered pages.
     for (const comment of visibleComments) {
       const cardId = `comment-${comment.id}`;
-      const el = pagesEl.querySelector(`[data-comment-id="${comment.id}"]`);
+      // `comment.id` is typed as a number, but a controlled `comments` prop
+      // supplied by the host app isn't runtime-checked — escape it before
+      // splicing into the selector so it can't break out of the attribute
+      // value (e.g. `1"] , img[src=x onerror=...`).
+      const el = pagesEl.querySelector(`[data-comment-id="${CSS.escape(String(comment.id))}"]`);
       if (el) {
         const rect = el.getBoundingClientRect();
         pushPosition(

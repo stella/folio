@@ -18,6 +18,7 @@
 
 import type { BlockContent, BlockSdt, SdtProperties } from "../../types/document";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
+import { isSingleWellFormedElement } from "./xmlUtils";
 
 function escapeXmlAttr(value: string): string {
   return value
@@ -174,7 +175,15 @@ export function serializeBlockSdt(
   serializeChild: (block: BlockContent) => string,
 ): string {
   const props = blockSdt.properties;
-  const baseSdtPr = props.rawPropertiesXml ?? serializeFallbackSdtPr(props);
+  // Replay the captured snapshot only when it is structurally a single
+  // `<w:sdtPr>` element — a malformed or attacker-supplied string (e.g. one
+  // that closes `<w:sdt>` early or injects sibling markup) falls back to a
+  // synthesized properties block instead of being spliced into the document
+  // verbatim.
+  const baseSdtPr =
+    props.rawPropertiesXml && isSingleWellFormedElement(props.rawPropertiesXml, "sdtPr")
+      ? props.rawPropertiesXml
+      : serializeFallbackSdtPr(props);
   // Reconcile any modeled property mutations the editor may have made into
   // the raw XML before replay so checkbox / dropdown / date interactions
   // survive the round-trip. Unmodeled markers (dataBinding,
@@ -185,7 +194,10 @@ export function serializeBlockSdt(
     ...(dateFullDate !== undefined ? { dateFullDate } : {}),
     ...(dropdownLastValue !== undefined ? { dropdownLastValue } : {}),
   });
-  const sdtEndPrXml = props.rawEndPropertiesXml ?? "";
+  const sdtEndPrXml =
+    props.rawEndPropertiesXml && isSingleWellFormedElement(props.rawEndPropertiesXml, "sdtEndPr")
+      ? props.rawEndPropertiesXml
+      : "";
   const contentXml = blockSdt.content.map(serializeChild).join("");
   // Replay any direct sdt children that lived OUTSIDE sdtContent at parse
   // time (range markers per MS-OE376 §2.5.2.30: bookmark / comment /

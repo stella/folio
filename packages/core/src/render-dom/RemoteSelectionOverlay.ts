@@ -89,14 +89,17 @@ export class RemoteSelectionOverlay {
 
       const caretElement = createOverlayElement(pagesContainer, CARET_CLASS, zIndex + 1);
       caretElement.dataset["clientId"] = String(selection.clientId);
-      caretElement.style.background = selection.color;
+      // `backgroundColor` (unlike the `background` shorthand) only accepts a
+      // <color> value, so a collaborator color that somehow carries a CSS
+      // `url(...)` payload can't be turned into a background-image beacon.
+      caretElement.style.backgroundColor = selection.color;
       setBox(caretElement, { ...caret, width: 2 });
       pagesContainer.appendChild(caretElement);
 
       const label = createOverlayElement(pagesContainer, LABEL_CLASS, zIndex + 2);
       label.dataset["clientId"] = String(selection.clientId);
       label.textContent = selection.name;
-      label.style.background = selection.color;
+      label.style.backgroundColor = selection.color;
       label.style.color = "var(--background, #fff)";
       label.style.fontSize = "10px";
       label.style.lineHeight = "1";

@@ -141,6 +141,83 @@ describe("inline SDT raw-property round-trip", () => {
   });
 });
 
+describe("inline SDT raw-property structural validation", () => {
+  test("falls back to synthesized sdtPr when rawPropertiesXml closes the SDT early", () => {
+    // `rawPropertiesXml` is normally a verbatim `<w:sdtPr>` snapshot captured
+    // by our own parser, but it can also arrive from an untrusted surface
+    // (a programmatically constructed node, a collaboration payload). A
+    // value like this one closes `<w:sdtContent>`/`<w:sdt>` early and
+    // splices in sibling markup — it must never be spliced into the
+    // serialized document verbatim.
+    const malicious =
+      '<w:sdtPr><w:tag w:val="x"/></w:sdtPr></w:sdtContent></w:sdt>' +
+      "<w:p><w:r><w:t>INJECTED</w:t></w:r></w:p>" +
+      "<w:sdt><w:sdtPr>";
+
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "inlineSdt",
+          properties: { sdtType: "richText", alias: "clause", rawPropertiesXml: malicious },
+          content: [{ type: "run", content: [{ type: "text", text: "value" }] }],
+        },
+      ],
+    };
+
+    const serialized = serializeParagraph(paragraph);
+
+    expect(serialized).not.toContain("INJECTED");
+    expect(serialized).not.toContain(malicious);
+    // Falls back to a single well-formed synthesized <w:sdtPr>, still
+    // carrying the modeled alias.
+    expect(serialized).toContain('<w:sdtPr><w:alias w:val="clause"/></w:sdtPr>');
+  });
+
+  test("falls back to no end-properties when rawEndPropertiesXml isn't a single well-formed <w:sdtEndPr>", () => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "inlineSdt",
+          properties: {
+            sdtType: "richText",
+            rawEndPropertiesXml: "<w:sdtEndPr/><w:p><w:r><w:t>INJECTED</w:t></w:r></w:p>",
+          },
+          content: [{ type: "run", content: [{ type: "text", text: "value" }] }],
+        },
+      ],
+    };
+
+    const serialized = serializeParagraph(paragraph);
+
+    expect(serialized).not.toContain("INJECTED");
+    expect(serialized).not.toContain("<w:sdtEndPr");
+  });
+
+  test("still replays a well-formed rawPropertiesXml/rawEndPropertiesXml verbatim", () => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "inlineSdt",
+          properties: {
+            sdtType: "richText",
+            rawPropertiesXml: '<w:sdtPr><w:tag w:val="ok"/></w:sdtPr>',
+            rawEndPropertiesXml: "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>",
+          },
+          content: [{ type: "run", content: [{ type: "text", text: "value" }] }],
+        },
+      ],
+    };
+
+    const serialized = serializeParagraph(paragraph);
+
+    expect(serialized).toContain('<w:sdtPr><w:tag w:val="ok"/></w:sdtPr>');
+    expect(serialized).toContain("<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>");
+  });
+});
+
 describe("inline SDT null-default normalization", () => {
   test("PM null-default attrs never enter the model or the serialized XML", () => {
     // A control with no id / dropdownLastValue / checked: `toProseDoc`

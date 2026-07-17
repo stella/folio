@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 
-import { deterministicHexId, generateHexId, MAX_HEX_ID_EXCLUSIVE } from "./hexId";
+import { deterministicHexId, generateHexId, isValidHexId, MAX_HEX_ID_EXCLUSIVE } from "./hexId";
 
 describe("generateHexId", () => {
   test("returns an 8-character uppercase hex string", () => {
@@ -53,5 +53,21 @@ describe("deterministicHexId", () => {
       expect(id).not.toBe("00000000");
       expect(Number.parseInt(id, 16)).toBeLessThan(MAX_HEX_ID_EXCLUSIVE);
     }
+  });
+});
+
+describe("isValidHexId", () => {
+  test("accepts exactly 8 hex digits", () => {
+    expect(isValidHexId("00ABCDEF")).toBe(true);
+    expect(isValidHexId(generateHexId())).toBe(true);
+  });
+
+  test("rejects malformed ids instead of only escaping them — comment/paragraph paraId must not carry markup", () => {
+    expect(isValidHexId('12345678" ><script>alert(1)</script>')).toBe(false);
+    expect(isValidHexId("1234567")).toBe(false); // too short
+    expect(isValidHexId("123456789")).toBe(false); // too long
+    expect(isValidHexId("")).toBe(false);
+    expect(isValidHexId(undefined)).toBe(false);
+    expect(isValidHexId(null)).toBe(false);
   });
 });

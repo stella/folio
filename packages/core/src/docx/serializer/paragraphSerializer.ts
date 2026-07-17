@@ -35,13 +35,14 @@ import type {
   TextFormatting,
   TrackedChangeInfo,
 } from "../../types/document";
+import { isValidHexColor } from "../../utils/colorResolver";
 import { numPrEqual } from "../numberingParser";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
 import { serializeBorder } from "./borderSerializer";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
 import { serializeRun, serializeTextFormatting } from "./runSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
-import { escapeXml, intAttr } from "./xmlUtils";
+import { escapeXml, intAttr, isSingleWellFormedElement } from "./xmlUtils";
 
 // ============================================================================
 // BORDER SERIALIZATION
@@ -122,36 +123,36 @@ function serializeShading(shading: ShadingProperties | undefined): string {
 
   // Pattern/val
   if (shading.pattern) {
-    attrs.push(`w:val="${shading.pattern}"`);
+    attrs.push(`w:val="${escapeXml(shading.pattern)}"`);
   } else {
     attrs.push('w:val="clear"');
   }
 
   // Color (pattern color)
-  if (shading.color?.rgb) {
-    attrs.push(`w:color="${shading.color.rgb}"`);
+  if (shading.color?.rgb && isValidHexColor(shading.color.rgb)) {
+    attrs.push(`w:color="${escapeXml(shading.color.rgb)}"`);
   } else if (shading.color?.auto) {
     attrs.push('w:color="auto"');
   }
 
   // Fill (background color)
-  if (shading.fill?.rgb) {
-    attrs.push(`w:fill="${shading.fill.rgb}"`);
+  if (shading.fill?.rgb && isValidHexColor(shading.fill.rgb)) {
+    attrs.push(`w:fill="${escapeXml(shading.fill.rgb)}"`);
   } else if (shading.fill?.auto) {
     attrs.push('w:fill="auto"');
   }
 
   // Theme fill
   if (shading.fill?.themeColor) {
-    attrs.push(`w:themeFill="${shading.fill.themeColor}"`);
+    attrs.push(`w:themeFill="${escapeXml(shading.fill.themeColor)}"`);
   }
 
   if (shading.fill?.themeTint) {
-    attrs.push(`w:themeFillTint="${shading.fill.themeTint}"`);
+    attrs.push(`w:themeFillTint="${escapeXml(shading.fill.themeTint)}"`);
   }
 
   if (shading.fill?.themeShade) {
-    attrs.push(`w:themeFillShade="${shading.fill.themeShade}"`);
+    attrs.push(`w:themeFillShade="${escapeXml(shading.fill.themeShade)}"`);
   }
 
   if (attrs.length === 0) {
@@ -897,7 +898,15 @@ function serializeInlineSdt(sdt: InlineSdt): string {
   // dropdown selection) into the raw properties before replay so it is not
   // discarded, exactly as the block-SDT serializer does. Unmodeled markers
   // inside the raw string are left untouched.
-  const baseSdtPr = props.rawPropertiesXml ?? synthesizeInlineSdtPr(props);
+  // Replay the captured snapshot only when it is structurally a single
+  // `<w:sdtPr>`/`<w:sdtEndPr>` element — a malformed or attacker-supplied
+  // string (e.g. one that closes `<w:sdt>` early or injects sibling markup)
+  // falls back to a synthesized properties block instead of being spliced
+  // into the document verbatim.
+  const baseSdtPr =
+    props.rawPropertiesXml && isSingleWellFormedElement(props.rawPropertiesXml, "sdtPr")
+      ? props.rawPropertiesXml
+      : synthesizeInlineSdtPr(props);
   const dateFullDate =
     props.sdtType === "date" && props.dateValueISO ? props.dateValueISO : undefined;
   const dropdownLastValue =
@@ -909,7 +918,10 @@ function serializeInlineSdt(sdt: InlineSdt): string {
     ...(dateFullDate !== undefined ? { dateFullDate } : {}),
     ...(dropdownLastValue !== undefined ? { dropdownLastValue } : {}),
   });
-  const sdtEndPrXml = props.rawEndPropertiesXml ?? "";
+  const sdtEndPrXml =
+    props.rawEndPropertiesXml && isSingleWellFormedElement(props.rawEndPropertiesXml, "sdtEndPr")
+      ? props.rawEndPropertiesXml
+      : "";
 
   return `<w:sdt>${sdtPrXml}${sdtEndPrXml}<w:sdtContent>${contentXml}</w:sdtContent></w:sdt>`;
 }
@@ -1073,10 +1085,10 @@ export function serializeParagraph(paragraph: Paragraph): string {
   // Paragraph ID attributes
   const attrs: string[] = [];
   if (paragraph.paraId) {
-    attrs.push(`w14:paraId="${paragraph.paraId}"`);
+    attrs.push(`w14:paraId="${escapeXml(paragraph.paraId)}"`);
   }
   if (paragraph.textId) {
-    attrs.push(`w14:textId="${paragraph.textId}"`);
+    attrs.push(`w14:textId="${escapeXml(paragraph.textId)}"`);
   }
   const attrsStr = attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
 
