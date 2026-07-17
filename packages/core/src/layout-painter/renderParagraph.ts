@@ -136,6 +136,13 @@ const AUTOMATIC_TEXT_COLOR_VALUES = new Set(["auto", "windowtext"]);
 const DEFAULT_BLACK_TEXT_COLOR_VALUES = new Set(["000000", "000"]);
 const DOCX_SUPERSCRIPT_SCALE = 0.75;
 
+// Suggested (AI-proposed) tracked changes render with a dotted stroke and a
+// dedicated hue, distinct from the per-author redline palette. Driven by the
+// `--suggestion-color` / `--suggestion-bg` CSS custom properties (editor.css);
+// the inline fallbacks keep the painted canvas legible without the stylesheet.
+const SUGGESTION_COLOR_CSS = "var(--suggestion-color, #6d3bd6)";
+const SUGGESTION_TINT_CSS = "var(--suggestion-bg, color-mix(in oklch, #6d3bd6 12%, transparent))";
+
 function normalizeTextColorValue(color: string): string {
   return color.trim().toLowerCase().replace(/^#/u, "");
 }
@@ -383,24 +390,36 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     element.dataset["commentId"] = String(run.commentIds[0]);
   }
 
-  // Tracked insertion styling — Word-style colored underline per author
+  // Tracked insertion styling — Word-style colored underline per author.
+  // Suggested insertions swap the author hue for the suggestion hue and paint
+  // a dotted stroke plus a faint tint so they read as proposals, not edits.
   if (run.isInsertion) {
     const authorIdx = getAuthorColorIdx(run.changeAuthor ?? "");
     const authorColor = AUTHOR_COLORS[authorIdx]!; // SAFETY: getAuthorColorIdx returns index within AUTHOR_COLORS bounds
-    element.style.color = authorColor;
+    const strokeColor = run.isSuggestion ? SUGGESTION_COLOR_CSS : authorColor;
+    element.style.color = strokeColor;
     if (!decorations.includes("underline")) {
       decorations.push("underline");
     }
-    element.style.textDecorationColor = authorColor;
+    element.style.textDecorationColor = strokeColor;
     element.classList.add("docx-insertion");
     element.dataset["tcAuthorIdx"] = String(authorIdx);
+    if (run.isSuggestion) {
+      element.classList.add("docx-insertion--suggested");
+      element.style.textDecorationStyle = "dotted";
+      element.style.backgroundColor = SUGGESTION_TINT_CSS;
+      element.dataset["provenance"] = "suggested";
+      if (run.suggestionId) {
+        element.dataset["suggestionId"] = run.suggestionId;
+      }
+    }
     // Author tooltip
     const insertionParts = [
       run.changeAuthor,
       run.changeDate ? new Date(run.changeDate).toLocaleDateString() : "",
     ].filter(Boolean);
     if (insertionParts.length > 0) {
-      element.title = `Inserted: ${insertionParts.join(", ")}`;
+      element.title = `${run.isSuggestion ? "Suggested" : "Inserted"}: ${insertionParts.join(", ")}`;
     }
     if (run.changeAuthor) {
       element.dataset["changeAuthor"] = run.changeAuthor;
@@ -413,24 +432,34 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     }
   }
 
-  // Tracked deletion styling — Word-style colored strikethrough per author
+  // Tracked deletion styling — Word-style colored strikethrough per author.
   if (run.isDeletion) {
     const authorIdx = getAuthorColorIdx(run.changeAuthor ?? "");
     const authorColor = AUTHOR_COLORS[authorIdx]!; // SAFETY: getAuthorColorIdx returns index within AUTHOR_COLORS bounds
-    element.style.color = authorColor;
+    const strokeColor = run.isSuggestion ? SUGGESTION_COLOR_CSS : authorColor;
+    element.style.color = strokeColor;
     if (!decorations.includes("line-through")) {
       decorations.push("line-through");
     }
-    element.style.textDecorationColor = authorColor;
+    element.style.textDecorationColor = strokeColor;
     element.classList.add("docx-deletion");
     element.dataset["tcAuthorIdx"] = String(authorIdx);
+    if (run.isSuggestion) {
+      element.classList.add("docx-deletion--suggested");
+      element.style.textDecorationStyle = "dotted";
+      element.style.backgroundColor = SUGGESTION_TINT_CSS;
+      element.dataset["provenance"] = "suggested";
+      if (run.suggestionId) {
+        element.dataset["suggestionId"] = run.suggestionId;
+      }
+    }
     // Author tooltip
     const deletionParts = [
       run.changeAuthor,
       run.changeDate ? new Date(run.changeDate).toLocaleDateString() : "",
     ].filter(Boolean);
     if (deletionParts.length > 0) {
-      element.title = `Deleted: ${deletionParts.join(", ")}`;
+      element.title = `${run.isSuggestion ? "Suggested deletion" : "Deleted"}: ${deletionParts.join(", ")}`;
     }
     if (run.changeAuthor) {
       element.dataset["changeAuthor"] = run.changeAuthor;

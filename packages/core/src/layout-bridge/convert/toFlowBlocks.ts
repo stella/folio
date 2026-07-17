@@ -655,6 +655,12 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
           formatting.changeDate = attrs.date;
         }
         formatting.changeRevisionId = attrs.revisionId;
+        if (attrs.provenance === "suggested") {
+          formatting.isSuggestion = true;
+          if (attrs.suggestionId) {
+            formatting.suggestionId = attrs.suggestionId;
+          }
+        }
         break;
       }
 
@@ -666,6 +672,12 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
           formatting.changeDate = attrs.date;
         }
         formatting.changeRevisionId = attrs.revisionId;
+        if (attrs.provenance === "suggested") {
+          formatting.isSuggestion = true;
+          if (attrs.suggestionId) {
+            formatting.suggestionId = attrs.suggestionId;
+          }
+        }
         break;
       }
       default:

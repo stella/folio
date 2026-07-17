@@ -354,6 +354,18 @@
   text-decoration-color: var(--tc-inverted) !important;
 }
 
+/* Suggested changes carry their own hue (--suggestion-color), so invert that
+ * channel instead — otherwise the tracked-change rule above would repaint the
+ * violet suggestions using the redline --tc-color. */
+.dark .layout-page .docx-insertion--suggested,
+.dark .layout-page .docx-deletion--suggested {
+  --suggestion-inverted: oklch(
+    from var(--suggestion-color, #6d3bd6) clamp(0, 1.22 - 0.95 * l, 1) calc(c * 0.6) h
+  );
+  color: var(--suggestion-inverted) !important;
+  text-decoration-color: var(--suggestion-inverted) !important;
+}
+
 /* ============================================================================
  * SCROLLBAR — styled to match Stella's ScrollArea
  * ============================================================================ */
@@ -518,6 +530,37 @@
   text-decoration-color: var(--tc-color, #c00000);
   color: var(--tc-color, #c00000);
   position: relative;
+}
+
+/* ----------------------------------------------------------------------------
+ * SUGGESTIONS — AI-proposed tracked changes
+ *
+ * Same insertion/deletion grammar, but a DOTTED stroke and a dedicated hue
+ * (--suggestion-color), distinct from the per-author redline palette, plus a
+ * faint background tint. Suggested spans also carry the base .docx-insertion /
+ * .docx-deletion classes, so the per-mode hide/simplify rules below apply to
+ * them unchanged. Suggestions are stripped from serialized DOCX until accepted;
+ * accepting rewrites their provenance to a normal (user) tracked change.
+ * -------------------------------------------------------------------------- */
+.folio-root {
+  --suggestion-color: #6d3bd6;
+  --suggestion-bg: color-mix(in oklch, #6d3bd6 12%, transparent);
+}
+
+.docx-insertion--suggested {
+  color: var(--suggestion-color);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--suggestion-color);
+  background-color: var(--suggestion-bg);
+}
+
+.docx-deletion--suggested {
+  color: var(--suggestion-color);
+  text-decoration: line-through;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--suggestion-color);
+  background-color: var(--suggestion-bg);
 }
 
 /* Author tooltip on rendered tracked-change spans (layout painter output).

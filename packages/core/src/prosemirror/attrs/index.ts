@@ -60,6 +60,7 @@ import type {
   TrackedChangeMarkAttrs,
   UnderlineAttrs,
 } from "../schema";
+import { TRACKED_CHANGE_PROVENANCE_VALUES } from "../schema/marks";
 
 export type ProseMirrorAttrIssue = {
   path: string;
@@ -989,6 +990,14 @@ export const readTrackedChangeMarkAttrs = (
     issues,
     TRACKED_CHANGE_MOVE_KINDS,
   );
+  optionalOneOf(
+    attrs,
+    "provenance",
+    `${mark.type.name}.attrs.provenance`,
+    issues,
+    TRACKED_CHANGE_PROVENANCE_VALUES,
+  );
+  optionalString(attrs, "suggestionId", `${mark.type.name}.attrs.suggestionId`, issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1010,6 +1019,14 @@ export const readRunPropertyChangeMarkAttrs = (
   optionalPropertyChanges(attrs, "changes", "runPropertyChange.attrs.changes", issues, [
     "runPropertyChange",
   ]);
+  optionalOneOf(
+    attrs,
+    "provenance",
+    "runPropertyChange.attrs.provenance",
+    issues,
+    TRACKED_CHANGE_PROVENANCE_VALUES,
+  );
+  optionalString(attrs, "suggestionId", "runPropertyChange.attrs.suggestionId", issues);
 
   return attrsResult(attrs, issues);
 };
