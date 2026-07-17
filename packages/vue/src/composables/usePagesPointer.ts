@@ -14,9 +14,11 @@ import { onBeforeUnmount, onMounted, ref, shallowRef, type Ref, type ShallowRef 
 import { TextSelection, NodeSelection, type Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import type { Document } from "@stll/folio-core/types/document";
+import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findImageElement } from "@stll/folio-core/layout-painter/imageLayout";
 import { clickToPositionInHfSlot } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
+import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import {
   detectTableInsertHover,
@@ -99,6 +101,10 @@ export type UsePagesPointerOptions = {
    * callers fall back to in-place mutation + `syncHfPMs()`.
    */
   setDocument: (doc: Document) => void;
+  /** Open a footnote or endnote story from a painted reference/body. */
+  openNoteStory: (story: NoteStoryKey) => void;
+  closeNoteStory: () => void;
+  getActiveNoteView: () => EditorView | null;
 };
 
 const MULTI_CLICK_DELAY = 500;
@@ -260,6 +266,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     const viewportEl = opts.pagesViewportRef.value;
     if (!viewportEl) return;
     if (!(event.target instanceof HTMLElement)) return;
+    if (event.target.closest(".docx-editor-vue__note-editor")) return;
 
     const hit = detectTableInsertHover({
       mouseX: event.clientX,
@@ -323,6 +330,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
    */
   function handlePagesClick(event: MouseEvent) {
     const el = event.target;
+    if (el instanceof HTMLElement && el.closest(".docx-editor-vue__note-editor")) return;
     const anchor = el instanceof HTMLElement ? el.closest<HTMLAnchorElement>("a[href]") : null;
     if (!anchor) return;
     event.preventDefault();
@@ -358,10 +366,18 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function handlePagesDoubleClick(event: MouseEvent) {
-    if (opts.readOnly.value || !opts.showHeaderFooterEditing.value) return;
-    if (hfEdit.value) return;
+    if (opts.readOnly.value) return;
     if (!(event.target instanceof HTMLElement)) return;
     const target = event.target;
+    if (target.closest(".docx-editor-vue__note-editor")) return;
+    const noteStory = findNoteStoryForTarget(target);
+    if (noteStory) {
+      event.preventDefault();
+      event.stopPropagation();
+      opts.openNoteStory(noteStory);
+      return;
+    }
+    if (!opts.showHeaderFooterEditing.value || hfEdit.value) return;
     const headerEl = target.closest<HTMLElement>(".layout-page-header");
     const footerEl = target.closest<HTMLElement>(".layout-page-footer");
     const hfEl = headerEl ?? footerEl;
@@ -483,6 +499,12 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
 
     const target = event.target;
     const targetEl = target instanceof HTMLElement ? target : null;
+
+    if (targetEl?.closest(".docx-editor-vue__note-editor")) return;
+
+    if (opts.getActiveNoteView()) {
+      opts.closeNoteStory();
+    }
 
     // HF mode: clicks OUTSIDE the painted HF area close edit mode and refocus
     // the body PM. The body-PM-selection branch below also falls through, so

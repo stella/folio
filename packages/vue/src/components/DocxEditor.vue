@@ -270,6 +270,21 @@
             @remove="handleHfRemove"
           />
 
+          <aside
+            v-show="activeNoteStory"
+            class="docx-editor-vue__note-editor"
+            :aria-label="activeNoteStoryLabel"
+            @keydown.esc.stop.prevent="closeNoteStory"
+          >
+            <header class="docx-editor-vue__note-editor-header">
+              <span>{{ activeNoteStoryLabel }}</span>
+              <button type="button" :aria-label="t('common.closeDialog')" @click="closeNoteStory">
+                ×
+              </button>
+            </header>
+            <div ref="notePmRef" class="docx-editor-vue__note-editor-host" />
+          </aside>
+
           <ImageSelectionOverlay
             :image-info="selectedImage"
             :zoom="zoom"
@@ -620,6 +635,7 @@ const showOutline = ref(props.showOutline);
 const showSidebar = ref(false);
 const activeSidebarItem = ref<string | null>(null);
 const activeHeaderFooterRId = ref<string | null>(null);
+const notePmRef = ref<HTMLElement | null>(null);
 const bookmarks = shallowRef<{ name: string; label?: string }[]>([]);
 
 // Populated by `useOutlineSidebar` — collected lazily on outline open and
@@ -664,6 +680,7 @@ const {
   editorState,
   remoteSelections,
   headerFooterSelection,
+  activeNoteStory,
   isReady,
   isDirty,
   parseError,
@@ -678,12 +695,16 @@ const {
   setDocument,
   getHeaderFooterView,
   syncHeaderFooterViews,
+  openNoteStory,
+  closeNoteStory,
+  getActiveNoteView,
   getCommands,
   focus,
   reLayout,
 } = useDocxEditor({
   hiddenContainer: hiddenPmRef,
   hiddenHeaderFooterContainer: hiddenHfPmRef,
+  noteEditorContainer: notePmRef,
   pagesContainer: pagesRef,
   readOnly,
   editorMode,
@@ -735,9 +756,21 @@ const {
 
 const activeEditorView = computed(
   () =>
+    getActiveNoteView() ??
     (activeHeaderFooterRId.value ? getHeaderFooterView(activeHeaderFooterRId.value) : null) ??
     editorView.value,
 );
+
+const activeNoteStoryLabel = computed(() => {
+  const story = activeNoteStory.value;
+  if (!story) return "";
+  const label = t(
+    story.kind === "footnote"
+      ? "dialogs.footnoteProperties.footnotes"
+      : "dialogs.footnoteProperties.endnotes",
+  );
+  return label;
+});
 
 // Show the loading interstitial while a document is loading, EXCEPT when the host
 // opted into `preserveDocumentWhileLoading` and a prior document is already
@@ -841,6 +874,12 @@ const {
   getHfPmView: getHeaderFooterView,
   syncHfPMs: syncHeaderFooterViews,
   setDocument,
+  openNoteStory: (story) => {
+    openNoteStory(story);
+    selectionSync.clearOverlay();
+  },
+  closeNoteStory,
+  getActiveNoteView,
   reLayout,
   onDocumentChange: notifyDocumentChange,
   clearOverlay: selectionSync.clearOverlay,
@@ -1494,6 +1533,43 @@ defineExpose(exposed);
 .docx-editor-vue__table-insert-btn:hover {
   background: var(--doc-primary, #1a73e8);
   color: var(--doc-on-primary, #fff);
+}
+.docx-editor-vue__note-editor {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  width: min(560px, calc(100% - 48px));
+  max-height: 45%;
+  overflow: auto;
+  border: 1px solid var(--doc-border, rgb(0 0 0 / 18%));
+  border-radius: 6px;
+  background: var(--doc-canvas, #fff);
+  color: var(--doc-canvas-text, #000);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 18%);
+}
+.docx-editor-vue__note-editor-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--doc-border, rgb(0 0 0 / 12%));
+  background: var(--doc-canvas, #fff);
+  font-size: 12px;
+  font-weight: 600;
+}
+.docx-editor-vue__note-editor-header button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.docx-editor-vue__note-editor-host {
+  min-height: 72px;
+  padding: 12px 16px;
 }
 .docx-editor-vue__add-comment-btn {
   position: absolute;

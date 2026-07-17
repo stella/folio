@@ -1057,6 +1057,7 @@ describe("footnote rendering", () => {
       [
         {
           displayNumber: "1",
+          noteId: 7,
           content: {
             blocks: [tableBlock],
             measures: [tableMeasure],
@@ -1069,6 +1070,10 @@ describe("footnote rendering", () => {
     );
 
     expect(footnoteArea.textContent).toContain("Cell");
+    expect((footnoteArea as unknown as FakeElement).children.at(1)?.dataset).toMatchObject({
+      noteId: "7",
+      noteKind: "footnote",
+    });
     expect(collectPmAnchors(footnoteArea as unknown as FakeElement)).toEqual([]);
   });
 });

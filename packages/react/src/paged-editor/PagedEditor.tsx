@@ -30,15 +30,19 @@ import { createPortal } from "react-dom";
 import type { Node as PMNode } from "prosemirror-model";
 import { NodeSelection, TextSelection } from "prosemirror-state";
 import type { EditorState, Transaction, Plugin } from "prosemirror-state";
+import { redo as historyRedo, undo as historyUndo } from "prosemirror-history";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 
 import { HiddenHeaderFooterPMs } from "../components/HiddenHeaderFooterPMs";
 import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterPMs";
+import { NoteStoryEditor } from "../components/NoteStoryEditor";
+import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
 import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
+import { suggestionModeKey } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
 import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
 import {
@@ -75,6 +79,7 @@ import {
   findHfSlotForTarget,
   findHfSlotKindForTarget,
 } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
+import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
 import { clickToPosition } from "@stll/folio-core/layout-bridge/engine/clickToPosition";
 import {
   hitTestFragment,
@@ -296,6 +301,10 @@ export type PagedEditorProps = {
   collaboration?: HiddenProseMirrorCollaboration | undefined;
   /** Extension manager for plugins/schema/commands (optional — falls back to default) */
   extensionManager?: ExtensionManager;
+  /** Current tracked-editing state for secondary note stories. */
+  suggestionModeActive?: boolean;
+  /** Author attached to tracked edits made inside note stories. */
+  suggestionAuthor?: string;
   /** Callback when header or footer is double-clicked for editing. Pass
    * `undefined` to disable header/footer editing entirely. */
   onHeaderFooterDoubleClick?:
@@ -356,6 +365,8 @@ export type PagedEditorRef = {
   getState: () => EditorState | null;
   /** Get the ProseMirror EditorView. */
   getView: () => EditorView | null;
+  /** Get the currently focused body or note-story view. */
+  getActiveView: () => EditorView | null;
   /**
    * Look up the persistent hidden HF EditorView by `rId`. Returns null when
    * the slot isn't mounted (e.g. document has no HF for that rId, or the
@@ -1328,6 +1339,7 @@ function buildFootnoteRenderItems(
 
       items.push({
         displayNumber: String(displayNum),
+        noteId: fnId,
         text,
         ...(content
           ? {
@@ -1391,6 +1403,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       showTemplateDirectives = true,
       collaboration,
       extensionManager,
+      suggestionModeActive = false,
+      suggestionAuthor,
       onHeaderFooterDoubleClick,
       hfEditMode,
       onBodyClick,
@@ -1425,7 +1439,17 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const folioEmitterRef = useRef(createFolioEditorEmitter());
     const hiddenPMRef = useRef<HiddenProseMirrorRef>(null);
     const hfPMsRef = useRef<HiddenHeaderFooterPMsRef>(null);
+    const noteEditorRef = useRef<NoteStoryEditorRef>(null);
+    const [noteStoryActive, setNoteStoryActive] = useState(false);
     const painterRef = useRef<LayoutPainter | null>(null);
+    const noteStoryPlugins = useMemo(
+      () => externalPlugins.filter(({ key }) => key === suggestionModeKey.key),
+      [externalPlugins],
+    );
+
+    useEffect(() => {
+      if (readOnly) noteEditorRef.current?.close();
+    }, [readOnly]);
 
     // Visual line navigation (ArrowUp/ArrowDown with sticky X)
     const { handlePMKeyDown } = useVisualLineNavigation({ pagesContainerRef });
@@ -2990,6 +3014,21 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       [scheduleLayout, ensureHiddenEditorView],
     );
 
+    const handleNoteStoryTransaction = useCallback(
+      (view: EditorView, docChanged: boolean, selectionChanged: boolean) => {
+        if (docChanged) {
+          const bodyState = hiddenPMRef.current?.getState();
+          if (bodyState) scheduleLayout(bodyState, null);
+        }
+        if (docChanged || selectionChanged) {
+          const { from, to } = view.state.selection;
+          onSelectionChangeRef.current?.(from, to);
+          folioEmitterRef.current.emit("selectionChange", { from, to });
+        }
+      },
+      [scheduleLayout],
+    );
+
     // Clear HF caret state + cross-surface drag state on any hfEditMode
     // transition. Without this, dragAnchorRef leftover from the previous
     // surface lets a Shift-click resolve an anchor in the wrong PM
@@ -3203,7 +3242,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         if (!target) {
           return;
         }
-
         if (target.type === "position") {
           scrollToPositionImpl(target.pmPos);
           return;
@@ -3366,6 +3404,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         if (!target) {
           return;
         }
+        noteEditorRef.current?.close();
 
         // Portaled descendants (Dialog, Combobox) are filtered upstream by
         // `containedHandler(pagesContainerRef, …)` at the JSX site.
@@ -4386,6 +4425,15 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         if (!target) {
           return;
         }
+        if (!readOnly && e.detail === 2) {
+          const story = findNoteStoryForTarget(target);
+          if (story) {
+            e.preventDefault();
+            e.stopPropagation();
+            noteEditorRef.current?.open(story);
+            return;
+          }
+        }
         // Portaled descendants (Dialog, Combobox) are filtered upstream by
         // `containedHandler(pagesContainerRef, …)` at the JSX site.
         // Handle hyperlink clicks (single-click only, not drag-to-select)
@@ -4739,7 +4787,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // HF host marks each view's mount node with `data-hf-r-id`; once
         // an HF view holds focus, the body PM redirect would immediately
         // bounce keystrokes off it (Codex #487 P1).
-        if (e.target instanceof HTMLElement && e.target.closest("[data-hf-r-id]")) {
+        if (
+          e.target instanceof HTMLElement &&
+          e.target.closest("[data-hf-r-id], [data-note-kind][data-note-id]")
+        ) {
           return;
         }
         // Portaled descendants (Dialog, Combobox) are filtered upstream
@@ -4955,7 +5006,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // landing under the cursor in the document instead of the active
         // HF). Mirrors the focus / mousedown guards in handleContainerFocus
         // and handleContainerMouseDown (Codex #487 P1: 21:12 review).
-        if (e.target instanceof HTMLElement && e.target.closest("[data-hf-r-id]")) {
+        if (
+          e.target instanceof HTMLElement &&
+          e.target.closest("[data-hf-r-id], [data-note-kind][data-note-id]")
+        ) {
           return;
         }
 
@@ -5058,7 +5112,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
         // Don't steal focus from the persistent hidden HF EditorView host
         // — see handleContainerFocus for the same guard rationale.
-        if (e.target instanceof HTMLElement && e.target.closest("[data-hf-r-id]")) {
+        if (
+          e.target instanceof HTMLElement &&
+          e.target.closest("[data-hf-r-id], [data-note-kind][data-note-id]")
+        ) {
           return;
         }
         // Focus hidden PM if clicking outside pages area. Wrapped via
@@ -5531,13 +5588,17 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           return folioEditor;
         },
         getDocument() {
-          return folioEditor.getDocument();
+          const current = folioEditor.getDocument();
+          return current ? (noteEditorRef.current?.snapshotDocument(current) ?? current) : null;
         },
         getState() {
           return folioEditor.getState();
         },
         getView() {
           return folioEditor.getView();
+        },
+        getActiveView() {
+          return noteEditorRef.current?.getActiveView() ?? folioEditor.getView();
         },
         getHfView(rId: string) {
           return hfPMsRef.current?.getView(rId) ?? null;
@@ -5552,7 +5613,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           ensureHiddenEditorView(options);
         },
         focus() {
-          folioEditor.focus();
+          const noteView = noteEditorRef.current?.getActiveView();
+          if (noteView) noteView.focus();
+          else folioEditor.focus();
           setIsFocused(true);
         },
         blur() {
@@ -5566,16 +5629,20 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           folioEditor.dispatch(tr);
         },
         undo() {
-          return folioEditor.undo();
+          const noteView = noteEditorRef.current?.getActiveView();
+          return noteView ? historyUndo(noteView.state, noteView.dispatch) : folioEditor.undo();
         },
         redo() {
-          return folioEditor.redo();
+          const noteView = noteEditorRef.current?.getActiveView();
+          return noteView ? historyRedo(noteView.state, noteView.dispatch) : folioEditor.redo();
         },
         canUndo() {
-          return folioEditor.canUndo();
+          const noteView = noteEditorRef.current?.getActiveView();
+          return noteView ? historyUndo(noteView.state) : folioEditor.canUndo();
         },
         canRedo() {
-          return folioEditor.canRedo();
+          const noteView = noteEditorRef.current?.getActiveView();
+          return noteView ? historyRedo(noteView.state) : folioEditor.canRedo();
         },
         setSelection(anchor: number, head?: number) {
           folioEditor.setSelection(anchor, head);
@@ -5749,7 +5816,23 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         <HiddenHeaderFooterPMs
           ref={hfPMsRef}
           document={document}
+          onActiveChange={setNoteStoryActive}
           onTransaction={handleHfPmTransaction}
+          {...(styles !== undefined ? { styles } : {})}
+          {...(_theme !== undefined ? { theme: _theme } : {})}
+        />
+
+        <NoteStoryEditor
+          ref={noteEditorRef}
+          document={document}
+          onDocumentChange={(updated) => {
+            onDocumentChangeRef.current?.(updated);
+            folioEmitterRef.current.emit("docChange", updated);
+          }}
+          onStoryChange={handleNoteStoryTransaction}
+          plugins={noteStoryPlugins}
+          suggestionModeActive={suggestionModeActive}
+          {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           {...(styles !== undefined ? { styles } : {})}
           {...(_theme !== undefined ? { theme: _theme } : {})}
         />
@@ -5843,8 +5926,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               HfCaretOverlay below owns the caret while a header/footer is
               being edited. */}
             <SelectionOverlay
-              selectionRects={hfEditMode ? EMPTY_SELECTION_RECTS : selectionRects}
-              caretPosition={hfEditMode ? null : caretPosition}
+              selectionRects={
+                hfEditMode || noteStoryActive ? EMPTY_SELECTION_RECTS : selectionRects
+              }
+              caretPosition={hfEditMode || noteStoryActive ? null : caretPosition}
               isFocused={isFocused}
               pageGap={pageGap}
               markCaretRect

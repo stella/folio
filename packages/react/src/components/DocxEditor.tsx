@@ -1030,7 +1030,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     if (hfEditPosition && hfEditorRef.current) {
       return hfEditorRef.current.getView();
     }
-    return pagedEditorRef.current?.getView();
+    return pagedEditorRef.current?.getActiveView();
   }, [hfEditPosition]);
 
   // Helper to focus the active editor
@@ -1272,6 +1272,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     const pmDoc = pagedEditorRef.current?.getDocument();
     if (pmDoc) {
       doc.package.document.content = pmDoc.package.document.content;
+      if (pmDoc.package.footnotes !== undefined) {
+        doc.package.footnotes = pmDoc.package.footnotes;
+      }
+      if (pmDoc.package.endnotes !== undefined) {
+        doc.package.endnotes = pmDoc.package.endnotes;
+      }
     } else {
       // The editor view was never instantiated, so getDocument() returned null
       // and the PM-layer auto-bidi normalization never reached this clone.
@@ -4164,6 +4170,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                         readOnly={readOnly}
                         onDocumentChange={handleDocumentChange}
                         extensionManager={extensionManager}
+                        suggestionModeActive={editingMode === "suggesting"}
+                        suggestionAuthor={author}
                         {...(onCopy !== undefined ? { onCopy } : {})}
                         {...(onCut !== undefined ? { onCut } : {})}
                         {...(onPaste !== undefined ? { onPaste } : {})}

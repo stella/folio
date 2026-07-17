@@ -166,6 +166,8 @@ export type { HeaderFooterContent } from "../layout-engine/types";
  * A single footnote item ready for rendering at page bottom.
  */
 export type FootnoteRenderItem = {
+  /** Stable story id used by editable-note surfaces. */
+  noteId?: number;
   /** Display number (e.g. "1", "2") */
   displayNumber: string;
   /** Plain text content */
@@ -1338,6 +1340,10 @@ export function renderFootnoteArea(
   // Render each footnote
   for (const fn of footnotes) {
     const fnEl = doc.createElement("div");
+    if (fn.noteId !== undefined) {
+      fnEl.dataset["noteKind"] = "footnote";
+      fnEl.dataset["noteId"] = String(fn.noteId);
+    }
     fnEl.style.marginBottom = `${FOOTNOTE_ENTRY_MARGIN_BOTTOM}px`;
     fnEl.style.color = "var(--doc-canvas-text, #000)";
 

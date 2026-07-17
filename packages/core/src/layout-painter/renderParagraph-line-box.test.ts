@@ -502,12 +502,18 @@ describe("renderLine box model", () => {
           superscript: true,
           underline: { style: "single" },
         },
+        {
+          kind: "text",
+          text: "4",
+          endnoteRefId: 4,
+          superscript: true,
+        },
       ],
     };
     const line: MeasuredLine = {
       fromRun: 0,
       fromChar: 0,
-      toRun: 0,
+      toRun: 1,
       toChar: 1,
       width: 10,
       ascent: 12,
@@ -530,6 +536,9 @@ describe("renderLine box model", () => {
     expect(noteMarker?.style["position"]).toBe("relative");
     expect(noteMarker?.style["top"]).toBe("-0.4em");
     expect(noteMarker?.style["textDecorationLine"]).toBeUndefined();
+    expect(noteMarker?.dataset["noteKind"]).toBe("footnote");
+    expect(noteMarker?.dataset["noteId"]).toBe("9");
+    expect(lineEl.children.at(1)?.dataset).toMatchObject({ noteKind: "endnote", noteId: "4" });
   });
 
   test("sizes superscript markers from the run font instead of the parent line", () => {

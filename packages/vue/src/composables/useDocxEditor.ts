@@ -40,6 +40,11 @@ import type {
   HeaderFooterPartKind,
 } from "@stll/folio-core/controller/headerFooterEditorManager";
 import {
+  createNoteEditorManager,
+  type NoteEditorManager,
+  type NoteStoryKey,
+} from "@stll/folio-core/controller/noteEditorManager";
+import {
   collectRemoteSelections,
   createHiddenEditorManager,
   createHiddenEditorState,
@@ -227,6 +232,7 @@ function buildFootnoteRenderItems(
       const displayNum = content?.displayNumber ?? 0;
       items.push({
         displayNumber: String(displayNum),
+        noteId: fnId,
         text: getFootnoteText(fn),
         ...(content
           ? {
@@ -304,6 +310,8 @@ export type UseDocxEditorOptions = {
   hiddenContainer: Ref<HTMLElement | null>;
   /** Optional separate host for persistent header/footer ProseMirror views. */
   hiddenHeaderFooterContainer?: Ref<HTMLElement | null>;
+  /** Visible host for the active footnote or endnote ProseMirror story. */
+  noteEditorContainer?: Ref<HTMLElement | null>;
   /** Container element the paginated pages are painted into. */
   pagesContainer: Ref<HTMLElement | null>;
   /** Whether the editor is read-only. Reactive. */
@@ -403,6 +411,8 @@ export type UseDocxEditorReturn = {
   remoteSelections: Ref<HiddenProseMirrorRemoteSelection[]>;
   /** Selection in the currently active persistent header/footer view. */
   headerFooterSelection: Ref<HeaderFooterSelectionState | null>;
+  /** The note story currently open in the visible note editor. */
+  activeNoteStory: Ref<NoteStoryKey | null>;
   /** True once the hidden view is mounted and a document is loaded. */
   isReady: Ref<boolean>;
   /**
@@ -436,6 +446,12 @@ export type UseDocxEditorReturn = {
   getHeaderFooterView: (rId: string) => EditorView | null;
   /** Synchronize persistent header/footer views after a document-model change. */
   syncHeaderFooterViews: () => void;
+  /** Open an existing footnote or endnote story. */
+  openNoteStory: (story: NoteStoryKey) => void;
+  /** Close the visible note-story editor. */
+  closeNoteStory: () => void;
+  /** Resolve the active note-story view. */
+  getActiveNoteView: () => EditorView | null;
   /** Access the extension command map for invoking marks / nodes / features. */
   getCommands: () => CommandMap;
   /** Focus the hidden ProseMirror view. */
@@ -450,6 +466,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const {
     hiddenContainer,
     hiddenHeaderFooterContainer,
+    noteEditorContainer,
     pagesContainer,
     readOnly = false,
     pageGap = DEFAULT_PAGE_GAP,
@@ -487,6 +504,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const collaborationModules = shallowRef<CollaborationModules | null>(null);
   const remoteSelections = shallowRef<HiddenProseMirrorRemoteSelection[]>([]);
   const headerFooterSelection = shallowRef<HeaderFooterSelectionState | null>(null);
+  const activeNoteStory = shallowRef<NoteStoryKey | null>(null);
   const layout = shallowRef<Layout | null>(null);
   // Latest flow blocks + measures — the range-projection fallback (off-screen /
   // not-yet-painted ranges) needs them; the primary DOM-rect path does not.
@@ -514,6 +532,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // definitions). Prepended to the host's external plugins so the hidden-editor
   // manager installs it on every (re)created state.
   const suggestionPlugin = createSuggestionModePlugin(false);
+  const notePlugins = [suggestionPlugin];
   // Inline autocomplete is always installed and inert until a host dispatches
   // start/token/finish metadata. Keep its keymap ahead of extension keymaps so
   // Tab, Mod+ArrowRight, and Escape consume an active suggestion first.
@@ -579,6 +598,34 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       syncCoordinator.requestRender();
     },
   });
+  const noteEditorManagerHolder: { current: NoteEditorManager | null } = { current: null };
+  const noteEditorManager = createNoteEditorManager({
+    getHost: () => noteEditorContainer?.value ?? null,
+    getPlugins: () => notePlugins,
+    getDocument: () => docModel.value,
+    getStyles: () => docModel.value?.package.styles ?? null,
+    getTheme: () => docModel.value?.package.theme ?? null,
+    onTransaction: ({ docChanged, selectionChanged, view }) => {
+      if (docChanged) {
+        isDirty.value = true;
+        const current = docModel.value;
+        if (current) {
+          const updated = noteEditorManagerHolder.current?.snapshotDocument(current) ?? current;
+          docModel.value = updated;
+          onChange?.(updated);
+          emitter.emit("docChange", updated);
+        }
+        const bodyView = editorView.value;
+        if (bodyView) scheduler.schedule(bodyView.state, null);
+      }
+      if (docChanged || selectionChanged) {
+        onSelectionUpdate?.(view.state);
+        const { from, to } = view.state.selection;
+        emitter.emit("selectionChange", { from, to });
+      }
+    },
+  });
+  noteEditorManagerHolder.current = noteEditorManager;
 
   // ---- Layout pipeline ----------------------------------------------------
 
@@ -707,6 +754,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       const updated = fromProseDoc(view.state.doc, base);
       docModel.value = updated;
       headerFooterManager.sync();
+      noteEditorManager.sync();
       onChange?.(updated);
       emitter.emit("docChange", updated);
     } catch (err) {
@@ -894,12 +942,19 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     if (view) {
       syncSuggestionMode(view);
     }
+    for (const story of noteEditorManager.listStories()) {
+      const noteView = noteEditorManager.getView(story);
+      if (noteView) syncSuggestionMode(noteView);
+    }
   });
 
   // Keep the hidden view's editable() ARIA state in sync with readOnly.
   watch(
     () => toValue(readOnly),
-    () => manager.syncEditable(),
+    (isReadOnly) => {
+      manager.syncEditable();
+      if (isReadOnly) closeNoteStory();
+    },
   );
 
   // Live-toggle the template directive/slash-menu pair without tearing the view
@@ -952,9 +1007,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // clearing its dirty signals on document reset).
     isDirty.value = false;
     headerFooterSelection.value = null;
+    activeNoteStory.value = null;
+    noteEditorManager.activate(null);
     scheduler.dispose();
     manager.destroyView();
     headerFooterManager.sync();
+    noteEditorManager.sync();
     manager.ensureView();
     if (!manager.getView()) {
       // Host not mounted yet: paint from a precomputed state so the pages show
@@ -991,12 +1049,18 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   // Recreate / repaint whenever the host mounts or the document identity flips.
   watch(
-    [hiddenContainer, pagesContainer, headerFooterHost],
+    [
+      hiddenContainer,
+      pagesContainer,
+      headerFooterHost,
+      ...(noteEditorContainer ? [noteEditorContainer] : []),
+    ],
     () => {
       if (hiddenContainer.value && docModel.value && !manager.getView()) {
         mountView();
       }
       headerFooterManager.sync();
+      noteEditorManager.sync();
     },
     { flush: "post" },
   );
@@ -1031,7 +1095,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     if (!view || !currentDocument) {
       return null;
     }
-    const base = headerFooterManager.snapshotDocument(currentDocument);
+    const base = noteEditorManager.snapshotDocument(
+      headerFooterManager.snapshotDocument(currentDocument),
+    );
 
     // Snapshot the editor state once, before any awaited dynamic imports, so
     // the document we serialize and the selective-save change signals are all
@@ -1098,6 +1164,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // API's save wrapper, the single public save entry point.
     docModel.value = updatedDoc;
     headerFooterManager.sync();
+    noteEditorManager.sync();
     isDirty.value = false;
 
     return new Blob([buffer], {
@@ -1107,12 +1174,18 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   function getDocument(): Document | null {
     const document = docModel.value;
-    return document ? headerFooterManager.snapshotDocument(document) : null;
+    return document
+      ? noteEditorManager.snapshotDocument(headerFooterManager.snapshotDocument(document))
+      : null;
   }
 
   function setDocument(doc: Document): void {
     docModel.value = doc;
     headerFooterManager.sync();
+    noteEditorManager.sync();
+    if (activeNoteStory.value && !noteEditorManager.getView(activeNoteStory.value)) {
+      activeNoteStory.value = null;
+    }
   }
 
   function getHeaderFooterView(rId: string): EditorView | null {
@@ -1123,12 +1196,32 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     headerFooterManager.sync();
   }
 
+  function openNoteStory(story: NoteStoryKey): void {
+    const view = noteEditorManager.activate(story);
+    if (!view) return;
+    syncSuggestionMode(view);
+    activeNoteStory.value = story;
+    requestAnimationFrame(() => view.focus());
+  }
+
+  function closeNoteStory(): void {
+    noteEditorManager.activate(null);
+    activeNoteStory.value = null;
+  }
+
+  function getActiveNoteView(): EditorView | null {
+    const story = activeNoteStory.value;
+    return story ? noteEditorManager.getView(story) : null;
+  }
+
   function getCommands(): CommandMap {
     return extensionManager.getCommands();
   }
 
   function focus(): void {
-    editorView.value?.focus();
+    const noteView = getActiveNoteView();
+    if (noteView) noteView.focus();
+    else editorView.value?.focus();
   }
 
   function reLayout(): void {
@@ -1149,6 +1242,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     manager.destroyView();
     remoteSelections.value = [];
     headerFooterManager.destroy();
+    noteEditorManager.destroy();
     extensionManager.destroy();
     editorState.value = null;
     layout.value = null;
@@ -1164,6 +1258,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     editorState,
     remoteSelections,
     headerFooterSelection,
+    activeNoteStory,
     isReady,
     isDirty,
     parseError,
@@ -1178,6 +1273,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     setDocument,
     getHeaderFooterView,
     syncHeaderFooterViews,
+    openNoteStory,
+    closeNoteStory,
+    getActiveNoteView,
     getCommands,
     focus,
     reLayout,

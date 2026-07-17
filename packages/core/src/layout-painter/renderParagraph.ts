@@ -497,6 +497,14 @@ function renderTextRun(run: TextRun, doc: Document): HTMLElement {
   const span = doc.createElement("span");
   span.className = `${PARAGRAPH_CLASS_NAMES.run} ${PARAGRAPH_CLASS_NAMES.text}`;
 
+  if (run.footnoteRefId !== undefined) {
+    span.dataset["noteKind"] = "footnote";
+    span.dataset["noteId"] = String(run.footnoteRefId);
+  } else if (run.endnoteRefId !== undefined) {
+    span.dataset["noteKind"] = "endnote";
+    span.dataset["noteId"] = String(run.endnoteRefId);
+  }
+
   // Template fill preview substitution: the run's text is the typed value
   // already laid out in place of its {{marker}}, so only a class is needed —
   // `highlighted` paints the accent chip without altering the flowed width.
