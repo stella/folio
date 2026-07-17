@@ -131,6 +131,22 @@ describe("validateDocxConformance", () => {
     expect(checkStatus(report, "package-roots")).toBe("passed");
   });
 
+  test("accepts a package-root-relative main document target", async () => {
+    const bytes = await mutateEmptyPackage((zip) => {
+      zip.file(
+        "_rels/.rels",
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="/word/document.xml"/>
+        </Relationships>`,
+      );
+    });
+
+    const report = await validateDocxConformance(bytes);
+
+    expect(report.status).toBe("conformant");
+    expect(checkStatus(report, "package-roots")).toBe("passed");
+  });
+
   test("reports an unknown main document namespace as indeterminate", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
       zip.file(

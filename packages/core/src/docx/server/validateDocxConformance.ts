@@ -299,7 +299,7 @@ const hasMainDocumentRelationship = (packageRelationshipsXml: string): boolean =
         return false;
       }
       const type = getAttributeAnyPrefix(element, "Type");
-      const target = getAttributeAnyPrefix(element, "Target")?.replace(/^\.\//u, "");
+      const target = getAttributeAnyPrefix(element, "Target")?.replace(/^\.?\//u, "");
       return (
         type?.endsWith("/officeDocument") === true &&
         target === "word/document.xml" &&
