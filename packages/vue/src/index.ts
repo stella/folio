@@ -54,6 +54,8 @@ export type {
   DocxEditorProps,
   DocxEditorRef,
   EditorMode,
+  HighlightPassageOptions,
+  HighlightPassageResult,
 } from "./components/DocxEditor/types";
 export type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 // Custom-font prop types: `fontFamilies` (picker list) + `fonts` (FontFace registration).

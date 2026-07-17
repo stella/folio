@@ -346,6 +346,23 @@ export type DocxEditorApplyDocumentOperationsOptions = {
 };
 
 /**
+ * Outcome of {@link DocxEditorRef.highlightPassage}:
+ * - `"passage"`: the text matched inside the block; scrolled there and painted
+ *   the range highlight.
+ * - `"block"`: the text did not match but the block resolved; behaved like
+ *   {@link DocxEditorRef.scrollToBlock} (scroll + whole-paragraph flash where a
+ *   paraId exists).
+ * - `"none"`: the block did not resolve; no-op.
+ */
+export type HighlightPassageResult = "passage" | "block" | "none";
+
+export type HighlightPassageOptions = {
+  blockId: string;
+  text: string;
+  snapshot?: FolioAIEditSnapshot;
+};
+
+/**
  * Imperative handle exposed by the DocxEditor component.
  */
 export type DocxEditorRef = {
@@ -449,6 +466,18 @@ export type DocxEditorRef = {
    * accept. Without `snapshot`, falls back to a fresh-from-live-doc snapshot.
    */
   scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean;
+  /**
+   * Resolve a text passage inside a block, scroll to it, and paint a persistent
+   * translucent highlight over the matched range. Unlike {@link scrollToBlock},
+   * the passage outcome does not move the PM selection, so the highlight is not
+   * confused with a selection. Replaces any previous passage highlight. Returns
+   * which outcome happened; see {@link HighlightPassageResult}. The highlight is
+   * ephemeral view state: cleared on the next doc-changing transaction and by
+   * {@link clearPassageHighlight}.
+   */
+  highlightPassage: (options: HighlightPassageOptions) => HighlightPassageResult;
+  /** Clear the passage highlight painted by {@link highlightPassage}, if any. */
+  clearPassageHighlight: () => void;
   /** Resolve a stable block or text-range target and reveal it in the editor. */
   showInDocument: (
     target: FolioDocumentNavigationTarget,

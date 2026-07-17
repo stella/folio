@@ -3,6 +3,7 @@ export {
   clampRangeToDocSize,
   resolveFolioAIBlockRange,
   resolveFolioAITextRange,
+  resolvePassageRange,
   type DocPositionRange,
 } from "./blockRange";
 export { buildAnnotatedBlockText } from "./clean-text";

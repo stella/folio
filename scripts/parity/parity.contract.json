@@ -109,6 +109,8 @@
       "getTrackedChanges",
       "getZoom",
       "hasPendingChanges",
+      "highlightPassage",
+      "clearPassageHighlight",
       "loadDocument",
       "loadDocumentBuffer",
       "openPrintPreview",

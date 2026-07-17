@@ -6,6 +6,7 @@ import {
   clampRangeToDocSize,
   resolveFolioAIBlockRange,
   resolveFolioAITextRange,
+  resolvePassageRange,
 } from "./blockRange";
 
 const schema = new Schema({
@@ -182,5 +183,141 @@ describe("resolveFolioAITextRange", () => {
         snapshot,
       }),
     ).toBeNull();
+  });
+});
+
+// Schema with an inline mark so passage matches can span multiple styled runs
+// (adjacent text nodes with different marks), mirroring how a real DOCX block
+// splits a sentence across runs.
+const richSchema = new Schema({
+  nodes: {
+    doc: { content: "block+" },
+    paragraph: {
+      group: "block",
+      content: "inline*",
+      attrs: { paraId: { default: null } },
+    },
+    text: { group: "inline" },
+  },
+  marks: {
+    strong: {},
+  },
+});
+
+type Run = { text: string; strong?: boolean };
+
+const makeRichDoc = (blocks: { paraId: string | null; runs: Run[] }[]) =>
+  richSchema.node(
+    "doc",
+    null,
+    blocks.map((block) =>
+      richSchema.node(
+        "paragraph",
+        { paraId: block.paraId },
+        block.runs.map((run) =>
+          richSchema.text(run.text, run.strong === true ? [richSchema.mark("strong")] : null),
+        ),
+      ),
+    ),
+  );
+
+describe("resolvePassageRange", () => {
+  test("maps an exact text match to the covering PM range", () => {
+    const doc = makeRichDoc([
+      { paraId: "AAAA0001", runs: [{ text: "Payment is due on receipt" }] },
+    ]);
+
+    const range = resolvePassageRange({ blockId: "AAAA0001", text: "is due", doc });
+
+    if (range === null) {
+      throw new Error("Expected an exact match to resolve");
+    }
+    expect(doc.textBetween(range.from, range.to)).toBe("is due");
+  });
+
+  test("matches across collapsed / extra whitespace between needle and document", () => {
+    const doc = makeRichDoc([
+      { paraId: "AAAA0001", runs: [{ text: "Payment  is   due\ton receipt" }] },
+    ]);
+
+    const range = resolvePassageRange({
+      blockId: "AAAA0001",
+      text: "Payment is due on receipt",
+      doc,
+    });
+
+    if (range === null) {
+      throw new Error("Expected a whitespace-normalized match to resolve");
+    }
+    expect(doc.textBetween(range.from, range.to)).toBe("Payment  is   due\ton receipt");
+  });
+
+  test("falls back to a case-insensitive match when the exact case is absent", () => {
+    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Payment is due" }] }]);
+
+    const range = resolvePassageRange({ blockId: "AAAA0001", text: "PAYMENT IS DUE", doc });
+
+    if (range === null) {
+      throw new Error("Expected a case-insensitive fallback to resolve");
+    }
+    expect(doc.textBetween(range.from, range.to)).toBe("Payment is due");
+  });
+
+  test("prefers a case-sensitive match over an earlier case-insensitive one", () => {
+    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "note NOTE note" }] }]);
+
+    const range = resolvePassageRange({ blockId: "AAAA0001", text: "NOTE", doc });
+
+    if (range === null) {
+      throw new Error("Expected a case-sensitive match to resolve");
+    }
+    // The exact-case pass finds the middle occurrence, not the first (lowercase) one.
+    expect(range.from).toBe(doc.textBetween(0, doc.content.size).indexOf("NOTE") + 1);
+    expect(doc.textBetween(range.from, range.to)).toBe("NOTE");
+  });
+
+  test("resolves a match that spans two styled runs", () => {
+    const doc = makeRichDoc([
+      {
+        paraId: "AAAA0001",
+        runs: [{ text: "Payment " }, { text: "is due", strong: true }],
+      },
+    ]);
+
+    const range = resolvePassageRange({ blockId: "AAAA0001", text: "Payment is due", doc });
+
+    if (range === null) {
+      throw new Error("Expected a match spanning styled runs to resolve");
+    }
+    expect(doc.textBetween(range.from, range.to)).toBe("Payment is due");
+  });
+
+  test("treats regex metacharacters in the needle as literal text", () => {
+    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Total: $1,000 (net) due" }] }]);
+
+    const range = resolvePassageRange({ blockId: "AAAA0001", text: "$1,000 (net)", doc });
+
+    if (range === null) {
+      throw new Error("Expected a literal match for regex-special text");
+    }
+    expect(doc.textBetween(range.from, range.to)).toBe("$1,000 (net)");
+  });
+
+  test("returns null when the text does not occur in the block", () => {
+    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Payment is due" }] }]);
+
+    expect(resolvePassageRange({ blockId: "AAAA0001", text: "termination", doc })).toBeNull();
+  });
+
+  test("returns null for an unknown block id", () => {
+    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Payment is due" }] }]);
+
+    expect(resolvePassageRange({ blockId: "ZZZZ9999", text: "Payment", doc })).toBeNull();
+  });
+
+  test("returns null for whitespace-only needle text", () => {
+    const doc = makeRichDoc([{ paraId: "AAAA0001", runs: [{ text: "Payment is due" }] }]);
+
+    expect(resolvePassageRange({ blockId: "AAAA0001", text: "   ", doc })).toBeNull();
   });
 });
