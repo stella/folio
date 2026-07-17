@@ -383,7 +383,7 @@ export type TableCellAttrs = {
         right?: number;
     }; /** Original cell formatting from DOCX for lossless round-trip serialization */
     _originalFormatting?: import__stll_docx_core_model.TableCellFormatting; /** Tracked cell property changes (w:tcPrChange) for round-trip + accept/reject */
-    tcPrChange?: import__stll_docx_core_model.TableCellPropertyChange[]; /** Tracked cell insertion/deletion for round-trip + accept/reject. */
+    tcPrChange?: import__stll_docx_core_model.TableCellPropertyChange[]; /** Tracked cell structural revision for round-trip + accept/reject. */
     cellMarker?: {
         kind: "ins" | "del";
         info: {
@@ -391,6 +391,15 @@ export type TableCellAttrs = {
             author: string;
             date?: string | null;
         };
+    } | {
+        kind: "merge";
+        info: {
+            revisionId: number;
+            author: string;
+            date?: string | null;
+        };
+        verticalMerge?: "continue" | "rest";
+        verticalMergeOriginal?: "continue" | "rest";
     }; /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
     _preserveVMergeRestart?: boolean; /** Original DOCX vMerge continuation cells skipped into this PM rowspan. */
     _docxVMergeContinuationCells?: import__stll_docx_core_model.TableCell[];

@@ -67,7 +67,7 @@ const tableSchema = new Schema({
     text: { group: "inline" },
     table: { content: "tableRow+", group: "block", tableRole: "table" },
     tableRow: {
-      content: "tableCell+",
+      content: "tableCell*",
       tableRole: "row",
       attrs: {
         trIns: { default: null },
@@ -85,6 +85,9 @@ const tableSchema = new Schema({
         colwidth: { default: null },
         tcPrChange: { default: null },
         cellMarker: { default: null },
+        _originalFormatting: { default: null },
+        _preserveVMergeRestart: { default: null },
+        _docxVMergeContinuationCells: { default: null },
       },
     },
   },
@@ -462,6 +465,169 @@ describe("table cell structural revision resolution", () => {
     expect(table?.child(0).textContent).toBe("First");
     expect(table?.child(1).textContent).toBe("Second");
     expect(() => view.state.doc.check()).not.toThrow();
+  });
+
+  test("reject restores every cell removed by a pending vertical merge", () => {
+    const continuationCell = {
+      type: "tableCell" as const,
+      formatting: { vMerge: "continue" as const },
+      structuralChange: {
+        type: "tableCellMerge" as const,
+        info: { id: 80, author: "Reviewer" },
+        verticalMerge: "continue" as const,
+      },
+      content: [{ type: "paragraph" as const, content: [] }],
+    };
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            tableSchema.node("tableRow", null, [
+              tableSchema.node(
+                "tableCell",
+                {
+                  rowspan: 3,
+                  _originalFormatting: { vMerge: "restart" },
+                  _docxVMergeContinuationCells: [continuationCell, continuationCell],
+                },
+                [tableSchema.node("paragraph", null, [tableSchema.text("Top")])],
+              ),
+            ]),
+            tableSchema.node("tableRow"),
+            tableSchema.node("tableRow"),
+          ]),
+        ]),
+      }),
+    );
+
+    expect(rejectAIEditRevision(80)(view.state, view.dispatch)).toBe(true);
+    const table = view.state.doc.firstChild;
+    expect(table?.child(0).firstChild?.attrs["rowspan"]).toBe(1);
+    expect(table?.child(1).childCount).toBe(1);
+    expect(table?.child(2).childCount).toBe(1);
+    expect(table?.child(1).firstChild?.attrs["cellMarker"]).toBeNull();
+    expect(table?.child(2).firstChild?.attrs["cellMarker"]).toBeNull();
+    expect(() => view.state.doc.check()).not.toThrow();
+  });
+
+  test("accept keeps a pending vertical merge and clears its revision", () => {
+    const continuationCell = {
+      type: "tableCell" as const,
+      formatting: { vMerge: "continue" as const },
+      structuralChange: {
+        type: "tableCellMerge" as const,
+        info: { id: 81, author: "Reviewer" },
+        verticalMerge: "continue" as const,
+      },
+      content: [{ type: "paragraph" as const, content: [] }],
+    };
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            tableSchema.node("tableRow", null, [
+              tableSchema.node(
+                "tableCell",
+                {
+                  rowspan: 2,
+                  _docxVMergeContinuationCells: [continuationCell],
+                },
+                [tableSchema.node("paragraph", null, [tableSchema.text("Top")])],
+              ),
+            ]),
+            tableSchema.node("tableRow"),
+          ]),
+        ]),
+      }),
+    );
+
+    expect(acceptAIEditRevision(81)(view.state, view.dispatch)).toBe(true);
+    const mergedCell = view.state.doc.firstChild?.firstChild?.firstChild;
+    expect(mergedCell?.attrs["rowspan"]).toBe(2);
+    expect(mergedCell?.attrs["_docxVMergeContinuationCells"]).toEqual([
+      {
+        type: "tableCell",
+        formatting: { vMerge: "continue" },
+        content: [{ type: "paragraph", content: [] }],
+      },
+    ]);
+  });
+
+  test("reject restores a vertical merge removed by a pending split", () => {
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            tableSchema.node("tableRow", null, [
+              tableSchema.node("tableCell", null, [
+                tableSchema.node("paragraph", null, [tableSchema.text("Top")]),
+              ]),
+            ]),
+            tableSchema.node("tableRow", null, [
+              tableSchema.node(
+                "tableCell",
+                {
+                  cellMarker: {
+                    kind: "merge",
+                    info: { revisionId: 82, author: "Reviewer", date: null },
+                    verticalMergeOriginal: "continue",
+                  },
+                },
+                [tableSchema.node("paragraph")],
+              ),
+            ]),
+            tableSchema.node("tableRow", null, [
+              tableSchema.node(
+                "tableCell",
+                {
+                  cellMarker: {
+                    kind: "merge",
+                    info: { revisionId: 82, author: "Reviewer", date: null },
+                    verticalMergeOriginal: "continue",
+                  },
+                },
+                [tableSchema.node("paragraph")],
+              ),
+            ]),
+          ]),
+        ]),
+      }),
+    );
+
+    expect(rejectAIEditRevision(82)(view.state, view.dispatch)).toBe(true);
+    const table = view.state.doc.firstChild;
+    expect(table?.child(0).firstChild?.attrs["rowspan"]).toBe(3);
+    expect(table?.child(1).childCount).toBe(0);
+    expect(table?.child(2).childCount).toBe(0);
+    expect(() => view.state.doc.check()).not.toThrow();
+  });
+
+  test("reject keeps a split revision when no compatible cell exists above", () => {
+    const marker = {
+      kind: "merge",
+      info: { revisionId: 83, author: "Reviewer", date: null },
+      verticalMergeOriginal: "continue",
+    };
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            tableSchema.node("tableRow", null, [
+              tableSchema.node("tableCell", { cellMarker: marker }, [
+                tableSchema.node("paragraph"),
+              ]),
+            ]),
+          ]),
+        ]),
+      }),
+    );
+
+    expect(rejectAIEditRevision(83)(view.state, view.dispatch)).toBe(true);
+    expect(view.state.doc.firstChild?.firstChild?.firstChild?.attrs["cellMarker"]).toEqual(marker);
   });
 
   test("resolving the only cell preserves a valid document", () => {

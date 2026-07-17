@@ -11,6 +11,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
 import { createFolioAIEditSnapshot } from "./snapshot";
 
 export type FolioReviewChangeKind =
@@ -19,7 +20,8 @@ export type FolioReviewChangeKind =
   | "rowInserted"
   | "rowDeleted"
   | "cellInserted"
-  | "cellDeleted";
+  | "cellDeleted"
+  | "cellMerged";
 
 /** A tracked change discovered in the document body. */
 export type FolioReviewChange = {
@@ -129,7 +131,7 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
         typeof marker === "object" &&
         marker !== null &&
         "kind" in marker &&
-        (marker.kind === "ins" || marker.kind === "del") &&
+        (marker.kind === "ins" || marker.kind === "del" || marker.kind === "merge") &&
         "info" in marker &&
         typeof marker.info === "object" &&
         marker.info !== null &&
@@ -139,7 +141,12 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
         const revisionId = marker.info.revisionId;
         const author = "author" in marker.info ? marker.info.author : undefined;
         const date = "date" in marker.info ? marker.info.date : undefined;
-        const kind = marker.kind === "ins" ? "cellInserted" : "cellDeleted";
+        let kind: FolioReviewChangeKind = "cellMerged";
+        if (marker.kind === "ins") {
+          kind = "cellInserted";
+        } else if (marker.kind === "del") {
+          kind = "cellDeleted";
+        }
         const key = `cell:${kind}:${revisionId}`;
         const text = node.textContent;
         const blockId = firstBlockIdWithin({ node, nodePos: pos, blockStarts });
@@ -155,6 +162,30 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
               : existing?.text || text,
           blockId: existing?.blockId ?? blockId,
         });
+      }
+      const continuationCells = node.attrs["_docxVMergeContinuationCells"];
+      if (Array.isArray(continuationCells)) {
+        for (const continuationCell of continuationCells) {
+          const change = getTableCellMergeChange(continuationCell);
+          if (!change) {
+            continue;
+          }
+          const revisionId = change.info.id;
+          const key = `cell:cellMerged:${revisionId}`;
+          const existing = grouped.get(key);
+          const text = node.textContent;
+          grouped.set(key, {
+            id: revisionId,
+            type: "cellMerged",
+            author: change.info.author,
+            date: change.info.date ?? null,
+            text:
+              existing && existing.text.length > 0 && text.length > 0
+                ? `${existing.text}\n${text}`
+                : existing?.text || text,
+            blockId: existing?.blockId ?? firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
+          });
+        }
       }
     }
     if (node.isTextblock) {

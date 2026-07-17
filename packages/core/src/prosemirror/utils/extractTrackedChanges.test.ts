@@ -28,7 +28,10 @@ const schema = new Schema({
     },
     tableCell: {
       content: "paragraph+",
-      attrs: { cellMarker: { default: null } },
+      attrs: {
+        cellMarker: { default: null },
+        _docxVMergeContinuationCells: { default: null },
+      },
       toDOM: () => ["td", 0],
     },
     table: { content: "tableRow+", group: "block", toDOM: () => ["table", 0] },
@@ -136,6 +139,49 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
     expect(entries.map(({ type, revisionId, text }) => ({ type, revisionId, text }))).toEqual([
       { type: "cellInserted", revisionId: 101, text: "Inserted" },
       { type: "cellDeleted", revisionId: 102, text: "Deleted" },
+    ]);
+  });
+
+  test("visible and collapsed vertical merge revisions surface as structural changes", () => {
+    const visible = schema.nodes.tableCell.create(
+      {
+        cellMarker: {
+          kind: "merge",
+          info: { revisionId: 103, author: AUTHOR, date: DATE },
+          verticalMergeOriginal: "continue",
+        },
+      },
+      [schema.nodes.paragraph.create({}, [schema.text("Visible")])],
+    );
+    const collapsed = schema.nodes.tableCell.create(
+      {
+        _docxVMergeContinuationCells: [
+          {
+            type: "tableCell",
+            formatting: { vMerge: "continue" },
+            structuralChange: {
+              type: "tableCellMerge",
+              info: { id: 104, author: AUTHOR, date: "2026-05-29T20:28:35.944Z" },
+              verticalMerge: "continue",
+            },
+            content: [{ type: "paragraph", content: [] }],
+          },
+        ],
+      },
+      [schema.nodes.paragraph.create({}, [schema.text("Collapsed")])],
+    );
+    const doc = schema.nodes.doc.create({}, [
+      schema.nodes.table.create({}, [
+        schema.nodes.tableRow.create({}, [visible]),
+        schema.nodes.tableRow.create({}, [collapsed]),
+      ]),
+    ]);
+
+    const { entries } = extractTrackedChanges(makeState(doc));
+
+    expect(entries.map(({ type, revisionId }) => ({ type, revisionId }))).toEqual([
+      { type: "cellMerged", revisionId: 103 },
+      { type: "cellMerged", revisionId: 104 },
     ]);
   });
 

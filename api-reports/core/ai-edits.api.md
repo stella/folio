@@ -570,7 +570,7 @@ export type FolioReviewChange = {
 };
 
 // @public (undocumented)
-export type FolioReviewChangeKind = "insertion" | "deletion" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted";
+export type FolioReviewChangeKind = "insertion" | "deletion" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted" | "cellMerged";
 
 // @public (undocumented)
 export type FolioReviewedStory = {

@@ -789,7 +789,7 @@ export type FolioReviewChangeFilter = {
 };
 
 // @public (undocumented)
-export type FolioReviewChangeKind = "insertion" | "deletion" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted";
+export type FolioReviewChangeKind = "insertion" | "deletion" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted" | "cellMerged";
 
 // @public
 export type FolioReviewComment = {

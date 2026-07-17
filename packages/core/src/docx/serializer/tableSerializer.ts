@@ -699,7 +699,16 @@ export function serializeTableCellFormatting(
     } else if (structuralChange.type === "tableCellDeletion") {
       parts.push(`<w:cellDel ${serializeTrackedChangeAttributes(structuralChange.info)}/>`);
     } else if (structuralChange.type === "tableCellMerge") {
-      parts.push(`<w:cellMerge ${serializeTrackedChangeAttributes(structuralChange.info)}/>`);
+      const attrs = [serializeTrackedChangeAttributes(structuralChange.info)];
+      if (structuralChange.verticalMerge) {
+        attrs.push(`w:vMerge="${structuralChange.verticalMerge === "continue" ? "cont" : "rest"}"`);
+      }
+      if (structuralChange.verticalMergeOriginal) {
+        attrs.push(
+          `w:vMergeOrig="${structuralChange.verticalMergeOriginal === "continue" ? "cont" : "rest"}"`,
+        );
+      }
+      parts.push(`<w:cellMerge ${attrs.join(" ")}/>`);
     }
   }
 

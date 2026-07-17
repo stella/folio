@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { serializeTableRowFormatting } from "./serializer/tableSerializer";
+import {
+  serializeTableCellFormatting,
+  serializeTableRowFormatting,
+} from "./serializer/tableSerializer";
 import { parseTable, parseTableMeasurement, parseTableRowProperties } from "./tableParser";
 import type { XmlElement } from "./xmlParser";
 import { parseXmlDocument } from "./xmlParser";
@@ -29,6 +32,54 @@ describe("parseTableMeasurement", () => {
 
   test("keeps canonical pct integers unchanged", () => {
     expect(tblW("5000")).toEqual({ value: 5000, type: "pct" });
+  });
+});
+
+describe("table cell merge revisions", () => {
+  test("preserves original and applied vertical merge states", () => {
+    const table = parseTableXml(`<w:tbl ${NS}>
+      <w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid>
+      <w:tr>
+        <w:tc>
+          <w:tcPr>
+            <w:cellMerge w:id="17" w:author="Reviewer" w:vMerge="cont" w:vMergeOrig="rest"/>
+          </w:tcPr>
+          <w:p/>
+        </w:tc>
+      </w:tr>
+    </w:tbl>`);
+
+    const change = table.rows.at(0)?.cells.at(0)?.structuralChange;
+    expect(change).toEqual({
+      type: "tableCellMerge",
+      info: { id: 17, author: "Reviewer" },
+      verticalMerge: "continue",
+      verticalMergeOriginal: "rest",
+    });
+    expect(serializeTableCellFormatting(undefined, undefined, change)).toContain(
+      '<w:cellMerge w:id="17" w:author="Reviewer" w:vMerge="cont" w:vMergeOrig="rest"/>',
+    );
+  });
+
+  test("preserves omitted revision states", () => {
+    const table = parseTableXml(`<w:tbl ${NS}>
+      <w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid>
+      <w:tr>
+        <w:tc>
+          <w:tcPr><w:cellMerge w:id="18" w:author="Reviewer"/></w:tcPr>
+          <w:p/>
+        </w:tc>
+      </w:tr>
+    </w:tbl>`);
+
+    const change = table.rows.at(0)?.cells.at(0)?.structuralChange;
+    expect(change).toEqual({
+      type: "tableCellMerge",
+      info: { id: 18, author: "Reviewer" },
+    });
+    expect(serializeTableCellFormatting(undefined, undefined, change)).toContain(
+      '<w:cellMerge w:id="18" w:author="Reviewer"/>',
+    );
   });
 });
 

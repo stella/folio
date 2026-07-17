@@ -1847,6 +1847,21 @@ function convertTableCell({
         date: cell.structuralChange.info.date ?? null,
       },
     };
+  } else if (cell.structuralChange?.type === "tableCellMerge") {
+    attrs.cellMarker = {
+      kind: "merge",
+      info: {
+        revisionId: cell.structuralChange.info.id,
+        author: cell.structuralChange.info.author,
+        date: cell.structuralChange.info.date ?? null,
+      },
+      ...(cell.structuralChange.verticalMerge !== undefined
+        ? { verticalMerge: cell.structuralChange.verticalMerge }
+        : {}),
+      ...(cell.structuralChange.verticalMergeOriginal !== undefined
+        ? { verticalMergeOriginal: cell.structuralChange.verticalMergeOriginal }
+        : {}),
+    };
   }
   if (preserveVMergeRestart) {
     attrs._preserveVMergeRestart = true;

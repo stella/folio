@@ -49,6 +49,7 @@ const schema = new Schema({
         rowspan: { default: 1 },
         colwidth: { default: null },
         cellMarker: { default: null },
+        _docxVMergeContinuationCells: { default: null },
       },
     },
   },
@@ -191,6 +192,46 @@ const collectMarksByText = (state: EditorState): Record<string, string[]> => {
 };
 
 describe("Folio AI edit operations", () => {
+  test("reads a vertical merge revision preserved on a collapsed continuation cell", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node(
+            "tableCell",
+            {
+              rowspan: 2,
+              _docxVMergeContinuationCells: [
+                {
+                  type: "tableCell",
+                  formatting: { vMerge: "continue" },
+                  structuralChange: {
+                    type: "tableCellMerge",
+                    info: { id: 90, author: "Reviewer", date: "2026-07-16" },
+                    verticalMerge: "continue",
+                  },
+                  content: [{ type: "paragraph", content: [] }],
+                },
+              ],
+            },
+            [schema.node("paragraph", { paraId: "merge-origin" }, [schema.text("Merged content")])],
+          ),
+        ]),
+        schema.node("tableRow"),
+      ]),
+    ]);
+
+    expect(getTrackedChangesFromDoc(doc)).toEqual([
+      {
+        id: 90,
+        type: "cellMerged",
+        author: "Reviewer",
+        date: "2026-07-16",
+        text: "Merged content",
+        blockId: "merge-origin",
+      },
+    ]);
+  });
+
   test("rejects invalid text range boundaries", () => {
     expect(
       createFolioAITextRangeHandle({
