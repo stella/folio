@@ -626,6 +626,7 @@ export type ParagraphAttrs = {
     listMarkerHidden?: boolean;
     listMarkerFontFamily?: string;
     listMarkerFontSize?: number;
+    listParagraphMarkFontSize?: number;
     listMarkerBold?: boolean; /** Horizontal alignment of the marker around the paragraph's list anchor. */
     listMarkerAlignment?: "left" | "center" | "right";
     listMarkerSuffix?: "tab" | "space" | "nothing";
