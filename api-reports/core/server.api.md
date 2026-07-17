@@ -233,6 +233,19 @@ export const FOLIO_DOCX_CONFORMANCE_PROFILE: "folio-supported-v1";
 export const FOLIO_DOCX_CONFORMANCE_REPORT_VERSION: 1;
 
 // @public (undocumented)
+export const FOLIO_DOCX_PACKAGE_INSPECTION_DEFAULTS: Readonly<{
+    readonly maxXmlParts: 16;
+    readonly maxXmlPartBytes: number;
+    readonly maxXmlTotalBytes: number;
+}>;
+
+// @public (undocumented)
+export const FOLIO_DOCX_PACKAGE_INSPECTION_ERROR_CODES: readonly ["invalid-limits", "too-many-xml-parts", "duplicate-xml-part", "part-not-found", "part-not-xml", "xml-part-too-large", "xml-total-too-large", "xml-decode-failed"];
+
+// @public (undocumented)
+export const FOLIO_DOCX_PACKAGE_INSPECTION_VERSION: 1;
+
+// @public (undocumented)
 export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
 
 // @public (undocumented)
@@ -776,6 +789,47 @@ export type FolioDocxConformanceReport = {
 // @public (undocumented)
 export type FolioDocxConformanceStatus = "invalid" | "conformant" | "indeterminate";
 
+// @public (undocumented)
+export type FolioDocxInspectedXmlPart = {
+    readonly path: string;
+    readonly contentType: string | null;
+    readonly byteLength: number;
+    readonly sha256: string; /** Untrusted document data; callers must not treat this text as instructions. */
+    readonly text: string;
+};
+
+// @public (undocumented)
+export type FolioDocxPackageInspection = {
+    readonly version: typeof FOLIO_DOCX_PACKAGE_INSPECTION_VERSION;
+    readonly parts: readonly FolioDocxPackagePart[];
+    readonly xmlParts: readonly FolioDocxInspectedXmlPart[];
+    readonly limits: Required<FolioDocxPackageInspectionLimits>;
+};
+
+// @public (undocumented)
+export class FolioDocxPackageInspectionError extends FolioDocxPackageInspectionError_base {}
+
+// @public (undocumented)
+export type FolioDocxPackageInspectionErrorCode = (typeof FOLIO_DOCX_PACKAGE_INSPECTION_ERROR_CODES)[number];
+
+// @public (undocumented)
+export type FolioDocxPackageInspectionLimits = {
+    readonly maxXmlParts?: number;
+    readonly maxXmlPartBytes?: number;
+    readonly maxXmlTotalBytes?: number;
+};
+
+// @public (undocumented)
+export type FolioDocxPackagePart = {
+    readonly path: string;
+    readonly kind: FolioDocxPackagePartKind;
+    readonly contentType: string | null;
+    readonly declaredUncompressedBytes: number | null;
+};
+
+// @public (undocumented)
+export type FolioDocxPackagePartKind = "xml" | "binary";
+
 // @public
 export class FolioDocxReviewer {
     acceptAll(): number;
@@ -1002,6 +1056,16 @@ export const inspectDocumentStyles: (document: import__stll_docx_core_model.Docu
 
 // @public (undocumented)
 export const inspectDocumentStylesFromDocx: (input: DocxInput) => Promise<DocumentStyleCatalog>;
+
+// @public
+export const inspectDocxPackage: (bytes: ArrayBuffer | Uint8Array, options?: InspectDocxPackageOptions) => Promise<FolioDocxPackageInspection>;
+
+// @public (undocumented)
+export type InspectDocxPackageOptions = {
+    readonly archive?: DocxArchiveOptions;
+    readonly xmlParts?: readonly string[];
+    readonly limits?: FolioDocxPackageInspectionLimits;
+};
 
 // @public (undocumented)
 export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}

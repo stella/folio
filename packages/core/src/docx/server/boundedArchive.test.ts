@@ -29,6 +29,15 @@ describe("loadDocxArchive", () => {
     expect(await archive.readEntryString("word/document.xml")).toBe("content");
     expect(await archive.readEntryUint8("media.bin")).toEqual(new Uint8Array([97, 98, 99]));
     expect(await archive.readEntryString("missing.xml")).toBeNull();
+    expect(archive.entryMetadata).toEqual([
+      { path: "word/", directory: true, declaredUncompressedBytes: null },
+      {
+        path: "word/document.xml",
+        directory: false,
+        declaredUncompressedBytes: 7,
+      },
+      { path: "media.bin", directory: false, declaredUncompressedBytes: 3 },
+    ]);
   });
 
   test("rejects invalid archives with a tagged error", async () => {
@@ -64,6 +73,17 @@ describe("loadDocxArchive", () => {
 
     expect(entryError).toMatchObject({ reason: "entry-too-large" });
     expect(totalError).toMatchObject({ reason: "total-too-large" });
+  });
+
+  test("applies a stricter byte limit to an individual read", async () => {
+    const archive = await loadDocxArchive(await makeZip({ large: "12345", small: "123" }));
+
+    await expect(archive.readEntryUint8("large", { maxBytes: 4 })).rejects.toMatchObject({
+      reason: "entry-too-large",
+    });
+    await expect(archive.readEntryUint8("small", { maxBytes: 4 })).resolves.toEqual(
+      new Uint8Array([49, 50, 51]),
+    );
   });
 
   test("serializes concurrent reads against the cumulative budget", async () => {

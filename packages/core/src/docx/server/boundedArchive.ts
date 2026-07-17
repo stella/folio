@@ -25,10 +25,21 @@ export type DocxArchiveOptions = {
   maxEntries?: number;
 };
 
+export type DocxArchiveEntry = {
+  readonly path: string;
+  readonly directory: boolean;
+  readonly declaredUncompressedBytes: number | null;
+};
+
+export type DocxArchiveReadOptions = {
+  maxBytes?: number;
+};
+
 export type DocxArchive = {
   entries: readonly string[];
+  entryMetadata: readonly DocxArchiveEntry[];
   readEntryString: (path: string) => Promise<string | null>;
-  readEntryUint8: (path: string) => Promise<Uint8Array | null>;
+  readEntryUint8: (path: string, options?: DocxArchiveReadOptions) => Promise<Uint8Array | null>;
 };
 
 type CollectStreamOptions = {
@@ -79,6 +90,15 @@ const collectStream = async ({
     stream.on("error", reject);
   });
 
+const getDeclaredUncompressedBytes = (entry: JSZip.JSZipObject): number | null => {
+  const data = "_data" in entry ? entry._data : undefined;
+  const declaredBytes =
+    typeof data === "object" && data !== null && "uncompressedSize" in data
+      ? data.uncompressedSize
+      : undefined;
+  return typeof declaredBytes === "number" && Number.isFinite(declaredBytes) ? declaredBytes : null;
+};
+
 export const loadDocxArchive = async (
   bytes: ArrayBuffer | Uint8Array,
   options: DocxArchiveOptions = {},
@@ -116,12 +136,8 @@ export const loadDocxArchive = async (
 
   let declaredTotalBytes = 0;
   for (const entry of archiveEntries) {
-    const data = "_data" in entry ? entry._data : undefined;
-    const declaredBytes =
-      typeof data === "object" && data !== null && "uncompressedSize" in data
-        ? data.uncompressedSize
-        : undefined;
-    if (typeof declaredBytes !== "number" || !Number.isFinite(declaredBytes)) {
+    const declaredBytes = getDeclaredUncompressedBytes(entry);
+    if (declaredBytes === null) {
       declaredTotalBytes = Number.NaN;
       break;
     }
@@ -144,7 +160,10 @@ export const loadDocxArchive = async (
   let totalBytesRead = 0;
   let readChain: Promise<unknown> = Promise.resolve();
 
-  const readEntry = async (path: string): Promise<Buffer | null> => {
+  const readEntry = async (
+    path: string,
+    options: DocxArchiveReadOptions = {},
+  ): Promise<Buffer | null> => {
     const work = async (): Promise<Buffer | null> => {
       const entry = zip.file(path);
       if (!entry) {
@@ -152,7 +171,7 @@ export const loadDocxArchive = async (
       }
       const buffer = await collectStream({
         stream: entry.nodeStream("nodebuffer"),
-        maxEntryBytes,
+        maxEntryBytes: Math.min(options.maxBytes ?? maxEntryBytes, maxEntryBytes),
         remainingBytes: maxTotalBytes - totalBytesRead,
         maxTotalBytes,
         path,
@@ -171,12 +190,19 @@ export const loadDocxArchive = async (
 
   return {
     entries: Object.freeze(archiveEntries.map(({ name }) => name)),
+    entryMetadata: Object.freeze(
+      archiveEntries.map((entry) => ({
+        path: entry.name,
+        directory: entry.dir,
+        declaredUncompressedBytes: getDeclaredUncompressedBytes(entry),
+      })),
+    ),
     async readEntryString(path) {
       const buffer = await readEntry(path);
       return buffer === null ? null : buffer.toString("utf-8");
     },
-    async readEntryUint8(path) {
-      const buffer = await readEntry(path);
+    async readEntryUint8(path, options) {
+      const buffer = await readEntry(path, options);
       return buffer === null ? null : new Uint8Array(buffer);
     },
   };

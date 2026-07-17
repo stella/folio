@@ -175,6 +175,20 @@ export {
 } from "./docx/server/extractDocxText";
 export { DocxArchiveError, type DocxArchiveOptions } from "./docx/server/boundedArchive";
 export {
+  FOLIO_DOCX_PACKAGE_INSPECTION_DEFAULTS,
+  FOLIO_DOCX_PACKAGE_INSPECTION_ERROR_CODES,
+  FOLIO_DOCX_PACKAGE_INSPECTION_VERSION,
+  FolioDocxPackageInspectionError,
+  inspectDocxPackage,
+  type FolioDocxInspectedXmlPart,
+  type FolioDocxPackageInspection,
+  type FolioDocxPackageInspectionErrorCode,
+  type FolioDocxPackageInspectionLimits,
+  type FolioDocxPackagePart,
+  type FolioDocxPackagePartKind,
+  type InspectDocxPackageOptions,
+} from "./docx/server/inspectDocxPackage";
+export {
   FOLIO_DOCX_CONFORMANCE_CHECKS,
   FOLIO_DOCX_CONFORMANCE_ISSUE_CODES,
   FOLIO_DOCX_CONFORMANCE_PROFILE,
