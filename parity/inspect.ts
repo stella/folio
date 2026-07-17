@@ -13,6 +13,7 @@ import { createFolioExtractor } from "./folioExtract";
 import { getReferenceRenderer, isReferenceRendererId } from "./referenceRenderer";
 import { normalizeLineText, textSimilarity } from "./textNorm";
 import type { DocGeom, LineBox, PageGeom, ReferenceRendererId } from "./types";
+import { getReferenceLocalFonts } from "./wordFonts";
 
 type InspectFlags = {
   doc?: string | undefined;
@@ -184,9 +185,10 @@ const main = async (): Promise<void> => {
   const doc = path.resolve(flags.doc!);
   const maxPages = flags.maxPages ?? Math.max(flags.page, 1);
   const referenceRenderer = getReferenceRenderer(flags.referenceId);
+  const localFonts = await getReferenceLocalFonts(flags.referenceId);
 
   const referenceGeom = await referenceRenderer.getGeometry(doc, {});
-  const extractor = await createFolioExtractor();
+  const extractor = await createFolioExtractor({ localFonts });
   let folio: FolioExtractResult;
   try {
     folio = await extractor.extract(doc, { maxPages });

@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import type { LocalFontDefinition } from "./folioExtract";
+import type { ReferenceRendererId } from "./types";
 
 const WORD_FONT_DIR = "/Applications/Microsoft Word.app/Contents/Resources/DFonts";
 
@@ -58,3 +59,13 @@ export const getAvailableWordFonts = async (): Promise<LocalFontDefinition[]> =>
   );
   return available.flat();
 };
+
+type LoadWordFonts = () => Promise<LocalFontDefinition[]>;
+
+/** Keep every parity entry point in the same font environment as its chosen
+ * reference. Word's app-bundled fonts are not normally visible to Chromium. */
+export const getReferenceLocalFonts = (
+  referenceId: ReferenceRendererId,
+  loadWordFonts: LoadWordFonts = getAvailableWordFonts,
+): Promise<LocalFontDefinition[]> =>
+  referenceId === "word" ? loadWordFonts() : Promise.resolve([]);
