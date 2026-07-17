@@ -470,7 +470,9 @@ export type DocxEditorRef = {
     undo: () => boolean;
     redo: () => boolean;
     scrollToAIEditOperation: (revisionIds: number | readonly number[]) => boolean;
-    scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean; /** Resolve a stable block or text-range target and reveal it in the editor. */
+    scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean;
+    highlightPassage: (options: HighlightPassageOptions) => HighlightPassageResult; /** Clear the passage highlight painted by {@link highlightPassage}, if any. */
+    clearPassageHighlight: () => void; /** Resolve a stable block or text-range target and reveal it in the editor. */
     showInDocument: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => boolean;
     getTrackedChanges: () => FolioReviewChange[];
     getCommentAnchors: () => FolioCommentAnchor[];
@@ -654,6 +656,16 @@ export { getTemplateDirectives }
 export { getTemplateSlashMenu }
 
 export { hashFolioAIBlockText }
+
+// @public (undocumented)
+export type HighlightPassageOptions = {
+    blockId: string;
+    text: string;
+    snapshot?: FolioAIEditSnapshot;
+};
+
+// @public
+export type HighlightPassageResult = "passage" | "block" | "none";
 
 // @public (undocumented)
 export type HyperlinkBookmarkOption = {

@@ -474,6 +474,8 @@ export type DocxEditorRef = {
     redo: () => boolean;
     scrollToAIEditOperation: (revisionIds: number | readonly number[]) => boolean;
     scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean;
+    highlightPassage: (options: HighlightPassageOptions) => HighlightPassageResult;
+    clearPassageHighlight: () => void;
     showInDocument: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => boolean;
     getTrackedChanges: () => FolioReviewChange[];
     getCommentAnchors: () => FolioCommentAnchor[];
@@ -643,6 +645,16 @@ export { getTemplateDirectives }
 export { getTemplateSlashMenu }
 
 export { hashFolioAIBlockText }
+
+// @public (undocumented)
+export type HighlightPassageOptions = {
+    blockId: string;
+    text: string;
+    snapshot?: FolioAIEditSnapshot;
+};
+
+// @public
+export type HighlightPassageResult = "passage" | "block" | "none";
 
 // @public (undocumented)
 export const HyperlinkDialog: any;

@@ -648,6 +648,9 @@ export const resolveFolioAIBlockRange: (input: ResolveFolioAIBlockRangeOptions) 
 // @public
 export const resolveFolioAITextRange: (input: ResolveFolioAITextRangeOptions) => DocPositionRange | null;
 
+// @public
+export const resolvePassageRange: (input: ResolvePassageRangeOptions) => DocPositionRange | null;
+
 // @public (undocumented)
 export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}
 
