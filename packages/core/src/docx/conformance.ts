@@ -15,8 +15,11 @@ export const detectDocxConformanceClass = (documentXml: string | null): DocxConf
     return DOCX_CONFORMANCE_CLASSES.UNKNOWN;
   }
 
-  const rootStartTag = ROOT_START_TAG_PATTERN.exec(documentXml.slice(0, ROOT_START_TAG_SCAN_LIMIT))
-    ?.groups?.["tag"];
+  const scanTarget =
+    documentXml.length <= ROOT_START_TAG_SCAN_LIMIT
+      ? documentXml
+      : documentXml.slice(0, ROOT_START_TAG_SCAN_LIMIT);
+  const rootStartTag = ROOT_START_TAG_PATTERN.exec(scanTarget)?.groups?.["tag"];
   const fastRoot =
     rootStartTag === undefined
       ? null
