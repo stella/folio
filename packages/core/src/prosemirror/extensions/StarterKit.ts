@@ -80,6 +80,7 @@ import { ShapeExtension } from "./nodes/ShapeExtension";
 import { TabExtension } from "./nodes/TabExtension";
 import { createTableExtensions } from "./nodes/TableExtension";
 import { TextBoxExtension } from "./nodes/TextBoxExtension";
+import { TextBoxAnchorExtension } from "./nodes/TextBoxAnchorExtension";
 import type { AnyExtension } from "./types";
 
 export type StarterKitOptions = {
@@ -162,6 +163,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("tab", TabExtension());
   add("image", ImageExtension());
   add("textBox", TextBoxExtension());
+  add("textBoxAnchor", TextBoxAnchorExtension());
   add("shape", ShapeExtension());
   add("imageDrag", ImageDragExtension());
   add("imagePaste", ImagePasteExtension());

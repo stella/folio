@@ -6,6 +6,27 @@ import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  test("keeps text-box anchors out of paragraph layout", () => {
+    const paragraph = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("Before"),
+          schema.node("textBoxAnchor", { anchorId: "paragraph:0" }),
+          schema.text("After"),
+        ]),
+      ]),
+    ).at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+
+    expect(paragraph.runs).toHaveLength(2);
+    expect(paragraph.runs.flatMap((run) => (run.kind === "text" ? [run.text] : []))).toEqual([
+      "Before",
+      "After",
+    ]);
+  });
+
   test("retains paragraph suppression and stamps the document hyphenation policy", () => {
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [

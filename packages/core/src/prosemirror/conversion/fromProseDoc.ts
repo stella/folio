@@ -91,6 +91,7 @@ import {
   expectTableCellAttrs,
   expectTableRowAttrs,
   expectTextBoxAttrs,
+  expectTextBoxAnchorAttrs,
   expectTextColorMarkAttrs,
   expectTrackedChangeMarkAttrs,
   expectUnderlineMarkAttrs,
@@ -257,6 +258,7 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
  */
 function extractBlocks(pmDoc: PMNode): BlockContent[] {
   const blocks: BlockContent[] = [];
+  const textBoxAnchorMarkers = new Map<string, Run>();
   const documentCounts = buildDocumentTrackedChangeCounts(pmDoc);
   let pendingPageBreaks = 0;
   let previousStandaloneTextBox: PreviousStandaloneTextBox | null = null;
@@ -286,7 +288,7 @@ function extractBlocks(pmDoc: PMNode): BlockContent[] {
     }
 
     if (node.type.name === "paragraph") {
-      const paragraph = convertPMParagraph(node, documentCounts);
+      const paragraph = convertPMParagraph(node, documentCounts, textBoxAnchorMarkers);
       prependPageBreaks(paragraph, pendingPageBreaks);
       pendingPageBreaks = 0;
       blocks.push(paragraph);
@@ -301,6 +303,7 @@ function extractBlocks(pmDoc: PMNode): BlockContent[] {
       previousStandaloneTextBox = appendTextBoxBlock(blocks, node, {
         pendingPageBreaks,
         previousStandaloneTextBox,
+        textBoxAnchorMarkers,
       });
       pendingPageBreaks = 0;
     } else if (node.type.name === "blockSdt") {
@@ -316,12 +319,15 @@ function extractBlocks(pmDoc: PMNode): BlockContent[] {
     flushPendingPageBreaks();
   }
 
+  removeUnresolvedTextBoxAnchors(blocks, textBoxAnchorMarkers);
+
   return blocks;
 }
 
 type AppendTextBoxBlockOptions = {
   pendingPageBreaks: number;
   previousStandaloneTextBox: PreviousStandaloneTextBox | null;
+  textBoxAnchorMarkers: Map<string, Run>;
 };
 
 type PreviousStandaloneTextBox = {
@@ -470,6 +476,17 @@ function appendTextBoxBlock(
   const previousBlock = blocks.at(-1);
   if (attrs._docxPlacement === "inlineWithPrevious" && previousBlock?.type === "paragraph") {
     appendPageBreaks(previousBlock, options.pendingPageBreaks);
+    const anchorId = attrs._docxAnchorId;
+    const anchorMarker = anchorId ? options.textBoxAnchorMarkers.get(anchorId) : undefined;
+    const textBoxRun = findTextBoxShapeRun(paragraph.content);
+    if (
+      anchorMarker &&
+      textBoxRun &&
+      replaceTextBoxAnchorInBlocks(blocks, anchorMarker, textBoxRun)
+    ) {
+      options.textBoxAnchorMarkers.delete(anchorId);
+      return null;
+    }
     if (
       !mergeTextBoxIntoTrailingInlineSdts(previousBlock, paragraph, attrs._docxInlineSdts ?? [])
     ) {
@@ -565,6 +582,139 @@ function mergeInlineSdtNodes(
     return true;
   }
   return mergeInlineSdtNodes(targetNested, incomingNested, inlineSdts, index + 1);
+}
+
+function findTextBoxShapeRun(content: readonly ParagraphContent[]): Run | undefined {
+  for (const item of content) {
+    if (item.type === "run") {
+      if (
+        item.content.some(
+          (runContent) => runContent.type === "shape" && runContent.shape.shapeType === "textBox",
+        )
+      ) {
+        return item;
+      }
+      continue;
+    }
+    if (
+      item.type === "inlineSdt" ||
+      item.type === "hyperlink" ||
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
+    ) {
+      const nestedContent = item.type === "hyperlink" ? item.children : item.content;
+      const run = findTextBoxShapeRun(nestedContent);
+      if (run) {
+        return run;
+      }
+    }
+  }
+  return undefined;
+}
+
+function replaceTextBoxAnchorInBlocks(
+  blocks: BlockContent[],
+  marker: Run,
+  textBoxRun: Run,
+): boolean {
+  for (const block of blocks) {
+    if (block.type === "paragraph") {
+      if (editTextBoxAnchorInContent(block.content, marker, textBoxRun)) {
+        return true;
+      }
+      continue;
+    }
+    if (block.type === "table") {
+      for (const row of block.rows) {
+        for (const cell of row.cells) {
+          if (replaceTextBoxAnchorInBlocks(cell.content, marker, textBoxRun)) {
+            return true;
+          }
+        }
+      }
+      continue;
+    }
+    if (replaceTextBoxAnchorInBlocks(block.content, marker, textBoxRun)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function editTextBoxAnchorInContent(
+  content: ParagraphContent[],
+  marker: Run,
+  replacement?: Run,
+): boolean {
+  for (let index = 0; index < content.length; index += 1) {
+    const item = content[index];
+    if (item === marker) {
+      content.splice(index, 1, ...(replacement ? [replacement] : []));
+      return true;
+    }
+    if (item?.type === "inlineSdt") {
+      const hadContent = item.content.length > 0;
+      if (editTextBoxAnchorInContent(item.content, marker, replacement)) {
+        if (!replacement && hadContent && item.content.length === 0) {
+          content.splice(index, 1);
+        }
+        return true;
+      }
+      continue;
+    }
+    if (
+      item?.type === "insertion" ||
+      item?.type === "deletion" ||
+      item?.type === "moveFrom" ||
+      item?.type === "moveTo"
+    ) {
+      const markerIndex = item.content.findIndex((child) => child === marker);
+      if (markerIndex >= 0) {
+        item.content.splice(markerIndex, 1, ...(replacement ? [replacement] : []));
+        if (!replacement && item.content.length === 0) {
+          content.splice(index, 1);
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function removeUnresolvedTextBoxAnchors(
+  blocks: BlockContent[],
+  markers: ReadonlyMap<string, Run>,
+): void {
+  for (const marker of markers.values()) {
+    removeTextBoxAnchorFromBlocks(blocks, marker);
+  }
+}
+
+function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boolean {
+  for (const block of blocks) {
+    if (block.type === "paragraph") {
+      if (editTextBoxAnchorInContent(block.content, marker)) {
+        return true;
+      }
+      continue;
+    }
+    if (block.type === "table") {
+      for (const row of block.rows) {
+        for (const cell of row.cells) {
+          if (removeTextBoxAnchorFromBlocks(cell.content, marker)) {
+            return true;
+          }
+        }
+      }
+      continue;
+    }
+    if (removeTextBoxAnchorFromBlocks(block.content, marker)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -663,9 +813,18 @@ function appendPageBreaks(paragraph: Paragraph, count: number): void {
 /**
  * Convert a ProseMirror paragraph node to our Paragraph type
  */
-function convertPMParagraph(node: PMNode, documentCounts?: TrackedChangeCounts): Paragraph {
+function convertPMParagraph(
+  node: PMNode,
+  documentCounts?: TrackedChangeCounts,
+  textBoxAnchorMarkers?: Map<string, Run>,
+): Paragraph {
   const attrs = expectParagraphAttrs(node);
-  let content = extractParagraphContent(node, documentCounts, attrs._emptyHyperlinks ?? undefined);
+  let content = extractParagraphContent(
+    node,
+    documentCounts,
+    attrs._emptyHyperlinks ?? undefined,
+    textBoxAnchorMarkers,
+  );
 
   // Emit BookmarkStart/End from bookmarks attr (for TOC anchors, cross-references)
   const bookmarks = attrs.bookmarks as { id: number; name: string }[] | undefined;
@@ -1013,6 +1172,7 @@ function extractParagraphContent(
   // `moveKind` mark attribute set by `toProseDoc`.
   _documentCounts?: TrackedChangeCounts,
   emptyHyperlinks?: NonNullable<ParagraphAttrs["_emptyHyperlinks"]>,
+  textBoxAnchorMarkers?: Map<string, Run>,
 ): ParagraphContent[] {
   const content: ParagraphContent[] = [];
   const sortedEmptyHyperlinks = (emptyHyperlinks ?? [])
@@ -1111,6 +1271,43 @@ function extractParagraphContent(
     const noteRefMark = node.marks.find((m) => m.type.name === "footnoteRef");
     const insertionMark = node.marks.find((m) => m.type.name === "insertion");
     const deletionMark = node.marks.find((m) => m.type.name === "deletion");
+    if (node.type.name === "textBoxAnchor") {
+      flushCurrentInline();
+      if (!textBoxAnchorMarkers) {
+        return;
+      }
+      const { anchorId } = expectTextBoxAnchorAttrs(node);
+      const marker: Run = { type: "run", content: [] };
+      if (textBoxAnchorMarkers.has(anchorId)) {
+        return;
+      }
+      textBoxAnchorMarkers.set(anchorId, marker);
+      const changeMark = insertionMark ?? deletionMark;
+      if (!changeMark) {
+        content.push(marker);
+        return;
+      }
+      const changeAttrs = expectTrackedChangeMarkAttrs(changeMark);
+      const info: TrackedChangeInfo = {
+        id: changeAttrs.revisionId,
+        author: changeAttrs.author || "Unknown",
+        ...(changeAttrs.date ? { date: changeAttrs.date } : {}),
+      };
+      if (insertionMark) {
+        content.push({
+          type: changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion",
+          info,
+          content: [marker],
+        });
+      } else {
+        content.push({
+          type: changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion",
+          info,
+          content: [marker],
+        });
+      }
+      return;
+    }
     if (insertionMark || deletionMark) {
       // Finish any current content
       flushCurrentInline();
@@ -1227,7 +1424,7 @@ function extractParagraphContent(
     } else if (node.type.name === "sdt") {
       // SDT ends current run and emits an InlineSdt content item
       flushCurrentInline();
-      content.push(createInlineSdtFromNode(node));
+      content.push(createInlineSdtFromNode(node, textBoxAnchorMarkers));
     } else if (node.type.name === "math") {
       // Math ends current run and emits a MathEquation content item
       flushCurrentInline();
@@ -1679,7 +1876,7 @@ function createMathFromNode(node: PMNode): MathEquation {
 /**
  * Create an InlineSdt from a PM sdt node
  */
-function createInlineSdtFromNode(node: PMNode): InlineSdt {
+function createInlineSdtFromNode(node: PMNode, textBoxAnchorMarkers?: Map<string, Run>): InlineSdt {
   const attrs = expectSdtAttrs(node);
   const properties = sdtPropertiesFromAttrs(attrs);
 
@@ -1688,7 +1885,7 @@ function createInlineSdtFromNode(node: PMNode): InlineSdt {
   // and math here. Keep all of them so docProps-bound fields and reviewed
   // template content survive a round-trip through the editor. Keep this
   // filter in sync with the exhaustive switch in `serializeInlineSdt`.
-  const sdtContent = extractParagraphContent(node);
+  const sdtContent = extractParagraphContent(node, undefined, undefined, textBoxAnchorMarkers);
   const content = sdtContent.filter(
     (c): c is InlineSdt["content"][number] =>
       c.type === "run" ||
@@ -2726,13 +2923,14 @@ function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatting | u
 function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts): TableCell {
   const attrs = expectTableCellAttrs(node);
   const content: (Paragraph | Table)[] = [];
+  const textBoxAnchorMarkers = new Map<string, Run>();
   let previousStandaloneTextBox: PreviousStandaloneTextBox | null = null;
 
   // Extract cell content (paragraphs and nested tables)
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((contentNode) => {
     if (contentNode.type.name === "paragraph") {
-      content.push(convertPMParagraph(contentNode, documentCounts));
+      content.push(convertPMParagraph(contentNode, documentCounts, textBoxAnchorMarkers));
       previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "table") {
       content.push(convertPMTable(contentNode, documentCounts));
@@ -2741,9 +2939,12 @@ function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts):
       previousStandaloneTextBox = appendTextBoxBlock(content, contentNode, {
         pendingPageBreaks: 0,
         previousStandaloneTextBox,
+        textBoxAnchorMarkers,
       });
     }
   });
+
+  removeUnresolvedTextBoxAnchors(content, textBoxAnchorMarkers);
 
   const cell: TableCell = { type: "tableCell", content };
   const cellFormatting = tableCellAttrsToFormatting(attrs);

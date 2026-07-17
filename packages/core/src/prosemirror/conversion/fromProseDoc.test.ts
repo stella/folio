@@ -5,6 +5,7 @@ import { EditorState } from "prosemirror-state";
 import type {
   Document,
   Paragraph,
+  ParagraphContent,
   Run,
   Table,
   TableCell,
@@ -1743,6 +1744,152 @@ describe("fromProseDoc", () => {
     expect(firstShapeType(block)).toBe("textBox");
   });
 
+  test("preserves an inline text box between surrounding text", () => {
+    const document = documentWithTextBoxParagraph({ includeText: true });
+    const sourceParagraph = document.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    sourceParagraph.content.push({
+      type: "run",
+      content: [{ type: "text", text: "After" }],
+    });
+
+    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const paragraph = roundTripped.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+
+    expect(paragraphInlineOrder(paragraph)).toEqual(["Before", "textBox", "After"]);
+  });
+
+  test("preserves the source order of multiple inline text boxes", () => {
+    const document = documentWithTextBoxParagraph({ includeText: true, textBoxCount: 2 });
+    const sourceParagraph = document.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    const secondTextBox = sourceParagraph.content.pop();
+    if (secondTextBox?.type !== "run") {
+      throw new Error("Expected second text box run");
+    }
+    sourceParagraph.content.push(
+      { type: "run", content: [{ type: "text", text: "Middle" }] },
+      secondTextBox,
+      { type: "run", content: [{ type: "text", text: "After" }] },
+    );
+
+    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const paragraph = roundTripped.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+
+    expect(paragraphInlineOrder(paragraph)).toEqual([
+      "Before",
+      "textBox",
+      "Middle",
+      "textBox",
+      "After",
+    ]);
+  });
+
+  test("keeps an inline text-box anchor stable across surrounding text edits", () => {
+    const document = documentWithTextBoxParagraph({ includeText: true });
+    const sourceParagraph = document.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    sourceParagraph.content.push({
+      type: "run",
+      content: [{ type: "text", text: "After" }],
+    });
+    let state = EditorState.create({ doc: toProseDoc(document) });
+    const firstAnchorPosition = findNodePosition(state.doc, "textBoxAnchor");
+    if (firstAnchorPosition === undefined) {
+      throw new Error("Expected text-box anchor");
+    }
+    state = state.apply(state.tr.insertText(" edited-before", firstAnchorPosition));
+    const editedAnchorPosition = findNodePosition(state.doc, "textBoxAnchor");
+    if (editedAnchorPosition === undefined) {
+      throw new Error("Expected mapped text-box anchor");
+    }
+    state = state.apply(state.tr.insertText("edited-after ", editedAnchorPosition + 1));
+
+    const roundTripped = fromProseDoc(state.doc, document);
+    const paragraph = roundTripped.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+
+    expect(paragraphInlineOrder(paragraph)).toEqual([
+      "Before edited-before",
+      "textBox",
+      "edited-after After",
+    ]);
+  });
+
+  test("removes an orphaned inline anchor when its text box is deleted", () => {
+    const document = documentWithTextBoxParagraph({ includeText: true });
+    const sourceParagraph = document.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    sourceParagraph.content.push({
+      type: "run",
+      content: [{ type: "text", text: "After" }],
+    });
+    const pmDoc = toProseDoc(document);
+    const editedDoc = schema.node("doc", null, [pmDoc.child(0)]);
+
+    const roundTripped = fromProseDoc(editedDoc, document);
+    const paragraph = roundTripped.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+
+    expect(paragraphText(paragraph)).toBe("BeforeAfter");
+    expect(
+      paragraph.content.some((content) => content.type === "run" && content.content.length === 0),
+    ).toBe(false);
+  });
+
+  test("preserves inline text-box order inside a table cell", () => {
+    const document = documentWithTextBoxParagraph({ includeText: true });
+    const sourceParagraph = document.package.document.content.at(0);
+    if (sourceParagraph?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    sourceParagraph.content.push({
+      type: "run",
+      content: [{ type: "text", text: "After" }],
+    });
+    document.package.document.content = [
+      {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [{ type: "tableCell", content: [sourceParagraph] }],
+          },
+        ],
+      },
+    ];
+
+    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const table = roundTripped.package.document.content.at(0);
+    if (table?.type !== "table") {
+      throw new Error("Expected round-tripped table");
+    }
+    const paragraph = table.rows.at(0)?.cells.at(0)?.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected table-cell paragraph");
+    }
+
+    expect(paragraphInlineOrder(paragraph)).toEqual(["Before", "textBox", "After"]);
+  });
+
   test("keeps imported text-box-only paragraphs as standalone wrappers", () => {
     const document = documentWithTextBoxParagraph({ includeText: false });
     const pmDoc = toProseDoc(document);
@@ -1879,6 +2026,44 @@ describe("fromProseDoc", () => {
     expect(inner.properties).toMatchObject({ sdtType: "plainText", alias: "Inner", tag: "inner" });
     expect(shapes).toHaveLength(1);
     expect(shapes.at(0)?.shape.shapeType).toBe("textBox");
+    expect(paragraphInlineOrder(block)).toEqual(["Before ", "inside ", "textBox", " after"]);
+  });
+
+  test("preserves a tracked text box between tracked text runs", () => {
+    const document = documentWithTextBoxParagraph({ includeText: false });
+    const paragraph = document.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    const textBoxRun = paragraph.content.at(0);
+    if (textBoxRun?.type !== "run") {
+      throw new Error("Expected text-box run");
+    }
+    const info = { id: 43, author: "Reviewer" } satisfies TrackedChangeInfo;
+    paragraph.content = [
+      {
+        type: "insertion",
+        info,
+        content: [
+          { type: "run", content: [{ type: "text", text: "Before" }] },
+          textBoxRun,
+          { type: "run", content: [{ type: "text", text: "After" }] },
+        ],
+      },
+    ];
+
+    const roundTripped = fromProseDoc(toProseDoc(document), document);
+    const result = roundTripped.package.document.content.at(0);
+    if (result?.type !== "paragraph") {
+      throw new Error("Expected round-tripped paragraph");
+    }
+
+    expect(paragraphInlineOrder(result)).toEqual(["Before", "textBox", "After"]);
+    expect(
+      result.content.map((content) =>
+        content.type === "insertion" ? `${content.type}:${content.info.id}` : content.type,
+      ),
+    ).toEqual(["insertion:43", "insertion:43", "insertion:43"]);
   });
 
   test.each(["moveFrom", "moveTo"] as const)(
@@ -2497,6 +2682,53 @@ function paragraphText(block: Paragraph | Table | undefined): string {
         : [],
     )
     .join("");
+}
+
+function paragraphInlineOrder(paragraph: Paragraph): string[] {
+  return inlineContentOrder(paragraph.content);
+}
+
+function inlineContentOrder(content: readonly ParagraphContent[]): string[] {
+  return content.flatMap((item) => {
+    if (item.type === "inlineSdt") {
+      return inlineContentOrder(item.content);
+    }
+    if (
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
+    ) {
+      return inlineContentOrder(item.content);
+    }
+    if (item.type === "hyperlink") {
+      return inlineContentOrder(item.children);
+    }
+    if (item.type !== "run") {
+      return [];
+    }
+    return item.content.flatMap((runContent) => {
+      if (runContent.type === "text") {
+        return [runContent.text];
+      }
+      if (runContent.type === "shape" && runContent.shape.shapeType === "textBox") {
+        return ["textBox"];
+      }
+      return [];
+    });
+  });
+}
+
+function findNodePosition(doc: PMNode, nodeType: string): number | undefined {
+  let position: number | undefined;
+  doc.descendants((node, nodePosition) => {
+    if (node.type.name !== nodeType) {
+      return true;
+    }
+    position = nodePosition;
+    return false;
+  });
+  return position;
 }
 
 function documentWithTextBoxParagraph({

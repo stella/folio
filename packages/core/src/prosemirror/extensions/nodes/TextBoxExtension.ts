@@ -61,6 +61,8 @@ export type TextBoxAttrs = {
   _docxPlacement?: "standalone" | "inlineWithPrevious";
   /** Original DOCX paragraph group for standalone text-box reconstruction. */
   _docxGroupId?: string;
+  /** Inline anchor linking this block node to its source run position. */
+  _docxAnchorId?: string;
   /** Original run-level revision wrapper for save-path reconstruction. */
   _docxTrackedChange?: SchemaTextBoxAttrs["_docxTrackedChange"];
   /** Original inline content-control ancestry for save-path reconstruction. */
@@ -131,6 +133,7 @@ export const TextBoxExtension = createNodeExtension({
       position: { default: null },
       _docxPlacement: { default: null },
       _docxGroupId: { default: null },
+      _docxAnchorId: { default: null },
       _docxTrackedChange: { default: null },
       _docxInlineSdts: { default: null },
     },

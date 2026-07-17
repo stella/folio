@@ -549,6 +549,8 @@ export type TextBoxAttrs = {
   _docxPlacement?: "standalone" | "inlineWithPrevious";
   /** Original DOCX paragraph group for standalone text-box reconstruction. */
   _docxGroupId?: string;
+  /** Inline anchor linking this block node to its source run position. */
+  _docxAnchorId?: string;
   /** Original run-level revision wrapper for save-path reconstruction. */
   _docxTrackedChange?:
     | { type: "insertion"; info: TrackedChangeInfo }
@@ -557,6 +559,11 @@ export type TextBoxAttrs = {
     | { type: "moveTo"; info: TrackedChangeInfo };
   /** Original inline content-control ancestry for save-path reconstruction. */
   _docxInlineSdts?: SdtAttrs[];
+};
+
+/** Internal inline position marker for an extracted text box block. */
+export type TextBoxAnchorAttrs = {
+  anchorId: string;
 };
 
 /**

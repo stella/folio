@@ -28,6 +28,7 @@ import {
   readTableCellAttrs,
   readTableRowAttrs,
   readTextBoxAttrs,
+  readTextBoxAnchorAttrs,
   readTextColorMarkAttrs,
   readTextEffectMarkAttrs,
   readTrackedChangeMarkAttrs,
@@ -184,6 +185,10 @@ const validateNodeAttrs = (
 
     case "textBox":
       appendAttrIssues(path, readTextBoxAttrs(node), issues);
+      return;
+
+    case "textBoxAnchor":
+      appendAttrIssues(path, readTextBoxAnchorAttrs(node), issues);
       return;
 
     default:
