@@ -189,6 +189,24 @@ export {
   type InspectDocxPackageOptions,
 } from "./docx/server/inspectDocxPackage";
 export {
+  evaluateDocxXmlPatchProposal,
+  FOLIO_DOCX_XML_PATCH_PROPOSAL_DEFAULTS,
+  FOLIO_DOCX_XML_PATCH_PROPOSAL_ISSUE_CODES,
+  FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE,
+  FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION,
+  InvalidFolioDocxXmlPatchProposalError,
+  InvalidFolioDocxXmlPatchProposalOptionsError,
+  parseFolioDocxXmlPatchProposal,
+  type EvaluateDocxXmlPatchProposalArgs,
+  type FolioDocxPreparedXmlReplacement,
+  type FolioDocxXmlPatchProposal,
+  type FolioDocxXmlPatchProposalEvaluation,
+  type FolioDocxXmlPatchProposalIssue,
+  type FolioDocxXmlPatchProposalIssueCode,
+  type FolioDocxXmlPatchProposalLimits,
+  type FolioDocxXmlReplacement,
+} from "./docx/server/evaluateDocxXmlPatchProposal";
+export {
   FOLIO_DOCX_CONFORMANCE_CHECKS,
   FOLIO_DOCX_CONFORMANCE_ISSUE_CODES,
   FOLIO_DOCX_CONFORMANCE_PROFILE,

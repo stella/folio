@@ -1,5 +1,4 @@
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
-import { XMLValidator } from "fast-xml-parser";
 
 import type { DocxConformanceClass } from "../../types/document";
 import { detectDocxConformanceClass } from "../conformance";
@@ -13,6 +12,7 @@ import {
   getNamespacePrefix,
   parseXmlDocument,
 } from "../xmlParser";
+import { getDocxXmlSafetyIssue } from "../xmlSafety";
 import type { DocxArchive, DocxArchiveOptions } from "./boundedArchive";
 import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";
 
@@ -99,7 +99,6 @@ const DOCUMENT_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
 const CONTENT_TYPES_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/content-types";
 const RELATIONSHIPS_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
-const DOCTYPE_PATTERN = /<!DOCTYPE(?:\s|>)/iu;
 const UNVERIFIED_STANDARDS_DIMENSIONS = Object.freeze([
   "complete-schema-constraints",
   "markup-compatibility-processing",
@@ -192,7 +191,8 @@ const validateXmlParts = async (
     }
     xmlByPath.set(part, xml);
 
-    if (DOCTYPE_PATTERN.test(xml)) {
+    const safetyIssue = getDocxXmlSafetyIssue(xml);
+    if (safetyIssue === "doctype-forbidden") {
       hasInvalidXml = true;
       addIssue(report, {
         check: "xml-well-formedness",
@@ -204,7 +204,7 @@ const validateXmlParts = async (
       continue;
     }
 
-    if (XMLValidator.validate(xml) !== true) {
+    if (safetyIssue === "not-well-formed") {
       hasInvalidXml = true;
       addIssue(report, {
         check: "xml-well-formedness",
