@@ -162,7 +162,7 @@ export const loadDocxArchive = async (
 
   const readEntry = async (
     path: string,
-    options: DocxArchiveReadOptions = {},
+    readOptions: DocxArchiveReadOptions = {},
   ): Promise<Buffer | null> => {
     const work = async (): Promise<Buffer | null> => {
       const entry = zip.file(path);
@@ -171,7 +171,7 @@ export const loadDocxArchive = async (
       }
       const buffer = await collectStream({
         stream: entry.nodeStream("nodebuffer"),
-        maxEntryBytes: Math.min(options.maxBytes ?? maxEntryBytes, maxEntryBytes),
+        maxEntryBytes: Math.min(readOptions.maxBytes ?? maxEntryBytes, maxEntryBytes),
         remainingBytes: maxTotalBytes - totalBytesRead,
         maxTotalBytes,
         path,
@@ -201,8 +201,8 @@ export const loadDocxArchive = async (
       const buffer = await readEntry(path);
       return buffer === null ? null : buffer.toString("utf-8");
     },
-    async readEntryUint8(path, options) {
-      const buffer = await readEntry(path, options);
+    async readEntryUint8(path, readOptions) {
+      const buffer = await readEntry(path, readOptions);
       return buffer === null ? null : new Uint8Array(buffer);
     },
   };
