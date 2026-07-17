@@ -480,6 +480,7 @@ function appendTextBoxBlock(
     const anchorMarker = anchorId ? options.textBoxAnchorMarkers.get(anchorId) : undefined;
     const textBoxRun = findTextBoxShapeRun(paragraph.content);
     if (
+      anchorId &&
       anchorMarker &&
       textBoxRun &&
       replaceTextBoxAnchorInBlocks(blocks, anchorMarker, textBoxRun)
