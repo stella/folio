@@ -174,3 +174,136 @@ describe("block/table suggestion accept/reject + getSuggestions", () => {
     expect(json(model)).toContain("sig");
   });
 });
+
+// A suggested inline insertion mark (as an insertAfterBlock / replaceInBlock
+// suggestion produces on its runs).
+const insMark = (revisionId: number, suggestionId: string) =>
+  schema.marks["insertion"]!.create({
+    revisionId,
+    author: "AI",
+    date: DATE,
+    provenance: "suggested",
+    suggestionId,
+  });
+
+describe("heterogeneous (mixed) suggestion groups", () => {
+  // One suggestionId spanning a whole-node paragraph insert AND a separate
+  // inline edit — the reject regression: the old code deleted the node insert
+  // and returned, leaving the inline mark unresolved.
+  const mixedNodeAndInline = () =>
+    makeState([
+      para("keep ", {}), // will hold an inline suggested insertion below
+      schema.nodes["paragraph"]!.create({ _suggestedInsert: { ...suggestedMarker(20, "mix") } }, [
+        schema.text("proposed", [insMark(20, "mix")]),
+      ]),
+    ]);
+
+  const mixedWithInlineEdit = () =>
+    makeState([
+      schema.nodes["paragraph"]!.create({}, [
+        schema.text("keep "),
+        schema.text("added", [insMark(21, "mix")]),
+      ]),
+      schema.nodes["paragraph"]!.create({ _suggestedInsert: { ...suggestedMarker(20, "mix") } }, [
+        schema.text("proposed", [insMark(20, "mix")]),
+      ]),
+    ]);
+
+  test("reject resolves BOTH the node insert and the separate inline edit", () => {
+    const state = mixedWithInlineEdit();
+    const { ok, state: next } = run(state, rejectSuggestion("mix"));
+    expect(ok).toBe(true);
+    // Inline-inserted "added" removed AND the whole inserted paragraph removed.
+    expect(next.doc.textContent).toBe("keep ");
+    expect(getSuggestions(next)).toEqual([]);
+    expect(json(fromProseDoc(next.doc))).not.toContain("proposed");
+    expect(json(fromProseDoc(next.doc))).not.toContain("added");
+  });
+
+  test("accept resolves BOTH parts of the group in one transaction", () => {
+    const state = mixedWithInlineEdit();
+    const { ok, state: next } = run(state, acceptSuggestion("mix", { author: "Bob", date: DATE }));
+    expect(ok).toBe(true);
+    expect(getSuggestions(next)).toEqual([]);
+    const serialized = json(fromProseDoc(next.doc));
+    // Both the inline edit and the inserted paragraph became real tracked changes.
+    expect(serialized).toContain("added");
+    expect(serialized).toContain("proposed");
+    expect(serialized).toContain("pPrMark");
+    expect(serialized).not.toContain("suggested");
+  });
+
+  test("node-only heterogeneous group still fully rejects", () => {
+    const state = mixedNodeAndInline();
+    const { ok, state: next } = run(state, rejectSuggestion("mix"));
+    expect(ok).toBe(true);
+    expect(next.doc.textContent).toBe("keep ");
+    expect(getSuggestions(next)).toEqual([]);
+  });
+
+  test("a group mixing an inserted table with other edits reports appliedAs 'mixed'", () => {
+    const state = makeState([
+      schema.nodes["paragraph"]!.create({}, [schema.text("edit", [insMark(21, "mix2")])]),
+      table([row([cell("sig")])], { _suggestedInsert: { ...suggestedMarker(30, "mix2") } }),
+    ]);
+    const suggestion = getSuggestions(state).find((s) => s.suggestionId === "mix2");
+    expect(suggestion?.kinds).toContain("insertTable");
+    expect(suggestion?.kinds).toContain("insertion");
+    expect(suggestion?.appliedAs).toBe("mixed");
+
+    // Accept resolves the whole group: table applied directly, inline → tracked.
+    const { ok, state: next } = run(
+      state,
+      acceptSuggestion("mix2", { author: "Carol", date: DATE }),
+    );
+    expect(ok).toBe(true);
+    expect(getSuggestions(next)).toEqual([]);
+    const model = fromProseDoc(next.doc);
+    expect(model.package.document.content.some((b) => b.type === "table")).toBe(true);
+    expect(json(model)).toContain("edit");
+  });
+});
+
+describe("acceptSuggestion date validation", () => {
+  test("a malformed date is normalized so no invalid w:date is written", () => {
+    const state = makeState([
+      schema.nodes["paragraph"]!.create({}, [schema.text("x", [insMark(5, "s")])]),
+    ]);
+    const { ok, state: next } = run(
+      state,
+      acceptSuggestion("s", { author: "A", date: "not-a-date" }),
+    );
+    expect(ok).toBe(true);
+    // The stamped date parses as a valid ISO instant, not the raw junk string.
+    let stampedDate: unknown;
+    next.doc.descendants((node) => {
+      const mark = node.marks.find((m) => m.type.name === "insertion");
+      if (mark) {
+        stampedDate = mark.attrs["date"];
+      }
+      return undefined;
+    });
+    expect(typeof stampedDate).toBe("string");
+    expect(Number.isNaN(new Date(stampedDate as string).getTime())).toBe(false);
+    expect(stampedDate).not.toBe("not-a-date");
+  });
+
+  test("a valid date is preserved (canonicalized to ISO)", () => {
+    const state = makeState([
+      schema.nodes["paragraph"]!.create({}, [schema.text("x", [insMark(6, "s")])]),
+    ]);
+    const { state: next } = run(
+      state,
+      acceptSuggestion("s", { author: "A", date: "2026-07-17T00:00:00.000Z" }),
+    );
+    let stampedDate: unknown;
+    next.doc.descendants((node) => {
+      const mark = node.marks.find((m) => m.type.name === "insertion");
+      if (mark) {
+        stampedDate = mark.attrs["date"];
+      }
+      return undefined;
+    });
+    expect(stampedDate).toBe("2026-07-17T00:00:00.000Z");
+  });
+});

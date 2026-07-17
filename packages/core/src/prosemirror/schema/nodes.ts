@@ -633,15 +633,14 @@ export type TableRowAttrs = {
   _originalFormatting?: TableRowFormatting;
   /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
   trPrChange?: TableRowPropertyChange[];
-  /**
-   * Marks this row as a whole-row *suggested* insertion (AI proposal). Present
-   * only in the editor; stripped from serialized DOCX until accepted, at which
-   * point it becomes a real `trIns`. See `SuggestedStructuralMarker`.
-   */
-  _suggestedInsert?: SuggestedStructuralMarker | null;
 } & (
   | {
-      /** Tracked structural row insertion (w:trPr/w:ins). */
+      /**
+       * Tracked structural row insertion (w:trPr/w:ins). A `"suggested"`
+       * provenance marks a whole-row AI proposal: stripped from serialized DOCX
+       * until accepted, at which point it becomes a real (user) `trIns`. Rows use
+       * this, NOT `_suggestedInsert` (that marker is paragraph/table only).
+       */
       trIns: {
         revisionId: number;
         author: string;

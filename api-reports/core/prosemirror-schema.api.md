@@ -431,7 +431,6 @@ export type TableRowAttrs = {
     hidden?: boolean; /** Original row formatting from DOCX for lossless round-trip serialization */
     _originalFormatting?: import__stll_docx_core_model.TableRowFormatting; /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
     trPrChange?: import__stll_docx_core_model.TableRowPropertyChange[];
-    _suggestedInsert?: SuggestedStructuralMarker | null;
 } & ({
     trIns: {
         revisionId: number;

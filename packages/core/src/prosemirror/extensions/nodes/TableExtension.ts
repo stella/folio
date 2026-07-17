@@ -340,7 +340,6 @@ const tableRowSpec: NodeSpec = {
     trPrChange: { default: null },
     trIns: { default: null },
     trDel: { default: null },
-    _suggestedInsert: { default: null },
   },
   parseDOM: [{ tag: "tr" }],
   toDOM(node) {
