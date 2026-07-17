@@ -6,7 +6,7 @@
  * it when the sibling text box is restored to the DOCX run stream.
  */
 
-import { expectTextBoxAnchorAttrs } from "../../attrs";
+import { expectTextBoxAnchorAttrs } from "../../textBoxAnchorAttrs";
 import { createNodeExtension } from "../create";
 
 export const TextBoxAnchorExtension = createNodeExtension({

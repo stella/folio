@@ -15,7 +15,6 @@ import {
   readSdtAttrs,
   readShapeAttrs,
   readTextBoxAttrs,
-  readTextBoxAnchorAttrs,
   readTextColorMarkAttrs,
   readTrackedChangeMarkAttrs,
   readUnderlineMarkAttrs,
@@ -24,6 +23,7 @@ import {
   readTableRowAttrs,
 } from ".";
 import { schema } from "../schema";
+import { readTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 
 const issueMessages = (result: ReturnType<typeof readParagraphAttrs>) => {
   if (result.ok) {

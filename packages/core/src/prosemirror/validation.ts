@@ -28,12 +28,12 @@ import {
   readTableCellAttrs,
   readTableRowAttrs,
   readTextBoxAttrs,
-  readTextBoxAnchorAttrs,
   readTextColorMarkAttrs,
   readTextEffectMarkAttrs,
   readTrackedChangeMarkAttrs,
   readUnderlineMarkAttrs,
 } from "./attrs";
+import { readTextBoxAnchorAttrs } from "./textBoxAnchorAttrs";
 
 export type ProseMirrorDocumentValidationIssue = {
   path: string;

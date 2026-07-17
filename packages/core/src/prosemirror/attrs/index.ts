@@ -60,7 +60,6 @@ import type {
   TrackedChangeMarkAttrs,
   UnderlineAttrs,
 } from "../schema";
-import type { TextBoxAnchorAttrs } from "../schema/nodes";
 
 export type ProseMirrorAttrIssue = {
   path: string;
@@ -222,7 +221,6 @@ const mathAttrsCache = new WeakMap<PMNode, MathAttrs>();
 const sdtAttrsCache = new WeakMap<PMNode, SdtAttrs>();
 const shapeAttrsCache = new WeakMap<PMNode, ShapeAttrs>();
 const textBoxAttrsCache = new WeakMap<PMNode, TextBoxAttrs>();
-const textBoxAnchorAttrsCache = new WeakMap<PMNode, TextBoxAnchorAttrs>();
 
 const underlineAttrsCache = new WeakMap<Mark, UnderlineAttrs>();
 const strikeAttrsCache = new WeakMap<Mark, StrikeAttrs>();
@@ -740,30 +738,6 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
 
 export const expectTextBoxAttrs = (node: PMNode): TextBoxAttrs =>
   expectCachedNodeAttrs(node, textBoxAttrsCache, readTextBoxAttrs, "text box attrs");
-
-export const readTextBoxAnchorAttrs = (
-  node: PMNode,
-): ReadProseMirrorAttrsResult<TextBoxAnchorAttrs> => {
-  const attrs = attrsRecord(node.attrs);
-  const issues: ProseMirrorAttrIssue[] = [];
-  expectNodeType(node, "textBoxAnchor", issues);
-  optionalString(attrs, "anchorId", "textBoxAnchor.attrs.anchorId", issues);
-  if (typeof attrs["anchorId"] !== "string" || attrs["anchorId"].length === 0) {
-    issues.push({
-      path: "textBoxAnchor.attrs.anchorId",
-      message: "Expected a non-empty string.",
-    });
-  }
-  return attrsResult(attrs, issues);
-};
-
-export const expectTextBoxAnchorAttrs = (node: PMNode): TextBoxAnchorAttrs =>
-  expectCachedNodeAttrs(
-    node,
-    textBoxAnchorAttrsCache,
-    readTextBoxAnchorAttrs,
-    "text box anchor attrs",
-  );
 
 export const readUnderlineMarkAttrs = (mark: Mark): ReadProseMirrorAttrsResult<UnderlineAttrs> => {
   const attrs = attrsRecord(mark.attrs);

@@ -91,7 +91,6 @@ import {
   expectTableCellAttrs,
   expectTableRowAttrs,
   expectTextBoxAttrs,
-  expectTextBoxAnchorAttrs,
   expectTextColorMarkAttrs,
   expectTrackedChangeMarkAttrs,
   expectUnderlineMarkAttrs,
@@ -108,6 +107,7 @@ import type {
   TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
+import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { runShadingAttrsToShading } from "./runShadingMark";
 import { sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
 
