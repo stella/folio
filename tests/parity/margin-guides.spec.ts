@@ -18,8 +18,8 @@ forEachAdapter("paints the configured page margin guides", async (adapter, { pag
   const contentBox = await content.boundingBox();
   expect(guideBox).not.toBeNull();
   expect(contentBox).not.toBeNull();
-  expect(guideBox?.x).toBeCloseTo(contentBox?.x ?? 0, 1);
-  expect(guideBox?.y).toBeCloseTo(contentBox?.y ?? 0, 1);
-  expect(guideBox?.width).toBeCloseTo(contentBox?.width ?? 0, 1);
-  expect(guideBox?.height).toBeCloseTo(contentBox?.height ?? 0, 1);
+  expect(guideBox!.x).toBeCloseTo(contentBox!.x, 1);
+  expect(guideBox!.y).toBeCloseTo(contentBox!.y, 1);
+  expect(guideBox!.width).toBeCloseTo(contentBox!.width, 1);
+  expect(guideBox!.height).toBeCloseTo(contentBox!.height, 1);
 });

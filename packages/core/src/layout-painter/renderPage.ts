@@ -150,6 +150,7 @@ export const PAGE_CLASS_NAMES = {
 };
 
 const HEADER_FOOTER_RULE_CLIP_MARGIN = pointsToPixels(1.5);
+const DEFAULT_MARGIN_GUIDE_COLOR = "#c0c0c0";
 
 // RenderContext is re-exported from renderUtils
 export type { RenderContext } from "./renderUtils";
@@ -439,7 +440,7 @@ function renderPageMarginGuideOverlay(
   overlay.style.bottom = `${page.margins.bottom}px`;
   overlay.style.left = `${page.margins.left}px`;
   overlay.style.boxSizing = "border-box";
-  overlay.style.border = `1px dashed ${options.marginGuideColor ?? "#c0c0c0"}`;
+  overlay.style.border = `1px dashed ${options.marginGuideColor ?? DEFAULT_MARGIN_GUIDE_COLOR}`;
   overlay.style.pointerEvents = "none";
   overlay.style.zIndex = "19";
   return overlay;
@@ -2812,7 +2813,7 @@ function computeOptionsHash(options: RenderPageOptions): string {
     parts.push(`pb:${JSON.stringify(options.pageBorders)}`);
   }
   if (options.showMarginGuides === true) {
-    parts.push(`mg:${options.marginGuideColor ?? "#c0c0c0"}`);
+    parts.push(`mg:${options.marginGuideColor ?? DEFAULT_MARGIN_GUIDE_COLOR}`);
   }
 
   // Header/footer distances
