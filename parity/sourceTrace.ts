@@ -10,8 +10,8 @@ import path from "node:path";
 
 import { parseDocx } from "../packages/core/src/docx/parser";
 import { toFlowBlocks } from "../packages/core/src/layout-bridge/convert/toFlowBlocks";
-import type { FlowBlock, Run } from "../packages/core/src/layout-engine/types";
 import { toProseDoc } from "../packages/core/src/prosemirror/conversion/toProseDoc";
+import { traceFlowBlocks } from "./sourceTraceFlow";
 import { normalizeLineText } from "./textNorm";
 
 type Flags = {
@@ -169,65 +169,6 @@ const summarizePmChild = (node: PMNode, pos: number): unknown => ({
   marks: pmMarks(node),
 });
 
-const summarizeRun = (run: Run): unknown => {
-  const base = {
-    kind: run.kind,
-    pmStart: run.pmStart,
-    pmEnd: run.pmEnd,
-    fontFamily: "fontFamily" in run ? run.fontFamily : undefined,
-    fontSize: "fontSize" in run ? run.fontSize : undefined,
-    bold: "bold" in run ? run.bold : undefined,
-    allCaps: "allCaps" in run ? run.allCaps : undefined,
-    smallCaps: "smallCaps" in run ? run.smallCaps : undefined,
-  };
-  if (run.kind === "text") {
-    return { ...base, text: truncate(run.text) };
-  }
-  if (run.kind === "field") {
-    return {
-      ...base,
-      fieldType: run.fieldType,
-      instruction: run.instruction,
-      fallback: run.fallback,
-      fldLock: run.fldLock,
-    };
-  }
-  if (run.kind === "tab") {
-    return base;
-  }
-  if (run.kind === "lineBreak") {
-    return base;
-  }
-  if (run.kind === "image") {
-    return { ...base, width: run.width, height: run.height, wrapType: run.wrapType };
-  }
-  if (run.kind === "math") {
-    return { ...base, plainText: run.plainText };
-  }
-  return base;
-};
-
-const blockText = (block: FlowBlock): string => {
-  if (block.kind === "paragraph") {
-    return block.runs
-      .map((run) => {
-        if (run.kind === "text") return run.text;
-        if (run.kind === "field") return run.fallback ?? "";
-        if (run.kind === "tab") return "\t";
-        return "";
-      })
-      .join("");
-  }
-  if (block.kind === "table") {
-    return block.rows
-      .flatMap((row) => row.cells)
-      .flatMap((cell) => cell.blocks)
-      .map(blockText)
-      .join(" ");
-  }
-  return "";
-};
-
 const normalizedSearchText = (value: string): string =>
   normalizeLineText(value).toLocaleLowerCase();
 
@@ -289,18 +230,11 @@ const main = async (): Promise<void> => {
     return undefined;
   });
 
-  const flowMatches = flowBlocks
-    .map((block, index) => ({ block, index, text: blockText(block) }))
-    .filter(({ text }) => normalizedSearchText(text).includes(needle))
-    .slice(0, flags.limit)
-    .map(({ block, index, text }) => ({
-      index,
-      id: "id" in block ? block.id : undefined,
-      kind: block.kind,
-      text: truncate(text),
-      attrs: block.kind === "paragraph" ? block.attrs : undefined,
-      runs: block.kind === "paragraph" ? block.runs.map(summarizeRun) : undefined,
-    }));
+  const flowMatches = traceFlowBlocks({
+    blocks: flowBlocks,
+    query: flags.text!,
+    limit: flags.limit,
+  });
 
   console.log(
     JSON.stringify(
