@@ -61,6 +61,8 @@ const segmenterLocale = (locale?: string): string | undefined => {
 const DICTIONARY_BREAK_SCRIPT =
   /[\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 const CJK_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+const SIMPLE_BREAK_TEXT =
+  /^[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{Number}\p{Punctuation}\p{White_Space}]*$/u;
 const BREAK_AFTER_CHARACTER = new Set([
   "-",
   "\u058A", // Armenian hyphen
@@ -231,7 +233,31 @@ const pushBreak = (
   }
 };
 
+const findSimpleGraphemeBreaks = (text: string): number[] | undefined => {
+  if (!SIMPLE_BREAK_TEXT.test(text)) {
+    return undefined;
+  }
+
+  const breaks: number[] = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const character = firstCodePoint(text, index);
+    if (character === undefined || character.length !== 1) {
+      return undefined;
+    }
+    if (character === "\r" && text[index + 1] === "\n") {
+      index += 1;
+    }
+    breaks.push(index + 1);
+  }
+  return breaks;
+};
+
 const findUnicodeGraphemeBreaks = (text: string, policy?: LineBreakPolicy): number[] => {
+  const simpleBreaks = findSimpleGraphemeBreaks(text);
+  if (simpleBreaks !== undefined) {
+    return simpleBreaks;
+  }
+
   const breaks: number[] = [];
   for (const segment of getSegmenter(graphemeSegmenters, "grapheme", policy?.locale).segment(
     text,
@@ -242,9 +268,56 @@ const findUnicodeGraphemeBreaks = (text: string, policy?: LineBreakPolicy): numb
   return breaks;
 };
 
+const isSimpleWhitespace = (character: string, codePoint: number): boolean =>
+  codePoint === 0x20 ||
+  (codePoint >= 0x09 && codePoint <= 0x0d) ||
+  (codePoint > 0x7f && /\s/u.test(character));
+
+/**
+ * Find the complete set of Unicode line-break opportunities for simple text
+ * without invoking `Intl.Segmenter`.
+ *
+ * Latin, Cyrillic, and Greek letters plus ordinary numbers, punctuation, and
+ * spacing are single grapheme clusters, except CRLF, which Unicode treats as
+ * one cluster. Returning `undefined` for combining marks, astral characters,
+ * dictionary-segmented scripts, CJK, and other complex input keeps the full
+ * Unicode provider responsible for those cases.
+ */
+const findSimpleBreaks = (text: string, policy?: LineBreakPolicy): number[] | undefined => {
+  if (!SIMPLE_BREAK_TEXT.test(text)) {
+    return undefined;
+  }
+
+  const breaks: number[] = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const character = firstCodePoint(text, index);
+    if (character === undefined || character.length !== 1) {
+      return undefined;
+    }
+    const codePoint = text.charCodeAt(index);
+    if (codePoint === 0x0d && text.charCodeAt(index + 1) === 0x0a) {
+      continue;
+    }
+    if (
+      (isSimpleWhitespace(character, codePoint) && !NONBREAKING_SPACES.has(character)) ||
+      BREAK_AFTER_CHARACTER.has(character) ||
+      isLegacyEthiopicBreakCharacter(character, policy)
+    ) {
+      pushBreak(breaks, text, index + 1, policy);
+    }
+  }
+
+  return breaks;
+};
+
 const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => {
   if (text.length === 0) {
     return [];
+  }
+
+  const simpleBreaks = findSimpleBreaks(text, policy);
+  if (simpleBreaks !== undefined) {
+    return simpleBreaks;
   }
 
   const breaks: number[] = [];

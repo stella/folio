@@ -21,6 +21,16 @@ describe("findWordBreaks", () => {
     expect(findWordBreaks("hy\u00ADphen")).toEqual([3]);
   });
 
+  test("treats an ASCII CRLF pair as one grapheme", () => {
+    expect(findWordBreaks("first\r\nsecond")).toEqual([7]);
+  });
+
+  test("finds breaks in precomposed international Latin text", () => {
+    expect(findWordBreaks("Příliš žluťoučký kůň úpěl ďábelské ódy.", { locale: "cs-CZ" })).toEqual([
+      7, 17, 21, 26, 35,
+    ]);
+  });
+
   test("adds a break after every CJK code point", () => {
     expect(findWordBreaks("日本語")).toEqual([1, 2, 3]);
     expect(findWordBreaks("A世")).toEqual([2]);
@@ -98,6 +108,10 @@ describe("findWordBreaks", () => {
 });
 
 describe("findGraphemeBreaks", () => {
+  test("finds simple precomposed graphemes and keeps CRLF together", () => {
+    expect(findGraphemeBreaks("café\r\nx")).toEqual([1, 2, 3, 4, 6, 7]);
+  });
+
   test("never splits an emoji ZWJ sequence or combining character", () => {
     expect(findGraphemeBreaks("👨‍👩‍👧‍👦x")).toEqual([11, 12]);
     expect(findGraphemeBreaks("e\u0301x")).toEqual([2, 3]);

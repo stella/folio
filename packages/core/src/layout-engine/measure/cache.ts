@@ -17,6 +17,7 @@ import { getLineBreakProviderGeneration } from "./lineBreakProvider";
  * Cache entry for text width measurements
  */
 type TextWidthEntry = {
+  hitsSinceRefresh: number;
   width: number;
 };
 
@@ -26,6 +27,10 @@ type TextWidthEntry = {
  * A generous default avoids cache thrashing on big docs.
  */
 const DEFAULT_TEXT_CACHE_SIZE = 20_000;
+// Refresh recency in batches. Moving a Map entry on every hit costs two
+// mutations; frequently reused measurements remain protected without paying
+// that bookkeeping on every line-break probe.
+const TEXT_CACHE_REFRESH_AFTER_HITS = 16;
 
 /**
  * Current max size for text width cache
@@ -71,9 +76,12 @@ export function getCachedTextWidth(
   const entry = textWidthCache.get(key);
 
   if (entry !== undefined) {
-    // Refresh LRU - move to end by re-inserting
-    textWidthCache.delete(key);
-    textWidthCache.set(key, entry);
+    entry.hitsSinceRefresh += 1;
+    if (entry.hitsSinceRefresh >= TEXT_CACHE_REFRESH_AFTER_HITS) {
+      entry.hitsSinceRefresh = 0;
+      textWidthCache.delete(key);
+      textWidthCache.set(key, entry);
+    }
     return entry.width;
   }
 
@@ -90,8 +98,10 @@ export function setCachedTextWidth(
   width: number,
 ): void {
   const key = makeTextKey(text, font, letterSpacing);
-  textWidthCache.set(key, { width });
-  evictTextEntries();
+  textWidthCache.set(key, { hitsSinceRefresh: 0, width });
+  if (textWidthCache.size > textCacheMaxSize) {
+    evictTextEntries();
+  }
 }
 
 /**

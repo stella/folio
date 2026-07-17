@@ -29,7 +29,10 @@ import { isReadOnlyEditKey } from "../paged-layout/readOnlyEditAttempt";
 import { toProseDoc, createEmptyDoc } from "../prosemirror/conversion";
 import type { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
-import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import {
+  ensureParaIdsInDoc,
+  ensureParaIdsInState,
+} from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { schema } from "../prosemirror/schema";
 import type { Document, StyleDefinitions } from "../types/document";
@@ -40,6 +43,9 @@ import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
 // applied imperatively to freshly created states.
 const normalizeSeedState = (state: EditorState): EditorState =>
   ensureBaseDirectionInState(ensureParaIdsInState(state));
+
+const normalizeLocalSeedState = (state: EditorState): EditorState =>
+  ensureBaseDirectionInState(state);
 
 type YProseMirrorModule = typeof YProseMirror;
 type YjsModule = typeof Yjs;
@@ -233,7 +239,10 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
       styles === undefined || styles === null
         ? toProseDoc(document)
         : toProseDoc(document, { styles });
+    localDoc = ensureParaIdsInDoc(localDoc);
     recordHiddenEditorPhase(reason, "to-prose-doc", performance.now() - startedAt);
+  } else {
+    localDoc = ensureParaIdsInDoc(localDoc);
   }
 
   // Expose the document's styles to style-aware commands (e.g. the Enter
@@ -252,7 +261,7 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
     }
 
     if (collaboration.shouldSeed && collaboration.yXmlFragment.length === 0) {
-      const seedState = normalizeSeedState(
+      const seedState = normalizeLocalSeedState(
         PMEditorState.create({
           doc: localDoc,
           schema: activeSchema,
@@ -302,7 +311,7 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
   }
 
   const startedAt = performance.now();
-  const state = normalizeSeedState(
+  const state = normalizeLocalSeedState(
     PMEditorState.create({
       doc: localDoc,
       schema: activeSchema,

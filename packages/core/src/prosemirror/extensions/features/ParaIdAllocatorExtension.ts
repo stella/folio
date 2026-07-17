@@ -35,7 +35,7 @@
  *   split therefore restores the same allocated id instead of minting
  *   another one.
  */
-import type { Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 
@@ -154,6 +154,78 @@ const collectParaIdUpdates = (
   // Document order keeps transaction step order deterministic.
   updates.sort((a, b) => a.pos - b.pos);
   return updates;
+};
+
+type InitialParaIds = {
+  needsRewrite: boolean;
+  taken: Set<string>;
+};
+
+const collectInitialParaIds = (doc: PMNode): InitialParaIds => {
+  let needsRewrite = false;
+  const taken = new Set<string>();
+  doc.descendants((node) => {
+    if (node.type.name !== "paragraph") {
+      return true;
+    }
+
+    const id = node.attrs["paraId"];
+    if (!isUsableParaId(id) || taken.has(id)) {
+      needsRewrite = true;
+    } else {
+      taken.add(id);
+    }
+    return false;
+  });
+  return { needsRewrite, taken };
+};
+
+const rewriteInitialParaIds = (parent: PMNode, taken: Set<string>, seen: Set<string>): Fragment => {
+  let changed = false;
+  const children: PMNode[] = [];
+  parent.forEach((child) => {
+    let next = child;
+    if (child.type.name === "paragraph") {
+      const id = child.attrs["paraId"];
+      if (!isUsableParaId(id) || seen.has(id)) {
+        let newId = generateHexId();
+        while (taken.has(newId)) {
+          newId = generateHexId();
+        }
+        taken.add(newId);
+        seen.add(newId);
+        next = child.type.create({ ...child.attrs, paraId: newId }, child.content, child.marks);
+      } else {
+        seen.add(id);
+      }
+    } else if (child.childCount > 0) {
+      const content = rewriteInitialParaIds(child, taken, seen);
+      if (content !== child.content) {
+        next = child.copy(content);
+      }
+    }
+    if (next !== child) {
+      changed = true;
+    }
+    children.push(next);
+  });
+  return changed ? Fragment.fromArray(children) : parent.content;
+};
+
+/**
+ * Allocate initial paragraph IDs before constructing editor state.
+ *
+ * Rebuilding only changed branches avoids applying one ProseMirror transaction
+ * step per missing paragraph. Live edits still use the transaction-based plugin
+ * below so history, mappings, and duplicate ownership retain their semantics.
+ */
+export const ensureParaIdsInDoc = (doc: PMNode): PMNode => {
+  const { needsRewrite, taken } = collectInitialParaIds(doc);
+  if (!needsRewrite) {
+    return doc;
+  }
+
+  return doc.copy(rewriteInitialParaIds(doc, taken, new Set()));
 };
 
 export const ensureParaIdsInState = (state: EditorState): EditorState => {

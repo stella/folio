@@ -22,11 +22,16 @@ import {
   getChangedParagraphIds,
   ParagraphChangeTrackerExtension,
 } from "./ParagraphChangeTrackerExtension";
-import { ensureParaIdsInState, ParaIdAllocatorExtension } from "./ParaIdAllocatorExtension";
+import {
+  ensureParaIdsInDoc,
+  ensureParaIdsInState,
+  ParaIdAllocatorExtension,
+} from "./ParaIdAllocatorExtension";
 
 const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
+    blockquote: { group: "block", content: "block+" },
     paragraph: {
       group: "block",
       content: "inline*",
@@ -98,6 +103,49 @@ const collectParaIds = (state: EditorState): (string | null)[] => {
 };
 
 describe("ParaIdAllocatorExtension", () => {
+  test("allocates initial IDs by rebuilding only changed document branches", () => {
+    const first = para("First", "11111111");
+    const nested = schema.node("blockquote", null, [
+      para("Duplicate", "11111111"),
+      para("Missing"),
+    ]);
+    const original = schema.node("doc", null, [first, nested]);
+
+    const normalized = ensureParaIdsInDoc(original);
+
+    expect(normalized).not.toBe(original);
+    expect(normalized.child(0)).toBe(first);
+    expect(normalized.child(1)).not.toBe(nested);
+    expect(normalized.child(1).child(0).attrs["paraId"]).toMatch(/^[0-9A-F]{8}$/u);
+    expect(normalized.child(1).child(1).attrs["paraId"]).toMatch(/^[0-9A-F]{8}$/u);
+    expect(normalized.child(1).child(0).attrs["paraId"]).not.toBe(
+      normalized.child(1).child(1).attrs["paraId"],
+    );
+    expect(ensureParaIdsInDoc(normalized)).toBe(normalized);
+  });
+
+  test("reserves authored IDs before allocating missing initial IDs", () => {
+    const random = spyOn(Math, "random");
+    let calls = 0;
+    try {
+      random.mockImplementation(() => {
+        calls += 1;
+        return calls === 1 ? 0 : 0.5;
+      });
+      const original = schema.node("doc", null, [
+        para("Missing"),
+        para("Authored later", "00000001"),
+      ]);
+
+      const normalized = ensureParaIdsInDoc(original);
+
+      expect(normalized.child(0).attrs["paraId"]).toBe("40000000");
+      expect(normalized.child(1).attrs["paraId"]).toBe("00000001");
+    } finally {
+      random.mockRestore();
+    }
+  });
+
   test("allocates missing paraIds on the initial state before the first edit", () => {
     const initial = createState(para("Needs an id"), para("Also needs one"));
     expect(collectParaIds(initial)).toEqual([null, null]);

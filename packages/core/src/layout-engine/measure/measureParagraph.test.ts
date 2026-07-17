@@ -7,6 +7,7 @@ import {
   fixedCharWidth,
 } from "./__tests__/fakeTextMeasure";
 import { hashParagraphBlock } from "./cache";
+import { resetLineBreakProvider, setLineBreakProvider } from "./lineBreakProvider";
 import { buildFontString } from "./measureHelpers";
 import { clampFloatingWrapMargins, getRunCharWidths, measureParagraph } from "./measureParagraph";
 import { getFontMetrics, measureTextWidth } from "./measureProvider";
@@ -2366,6 +2367,36 @@ describe("CJK line breaking", () => {
       },
       { charWidth: fixedCharWidth(10) },
     );
+  });
+
+  test("defers multi-code-point hanging punctuation to a custom provider", () => {
+    const punctuation = "‼️";
+    const text = `AB${punctuation}`;
+    try {
+      setLineBreakProvider({
+        findBreaks: () => [1, 2, text.length],
+        findGraphemeBreaks: (value) => (value === text ? [1, 2, text.length] : [value.length]),
+        isHangingPunctuation: (value) => value === punctuation,
+      });
+      withFakeTextMeasure(
+        () => {
+          const paragraph: ParagraphBlock = {
+            kind: "paragraph",
+            id: "custom-multi-code-point-hanging-punctuation",
+            runs: [{ kind: "text", text }],
+            attrs: { overflowPunctuation: true },
+          };
+
+          const measure = measureParagraph(paragraph, 20);
+
+          expect(measure.lines).toHaveLength(1);
+          expect(measure.lines[0]?.width).toBe(40);
+        },
+        { charWidth: fixedCharWidth(10) },
+      );
+    } finally {
+      resetLineBreakProvider();
+    }
   });
 });
 

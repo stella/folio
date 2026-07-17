@@ -47,7 +47,11 @@ import {
   isHangingPunctuation,
   isBreakChar,
 } from "./lineBreaks";
-import { MAX_HYPHENATION_WORD_LENGTH } from "./lineBreakProvider";
+import {
+  defaultLineBreakProvider,
+  getLineBreakProvider,
+  MAX_HYPHENATION_WORD_LENGTH,
+} from "./lineBreakProvider";
 import type { LineBreakPolicy } from "./lineBreakProvider";
 import { countCompressibleSpaces } from "./textMeasurementPolicy";
 
@@ -711,6 +715,24 @@ function trimTrailingSpacesAndTabs(text: string): string {
   return text.slice(0, end);
 }
 
+function trailingCodePoint(text: string): string | undefined {
+  if (text.length === 0) {
+    return undefined;
+  }
+  const trailing = text.charCodeAt(text.length - 1);
+  const preceding = text.charCodeAt(text.length - 2);
+  const hasSurrogatePair =
+    trailing >= 0xdc00 && trailing <= 0xdfff && preceding >= 0xd800 && preceding <= 0xdbff;
+  const start = hasSurrogatePair ? text.length - 2 : text.length - 1;
+  return text.slice(start);
+}
+
+const usesDefaultHangingPunctuationClassifier = (): boolean => {
+  const provider = getLineBreakProvider();
+  const classifier = provider.isHangingPunctuation ?? defaultLineBreakProvider.isHangingPunctuation;
+  return classifier === defaultLineBreakProvider.isHangingPunctuation;
+};
+
 function trailingHangingPunctuationWidth(
   text: string,
   style: FontStyle,
@@ -718,6 +740,10 @@ function trailingHangingPunctuationWidth(
   enabled: boolean,
 ): number {
   if (!enabled || text.length === 0) {
+    return 0;
+  }
+  const trailing = trailingCodePoint(text);
+  if (usesDefaultHangingPunctuationClassifier() && !isHangingPunctuation(trailing ?? "", policy)) {
     return 0;
   }
   const boundaries = findGraphemeBreaks(text, policy);
@@ -773,10 +799,13 @@ function computeProtectedCrossRunGlueWidths(block: ParagraphBlock): number[] {
     if (!run || !isTextRun(run)) {
       continue;
     }
+    const policy = resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run }).provider;
+    if (!policy.locale?.toLocaleLowerCase().startsWith("cs")) {
+      continue;
+    }
     const trailing = /(\S+)(\s*)$/u.exec(run.text ?? "");
     const token = trailing?.[1];
-    const policy = resolveEffectiveLineBreakPolicy({ attrs: block.attrs, run }).provider;
-    if (!token || token.length !== 1 || !policy.locale?.toLocaleLowerCase().startsWith("cs")) {
+    if (!token || token.length !== 1) {
       continue;
     }
 
@@ -1728,19 +1757,17 @@ export function measureParagraph(
       if (crossRunResume?.runIndex === runIndex) {
         crossRunResume = undefined;
       }
+      let wordBreakIndex = 0;
       let activeHyphenationWord:
         | { start: number; end: number; text: string; breaks: number[] }
         | undefined;
 
       while (charIndex < text.length) {
         // Find next word boundary
-        let nextBreak = text.length;
-        for (const breakPoint of wordBreaks) {
-          if (breakPoint > charIndex) {
-            nextBreak = breakPoint;
-            break;
-          }
+        while ((wordBreaks[wordBreakIndex] ?? Number.POSITIVE_INFINITY) <= charIndex) {
+          wordBreakIndex += 1;
         }
+        const nextBreak = wordBreaks[wordBreakIndex] ?? text.length;
 
         // Extract word (includes trailing space if present). Word consumes a
         // break-space without including it in the current line's fit width.
