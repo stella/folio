@@ -26,6 +26,12 @@ import {
   stripInlineEmphasisMarkers,
 } from "./inline-emphasis";
 import { hashFolioAIBlockText, normalizeFolioAIBlockText } from "./snapshot";
+import {
+  planTableMutations,
+  tableRectanglesEqual,
+  type TableMutationPlanTarget,
+  type TableRectangle,
+} from "./table-mutation-plan";
 import type {
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
@@ -366,19 +372,32 @@ type TableColumnInsertion = {
 
 type TableColumnDeletion = TableColumnInsertion;
 
-type TableRectangle = {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-};
-
 type TableCellMerge = {
   tablePosition: number;
   rectangle: TableRectangle;
 };
 
 type TableCellSplit = TableCellMerge;
+
+const getTableMutationPlanTarget = (item: ResolvedOperation): TableMutationPlanTarget => {
+  if (item.tableCellMerge) {
+    return { type: "mergeCells", ...item.tableCellMerge };
+  }
+  if (item.tableCellSplit) {
+    return { type: "splitCell", ...item.tableCellSplit };
+  }
+
+  const tablePosition =
+    item.tableRowInsertion?.tableStart !== undefined
+      ? item.tableRowInsertion.tableStart - 1
+      : (item.tableRowDeletion?.tablePosition ??
+        item.tableColumnInsertion?.tablePosition ??
+        item.tableColumnDeletion?.tablePosition);
+  if (tablePosition !== undefined) {
+    return { type: "tableStructure", tablePosition };
+  }
+  return { type: "none" };
+};
 
 const getTableColumnCoordinateKey = ({
   tablePosition,
@@ -452,18 +471,6 @@ const findEnclosingTableCell = (doc: PMNode, blockFrom: number): TableCellTarget
   }
   return null;
 };
-
-const tableRectanglesOverlap = (left: TableRectangle, right: TableRectangle): boolean =>
-  left.left < right.right &&
-  right.left < left.right &&
-  left.top < right.bottom &&
-  right.top < left.bottom;
-
-const tableRectanglesEqual = (left: TableRectangle, right: TableRectangle): boolean =>
-  left.left === right.left &&
-  left.top === right.top &&
-  left.right === right.right &&
-  left.bottom === right.bottom;
 
 const tableRectangleCutsMergedCell = (map: TableMap, rectangle: TableRectangle): boolean => {
   for (let row = rectangle.top; row < rectangle.bottom; row++) {
@@ -1462,83 +1469,15 @@ const applyFolioAIEditOperationsInternal = ({
     });
   }
 
-  const tableStructureMutations = new Set<number>();
-  for (const item of resolved) {
-    const tablePosition =
-      item.tableRowInsertion?.tableStart !== undefined
-        ? item.tableRowInsertion.tableStart - 1
-        : (item.tableRowDeletion?.tablePosition ??
-          item.tableColumnInsertion?.tablePosition ??
-          item.tableColumnDeletion?.tablePosition);
-    if (tablePosition !== undefined) {
-      tableStructureMutations.add(tablePosition);
-    }
-  }
-
-  const mergeTables = new Set(
-    resolved.flatMap((item) => (item.tableCellMerge ? [item.tableCellMerge.tablePosition] : [])),
+  const tablePlan = planTableMutations(
+    resolved.map((item) => ({
+      item,
+      operationId: item.operation.id,
+      target: getTableMutationPlanTarget(item),
+    })),
   );
-  const splitTables = new Set(
-    resolved.flatMap((item) => (item.tableCellSplit ? [item.tableCellSplit.tablePosition] : [])),
-  );
-  const mergeRectanglesByTable = new Map<number, TableRectangle[]>();
-  const splitRectanglesByTable = new Map<number, TableRectangle[]>();
-  const executableResolved: ResolvedOperation[] = [];
-  for (const item of resolved) {
-    const merge = item.tableCellMerge;
-    if (merge) {
-      if (
-        tableStructureMutations.has(merge.tablePosition) ||
-        splitTables.has(merge.tablePosition)
-      ) {
-        skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
-        continue;
-      }
-      const claimedRectangles = mergeRectanglesByTable.get(merge.tablePosition) ?? [];
-      const duplicate = claimedRectangles.some((rectangle) =>
-        tableRectanglesEqual(rectangle, merge.rectangle),
-      );
-      if (duplicate) {
-        skipped.push({ id: item.operation.id, reason: "noopOperation" });
-        continue;
-      }
-      const overlap = claimedRectangles.some((rectangle) =>
-        tableRectanglesOverlap(rectangle, merge.rectangle),
-      );
-      if (overlap) {
-        skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
-        continue;
-      }
-      claimedRectangles.push(merge.rectangle);
-      mergeRectanglesByTable.set(merge.tablePosition, claimedRectangles);
-      executableResolved.push(item);
-      continue;
-    }
-    const split = item.tableCellSplit;
-    if (split) {
-      if (
-        tableStructureMutations.has(split.tablePosition) ||
-        mergeTables.has(split.tablePosition)
-      ) {
-        skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
-        continue;
-      }
-      const claimedRectangles = splitRectanglesByTable.get(split.tablePosition) ?? [];
-      if (claimedRectangles.some((rectangle) => tableRectanglesEqual(rectangle, split.rectangle))) {
-        skipped.push({ id: item.operation.id, reason: "noopOperation" });
-        continue;
-      }
-      if (
-        claimedRectangles.some((rectangle) => tableRectanglesOverlap(rectangle, split.rectangle))
-      ) {
-        skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
-        continue;
-      }
-      claimedRectangles.push(split.rectangle);
-      splitRectanglesByTable.set(split.tablePosition, claimedRectangles);
-    }
-    executableResolved.push(item);
-  }
+  skipped.push(...tablePlan.skipped);
+  const executableResolved = tablePlan.executable;
 
   if (executableResolved.length === 0) {
     return { applied, skipped };
