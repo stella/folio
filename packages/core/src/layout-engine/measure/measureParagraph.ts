@@ -1194,16 +1194,11 @@ export function measureParagraph(
     };
   }
 
-  // Check for empty text run only
-  if (
-    runs.length === 1 &&
-    // SAFETY: length === 1 guarantees index 0 exists
-    isTextRun(runs[0]!) &&
-    isEmptyTextRun(runs[0] as TextRun)
-  ) {
-    const run = runs[0] as TextRun;
-    const fontSize = run.fontSize ?? attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE;
-    const fontFamily = run.fontFamily ?? attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
+  // Whitespace-only text is layout-empty: use the paragraph-mark formatting
+  // carried by attrs rather than formatting from an otherwise invisible run.
+  if (runs.length > 0 && runs.every((run) => isTextRun(run) && isEmptyTextRun(run))) {
+    const fontSize = attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE;
+    const fontFamily = attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
     const emptyMetrics = calculateEmptyParagraphMetrics(fontSize, spacing, fontFamily);
 
     lines.push({

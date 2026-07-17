@@ -281,6 +281,27 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.reserveEmptyOutlineHeight).toBe(true);
   });
 
+  test("whitespace-only paragraph measurement uses direct paragraph-mark font metrics", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          defaultTextFormatting: { fontSize: 22, fontFamily: { ascii: "Calibri" } },
+          _originalFormatting: {
+            runProperties: { fontSize: 16, fontFamily: { ascii: "Arial Narrow" } },
+          },
+        },
+        [schema.text(" ")],
+      ),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    expect(paragraph?.attrs?.defaultFontSize).toBe(8);
+    expect(paragraph?.attrs?.defaultFontFamily).toBe("Arial Narrow");
+  });
+
   test("does not reserve extra outline height away from the start of the story", () => {
     const blocks = toFlowBlocks(
       schema.node("doc", null, [

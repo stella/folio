@@ -328,6 +328,44 @@ describe("empty paragraph line-height floor", () => {
     });
   }
 
+  test("visually empty text uses paragraph-mark metrics", () => {
+    const measure = measureParagraph(
+      {
+        kind: "paragraph",
+        id: "empty-run-paragraph-mark-metrics",
+        pmStart: 0,
+        pmEnd: 1,
+        runs: [{ kind: "text", text: " ", fontSize: 18, fontFamily: "Arial" }],
+        attrs: {
+          defaultFontSize: 8,
+          defaultFontFamily: "Arial Narrow",
+        },
+      },
+      600,
+    );
+
+    expect(measure.lines[0]?.lineHeight).toBeCloseTo(8 * PT_TO_PX * 1.15, 1);
+  });
+
+  test("format-split visually empty text uses paragraph-mark metrics", () => {
+    const measure = measureParagraph(
+      {
+        kind: "paragraph",
+        id: "split-empty-run-paragraph-mark-metrics",
+        pmStart: 0,
+        pmEnd: 2,
+        runs: [
+          { kind: "text", text: " ", fontSize: 18 },
+          { kind: "text", text: "\u00a0", fontSize: 20 },
+        ],
+        attrs: { defaultFontSize: 8, defaultFontFamily: "Arial Narrow" },
+      },
+      600,
+    );
+
+    expect(measure.lines[0]?.lineHeight).toBeCloseTo(8 * PT_TO_PX * 1.15, 1);
+  });
+
   test("suppressed empty paragraph keeps a zero-height anchor", () => {
     const measure = measureParagraph(
       {

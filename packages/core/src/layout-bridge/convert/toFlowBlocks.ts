@@ -1870,6 +1870,15 @@ function mapTabAlignment(
 /**
  * Convert a paragraph node to a ParagraphBlock.
  */
+function hasOnlyVisuallyEmptyTextRuns(runs: Run[]): boolean {
+  return (
+    runs.length > 0 &&
+    runs.every(
+      (run) => run.kind === "text" && run.text.replace(/\u00a0/gu, " ").trim().length === 0,
+    )
+  );
+}
+
 function convertParagraph(
   node: PMNode,
   startPos: number,
@@ -1898,7 +1907,7 @@ function convertParagraph(
     attrs.automaticHyphenation = options.automaticHyphenation;
   }
   const defaultTextFormatting = pmAttrs.defaultTextFormatting as TextFormatting | undefined;
-  if (runs.length === 0) {
+  if (runs.length === 0 || hasOnlyVisuallyEmptyTextRuns(runs)) {
     const hasDirectParagraphFormatting =
       pmAttrs._originalFormatting &&
       Object.entries(pmAttrs._originalFormatting).some(
