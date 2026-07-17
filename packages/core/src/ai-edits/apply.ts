@@ -789,9 +789,10 @@ const trackedSplitCellFromStoredSource = (
   source: TableCell,
   marker: TrackedSplitCellMarker,
 ): PMNode | null => {
+  const formatting = formattingWithoutVerticalMerge(source.formatting);
   const restoredSource: TableCell = {
     type: "tableCell",
-    ...(source.formatting ? { formatting: formattingWithoutVerticalMerge(source.formatting) } : {}),
+    ...(formatting ? { formatting } : {}),
     ...(source.propertyChanges ? { propertyChanges: source.propertyChanges } : {}),
     content: source.content,
   };
