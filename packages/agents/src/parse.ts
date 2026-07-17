@@ -84,12 +84,13 @@ export const parseAddCommentInput = (args: unknown): ParseAddCommentResult => {
 };
 
 const OPERATION_TYPES =
-  "replaceInBlock, replaceRange, commentOnRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn";
+  "replaceInBlock, replaceRange, commentOnRange, formatRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn";
 
 type SuggestedOperationType =
   | "replaceInBlock"
   | "replaceRange"
   | "commentOnRange"
+  | "formatRange"
   | "insertAfterBlock"
   | "insertBeforeBlock"
   | "replaceBlock"
@@ -103,6 +104,7 @@ const isOperationType = (value: unknown): value is SuggestedOperationType =>
   value === "replaceInBlock" ||
   value === "replaceRange" ||
   value === "commentOnRange" ||
+  value === "formatRange" ||
   value === "insertAfterBlock" ||
   value === "insertBeforeBlock" ||
   value === "replaceBlock" ||
@@ -166,7 +168,7 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
   const opId = isNonEmptyString(id) ? id : `op-${index + 1}`;
   const commentField = typeof comment === "string" ? { comment: { text: comment } } : {};
 
-  if (type === "replaceRange" || type === "commentOnRange") {
+  if (type === "replaceRange" || type === "commentOnRange" || type === "formatRange") {
     const range = readTextRange(raw["range"], index);
     if (typeof range === "string") {
       return range;
@@ -176,6 +178,27 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
         return `operations[${index}] (commentOnRange) requires a non-empty string \`comment\`.`;
       }
       return { id: opId, type, range, comment: { text: comment } };
+    }
+    if (type === "formatRange") {
+      const rawFormatting = raw["formatting"];
+      if (!isPlainObject(rawFormatting)) {
+        return `operations[${index}] (formatRange) requires a \`formatting\` object.`;
+      }
+      const formatting: { bold?: boolean; italic?: boolean; underline?: boolean } = {};
+      for (const key of ["bold", "italic", "underline"] as const) {
+        const value = rawFormatting[key];
+        if (value === undefined) {
+          continue;
+        }
+        if (typeof value !== "boolean") {
+          return `operations[${index}].formatting.${key} must be a boolean when provided.`;
+        }
+        formatting[key] = value;
+      }
+      if (Object.keys(formatting).length === 0) {
+        return `operations[${index}] (formatRange) requires at least one formatting property.`;
+      }
+      return { id: opId, type, range, formatting };
     }
     const replace = raw["replace"];
     if (typeof replace !== "string") {

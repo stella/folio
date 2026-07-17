@@ -41,6 +41,7 @@ export type {
   FootnoteRefAttrs,
   CommentAttrs,
   TrackedChangeMarkAttrs,
+  RunPropertyChangeMarkAttrs,
   RunFormattingOverrideAttrs,
   RunShadingAttrs,
   HyperlinkAttrs,

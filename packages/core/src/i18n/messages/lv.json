@@ -491,6 +491,7 @@
       "rowDeleted": "Rinda izdzēsta",
       "rowInserted": "Rinda ievietota",
       "rowPropertiesChanged": "Rindas formatējums mainīts",
+      "runPropertiesChanged": "Teksta formatējums mainīts",
       "tableDeleted": "Tabula izdzēsta",
       "tableInserted": "Tabula ievietota",
       "tablePropertiesChanged": "Tabulas formatējums mainīts"

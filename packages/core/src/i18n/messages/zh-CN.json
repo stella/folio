@@ -491,6 +491,7 @@
       "rowDeleted": "已删除行",
       "rowInserted": "已插入行",
       "rowPropertiesChanged": "行格式已更改",
+      "runPropertiesChanged": "文本格式已更改",
       "tableDeleted": "已删除表格",
       "tableInserted": "已插入表格",
       "tablePropertiesChanged": "表格格式已更改"

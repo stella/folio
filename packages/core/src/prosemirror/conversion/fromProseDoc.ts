@@ -82,6 +82,7 @@ import {
   expectMathAttrs,
   expectParagraphAttrs,
   expectRunFormattingOverrideMarkAttrs,
+  expectRunPropertyChangeMarkAttrs,
   expectBlockSdtAttrs,
   expectSdtAttrs,
   expectShapeAttrs,
@@ -1286,11 +1287,13 @@ function createTrackedChangeRun(node: PMNode, marks: readonly Mark[]): Run | nul
   }
   if (node.isText) {
     const formatting = marksToTextFormatting(marks);
-    return {
+    const run: Run = {
       type: "run",
       content: node.text ? [{ type: "text", text: node.text }] : [],
       ...(Object.keys(formatting).length > 0 ? { formatting } : {}),
     };
+    restoreRunPropertyChanges(run, marks);
+    return run;
   }
   if (node.type.name === "hardBreak") {
     return createBreakRun(readHardBreakType(node));
@@ -1511,7 +1514,20 @@ function createRunFromText(text: string, marks: readonly Mark[]): Run {
   if (formatting) {
     run.formatting = formatting;
   }
+  restoreRunPropertyChanges(run, marks);
   return run;
+}
+
+function restoreRunPropertyChanges(run: Run, marks: readonly Mark[]): void {
+  const changeMark = marks.find((mark) => mark.type.name === "runPropertyChange");
+  if (!changeMark) {
+    return;
+  }
+  const { changes } = expectRunPropertyChangeMarkAttrs(changeMark);
+  if (changes.length === 0) {
+    return;
+  }
+  run.propertyChanges = changes.map((change) => ({ ...change }));
 }
 
 function getRunFormattingFromMarks(marks: readonly Mark[] | undefined): TextFormatting | undefined {

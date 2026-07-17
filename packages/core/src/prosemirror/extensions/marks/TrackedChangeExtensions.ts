@@ -133,3 +133,25 @@ export const DeletionExtension = createMarkExtension({
     },
   },
 });
+
+/**
+ * Run property change — formatting changed while review tracking was active.
+ *
+ * The current formatting remains represented by the normal formatting marks;
+ * this mark carries the previous run properties and revision metadata needed
+ * to serialize, list, accept, and reject the change.
+ */
+export const RunPropertyChangeExtension = createMarkExtension({
+  name: "runPropertyChange",
+  schemaMarkName: "runPropertyChange",
+  markSpec: {
+    attrs: {
+      changes: { default: [] },
+    },
+    inclusive: false,
+    parseDOM: [{ tag: "span.docx-run-property-change" }],
+    toDOM() {
+      return ["span", { class: "docx-run-property-change" }, 0];
+    },
+  },
+});

@@ -388,13 +388,13 @@ describe("parseSuggestChangesInput", () => {
         endOffset: 4,
         selectedTextHash: "h123",
       },
+      formatting: { bold: true },
     });
     for (const type of SUGGEST_CHANGES_OPERATION_TYPES) {
       const result = parseSuggestChangesInput({ operations: [supersetOperation(type)] });
       expect(result.ok, type).toBe(true);
     }
     for (const excludedType of [
-      "formatRange",
       "commentOnBlock",
       "insertSignatureTable",
       "mergeTableCells",

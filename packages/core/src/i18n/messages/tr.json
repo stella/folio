@@ -491,6 +491,7 @@
       "rowDeleted": "Satır silindi",
       "rowInserted": "Satır eklendi",
       "rowPropertiesChanged": "Satır biçimlendirmesi değiştirildi",
+      "runPropertiesChanged": "Metin biçimlendirmesi değiştirildi",
       "tableDeleted": "Tablo silindi",
       "tableInserted": "Tablo eklendi",
       "tablePropertiesChanged": "Tablo biçimlendirmesi değiştirildi"

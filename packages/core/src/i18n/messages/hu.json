@@ -491,6 +491,7 @@
       "rowDeleted": "Sor törölve",
       "rowInserted": "Sor beszúrva",
       "rowPropertiesChanged": "Sorformázás megváltozott",
+      "runPropertiesChanged": "Szövegformázás megváltozott",
       "tableDeleted": "Táblázat törölve",
       "tableInserted": "Táblázat beszúrva",
       "tablePropertiesChanged": "Táblázatformázás megváltozott"

@@ -491,6 +491,7 @@
       "rowDeleted": "Fila eliminada",
       "rowInserted": "Fila insertada",
       "rowPropertiesChanged": "Formato de fila cambiado",
+      "runPropertiesChanged": "Formato de texto cambiado",
       "tableDeleted": "Tabla eliminada",
       "tableInserted": "Tabla insertada",
       "tablePropertiesChanged": "Formato de tabla cambiado"

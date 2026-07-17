@@ -50,6 +50,10 @@ const schema = new Schema({
       attrs: { commentId: { default: 0 } },
       toDOM: () => ["span", 0],
     },
+    runPropertyChange: {
+      attrs: { changes: { default: [] } },
+      toDOM: () => ["span", 0],
+    },
   },
 });
 
@@ -61,6 +65,30 @@ function makeState(doc: ReturnType<typeof schema.node>): EditorState {
 }
 
 describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () => {
+  test("surfaces adjacent run-formatting revisions as one actionable card", () => {
+    const change = {
+      type: "runPropertyChange" as const,
+      info: { id: 90, author: AUTHOR, date: DATE },
+      previousFormatting: { bold: false },
+      currentFormatting: { bold: true },
+    };
+    const mark = schema.marks.runPropertyChange.create({ changes: [change] });
+    const doc = schema.nodes.doc.create({}, [
+      schema.nodes.paragraph.create({}, [schema.text("formatted text", [mark])]),
+    ]);
+
+    const { entries } = extractTrackedChanges(makeState(doc));
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        type: "runPropertiesChanged",
+        text: "formatted text",
+        author: AUTHOR,
+        revisionId: 90,
+      }),
+    ]);
+  });
+
   test("5 insertions with distinct w:ids but same (author, date) collapse to ONE card", () => {
     const ins = (id: number, text: string) =>
       schema.text(text, [

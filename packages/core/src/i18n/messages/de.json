@@ -491,6 +491,7 @@
       "rowDeleted": "Zeile gelöscht",
       "rowInserted": "Zeile eingefügt",
       "rowPropertiesChanged": "Zeilenformatierung geändert",
+      "runPropertiesChanged": "Textformatierung geändert",
       "tableDeleted": "Tabelle gelöscht",
       "tableInserted": "Tabelle eingefügt",
       "tablePropertiesChanged": "Tabellenformatierung geändert"

@@ -499,6 +499,7 @@ export const CATALOGS = {
         "rowDeleted": "Row deleted",
         "rowInserted": "Row inserted",
         "rowPropertiesChanged": "Row formatting changed",
+        "runPropertiesChanged": "Text formatting changed",
         "tableDeleted": "Table deleted",
         "tableInserted": "Table inserted",
         "tablePropertiesChanged": "Table formatting changed"
@@ -1141,6 +1142,7 @@ export const CATALOGS = {
         "rowDeleted": "Zeile gelöscht",
         "rowInserted": "Zeile eingefügt",
         "rowPropertiesChanged": "Zeilenformatierung geändert",
+        "runPropertiesChanged": "Textformatierung geändert",
         "tableDeleted": "Tabelle gelöscht",
         "tableInserted": "Tabelle eingefügt",
         "tablePropertiesChanged": "Tabellenformatierung geändert"
@@ -1783,6 +1785,7 @@ export const CATALOGS = {
         "rowDeleted": "Ligne supprimée",
         "rowInserted": "Ligne insérée",
         "rowPropertiesChanged": "Mise en forme de ligne modifiée",
+        "runPropertiesChanged": "Mise en forme du texte modifiée",
         "tableDeleted": "Tableau supprimé",
         "tableInserted": "Tableau inséré",
         "tablePropertiesChanged": "Mise en forme de tableau modifiée"
@@ -2425,6 +2428,7 @@ export const CATALOGS = {
         "rowDeleted": "Fila eliminada",
         "rowInserted": "Fila insertada",
         "rowPropertiesChanged": "Formato de fila cambiado",
+        "runPropertiesChanged": "Formato de texto cambiado",
         "tableDeleted": "Tabla eliminada",
         "tableInserted": "Tabla insertada",
         "tablePropertiesChanged": "Formato de tabla cambiado"
@@ -3067,6 +3071,7 @@ export const CATALOGS = {
         "rowDeleted": "Řádek odstraněn",
         "rowInserted": "Řádek vložen",
         "rowPropertiesChanged": "Formátování řádku změněno",
+        "runPropertiesChanged": "Formátování textu změněno",
         "tableDeleted": "Tabulka odstraněna",
         "tableInserted": "Tabulka vložena",
         "tablePropertiesChanged": "Formátování tabulky změněno"
@@ -3709,6 +3714,7 @@ export const CATALOGS = {
         "rowDeleted": "تم حذف الصف",
         "rowInserted": "تم إدراج الصف",
         "rowPropertiesChanged": "تم تغيير تنسيق الصف",
+        "runPropertiesChanged": "تم تغيير تنسيق النص",
         "tableDeleted": "تم حذف الجدول",
         "tableInserted": "تم إدراج الجدول",
         "tablePropertiesChanged": "تم تغيير تنسيق الجدول"
@@ -4351,6 +4357,7 @@ export const CATALOGS = {
         "rowDeleted": "Rida kustutatud",
         "rowInserted": "Rida lisatud",
         "rowPropertiesChanged": "Rea vormingut muudeti",
+        "runPropertiesChanged": "Teksti vormingut muudeti",
         "tableDeleted": "Tabel kustutatud",
         "tableInserted": "Tabel lisatud",
         "tablePropertiesChanged": "Tabeli vormingut muudeti"
@@ -4993,6 +5000,7 @@ export const CATALOGS = {
         "rowDeleted": "השורה נמחקה",
         "rowInserted": "השורה נוספה",
         "rowPropertiesChanged": "עיצוב השורה השתנה",
+        "runPropertiesChanged": "עיצוב הטקסט השתנה",
         "tableDeleted": "הטבלה נמחקה",
         "tableInserted": "הטבלה נוספה",
         "tablePropertiesChanged": "עיצוב הטבלה השתנה"
@@ -5635,6 +5643,7 @@ export const CATALOGS = {
         "rowDeleted": "पंक्ति हटाई गई",
         "rowInserted": "पंक्ति सम्मिलित की गई",
         "rowPropertiesChanged": "पंक्ति प्रारूपण बदला गया",
+        "runPropertiesChanged": "पाठ स्वरूपण बदला गया",
         "tableDeleted": "तालिका हटाई गई",
         "tableInserted": "तालिका सम्मिलित की गई",
         "tablePropertiesChanged": "तालिका प्रारूपण बदला गया"
@@ -6277,6 +6286,7 @@ export const CATALOGS = {
         "rowDeleted": "Sor törölve",
         "rowInserted": "Sor beszúrva",
         "rowPropertiesChanged": "Sorformázás megváltozott",
+        "runPropertiesChanged": "Szövegformázás megváltozott",
         "tableDeleted": "Táblázat törölve",
         "tableInserted": "Táblázat beszúrva",
         "tablePropertiesChanged": "Táblázatformázás megváltozott"
@@ -6919,6 +6929,7 @@ export const CATALOGS = {
         "rowDeleted": "Eilutė panaikinta",
         "rowInserted": "Eilutė įterpta",
         "rowPropertiesChanged": "Eilutės formatavimas pakeistas",
+        "runPropertiesChanged": "Teksto formatavimas pakeistas",
         "tableDeleted": "Lentelė panaikinta",
         "tableInserted": "Lentelė įterpta",
         "tablePropertiesChanged": "Lentelės formatavimas pakeistas"
@@ -7561,6 +7572,7 @@ export const CATALOGS = {
         "rowDeleted": "Rinda izdzēsta",
         "rowInserted": "Rinda ievietota",
         "rowPropertiesChanged": "Rindas formatējums mainīts",
+        "runPropertiesChanged": "Teksta formatējums mainīts",
         "tableDeleted": "Tabula izdzēsta",
         "tableInserted": "Tabula ievietota",
         "tablePropertiesChanged": "Tabulas formatējums mainīts"
@@ -8203,6 +8215,7 @@ export const CATALOGS = {
         "rowDeleted": "Usunięto wiersz",
         "rowInserted": "Wstawiono wiersz",
         "rowPropertiesChanged": "Zmieniono formatowanie wiersza",
+        "runPropertiesChanged": "Zmieniono formatowanie tekstu",
         "tableDeleted": "Usunięto tabelę",
         "tableInserted": "Wstawiono tabelę",
         "tablePropertiesChanged": "Zmieniono formatowanie tabeli"
@@ -8845,6 +8858,7 @@ export const CATALOGS = {
         "rowDeleted": "Linha excluída",
         "rowInserted": "Linha inserida",
         "rowPropertiesChanged": "Formatação da linha alterada",
+        "runPropertiesChanged": "Formatação do texto alterada",
         "tableDeleted": "Tabela excluída",
         "tableInserted": "Tabela inserida",
         "tablePropertiesChanged": "Formatação da tabela alterada"
@@ -9487,6 +9501,7 @@ export const CATALOGS = {
         "rowDeleted": "Riadok odstránený",
         "rowInserted": "Riadok vložený",
         "rowPropertiesChanged": "Formátovanie riadka zmenené",
+        "runPropertiesChanged": "Formátovanie textu zmenené",
         "tableDeleted": "Tabuľka odstránená",
         "tableInserted": "Tabuľka vložená",
         "tablePropertiesChanged": "Formátovanie tabuľky zmenené"
@@ -10129,6 +10144,7 @@ export const CATALOGS = {
         "rowDeleted": "Satır silindi",
         "rowInserted": "Satır eklendi",
         "rowPropertiesChanged": "Satır biçimlendirmesi değiştirildi",
+        "runPropertiesChanged": "Metin biçimlendirmesi değiştirildi",
         "tableDeleted": "Tablo silindi",
         "tableInserted": "Tablo eklendi",
         "tablePropertiesChanged": "Tablo biçimlendirmesi değiştirildi"
@@ -10771,6 +10787,7 @@ export const CATALOGS = {
         "rowDeleted": "已删除行",
         "rowInserted": "已插入行",
         "rowPropertiesChanged": "行格式已更改",
+        "runPropertiesChanged": "文本格式已更改",
         "tableDeleted": "已删除表格",
         "tableInserted": "已插入表格",
         "tablePropertiesChanged": "表格格式已更改"

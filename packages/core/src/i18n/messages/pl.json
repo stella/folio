@@ -491,6 +491,7 @@
       "rowDeleted": "Usunięto wiersz",
       "rowInserted": "Wstawiono wiersz",
       "rowPropertiesChanged": "Zmieniono formatowanie wiersza",
+      "runPropertiesChanged": "Zmieniono formatowanie tekstu",
       "tableDeleted": "Usunięto tabelę",
       "tableInserted": "Wstawiono tabelę",
       "tablePropertiesChanged": "Zmieniono formatowanie tabeli"

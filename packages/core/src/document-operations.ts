@@ -71,7 +71,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   replaceInBlock: DIRECT_AND_TRACKED_MODES,
   replaceRange: DIRECT_AND_TRACKED_MODES,
   commentOnRange: DIRECT_AND_TRACKED_MODES,
-  formatRange: DIRECT_ONLY_MODES,
+  formatRange: DIRECT_AND_TRACKED_MODES,
   insertAfterBlock: DIRECT_AND_TRACKED_MODES,
   insertBeforeBlock: DIRECT_AND_TRACKED_MODES,
   replaceBlock: DIRECT_AND_TRACKED_MODES,

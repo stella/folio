@@ -52,7 +52,7 @@ const scopedHandleSchema = {
 /**
  * `suggest_changes` deliberately narrows the full document-operation contract
  * (see `FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA` in `operation-schema.ts`):
- * - excluded types: `formatRange`, `insertSignatureTable`, `mergeTableCells`,
+ * - excluded types: `insertSignatureTable`, `mergeTableCells`,
  *   and `splitTableCell` (direct-only,
  *   not representable as tracked changes for human review)
  *   and `commentOnBlock` (covered by the dedicated `add_comment` tool);
@@ -63,10 +63,9 @@ const scopedHandleSchema = {
  * - the review metadata (`severity`, `area`), `precondition` guard, and the
  *   insert/replace formatting knobs (`inheritFormatting`, `pageBreakBefore`,
  *   `preserveFormatting`, `styleId`, `parties`, `quote`,
- *   `formatting`) are not exposed to the model.
+ *   except `formatting`) are not exposed to the model.
  */
 const SUGGEST_CHANGES_EXCLUDED_OPERATION_TYPES: ReadonlySet<FolioDocumentOperationType> = new Set([
-  "formatRange",
   "commentOnBlock",
   "insertSignatureTable",
   "mergeTableCells",
@@ -105,7 +104,7 @@ const suggestChangesOperationSchema = {
     range: {
       ...FOLIO_TEXT_RANGE_JSON_SCHEMA,
       description:
-        "Required for `replaceRange` and `commentOnRange`: copy the range object returned by `find_text`.",
+        "Required for `replaceRange`, `commentOnRange`, and `formatRange`: copy the range object returned by `find_text`.",
     },
     find: {
       type: "string",
@@ -134,6 +133,18 @@ const suggestChangesOperationSchema = {
         "For row or column insertion, initial text for new physical cells in source order, up to 100,000 characters per cell.",
       maxItems: 256,
       items: { type: "string" },
+    },
+    formatting: {
+      type: "object",
+      description:
+        "Required for `formatRange`: set one or more inline properties to enable or disable.",
+      properties: {
+        bold: { type: "boolean" },
+        italic: { type: "boolean" },
+        underline: { type: "boolean" },
+      },
+      minProperties: 1,
+      additionalProperties: false,
     },
     comment: {
       type: "string",

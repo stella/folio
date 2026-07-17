@@ -494,6 +494,7 @@ type Messages = {
       "rowDeleted": "Row deleted";
       "rowInserted": "Row inserted";
       "rowPropertiesChanged": "Row formatting changed";
+      "runPropertiesChanged": "Text formatting changed";
       "tableDeleted": "Table deleted";
       "tableInserted": "Table inserted";
       "tablePropertiesChanged": "Table formatting changed";

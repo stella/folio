@@ -2095,6 +2095,9 @@ function convertRun(
 ): PMNode[] {
   const nodes: PMNode[] = [];
   const { marks, mergedFormatting } = buildRunMarks(run.formatting, styleFormatting, styleResolver);
+  if (run.propertyChanges && run.propertyChanges.length > 0) {
+    marks.push(schema.mark("runPropertyChange", { changes: [...run.propertyChanges] }));
+  }
 
   for (const content of run.content) {
     const contentNodes = convertRunContent(content, marks, mergedFormatting);

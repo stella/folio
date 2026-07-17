@@ -61,7 +61,11 @@ import {
   EmphasisMarkExtension,
   TextOutlineExtension,
 } from "./marks/TextEffectsExtensions";
-import { InsertionExtension, DeletionExtension } from "./marks/TrackedChangeExtensions";
+import {
+  DeletionExtension,
+  InsertionExtension,
+  RunPropertyChangeExtension,
+} from "./marks/TrackedChangeExtensions";
 import { UnderlineExtension } from "./marks/UnderlineExtension";
 import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
 import { FieldExtension } from "./nodes/FieldExtension";
@@ -151,6 +155,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("comment", CommentExtension());
   add("insertion", InsertionExtension());
   add("deletion", DeletionExtension());
+  add("runPropertyChange", RunPropertyChangeExtension());
 
   // Nodes
   add("hardBreak", HardBreakExtension());

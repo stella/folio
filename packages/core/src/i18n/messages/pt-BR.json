@@ -491,6 +491,7 @@
       "rowDeleted": "Linha excluída",
       "rowInserted": "Linha inserida",
       "rowPropertiesChanged": "Formatação da linha alterada",
+      "runPropertiesChanged": "Formatação do texto alterada",
       "tableDeleted": "Tabela excluída",
       "tableInserted": "Tabela inserida",
       "tablePropertiesChanged": "Formatação da tabela alterada"

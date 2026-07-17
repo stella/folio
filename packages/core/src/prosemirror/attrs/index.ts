@@ -46,6 +46,7 @@ import type {
   MathAttrs,
   ParagraphAttrs,
   RunFormattingOverrideAttrs,
+  RunPropertyChangeMarkAttrs,
   RunShadingAttrs,
   SdtAttrs,
   ShapeAttrs,
@@ -236,6 +237,7 @@ const textEffectAttrsCache = new WeakMap<Mark, TextEffectAttrs>();
 const footnoteRefAttrsCache = new WeakMap<Mark, FootnoteRefAttrs>();
 const commentAttrsCache = new WeakMap<Mark, CommentAttrs>();
 const trackedChangeAttrsCache = new WeakMap<Mark, TrackedChangeMarkAttrs>();
+const runPropertyChangeAttrsCache = new WeakMap<Mark, RunPropertyChangeMarkAttrs>();
 const runFormattingOverrideAttrsCache = new WeakMap<Mark, RunFormattingOverrideAttrs>();
 const hyperlinkAttrsCache = new WeakMap<Mark, HyperlinkAttrs>();
 
@@ -993,6 +995,27 @@ export const expectTrackedChangeMarkAttrs = (mark: Mark): TrackedChangeMarkAttrs
     trackedChangeAttrsCache,
     readTrackedChangeMarkAttrs,
     "tracked change attrs",
+  );
+
+export const readRunPropertyChangeMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<RunPropertyChangeMarkAttrs> => {
+  const attrs = attrsRecord(mark.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectMarkType(mark, "runPropertyChange", issues);
+  optionalPropertyChanges(attrs, "changes", "runPropertyChange.attrs.changes", issues, [
+    "runPropertyChange",
+  ]);
+
+  return attrsResult(attrs, issues);
+};
+
+export const expectRunPropertyChangeMarkAttrs = (mark: Mark): RunPropertyChangeMarkAttrs =>
+  expectCachedMarkAttrs(
+    mark,
+    runPropertyChangeAttrsCache,
+    readRunPropertyChangeMarkAttrs,
+    "run property change attrs",
   );
 
 export const readRunFormattingOverrideMarkAttrs = (

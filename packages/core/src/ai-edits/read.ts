@@ -11,12 +11,14 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
 import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
 import { createFolioAIEditSnapshot } from "./snapshot";
 
 export type FolioReviewChangeKind =
   | "insertion"
   | "deletion"
+  | "formatting"
   | "rowInserted"
   | "rowDeleted"
   | "cellInserted"
@@ -206,6 +208,26 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
     }
     const text = node.text;
     for (const mark of node.marks) {
+      if (mark.type.name === "runPropertyChange") {
+        const { changes } = expectRunPropertyChangeMarkAttrs(mark);
+        for (const change of changes) {
+          const key = `${currentBlockId ?? ""}:formatting:${String(change.info.id)}`;
+          const existing = grouped.get(key);
+          if (existing) {
+            existing.text += text;
+            continue;
+          }
+          grouped.set(key, {
+            id: change.info.id,
+            type: "formatting",
+            author: change.info.author,
+            date: change.info.date ?? null,
+            text,
+            blockId: currentBlockId,
+          });
+        }
+        continue;
+      }
       if (typeof mark.attrs["revisionId"] !== "number") {
         continue;
       }

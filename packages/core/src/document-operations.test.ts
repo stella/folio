@@ -45,7 +45,7 @@ describe("document operation contract", () => {
         replaceInBlock: ["direct", "tracked-changes"],
         replaceRange: ["direct", "tracked-changes"],
         commentOnRange: ["direct", "tracked-changes"],
-        formatRange: ["direct"],
+        formatRange: ["direct", "tracked-changes"],
         insertAfterBlock: ["direct", "tracked-changes"],
         insertBeforeBlock: ["direct", "tracked-changes"],
         replaceBlock: ["direct", "tracked-changes"],
@@ -66,6 +66,7 @@ describe("document operation contract", () => {
 
   test("reports mode support for each operation type", () => {
     expect(isFolioDocumentOperationModeSupported("replaceInBlock", "tracked-changes")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("formatRange", "tracked-changes")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("insertSignatureTable", "direct")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("insertSignatureTable", "tracked-changes")).toBe(
       false,

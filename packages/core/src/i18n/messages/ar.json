@@ -491,6 +491,7 @@
       "rowDeleted": "تم حذف الصف",
       "rowInserted": "تم إدراج الصف",
       "rowPropertiesChanged": "تم تغيير تنسيق الصف",
+      "runPropertiesChanged": "تم تغيير تنسيق النص",
       "tableDeleted": "تم حذف الجدول",
       "tableInserted": "تم إدراج الجدول",
       "tablePropertiesChanged": "تم تغيير تنسيق الجدول"

@@ -15,6 +15,7 @@ import type { EditorState } from "prosemirror-state";
 
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import type { Mark } from "prosemirror-model";
+import { expectRunPropertyChangeMarkAttrs } from "../attrs";
 
 /**
  * One tracked change surfaced by {@link extractTrackedChanges}. Each entry
@@ -51,6 +52,7 @@ export type TrackedChangeEntry = {
     | "insertion"
     | "deletion"
     | "replacement"
+    | "runPropertiesChanged"
     | "paragraphMarkInsertion"
     | "paragraphMarkDeletion"
     | "paragraphPropertiesChanged"
@@ -149,7 +151,8 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
   const insertionType = schema.marks["insertion"];
   const deletionType = schema.marks["deletion"];
   const commentType = schema.marks["comment"];
-  if (!insertionType && !deletionType) return EMPTY_RESULT;
+  const runPropertyChangeType = schema.marks["runPropertyChange"];
+  if (!insertionType && !deletionType && !runPropertyChangeType) return EMPTY_RESULT;
 
   const raw: TrackedChangeEntry[] = [];
   const commentToRevision = new Map<number, number>();
@@ -447,6 +450,20 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
     else inlineText = node.type.name;
     let tcMark: Mark | null = null;
     for (const mark of node.marks) {
+      if (mark.type === runPropertyChangeType) {
+        for (const change of expectRunPropertyChangeMarkAttrs(mark).changes) {
+          raw.push({
+            type: "runPropertiesChanged",
+            text: inlineText,
+            author: change.info.author,
+            date: change.info.date,
+            from: pos,
+            to: pos + node.nodeSize,
+            revisionId: change.info.id,
+          });
+        }
+        continue;
+      }
       if (mark.type === insertionType || mark.type === deletionType) {
         raw.push({
           type: mark.type === insertionType ? "insertion" : "deletion",
@@ -512,6 +529,7 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
     paragraphMarkInsertion: 2,
     paragraphMarkDeletion: 2,
     paragraphPropertiesChanged: 2,
+    runPropertiesChanged: 1,
   };
   const STRUCTURAL_FAMILY_BY_TYPE: Readonly<Record<string, string>> = {
     tableInserted: "insertion",
@@ -526,6 +544,7 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
     rowPropertiesChanged: "properties",
     cellPropertiesChanged: "properties",
     paragraphPropertiesChanged: "properties",
+    runPropertiesChanged: "properties",
     cellMerged: "merge",
   };
   const isStructuralType = (t: TrackedChangeEntry["type"]) => t in STRUCTURAL_PRIORITY;

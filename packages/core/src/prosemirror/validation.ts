@@ -19,6 +19,7 @@ import {
   readBlockSdtAttrs,
   readParagraphAttrs,
   readRunFormattingOverrideMarkAttrs,
+  readRunPropertyChangeMarkAttrs,
   readRunShadingMarkAttrs,
   readSdtAttrs,
   readShapeAttrs,
@@ -274,6 +275,10 @@ const validateMarks = (
       case "insertion":
       case "deletion":
         appendAttrIssues(markPath, readTrackedChangeMarkAttrs(mark), issues);
+        continue;
+
+      case "runPropertyChange":
+        appendAttrIssues(markPath, readRunPropertyChangeMarkAttrs(mark), issues);
         continue;
 
       case "runFormattingOverride":

@@ -174,8 +174,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
     {
       type: "object",
       description:
-        "Apply inline formatting to the text covered by a range handle. Direct mode only " +
-        "(formatting is not representable as a tracked change).",
+        "Apply inline formatting to the text covered by a range handle in direct or tracked mode.",
       properties: {
         ...operationMetaProperties,
         type: { type: "string", enum: ["formatRange"] },
@@ -451,8 +450,8 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       enum: FOLIO_DOCUMENT_OPERATION_MODES,
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
-        '"direct" applies immediately. `formatRange`, `insertSignatureTable`, ' +
-        "`mergeTableCells` and `splitTableCell` support " +
+        '"direct" applies immediately. `insertSignatureTable`, `mergeTableCells` and ' +
+        "`splitTableCell` support " +
         '"direct" only.',
     },
     atomic: {

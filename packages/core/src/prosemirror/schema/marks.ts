@@ -9,6 +9,7 @@
 import type { ShadingProperties } from "../../types/colors";
 import type {
   EmphasisMark,
+  RunPropertyChange,
   TextEffect,
   TextFormatting,
   ThemeColorSlot,
@@ -116,6 +117,11 @@ export type TrackedChangeMarkAttrs = {
   author: string;
   date?: string;
   moveKind?: "moveTo" | "moveFrom";
+};
+
+/** Run-property revisions carried through the editable model. */
+export type RunPropertyChangeMarkAttrs = {
+  changes: RunPropertyChange[];
 };
 
 export type RunFormattingOverrideAttrs = {

@@ -10,7 +10,10 @@ import {
 } from "prosemirror-tables";
 
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
+import type { RunPropertyChange } from "../types/document";
 import { buildCleanBlockText } from "./clean-text";
 import {
   hasInlineEmphasis,
@@ -120,6 +123,111 @@ const applyReplaceBlockStyleId = ({
     ...block.attrs,
     styleId: item.operation.styleId,
   });
+};
+
+type ApplyInlineFormattingOptions = {
+  tr: Transaction;
+  schema: Schema;
+  from: number;
+  to: number;
+  formatting: Extract<FolioAIEditOperation, { type: "formatRange" }>["formatting"];
+};
+
+const applyInlineFormatting = ({
+  tr,
+  schema,
+  from,
+  to,
+  formatting,
+}: ApplyInlineFormattingOptions): Transaction => {
+  for (const [name, enabled] of Object.entries(formatting)) {
+    const markType = schema.marks[name];
+    if (!markType) {
+      continue;
+    }
+    if (enabled) {
+      tr.addMark(
+        from,
+        to,
+        name === "underline" ? markType.create({ style: "single" }) : markType.create(),
+      );
+      continue;
+    }
+    tr.removeMark(from, to, markType);
+  }
+  return tr;
+};
+
+const formattingWouldChange = (
+  marks: readonly Mark[],
+  formatting: Extract<FolioAIEditOperation, { type: "formatRange" }>["formatting"],
+): boolean =>
+  Object.entries(formatting).some(([name, enabled]) => {
+    const mark = marks.find((candidate) => candidate.type.name === name);
+    if (!enabled) {
+      return mark !== undefined;
+    }
+    if (name === "underline") {
+      return mark?.attrs["style"] !== "single";
+    }
+    return mark === undefined;
+  });
+
+type ApplyTrackedInlineFormattingOptions = ApplyInlineFormattingOptions & {
+  doc: PMNode;
+  revisionId: number;
+  author: string;
+  date: string;
+};
+
+const applyTrackedInlineFormatting = ({
+  tr,
+  schema,
+  doc,
+  from,
+  to,
+  formatting,
+  revisionId,
+  author,
+  date,
+}: ApplyTrackedInlineFormattingOptions): Transaction => {
+  const propertyChangeType = schema.marks["runPropertyChange"];
+  if (!propertyChangeType) {
+    return tr;
+  }
+
+  const segments: { from: number; to: number; changes: RunPropertyChange[] }[] = [];
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText || !formattingWouldChange(node.marks, formatting)) {
+      return;
+    }
+    const segmentFrom = Math.max(from, pos);
+    const segmentTo = Math.min(to, pos + node.nodeSize);
+    const previousFormatting = marksToTextFormatting(node.marks);
+    const existingMark = node.marks.find((mark) => mark.type === propertyChangeType);
+    const existingChanges = existingMark
+      ? expectRunPropertyChangeMarkAttrs(existingMark).changes
+      : [];
+    const change: RunPropertyChange = {
+      type: "runPropertyChange",
+      info: { id: revisionId, author, date },
+      ...(Object.keys(previousFormatting).length > 0 ? { previousFormatting } : {}),
+    };
+    segments.push({
+      from: segmentFrom,
+      to: segmentTo,
+      changes: [...existingChanges, change],
+    });
+  });
+
+  if (segments.length === 0) {
+    return tr;
+  }
+  applyInlineFormatting({ tr, schema, from, to, formatting });
+  for (const segment of segments) {
+    tr.addMark(segment.from, segment.to, propertyChangeType.create({ changes: segment.changes }));
+  }
+  return tr;
 };
 
 type LiveBlockEntry = { from: number; to: number; node: PMNode };
@@ -1044,9 +1152,7 @@ const applyFolioAIEditOperationsInternal = ({
   for (const [index, operation] of operations.entries()) {
     if (
       mode === "tracked-changes" &&
-      (operation.type === "formatRange" ||
-        operation.type === "mergeTableCells" ||
-        operation.type === "splitTableCell")
+      (operation.type === "mergeTableCells" || operation.type === "splitTableCell")
     ) {
       skipped.push({ id: operation.id, reason: "unsupportedMode" });
       continue;
@@ -1280,21 +1386,29 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "formatRange": {
-        for (const [name, enabled] of Object.entries(item.operation.formatting)) {
-          const markType = view.state.schema.marks[name];
-          if (!markType) {
-            continue;
-          }
-          if (enabled) {
-            tr = tr.addMark(
-              item.from,
-              item.to,
-              name === "underline" ? markType.create({ style: "single" }) : markType.create(),
-            );
-          } else {
-            tr = tr.removeMark(item.from, item.to, markType);
-          }
+        if (mode === "tracked-changes") {
+          const revisionId = revisionSeed++;
+          tr = applyTrackedInlineFormatting({
+            tr,
+            schema: view.state.schema,
+            doc: tr.doc,
+            from: item.from,
+            to: item.to,
+            formatting: item.operation.formatting,
+            revisionId,
+            author,
+            date,
+          });
+          appliedRevisionIds = [revisionId];
+          break;
         }
+        tr = applyInlineFormatting({
+          tr,
+          schema: view.state.schema,
+          from: item.from,
+          to: item.to,
+          formatting: item.operation.formatting,
+        });
         break;
       }
       case "replaceBlock": {

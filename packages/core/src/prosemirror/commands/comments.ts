@@ -9,11 +9,14 @@ import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { removeRow, TableMap } from "prosemirror-tables";
 
 import type {
+  RunPropertyChange,
   SectionProperties,
   TableCellFormatting,
   TableFormatting,
   TableRowFormatting,
 } from "../../types/document";
+import { expectRunPropertyChangeMarkAttrs } from "../attrs";
+import { textFormattingToMarks } from "../conversion/toProseDoc";
 import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import {
@@ -86,11 +89,12 @@ export function removeCommentMark(commentId: number): Command {
  * Resolve a tracked change: accept or reject.
  * - Accept: keep insertions (remove mark), delete deletions (remove text)
  * - Reject: keep deletions (remove mark), delete insertions (remove text)
+ * - Run formatting: accept the current formatting, or restore the previous formatting
  *
  * Pass `revisionId` to scope the operation to one specific
  * revision — otherwise overlapping marks for other revisions get
  * processed too, silently consuming pending work. Without an id
- * the operation matches every insertion/deletion mark in the
+ * the operation matches every revision mark or property-change entry in the
  * range (the bulk accept-all/reject-all path).
  */
 function resolveChange(
@@ -252,6 +256,21 @@ function resolveChange(
         const rangeFrom = Math.max(from, pos);
         const rangeTo = Math.min(to, nodeEnd);
 
+        const runPropertyChangeMark = node.marks.find(
+          (mark) => mark.type.name === "runPropertyChange",
+        );
+        if (runPropertyChangeMark) {
+          resolveRunPropertyChange({
+            tr,
+            node,
+            from: rangeFrom,
+            to: rangeTo,
+            mark: runPropertyChangeMark,
+            mode,
+            revisionSet,
+          });
+        }
+
         if (removeType && node.marks.some((m) => m.type === removeType && matchesRevision(m))) {
           deleteRanges.push({ from: rangeFrom, to: rangeTo });
         }
@@ -364,6 +383,94 @@ function resolveChange(
     return true;
   };
 }
+
+const RUN_FORMATTING_MARK_NAMES = new Set([
+  "bold",
+  "italic",
+  "underline",
+  "strike",
+  "textColor",
+  "highlight",
+  "runShading",
+  "fontSize",
+  "fontFamily",
+  "language",
+  "superscript",
+  "subscript",
+  "allCaps",
+  "smallCaps",
+  "characterSpacing",
+  "emboss",
+  "imprint",
+  "hidden",
+  "textShadow",
+  "emphasisMark",
+  "textOutline",
+  "rtl",
+  "textEffect",
+  "runFormattingOverride",
+  "characterStyle",
+]);
+
+type ResolveRunPropertyChangeOptions = {
+  tr: Transaction;
+  node: PMNode;
+  from: number;
+  to: number;
+  mark: Mark;
+  mode: "accept" | "reject";
+  revisionSet: Set<number> | null;
+};
+
+const resolveRunPropertyChange = ({
+  tr,
+  node,
+  from,
+  to,
+  mark,
+  mode,
+  revisionSet,
+}: ResolveRunPropertyChangeOptions): void => {
+  const { changes } = expectRunPropertyChangeMarkAttrs(mark);
+  const matches = changes.filter(
+    (change) => revisionSet === null || revisionSet.has(change.info.id),
+  );
+  if (matches.length === 0) {
+    return;
+  }
+
+  tr.removeMark(from, to, mark);
+  const remaining = changes.filter(
+    (change) => revisionSet !== null && !revisionSet.has(change.info.id),
+  );
+  if (remaining.length > 0) {
+    tr.addMark(from, to, mark.type.create({ changes: remaining }));
+  }
+  if (mode === "accept") {
+    return;
+  }
+
+  const previousFormatting: RunPropertyChange["previousFormatting"] =
+    matches.at(0)?.previousFormatting;
+  for (const currentMark of node.marks) {
+    if (RUN_FORMATTING_MARK_NAMES.has(currentMark.type.name)) {
+      tr.removeMark(from, to, currentMark.type);
+    }
+  }
+  for (const previousMark of textFormattingToMarks(previousFormatting)) {
+    tr.addMark(from, to, previousMark);
+  }
+  if (previousFormatting?.styleId) {
+    const characterStyle = node.type.schema.marks["characterStyle"];
+    if (characterStyle) {
+      tr.addMark(
+        from,
+        to,
+        characterStyle.create({ styleId: previousFormatting.styleId, _styleRPr: null }),
+      );
+    }
+  }
+};
 
 type PPrMarkOp = {
   paragraphPos: number;
@@ -863,12 +970,12 @@ export function rejectAllChanges(): Command {
 }
 
 /**
- * Find the document range covered by all insertion/deletion marks
+ * Find the document range covered by all inline revision marks
  * carrying any of the given AI-edit `revisionIds`. Returns null when
  * none of those marks are present (already accepted/rejected, or
  * never existed). A replace operation typically passes two ids (one
  * for its deletion side, one for its insertion side); inserts and
- * standalone deletions pass a single id.
+ * standalone deletions and formatting changes pass a single id.
  */
 export function findAIEditRevisionRange(
   state: EditorState,
@@ -876,6 +983,7 @@ export function findAIEditRevisionRange(
 ): { from: number; to: number } | null {
   const insertionType = state.schema.marks["insertion"];
   const deletionType = state.schema.marks["deletion"];
+  const runPropertyChangeType = state.schema.marks["runPropertyChange"];
   const idSet = new Set<number>(typeof revisionIds === "number" ? [revisionIds] : revisionIds);
 
   const range = { from: null as number | null, to: null as number | null };
@@ -927,6 +1035,20 @@ export function findAIEditRevisionRange(
     }
     for (const mark of node.marks) {
       if (
+        mark.type === runPropertyChangeType &&
+        expectRunPropertyChangeMarkAttrs(mark).changes.some((change) => idSet.has(change.info.id))
+      ) {
+        const start = pos;
+        const end = pos + node.nodeSize;
+        if (range.from === null || start < range.from) {
+          range.from = start;
+        }
+        if (range.to === null || end > range.to) {
+          range.to = end;
+        }
+        break;
+      }
+      if (
         (mark.type === insertionType || mark.type === deletionType) &&
         typeof mark.attrs["revisionId"] === "number" &&
         idSet.has(mark.attrs["revisionId"])
@@ -953,7 +1075,7 @@ export function findAIEditRevisionRange(
 
 /**
  * Accept the tracked-change marks belonging to an AI-edit operation.
- * Pass a single revisionId for inserts/standalone deletions, or the
+ * Pass a single revisionId for inserts, standalone deletions, or formatting changes; or the
  * full id list for a replace (one id per side). Returns false when
  * none of the ids match anything in the doc.
  */

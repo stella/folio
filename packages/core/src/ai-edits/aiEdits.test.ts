@@ -4,7 +4,12 @@ import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
-import { acceptAIEditRevision, rejectAIEditRevision } from "../prosemirror/commands/comments";
+import {
+  acceptAIEditRevision,
+  acceptAllChanges,
+  rejectAIEditRevision,
+  rejectAllChanges,
+} from "../prosemirror/commands/comments";
 import { applyFolioAIEditOperations } from "./apply";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
@@ -69,6 +74,12 @@ const schema = new Schema({
         date: {},
       },
       toDOM: () => ["del", 0],
+    },
+    runPropertyChange: {
+      attrs: {
+        changes: { default: [] },
+      },
+      toDOM: () => ["span", 0],
     },
     comment: {
       attrs: {
@@ -323,8 +334,62 @@ describe("Folio AI edit operations", () => {
     expect(target?.marks.map((mark) => mark.type.name).toSorted()).toEqual(["bold", "comment"]);
   });
 
-  test("reports range formatting as unsupported in tracked-changes mode", () => {
+  test("tracks range formatting and supports accepting or rejecting it", () => {
+    const applyFormatting = () => {
+      const view = makeView(makeState(["target"]));
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const block = snapshot.blocks.at(0);
+      const range = block
+        ? createFolioAITextRangeHandle({
+            blockId: block.id,
+            text: block.text,
+            startOffset: 0,
+            endOffset: 6,
+          })
+        : null;
+      if (!range) {
+        throw new Error("expected a range");
+      }
+      const result = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations: [{ id: "format", type: "formatRange", range, formatting: { italic: true } }],
+        author: "Reviewer",
+      });
+      const revisionId = result.applied.at(0)?.revisionId;
+      if (revisionId === undefined) {
+        throw new Error("expected a formatting revision");
+      }
+      return { view, revisionId };
+    };
+
+    const accepting = applyFormatting();
+    expect(collectMarksByText(accepting.view.state)).toEqual({
+      target: ["runPropertyChange", "italic"],
+    });
+    expect(getTrackedChangesFromDoc(accepting.view.state.doc)).toEqual([
+      expect.objectContaining({
+        id: accepting.revisionId,
+        type: "formatting",
+        author: "Reviewer",
+        text: "target",
+      }),
+    ]);
+    acceptAIEditRevision(accepting.revisionId)(accepting.view.state, accepting.view.dispatch);
+    expect(collectMarksByText(accepting.view.state)).toEqual({ target: ["italic"] });
+
+    const rejecting = applyFormatting();
+    rejectAIEditRevision(rejecting.revisionId)(rejecting.view.state, rejecting.view.dispatch);
+    expect(collectMarksByText(rejecting.view.state)).toEqual({ target: [] });
+  });
+
+  test("does not invent a formatting revision for an unchanged range", () => {
     const view = makeView(makeState(["target"]));
+    const italic = schema.marks["italic"]?.create();
+    if (!italic) {
+      throw new Error("missing italic mark");
+    }
+    view.dispatch(view.state.tr.addMark(1, 7, italic));
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
     const block = snapshot.blocks.at(0);
     const range = block
@@ -343,7 +408,46 @@ describe("Folio AI edit operations", () => {
       snapshot,
       operations: [{ id: "format", type: "formatRange", range, formatting: { italic: true } }],
     });
-    expect(result.skipped).toEqual([{ id: "format", reason: "unsupportedMode" }]);
+    expect(result.skipped).toEqual([{ id: "format", reason: "noopOperation" }]);
+  });
+
+  test("preserves stacked formatting revisions in one batch", () => {
+    const applyFormatting = () => {
+      const view = makeView(makeState(["target"]));
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const block = snapshot.blocks.at(0);
+      const range = block
+        ? createFolioAITextRangeHandle({
+            blockId: block.id,
+            text: block.text,
+            startOffset: 0,
+            endOffset: 6,
+          })
+        : null;
+      if (!range) {
+        throw new Error("expected a range");
+      }
+      const result = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations: [
+          { id: "bold", type: "formatRange", range, formatting: { bold: true } },
+          { id: "italic", type: "formatRange", range, formatting: { italic: true } },
+        ],
+      });
+      expect(result.skipped).toEqual([]);
+      expect(result.applied).toHaveLength(2);
+      expect(getTrackedChangesFromDoc(view.state.doc)).toHaveLength(2);
+      return view;
+    };
+
+    const accepting = applyFormatting();
+    acceptAllChanges()(accepting.state, accepting.dispatch);
+    expect(collectMarksByText(accepting.state)).toEqual({ target: ["bold", "italic"] });
+
+    const rejecting = applyFormatting();
+    rejectAllChanges()(rejecting.state, rejecting.dispatch);
+    expect(collectMarksByText(rejecting.state)).toEqual({ target: [] });
   });
 
   test("rejects a range whose selected text hash is stale", () => {

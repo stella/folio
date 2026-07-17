@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Paragraph, ParagraphPropertyChange } from "../../types/content";
+import type {
+  Paragraph,
+  ParagraphPropertyChange,
+  Run,
+  RunPropertyChange,
+} from "../../types/content";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -92,5 +97,77 @@ describe("paragraph propertyChanges PM round-trip", () => {
     const roundtripped = fromProseDoc(pmDoc).package.document.content[0] as Paragraph | undefined;
     // No phantom propertyChanges should be attached.
     expect(roundtripped?.propertyChanges).toBeUndefined();
+  });
+});
+
+const sampleRunPropertyChange: RunPropertyChange = {
+  type: "runPropertyChange",
+  info: {
+    id: 8,
+    author: "Reviewer",
+    date: "2026-07-17T08:00:00Z",
+  },
+  previousFormatting: { italic: true },
+  currentFormatting: { bold: true },
+};
+
+describe("run propertyChanges PM round-trip", () => {
+  test("preserves run formatting revisions through the editable model", () => {
+    const run: Run = {
+      type: "run",
+      formatting: { bold: true },
+      propertyChanges: [sampleRunPropertyChange],
+      content: [{ type: "text", text: "reviewed" }],
+    };
+    const document = {
+      package: {
+        document: {
+          content: [{ type: "paragraph" as const, content: [run] }],
+          finalSectionProperties: {},
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document as never);
+    const text = pmDoc.firstChild?.firstChild;
+    expect(text?.marks.find((mark) => mark.type.name === "runPropertyChange")?.attrs).toEqual({
+      changes: [sampleRunPropertyChange],
+    });
+
+    const roundtripped = fromProseDoc(pmDoc).package.document.content.at(0);
+    const roundtrippedRun =
+      roundtripped?.type === "paragraph"
+        ? roundtripped.content.find((content) => content.type === "run")
+        : undefined;
+    expect(roundtrippedRun?.propertyChanges).toEqual([sampleRunPropertyChange]);
+  });
+
+  test("does not invent run formatting revisions", () => {
+    const document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph" as const,
+              content: [
+                {
+                  type: "run" as const,
+                  formatting: { bold: true },
+                  content: [{ type: "text" as const, text: "plain" }],
+                },
+              ],
+            },
+          ],
+          finalSectionProperties: {},
+        },
+      },
+    };
+
+    const roundtripped = fromProseDoc(toProseDoc(document as never)).package.document.content.at(0);
+    const run =
+      roundtripped?.type === "paragraph"
+        ? roundtripped.content.find((content) => content.type === "run")
+        : undefined;
+    expect(run?.propertyChanges).toBeUndefined();
   });
 });
