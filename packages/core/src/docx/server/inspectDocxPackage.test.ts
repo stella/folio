@@ -85,6 +85,19 @@ describe("inspectDocxPackage", () => {
     expect(inspection.xmlParts.at(0)?.text).toBe(text);
   });
 
+  test("decodes empty and one-byte XML parts", async () => {
+    const bytes = await mutateEmptyPackage((zip) => {
+      zip.file("empty.xml", new Uint8Array());
+      zip.file("short.xml", "<");
+    });
+
+    const inspection = await inspectDocxPackage(bytes, {
+      xmlParts: ["empty.xml", "short.xml"],
+    });
+
+    expect(inspection.xmlParts.map(({ text }) => text)).toEqual(["", "<"]);
+  });
+
   test("rejects missing, binary, and duplicate requested parts", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
       zip.file("word/media/payload.bin", "data");

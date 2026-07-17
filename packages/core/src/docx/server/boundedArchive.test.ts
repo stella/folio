@@ -75,6 +75,14 @@ describe("loadDocxArchive", () => {
     expect(totalError).toMatchObject({ reason: "total-too-large" });
   });
 
+  test("counts files after directory entries during declared-size preflight", async () => {
+    const bytes = await makeZip({ "word/a": "12345", "word/b": "67890" });
+
+    const error = await rejection(loadDocxArchive(bytes, { maxTotalBytes: 8 }));
+
+    expect(error).toMatchObject({ reason: "total-too-large" });
+  });
+
   test("applies a stricter byte limit to an individual read", async () => {
     const archive = await loadDocxArchive(await makeZip({ large: "12345", small: "123" }));
 

@@ -92,9 +92,15 @@ type ContentTypeDeclarations = {
 
 const decodeXml = (bytes: Uint8Array, part: string): string => {
   let encoding = "utf-8";
-  if ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0x3c && bytes[1] === 0x00)) {
+  if (
+    bytes.length >= 2 &&
+    ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0x3c && bytes[1] === 0x00))
+  ) {
     encoding = "utf-16le";
-  } else if ((bytes[0] === 0xfe && bytes[1] === 0xff) || (bytes[0] === 0x00 && bytes[1] === 0x3c)) {
+  } else if (
+    bytes.length >= 2 &&
+    ((bytes[0] === 0xfe && bytes[1] === 0xff) || (bytes[0] === 0x00 && bytes[1] === 0x3c))
+  ) {
     encoding = "utf-16be";
   }
 

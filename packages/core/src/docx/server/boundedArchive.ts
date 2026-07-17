@@ -136,6 +136,9 @@ export const loadDocxArchive = async (
 
   let declaredTotalBytes = 0;
   for (const entry of archiveEntries) {
+    if (entry.dir) {
+      continue;
+    }
     const declaredBytes = getDeclaredUncompressedBytes(entry);
     if (declaredBytes === null) {
       declaredTotalBytes = Number.NaN;
