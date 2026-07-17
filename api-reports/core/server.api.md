@@ -361,11 +361,9 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     type: "mergeTableCells"; /** Stable paragraph anchor inside the first cell. */
     blockId: string;
 } & ({
-    /** Stable paragraph anchor inside the opposite corner cell. */
     endBlockId: string;
     rowCount?: never;
 } | {
-    /** Number of grid rows to merge downward from the anchored cell. */
     rowCount: number;
     endBlockId?: never;
 })) | {
