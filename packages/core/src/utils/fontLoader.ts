@@ -25,8 +25,8 @@ let isLoadingAny = false;
  * this map is used for font availability checks and preloading.
  */
 export const FONT_MAPPING: Record<string, string> = {
-  Aptos: "Source Sans 3",
-  "Aptos Display": "Source Sans 3",
+  Aptos: "Lato",
+  "Aptos Display": "Lato",
   Calibri: "Carlito",
   Cambria: "Caladea",
   Arial: "Arimo",
@@ -50,6 +50,7 @@ const BUNDLED_FONTS = new Set([
   "Arimo",
   "Tinos",
   "Cousine",
+  "Lato",
   "Source Sans 3",
   // Also register the Microsoft names since @font-face aliases exist
   "Calibri",

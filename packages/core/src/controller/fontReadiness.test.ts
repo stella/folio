@@ -59,6 +59,25 @@ describe("initial layout font loading", () => {
     expect(faces).not.toContain("Cambria|italic|700");
   });
 
+  test("loads the metric-compatible fallback for Aptos before layout", () => {
+    const fontFamily = schema.marks["fontFamily"]?.create({
+      ascii: "Aptos",
+      hAnsi: "Aptos",
+    });
+    if (!fontFamily) {
+      throw new Error("Expected fontFamily mark in schema");
+    }
+
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Aptos text", [fontFamily])]),
+    ]);
+
+    const faces = collectInitialLayoutFontFaces(null, pmDoc).map(fontFaceKey);
+
+    expect(faces).toContain("Aptos|normal|400");
+    expect(faces).toContain("Lato|normal|400");
+  });
+
   test("combines inherited text formatting with explicit marks", () => {
     const bold = schema.marks["bold"]?.create();
     if (!bold) {

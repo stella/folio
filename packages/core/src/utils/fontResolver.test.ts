@@ -50,12 +50,12 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
   }
 });
 
-describe("fontResolver — Aptos falls back to bundled Source Sans 3", () => {
+describe("fontResolver — Aptos falls back to bundled Lato", () => {
   test.each(["Aptos", "Aptos Display"])("%s keeps an Office-compatible fallback", (font) => {
     const resolved = resolveFontFamily(font);
 
-    expect(resolved.googleFont).toBe("Source Sans 3");
-    expect(resolved.cssFallback).toContain("Source Sans 3");
+    expect(resolved.googleFont).toBe("Lato");
+    expect(resolved.cssFallback).toContain("Lato");
     expect(resolved.hasGoogleEquivalent).toBe(true);
   });
 });

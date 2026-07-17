@@ -14,7 +14,13 @@
 @import "@fontsource/carlito/700.css";
 @import "@fontsource/carlito/700-italic.css";
 
-/* Source Sans 3 → Aptos (default Word font since 2023) */
+/* Lato → Aptos (default Word font since 2023) */
+@import "@fontsource/lato/400.css";
+@import "@fontsource/lato/400-italic.css";
+@import "@fontsource/lato/700.css";
+@import "@fontsource/lato/700-italic.css";
+
+/* Source Sans 3 → Segoe UI and other humanist sans-serif faces */
 @import "@fontsource/source-sans-3/400.css";
 @import "@fontsource/source-sans-3/400-italic.css";
 @import "@fontsource/source-sans-3/700.css";

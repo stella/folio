@@ -30,6 +30,8 @@ export function documentFontsAreLoaded(): boolean {
 const INITIAL_LAYOUT_FONT_TIMEOUT_MS = 2000;
 const DEFAULT_LAYOUT_FONT_FAMILY = "Calibri";
 const OFFICE_FONT_FAMILY_MAP: Record<string, string> = {
+  Aptos: "Lato",
+  "Aptos Display": "Lato",
   Arial: "Arimo",
   Calibri: "Carlito",
   Cambria: "Caladea",

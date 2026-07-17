@@ -144,17 +144,17 @@ const APTOS_MEASURED_LINE_HEIGHT: FontLineHeight = {
  * unchanged, pending measurement.
  */
 const FONT_MAPPINGS: Record<string, FontMapping> = {
-  // Microsoft Office fonts -> Google equivalents (via Croscore)
+  // Microsoft Office fonts -> bundled open-source equivalents
   aptos: {
-    googleFont: "Source Sans 3",
+    googleFont: "Lato",
     category: "sans-serif",
-    fallbackStack: ["Aptos", "Source Sans 3", "Arial", "Helvetica", "sans-serif"],
+    fallbackStack: ["Aptos", "Lato", "Arial", "Helvetica", "sans-serif"],
     singleLineRatio: singleLineRatioOf(APTOS_MEASURED_LINE_HEIGHT),
   },
   "aptos display": {
-    googleFont: "Source Sans 3",
+    googleFont: "Lato",
     category: "sans-serif",
-    fallbackStack: ["Aptos Display", "Source Sans 3", "Arial", "Helvetica", "sans-serif"],
+    fallbackStack: ["Aptos Display", "Lato", "Arial", "Helvetica", "sans-serif"],
     singleLineRatio: singleLineRatioOf(APTOS_MEASURED_LINE_HEIGHT),
   },
   calibri: {
