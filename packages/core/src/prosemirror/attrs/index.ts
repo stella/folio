@@ -55,12 +55,12 @@ import type {
   TableCellAttrs,
   TableRowAttrs,
   TextBoxAttrs,
-  TextBoxAnchorAttrs,
   TextColorAttrs,
   TextEffectAttrs,
   TrackedChangeMarkAttrs,
   UnderlineAttrs,
 } from "../schema";
+import type { TextBoxAnchorAttrs } from "../schema/nodes";
 
 export type ProseMirrorAttrIssue = {
   path: string;
