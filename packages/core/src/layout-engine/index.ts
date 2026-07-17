@@ -382,10 +382,8 @@ export function layoutDocument(
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
 
-    const firstLineAdvance =
-      measure.kind === "paragraph" && measure.lines.length > 0
-        ? measuredLineAdvance(measure.lines[0]!)
-        : 0;
+    const firstLine = measure.kind === "paragraph" ? measure.lines.at(0) : undefined;
+    const firstLineAdvance = firstLine ? measuredLineAdvance(firstLine) : 0;
     const renderedBreakNeedsSnap =
       measure.kind === "paragraph" &&
       (!paginator.fits(measure.totalHeight) ||
