@@ -273,6 +273,11 @@ export type RunFormattingOverrideAttrs = { [K in keyof Pick<import__stll_docx_co
 };
 
 // @public
+export type RunPropertyChangeMarkAttrs = {
+    changes: import__stll_docx_core_model.RunPropertyChange[];
+};
+
+// @public
 export type RunShadingAttrs = TextColorAttrs & {
     pattern?: NonNullable<ShadingProperties["pattern"]>;
     patternColor?: string;

@@ -337,7 +337,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                     readonly additionalProperties: false;
                 }, {
                     readonly type: "object";
-                    readonly description: string;
+                    readonly description: "Apply inline formatting to the text covered by a range handle in direct or tracked mode.";
                     readonly properties: {
                         readonly type: {
                             readonly type: "string";
@@ -1348,7 +1348,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
         readonly additionalProperties: false;
     }, {
         readonly type: "object";
-        readonly description: string;
+        readonly description: "Apply inline formatting to the text covered by a range handle in direct or tracked mode.";
         readonly properties: {
             readonly type: {
                 readonly type: "string";

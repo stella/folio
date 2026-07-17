@@ -62,6 +62,9 @@ export const expectParagraphAttrs: (node: Node_2) => ParagraphAttrs;
 export const expectRunFormattingOverrideMarkAttrs: (mark: Mark) => RunFormattingOverrideAttrs;
 
 // @public (undocumented)
+export const expectRunPropertyChangeMarkAttrs: (mark: Mark) => RunPropertyChangeMarkAttrs;
+
+// @public (undocumented)
 export const expectRunShadingMarkAttrs: (mark: Mark) => RunShadingAttrs;
 
 // @public (undocumented)
@@ -177,6 +180,9 @@ export type ReadProseMirrorAttrsResult<T> = {
 
 // @public (undocumented)
 export const readRunFormattingOverrideMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<RunFormattingOverrideAttrs>;
+
+// @public (undocumented)
+export const readRunPropertyChangeMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<RunPropertyChangeMarkAttrs>;
 
 // @public (undocumented)
 export const readRunShadingMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<RunShadingAttrs>;

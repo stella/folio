@@ -64,7 +64,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly replaceInBlock: readonly ["direct", "tracked-changes"];
     readonly replaceRange: readonly ["direct", "tracked-changes"];
     readonly commentOnRange: readonly ["direct", "tracked-changes"];
-    readonly formatRange: readonly ["direct"];
+    readonly formatRange: readonly ["direct", "tracked-changes"];
     readonly insertAfterBlock: readonly ["direct", "tracked-changes"];
     readonly insertBeforeBlock: readonly ["direct", "tracked-changes"];
     readonly replaceBlock: readonly ["direct", "tracked-changes"];
@@ -570,7 +570,7 @@ export type FolioReviewChange = {
 };
 
 // @public (undocumented)
-export type FolioReviewChangeKind = "insertion" | "deletion" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted" | "cellMerged";
+export type FolioReviewChangeKind = "insertion" | "deletion" | "formatting" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted" | "cellMerged";
 
 // @public (undocumented)
 export type FolioReviewedStory = {
