@@ -5,6 +5,7 @@ import {
   countCompressibleSpaces,
   getFontKerningMode,
   getRunFontKerningMode,
+  toPaintedText,
 } from "./textMeasurementPolicy";
 
 describe("text measurement policy", () => {
@@ -38,5 +39,9 @@ describe("text measurement policy", () => {
   test("counts only spaces that justification may compress", () => {
     expect(countCompressibleSpaces("one two  three")).toBe(3);
     expect(countCompressibleSpaces("one\u00a0two\tthree\u2003four")).toBe(0);
+  });
+
+  test("paints no-break hyphens with the ordinary hyphen glyph", () => {
+    expect(toPaintedText("non\u2011breaking hyphen")).toBe("non-breaking hyphen");
   });
 });

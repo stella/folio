@@ -19,6 +19,7 @@ import {
   countCompressibleSpaces,
   getFontKerningMode,
   getRunFontKerningMode,
+  toPaintedText,
 } from "../layout-engine/measure/textMeasurementPolicy";
 import type {
   ParagraphBlock,
@@ -508,6 +509,7 @@ function renderTextRun(run: TextRun, doc: Document): HTMLElement {
 
   applyRunStyles(span, run);
   applyPmPositions(span, run.pmStart, run.pmEnd);
+  const paintedText = toPaintedText(run.text);
 
   // Handle hyperlinks
   if (run.hyperlink) {
@@ -522,7 +524,7 @@ function renderTextRun(run: TextRun, doc: Document): HTMLElement {
     if (run.hyperlink.tooltip) {
       anchor.title = run.hyperlink.tooltip;
     }
-    anchor.textContent = run.text;
+    anchor.textContent = paintedText;
     // TOC entries opt out of the Hyperlink character style — Word renders
     // them in the paragraph's own colour, no underline. The bridge sets
     // `noDefaultStyle: true` and strips resolved colour/underline; here we
@@ -544,7 +546,7 @@ function renderTextRun(run: TextRun, doc: Document): HTMLElement {
     span.append(anchor);
   } else {
     // Set text content
-    span.textContent = run.text;
+    span.textContent = paintedText;
   }
   applyWhitespaceUnderline(span, run);
 

@@ -60,6 +60,37 @@ function findTabEls(lineEl: FakeElement): FakeElement[] {
 }
 
 describe("renderLine box model", () => {
+  test("paints no-break hyphens without changing document positions", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "no-break-hyphen",
+      runs: [{ kind: "text", text: "non\u2011breaking", pmStart: 10, pmEnd: 22 }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: "non\u2011breaking".length,
+      width: 84,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 84,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+    const text = lineEl.children.at(0);
+
+    expect(text?.textContent).toBe("non-breaking");
+    expect(text?.dataset["pmStart"]).toBe("10");
+    expect(text?.dataset["pmEnd"]).toBe("22");
+  });
+
   test("paints a discretionary hyphen without assigning it a document position", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",

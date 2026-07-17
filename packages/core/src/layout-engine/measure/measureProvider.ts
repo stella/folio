@@ -12,6 +12,7 @@
 import { panic } from "better-result";
 
 import type { FontMetrics, FontStyle, RunMeasurement, TextMeasurement } from "./measureTypes";
+import { toPaintedText } from "./textMeasurementPolicy";
 
 /**
  * Swappable text-measurement backend. A canvas implementation is installed at
@@ -55,10 +56,10 @@ export const getFontMetrics = (style: FontStyle): FontMetrics =>
   activeMeasureProvider.getFontMetrics(style);
 
 export const measureTextWidth = (text: string, style: FontStyle): number =>
-  activeMeasureProvider.measureTextWidth(text, style);
+  activeMeasureProvider.measureTextWidth(toPaintedText(text), style);
 
 export const measureText = (text: string, style: FontStyle): TextMeasurement =>
-  activeMeasureProvider.measureText(text, style);
+  activeMeasureProvider.measureText(toPaintedText(text), style);
 
 export const measureRun = (text: string, style: FontStyle): RunMeasurement =>
-  activeMeasureProvider.measureRun(text, style);
+  activeMeasureProvider.measureRun(toPaintedText(text), style);

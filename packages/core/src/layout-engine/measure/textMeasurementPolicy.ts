@@ -15,6 +15,9 @@ export const FONT_KERNING_MODE = {
 
 export type FontKerningMode = (typeof FONT_KERNING_MODE)[keyof typeof FONT_KERNING_MODE];
 
+const NO_BREAK_HYPHEN = "\u2011";
+const PAINTED_HYPHEN = "-";
+
 type RunKerningInput = Pick<RunFormatting, "fontSize" | "kerningMinPt">;
 
 /** Resolve an authored kerning threshold against the effective run size. */
@@ -44,4 +47,9 @@ export function countCompressibleSpaces(text: string): number {
     }
   }
   return count;
+}
+
+/** Paint OOXML no-break hyphens with the ordinary hyphen glyph. */
+export function toPaintedText(text: string): string {
+  return text.replaceAll(NO_BREAK_HYPHEN, PAINTED_HYPHEN);
 }
