@@ -953,7 +953,7 @@ describe("toProseDoc", () => {
     );
   });
 
-  test("table style run properties do not import docDefault fonts over Normal", () => {
+  test("table style run properties do not override inherited paragraph style fonts", () => {
     const document: Document = {
       package: {
         styles: {
@@ -970,6 +970,11 @@ describe("toProseDoc", () => {
               rPr: {
                 fontFamily: { ascii: "Aptos", hAnsi: "Aptos" },
               },
+            },
+            {
+              styleId: "Body",
+              type: "paragraph",
+              basedOn: "Normal",
             },
             {
               styleId: "ShadedTable",
@@ -999,6 +1004,7 @@ describe("toProseDoc", () => {
                       content: [
                         {
                           type: "paragraph",
+                          formatting: { styleId: "Body" },
                           content: [
                             {
                               type: "run",

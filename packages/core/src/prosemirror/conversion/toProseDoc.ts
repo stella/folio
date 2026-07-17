@@ -272,18 +272,14 @@ function convertParagraph(
 
   // Get style-based text formatting (font size, bold, color, etc.)
   let styleRunFormatting: TextFormatting | undefined;
-  let paragraphStyleRunFormatting: TextFormatting | undefined;
+  let paragraphStyleFontFamily: TextFormatting["fontFamily"] | undefined;
   if (styleResolver) {
     const resolved = styleResolver.resolveParagraphStyle(paragraph.formatting?.styleId);
     styleRunFormatting = resolved.runFormatting;
-    // Parsed style definitions already contain their cycle-safe `basedOn`
-    // cascade, so this rPr includes inherited named-style font slots too.
-    const paragraphStyle = paragraph.formatting?.styleId
-      ? styleResolver.getStyle(paragraph.formatting.styleId)
-      : styleResolver.getDefaultParagraphStyle();
-    if (paragraphStyle?.type === "paragraph") {
-      paragraphStyleRunFormatting = paragraphStyle.rPr;
-    }
+    paragraphStyleFontFamily = resolveParagraphStyleFontFamily(
+      paragraph.formatting?.styleId,
+      styleResolver,
+    );
   }
 
   const paragraphRunFormatting = resolveRunFormattingWithoutDefaults(
@@ -303,9 +299,9 @@ function convertParagraph(
   // case while still applying the table style's color, emphasis, and size.
   // Preserve the paragraph-style font slots over the table contribution;
   // direct run formatting still wins later in getInheritedRunFormatting.
-  if (paragraphStyleRunFormatting?.fontFamily) {
+  if (paragraphStyleFontFamily) {
     baseRunFormatting = mergeTextFormatting(baseRunFormatting, {
-      fontFamily: paragraphStyleRunFormatting.fontFamily,
+      fontFamily: paragraphStyleFontFamily,
     });
   }
   // With a named paragraph style, w:pPr/w:rPr formats the paragraph mark and
@@ -421,6 +417,22 @@ function convertParagraph(
 
   return schema.node("paragraph", attrs, inlineNodes);
 }
+
+const resolveParagraphStyleFontFamily = (
+  styleId: string | undefined,
+  styleResolver: StyleEngine,
+): TextFormatting["fontFamily"] | undefined => {
+  let style = styleId ? styleResolver.getStyle(styleId) : styleResolver.getDefaultParagraphStyle();
+  const visited = new Set<string>();
+  while (style?.type === "paragraph" && !visited.has(style.styleId)) {
+    visited.add(style.styleId);
+    if (style.rPr?.fontFamily) {
+      return style.rPr.fontFamily;
+    }
+    style = style.basedOn ? styleResolver.getStyle(style.basedOn) : undefined;
+  }
+  return undefined;
+};
 
 /**
  * Apply comment marks to PM nodes within a comment range.
