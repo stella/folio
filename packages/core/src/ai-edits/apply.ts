@@ -32,6 +32,13 @@ import {
   type TableMutationPlanTarget,
   type TableRectangle,
 } from "./table-mutation-plan";
+import {
+  findEnclosingTableBoundary,
+  findEnclosingTableCell,
+  findEnclosingTableRow,
+  tableRectangleCutsMergedCell,
+  type TableRowTarget,
+} from "./table-targets";
 import type {
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
@@ -319,48 +326,12 @@ const collectLiveBlocksByParaId = (doc: PMNode) => {
   return byParaId;
 };
 
-/**
- * Insert ops (insertAfterBlock / insertBeforeBlock) target a block
- * by id. When that block lives inside a `tableCell`, naively
- * inserting at the block's `before` / `after` position drops the
- * new node INSIDE the cell — which is never what the model wants
- * when it says "insert after this paragraph". Escape outward to
- * the nearest enclosing `table` so the synthesized sibling lands
- * adjacent to the table as a doc-level peer.
- *
- * Returns the table's outer boundary positions when the block lies
- * inside one, otherwise `null` to keep the default block-adjacent
- * behaviour for paragraphs at the document root.
- */
-type TableBoundary = { before: number; after: number };
-
-const findEnclosingTableBoundary = (doc: PMNode, blockFrom: number): TableBoundary | null => {
-  const resolved = doc.resolve(blockFrom);
-  // Walk from the deepest ancestor outwards. `depth` is the
-  // resolved-position's parent depth; the doc node sits at depth 0,
-  // so the loop stops before trying to take a `before` of the doc.
-  for (let depth = resolved.depth; depth > 0; depth--) {
-    if (resolved.node(depth).type.name === "table") {
-      return { before: resolved.before(depth), after: resolved.after(depth) };
-    }
-  }
-  return null;
-};
-
 type TableRowInsertion = {
   tableStart: number;
   rowPosition: number;
   rowType: PMNode["type"];
   cells: readonly PMNode[];
   rowspanUpdates: readonly number[];
-};
-
-type TableRowTarget = {
-  table: PMNode;
-  tableStart: number;
-  tablePosition: number;
-  rowIndex: number;
-  rowPosition: number;
 };
 
 type TableRowDeletion = Omit<TableRowTarget, "table">;
@@ -403,98 +374,6 @@ const getTableColumnCoordinateKey = ({
   tablePosition,
   columnIndex,
 }: TableColumnInsertion): string => `${tablePosition}:${columnIndex}`;
-
-type TableCellTarget = {
-  tablePosition: number;
-  cellPosition: number;
-  cellEndPosition: number;
-  leftColumnIndex: number;
-  rightColumnIndex: number;
-  topRowIndex: number;
-  bottomRowIndex: number;
-};
-
-const findEnclosingTableRow = (doc: PMNode, blockFrom: number): TableRowTarget | null => {
-  const resolved = doc.resolve(blockFrom);
-  for (let rowDepth = resolved.depth; rowDepth > 0; rowDepth--) {
-    if (resolved.node(rowDepth).type.spec["tableRole"] !== "row") {
-      continue;
-    }
-    const tableDepth = rowDepth - 1;
-    const table = resolved.node(tableDepth);
-    if (table.type.spec["tableRole"] !== "table") {
-      return null;
-    }
-    return {
-      table,
-      tableStart: resolved.start(tableDepth),
-      tablePosition: resolved.before(tableDepth),
-      rowIndex: resolved.index(tableDepth),
-      rowPosition: resolved.before(rowDepth),
-    };
-  }
-  return null;
-};
-
-const findEnclosingTableCell = (doc: PMNode, blockFrom: number): TableCellTarget | null => {
-  const resolved = doc.resolve(blockFrom);
-  for (let cellDepth = resolved.depth; cellDepth > 0; cellDepth--) {
-    const cell = resolved.node(cellDepth);
-    const tableRole = cell.type.spec["tableRole"];
-    if (tableRole !== "cell" && tableRole !== "header_cell") {
-      continue;
-    }
-    const rowDepth = cellDepth - 1;
-    const tableDepth = rowDepth - 1;
-    if (tableDepth < 0) {
-      return null;
-    }
-    if (
-      resolved.node(rowDepth).type.spec["tableRole"] !== "row" ||
-      resolved.node(tableDepth).type.spec["tableRole"] !== "table"
-    ) {
-      return null;
-    }
-    const table = resolved.node(tableDepth);
-    const tableStart = resolved.start(tableDepth);
-    const cellPosition = resolved.before(cellDepth);
-    const cellRect = TableMap.get(table).findCell(cellPosition - tableStart);
-    return {
-      tablePosition: resolved.before(tableDepth),
-      cellPosition,
-      cellEndPosition: cellPosition + cell.nodeSize,
-      leftColumnIndex: cellRect.left,
-      rightColumnIndex: cellRect.right,
-      topRowIndex: cellRect.top,
-      bottomRowIndex: cellRect.bottom,
-    };
-  }
-  return null;
-};
-
-const tableRectangleCutsMergedCell = (map: TableMap, rectangle: TableRectangle): boolean => {
-  for (let row = rectangle.top; row < rectangle.bottom; row++) {
-    const leftIndex = row * map.width + rectangle.left;
-    const rightIndex = row * map.width + rectangle.right - 1;
-    if (
-      (rectangle.left > 0 && map.map[leftIndex] === map.map[leftIndex - 1]) ||
-      (rectangle.right < map.width && map.map[rightIndex] === map.map[rightIndex + 1])
-    ) {
-      return true;
-    }
-  }
-  for (let column = rectangle.left; column < rectangle.right; column++) {
-    const topIndex = rectangle.top * map.width + column;
-    const bottomIndex = (rectangle.bottom - 1) * map.width + column;
-    if (
-      (rectangle.top > 0 && map.map[topIndex] === map.map[topIndex - map.width]) ||
-      (rectangle.bottom < map.height && map.map[bottomIndex] === map.map[bottomIndex + map.width])
-    ) {
-      return true;
-    }
-  }
-  return false;
-};
 
 const isEmptyTableCell = (cell: PMNode): boolean =>
   cell.childCount === 1 &&
