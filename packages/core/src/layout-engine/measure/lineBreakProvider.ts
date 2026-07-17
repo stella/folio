@@ -240,11 +240,11 @@ const findSimpleGraphemeBreaks = (text: string): number[] | undefined => {
 
   const breaks: number[] = [];
   for (let index = 0; index < text.length; index += 1) {
-    const character = firstCodePoint(text, index);
-    if (character === undefined || character.length !== 1) {
+    const codeUnit = text.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdfff) {
       return undefined;
     }
-    if (character === "\r" && text[index + 1] === "\n") {
+    if (codeUnit === 0x0d && text.charCodeAt(index + 1) === 0x0a) {
       index += 1;
     }
     breaks.push(index + 1);
@@ -290,14 +290,16 @@ const findSimpleBreaks = (text: string, policy?: LineBreakPolicy): number[] | un
 
   const breaks: number[] = [];
   for (let index = 0; index < text.length; index += 1) {
-    const character = firstCodePoint(text, index);
-    if (character === undefined || character.length !== 1) {
+    const codePoint = text.charCodeAt(index);
+    if (codePoint >= 0xd800 && codePoint <= 0xdfff) {
       return undefined;
     }
-    const codePoint = text.charCodeAt(index);
     if (codePoint === 0x0d && text.charCodeAt(index + 1) === 0x0a) {
       continue;
     }
+    // SAFETY: index is bounded by text.length, and surrogate code units have
+    // already fallen back to the complete Unicode provider above.
+    const character = text[index]!;
     if (
       (isSimpleWhitespace(character, codePoint) && !NONBREAKING_SPACES.has(character)) ||
       BREAK_AFTER_CHARACTER.has(character) ||
