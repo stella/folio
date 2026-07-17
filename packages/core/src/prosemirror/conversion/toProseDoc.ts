@@ -21,7 +21,6 @@ import type {
   BlockSdt,
   Document,
   Paragraph,
-  ParagraphContent,
   ParagraphFormatting,
   Run,
   TextFormatting,
