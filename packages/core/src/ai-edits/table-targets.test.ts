@@ -120,5 +120,8 @@ describe("table targets", () => {
 
     expect(tableRectangleCutsMergedCell(map, { left: 1, top: 0, right: 3, bottom: 2 })).toBe(true);
     expect(tableRectangleCutsMergedCell(map, { left: 0, top: 0, right: 3, bottom: 2 })).toBe(false);
+    expect(tableRectangleCutsMergedCell(map, { left: -1, top: 0, right: 1, bottom: 2 })).toBe(
+      false,
+    );
   });
 });

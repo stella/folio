@@ -99,6 +99,14 @@ export const findEnclosingTableCell = (doc: PMNode, blockFrom: number): TableCel
 };
 
 export const tableRectangleCutsMergedCell = (map: TableMap, rectangle: TableRectangle): boolean => {
+  if (
+    rectangle.left < 0 ||
+    rectangle.top < 0 ||
+    rectangle.right > map.width ||
+    rectangle.bottom > map.height
+  ) {
+    return false;
+  }
   for (let row = rectangle.top; row < rectangle.bottom; row++) {
     const leftIndex = row * map.width + rectangle.left;
     const rightIndex = row * map.width + rectangle.right - 1;
