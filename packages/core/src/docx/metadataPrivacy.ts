@@ -91,6 +91,27 @@ const XML_DECLARATION_PATTERN = /^\s*<\?xml[^?]*\?>/u;
 const MAX_INPUT_BYTES = 50 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 5000;
 const MAX_CORE_PROPERTIES_BYTES = 1024 * 1024;
+const CORE_PROPERTIES_PATH_LOWER = "docprops/core.xml";
+
+/**
+ * Look up a package part by its conventional lowercase path, falling back to
+ * a case-insensitive scan. OPC part names are case-insensitive, so a
+ * producer that wrote `docProps/Core.xml` (or another casing) must still be
+ * found — otherwise the privacy rewrite silently no-ops and the unscrubbed
+ * buffer round-trips untouched.
+ */
+const findZipEntryCaseInsensitive = (zip: JSZip, lowerPath: string): JSZip.JSZipObject | null => {
+  const direct = zip.file(lowerPath);
+  if (direct) {
+    return direct;
+  }
+  for (const [path, file] of Object.entries(zip.files)) {
+    if (!file.dir && path.toLowerCase() === lowerPath) {
+      return file;
+    }
+  }
+  return null;
+};
 
 const loadPrivacyArchive = async (buffer: ArrayBuffer): Promise<JSZip> => {
   if (buffer.byteLength > MAX_INPUT_BYTES) {
@@ -116,7 +137,7 @@ const loadPrivacyArchive = async (buffer: ArrayBuffer): Promise<JSZip> => {
       reason: "too-many-entries",
     });
   }
-  const coreProperties = zip.file("docProps/core.xml");
+  const coreProperties = findZipEntryCaseInsensitive(zip, CORE_PROPERTIES_PATH_LOWER);
   if (!coreProperties) {
     return zip;
   }
@@ -184,7 +205,7 @@ export const rewriteDocxMetadataPrivacy = async (
 ): Promise<RewriteDocxMetadataPrivacyResult> => {
   const appliedTransforms = resolveFolioDocumentPrivacyTransforms(transforms);
   const zip = await loadPrivacyArchive(buffer);
-  const coreProperties = zip.file("docProps/core.xml");
+  const coreProperties = findZipEntryCaseInsensitive(zip, CORE_PROPERTIES_PATH_LOWER);
   if (!coreProperties) {
     return {
       buffer,
@@ -201,7 +222,9 @@ export const rewriteDocxMetadataPrivacy = async (
       privacyReport: { appliedTransforms, removedMetadataProperties: [] },
     };
   }
-  zip.file("docProps/core.xml", rewritten.xml);
+  // Write back under the entry's original name/casing so a non-conventional
+  // producer doesn't end up with two core-properties-shaped parts.
+  zip.file(coreProperties.name, rewritten.xml);
   return {
     buffer: await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" }),
     privacyReport: {

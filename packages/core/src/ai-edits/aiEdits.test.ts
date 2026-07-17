@@ -44,6 +44,7 @@ const schema = new Schema({
       attrs: {
         trIns: { default: null },
         trDel: { default: null },
+        hidden: { default: false },
       },
     },
     tableCell: {
@@ -531,6 +532,31 @@ describe("Folio AI edit operations", () => {
     expect(snapshot.blocks).toEqual([]);
     expect(snapshot.emptyDocumentAnchorId).toBeUndefined();
     expect(snapshot.anchors).toEqual({});
+  });
+
+  test("hides text inside a hidden table row from the AI-facing snapshot", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", { hidden: true }, [
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [schema.text("Hidden secret")]),
+          ]),
+        ]),
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [schema.text("Visible")]),
+          ]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc });
+
+    const snapshot = createFolioAIEditSnapshot(state.doc);
+
+    expect(snapshot.blocks.map((block) => block.text)).toEqual(["Visible"]);
+    expect(
+      Object.values(snapshot.anchors).some((anchor) => anchor.text.includes("Hidden secret")),
+    ).toBe(false);
   });
 
   test("snapshot uses sequential fallback ids for duplicate paraIds", () => {

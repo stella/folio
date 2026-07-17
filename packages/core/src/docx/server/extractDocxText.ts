@@ -1,9 +1,11 @@
 import type { DocxArchive } from "./boundedArchive";
 import { loadDocxArchive } from "./boundedArchive";
+import { parseRelationships, RELATIONSHIP_TYPES } from "../relsParser";
 import {
   findAllDeep,
   findChild,
   findDeep,
+  getAttribute,
   getAttributeAnyPrefix,
   getLocalName,
   getTextContent,
@@ -11,7 +13,7 @@ import {
   type XmlElement,
 } from "../xmlParser";
 
-const HEADER_FOOTER_PATH = /^word\/(?:header|footer)\d+\.xml$/u;
+const DOCUMENT_RELS_PATH = "word/_rels/document.xml.rels";
 
 /** Document part containing an extracted paragraph. */
 export type DocxParagraphSource = "header" | "body" | "footer";
@@ -195,6 +197,8 @@ type ExtractPartsOptions = {
   source: "header" | "footer";
   rootName: "hdr" | "ftr";
   startIndex: number;
+  /** Part paths to read, in extraction order — see {@link resolveReferencedHeaderFooterParts}. */
+  paths: readonly string[];
 };
 
 const extractParts = async ({
@@ -202,14 +206,11 @@ const extractParts = async ({
   source,
   rootName,
   startIndex,
+  paths,
 }: ExtractPartsOptions): Promise<ExtractContainerResult> => {
   const paragraphs: ExtractedDocxParagraph[] = [];
   let charCount = 0;
   let nextIndex = startIndex;
-  const prefix = `word/${source}`;
-  const paths = archive.entries
-    .filter((path) => HEADER_FOOTER_PATH.test(path) && path.startsWith(prefix))
-    .toSorted();
 
   for (const path of paths) {
     // oxlint-disable-next-line no-await-in-loop -- part order defines stable paragraph indices
@@ -235,6 +236,73 @@ const extractParts = async ({
   return { paragraphs, charCount };
 };
 
+/** A `word/_rels/document.xml.rels` `Target` is relative to `word/`; resolve it to a full archive-entry path. */
+const resolveWordPartPath = (target: string): string =>
+  target.startsWith("/") ? target.slice(1) : `word/${target}`;
+
+type ReferencedHeaderFooterParts = {
+  headers: string[];
+  footers: string[];
+};
+
+/**
+ * Resolve the header/footer parts actually wired into the document via
+ * `word/_rels/document.xml.rels` + each section's `w:headerReference` /
+ * `w:footerReference`, instead of extracting every `word/header*.xml` /
+ * `word/footer*.xml` entry by filename. A DOCX can carry an orphaned
+ * header/footer part (stale, or planted by an attacker) that no section
+ * references — reading it unconditionally would surface prompt-injection or
+ * stale content that Word itself never renders.
+ */
+const resolveReferencedHeaderFooterParts = async (
+  archive: DocxArchive,
+  documentRoot: XmlElement,
+): Promise<ReferencedHeaderFooterParts> => {
+  const relsXml = await archive.readEntryString(DOCUMENT_RELS_PATH);
+  if (relsXml === null) {
+    return { headers: [], footers: [] };
+  }
+  const relationships = parseRelationships(relsXml);
+
+  const headerRIds = new Set<string>();
+  const footerRIds = new Set<string>();
+  for (const sectPr of findAllDeep(documentRoot, "w", "sectPr")) {
+    for (const ref of findAllDeep(sectPr, "w", "headerReference")) {
+      const rId = getAttribute(ref, "r", "id");
+      if (rId !== null) {
+        headerRIds.add(rId);
+      }
+    }
+    for (const ref of findAllDeep(sectPr, "w", "footerReference")) {
+      const rId = getAttribute(ref, "r", "id");
+      if (rId !== null) {
+        footerRIds.add(rId);
+      }
+    }
+  }
+
+  const resolvePaths = (rIds: Set<string>, relationshipType: string): string[] => {
+    const paths = new Set<string>();
+    for (const rId of rIds) {
+      const relationship = relationships.get(rId);
+      if (
+        !relationship ||
+        relationship.type !== relationshipType ||
+        relationship.targetMode === "External"
+      ) {
+        continue;
+      }
+      paths.add(resolveWordPartPath(relationship.target));
+    }
+    return [...paths].toSorted();
+  };
+
+  return {
+    headers: resolvePaths(headerRIds, RELATIONSHIP_TYPES.header),
+    footers: resolvePaths(footerRIds, RELATIONSHIP_TYPES.footer),
+  };
+};
+
 const createEmptyResult = (): ExtractedDocxText => ({
   paragraphs: [],
   charCount: 0,
@@ -257,11 +325,14 @@ export const extractDocxText = async (
     return createEmptyResult();
   }
 
+  const referencedParts = await resolveReferencedHeaderFooterParts(archive, root);
+
   const headers = await extractParts({
     archive,
     source: "header",
     rootName: "hdr",
     startIndex: 0,
+    paths: referencedParts.headers,
   });
   const bodyResult = extractContainer({
     container: body,
@@ -273,6 +344,7 @@ export const extractDocxText = async (
     source: "footer",
     rootName: "ftr",
     startIndex: headers.paragraphs.length + bodyResult.paragraphs.length,
+    paths: referencedParts.footers,
   });
 
   return {

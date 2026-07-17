@@ -1245,7 +1245,10 @@ function collectTableRowFootnoteIds(
   row: TableBlock["rows"][number] | undefined,
   footnoteHeightById: Map<number, number> | undefined,
 ): number[] {
-  if (!row || !footnoteHeightById) {
+  // A footnote referenced only from a hidden row must not reserve or paint
+  // its body — Word never renders a hidden row, so its footnote reference
+  // never becomes visible either.
+  if (!row || !footnoteHeightById || row.hidden) {
     return [];
   }
 
@@ -1267,6 +1270,9 @@ function collectTableRowFootnoteIds(
       }
       if (block.kind === "table") {
         for (const nestedRow of block.rows) {
+          if (nestedRow.hidden) {
+            continue;
+          }
           for (const cell of nestedRow.cells) {
             walk(cell.blocks);
           }

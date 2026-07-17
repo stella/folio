@@ -1,31 +1,80 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { RELATIONSHIP_TYPES } from "../relsParser";
 import { extractDocxText } from "./extractDocxText";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PACKAGE_RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
 
 type MakeDocxOptions = {
   body: string;
   headers?: Record<string, string>;
   footers?: Record<string, string>;
+  /**
+   * Header/footer part paths present in the archive but deliberately left
+   * out of `word/_rels/document.xml.rels` + every section's
+   * `w:headerReference` / `w:footerReference` — an orphan part no section
+   * actually wires up, the way a stale or planted part would look.
+   */
+  orphanParts?: Record<string, "header" | "footer">;
 };
 
+/**
+ * Build a minimal DOCX. When `headers`/`footers` are given, also wires them
+ * up the way a real Word document does — a relationship in
+ * `word/_rels/document.xml.rels` plus a matching `w:headerReference` /
+ * `w:footerReference` on the body's `w:sectPr` — since `extractDocxText`
+ * resolves referenced parts through that wiring rather than by filename.
+ */
 const makeDocx = async ({
   body,
   headers = {},
   footers = {},
+  orphanParts = {},
 }: MakeDocxOptions): Promise<Uint8Array> => {
   const zip = new JSZip();
+  const relationships: string[] = [];
+  const sectionReferences: string[] = [];
+  let nextRId = 1;
+
+  const wireParts = (
+    parts: Record<string, string>,
+    kind: "header" | "footer",
+    relationshipType: string,
+  ): void => {
+    const rootName = kind === "header" ? "hdr" : "ftr";
+    for (const [path, content] of Object.entries(parts)) {
+      zip.file(path, `<w:${rootName} xmlns:w="${W_NS}">${content}</w:${rootName}>`);
+      const rId = `rId${nextRId++}`;
+      const target = path.replace(/^word\//, "");
+      relationships.push(`<Relationship Id="${rId}" Type="${relationshipType}" Target="${target}"/>`);
+      sectionReferences.push(`<w:${kind}Reference w:type="default" r:id="${rId}"/>`);
+    }
+  };
+
+  wireParts(headers, "header", RELATIONSHIP_TYPES.header);
+  wireParts(footers, "footer", RELATIONSHIP_TYPES.footer);
+
+  for (const [path, kind] of Object.entries(orphanParts)) {
+    const rootName = kind === "header" ? "hdr" : "ftr";
+    zip.file(path, `<w:${rootName} xmlns:w="${W_NS}">${paragraph("Orphan")}</w:${rootName}>`);
+    // Deliberately no Relationship entry and no section reference — this
+    // part exists in the archive but nothing wires it up.
+  }
+
+  const sectPr = sectionReferences.length > 0 ? `<w:sectPr>${sectionReferences.join("")}</w:sectPr>` : "";
   zip.file(
     "word/document.xml",
-    `<w:document xmlns:w="${W_NS}"><w:body>${body}</w:body></w:document>`,
+    `<w:document xmlns:w="${W_NS}" xmlns:r="${R_NS}"><w:body>${body}${sectPr}</w:body></w:document>`,
   );
-  for (const [path, content] of Object.entries(headers)) {
-    zip.file(path, `<w:hdr xmlns:w="${W_NS}">${content}</w:hdr>`);
-  }
-  for (const [path, content] of Object.entries(footers)) {
-    zip.file(path, `<w:ftr xmlns:w="${W_NS}">${content}</w:ftr>`);
+  if (relationships.length > 0) {
+    zip.file(
+      "word/_rels/document.xml.rels",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+        `<Relationships xmlns="${PACKAGE_RELATIONSHIPS_NS}">${relationships.join("")}</Relationships>`,
+    );
   }
   return await zip.generateAsync({ type: "uint8array" });
 };
@@ -68,6 +117,30 @@ describe("extractDocxText", () => {
     ]);
     expect(result.charCount).toBe("Header 1Header 2BeforeCellControlAfterFooter".length);
     expect(result.view).toBe("accepted");
+  });
+
+  test("excludes an orphaned header/footer part no section references", async () => {
+    const bytes = await makeDocx({
+      body: paragraph("Before"),
+      headers: {
+        "word/header1.xml": paragraph("Referenced header"),
+      },
+      orphanParts: {
+        // Present in the archive, and filename-shaped like a real header,
+        // but wired into neither the rels nor any section — stale content
+        // (or a planted prompt-injection payload) that Word itself never
+        // renders must not be surfaced here either.
+        "word/header2.xml": "header",
+        "word/footer1.xml": "footer",
+      },
+    });
+
+    const result = await extractDocxText(bytes);
+
+    expect(result.paragraphs.map(({ text, source }) => ({ text, source }))).toEqual([
+      { text: "Referenced header", source: "header" },
+      { text: "Before", source: "body" },
+    ]);
   });
 
   test("preserves explicit whitespace and applies the accepted revision view", async () => {

@@ -528,6 +528,14 @@ export function isPreservableDocxEntry(path: string): boolean {
     return PRESERVABLE_MEDIA_MIME_TYPES.has(getMediaMimeType(path));
   }
 
+  // Word writes an optional package preview image (`docProps/thumbnail.jpeg`,
+  // `.wmf`, or `.emf`) into nearly every authored file. It is plain media,
+  // not active content; treat it like `word/media/` so neither the repack
+  // nor the selective-save non-preservable-entry guard drops it.
+  if (lowerPath.startsWith("docprops/thumbnail.")) {
+    return PRESERVABLE_MEDIA_MIME_TYPES.has(getMediaMimeType(path));
+  }
+
   if (lowerPath.startsWith("word/fonts/")) {
     return true;
   }

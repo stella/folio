@@ -11,7 +11,14 @@ import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { ContentControlLockedError, ContentControlTypeError } from "../../content-controls";
+import {
+  ContentControlBoundError,
+  ContentControlLockedError,
+  ContentControlTypeError,
+} from "../../content-controls";
+
+/** A minimal `<w:sdtPr>` carrying a `<w:dataBinding>` — marks the control bound. */
+const BOUND_RAW_PROPERTIES_XML = '<w:sdtPr><w:dataBinding w:xpath="/root/field"/></w:sdtPr>';
 import { schema, singletonManager } from "../schema";
 import {
   dispatchDatePick,
@@ -216,6 +223,43 @@ describe("handleContentControlWidgetClick", () => {
     expect(events.at(0)?.error).toBeInstanceOf(ContentControlLockedError);
   });
 
+  test("refuses instead of throwing when toggling a bound (data-bound) checkbox", () => {
+    // An attacker DOCX can bind any typed control to XML data; the click
+    // handler must surface ContentControlBoundError as a refusal, the same
+    // as a lock or type mismatch, not let it escape as an uncaught error.
+    const sdt = schema.node(
+      "blockSdt",
+      {
+        checked: false,
+        sdtType: "checkbox",
+        tag: "bound",
+        rawPropertiesXml: BOUND_RAW_PROPERTIES_XML,
+      },
+      [schema.node("paragraph", {}, [schema.text("☐")])],
+    );
+    const stateRef = {
+      state: EditorState.create({
+        doc: schema.node("doc", null, [sdt]),
+        schema,
+        plugins: [...singletonManager.getPlugins()],
+      }),
+    };
+
+    const { events, handled } = clickWidget({
+      checked: false,
+      stateRef,
+      tag: "bound",
+      type: "checkbox",
+    });
+
+    expect(handled).toBe(true);
+    expect(events).toHaveLength(1);
+    expect(events.at(0)?.kind).toBe("refused");
+    expect(events.at(0)?.error).toBeInstanceOf(ContentControlBoundError);
+    // Nothing was applied — the control's state is untouched.
+    expect(stateRef.state.doc.firstChild?.attrs["checked"]).toBe(false);
+  });
+
   test("surfaces a type error when painted metadata disagrees with the document", () => {
     const sdt = schema.node(
       "blockSdt",
@@ -303,6 +347,29 @@ describe("dispatchDropdownPick — lock handling", () => {
   });
 });
 
+describe("dispatchDropdownPick — bound handling", () => {
+  test("returns false instead of throwing when the picked control is bound", () => {
+    const sdt = schema.node(
+      "blockSdt",
+      {
+        sdtType: "dropdown",
+        tag: "state",
+        rawPropertiesXml: BOUND_RAW_PROPERTIES_XML,
+        listItems: JSON.stringify([{ value: "ca", displayText: "California" }]),
+      },
+      [schema.node("paragraph", {}, [schema.text("☐")])],
+    );
+    const initial = EditorState.create({
+      doc: schema.node("doc", null, [sdt]),
+      schema,
+      plugins: [...singletonManager.getPlugins()],
+    });
+    const ref = { state: initial };
+    expect(() => dispatchDropdownPick(viewLike(ref) as EditorView, 0, "ca")).not.toThrow();
+    expect(dispatchDropdownPick(viewLike(ref) as EditorView, 0, "ca")).toBe(false);
+  });
+});
+
 describe("dispatchDatePick", () => {
   test("returns false instead of throwing when the picked control is locked", () => {
     const sdt = schema.node(
@@ -311,6 +378,26 @@ describe("dispatchDatePick", () => {
         sdtType: "date",
         tag: "effective",
         lock: "sdtContentLocked",
+      },
+      [schema.node("paragraph", {}, [])],
+    );
+    const initial = EditorState.create({
+      doc: schema.node("doc", null, [sdt]),
+      schema,
+      plugins: [...singletonManager.getPlugins()],
+    });
+    const ref = { state: initial };
+    expect(() => dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02")).not.toThrow();
+    expect(dispatchDatePick(viewLike(ref) as EditorView, 0, "2026-06-02")).toBe(false);
+  });
+
+  test("returns false instead of throwing when the picked control is bound", () => {
+    const sdt = schema.node(
+      "blockSdt",
+      {
+        sdtType: "date",
+        tag: "effective",
+        rawPropertiesXml: BOUND_RAW_PROPERTIES_XML,
       },
       [schema.node("paragraph", {}, [])],
     );

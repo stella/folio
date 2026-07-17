@@ -99,6 +99,36 @@ describe("footnote line-level reservation", () => {
     expect(layout.pages[0]!.footnoteReservedHeight).toBeGreaterThanOrEqual(30);
   });
 
+  test("does not reserve or record a footnote referenced only from a hidden table row", () => {
+    const paragraph: ParagraphBlock = {
+      kind: "paragraph",
+      id: "cell-paragraph",
+      runs: [textRun(1, "cell"), textRun(5, "1", 9)],
+    };
+    const table: TableBlock = {
+      kind: "table",
+      id: "table",
+      rows: [{ id: "row", hidden: true, cells: [{ id: "cell", blocks: [paragraph] }] }],
+    };
+    const tableMeasure: TableMeasure = {
+      kind: "table",
+      rows: [{ cells: [{ blocks: [], width: 100, height: 20 }], height: 20 }],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 20,
+    };
+
+    const layout = layoutDocument([table], [tableMeasure], {
+      pageSize: { w: 600, h: 100 },
+      margins: MARGINS,
+      pageGap: 0,
+      footnoteHeightById: new Map([[9, 30]]),
+    });
+
+    expect(layout.pages[0]!.footnoteIds ?? []).toEqual([]);
+    expect(layout.pages[0]!.footnoteReservedHeight ?? 0).toBe(0);
+  });
+
   test("moves a footnote-bearing table row with its footnote reservation", () => {
     const { block: paragraph, measure: paragraphMeasure } = makePara(
       1,

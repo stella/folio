@@ -16,6 +16,7 @@ import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
+import { isPreservableDocxEntry } from "./unzip";
 import {
   applyUpdatesToZip,
   findMaxRId,
@@ -423,6 +424,21 @@ export async function attemptSelectiveSave(
   try {
     const JSZip = (await import("jszip")).default;
     const zip = await JSZip.loadAsync(originalBuffer);
+
+    // The selective path only ever overlays a handful of known-safe parts
+    // (document.xml, comments, headers/footers, numbering, core props) on
+    // top of the ORIGINAL zip and re-emits everything else verbatim —
+    // unlike the full repack (`repackDocx`), which drops every entry that
+    // fails `isPreservableDocxEntry` (macros, OLE embeddings, disallowed
+    // media). An untrusted DOCX carrying one of those would otherwise
+    // round-trip its active content unfiltered through a selective save.
+    // Bail to the full repack, which owns that filtering.
+    for (const [path, file] of Object.entries(zip.files)) {
+      if (!file.dir && !isPreservableDocxEntry(path)) {
+        return null;
+      }
+    }
+
     const updates = new Map<string, string>();
 
     // Patch document.xml and the note parts (footnotes.xml / endnotes.xml). A

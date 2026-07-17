@@ -16,7 +16,11 @@
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { ContentControlLockedError, ContentControlTypeError } from "../../content-controls";
+import {
+  ContentControlBoundError,
+  ContentControlLockedError,
+  ContentControlTypeError,
+} from "../../content-controls";
 import { findBlockSdtMatch, setContentControlValueTr } from "../commands/contentControls";
 
 export type ContentControlWidgetAnchor = {
@@ -51,7 +55,7 @@ export type ContentControlWidgetEvent =
       pmPos: number;
       sdtType: string;
       anchor: ContentControlWidgetAnchor;
-      error: ContentControlLockedError | ContentControlTypeError;
+      error: ContentControlLockedError | ContentControlTypeError | ContentControlBoundError;
     };
 
 export type ContentControlWidgetCallback = (event: ContentControlWidgetEvent) => void;
@@ -225,9 +229,17 @@ export const handleContentControlWidgetClick = ({
       return true;
     }
   } catch (error) {
-    if (error instanceof ContentControlLockedError || error instanceof ContentControlTypeError) {
+    if (
+      error instanceof ContentControlLockedError ||
+      error instanceof ContentControlTypeError ||
+      error instanceof ContentControlBoundError
+    ) {
       // Refusal is expected: emit it through the typed callback and let
-      // the editor shell decide how to surface it.
+      // the editor shell decide how to surface it. A bound (data-bound)
+      // control throws ContentControlBoundError from
+      // setContentControlValueTr — an attacker DOCX can bind any typed
+      // control, so this must be a refusal like the other two, not an
+      // uncaught UI exception.
       onEvent({
         kind: "refused",
         tag,
@@ -305,10 +317,14 @@ export function dispatchDropdownPick(view: EditorView, pmPos: number, value: str
     return true;
   } catch (error) {
     // The click-time preflight should have caught lock refusals, but the
-    // doc could have changed mid-picker. Swallow the typed refusal so the
-    // adapter UI does not crash; return false so the caller knows the
-    // change was rejected.
-    if (error instanceof ContentControlLockedError || error instanceof ContentControlTypeError) {
+    // doc could have changed mid-picker (or the control turned out to be
+    // data-bound). Swallow the typed refusal so the adapter UI does not
+    // crash; return false so the caller knows the change was rejected.
+    if (
+      error instanceof ContentControlLockedError ||
+      error instanceof ContentControlTypeError ||
+      error instanceof ContentControlBoundError
+    ) {
       return false;
     }
     throw error;
@@ -331,7 +347,11 @@ export function dispatchDatePick(view: EditorView, pmPos: number, date: string):
     view.dispatch(tr);
     return true;
   } catch (error) {
-    if (error instanceof ContentControlLockedError || error instanceof ContentControlTypeError) {
+    if (
+      error instanceof ContentControlLockedError ||
+      error instanceof ContentControlTypeError ||
+      error instanceof ContentControlBoundError
+    ) {
       return false;
     }
     throw error;

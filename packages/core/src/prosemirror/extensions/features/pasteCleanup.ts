@@ -164,6 +164,38 @@ const NOISE_TAG = new RegExp(`<\\/?(?:font|meta|link)${TAG_TAIL}>`, "gi");
 const EMPTY_SPAN = new RegExp(`<span(?:\\s${TAG_TAIL})?><\\/span>`, "gi");
 const MAX_EMPTY_SPAN_PASSES = 5;
 
+// ProseMirror's own clipboard serializer wraps a copied slice's top element
+// with `data-pm-slice="<openStart> <openEnd> <context>"` (see
+// prosemirror-view's `serializeForClipboard`). Its presence is the only
+// signal available at this string-transform layer that the incoming HTML
+// came from a ProseMirror editor's own copy rather than an arbitrary
+// external DOM (another app, a browser page, a hand-crafted paste).
+const PM_SLICE_MARKER = /\bdata-pm-slice\s*=/i;
+
+// `data-docx-textbox-anchor` is an internal reconstruction marker
+// (`TextBoxAnchorExtension`) that `fromProseDoc` uses to relocate a
+// paragraph's sibling text box on save, registering the first anchor it
+// sees for a given id. It should never originate from outside a
+// ProseMirror-serialized folio slice: an external page could plant a span
+// carrying an id that collides with — and hijacks — a real text box's
+// anchor (relocating it, or wrapping it in an attacker-controlled
+// hyperlink). Strip the attribute so a matching span parses as an inert,
+// zero-width `<span>` instead of a `textBoxAnchor` node.
+const TEXTBOX_ANCHOR_ATTR = /\s+data-docx-textbox-anchor(?:="[^"]*"|='[^']*')?/gi;
+
+/**
+ * Remove the `data-docx-textbox-anchor` marker from HTML that did not come
+ * from a ProseMirror clipboard slice (see {@link PM_SLICE_MARKER}). Internal
+ * copy/paste of a real text box carries the marker HTML unmodified so it
+ * keeps working; anything else has the marker stripped defensively.
+ */
+function stripForeignTextBoxAnchors(html: string, originalHtml: string): string {
+  if (PM_SLICE_MARKER.test(originalHtml)) {
+    return html;
+  }
+  return html.replace(TEXTBOX_ANCHOR_ATTR, "");
+}
+
 /**
  * Remove empty spans left behind after stripping `mso-*` styles. Only truly
  * empty spans are removed (whitespace-only spans are kept so word-separating
@@ -203,6 +235,7 @@ export function cleanPastedHtml(html: string): string {
     cleaned = cleaned.replace(NOISE_TAG, "");
     cleaned = stripMsoStyles(cleaned);
     cleaned = stripEmptySpans(cleaned);
+    cleaned = stripForeignTextBoxAnchors(cleaned, html);
     return cleaned.trim();
   } catch {
     return html;

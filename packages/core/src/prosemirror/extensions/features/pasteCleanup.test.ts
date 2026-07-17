@@ -181,3 +181,36 @@ describe("cleanPastedHtml — safety and robustness", () => {
     expect(out).toBe("");
   });
 });
+
+describe("cleanPastedHtml — text-box anchor hijack via paste", () => {
+  test("strips a data-docx-textbox-anchor marker from external HTML", () => {
+    // A page outside folio could plant this marker with an id chosen to
+    // collide with a real anchor elsewhere in the document; stripping it
+    // makes the pasted span parse as an inert, unrecognized span instead of
+    // a textBoxAnchor node.
+    const html = '<p><span data-docx-textbox-anchor="0:0">​</span>Hijack</p>';
+    const out = cleanPastedHtml(html);
+    expect(out).not.toContain("data-docx-textbox-anchor");
+    expect(out).toContain("Hijack");
+  });
+
+  test("keeps a data-docx-textbox-anchor marker inside a ProseMirror clipboard slice", () => {
+    // Internal copy/paste of a real text box serializes through
+    // prosemirror-view's clipboard wrapper, which stamps `data-pm-slice` on
+    // the outer element. That must not be treated as external DOM.
+    const html =
+      '<div data-pm-slice="0 0 []"><p><span data-docx-textbox-anchor="0:0">​</span>Real box</p></div>';
+    const out = cleanPastedHtml(html);
+    expect(out).toContain("data-docx-textbox-anchor");
+    expect(out).toContain("Real box");
+  });
+
+  test("strips a single- or double-quoted anchor attribute value", () => {
+    expect(cleanPastedHtml("<span data-docx-textbox-anchor='0:0'>x</span>")).not.toContain(
+      "data-docx-textbox-anchor",
+    );
+    expect(cleanPastedHtml('<span data-docx-textbox-anchor="0:0">x</span>')).not.toContain(
+      "data-docx-textbox-anchor",
+    );
+  });
+});

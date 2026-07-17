@@ -53,9 +53,10 @@ async function makeFixture(extraPaddingBytes = 0): Promise<ArrayBuffer> {
   zip.file("word/styles.xml", STYLES);
   zip.file("docProps/core.xml", CORE_PROPS);
   if (extraPaddingBytes > 0) {
-    // Synthetic large binary so we can drive the memory-threshold guard
+    // Synthetic large media entry (a preservable type, so it does not trip
+    // the non-preservable-entry guard) to drive the memory-threshold guard
     // without inflating the test runner with multi-MB fixtures.
-    zip.file("word/media/padding.bin", new Uint8Array(extraPaddingBytes), {
+    zip.file("word/media/padding.png", new Uint8Array(extraPaddingBytes), {
       compression: "STORE",
     });
   }
@@ -241,6 +242,74 @@ describe("fallback contract", () => {
     });
 
     expect(result).toBeNull();
+  });
+});
+
+describe("non-preservable entry guard", () => {
+  test("bails to full repack when the original zip carries a vbaProject.bin macro part", async () => {
+    // attemptSelectiveSave loads the ORIGINAL buffer into JSZip and overlays
+    // only a handful of known-safe part updates — unlike repackDocx, which
+    // drops every entry failing isPreservableDocxEntry (macros, OLE
+    // embeddings, disallowed media). Without this guard, an attacker DOCX
+    // carrying an active-content part would round-trip it unfiltered
+    // through the selective path.
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", CONTENT_TYPES);
+    zip.file("_rels/.rels", PACKAGE_RELS);
+    zip.file("word/_rels/document.xml.rels", DOC_RELS);
+    zip.file("word/document.xml", DOCUMENT_XML);
+    zip.file("word/styles.xml", STYLES);
+    zip.file("docProps/core.xml", CORE_PROPS);
+    zip.file("word/vbaProject.bin", new Uint8Array([0, 1, 2, 3]));
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+
+    const result = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set(["60000001"]),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  test("does not bail on the Word package preview thumbnail", async () => {
+    // `docProps/thumbnail.jpeg` is plain preview media Word writes into
+    // nearly every authored file; if the guard treated it as active
+    // content, the selective path would be dead code for real documents.
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", CONTENT_TYPES);
+    zip.file("_rels/.rels", PACKAGE_RELS);
+    zip.file("word/_rels/document.xml.rels", DOC_RELS);
+    zip.file("word/document.xml", DOCUMENT_XML);
+    zip.file("word/styles.xml", STYLES);
+    zip.file("docProps/core.xml", CORE_PROPS);
+    zip.file("docProps/thumbnail.jpeg", new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+
+    const result = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+
+    expect(result).not.toBeNull();
+  });
+
+  test("still takes the selective path when every entry is preservable", async () => {
+    // Control case: the same fixture shape without the macro part must
+    // still take the selective path, so the new guard is not overly broad.
+    const buffer = await makeFixture();
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+
+    const result = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+
+    expect(result).not.toBeNull();
   });
 });
 

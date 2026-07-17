@@ -100,6 +100,22 @@ const isTocStyleId = (styleId: string | undefined): boolean =>
   styleId !== undefined && TOC_STYLE_ID.test(styleId);
 
 /**
+ * Build a `nextTextBoxGroupId()` generator salted with a random per-load
+ * nonce, so minted text-box anchor ids (`<salt>:<group>:<index>`) are unique
+ * across separate conversions instead of purely sequential ("0:0", "0:1",
+ * ...) starting fresh every load. `TextBoxAnchorExtension` parses
+ * `data-docx-textbox-anchor` straight off pasted DOM and `fromProseDoc`
+ * registers anchors first-seen-wins — without the salt, a pasted external
+ * span carrying a guessed/copied id could collide with and hijack a real
+ * text box anchored in a completely different document.
+ */
+const createTextBoxGroupIdFactory = (): (() => string) => {
+  const salt = Math.random().toString(36).slice(2, 10);
+  let index = 0;
+  return () => `${salt}:${index++}`;
+};
+
+/**
  * Convert a Document to a ProseMirror document
  *
  * @param document - The Document to convert
@@ -116,8 +132,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   // (eigenpal/docx-editor#833).
   const styleResolver = createStyleEngine(options?.styles ?? document.package.styles);
   const theme = options?.theme ?? document.package.theme ?? null;
-  let textBoxGroupIndex = 0;
-  const nextTextBoxGroupId = (): string => String(textBoxGroupIndex++);
+  const nextTextBoxGroupId = createTextBoxGroupIdFactory();
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
@@ -2005,8 +2020,7 @@ export function standaloneTableCellToProseMirror(
   cell: TableCell,
   nodeType: "tableCell" | "tableHeader",
 ): PMNode {
-  let textBoxGroupIndex = 0;
-  const nextTextBoxGroupId = (): string => String(textBoxGroupIndex++);
+  const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   return convertTableCell({
     cell,
     styleResolver: null,
@@ -3439,8 +3453,7 @@ export function headerFooterToProseDoc(
   const nodes: PMNode[] = [];
   const styleResolver = options?.styles ? createStyleEngine(options.styles) : null;
   const theme = options?.theme ?? null;
-  let textBoxGroupIndex = 0;
-  const nextTextBoxGroupId = (): string => String(textBoxGroupIndex++);
+  const nextTextBoxGroupId = createTextBoxGroupIdFactory();
 
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];

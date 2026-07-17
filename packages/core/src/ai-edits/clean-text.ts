@@ -26,6 +26,7 @@ export type CleanBlockText = {
 const DELETION_MARK = "deletion";
 const INSERTION_MARK = "insertion";
 const COMMENT_MARK = "comment";
+const HIDDEN_MARK = "hidden";
 
 export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): CleanBlockText => {
   let text = "";
@@ -35,11 +36,15 @@ export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): Clean
     if (!node.isText || node.text === undefined) {
       return true;
     }
-    if (node.marks.some((mark) => mark.type.name === DELETION_MARK)) {
-      // Skip the run entirely. Don't update lastEnd — if the next
-      // surviving char sits right after the deletion in the live
-      // doc, we still want offsets to anchor at the live position
-      // (which sits past the skipped run).
+    if (
+      node.marks.some(
+        (mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
+      )
+    ) {
+      // Skip the run entirely (deleted, or OOXML w:vanish hidden text).
+      // Don't update lastEnd — if the next surviving char sits right
+      // after the skipped run in the live doc, we still want offsets to
+      // anchor at the live position (which sits past the skipped run).
       return false;
     }
     const startPos = blockFrom + 1 + pos;

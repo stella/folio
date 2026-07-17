@@ -89,6 +89,60 @@ describe("rewriteDocxMetadataPrivacy", () => {
     });
   });
 
+  test("scrubs core properties written under a differently-cased part name", async () => {
+    // OPC part names are case-insensitive; a producer that wrote
+    // "docProps/Core.xml" instead of the conventional lowercase path is
+    // still valid and must not be missed by the privacy rewrite.
+    const template = createEmptyDocument();
+    const buffer = await createDocx({
+      ...template,
+      package: {
+        ...template.package,
+        document: {
+          ...template.package.document,
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [{ type: "run", content: [{ type: "text", text: "Body text." }] }],
+            },
+          ],
+        },
+      },
+    });
+    const zip = await JSZip.loadAsync(buffer);
+    zip.remove("docProps/core.xml");
+    zip.file("docProps/Core.xml", CORE_PROPERTIES_XML);
+    const casedBuffer = await zip.generateAsync({ type: "arraybuffer" });
+
+    const result = await rewriteDocxMetadataPrivacy(casedBuffer, {
+      transforms: ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"],
+    });
+
+    expect(result.privacyReport.removedMetadataProperties).toEqual([
+      "title",
+      "subject",
+      "creator",
+      "keywords",
+      "description",
+      "lastModifiedBy",
+      "created",
+      "modified",
+    ]);
+
+    const rewrittenZip = await JSZip.loadAsync(result.buffer);
+    // Written back under the original casing, not a new lowercase entry.
+    expect(rewrittenZip.file("docProps/core.xml")).toBeNull();
+    const rewrittenFile = rewrittenZip.file("docProps/Core.xml");
+    if (!rewrittenFile) {
+      throw new Error("expected the cased core properties part to survive the rewrite");
+    }
+    const xml = await rewrittenFile.async("text");
+    expect(xml).not.toContain("<dc:creator>");
+    expect(xml).not.toContain("<cp:lastModifiedBy>");
+    expect(xml).toContain("<cp:revision>7</cp:revision>");
+  });
+
   test("keeps removed timestamps absent through selective and structural saves", async () => {
     const rewritten = await rewriteDocxMetadataPrivacy(await buildDocument(), {
       transforms: ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"],

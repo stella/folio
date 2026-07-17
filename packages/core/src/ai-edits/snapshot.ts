@@ -55,6 +55,26 @@ export const createFolioAITextRangeHandle = ({
   };
 };
 
+const TABLE_ROW_NODE_NAME = "tableRow";
+
+/**
+ * True when `pos`'s nearest `tableRow` ancestor is marked `hidden` (OOXML
+ * `w:trPr/w:hidden` — Word never renders the row). A textblock inside such a
+ * row must not surface its text to the AI/agent snapshot: an attacker DOCX
+ * could otherwise smuggle prompt-injection instructions into a row that no
+ * human ever sees.
+ */
+const isInHiddenTableRow = (doc: PMNode, pos: number): boolean => {
+  const $pos = doc.resolve(pos);
+  for (let depth = $pos.depth; depth > 0; depth--) {
+    const ancestor = $pos.node(depth);
+    if (ancestor.type.name === TABLE_ROW_NODE_NAME) {
+      return ancestor.attrs["hidden"] === true;
+    }
+  }
+  return false;
+};
+
 export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   const draftBlocks: {
     block: FolioAIBlock;
@@ -70,7 +90,13 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   let blockIndex = 0;
   doc.descendants((node, pos, parent) => {
     if (!node.isTextblock) {
-      return;
+      return true;
+    }
+
+    if (isInHiddenTableRow(doc, pos)) {
+      // Don't descend into a hidden row's content — nothing inside it
+      // should reach the AI-facing snapshot.
+      return false;
     }
 
     // Snapshot the AI-facing text in its post-tracked-changes
@@ -84,7 +110,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     const normalizedText = normalizeFolioAIBlockText(text);
     if (normalizedText.length === 0) {
       if (parent?.type !== doc.type) {
-        return;
+        return true;
       }
       emptyAnchorState.textblockCount++;
       if (emptyAnchorState.candidate === null) {
@@ -95,7 +121,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
           paraId: typeof paraIdAttr === "string" && paraIdAttr.length > 0 ? paraIdAttr : null,
         };
       }
-      return;
+      return true;
     }
 
     const textHash = hashFolioAIBlockText(normalizedText);
@@ -145,6 +171,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
         textHash,
       },
     });
+    return true;
   });
 
   const blocks: FolioAIBlock[] = [];
