@@ -120,10 +120,28 @@ export type ParityResult = {
   divergences: Divergence[];
 };
 
+export type FontEnvironmentAssessment = {
+  status: "native" | "shared-substitution" | "mismatch" | "unverified";
+  tags: string[];
+  comparedLines: number;
+  matchingLines: number;
+};
+
+/** Whether renderer geometry can support a headline parity score. Raw
+ * geometry remains available for diagnosis even when font metrics differ. */
+export const isGeometryScoreReliable = (
+  assessment: FontEnvironmentAssessment | undefined,
+): boolean =>
+  assessment === undefined ||
+  assessment.status === "native" ||
+  assessment.status === "shared-substitution";
+
 export type FeatureAttributedResult = ParityResult & {
   attributed: AttributedDivergence[];
   /** Doc-level feature tags (e.g. "multi-column", "landscape", "footnotes"). */
   docFeatures: string[];
+  /** Actual reference/Chromium font comparison for this run. */
+  fontEnvironment?: FontEnvironmentAssessment;
 };
 
 /** A cross-corpus cluster: one feature co-occurring with one divergence kind. */
