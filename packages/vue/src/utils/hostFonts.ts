@@ -1,12 +1,11 @@
 /**
  * Host-app custom fonts — the `fonts` prop on the Vue `DocxEditor`.
  *
- * Vue port of `packages/react/src/paged-editor/hostFonts.ts` (plus the DOM-only
- * `FontFace` helpers it shares with `embeddedFonts.ts`). The host passes its own
- * brand/web font faces; each registers with the browser through a best-effort
- * `FontFace` path, so a bad entry is skipped rather than throwing. Once
- * registered, the family name is available for rendering and can be listed in
- * the font-family picker via the `fontFamilies` prop.
+ * Vue port of `packages/react/src/paged-editor/hostFonts.ts`. The host passes
+ * its own brand/web font faces; each registers with the browser through a
+ * best-effort `FontFace` path, so a bad entry is skipped rather than throwing.
+ * Once registered, the family name is available for rendering and can be
+ * listed in the font-family picker via the `fontFamilies` prop.
  *
  * Framework-neutral: DOM `FontFace` APIs only, no Vue or React. The prop
  * normalizer ({@link toFontFaceInputs}) is pure (no DOM), so it is unit-testable
@@ -14,6 +13,7 @@
  */
 
 import type { FontDefinition } from "../components/DocxEditor/types";
+import { getDocumentFontSet, registerFontFace } from "./fontFaces";
 
 /** `FontFace` constructor inputs derived from a {@link FontDefinition}. */
 export type FontFaceInput = {
@@ -72,50 +72,11 @@ export function toFontFaceInputs(
   return inputs;
 }
 
-/** The document's `FontFaceSet`, or `null` outside a DOM. */
-export function getDocumentFontSet(): FontFaceSet | null {
-  if (typeof document === "undefined" || !("fonts" in document)) {
-    return null;
-  }
-  return document.fonts;
-}
-
-/**
- * Register one font face on the document font set, best-effort. Returns the
- * loaded `FontFace`, or `null` when construction throws (invalid family or
- * descriptor) or the binary/URL fails to load (malformed / subsetted).
- */
-async function registerFontFace(
-  fontSet: FontFaceSet,
-  family: string,
-  source: string,
-  descriptors: FontFaceDescriptors,
-): Promise<FontFace | null> {
-  let face: FontFace;
-  try {
-    // `new FontFace` throws synchronously (SyntaxError) on an invalid family or
-    // descriptor; `fontSet.add` can reject a face too. Skip on failure.
-    face = new FontFace(family, source, descriptors);
-    fontSet.add(face);
-  } catch {
-    return null;
-  }
-  const ready = await face.load().then(
-    () => true,
-    () => false,
-  );
-  if (ready) {
-    return face;
-  }
-  fontSet.delete(face);
-  return null;
-}
-
 /**
  * Register the host's custom font faces with the browser via the `FontFace` API.
  * No-op (returns `[]`) outside a DOM or when no valid fonts are given. Returns
  * the faces that loaded successfully; each bad entry is skipped, never thrown.
- * Pair with {@link removeFontFaces} to unregister on change/unmount.
+ * The font lifecycle unregisters returned faces on change/unmount.
  */
 export async function loadHostFontFaces(
   fonts: ReadonlyArray<FontDefinition> | undefined,
@@ -138,15 +99,4 @@ export async function loadHostFontFaces(
     }),
   );
   return loaded;
-}
-
-/** Remove previously registered faces from the document font set. */
-export function removeFontFaces(faces: readonly FontFace[]): void {
-  const fontSet = getDocumentFontSet();
-  if (!fontSet) {
-    return;
-  }
-  for (const face of faces) {
-    fontSet.delete(face);
-  }
 }

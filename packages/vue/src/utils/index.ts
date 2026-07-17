@@ -18,6 +18,3 @@ export {
   findVerticalScrollParent,
   findVerticalScrollParentOrRoot,
 } from "@stll/folio-core/utils/findVerticalScrollParent";
-// TODO(vue): fontLoader (getRenderableDocumentFonts / loadFontDefinitions /
-// FontDefinition …) is reconciled against core's embedded-font surface when the
-// useFontLifecycle composable lands, to avoid duplicating core's font handling.

@@ -468,6 +468,7 @@ import { useDocumentLifecycle } from "../composables/useDocumentLifecycle";
 import { useDocxEditor } from "../composables/useDocxEditor";
 import { useDocxEditorRefApi } from "../composables/useDocxEditorRefApi";
 import { useFormattingActions } from "../composables/useFormattingActions";
+import { useFontLifecycle } from "../composables/useFontLifecycle";
 import { useHyperlinkManagement } from "../composables/useHyperlinkManagement";
 import { useImageActions } from "../composables/useImageActions";
 import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
@@ -481,7 +482,6 @@ import { useTableResize } from "../composables/useTableResize";
 import { useTrackedChanges } from "../composables/useTrackedChanges";
 import { useZoom } from "../composables/useZoom";
 import type { FontOption } from "../utils/fontOptions";
-import { loadHostFontFaces, removeFontFaces } from "../utils/hostFonts";
 import { useTranslation } from "../i18n";
 import { provideFolioUI } from "../ui/folio-ui";
 
@@ -748,12 +748,10 @@ const showLoadingIndicator = computed(
     !(props.preserveDocumentWhileLoading === true && hasRenderedDocumentOnce.value),
 );
 
-// Host custom font faces (the `fonts` prop). Register on mount + whenever the
-// prop identity changes, then re-measure so metrics reflect the new faces — a
-// face registered after the first layout would otherwise keep its fallback
-// metrics until the next edit. The cleanup unregisters the faces and re-measures
-// their absence. Mirrors React PagedEditor's hostFonts effect (same best-effort
-// FontFace path + font-ready re-layout).
+// Font faces affect line measurement, so both embedded document fonts and
+// host-provided faces must trigger a fresh layout once the browser accepts
+// them. The lifecycle also unregisters faces when their document/prop source
+// changes, preventing one editor load from leaking into the next.
 function remeasureForFontChange(): void {
   const view = editorView.value;
   if (!view) {
@@ -764,37 +762,12 @@ function remeasureForFontChange(): void {
   reLayout();
 }
 
-watch(
-  () => props.fonts,
-  (fonts, _prev, onCleanup) => {
-    if (!fonts || fonts.length === 0) {
-      return;
-    }
-    let cancelled = false;
-    let registered: FontFace[] = [];
-    void loadHostFontFaces(fonts).then((faces) => {
-      if (cancelled) {
-        removeFontFaces(faces);
-        return undefined;
-      }
-      registered = faces;
-      if (faces.length === 0) {
-        return undefined;
-      }
-      remeasureForFontChange();
-      return undefined;
-    });
-    onCleanup(() => {
-      cancelled = true;
-      if (registered.length === 0) {
-        return;
-      }
-      removeFontFaces(registered);
-      remeasureForFontChange();
-    });
-  },
-  { immediate: true },
-);
+useFontLifecycle({
+  isReady,
+  getDocument,
+  fonts: () => props.fonts,
+  remeasure: remeasureForFontChange,
+});
 
 // ---- Feature composables (order: image → hyperlink → pointer → context) --
 const {
