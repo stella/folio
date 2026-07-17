@@ -138,6 +138,13 @@ export type FolioAISignatureParty = {
 
 export type FolioAIEditOperation = FolioAIEditReviewMeta & {
   precondition?: FolioAIEditPrecondition;
+  /**
+   * Groups this operation's produced marks under one logical suggestion so the
+   * host can accept/reject them together. Only consulted in `"suggested"` apply
+   * mode; ignored otherwise. When omitted in suggested mode the applier falls
+   * back to the operation `id`, giving per-operation grouping.
+   */
+  suggestionId?: string;
 } & (
     | {
         id: string;
@@ -277,7 +284,18 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
       }
   );
 
-export type FolioAIEditApplyMode = "direct" | "tracked-changes";
+/**
+ * How AI-authored operations are applied:
+ * - `"direct"` — edits are written straight into the document.
+ * - `"tracked-changes"` — edits land as normal tracked changes (`w:ins`/`w:del`).
+ * - `"suggested"` — edits land as tracked changes carrying `"suggested"`
+ *   provenance: rendered with the tracked-change grammar but stripped from
+ *   serialized DOCX until a human accepts them. Behaves like `"tracked-changes"`
+ *   but is currently limited to inline text/format operations (replaceInBlock,
+ *   replaceRange, formatRange); block- and table-level operations report
+ *   `unsupportedMode`.
+ */
+export type FolioAIEditApplyMode = "direct" | "tracked-changes" | "suggested";
 
 export type FolioAIEditSkipReason =
   | "missingBlock"
@@ -317,6 +335,12 @@ export type FolioAIEditAppliedOperation = {
    * belonging to this op.
    */
   revisionIds?: readonly number[];
+  /**
+   * The suggestion id stamped on every mark this operation produced (only set
+   * in `"suggested"` apply mode). Pass it to `acceptSuggestion` /
+   * `rejectSuggestion` / `scrollToSuggestion` to resolve the whole suggestion.
+   */
+  suggestionId?: string;
 };
 
 export type FolioAIEditSkippedOperation = {

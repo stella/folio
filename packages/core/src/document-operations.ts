@@ -42,6 +42,7 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
 export const FOLIO_DOCUMENT_OPERATION_MODES = Object.freeze([
   "direct",
   "tracked-changes",
+  "suggested",
 ] as const satisfies readonly FolioAIEditApplyMode[]);
 
 export const FOLIO_DOCUMENT_OPERATION_STORIES = Object.freeze([
@@ -62,16 +63,23 @@ export type FolioDocumentOperationMode = FolioAIEditApplyMode;
 export type FolioDocumentOperationPrecondition = FolioAIEditPrecondition;
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
-const DIRECT_AND_TRACKED_MODES = FOLIO_DOCUMENT_OPERATION_MODES;
+// Suggested mode is limited to the inline text/format operations whose marks
+// the serialization strip fully removes (see apply.ts); block/table operations
+// stay direct-and-tracked only until a follow-up phase covers them.
+const DIRECT_AND_TRACKED_MODES = Object.freeze([
+  "direct",
+  "tracked-changes",
+] as const satisfies readonly FolioDocumentOperationMode[]);
+const DIRECT_TRACKED_AND_SUGGESTED_MODES = FOLIO_DOCUMENT_OPERATION_MODES;
 const DIRECT_ONLY_MODES = Object.freeze([
   "direct",
 ] as const satisfies readonly FolioDocumentOperationMode[]);
 
 export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
-  replaceInBlock: DIRECT_AND_TRACKED_MODES,
-  replaceRange: DIRECT_AND_TRACKED_MODES,
+  replaceInBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
+  replaceRange: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   commentOnRange: DIRECT_AND_TRACKED_MODES,
-  formatRange: DIRECT_AND_TRACKED_MODES,
+  formatRange: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   insertAfterBlock: DIRECT_AND_TRACKED_MODES,
   insertBeforeBlock: DIRECT_AND_TRACKED_MODES,
   replaceBlock: DIRECT_AND_TRACKED_MODES,
@@ -387,6 +395,7 @@ const COMMON_OPERATION_KEYS = [
   "severity",
   "area",
   "precondition",
+  "suggestionId",
 ] as const;
 
 const parseSignatureParties = (
@@ -428,10 +437,12 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   const type = readString(value, "type", path);
   const reviewMeta = readReviewMeta(value, path);
   const precondition = readOptionalPrecondition(value, path);
+  const suggestionId = readOptionalString(value, "suggestionId", path);
   const comment = readOptionalComment(value, path);
   const operationMeta = {
     ...reviewMeta,
     ...(precondition !== undefined && { precondition }),
+    ...(suggestionId !== undefined && { suggestionId }),
   };
 
   if (type === "replaceRange") {
@@ -444,6 +455,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       "severity",
       "area",
       "precondition",
+      "suggestionId",
     ]);
     return {
       ...operationMeta,
@@ -480,6 +492,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       "severity",
       "area",
       "precondition",
+      "suggestionId",
     ]);
     return {
       ...operationMeta,
@@ -673,8 +686,16 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
     return invalidBatch("$.operations", "expected an array");
   }
   const mode = value["mode"];
-  if (mode !== undefined && mode !== "direct" && mode !== "tracked-changes") {
-    return invalidBatch("$.mode", 'expected "direct" or "tracked-changes" when provided');
+  if (
+    mode !== undefined &&
+    mode !== "direct" &&
+    mode !== "tracked-changes" &&
+    mode !== "suggested"
+  ) {
+    return invalidBatch(
+      "$.mode",
+      'expected "direct", "tracked-changes", or "suggested" when provided',
+    );
   }
   const atomic = readOptionalBoolean(value, "atomic", "$");
   const dryRun = readOptionalBoolean(value, "dryRun", "$");

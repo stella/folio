@@ -11,6 +11,7 @@
  */
 
 import type { Node as PMNode, Mark } from "prosemirror-model";
+import { Fragment } from "prosemirror-model";
 
 import { numPrEqual } from "../../docx/numberingParser";
 import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
@@ -97,6 +98,7 @@ import {
 } from "../attrs";
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
 import { directionToBidi } from "../paragraphDirection";
+import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import type { RunFormattingOverrideAttrs } from "../schema/marks";
 import type {
   ParagraphAttrs,
@@ -110,6 +112,13 @@ import { assertValidProseMirrorDocument } from "../validation";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { runShadingAttrsToShading } from "./runShadingMark";
 import { sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
+// `fromProseDoc` and `toProseDoc` are the two halves of one round-trip and
+// already reference each other (`toProseDoc` imports `marksToTextFormatting`
+// from here). Reusing the inverse converter to revert a stripped suggested
+// run-property change closes that pair; both edges are call-time function
+// references, so there is no initialization-order hazard.
+// oxlint-disable-next-line import/no-cycle
+import { textFormattingToMarks } from "./toProseDoc";
 
 function normalizeShapeOutlineStyle(style: string | undefined): ShapeOutline["style"] | undefined {
   if (!style) {
@@ -252,11 +261,103 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
   };
 }
 
+const isSuggestedMark = (mark: Mark): boolean => mark.attrs["provenance"] === "suggested";
+
+const hasSuggestedInsertion = (marks: readonly Mark[]): boolean =>
+  marks.some((mark) => mark.type.name === "insertion" && isSuggestedMark(mark));
+
+/**
+ * Compute the mark set an inline node should keep once its suggested tracked
+ * changes are stripped. Suggested deletions are dropped so their text survives
+ * as plain content; a suggested `runPropertyChange` is dropped and the run's
+ * live formatting is reverted to the recorded `previousFormatting`.
+ *
+ * Returns the input array unchanged when there is nothing to strip so callers
+ * can skip rebuilding the node.
+ */
+function stripSuggestedInlineMarks(marks: readonly Mark[]): readonly Mark[] {
+  const hasSuggestedDeletion = marks.some(
+    (mark) => mark.type.name === "deletion" && isSuggestedMark(mark),
+  );
+  const suggestedRunPropertyChange = marks.find(
+    (mark) => mark.type.name === "runPropertyChange" && isSuggestedMark(mark),
+  );
+  if (!hasSuggestedDeletion && !suggestedRunPropertyChange) {
+    return marks;
+  }
+
+  let next: readonly Mark[] = marks.filter(
+    (mark) =>
+      !(
+        (mark.type.name === "deletion" || mark.type.name === "runPropertyChange") &&
+        isSuggestedMark(mark)
+      ),
+  );
+
+  if (suggestedRunPropertyChange) {
+    const previousFormatting = expectRunPropertyChangeMarkAttrs(
+      suggestedRunPropertyChange,
+    ).changes.at(0)?.previousFormatting;
+    next = next.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
+    for (const restored of textFormattingToMarks(previousFormatting)) {
+      next = restored.addToSet(next);
+    }
+  }
+
+  return next;
+}
+
+/**
+ * Recursively rewrite a ProseMirror node tree, removing every suggested
+ * tracked change. Returns `null` when the node itself must be dropped (a
+ * suggested-inserted inline node); block/structural nodes are never dropped,
+ * only rebuilt with their surviving children.
+ */
+function mapSuggestionStrippedNode(node: PMNode): PMNode | null {
+  if (node.isInline) {
+    if (hasSuggestedInsertion(node.marks)) {
+      return null;
+    }
+    const marks = stripSuggestedInlineMarks(node.marks);
+    return marks === node.marks ? node : node.mark(marks);
+  }
+
+  const children: PMNode[] = [];
+  let changed = false;
+  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+  node.forEach((child) => {
+    const mapped = mapSuggestionStrippedNode(child);
+    if (mapped === null) {
+      changed = true;
+      return;
+    }
+    if (mapped !== child) {
+      changed = true;
+    }
+    children.push(mapped);
+  });
+  return changed ? node.copy(Fragment.fromArray(children)) : node;
+}
+
+/**
+ * Strip suggested (AI-proposed) tracked changes from a document so it
+ * serializes as though the suggestion never happened. See the call site in
+ * {@link extractBlocks} for why this is the sole serialization boundary.
+ */
+function stripSuggestedProvenance(doc: PMNode): PMNode {
+  return mapSuggestionStrippedNode(doc) ?? doc;
+}
+
 /**
  * Extract block content (paragraphs, tables, block SDTs) from a ProseMirror
  * document.
  */
-function extractBlocks(pmDoc: PMNode): BlockContent[] {
+function extractBlocks(inputDoc: PMNode): BlockContent[] {
+  // CLASS GUARD: every serialization path (export, copy, header/footer
+  // conversion, previews) funnels through `extractBlocks`. Stripping suggested
+  // provenance here — with no opt-out — makes it structurally impossible for an
+  // AI-proposed edit to reach OOXML output before a human accepts it.
+  const pmDoc = stripSuggestedProvenance(inputDoc);
   const blocks: BlockContent[] = [];
   const textBoxAnchorMarkers = new Map<string, Run>();
   const documentCounts = buildDocumentTrackedChangeCounts(pmDoc);

@@ -84,6 +84,17 @@ type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptio
   revisionIdSeed?: number;
 };
 
+/**
+ * Operation types applied in `"suggested"` mode. Limited to inline text/format
+ * edits whose produced marks (insertion / deletion / runPropertyChange) the
+ * serialization strip fully removes. Everything else reports `unsupportedMode`.
+ */
+const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["type"]> = new Set([
+  "replaceInBlock",
+  "replaceRange",
+  "formatRange",
+]);
+
 type ResolvedOperation = {
   operation: FolioAIEditOperation;
   from: number;
@@ -182,6 +193,8 @@ type ApplyTrackedInlineFormattingOptions = ApplyInlineFormattingOptions & {
   revisionId: number;
   author: string;
   date: string;
+  /** Non-null stamps the produced `runPropertyChange` mark as a suggestion. */
+  suggestionId?: string | null;
 };
 
 const applyTrackedInlineFormatting = ({
@@ -194,6 +207,7 @@ const applyTrackedInlineFormatting = ({
   revisionId,
   author,
   date,
+  suggestionId = null,
 }: ApplyTrackedInlineFormattingOptions): Transaction => {
   const propertyChangeType = schema.marks["runPropertyChange"];
   if (!propertyChangeType) {
@@ -227,9 +241,14 @@ const applyTrackedInlineFormatting = ({
   if (segments.length === 0) {
     return tr;
   }
+  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
   applyInlineFormatting({ tr, schema, from, to, formatting });
   for (const segment of segments) {
-    tr.addMark(segment.from, segment.to, propertyChangeType.create({ changes: segment.changes }));
+    tr.addMark(
+      segment.from,
+      segment.to,
+      propertyChangeType.create({ changes: segment.changes, ...suggestionAttrs }),
+    );
   }
   return tr;
 };
@@ -501,7 +520,13 @@ const applyFolioAIEditOperationsInternal = ({
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
 
-  if (mode === "tracked-changes" && (!insertionType || !deletionType)) {
+  // `"suggested"` is `"tracked-changes"` plus a provenance stamp, so every
+  // tracked-change code path below keys off this rather than an exact
+  // `=== "tracked-changes"` check.
+  const producesTrackedChanges = mode !== "direct";
+  const isSuggested = mode === "suggested";
+
+  if (producesTrackedChanges && (!insertionType || !deletionType)) {
     return {
       applied,
       skipped: operations.map((operation) => ({
@@ -653,6 +678,24 @@ const applyFolioAIEditOperationsInternal = ({
     const stepsBefore = tr.steps.length;
     let appliedRevisionIds: number[] | undefined;
 
+    // Suggested mode is limited to inline text/format operations whose marks
+    // the serialization strip fully removes. Block- and table-level operations
+    // carry their revision state in node attrs (not inline marks) the strip
+    // does not clear, so they stay `unsupportedMode` for suggestions until a
+    // follow-up phase adds coverage. Keeps the class guard sound: the only
+    // suggested provenance that can exist is on strippable inline marks.
+    if (isSuggested && !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(item.operation.type)) {
+      skipped.push({ id: item.operation.id, reason: "unsupportedMode" });
+      continue;
+    }
+
+    // Every mark a suggested operation produces is stamped with this id so the
+    // host can accept/reject the whole suggestion at once. Falls back to the
+    // operation id when the caller does not supply one.
+    const suggestionId: string | null = isSuggested
+      ? (item.operation.suggestionId ?? item.operation.id)
+      : null;
+
     switch (item.operation.type) {
       case "replaceInBlock":
       case "replaceRange": {
@@ -667,8 +710,9 @@ const applyFolioAIEditOperationsInternal = ({
           revisionIdDelete,
           revisionIdInsert,
           commentMark,
+          suggestionId,
         });
-        if (mode === "tracked-changes") {
+        if (producesTrackedChanges) {
           appliedRevisionIds = [revisionIdDelete, revisionIdInsert];
         }
         break;
@@ -680,7 +724,7 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "formatRange": {
-        if (mode === "tracked-changes") {
+        if (producesTrackedChanges) {
           const revisionId = revisionSeed++;
           tr = applyTrackedInlineFormatting({
             tr,
@@ -692,6 +736,7 @@ const applyFolioAIEditOperationsInternal = ({
             revisionId,
             author,
             date,
+            suggestionId,
           });
           appliedRevisionIds = [revisionId];
           break;
@@ -1126,6 +1171,7 @@ const applyFolioAIEditOperationsInternal = ({
           revisionId: appliedRevisionIds[0],
           revisionIds: appliedRevisionIds,
         }),
+      ...(suggestionId !== null && { suggestionId }),
     });
   }
 
@@ -1183,6 +1229,8 @@ type TextReplacementOptions = {
   /** Distinct revision id used for the insertion-side marks. */
   revisionIdInsert: number;
   commentMark: Mark | null;
+  /** Non-null stamps every produced insertion/deletion mark as a suggestion. */
+  suggestionId?: string | null;
 };
 
 const applyTextReplacement = ({
@@ -1194,6 +1242,7 @@ const applyTextReplacement = ({
   revisionIdDelete,
   revisionIdInsert,
   commentMark,
+  suggestionId = null,
 }: TextReplacementOptions): Transaction => {
   let nextTr = tr;
   const replacement = stripInlineEmphasisMarkers(
@@ -1234,8 +1283,9 @@ const applyTextReplacement = ({
 
   const insertionType = nextTr.doc.type.schema.marks["insertion"];
   const deletionType = nextTr.doc.type.schema.marks["deletion"];
-  const delAttrs = { revisionId: revisionIdDelete, author, date };
-  const insAttrs = { revisionId: revisionIdInsert, author, date };
+  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
+  const delAttrs = { revisionId: revisionIdDelete, author, date, ...suggestionAttrs };
+  const insAttrs = { revisionId: revisionIdInsert, author, date, ...suggestionAttrs };
 
   // Word-level diff is only safe when the source range maps to PM
   // positions losslessly. The block must have no atomic inline
