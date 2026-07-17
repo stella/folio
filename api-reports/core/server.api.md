@@ -224,7 +224,7 @@ export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly ["remove-attribution", 
 export const FOLIO_DOCX_CONFORMANCE_CHECKS: readonly ["archive-safety", "required-parts", "xml-well-formedness", "package-roots", "conformance-class", "canonical-model"];
 
 // @public (undocumented)
-export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES: readonly ["archive-load-failed", "archive-input-too-large", "archive-too-many-entries", "archive-entry-too-large", "archive-total-too-large", "required-part-missing", "xml-doctype-forbidden", "xml-not-well-formed", "xml-read-failed", "required-xml-unreadable", "package-root-invalid", "conformance-class-unknown", "model-invalid", "model-warning", "parser-recovery", "parser-unsupported", "parser-failed", "encrypted-container", "container-not-zip"];
+export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES: readonly ["archive-load-failed", "archive-invalid-options", "archive-input-too-large", "archive-too-many-entries", "archive-entry-too-large", "archive-total-too-large", "required-part-missing", "xml-doctype-forbidden", "xml-not-well-formed", "xml-read-failed", "required-xml-unreadable", "package-root-invalid", "conformance-class-unknown", "model-invalid", "model-warning", "parser-recovery", "parser-unsupported", "parser-failed", "encrypted-container", "container-not-zip"];
 
 // @public (undocumented)
 export const FOLIO_DOCX_CONFORMANCE_PROFILE: "folio-supported-v1";

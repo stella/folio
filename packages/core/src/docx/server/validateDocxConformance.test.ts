@@ -188,4 +188,14 @@ describe("validateDocxConformance", () => {
     expect(checkStatus(report, "archive-safety")).toBe("failed");
     expect(report.issues.at(0)?.code).toBe("archive-too-many-entries");
   });
+
+  test("fails invalid archive limits before package loading", async () => {
+    const report = await validateDocxConformance(await createEmptyDocx(), {
+      archive: { maxEntries: Number.NaN },
+    });
+
+    expect(report.status).toBe("invalid");
+    expect(checkStatus(report, "archive-safety")).toBe("failed");
+    expect(report.issues.at(0)?.code).toBe("archive-invalid-options");
+  });
 });

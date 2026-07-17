@@ -30,6 +30,7 @@ export const FOLIO_DOCX_CONFORMANCE_CHECKS = Object.freeze([
 
 export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES = Object.freeze([
   "archive-load-failed",
+  "archive-invalid-options",
   "archive-input-too-large",
   "archive-too-many-entries",
   "archive-entry-too-large",
