@@ -22,17 +22,13 @@ export async function loadEmbeddedFontFaces(buffer: ArrayBuffer): Promise<FontFa
     return [];
   }
 
-  const loaded: FontFace[] = [];
-  await Promise.all(
-    fonts.map(async (font) => {
-      const face = await registerFontFace(fontSet, font.family, font.bytes, {
+  const faces = await Promise.all(
+    fonts.map((font) =>
+      registerFontFace(fontSet, font.family, font.bytes, {
         weight: String(font.weight),
         style: font.style,
-      });
-      if (face) {
-        loaded.push(face);
-      }
-    }),
+      }),
+    ),
   );
-  return loaded;
+  return faces.filter((face): face is FontFace => face !== null);
 }

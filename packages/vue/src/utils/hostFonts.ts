@@ -89,14 +89,10 @@ export async function loadHostFontFaces(
   if (inputs.length === 0) {
     return [];
   }
-  const loaded: FontFace[] = [];
-  await Promise.all(
-    inputs.map(async ({ family, source, descriptors }) => {
-      const face = await registerFontFace(fontSet, family, source, descriptors);
-      if (face) {
-        loaded.push(face);
-      }
-    }),
+  const faces = await Promise.all(
+    inputs.map(({ family, source, descriptors }) =>
+      registerFontFace(fontSet, family, source, descriptors),
+    ),
   );
-  return loaded;
+  return faces.filter((face): face is FontFace => face !== null);
 }
