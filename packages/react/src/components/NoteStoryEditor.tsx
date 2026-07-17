@@ -76,70 +76,87 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
       onActiveChange,
       onDocumentChange,
       onStoryChange,
-      plugins = EMPTY_PLUGINS,
+      plugins,
       styles,
       suggestionAuthor,
-      suggestionModeActive = false,
+      suggestionModeActive,
       theme,
     },
     ref,
   ) {
     const t = useTranslations("folio");
+    const resolvedPlugins = plugins ?? EMPTY_PLUGINS;
+    const isSuggestionModeActive = suggestionModeActive ?? false;
     const hostRef = useRef<HTMLDivElement>(null);
     const documentRef = useRef(document);
     const stylesRef = useRef(styles);
     const themeRef = useRef(theme);
-    const pluginsRef = useRef(plugins);
+    const pluginsRef = useRef(resolvedPlugins);
     const onDocumentChangeRef = useRef(onDocumentChange);
     const onActiveChangeRef = useRef(onActiveChange);
     const onStoryChangeRef = useRef(onStoryChange);
     const [active, setActive] = useState<NoteStoryKey | null>(null);
-    documentRef.current = document;
-    stylesRef.current = styles;
-    themeRef.current = theme;
-    pluginsRef.current = plugins;
-    onDocumentChangeRef.current = onDocumentChange;
-    onActiveChangeRef.current = onActiveChange;
-    onStoryChangeRef.current = onStoryChange;
-
     const managerRef = useRef<NoteEditorManager | null>(null);
-    managerRef.current ??= createNoteEditorManager({
-      getDocument: () => documentRef.current,
-      getHost: () => hostRef.current,
-      getPlugins: () => pluginsRef.current,
-      getStyles: () => stylesRef.current,
-      getTheme: () => themeRef.current,
-      onTransaction: ({ docChanged, selectionChanged, view }) => {
-        if (docChanged) {
-          const current = documentRef.current;
-          if (current) {
-            onDocumentChangeRef.current(managerRef.current?.snapshotDocument(current) ?? current);
-          }
-        }
-        onStoryChangeRef.current(view, docChanged, selectionChanged);
-      },
-    });
 
     const footnotes = document?.package.footnotes;
     const endnotes = document?.package.endnotes;
     useEffect(() => {
+      documentRef.current = document;
+      stylesRef.current = styles;
+      themeRef.current = theme;
+      pluginsRef.current = resolvedPlugins;
+      onDocumentChangeRef.current = onDocumentChange;
+      onActiveChangeRef.current = onActiveChange;
+      onStoryChangeRef.current = onStoryChange;
+      if (managerRef.current === null) {
+        managerRef.current = createNoteEditorManager({
+          getDocument: () => documentRef.current,
+          getHost: () => hostRef.current,
+          getPlugins: () => pluginsRef.current,
+          getStyles: () => stylesRef.current,
+          getTheme: () => themeRef.current,
+          onTransaction: ({ docChanged, selectionChanged, view }) => {
+            if (docChanged) {
+              const current = documentRef.current;
+              if (current) {
+                onDocumentChangeRef.current(
+                  managerRef.current?.snapshotDocument(current) ?? current,
+                );
+              }
+            }
+            onStoryChangeRef.current(view, docChanged, selectionChanged);
+          },
+        });
+      }
       const manager = managerRef.current;
-      manager?.sync();
+      manager.sync();
       if (active && !manager?.getActive()) {
         setActive(null);
         onActiveChangeRef.current(false);
       }
-    }, [active, footnotes, endnotes, plugins, styles, theme]);
+    }, [
+      active,
+      document,
+      endnotes,
+      footnotes,
+      onActiveChange,
+      onDocumentChange,
+      onStoryChange,
+      resolvedPlugins,
+      styles,
+      theme,
+    ]);
 
     useEffect(() => {
       const manager = managerRef.current;
       if (!manager) return;
       for (const story of manager.listStories()) {
         const view = manager.getView(story);
-        if (view)
-          setSuggestionMode(suggestionModeActive, view.state, view.dispatch, suggestionAuthor);
+        if (view) {
+          setSuggestionMode(isSuggestionModeActive, view.state, view.dispatch, suggestionAuthor);
+        }
       }
-    }, [suggestionAuthor, suggestionModeActive]);
+    }, [isSuggestionModeActive, suggestionAuthor]);
 
     useEffect(
       () => () => {
@@ -163,7 +180,7 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
       open: (story) => {
         const view = managerRef.current?.activate(story);
         if (!view) return;
-        setSuggestionMode(suggestionModeActive, view.state, view.dispatch, suggestionAuthor);
+        setSuggestionMode(isSuggestionModeActive, view.state, view.dispatch, suggestionAuthor);
         setActive(story);
         onActiveChangeRef.current(true);
         requestAnimationFrame(() => view.focus());
