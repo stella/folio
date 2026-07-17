@@ -1537,7 +1537,7 @@ const optionalTableCellRevision = (
     issues.push({ path, message: "Expected an object." });
     return;
   }
-  requiredOneOf(value, "kind", `${path}.kind`, issues, ["ins", "del"] as const);
+  requiredOneOf(value, "kind", `${path}.kind`, issues, ["ins", "del", "merge"] as const);
   const info = value["info"];
   if (!isRecord(info)) {
     issues.push({ path: `${path}.info`, message: "Expected an object." });
@@ -1546,6 +1546,16 @@ const optionalTableCellRevision = (
   requiredNumber(info, "revisionId", `${path}.info.revisionId`, issues);
   requiredString(info, "author", `${path}.info.author`, issues);
   optionalString(info, "date", `${path}.info.date`, issues);
+  if (value["kind"] === "merge") {
+    optionalOneOf(value, "verticalMerge", `${path}.verticalMerge`, issues, [
+      "continue",
+      "rest",
+    ] as const);
+    optionalOneOf(value, "verticalMergeOriginal", `${path}.verticalMergeOriginal`, issues, [
+      "continue",
+      "rest",
+    ] as const);
+  }
 };
 
 const optionalTextBoxTrackedChange = (

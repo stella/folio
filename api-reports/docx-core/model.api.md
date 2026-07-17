@@ -1189,8 +1189,13 @@ export type TableRowPropertyChange = {
 
 // @public
 export type TableStructuralChangeInfo = {
-    type: "tableRowInsertion" | "tableRowDeletion" | "tableCellInsertion" | "tableCellDeletion" | "tableCellMerge"; /** Tracked change metadata */
+    type: "tableRowInsertion" | "tableRowDeletion" | "tableCellInsertion" | "tableCellDeletion"; /** Tracked change metadata */
     info: TrackedChangeInfo;
+} | {
+    type: "tableCellMerge"; /** Tracked change metadata */
+    info: TrackedChangeInfo; /** Vertical merge state applied by the revision. */
+    verticalMerge?: "continue" | "rest"; /** Vertical merge state that existed before the revision. */
+    verticalMergeOriginal?: "continue" | "rest";
 };
 
 // @public

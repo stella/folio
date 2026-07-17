@@ -176,6 +176,119 @@ describe("fromProseDoc", () => {
     ]);
   });
 
+  test("round-trips vertical cell merge revision states through visible cells", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    {
+                      type: "tableCell",
+                      structuralChange: {
+                        type: "tableCellMerge",
+                        info: { id: 83, author: "Reviewer" },
+                        verticalMergeOriginal: "continue",
+                      },
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    expect(pmDoc.firstChild?.firstChild?.firstChild?.attrs["cellMarker"]).toEqual({
+      kind: "merge",
+      info: { revisionId: 83, author: "Reviewer", date: null },
+      verticalMergeOriginal: "continue",
+    });
+
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const table = roundTripped.package.document.content.at(0);
+    if (table?.type !== "table") {
+      throw new Error("Expected table");
+    }
+    expect(table.rows.at(0)?.cells.at(0)?.structuralChange).toEqual({
+      type: "tableCellMerge",
+      info: { id: 83, author: "Reviewer" },
+      verticalMergeOriginal: "continue",
+    });
+  });
+
+  test("preserves merge revisions on collapsed vertical continuation cells", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              rows: [
+                {
+                  type: "tableRow",
+                  cells: [
+                    {
+                      type: "tableCell",
+                      formatting: { vMerge: "restart" },
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                    {
+                      type: "tableCell",
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+                {
+                  type: "tableRow",
+                  cells: [
+                    {
+                      type: "tableCell",
+                      formatting: { vMerge: "continue" },
+                      structuralChange: {
+                        type: "tableCellMerge",
+                        info: { id: 84, author: "Reviewer" },
+                        verticalMerge: "continue",
+                      },
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                    {
+                      type: "tableCell",
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const mergedCell = pmDoc.firstChild?.firstChild?.firstChild;
+    expect(mergedCell?.attrs["rowspan"]).toBe(2);
+    expect(mergedCell?.attrs["_docxVMergeContinuationCells"]).toHaveLength(1);
+
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const table = roundTripped.package.document.content.at(0);
+    if (table?.type !== "table") {
+      throw new Error("Expected table");
+    }
+    expect(table.rows.at(1)?.cells.at(0)?.structuralChange).toEqual({
+      type: "tableCellMerge",
+      info: { id: 84, author: "Reviewer" },
+      verticalMerge: "continue",
+    });
+  });
+
   test("round-trips authored table-cell anchor scope through the editor model", () => {
     const document: Document = {
       package: {

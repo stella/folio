@@ -820,12 +820,32 @@ function parseTableCellStructuralChange(
 
   const merge = findChild(tcPrElement, "w", "cellMerge");
   if (merge) {
+    const verticalMerge = parseTableCellVerticalMergeRevisionValue(
+      getAttribute(merge, "w", "vMerge"),
+    );
+    const verticalMergeOriginal = parseTableCellVerticalMergeRevisionValue(
+      getAttribute(merge, "w", "vMergeOrig"),
+    );
     return {
       type: "tableCellMerge",
       info: parseTrackedChangeInfo(merge),
+      ...(verticalMerge !== undefined ? { verticalMerge } : {}),
+      ...(verticalMergeOriginal !== undefined ? { verticalMergeOriginal } : {}),
     };
   }
 
+  return undefined;
+}
+
+function parseTableCellVerticalMergeRevisionValue(
+  value: string | null | undefined,
+): "continue" | "rest" | undefined {
+  if (value === "cont") {
+    return "continue";
+  }
+  if (value === "rest") {
+    return "rest";
+  }
   return undefined;
 }
 

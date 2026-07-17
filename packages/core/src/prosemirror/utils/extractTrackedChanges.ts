@@ -12,6 +12,8 @@
  * @public
  */
 import type { EditorState } from "prosemirror-state";
+
+import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import type { Mark } from "prosemirror-model";
 
 /**
@@ -288,6 +290,24 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
             from: pos,
             to: pos + node.nodeSize,
             revisionId: cellMarker.info.revisionId,
+          });
+        }
+      }
+      const continuationCells = node.attrs["_docxVMergeContinuationCells"];
+      if (Array.isArray(continuationCells)) {
+        for (const continuationCell of continuationCells) {
+          const change = getTableCellMergeChange(continuationCell);
+          if (!change) {
+            continue;
+          }
+          raw.push({
+            type: "cellMerged",
+            text: node.textContent || "",
+            author: change.info.author,
+            date: change.info.date,
+            from: pos,
+            to: pos + node.nodeSize,
+            revisionId: change.info.id,
           });
         }
       }

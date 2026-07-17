@@ -1116,16 +1116,21 @@ export type SectionPropertyChange = {
 /**
  * Table structural tracked change metadata (row/cell insert/delete/merge)
  */
-export type TableStructuralChangeInfo = {
-  type:
-    | "tableRowInsertion"
-    | "tableRowDeletion"
-    | "tableCellInsertion"
-    | "tableCellDeletion"
-    | "tableCellMerge";
-  /** Tracked change metadata */
-  info: TrackedChangeInfo;
-};
+export type TableStructuralChangeInfo =
+  | {
+      type: "tableRowInsertion" | "tableRowDeletion" | "tableCellInsertion" | "tableCellDeletion";
+      /** Tracked change metadata */
+      info: TrackedChangeInfo;
+    }
+  | {
+      type: "tableCellMerge";
+      /** Tracked change metadata */
+      info: TrackedChangeInfo;
+      /** Vertical merge state applied by the revision. */
+      verticalMerge?: "continue" | "rest";
+      /** Vertical merge state that existed before the revision. */
+      verticalMergeOriginal?: "continue" | "rest";
+    };
 
 // ============================================================================
 // STRUCTURED DOCUMENT TAGS (SDT / Content Controls)

@@ -15,6 +15,12 @@ import type {
   TableRowFormatting,
 } from "../../types/document";
 import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { getTableCellMergeChange } from "../tableCellMergeRevision";
+import {
+  hasMatchingCollapsedTableCellMerge,
+  resolveCollapsedTableCellMerge,
+  resolveVisibleTableCellMerge,
+} from "./tableCellMergeResolution";
 import {
   paragraphRejectAttrPatch,
   paragraphRejectOriginalFormatting,
@@ -214,10 +220,9 @@ function resolveChange(
           (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
           rangeCoversNode(from, to, pos, node)
         ) {
-          const op = collectTableCellStructuralOp(node, pos, mode, revisionSet);
-          if (op) {
-            tableCellStructuralOps.push(op);
-          }
+          tableCellStructuralOps.push(
+            ...collectTableCellStructuralOps(node, pos, mode, revisionSet),
+          );
         }
 
         // Table property changes (w:tblPrChange / w:trPrChange / w:tcPrChange)
@@ -318,10 +323,23 @@ function resolveChange(
 
       tableCellStructuralOps.sort((left, right) => right.cellPos - left.cellPos);
       let resolvedTableCellStructure = false;
+      let failedTableCellMergeResolution = false;
       for (const op of tableCellStructuralOps) {
         const mappedPos = tr.mapping.map(op.cellPos);
         const cell = tr.doc.nodeAt(mappedPos);
         if (!cell || (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")) {
+          continue;
+        }
+        if (op.type === "merge") {
+          const resolved =
+            op.source === "collapsed"
+              ? resolveCollapsedTableCellMerge(tr, mappedPos, op.mode, op.revisionSet)
+              : resolveVisibleTableCellMerge(tr, mappedPos, op.mode);
+          if (!resolved) {
+            failedTableCellMergeResolution = true;
+            break;
+          }
+          resolvedTableCellStructure ||= resolved;
           continue;
         }
         if (op.action === "clear") {
@@ -331,6 +349,9 @@ function resolveChange(
         }
         deleteTableCellAt(tr, mappedPos);
         resolvedTableCellStructure = true;
+      }
+      if (failedTableCellMergeResolution) {
+        return false;
       }
       if (resolvedTableCellStructure) {
         markStructuralChange(tr);
@@ -359,17 +380,35 @@ type TableRowRevisionAttr = {
   revisionId: number;
 };
 
-type TableCellStructuralOp = {
-  cellPos: number;
-  action: "clear" | "remove";
-};
+type TableCellStructuralOp =
+  | {
+      type: "membership";
+      cellPos: number;
+      action: "clear" | "remove";
+    }
+  | {
+      type: "merge";
+      cellPos: number;
+      source: "visible" | "collapsed";
+      mode: "accept" | "reject";
+      revisionSet: Set<number> | null;
+    };
 
-type TableCellRevisionAttr = {
-  kind: "ins" | "del";
-  info: {
-    revisionId: number;
-  };
-};
+type TableCellRevisionAttr =
+  | {
+      kind: "ins" | "del";
+      info: {
+        revisionId: number;
+      };
+    }
+  | {
+      kind: "merge";
+      info: {
+        revisionId: number;
+      };
+      verticalMerge?: "continue" | "rest";
+      verticalMergeOriginal?: "continue" | "rest";
+    };
 
 function collectTableRowStructuralOp(
   node: PMNode,
@@ -404,31 +443,52 @@ function isTableRowRevisionAttr(value: unknown): value is TableRowRevisionAttr {
   );
 }
 
-function collectTableCellStructuralOp(
+function collectTableCellStructuralOps(
   node: PMNode,
   cellPos: number,
   mode: "accept" | "reject",
   revisionSet: Set<number> | null,
-): TableCellStructuralOp | null {
+): TableCellStructuralOp[] {
+  const operations: TableCellStructuralOp[] = [];
   const marker = node.attrs["cellMarker"];
-  if (!isTableCellRevisionAttr(marker)) {
-    return null;
+  if (
+    isTableCellRevisionAttr(marker) &&
+    (revisionSet === null || revisionSet.has(marker.info.revisionId))
+  ) {
+    if (marker.kind === "merge") {
+      operations.push({
+        type: "merge",
+        cellPos,
+        source: "visible",
+        mode,
+        revisionSet,
+      });
+    } else {
+      const keepsCell = (marker.kind === "ins") === (mode === "accept");
+      operations.push({
+        type: "membership",
+        cellPos,
+        action: keepsCell ? "clear" : "remove",
+      });
+    }
   }
-  if (revisionSet !== null && !revisionSet.has(marker.info.revisionId)) {
-    return null;
+  if (hasMatchingCollapsedTableCellMerge(node, revisionSet)) {
+    operations.push({
+      type: "merge",
+      cellPos,
+      source: "collapsed",
+      mode,
+      revisionSet,
+    });
   }
-  const keepsCell = (marker.kind === "ins") === (mode === "accept");
-  return {
-    cellPos,
-    action: keepsCell ? "clear" : "remove",
-  };
+  return operations;
 }
 
 function isTableCellRevisionAttr(value: unknown): value is TableCellRevisionAttr {
   if (typeof value !== "object" || value === null || !("kind" in value) || !("info" in value)) {
     return false;
   }
-  if (value.kind !== "ins" && value.kind !== "del") {
+  if (value.kind !== "ins" && value.kind !== "del" && value.kind !== "merge") {
     return false;
   }
   const info = value.info;
@@ -839,7 +899,16 @@ export function findAIEditRevisionRange(
     }
     if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
       const marker = node.attrs["cellMarker"];
-      if (isTableCellRevisionAttr(marker) && idSet.has(marker.info.revisionId)) {
+      const hasDirectRevision =
+        isTableCellRevisionAttr(marker) && idSet.has(marker.info.revisionId);
+      const continuationCells = node.attrs["_docxVMergeContinuationCells"];
+      const hasCollapsedRevision =
+        Array.isArray(continuationCells) &&
+        continuationCells.some((cell) => {
+          const change = getTableCellMergeChange(cell);
+          return change !== null && idSet.has(change.info.id);
+        });
+      if (hasDirectRevision || hasCollapsedRevision) {
         const start = pos;
         const end = pos + node.nodeSize;
         if (range.from === null || start < range.from) {

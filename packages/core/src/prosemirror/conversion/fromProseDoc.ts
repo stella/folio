@@ -2740,14 +2740,28 @@ function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts):
     cell.propertyChanges = [...attrs.tcPrChange];
   }
   if (attrs.cellMarker) {
-    cell.structuralChange = {
-      type: attrs.cellMarker.kind === "ins" ? "tableCellInsertion" : "tableCellDeletion",
-      info: {
-        id: attrs.cellMarker.info.revisionId,
-        author: attrs.cellMarker.info.author,
-        ...(attrs.cellMarker.info.date != null && { date: attrs.cellMarker.info.date }),
-      },
+    const info = {
+      id: attrs.cellMarker.info.revisionId,
+      author: attrs.cellMarker.info.author,
+      ...(attrs.cellMarker.info.date != null && { date: attrs.cellMarker.info.date }),
     };
+    if (attrs.cellMarker.kind === "merge") {
+      cell.structuralChange = {
+        type: "tableCellMerge",
+        info,
+        ...(attrs.cellMarker.verticalMerge !== undefined
+          ? { verticalMerge: attrs.cellMarker.verticalMerge }
+          : {}),
+        ...(attrs.cellMarker.verticalMergeOriginal !== undefined
+          ? { verticalMergeOriginal: attrs.cellMarker.verticalMergeOriginal }
+          : {}),
+      };
+    } else {
+      cell.structuralChange = {
+        type: attrs.cellMarker.kind === "ins" ? "tableCellInsertion" : "tableCellDeletion",
+        info,
+      };
+    }
   }
   return cell;
 }

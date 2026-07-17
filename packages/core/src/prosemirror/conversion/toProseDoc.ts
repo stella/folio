@@ -1847,6 +1847,21 @@ function convertTableCell({
         date: cell.structuralChange.info.date ?? null,
       },
     };
+  } else if (cell.structuralChange?.type === "tableCellMerge") {
+    attrs.cellMarker = {
+      kind: "merge",
+      info: {
+        revisionId: cell.structuralChange.info.id,
+        author: cell.structuralChange.info.author,
+        date: cell.structuralChange.info.date ?? null,
+      },
+      ...(cell.structuralChange.verticalMerge !== undefined
+        ? { verticalMerge: cell.structuralChange.verticalMerge }
+        : {}),
+      ...(cell.structuralChange.verticalMergeOriginal !== undefined
+        ? { verticalMergeOriginal: cell.structuralChange.verticalMergeOriginal }
+        : {}),
+    };
   }
   if (preserveVMergeRestart) {
     attrs._preserveVMergeRestart = true;
@@ -1885,6 +1900,28 @@ function convertTableCell({
   // Use tableHeader for header cells, tableCell otherwise
   const nodeType = isHeader ? "tableHeader" : "tableCell";
   return schema.node(nodeType, attrs, contentNodes);
+}
+
+export function standaloneTableCellToProseMirror(
+  cell: TableCell,
+  nodeType: "tableCell" | "tableHeader",
+): PMNode {
+  let textBoxGroupIndex = 0;
+  const nextTextBoxGroupId = (): string => String(textBoxGroupIndex++);
+  return convertTableCell({
+    cell,
+    styleResolver: null,
+    context: { theme: null, nextTextBoxGroupId },
+    isHeader: nodeType === "tableHeader",
+    gridWidthPercent: undefined,
+    conditionalStyle: undefined,
+    tableBorders: undefined,
+    position: {},
+    calculatedRowSpan: 1,
+    preserveVMergeRestart: undefined,
+    vMergeContinuationCells: undefined,
+    defaultCellMargins: undefined,
+  });
 }
 
 /**
