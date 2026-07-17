@@ -76,7 +76,7 @@ const BREAK_AFTER_CHARACTER = new Set([
   "\u200B", // zero-width space
   "\u00AD", // soft hyphen
 ]);
-const CZECH_ONE_LETTER_PREPOSITIONS = new Set(["k", "o", "s", "u", "v", "z"]);
+const NONBREAKING_SPACES = new Set(["\u00A0", "\u2007", "\u202F"]);
 
 // ECMA-376 kinsoku defaults are language-specific and can be replaced by
 // settings.xml. This conservative common set covers punctuation excluded from
@@ -211,42 +211,6 @@ const isLegacyEthiopicBreakCharacter = (
   return codePoint !== undefined && codePoint >= 0x1361 && codePoint <= 0x1368;
 };
 
-const czechProtectedBreaks = (text: string, policy?: LineBreakPolicy): Set<number> => {
-  const breaks = new Set<number>();
-  if (segmenterLocale(policy?.locale) !== "cs") {
-    return breaks;
-  }
-
-  let tokenStart = 0;
-  let index = 0;
-  while (index < text.length) {
-    const character = firstCodePoint(text, index);
-    if (character === undefined) {
-      break;
-    }
-    if (!/\s/u.test(character)) {
-      index += character.length;
-      continue;
-    }
-
-    const token = text.slice(tokenStart, index);
-    const protectsNextWord =
-      token.length === 1 && CZECH_ONE_LETTER_PREPOSITIONS.has(token.toLocaleLowerCase("cs"));
-    while (index < text.length) {
-      const whitespace = firstCodePoint(text, index);
-      if (whitespace === undefined || !/\s/u.test(whitespace)) {
-        break;
-      }
-      index += whitespace.length;
-      if (protectsNextWord) {
-        breaks.add(index);
-      }
-    }
-    tokenStart = index;
-  }
-  return breaks;
-};
-
 const allowsBreak = (text: string, index: number, policy?: LineBreakPolicy): boolean => {
   const previous = previousCodePoint(text, index);
   const next = firstCodePoint(text, index);
@@ -289,7 +253,7 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
     const previous = previousCodePoint(text, index);
     if (
       previous !== undefined &&
-      (/\s/u.test(previous) ||
+      ((/\s/u.test(previous) && !NONBREAKING_SPACES.has(previous)) ||
         BREAK_AFTER_CHARACTER.has(previous) ||
         isLegacyEthiopicBreakCharacter(previous, policy))
     ) {
@@ -321,10 +285,7 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
     }
   }
 
-  const protectedBreaks = czechProtectedBreaks(text, policy);
-  return [...new Set(breaks)]
-    .filter((index) => !protectedBreaks.has(index))
-    .sort((left, right) => left - right);
+  return [...new Set(breaks)].sort((left, right) => left - right);
 };
 
 type HyphenateWord = (text: string) => string;
