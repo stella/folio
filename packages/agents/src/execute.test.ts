@@ -361,6 +361,93 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     expect(result.receipts).toEqual([]);
   });
 
+  test("suggest_changes honors a caller-supplied precondition, catching staleness a fresh same-call snapshot cannot", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+
+    const blocks = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge),
+    ) as FolioAgentBlock[];
+    const heading = blocks.find((block) => block.text.includes("Heading"));
+    if (!heading) {
+      throw new Error("expected a block containing 'Heading'");
+    }
+    expect(heading.blockTextHash).toMatch(/^h[0-9a-z]+$/);
+    const staleBlockTextHash = heading.blockTextHash;
+
+    // Someone else edits the block between the read above and the apply
+    // below — exactly the gap a precondition stamped fresh at apply time
+    // (from a snapshot taken in THIS call) can never observe.
+    expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        {
+          operations: [
+            {
+              type: "replaceInBlock",
+              blockId: heading.blockId,
+              find: "Heading",
+              replace: "Renamed",
+            },
+          ],
+        },
+        bridge,
+      ),
+    );
+
+    // Echoing the now-stale hash from the ORIGINAL read must be skipped,
+    // not silently applied against the block's new content.
+    const staleResult = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        {
+          operations: [
+            {
+              type: "replaceInBlock",
+              blockId: heading.blockId,
+              find: "Renamed",
+              replace: "Changed again",
+              precondition: { blockTextHash: staleBlockTextHash },
+            },
+          ],
+        },
+        bridge,
+      ),
+    ) as FolioAgentApplyOperationsSummary;
+    expect(staleResult.applied).toEqual([]);
+    expect(staleResult.skipped).toHaveLength(1);
+    expect(staleResult.skipped[0]?.reason).toContain("re-read the document");
+
+    // Echoing the CURRENT hash (from a fresh read) applies normally.
+    const freshBlocks = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge),
+    ) as FolioAgentBlock[];
+    const freshHeading = freshBlocks.find((block) => block.blockId === heading.blockId);
+    if (!freshHeading) {
+      throw new Error("expected the block to still exist");
+    }
+    expect(freshHeading.blockTextHash).not.toBe(staleBlockTextHash);
+    const freshResult = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        {
+          operations: [
+            {
+              type: "replaceInBlock",
+              blockId: freshHeading.blockId,
+              find: "Renamed",
+              replace: "Changed again",
+              precondition: { blockTextHash: freshHeading.blockTextHash },
+            },
+          ],
+        },
+        bridge,
+      ),
+    ) as FolioAgentApplyOperationsSummary;
+    expect(freshResult.applied).toHaveLength(1);
+    expect(freshResult.skipped).toEqual([]);
+  });
+
   test("suggest_changes explains an unsupported mutation mode", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const reviewerBridge = createReviewerBridge(reviewer);

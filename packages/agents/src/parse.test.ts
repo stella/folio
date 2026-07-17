@@ -41,6 +41,32 @@ describe("parseAddCommentInput", () => {
     expect(result.operation).toMatchObject({ quote: "the quoted text" });
   });
 
+  test("valid input with a precondition includes it on the operation", () => {
+    const result = parseAddCommentInput({
+      blockId: "b1",
+      text: "note",
+      precondition: { blockTextHash: "h1a2b3" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected ok:true");
+    }
+    expect(result.operation).toMatchObject({ precondition: { blockTextHash: "h1a2b3" } });
+  });
+
+  test("rejects a malformed precondition", () => {
+    const result = parseAddCommentInput({
+      blockId: "b1",
+      text: "note",
+      precondition: { blockTextHash: "not-a-hash" },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("expected ok:false");
+    }
+    expect(result.error).toContain("precondition.blockTextHash");
+  });
+
   test("rejects non-object args", () => {
     const result = parseAddCommentInput("not an object");
     expect(result.ok).toBe(false);
@@ -148,6 +174,44 @@ describe("parseSuggestChangesInput", () => {
     expect(result.operations).toEqual([
       { id: "op-1", type: "replaceInBlock", blockId: "b1", find: "Heading", replace: "Intro" },
     ]);
+  });
+
+  test("a caller-supplied precondition is attached to the operation", () => {
+    const result = parseSuggestChangesInput({
+      operations: [
+        {
+          type: "replaceInBlock",
+          blockId: "b1",
+          find: "Heading",
+          replace: "Intro",
+          precondition: { blockTextHash: "h1a2b3" },
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected ok:true");
+    }
+    expect(result.operations[0]?.precondition).toEqual({ blockTextHash: "h1a2b3" });
+  });
+
+  test("rejects a precondition with a malformed blockTextHash", () => {
+    const result = parseSuggestChangesInput({
+      operations: [
+        {
+          type: "replaceInBlock",
+          blockId: "b1",
+          find: "Heading",
+          replace: "Intro",
+          precondition: { blockTextHash: "not-a-hash" },
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("expected ok:false");
+    }
+    expect(result.error).toContain("precondition.blockTextHash");
   });
 
   test("a caller-supplied id is preserved instead of the auto-generated one", () => {

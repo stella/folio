@@ -64,16 +64,24 @@ export const FOLIO_TEXT_RANGE_JSON_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const preconditionJsonSchema = {
+/**
+ * JSON Schema for the contract's optional `precondition` guard: `{
+ * blockTextHash }`, echoed from a `blockTextHash` returned by a document
+ * read (`read_document`, `read_section`, `find_text`). Exported so
+ * `tools.ts` can attach the same shape to `suggest_changes` and
+ * `add_comment` without redeclaring it.
+ */
+export const FOLIO_PRECONDITION_JSON_SCHEMA = {
   type: "object",
   description:
-    "Optional guard: the operation is skipped (reason `preconditionFailed`) unless the target " +
-    "block's normalized text hash still matches.",
+    "Optional guard against editing a block that changed since you read it: echo the `blockTextHash` " +
+    "returned by read_document / read_section / find_text for this block. The operation is skipped " +
+    "(reason `preconditionFailed`) unless the target block's current normalized text hash still matches.",
   properties: {
     blockTextHash: {
       type: "string",
       pattern: NORMALIZED_TEXT_HASH_PATTERN,
-      description: "Normalized hash of the target block's text.",
+      description: "Normalized hash of the target block's text, from a prior document read.",
     },
   },
   required: ["blockTextHash"],
@@ -110,7 +118,7 @@ const operationMetaProperties = {
     type: "string",
     description: 'Optional review area label (e.g. "Penalty") for structured-review workflows.',
   },
-  precondition: preconditionJsonSchema,
+  precondition: FOLIO_PRECONDITION_JSON_SCHEMA,
 } as const;
 
 const blockIdProperty = {

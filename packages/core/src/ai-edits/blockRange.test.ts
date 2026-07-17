@@ -158,6 +158,16 @@ describe("resolveFolioAIBlockRange", () => {
 
     expect(resolveFolioAIBlockRange({ blockId: "seq-0009", doc: liveDoc })).toBeNull();
   });
+
+  test("returns null instead of resolving Object.prototype for a __proto__ block id", () => {
+    // A plain `anchors[blockId]` lookup resolves "__proto__" to
+    // Object.prototype instead of undefined, which then has no `from`/`to`
+    // and yields NaN positions further down. An untrusted blockId (e.g.
+    // from an agent tool call) must fail cleanly instead.
+    const liveDoc = makeDoc([{ paraId: "0A0A0A0A", text: "Only" }]);
+
+    expect(resolveFolioAIBlockRange({ blockId: "__proto__", doc: liveDoc })).toBeNull();
+  });
 });
 
 describe("resolveFolioAITextRange", () => {

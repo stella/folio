@@ -2,6 +2,8 @@ import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   getFolioDocumentOutline,
+  hashFolioAIBlockText,
+  normalizeFolioAIBlockText,
   readFolioDocumentSection,
   type FolioAIBlock,
   type FolioAITextRangeHandle,
@@ -38,6 +40,17 @@ const ok = (result: unknown): FolioToolCallResult => ({ ok: true, result });
 const fail = (error: string): FolioToolCallResult => ({ ok: false, error });
 
 const VALID_TOOL_NAMES: readonly string[] = Object.values(FOLIO_AGENT_TOOL_NAMES);
+
+/**
+ * The same normalized-text hash the core snapshot/apply machinery uses for
+ * `precondition.blockTextHash` (see `hashFolioAIBlockText` /
+ * `normalizeFolioAIBlockText`). Computed straight from a block's `text`
+ * rather than looked up from `snapshot.anchors` so every read path (main
+ * document, a section, a find_text match) can attach it without threading
+ * the anchors map around — it is defined to produce the exact same value.
+ */
+const blockTextHashOf = (text: string): string =>
+  hashFolioAIBlockText(normalizeFolioAIBlockText(text));
 
 /** `find_text` requires a short `query` and caps how much of a large match set it returns in one call. */
 const MAX_QUERY_LENGTH = 1_000;
@@ -128,7 +141,14 @@ const dispatch = (name: string, args: unknown, bridge: FolioAgentBridge): FolioT
 
 const readDocument = (bridge: FolioAgentBridge): FolioToolCallResult => {
   const { blocks } = bridge.snapshot();
-  return ok(blocks.map((block) => ({ blockId: block.id, kind: block.kind, text: block.text })));
+  return ok(
+    blocks.map((block) => ({
+      blockId: block.id,
+      kind: block.kind,
+      text: block.text,
+      blockTextHash: blockTextHashOf(block.text),
+    })),
+  );
 };
 
 const parseSectionHandle = (value: unknown): FolioDocumentSectionHandle | null => {
@@ -231,7 +251,12 @@ const readSection = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResu
   return ok({
     handle,
     heading: resolved.section.heading,
-    blocks: selected.map(({ id, kind, text }) => ({ blockId: id, kind, text })),
+    blocks: selected.map(({ id, kind, text }) => ({
+      blockId: id,
+      kind,
+      text,
+      blockTextHash: blockTextHashOf(text),
+    })),
     totalBlocks: resolved.section.blocks.length,
     truncated: hasMore,
     ...(hasMore && lastBlockId !== undefined && { nextAfterBlockId: lastBlockId }),
@@ -310,6 +335,7 @@ const findTextMatches = (
   const expression = new RegExp(escapedQuery, matchCase ? "gu" : "giu");
   for (const block of blocks) {
     let occurrence = 0;
+    let blockTextHash: string | undefined;
     for (const match of block.text.matchAll(expression)) {
       const at = match.index;
       const matchedText = match[0];
@@ -341,10 +367,12 @@ const findTextMatches = (
       if (matches.length < MAX_FIND_MATCHES) {
         const contextStart = Math.max(0, at - CONTEXT_RADIUS);
         const contextEnd = Math.min(block.text.length, at + matchedText.length + CONTEXT_RADIUS);
+        blockTextHash ??= blockTextHashOf(block.text);
         matches.push({
           type: "main",
           story: { type: "main" },
           blockId: block.id,
+          blockTextHash,
           range,
           occurrenceInBlock: occurrence,
           context: block.text.slice(contextStart, contextEnd),
@@ -572,6 +600,23 @@ const summarizeApplyResult = (result: {
   receipts: result.receipts ?? [],
 });
 
+/**
+ * Attach a `precondition.blockTextHash` guard to every operation before
+ * handing the batch to the bridge.
+ *
+ * When the caller (the model) already echoed a `precondition` on the
+ * operation — sourced from a `blockTextHash` returned by an earlier
+ * `read_document` / `read_section` / `find_text` call — that is honored
+ * as-is: it is the only signal that can catch a document edit made
+ * BETWEEN that read and this apply call.
+ *
+ * When no precondition was supplied, fall back to stamping one from this
+ * call's own fresh `bridge.snapshot()`, matching the previous behavior.
+ * This fallback cannot detect cross-call staleness — the snapshot it reads
+ * from is taken right before applying, so it always matches the current
+ * live document — but it still guards a later operation in the SAME batch
+ * against an earlier operation in that batch touching the same block.
+ */
 const applyOperations = (
   bridge: FolioAgentBridge,
   operations: FolioDocumentOperation[],
@@ -579,6 +624,10 @@ const applyOperations = (
   const snapshot = bridge.snapshot();
   const guardedOperations: FolioDocumentOperation[] = [];
   for (const operation of operations) {
+    if (operation.precondition !== undefined) {
+      guardedOperations.push(operation);
+      continue;
+    }
     const blockId =
       operation.type === "replaceRange" ||
       operation.type === "commentOnRange" ||

@@ -66,6 +66,15 @@ export type FolioAgentBlock = {
   blockId: string;
   kind: string;
   text: string;
+  /**
+   * Normalized-text hash of this block at read time. Echo it back as
+   * `precondition.blockTextHash` on a `suggest_changes` / `add_comment`
+   * operation targeting this block so the apply call is guarded against
+   * edits made to the document between this read and that apply — without
+   * it, only same-call staleness within one `suggest_changes` batch is
+   * caught.
+   */
+  blockTextHash: string;
 };
 
 /** One main-story `find_text` match. Existing consumers can keep using its block and range directly. */
@@ -74,6 +83,8 @@ export type FolioAgentTextMatch = {
   type?: "main";
   story?: { type: "main" };
   blockId: string;
+  /** Normalized-text hash of the whole containing block; see {@link FolioAgentBlock.blockTextHash}. */
+  blockTextHash: string;
   /** Stable handle that can be passed directly to `show_in_document` or a range operation. */
   range: FolioAITextRangeHandle;
   /** 0-based index of this occurrence within its block. */

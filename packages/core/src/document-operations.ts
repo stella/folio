@@ -133,10 +133,14 @@ export const isFolioDocumentOperationModeSupported = (
   operationType: FolioDocumentOperationType,
   mode: FolioDocumentOperationMode,
 ): boolean => {
-  const supportedModes = FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE[operationType];
-  if (supportedModes === undefined) {
+  // A plain indexed lookup resolves "__proto__" / "constructor" / "toString"
+  // to an inherited Object.prototype member instead of undefined — an
+  // untrusted `operationType` string must be checked as an own property
+  // first, or the `.includes` call below throws on that non-array value.
+  if (!Object.hasOwn(FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE, operationType)) {
     return false;
   }
+  const supportedModes = FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE[operationType];
   return includesDocumentOperationMode(supportedModes, mode);
 };
 

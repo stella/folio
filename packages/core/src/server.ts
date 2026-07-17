@@ -24,7 +24,11 @@ export type {
   FolioDocumentSectionHandle,
   FolioDocumentSectionReadResult,
 } from "./ai-edits/types";
-export { createFolioAITextRangeHandle } from "./ai-edits/snapshot";
+export {
+  createFolioAITextRangeHandle,
+  hashFolioAIBlockText,
+  normalizeFolioAIBlockText,
+} from "./ai-edits/snapshot";
 export { getFolioDocumentOutline, readFolioDocumentSection } from "./ai-edits/scoped-reading";
 export {
   deriveBlockId,

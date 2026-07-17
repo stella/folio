@@ -57,6 +57,37 @@ export const explainTextTooLong = (label: string, length: number): string =>
 const explainAggregateTextTooLong = (index: number): string =>
   `operations[${index}] pushes suggest_changes' combined text over the ${MAX_TOTAL_OPERATION_TEXT_LENGTH.toLocaleString()}-character aggregate limit across all operations; split the edit across multiple suggest_changes calls.`;
 
+/** Normalized text hashes (`hashFolioAIBlockText`) look like `h` followed by base-36 digits. */
+const NORMALIZED_TEXT_HASH_PATTERN = /^h[0-9a-z]+$/;
+
+/**
+ * Parse an optional `precondition: { blockTextHash }` field, present on
+ * `add_comment` / `suggest_changes` operation arguments when the caller
+ * echoes a `blockTextHash` returned by an earlier `read_document` /
+ * `read_section` / `find_text` call. Guards the eventual apply against a
+ * document edit made between that read and this call — `execute.ts`
+ * otherwise has no way to distinguish "the model never read this block" from
+ * "the model read it and it has since changed".
+ *
+ * Returns `undefined` when omitted, the parsed precondition when valid, or a
+ * plain-language error string otherwise.
+ */
+const readOperationPrecondition = (
+  value: unknown,
+): { blockTextHash: string } | undefined | string => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isPlainObject(value)) {
+    return "`precondition` must be an object when provided.";
+  }
+  const blockTextHash = value["blockTextHash"];
+  if (!isNonEmptyString(blockTextHash) || !NORMALIZED_TEXT_HASH_PATTERN.test(blockTextHash)) {
+    return "`precondition.blockTextHash` must be a normalized block text hash, echoed from read_document / read_section / find_text.";
+  }
+  return { blockTextHash };
+};
+
 /** Mutable running budget threaded through {@link buildSuggestedOperation} for one `suggest_changes` call. */
 type TextBudget = { remaining: number };
 
@@ -98,6 +129,10 @@ export const parseAddCommentInput = (args: unknown): ParseAddCommentResult => {
   if (typeof quote === "string" && quote.length > MAX_OPERATION_TEXT_LENGTH) {
     return { ok: false, error: explainTextTooLong("add_comment's `quote`", quote.length) };
   }
+  const precondition = readOperationPrecondition(args["precondition"]);
+  if (typeof precondition === "string") {
+    return { ok: false, error: `add_comment's ${precondition}` };
+  }
 
   const comment: FolioAIComment = { text };
   const operation: FolioAIEditOperation = {
@@ -106,6 +141,7 @@ export const parseAddCommentInput = (args: unknown): ParseAddCommentResult => {
     blockId,
     comment,
     ...(quote !== undefined ? { quote } : {}),
+    ...(precondition !== undefined ? { precondition } : {}),
   };
   return { ok: true, operation };
 };
@@ -168,13 +204,19 @@ const readTextRange = (value: unknown, index: number): FolioAITextRangeHandle | 
   if (typeof endOffset !== "number" || !Number.isInteger(endOffset) || endOffset <= startOffset) {
     return `${path}.endOffset must be an integer greater than startOffset.`;
   }
-  if (!isNonEmptyString(selectedTextHash) || !/^h[0-9a-z]+$/.test(selectedTextHash)) {
+  if (!isNonEmptyString(selectedTextHash) || !NORMALIZED_TEXT_HASH_PATTERN.test(selectedTextHash)) {
     return `${path}.selectedTextHash must be a normalized text hash.`;
   }
   return { type, story, blockId, startOffset, endOffset, selectedTextHash };
 };
 
-/** Validate + map one `suggest_changes` operation, or return a plain-language error string. */
+/**
+ * Validate + map one `suggest_changes` operation, or return a plain-language
+ * error string. Parses the shared `precondition` field itself (every
+ * operation variant accepts it, so it does not belong to any one type's
+ * branch below) and merges it onto whatever {@link buildSuggestedOperationCore}
+ * builds.
+ */
 const buildSuggestedOperation = (
   raw: unknown,
   index: number,
@@ -183,6 +225,23 @@ const buildSuggestedOperation = (
   if (!isPlainObject(raw)) {
     return `operations[${index}] must be an object.`;
   }
+  const precondition = readOperationPrecondition(raw["precondition"]);
+  if (typeof precondition === "string") {
+    return `operations[${index}] ${precondition}`;
+  }
+  const built = buildSuggestedOperationCore(raw, index, budget);
+  if (typeof built === "string") {
+    return built;
+  }
+  return precondition === undefined ? built : { ...built, precondition };
+};
+
+/** Type-and-shape-specific half of {@link buildSuggestedOperation}. */
+const buildSuggestedOperationCore = (
+  raw: Record<string, unknown>,
+  index: number,
+  budget: TextBudget,
+): FolioAIEditOperation | string => {
   const type = raw["type"];
   const blockId = raw["blockId"];
   const id = raw["id"];

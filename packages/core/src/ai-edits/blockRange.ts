@@ -38,8 +38,13 @@ export const resolveFolioAIBlockRange = ({
   }
 
   const resolvedSnapshot = snapshot ?? createFolioAIEditSnapshot(doc);
-  const anchor =
-    resolvedSnapshot.anchors[blockId] ?? resolveSequentialBlockAnchor(blockId, resolvedSnapshot);
+  // A plain indexed lookup resolves "__proto__" to Object.prototype instead
+  // of undefined, which then passes the `!anchor` check below with no
+  // `from`/`to` fields and yields NaN positions. Require an own property
+  // before trusting the lookup.
+  const anchor = Object.hasOwn(resolvedSnapshot.anchors, blockId)
+    ? resolvedSnapshot.anchors[blockId]
+    : resolveSequentialBlockAnchor(blockId, resolvedSnapshot);
   if (!anchor) {
     return null;
   }

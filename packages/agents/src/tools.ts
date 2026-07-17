@@ -3,7 +3,7 @@ import {
   type FolioDocumentOperationType,
 } from "@stll/folio-core/server";
 
-import { FOLIO_TEXT_RANGE_JSON_SCHEMA } from "./operation-schema";
+import { FOLIO_PRECONDITION_JSON_SCHEMA, FOLIO_TEXT_RANGE_JSON_SCHEMA } from "./operation-schema";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type { FolioAgentToolDefinition } from "./types";
 
@@ -58,10 +58,12 @@ const scopedHandleSchema = {
  *   where the contract requires it;
  * - `comment` is a plain string here; `parse.ts` wraps it into the contract's
  *   `{ text }` object;
- * - the review metadata (`severity`, `area`), `precondition` guard, and the
- *   insert/replace formatting knobs (`inheritFormatting`, `pageBreakBefore`,
- *   `preserveFormatting`, `styleId`, `parties`, `quote`,
- *   except `formatting`) are not exposed to the model.
+ * - the review metadata (`severity`, `area`) and the insert/replace
+ *   formatting knobs (`inheritFormatting`, `pageBreakBefore`,
+ *   `preserveFormatting`, `styleId`, `parties`, `quote`, except `formatting`)
+ *   are not exposed to the model. `precondition` IS exposed (see
+ *   `FOLIO_PRECONDITION_JSON_SCHEMA`) so the model can guard an edit against
+ *   staleness introduced between an earlier read and this call.
  */
 const SUGGEST_CHANGES_EXCLUDED_OPERATION_TYPES: ReadonlySet<FolioDocumentOperationType> = new Set([
   "commentOnBlock",
@@ -157,6 +159,7 @@ const suggestChangesOperationSchema = {
       description:
         "Optional comment explaining this edit, attached to the affected text, up to 100,000 characters.",
     },
+    precondition: FOLIO_PRECONDITION_JSON_SCHEMA,
   },
   required: ["type"],
   additionalProperties: false,
@@ -175,7 +178,9 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     name: FOLIO_AGENT_TOOL_NAMES.readDocument,
     description:
       "Read the full document body as a list of blocks (paragraphs, headings, list items). Call this first, " +
-      "or whenever you need fresh block ids after a mutation — block ids from a stale read may no longer resolve.",
+      "or whenever you need fresh block ids after a mutation — block ids from a stale read may no longer " +
+      "resolve. Each block includes a `blockTextHash`; echo it as `precondition.blockTextHash` on a " +
+      "suggest_changes / add_comment operation to guard against the block changing before that call runs.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -206,7 +211,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     name: FOLIO_AGENT_TOOL_NAMES.readSection,
     description:
       "Read one logical heading section using a handle from get_document_outline. Content is block-bounded " +
-      "and paginated with an afterBlockId cursor, avoiding a full-document read.",
+      "and paginated with an afterBlockId cursor, avoiding a full-document read. Each block includes a " +
+      "`blockTextHash`; echo it as `precondition.blockTextHash` on a suggest_changes / add_comment operation.",
     inputSchema: {
       type: "object",
       properties: {
@@ -252,8 +258,9 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     name: FOLIO_AGENT_TOOL_NAMES.findText,
     description:
       "Search a document, section, rendered page, or story and return `{ matches, truncated, totalMatches }`. " +
-      "Main-story matches include a stable block and exact range; other stories return story-relative offsets. " +
-      "Every match includes surrounding context. `matches` is " +
+      "Main-story matches include a stable block, exact range, and `blockTextHash` (echo it as " +
+      "`precondition.blockTextHash` on a later suggest_changes / add_comment operation); other stories return " +
+      "story-relative offsets. Every match includes surrounding context. `matches` is " +
       "capped at 200 entries; `truncated` is true and `totalMatches` reports the real count when there were " +
       "more — narrow the query or scope instead of assuming you saw every hit.",
     inputSchema: {
@@ -337,6 +344,7 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
             "Optional exact text within the block this comment is about, up to 100,000 characters.",
         },
         text: { type: "string", description: "The comment body, up to 100,000 characters." },
+        precondition: FOLIO_PRECONDITION_JSON_SCHEMA,
       },
       required: ["blockId", "text"],
       additionalProperties: false,
@@ -347,7 +355,9 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     description:
       "Propose one or more edits as tracked changes for a human to accept or reject — nothing is applied " +
       "directly to the visible text. Each operation needs a blockId from `read_document` or `find_text`; if the " +
-      "document changed since that read, re-read it and retry with fresh ids (a skip reason will say so). At " +
+      "document changed since that read, re-read it and retry with fresh ids (a skip reason will say so). Pass " +
+      "the `blockTextHash` from that read as `precondition.blockTextHash` to guard against the document " +
+      "changing between the read and this call. At " +
       "most 50 operations per call — batch larger edits across multiple calls. Each `find` / `replace` / " +
       "`text` / `comment` string is capped at 100,000 characters.",
     inputSchema: {

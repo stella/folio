@@ -103,6 +103,26 @@ describe("document operation contract", () => {
     expect(FOLIO_DOCUMENT_OPERATION_BATCH_MODES).toEqual(["best-effort", "atomic"]);
   });
 
+  test("rejects prototype-key operation types instead of resolving inherited members", () => {
+    // A plain indexed lookup on FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE
+    // resolves "__proto__" / "constructor" / "toString" to an inherited
+    // Object.prototype member instead of undefined, which would otherwise
+    // reach `.includes` on a non-array value and throw. Untrusted input
+    // (e.g. a document-operation batch parsed from an agent tool call) must
+    // be rejected cleanly instead.
+    for (const operationType of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      expect(
+        Reflect.apply(isFolioDocumentOperationModeSupported, null, [operationType, "direct"]),
+      ).toBe(false);
+      expect(
+        Reflect.apply(isFolioDocumentOperationModeSupported, null, [
+          operationType,
+          "tracked-changes",
+        ]),
+      ).toBe(false);
+    }
+  });
+
   test("checks untyped contract versions at a serialization boundary", () => {
     expect(isSupportedFolioDocumentOperationVersion(1)).toBe(true);
     expect(isSupportedFolioDocumentOperationVersion("1")).toBe(false);
