@@ -8,8 +8,6 @@
  */
 import path from "node:path";
 
-import type { Node as PMNode } from "prosemirror-model";
-
 import { parseDocx } from "../packages/core/src/docx/parser";
 import { toFlowBlocks } from "../packages/core/src/layout-bridge/convert/toFlowBlocks";
 import type { FlowBlock, Run } from "../packages/core/src/layout-engine/types";
@@ -17,10 +15,12 @@ import { toProseDoc } from "../packages/core/src/prosemirror/conversion/toProseD
 import { normalizeLineText } from "./textNorm";
 
 type Flags = {
-  doc?: string;
-  text?: string;
+  doc?: string | undefined;
+  text?: string | undefined;
   limit: number;
 };
+
+type PMNode = ReturnType<typeof toProseDoc>;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -239,30 +239,26 @@ const main = async (): Promise<void> => {
     preloadFonts: false,
     detectVariables: false,
   });
-  const pmDoc = toProseDoc(parsed, {
-    styles: parsed.package.styles,
-    theme: parsed.package.theme,
-  });
+  const pmDoc = toProseDoc(parsed);
   const flowBlocks = toFlowBlocks(pmDoc, {
-    styles: parsed.package.styles,
-    theme: parsed.package.theme,
+    theme: parsed.package.theme ?? null,
   });
 
   const docMatches: unknown[] = [];
   for (const [index, block] of parsed.package.document.content.entries()) {
-    if (!isRecord(block)) {
+    if (block.type !== "paragraph") {
       continue;
     }
-    const text = textFromDocContent(block["content"]);
+    const text = textFromDocContent(block.content);
     if (!normalizedSearchText(text).includes(needle)) {
       continue;
     }
     docMatches.push({
       index,
-      type: block["type"],
+      type: block.type,
       text: truncate(text),
-      formatting: pickFormatting(block["formatting"]),
-      content: summarizeDocContent(block["content"]),
+      formatting: pickFormatting(block.formatting),
+      content: summarizeDocContent(block.content),
     });
     if (docMatches.length >= flags.limit) {
       break;

@@ -806,7 +806,7 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
             ? new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop)
             : null;
         };
-        const region = (() => {
+        const region: Region = (() => {
           if (lineEl.closest(".layout-page-header")) {
             return "header";
           }
@@ -1020,7 +1020,7 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
           rect = new DOMRect(inkLeft, inkTop, inkRight - inkLeft, inkBottom - inkTop);
         }
 
-        const runEl = lineEl.querySelector(".layout-run");
+        const runEl = lineEl.querySelector<HTMLElement>(".layout-run");
 
         const text =
           segmentEls.length > 0
@@ -1072,7 +1072,7 @@ const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspe
 
     const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
     const lines = lineEls.map((lineEl, lineIndex) => {
-      const region = (() => {
+      const region: Region = (() => {
         if (lineEl.closest(".layout-page-header")) {
           return "header";
         }
@@ -1159,8 +1159,12 @@ export const createFolioExtractor = async (
       stdout: "pipe",
       stderr: "pipe",
     });
-    serverStdoutTail = captureOutputTail(serverProcess.stdout);
-    serverStderrTail = captureOutputTail(serverProcess.stderr);
+    serverStdoutTail = captureOutputTail(
+      typeof serverProcess.stdout === "number" ? undefined : serverProcess.stdout,
+    );
+    serverStderrTail = captureOutputTail(
+      typeof serverProcess.stderr === "number" ? undefined : serverProcess.stderr,
+    );
     const startupProbe = new AbortController();
     const startup = await Promise.race([
       waitForServerReady(
