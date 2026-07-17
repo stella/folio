@@ -462,7 +462,8 @@ export type TextBoxAttrs = {
     distRight?: number; /** Position for floating/anchored text boxes */
     position?: ImagePositionAttrs; /** Original DOCX placement hint for save-path reconstruction. */
     _docxPlacement?: "standalone" | "inlineWithPrevious"; /** Original DOCX paragraph group for standalone text-box reconstruction. */
-    _docxGroupId?: string; /** Original run-level revision wrapper for save-path reconstruction. */
+    _docxGroupId?: string; /** Inline anchor linking this block node to its source run position. */
+    _docxAnchorId?: string; /** Original run-level revision wrapper for save-path reconstruction. */
     _docxTrackedChange?: {
         type: "insertion";
         info: import__stll_docx_core_model.TrackedChangeInfo;
