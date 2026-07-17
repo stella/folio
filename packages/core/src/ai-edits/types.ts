@@ -291,8 +291,11 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
  * - `"suggested"` — edits land as tracked changes carrying `"suggested"`
  *   provenance: rendered with the tracked-change grammar but stripped from
  *   serialized DOCX until a human accepts them. Behaves like `"tracked-changes"`
- *   but is currently limited to inline text/format operations (replaceInBlock,
- *   replaceRange, formatRange); block- and table-level operations report
+ *   and covers the inline text/format operations (replaceInBlock, replaceRange,
+ *   formatRange) plus the block and table row/column structural operations
+ *   (insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock,
+ *   insertSignatureTable, insertTableRow, deleteTableRow, insertTableColumn,
+ *   deleteTableColumn). Only comment operations and cell merge/split report
  *   `unsupportedMode`.
  */
 export type FolioAIEditApplyMode = "direct" | "tracked-changes" | "suggested";

@@ -692,12 +692,13 @@ const applyFolioAIEditOperationsInternal = ({
     const stepsBefore = tr.steps.length;
     let appliedRevisionIds: number[] | undefined;
 
-    // Suggested mode is limited to inline text/format operations whose marks
-    // the serialization strip fully removes. Block- and table-level operations
-    // carry their revision state in node attrs (not inline marks) the strip
-    // does not clear, so they stay `unsupportedMode` for suggestions until a
-    // follow-up phase adds coverage. Keeps the class guard sound: the only
-    // suggested provenance that can exist is on strippable inline marks.
+    // Suggested mode covers the inline text/format operations plus the block and
+    // table row/column structural operations (see
+    // `SUGGESTED_SUPPORTED_OPERATION_TYPES`). Every revision they produce — an
+    // inline mark, a whole-node `_suggestedInsert` marker, or a suggested
+    // `trIns`/`trDel`/`cellMarker` — is removed by the serialization strip.
+    // Operations outside the allowlist (comment ops, cell merge/split) report
+    // `unsupportedMode` so no unstrippable suggested state can be produced.
     if (isSuggested && !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(item.operation.type)) {
       skipped.push({ id: item.operation.id, reason: "unsupportedMode" });
       continue;
