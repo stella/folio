@@ -416,6 +416,16 @@ const trackedSplitCellFromStoredSource = ({
   source,
   marker,
 }: TrackedSplitCellFromStoredSourceOptions): PMNode | null => {
+  // splitTrackedVerticalTableCell only ever calls this to restore a single
+  // COLUMN-wide continuation cell (the caller already enforces
+  // `rectangle.right - rectangle.left === 1`), so the restored cell must be
+  // colspan 1. `source` is a stored vMerge-continuation cell captured from a
+  // prior (possibly attacker-supplied) parse; trusting its `gridSpan`
+  // wholesale would let a crafted document restore a cell spanning many
+  // columns here. Reject rather than silently widening the cell.
+  if (source.formatting?.gridSpan !== undefined && source.formatting.gridSpan > 1) {
+    return null;
+  }
   const formatting = formattingWithoutVerticalMerge(source.formatting);
   const restoredSource: TableCell = {
     type: "tableCell",

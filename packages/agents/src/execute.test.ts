@@ -626,6 +626,38 @@ describe("find_text edge cases", () => {
     expect(result.totalMatches).toBe(2);
   });
 
+  test("whole-word matching stays correct for a match far into a very large block", async () => {
+    // Regression guard for bounding find_text's whole-word boundary check to
+    // a small fixed window instead of slicing the whole block on either side
+    // of every match (previously O(block.text.length) per match). Both
+    // occurrences sit tens of thousands of characters into the block;
+    // "prefixedTARGET" directly abuts a word character on its left, so the
+    // exclusion must still trigger from a window that only looks a few
+    // characters either side of the match.
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+    const target = reviewer.snapshot().blocks.at(0);
+    if (target === undefined) {
+      throw new Error("expected at least one block");
+    }
+    const filler = "x".repeat(20_000);
+    const text = `${filler} TARGET ${filler} prefixedTARGET ${filler}`;
+    reviewer.applyOperations(
+      [{ id: "large-block", type: "replaceBlock", blockId: target.id, text }],
+      { mode: "direct" },
+    );
+
+    const result = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.findText,
+        { query: "TARGET", wholeWord: true },
+        bridge,
+      ),
+    ) as FolioAgentFindTextResult;
+
+    expect(result.totalMatches).toBe(1);
+  });
+
   test("limits main-story search to real page mappings and exposes the page on matches", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const base = createReviewerBridge(reviewer);

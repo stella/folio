@@ -17,6 +17,16 @@ export type WordDiffSegment = {
 
 const tokenize = (s: string): string[] => s.match(/\s+|\S+/gu) ?? [];
 
+/**
+ * Cell budget for the O(n*m) word-diff DP table below, mirroring
+ * `MAX_LCS_CELLS` in `version-comparison.ts`. `before`/`after` come from
+ * attacker-controlled document text (a `modified` block pair), so an
+ * unbounded pair of large strings would otherwise force a quadratic-sized
+ * allocation. Past this budget, skip the DP and fall back to a single
+ * whole-string `del` + `ins` pair — a coarser diff, but O(1) memory.
+ */
+const MAX_WORD_DIFF_CELLS = 4_000_000;
+
 export const diffWordSegments = (before: string, after: string): WordDiffSegment[] => {
   const a = tokenize(before);
   const b = tokenize(after);
@@ -25,6 +35,16 @@ export const diffWordSegments = (before: string, after: string): WordDiffSegment
   }
   const m = a.length;
   const n = b.length;
+  if (m * n > MAX_WORD_DIFF_CELLS) {
+    const segments: WordDiffSegment[] = [];
+    if (before.length > 0) {
+      segments.push({ type: "del", text: before });
+    }
+    if (after.length > 0) {
+      segments.push({ type: "ins", text: after });
+    }
+    return segments;
+  }
   const dp: number[][] = Array.from({ length: m + 1 }, () =>
     Array.from({ length: n + 1 }, () => 0),
   );

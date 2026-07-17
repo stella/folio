@@ -337,19 +337,36 @@ export const exceedsLcsBudget = (
   unpairedRevisedCount: number,
 ): boolean => unpairedBaseCount * unpairedRevisedCount > MAX_LCS_CELLS;
 
+/**
+ * Mutable cell budget SHARED across every story pair one {@link compareDocxVersions}
+ * call compares. {@link exceedsLcsBudget} alone only bounds a single pass 2
+ * call's own table; without an aggregate budget, a document with many
+ * attacker-controlled stories (footnotes/endnotes) could still force a fresh
+ * near-{@link MAX_LCS_CELLS}-sized allocation for EVERY story pair. Each
+ * `pairByExactText` call that actually runs pass 2 decrements
+ * `remainingCells` by its own `m * n`; once exhausted, every subsequent
+ * story's pass 2 is refused regardless of that story's own size, falling
+ * through to pass 3's linear positional zip.
+ */
+export type FolioVersionComparisonLcsBudget = { remainingCells: number };
+
+const createLcsBudget = (): FolioVersionComparisonLcsBudget => ({ remainingCells: MAX_LCS_CELLS });
+
 /** Pass 2: order-preserving LCS by exact text equality over the blocks pass 1 left unpaired. */
 const pairByExactText = (
   base: readonly IndexedBlock[],
   revised: readonly IndexedBlock[],
+  lcsBudget: FolioVersionComparisonLcsBudget,
 ): BlockPair[] => {
   const m = base.length;
   const n = revised.length;
   if (m === 0 || n === 0) {
     return [];
   }
-  if (exceedsLcsBudget(m, n)) {
+  if (exceedsLcsBudget(m, n) || lcsBudget.remainingCells <= 0) {
     return [];
   }
+  lcsBudget.remainingCells -= m * n;
   const baseTexts = base.map(({ block }) => block.text);
   const revisedTexts = revised.map(({ block }) => block.text);
   // A single flat Int32Array (indexed `i * (n + 1) + j`) instead of `m + 1`
@@ -412,10 +429,17 @@ export type FolioAlignedBlockEvent =
  * snapshots and flatten it into an ordered event stream. Shared by
  * {@link compareDocxVersions} and the redline generator so both interpret
  * one document walk instead of re-deriving it.
+ *
+ * `lcsBudget` defaults to a fresh, single-call budget so a caller comparing
+ * one block pair in isolation (the redline generator) behaves exactly as
+ * before. {@link compareDocxVersions} passes one budget object shared across
+ * every story pair instead, so pass 2's cell allowance is aggregate across
+ * the whole comparison rather than reset per story.
  */
 export const alignFolioBlocks = (
   baseBlocks: readonly FolioAIBlock[],
   revisedBlocks: readonly FolioAIBlock[],
+  lcsBudget: FolioVersionComparisonLcsBudget = createLcsBudget(),
 ): FolioAlignedBlockEvent[] => {
   const stableIdAnchors = pairByStableId(baseBlocks, revisedBlocks);
   const usedBaseIndexes = new Set(stableIdAnchors.map((anchor) => anchor.baseIndex));
@@ -433,7 +457,7 @@ export const alignFolioBlocks = (
       revisedRemaining.push({ block, index: blockIndex });
     }
   });
-  const exactTextAnchors = pairByExactText(baseRemaining, revisedRemaining);
+  const exactTextAnchors = pairByExactText(baseRemaining, revisedRemaining, lcsBudget);
 
   const anchors = longestIncreasingByRevisedIndex(
     [...stableIdAnchors, ...exactTextAnchors].toSorted((a, b) => a.baseIndex - b.baseIndex),
@@ -576,6 +600,32 @@ const meetsMoveWordCount = (text: string): boolean => {
 };
 
 /**
+ * Cap on how many same-text `deleted` candidates {@link detectMoves} queues
+ * per distinct text. Duplicated boilerplate at or above the word floor
+ * (e.g. a repeated long clause) could otherwise grow one text's candidate
+ * list without bound; past this cap, further same-text deletions are simply
+ * left as `deleted` (never matched to a move) instead of queued.
+ */
+const MAX_MOVE_CANDIDATES_PER_TEXT = 10_000;
+
+/**
+ * FIFO queue of `changes` indexes for one deleted text. `shift()` on a plain
+ * array is O(k); a head cursor makes dequeue O(1) so `detectMoves` stays
+ * linear in the number of added/deleted blocks instead of quadratic when a
+ * document repeats the same text many times.
+ */
+type DeletedIndexQueue = { items: number[]; head: number };
+
+const dequeueDeletedIndex = (queue: DeletedIndexQueue | undefined): number | undefined => {
+  if (!queue || queue.head >= queue.items.length) {
+    return undefined;
+  }
+  const index = queue.items[queue.head];
+  queue.head += 1;
+  return index;
+};
+
+/**
  * Re-classify `deleted` + `added` pairs with identical text as
  * `movedFrom` / `movedTo` entries sharing a `moveGroupId`, in place, so each
  * side keeps its slot in the revised-side document order. Matching is FIFO
@@ -587,12 +637,21 @@ const detectMoves = (
   counts: FolioVersionDiffSummaryCounts,
   firstMoveGroupId: number,
 ): void => {
-  const deletedIndexesByText = new Map<string, number[]>();
+  const deletedIndexesByText = new Map<string, DeletedIndexQueue>();
   changes.forEach((change, index) => {
-    if (change.type === "deleted" && meetsMoveWordCount(change.text)) {
-      const queue = deletedIndexesByText.get(change.text) ?? [];
-      queue.push(index);
-      deletedIndexesByText.set(change.text, queue);
+    if (change.type !== "deleted" || !meetsMoveWordCount(change.text)) {
+      return;
+    }
+    const queue = deletedIndexesByText.get(change.text);
+    if (!queue) {
+      deletedIndexesByText.set(change.text, { items: [index], head: 0 });
+      return;
+    }
+    // This build pass runs to completion before any dequeue below, so `head`
+    // is always 0 here; comparing against the cap directly is equivalent to
+    // (and simpler than) tracking the unconsumed remainder.
+    if (queue.items.length < MAX_MOVE_CANDIDATES_PER_TEXT) {
+      queue.items.push(index);
     }
   });
   if (deletedIndexesByText.size === 0) {
@@ -604,7 +663,7 @@ const detectMoves = (
     if (change.type !== "added") {
       return;
     }
-    const deletedIndex = deletedIndexesByText.get(change.text)?.shift();
+    const deletedIndex = dequeueDeletedIndex(deletedIndexesByText.get(change.text));
     if (deletedIndex === undefined) {
       return;
     }
@@ -664,6 +723,7 @@ type CompareStoryBlocksOptions = FolioDocumentStoryPair & {
   firstMoveGroupId: number;
   includeText: boolean;
   includeFormatting: boolean;
+  lcsBudget: FolioVersionComparisonLcsBudget;
 };
 
 const compareStoryBlocks = ({
@@ -674,11 +734,12 @@ const compareStoryBlocks = ({
   firstMoveGroupId,
   includeText,
   includeFormatting,
+  lcsBudget,
 }: CompareStoryBlocksOptions): FolioStoryDiff => {
   const changes: FolioBlockDiff[] = [];
   const counts = createSummaryCounts();
 
-  for (const event of alignFolioBlocks(baseBlocks, revisedBlocks)) {
+  for (const event of alignFolioBlocks(baseBlocks, revisedBlocks, lcsBudget)) {
     if (event.type === "pair") {
       if (!baseStory || !revisedStory) {
         panic("A paired comparison event requires both story handles");
@@ -883,6 +944,11 @@ export const compareDocxVersions = async (
   const baseStories = baseReviewer.listStories().map(({ handle }) => handle);
   const revisedStories = revisedReviewer.listStories().map(({ handle }) => handle);
   let nextMoveGroupId = 1;
+  // Shared across every story pair below (not one per story) so an
+  // attacker-controlled story count (many footnotes/endnotes) can't force a
+  // fresh near-MAX_LCS_CELLS allocation per story. See
+  // FolioVersionComparisonLcsBudget's doc comment.
+  const lcsBudget = createLcsBudget();
 
   for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
     const baseBlocks = pair.baseStory
@@ -900,6 +966,7 @@ export const compareDocxVersions = async (
       firstMoveGroupId: nextMoveGroupId,
       includeText: scopes.has("text"),
       includeFormatting: scopes.has("formatting"),
+      lcsBudget,
     });
     stories.push(storyDiff);
     for (const change of storyDiff.changes) {

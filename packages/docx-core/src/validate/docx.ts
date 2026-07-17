@@ -34,11 +34,67 @@ export type ValidateDocumentModelResult = {
   issues: ValidateDocumentModelIssue[];
 };
 
+/**
+ * Local bounds on the ZIP archive `validateDocxPackage` inflates parts from.
+ * `docx-core` has no dependency on `@stll/folio-core`, so these mirror the
+ * shape of `packages/core/src/docx/server/boundedArchive.ts` rather than
+ * importing it: an untrusted or generator-produced buffer must be rejected
+ * for entry count and declared uncompressed size before `document.xml` /
+ * `document.xml.rels` are inflated, so a decompression-bomb entry or an
+ * archive with an excessive part count can't force an unbounded allocation.
+ */
+const VALIDATE_DOCX_MAX_ENTRIES = 4096;
+const VALIDATE_DOCX_MAX_ENTRY_BYTES = 128 * 1024 * 1024;
+const VALIDATE_DOCX_MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+
+type ZipEntryWithMetadata = { _data?: { uncompressedSize?: number } };
+
+const getDeclaredUncompressedSize = (file: JSZip.JSZipObject): number | null => {
+  const metadata = (file as JSZip.JSZipObject & ZipEntryWithMetadata)._data;
+  return typeof metadata?.uncompressedSize === "number" ? metadata.uncompressedSize : null;
+};
+
+/**
+ * Reject an archive whose entry count or declared uncompressed size (total
+ * or per-entry) exceeds the local bounds above, before any part is inflated.
+ * A declared size JSZip could not determine is skipped rather than treated
+ * as unbounded — the per-entry cap below still bounds what an inflate call
+ * can actually produce once it runs.
+ */
+const checkDocxArchiveBounds = (zip: JSZip): string | null => {
+  const entries = Object.values(zip.files);
+  if (entries.length > VALIDATE_DOCX_MAX_ENTRIES) {
+    return `Generated DOCX declares ${entries.length} archive entries, over the ${VALIDATE_DOCX_MAX_ENTRIES}-entry limit.`;
+  }
+
+  let totalUncompressedBytes = 0;
+  for (const entry of entries) {
+    const declaredBytes = getDeclaredUncompressedSize(entry);
+    if (declaredBytes === null) {
+      continue;
+    }
+    if (declaredBytes > VALIDATE_DOCX_MAX_ENTRY_BYTES) {
+      return `Generated DOCX entry "${entry.name}" declares ${declaredBytes} uncompressed bytes, over the ${VALIDATE_DOCX_MAX_ENTRY_BYTES}-byte limit.`;
+    }
+    totalUncompressedBytes += declaredBytes;
+    if (totalUncompressedBytes > VALIDATE_DOCX_MAX_TOTAL_BYTES) {
+      return `Generated DOCX declares more than ${VALIDATE_DOCX_MAX_TOTAL_BYTES} cumulative uncompressed bytes.`;
+    }
+  }
+  return null;
+};
+
 export const validateDocxPackage = async (
   buffer: ArrayBuffer | Uint8Array,
 ): Promise<ValidateDocxPackageResult> => {
   try {
     const zip = await JSZip.loadAsync(buffer);
+
+    const boundsError = checkDocxArchiveBounds(zip);
+    if (boundsError) {
+      return { valid: false, error: boundsError };
+    }
+
     for (const requiredPath of [
       "[Content_Types].xml",
       "_rels/.rels",

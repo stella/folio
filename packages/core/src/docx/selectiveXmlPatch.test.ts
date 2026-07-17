@@ -7,6 +7,7 @@ import { describe, test, expect } from "bun:test";
 import {
   findParagraphOffsets,
   extractParagraphXml,
+  buildParagraphOffsetIndex,
   validatePatchSafety,
   buildPatchedDocumentXml,
   countParagraphElements,
@@ -158,6 +159,45 @@ describe("extractParagraphXml", () => {
 
   test("returns null for missing paraId", () => {
     expect(extractParagraphXml(SIMPLE_DOC, "NOPE")).toBeNull();
+  });
+});
+
+// ============================================================================
+// buildParagraphOffsetIndex
+// ============================================================================
+
+describe("buildParagraphOffsetIndex", () => {
+  test("indexes every unique paraId in one pass, matching per-id findParagraphOffsets results", () => {
+    // Regression guard: rezip.ts's collectChangedNoteParaIds used to call
+    // extractParagraphXml (a full regex-scan-plus-depth-walk) once per note
+    // paraId, which is O(note count * XML size). The index below is built
+    // once per XML and every lookup afterward is O(1); this test asserts the
+    // index agrees with the original per-id function it replaces.
+    const index = buildParagraphOffsetIndex(SIMPLE_DOC);
+    for (const id of ["AAA111", "BBB222", "CCC333"]) {
+      const expected = findParagraphOffsets(SIMPLE_DOC, id);
+      expect(index.get(id)).toEqual(expected);
+    }
+    expect(index.size).toBe(3);
+  });
+
+  test("indexes nested <w:p> inside mc:AlternateContent alongside the outer paragraph", () => {
+    const index = buildParagraphOffsetIndex(DOC_WITH_MC);
+    for (const id of ["OUTER1", "INNER1", "INNER2", "NORMAL1"]) {
+      const expected = findParagraphOffsets(DOC_WITH_MC, id);
+      expect(index.get(id)).toEqual(expected);
+    }
+  });
+
+  test("omits a paraId that appears on more than one element, mirroring the ambiguous-null case", () => {
+    const index = buildParagraphOffsetIndex(DOC_WITH_DUPLICATE_ID);
+    expect(index.has("DUP001")).toBe(false);
+    expect(findParagraphOffsets(DOC_WITH_DUPLICATE_ID, "DUP001")).toBeNull();
+  });
+
+  test("returns an empty index for a missing paraId lookup", () => {
+    const index = buildParagraphOffsetIndex(SIMPLE_DOC);
+    expect(index.get("MISSING")).toBeUndefined();
   });
 });
 

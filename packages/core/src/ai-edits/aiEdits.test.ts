@@ -3747,6 +3747,62 @@ describe("Folio AI edit operations", () => {
     );
   });
 
+  test("tracked splitting refuses to restore a stored continuation cell with gridSpan > 1", () => {
+    // Regression guard: splitTrackedVerticalTableCell only ever restores a
+    // single-column rectangle (the caller enforces
+    // `rectangle.right - rectangle.left === 1`), so a restored continuation
+    // cell must be colspan 1. `_docxVMergeContinuationCells` entries are
+    // captured from a prior (possibly attacker-crafted) parse; a stored
+    // gridSpan > 1 must be refused instead of silently widening the
+    // restored cell across multiple columns.
+    const continuationCells = [
+      {
+        type: "tableCell" as const,
+        formatting: {
+          vMerge: "continue" as const,
+          gridSpan: 5,
+        },
+        content: [
+          {
+            type: "paragraph" as const,
+            content: [{ type: "run" as const, content: [{ type: "text" as const, text: "Wide" }] }],
+          },
+        ],
+      },
+    ];
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node(
+          "tableCell",
+          {
+            rowspan: 2,
+            _originalFormatting: { vMerge: "restart" },
+            _docxVMergeContinuationCells: continuationCells,
+          },
+          [schema.node("paragraph", { paraId: "wide-continuation-split" }, [schema.text("Content")])],
+        ),
+      ]),
+      schema.node("tableRow"),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        { id: "split-cell", type: "splitTableCell", blockId: "wide-continuation-split" },
+      ],
+      mode: "tracked-changes",
+    });
+
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual([{ id: "split-cell", reason: "unsupportedBlock" }]);
+    const untouchedTable = view.state.doc.child(0);
+    expect(untouchedTable.child(0).child(0).attrs["rowspan"]).toBe(2);
+    expect(untouchedTable.child(1).childCount).toBe(0);
+  });
+
   test("tracked splitting rejects a horizontal span without mutation", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [

@@ -14,6 +14,7 @@ import { isSequentialFolioBlockId } from "../types/block-id";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIds, EnsureParaIdsError } from "./ensureParaIds";
 import { parseDocx } from "./parser";
+import { DOCX_MAX_ENTRIES } from "./server/boundedArchive";
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
@@ -368,6 +369,24 @@ describe("ensureParaIds", () => {
     const notDocx = await zip.generateAsync({ type: "uint8array" });
 
     await expect(ensureParaIds(notDocx)).rejects.toThrow(EnsureParaIdsError);
+  });
+
+  test("rejects an untrusted archive over the bounded-load entry-count cap before reading any XML", async () => {
+    // Regression guard for routing ensureParaIds through the bounded archive
+    // loader (loadDocxArchive): an attacker-supplied ingest buffer with an
+    // excessive entry count must fail fast instead of materializing every
+    // part's XML with no cap.
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", CONTENT_TYPES);
+    zip.file("_rels/.rels", ROOT_RELS);
+    zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
+    zip.file("word/document.xml", documentXml(PARA("Body")));
+    for (let i = 0; i < DOCX_MAX_ENTRIES + 5; i++) {
+      zip.file(`word/media/filler${i}.bin`, "x");
+    }
+    const input = await zip.generateAsync({ type: "uint8array" });
+
+    await expect(ensureParaIds(input)).rejects.toThrow(EnsureParaIdsError);
   });
 
   test("wraps malformed ZIP input in EnsureParaIdsError", async () => {

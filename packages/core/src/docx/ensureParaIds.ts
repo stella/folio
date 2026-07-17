@@ -53,6 +53,7 @@ import JSZip from "jszip";
 
 import { deterministicHexId } from "../utils/hexId";
 import { isXmlNameBoundary } from "./selectiveXmlPatch";
+import { loadDocxArchive } from "./server/boundedArchive";
 
 /** A malformed or unsupported package prevented paragraph-ID normalization. */
 export class EnsureParaIdsError extends TaggedError("EnsureParaIdsError")<{
@@ -478,14 +479,16 @@ const ensureParaIdsInternal = async (
   docx: Uint8Array | ArrayBuffer,
   options: EnsureParaIdsOptions,
 ): Promise<EnsureParaIdsResult> => {
-  const zip = await JSZip.loadAsync(docx);
+  // Bounded read: entry count, per-entry size, and cumulative uncompressed
+  // size are all capped before any part's XML is materialized as a string.
+  // `docx` here is untrusted ingest input (see the module doc comment), so
+  // an attacker-crafted archive with thousands of parts or a decompression-
+  // bomb entry must fail fast instead of exhausting memory.
+  const archive = await loadDocxArchive(docx);
 
-  const xmlPartNames: string[] = [];
-  zip.forEach((relativePath, entry) => {
+  const xmlPartNames = archive.entries.filter((relativePath) => {
     const lower = relativePath.toLowerCase();
-    if (!entry.dir && lower.startsWith("word/") && lower.endsWith(".xml")) {
-      xmlPartNames.push(relativePath);
-    }
+    return lower.startsWith("word/") && lower.endsWith(".xml");
   });
   const documentPartName = xmlPartNames.find((name) => name.toLowerCase() === DOCUMENT_PART);
   if (documentPartName === undefined) {
@@ -494,9 +497,10 @@ const ensureParaIdsInternal = async (
 
   const partTexts = new Map<string, string>();
   for (const name of xmlPartNames) {
-    const entry = zip.file(name);
-    if (entry) {
-      partTexts.set(name, await entry.async("text"));
+    // oxlint-disable-next-line no-await-in-loop -- archive.readEntryString serializes reads to enforce a shared cumulative byte budget across parts
+    const text = await archive.readEntryString(name);
+    if (text !== null) {
+      partTexts.set(name, text);
     }
   }
 
@@ -552,6 +556,12 @@ const ensureParaIdsInternal = async (
   if (updates.size === 0) {
     return { docx: toUint8Array(docx), assigned: 0, deduplicated: 0, alreadyComplete: true };
   }
+
+  // Only the write-back path needs a raw JSZip (signature detection, writing
+  // new part bytes, and repackaging). `docx` was already validated against
+  // the entry-count/size caps above, so this second parse runs on a
+  // buffer whose shape is already bounded.
+  const zip = await JSZip.loadAsync(docx);
 
   if (hasDigitalSignatureParts(zip) && options.allowSignedPackageMutation !== true) {
     throw createEnsureParaIdsError(

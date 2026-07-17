@@ -279,6 +279,16 @@ const readStory = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult
 const CONTEXT_RADIUS = 40;
 const WORD_CHARACTER_AT_END = /[\p{L}\p{M}\p{N}_]$/u;
 const WORD_CHARACTER_AT_START = /^[\p{L}\p{M}\p{N}_]/u;
+/**
+ * Window (UTF-16 code units) sliced on each side of a match for the
+ * whole-word boundary check. The regexes above only ever test the single
+ * grapheme adjacent to the match, but a surrogate pair or a base character
+ * with stacked combining marks can span a few code units — this window is
+ * generous enough to cover that while staying a constant, not
+ * `block.text.length`. Without a bound, `.slice(0, at)` / `.slice(at + len)`
+ * on every match makes a whole-word search O(n^2) in the block's length.
+ */
+const WORD_BOUNDARY_WINDOW = 8;
 
 /** All matches for `query`, capped at {@link MAX_FIND_MATCHES}; `totalMatches` still counts every occurrence. */
 type FindTextMatches<TMatch = FolioAgentTextMatch> = {
@@ -305,8 +315,12 @@ const findTextMatches = (
       const matchedText = match[0];
       if (
         wholeWord &&
-        (WORD_CHARACTER_AT_END.test(block.text.slice(0, at)) ||
-          WORD_CHARACTER_AT_START.test(block.text.slice(at + matchedText.length)))
+        (WORD_CHARACTER_AT_END.test(
+          block.text.slice(Math.max(0, at - WORD_BOUNDARY_WINDOW), at),
+        ) ||
+          WORD_CHARACTER_AT_START.test(
+            block.text.slice(at + matchedText.length, at + matchedText.length + WORD_BOUNDARY_WINDOW),
+          ))
       ) {
         continue;
       }
@@ -359,8 +373,10 @@ const findStoryTextMatches = (
     const matchedText = match[0];
     if (
       wholeWord &&
-      (WORD_CHARACTER_AT_END.test(text.slice(0, at)) ||
-        WORD_CHARACTER_AT_START.test(text.slice(at + matchedText.length)))
+      (WORD_CHARACTER_AT_END.test(text.slice(Math.max(0, at - WORD_BOUNDARY_WINDOW), at)) ||
+        WORD_CHARACTER_AT_START.test(
+          text.slice(at + matchedText.length, at + matchedText.length + WORD_BOUNDARY_WINDOW),
+        ))
     ) {
       continue;
     }

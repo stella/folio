@@ -15,12 +15,14 @@ import JSZip from "jszip";
 
 import { buildTextBoxTableDocument } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
+import type { FolioAIBlock } from "./ai-edits/types";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
 import type { HeaderFooter, Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 import {
+  alignFolioBlocks,
   applyFolioVersionDiffPrivacy,
   compareDocxVersions,
   exceedsLcsBudget,
@@ -614,6 +616,62 @@ describe("compareDocxVersions: move detection", () => {
     });
     expect(diff.changes.map((c) => c.type).toSorted()).toEqual(["added", "deleted"]);
   });
+
+  test("two simultaneous relocations pair independently, exercising the per-text FIFO queue for two keys", async () => {
+    // Regression guard for detectMoves' O(k)-per-shift() -> O(1) head-cursor
+    // refactor (a plain array `.shift()` per matched `added` block became a
+    // `{ items, head }` queue keyed by text). Both "Notices" and
+    // "Confidentiality" are relocated ahead of "Governing"/"Payment" (which
+    // stay a valid monotonic stable-id pair and count as unchanged); this
+    // exercises `deletedIndexesByText` with two live keys at once so the
+    // Map-based rewrite resolves each text's own queue independently instead
+    // of cross-contaminating.
+    const base = await buildDocxBuffer([
+      { text: "Governing law shall be Czech law.", paraId: "00000001" },
+      { text: "Payment is due within thirty days.", paraId: "00000002" },
+      { text: "Notices must be delivered in writing.", paraId: "00000003" },
+      { text: "Confidentiality survives termination.", paraId: "00000004" },
+    ]);
+    const revised = await buildDocxBuffer([
+      { text: "Confidentiality survives termination.", paraId: "00000004" },
+      { text: "Notices must be delivered in writing.", paraId: "00000003" },
+      { text: "Governing law shall be Czech law.", paraId: "00000001" },
+      { text: "Payment is due within thirty days.", paraId: "00000002" },
+    ]);
+
+    const diff = await compareDocxVersions(base, revised);
+
+    expect(diff.summaryCounts).toEqual({
+      added: 0,
+      deleted: 0,
+      modified: 0,
+      formatChanged: 0,
+      moved: 2,
+      metadataChanged: 0,
+      unchanged: 2,
+    });
+    const movedTexts = diff.changes
+      .filter((c) => c.type === "movedFrom")
+      .map((c) => c.text)
+      .toSorted();
+    expect(movedTexts).toEqual(
+      [
+        "Confidentiality survives termination.",
+        "Notices must be delivered in writing.",
+      ].toSorted(),
+    );
+    // Each movedFrom must share its moveGroupId with the matching movedTo of
+    // the SAME text, not the other relocated block's.
+    for (const from of diff.changes.filter((c) => c.type === "movedFrom")) {
+      const to = diff.changes.find(
+        (c) => c.type === "movedTo" && c.moveGroupId === from.moveGroupId,
+      );
+      if (!to || to.type !== "movedTo" || from.type !== "movedFrom") {
+        throw new Error("expected a matching movedTo for every movedFrom");
+      }
+      expect(to.text).toBe(from.text);
+    }
+  });
 });
 
 describe("compareDocxVersions: format-only changes", () => {
@@ -666,6 +724,69 @@ describe("exceedsLcsBudget: pass 2's LCS cell-budget guard", () => {
     // fixture, which would make this test slow for no extra coverage.
     expect(exceedsLcsBudget(2000, 2000)).toBe(false); // exactly at budget: 4,000,000 cells
     expect(exceedsLcsBudget(2001, 2001)).toBe(true); // just over budget: 4,004,001 cells
+  });
+});
+
+describe("alignFolioBlocks: shared LCS budget across pass 2 calls", () => {
+  // Neither side carries a stable (non-`seq-NNNN`) block id, so pass 1
+  // cannot pair anything; only pass 2 (exact-text LCS) can recover the
+  // position-shifted "Gamma paragraph." match. compareDocxVersions threads
+  // ONE budget object across every story pair (see
+  // FolioVersionComparisonLcsBudget); this exercises that same threading
+  // point directly by passing a pre-exhausted budget to alignFolioBlocks
+  // (the function compareStoryBlocks calls per story) instead of the
+  // default fresh one, which is what a story pair sees once an earlier
+  // story in the same compareDocxVersions call has used up the budget.
+  const base: FolioAIBlock[] = [
+    { id: "seq-0001", kind: "paragraph", text: "Alpha paragraph." },
+    { id: "seq-0002", kind: "paragraph", text: "Gamma paragraph." },
+  ];
+  const revised: FolioAIBlock[] = [
+    { id: "seq-0003", kind: "paragraph", text: "Alpha paragraph." },
+    { id: "seq-0004", kind: "paragraph", text: "Epsilon paragraph." },
+    { id: "seq-0005", kind: "paragraph", text: "Gamma paragraph." },
+  ];
+
+  test("a fresh budget lets pass 2 recover the position-shifted match", () => {
+    const events = alignFolioBlocks(base, revised);
+    expect(events.map((e) => e.type)).toEqual(["pair", "revisedOnly", "pair"]);
+    const [alphaPair, insertion, gammaPair] = events;
+    if (
+      !alphaPair ||
+      alphaPair.type !== "pair" ||
+      !gammaPair ||
+      gammaPair.type !== "pair" ||
+      !insertion ||
+      insertion.type !== "revisedOnly"
+    ) {
+      throw new Error("expected pair/revisedOnly/pair");
+    }
+    expect(gammaPair.baseBlock.text).toBe("Gamma paragraph.");
+    expect(gammaPair.revisedBlock.text).toBe("Gamma paragraph.");
+    expect(insertion.block.text).toBe("Epsilon paragraph.");
+  });
+
+  test("an exhausted budget refuses pass 2, falling back to pass 3's positional zip", () => {
+    const events = alignFolioBlocks(base, revised, { remainingCells: 0 });
+    expect(events.map((e) => e.type)).toEqual(["pair", "pair", "revisedOnly"]);
+    const [alphaPair, mismatchedPair, insertion] = events;
+    if (
+      !alphaPair ||
+      alphaPair.type !== "pair" ||
+      !mismatchedPair ||
+      mismatchedPair.type !== "pair" ||
+      !insertion ||
+      insertion.type !== "revisedOnly"
+    ) {
+      throw new Error("expected pair/pair/revisedOnly");
+    }
+    // Without pass 2, position 1 on each side is just zipped together
+    // regardless of text: base's "Gamma paragraph." lands against revised's
+    // "Epsilon paragraph." instead of being recovered as unchanged, and
+    // revised's actual "Gamma paragraph." falls out as a bare insertion.
+    expect(mismatchedPair.baseBlock.text).toBe("Gamma paragraph.");
+    expect(mismatchedPair.revisedBlock.text).toBe("Epsilon paragraph.");
+    expect(insertion.block.text).toBe("Gamma paragraph.");
   });
 });
 

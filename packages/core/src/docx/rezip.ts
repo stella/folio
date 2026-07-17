@@ -40,11 +40,11 @@ import { assertValidFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
+  buildParagraphOffsetIndex,
   buildPatchedNoteXml,
   buildPatchedNumberingXml,
   collectChangedNumberingDefs,
   collectParaIds,
-  extractParagraphXml,
 } from "./selectiveXmlPatch";
 import {
   ensureThreadedCommentParaIds,
@@ -1799,17 +1799,29 @@ async function patchNotePartIntoZip(
  * (re-parsed original) serialization — i.e. the ones actually edited. A
  * paragraph is only considered when its `paraId` resolves uniquely in both,
  * so it can be spliced safely.
+ *
+ * Builds one {@link buildParagraphOffsetIndex} per side (a single linear scan
+ * each) instead of calling `extractParagraphXml` per candidate id, which
+ * re-scanned the whole XML per id — O(note count * XML size) for a document
+ * with many footnotes/endnotes. The index turns each lookup below into O(1).
  */
 function collectChangedNoteParaIds(baselineXml: string, currentXml: string): Set<string> {
   const changed = new Set<string>();
   const baselineIds = collectParaIds(baselineXml);
+  const baselineOffsets = buildParagraphOffsetIndex(baselineXml);
+  const currentOffsets = buildParagraphOffsetIndex(currentXml);
   for (const [id, count] of collectParaIds(currentXml)) {
     if (count !== 1 || baselineIds.get(id) !== 1) {
       continue;
     }
-    const before = extractParagraphXml(baselineXml, id);
-    const after = extractParagraphXml(currentXml, id);
-    if (before !== null && after !== null && before !== after) {
+    const beforeRange = baselineOffsets.get(id);
+    const afterRange = currentOffsets.get(id);
+    if (!beforeRange || !afterRange) {
+      continue;
+    }
+    const before = baselineXml.slice(beforeRange.start, beforeRange.end);
+    const after = currentXml.slice(afterRange.start, afterRange.end);
+    if (before !== after) {
       changed.add(id);
     }
   }

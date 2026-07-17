@@ -120,6 +120,88 @@ export function extractParagraphXml(serializedXml: string, paraId: string): stri
   return serializedXml.slice(offsets.start, offsets.end);
 }
 
+export type ParagraphOffsets = { start: number; end: number };
+
+/**
+ * Single linear-scan index of every `<w:p>` element's start/end offsets,
+ * keyed by `w14:paraId`. Generalizes {@link findParagraphOffsets} (one
+ * regex-scan-plus-depth-walk per lookup) to build every paragraph's offsets
+ * in a single pass, so a caller that needs many paragraphs from the same XML
+ * (e.g. `collectChangedNoteParaIds` in rezip.ts, walking every note paraId)
+ * does O(1) map lookups afterward instead of re-scanning the whole XML once
+ * per id — O(ids * XML length) collapses to O(XML length).
+ *
+ * A `<w:p>` nested inside another (e.g. inside `mc:AlternateContent`) is
+ * indexed too via a depth stack, matching every element `findParagraphOffsets`
+ * can resolve. A paraId that appears on more than one element is ambiguous —
+ * mirroring {@link findParagraphOffsets}'s single-match requirement — and is
+ * omitted from the index, so a lookup misses exactly where the per-id
+ * function would return null.
+ */
+export function buildParagraphOffsetIndex(xml: string): Map<string, ParagraphOffsets> {
+  const seenCount = new Map<string, number>();
+  const ranges = new Map<string, ParagraphOffsets>();
+  const stack: { start: number; paraId: string | undefined }[] = [];
+  let pos = 0;
+
+  const noteOpen = (paraId: string | undefined): void => {
+    if (paraId) {
+      seenCount.set(paraId, (seenCount.get(paraId) ?? 0) + 1);
+    }
+  };
+  const noteRange = (paraId: string | undefined, start: number, end: number): void => {
+    if (paraId) {
+      ranges.set(paraId, { start, end });
+    }
+  };
+
+  while (pos < xml.length) {
+    const tagStart = xml.indexOf("<", pos);
+    if (tagStart === -1) {
+      break;
+    }
+
+    if (xml.startsWith("</w:p>", tagStart)) {
+      const frame = stack.pop();
+      const end = tagStart + "</w:p>".length;
+      if (frame) {
+        noteRange(frame.paraId, frame.start, end);
+      }
+      pos = end;
+      continue;
+    }
+
+    if (!xml.startsWith("<w:p", tagStart) || !isXmlNameBoundary(xml[tagStart + 4])) {
+      pos = tagStart + 1;
+      continue;
+    }
+
+    const tagEnd = xml.indexOf(">", tagStart);
+    if (tagEnd === -1) {
+      break;
+    }
+    const openTag = xml.slice(tagStart, tagEnd + 1);
+    const paraId = /\bw14:paraId="(?<id>[^"]*)"/u.exec(openTag)?.groups?.["id"];
+    noteOpen(paraId);
+
+    if (xml[tagEnd - 1] === "/") {
+      // Self-closing <w:p ... /> — resolved immediately, never pushed.
+      noteRange(paraId, tagStart, tagEnd + 1);
+    } else {
+      stack.push({ start: tagStart, paraId });
+    }
+    pos = tagEnd + 1;
+  }
+
+  const index = new Map<string, ParagraphOffsets>();
+  for (const [id, range] of ranges) {
+    if (seenCount.get(id) === 1) {
+      index.set(id, range);
+    }
+  }
+  return index;
+}
+
 /**
  * Count <w:p> elements in an XML string (top-level paragraph count).
  * Counts opening <w:p tags that are NOT self-closing.

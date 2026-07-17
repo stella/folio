@@ -35,9 +35,36 @@ export const MAX_OPERATIONS_PER_CALL = 50;
 export const MAX_OPERATION_TEXT_LENGTH = 100_000;
 const MAX_TABLE_INSERTION_CELL_TEXTS = 256;
 
+/**
+ * Aggregate cap on the SUM of every text-bearing field's length across one
+ * `suggest_changes` call. Each field alone is bounded by
+ * {@link MAX_OPERATION_TEXT_LENGTH} and each call by
+ * {@link MAX_OPERATIONS_PER_CALL} operations, but an operation can carry
+ * several capped fields (e.g. `comment` plus `text`), and a table-insertion
+ * operation can carry up to {@link MAX_TABLE_INSERTION_CELL_TEXTS} capped
+ * cell texts — so a maximally-shaped batch could still push roughly
+ * 50 * 256 * 100,000 ~= 1.28B characters into the tracked-changes engine in
+ * one call even though every per-field cap was respected. This budget bounds
+ * the running total instead.
+ */
+export const MAX_TOTAL_OPERATION_TEXT_LENGTH = 2_000_000;
+
 /** Plain-language error for a string argument over {@link MAX_OPERATION_TEXT_LENGTH}. */
 export const explainTextTooLong = (label: string, length: number): string =>
   `${label} is ${length.toLocaleString()} characters, over the ${MAX_OPERATION_TEXT_LENGTH.toLocaleString()}-character limit; shorten it or split it into multiple operations.`;
+
+/** Plain-language error when the running total across all operations exceeds {@link MAX_TOTAL_OPERATION_TEXT_LENGTH}. */
+const explainAggregateTextTooLong = (index: number): string =>
+  `operations[${index}] pushes suggest_changes' combined text over the ${MAX_TOTAL_OPERATION_TEXT_LENGTH.toLocaleString()}-character aggregate limit across all operations; split the edit across multiple suggest_changes calls.`;
+
+/** Mutable running budget threaded through {@link buildSuggestedOperation} for one `suggest_changes` call. */
+type TextBudget = { remaining: number };
+
+/** Decrement the shared budget by `length`; returns true once the aggregate cap is exceeded. */
+const consumeTextBudget = (budget: TextBudget, length: number): boolean => {
+  budget.remaining -= length;
+  return budget.remaining < 0;
+};
 
 /** Result of {@link parseAddCommentInput}. */
 export type ParseAddCommentResult =
@@ -148,7 +175,11 @@ const readTextRange = (value: unknown, index: number): FolioAITextRangeHandle | 
 };
 
 /** Validate + map one `suggest_changes` operation, or return a plain-language error string. */
-const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperation | string => {
+const buildSuggestedOperation = (
+  raw: unknown,
+  index: number,
+  budget: TextBudget,
+): FolioAIEditOperation | string => {
   if (!isPlainObject(raw)) {
     return `operations[${index}] must be an object.`;
   }
@@ -166,8 +197,13 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
   if (comment !== undefined && typeof comment !== "string") {
     return `operations[${index}].comment must be a string when provided.`;
   }
-  if (typeof comment === "string" && comment.length > MAX_OPERATION_TEXT_LENGTH) {
-    return explainTextTooLong(`operations[${index}].comment`, comment.length);
+  if (typeof comment === "string") {
+    if (comment.length > MAX_OPERATION_TEXT_LENGTH) {
+      return explainTextTooLong(`operations[${index}].comment`, comment.length);
+    }
+    if (consumeTextBudget(budget, comment.length)) {
+      return explainAggregateTextTooLong(index);
+    }
   }
   const opId = isNonEmptyString(id) ? id : `op-${index + 1}`;
   const commentField = typeof comment === "string" ? { comment: { text: comment } } : {};
@@ -211,6 +247,9 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
     if (replace.length > MAX_OPERATION_TEXT_LENGTH) {
       return explainTextTooLong(`operations[${index}] (replaceRange) \`replace\``, replace.length);
     }
+    if (consumeTextBudget(budget, replace.length)) {
+      return explainAggregateTextTooLong(index);
+    }
     return { id: opId, type, range, replace, ...commentField };
   }
 
@@ -240,6 +279,9 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
           `operations[${index}] (${type}) \`cellTexts[${cellIndex}]\``,
           cellText.length,
         );
+      }
+      if (consumeTextBudget(budget, cellText.length)) {
+        return explainAggregateTextTooLong(index);
       }
       cellTexts.push(cellText);
     }
@@ -282,6 +324,9 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
     if (find.length > MAX_OPERATION_TEXT_LENGTH) {
       return explainTextTooLong(`operations[${index}] (replaceInBlock) \`find\``, find.length);
     }
+    if (consumeTextBudget(budget, find.length)) {
+      return explainAggregateTextTooLong(index);
+    }
     if (typeof replace !== "string") {
       return `operations[${index}] (replaceInBlock) requires a string \`replace\`.`;
     }
@@ -290,6 +335,9 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
         `operations[${index}] (replaceInBlock) \`replace\``,
         replace.length,
       );
+    }
+    if (consumeTextBudget(budget, replace.length)) {
+      return explainAggregateTextTooLong(index);
     }
     return { id: opId, type, blockId, find, replace, ...commentField };
   }
@@ -301,6 +349,9 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
     if (text.length > MAX_OPERATION_TEXT_LENGTH) {
       return explainTextTooLong(`operations[${index}] (${type}) \`text\``, text.length);
     }
+    if (consumeTextBudget(budget, text.length)) {
+      return explainAggregateTextTooLong(index);
+    }
     return { id: opId, type, blockId, text, ...commentField };
   }
   if (type === "replaceBlock") {
@@ -310,6 +361,9 @@ const buildSuggestedOperation = (raw: unknown, index: number): FolioAIEditOperat
     }
     if (text.length > MAX_OPERATION_TEXT_LENGTH) {
       return explainTextTooLong(`operations[${index}] (replaceBlock) \`text\``, text.length);
+    }
+    if (consumeTextBudget(budget, text.length)) {
+      return explainAggregateTextTooLong(index);
     }
     return { id: opId, type, blockId, text, ...commentField };
   }
@@ -343,8 +397,9 @@ export const parseSuggestChangesInput = (args: unknown): ParseSuggestChangesResu
   }
 
   const operations: FolioAIEditOperation[] = [];
+  const budget: TextBudget = { remaining: MAX_TOTAL_OPERATION_TEXT_LENGTH };
   for (const [index, raw] of rawOperations.entries()) {
-    const built = buildSuggestedOperation(raw, index);
+    const built = buildSuggestedOperation(raw, index, budget);
     if (typeof built === "string") {
       return { ok: false, error: built };
     }
