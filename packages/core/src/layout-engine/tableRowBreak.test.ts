@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { layoutDocument } from "./index";
 import { clearAllCaches } from "./measure";
-import { resetCanvasContext } from "./measure/measureContainer";
+import { installCanvasMeasureProvider, resetCanvasContext } from "./measure/measureContainer";
 import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import type {
   FlowBlock,
@@ -26,6 +26,7 @@ const LINE = 20;
 const originalDocument = globalThis.document;
 
 beforeEach(() => {
+  installCanvasMeasureProvider();
   Object.defineProperty(globalThis, "document", {
     configurable: true,
     value: {

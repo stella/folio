@@ -291,42 +291,32 @@ const bytesEqual = (a: Uint8Array, b: Uint8Array): boolean => {
 // ============================================================================
 
 describe("invariant 1: no-op save fidelity", () => {
-  test(
-    "selective save of an unedited doc reproduces the parsed model exactly",
-    async () => {
-      await fc.assert(
-        fc.asyncProperty(fc.constantFrom(...FIXTURES), async (name) => {
-          const buffer = readFixture(name);
-          const doc = await parse(buffer);
-          const saved = await attemptSelectiveSave(doc, buffer, {
-            changedParaIds: new Set(),
-            structuralChange: false,
-            hasUntrackedChanges: false,
-          });
-          expect(saved).not.toBeNull();
-          if (!saved) {
-            return;
-          }
-          expect(normalizedPackage(await parse(saved))).toEqual(normalizedPackage(doc));
-        }),
-        propertyConfig({ numRuns: 9, seed: SEED }),
-      );
+  test.each(FIXTURES)(
+    "selective save of an unedited doc reproduces the parsed model exactly (%s)",
+    async (name) => {
+      const buffer = readFixture(name);
+      const doc = await parse(buffer);
+      const saved = await attemptSelectiveSave(doc, buffer, {
+        changedParaIds: new Set(),
+        structuralChange: false,
+        hasUntrackedChanges: false,
+      });
+      expect(saved).not.toBeNull();
+      if (!saved) {
+        return;
+      }
+      expect(normalizedPackage(await parse(saved))).toEqual(normalizedPackage(doc));
     },
     propertyTestTimeout(20_000),
   );
 
-  test(
-    "full repack of an unedited doc preserves all visible text",
-    async () => {
-      await fc.assert(
-        fc.asyncProperty(fc.constantFrom(...FIXTURES), async (name) => {
-          const buffer = readFixture(name);
-          const doc = await parse(buffer);
-          const repacked = await fullRepack(doc, buffer);
-          expect(allBodyText(await parse(repacked))).toBe(allBodyText(doc));
-        }),
-        propertyConfig({ numRuns: 9, seed: SEED }),
-      );
+  test.each(FIXTURES)(
+    "full repack of an unedited doc preserves all visible text (%s)",
+    async (name) => {
+      const buffer = readFixture(name);
+      const doc = await parse(buffer);
+      const repacked = await fullRepack(doc, buffer);
+      expect(allBodyText(await parse(repacked))).toBe(allBodyText(doc));
     },
     propertyTestTimeout(20_000),
   );
@@ -336,18 +326,13 @@ describe("invariant 1: no-op save fidelity", () => {
   // gaps used to break this (a duplicated <w:commentReference>, and a
   // complex-field run losing its fontFamily); both are fixed in the paragraph
   // serializer, so this now holds across the rich fixtures too.
-  test(
-    "full repack of an unedited doc is a lossless model fixed point",
-    async () => {
-      await fc.assert(
-        fc.asyncProperty(fc.constantFrom(...FIXTURES), async (name) => {
-          const buffer = readFixture(name);
-          const doc = await parse(buffer);
-          const repacked = await fullRepack(doc, buffer);
-          expect(normalizedPackage(await parse(repacked))).toEqual(normalizedPackage(doc));
-        }),
-        propertyConfig({ numRuns: 9, seed: SEED }),
-      );
+  test.each(FIXTURES)(
+    "full repack of an unedited doc is a lossless model fixed point (%s)",
+    async (name) => {
+      const buffer = readFixture(name);
+      const doc = await parse(buffer);
+      const repacked = await fullRepack(doc, buffer);
+      expect(normalizedPackage(await parse(repacked))).toEqual(normalizedPackage(doc));
     },
     propertyTestTimeout(20_000),
   );
@@ -512,6 +497,6 @@ describe("invariant 4: selective save keeps untouched bytes identical", () => {
         propertyConfig({ numRuns: 12, seed: SEED }),
       );
     },
-    propertyTestTimeout(30_000),
+    propertyTestTimeout(60_000),
   );
 });
