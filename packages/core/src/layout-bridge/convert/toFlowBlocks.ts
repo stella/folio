@@ -8,6 +8,7 @@
 import type { Node as PMNode, Mark } from "prosemirror-model";
 
 import { convertBulletToUnicode } from "../../docx/bulletMarkers";
+import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
 import { padDecimal } from "../../docx/numberingParser";
 import type {
   FlowBlock,
@@ -2863,8 +2864,9 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
           }
 
           if (secProps) {
-            if (secProps.docGrid?.linePitch !== undefined && secProps.docGrid.linePitch > 0) {
-              sectionBreak.documentGridLinePitchTwips = secProps.docGrid.linePitch;
+            const documentGridLinePitchTwips = resolveDocumentGridLinePitch(secProps.docGrid);
+            if (documentGridLinePitchTwips !== undefined) {
+              sectionBreak.documentGridLinePitchTwips = documentGridLinePitchTwips;
             }
             // Populate page size
             if (secProps.pageWidth || secProps.pageHeight) {
