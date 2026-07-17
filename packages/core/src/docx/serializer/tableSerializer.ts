@@ -41,31 +41,44 @@ import { escapeXml, intAttr } from "./xmlUtils";
 
 type ParagraphSerializer = (paragraph: Paragraph) => string;
 
-function normalizeTrackedChangeInfo(info: { id: number; author: string; date?: string }): {
+function normalizeTrackedChangeInfo(info: {
   id: number;
   author: string;
   date?: string;
+  initials?: string;
+}): {
+  id: number;
+  author: string;
+  date?: string;
+  initials?: string;
 } {
   const normalizedId = Number.isInteger(info.id) && info.id >= 0 ? info.id : 0;
   const authorCandidate = typeof info.author === "string" ? info.author.trim() : "";
   const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
   const normalizedDate = typeof info.date === "string" ? info.date.trim() : undefined;
+  const normalizedInitials = typeof info.initials === "string" ? info.initials.trim() : undefined;
 
   return {
     id: normalizedId,
     author: normalizedAuthor,
     ...(normalizedDate !== undefined ? { date: normalizedDate } : {}),
+    ...(normalizedInitials !== undefined && normalizedInitials.length > 0
+      ? { initials: normalizedInitials }
+      : {}),
   };
 }
 
 function serializeTrackedChangeAttributes(
-  info: { id: number; author: string; date?: string },
+  info: { id: number; author: string; date?: string; initials?: string },
   rsid?: string,
 ): string {
   const normalized = normalizeTrackedChangeInfo(info);
   const attrs = [`w:id="${normalized.id}"`, `w:author="${escapeXml(normalized.author)}"`];
   if (normalized.date) {
     attrs.push(`w:date="${escapeXml(normalized.date)}"`);
+  }
+  if (normalized.initials) {
+    attrs.push(`w:initials="${escapeXml(normalized.initials)}"`);
   }
   if (rsid && rsid.trim().length > 0) {
     attrs.push(`w:rsid="${escapeXml(rsid.trim())}"`);

@@ -946,6 +946,11 @@ export type TrackedChangeInfo = {
   author: string;
   /** Date of the change */
   date?: string;
+  /**
+   * Author initials (w:initials). Optional attribution used by the review UI
+   * and carried through the round-trip when present on the source document.
+   */
+  initials?: string;
 };
 
 /**

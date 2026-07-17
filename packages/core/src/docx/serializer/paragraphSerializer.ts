@@ -375,6 +375,9 @@ function serializeTrackedChangeAttrs(info: TrackedChangeInfo): string {
   if (info.date !== undefined) {
     parts.push(`w:date="${escapeXml(info.date)}"`);
   }
+  if (info.initials !== undefined && info.initials.length > 0) {
+    parts.push(`w:initials="${escapeXml(info.initials)}"`);
+  }
   return parts.join(" ");
 }
 
@@ -939,9 +942,13 @@ function serializeTrackedChange(
   const authorCandidate = typeof info.author === "string" ? info.author.trim() : "";
   const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
   const normalizedDate = typeof info.date === "string" ? info.date.trim() : undefined;
+  const normalizedInitials = typeof info.initials === "string" ? info.initials.trim() : undefined;
   const attrs = [`w:id="${normalizedId}"`, `w:author="${escapeXml(normalizedAuthor)}"`];
   if (normalizedDate) {
     attrs.push(`w:date="${escapeXml(normalizedDate)}"`);
+  }
+  if (normalizedInitials) {
+    attrs.push(`w:initials="${escapeXml(normalizedInitials)}"`);
   }
 
   const serializeDeletedRun = (run: Run): string => {

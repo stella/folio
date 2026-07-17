@@ -122,6 +122,7 @@ function parseTrackedChangeInfo(node: XmlElement): TableStructuralChangeInfo["in
   const parsedId = rawId ? Number.parseInt(rawId, 10) : 0;
   const author = (getAttribute(node, "w", "author") ?? "").trim();
   const date = (getAttribute(node, "w", "date") ?? "").trim();
+  const initials = (getAttribute(node, "w", "initials") ?? "").trim();
 
   const info: TableStructuralChangeInfo["info"] = {
     id: Number.isInteger(parsedId) && parsedId >= 0 ? parsedId : 0,
@@ -129,6 +130,9 @@ function parseTrackedChangeInfo(node: XmlElement): TableStructuralChangeInfo["in
   };
   if (date.length > 0) {
     info.date = date;
+  }
+  if (initials.length > 0) {
+    info.initials = initials;
   }
   return info;
 }
