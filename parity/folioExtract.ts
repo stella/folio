@@ -66,6 +66,10 @@ export type FolioSpanInspection = {
   fontSizePx?: number;
   fontWeight?: string;
   fontStyle?: string;
+  fontKerning?: string;
+  letterSpacing?: string;
+  canvasAdvanceWidthPx?: number;
+  fontLoaded?: boolean;
   textTransform?: string;
 };
 
@@ -1146,6 +1150,7 @@ const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspe
       Number.isFinite(pageRect.width) && pageRect.width > 0 ? el.offsetWidth / pageRect.width : 1;
 
     const lineEls = Array.from(el.querySelectorAll(".layout-line")) as HTMLElement[];
+    const canvasContext = document.createElement("canvas").getContext("2d");
     const lines = lineEls.map((lineEl, lineIndex) => {
       const region: Region = (() => {
         if (lineEl.closest(".layout-page-header")) {
@@ -1165,6 +1170,24 @@ const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspe
         const pmStart = Number(spanEl.dataset["pmStart"]);
         const pmEnd = Number(spanEl.dataset["pmEnd"]);
         const fontSizePx = Number.parseFloat(computed.fontSize);
+        const font = [
+          computed.fontStyle,
+          computed.fontWeight,
+          computed.fontSize,
+          computed.fontFamily,
+        ].join(" ");
+        let canvasAdvanceWidthPx: number | undefined;
+        if (canvasContext) {
+          canvasContext.font = font;
+          if (
+            computed.fontKerning === "auto" ||
+            computed.fontKerning === "normal" ||
+            computed.fontKerning === "none"
+          ) {
+            canvasContext.fontKerning = computed.fontKerning;
+          }
+          canvasAdvanceWidthPx = canvasContext.measureText(spanEl.textContent ?? "").width;
+        }
         return {
           text: spanEl.textContent ?? "",
           className: spanEl.className,
@@ -1175,6 +1198,17 @@ const inspectSinglePage = (page: Page, domIndex: number): Promise<FolioPageInspe
           ...(Number.isFinite(fontSizePx) ? { fontSizePx } : {}),
           fontWeight: computed.fontWeight,
           fontStyle: computed.fontStyle,
+          fontKerning: computed.fontKerning,
+          letterSpacing: computed.letterSpacing,
+          ...(canvasAdvanceWidthPx !== undefined ? { canvasAdvanceWidthPx } : {}),
+          fontLoaded: document.fonts.check(
+            [
+              computed.fontStyle,
+              computed.fontWeight,
+              computed.fontSize,
+              computed.fontFamily.split(",")[0],
+            ].join(" "),
+          ),
           textTransform: computed.textTransform,
         };
       });
