@@ -213,6 +213,25 @@ describe("font metrics cache", () => {
 });
 
 describe("empty paragraph line-height floor", () => {
+  test("uses mapped font metrics for automatic line-spacing multiples", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "mapped-line-height",
+          runs: [{ kind: "text", text: "Mapped metrics", fontFamily: "Segoe UI", fontSize: 10 }],
+          attrs: { spacing: { line: 1.15, lineUnit: "multiplier", lineRule: "auto" } },
+        },
+        600,
+      );
+
+      expect(measure.lines.at(0)?.lineHeight).toBeCloseTo(
+        10 * PT_TO_PX * ((2210 + 514) / 2048) * 1.15,
+        4,
+      );
+    }, fakeMeasure);
+  });
+
   test("rounds participating lines up to the active document-grid pitch", () => {
     withFakeTextMeasure(() => {
       const measure = measureParagraph(

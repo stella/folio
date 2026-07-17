@@ -267,6 +267,18 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
       unitsPerEm: 2048,
     }), // 1.2070 (was hand-transcribed 1.2075 — negligible, now derived)
   },
+  "segoe ui": {
+    googleFont: "Source Sans 3",
+    category: "sans-serif",
+    fallbackStack: ["Segoe UI", "Source Sans 3", "Arial", "Helvetica", "sans-serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 2210,
+      hheaDescent: -514,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.3301
+  },
   montserrat: {
     googleFont: "Montserrat",
     category: "sans-serif",
