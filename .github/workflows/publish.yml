@@ -39,12 +39,16 @@ name: Publish
 # already on the registry, so bumping only one package republishes only it.
 # Manual dispatch with `publish` unchecked builds + packs only (a dry run).
 #
-# Each successful publish also cuts a GitHub Release (tag `<name>@<version>`)
-# with the exact tarball that went to npm attached as an asset. That tarball is
-# the content-addressed link between the public GitHub reference and the npm
-# artifact: downstream users can verify byte-for-byte that what they install
-# matches this release. Release creation is idempotent — it skips if the tag
-# already exists, mirroring the hardened action's version-level idempotency.
+# Each run also cuts a GitHub Release (tag `<name>@<version>`) with this run's
+# tarball attached as an asset. When the publish step actually shipped the
+# version (not a no-op), that tarball is the content-addressed link between the
+# public GitHub reference and the npm artifact: downstream users can verify
+# byte-for-byte that what they install matches this release. When the version
+# was already on the registry before this run (idempotent publish skip), the
+# release notes say so instead of asserting byte-identity, since this run's
+# rebuild was never the artifact npm actually accepted. Release creation is
+# idempotent — it skips if the tag already exists, mirroring the hardened
+# action's version-level idempotency.
 
 env:
   NODE_VERSION: "22"
@@ -189,6 +193,26 @@ jobs:
             echo "tag=${name}@${version}"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Check whether this version already exists on npm
+        id: registry-check
+        shell: bash
+        env:
+          NAME: ${{ steps.tarball.outputs.name }}
+          VERSION: ${{ steps.tarball.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The hardened publish action is idempotent: it no-ops if NAME@VERSION
+          # is already on the registry. Capture that pre-publish state here (an
+          # independent check, not a claimed output of the action) so the
+          # release step below can tell "this run actually published" from "this
+          # run skipped because it was already there" and avoid asserting
+          # byte-identity for a tarball npm never accepted this run.
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "already-published=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "already-published=false" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Publish to npm
         uses: stella/.github/.github/actions/npm-publish-hardened@96b8912e0786548c4e62046ce3965769991dd0e0
         with:
@@ -199,10 +223,12 @@ jobs:
           tag: latest
 
       - name: Create GitHub Release
-        # Attach the exact tarball published to npm so the GitHub Release is the
-        # content-addressed public reference for the artifact. Idempotent: on a
-        # re-run (or when the sibling package was not bumped and npm publish was
-        # skipped), the tag already exists and we skip.
+        # Attach this run's tarball so the GitHub Release is a content-addressed
+        # public reference for the artifact. Idempotent: on a re-run (or when the
+        # sibling package was not bumped), the tag already exists and we skip.
+        # The release notes below only claim byte-identity with the npm artifact
+        # when `registry-check` observed no pre-existing publish (i.e. this run's
+        # `npm publish` was not a no-op); see ALREADY_PUBLISHED handling below.
         env:
           GH_TOKEN: ${{ github.token }}
           # The job does not check out the repository, so gh cannot infer the
@@ -213,6 +239,7 @@ jobs:
           NAME: ${{ steps.tarball.outputs.name }}
           VERSION: ${{ steps.tarball.outputs.version }}
           TARBALL: ${{ steps.tarball.outputs.path }}
+          ALREADY_PUBLISHED: ${{ steps.registry-check.outputs.already-published }}
         shell: bash
         run: |
           set -euo pipefail
@@ -228,10 +255,17 @@ jobs:
           CHANGELOG_PATH="${changelog}" NOTES_PATH="${notes}" node -e '
           const fs = require("node:fs");
 
-          const { CHANGELOG_PATH: changelogPath, NAME: name, NOTES_PATH: notesPath, VERSION: version } = process.env;
-          if (!changelogPath || !name || !notesPath || !version) {
+          const {
+            ALREADY_PUBLISHED: alreadyPublishedRaw,
+            CHANGELOG_PATH: changelogPath,
+            NAME: name,
+            NOTES_PATH: notesPath,
+            VERSION: version,
+          } = process.env;
+          if (!alreadyPublishedRaw || !changelogPath || !name || !notesPath || !version) {
             throw new Error("Missing release note generation environment variables");
           }
+          const alreadyPublished = alreadyPublishedRaw === "true";
 
           const lines = fs.readFileSync(changelogPath, "utf8").split(/\r?\n/);
           const heading = `## ${version}`;
@@ -251,7 +285,13 @@ jobs:
             throw new Error(`Empty ${heading} section in ${changelogPath}`);
           }
 
-          const provenance = `\`${name}@${version}\` published to npm via OIDC trusted publishing with SLSA provenance. The attached tarball is the exact artifact published to the registry.`;
+          // "already-published" means NAME@VERSION was already on the registry
+          // before the publish step ran in this workflow run, so the hardened
+          // action was a no-op: the tarball built in this run was never
+          // accepted by npm and must not be claimed as the registry artifact.
+          const provenance = alreadyPublished
+            ? `\`${name}@${version}\` was already published to npm before this workflow run (this run'"'"'s publish step was a no-op). The attached tarball is a local rebuild of the same source and is not guaranteed to be byte-identical to the artifact on the registry.`
+            : `\`${name}@${version}\` published to npm via OIDC trusted publishing with SLSA provenance. The attached tarball is the exact artifact published to the registry.`;
           fs.writeFileSync(notesPath, `${section}\n\n---\n\n${provenance}\n`);
           '
           gh release create "${TAG}" "${TARBALL}" \

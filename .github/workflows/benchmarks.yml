@@ -17,8 +17,10 @@ jobs:
   benchmarks:
     name: Benchmarks
     runs-on: ubuntu-latest
-    env:
-      CODSPEED_TOKEN: ${{ secrets.CODSPEED_TOKEN }}
+    # Least privilege: default GITHUB_TOKEN perms are read-only; nothing in this
+    # job needs to write.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -28,16 +30,22 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # Until CodSpeed is connected, just prove the benches still run.
+      # Until CodSpeed is connected, just prove the benches still run. Checked
+      # against `secrets` directly (not job-level env) so CODSPEED_TOKEN is
+      # never exposed to `bun install` or other steps that run arbitrary
+      # lifecycle/bench code.
       - name: Smoke-run benchmarks
-        if: env.CODSPEED_TOKEN == ''
+        if: ${{ secrets.CODSPEED_TOKEN == '' }}
         run: bun run bench
 
       # CodSpeed instruments under Node; tsx runs the TypeScript bench files
       # directly, and the withCodSpeed-wrapped benches report to the action.
+      # CODSPEED_TOKEN is scoped to this step's env only.
       - name: CodSpeed regression report
-        if: env.CODSPEED_TOKEN != ''
+        if: ${{ secrets.CODSPEED_TOKEN != '' }}
         uses: CodSpeedHQ/action@1d13896ef15fbc335e350f1356d4762be9bc1df9 # v3
+        env:
+          CODSPEED_TOKEN: ${{ secrets.CODSPEED_TOKEN }}
         with:
           run: npx tsx benchmarks/index.ts
           token: ${{ env.CODSPEED_TOKEN }}
