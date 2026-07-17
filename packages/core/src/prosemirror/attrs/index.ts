@@ -1141,7 +1141,11 @@ const attrsResult = <T>(
       }
 
       const presentAttrs: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(attrs)) {
+      for (const key in attrs) {
+        if (!Object.hasOwn(attrs, key)) {
+          continue;
+        }
+        const value = attrs[key];
         if (value !== null) {
           presentAttrs[key] = value;
         }

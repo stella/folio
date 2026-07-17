@@ -1000,7 +1000,11 @@ function hasDirectRunFormatting(formatting: TextFormatting | undefined): boolean
     return false;
   }
 
-  for (const [key, value] of Object.entries(formatting)) {
+  for (const key in formatting) {
+    if (!Object.hasOwn(formatting, key)) {
+      continue;
+    }
+    const value = Reflect.get(formatting, key);
     if (key !== "styleId" && value !== undefined) {
       return true;
     }
@@ -3470,14 +3474,44 @@ function paragraphPageBreakPosition(paragraph: Paragraph): "before" | "after" | 
 
 function mayContainPageBreak(paragraph: Paragraph): boolean {
   for (const item of paragraph.content) {
-    if (item.type !== "run") {
+    if (item.type === "run") {
+      for (const content of item.content) {
+        if (content.type === "break" && content.breakType === "page") {
+          return true;
+        }
+      }
+      continue;
+    }
+
+    if (
+      item.type === "hyperlink" ||
+      item.type === "simpleField" ||
+      item.type === "complexField" ||
+      item.type === "inlineSdt" ||
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
+    ) {
       return true;
     }
-    for (const content of item.content) {
-      if (content.type === "break" && content.breakType === "page") {
-        return true;
-      }
+
+    if (
+      item.type === "bookmarkStart" ||
+      item.type === "bookmarkEnd" ||
+      item.type === "commentRangeStart" ||
+      item.type === "commentRangeEnd" ||
+      item.type === "commentReference" ||
+      item.type === "moveFromRangeStart" ||
+      item.type === "moveFromRangeEnd" ||
+      item.type === "moveToRangeStart" ||
+      item.type === "moveToRangeEnd" ||
+      item.type === "mathEquation"
+    ) {
+      continue;
     }
+
+    item satisfies never;
   }
   return false;
 }
