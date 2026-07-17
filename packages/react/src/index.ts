@@ -15,6 +15,10 @@ export type {
 } from "./components/DocxEditor.props";
 export type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 export type { EditorMode } from "./components/hooks/useEditorMode";
+export type {
+  FolioSuggestion,
+  SuggestionKind,
+} from "@stll/folio-core/prosemirror/commands/comments";
 // Custom-font prop types: `fontFamilies` (picker list) + `fonts` (FontFace registration).
 export type { FontOption } from "./components/ui/FontPicker";
 export type { FontDefinition } from "./paged-editor/hostFonts";

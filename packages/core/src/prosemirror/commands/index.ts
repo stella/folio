@@ -142,4 +142,11 @@ export {
   findAIEditRevisionRange,
   findNextChange,
   findPreviousChange,
+  getSuggestions,
+  findSuggestionRange,
+  acceptSuggestion,
+  acceptAllSuggestions,
+  rejectSuggestion,
+  rejectAllSuggestions,
 } from "./comments";
+export type { FolioSuggestion, SuggestionKind, AcceptSuggestionOptions } from "./comments";

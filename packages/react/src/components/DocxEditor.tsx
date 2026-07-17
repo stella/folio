@@ -136,6 +136,10 @@ import {
   findChangeAtPosition,
   findNextChange,
   findPreviousChange,
+  getSuggestions,
+  findSuggestionRange,
+  acceptSuggestion,
+  rejectSuggestion,
 } from "@stll/folio-core/prosemirror/commands/comments";
 import {
   blockSdtAttrsToSdtProperties,
@@ -3174,6 +3178,47 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           return false;
         }
         const { from, to } = range;
+        const $from = view.state.doc.resolve(from);
+        const $to = view.state.doc.resolve(to);
+        view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+        requestAnimationFrame(() => {
+          pagedEditorRef.current?.scrollToPosition(from);
+        });
+        return true;
+      },
+      getSuggestions: () => {
+        const view = pagedEditorRef.current?.getView();
+        return view ? getSuggestions(view.state) : [];
+      },
+      acceptSuggestion: (suggestionId, options) => {
+        const view = pagedEditorRef.current?.getView();
+        if (!view) {
+          return false;
+        }
+        return acceptSuggestion(suggestionId, { author: options?.author ?? author })(
+          view.state,
+          view.dispatch,
+        );
+      },
+      rejectSuggestion: (suggestionId) => {
+        const view = pagedEditorRef.current?.getView();
+        if (!view) {
+          return false;
+        }
+        return rejectSuggestion(suggestionId)(view.state, view.dispatch);
+      },
+      scrollToSuggestion: (suggestionId) => {
+        const view = pagedEditorRef.current?.getView();
+        if (!view) {
+          return false;
+        }
+        const range = findSuggestionRange(view.state, suggestionId);
+        if (!range) {
+          return false;
+        }
+        // Reuse the revision scroll plumbing: clamp defensively, select the
+        // range, then scroll on the next frame (see scrollToAIEditOperation).
+        const { from, to } = clampRangeToDocSize(view.state.doc.content.size, range);
         const $from = view.state.doc.resolve(from);
         const $to = view.state.doc.resolve(to);
         view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));

@@ -18,6 +18,7 @@ import type {
 import { expectRunPropertyChangeMarkAttrs } from "../attrs";
 import { textFormattingToMarks } from "../conversion/toProseDoc";
 import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import {
   hasMatchingCollapsedTableCellMerge,
@@ -383,34 +384,6 @@ function resolveChange(
     return true;
   };
 }
-
-const RUN_FORMATTING_MARK_NAMES = new Set([
-  "bold",
-  "italic",
-  "underline",
-  "strike",
-  "textColor",
-  "highlight",
-  "runShading",
-  "fontSize",
-  "fontFamily",
-  "language",
-  "superscript",
-  "subscript",
-  "allCaps",
-  "smallCaps",
-  "characterSpacing",
-  "emboss",
-  "imprint",
-  "hidden",
-  "textShadow",
-  "emphasisMark",
-  "textOutline",
-  "rtl",
-  "textEffect",
-  "runFormattingOverride",
-  "characterStyle",
-]);
 
 type ResolveRunPropertyChangeOptions = {
   tr: Transaction;
@@ -1102,6 +1075,270 @@ export function rejectAIEditRevision(revisionIds: number | readonly number[]): C
     }
     const ids = typeof revisionIds === "number" ? [revisionIds] : revisionIds;
     return resolveChange(range.from, range.to, "reject", ids)(state, dispatch);
+  };
+}
+
+/**
+ * Suggestion (AI-proposed tracked change) commands.
+ *
+ * A suggestion is a set of `insertion` / `deletion` / `runPropertyChange` marks
+ * sharing one `suggestionId` and carrying `provenance: "suggested"`. Accepting
+ * rewrites those marks to normal (`"user"`) tracked changes authored by the
+ * accepting user; rejecting inverse-applies them like `rejectChange`, reusing
+ * the same {@link resolveChange} machinery scoped to the suggestion's revision
+ * ids. All three operate as ordinary PM transactions, so they sync via collab
+ * and are undoable.
+ */
+
+const SUGGESTION_MARK_NAMES = new Set(["insertion", "deletion", "runPropertyChange"]);
+
+const isSuggestionMark = (mark: Mark): boolean =>
+  mark.attrs["provenance"] === "suggested" && SUGGESTION_MARK_NAMES.has(mark.type.name);
+
+export type SuggestionKind = "insertion" | "deletion" | "formatting";
+
+export type FolioSuggestion = {
+  suggestionId: string;
+  /** Contiguous document ranges the suggestion covers, in document order. */
+  ranges: readonly { from: number; to: number }[];
+  /** Which kinds of change the suggestion contains (deduped, in a stable order). */
+  kinds: readonly SuggestionKind[];
+};
+
+const suggestionKindOf = (mark: Mark): SuggestionKind => {
+  if (mark.type.name === "insertion") {
+    return "insertion";
+  }
+  if (mark.type.name === "deletion") {
+    return "deletion";
+  }
+  return "formatting";
+};
+
+type SuggestionAccumulator = {
+  segments: { from: number; to: number }[];
+  kinds: Set<SuggestionKind>;
+  revisionIds: Set<number>;
+};
+
+const collectSuggestions = (state: EditorState): Map<string, SuggestionAccumulator> => {
+  const runPropertyChangeType = state.schema.marks["runPropertyChange"];
+  const bySuggestion = new Map<string, SuggestionAccumulator>();
+
+  state.doc.descendants((node, pos) => {
+    if (!node.isInline) {
+      return;
+    }
+    for (const mark of node.marks) {
+      if (!isSuggestionMark(mark)) {
+        continue;
+      }
+      const suggestionId = mark.attrs["suggestionId"];
+      if (typeof suggestionId !== "string" || suggestionId.length === 0) {
+        continue;
+      }
+      const entry = bySuggestion.get(suggestionId) ?? {
+        segments: [],
+        kinds: new Set<SuggestionKind>(),
+        revisionIds: new Set<number>(),
+      };
+      entry.segments.push({ from: pos, to: pos + node.nodeSize });
+      entry.kinds.add(suggestionKindOf(mark));
+      if (mark.type === runPropertyChangeType) {
+        for (const change of expectRunPropertyChangeMarkAttrs(mark).changes) {
+          entry.revisionIds.add(change.info.id);
+        }
+      } else if (typeof mark.attrs["revisionId"] === "number") {
+        entry.revisionIds.add(mark.attrs["revisionId"]);
+      }
+      bySuggestion.set(suggestionId, entry);
+    }
+    return undefined;
+  });
+
+  return bySuggestion;
+};
+
+/** Merge sorted, possibly adjacent/overlapping segments into contiguous ranges. */
+const mergeSegments = (
+  segments: readonly { from: number; to: number }[],
+): { from: number; to: number }[] => {
+  const sorted = [...segments].toSorted((a, b) => a.from - b.from || a.to - b.to);
+  const merged: { from: number; to: number }[] = [];
+  for (const segment of sorted) {
+    const last = merged.at(-1);
+    if (last && segment.from <= last.to) {
+      last.to = Math.max(last.to, segment.to);
+      continue;
+    }
+    merged.push({ ...segment });
+  }
+  return merged;
+};
+
+const SUGGESTION_KIND_ORDER: readonly SuggestionKind[] = ["insertion", "deletion", "formatting"];
+
+/**
+ * List every suggestion in the document for host consumption: its id, the
+ * contiguous ranges it covers, and which kinds of change it contains.
+ */
+export function getSuggestions(state: EditorState): FolioSuggestion[] {
+  const bySuggestion = collectSuggestions(state);
+  const suggestions: FolioSuggestion[] = [];
+  for (const [suggestionId, entry] of bySuggestion) {
+    suggestions.push({
+      suggestionId,
+      ranges: mergeSegments(entry.segments),
+      kinds: SUGGESTION_KIND_ORDER.filter((kind) => entry.kinds.has(kind)),
+    });
+  }
+  // Document order by first range start keeps output stable for the host.
+  return suggestions.toSorted((a, b) => (a.ranges[0]?.from ?? 0) - (b.ranges[0]?.from ?? 0));
+}
+
+/**
+ * The document range covering every mark belonging to `suggestionId`, plus the
+ * revision ids those marks carry. Returns null when the suggestion is absent
+ * (already accepted/rejected, or never existed).
+ */
+export function findSuggestionRange(
+  state: EditorState,
+  suggestionId: string,
+): { from: number; to: number; revisionIds: number[] } | null {
+  const entry = collectSuggestions(state).get(suggestionId);
+  if (!entry || entry.segments.length === 0) {
+    return null;
+  }
+  const ranges = mergeSegments(entry.segments);
+  const from = ranges[0]?.from ?? 0;
+  const to = ranges.at(-1)?.to ?? from;
+  return { from, to, revisionIds: [...entry.revisionIds] };
+}
+
+export type AcceptSuggestionOptions = {
+  author: string;
+  /** ISO date stamped on the resulting user tracked change; defaults to now. */
+  date?: string;
+};
+
+/**
+ * Rewrite suggested marks to normal (`"user"`) tracked changes. `predicate`
+ * selects which suggestion marks to convert (one id, or all).
+ */
+const rewriteSuggestedMarksToUser = (
+  predicate: (mark: Mark) => boolean,
+  options: AcceptSuggestionOptions,
+): Command => {
+  return (state, dispatch) => {
+    const insertionType = state.schema.marks["insertion"];
+    const deletionType = state.schema.marks["deletion"];
+    const runPropertyChangeType = state.schema.marks["runPropertyChange"];
+    const date = options.date ?? new Date().toISOString();
+    const tr = state.tr;
+    let changed = false;
+
+    // Mark steps do not shift positions, so the positions read from
+    // `state.doc` stay valid across the accumulated removeMark/addMark steps.
+    state.doc.descendants((node, pos) => {
+      if (!node.isInline) {
+        return;
+      }
+      const from = pos;
+      const to = pos + node.nodeSize;
+      for (const mark of node.marks) {
+        if (!isSuggestionMark(mark) || !predicate(mark)) {
+          continue;
+        }
+        changed = true;
+        tr.removeMark(from, to, mark);
+        if (mark.type === runPropertyChangeType) {
+          // Re-author each recorded change under the accepting user; keep the
+          // rest of the change (previousFormatting, revision id) intact.
+          const nextChanges: RunPropertyChange[] = [];
+          for (const change of expectRunPropertyChangeMarkAttrs(mark).changes) {
+            nextChanges.push({
+              ...change,
+              info: { ...change.info, author: options.author, date },
+            });
+          }
+          tr.addMark(
+            from,
+            to,
+            mark.type.create({ changes: nextChanges, provenance: "user", suggestionId: null }),
+          );
+          continue;
+        }
+        if (mark.type === insertionType || mark.type === deletionType) {
+          tr.addMark(
+            from,
+            to,
+            mark.type.create({
+              ...mark.attrs,
+              author: options.author,
+              date,
+              provenance: "user",
+              suggestionId: null,
+            }),
+          );
+        }
+      }
+      return undefined;
+    });
+
+    if (!changed) {
+      return false;
+    }
+    if (dispatch) {
+      dispatch(tr);
+    }
+    return true;
+  };
+};
+
+/**
+ * Accept one suggestion: convert its marks into normal tracked changes authored
+ * by `author` with a fresh date, keeping their revision ids.
+ */
+export function acceptSuggestion(suggestionId: string, options: AcceptSuggestionOptions): Command {
+  return rewriteSuggestedMarksToUser(
+    (mark) => mark.attrs["suggestionId"] === suggestionId,
+    options,
+  );
+}
+
+/** Accept every suggestion in the document. */
+export function acceptAllSuggestions(options: AcceptSuggestionOptions): Command {
+  return rewriteSuggestedMarksToUser(() => true, options);
+}
+
+/**
+ * Reject one suggestion: inverse-apply its marks like `rejectChange` (delete
+ * suggested-inserted text, drop suggested deletion marks so the text survives,
+ * revert a suggested formatting change to its previous formatting).
+ */
+export function rejectSuggestion(suggestionId: string): Command {
+  return (state, dispatch) => {
+    const range = findSuggestionRange(state, suggestionId);
+    if (!range || range.revisionIds.length === 0) {
+      return false;
+    }
+    return resolveChange(range.from, range.to, "reject", range.revisionIds)(state, dispatch);
+  };
+}
+
+/** Reject every suggestion in the document. */
+export function rejectAllSuggestions(): Command {
+  return (state, dispatch) => {
+    const revisionIds = new Set<number>();
+    for (const entry of collectSuggestions(state).values()) {
+      for (const id of entry.revisionIds) {
+        revisionIds.add(id);
+      }
+    }
+    if (revisionIds.size === 0) {
+      return false;
+    }
+    return resolveChange(0, state.doc.content.size, "reject", [...revisionIds])(state, dispatch);
   };
 }
 
