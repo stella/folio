@@ -17,7 +17,7 @@
         :show-toolbar="true"
         :show-ruler="true"
         :show-margin-guides="showMarginGuides"
-        :margin-guide-color="marginGuideColor"
+        v-bind="marginGuideProps"
         :initial-zoom="1"
         :collaboration="collaboration"
         :on-copy="() => clipboardCallbackCounts.copy++"
@@ -70,6 +70,7 @@ const query = new URLSearchParams(window.location.search);
 const collaborationEnabled = query.has("collaboration");
 const showMarginGuides = query.has("marginGuides");
 const marginGuideColor = query.get("marginGuideColor") ?? undefined;
+const marginGuideProps = marginGuideColor === undefined ? {} : { marginGuideColor };
 const collaborationDocument = collaborationEnabled ? new Y.Doc() : null;
 const collaborationAwareness = collaborationDocument ? new Awareness(collaborationDocument) : null;
 let collaborationWasSeeded = false;
