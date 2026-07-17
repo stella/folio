@@ -82,7 +82,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   deleteTableRow: DIRECT_AND_TRACKED_MODES,
   insertTableColumn: DIRECT_AND_TRACKED_MODES,
   deleteTableColumn: DIRECT_AND_TRACKED_MODES,
-  mergeTableCells: DIRECT_ONLY_MODES,
+  mergeTableCells: DIRECT_AND_TRACKED_MODES,
   splitTableCell: DIRECT_AND_TRACKED_MODES,
 } as const satisfies Readonly<
   Record<FolioDocumentOperationType, readonly FolioDocumentOperationMode[]>
@@ -635,14 +635,23 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "mergeTableCells") {
-    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "endBlockId"]);
-    return {
-      ...operationMeta,
-      id,
-      type,
-      blockId,
-      endBlockId: readString(value, "endBlockId", path),
-    };
+    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "endBlockId", "rowCount"]);
+    const endBlockId = readOptionalString(value, "endBlockId", path);
+    const rawRowCount = value["rowCount"];
+    if ((endBlockId === undefined) === (rawRowCount === undefined)) {
+      return invalidBatch(path, "expected exactly one of endBlockId or rowCount");
+    }
+    if (endBlockId !== undefined) {
+      if (endBlockId.length === 0) {
+        return invalidBatch(`${path}.endBlockId`, "expected a non-empty string");
+      }
+      return { ...operationMeta, id, type, blockId, endBlockId };
+    }
+    const rowCount = readNonNegativeInteger(value, "rowCount", path);
+    if (rowCount < 2) {
+      return invalidBatch(`${path}.rowCount`, "expected an integer greater than or equal to 2");
+    }
+    return { ...operationMeta, id, type, blockId, rowCount };
   }
 
   if (type === "splitTableCell") {
@@ -749,13 +758,15 @@ export type FolioDocumentOperationAffectedTarget =
       anchorBlockId: string;
       effect: "deleted";
     }
-  | {
+  | ({
       type: "tableCells";
       story: FolioDocumentOperationStory;
       anchorBlockId: string;
-      endAnchorBlockId: string;
       effect: "merged";
-    }
+    } & (
+      | { endAnchorBlockId: string; rowCount?: never }
+      | { rowCount: number; endAnchorBlockId?: never }
+    ))
   | {
       type: "tableCell";
       story: FolioDocumentOperationStory;
@@ -935,13 +946,21 @@ const getPrimaryAffectedTarget = (
         effect: "deleted",
       };
     case "mergeTableCells":
-      return {
-        type: "tableCells",
-        story,
-        anchorBlockId: operation.blockId,
-        endAnchorBlockId: operation.endBlockId,
-        effect: "merged",
-      };
+      return operation.rowCount !== undefined
+        ? {
+            type: "tableCells",
+            story,
+            anchorBlockId: operation.blockId,
+            rowCount: operation.rowCount,
+            effect: "merged",
+          }
+        : {
+            type: "tableCells",
+            story,
+            anchorBlockId: operation.blockId,
+            endAnchorBlockId: operation.endBlockId,
+            effect: "merged",
+          };
     case "splitTableCell":
       return {
         type: "tableCell",

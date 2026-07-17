@@ -75,7 +75,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly deleteTableRow: readonly ["direct", "tracked-changes"];
     readonly insertTableColumn: readonly ["direct", "tracked-changes"];
     readonly deleteTableColumn: readonly ["direct", "tracked-changes"];
-    readonly mergeTableCells: readonly ["direct"];
+    readonly mergeTableCells: readonly ["direct", "tracked-changes"];
     readonly splitTableCell: readonly ["direct", "tracked-changes"];
 }>;
 
@@ -234,12 +234,17 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     id: string;
     type: "deleteTableColumn"; /** Stable paragraph anchor inside the column to delete. */
     blockId: string;
-} | {
+} | ({
     id: string;
-    type: "mergeTableCells"; /** Stable paragraph anchor inside one corner cell. */
-    blockId: string; /** Stable paragraph anchor inside the opposite corner cell. */
+    type: "mergeTableCells"; /** Stable paragraph anchor inside the first cell. */
+    blockId: string;
+} & ({
     endBlockId: string;
+    rowCount?: never;
 } | {
+    rowCount: number;
+    endBlockId?: never;
+})) | {
     id: string;
     type: "splitTableCell"; /** Stable paragraph anchor inside the cell to split. */
     blockId: string;
@@ -364,13 +369,18 @@ export type FolioDocumentOperationAffectedTarget = {
     story: FolioDocumentOperationStory;
     anchorBlockId: string;
     effect: "deleted";
-} | {
+} | ({
     type: "tableCells";
     story: FolioDocumentOperationStory;
     anchorBlockId: string;
-    endAnchorBlockId: string;
     effect: "merged";
+} & ({
+    endAnchorBlockId: string;
+    rowCount?: never;
 } | {
+    rowCount: number;
+    endAnchorBlockId?: never;
+})) | {
     type: "tableCell";
     story: FolioDocumentOperationStory;
     anchorBlockId: string;

@@ -52,9 +52,8 @@ const scopedHandleSchema = {
 /**
  * `suggest_changes` deliberately narrows the full document-operation contract
  * (see `FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA` in `operation-schema.ts`):
- * - excluded types: `insertSignatureTable` and `mergeTableCells` (direct-only,
- *   not representable as tracked changes for human review), plus
- *   `commentOnBlock` (covered by the dedicated `add_comment` tool);
+ * - excluded types: `insertSignatureTable` (direct-only) and `commentOnBlock`
+ *   (covered by the dedicated `add_comment` tool);
  * - `id` is optional here (auto-generated `op-1`, `op-2`, … by `parse.ts`)
  *   where the contract requires it;
  * - `comment` is a plain string here; `parse.ts` wraps it into the contract's
@@ -67,7 +66,6 @@ const scopedHandleSchema = {
 const SUGGEST_CHANGES_EXCLUDED_OPERATION_TYPES: ReadonlySet<FolioDocumentOperationType> = new Set([
   "commentOnBlock",
   "insertSignatureTable",
-  "mergeTableCells",
 ]);
 
 /**
@@ -98,6 +96,16 @@ const suggestChangesOperationSchema = {
     blockId: {
       type: "string",
       description: "The block to edit, from `read_document` or `find_text`.",
+    },
+    endBlockId: {
+      type: "string",
+      minLength: 1,
+      description: "For cell merging, a block in the opposite corner cell.",
+    },
+    rowCount: {
+      type: "integer",
+      minimum: 2,
+      description: "For vertical cell merging, the number of grid rows to merge downward.",
     },
     range: {
       ...FOLIO_TEXT_RANGE_JSON_SCHEMA,

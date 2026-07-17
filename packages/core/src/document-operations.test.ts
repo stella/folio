@@ -56,7 +56,7 @@ describe("document operation contract", () => {
         deleteTableRow: ["direct", "tracked-changes"],
         insertTableColumn: ["direct", "tracked-changes"],
         deleteTableColumn: ["direct", "tracked-changes"],
-        mergeTableCells: ["direct"],
+        mergeTableCells: ["direct", "tracked-changes"],
         splitTableCell: ["direct", "tracked-changes"],
       },
       preconditions: ["blockTextHash"],
@@ -81,6 +81,7 @@ describe("document operation contract", () => {
       true,
     );
     expect(isFolioDocumentOperationModeSupported("mergeTableCells", "direct")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("mergeTableCells", "tracked-changes")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("splitTableCell", "direct")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("splitTableCell", "tracked-changes")).toBe(true);
     expect(
@@ -310,6 +311,38 @@ describe("document operation contract", () => {
     ]);
   });
 
+  test("parses and receipts a row-count cell merge target", () => {
+    const batch = {
+      version: 1,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "merge-down",
+          type: "mergeTableCells",
+          blockId: "paragraph-10",
+          rowCount: 3,
+        },
+      ],
+    } as const;
+
+    expect(parseFolioDocumentOperationBatch(batch)).toEqual(batch);
+    expect(getFolioDocumentOperationReceipts(batch.operations, [{ id: "merge-down" }])).toEqual([
+      {
+        operationId: "merge-down",
+        operationIndex: 0,
+        affected: [
+          {
+            type: "tableCells",
+            story: "main",
+            anchorBlockId: "paragraph-10",
+            rowCount: 3,
+            effect: "merged",
+          },
+        ],
+      },
+    ]);
+  });
+
   test("rejects an unsupported serialized contract version", () => {
     expect(() => assertSupportedFolioDocumentOperationVersion(2)).toThrow(
       UnsupportedFolioDocumentOperationVersionError,
@@ -502,6 +535,38 @@ describe("document operation contract", () => {
       },
       "$.operations[0].cellTexts[1]",
       "expected a string",
+    ],
+    [
+      {
+        version: 1,
+        operations: [{ id: "1", type: "mergeTableCells", blockId: "a" }],
+      },
+      "$.operations[0]",
+      "expected exactly one of endBlockId or rowCount",
+    ],
+    [
+      {
+        version: 1,
+        operations: [
+          {
+            id: "1",
+            type: "mergeTableCells",
+            blockId: "a",
+            endBlockId: "b",
+            rowCount: 2,
+          },
+        ],
+      },
+      "$.operations[0]",
+      "expected exactly one of endBlockId or rowCount",
+    ],
+    [
+      {
+        version: 1,
+        operations: [{ id: "1", type: "mergeTableCells", blockId: "a", rowCount: 1 }],
+      },
+      "$.operations[0].rowCount",
+      "greater than or equal to 2",
     ],
   ] as const;
 

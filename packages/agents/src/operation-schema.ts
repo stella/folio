@@ -394,17 +394,24 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
     {
       type: "object",
       description:
-        "Merge the rectangular table region bounded by two cell anchors. Direct mode only.",
+        "Merge a region targeted by an opposite-cell anchor or a downward row count. Tracked mode supports vertical-only regions with empty continuation cells.",
       properties: {
         ...operationMetaProperties,
         type: { type: "string", enum: ["mergeTableCells"] },
         blockId: blockIdProperty,
         endBlockId: {
           type: "string",
+          minLength: 1,
           description: "Stable paragraph anchor inside the opposite corner cell.",
         },
+        rowCount: {
+          type: "integer",
+          minimum: 2,
+          description: "Number of grid rows to merge downward from the anchored cell.",
+        },
       },
-      required: ["id", "type", "blockId", "endBlockId"],
+      required: ["id", "type", "blockId"],
+      oneOf: [{ required: ["endBlockId"] }, { required: ["rowCount"] }],
       additionalProperties: false,
     },
     {
@@ -451,9 +458,8 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       enum: FOLIO_DOCUMENT_OPERATION_MODES,
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
-        '"direct" applies immediately. `insertSignatureTable` and `mergeTableCells` support ' +
-        '"direct" only. Tracked `splitTableCell` operations ' +
-        "support vertical-only spans.",
+        '"direct" applies immediately. `insertSignatureTable` supports "direct" only. ' +
+        "Tracked cell merge and split operations support unambiguous vertical-only topology.",
     },
     atomic: {
       type: "boolean",

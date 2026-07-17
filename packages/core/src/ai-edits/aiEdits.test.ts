@@ -3313,7 +3313,226 @@ describe("Folio AI edit operations", () => {
     expect(TableMap.get(view.state.doc.child(0)).width).toBe(3);
   });
 
-  test("treats a same-cell merge as a no-op and rejects tracked mode", () => {
+  test("tracks an empty vertical merge as one reversible cell revision", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-merge-start" }, [schema.text("A")]),
+        ]),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-merge-side-a" }, [schema.text("X")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
+        schema.node(
+          "tableCell",
+          { verticalAlign: "bottom", _originalFormatting: { verticalAlign: "bottom" } },
+          [schema.node("paragraph", { paraId: "tracked-merge-empty-b" })],
+        ),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-merge-side-b" }, [schema.text("Y")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [
+        schema.node(
+          "tableCell",
+          { verticalAlign: "center", _originalFormatting: { verticalAlign: "center" } },
+          [schema.node("paragraph", { paraId: "tracked-merge-empty-c" })],
+        ),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "tracked-merge-side-c" }, [schema.text("Z")]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "tracked-merge",
+          type: "mergeTableCells",
+          blockId: "tracked-merge-start",
+          rowCount: 3,
+        },
+      ],
+      mode: "tracked-changes",
+    });
+
+    expect(result.skipped).toEqual([]);
+    const revisionId = result.applied.at(0)?.revisionId;
+    expect(typeof revisionId).toBe("number");
+    expect(result.applied.at(0)?.revisionIds).toEqual([revisionId]);
+    const mergedCell = view.state.doc.child(0).child(0).child(0);
+    expect(mergedCell.attrs["rowspan"]).toBe(3);
+    expect(view.state.doc.child(0).child(1).childCount).toBe(1);
+    expect(view.state.doc.child(0).child(2).childCount).toBe(1);
+    expect(mergedCell.attrs["_docxVMergeContinuationCells"]).toEqual([
+      expect.objectContaining({
+        formatting: expect.objectContaining({ vMerge: "continue", verticalAlign: "bottom" }),
+        structuralChange: {
+          type: "tableCellMerge",
+          info: { id: revisionId, author: "AI", date: expect.any(String) },
+          verticalMerge: "continue",
+          verticalMergeOriginal: "rest",
+        },
+      }),
+      expect.objectContaining({
+        formatting: expect.objectContaining({ vMerge: "continue", verticalAlign: "center" }),
+        structuralChange: expect.objectContaining({
+          type: "tableCellMerge",
+          info: expect.objectContaining({ id: revisionId }),
+        }),
+      }),
+    ]);
+
+    if (revisionId === undefined) {
+      throw new Error("expected a vertical merge revision");
+    }
+    expect(acceptAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(true);
+    const acceptedContinuations = view.state.doc.child(0).child(0).child(0).attrs[
+      "_docxVMergeContinuationCells"
+    ];
+    expect(acceptedContinuations).toEqual([
+      expect.not.objectContaining({ structuralChange: expect.anything() }),
+      expect.not.objectContaining({ structuralChange: expect.anything() }),
+    ]);
+
+    const rejectingView = makeView(state);
+    const rejectingResult = applyFolioAIEditOperations({
+      view: rejectingView,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "tracked-merge",
+          type: "mergeTableCells",
+          blockId: "tracked-merge-start",
+          rowCount: 3,
+        },
+      ],
+      mode: "tracked-changes",
+    });
+    const rejectingRevisionId = rejectingResult.applied.at(0)?.revisionId;
+    if (rejectingRevisionId === undefined) {
+      throw new Error("expected a vertical merge revision");
+    }
+    expect(
+      rejectAIEditRevision(rejectingRevisionId)(rejectingView.state, rejectingView.dispatch),
+    ).toBe(true);
+    const rejectedTable = rejectingView.state.doc.child(0);
+    expect(rejectedTable.child(0).child(0).attrs["rowspan"]).toBe(1);
+    expect(rejectedTable.child(1).child(0).attrs).toMatchObject({
+      cellMarker: null,
+      _originalFormatting: { verticalAlign: "bottom" },
+    });
+    expect(rejectedTable.child(2).child(0).attrs).toMatchObject({
+      cellMarker: null,
+      _originalFormatting: { verticalAlign: "center" },
+    });
+  });
+
+  test("tracked merging rejects ambiguous topology without mutation", () => {
+    const cases = [
+      {
+        name: "horizontal",
+        table: schema.node("table", null, [
+          schema.node("tableRow", null, [
+            schema.node("tableCell", null, [
+              schema.node("paragraph", { paraId: "tracked-merge-horizontal-a" }, [
+                schema.text("A"),
+              ]),
+            ]),
+            schema.node("tableCell", null, [
+              schema.node("paragraph", { paraId: "tracked-merge-horizontal-b" }, [
+                schema.text("B"),
+              ]),
+            ]),
+          ]),
+        ]),
+        operation: {
+          id: "tracked-merge-horizontal",
+          type: "mergeTableCells" as const,
+          blockId: "tracked-merge-horizontal-a",
+          endBlockId: "tracked-merge-horizontal-b",
+        },
+      },
+      {
+        name: "content-bearing continuation",
+        table: schema.node("table", null, [
+          schema.node("tableRow", null, [
+            schema.node("tableCell", null, [
+              schema.node("paragraph", { paraId: "tracked-merge-content-a" }, [schema.text("A")]),
+            ]),
+          ]),
+          schema.node("tableRow", null, [
+            schema.node("tableCell", null, [
+              schema.node("paragraph", { paraId: "tracked-merge-content-b" }, [schema.text("B")]),
+            ]),
+          ]),
+        ]),
+        operation: {
+          id: "tracked-merge-content",
+          type: "mergeTableCells" as const,
+          blockId: "tracked-merge-content-a",
+          endBlockId: "tracked-merge-content-b",
+        },
+      },
+      {
+        name: "marked continuation",
+        table: schema.node("table", null, [
+          schema.node("tableRow", null, [
+            schema.node("tableCell", null, [
+              schema.node("paragraph", { paraId: "tracked-merge-marked-a" }, [schema.text("A")]),
+            ]),
+          ]),
+          schema.node("tableRow", null, [
+            schema.node(
+              "tableCell",
+              {
+                cellMarker: {
+                  kind: "ins",
+                  info: {
+                    revisionId: 7,
+                    author: "Existing",
+                    date: "2026-07-17T00:00:00.000Z",
+                  },
+                },
+              },
+              [schema.node("paragraph", { paraId: "tracked-merge-marked-b" })],
+            ),
+          ]),
+        ]),
+        operation: {
+          id: "tracked-merge-marked",
+          type: "mergeTableCells" as const,
+          blockId: "tracked-merge-marked-a",
+          rowCount: 2,
+        },
+      },
+    ];
+
+    for (const { name, table, operation } of cases) {
+      const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+      const view = makeView(state);
+      expect(
+        applyFolioAIEditOperations({
+          view,
+          snapshot: createFolioAIEditSnapshot(state.doc),
+          operations: [operation],
+          mode: "tracked-changes",
+        }),
+        name,
+      ).toEqual({
+        applied: [],
+        skipped: [{ id: operation.id, reason: "unsupportedBlock" }],
+      });
+      expect(view.state.doc.eq(state.doc), name).toBe(true);
+    }
+  });
+
+  test("treats a same-cell merge as a no-op in either mode", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
@@ -3360,7 +3579,7 @@ describe("Folio AI edit operations", () => {
       }),
     ).toEqual({
       applied: [],
-      skipped: [{ id: "tracked-merge", reason: "unsupportedMode" }],
+      skipped: [{ id: "tracked-merge", reason: "noopOperation" }],
     });
   });
 
