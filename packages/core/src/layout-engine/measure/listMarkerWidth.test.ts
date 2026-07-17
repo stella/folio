@@ -82,7 +82,7 @@ describe("getListMarkerInlineWidth", () => {
         expect(regular).toBe(20);
         expect(bold).toBe(24);
       },
-      { charWidth: (_char, font) => (font.includes("800") ? 12 : 10) },
+      { charWidth: (_char, font) => (font.includes("700") ? 12 : 10) },
     );
   });
 
@@ -133,7 +133,7 @@ describe("getListMarkerInlineWidth", () => {
         expect(regular).toBe(-20);
         expect(bold).toBe(-24);
       },
-      { charWidth: (_char, font) => (font.includes("800") ? 12 : 10) },
+      { charWidth: (_char, font) => (font.includes("700") ? 12 : 10) },
     );
   });
 

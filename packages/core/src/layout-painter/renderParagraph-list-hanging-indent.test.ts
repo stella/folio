@@ -154,7 +154,7 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
     const bold = renderListItem({ left: 48, hanging: 24 }, undefined, true).marker;
     const regular = renderListItem({ left: 48, hanging: 24 }, undefined, false).marker;
 
-    expect(bold?.style.fontWeight).toBe("800");
+    expect(bold?.style.fontWeight).toBe("700");
     expect(regular?.style.fontWeight).toBe("normal");
   });
 

@@ -82,7 +82,7 @@ class FakeElement {
       font: "",
       measureText(text: string) {
         return {
-          width: text.length * 7 + (this.font.includes("800") ? 10 : 0),
+          width: text.length * 7 + (this.font.includes("700") ? 10 : 0),
         };
       },
     };
@@ -442,7 +442,7 @@ describe("renderLine text styling", () => {
     const lineEl = renderLine(block, line, undefined, fakeDocument);
     const textEl = lineEl.children[0] as HTMLElement | undefined;
 
-    expect(textEl?.style.fontWeight).toBe("800");
+    expect(textEl?.style.fontWeight).toBe("700");
   });
 
   test("keeps automatic text readable on bright DOCX highlights", () => {

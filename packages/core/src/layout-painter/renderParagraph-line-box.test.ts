@@ -133,7 +133,7 @@ describe("renderLine box model", () => {
     expect(hyphen?.dataset["discretionaryHyphen"]).toBe("true");
     expect(hyphen?.dataset["pmStart"]).toBeUndefined();
     expect(hyphen?.dataset["pmEnd"]).toBeUndefined();
-    expect(hyphen?.style["fontWeight"]).toBe("800");
+    expect(hyphen?.style["fontWeight"]).toBe("700");
   });
 
   test("paints pair kerning only when the authored threshold is met", () => {

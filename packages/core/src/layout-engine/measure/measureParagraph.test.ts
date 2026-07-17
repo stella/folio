@@ -2274,7 +2274,7 @@ describe("all-caps paragraph measurement", () => {
       bold: true,
     });
 
-    expect(font).toContain("800");
+    expect(font).toContain("700");
     expect(font).not.toContain("bold");
   });
 

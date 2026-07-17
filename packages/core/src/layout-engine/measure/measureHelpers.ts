@@ -94,7 +94,7 @@ function getResolvedFallback(fontFamily: string): string {
  *
  * @example
  * buildFontString({ fontFamily: "Arial", fontSize: 12, bold: true })
- * // Returns: "800 16px Arial, Arimo, Helvetica, sans-serif" (12pt = 16px)
+ * // Returns: "700 16px Arial, Arimo, Helvetica, sans-serif" (12pt = 16px)
  */
 export function buildFontString(style: FontStyle): string {
   const parts: string[] = [];
