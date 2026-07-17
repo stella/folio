@@ -3,6 +3,7 @@
 import { EditorState } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
 import type { Plugin } from "prosemirror-state";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorView } from "prosemirror-view";
 
 import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
@@ -62,6 +63,7 @@ type MountedView = {
   appliedContent: BlockContent[];
   appliedNote: NoteStory;
   appliedPlugins: Plugin[];
+  appliedProseDocument: PMNode;
   appliedStyles: StyleDefinitions | null | undefined;
   appliedTheme: Theme | null | undefined;
   dirty: boolean;
@@ -91,20 +93,27 @@ const resolveNote = (document: Document | null, story: NoteStoryKey): NoteStory 
   return notes?.find(({ id }) => id === story.noteId) ?? null;
 };
 
-const buildInitialState = (
+const noteToProseDocument = (
   note: NoteStory,
   styles: StyleDefinitions | null | undefined,
   theme: Theme | null | undefined,
-  manager: ExtensionManager,
-  externalPlugins: Plugin[],
-): EditorStateT => {
+) => {
   const options: { styles?: StyleDefinitions; theme?: Theme | null } = {};
   if (styles) options.styles = styles;
   if (theme !== undefined) options.theme = theme;
+  return footnoteToProseDoc(note.content, options);
+};
+
+const buildInitialState = (
+  document: PMNode,
+  styles: StyleDefinitions | null | undefined,
+  manager: ExtensionManager,
+  externalPlugins: Plugin[],
+): EditorStateT => {
   return ensureBaseDirectionInState(
     ensureParaIdsInState(
       EditorState.create({
-        doc: footnoteToProseDoc(note.content, options),
+        doc: document,
         schema,
         plugins: [...manager.getPlugins(), ...externalPlugins, createDocumentStylesPlugin(styles)],
       }),
@@ -160,21 +169,30 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       const existing = mounted.get(key);
       if (existing) {
         if (existing.mountNode.parentElement !== host) host.append(existing.mountNode);
-        const contentIsCurrent =
-          existing.appliedNote === note && existing.appliedContent === note.content;
+        const nextProseDocument = noteToProseDocument(note, styles, theme);
         const contextIsCurrent =
           existing.appliedStyles === styles &&
           existing.appliedTheme === theme &&
           existing.appliedPlugins === externalPlugins;
-        if (contentIsCurrent && contextIsCurrent) continue;
+        const referencesAreCurrent =
+          existing.appliedNote === note && existing.appliedContent === note.content;
+        const contentIsCurrent =
+          referencesAreCurrent || existing.appliedProseDocument.eq(nextProseDocument);
+        if (contentIsCurrent && contextIsCurrent) {
+          existing.appliedNote = note;
+          existing.appliedContent = note.content;
+          existing.appliedProseDocument = nextProseDocument;
+          continue;
+        }
         existing.view.updateState(
-          buildInitialState(note, styles, theme, existing.manager, externalPlugins),
+          buildInitialState(nextProseDocument, styles, existing.manager, externalPlugins),
         );
         existing.appliedNote = note;
         existing.appliedContent = note.content;
         existing.appliedStyles = styles;
         existing.appliedTheme = theme;
         existing.appliedPlugins = externalPlugins;
+        existing.appliedProseDocument = nextProseDocument;
         existing.dirty = false;
         continue;
       }
@@ -186,8 +204,9 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       mountNode.dataset["noteKind"] = storyKey.kind;
       mountNode.dataset["noteId"] = String(storyKey.noteId);
       host.append(mountNode);
+      const proseDocument = noteToProseDocument(note, styles, theme);
       const view = new EditorView(mountNode, {
-        state: buildInitialState(note, styles, theme, manager, externalPlugins),
+        state: buildInitialState(proseDocument, styles, manager, externalPlugins),
         dispatchTransaction(transaction) {
           view.updateState(view.state.apply(transaction));
           const mountedStory = mounted.get(key);
@@ -204,6 +223,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         appliedContent: note.content,
         appliedNote: note,
         appliedPlugins: externalPlugins,
+        appliedProseDocument: proseDocument,
         appliedStyles: styles,
         appliedTheme: theme,
         dirty: false,
@@ -251,6 +271,11 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           footnotes[index] = updated;
           story.appliedNote = updated;
           story.appliedContent = updated.content;
+          story.appliedProseDocument = noteToProseDocument(
+            updated,
+            story.appliedStyles,
+            story.appliedTheme,
+          );
           continue;
         }
         const index = endnotes?.findIndex(({ id }) => id === story.note.noteId) ?? -1;
@@ -264,6 +289,11 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         endnotes[index] = updated;
         story.appliedNote = updated;
         story.appliedContent = updated.content;
+        story.appliedProseDocument = noteToProseDocument(
+          updated,
+          story.appliedStyles,
+          story.appliedTheme,
+        );
       }
       if (!footnotesChanged && !endnotesChanged) return document;
       return {
