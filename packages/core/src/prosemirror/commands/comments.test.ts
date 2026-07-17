@@ -643,7 +643,7 @@ describe("table cell structural revision resolution", () => {
     expect(() => view.state.doc.check()).not.toThrow();
   });
 
-  test("reject replaces an empty origin paragraph with restored split content", () => {
+  test("reject preserves restored split content in its continuation cell", () => {
     const view = dispatcher(
       EditorState.create({
         schema: tableSchema,
@@ -673,7 +673,24 @@ describe("table cell structural revision resolution", () => {
     expect(rejectAIEditRevision(83)(view.state, view.dispatch)).toBe(true);
     const mergedCell = view.state.doc.firstChild?.firstChild?.firstChild;
     expect(mergedCell?.childCount).toBe(1);
-    expect(mergedCell?.textContent).toBe("Restored");
+    expect(mergedCell?.textContent).toBe("");
+    expect(mergedCell?.attrs["_docxVMergeContinuationCells"]).toEqual([
+      {
+        type: "tableCell",
+        formatting: { vMerge: "continue" },
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "run",
+                content: [{ type: "text", text: "Restored" }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
     expect(() => view.state.doc.check()).not.toThrow();
   });
 

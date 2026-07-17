@@ -409,7 +409,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
     },
     {
       type: "object",
-      description: "Split one spanned table cell into individual cells. Direct mode only.",
+      description:
+        "Split one spanned table cell into individual cells. Tracked mode supports vertical-only spans.",
       properties: {
         ...operationMetaProperties,
         type: { type: "string", enum: ["splitTableCell"] },
@@ -450,9 +451,9 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
       enum: FOLIO_DOCUMENT_OPERATION_MODES,
       description:
         'How edits land: "tracked-changes" (default) proposes revisions for human review, ' +
-        '"direct" applies immediately. `insertSignatureTable`, `mergeTableCells` and ' +
-        "`splitTableCell` support " +
-        '"direct" only.',
+        '"direct" applies immediately. `insertSignatureTable` and `mergeTableCells` support ' +
+        '"direct" only. Tracked `splitTableCell` operations ' +
+        "support vertical-only spans.",
     },
     atomic: {
       type: "boolean",

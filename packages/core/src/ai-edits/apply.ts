@@ -1,3 +1,4 @@
+import { Result } from "better-result";
 import { Fragment, type Mark, type Node as PMNode, type Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import {
@@ -9,11 +10,12 @@ import {
   tableNodeTypes,
 } from "prosemirror-tables";
 
-import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import { expectRunPropertyChangeMarkAttrs, expectTableCellAttrs } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
+import { standaloneTableCellToProseMirror } from "../prosemirror/conversion/toProseDoc";
+import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
-import type { RunPropertyChange } from "../types/document";
+import type { RunPropertyChange, TableCell, TableCellFormatting } from "../types/document";
 import { buildCleanBlockText } from "./clean-text";
 import {
   hasInlineEmphasis,
@@ -669,6 +671,164 @@ const splitTableRectangle = (
   return tr.setNodeMarkup(tableStart + cellPosition, undefined, attrsByColumn.at(0));
 };
 
+type SplitTrackedVerticalTableCellOptions = {
+  tr: Transaction;
+  tablePosition: number;
+  table: PMNode;
+  rectangle: TableRectangle;
+  revisionId: number;
+  author: string;
+  date: string;
+};
+
+const splitTrackedVerticalTableCell = ({
+  tr,
+  tablePosition,
+  table,
+  rectangle,
+  revisionId,
+  author,
+  date,
+}: SplitTrackedVerticalTableCellOptions): Transaction | null => {
+  const map = TableMap.get(table);
+  if (
+    rectangle.right - rectangle.left !== 1 ||
+    rectangle.bottom - rectangle.top < 2 ||
+    rectangle.left < 0 ||
+    rectangle.top < 0 ||
+    rectangle.right > map.width ||
+    rectangle.bottom > map.height
+  ) {
+    return null;
+  }
+  const relativeCellPosition = map.map[rectangle.top * map.width + rectangle.left];
+  if (relativeCellPosition === undefined) {
+    return null;
+  }
+  const cellRectangle = map.findCell(relativeCellPosition);
+  if (!tableRectanglesEqual(cellRectangle, rectangle)) {
+    return null;
+  }
+  const cell = table.nodeAt(relativeCellPosition);
+  if (!cell) {
+    return null;
+  }
+  const attrs = expectTableCellAttrs(cell);
+  if (
+    attrs.colspan !== 1 ||
+    attrs.rowspan !== rectangle.bottom - rectangle.top ||
+    attrs.cellMarker !== undefined
+  ) {
+    return null;
+  }
+  const continuationCells = attrs._docxVMergeContinuationCells;
+  if (
+    continuationCells !== undefined &&
+    continuationCells.length !== rectangle.bottom - rectangle.top - 1
+  ) {
+    return null;
+  }
+
+  const marker = {
+    kind: "merge" as const,
+    info: { revisionId, author, date },
+    verticalMergeOriginal: "continue" as const,
+  };
+  const insertedCells: PMNode[] = [];
+  for (let index = 0; index < rectangle.bottom - rectangle.top - 1; index++) {
+    const source = continuationCells?.[index];
+    if (source?.structuralChange !== undefined) {
+      return null;
+    }
+    const insertedCell = source
+      ? trackedSplitCellFromStoredSource(cell, source, marker)
+      : cell.type.createAndFill({
+          ...cell.attrs,
+          rowspan: 1,
+          cellMarker: marker,
+          _originalFormatting: formattingWithoutVerticalMerge(attrs._originalFormatting),
+          _preserveVMergeRestart: null,
+          _docxVMergeContinuationCells: null,
+        });
+    if (!insertedCell) {
+      return null;
+    }
+    insertedCells.push(insertedCell);
+  }
+
+  const tableStart = tablePosition + 1;
+  const mapFrom = tr.mapping.maps.length;
+  for (const [index, insertedCell] of insertedCells.entries()) {
+    const row = rectangle.top + index + 1;
+    const position = tableStart + map.positionAt(row, rectangle.left, table);
+    tr = tr.insert(tr.mapping.slice(mapFrom).map(position, 1), insertedCell);
+  }
+  tr = tr.setNodeMarkup(tableStart + relativeCellPosition, undefined, {
+    ...cell.attrs,
+    rowspan: 1,
+    _originalFormatting: formattingWithoutVerticalMerge(attrs._originalFormatting),
+    _preserveVMergeRestart: null,
+    _docxVMergeContinuationCells: null,
+  });
+  markStructuralChange(tr);
+  return tr;
+};
+
+type TrackedSplitCellMarker = {
+  kind: "merge";
+  info: {
+    revisionId: number;
+    author: string;
+    date: string;
+  };
+  verticalMergeOriginal: "continue";
+};
+
+const trackedSplitCellFromStoredSource = (
+  origin: PMNode,
+  source: TableCell,
+  marker: TrackedSplitCellMarker,
+): PMNode | null => {
+  const formatting = formattingWithoutVerticalMerge(source.formatting);
+  const restoredSource: TableCell = {
+    type: "tableCell",
+    ...(formatting ? { formatting } : {}),
+    ...(source.propertyChanges ? { propertyChanges: source.propertyChanges } : {}),
+    content: source.content,
+  };
+  const converted = standaloneTableCellToProseMirror(
+    restoredSource,
+    origin.type.name === "tableHeader" ? "tableHeader" : "tableCell",
+  );
+  const compatible = Result.try(() => origin.type.schema.nodeFromJSON(converted.toJSON())).unwrapOr(
+    null,
+  );
+  if (!compatible) {
+    return null;
+  }
+  return compatible.type.create(
+    {
+      ...compatible.attrs,
+      rowspan: 1,
+      cellMarker: marker,
+      _preserveVMergeRestart: null,
+      _docxVMergeContinuationCells: null,
+    },
+    compatible.content,
+  );
+};
+
+const formattingWithoutVerticalMerge = (
+  formatting: TableCellFormatting | undefined,
+): TableCellFormatting | undefined => {
+  if (!formatting) {
+    return undefined;
+  }
+  const next = { ...formatting };
+  delete next.vMerge;
+  return next;
+};
+
 const findTableColumnInsertion = (
   doc: PMNode,
   blockFrom: number,
@@ -1150,10 +1310,7 @@ const applyFolioAIEditOperationsInternal = ({
   const liveBlocksByParaId = collectLiveBlocksByParaId(view.state.doc);
 
   for (const [index, operation] of operations.entries()) {
-    if (
-      mode === "tracked-changes" &&
-      (operation.type === "mergeTableCells" || operation.type === "splitTableCell")
-    ) {
+    if (mode === "tracked-changes" && operation.type === "mergeTableCells") {
       skipped.push({ id: operation.id, reason: "unsupportedMode" });
       continue;
     }
@@ -1820,7 +1977,19 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        const nextTr = splitTableRectangle(tr, tablePosition, table, split.rectangle);
+        const revisionId = mode === "tracked-changes" ? revisionSeed : null;
+        const nextTr =
+          revisionId === null
+            ? splitTableRectangle(tr, tablePosition, table, split.rectangle)
+            : splitTrackedVerticalTableCell({
+                tr,
+                tablePosition,
+                table,
+                rectangle: split.rectangle,
+                revisionId,
+                author,
+                date,
+              });
         if (!nextTr) {
           skipped.push({
             id: item.operation.id,
@@ -1829,6 +1998,10 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         tr = nextTr;
+        if (revisionId !== null) {
+          revisionSeed++;
+          appliedRevisionIds = [revisionId];
+        }
         break;
       }
       case "deleteTableRow": {

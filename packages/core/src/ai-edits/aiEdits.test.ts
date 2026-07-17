@@ -53,7 +53,11 @@ const schema = new Schema({
         colspan: { default: 1 },
         rowspan: { default: 1 },
         colwidth: { default: null },
+        verticalAlign: { default: null },
+        tcPrChange: { default: null },
         cellMarker: { default: null },
+        _originalFormatting: { default: null },
+        _preserveVMergeRestart: { default: null },
         _docxVMergeContinuationCells: { default: null },
       },
     },
@@ -3397,6 +3401,166 @@ describe("Folio AI edit operations", () => {
     expect(updatedTable.child(1).child(1).attrs["colwidth"]).toEqual([200]);
   });
 
+  test("tracks a vertical split as one reversible cell merge revision", () => {
+    const continuationCells = [
+      {
+        type: "tableCell" as const,
+        formatting: {
+          vMerge: "continue" as const,
+          verticalAlign: "bottom" as const,
+        },
+        content: [
+          {
+            type: "paragraph" as const,
+            content: [
+              {
+                type: "run" as const,
+                content: [{ type: "text" as const, text: "Second" }],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: "tableCell" as const,
+        formatting: {
+          vMerge: "continue" as const,
+          verticalAlign: "center" as const,
+        },
+        content: [
+          {
+            type: "paragraph" as const,
+            content: [
+              {
+                type: "run" as const,
+                content: [{ type: "text" as const, text: "Third" }],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node(
+          "tableCell",
+          {
+            rowspan: 3,
+            _originalFormatting: { vMerge: "restart" },
+            _docxVMergeContinuationCells: continuationCells,
+          },
+          [schema.node("paragraph", { paraId: "tracked-split" }, [schema.text("Content")])],
+        ),
+      ]),
+      schema.node("tableRow"),
+      schema.node("tableRow"),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "split-cell", type: "splitTableCell", blockId: "tracked-split" }],
+      mode: "tracked-changes",
+    });
+
+    expect(result.skipped).toEqual([]);
+    const revisionId = result.applied.at(0)?.revisionId;
+    expect(typeof revisionId).toBe("number");
+    expect(result.applied.at(0)?.revisionIds).toEqual([revisionId]);
+    const splitTable = view.state.doc.child(0);
+    expect(splitTable.child(0).child(0).attrs["rowspan"]).toBe(1);
+    expect(splitTable.child(1).childCount).toBe(1);
+    expect(splitTable.child(2).childCount).toBe(1);
+    expect(splitTable.child(1).child(0).textContent).toBe("Second");
+    expect(splitTable.child(2).child(0).textContent).toBe("Third");
+    expect(splitTable.child(1).child(0).attrs).toMatchObject({
+      cellMarker: {
+        kind: "merge",
+        info: {
+          revisionId,
+          author: "AI",
+          date: expect.any(String),
+        },
+        verticalMergeOriginal: "continue",
+      },
+      _originalFormatting: { verticalAlign: "bottom" },
+    });
+    expect(splitTable.child(2).child(0).attrs).toMatchObject({
+      cellMarker: {
+        kind: "merge",
+        info: { revisionId },
+        verticalMergeOriginal: "continue",
+      },
+      _originalFormatting: { verticalAlign: "center" },
+    });
+
+    if (revisionId === undefined) {
+      throw new Error("expected a vertical split revision");
+    }
+    expect(acceptAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(true);
+    expect(view.state.doc.child(0).child(1).child(0).attrs["cellMarker"]).toBeNull();
+    expect(view.state.doc.child(0).child(2).child(0).attrs["cellMarker"]).toBeNull();
+    expect(view.state.doc.child(0).child(1).child(0).textContent).toBe("Second");
+    expect(view.state.doc.child(0).child(2).child(0).textContent).toBe("Third");
+
+    const rejectingView = makeView(state);
+    const rejectingResult = applyFolioAIEditOperations({
+      view: rejectingView,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "split-cell", type: "splitTableCell", blockId: "tracked-split" }],
+      mode: "tracked-changes",
+    });
+    const rejectingRevisionId = rejectingResult.applied.at(0)?.revisionId;
+    if (rejectingRevisionId === undefined) {
+      throw new Error("expected a vertical split revision");
+    }
+    expect(
+      rejectAIEditRevision(rejectingRevisionId)(rejectingView.state, rejectingView.dispatch),
+    ).toBe(true);
+    const restoredTable = rejectingView.state.doc.child(0);
+    expect(restoredTable.child(0).child(0).attrs["rowspan"]).toBe(3);
+    expect(restoredTable.child(1).childCount).toBe(0);
+    expect(restoredTable.child(2).childCount).toBe(0);
+    expect(restoredTable.child(0).child(0).attrs["_docxVMergeContinuationCells"]).toEqual(
+      continuationCells,
+    );
+  });
+
+  test("tracked splitting rejects a horizontal span without mutation", () => {
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [
+          schema.node("paragraph", { paraId: "tracked-horizontal-split" }, [
+            schema.text("Content"),
+          ]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "split-cell",
+          type: "splitTableCell",
+          blockId: "tracked-horizontal-split",
+        },
+      ],
+      mode: "tracked-changes",
+    });
+
+    expect(result).toEqual({
+      applied: [],
+      skipped: [{ id: "split-cell", reason: "unsupportedBlock" }],
+    });
+    expect(view.state.doc.eq(state.doc)).toBe(true);
+  });
+
   test("applies cell text edits before splitting and maps through an earlier insertion", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
@@ -3540,7 +3704,7 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc).toEqual(state.doc);
   });
 
-  test("treats an unspanned split as a no-op and rejects tracked mode", () => {
+  test("treats an unspanned split as a no-op in both modes", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
         schema.node("tableCell", null, [
@@ -3573,7 +3737,7 @@ describe("Folio AI edit operations", () => {
       }),
     ).toEqual({
       applied: [],
-      skipped: [{ id: "tracked", reason: "unsupportedMode" }],
+      skipped: [{ id: "tracked", reason: "noopOperation" }],
     });
   });
 
