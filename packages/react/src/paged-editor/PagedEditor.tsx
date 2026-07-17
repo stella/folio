@@ -3029,6 +3029,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       [scheduleLayout],
     );
 
+    const handleNoteDocumentChange = useCallback((updated: Document) => {
+      onDocumentChangeRef.current?.(updated);
+      folioEmitterRef.current.emit("docChange", updated);
+    }, []);
+
     // Clear HF caret state + cross-surface drag state on any hfEditMode
     // transition. Without this, dragAnchorRef leftover from the previous
     // surface lets a Shift-click resolve an anchor in the wrong PM
@@ -5816,7 +5821,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         <HiddenHeaderFooterPMs
           ref={hfPMsRef}
           document={document}
-          onActiveChange={setNoteStoryActive}
           onTransaction={handleHfPmTransaction}
           {...(styles !== undefined ? { styles } : {})}
           {...(_theme !== undefined ? { theme: _theme } : {})}
@@ -5825,10 +5829,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         <NoteStoryEditor
           ref={noteEditorRef}
           document={document}
-          onDocumentChange={(updated) => {
-            onDocumentChangeRef.current?.(updated);
-            folioEmitterRef.current.emit("docChange", updated);
-          }}
+          onActiveChange={setNoteStoryActive}
+          onDocumentChange={handleNoteDocumentChange}
           onStoryChange={handleNoteStoryTransaction}
           plugins={noteStoryPlugins}
           suggestionModeActive={suggestionModeActive}
