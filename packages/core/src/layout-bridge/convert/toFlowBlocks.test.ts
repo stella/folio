@@ -57,6 +57,12 @@ describe("toFlowBlocks paragraph formatting", () => {
           lineSpacing: 1_000,
           lineSpacingRule: "exact",
           _trailingPageBreak: true,
+          paraId: "A1B2C3D4",
+          bookmarks: [{ id: 7, name: "section-cover" }],
+          borders: { bottom: { style: "single", size: 8, color: { rgb: "000000" } } },
+          shading: { fill: { rgb: "FFFF00" } },
+          pageBreakBefore: true,
+          renderedPageBreakBefore: true,
         },
         [schema.text("Section cover")],
       ),
@@ -79,9 +85,15 @@ describe("toFlowBlocks paragraph formatting", () => {
       return;
     }
     expect(carrier.runs).toEqual([]);
+    expect(carrier.paraId).toBeUndefined();
+    expect(carrier.bookmarks).toBeUndefined();
     expect(carrier.attrs?.spacing?.after).toBeCloseTo(40 / 15);
     expect(carrier.attrs?.spacing?.line).toBeCloseTo(1_000 / 15);
     expect(carrier.attrs?.spacing?.before).toBeUndefined();
+    expect(carrier.attrs?.borders).toBeUndefined();
+    expect(carrier.attrs?.shading).toBeUndefined();
+    expect(carrier.attrs?.pageBreakBefore).toBeUndefined();
+    expect(carrier.attrs?.renderedPageBreakBefore).toBeUndefined();
   });
 
   test("does not retain an imported trailing break after the break node is removed", () => {

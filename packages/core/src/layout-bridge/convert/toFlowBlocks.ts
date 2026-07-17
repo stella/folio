@@ -2890,15 +2890,40 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
                 pmEnd: pos + node.nodeSize + 1,
               };
               trackedPush(pageBreak);
-              const carrierAttrs = { ...sourceParagraph.attrs };
-              if (carrierAttrs.spacing) {
-                carrierAttrs.spacing = { ...carrierAttrs.spacing };
-                delete carrierAttrs.spacing.before;
+              const sourceAttrs = sourceParagraph.attrs;
+              const carrierSpacing = sourceAttrs?.spacing ? { ...sourceAttrs.spacing } : undefined;
+              if (carrierSpacing) {
+                delete carrierSpacing.before;
               }
-              delete carrierAttrs.listMarker;
-              delete carrierAttrs.suppressEmptyParagraphHeight;
+              const carrierAttrs: ParagraphAttrs = {
+                ...(carrierSpacing ? { spacing: carrierSpacing } : {}),
+                ...(sourceAttrs?.automaticSpacing?.after === true
+                  ? { automaticSpacing: { after: true } }
+                  : {}),
+                ...(sourceAttrs?.spacingExplicit?.after === true
+                  ? { spacingExplicit: { after: true } }
+                  : {}),
+                ...(sourceAttrs?.hasDirectParagraphFormatting === true
+                  ? { hasDirectParagraphFormatting: true }
+                  : {}),
+                ...(sourceAttrs?.hasDirectParagraphMarkFormatting === true
+                  ? { hasDirectParagraphMarkFormatting: true }
+                  : {}),
+                ...(sourceAttrs?.snapToGrid !== undefined
+                  ? { snapToGrid: sourceAttrs.snapToGrid }
+                  : {}),
+                ...(sourceAttrs?.documentGridLinePitch !== undefined
+                  ? { documentGridLinePitch: sourceAttrs.documentGridLinePitch }
+                  : {}),
+                ...(sourceAttrs?.defaultFontSize !== undefined
+                  ? { defaultFontSize: sourceAttrs.defaultFontSize }
+                  : {}),
+                ...(sourceAttrs?.defaultFontFamily !== undefined
+                  ? { defaultFontFamily: sourceAttrs.defaultFontFamily }
+                  : {}),
+              };
               const carrier: ParagraphBlock = {
-                ...sourceParagraph,
+                kind: "paragraph",
                 id: nextBlockId(),
                 runs: [],
                 attrs: carrierAttrs,
