@@ -166,10 +166,16 @@ describe("isHangingPunctuation", () => {
     expect(isHangingPunctuation("（", { locale: "zh-CN" })).toBe(false);
   });
 
+  test("does not apply East-Asian hanging punctuation to Latin runs", () => {
+    expect(isHangingPunctuation(",", { locale: "en-US" })).toBe(false);
+    expect(isHangingPunctuation(",", { locale: "ja-JP" })).toBe(true);
+  });
+
   test("includes document-specific prohibited line-start characters", () => {
-    expect(isHangingPunctuation("※", { noLineBreaksBefore: "※" })).toBe(true);
+    expect(isHangingPunctuation("※", { locale: "ja-JP", noLineBreaksBefore: "※" })).toBe(true);
     expect(
       isHangingPunctuation("※", {
+        locale: "ja-JP",
         kinsoku: false,
         noLineBreaksBefore: "※",
       }),

@@ -100,6 +100,11 @@ const main = async (): Promise<void> => {
           fontSizePx: span.fontSizePx === undefined ? undefined : round(span.fontSizePx),
           fontWeight: span.fontWeight,
           fontStyle: span.fontStyle,
+          fontKerning: span.fontKerning,
+          letterSpacing: span.letterSpacing,
+          canvasAdvanceWidthPx:
+            span.canvasAdvanceWidthPx === undefined ? undefined : round(span.canvasAdvanceWidthPx),
+          fontLoaded: span.fontLoaded,
           textTransform: span.textTransform,
         })),
         omittedSpans: Math.max(0, line.spans.length - flags.maxSpans),
