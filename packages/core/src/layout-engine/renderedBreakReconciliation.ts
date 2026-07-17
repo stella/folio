@@ -69,7 +69,10 @@ export const reconcileBreakBeforeBlock = ({
   // A keep-with-next paragraph carries the marker boundary into its linked
   // content, so its own height is not enough to classify the marker as stale.
   const markerNeedsSnap =
-    renderedBreakNeedsSnap || block.attrs?.keepNext === true || previousBlock?.kind === "table";
+    renderedBreakNeedsSnap ||
+    block.attrs?.keepNext === true ||
+    ((block.attrs?.spacing?.before ?? 0) > 0 && previousBlock?.kind !== "sectionBreak") ||
+    previousBlock?.kind === "table";
   const forcePageBreak =
     markerNeedsSnap && !markerAlreadySatisfied && pageHasVisibleBodyContent(page, blocksById);
   const followsAuthoredPageBreak = previousBlock?.kind === "pageBreak";

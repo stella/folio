@@ -534,6 +534,26 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1]);
     });
 
+    test("rendered page break reconciles small line-metric drift near the page end", () => {
+      const blocks: FlowBlock[] = [
+        makeParagraphBlock(0, "Nearly fills page one", 1),
+        {
+          ...makeParagraphBlock(1, "Cached next page", 23),
+          attrs: { renderedPageBreakBefore: true },
+        },
+      ];
+      const measures: Measure[] = [
+        makeParagraphMeasure([makeLine(0, 0, 0, 20, 500, 810)]),
+        makeParagraphMeasure([makeLine(0, 0, 0, 16, 90, 20)]),
+      ];
+
+      const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+      expect(layout.pages).toHaveLength(2);
+      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0]);
+      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1]);
+    });
+
     test("rendered page break does not reapply leading spacing after snapping", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Nearly fills page one", 1),

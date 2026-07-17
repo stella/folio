@@ -54,6 +54,8 @@ import type {
   SectionBreakBlock,
 } from "./types";
 
+const RENDERED_BREAK_REFLOW_TOLERANCE_LINES = 3;
+
 export type SectionLayoutConfig = {
   pageSize: { w: number; h: number };
   margins: PageMargins;
@@ -380,8 +382,16 @@ export function layoutDocument(
     const block = blocks[i]!; // SAFETY: i < blocks.length
     const measure = measures[i]!; // SAFETY: measures.length === blocks.length (validated above)
 
+    const firstLineAdvance =
+      measure.kind === "paragraph" && measure.lines.length > 0
+        ? measuredLineAdvance(measure.lines[0]!)
+        : 0;
     const renderedBreakNeedsSnap =
-      measure.kind === "paragraph" && !paginator.fits(measure.totalHeight);
+      measure.kind === "paragraph" &&
+      (!paginator.fits(measure.totalHeight) ||
+        (firstLineAdvance > 0 &&
+          paginator.getAvailableHeight() <=
+            firstLineAdvance * RENDERED_BREAK_REFLOW_TOLERANCE_LINES));
     const hasExplicitPageBreak = hasPageBreakBefore(block);
     const breakDecision = reconcileBreakBeforeBlock({
       state: renderedBreakState,
