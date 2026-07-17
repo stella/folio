@@ -1,19 +1,12 @@
 import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import {
-  columnIsHeader,
-  removeColumn,
-  removeRow,
-  rowIsHeader,
-  TableMap,
-  tableNodeTypes,
-} from "prosemirror-tables";
+import { TableMap } from "prosemirror-tables";
 
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
-import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { RunPropertyChange } from "../types/document";
+import { stripBlockIdentityAttrs } from "./block-identity";
 import { buildCleanBlockText } from "./clean-text";
 import {
   hasInlineEmphasis,
@@ -33,11 +26,24 @@ import {
   type TableRectangle,
 } from "./table-mutation-plan";
 import {
+  applyTableColumnDeletion,
+  applyTableColumnInsertion,
+  applyTableRowDeletion,
+  applyTableRowInsertion,
+  findTableColumnInsertion,
+  findTableRowInsertion,
+  getTableColumnCoordinateKey,
+  type TableColumnDeletion,
+  type TableColumnInsertion,
+  type TableRowDeletion,
+  type TableRowInsertion,
+  type TableStructureRevision,
+} from "./table-row-column-mutations";
+import {
   findEnclosingTableBoundary,
   findEnclosingTableCell,
   findEnclosingTableRow,
   tableRectangleCutsMergedCell,
-  type TableRowTarget,
 } from "./table-targets";
 import type {
   FolioAIEditAppliedOperation,
@@ -99,26 +105,6 @@ type ResolvedOperation = {
    * ordering when applied bottom-up.
    */
   originalIndex: number;
-};
-
-/**
- * Block attrs that identify a block instance (Word's
- * `w14:paraId` / `w14:textId`, future tracked-change identifiers).
- * Reuse during inheritFormatting would create duplicate IDs, so
- * we strip them when synthesising a sibling.
- */
-const IDENTITY_BLOCK_ATTRS = new Set(["paraId", "textId"]);
-
-const stripIdentityAttrs = (attrs: Record<string, unknown>) => {
-  const next: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(attrs)) {
-    if (IDENTITY_BLOCK_ATTRS.has(key)) {
-      next[key] = null;
-      continue;
-    }
-    next[key] = value;
-  }
-  return next;
 };
 
 const applyReplaceBlockStyleId = ({
@@ -326,23 +312,6 @@ const collectLiveBlocksByParaId = (doc: PMNode) => {
   return byParaId;
 };
 
-type TableRowInsertion = {
-  tableStart: number;
-  rowPosition: number;
-  rowType: PMNode["type"];
-  cells: readonly PMNode[];
-  rowspanUpdates: readonly number[];
-};
-
-type TableRowDeletion = Omit<TableRowTarget, "table">;
-
-type TableColumnInsertion = {
-  tablePosition: number;
-  columnIndex: number;
-};
-
-type TableColumnDeletion = TableColumnInsertion;
-
 type TableCellMerge = {
   tablePosition: number;
   rectangle: TableRectangle;
@@ -368,312 +337,6 @@ const getTableMutationPlanTarget = (item: ResolvedOperation): TableMutationPlanT
     return { type: "tableStructure", tablePosition };
   }
   return { type: "none" };
-};
-
-const getTableColumnCoordinateKey = ({
-  tablePosition,
-  columnIndex,
-}: TableColumnInsertion): string => `${tablePosition}:${columnIndex}`;
-
-const findTableColumnInsertion = (
-  doc: PMNode,
-  blockFrom: number,
-  position: "after" | "before",
-): (TableColumnInsertion & { boundaryPosition: number }) | null => {
-  const target = findEnclosingTableCell(doc, blockFrom);
-  if (!target) {
-    return null;
-  }
-  return {
-    tablePosition: target.tablePosition,
-    columnIndex: position === "before" ? target.leftColumnIndex : target.rightColumnIndex,
-    boundaryPosition: position === "before" ? target.cellPosition : target.cellEndPosition,
-  };
-};
-
-const deleteTableNode = (
-  tr: Transaction,
-  tablePosition: number,
-  table: PMNode,
-): Transaction | null => {
-  const tableEnd = tablePosition + table.nodeSize;
-  const resolved = tr.doc.resolve(tablePosition);
-  const parent = resolved.parent;
-  const tableIndex = resolved.index();
-  if (parent.canReplace(tableIndex, tableIndex + 1)) {
-    return tr.delete(tablePosition, tableEnd);
-  }
-  const emptyParagraph = tr.doc.type.schema.nodes["paragraph"]?.createAndFill();
-  if (
-    !emptyParagraph ||
-    !parent.canReplaceWith(tableIndex, tableIndex + 1, emptyParagraph.type, emptyParagraph.marks)
-  ) {
-    return null;
-  }
-  return tr.replaceWith(tablePosition, tableEnd, emptyParagraph);
-};
-
-const buildTableRowInsertion = (
-  map: TableMap,
-  table: PMNode,
-  tableStart: number,
-  rowIndex: number,
-): TableRowInsertion | null => {
-  const cells: PMNode[] = [];
-  const rowspanUpdates: number[] = [];
-  let referenceRow: number | null = rowIndex > 0 ? -1 : 0;
-  if (rowIsHeader(map, table, rowIndex + referenceRow)) {
-    referenceRow = rowIndex === 0 || rowIndex === map.height ? null : 0;
-  }
-  for (let col = 0, index = map.width * rowIndex; col < map.width; col++, index++) {
-    if (rowIndex > 0 && rowIndex < map.height && map.map[index] === map.map[index - map.width]) {
-      const cellPosition = map.map[index];
-      if (cellPosition === undefined) {
-        return null;
-      }
-      const cell = table.nodeAt(cellPosition);
-      if (!cell) {
-        return null;
-      }
-      const colspan: unknown = cell.attrs["colspan"];
-      if (typeof colspan !== "number" || colspan < 1) {
-        return null;
-      }
-      rowspanUpdates.push(cellPosition);
-      col += colspan - 1;
-      index += colspan - 1;
-      continue;
-    }
-    const referencePosition =
-      referenceRow === null ? undefined : map.map[index + referenceRow * map.width];
-    const cellType =
-      referencePosition === undefined
-        ? tableNodeTypes(table.type.schema).cell
-        : table.nodeAt(referencePosition)?.type;
-    const cell = cellType?.createAndFill();
-    if (!cell) {
-      return null;
-    }
-    cells.push(cell);
-  }
-  if (cells.length === 0) {
-    return null;
-  }
-  let rowPosition = tableStart;
-  for (let index = 0; index < rowIndex; index++) {
-    rowPosition += table.child(index).nodeSize;
-  }
-  return {
-    tableStart,
-    rowPosition,
-    rowType: tableNodeTypes(table.type.schema).row,
-    cells,
-    rowspanUpdates,
-  };
-};
-
-const findTableRowInsertion = (
-  doc: PMNode,
-  blockFrom: number,
-  position: "after" | "before",
-): TableRowInsertion | null => {
-  const target = findEnclosingTableRow(doc, blockFrom);
-  if (!target) {
-    return null;
-  }
-  const map = TableMap.get(target.table);
-  const rowIndex = position === "before" ? target.rowIndex : target.rowIndex + 1;
-  return buildTableRowInsertion(map, target.table, target.tableStart, rowIndex);
-};
-
-const populateTableRow = (row: PMNode, cellTexts: readonly string[] | undefined): PMNode => {
-  if (cellTexts === undefined) {
-    return row;
-  }
-  const cells: PMNode[] = [];
-  row.forEach((cell, _offset, index) => {
-    const paragraph = cell.firstChild;
-    if (!paragraph?.isTextblock) {
-      cells.push(cell);
-      return;
-    }
-    const text = cellTexts[index] ?? "";
-    const content = text.length > 0 ? row.type.schema.text(text) : null;
-    const nextParagraph = paragraph.type.create(stripIdentityAttrs(paragraph.attrs), content);
-    cells.push(cell.type.create(cell.attrs, nextParagraph));
-  });
-  return row.type.create(row.attrs, cells);
-};
-
-const getInsertedPhysicalColumnRows = (map: TableMap, columnIndex: number): number[] => {
-  const rows: number[] = [];
-  for (let row = 0; row < map.height; row++) {
-    const index = row * map.width + columnIndex;
-    const crossesColspan =
-      columnIndex > 0 && columnIndex < map.width && map.map[index - 1] === map.map[index];
-    if (!crossesColspan) {
-      rows.push(row);
-    }
-  }
-  return rows;
-};
-
-type TableColumnInsertionAction =
-  | { type: "insertCell"; position: number; cell: PMNode }
-  | { type: "setColspan"; position: number; attrs: Record<string, unknown> };
-
-type BuildTableColumnInsertionActionsOptions = {
-  map: TableMap;
-  table: PMNode;
-  columnIndex: number;
-  cellTexts: readonly string[] | undefined;
-};
-
-const expandTableCellColspan = (
-  cell: PMNode,
-  colspanOffset: number,
-): Record<string, unknown> | null => {
-  const colspan: unknown = cell.attrs["colspan"];
-  const rowspan: unknown = cell.attrs["rowspan"];
-  const colwidth: unknown = cell.attrs["colwidth"];
-  if (
-    typeof colspan !== "number" ||
-    !Number.isInteger(colspan) ||
-    colspan < 1 ||
-    typeof rowspan !== "number" ||
-    !Number.isInteger(rowspan) ||
-    rowspan < 1 ||
-    !Number.isInteger(colspanOffset) ||
-    colspanOffset < 0 ||
-    colspanOffset > colspan
-  ) {
-    return null;
-  }
-  if (colwidth !== null && !Array.isArray(colwidth)) {
-    return null;
-  }
-  if (Array.isArray(colwidth) && !colwidth.every((width) => typeof width === "number")) {
-    return null;
-  }
-  const nextColwidth = Array.isArray(colwidth) ? [...colwidth] : null;
-  nextColwidth?.splice(colspanOffset, 0, 0);
-  return {
-    ...cell.attrs,
-    colspan: colspan + 1,
-    colwidth: nextColwidth,
-  };
-};
-
-const populateTableCell = (cell: PMNode, text: string): PMNode | null => {
-  const paragraph = cell.firstChild;
-  if (!paragraph?.isTextblock) {
-    return null;
-  }
-  const content = text.length > 0 ? cell.type.schema.text(text) : null;
-  const nextParagraph = paragraph.type.create(stripIdentityAttrs(paragraph.attrs), content);
-  return cell.type.create(cell.attrs, nextParagraph);
-};
-
-const buildTableColumnInsertionActions = ({
-  map,
-  table,
-  columnIndex,
-  cellTexts,
-}: BuildTableColumnInsertionActionsOptions): TableColumnInsertionAction[] | null => {
-  if (columnIndex < 0 || columnIndex > map.width) {
-    return null;
-  }
-  const physicalRows = getInsertedPhysicalColumnRows(map, columnIndex);
-  if ((cellTexts?.length ?? 0) > physicalRows.length) {
-    return null;
-  }
-  let referenceColumn: number | null = columnIndex > 0 ? -1 : 0;
-  if (columnIsHeader(map, table, columnIndex + referenceColumn)) {
-    referenceColumn = columnIndex === 0 || columnIndex === map.width ? null : 0;
-  }
-  const actions: TableColumnInsertionAction[] = [];
-  let physicalCellIndex = 0;
-  for (let row = 0; row < map.height; row++) {
-    const index = row * map.width + columnIndex;
-    if (columnIndex > 0 && columnIndex < map.width && map.map[index - 1] === map.map[index]) {
-      const position = map.map[index];
-      if (position === undefined) {
-        return null;
-      }
-      const cell = table.nodeAt(position);
-      if (!cell) {
-        return null;
-      }
-      const colspanOffset = columnIndex - map.colCount(position);
-      const attrs = expandTableCellColspan(cell, colspanOffset);
-      if (!attrs) {
-        return null;
-      }
-      actions.push({
-        type: "setColspan",
-        position,
-        attrs,
-      });
-      row += Number(cell.attrs["rowspan"]) - 1;
-      continue;
-    }
-    const referencePosition =
-      referenceColumn === null ? undefined : map.map[index + referenceColumn];
-    const cellType =
-      referencePosition === undefined
-        ? tableNodeTypes(table.type.schema).cell
-        : table.nodeAt(referencePosition)?.type;
-    const cell = cellType?.createAndFill();
-    if (!cell) {
-      return null;
-    }
-    const populatedCell = populateTableCell(cell, cellTexts?.[physicalCellIndex] ?? "");
-    if (!populatedCell) {
-      return null;
-    }
-    actions.push({
-      type: "insertCell",
-      position: map.positionAt(row, columnIndex, table),
-      cell: populatedCell,
-    });
-    physicalCellIndex++;
-  }
-  return actions;
-};
-
-type GetTableColumnDeletionCellPositionsOptions = {
-  map: TableMap;
-  table: PMNode;
-  columnIndex: number;
-};
-
-const getTableColumnDeletionCellPositions = ({
-  map,
-  table,
-  columnIndex,
-}: GetTableColumnDeletionCellPositionsOptions): number[] | null => {
-  if (columnIndex < 0 || columnIndex >= map.width) {
-    return null;
-  }
-  const positions = new Set<number>();
-  for (let row = 0; row < map.height; row++) {
-    const position = map.map[row * map.width + columnIndex];
-    if (position === undefined) {
-      return null;
-    }
-    const cell = table.nodeAt(position);
-    const tableRole = cell?.type.spec["tableRole"];
-    if (
-      !cell ||
-      (tableRole !== "cell" && tableRole !== "header_cell") ||
-      cell.attrs["colspan"] !== 1 ||
-      cell.attrs["cellMarker"] != null
-    ) {
-      return null;
-    }
-    positions.add(position);
-  }
-  return [...positions];
 };
 
 /**
@@ -1143,7 +806,7 @@ const applyFolioAIEditOperationsInternal = ({
         const baseAttrs =
           item.operation.inheritFormatting === false
             ? {}
-            : stripIdentityAttrs(item.blockNode.attrs);
+            : stripBlockIdentityAttrs(item.blockNode.attrs);
         const attrs: Record<string, unknown> = { ...baseAttrs };
         if (item.operation.pageBreakBefore === true) {
           attrs["pageBreakBefore"] = true;
@@ -1208,120 +871,56 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        if (mode === "tracked-changes" && insertion.rowspanUpdates.length > 0) {
+        const revision: TableStructureRevision | null =
+          mode === "tracked-changes" ? { revisionId: revisionSeed, author, date } : null;
+        const result = applyTableRowInsertion({
+          tr,
+          insertion,
+          cellTexts: item.operation.cellTexts,
+          revision,
+        });
+        if (result.type === "unsupported") {
           skipped.push({
             id: item.operation.id,
             reason: "unsupportedBlock",
           });
           continue;
         }
-        const liveRowspanUpdates: { position: number; cell: PMNode; rowspan: number }[] = [];
-        let invalidRowspanUpdate = false;
-        for (const updatePosition of insertion.rowspanUpdates) {
-          const cellPosition = insertion.tableStart + updatePosition;
-          const liveCell = tr.doc.nodeAt(cellPosition);
-          if (!liveCell) {
-            invalidRowspanUpdate = true;
-            break;
-          }
-          const rowspan: unknown = liveCell.attrs["rowspan"];
-          if (typeof rowspan !== "number") {
-            invalidRowspanUpdate = true;
-            break;
-          }
-          liveRowspanUpdates.push({ position: cellPosition, cell: liveCell, rowspan });
+        tr = result.transaction;
+        if (result.revisionId !== null) {
+          revisionSeed++;
+          appliedRevisionIds = [result.revisionId];
         }
-        if (invalidRowspanUpdate) {
-          skipped.push({
-            id: item.operation.id,
-            reason: "unsupportedBlock",
-          });
-          continue;
-        }
-        for (const update of liveRowspanUpdates) {
-          tr = tr.setNodeMarkup(update.position, undefined, {
-            ...update.cell.attrs,
-            rowspan: update.rowspan + 1,
-          });
-        }
-        let rowAttrs: Record<string, unknown> | null = null;
-        if (mode === "tracked-changes") {
-          const revisionId = revisionSeed++;
-          rowAttrs = {
-            trIns: {
-              revisionId,
-              author,
-              date,
-            },
-          };
-          appliedRevisionIds = [revisionId];
-        }
-        const row = insertion.rowType.create(rowAttrs, insertion.cells);
-        tr = tr.insert(insertion.rowPosition, populateTableRow(row, item.operation.cellTexts));
         break;
       }
       case "insertTableColumn": {
         const insertion = item.tableColumnInsertion;
-        const tablePosition = insertion ? tr.mapping.map(insertion.tablePosition, 1) : null;
-        const table = tablePosition === null ? null : tr.doc.nodeAt(tablePosition);
-        if (
-          !insertion ||
-          tablePosition === null ||
-          !table ||
-          table.type.spec["tableRole"] !== "table"
-        ) {
+        if (!insertion) {
           skipped.push({
             id: item.operation.id,
             reason: "unsupportedBlock",
           });
           continue;
         }
-        const map = TableMap.get(table);
-        const actions = buildTableColumnInsertionActions({
-          map,
-          table,
-          columnIndex: insertion.columnIndex,
+        const revision: TableStructureRevision | null =
+          mode === "tracked-changes" ? { revisionId: revisionSeed, author, date } : null;
+        const result = applyTableColumnInsertion({
+          tr,
+          insertion,
           cellTexts: item.operation.cellTexts,
+          revision,
         });
-        if (
-          !actions ||
-          (mode === "tracked-changes" && actions.some(({ type }) => type === "setColspan"))
-        ) {
+        if (result.type === "unsupported") {
           skipped.push({
             id: item.operation.id,
             reason: "unsupportedBlock",
           });
           continue;
         }
-        const revisionId = mode === "tracked-changes" ? revisionSeed++ : null;
-        if (revisionId !== null) {
-          appliedRevisionIds = [revisionId];
-        }
-        const mapFrom = tr.mapping.maps.length;
-        for (const action of actions) {
-          const position = tr.mapping.slice(mapFrom).map(tablePosition + 1 + action.position);
-          if (action.type === "insertCell") {
-            const cell =
-              revisionId === null
-                ? action.cell
-                : action.cell.type.create(
-                    {
-                      ...action.cell.attrs,
-                      cellMarker: {
-                        kind: "ins",
-                        info: {
-                          revisionId,
-                          author,
-                          date,
-                        },
-                      },
-                    },
-                    action.cell.content,
-                  );
-            tr = tr.insert(position, cell);
-            continue;
-          }
-          tr = tr.setNodeMarkup(position, undefined, action.attrs);
+        tr = result.transaction;
+        if (result.revisionId !== null) {
+          revisionSeed++;
+          appliedRevisionIds = [result.revisionId];
         }
         const columnKey = getTableColumnCoordinateKey(insertion);
         insertedColumnCounts.set(columnKey, (insertedColumnCounts.get(columnKey) ?? 0) + 1);
@@ -1329,83 +928,34 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "deleteTableColumn": {
         const deletion = item.tableColumnDeletion;
-        const tablePosition = deletion ? tr.mapping.map(deletion.tablePosition, 1) : null;
-        const table = tablePosition === null ? null : tr.doc.nodeAt(tablePosition);
-        if (
-          !deletion ||
-          tablePosition === null ||
-          !table ||
-          table.type.spec["tableRole"] !== "table"
-        ) {
+        if (!deletion) {
           skipped.push({
             id: item.operation.id,
             reason: "unsupportedBlock",
           });
           continue;
         }
-        const map = TableMap.get(table);
         const columnKey = getTableColumnCoordinateKey(deletion);
-        const columnIndex = deletion.columnIndex + (insertedColumnCounts.get(columnKey) ?? 0);
-        if (columnIndex < 0 || columnIndex >= map.width) {
+        const revision: TableStructureRevision | null =
+          mode === "tracked-changes" ? { revisionId: revisionSeed, author, date } : null;
+        const result = applyTableColumnDeletion({
+          tr,
+          deletion,
+          insertedColumnCount: insertedColumnCounts.get(columnKey) ?? 0,
+          revision,
+        });
+        if (result.type === "unsupported") {
           skipped.push({
             id: item.operation.id,
             reason: "unsupportedBlock",
           });
           continue;
         }
-        if (mode === "tracked-changes") {
-          const cellPositions = getTableColumnDeletionCellPositions({
-            map,
-            table,
-            columnIndex,
-          });
-          if (!cellPositions) {
-            skipped.push({
-              id: item.operation.id,
-              reason: "unsupportedBlock",
-            });
-            continue;
-          }
-          const revisionId = revisionSeed++;
-          for (const cellPosition of cellPositions) {
-            tr = tr.setNodeAttribute(tablePosition + 1 + cellPosition, "cellMarker", {
-              kind: "del",
-              info: {
-                revisionId,
-                author,
-                date,
-              },
-            });
-          }
-          markStructuralChange(tr);
-          appliedRevisionIds = [revisionId];
-          break;
+        tr = result.transaction;
+        if (result.revisionId !== null) {
+          revisionSeed++;
+          appliedRevisionIds = [result.revisionId];
         }
-        if (map.width === 1) {
-          const nextTr = deleteTableNode(tr, tablePosition, table);
-          if (!nextTr) {
-            skipped.push({
-              id: item.operation.id,
-              reason: "unsupportedBlock",
-            });
-            continue;
-          }
-          tr = nextTr;
-          break;
-        }
-        removeColumn(
-          tr,
-          {
-            map,
-            table,
-            tableStart: tablePosition + 1,
-            left: columnIndex,
-            top: 0,
-            right: columnIndex + 1,
-            bottom: map.height,
-          },
-          columnIndex,
-        );
         break;
       }
       case "mergeTableCells": {
@@ -1496,72 +1046,28 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "deleteTableRow": {
         const deletion = item.tableRowDeletion;
-        const rowPosition = deletion ? tr.mapping.map(deletion.rowPosition) : null;
-        const row = rowPosition === null ? null : tr.doc.nodeAt(rowPosition);
-        if (mode === "tracked-changes") {
-          if (
-            !deletion ||
-            rowPosition === null ||
-            !row ||
-            row.type.spec["tableRole"] !== "row" ||
-            row.attrs["trIns"] != null ||
-            row.attrs["trDel"] != null
-          ) {
-            skipped.push({
-              id: item.operation.id,
-              reason: "unsupportedBlock",
-            });
-            continue;
-          }
-          const revisionId = revisionSeed++;
-          tr = tr.setNodeAttribute(rowPosition, "trDel", {
-            revisionId,
-            author,
-            date,
-          });
-          markStructuralChange(tr);
-          appliedRevisionIds = [revisionId];
-          break;
-        }
-        const table = deletion ? tr.doc.nodeAt(deletion.tablePosition) : null;
-        if (
-          !deletion ||
-          !table ||
-          table.type.spec["tableRole"] !== "table" ||
-          deletion.rowIndex >= table.childCount
-        ) {
+        if (!deletion) {
           skipped.push({
             id: item.operation.id,
             reason: "unsupportedBlock",
           });
           continue;
         }
-        if (table.childCount === 1) {
-          const nextTr = deleteTableNode(tr, deletion.tablePosition, table);
-          if (!nextTr) {
-            skipped.push({
-              id: item.operation.id,
-              reason: "unsupportedBlock",
-            });
-            continue;
-          }
-          tr = nextTr;
-          break;
+        const revision: TableStructureRevision | null =
+          mode === "tracked-changes" ? { revisionId: revisionSeed, author, date } : null;
+        const result = applyTableRowDeletion({ tr, deletion, revision });
+        if (result.type === "unsupported") {
+          skipped.push({
+            id: item.operation.id,
+            reason: "unsupportedBlock",
+          });
+          continue;
         }
-        const map = TableMap.get(table);
-        removeRow(
-          tr,
-          {
-            map,
-            table,
-            tableStart: deletion.tableStart,
-            left: 0,
-            top: deletion.rowIndex,
-            right: map.width,
-            bottom: deletion.rowIndex + 1,
-          },
-          deletion.rowIndex,
-        );
+        tr = result.transaction;
+        if (result.revisionId !== null) {
+          revisionSeed++;
+          appliedRevisionIds = [result.revisionId];
+        }
         break;
       }
       case "deleteBlock": {
@@ -2049,7 +1555,7 @@ const resolveOperation = ({
 
   if (operation.type === "insertTableRow") {
     const position = operation.position ?? "after";
-    const insertion = findTableRowInsertion(doc, blockFrom, position);
+    const insertion = findTableRowInsertion({ doc, blockFrom, position });
     if (!insertion || (operation.cellTexts?.length ?? 0) > insertion.cells.length) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
@@ -2093,7 +1599,7 @@ const resolveOperation = ({
 
   if (operation.type === "insertTableColumn") {
     const position = operation.position ?? "after";
-    const insertion = findTableColumnInsertion(doc, blockFrom, position);
+    const insertion = findTableColumnInsertion({ doc, blockFrom, position });
     if (!insertion) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
