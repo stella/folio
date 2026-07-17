@@ -8,9 +8,11 @@ import { toFlowBlocks } from "./toFlowBlocks";
 describe("toFlowBlocks paragraph formatting", () => {
   test("stamps each top-level paragraph with its section line pitch", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { _sectionProperties: { docGrid: { linePitch: 360 } } }, [
-        schema.text("First section"),
-      ]),
+      schema.node(
+        "paragraph",
+        { _sectionProperties: { docGrid: { type: "lines", linePitch: 360 } } },
+        [schema.text("First section")],
+      ),
       schema.node("paragraph", null, [schema.text("Final section")]),
     ]);
 
@@ -42,6 +44,76 @@ describe("toFlowBlocks paragraph formatting", () => {
       return;
     }
     expect(cellParagraph.attrs?.documentGridLinePitch).toBeUndefined();
+  });
+
+  test("lays out a trailing page-break section mark on the following page", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          _sectionProperties: { sectionStart: "continuous" },
+          spaceBefore: 300,
+          spaceAfter: 40,
+          lineSpacing: 1_000,
+          lineSpacingRule: "exact",
+          _trailingPageBreak: true,
+          paraId: "A1B2C3D4",
+          bookmarks: [{ id: 7, name: "section-cover" }],
+          borders: { bottom: { style: "single", size: 8, color: { rgb: "000000" } } },
+          shading: { fill: { rgb: "FFFF00" } },
+          pageBreakBefore: true,
+          renderedPageBreakBefore: true,
+        },
+        [schema.text("Section cover")],
+      ),
+      schema.node("pageBreak"),
+      schema.node("paragraph", null, [schema.text("Next page")]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+      "sectionBreak",
+      "paragraph",
+    ]);
+    const carrier = blocks.at(2);
+    expect(carrier?.kind).toBe("paragraph");
+    if (carrier?.kind !== "paragraph") {
+      return;
+    }
+    expect(carrier.runs).toEqual([]);
+    expect(carrier.paraId).toBeUndefined();
+    expect(carrier.bookmarks).toBeUndefined();
+    expect(carrier.attrs?.spacing?.after).toBeCloseTo(40 / 15);
+    expect(carrier.attrs?.spacing?.line).toBeCloseTo(1_000 / 15);
+    expect(carrier.attrs?.spacing?.before).toBeUndefined();
+    expect(carrier.attrs?.borders).toBeUndefined();
+    expect(carrier.attrs?.shading).toBeUndefined();
+    expect(carrier.attrs?.pageBreakBefore).toBeUndefined();
+    expect(carrier.attrs?.renderedPageBreakBefore).toBeUndefined();
+  });
+
+  test("does not retain an imported trailing break after the break node is removed", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          _sectionProperties: { sectionStart: "continuous" },
+          _trailingPageBreak: true,
+        },
+        [schema.text("Section cover")],
+      ),
+      schema.node("paragraph", null, [schema.text("Next paragraph")]),
+    ]);
+
+    expect(toFlowBlocks(doc).map((block) => block.kind)).toEqual([
+      "paragraph",
+      "sectionBreak",
+      "paragraph",
+    ]);
   });
 
   test("keeps text-box anchors out of paragraph layout", () => {

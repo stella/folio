@@ -1,5 +1,6 @@
 import type { EditorState } from "prosemirror-state";
 
+import { resolveDocumentGridLinePitch } from "../docx/documentGrid";
 import { buildBookmarkPageMap } from "../fields/bookmarkPages";
 import { buildBookmarkText } from "../fields/bookmarkText";
 import {
@@ -330,12 +331,10 @@ export function runLayoutPipeline<THfPMs>(
           : {}),
       };
     }
-    const finalSectionDocumentGridLinePitchTwips =
-      document?.package.document.sections?.at(-1)?.properties.docGrid?.linePitch;
-    if (
-      finalSectionDocumentGridLinePitchTwips !== undefined &&
-      finalSectionDocumentGridLinePitchTwips > 0
-    ) {
+    const finalSectionDocumentGridLinePitchTwips = resolveDocumentGridLinePitch(
+      document?.package.document.sections?.at(-1)?.properties.docGrid,
+    );
+    if (finalSectionDocumentGridLinePitchTwips !== undefined) {
       flowOpts.finalSectionDocumentGridLinePitchTwips = finalSectionDocumentGridLinePitchTwips;
     }
     let newBlocks = toFlowBlocks(state.doc, flowOpts);

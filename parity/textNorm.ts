@@ -14,6 +14,7 @@ export const normalizeLineText = (text: string): string =>
     // line endpoint are unchanged, so canonicalize only those radical blocks.
     .replace(/[⺀-⿕]/gu, (character) => character.normalize("NFKC"))
     .replace(/[­​-‍﻿]/gu, "")
+    .replace(/\uf0b7/gu, "•")
     .replace(/\uf0e3/gu, "ã")
     .replace(/\s*\.{3,}\s*/gu, " … ")
     .replace(/\s+/gu, " ")

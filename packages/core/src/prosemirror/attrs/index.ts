@@ -310,6 +310,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
     "paragraph.attrs.renderedPageBreakBefore",
     issues,
   );
+  optionalBoolean(attrs, "_trailingPageBreak", "paragraph.attrs._trailingPageBreak", issues);
   optionalBoolean(attrs, "runInWithNext", "paragraph.attrs.runInWithNext", issues);
   optionalBoolean(attrs, "keepNext", "paragraph.attrs.keepNext", issues);
   optionalBoolean(attrs, "keepLines", "paragraph.attrs.keepLines", issues);
