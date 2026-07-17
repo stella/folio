@@ -2534,9 +2534,9 @@ function convertImage(image: Image, rawXml?: string): PMNode {
  */
 type ConvertHyperlinkOptions = {
   getInheritedRunFormatting: RunFormattingResolver;
-  styleResolver?: StyleEngine | null;
-  hyperlinkIndex?: number;
-  textBoxAnchors?: ReadonlyMap<Shape, string>;
+  styleResolver: StyleEngine | null | undefined;
+  hyperlinkIndex: number;
+  textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
 };
 
 function convertHyperlink(
