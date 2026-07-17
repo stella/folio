@@ -91,6 +91,35 @@ export type FolioExtractOptions = {
   maxPages?: number;
 };
 
+/** A font installed alongside a local reference renderer. The harness reads
+ * the file in Node and passes it to Chromium as a data URL; local paths are
+ * never exposed to the playground server. */
+export type LocalFontDefinition = {
+  family: string;
+  filePath: string;
+  weight?: number | string;
+  style?: string;
+};
+
+type BrowserFontDefinition = {
+  family: string;
+  src: string;
+  weight?: number | string;
+  style?: string;
+};
+
+type RoutedBrowserFont = {
+  definition: BrowserFontDefinition;
+  body: Buffer;
+  contentType: string;
+};
+
+export type CreateFolioExtractorOptions = {
+  headless?: boolean;
+  reuseServer?: boolean;
+  localFonts?: ReadonlyArray<LocalFontDefinition>;
+};
+
 export type FolioExtractor = {
   extract: (docxPath: string, options?: FolioExtractOptions) => Promise<FolioExtraction>;
   inspectPage: (docxPath: string, pageNumber: number) => Promise<FolioPageInspection>;
@@ -103,14 +132,18 @@ const PAGE_SELECTOR = ".layout-page";
 const VIEWPORT = { width: 1400, height: 1000 };
 const SCREENSHOT_VIEWPORT_VERTICAL_CHROME_PX = 200;
 
-const SERVER_PROBE_TIMEOUT_MS = 2000;
+// A cold Vite source transform can occupy the server before its first HTTP
+// response. Short probes repeatedly abort that same warm-up work and can report
+// a false startup failure even after Vite is listening.
+const SERVER_PROBE_TIMEOUT_MS = 30_000;
+const SERVER_OUTPUT_DRAIN_TIMEOUT_MS = 2000;
 const SERVER_REUSE_PROBE_TIMEOUT_MS = 15_000;
-const SERVER_START_TIMEOUT_MS = 90_000;
+const SERVER_START_TIMEOUT_MS = 180_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 const SERVER_LOG_TAIL_CHARS = 4000;
 
-const PLAYGROUND_NAVIGATION_TIMEOUT_MS = 120_000;
-const EDITOR_RENDER_TIMEOUT_MS = 20_000;
+const PLAYGROUND_NAVIGATION_TIMEOUT_MS = 300_000;
+const EDITOR_RENDER_TIMEOUT_MS = 90_000;
 const STABILITY_POLL_INTERVAL_MS = 250;
 const STABILITY_MAX_MS = 15_000;
 const STABILITY_SETTLE_MS = 250;
@@ -118,6 +151,48 @@ const STABILITY_SETTLE_MS = 250;
 const CHROMIUM_MISSING_MARKER = "Executable doesn't exist";
 const CHROMIUM_MISSING_MESSAGE =
   "Playwright chromium missing; run: bunx playwright install chromium";
+
+const FONT_MIME_BY_EXTENSION = {
+  ".otf": "font/otf",
+  ".ttf": "font/ttf",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+} as const;
+
+export const localFontContentType = (filePath: string): string => {
+  const extension = path.extname(filePath).toLowerCase();
+  const mime = FONT_MIME_BY_EXTENSION[extension as keyof typeof FONT_MIME_BY_EXTENSION];
+  if (!mime) {
+    throw new FolioExtractError(`unsupported local font format: ${extension || "(none)"}`);
+  }
+  return mime;
+};
+
+export const localFontRouteUrl = (index: number, filePath: string): string =>
+  `${PLAYGROUND_URL}/__folio-parity-font/${index}${path.extname(filePath).toLowerCase()}`;
+
+const loadBrowserFonts = async (
+  fonts: ReadonlyArray<LocalFontDefinition> | undefined,
+): Promise<RoutedBrowserFont[]> =>
+  await Promise.all(
+    (fonts ?? []).map(async ({ family, filePath, weight, style }, index) => {
+      const definition: BrowserFontDefinition = {
+        family,
+        src: localFontRouteUrl(index, filePath),
+      };
+      if (weight !== undefined) {
+        definition.weight = weight;
+      }
+      if (style !== undefined) {
+        definition.style = style;
+      }
+      return {
+        definition,
+        body: await fs.readFile(filePath),
+        contentType: localFontContentType(filePath),
+      };
+    }),
+  );
 
 type OutputTail = { read: () => string; done: Promise<void> };
 
@@ -1131,7 +1206,7 @@ const stagedFixtureName = (sha256: string): string =>
   `${TMP_FIXTURE_PREFIX}${sha256.slice(0, 12)}.docx`;
 
 export const createFolioExtractor = async (
-  opts: { headless?: boolean; reuseServer?: boolean } = {},
+  opts: CreateFolioExtractorOptions = {},
 ): Promise<FolioExtractor> => {
   const headless = opts.headless ?? true;
   // Default to a FRESH server so the feedback loop always reflects this
@@ -1181,7 +1256,7 @@ export const createFolioExtractor = async (
       await killByPort(PLAYGROUND_PORT);
       await Promise.race([
         Promise.all([serverStdoutTail.done, serverStderrTail.done]),
-        Bun.sleep(SERVER_PROBE_TIMEOUT_MS),
+        Bun.sleep(SERVER_OUTPUT_DRAIN_TIMEOUT_MS),
       ]);
       throw new FolioExtractError(
         formatServerStartFailure(
@@ -1215,6 +1290,21 @@ export const createFolioExtractor = async (
     colorScheme: "light",
   });
   const page = await context.newPage();
+  const routedFonts = await loadBrowserFonts(opts.localFonts);
+  if (routedFonts.length > 0) {
+    for (const { definition, body, contentType } of routedFonts) {
+      // oxlint-disable-next-line no-await-in-loop -- routes must be installed before the first navigation
+      await page.route(definition.src, async (route) => {
+        await route.fulfill({ body, contentType });
+      });
+    }
+    await page.addInitScript(
+      (fonts) => {
+        Reflect.set(globalThis, "__folioParityFonts", fonts);
+      },
+      routedFonts.map(({ definition }) => definition),
+    );
+  }
 
   const navigateToDocument = async (stagedName: string): Promise<void> => {
     const documentUrl = `${PLAYGROUND_URL}/?file=${encodeURIComponent(stagedName)}`;
@@ -1295,6 +1385,7 @@ export const createFolioExtractor = async (
           stagedName,
           zoomFactor: String(zoomFactor),
           pxToPt: String(PX_TO_PT),
+          localFontFaces: String(routedFonts.length),
         },
       };
 

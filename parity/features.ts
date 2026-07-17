@@ -439,13 +439,33 @@ const collectFontPairs = (referenceGeom: DocGeom, folioGeom: DocGeom): FontPair[
     }
   }
 
-  for (const lines of folioLinesByText.values()) lines.reverse();
-
   const pairs: FontPair[] = [];
   for (const page of referenceGeom.pages) {
     for (const line of page.lines) {
       if (line.fontName === undefined) continue;
-      const folioLine = folioLinesByText.get(line.normText)?.pop();
+      const candidates = folioLinesByText.get(line.normText);
+      if (!candidates || candidates.length === 0) continue;
+
+      // Repeated labels, list markers, and running header/footer text can move
+      // across pages independently. Pair a same-family occurrence first;
+      // source-order-only pairing otherwise invents a renderer mismatch when
+      // the same text is authored in more than one font. The closest width is
+      // the least ambiguous match for subsequent metric comparison.
+      let matchingIndex = -1;
+      let closestWidthDelta = Number.POSITIVE_INFINITY;
+      for (let index = 0; index < candidates.length; index += 1) {
+        const candidate = candidates[index];
+        if (!candidate?.fontName || !fontFamiliesMatch(line.fontName, candidate.fontName)) {
+          continue;
+        }
+        const widthDelta = Math.abs(line.widthPt - candidate.widthPt);
+        if (widthDelta < closestWidthDelta) {
+          matchingIndex = index;
+          closestWidthDelta = widthDelta;
+        }
+      }
+      const folioLine =
+        matchingIndex >= 0 ? candidates.splice(matchingIndex, 1).at(0) : candidates.shift();
       if (folioLine?.fontName !== undefined) {
         pairs.push({
           referenceFont: line.fontName,

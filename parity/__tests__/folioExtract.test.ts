@@ -8,6 +8,8 @@ import {
   formatServerStartFailure,
   isFullyClippedByAncestors,
   isPlausibleBaseline,
+  localFontContentType,
+  localFontRouteUrl,
   meaningfulTextRange,
   parseCssFontFamilies,
   parseFirstFontFamily,
@@ -22,6 +24,21 @@ const rect = (left: number, top: number, width: number, height: number) => ({
   top,
   width,
   height,
+});
+
+describe("local font routes", () => {
+  test("uses a private browser route without exposing the local path", () => {
+    const source = localFontRouteUrl(3, "/private/fonts/Example.ttf");
+    expect(source).toBe("http://localhost:4393/__folio-parity-font/3.ttf");
+    expect(source).not.toContain("/private/fonts");
+    expect(localFontContentType("Example.ttf")).toBe("font/ttf");
+  });
+
+  test("rejects unsupported files before launching the browser", () => {
+    expect(() => localFontContentType("/private/fonts/Example.bin")).toThrow(
+      "unsupported local font format: .bin",
+    );
+  });
 });
 
 describe("clean screenshot style", () => {

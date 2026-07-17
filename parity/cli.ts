@@ -36,6 +36,7 @@ import { compareGeoms } from "./compare";
 import { getReferenceRenderer, isReferenceRendererId } from "./referenceRenderer";
 import type { ReferenceRenderer } from "./referenceRenderer";
 import { writeHtmlReport } from "./report";
+import { getAvailableWordFonts } from "./wordFonts";
 import type { DocAssets } from "./report";
 import type {
   CorpusReport,
@@ -232,6 +233,7 @@ const runPipeline = async (
   const failures: DocFailure[] = [];
 
   let extractor: FolioExtractor | undefined;
+  const localFonts = flags.referenceId === "word" ? await getAvailableWordFonts() : [];
 
   try {
     for (let i = 0; i < docs.length; i++) {
@@ -253,6 +255,7 @@ const runPipeline = async (
           extractor = await createFolioExtractor({
             headless: !flags.headed,
             reuseServer: flags.reuseServer,
+            localFonts,
           });
         }
 

@@ -17,7 +17,12 @@ import {
   setAnonymizationTermsMeta,
   startAutocompleteSuggestion,
 } from "@stll/folio-react";
-import type { Document as FolioDocument, DocxEditorRef, EditorMode } from "@stll/folio-react";
+import type {
+  Document as FolioDocument,
+  DocxEditorRef,
+  EditorMode,
+  FontDefinition,
+} from "@stll/folio-react";
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
 import { CollaborationApp } from "./CollaborationApp";
@@ -48,6 +53,9 @@ declare global {
         getEditorRef: () => DocxEditorRef | null;
       }
     | undefined;
+  // Parity harness hook: locally installed reference-renderer fonts are
+  // supplied before React mounts so Folio measures with the same font files.
+  var __folioParityFonts: ReadonlyArray<FontDefinition> | undefined;
   // Cross-adapter E2E bridge: identical surface in the React and Vue
   // playgrounds so the `tests/parity` specs drive both editors through one API.
   var __folioParity: FolioParityBridge | undefined;
@@ -533,6 +541,7 @@ export function App() {
   const [editorMode, setEditorMode] = useState<EditorMode>("editing");
   const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
   const query = new URLSearchParams(window.location.search);
+  const parityFonts = globalThis.__folioParityFonts;
   const showMarginGuides = query.has("marginGuides");
   const marginGuideColor = query.get("marginGuideColor") ?? undefined;
 
@@ -710,6 +719,7 @@ export function App() {
             document={documentBuffer ? null : currentDocument}
             documentBuffer={documentBuffer}
             author="Folio User"
+            {...(parityFonts !== undefined ? { fonts: parityFonts } : {})}
             onError={handleError}
             showToolbar={true}
             showRuler={true}

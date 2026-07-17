@@ -617,6 +617,27 @@ describe("assessFontEnvironment", () => {
     });
   });
 
+  test("pairs repeated text by font family before source order", () => {
+    const assessment = assessFontEnvironment(
+      ["Arial", "Calibri"],
+      fontGeom("word", [
+        ["Repeated label", "ArialMT"],
+        ["Repeated label", "Calibri-Bold"],
+      ]),
+      fontGeom("folio", [
+        ["Repeated label", "Calibri"],
+        ["Repeated label", "Arial"],
+      ]),
+    );
+
+    expect(assessment).toEqual({
+      status: "native",
+      tags: [],
+      comparedLines: 2,
+      matchingLines: 2,
+    });
+  });
+
   test("rejects matching family names with persistently different metrics", () => {
     const lines = Array.from({ length: 8 }, (_, index): [string, string] => [
       `Line ${index}`,
