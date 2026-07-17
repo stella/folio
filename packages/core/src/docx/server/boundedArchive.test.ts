@@ -51,6 +51,12 @@ describe("loadDocxArchive", () => {
     expect(error).toMatchObject({ reason: "too-many-entries" });
   });
 
+  test("rejects excessive input size before archive parsing", async () => {
+    const error = await rejection(loadDocxArchive(new Uint8Array(5), { maxInputBytes: 4 }));
+
+    expect(error).toMatchObject({ reason: "input-too-large" });
+  });
+
   test("rejects declared entry and cumulative sizes", async () => {
     const bytes = await makeZip({ a: "12345", b: "67890" });
     const entryError = await rejection(loadDocxArchive(bytes, { maxEntryBytes: 4 }));
