@@ -38,6 +38,7 @@ import type {
   MediaFile,
 } from "../types/document";
 import { emuToPixels } from "../utils/units";
+import { sanitizeExternalUrl } from "../utils/urlSecurity";
 import {
   parsePositionH,
   parsePositionV,
@@ -649,11 +650,14 @@ function parseInline(
     image.opacity = opacity;
   }
 
-  // Resolve image hyperlink (a:hlinkClick)
+  // Resolve image hyperlink (a:hlinkClick). Mirrors hyperlinkParser.ts:
+  // an unsafe/unresolved target leaves hlinkHref unset rather than storing
+  // a raw javascript:/data:/file: href.
   if (props.hlinkRId && rels) {
     const href = resolveTarget(rels, props.hlinkRId);
-    if (href) {
-      image.hlinkHref = href;
+    const safeHref = sanitizeExternalUrl(href);
+    if (safeHref) {
+      image.hlinkHref = safeHref;
     }
   }
 
@@ -793,11 +797,14 @@ function parseAnchor(
     image.allowOverlap = allowOverlap;
   }
 
-  // Resolve image hyperlink (a:hlinkClick)
+  // Resolve image hyperlink (a:hlinkClick). Mirrors hyperlinkParser.ts:
+  // an unsafe/unresolved target leaves hlinkHref unset rather than storing
+  // a raw javascript:/data:/file: href.
   if (props.hlinkRId && rels) {
     const href = resolveTarget(rels, props.hlinkRId);
-    if (href) {
-      image.hlinkHref = href;
+    const safeHref = sanitizeExternalUrl(href);
+    if (safeHref) {
+      image.hlinkHref = safeHref;
     }
   }
 

@@ -6,9 +6,53 @@ import { panic } from "better-result";
 import type { Command, EditorState } from "prosemirror-state";
 
 import { expectHyperlinkMarkAttrs } from "../../attrs";
+import { normalizeUserUrl, sanitizeExternalUrl } from "../../../utils/urlSecurity";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { isMarkActive } from "./markUtils";
+
+// ============================================================================
+// HREF SANITIZATION HELPERS
+// ============================================================================
+
+// Internal bookmark anchors (`#name`) are not absolute URLs, so they never
+// reach `sanitizeExternalUrl`/`normalizeUserUrl` (which parse via the `URL`
+// constructor and would reject them). Adapters resolve `#name` hrefs to
+// bookmark navigation directly off the DOM attribute, so they must survive
+// both the DOM round-trip and dialog/programmatic writes unchanged.
+
+/**
+ * Sanitize an href arriving from (or being emitted to) the DOM: pasted HTML,
+ * clipboard content, or a mark attr already stored on the document. Only
+ * allow-listed absolute URLs (http/https/mailto/tel) and internal bookmark
+ * anchors survive; everything else (javascript:, data:, file:, ...) becomes
+ * an empty href, matching how the codebase already signals "no link" for an
+ * unresolved hyperlink (see `toProseDoc.ts`'s `hyperlink.href || ""`).
+ */
+function sanitizeStoredHref(rawHref: string | undefined): string {
+  if (!rawHref) {
+    return "";
+  }
+  const trimmed = rawHref.trim();
+  if (trimmed.startsWith("#")) {
+    return trimmed;
+  }
+  return sanitizeExternalUrl(trimmed) ?? "";
+}
+
+/**
+ * Normalize/sanitize a URL typed by a user (hyperlink dialog/popup) before it
+ * is written into a mark. Protocol-less input (e.g. "example.com") is
+ * accepted and normalized to https; anything resolving to a disallowed
+ * scheme is dropped.
+ */
+function normalizeHyperlinkInput(rawHref: string): string {
+  const trimmed = rawHref.trim();
+  if (trimmed.startsWith("#")) {
+    return trimmed;
+  }
+  return normalizeUserUrl(trimmed);
+}
 
 // ============================================================================
 // HYPERLINK QUERY HELPERS (exported for toolbar)
@@ -84,8 +128,10 @@ export const HyperlinkExtension = createMarkExtension({
       {
         tag: "a[href]",
         getAttrs: (dom) => ({
-          // HTMLElement.getAttribute is available on all element types
-          href: dom.getAttribute("href") ?? "",
+          // HTMLElement.getAttribute is available on all element types.
+          // Sanitize on the way in so pasted/programmatic anchors carrying
+          // javascript:/data:/file: hrefs never make it into the mark.
+          href: sanitizeStoredHref(dom.getAttribute("href") ?? undefined),
           tooltip: dom.getAttribute("title") ?? undefined,
         }),
       },
@@ -93,7 +139,9 @@ export const HyperlinkExtension = createMarkExtension({
     toDOM(mark) {
       const { href, tooltip } = expectHyperlinkMarkAttrs(mark);
       const domAttrs: Record<string, string> = {
-        href,
+        // Defense in depth: re-sanitize the stored href before it reaches the
+        // live DOM, in case a mark was created by another path.
+        href: sanitizeStoredHref(href),
         target: "_blank",
         rel: "noopener noreferrer",
       };
@@ -119,7 +167,10 @@ export const HyperlinkExtension = createMarkExtension({
         }
 
         if (dispatch) {
-          const mark = hlType.create({ href, tooltip: tooltip || null });
+          const mark = hlType.create({
+            href: normalizeHyperlinkInput(href),
+            tooltip: tooltip || null,
+          });
           let tr = state.tr.addMark(from, to, mark);
           // Remove any explicit text color so the default hyperlink blue (#0563c1)
           // shows through, matching MS Word behavior
@@ -182,7 +233,10 @@ export const HyperlinkExtension = createMarkExtension({
       (text: string, href: string, tooltip?: string): Command =>
       (state, dispatch) => {
         if (dispatch) {
-          const mark = hlType.create({ href, tooltip: tooltip || null });
+          const mark = hlType.create({
+            href: normalizeHyperlinkInput(href),
+            tooltip: tooltip || null,
+          });
           const textNode = state.schema.text(text, [mark]);
           dispatch(state.tr.replaceSelectionWith(textNode, false).scrollIntoView());
         }

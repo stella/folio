@@ -3495,6 +3495,15 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
 
         if (e.button !== 0) {
+          // Non-left buttons (e.g. middle-click) can trigger a native
+          // auxclick navigation on an <a> before any click-time sanitization
+          // runs. Block navigation for those, matching the left-click
+          // preventDefault below; everything else in this handler is
+          // left-click only.
+          const auxTarget = e.target instanceof HTMLElement ? e.target : null;
+          if (auxTarget?.closest("a[href]") instanceof HTMLAnchorElement) {
+            e.preventDefault();
+          }
           return;
         } // Only handle left click
 

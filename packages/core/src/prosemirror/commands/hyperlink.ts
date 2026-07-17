@@ -15,10 +15,27 @@ import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
 import { expectHyperlinkMarkAttrs } from "../attrs";
+import { normalizeUserUrl } from "../../utils/urlSecurity";
 
 type HyperlinkRange = { start: number; end: number };
 
 const hyperlinkHref = (mark: Mark): string => expectHyperlinkMarkAttrs(mark).href;
+
+/**
+ * Normalize/sanitize a URL typed by a user (hyperlink popup edit) before it
+ * is written into a mark. Internal bookmark anchors (`#name`) bypass
+ * `normalizeUserUrl` (which parses via the `URL` constructor and would
+ * reject a bare fragment); protocol-less input (e.g. "example.com") is
+ * accepted and normalized to https; anything resolving to a disallowed
+ * scheme (javascript:, data:, file:, ...) is dropped to an empty href.
+ */
+const normalizeHyperlinkInput = (rawHref: string): string => {
+  const trimmed = rawHref.trim();
+  if (trimmed.startsWith("#")) {
+    return trimmed;
+  }
+  return normalizeUserUrl(trimmed);
+};
 
 /**
  * Contiguous ranges of text nodes in `parent` (starting at `parentStart`) that
@@ -101,7 +118,7 @@ export const editHyperlinkAtCursor = (
   }
 
   const { tooltip } = expectHyperlinkMarkAttrs(linkMark);
-  const newMark = hlType.create({ href, tooltip });
+  const newMark = hlType.create({ href: normalizeHyperlinkInput(href), tooltip });
   const textNode = view.state.schema.text(displayText, [
     ...$from.marks().filter((m) => m.type !== hlType),
     newMark,

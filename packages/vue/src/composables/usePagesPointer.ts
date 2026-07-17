@@ -493,7 +493,17 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function handlePagesMouseDown(event: MouseEvent) {
-    if (event.button !== 0) return;
+    if (event.button !== 0) {
+      // Non-left buttons (e.g. middle-click) can trigger a native auxclick
+      // navigation on an <a> before any click-time sanitization runs. Block
+      // navigation for those; everything else in this handler is left-click
+      // only.
+      const auxTarget = event.target instanceof HTMLElement ? event.target : null;
+      if (auxTarget?.closest<HTMLAnchorElement>("a[href]")) {
+        event.preventDefault();
+      }
+      return;
+    }
     if (opts.imageInteracting.value) return;
     const body = opts.editorView.value;
     if (!body) return;
