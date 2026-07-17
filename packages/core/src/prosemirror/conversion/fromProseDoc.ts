@@ -655,16 +655,18 @@ function editTextBoxAnchorInContent(
       content.splice(index, 1, ...(replacement ? [replacement] : []));
       return true;
     }
-    const nestedContent =
-      item?.type === "hyperlink"
-        ? item.children
-        : item?.type === "inlineSdt" ||
-            item?.type === "insertion" ||
-            item?.type === "deletion" ||
-            item?.type === "moveFrom" ||
-            item?.type === "moveTo"
-          ? item.content
-          : undefined;
+    let nestedContent: ParagraphContent[] | undefined;
+    if (item?.type === "hyperlink") {
+      nestedContent = item.children;
+    } else if (
+      item?.type === "inlineSdt" ||
+      item?.type === "insertion" ||
+      item?.type === "deletion" ||
+      item?.type === "moveFrom" ||
+      item?.type === "moveTo"
+    ) {
+      nestedContent = item.content;
+    }
     if (!nestedContent) {
       continue;
     }
