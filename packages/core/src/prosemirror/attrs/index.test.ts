@@ -530,4 +530,42 @@ describe("ProseMirror attr readers", () => {
       );
     }
   });
+
+  test("tracked-change marks round-trip provenance and suggestionId", () => {
+    const userInsertion = schema.marks.insertion.create({ revisionId: 1, author: "A" });
+    const userResult = readTrackedChangeMarkAttrs(userInsertion);
+    expect(userResult.ok).toBe(true);
+    if (userResult.ok) {
+      // Defaults fill in for existing/legacy marks; the reader normalizes the
+      // null suggestionId default to an absent optional field.
+      expect(userResult.value.provenance).toBe("user");
+      expect(userResult.value.suggestionId).toBeUndefined();
+    }
+
+    const suggested = schema.marks.deletion.create({
+      revisionId: 2,
+      author: "AI",
+      provenance: "suggested",
+      suggestionId: "s1",
+    });
+    const suggestedResult = readTrackedChangeMarkAttrs(suggested);
+    expect(suggestedResult.ok).toBe(true);
+    if (suggestedResult.ok) {
+      expect(suggestedResult.value.provenance).toBe("suggested");
+      expect(suggestedResult.value.suggestionId).toBe("s1");
+    }
+  });
+
+  test("rejects an invalid tracked-change provenance", () => {
+    const insertion = schema.marks.insertion.create({
+      revisionId: 1,
+      author: "A",
+      provenance: "bogus",
+    });
+    const result = readTrackedChangeMarkAttrs(insertion);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.map((issue) => issue.path)).toContain("insertion.attrs.provenance");
+    }
+  });
 });

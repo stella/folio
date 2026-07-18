@@ -132,6 +132,9 @@ describe("run propertyChanges PM round-trip", () => {
     const text = pmDoc.firstChild?.firstChild;
     expect(text?.marks.find((mark) => mark.type.name === "runPropertyChange")?.attrs).toEqual({
       changes: [sampleRunPropertyChange],
+      // Provenance defaults: a parsed run-property change is always a user change.
+      provenance: "user",
+      suggestionId: null,
     });
 
     const roundtripped = fromProseDoc(pmDoc).package.document.content.at(0);

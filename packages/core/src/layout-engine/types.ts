@@ -118,6 +118,15 @@ export type RunFormatting = {
   changeDate?: string;
   /** Revision ID of the tracked change (for sidebar matching) */
   changeRevisionId?: number;
+  /**
+   * Whether this tracked insertion/deletion is an AI-proposed *suggestion*
+   * rather than a user change. Suggestions render with the same grammar but a
+   * dotted stroke and a dedicated hue; they are stripped from serialized DOCX
+   * until accepted.
+   */
+  isSuggestion?: boolean;
+  /** Groups a suggestion's runs for accept/reject and scroll-to. */
+  suggestionId?: string;
 };
 
 /**

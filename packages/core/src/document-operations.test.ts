@@ -38,24 +38,24 @@ describe("document operation contract", () => {
         "mergeTableCells",
         "splitTableCell",
       ],
-      modes: ["direct", "tracked-changes"],
+      modes: ["direct", "tracked-changes", "suggested"],
       batchModes: ["best-effort", "atomic"],
       dryRun: true,
       modesByOperationType: {
-        replaceInBlock: ["direct", "tracked-changes"],
-        replaceRange: ["direct", "tracked-changes"],
+        replaceInBlock: ["direct", "tracked-changes", "suggested"],
+        replaceRange: ["direct", "tracked-changes", "suggested"],
         commentOnRange: ["direct", "tracked-changes"],
-        formatRange: ["direct", "tracked-changes"],
-        insertAfterBlock: ["direct", "tracked-changes"],
-        insertBeforeBlock: ["direct", "tracked-changes"],
-        replaceBlock: ["direct", "tracked-changes"],
-        deleteBlock: ["direct", "tracked-changes"],
+        formatRange: ["direct", "tracked-changes", "suggested"],
+        insertAfterBlock: ["direct", "tracked-changes", "suggested"],
+        insertBeforeBlock: ["direct", "tracked-changes", "suggested"],
+        replaceBlock: ["direct", "tracked-changes", "suggested"],
+        deleteBlock: ["direct", "tracked-changes", "suggested"],
         commentOnBlock: ["direct", "tracked-changes"],
-        insertSignatureTable: ["direct"],
-        insertTableRow: ["direct", "tracked-changes"],
-        deleteTableRow: ["direct", "tracked-changes"],
-        insertTableColumn: ["direct", "tracked-changes"],
-        deleteTableColumn: ["direct", "tracked-changes"],
+        insertSignatureTable: ["direct", "suggested"],
+        insertTableRow: ["direct", "tracked-changes", "suggested"],
+        deleteTableRow: ["direct", "tracked-changes", "suggested"],
+        insertTableColumn: ["direct", "tracked-changes", "suggested"],
+        deleteTableColumn: ["direct", "tracked-changes", "suggested"],
         mergeTableCells: ["direct", "tracked-changes"],
         splitTableCell: ["direct", "tracked-changes"],
       },
@@ -84,6 +84,15 @@ describe("document operation contract", () => {
     expect(isFolioDocumentOperationModeSupported("mergeTableCells", "tracked-changes")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("splitTableCell", "direct")).toBe(true);
     expect(isFolioDocumentOperationModeSupported("splitTableCell", "tracked-changes")).toBe(true);
+    // Suggested mode: inline + block/table structural ops, but not comment ops
+    // or cell merge/split. A whole inserted table is suggested but not tracked.
+    expect(isFolioDocumentOperationModeSupported("replaceInBlock", "suggested")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("insertAfterBlock", "suggested")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("insertTableRow", "suggested")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("insertSignatureTable", "suggested")).toBe(true);
+    expect(isFolioDocumentOperationModeSupported("commentOnRange", "suggested")).toBe(false);
+    expect(isFolioDocumentOperationModeSupported("mergeTableCells", "suggested")).toBe(false);
+    expect(isFolioDocumentOperationModeSupported("splitTableCell", "suggested")).toBe(false);
     expect(
       Reflect.apply(isFolioDocumentOperationModeSupported, null, ["unknownOperation", "direct"]),
     ).toBe(false);

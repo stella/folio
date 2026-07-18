@@ -112,16 +112,43 @@ export type CommentAttrs = {
   commentId: number;
 };
 
+/**
+ * Provenance of a tracked change.
+ *
+ * - `"user"` — a normal tracked change authored by a person (or an
+ *   accepted suggestion). Serializes to OOXML `w:ins` / `w:del` /
+ *   `w:rPrChange`.
+ * - `"suggested"` — an AI-proposed edit rendered with the tracked-change
+ *   visual grammar but ALWAYS stripped from serialized DOCX output until
+ *   accepted. Suggested marks never round-trip through OOXML; parsing a
+ *   DOCX can only ever produce `"user"` marks.
+ */
+export const TRACKED_CHANGE_PROVENANCE_VALUES = ["user", "suggested"] as const;
+export type TrackedChangeProvenance = (typeof TRACKED_CHANGE_PROVENANCE_VALUES)[number];
+
 export type TrackedChangeMarkAttrs = {
   revisionId: number;
   author: string;
   date?: string;
+  /** Optional author initials (w:initials) carried through the round-trip. */
+  initials?: string;
   moveKind?: "moveTo" | "moveFrom";
+  /** Defaults to `"user"`; `"suggested"` for AI-proposed, non-serialized edits. */
+  provenance: TrackedChangeProvenance;
+  /**
+   * Groups every mark belonging to one logical suggestion so the host can
+   * accept/reject them together. Absent for `"user"` provenance (the mark's
+   * `null` default is normalized to absent by the attrs reader).
+   */
+  suggestionId?: string;
 };
 
 /** Run-property revisions carried through the editable model. */
 export type RunPropertyChangeMarkAttrs = {
   changes: RunPropertyChange[];
+  /** See {@link TrackedChangeProvenance}. Defaults to `"user"`. */
+  provenance: TrackedChangeProvenance;
+  suggestionId?: string;
 };
 
 export type RunFormattingOverrideAttrs = {

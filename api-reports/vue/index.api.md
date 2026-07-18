@@ -104,6 +104,7 @@ import { FolioDocumentOperationUndoResult } from '@stll/folio-core/ai-edits';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
+import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
 import { default as FormattingBar } from './components/FormattingBar.vue';
 import { fromMarkdown } from '@stll/folio-core/markdown';
 import { getAnonymizationMatches } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
@@ -158,6 +159,8 @@ import { setTemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/t
 import { shouldTriggerAutocomplete } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { startAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { STELLA_STYLE_SET_NAME } from '@stll/folio-core/style-sets/stellaStyle';
+import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comments';
+import { SuggestionKind } from '@stll/folio-core/prosemirror/commands/comments';
 import { TemplatePreviewSpan } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValue } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
@@ -477,6 +480,15 @@ export type DocxEditorRef = {
     highlightPassage: (options: HighlightPassageOptions) => HighlightPassageResult;
     clearPassageHighlight: () => void;
     showInDocument: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => boolean;
+    getSuggestions: () => FolioSuggestion[];
+    acceptSuggestion: (suggestionId: string, options?: {
+        author?: string;
+    }) => {
+        accepted: boolean;
+        appliedAs: SuggestionAppliedAs | null;
+    };
+    rejectSuggestion: (suggestionId: string) => boolean;
+    scrollToSuggestion: (suggestionId: string) => boolean;
     getTrackedChanges: () => FolioReviewChange[];
     getCommentAnchors: () => FolioCommentAnchor[];
     getSelectionText: () => string;
@@ -560,6 +572,8 @@ export type FolioButtonProps = {
     disabled?: boolean;
     className?: string;
 };
+
+export { FolioSuggestion }
 
 // @public
 export type FolioUIComponents = {
@@ -775,6 +789,10 @@ export const SplitCellDialog: any;
 export { startAutocompleteSuggestion }
 
 export { STELLA_STYLE_SET_NAME }
+
+export { SuggestionAppliedAs }
+
+export { SuggestionKind }
 
 // @public (undocumented)
 export const TablePropertiesDialog: any;

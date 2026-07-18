@@ -77,12 +77,36 @@ type ApplyFolioAIEditOperationsOptions = {
   operations: FolioAIEditOperation[];
   mode?: FolioAIEditApplyMode;
   author?: string;
+  /** Optional author initials (w:initials) stamped alongside the author. */
+  initials?: string;
   createCommentId?: (text: string) => number;
 };
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
   revisionIdSeed?: number;
 };
+
+/**
+ * Operation types applied in `"suggested"` mode. Every produced revision — an
+ * inline mark, a whole-node `_suggestedInsert` marker, or a suggested
+ * `trIns`/`trDel`/`cellMarker` — is stripped from serialized DOCX until
+ * accepted. Cell merge/split (not row/column ops) and comment ops stay
+ * `unsupportedMode`.
+ */
+const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["type"]> = new Set([
+  "replaceInBlock",
+  "replaceRange",
+  "formatRange",
+  "replaceBlock",
+  "deleteBlock",
+  "insertAfterBlock",
+  "insertBeforeBlock",
+  "insertSignatureTable",
+  "insertTableRow",
+  "deleteTableRow",
+  "insertTableColumn",
+  "deleteTableColumn",
+]);
 
 type ResolvedOperation = {
   operation: FolioAIEditOperation;
@@ -182,6 +206,10 @@ type ApplyTrackedInlineFormattingOptions = ApplyInlineFormattingOptions & {
   revisionId: number;
   author: string;
   date: string;
+  /** Optional author initials (w:initials) stamped alongside the author. */
+  initials?: string | undefined;
+  /** Non-null stamps the produced `runPropertyChange` mark as a suggestion. */
+  suggestionId?: string | null;
 };
 
 const applyTrackedInlineFormatting = ({
@@ -194,6 +222,8 @@ const applyTrackedInlineFormatting = ({
   revisionId,
   author,
   date,
+  initials,
+  suggestionId = null,
 }: ApplyTrackedInlineFormattingOptions): Transaction => {
   const propertyChangeType = schema.marks["runPropertyChange"];
   if (!propertyChangeType) {
@@ -214,7 +244,7 @@ const applyTrackedInlineFormatting = ({
       : [];
     const change: RunPropertyChange = {
       type: "runPropertyChange",
-      info: { id: revisionId, author, date },
+      info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
       ...(Object.keys(previousFormatting).length > 0 ? { previousFormatting } : {}),
     };
     segments.push({
@@ -227,9 +257,14 @@ const applyTrackedInlineFormatting = ({
   if (segments.length === 0) {
     return tr;
   }
+  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
   applyInlineFormatting({ tr, schema, from, to, formatting });
   for (const segment of segments) {
-    tr.addMark(segment.from, segment.to, propertyChangeType.create({ changes: segment.changes }));
+    tr.addMark(
+      segment.from,
+      segment.to,
+      propertyChangeType.create({ changes: segment.changes, ...suggestionAttrs }),
+    );
   }
   return tr;
 };
@@ -489,6 +524,7 @@ const applyFolioAIEditOperationsInternal = ({
   operations,
   mode = "tracked-changes",
   author = "AI",
+  initials,
   createCommentId,
   revisionIdSeed,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyResult => {
@@ -501,7 +537,13 @@ const applyFolioAIEditOperationsInternal = ({
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
 
-  if (mode === "tracked-changes" && (!insertionType || !deletionType)) {
+  // `"suggested"` is `"tracked-changes"` plus a provenance stamp, so every
+  // tracked-change code path below keys off this rather than an exact
+  // `=== "tracked-changes"` check.
+  const producesTrackedChanges = mode !== "direct";
+  const isSuggested = mode === "suggested";
+
+  if (producesTrackedChanges && (!insertionType || !deletionType)) {
     return {
       applied,
       skipped: operations.map((operation) => ({
@@ -653,6 +695,38 @@ const applyFolioAIEditOperationsInternal = ({
     const stepsBefore = tr.steps.length;
     let appliedRevisionIds: number[] | undefined;
 
+    // Suggested mode covers the inline text/format operations plus the block and
+    // table row/column structural operations (see
+    // `SUGGESTED_SUPPORTED_OPERATION_TYPES`). Every revision they produce — an
+    // inline mark, a whole-node `_suggestedInsert` marker, or a suggested
+    // `trIns`/`trDel`/`cellMarker` — is removed by the serialization strip.
+    // Operations outside the allowlist (comment ops, cell merge/split) report
+    // `unsupportedMode` so no unstrippable suggested state can be produced.
+    if (isSuggested && !SUGGESTED_SUPPORTED_OPERATION_TYPES.has(item.operation.type)) {
+      skipped.push({ id: item.operation.id, reason: "unsupportedMode" });
+      continue;
+    }
+
+    // Every mark a suggested operation produces is stamped with this id so the
+    // host can accept/reject the whole suggestion at once. Falls back to the
+    // operation id when the caller does not supply one.
+    const suggestionId: string | null = isSuggested
+      ? (item.operation.suggestionId ?? item.operation.id)
+      : null;
+
+    // Fields merged into every node-attr revision (trIns/trDel/cellMarker) and
+    // whole-node `_suggestedInsert` marker this operation produces.
+    const trackedRevisionExtras = {
+      ...(initials ? { initials } : {}),
+      ...(suggestionId !== null ? { provenance: "suggested" as const, suggestionId } : {}),
+    };
+    // The structural revision a table op writes. Uses the current `revisionSeed`
+    // (each table branch consumes it with `revisionSeed++` after applying); one
+    // op runs per iteration, so no prior increment shifts this value.
+    const structuralRevision: TableStructureRevision | null = producesTrackedChanges
+      ? { revisionId: revisionSeed, author, date, ...trackedRevisionExtras }
+      : null;
+
     switch (item.operation.type) {
       case "replaceInBlock":
       case "replaceRange": {
@@ -667,8 +741,10 @@ const applyFolioAIEditOperationsInternal = ({
           revisionIdDelete,
           revisionIdInsert,
           commentMark,
+          suggestionId,
+          initials,
         });
-        if (mode === "tracked-changes") {
+        if (producesTrackedChanges) {
           appliedRevisionIds = [revisionIdDelete, revisionIdInsert];
         }
         break;
@@ -680,7 +756,7 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "formatRange": {
-        if (mode === "tracked-changes") {
+        if (producesTrackedChanges) {
           const revisionId = revisionSeed++;
           tr = applyTrackedInlineFormatting({
             tr,
@@ -692,6 +768,8 @@ const applyFolioAIEditOperationsInternal = ({
             revisionId,
             author,
             date,
+            initials,
+            suggestionId,
           });
           appliedRevisionIds = [revisionId];
           break;
@@ -759,9 +837,11 @@ const applyFolioAIEditOperationsInternal = ({
           revisionIdDelete,
           revisionIdInsert,
           commentMark,
+          suggestionId,
+          initials,
         });
         tr = applyReplaceBlockStyleId({ item, tr });
-        if (mode === "tracked-changes") {
+        if (producesTrackedChanges) {
           appliedRevisionIds = [revisionIdDelete, revisionIdInsert];
         }
         break;
@@ -781,13 +861,16 @@ const applyFolioAIEditOperationsInternal = ({
         }
 
         const marks = [];
-        if (mode === "tracked-changes" && insertionType) {
+        let insertedBlockRevisionId: number | null = null;
+        if (producesTrackedChanges && insertionType) {
           const revisionId = revisionSeed++;
+          insertedBlockRevisionId = revisionId;
           marks.push(
             insertionType.create({
               revisionId,
               author,
               date,
+              ...trackedRevisionExtras,
             }),
           );
           appliedRevisionIds = [revisionId];
@@ -829,11 +912,27 @@ const applyFolioAIEditOperationsInternal = ({
             attrs["listStartOverride"] = null;
           }
         }
+        // In suggested mode, mark the whole inserted paragraph so the strip
+        // drops it from serialized DOCX until accepted (the inline insertion
+        // marks alone would leave an empty paragraph behind).
+        if (isSuggested && suggestionId !== null && insertedBlockRevisionId !== null) {
+          attrs["_suggestedInsert"] = {
+            suggestionId,
+            revisionId: insertedBlockRevisionId,
+            author,
+            date,
+            ...(initials ? { initials } : {}),
+          };
+        }
         const node = item.blockNode.type.create(attrs, content);
         tr = tr.insert(item.from, node);
         break;
       }
       case "insertSignatureTable": {
+        // Tracked-changes mode has no whole-table-insert primitive in OOXML, so
+        // it stays unsupported. Suggested mode CAN carry it: the whole table is
+        // flagged `_suggestedInsert` and stripped until accepted (accepting
+        // applies it directly — see acceptSuggestion).
         if (mode === "tracked-changes") {
           skipped.push({
             id: item.operation.id,
@@ -842,23 +941,39 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
 
-        const node = buildSignatureTableNode({
+        const signatureTable = buildSignatureTableNode({
           schema: view.state.schema,
           parties: item.operation.parties,
         });
-        if (!node) {
+        if (!signatureTable) {
           skipped.push({
             id: item.operation.id,
             reason: "unsupportedBlock",
           });
           continue;
         }
-        // Tables don't carry tracked-change marks here — the
-        // table structure itself is the insert, and inline
-        // insertion marks on the paragraph runs inside would
-        // double-up with the structural addition. Apply directly;
-        // tracked-changes for new tables is a separate future
-        // concern.
+        // Direct mode: tables don't carry tracked-change marks — the table
+        // structure itself is the insert, and inline insertion marks on the
+        // paragraph runs inside would double-up with the structural addition.
+        let node = signatureTable;
+        if (isSuggested && suggestionId !== null) {
+          const revisionId = revisionSeed++;
+          node = signatureTable.type.create(
+            {
+              ...signatureTable.attrs,
+              _suggestedInsert: {
+                suggestionId,
+                revisionId,
+                author,
+                date,
+                ...(initials ? { initials } : {}),
+              },
+            },
+            signatureTable.content,
+            signatureTable.marks,
+          );
+          appliedRevisionIds = [revisionId];
+        }
         tr = tr.insert(item.from, node);
         break;
       }
@@ -871,8 +986,7 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        const revision: TableStructureRevision | null =
-          mode === "tracked-changes" ? { revisionId: revisionSeed, author, date } : null;
+        const revision: TableStructureRevision | null = structuralRevision;
         const result = applyTableRowInsertion({
           tr,
           insertion,
@@ -902,8 +1016,7 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        const revision: TableStructureRevision | null =
-          mode === "tracked-changes" ? { revisionId: revisionSeed, author, date } : null;
+        const revision: TableStructureRevision | null = structuralRevision;
         const result = applyTableColumnInsertion({
           tr,
           insertion,
@@ -936,8 +1049,7 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         const columnKey = getTableColumnCoordinateKey(deletion);
-        const revision: TableStructureRevision | null =
-          mode === "tracked-changes" ? { revisionId: revisionSeed, author, date } : null;
+        const revision: TableStructureRevision | null = structuralRevision;
         const result = applyTableColumnDeletion({
           tr,
           deletion,
@@ -1053,8 +1165,7 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        const revision: TableStructureRevision | null =
-          mode === "tracked-changes" ? { revisionId: revisionSeed, author, date } : null;
+        const revision: TableStructureRevision | null = structuralRevision;
         const result = applyTableRowDeletion({ tr, deletion, revision });
         if (result.type === "unsupported") {
           skipped.push({
@@ -1085,6 +1196,7 @@ const applyFolioAIEditOperationsInternal = ({
               revisionId,
               author,
               date,
+              ...trackedRevisionExtras,
             }),
           );
           appliedRevisionIds = [revisionId];
@@ -1126,6 +1238,7 @@ const applyFolioAIEditOperationsInternal = ({
           revisionId: appliedRevisionIds[0],
           revisionIds: appliedRevisionIds,
         }),
+      ...(suggestionId !== null && { suggestionId }),
     });
   }
 
@@ -1183,6 +1296,10 @@ type TextReplacementOptions = {
   /** Distinct revision id used for the insertion-side marks. */
   revisionIdInsert: number;
   commentMark: Mark | null;
+  /** Non-null stamps every produced insertion/deletion mark as a suggestion. */
+  suggestionId?: string | null;
+  /** Optional author initials stamped on the produced marks. */
+  initials?: string | undefined;
 };
 
 const applyTextReplacement = ({
@@ -1194,6 +1311,8 @@ const applyTextReplacement = ({
   revisionIdDelete,
   revisionIdInsert,
   commentMark,
+  suggestionId = null,
+  initials,
 }: TextReplacementOptions): Transaction => {
   let nextTr = tr;
   const replacement = stripInlineEmphasisMarkers(
@@ -1234,8 +1353,22 @@ const applyTextReplacement = ({
 
   const insertionType = nextTr.doc.type.schema.marks["insertion"];
   const deletionType = nextTr.doc.type.schema.marks["deletion"];
-  const delAttrs = { revisionId: revisionIdDelete, author, date };
-  const insAttrs = { revisionId: revisionIdInsert, author, date };
+  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
+  const initialsAttr = initials ? { initials } : {};
+  const delAttrs = {
+    revisionId: revisionIdDelete,
+    author,
+    date,
+    ...initialsAttr,
+    ...suggestionAttrs,
+  };
+  const insAttrs = {
+    revisionId: revisionIdInsert,
+    author,
+    date,
+    ...initialsAttr,
+    ...suggestionAttrs,
+  };
 
   // Word-level diff is only safe when the source range maps to PM
   // positions losslessly. The block must have no atomic inline

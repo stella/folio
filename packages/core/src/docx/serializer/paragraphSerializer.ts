@@ -371,6 +371,9 @@ function serializeFrameProperties(frame: ParagraphFormatting["frame"]): string {
  * Serialize paragraph formatting properties to w:pPr XML
  */
 function serializeTrackedChangeAttrs(info: TrackedChangeInfo): string {
+  // NOTE: `w:initials` is intentionally NOT emitted — ECMA-376 CT_TrackChange
+  // defines only w:id/w:author/w:date. Initials are carried in-model for UI
+  // attribution only (w:comment is the sole standards-clean initials target).
   const parts = [`w:id="${info.id}"`, `w:author="${escapeXml(info.author)}"`];
   if (info.date !== undefined) {
     parts.push(`w:date="${escapeXml(info.date)}"`);
@@ -939,6 +942,7 @@ function serializeTrackedChange(
   const authorCandidate = typeof info.author === "string" ? info.author.trim() : "";
   const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
   const normalizedDate = typeof info.date === "string" ? info.date.trim() : undefined;
+  // `w:initials` is intentionally NOT emitted (non-standard on CT_TrackChange).
   const attrs = [`w:id="${normalizedId}"`, `w:author="${escapeXml(normalizedAuthor)}"`];
   if (normalizedDate) {
     attrs.push(`w:date="${escapeXml(normalizedDate)}"`);

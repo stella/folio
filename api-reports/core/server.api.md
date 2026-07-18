@@ -211,24 +211,24 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES: readonly ["best-effort", "ato
 export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION: 1;
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-changes"];
+export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-changes", "suggested"];
 
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
-    readonly replaceInBlock: readonly ["direct", "tracked-changes"];
-    readonly replaceRange: readonly ["direct", "tracked-changes"];
+    readonly replaceInBlock: readonly ["direct", "tracked-changes", "suggested"];
+    readonly replaceRange: readonly ["direct", "tracked-changes", "suggested"];
     readonly commentOnRange: readonly ["direct", "tracked-changes"];
-    readonly formatRange: readonly ["direct", "tracked-changes"];
-    readonly insertAfterBlock: readonly ["direct", "tracked-changes"];
-    readonly insertBeforeBlock: readonly ["direct", "tracked-changes"];
-    readonly replaceBlock: readonly ["direct", "tracked-changes"];
-    readonly deleteBlock: readonly ["direct", "tracked-changes"];
+    readonly formatRange: readonly ["direct", "tracked-changes", "suggested"];
+    readonly insertAfterBlock: readonly ["direct", "tracked-changes", "suggested"];
+    readonly insertBeforeBlock: readonly ["direct", "tracked-changes", "suggested"];
+    readonly replaceBlock: readonly ["direct", "tracked-changes", "suggested"];
+    readonly deleteBlock: readonly ["direct", "tracked-changes", "suggested"];
     readonly commentOnBlock: readonly ["direct", "tracked-changes"];
-    readonly insertSignatureTable: readonly ["direct"];
-    readonly insertTableRow: readonly ["direct", "tracked-changes"];
-    readonly deleteTableRow: readonly ["direct", "tracked-changes"];
-    readonly insertTableColumn: readonly ["direct", "tracked-changes"];
-    readonly deleteTableColumn: readonly ["direct", "tracked-changes"];
+    readonly insertSignatureTable: readonly ["direct", "suggested"];
+    readonly insertTableRow: readonly ["direct", "tracked-changes", "suggested"];
+    readonly deleteTableRow: readonly ["direct", "tracked-changes", "suggested"];
+    readonly insertTableColumn: readonly ["direct", "tracked-changes", "suggested"];
+    readonly deleteTableColumn: readonly ["direct", "tracked-changes", "suggested"];
     readonly mergeTableCells: readonly ["direct", "tracked-changes"];
     readonly splitTableCell: readonly ["direct", "tracked-changes"];
 }>;
@@ -346,8 +346,8 @@ export type FolioAIComment = {
     text: string;
 };
 
-// @public (undocumented)
-export type FolioAIEditApplyMode = "direct" | "tracked-changes";
+// @public
+export type FolioAIEditApplyMode = "direct" | "tracked-changes" | "suggested";
 
 // @public (undocumented)
 export type FolioAIEditApplyResult = {
@@ -358,6 +358,7 @@ export type FolioAIEditApplyResult = {
 // @public (undocumented)
 export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     precondition?: FolioAIEditPrecondition;
+    suggestionId?: string;
 } & ({
     id: string;
     type: "replaceInBlock";

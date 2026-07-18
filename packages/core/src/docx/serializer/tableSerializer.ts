@@ -62,6 +62,7 @@ function serializeTrackedChangeAttributes(
   info: { id: number; author: string; date?: string },
   rsid?: string,
 ): string {
+  // `w:initials` is intentionally NOT emitted (non-standard on CT_TrackChange).
   const normalized = normalizeTrackedChangeInfo(info);
   const attrs = [`w:id="${normalized.id}"`, `w:author="${escapeXml(normalized.author)}"`];
   if (normalized.date) {

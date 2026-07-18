@@ -275,6 +275,7 @@ const tableSpec: NodeSpec = {
     _resolvedIndent: { default: null },
     _originalFormatting: { default: null },
     tblPrChange: { default: null },
+    _suggestedInsert: { default: null },
   },
   parseDOM: [
     {

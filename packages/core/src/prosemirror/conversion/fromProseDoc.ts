@@ -11,6 +11,7 @@
  */
 
 import type { Node as PMNode, Mark } from "prosemirror-model";
+import { Fragment } from "prosemirror-model";
 
 import { numPrEqual } from "../../docx/numberingParser";
 import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
@@ -97,6 +98,7 @@ import {
 } from "../attrs";
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
 import { directionToBidi } from "../paragraphDirection";
+import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import type { RunFormattingOverrideAttrs } from "../schema/marks";
 import type {
   ParagraphAttrs,
@@ -110,6 +112,13 @@ import { assertValidProseMirrorDocument } from "../validation";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { runShadingAttrsToShading } from "./runShadingMark";
 import { sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
+// `fromProseDoc` and `toProseDoc` are the two halves of one round-trip and
+// already reference each other (`toProseDoc` imports `marksToTextFormatting`
+// from here). Reusing the inverse converter to revert a stripped suggested
+// run-property change closes that pair; both edges are call-time function
+// references, so there is no initialization-order hazard.
+// oxlint-disable-next-line import/no-cycle
+import { textFormattingToMarks } from "./toProseDoc";
 
 function normalizeShapeOutlineStyle(style: string | undefined): ShapeOutline["style"] | undefined {
   if (!style) {
@@ -252,11 +261,166 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
   };
 }
 
+const isSuggestedMark = (mark: Mark): boolean => mark.attrs["provenance"] === "suggested";
+
+const hasSuggestedInsertion = (marks: readonly Mark[]): boolean =>
+  marks.some((mark) => mark.type.name === "insertion" && isSuggestedMark(mark));
+
+/**
+ * Compute the mark set an inline node should keep once its suggested tracked
+ * changes are stripped. Suggested deletions are dropped so their text survives
+ * as plain content; a suggested `runPropertyChange` is dropped and the run's
+ * live formatting is reverted to the recorded `previousFormatting`.
+ *
+ * Returns the input array unchanged when there is nothing to strip so callers
+ * can skip rebuilding the node.
+ */
+function stripSuggestedInlineMarks(marks: readonly Mark[]): readonly Mark[] {
+  const hasSuggestedDeletion = marks.some(
+    (mark) => mark.type.name === "deletion" && isSuggestedMark(mark),
+  );
+  const suggestedRunPropertyChange = marks.find(
+    (mark) => mark.type.name === "runPropertyChange" && isSuggestedMark(mark),
+  );
+  if (!hasSuggestedDeletion && !suggestedRunPropertyChange) {
+    return marks;
+  }
+
+  let next: readonly Mark[] = marks.filter(
+    (mark) =>
+      !(
+        (mark.type.name === "deletion" || mark.type.name === "runPropertyChange") &&
+        isSuggestedMark(mark)
+      ),
+  );
+
+  if (suggestedRunPropertyChange) {
+    const previousFormatting = expectRunPropertyChangeMarkAttrs(
+      suggestedRunPropertyChange,
+    ).changes.at(0)?.previousFormatting;
+    next = next.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
+    for (const restored of textFormattingToMarks(previousFormatting)) {
+      next = restored.addToSet(next);
+    }
+  }
+
+  return next;
+}
+
+/**
+ * Compute the node attrs a block/structural node keeps once its suggested
+ * revision markers are neutralized. Returns `null` when nothing changes.
+ *
+ * - a suggested `trDel` / `cellMarker` (insertion or deletion) is cleared so
+ *   the row/cell serializes as though the proposed change never happened;
+ *   merge markers never carry suggestion provenance (structurally excluded);
+ * - suggested INSERT markers are handled by the caller, which drops the whole
+ *   node instead of clearing an attr.
+ *
+ * Reads go through the typed attr readers (adapter-boundary convention).
+ */
+function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
+  const name = node.type.name;
+  if (name === "tableRow") {
+    const rowAttrs = expectTableRowAttrs(node);
+    if (rowAttrs.trDel?.provenance === "suggested") {
+      return { ...rowAttrs, trDel: null };
+    }
+    return null;
+  }
+  if (name === "tableCell" || name === "tableHeader") {
+    const cellAttrs = expectTableCellAttrs(node);
+    const marker = cellAttrs.cellMarker;
+    if (marker && marker.kind !== "merge" && marker.info.provenance === "suggested") {
+      return { ...cellAttrs, cellMarker: null };
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether a block/structural node is a suggested whole-node INSERT and must be
+ * dropped from serialization entirely (paragraph, table, row, or column cell).
+ */
+function isSuggestedInsertedNode(node: PMNode): boolean {
+  const name = node.type.name;
+  if (name === "paragraph") {
+    return expectParagraphAttrs(node)._suggestedInsert != null;
+  }
+  if (name === "table") {
+    return expectTableAttrs(node)._suggestedInsert != null;
+  }
+  if (name === "tableRow") {
+    return expectTableRowAttrs(node).trIns?.provenance === "suggested";
+  }
+  if (name === "tableCell" || name === "tableHeader") {
+    const marker = expectTableCellAttrs(node).cellMarker;
+    return marker?.kind === "ins" && marker.info.provenance === "suggested";
+  }
+  return false;
+}
+
+/**
+ * Recursively rewrite a ProseMirror node tree, removing every suggested
+ * tracked change. Returns `null` when the node itself must be dropped: a
+ * suggested-inserted inline node, or a suggested-inserted block/row/cell.
+ * Surviving block nodes are rebuilt with their suggested delete/merge markers
+ * cleared and their children stripped.
+ */
+function mapSuggestionStrippedNode(node: PMNode): PMNode | null {
+  if (node.isInline) {
+    if (hasSuggestedInsertion(node.marks)) {
+      return null;
+    }
+    const marks = stripSuggestedInlineMarks(node.marks);
+    return marks === node.marks ? node : node.mark(marks);
+  }
+
+  if (isSuggestedInsertedNode(node)) {
+    return null;
+  }
+
+  const nextAttrs = stripSuggestedNodeAttrs(node);
+  const children: PMNode[] = [];
+  let changed = nextAttrs !== null;
+  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+  node.forEach((child) => {
+    const mapped = mapSuggestionStrippedNode(child);
+    if (mapped === null) {
+      changed = true;
+      return;
+    }
+    if (mapped !== child) {
+      changed = true;
+    }
+    children.push(mapped);
+  });
+  if (!changed) {
+    return node;
+  }
+  const content = Fragment.fromArray(children);
+  return nextAttrs === null ? node.copy(content) : node.type.create(nextAttrs, content, node.marks);
+}
+
+/**
+ * Strip suggested (AI-proposed) tracked changes from a document so it
+ * serializes as though the suggestion never happened. See the call site in
+ * {@link extractBlocks} for why this is the sole serialization boundary.
+ */
+function stripSuggestedProvenance(doc: PMNode): PMNode {
+  return mapSuggestionStrippedNode(doc) ?? doc;
+}
+
 /**
  * Extract block content (paragraphs, tables, block SDTs) from a ProseMirror
  * document.
  */
-function extractBlocks(pmDoc: PMNode): BlockContent[] {
+function extractBlocks(inputDoc: PMNode): BlockContent[] {
+  // CLASS GUARD: every serialization path (export, copy, header/footer
+  // conversion, previews) funnels through `extractBlocks`. Stripping suggested
+  // provenance here — with no opt-out — makes it structurally impossible for an
+  // AI-proposed edit to reach OOXML output before a human accepts it.
+  const pmDoc = stripSuggestedProvenance(inputDoc);
   const blocks: BlockContent[] = [];
   const textBoxAnchorMarkers = new Map<string, Run>();
   const documentCounts = buildDocumentTrackedChangeCounts(pmDoc);
@@ -1307,6 +1471,7 @@ function extractParagraphContent(
         id: changeAttrs.revisionId,
         author: changeAttrs.author || "Unknown",
         ...(changeAttrs.date ? { date: changeAttrs.date } : {}),
+        ...(changeAttrs.initials ? { initials: changeAttrs.initials } : {}),
       };
       if (insertionMark) {
         content.push({
@@ -1350,6 +1515,9 @@ function extractParagraphContent(
       };
       if (changeAttrs.date) {
         info.date = changeAttrs.date;
+      }
+      if (changeAttrs.initials) {
+        info.initials = changeAttrs.initials;
       }
       // The mark itself records whether it originated as a
       // `w:moveTo` / `w:moveFrom`. The previous "is there both an
@@ -2859,6 +3027,7 @@ function convertPMTableRow(
         id: attrs.trIns.revisionId,
         author: attrs.trIns.author,
         ...(attrs.trIns.date != null && { date: attrs.trIns.date }),
+        ...(attrs.trIns.initials != null && { initials: attrs.trIns.initials }),
       },
     };
   } else if (attrs.trDel) {
@@ -2868,6 +3037,7 @@ function convertPMTableRow(
         id: attrs.trDel.revisionId,
         author: attrs.trDel.author,
         ...(attrs.trDel.date != null && { date: attrs.trDel.date }),
+        ...(attrs.trDel.initials != null && { initials: attrs.trDel.initials }),
       },
     };
   }
@@ -2997,6 +3167,7 @@ function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts):
       id: attrs.cellMarker.info.revisionId,
       author: attrs.cellMarker.info.author,
       ...(attrs.cellMarker.info.date != null && { date: attrs.cellMarker.info.date }),
+      ...(attrs.cellMarker.info.initials != null && { initials: attrs.cellMarker.info.initials }),
     };
     if (attrs.cellMarker.kind === "merge") {
       cell.structuralChange = {

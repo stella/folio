@@ -27,6 +27,10 @@ import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
 import type { SelectionState, TableContextInfo } from "@stll/folio-core/prosemirror";
+import type {
+  FolioSuggestion,
+  SuggestionAppliedAs,
+} from "@stll/folio-core/prosemirror/commands/comments";
 import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import type {
   TemplateSlashMenuKeyAction,
@@ -483,6 +487,41 @@ export type DocxEditorRef = {
     target: FolioDocumentNavigationTarget,
     snapshot?: FolioAIEditSnapshot,
   ) => boolean;
+
+  // -------------------------------------------------------------------------
+  // Suggestions (AI-proposed tracked changes)
+  // -------------------------------------------------------------------------
+
+  /**
+   * The pending suggestions in the live document: AI-proposed tracked changes
+   * (provenance "suggested") grouped by suggestionId. Empty before the editor
+   * view mounts. Apply suggestions by passing `mode: "suggested"` to
+   * {@link applyDocumentOperations}; the result's `applied[].suggestionId`
+   * identifies each one.
+   */
+  getSuggestions: () => FolioSuggestion[];
+  /**
+   * Accept a suggestion: convert it into a normal tracked change authored by
+   * `options.author` (defaults to the editor's configured author). Whole
+   * inserted tables apply directly (`appliedAs: "direct"`); everything else
+   * becomes a tracked change (`"tracked"`). `accepted` is `false` (and
+   * `appliedAs` `null`) when the suggestion is not present.
+   */
+  acceptSuggestion: (
+    suggestionId: string,
+    options?: { author?: string },
+  ) => { accepted: boolean; appliedAs: SuggestionAppliedAs | null };
+  /**
+   * Reject a suggestion: inverse-apply its marks (remove suggested-inserted
+   * text, drop suggested deletions, revert suggested formatting). Returns
+   * `false` when the suggestion is not present.
+   */
+  rejectSuggestion: (suggestionId: string) => boolean;
+  /**
+   * Scroll the editor viewport so the given suggestion comes into view, and
+   * select it. No-op when the suggestion is not present.
+   */
+  scrollToSuggestion: (suggestionId: string) => boolean;
 
   // -------------------------------------------------------------------------
   // Read surface (agents, review tooling)

@@ -54,8 +54,12 @@ import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragr
 import { getSelectedText } from "@stll/folio-core/prosemirror";
 import {
   acceptAIEditRevision,
+  acceptSuggestion,
   findAIEditRevisionRange,
+  findSuggestionRange,
+  getSuggestions,
   rejectAIEditRevision,
+  rejectSuggestion,
 } from "@stll/folio-core/prosemirror/commands/comments";
 import {
   blockSdtAttrsToSdtProperties,
@@ -580,6 +584,49 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         return false;
       }
       const { from, to } = range;
+      const $from = view.state.doc.resolve(from);
+      const $to = view.state.doc.resolve(to);
+      view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
+      requestAnimationFrame(() => opts.scrollVisiblePositionIntoView(from));
+      return true;
+    },
+    getSuggestions: () => {
+      const view = opts.editorView.value;
+      return view ? getSuggestions(view.state) : [];
+    },
+    acceptSuggestion: (suggestionId, options) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return { accepted: false, appliedAs: null };
+      }
+      // Read how the suggestion applies (tracked vs direct) before it is
+      // resolved away, so the host can message the outcome.
+      const appliedAs =
+        getSuggestions(view.state).find((s) => s.suggestionId === suggestionId)?.appliedAs ?? null;
+      const accepted = acceptSuggestion(suggestionId, { author: options?.author ?? opts.author() })(
+        view.state,
+        view.dispatch,
+      );
+      return { accepted, appliedAs: accepted ? appliedAs : null };
+    },
+    rejectSuggestion: (suggestionId) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      return rejectSuggestion(suggestionId)(view.state, view.dispatch);
+    },
+    scrollToSuggestion: (suggestionId) => {
+      const view = opts.editorView.value;
+      if (!view) {
+        return false;
+      }
+      const range = findSuggestionRange(view.state, suggestionId);
+      if (!range) {
+        return false;
+      }
+      // Reuse the revision scroll plumbing (see scrollToAIEditOperation).
+      const { from, to } = clampRangeToDocSize(view.state.doc.content.size, range);
       const $from = view.state.doc.resolve(from);
       const $to = view.state.doc.resolve(to);
       view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));

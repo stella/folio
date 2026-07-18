@@ -60,6 +60,7 @@ import type {
   TrackedChangeMarkAttrs,
   UnderlineAttrs,
 } from "../schema";
+import { TRACKED_CHANGE_PROVENANCE_VALUES } from "../schema/marks";
 
 export type ProseMirrorAttrIssue = {
   path: string;
@@ -982,6 +983,7 @@ export const readTrackedChangeMarkAttrs = (
   requiredNumber(attrs, "revisionId", `${mark.type.name}.attrs.revisionId`, issues);
   requiredString(attrs, "author", `${mark.type.name}.attrs.author`, issues);
   optionalString(attrs, "date", `${mark.type.name}.attrs.date`, issues);
+  optionalString(attrs, "initials", `${mark.type.name}.attrs.initials`, issues);
   optionalOneOf(
     attrs,
     "moveKind",
@@ -989,6 +991,14 @@ export const readTrackedChangeMarkAttrs = (
     issues,
     TRACKED_CHANGE_MOVE_KINDS,
   );
+  optionalOneOf(
+    attrs,
+    "provenance",
+    `${mark.type.name}.attrs.provenance`,
+    issues,
+    TRACKED_CHANGE_PROVENANCE_VALUES,
+  );
+  optionalString(attrs, "suggestionId", `${mark.type.name}.attrs.suggestionId`, issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1010,6 +1020,14 @@ export const readRunPropertyChangeMarkAttrs = (
   optionalPropertyChanges(attrs, "changes", "runPropertyChange.attrs.changes", issues, [
     "runPropertyChange",
   ]);
+  optionalOneOf(
+    attrs,
+    "provenance",
+    "runPropertyChange.attrs.provenance",
+    issues,
+    TRACKED_CHANGE_PROVENANCE_VALUES,
+  );
+  optionalString(attrs, "suggestionId", "runPropertyChange.attrs.suggestionId", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1567,6 +1585,15 @@ const optionalTableRowRevision = (
   requiredNumber(value, "revisionId", `${path}.revisionId`, issues);
   requiredString(value, "author", `${path}.author`, issues);
   optionalString(value, "date", `${path}.date`, issues);
+  optionalString(value, "initials", `${path}.initials`, issues);
+  optionalOneOf(
+    value,
+    "provenance",
+    `${path}.provenance`,
+    issues,
+    TRACKED_CHANGE_PROVENANCE_VALUES,
+  );
+  optionalString(value, "suggestionId", `${path}.suggestionId`, issues);
 };
 
 const optionalTableCellRevision = (
@@ -1591,7 +1618,16 @@ const optionalTableCellRevision = (
   requiredNumber(info, "revisionId", `${path}.info.revisionId`, issues);
   requiredString(info, "author", `${path}.info.author`, issues);
   optionalString(info, "date", `${path}.info.date`, issues);
+  optionalString(info, "initials", `${path}.info.initials`, issues);
   if (value["kind"] === "merge") {
+    // Merge markers never carry suggestion provenance: cell merge/split cannot
+    // run in suggested mode, so the fields are structurally excluded.
+    if (info["provenance"] !== undefined) {
+      issues.push({ path: `${path}.info.provenance`, message: "Not allowed on a merge marker." });
+    }
+    if (info["suggestionId"] !== undefined) {
+      issues.push({ path: `${path}.info.suggestionId`, message: "Not allowed on a merge marker." });
+    }
     optionalOneOf(value, "verticalMerge", `${path}.verticalMerge`, issues, [
       "continue",
       "rest",
@@ -1600,6 +1636,15 @@ const optionalTableCellRevision = (
       "continue",
       "rest",
     ] as const);
+  } else {
+    optionalOneOf(
+      info,
+      "provenance",
+      `${path}.info.provenance`,
+      issues,
+      TRACKED_CHANGE_PROVENANCE_VALUES,
+    );
+    optionalString(info, "suggestionId", `${path}.info.suggestionId`, issues);
   }
 };
 
