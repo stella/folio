@@ -655,10 +655,7 @@ describe("compareDocxVersions: move detection", () => {
       .map((c) => c.text)
       .toSorted();
     expect(movedTexts).toEqual(
-      [
-        "Confidentiality survives termination.",
-        "Notices must be delivered in writing.",
-      ].toSorted(),
+      ["Confidentiality survives termination.", "Notices must be delivered in writing."].toSorted(),
     );
     // Each movedFrom must share its moveGroupId with the matching movedTo of
     // the SAME text, not the other relocated block's.

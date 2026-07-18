@@ -37,9 +37,7 @@ export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): Clean
       return true;
     }
     if (
-      node.marks.some(
-        (mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
-      )
+      node.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK)
     ) {
       // Skip the run entirely (deleted, or OOXML w:vanish hidden text).
       // Don't update lastEnd — if the next surviving char sits right

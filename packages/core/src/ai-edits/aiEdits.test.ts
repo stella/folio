@@ -3805,7 +3805,11 @@ describe("Folio AI edit operations", () => {
             _originalFormatting: { vMerge: "restart" },
             _docxVMergeContinuationCells: continuationCells,
           },
-          [schema.node("paragraph", { paraId: "wide-continuation-split" }, [schema.text("Content")])],
+          [
+            schema.node("paragraph", { paraId: "wide-continuation-split" }, [
+              schema.text("Content"),
+            ]),
+          ],
         ),
       ]),
       schema.node("tableRow"),

@@ -172,9 +172,9 @@ describe("isHangingPunctuation", () => {
   });
 
   test("includes document-specific prohibited line-start characters", () => {
-    expect(
-      isHangingPunctuation("※", { locale: "ja-JP", noLineBreaksBefore: new Set(["※"]) }),
-    ).toBe(true);
+    expect(isHangingPunctuation("※", { locale: "ja-JP", noLineBreaksBefore: new Set(["※"]) })).toBe(
+      true,
+    );
     expect(
       isHangingPunctuation("※", {
         locale: "ja-JP",

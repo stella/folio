@@ -49,7 +49,9 @@ const makeDocx = async ({
       zip.file(path, `<w:${rootName} xmlns:w="${W_NS}">${content}</w:${rootName}>`);
       const rId = `rId${nextRId++}`;
       const target = path.replace(/^word\//, "");
-      relationships.push(`<Relationship Id="${rId}" Type="${relationshipType}" Target="${target}"/>`);
+      relationships.push(
+        `<Relationship Id="${rId}" Type="${relationshipType}" Target="${target}"/>`,
+      );
       sectionReferences.push(`<w:${kind}Reference w:type="default" r:id="${rId}"/>`);
     }
   };
@@ -64,7 +66,8 @@ const makeDocx = async ({
     // part exists in the archive but nothing wires it up.
   }
 
-  const sectPr = sectionReferences.length > 0 ? `<w:sectPr>${sectionReferences.join("")}</w:sectPr>` : "";
+  const sectPr =
+    sectionReferences.length > 0 ? `<w:sectPr>${sectionReferences.join("")}</w:sectPr>` : "";
   zip.file(
     "word/document.xml",
     `<w:document xmlns:w="${W_NS}" xmlns:r="${R_NS}"><w:body>${body}${sectPr}</w:body></w:document>`,

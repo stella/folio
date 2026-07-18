@@ -341,11 +341,12 @@ const findTextMatches = (
       const matchedText = match[0];
       if (
         wholeWord &&
-        (WORD_CHARACTER_AT_END.test(
-          block.text.slice(Math.max(0, at - WORD_BOUNDARY_WINDOW), at),
-        ) ||
+        (WORD_CHARACTER_AT_END.test(block.text.slice(Math.max(0, at - WORD_BOUNDARY_WINDOW), at)) ||
           WORD_CHARACTER_AT_START.test(
-            block.text.slice(at + matchedText.length, at + matchedText.length + WORD_BOUNDARY_WINDOW),
+            block.text.slice(
+              at + matchedText.length,
+              at + matchedText.length + WORD_BOUNDARY_WINDOW,
+            ),
           ))
       ) {
         continue;

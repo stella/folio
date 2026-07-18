@@ -205,9 +205,7 @@ export function getEmbeddedFontFaces(
  * runs — which still carry the original name — keep resolving to the scoped
  * face that was actually registered on `document.fonts`.
  */
-export function buildEmbeddedFontFamilyMap(
-  faces: readonly EmbeddedFont[],
-): Map<string, string> {
+export function buildEmbeddedFontFamilyMap(faces: readonly EmbeddedFont[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const face of faces) {
     map.set(face.originalFamily, face.family);
