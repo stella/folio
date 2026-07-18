@@ -126,21 +126,73 @@ describe("suggested apply mode", () => {
     ).toBe(true);
   });
 
-  test("cell merge/split stay unsupported under suggested mode", () => {
-    const view = makeView("keep me");
+  test("cell merge reports unsupportedMode under suggested mode", () => {
+    // Real 2x1 table so the operation resolves and the skip provably comes
+    // from the suggested-mode allowlist, not a failed table resolution.
+    const cellNode = (text: string, attrs: Record<string, unknown> = {}) =>
+      schema.nodes["tableCell"]!.create(attrs, [schema.node("paragraph", {}, [schema.text(text)])]);
+    const doc = schema.node("doc", null, [
+      schema.nodes["table"]!.create({}, [
+        schema.nodes["tableRow"]!.create({}, [cellNode("top")]),
+        schema.nodes["tableRow"]!.create({}, [cellNode("bottom")]),
+      ]),
+    ]);
+    const view = {
+      state: EditorState.create({ schema, doc }),
+      dispatch(transaction: Transaction) {
+        view.state = view.state.apply(transaction);
+      },
+    };
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
-    const block = snapshot.blocks.at(0)!;
+    const anchor = snapshot.blocks.find((block) => block.text === "top");
+    if (!anchor) {
+      throw new Error("expected the first-cell paragraph in the snapshot");
+    }
     const result = applyFolioAIEditOperations({
       view,
       snapshot,
-      operations: [{ id: "split", type: "splitTableCell", blockId: block.id }],
+      operations: [{ id: "merge", type: "mergeTableCells", blockId: anchor.id, rowCount: 2 }],
       mode: "suggested",
       author: "AI",
     });
-    // Cell merge/split are not in the suggested-supported set, so they never
-    // apply as a suggestion (this one also lacks a table to resolve against).
     expect(result.applied).toEqual([]);
-    expect(result.skipped.at(0)?.id).toBe("split");
+    expect(result.skipped).toEqual([{ id: "merge", reason: "unsupportedMode" }]);
+  });
+
+  test("cell split reports unsupportedMode under suggested mode", () => {
+    // A rowspan-2 cell so splitTableCell resolves (a 1x1 cell would skip as a
+    // no-op before reaching the suggested-mode allowlist).
+    const cellNode = (text: string, attrs: Record<string, unknown> = {}) =>
+      schema.nodes["tableCell"]!.create(attrs, [schema.node("paragraph", {}, [schema.text(text)])]);
+    const doc = schema.node("doc", null, [
+      schema.nodes["table"]!.create({}, [
+        schema.nodes["tableRow"]!.create({}, [
+          cellNode("merged", { rowspan: 2 }),
+          cellNode("r1c2"),
+        ]),
+        schema.nodes["tableRow"]!.create({}, [cellNode("r2c2")]),
+      ]),
+    ]);
+    const view = {
+      state: EditorState.create({ schema, doc }),
+      dispatch(transaction: Transaction) {
+        view.state = view.state.apply(transaction);
+      },
+    };
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    const anchor = snapshot.blocks.find((block) => block.text === "merged");
+    if (!anchor) {
+      throw new Error("expected the merged-cell paragraph in the snapshot");
+    }
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [{ id: "split", type: "splitTableCell", blockId: anchor.id }],
+      mode: "suggested",
+      author: "AI",
+    });
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual([{ id: "split", reason: "unsupportedMode" }]);
   });
 
   test("insertAfterBlock in suggested mode flags the block and strips it", () => {

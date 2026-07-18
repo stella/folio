@@ -206,6 +206,8 @@ type ApplyTrackedInlineFormattingOptions = ApplyInlineFormattingOptions & {
   revisionId: number;
   author: string;
   date: string;
+  /** Optional author initials (w:initials) stamped alongside the author. */
+  initials?: string | undefined;
   /** Non-null stamps the produced `runPropertyChange` mark as a suggestion. */
   suggestionId?: string | null;
 };
@@ -220,6 +222,7 @@ const applyTrackedInlineFormatting = ({
   revisionId,
   author,
   date,
+  initials,
   suggestionId = null,
 }: ApplyTrackedInlineFormattingOptions): Transaction => {
   const propertyChangeType = schema.marks["runPropertyChange"];
@@ -241,7 +244,7 @@ const applyTrackedInlineFormatting = ({
       : [];
     const change: RunPropertyChange = {
       type: "runPropertyChange",
-      info: { id: revisionId, author, date },
+      info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
       ...(Object.keys(previousFormatting).length > 0 ? { previousFormatting } : {}),
     };
     segments.push({
@@ -765,6 +768,7 @@ const applyFolioAIEditOperationsInternal = ({
             revisionId,
             author,
             date,
+            initials,
             suggestionId,
           });
           appliedRevisionIds = [revisionId];

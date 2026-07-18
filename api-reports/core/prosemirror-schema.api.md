@@ -413,8 +413,6 @@ export type TableCellAttrs = {
             author: string;
             date?: string | null;
             initials?: string | null;
-            provenance?: TrackedChangeProvenance;
-            suggestionId?: string | null;
         };
         verticalMerge?: "continue" | "rest";
         verticalMergeOriginal?: "continue" | "rest";

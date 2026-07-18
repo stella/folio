@@ -734,13 +734,16 @@ export type TableCellAttrs = {
       }
     | {
         kind: "merge";
+        /**
+         * Merge markers resolve via cell-merge resolution and are never
+         * produced in suggested mode (cell merge/split reports
+         * `unsupportedMode`), so they carry no suggestion provenance.
+         */
         info: {
           revisionId: number;
           author: string;
           date?: string | null;
           initials?: string | null;
-          provenance?: TrackedChangeProvenance;
-          suggestionId?: string | null;
         };
         verticalMerge?: "continue" | "rest";
         verticalMergeOriginal?: "continue" | "rest";

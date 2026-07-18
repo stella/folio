@@ -142,6 +142,11 @@ const DOCX_SUPERSCRIPT_SCALE = 0.75;
 // the inline fallbacks keep the painted canvas legible without the stylesheet.
 const SUGGESTION_COLOR_CSS = "var(--suggestion-color, #6d3bd6)";
 const SUGGESTION_TINT_CSS = "var(--suggestion-bg, color-mix(in oklch, #6d3bd6 12%, transparent))";
+// The tint is layered as a translucent background-image so authored
+// highlight/shading (w:highlight / w:shd) and the comment highlight — both
+// painted via background-color earlier in applyRunStyles — stay visible
+// underneath the proposal wash instead of being replaced by it.
+const SUGGESTION_TINT_LAYER_CSS = `linear-gradient(${SUGGESTION_TINT_CSS}, ${SUGGESTION_TINT_CSS})`;
 
 function normalizeTextColorValue(color: string): string {
   return color.trim().toLowerCase().replace(/^#/u, "");
@@ -407,7 +412,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     if (run.isSuggestion) {
       element.classList.add("docx-insertion--suggested");
       element.style.textDecorationStyle = "dotted";
-      element.style.backgroundColor = SUGGESTION_TINT_CSS;
+      element.style.backgroundImage = SUGGESTION_TINT_LAYER_CSS;
       element.dataset["provenance"] = "suggested";
       if (run.suggestionId) {
         element.dataset["suggestionId"] = run.suggestionId;
@@ -447,7 +452,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
     if (run.isSuggestion) {
       element.classList.add("docx-deletion--suggested");
       element.style.textDecorationStyle = "dotted";
-      element.style.backgroundColor = SUGGESTION_TINT_CSS;
+      element.style.backgroundImage = SUGGESTION_TINT_LAYER_CSS;
       element.dataset["provenance"] = "suggested";
       if (run.suggestionId) {
         element.dataset["suggestionId"] = run.suggestionId;

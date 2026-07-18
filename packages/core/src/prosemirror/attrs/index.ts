@@ -1619,15 +1619,15 @@ const optionalTableCellRevision = (
   requiredString(info, "author", `${path}.info.author`, issues);
   optionalString(info, "date", `${path}.info.date`, issues);
   optionalString(info, "initials", `${path}.info.initials`, issues);
-  optionalOneOf(
-    info,
-    "provenance",
-    `${path}.info.provenance`,
-    issues,
-    TRACKED_CHANGE_PROVENANCE_VALUES,
-  );
-  optionalString(info, "suggestionId", `${path}.info.suggestionId`, issues);
   if (value["kind"] === "merge") {
+    // Merge markers never carry suggestion provenance: cell merge/split cannot
+    // run in suggested mode, so the fields are structurally excluded.
+    if (info["provenance"] !== undefined) {
+      issues.push({ path: `${path}.info.provenance`, message: "Not allowed on a merge marker." });
+    }
+    if (info["suggestionId"] !== undefined) {
+      issues.push({ path: `${path}.info.suggestionId`, message: "Not allowed on a merge marker." });
+    }
     optionalOneOf(value, "verticalMerge", `${path}.verticalMerge`, issues, [
       "continue",
       "rest",
@@ -1636,6 +1636,15 @@ const optionalTableCellRevision = (
       "continue",
       "rest",
     ] as const);
+  } else {
+    optionalOneOf(
+      info,
+      "provenance",
+      `${path}.info.provenance`,
+      issues,
+      TRACKED_CHANGE_PROVENANCE_VALUES,
+    );
+    optionalString(info, "suggestionId", `${path}.info.suggestionId`, issues);
   }
 };
 

@@ -311,8 +311,9 @@ function stripSuggestedInlineMarks(marks: readonly Mark[]): readonly Mark[] {
  * Compute the node attrs a block/structural node keeps once its suggested
  * revision markers are neutralized. Returns `null` when nothing changes.
  *
- * - a suggested `trDel` / `cellMarker` (deletion or merge) is cleared so the
- *   row/cell serializes as though the proposed change never happened;
+ * - a suggested `trDel` / `cellMarker` (insertion or deletion) is cleared so
+ *   the row/cell serializes as though the proposed change never happened;
+ *   merge markers never carry suggestion provenance (structurally excluded);
  * - suggested INSERT markers are handled by the caller, which drops the whole
  *   node instead of clearing an attr.
  *
@@ -329,7 +330,8 @@ function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
   }
   if (name === "tableCell" || name === "tableHeader") {
     const cellAttrs = expectTableCellAttrs(node);
-    if (cellAttrs.cellMarker?.info.provenance === "suggested") {
+    const marker = cellAttrs.cellMarker;
+    if (marker && marker.kind !== "merge" && marker.info.provenance === "suggested") {
       return { ...cellAttrs, cellMarker: null };
     }
   }

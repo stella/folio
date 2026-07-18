@@ -33,12 +33,15 @@ const deletionStyle = (color: string): string =>
  */
 const SUGGESTION_COLOR = "var(--suggestion-color, #6d3bd6)";
 const SUGGESTION_TINT = "var(--suggestion-bg, color-mix(in oklch, #6d3bd6 12%, transparent))";
+// Layered as a translucent background-image (not background-color) so authored
+// highlight/shading beneath the suggestion stays visible under the tint.
+const SUGGESTION_TINT_LAYER = `linear-gradient(${SUGGESTION_TINT}, ${SUGGESTION_TINT})`;
 
 const suggestedInsertionStyle = (): string =>
-  `color: ${SUGGESTION_COLOR}; text-decoration: underline; text-decoration-style: dotted; text-decoration-color: ${SUGGESTION_COLOR}; background-color: ${SUGGESTION_TINT};`;
+  `color: ${SUGGESTION_COLOR}; text-decoration: underline; text-decoration-style: dotted; text-decoration-color: ${SUGGESTION_COLOR}; background-image: ${SUGGESTION_TINT_LAYER};`;
 
 const suggestedDeletionStyle = (): string =>
-  `color: ${SUGGESTION_COLOR}; text-decoration: line-through; text-decoration-style: dotted; text-decoration-color: ${SUGGESTION_COLOR}; background-color: ${SUGGESTION_TINT};`;
+  `color: ${SUGGESTION_COLOR}; text-decoration: line-through; text-decoration-style: dotted; text-decoration-color: ${SUGGESTION_COLOR}; background-image: ${SUGGESTION_TINT_LAYER};`;
 
 /**
  * Insertion mark — text added in tracked changes

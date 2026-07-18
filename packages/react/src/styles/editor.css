@@ -547,12 +547,14 @@
   --suggestion-bg: color-mix(in oklch, #6d3bd6 12%, transparent);
 }
 
+/* The tint is layered as a translucent background-image so authored
+ * highlight/shading (background-color) stays visible underneath it. */
 .docx-insertion--suggested {
   color: var(--suggestion-color);
   text-decoration: underline;
   text-decoration-style: dotted;
   text-decoration-color: var(--suggestion-color);
-  background-color: var(--suggestion-bg);
+  background-image: linear-gradient(var(--suggestion-bg), var(--suggestion-bg));
 }
 
 .docx-deletion--suggested {
@@ -560,7 +562,7 @@
   text-decoration: line-through;
   text-decoration-style: dotted;
   text-decoration-color: var(--suggestion-color);
-  background-color: var(--suggestion-bg);
+  background-image: linear-gradient(var(--suggestion-bg), var(--suggestion-bg));
 }
 
 /* Author tooltip on rendered tracked-change spans (layout painter output).

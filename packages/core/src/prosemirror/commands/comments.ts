@@ -1206,11 +1206,17 @@ const readStructuralSuggestion = (node: PMNode): StructuralSuggestion | null => 
   if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
     const cellMarker = attrs["cellMarker"];
     if (typeof cellMarker === "object" && cellMarker !== null) {
-      const marker = readSuggestedMarker((cellMarker as { info?: unknown }).info);
-      if (marker) {
-        const kind: SuggestionKind =
-          (cellMarker as { kind?: unknown }).kind === "del" ? "deleteColumn" : "insertColumn";
-        return { ...marker, kind, isNodeInsert: false };
+      // Only insertion/deletion cell markers participate in suggestions.
+      // Merge markers never carry suggestion provenance (cell merge/split is
+      // `unsupportedMode`), so any other kind is ignored rather than
+      // mis-classified as a column insertion.
+      const markerKind = (cellMarker as { kind?: unknown }).kind;
+      if (markerKind === "ins" || markerKind === "del") {
+        const marker = readSuggestedMarker((cellMarker as { info?: unknown }).info);
+        if (marker) {
+          const kind: SuggestionKind = markerKind === "del" ? "deleteColumn" : "insertColumn";
+          return { ...marker, kind, isNodeInsert: false };
+        }
       }
     }
   }
@@ -1450,22 +1456,19 @@ const convertStructuralSuggestionAttrs = (
     }
   }
   if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
-    const cellMarker = attrs["cellMarker"] as
-      | { kind?: unknown; info?: unknown; verticalMerge?: unknown; verticalMergeOriginal?: unknown }
-      | null
-      | undefined;
-    if (cellMarker && readSuggestedMarker(cellMarker.info)) {
+    const cellMarker = attrs["cellMarker"] as { kind?: unknown; info?: unknown } | null | undefined;
+    // Merge markers never carry suggestion provenance (cell merge/split is
+    // `unsupportedMode`), so only ins/del markers can convert to user changes.
+    if (
+      cellMarker &&
+      (cellMarker.kind === "ins" || cellMarker.kind === "del") &&
+      readSuggestedMarker(cellMarker.info)
+    ) {
       return {
         ...attrs,
         cellMarker: {
           kind: cellMarker.kind,
           info: userInfo(cellMarker as { info?: unknown }),
-          ...(cellMarker.verticalMerge !== undefined
-            ? { verticalMerge: cellMarker.verticalMerge }
-            : {}),
-          ...(cellMarker.verticalMergeOriginal !== undefined
-            ? { verticalMergeOriginal: cellMarker.verticalMergeOriginal }
-            : {}),
         },
       };
     }
