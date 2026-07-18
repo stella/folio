@@ -9,7 +9,7 @@
 
 import type { ImageFragment, ImageBlock, ImageMeasure } from "../layout-engine/types";
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
-import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
+import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import type { RenderContext } from "./renderUtils";
 
 /**
@@ -226,9 +226,9 @@ export function renderImageFragment(
   }
 
   // Create the actual image element. Only local data:/blob: sources are
-  // painted — remote or executable schemes are dropped.
+  // painted — remote or executable schemes are dropped (src left unset).
   const imgEl = doc.createElement("img");
-  imgEl.src = sanitizeImageSrc(block.src) ?? "";
+  applySanitizedImageSrc(imgEl, block.src);
   imgEl.alt = block.alt ?? "";
 
   // Image sizing

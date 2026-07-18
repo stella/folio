@@ -24,3 +24,21 @@ export function sanitizeImageSrc(src: string | null | undefined): string | undef
 
   return undefined;
 }
+
+/**
+ * Assign a sanitized source to an `<img>` element. When the source is rejected
+ * the `src` attribute is left unset: assigning `""` makes some browsers resolve
+ * it against the page URL and fire a spurious request for the current page.
+ *
+ * Structural parameter type so painter unit tests (which fake the DOM) can
+ * exercise it without an `HTMLImageElement`.
+ */
+export function applySanitizedImageSrc(
+  imgEl: Pick<HTMLImageElement, "src">,
+  src: string | null | undefined,
+): void {
+  const safeSrc = sanitizeImageSrc(src);
+  if (safeSrc !== undefined) {
+    imgEl.src = safeSrc;
+  }
+}

@@ -40,7 +40,7 @@ import {
   tableColumnsArePinned,
 } from "../layout-engine/types";
 import { emuToPixels } from "../utils/units";
-import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
+import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { resolveAnchoredImagePosition, type PageGeometry } from "./anchoredImagePosition";
 import { borderStrokeToCss, resolveCssBorderStroke } from "./borderStroke";
 import { getAutomaticTextColorForBackground } from "./documentColors";
@@ -170,7 +170,7 @@ function renderCellContent({
       }
 
       const imgEl = doc.createElement("img");
-      imgEl.src = sanitizeImageSrc(img.src) ?? "";
+      applySanitizedImageSrc(imgEl, img.src);
       imgEl.style.width = `${img.width}px`;
       imgEl.style.height = `${img.height}px`;
       imgEl.style.display = "block";

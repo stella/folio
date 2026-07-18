@@ -111,7 +111,9 @@ const PROTOTYPE_POLLUTION_KEYS = new Set(["__proto__", "constructor", "prototype
 
 /** Read a `style="k1:v1;k2:v2"` attribute into a lowercased key/value record. */
 function parseStyleAttr(style: string | null): Record<string, string> {
-  const out: Record<string, string> = {};
+  // Null prototype: the style string is attacker-controlled when the DOCX is
+  // untrusted, so the record must not inherit from (or shadow) Object.prototype.
+  const out: Record<string, string> = Object.create(null);
   if (!style) {
     return out;
   }

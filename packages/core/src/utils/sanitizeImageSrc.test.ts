@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { sanitizeImageSrc } from "./sanitizeImageSrc";
+import { applySanitizedImageSrc, sanitizeImageSrc } from "./sanitizeImageSrc";
 
 describe("sanitizeImageSrc", () => {
   test("allows data:image and blob URLs", () => {
@@ -24,5 +24,21 @@ describe("sanitizeImageSrc", () => {
     expect(sanitizeImageSrc("   ")).toBeUndefined();
     expect(sanitizeImageSrc(null)).toBeUndefined();
     expect(sanitizeImageSrc(undefined)).toBeUndefined();
+  });
+});
+
+describe("applySanitizedImageSrc", () => {
+  test("assigns accepted sources", () => {
+    const img = { src: "" };
+    applySanitizedImageSrc(img, "blob:https://example.com/uuid");
+    expect(img.src).toBe("blob:https://example.com/uuid");
+  });
+
+  test("leaves src untouched for rejected sources", () => {
+    const img = { src: "" };
+    applySanitizedImageSrc(img, "https://evil.example/a.png");
+    expect(img.src).toBe("");
+    applySanitizedImageSrc(img, undefined);
+    expect(img.src).toBe("");
   });
 });

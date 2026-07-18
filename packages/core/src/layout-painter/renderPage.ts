@@ -46,7 +46,7 @@ import type {
 import type { BorderSpec, Theme, Watermark } from "../types/document";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { borderToStyle } from "../utils/formatToStyle";
-import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
+import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { eighthsToPixels, pointsToPixels } from "../utils/units";
 import {
   resolveAnchoredImagePosition as resolveAnchoredImagePositionShared,
@@ -951,7 +951,7 @@ export function renderFloatingImagesLayer(
     }
 
     const img = doc.createElement("img");
-    img.src = sanitizeImageSrc(floatImg.src) ?? "";
+    applySanitizedImageSrc(img, floatImg.src);
     img.style.width = `${floatImg.width}px`;
     img.style.height = `${floatImg.height}px`;
     img.style.display = "block";
@@ -1239,7 +1239,7 @@ function renderHeaderFooterContent(
   // Render floating images with absolute positioning
   for (const floatImg of floatingImages) {
     const img = doc.createElement("img");
-    img.src = sanitizeImageSrc(floatImg.src) ?? "";
+    applySanitizedImageSrc(img, floatImg.src);
     img.width = floatImg.width;
     img.height = floatImg.height;
     if (floatImg.alt) {
