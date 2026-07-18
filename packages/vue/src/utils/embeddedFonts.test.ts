@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { EmbeddedFont } from "@stll/folio-core/fonts/embeddedFonts";
 
+// The mock replaces the module registry entry for every later importer in the
+// test process, so it must keep the real exports and only stub extraction.
+const actualEmbeddedFonts = await import("@stll/folio-core/fonts/embeddedFonts");
+
 let extractImpl: (buffer: ArrayBuffer) => Promise<EmbeddedFont[]>;
 void mock.module("@stll/folio-core/fonts/embeddedFonts", () => ({
+  ...actualEmbeddedFonts,
   extractEmbeddedFonts: (buffer: ArrayBuffer) => extractImpl(buffer),
 }));
 
