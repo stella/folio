@@ -44,6 +44,7 @@ import { getAuthorColorIdx, AUTHOR_COLORS } from "../utils/authorColors";
 import { detectBaseDirection } from "../utils/baseDirection";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
+import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import {
   inlineImageBoundingBox,
   parseRotationDegrees,
@@ -726,7 +727,7 @@ function renderInlineImageRun(run: ImageRun, doc: Document): HTMLElement {
   const img = doc.createElement("img");
   img.className = `${PARAGRAPH_CLASS_NAMES.run} ${PARAGRAPH_CLASS_NAMES.image}`;
 
-  img.src = run.src;
+  img.src = sanitizeImageSrc(run.src) ?? "";
   img.width = run.width;
   img.height = run.height;
   img.style.width = `${run.width}px`;
@@ -846,7 +847,7 @@ function renderBlockImage(run: ImageRun, doc: Document): HTMLElement {
   container.style.marginBottom = `${run.distBottom ?? 6}px`;
 
   const img = doc.createElement("img");
-  img.src = run.src;
+  img.src = sanitizeImageSrc(run.src) ?? "";
   img.width = run.width;
   img.height = run.height;
   if (run.alt) {

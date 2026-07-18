@@ -8,7 +8,15 @@
  * - Ctrl+C, Ctrl+V, Ctrl+X keyboard shortcuts
  */
 
+import createDOMPurify from "dompurify";
+
 import type { Run, TextFormatting, Paragraph } from "../types/document";
+import { stripXmlDeclarations } from "./stripXmlDeclarations";
+
+// DOMPurify's default export only binds `sanitize` when a `window` exists.
+let domPurify: ReturnType<typeof createDOMPurify> | undefined;
+const getDomPurify = (): ReturnType<typeof createDOMPurify> =>
+  (domPurify ??= createDOMPurify(window));
 
 // ============================================================================
 // TYPES
@@ -545,16 +553,27 @@ function stripPairedNamespaceTags(html: string, prefix: string): string {
 }
 
 /**
+ * Sanitize inbound clipboard HTML at the paste trust boundary.
+ *
+ * Comments and XML declarations are stripped with linear scanners. When a
+ * browser `window` is available, DOMPurify removes scripts, event handlers,
+ * and dangerous URLs before any DOM walk. Without a window (unit stubs / SSR)
+ * the linear cleaners still run; the live editor path always has `window`.
+ */
+export function sanitizeInboundClipboardHtml(html: string): string {
+  let cleaned = stripHtmlComments(html);
+  cleaned = stripXmlDeclarations(cleaned);
+  if (typeof globalThis.window === "undefined") {
+    return cleaned;
+  }
+  return getDomPurify().sanitize(cleaned);
+}
+
+/**
  * Clean Microsoft Word HTML
  */
 export function cleanWordHtml(html: string): string {
-  let cleaned = html;
-
-  // Remove Word-specific comments and any other HTML comments.
-  cleaned = stripHtmlComments(cleaned);
-
-  // Remove XML declarations
-  cleaned = cleaned.replace(/<\?xml[^>]*>/gi, "");
+  let cleaned = sanitizeInboundClipboardHtml(html);
 
   // Remove o: (Office) namespace tags.
   cleaned = stripPairedNamespaceTags(cleaned, "o:");
@@ -579,7 +598,8 @@ export function cleanWordHtml(html: string): string {
 }
 
 function cleanWordAttributes(html: string): string {
-  const container = new DOMParser().parseFromString(html, "text/html").body;
+  const sanitized = sanitizeInboundClipboardHtml(html);
+  const container = new DOMParser().parseFromString(sanitized, "text/html").body;
 
   for (const element of Array.from(container.querySelectorAll<HTMLElement>("*"))) {
     const filteredClasses = Array.from(element.classList).filter(
@@ -621,7 +641,8 @@ export function htmlToRuns(html: string, plainTextFallback: string): Run[] {
     return plainTextFallback ? [createTextRun(plainTextFallback)] : [];
   }
 
-  const container = new DOMParser().parseFromString(html, "text/html").body;
+  const sanitized = sanitizeInboundClipboardHtml(html);
+  const container = new DOMParser().parseFromString(sanitized, "text/html").body;
 
   const runs: Run[] = [];
   processNode(container, runs, {});

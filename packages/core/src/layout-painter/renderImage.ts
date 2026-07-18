@@ -8,6 +8,8 @@
  */
 
 import type { ImageFragment, ImageBlock, ImageMeasure } from "../layout-engine/types";
+import { sanitizeExternalUrl } from "../utils/urlSecurity";
+import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import type { RenderContext } from "./renderUtils";
 
 /**
@@ -223,9 +225,10 @@ export function renderImageFragment(
     containerEl.dataset["pmEnd"] = String(fragment.pmEnd);
   }
 
-  // Create the actual image element
+  // Create the actual image element. Only local data:/blob: sources are
+  // painted — remote or executable schemes are dropped.
   const imgEl = doc.createElement("img");
-  imgEl.src = block.src;
+  imgEl.src = sanitizeImageSrc(block.src) ?? "";
   imgEl.alt = block.alt ?? "";
 
   // Image sizing
@@ -239,9 +242,9 @@ export function renderImageFragment(
     imgEl.style.transform = block.transform;
   }
 
-  // eigenpal #424: scale/shift `<img>` so the cropped slice fills the
-  // overflow-hidden container (already sized to the visible extent above),
-  // plus emit `opacity` when set via `<a:alphaModFix>` (PR #517 follow-up).
+  // Scale/shift `<img>` so the cropped slice fills the overflow-hidden
+  // container (already sized to the visible extent above), plus emit
+  // `opacity` when set via `<a:alphaModFix>`.
   if (hasImageVisualAttrs(block)) {
     applyImageVisualAttrs(imgEl, block);
   }
@@ -250,9 +253,10 @@ export function renderImageFragment(
   imgEl.draggable = false;
 
   // Wrap in hyperlink if image has a link
-  if (block.hlinkHref) {
+  const hlinkHref = sanitizeExternalUrl(block.hlinkHref);
+  if (hlinkHref) {
     const linkEl = doc.createElement("a");
-    linkEl.href = block.hlinkHref;
+    linkEl.href = hlinkHref;
     linkEl.target = "_blank";
     linkEl.rel = "noopener noreferrer";
     linkEl.style.display = "block";

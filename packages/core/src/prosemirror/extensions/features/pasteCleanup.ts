@@ -18,6 +18,8 @@
  * audience).
  */
 
+import { stripXmlDeclarations } from "../../../utils/stripXmlDeclarations";
+
 /**
  * Remove every HTML comment, including downlevel conditional comments
  * (`<!--[if gte mso 9]> ... <![endif]-->`) that carry the Office `<xml>` island,
@@ -158,7 +160,6 @@ const TAG_TAIL = `(?:"[^"]*"|'[^']*'|[^>"'])*`;
 // `<v:shape>`, `<m:oMath>`, `<st1:place>`). Tag-only removal keeps any inner
 // text so wrapped user content is never deleted.
 const NAMESPACED_TAG = new RegExp(`<\\/?(?:[owvm]|st\\d+):${TAG_TAIL}>`, "gi");
-const XML_PROCESSING_INSTRUCTION = new RegExp(`<\\?xml${TAG_TAIL}>`, "gi");
 const STRAY_XML_TAG = new RegExp(`<\\/?xml${TAG_TAIL}>`, "gi");
 const NOISE_TAG = new RegExp(`<\\/?(?:font|meta|link)${TAG_TAIL}>`, "gi");
 const EMPTY_SPAN = new RegExp(`<span(?:\\s${TAG_TAIL})?><\\/span>`, "gi");
@@ -229,7 +230,7 @@ export function cleanPastedHtml(html: string): string {
 
   try {
     let cleaned = stripHtmlComments(html);
-    cleaned = cleaned.replace(XML_PROCESSING_INSTRUCTION, "");
+    cleaned = stripXmlDeclarations(cleaned);
     cleaned = cleaned.replace(NAMESPACED_TAG, "");
     cleaned = cleaned.replace(STRAY_XML_TAG, "");
     cleaned = cleaned.replace(NOISE_TAG, "");

@@ -10,6 +10,7 @@ import type { EditorView } from "prosemirror-view";
 
 import { getClipboardImageFiles } from "../../../utils/clipboard";
 import { isSafeImageFile } from "../../../utils/imageValidation";
+import { sanitizeImageSrc } from "../../../utils/sanitizeImageSrc";
 import { createExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 
@@ -29,12 +30,17 @@ async function readFileAsDataUrl(file: File): Promise<string> {
 
 async function loadImageSize(src: string): Promise<{ width: number; height: number }> {
   return await new Promise((resolve, reject) => {
+    const safeSrc = sanitizeImageSrc(src);
+    if (!safeSrc) {
+      reject(new Error("Rejected unsafe image source"));
+      return;
+    }
     const img = new Image();
     img.addEventListener("load", () =>
       resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 }),
     );
     img.addEventListener("error", () => reject(new Error("Failed to load pasted image")));
-    img.src = src;
+    img.src = safeSrc;
   });
 }
 
@@ -55,7 +61,12 @@ async function insertImageFiles(view: EditorView, files: File[]): Promise<void> 
     let dataUrl: string;
     try {
       // oxlint-disable-next-line no-await-in-loop -- images insert sequentially at the moving insertPos cursor; ordering must be preserved
-      dataUrl = await readFileAsDataUrl(file);
+      const rawDataUrl = await readFileAsDataUrl(file);
+      const safeSrc = sanitizeImageSrc(rawDataUrl);
+      if (!safeSrc) {
+        continue;
+      }
+      dataUrl = safeSrc;
     } catch {
       continue;
     }

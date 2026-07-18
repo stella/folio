@@ -799,3 +799,21 @@ describe("VML w:pict inline images", () => {
     expect(reDrawing?.image.src?.startsWith("data:image/png")).toBe(true);
   });
 });
+
+describe("VML style attribute hardening", () => {
+  test("ignores prototype-polluting style keys without breaking width parse", async () => {
+    const marker = "__folio_vml_style_pollution__";
+    expect(Object.hasOwn(Object.prototype, marker)).toBe(false);
+
+    const original = await pictDocx({
+      runXml: `<w:pict><v:shape style="width:120pt;height:40pt;__proto__:${marker};constructor:x;prototype:y"><v:imagedata r:id="rIdImg"/></v:shape></w:pict>`,
+    });
+    const doc = await parseDocx(original, { preloadFonts: false });
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    expect(drawing?.image.src?.startsWith("data:image/png")).toBe(true);
+    expect(drawing?.image.size.width).toBeGreaterThan(0);
+
+    expect(Object.hasOwn(Object.prototype, marker)).toBe(false);
+    expect(({} as Record<string, unknown>)[marker]).toBeUndefined();
+  });
+});

@@ -293,6 +293,16 @@ describe("cleanWordHtml", () => {
     });
   });
 
+  test("strips xml declarations without regex backtracking", () => {
+    withDomParserStub(() => {
+      expect(cleanWordHtml('a<?xml version="1.0"?>b')).toBe("ab");
+      const evil = "<?xml".repeat(20_000);
+      const start = performance.now();
+      expect(cleanWordHtml(evil)).toBe(evil);
+      expect(performance.now() - start).toBeLessThan(2000);
+    });
+  });
+
   test("strips many unterminated Office namespace openers in linear time", () => {
     withDomParserStub(() => {
       const evil = "<o:p>".repeat(100_000);

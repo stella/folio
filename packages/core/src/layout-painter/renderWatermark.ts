@@ -12,11 +12,12 @@
 import type { Page } from "../layout-engine/types";
 import type { Watermark } from "../types/document";
 import { resolveFontFamily } from "../utils/fontResolver";
+import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 
 const WATERMARK_CLASS = "layout-page-watermark";
 
 export type RenderWatermarkOptions = {
-  /** Resolved image src for picture watermarks (data URL or http URL). */
+  /** Resolved image src for picture watermarks (`data:` / `blob:` only). */
   imageSrc?: string;
 };
 
@@ -103,7 +104,7 @@ function renderPictureWatermark(
   doc: Document,
 ): HTMLElement {
   const img = doc.createElement("img");
-  img.src = imageSrc;
+  img.src = sanitizeImageSrc(imageSrc) ?? "";
   img.alt = "";
   // Decorative — never announced.
   img.setAttribute("aria-hidden", "true");

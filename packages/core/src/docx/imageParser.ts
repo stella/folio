@@ -39,6 +39,7 @@ import type {
 } from "../types/document";
 import { emuToPixels } from "../utils/units";
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
+import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import {
   parsePositionH,
   parsePositionV,
@@ -628,8 +629,9 @@ function parseInline(
   if (props.decorative) {
     image.decorative = true;
   }
-  if (imageData.src) {
-    image.src = imageData.src;
+  const safeSrc = sanitizeImageSrc(imageData.src);
+  if (safeSrc) {
+    image.src = safeSrc;
   }
   if (imageData.mimeType) {
     image.mimeType = imageData.mimeType;
@@ -766,8 +768,9 @@ function parseAnchor(
   if (props.decorative) {
     image.decorative = true;
   }
-  if (imageData.src) {
-    image.src = imageData.src;
+  const safeSrc = sanitizeImageSrc(imageData.src);
+  if (safeSrc) {
+    image.src = safeSrc;
   }
   if (imageData.mimeType) {
     image.mimeType = imageData.mimeType;

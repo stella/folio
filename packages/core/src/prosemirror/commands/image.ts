@@ -20,6 +20,7 @@ import {
   IMAGE_VERTICAL_RELATIVE_TO_VALUES,
 } from "../../types/documentEnumValues";
 import { isSafeImageFile } from "../../utils/imageValidation";
+import { sanitizeImageSrc } from "../../utils/sanitizeImageSrc";
 import { expectImageAttrs, mergeImageAttrs } from "../attrs";
 import type { ImageAttrs, ImagePositionAttrs } from "../schema/nodes";
 
@@ -349,6 +350,11 @@ function readFileAsDataUrl(file: File): Promise<string> {
 
 function loadImageDimensions(src: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
+    const safeSrc = sanitizeImageSrc(src);
+    if (!safeSrc) {
+      reject(new Error("Rejected unsafe image source"));
+      return;
+    }
     const img = new Image();
     img.addEventListener("load", () => {
       resolve({
@@ -359,6 +365,6 @@ function loadImageDimensions(src: string): Promise<{ width: number; height: numb
     img.addEventListener("error", () => {
       reject(new Error("Failed to load image"));
     });
-    img.src = src;
+    img.src = safeSrc;
   });
 }
