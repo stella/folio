@@ -225,6 +225,9 @@ export type AutocompleteTriggerOptions = {
 export type AutocompleteTriggerSkipReason = "selection-non-empty" | "midword" | "deadzone" | "empty-doc";
 
 // @public
+export function buildEmbeddedFontFamilyMap(faces: readonly EmbeddedFont[]): Map<string, string>;
+
+// @public
 export function buildPositionalText(doc: Node_2, from?: number, to?: number): PositionalText;
 
 // @public (undocumented)
@@ -385,7 +388,8 @@ export type DocxConformanceClass = import__stll_docx_core_model.DocxConformanceC
 
 // @public
 export type EmbeddedFont = {
-    family: string; /** CSS `font-style` the face maps to (`embed*Italic` → `italic`). */
+    family: string; /** Original Word font name (`w:font w:name`), before scoping. */
+    originalFamily: string; /** CSS `font-style` the face maps to (`embed*Italic` → `italic`). */
     style: "normal" | "italic"; /** CSS `font-weight` the face maps to (`embedBold*` → `700`). */
     weight: 400 | 700; /** De-obfuscated OpenType/TrueType bytes (backed by a fresh, non-shared buffer). */
     bytes: Uint8Array<ArrayBuffer>; /** Whether the source face was subsetted (`w:subsetted`). */
@@ -413,7 +417,7 @@ export type ExtractDocumentStyleSetOptions = {
 };
 
 // @public
-export function extractEmbeddedFonts(buffer: ArrayBuffer): Promise<EmbeddedFont[]>;
+export function extractEmbeddedFonts(buffer: ArrayBuffer, docNonce?: string): Promise<EmbeddedFont[]>;
 
 // @public (undocumented)
 export const finishAutocompleteSuggestion: (tr: Transaction, requestId: string) => Transaction;
@@ -827,7 +831,7 @@ export const getAnonymizationMatches: (state: EditorState) => readonly Anonymiza
 export const getAutocompleteSuggestion: (state: EditorState) => AutocompleteSuggestionState;
 
 // @public
-export function getEmbeddedFontFaces(parts: EmbeddedFontParts): EmbeddedFont[];
+export function getEmbeddedFontFaces(parts: EmbeddedFontParts, docNonce?: string): EmbeddedFont[];
 
 // @public
 export const getFolioCaretViewportRect: (view: EditorView) => DOMRect | null;
@@ -951,6 +955,9 @@ export function resolveSuggestionAnchor(doc: Node_2, suggestion: AISuggestion): 
 export const scanDirectives: (doc: Node_2) => DirectiveRange[];
 
 // @public
+export function scopeEmbeddedFontFamily(docNonce: string, originalFamily: string): string;
+
+// @public
 export const scrollFolioPositionIntoView: (view: EditorView, pmPos: number) => boolean;
 
 // @public (undocumented)
@@ -988,6 +995,9 @@ export const setAnonymizationTermsMeta: (terms: readonly AnonymizationTerm[]) =>
         terms: readonly AnonymizationTerm[];
     };
 };
+
+// @public (undocumented)
+export const setEmbeddedFontFamilyMap: (map: ReadonlyMap<string, string> | null) => void;
 
 // @public (undocumented)
 export function setFocusedSuggestionMeta(focusedId: string | null): {

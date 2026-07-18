@@ -156,7 +156,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -243,7 +243,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -326,7 +326,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -414,7 +414,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -483,7 +483,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -552,7 +552,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -617,7 +617,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -670,7 +670,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -727,7 +727,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -808,7 +808,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -861,7 +861,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -902,7 +902,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -955,7 +955,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -996,7 +996,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -1047,7 +1047,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -1093,7 +1093,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: {
                                 readonly blockTextHash: {
                                     readonly type: "string";
                                     readonly pattern: "^h[0-9a-z]+$";
-                                    readonly description: "Normalized hash of the target block's text.";
+                                    readonly description: "Normalized hash of the target block's text, from a prior document read.";
                                 };
                             };
                             readonly required: readonly ["blockTextHash"];
@@ -1178,7 +1178,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1265,7 +1265,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1348,7 +1348,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1436,7 +1436,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1505,7 +1505,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1574,7 +1574,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1639,7 +1639,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1692,7 +1692,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1749,7 +1749,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1830,7 +1830,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1883,7 +1883,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1924,7 +1924,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -1977,7 +1977,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -2018,7 +2018,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -2069,7 +2069,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -2115,7 +2115,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: {
                     readonly blockTextHash: {
                         readonly type: "string";
                         readonly pattern: "^h[0-9a-z]+$";
-                        readonly description: "Normalized hash of the target block's text.";
+                        readonly description: "Normalized hash of the target block's text, from a prior document read.";
                     };
                 };
                 readonly required: readonly ["blockTextHash"];
@@ -2146,6 +2146,7 @@ export type FolioAgentBlock = {
     blockId: string;
     kind: string;
     text: string;
+    blockTextHash: string;
 };
 
 // @public
@@ -2287,7 +2288,8 @@ export type FolioAgentTextMatch = {
     story?: {
         type: "main";
     };
-    blockId: string; /** Stable handle that can be passed directly to `show_in_document` or a range operation. */
+    blockId: string; /** Normalized-text hash of the whole containing block; see {@link FolioAgentBlock.blockTextHash}. */
+    blockTextHash: string; /** Stable handle that can be passed directly to `show_in_document` or a range operation. */
     range: FolioAITextRangeHandle; /** 0-based index of this occurrence within its block. */
     occurrenceInBlock: number; /** Real rendered page when a live paginated surface supplies it. */
     page?: number;

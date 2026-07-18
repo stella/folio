@@ -12,6 +12,9 @@ export function ensureWatermarkHeaderCoverage(doc: import__stll_docx_core_model.
 // @public
 export function getDocumentWatermark(doc: import__stll_docx_core_model.Document): import__stll_docx_core_model.Watermark | undefined;
 
+// @public
+export function isAllowedExternalWatermarkImageUrl(target: string): boolean;
+
 // @public (undocumented)
 export type PictureWatermark = import__stll_docx_core_model.PictureWatermark;
 

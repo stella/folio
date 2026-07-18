@@ -1216,6 +1216,9 @@ export const getFolioDocumentOutline: (snapshot: FolioAIEditSnapshot) => FolioDo
 export const getFolioParaIdFromBlockId: (id: string) => string | null;
 
 // @public (undocumented)
+export const hashFolioAIBlockText: (text: string) => string;
+
+// @public (undocumented)
 export const inspectDocumentStyles: (document: import__stll_docx_core_model.Document) => DocumentStyleCatalog;
 
 // @public (undocumented)
@@ -1275,6 +1278,9 @@ export const isSequentialFolioBlockId: (id: string) => boolean;
 
 // @public (undocumented)
 export const isSupportedFolioDocumentOperationVersion: (value: unknown) => value is typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+
+// @public (undocumented)
+export const normalizeFolioAIBlockText: (text: string) => string;
 
 // @public (undocumented)
 export const parseFolioDocumentOperationBatch: (value: unknown) => FolioDocumentOperationBatch;
