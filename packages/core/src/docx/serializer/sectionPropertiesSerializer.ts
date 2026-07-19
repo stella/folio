@@ -6,6 +6,7 @@ import type {
   SectionPropertyChange,
   SectionProperties,
 } from "../../types/document";
+import { normalizeRevisionId } from "@stll/docx-core/model";
 import { getUnserializedSectionPropertyChildNames } from "../sectionParser";
 import { serializeBorder } from "./borderSerializer";
 import { escapeXml, intAttr } from "./xmlUtils";
@@ -303,7 +304,7 @@ function serializeOnOffElement(value: boolean | undefined, name: string): string
 }
 
 function serializeSectionPropertyChange(change: SectionPropertyChange): string {
-  const normalizedId = Number.isInteger(change.info.id) && change.info.id >= 0 ? change.info.id : 0;
+  const normalizedId = normalizeRevisionId(change.info.id);
   const authorCandidate = typeof change.info.author === "string" ? change.info.author.trim() : "";
   const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
   const normalizedDate = typeof change.info.date === "string" ? change.info.date.trim() : undefined;

@@ -37,6 +37,7 @@ import type {
   BlockContent,
   RunPropertyChange,
 } from "../../types/document";
+import { normalizeRevisionId } from "@stll/docx-core/model";
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 import { isValidHexColor } from "../../utils/colorResolver";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
@@ -444,7 +445,7 @@ function extractRPrInner(rPrXml: string): string {
 }
 
 function serializeRunPropertyChange(change: RunPropertyChange): string {
-  const normalizedId = Number.isInteger(change.info.id) && change.info.id >= 0 ? change.info.id : 0;
+  const normalizedId = normalizeRevisionId(change.info.id);
   const authorCandidate = typeof change.info.author === "string" ? change.info.author.trim() : "";
   const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
   const normalizedDate = typeof change.info.date === "string" ? change.info.date.trim() : undefined;

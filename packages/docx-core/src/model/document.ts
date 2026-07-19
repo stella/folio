@@ -62,7 +62,9 @@ export type {
   NumberingDefinitions,
 } from "./lists";
 
-// Content Model
+// Content Model — revision-id bounds (values, not types)
+export { MAX_REVISION_ID, normalizeRevisionId } from "./content";
+
 export type {
   TextContent,
   TabContent,

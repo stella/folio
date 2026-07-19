@@ -36,6 +36,7 @@ import type {
   ShadingProperties,
   Paragraph,
 } from "../../types/document";
+import { normalizeRevisionId } from "@stll/docx-core/model";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { serializeBorder } from "./borderSerializer";
 import { escapeXml, intAttr } from "./xmlUtils";
@@ -47,7 +48,7 @@ function normalizeTrackedChangeInfo(info: { id: number; author: string; date?: s
   author: string;
   date?: string;
 } {
-  const normalizedId = Number.isInteger(info.id) && info.id >= 0 ? info.id : 0;
+  const normalizedId = normalizeRevisionId(info.id);
   const authorCandidate = typeof info.author === "string" ? info.author.trim() : "";
   const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
   const normalizedDate = typeof info.date === "string" ? info.date.trim() : undefined;

@@ -35,6 +35,7 @@ import type {
   TextFormatting,
   TrackedChangeInfo,
 } from "../../types/document";
+import { normalizeRevisionId } from "@stll/docx-core/model";
 import { isValidHexColor } from "../../utils/colorResolver";
 import { numPrEqual } from "../numberingParser";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
@@ -375,7 +376,8 @@ function serializeTrackedChangeAttrs(info: TrackedChangeInfo): string {
   // NOTE: `w:initials` is intentionally NOT emitted — ECMA-376 CT_TrackChange
   // defines only w:id/w:author/w:date. Initials are carried in-model for UI
   // attribution only (w:comment is the sole standards-clean initials target).
-  const parts = [`w:id="${info.id}"`, `w:author="${escapeXml(info.author)}"`];
+  // Bound `w:id` here so an overflowing id cannot reach the XML (eigenpal #1093).
+  const parts = [`w:id="${normalizeRevisionId(info.id)}"`, `w:author="${escapeXml(info.author)}"`];
   if (info.date !== undefined) {
     parts.push(`w:date="${escapeXml(info.date)}"`);
   }
@@ -547,7 +549,7 @@ function extractRPrInner(rPrXml: string): string {
 }
 
 function serializeParagraphPropertyChange(change: ParagraphPropertyChange): string {
-  const normalizedId = Number.isInteger(change.info.id) && change.info.id >= 0 ? change.info.id : 0;
+  const normalizedId = normalizeRevisionId(change.info.id);
   const authorCandidate = typeof change.info.author === "string" ? change.info.author.trim() : "";
   const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
   const normalizedDate = typeof change.info.date === "string" ? change.info.date.trim() : undefined;
@@ -950,7 +952,7 @@ function serializeTrackedChange(
   change: Insertion | Deletion | MoveFrom | MoveTo,
 ): string {
   const info = change.info;
-  const normalizedId = Number.isInteger(info.id) && info.id >= 0 ? info.id : 0;
+  const normalizedId = normalizeRevisionId(info.id);
   const authorCandidate = typeof info.author === "string" ? info.author.trim() : "";
   const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
   const normalizedDate = typeof info.date === "string" ? info.date.trim() : undefined;

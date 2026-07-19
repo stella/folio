@@ -223,6 +223,39 @@ describe("parseParagraph tracked-change hardening", () => {
       id: 5,
     });
   });
+
+  test("folds an out-of-range id on an inline w:ins into the int32 range (eigenpal #1093)", () => {
+    const OUT_OF_RANGE = "2147483654"; // MAX_REVISION_ID + 7
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:ins w:id="${OUT_OF_RANGE}" w:author="A">
+          <w:r><w:t>added</w:t></w:r>
+        </w:ins>
+      </w:p>
+    `);
+
+    const insertion = paragraph.content.find((c) => c.type === "insertion");
+    expect(insertion?.type).toBe("insertion");
+    if (!insertion || insertion.type !== "insertion") {
+      return;
+    }
+    expect(insertion.info.id).toBeLessThanOrEqual(2_147_483_647);
+    expect(insertion.info.id).toBeGreaterThanOrEqual(0);
+  });
+
+  test("folds an out-of-range id on a paragraph-mark w:ins (pPrMark)", () => {
+    const OUT_OF_RANGE = "2147483654";
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:pPr><w:rPr><w:ins w:id="${OUT_OF_RANGE}" w:author="A"/></w:rPr></w:pPr>
+        <w:r><w:t>text</w:t></w:r>
+      </w:p>
+    `);
+
+    expect(paragraph.pPrMark).toBeDefined();
+    expect(paragraph.pPrMark?.info.id).toBeLessThanOrEqual(2_147_483_647);
+    expect(paragraph.pPrMark?.info.id).toBeGreaterThanOrEqual(0);
+  });
 });
 
 describe("parseParagraph rendered page break markers", () => {

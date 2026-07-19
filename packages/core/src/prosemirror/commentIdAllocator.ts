@@ -13,7 +13,11 @@
  */
 
 import type { EditorView } from "prosemirror-view";
+
+import { MAX_REVISION_ID } from "@stll/docx-core/model";
+
 import type { Comment } from "../types/content";
+import { seedRevisionIdsAbove } from "./plugins/revisionIds";
 
 /** Sentinel ID for a comment that hasn't been persisted yet (anchored to selection). */
 export const PENDING_COMMENT_ID = -1;
@@ -37,9 +41,19 @@ export type CommentIdAllocator = {
 export function createCommentIdAllocator(): CommentIdAllocator {
   let nextId = 1;
   return {
-    next: () => nextId++,
+    next: () => {
+      if (nextId > MAX_REVISION_ID) {
+        nextId = 1;
+      }
+      return nextId++;
+    },
     seedAbove(maxId: number) {
-      if (maxId >= nextId) nextId = maxId + 1;
+      if (!Number.isInteger(maxId) || maxId < 0 || maxId >= MAX_REVISION_ID) {
+        return;
+      }
+      if (maxId >= nextId) {
+        nextId = maxId + 1;
+      }
     },
   };
 }
@@ -58,14 +72,28 @@ export function seedCommentAllocator(
   view: EditorView | null,
 ): void {
   let max = 0;
-  for (const comment of comments ?? []) max = Math.max(max, comment.id);
+  for (const comment of comments ?? []) {
+    if (Number.isInteger(comment.id) && comment.id > max && comment.id <= MAX_REVISION_ID) {
+      max = comment.id;
+    }
+  }
   if (view) {
     view.state.doc.descendants((node) => {
       for (const mark of node.marks) {
-        if (mark.attrs["revisionId"] != null)
-          max = Math.max(max, mark.attrs["revisionId"] as number);
+        const revisionId = mark.attrs["revisionId"];
+        if (
+          typeof revisionId === "number" &&
+          Number.isInteger(revisionId) &&
+          revisionId > max &&
+          revisionId <= MAX_REVISION_ID
+        ) {
+          max = revisionId;
+        }
       }
     });
   }
   allocator.seedAbove(max);
+  // Keep the tracked-revision counter in the same shared OOXML id space so
+  // suggestion-mode mints cannot collide with comment ids (eigenpal #1093).
+  seedRevisionIdsAbove(max);
 }

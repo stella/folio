@@ -937,6 +937,36 @@ export type MathEquation = {
 // ============================================================================
 
 /**
+ * Largest value a revision id (`w:id`) may carry: 2^31 - 1.
+ *
+ * `w:id` on `<w:ins>`/`<w:del>` comes from `CT_Markup`, typed
+ * `ST_DecimalNumber` — which ECMA-376 defines as an unbounded integer. The
+ * bound below is an implementation limit: conforming consumers read
+ * `ST_DecimalNumber` into a signed 32-bit int, and a value past this bound
+ * overflows on load and surfaces as an unreadable document. Port of
+ * eigenpal/docx-editor#1093.
+ */
+export const MAX_REVISION_ID = 2_147_483_647;
+
+/**
+ * Coerce any revision id — including one parsed from an untrusted DOCX — into
+ * the range serialized `w:id` attributes may occupy.
+ *
+ * - Malformed (negative, fractional, `NaN`, `Infinity`): collapse to `0`.
+ * - Well-formed but out of range: fold modulo the range (not clamp) so a
+ *   contiguous run of overflowing ids stays distinguishable.
+ */
+export function normalizeRevisionId(id: number): number {
+  if (!Number.isInteger(id) || id < 0) {
+    return 0;
+  }
+  if (id > MAX_REVISION_ID) {
+    return id % (MAX_REVISION_ID + 1);
+  }
+  return id;
+}
+
+/**
  * Tracked change metadata (w:ins, w:del attributes)
  */
 export type TrackedChangeInfo = {

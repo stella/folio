@@ -49,6 +49,7 @@ import type {
   BookmarkEnd,
   BookmarkStart,
 } from "../types/document";
+import { normalizeRevisionId } from "@stll/docx-core/model";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import {
   appendBookmarkMarkerToLastParagraphInBlocks,
@@ -133,7 +134,9 @@ function parseTrackedChangeInfo(node: XmlElement): TableStructuralChangeInfo["in
   const initials = (getAttribute(node, "w", "initials") ?? "").trim();
 
   const info: TableStructuralChangeInfo["info"] = {
-    id: Number.isInteger(parsedId) && parsedId >= 0 ? parsedId : 0,
+    // `w:id` is attacker-controlled and unbounded in the schema; fold at the
+    // parse boundary (eigenpal #1093).
+    id: normalizeRevisionId(parsedId),
     author: author.length > 0 ? author : "Unknown",
   };
   if (date.length > 0) {

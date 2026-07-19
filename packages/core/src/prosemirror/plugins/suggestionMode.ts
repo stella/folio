@@ -19,6 +19,7 @@ import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
+import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
 export const suggestionModeKey = new PluginKey<SuggestionModeState>("suggestionMode");
 export const SUGGESTION_META = "suggestionModeApplied";
@@ -35,11 +36,9 @@ type MarkAttrs = {
   date: string;
 };
 
-let nextRevisionId = Date.now();
-
 function makeMarkAttrs(pluginState: SuggestionModeState): MarkAttrs {
   return {
-    revisionId: nextRevisionId++,
+    revisionId: mintRevisionId(),
     author: pluginState.author,
     date: new Date().toISOString(),
   };
@@ -634,7 +633,11 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
     key: suggestionModeKey,
 
     state: {
-      init(): SuggestionModeState {
+      // Seed the revision-id counter from the loaded document on every
+      // EditorState.create so suggesting-mode edits stay inside the signed
+      // 32-bit range OOXML consumers accept (eigenpal/docx-editor#1093).
+      init(_config, instance): SuggestionModeState {
+        seedRevisionIdsFromDoc(instance.doc);
         return { active: initialActive, author };
       },
       apply(tr, state): SuggestionModeState {

@@ -176,6 +176,44 @@ describe("serializeParagraph tracked-change hardening", () => {
     expect(xml).toContain('<w:ins w:id="0" w:author="Unknown">');
     expect(xml).not.toContain("w:date=");
   });
+
+  test("folds an out-of-range revision id into the signed 32-bit range (eigenpal #1093)", () => {
+    // A `Date.now()`-derived id (~1.8e12) is a well-formed positive integer, so
+    // the invalid/negative guard used to pass it straight through to `w:id`.
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 1_784_212_345_678, author: "Reviewer" },
+          content: [{ type: "run", content: [{ type: "text", text: "Added" }] }],
+        },
+      ],
+    };
+
+    const xml = serializeParagraph(paragraph);
+    const id = Number(/<w:ins w:id="(\d+)"/u.exec(xml)?.[1]);
+    expect(id).toBeLessThanOrEqual(2_147_483_647);
+    expect(id).toBeGreaterThanOrEqual(0);
+  });
+
+  test("keeps distinct out-of-range ids distinct so revisions do not merge", () => {
+    const idFor = (id: number): string => {
+      const paragraph: Paragraph = {
+        type: "paragraph",
+        content: [
+          {
+            type: "insertion",
+            info: { id, author: "Reviewer" },
+            content: [{ type: "run", content: [{ type: "text", text: "Added" }] }],
+          },
+        ],
+      };
+      return /<w:ins w:id="(\d+)"/u.exec(serializeParagraph(paragraph))?.[1] ?? "";
+    };
+
+    expect(idFor(1_784_212_345_678)).not.toBe(idFor(1_784_212_345_679));
+  });
 });
 
 describe("serializeParagraph native frame geometry", () => {

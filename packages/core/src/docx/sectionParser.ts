@@ -31,6 +31,7 @@ import type {
   BorderSpec,
   ColorValue,
 } from "../types/document";
+import { normalizeRevisionId } from "@stll/docx-core/model";
 import { parseHeaderReference, parseFooterReference } from "./headerFooterRefParser";
 import { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
 import { BorderStyleSchema, ThemeColorSlotSchema, narrowEnum } from "./parserEnums";
@@ -142,7 +143,9 @@ function parsePropertyChangeInfo(node: XmlElement): SectionPropertyChange["info"
   const rsid = (getAttribute(node, "w", "rsid") ?? "").trim();
 
   const info: SectionPropertyChange["info"] = {
-    id: Number.isInteger(parsedId) && parsedId >= 0 ? parsedId : 0,
+    // `w:id` is attacker-controlled and unbounded in the schema; fold at the
+    // parse boundary (eigenpal #1093).
+    id: normalizeRevisionId(parsedId),
     author: author.length > 0 ? author : "Unknown",
   };
   if (date.length > 0) {

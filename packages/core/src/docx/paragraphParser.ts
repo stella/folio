@@ -35,6 +35,7 @@ import type {
   TrackedChangeInfo,
   MathEquation,
 } from "../types/document";
+import { normalizeRevisionId } from "@stll/docx-core/model";
 import { isValidHexId } from "../utils/hexId";
 import {
   parseBookmarkStart as parseBookmarkStartFromModule,
@@ -954,7 +955,9 @@ function parseTrackedChangeInfo(node: XmlElement): TrackedChangeInfo {
   const initials = (getAttribute(node, "w", "initials") ?? "").trim();
 
   const info: TrackedChangeInfo = {
-    id: Number.isInteger(parsedId) && parsedId >= 0 ? parsedId : 0,
+    // `w:id` is attacker-controlled and unbounded in the schema; fold it into
+    // the range consumers accept at the parse boundary (eigenpal #1093).
+    id: normalizeRevisionId(parsedId),
     author: author.length > 0 ? author : "Unknown",
   };
   if (date.length > 0) {

@@ -41,6 +41,7 @@ import type {
   MediaFile,
   ShapeContent,
 } from "../types/document";
+import { normalizeRevisionId } from "@stll/docx-core/model";
 import { parseGroupDrawing } from "./groupDrawingParser";
 import { parseImage } from "./imageParser";
 import {
@@ -656,7 +657,9 @@ function parsePropertyChangeInfo(changeElement: XmlElement): RunPropertyChange["
   const rsid = (getAttribute(changeElement, "w", "rsid") ?? "").trim();
 
   const info: RunPropertyChange["info"] = {
-    id: Number.isInteger(parsedId) && parsedId >= 0 ? parsedId : 0,
+    // `w:id` is attacker-controlled and unbounded in the schema; fold at the
+    // parse boundary (eigenpal #1093).
+    id: normalizeRevisionId(parsedId),
     author: author.length > 0 ? author : "Unknown",
   };
   if (date.length > 0) {
