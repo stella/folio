@@ -546,6 +546,9 @@ export type MathEquation = {
 };
 
 // @public
+export const MAX_REVISION_ID = 2147483647;
+
+// @public
 export type MediaFile = {
     path: string; /** Original filename */
     filename?: string; /** MIME type */
@@ -599,6 +602,9 @@ export type MoveToRangeStart = {
 export type NoBreakHyphenContent = {
     type: "noBreakHyphen";
 };
+
+// @public
+export function normalizeRevisionId(id: number): number;
 
 // @public
 export type NoteNumberRestart = "continuous" | "eachSect" | "eachPage";

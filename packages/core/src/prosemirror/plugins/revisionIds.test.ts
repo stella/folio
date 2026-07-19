@@ -20,7 +20,7 @@ const schema = new Schema({
     paragraph: {
       group: "block",
       content: "inline*",
-      attrs: { pPrIns: { default: null }, cellMarker: { default: null } },
+      attrs: { pPrMark: { default: null }, cellMarker: { default: null } },
       toDOM: () => ["p", 0],
     },
     text: { group: "inline" },
@@ -86,11 +86,13 @@ describe("seedRevisionIdsFromDoc", () => {
     expect(mintRevisionId()).toBeGreaterThan(3_000_000);
   });
 
-  test("seeds above an id carried by a node attr", () => {
+  test("seeds above an id carried by a paragraph-mark attr", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { pPrIns: { revisionId: 4_000_000, author: "A", date: null } }, [
-        schema.text("x"),
-      ]),
+      schema.node(
+        "paragraph",
+        { pPrMark: { kind: "ins", info: { id: 4_000_000, author: "A" } } },
+        [schema.text("x")],
+      ),
     ]);
 
     seedRevisionIdsFromDoc(doc);

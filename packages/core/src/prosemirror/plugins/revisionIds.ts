@@ -52,11 +52,11 @@ export function seedRevisionIdsAbove(maxId: number): void {
   }
 }
 
-/** Node attrs that carry a revision triple directly. */
-const REVISION_ATTR_KEYS = ["pPrIns", "pPrDel", "trIns", "trDel"] as const;
+/** Node attrs that carry a revision id directly (`revisionId` field). */
+const DIRECT_REVISION_ATTR_KEYS = ["trIns", "trDel"] as const;
 
 /**
- * Raise the counter above every `revisionId` already present in `doc`.
+ * Raise the counter above every revision id already present in `doc`.
  * Called from the suggestion-mode plugin's `state.init`.
  */
 export function seedRevisionIdsFromDoc(doc: PmNode): void {
@@ -74,12 +74,20 @@ export function seedRevisionIdsFromDoc(doc: PmNode): void {
     }
 
     const attrs = node.attrs;
-    for (const key of REVISION_ATTR_KEYS) {
+
+    // Paragraph-mark revisions live on `pPrMark` as `{ kind, info: TrackedChangeInfo }`.
+    const pPrMark = attrs["pPrMark"] as { info?: { id?: unknown } } | null | undefined;
+    if (pPrMark?.info) {
+      consider(pPrMark.info.id);
+    }
+
+    for (const key of DIRECT_REVISION_ATTR_KEYS) {
       const value = attrs[key] as { revisionId?: unknown } | null | undefined;
       if (value) {
         consider(value.revisionId);
       }
     }
+
     const cellMarker = attrs["cellMarker"] as
       | { info?: { revisionId?: unknown } }
       | null
