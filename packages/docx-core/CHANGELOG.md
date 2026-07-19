@@ -1,5 +1,56 @@
 # @stll/docx-core
 
+## 0.5.0
+
+### Minor Changes
+
+- [#412](https://github.com/stella/folio/pull/412) [`21274be`](https://github.com/stella/folio/commit/21274be83afaadc9d28053c87b5ea84ea619c491) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add a first-class suggestion layer to tracked changes. AI-proposed edits can be
+  applied with the new `"suggested"` apply mode: they render with the
+  tracked-change grammar but a dotted stroke and a dedicated hue, and are always
+  stripped from serialized DOCX output until accepted. Accepting a suggestion
+  converts it into a normal tracked change authored by the accepting user (or, for
+  a whole inserted table, applies it directly since OOXML has no tracked
+  representation for it); rejecting inverse-applies it.
+
+  Suggested mode covers inline text/format operations (`replaceInBlock`,
+  `replaceRange`, `formatRange`) and block/table structural operations
+  (`insertAfterBlock`, `insertBeforeBlock`, `replaceBlock`, `deleteBlock`,
+  `insertSignatureTable`, `insertTableRow`, `deleteTableRow`, `insertTableColumn`,
+  `deleteTableColumn`). Whole-node inserts are stripped entirely; suggested
+  deletes serialize as though they never happened; the strip is the single
+  `fromProseDoc`/`extractBlocks` boundary every serialization path funnels through.
+  Cell merge/split and comment operations remain `unsupportedMode`.
+
+  New core commands (`getSuggestions`, `acceptSuggestion`, `acceptAllSuggestions`,
+  `rejectSuggestion`, `rejectAllSuggestions`, `findSuggestionRange`) and
+  editor-ref methods (`getSuggestions`, `acceptSuggestion` returning
+  `{ accepted, appliedAs }`, `rejectSuggestion`, `scrollToSuggestion`) expose the
+  layer to hosts; `getSuggestions` reports each suggestion's kinds and `appliedAs`
+  (`"tracked"` vs `"direct"`). The React and Vue adapters expose the same ref
+  surface (the Nuxt module re-exports it).
+
+  Tracked changes also gain an optional `initials` field, carried through the
+  model and the ProseMirror marks/node attrs for UI attribution (hover, accept
+  authoring). It is intentionally NOT serialized onto `w:ins`/`w:del`/`w:*PrChange`
+  or table row/cell markers — `w:initials` is not part of ECMA-376
+  `CT_TrackChange`, so output stays schema-strict — but the parser remains tolerant
+  of it if an external document supplies one.
+
+### Patch Changes
+
+- [#427](https://github.com/stella/folio/pull/427) [`64f0737`](https://github.com/stella/folio/commit/64f07378ba3f460b999a8a7bba822ed0a01e37e0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep tracked-change revision ids within the range OOXML consumers accept. Suggestion-mode edits seeded their `w:ins`/`w:del` id counter from the clock, producing 13-digit `w:id` values that made exported documents fail to open. Ids now continue from the document's own highest revision id. Port of eigenpal/docx-editor#1093.
+
+- [#420](https://github.com/stella/folio/pull/420) [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bound version-comparison, agent, and validation paths against crafted-input
+  resource exhaustion: a single aggregate LCS cell budget is now shared across all
+  document stories; move detection dequeues in O(1) instead of `Array.shift`;
+  `diffWordSegments` caps its DP matrix and falls back to a whole-string diff;
+  `ensureParaIds` and `docx-core`'s `validateDocxPackage` enforce entry-count and
+  uncompressed-size limits before reading; note-paragraph patching builds a linear
+  offset index instead of rescanning per id; agent whole-word search uses a bounded
+  boundary window; `suggest_changes` enforces an aggregate operation-text budget;
+  and tracked vertical cell split refuses a stored continuation whose `gridSpan`
+  exceeds one column.
+
 ## 0.4.0
 
 ### Minor Changes

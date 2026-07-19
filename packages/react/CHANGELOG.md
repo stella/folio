@@ -1,5 +1,80 @@
 # @stll/folio-react
 
+## 0.12.0
+
+### Minor Changes
+
+- [#412](https://github.com/stella/folio/pull/412) [`21274be`](https://github.com/stella/folio/commit/21274be83afaadc9d28053c87b5ea84ea619c491) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add a first-class suggestion layer to tracked changes. AI-proposed edits can be
+  applied with the new `"suggested"` apply mode: they render with the
+  tracked-change grammar but a dotted stroke and a dedicated hue, and are always
+  stripped from serialized DOCX output until accepted. Accepting a suggestion
+  converts it into a normal tracked change authored by the accepting user (or, for
+  a whole inserted table, applies it directly since OOXML has no tracked
+  representation for it); rejecting inverse-applies it.
+
+  Suggested mode covers inline text/format operations (`replaceInBlock`,
+  `replaceRange`, `formatRange`) and block/table structural operations
+  (`insertAfterBlock`, `insertBeforeBlock`, `replaceBlock`, `deleteBlock`,
+  `insertSignatureTable`, `insertTableRow`, `deleteTableRow`, `insertTableColumn`,
+  `deleteTableColumn`). Whole-node inserts are stripped entirely; suggested
+  deletes serialize as though they never happened; the strip is the single
+  `fromProseDoc`/`extractBlocks` boundary every serialization path funnels through.
+  Cell merge/split and comment operations remain `unsupportedMode`.
+
+  New core commands (`getSuggestions`, `acceptSuggestion`, `acceptAllSuggestions`,
+  `rejectSuggestion`, `rejectAllSuggestions`, `findSuggestionRange`) and
+  editor-ref methods (`getSuggestions`, `acceptSuggestion` returning
+  `{ accepted, appliedAs }`, `rejectSuggestion`, `scrollToSuggestion`) expose the
+  layer to hosts; `getSuggestions` reports each suggestion's kinds and `appliedAs`
+  (`"tracked"` vs `"direct"`). The React and Vue adapters expose the same ref
+  surface (the Nuxt module re-exports it).
+
+  Tracked changes also gain an optional `initials` field, carried through the
+  model and the ProseMirror marks/node attrs for UI attribution (hover, accept
+  authoring). It is intentionally NOT serialized onto `w:ins`/`w:del`/`w:*PrChange`
+  or table row/cell markers — `w:initials` is not part of ECMA-376
+  `CT_TrackChange`, so output stays schema-strict — but the parser remains tolerant
+  of it if an external document supplies one.
+
+### Patch Changes
+
+- [#420](https://github.com/stella/folio/pull/420) [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Prevent untrusted DOCX assets from affecting the host page. Embedded fonts are
+  registered under per-document scoped family names (resolved through the font
+  resolver) so a document embedding a face named after a host UI family can no
+  longer shadow it page-wide, and watermark dialogs validate external image
+  targets against an http/https allowlist (with a defensive guard before emitting
+  an external relationship) so `file:`/UNC/other-scheme targets cannot be written
+  into exported documents.
+
+- [#420](https://github.com/stella/folio/pull/420) [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Prevent CSS and OOXML injection from attacker-controlled document/collaboration
+  values. Colors are validated to a strict hex/`auto` format at a single
+  `colorResolver` choke point (closing themed table-fill and diagonal-border
+  `url()` injection and the pasted `data-bgcolor` path); comment `paraId`/`textId`
+  are validated to 8-hex at parse and XML-escaped on serialize; run/paragraph/
+  table/style color and theme attributes are XML-escaped and hex-validated; inline
+  and block SDT raw properties are replayed only when they are a single
+  well-formed `w:sdtPr`/`w:sdtEndPr` element (otherwise synthesized); remote
+  collaborator colors are validated before use and painted via `backgroundColor`
+  (not the `background` shorthand); and controlled comments are sanitized before
+  becoming editor state.
+
+- [#420](https://github.com/stella/folio/pull/420) [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Scope review actions to their intended target. AI `undoDocumentOperations`
+  always undoes the body operation instead of whatever story (header/footer)
+  currently has focus; sidebar accept/reject applies only the selected revision
+  rather than every tracked change in the resolved range (React and Vue); the Vue
+  page-setup dialog respects read-only; Vue table properties target the active
+  editor view; and Vue AI-authored comments use the requested operation author.
+
+- [#420](https://github.com/stella/folio/pull/420) [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Sanitize hyperlink and image link URLs so pasted, programmatic, or DOCX-sourced
+  `javascript:`/`data:`/`file:` targets can no longer reach the live DOM or be
+  opened. Hyperlink marks are sanitized on parse (`parseDOM`), on render
+  (`toDOM`), and when set/inserted/edited; image `a:hlinkClick` targets are
+  sanitized at parse time; the Vue popup `window.open` path now mirrors React's
+  sanitizer; and aux-click on link anchors no longer bypasses the guard. Internal
+  bookmark anchors (`#name`) are preserved.
+- Updated dependencies [[`75842cf`](https://github.com/stella/folio/commit/75842cf60c290af3f756e7dbea7f95671fbdea4f), [`ce930f4`](https://github.com/stella/folio/commit/ce930f4ee45d2b793ef0d625fb0598ce008cb600), [`4b6e885`](https://github.com/stella/folio/commit/4b6e88531408fc9ecb82ae7c0a71e797864fa996), [`75842cf`](https://github.com/stella/folio/commit/75842cf60c290af3f756e7dbea7f95671fbdea4f), [`64f0737`](https://github.com/stella/folio/commit/64f07378ba3f460b999a8a7bba822ed0a01e37e0), [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5), [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5), [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5), [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5), [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5), [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5), [`3229068`](https://github.com/stella/folio/commit/32290689f2256e2e601f1be6701aceb5d135169f), [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5), [`21274be`](https://github.com/stella/folio/commit/21274be83afaadc9d28053c87b5ea84ea619c491)]:
+  - @stll/folio-core@0.13.0
+
 ## 0.11.0
 
 ### Minor Changes

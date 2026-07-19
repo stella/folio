@@ -1,5 +1,44 @@
 # @stll/folio-nuxt
 
+## 0.3.7
+
+### Patch Changes
+
+- [#412](https://github.com/stella/folio/pull/412) [`21274be`](https://github.com/stella/folio/commit/21274be83afaadc9d28053c87b5ea84ea619c491) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add a first-class suggestion layer to tracked changes. AI-proposed edits can be
+  applied with the new `"suggested"` apply mode: they render with the
+  tracked-change grammar but a dotted stroke and a dedicated hue, and are always
+  stripped from serialized DOCX output until accepted. Accepting a suggestion
+  converts it into a normal tracked change authored by the accepting user (or, for
+  a whole inserted table, applies it directly since OOXML has no tracked
+  representation for it); rejecting inverse-applies it.
+
+  Suggested mode covers inline text/format operations (`replaceInBlock`,
+  `replaceRange`, `formatRange`) and block/table structural operations
+  (`insertAfterBlock`, `insertBeforeBlock`, `replaceBlock`, `deleteBlock`,
+  `insertSignatureTable`, `insertTableRow`, `deleteTableRow`, `insertTableColumn`,
+  `deleteTableColumn`). Whole-node inserts are stripped entirely; suggested
+  deletes serialize as though they never happened; the strip is the single
+  `fromProseDoc`/`extractBlocks` boundary every serialization path funnels through.
+  Cell merge/split and comment operations remain `unsupportedMode`.
+
+  New core commands (`getSuggestions`, `acceptSuggestion`, `acceptAllSuggestions`,
+  `rejectSuggestion`, `rejectAllSuggestions`, `findSuggestionRange`) and
+  editor-ref methods (`getSuggestions`, `acceptSuggestion` returning
+  `{ accepted, appliedAs }`, `rejectSuggestion`, `scrollToSuggestion`) expose the
+  layer to hosts; `getSuggestions` reports each suggestion's kinds and `appliedAs`
+  (`"tracked"` vs `"direct"`). The React and Vue adapters expose the same ref
+  surface (the Nuxt module re-exports it).
+
+  Tracked changes also gain an optional `initials` field, carried through the
+  model and the ProseMirror marks/node attrs for UI attribution (hover, accept
+  authoring). It is intentionally NOT serialized onto `w:ins`/`w:del`/`w:*PrChange`
+  or table row/cell markers — `w:initials` is not part of ECMA-376
+  `CT_TrackChange`, so output stays schema-strict — but the parser remains tolerant
+  of it if an external document supplies one.
+
+- Updated dependencies [[`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5), [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5), [`a47ee19`](https://github.com/stella/folio/commit/a47ee197d1c4a5abb47efb053d7c674c71074af5), [`21274be`](https://github.com/stella/folio/commit/21274be83afaadc9d28053c87b5ea84ea619c491)]:
+  - @stll/folio-vue@0.11.0
+
 ## 0.3.6
 
 ### Patch Changes
