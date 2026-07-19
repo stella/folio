@@ -964,6 +964,17 @@ function buildImageRun(
   if (attrs.cropLeft != null) {
     run.cropLeft = attrs.cropLeft;
   }
+  // eigenpal #1096: image borders are authored on the PM image attrs and
+  // painted by layout-painter. PM defaults are null; treat null as absent.
+  if (attrs.borderWidth != null) {
+    run.borderWidth = attrs.borderWidth;
+  }
+  if (attrs.borderColor) {
+    run.borderColor = attrs.borderColor;
+  }
+  if (attrs.borderStyle) {
+    run.borderStyle = attrs.borderStyle;
+  }
   if (attrs.position !== undefined) {
     run.position = attrs.position;
   }
@@ -2624,6 +2635,17 @@ function convertImage(node: PMNode, startPos: number, pageContentHeight?: number
   }
   if (attrs.cropLeft != null) {
     imgBlock.cropLeft = attrs.cropLeft;
+  }
+  // eigenpal #1096: preserve image border attrs for floating/block image
+  // painting. PM defaults are null; treat null as absent.
+  if (attrs.borderWidth != null) {
+    imgBlock.borderWidth = attrs.borderWidth;
+  }
+  if (attrs.borderColor) {
+    imgBlock.borderColor = attrs.borderColor;
+  }
+  if (attrs.borderStyle) {
+    imgBlock.borderStyle = attrs.borderStyle;
   }
   return imgBlock;
 }

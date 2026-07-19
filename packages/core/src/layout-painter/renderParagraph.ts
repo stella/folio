@@ -53,7 +53,12 @@ import {
 import { hasCjk, segmentByScript } from "../utils/scriptSegments";
 import { borderStrokeToCss, resolveParagraphBorderHorizontalOutsets } from "./borderStroke";
 import { getAutomaticTextColorForBackground } from "./documentColors";
-import { applyImageVisualAttrs, hasImageVisualAttrs, wrapImageWithCrop } from "./renderImage";
+import {
+  applyImageBorder,
+  applyImageVisualAttrs,
+  hasImageVisualAttrs,
+  wrapImageWithCrop,
+} from "./renderImage";
 import { isFloatingImageRun, resolveImageLineAlign } from "./renderUtils";
 import type { RenderContext } from "./renderUtils";
 import { applySdtDataAttrs } from "./sdtBoundary";
@@ -741,6 +746,7 @@ function renderInlineImageRun(run: ImageRun, doc: Document): HTMLElement {
     // happens to match, but be explicit so future transforms can't drift.
     img.style.transformOrigin = "center center";
   }
+  applyImageBorder(img, run);
 
   // Rotated images extend past `run.width × run.height`, so without a bbox
   // wrapper the inline line box reserves too little space and the rotated
@@ -859,6 +865,7 @@ function renderBlockImage(run: ImageRun, doc: Document): HTMLElement {
     // future stacked transforms can't drift. eigenpal #424.
     img.style.transformOrigin = "center center";
   }
+  applyImageBorder(img, run);
 
   // Reserve the rotated bbox on the container so a rotated block image
   // doesn't bleed into the next paragraph. The container is sized to the

@@ -8,7 +8,12 @@ import type {
   MeasuredLine,
   ParagraphBlock,
 } from "../layout-engine/types";
-import { applyImageVisualAttrs, hasImageVisualAttrs, renderImageFragment } from "./renderImage";
+import {
+  applyImageBorder,
+  applyImageVisualAttrs,
+  hasImageVisualAttrs,
+  renderImageFragment,
+} from "./renderImage";
 import { renderLine } from "./renderParagraph";
 
 // Render-pipeline follow-up to PR #513 (eigenpal #424): the model layer now
@@ -149,6 +154,25 @@ describe("renderImageFragment opacity (floating block path)", () => {
   });
 });
 
+describe("renderImageFragment image borders (floating block path)", () => {
+  test("emits CSS border and box sizing for a floating image with border attrs", () => {
+    const block = baseImageBlock({
+      borderWidth: 3,
+      borderColor: "currentColor",
+      borderStyle: "dashed",
+    });
+    const fragment = baseImageFragment({ isAnchored: true });
+
+    const containerEl = renderImageFragment(fragment, block, baseImageMeasure, fakeContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+
+    const imgEl = findImageDescendant(containerEl);
+    expect(imgEl?.style["border"]).toBe("3px dashed currentColor");
+    expect(imgEl?.style["boxSizing"]).toBe("border-box");
+  });
+});
+
 describe("renderLine inline image opacity", () => {
   test("emits CSS opacity on the inline <img> when run carries opacity 0.5", () => {
     const imageRun: ImageRun = {
@@ -222,6 +246,45 @@ describe("renderLine inline image opacity", () => {
   });
 });
 
+describe("renderLine inline image borders", () => {
+  test("emits CSS border and box sizing on the inline <img>", () => {
+    const imageRun: ImageRun = {
+      kind: "image",
+      src: "data:image/png;base64,",
+      width: 100,
+      height: 80,
+      borderWidth: 2,
+      borderColor: "var(--image-border)",
+      borderStyle: "dotted",
+      pmStart: 1,
+      pmEnd: 2,
+    };
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p1",
+      runs: [imageRun],
+      pmStart: 0,
+      pmEnd: 3,
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 1,
+      width: 100,
+      ascent: 20,
+      descent: 3,
+      lineHeight: 23,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument) as unknown as FakeElement;
+    const imgEl = findImageDescendant(lineEl);
+
+    expect(imgEl?.style["border"]).toBe("2px dotted var(--image-border)");
+    expect(imgEl?.style["boxSizing"]).toBe("border-box");
+  });
+});
+
 describe("ImageVisualAttrs helpers", () => {
   test("hasImageVisualAttrs returns true for opacity < 1", () => {
     expect(hasImageVisualAttrs({ opacity: 0.5 })).toBe(true);
@@ -262,5 +325,28 @@ describe("ImageVisualAttrs helpers", () => {
     expect((img as unknown as FakeElement).style["transform"]).toBe("scaleX(-1) translateY(-25%)");
     expect((img as unknown as FakeElement).style["transformOrigin"]).toBe("56.25% 56.25%");
     expect((img as unknown as FakeElement).style["marginTop"]).toBeUndefined();
+  });
+});
+
+describe("ImageBorderAttrs helpers", () => {
+  test("defaults missing border style and color while applying a positive width", () => {
+    const img = fakeDocument.createElement("img") as unknown as HTMLImageElement;
+
+    applyImageBorder(img, { borderWidth: 1 });
+
+    expect((img as unknown as FakeElement).style["border"]).toBe("1px solid #000000");
+    expect((img as unknown as FakeElement).style["boxSizing"]).toBe("border-box");
+  });
+
+  test("skips null PM defaults and zero border widths", () => {
+    const nullDefaultImg = fakeDocument.createElement("img") as unknown as HTMLImageElement;
+    const nullDefaultAttrs = { borderWidth: null } as unknown as { borderWidth?: number };
+    applyImageBorder(nullDefaultImg, nullDefaultAttrs);
+
+    const zeroWidthImg = fakeDocument.createElement("img") as unknown as HTMLImageElement;
+    applyImageBorder(zeroWidthImg, { borderWidth: 0, borderColor: "currentColor" });
+
+    expect((nullDefaultImg as unknown as FakeElement).style["border"]).toBeUndefined();
+    expect((zeroWidthImg as unknown as FakeElement).style["border"]).toBeUndefined();
   });
 });

@@ -39,6 +39,27 @@ export type ImageVisualAttrs = {
   cropLeft?: number;
 };
 
+export type ImageBorderAttrs = {
+  borderWidth?: number;
+  borderColor?: string;
+  borderStyle?: string;
+};
+
+/**
+ * Paint image borders carried through the layout model. Folio's PM schema
+ * uses `borderStyle` (not upstream's `borderKind`); the painter mirrors the
+ * editor DOM serialization while keeping the authored image box size stable.
+ */
+export function applyImageBorder(img: HTMLImageElement, border: ImageBorderAttrs): void {
+  if (border.borderWidth == null || border.borderWidth <= 0) {
+    return;
+  }
+  const borderStyle = border.borderStyle || "solid";
+  const borderColor = border.borderColor || "#000000";
+  img.style.border = `${border.borderWidth}px ${borderStyle} ${borderColor}`;
+  img.style.boxSizing = "border-box";
+}
+
 /**
  * True when any visual attribute is set. Cheap call-site guard so the no-op
  * common case skips the helper call.
@@ -248,6 +269,7 @@ export function renderImageFragment(
   if (hasImageVisualAttrs(block)) {
     applyImageVisualAttrs(imgEl, block);
   }
+  applyImageBorder(imgEl, block);
 
   // Prevent dragging
   imgEl.draggable = false;
