@@ -88,11 +88,9 @@ describe("seedRevisionIdsFromDoc", () => {
 
   test("seeds above an id carried by a paragraph-mark attr", () => {
     const doc = schema.node("doc", null, [
-      schema.node(
-        "paragraph",
-        { pPrMark: { kind: "ins", info: { id: 4_000_000, author: "A" } } },
-        [schema.text("x")],
-      ),
+      schema.node("paragraph", { pPrMark: { kind: "ins", info: { id: 4_000_000, author: "A" } } }, [
+        schema.text("x"),
+      ]),
     ]);
 
     seedRevisionIdsFromDoc(doc);
