@@ -171,6 +171,26 @@ describe("renderImageFragment image borders (floating block path)", () => {
     expect(imgEl?.style["border"]).toBe("3px dashed currentColor");
     expect(imgEl?.style["boxSizing"]).toBe("border-box");
   });
+
+  test("paints the border on the overflow container when the image is cropped", () => {
+    const block = baseImageBlock({
+      borderWidth: 2,
+      borderColor: "#112233",
+      borderStyle: "solid",
+      cropLeft: 0.1,
+      cropRight: 0.1,
+    });
+    const fragment = baseImageFragment({ isAnchored: true });
+
+    const containerEl = renderImageFragment(fragment, block, baseImageMeasure, fakeContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+
+    expect(containerEl.style["border"]).toBe("2px solid #112233");
+    expect(containerEl.style["boxSizing"]).toBe("border-box");
+    const imgEl = findImageDescendant(containerEl);
+    expect(imgEl?.style["border"]).toBeUndefined();
+  });
 });
 
 describe("renderLine inline image opacity", () => {
@@ -348,5 +368,18 @@ describe("ImageBorderAttrs helpers", () => {
 
     expect((nullDefaultImg as unknown as FakeElement).style["border"]).toBeUndefined();
     expect((zeroWidthImg as unknown as FakeElement).style["border"]).toBeUndefined();
+  });
+
+  test("applies borders to non-img containers for cropped frames", () => {
+    const container = fakeDocument.createElement("div") as unknown as HTMLElement;
+
+    applyImageBorder(container, {
+      borderWidth: 2,
+      borderStyle: "dashed",
+      borderColor: "#336699",
+    });
+
+    expect((container as unknown as FakeElement).style["border"]).toBe("2px dashed #336699");
+    expect((container as unknown as FakeElement).style["boxSizing"]).toBe("border-box");
   });
 });

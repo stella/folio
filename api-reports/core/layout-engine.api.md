@@ -307,7 +307,10 @@ export type ImageBlock = {
     cropTop?: number;
     cropRight?: number;
     cropBottom?: number;
-    cropLeft?: number;
+    cropLeft?: number; /** CSS border width in pixels. eigenpal #1096. */
+    borderWidth?: number; /** CSS border color. eigenpal #1096. */
+    borderColor?: string; /** CSS border style. eigenpal #1096. */
+    borderStyle?: string;
     pmStart?: number;
     pmEnd?: number;
 };
@@ -350,7 +353,10 @@ export type ImageRun = {
     cropTop?: number;
     cropRight?: number;
     cropBottom?: number;
-    cropLeft?: number; /** Whether this picture is itself a tracked insertion (`<w:ins>`). eigenpal #641. */
+    cropLeft?: number; /** CSS border width in pixels. eigenpal #1096. */
+    borderWidth?: number; /** CSS border color. eigenpal #1096. */
+    borderColor?: string; /** CSS border style. eigenpal #1096. */
+    borderStyle?: string; /** Whether this picture is itself a tracked insertion (`<w:ins>`). eigenpal #641. */
     isInsertion?: boolean; /** Whether this picture is itself a tracked deletion (`<w:del>`). eigenpal #641. */
     isDeletion?: boolean; /** Author of the tracked change wrapping the picture. eigenpal #641. */
     changeAuthor?: string; /** Date of the tracked change wrapping the picture. eigenpal #641. */

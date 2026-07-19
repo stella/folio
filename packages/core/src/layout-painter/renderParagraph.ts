@@ -56,6 +56,7 @@ import { getAutomaticTextColorForBackground } from "./documentColors";
 import {
   applyImageBorder,
   applyImageVisualAttrs,
+  hasImageCrop,
   hasImageVisualAttrs,
   wrapImageWithCrop,
 } from "./renderImage";
@@ -746,7 +747,11 @@ function renderInlineImageRun(run: ImageRun, doc: Document): HTMLElement {
     // happens to match, but be explicit so future transforms can't drift.
     img.style.transformOrigin = "center center";
   }
-  applyImageBorder(img, run);
+  // Cropped images clip via an overflow-hidden wrapper; paint the border on
+  // that wrapper instead of the scaled `<img>` (which would be invisible).
+  if (!hasImageCrop(run)) {
+    applyImageBorder(img, run);
+  }
 
   // Rotated images extend past `run.width × run.height`, so without a bbox
   // wrapper the inline line box reserves too little space and the rotated
@@ -798,6 +803,9 @@ function renderInlineImageRun(run: ImageRun, doc: Document): HTMLElement {
     }
     if (run.distBottom) {
       wrapper.style.marginBottom = `${run.distBottom}px`;
+    }
+    if (hasImageCrop(run)) {
+      applyImageBorder(wrapper, run);
     }
     applyPmPositions(wrapper, run.pmStart, run.pmEnd);
     return wrapper;
@@ -865,7 +873,11 @@ function renderBlockImage(run: ImageRun, doc: Document): HTMLElement {
     // future stacked transforms can't drift. eigenpal #424.
     img.style.transformOrigin = "center center";
   }
-  applyImageBorder(img, run);
+  // Cropped images clip via an overflow-hidden wrapper; paint the border on
+  // that wrapper instead of the scaled `<img>` (which would be invisible).
+  if (!hasImageCrop(run)) {
+    applyImageBorder(img, run);
+  }
 
   // Reserve the rotated bbox on the container so a rotated block image
   // doesn't bleed into the next paragraph. The container is sized to the
@@ -909,6 +921,9 @@ function renderBlockImage(run: ImageRun, doc: Document): HTMLElement {
     // Tailwind preflight sets img { display: block }, which would defeat
     // text-align centring on the container. The inline-block wrapper
     // restores centring via the container's text-align: center.
+    if (hasImageCrop(run)) {
+      applyImageBorder(wrapper, run);
+    }
     applyPmPositions(container, run.pmStart, run.pmEnd);
     container.append(wrapper);
     return container;
