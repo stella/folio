@@ -1,5 +1,6 @@
 import type {
   BlockContent,
+  Comment,
   Document,
   DocumentBody,
   Endnote,
@@ -51,10 +52,58 @@ const withoutOrphanDocumentBodyMarkers = (
   validCommentIds: ReadonlySet<number>,
 ): DocumentBody | null => {
   const content = withoutOrphanBlockMarkers(document.content, validCommentIds);
-  if (!content) {
+  const comments = withoutOrphanCommentBodyMarkers(document.comments, validCommentIds);
+  if (!content && !comments) {
     return null;
   }
-  return { ...document, content };
+  return {
+    ...document,
+    ...(content ? { content } : {}),
+    ...(comments ? { comments } : {}),
+  };
+};
+
+// Comment bodies are paragraph stories of their own; a dangling
+// commentRangeStart / commentReference inside one round-trips into
+// comments.xml through the paragraph serializer just like body content.
+const withoutOrphanCommentBodyMarkers = (
+  comments: Comment[] | undefined,
+  validCommentIds: ReadonlySet<number>,
+): Comment[] | null => {
+  if (!comments) {
+    return null;
+  }
+
+  let changed = false;
+  const next: Comment[] = [];
+  for (const comment of comments) {
+    const content = withoutOrphanParagraphListMarkers(comment.content, validCommentIds);
+    if (!content) {
+      next.push(comment);
+      continue;
+    }
+    changed = true;
+    next.push({ ...comment, content });
+  }
+
+  return changed ? next : null;
+};
+
+const withoutOrphanParagraphListMarkers = (
+  paragraphs: Paragraph[],
+  validCommentIds: ReadonlySet<number>,
+): Paragraph[] | null => {
+  let changed = false;
+  const next: Paragraph[] = [];
+  for (const paragraph of paragraphs) {
+    const nextParagraph = withoutOrphanParagraphMarkers(paragraph, validCommentIds);
+    if (nextParagraph !== paragraph) {
+      changed = true;
+    }
+    next.push(nextParagraph);
+  }
+
+  return changed ? next : null;
 };
 
 const withoutOrphanHeaderFooterMapMarkers = (

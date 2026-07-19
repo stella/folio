@@ -278,36 +278,28 @@ describe("Selective XML Patch with real DOCX", () => {
 // ============================================================================
 
 describe("attemptSelectiveSave", () => {
-  test("drops orphan comment references before selective-save validation", async () => {
+  test("returns null when orphan comment markers need cleanup", async () => {
     const buffer = await loadFixture("example-with-image.docx");
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
+    // The orphan marker lives in a paragraph outside `changedParaIds`, so the
+    // selective splice could never ship its removal; the save must fall back
+    // to the full repack, which owns orphan cleanup.
     const target = doc.package.document.content.find(
       (block): block is Paragraph => block.type === "paragraph" && block.paraId !== undefined,
     );
     if (!target?.paraId) {
       throw new Error("Expected paragraph with paraId");
     }
-    target.content.push({
-      type: "run",
-      content: [{ type: "text", text: " [ORPHAN_PRUNED]" }],
-    });
     target.content.push({ type: "commentReference", id: 999 });
 
     const result = await attemptSelectiveSave(doc, buffer, {
-      changedParaIds: new Set([target.paraId]),
+      changedParaIds: new Set(),
       structuralChange: false,
       hasUntrackedChanges: false,
     });
 
-    expect(result).not.toBeNull();
-    if (!result) {
-      throw new Error("Expected result");
-    }
-    const resultXml = await getDocumentXml(result);
-    expect(resultXml).toContain("[ORPHAN_PRUNED]");
-    expect(resultXml).not.toContain("commentReference");
-    expect(resultXml).not.toContain('w:id="999"');
+    expect(result).toBeNull();
   });
 
   test("returns null when structural change occurred", async () => {

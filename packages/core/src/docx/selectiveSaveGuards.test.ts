@@ -245,7 +245,7 @@ describe("fallback contract", () => {
     expect(result).toBeNull();
   });
 
-  test("orphaned commentReference is pruned before validation", async () => {
+  test("orphaned commentReference → null (cleanup owned by full repack)", async () => {
     const buffer = await makeFixture();
     const doc = await parseDocx(buffer, { preloadFonts: false });
     const target = doc.package.document.content.find(
@@ -254,10 +254,6 @@ describe("fallback contract", () => {
     if (!target?.paraId) {
       throw new Error("Expected paragraph with paraId");
     }
-    target.content.push({
-      type: "run",
-      content: [{ type: "text", text: " [GUARD_ORPHAN_PRUNED]" }],
-    });
     target.content.push({ type: "commentReference", id: 9999 });
 
     const result = await attemptSelectiveSave(doc, buffer, {
@@ -266,7 +262,7 @@ describe("fallback contract", () => {
       hasUntrackedChanges: false,
     });
 
-    expect(result).not.toBeNull();
+    expect(result).toBeNull();
   });
 });
 

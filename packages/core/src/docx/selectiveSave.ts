@@ -408,20 +408,26 @@ export async function attemptSelectiveSave(
   if (hasModelDrivenPictureWatermark(doc)) {
     return null;
   }
-  const exportDocument = withoutOrphanCommentRanges(doc);
+  // Orphan comment markers can live in paragraphs outside `changedParaIds`,
+  // or in note parts the splice never re-reads, so a cleanup here would not
+  // ship through the selective overlay. Hand off to the full repack, which
+  // sanitizes and re-serializes every part.
+  if (withoutOrphanCommentRanges(doc) !== doc) {
+    return null;
+  }
   // A reply with no anchor of its own must get its parent's commentRange
   // markers, which means editing the parent's paragraph — not necessarily one of
   // `changedParaIds`. The full repack owns that synthesis, so hand off to it.
-  if (hasUnsynthesizedReplyRanges(exportDocument)) {
+  if (hasUnsynthesizedReplyRanges(doc)) {
     return null;
   }
-  if (!validateFolioDocumentModel(exportDocument).valid) {
+  if (!validateFolioDocumentModel(doc).valid) {
     return null;
   }
 
-  const comments = exportDocument.package.document.comments ?? [];
+  const comments = doc.package.document.comments ?? [];
   const hasComments = comments.length > 0;
-  const headerFooterUpdates = collectHeaderFooterUpdates(exportDocument);
+  const headerFooterUpdates = collectHeaderFooterUpdates(doc);
 
   try {
     const JSZip = (await import("jszip")).default;
@@ -467,7 +473,7 @@ export async function attemptSelectiveSave(
       }
 
       if (noteCandidateIds.size > 0) {
-        const unrouted = await patchNoteParts(zip, exportDocument, noteCandidateIds, updates);
+        const unrouted = await patchNoteParts(zip, doc, noteCandidateIds, updates);
         // A splice failure, or a changed id that is neither a body nor a note
         // paragraph, falls back to full repack — matching the prior safety when
         // buildPatchedDocumentXml met a paraId it could not resolve.
@@ -477,7 +483,7 @@ export async function attemptSelectiveSave(
       }
 
       if (bodyChangedIds.size > 0) {
-        const serializedDocXml = serializeDocument(exportDocument);
+        const serializedDocXml = serializeDocument(doc);
         const patchedDocXml = buildPatchedDocumentXml(
           originalDocXml,
           serializedDocXml,
@@ -546,7 +552,7 @@ export async function attemptSelectiveSave(
     // Splice edited numbering definitions into word/numbering.xml. Numbering
     // carries no paraId, so this always runs and self-detects changes (like the
     // comments/header updates above); a no-op when numbering is unchanged.
-    await patchNumberingPart(zip, exportDocument, updates);
+    await patchNumberingPart(zip, doc, updates);
 
     // Serialize modified headers/footers
     for (const [path, xml] of headerFooterUpdates) {

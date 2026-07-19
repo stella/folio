@@ -159,6 +159,34 @@ describe("withoutOrphanCommentRanges", () => {
     expect(withoutOrphanCommentRanges(document)).toBe(document);
   });
 
+  test("drops orphan markers inside comment bodies", () => {
+    const document: Document = {
+      package: {
+        document: {
+          comments: [
+            {
+              ...validComment,
+              content: [
+                paragraph([
+                  { type: "commentRangeStart", id: 404 },
+                  run("comment body"),
+                  { type: "commentReference", id: 1 },
+                ]),
+              ],
+            },
+          ],
+          content: [paragraph([run("body")])],
+        },
+      },
+    };
+
+    const result = withoutOrphanCommentRanges(document);
+
+    expect(result).not.toBe(document);
+    const commentParagraph = result.package.document.comments?.at(0)?.content.at(0);
+    expect(commentParagraph?.content.map((item) => item.type)).toEqual(["run", "commentReference"]);
+  });
+
   test("drops orphan commentReference markers", () => {
     const document: Document = {
       package: {
