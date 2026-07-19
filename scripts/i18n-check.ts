@@ -15,9 +15,14 @@
  */
 import path from "node:path";
 
-export type NestedMessages = {
-  [key: string]: string | NestedMessages;
-};
+import {
+  deleteNestedValue,
+  getNestedValue,
+  setNestedValue,
+  type NestedObject,
+} from "./lib/nested-object";
+
+export type NestedMessages = NestedObject;
 
 const flattenKeys = (obj: NestedMessages, prefix = ""): string[] => {
   const keys: string[] = [];
@@ -33,88 +38,6 @@ const flattenKeys = (obj: NestedMessages, prefix = ""): string[] => {
   }
 
   return keys;
-};
-
-const getNestedValue = (
-  obj: NestedMessages,
-  keyPath: string,
-): string | NestedMessages | undefined => {
-  const parts = keyPath.split(".");
-  let current: string | NestedMessages = obj;
-
-  for (const part of parts) {
-    if (typeof current === "string" || !(part in current)) {
-      return undefined;
-    }
-    const next: string | NestedMessages | undefined = current[part];
-    if (next === undefined) {
-      return undefined;
-    }
-    current = next;
-  }
-
-  return current;
-};
-
-const setNestedValue = (
-  obj: NestedMessages,
-  keyPath: string,
-  value: string | NestedMessages,
-): void => {
-  const parts = keyPath.split(".");
-  const leaf = parts.at(-1);
-  if (!leaf) {
-    return;
-  }
-
-  let current: NestedMessages = obj;
-
-  for (const part of parts.slice(0, -1)) {
-    const next = current[part];
-    if (typeof next === "object") {
-      current = next;
-    } else {
-      const child: NestedMessages = {};
-      current[part] = child;
-      current = child;
-    }
-  }
-
-  current[leaf] = value;
-};
-
-const deleteNestedKey = (obj: NestedMessages, keyPath: string): void => {
-  const parts = keyPath.split(".");
-  const leaf = parts.at(-1);
-  if (!leaf) {
-    return;
-  }
-
-  const parents: { obj: NestedMessages; key: string }[] = [];
-  let current: NestedMessages = obj;
-
-  for (const part of parts.slice(0, -1)) {
-    const next = current[part];
-    if (next === undefined || typeof next === "string") {
-      return;
-    }
-    parents.push({ obj: current, key: part });
-    current = next;
-  }
-
-  Reflect.deleteProperty(current, leaf);
-
-  // Clean up empty parent objects bottom-up
-  for (let i = parents.length - 1; i >= 0; i--) {
-    const entry = parents.at(i);
-    if (!entry) {
-      continue;
-    }
-    const nested = entry.obj[entry.key];
-    if (typeof nested === "object" && Object.keys(nested).length === 0) {
-      Reflect.deleteProperty(entry.obj, entry.key);
-    }
-  }
 };
 
 /** Check whether all keys are sorted alphabetically (recursive). */
@@ -166,7 +89,7 @@ export const syncMessages = (source: NestedMessages, target: NestedMessages): Ne
   // subtree, leaving the locale still missing `foo.bar`.
   for (const key of targetKeys) {
     if (!sourceKeys.has(key)) {
-      deleteNestedKey(result, key);
+      deleteNestedValue(result, key);
     }
   }
 

@@ -12,7 +12,9 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-type Nested = { [key: string]: string | Nested };
+import { setNestedValue, type NestedObject } from "./lib/nested-object";
+
+type Nested = NestedObject;
 
 const flatten = (obj: Nested, prefix = ""): Map<string, string> => {
   const out = new Map<string, string>();
@@ -30,25 +32,6 @@ const flatten = (obj: Nested, prefix = ""): Map<string, string> => {
     }
   }
   return out;
-};
-
-const setNested = (obj: Nested, path: string, value: string): void => {
-  const parts = path.split(".");
-  let current: Nested = obj;
-  for (const part of parts.slice(0, -1)) {
-    const next = current[part];
-    if (typeof next === "object" && next !== null) {
-      current = next;
-      continue;
-    }
-    const child: Nested = {};
-    current[part] = child;
-    current = child;
-  }
-  const leaf = parts.at(-1);
-  if (leaf) {
-    current[leaf] = value;
-  }
 };
 
 const [upstreamLocalePath, folioOutPath] = process.argv.slice(2);
@@ -87,10 +70,10 @@ for (const [folioKey, english] of folioFlat) {
   const upstreamKey = enValueToUpstreamKey.get(english);
   const translated = upstreamKey !== undefined ? upstreamLocaleFlat.get(upstreamKey) : undefined;
   if (translated !== undefined) {
-    setNested(out, folioKey, translated);
+    setNestedValue(out, folioKey, translated);
     matched++;
   } else {
-    setNested(out, folioKey, english);
+    setNestedValue(out, folioKey, english);
     fallback++;
   }
 }
