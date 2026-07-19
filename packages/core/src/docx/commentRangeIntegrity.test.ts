@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import type { BlockContent, Comment, Document, Paragraph, ParagraphContent } from "../types/document";
+import type {
+  BlockContent,
+  Comment,
+  Document,
+  Paragraph,
+  ParagraphContent,
+} from "../types/document";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 
 const validComment = {
@@ -158,7 +164,9 @@ describe("withoutOrphanCommentRanges", () => {
       package: {
         document: {
           comments: [validComment],
-          content: [paragraph([run("before"), { type: "commentReference", id: 404 }, run("after")])],
+          content: [
+            paragraph([run("before"), { type: "commentReference", id: 404 }, run("after")]),
+          ],
         },
       },
     };

@@ -132,6 +132,10 @@ const withoutOrphanBlockMarker = (
     return withoutOrphanTableMarkers(block, validCommentIds);
   }
 
+  if (!("content" in block) || !block.content) {
+    return block;
+  }
+
   const content = withoutOrphanBlockMarkers(block.content, validCommentIds);
   if (!content) {
     return block;
@@ -139,10 +143,7 @@ const withoutOrphanBlockMarker = (
   return { ...block, content };
 };
 
-const withoutOrphanTableMarkers = (
-  table: Table,
-  validCommentIds: ReadonlySet<number>,
-): Table => {
+const withoutOrphanTableMarkers = (table: Table, validCommentIds: ReadonlySet<number>): Table => {
   let changed = false;
   const rows: TableRow[] = [];
   for (const row of table.rows) {
@@ -215,7 +216,11 @@ const withoutOrphanTableCellBlockMarker = (
     return withoutOrphanParagraphMarkers(block, validCommentIds);
   }
 
-  return withoutOrphanTableMarkers(block, validCommentIds);
+  if (block.type === "table") {
+    return withoutOrphanTableMarkers(block, validCommentIds);
+  }
+
+  return block;
 };
 
 const withoutOrphanParagraphMarkers = (
