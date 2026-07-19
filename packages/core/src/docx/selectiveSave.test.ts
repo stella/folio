@@ -278,22 +278,36 @@ describe("Selective XML Patch with real DOCX", () => {
 // ============================================================================
 
 describe("attemptSelectiveSave", () => {
-  test("returns null for an invalid document model", async () => {
+  test("drops orphan comment references before selective-save validation", async () => {
     const buffer = await loadFixture("example-with-image.docx");
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
-    doc.package.document.content.unshift({
-      type: "paragraph",
-      content: [{ type: "commentReference", id: 999 }],
+    const target = doc.package.document.content.find(
+      (block): block is Paragraph => block.type === "paragraph" && block.paraId !== undefined,
+    );
+    if (!target?.paraId) {
+      throw new Error("Expected paragraph with paraId");
+    }
+    target.content.push({
+      type: "run",
+      content: [{ type: "text", text: " [ORPHAN_PRUNED]" }],
     });
+    target.content.push({ type: "commentReference", id: 999 });
 
     const result = await attemptSelectiveSave(doc, buffer, {
-      changedParaIds: new Set(),
+      changedParaIds: new Set([target.paraId]),
       structuralChange: false,
       hasUntrackedChanges: false,
     });
 
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error("Expected result");
+    }
+    const resultXml = await getDocumentXml(result);
+    expect(resultXml).toContain("[ORPHAN_PRUNED]");
+    expect(resultXml).not.toContain("commentReference");
+    expect(resultXml).not.toContain('w:id="999"');
   });
 
   test("returns null when structural change occurred", async () => {
