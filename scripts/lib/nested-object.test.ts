@@ -30,9 +30,9 @@ describe("setNestedValue", () => {
 
     expect(Object.hasOwn(target, "inheritedLocaleBranch")).toBe(true);
     expect(target.inheritedLocaleBranch).toEqual({ leaf: "safe" });
-    expect(
-      (Object.prototype as { inheritedLocaleBranch?: unknown }).inheritedLocaleBranch,
-    ).toEqual({});
+    expect((Object.prototype as { inheritedLocaleBranch?: unknown }).inheritedLocaleBranch).toEqual(
+      {},
+    );
   });
 
   test("rejects prototype-chain path segments", () => {

@@ -56,7 +56,11 @@ export const setNestedValue = (
 
   let current: NestedObject = obj;
   for (const part of parts.slice(0, -1)) {
-    if (!Object.hasOwn(current, part) || typeof current[part] !== "object" || current[part] === null) {
+    if (
+      !Object.hasOwn(current, part) ||
+      typeof current[part] !== "object" ||
+      current[part] === null
+    ) {
       const child: NestedObject = {};
       Object.defineProperty(current, part, {
         value: child,
