@@ -106,22 +106,26 @@ export function computeTabStops(context: TabContext): TabStop[] {
   } = context;
 
   // Clear stops suppress matching inherited/default positions but are not
-  // themselves destinations.
-  const validExplicitStops = explicitStops.filter((stop) => stop.val !== "clear");
+  // themselves destinations. Bar stops draw a vertical rule without advancing
+  // the pen (§17.18.84) — they are neither landing places nor grid suppressors.
+  const validExplicitStops = explicitStops.filter(
+    (stop) => stop.val !== "clear" && stop.val !== "bar",
+  );
 
   // Track cleared positions
   const clearPositions = explicitStops
     .filter((stop) => stop.val === "clear")
     .map((stop) => stop.pos);
 
-  // Find rightmost explicit stop
+  // Find rightmost authored stop that suppresses the default grid to its left
+  // (§17.15.1.25): the grid resumes only after this position.
   let maxExplicit = 0;
   for (const stop of validExplicitStops) {
     maxExplicit = Math.max(maxExplicit, stop.pos);
   }
 
-  // Build result starting with explicit stops
-  const stops = [...validExplicitStops];
+  // Build result starting with explicit stops (including bar marks for paint).
+  const stops = explicitStops.filter((stop) => stop.val !== "clear");
 
   // For hanging indent paragraphs (where leftIndent > 0 and no explicit stops before it),
   // add the leftIndent position as an implicit tab stop.
@@ -151,9 +155,9 @@ export function computeTabStops(context: TabContext): TabStop[] {
   while (pos < limitPos) {
     pos += defaultTabInterval;
 
-    // Skip if there's already an explicit stop at this position
+    // Skip if there's already an explicit stop (including bar) at this position
     let hasExplicitStop = false;
-    for (const stop of validExplicitStops) {
+    for (const stop of stops) {
       if (Math.abs(stop.pos - pos) < 20) {
         hasExplicitStop = true;
         break;

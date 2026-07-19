@@ -31,6 +31,7 @@ import {
 } from "./renderedBreakReconciliation";
 import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
+import { resolveFloatingTableX } from "./floatingTablePosition";
 import { floatingTextBoxReservesBand } from "./types";
 import type {
   FlowBlock,
@@ -1328,21 +1329,8 @@ function layoutFloatingTable(
 
   // Determine X position
   let x = paginator.getColumnX(state.columnIndex);
-  if (floating?.tblpX !== undefined) {
-    x = baseX + floating.tblpX;
-  } else if (floating?.tblpXSpec) {
-    const spec = floating.tblpXSpec;
-    if (spec === "left" || spec === "inside") {
-      x = baseX;
-    } else if (spec === "right" || spec === "outside") {
-      x = baseX + contentWidth - tableWidth;
-    } else {
-      x = baseX + (contentWidth - tableWidth) / 2;
-    }
-  } else if (block.justification === "center") {
-    x = baseX + (contentWidth - tableWidth) / 2;
-  } else if (block.justification === "right") {
-    x = baseX + contentWidth - tableWidth;
+  if (floating) {
+    x = baseX + resolveFloatingTableX(floating, block.justification, tableWidth, contentWidth);
   }
 
   // Determine Y position
@@ -1372,7 +1360,7 @@ function layoutFloatingTable(
   // Alignment keywords stay inside their selected anchor frame. A numeric
   // offset may deliberately move a margin-anchored table into the page margin,
   // so clamp that resolved position only against the physical page.
-  const usesNumericOffset = floating?.tblpX !== undefined;
+  const usesNumericOffset = floating?.tblpX !== undefined && floating.tblpXSpec === undefined;
   const pageAnchored = floating?.horzAnchor === "page";
   const clampToPage = pageAnchored || usesNumericOffset;
   const minX = clampToPage ? 0 : margins.left;

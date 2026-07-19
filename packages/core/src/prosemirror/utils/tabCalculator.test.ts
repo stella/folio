@@ -273,6 +273,17 @@ describe("calculateTabWidth", () => {
     expect(result.width).toBe(0);
     expect(result.alignment).toBe("bar");
   });
+
+  it("does not let a bar stop suppress the default grid to its left", () => {
+    // A lone bar at 2880tw must not clear the 720/1440/2160 grid stops before it.
+    const stops = computeTabStops({
+      explicitStops: [{ val: "bar", pos: 2880 }],
+    });
+    expect(stops.filter((s) => s.val === "start").map((s) => s.pos).slice(0, 3)).toEqual([
+      720, 1440, 2160,
+    ]);
+    expect(calculateTabWidth(0, { explicitStops: [{ val: "bar", pos: 2880 }] }).width).toBe(48);
+  });
 });
 
 describe("calculateSimpleTabWidth", () => {

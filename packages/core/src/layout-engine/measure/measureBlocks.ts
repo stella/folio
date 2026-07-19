@@ -29,6 +29,7 @@ import type {
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
 import { findClearLineY, measureParagraph, MIN_WRAP_SEGMENT_WIDTH } from "./measureParagraph";
 import type { FloatingImageZone } from "./measureParagraph";
+import { resolveFloatingTableX } from "../floatingTablePosition";
 import {
   buildTableCellGrid,
   getFirstAvailableColumn,
@@ -570,22 +571,12 @@ function extractFloatingZones(
     let rightMargin = 0;
 
     // Determine horizontal position relative to content area
-    let x = 0;
-    if (floating.tblpX !== undefined) {
-      x = floating.tblpX;
-    } else if (floating.tblpXSpec) {
-      if (floating.tblpXSpec === "left" || floating.tblpXSpec === "inside") {
-        x = 0;
-      } else if (floating.tblpXSpec === "right" || floating.tblpXSpec === "outside") {
-        x = defaultContentWidth - tableWidth;
-      } else {
-        x = (defaultContentWidth - tableWidth) / 2;
-      }
-    } else if (tableBlock.justification === "center") {
-      x = (defaultContentWidth - tableWidth) / 2;
-    } else if (tableBlock.justification === "right") {
-      x = defaultContentWidth - tableWidth;
-    }
+    const x = resolveFloatingTableX(
+      floating,
+      tableBlock.justification,
+      tableWidth,
+      defaultContentWidth,
+    );
 
     if (x < defaultContentWidth / 2) {
       leftMargin = x + tableWidth + distRight;

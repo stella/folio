@@ -9,6 +9,7 @@ import { panic } from "better-result";
 
 import { measureParagraph, rectsToFloatingZones } from "../layout-engine/measure";
 import type { FloatingExclusionRect, FloatingImageZone } from "../layout-engine/measure";
+import { resolveFloatingTableX } from "../layout-engine/floatingTablePosition";
 import { MIN_WRAP_SEGMENT_WIDTH } from "../layout-engine/measure/measureParagraph";
 import {
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,
@@ -666,21 +667,11 @@ function resolveHeaderFooterFloatingTablePosition(
   const vertFrameOffset =
     vertAnchor === "page" ? -layout.flowTop : layout.margins.top - layout.flowTop;
 
-  // Horizontal. Match the body's `inside`/`outside` handling
-  // (core/layout-engine: `inside` aliases left, `outside` aliases right).
-  // We don't have facing-page context in HF rendering, so the simple
-  // alias is the closest sensible match.
-  let left = 0;
-  const xSpec = floating.tblpXSpec;
-  if (xSpec === "left" || xSpec === "inside") {
-    left = horzFrameOffset;
-  } else if (xSpec === "right" || xSpec === "outside") {
-    left = horzFrameOffset + horzFrameWidth - measure.totalWidth;
-  } else if (xSpec === "center") {
-    left = horzFrameOffset + (horzFrameWidth - measure.totalWidth) / 2;
-  } else if (floating.tblpX !== undefined) {
-    left = horzFrameOffset + floating.tblpX;
-  }
+  // Horizontal. Match the body's resolveFloatingTableX order (§17.4.57):
+  // tblpXSpec supersedes tblpX; inside/outside alias left/right (no facing pages).
+  const left =
+    horzFrameOffset +
+    resolveFloatingTableX(floating, undefined, measure.totalWidth, horzFrameWidth);
 
   // Vertical
   let top = sourceY;
