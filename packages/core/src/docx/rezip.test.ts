@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import type { Document } from "../types/document";
-import { DocxModelValidationError } from "./modelValidation";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { DocxPackageFidelityError, repackDocx } from "./rezip";
@@ -214,12 +213,13 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
 }
 
 describe("repackDocx", () => {
-  test("rejects an invalid document model before full repack", async () => {
+  test("drops orphan comment references before full repack validation", async () => {
     const originalBuffer = await createHeaderFixture();
     const document: Document = {
       originalBuffer,
       package: {
         document: {
+          finalSectionProperties: {},
           content: [
             {
               type: "paragraph",
@@ -231,15 +231,12 @@ describe("repackDocx", () => {
       },
     };
 
-    try {
-      await repackDocx(document, { updateModifiedDate: false });
-    } catch (error) {
-      expect(error).toBeInstanceOf(DocxModelValidationError);
-      expect(String(error)).toContain("Comment 404 is referenced");
-      return;
-    }
+    const result = await repackDocx(document, { updateModifiedDate: false });
+    const zip = await JSZip.loadAsync(result);
+    const documentXml = await zip.file("word/document.xml")?.async("text");
 
-    throw new Error("Expected repackDocx to reject");
+    expect(documentXml).not.toContain("commentReference");
+    expect(documentXml).not.toContain('w:id="404"');
   });
 
   test("uses parser-repaired package buffers for full repack", async () => {

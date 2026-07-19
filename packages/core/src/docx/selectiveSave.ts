@@ -12,6 +12,7 @@ import type JSZip from "jszip";
 
 import type { Document, BlockContent, Comment } from "../types/document";
 import { parseCommentsExtended, type CommentExtendedInfo } from "./commentParser";
+import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
@@ -405,6 +406,13 @@ export async function attemptSelectiveSave(
   // A picture watermark spanning multiple headers needs per-header image
   // relationship rebinding, which only the full repack path performs.
   if (hasModelDrivenPictureWatermark(doc)) {
+    return null;
+  }
+  // Orphan comment markers can live in paragraphs outside `changedParaIds`,
+  // or in note parts the splice never re-reads, so a cleanup here would not
+  // ship through the selective overlay. Hand off to the full repack, which
+  // sanitizes and re-serializes every part.
+  if (withoutOrphanCommentRanges(doc) !== doc) {
     return null;
   }
   // A reply with no anchor of its own must get its parent's commentRange

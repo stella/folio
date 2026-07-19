@@ -278,14 +278,20 @@ describe("Selective XML Patch with real DOCX", () => {
 // ============================================================================
 
 describe("attemptSelectiveSave", () => {
-  test("returns null for an invalid document model", async () => {
+  test("returns null when orphan comment markers need cleanup", async () => {
     const buffer = await loadFixture("example-with-image.docx");
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
-    doc.package.document.content.unshift({
-      type: "paragraph",
-      content: [{ type: "commentReference", id: 999 }],
-    });
+    // The orphan marker lives in a paragraph outside `changedParaIds`, so the
+    // selective splice could never ship its removal; the save must fall back
+    // to the full repack, which owns orphan cleanup.
+    const target = doc.package.document.content.find(
+      (block): block is Paragraph => block.type === "paragraph" && block.paraId !== undefined,
+    );
+    if (!target?.paraId) {
+      throw new Error("Expected paragraph with paraId");
+    }
+    target.content.push({ type: "commentReference", id: 999 });
 
     const result = await attemptSelectiveSave(doc, buffer, {
       changedParaIds: new Set(),

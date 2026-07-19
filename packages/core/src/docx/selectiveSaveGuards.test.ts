@@ -16,6 +16,7 @@
 import { describe, test, expect } from "bun:test";
 import JSZip from "jszip";
 
+import type { Paragraph } from "../types/document";
 import { parseDocx } from "./parser";
 import { attemptSelectiveSave } from "./selectiveSave";
 import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES, resolveSelectiveSaveFlags } from "./selectiveSaveFlags";
@@ -227,16 +228,36 @@ describe("fallback contract", () => {
     expect(result).toBeNull();
   });
 
-  test("invalid model → null (orphaned commentReference triggers validator)", async () => {
+  test("invalid model → null (missing footnote target triggers validator)", async () => {
     const buffer = await makeFixture();
     const doc = await parseDocx(buffer, { preloadFonts: false });
     doc.package.document.content.unshift({
       type: "paragraph",
-      content: [{ type: "commentReference", id: 9999 }],
+      content: [{ type: "run", content: [{ type: "footnoteRef", id: 9999 }] }],
     });
 
     const result = await attemptSelectiveSave(doc, buffer, {
       changedParaIds: new Set(),
+      structuralChange: false,
+      hasUntrackedChanges: false,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  test("orphaned commentReference → null (cleanup owned by full repack)", async () => {
+    const buffer = await makeFixture();
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    const target = doc.package.document.content.find(
+      (block): block is Paragraph => block.type === "paragraph" && block.paraId !== undefined,
+    );
+    if (!target?.paraId) {
+      throw new Error("Expected paragraph with paraId");
+    }
+    target.content.push({ type: "commentReference", id: 9999 });
+
+    const result = await attemptSelectiveSave(doc, buffer, {
+      changedParaIds: new Set([target.paraId]),
       structuralChange: false,
       hasUntrackedChanges: false,
     });

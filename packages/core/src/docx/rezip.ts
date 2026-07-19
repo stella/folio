@@ -35,6 +35,7 @@ import JSZip from "jszip";
 import type { BlockContent, Comment, HeaderFooter, Image, Hyperlink } from "../types/content";
 import type { Document, Watermark } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
+import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { assertValidFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
@@ -693,7 +694,7 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
   }
 
   const { compressionLevel = 6, updateModifiedDate = true, modifiedBy } = options;
-  const exportDocument = doc;
+  const exportDocument = withoutOrphanCommentRanges(doc);
 
   // Load the original ZIP
   const originalZip = await JSZip.loadAsync(doc.originalBuffer);
@@ -817,7 +818,7 @@ export async function repackDocxFromRaw(
   options: RepackOptions = {},
 ): Promise<ArrayBuffer> {
   const { compressionLevel = 6, updateModifiedDate = true, modifiedBy } = options;
-  const exportDocument = doc;
+  const exportDocument = withoutOrphanCommentRanges(doc);
 
   // Create a new ZIP with all original files
   const newZip = new JSZip();
