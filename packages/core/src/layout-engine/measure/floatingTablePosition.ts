@@ -11,7 +11,7 @@
  * @packageDocumentation
  */
 
-import type { FloatingTablePosition, TableBlock } from "./types";
+import type { FloatingTablePosition, TableBlock } from "../types";
 
 /**
  * X of the table's left edge relative to the content-box left edge, px.

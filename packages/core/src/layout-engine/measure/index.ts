@@ -62,6 +62,8 @@ export {
   type WrapTextDirection,
 } from "./floatingZones";
 
+export { resolveFloatingTableX } from "./floatingTablePosition";
+
 export {
   getCachedTextWidth,
   setCachedTextWidth,

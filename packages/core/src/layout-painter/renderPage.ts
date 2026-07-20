@@ -7,9 +7,12 @@
 
 import { panic } from "better-result";
 
-import { measureParagraph, rectsToFloatingZones } from "../layout-engine/measure";
+import {
+  measureParagraph,
+  rectsToFloatingZones,
+  resolveFloatingTableX,
+} from "../layout-engine/measure";
 import type { FloatingExclusionRect, FloatingImageZone } from "../layout-engine/measure";
-import { resolveFloatingTableX } from "../layout-engine/floatingTablePosition";
 import { MIN_WRAP_SEGMENT_WIDTH } from "../layout-engine/measure/measureParagraph";
 import {
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,

@@ -29,7 +29,7 @@ import type {
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
 import { findClearLineY, measureParagraph, MIN_WRAP_SEGMENT_WIDTH } from "./measureParagraph";
 import type { FloatingImageZone } from "./measureParagraph";
-import { resolveFloatingTableX } from "../floatingTablePosition";
+import { resolveFloatingTableX } from "./floatingTablePosition";
 import {
   buildTableCellGrid,
   getFirstAvailableColumn,

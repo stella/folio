@@ -31,7 +31,7 @@ import {
 } from "./renderedBreakReconciliation";
 import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
-import { resolveFloatingTableX } from "./floatingTablePosition";
+import { resolveFloatingTableX } from "./measure/floatingTablePosition";
 import { floatingTextBoxReservesBand } from "./types";
 import type {
   FlowBlock,
