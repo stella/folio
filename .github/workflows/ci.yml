@@ -45,6 +45,15 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # `--frozen-lockfile` above only checks that the dependency graph still
+      # satisfies bun.lock; it does not notice a workspace's cached "version"
+      # field drifting behind its package.json (a plain `bun install` doesn't
+      # rewrite that field either — only a full lockfile regenerate does). See
+      # scripts/check-lockfile-workspace-versions.ts for the incident this
+      # guards against.
+      - name: Lockfile workspace-version check
+        run: bun run check:lockfile-versions
+
       - name: Lint
         run: bun run lint
 

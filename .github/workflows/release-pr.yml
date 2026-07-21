@@ -59,9 +59,13 @@ jobs:
       - name: Create or update the Version Packages PR
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
-          # `changeset version` bumps package.json + changelogs; the trailing
-          # `bun install` re-resolves bun.lock so the release PR stays green
-          # under `bun install --frozen-lockfile`.
+          # `changeset version` bumps package.json + changelogs. A plain
+          # `bun install` afterwards does NOT rewrite the "version" bun.lock
+          # already has cached for an existing workspace entry, so the bumped
+          # versions above previously went stale in the lockfile (see
+          # scripts/check-lockfile-workspace-versions.ts). `changeset:version`
+          # deletes bun.lock and regenerates it from scratch so the release PR
+          # carries a lockfile whose workspace versions actually match.
           version: bun run changeset:version
           title: "chore: version packages"
           commit: "chore: version packages"
