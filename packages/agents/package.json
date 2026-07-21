@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-agents",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Framework-neutral LLM tool layer over folio's ai-edits engine: function-calling tools so an agent can read and mutate .docx documents through @stll/folio-core.",
   "keywords": [
     "agent",

@@ -1,5 +1,20 @@
 # @stll/folio-core
 
+## 0.14.0
+
+### Minor Changes
+
+- [#433](https://github.com/stella/folio/pull/433) [`45af3e8`](https://github.com/stella/folio/commit/45af3e8073136efbf65d13881e8d7420d2402600) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add `docxToMarkdown(bytes)` to the `/server` entry: a one-call, server-safe DOCX
+  bytes → markdown converter that composes `parseDocx` (font preloading disabled)
+  and `toMarkdown`, so non-browser callers get full DOCX fidelity without deep
+  imports or a hand-rolled OOXML walker. Also fixes the DOCX table-cell parser to
+  descend into block-level content controls (`w:tc > w:sdt > w:sdtContent`), so
+  controlled field text inside table cells is no longer dropped.
+
+### Patch Changes
+
+- [#431](https://github.com/stella/folio/pull/431) [`34b0737`](https://github.com/stella/folio/commit/34b0737e6e110d9f2aa464a4f40ad13aead5ceeb) Thanks [@cursor](https://github.com/apps/cursor)! - Honor tblpXSpec over tblpX for floating tables, and keep bar tab stops from suppressing the default tab grid.
+
 ## 0.13.0
 
 ### Minor Changes
