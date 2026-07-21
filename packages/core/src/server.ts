@@ -177,6 +177,7 @@ export {
   type ExtractedDocxParagraph,
   type ExtractedDocxText,
 } from "./docx/server/extractDocxText";
+export { docxToMarkdown } from "./docx/server/docxToMarkdown";
 export { DocxArchiveError, type DocxArchiveOptions } from "./docx/server/boundedArchive";
 export {
   applyDocxXmlPatchProposal,

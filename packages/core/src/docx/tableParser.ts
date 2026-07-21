@@ -1242,9 +1242,9 @@ function parseCellContent(
   // Get all child elements
   const elements = getChildElements(tcElement);
 
-  for (const child of elements) {
+  const parseCellChild = (child: XmlElement): void => {
     if (!child.name) {
-      continue;
+      return;
     }
 
     const localName = getLocalName(child.name);
@@ -1255,20 +1255,44 @@ function parseCellContent(
       enrichParagraphTextBoxes(para, child, styles, theme, numbering, rels, media, parseTable);
       prependPendingBookmarkMarkers(para, pendingBookmarkMarkers);
       content.push(para);
-    } else if (localName === "tbl") {
+      return;
+    }
+
+    if (localName === "tbl") {
       // Parse nested table (recursive)
       const table = parseTable(child, styles, theme, numbering, rels, media, options);
       if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
         pendingBookmarkMarkers.length = 0;
       }
       content.push(table);
-    } else if (localName === "bookmarkStart" || localName === "bookmarkEnd") {
+      return;
+    }
+
+    if (localName === "sdt") {
+      // Block-level content control inside a cell: its content lives in
+      // `w:sdtContent`, so descend so controlled paragraphs/tables (common for
+      // bound fields in legal tables) are not dropped.
+      const sdtContent = findChildByLocalName(child, "sdtContent");
+      if (!sdtContent) {
+        return;
+      }
+      for (const sdtChild of getChildElements(sdtContent)) {
+        parseCellChild(sdtChild);
+      }
+      return;
+    }
+
+    if (localName === "bookmarkStart" || localName === "bookmarkEnd") {
       const marker = parseBookmarkMarker(child, localName);
       if (!appendBookmarkMarkerToLastParagraphInBlocks(content, marker)) {
         pendingBookmarkMarkers.push(marker);
       }
     }
     // Other content types in cells are rare but could be added
+  };
+
+  for (const child of elements) {
+    parseCellChild(child);
   }
 
   // Ensure at least one empty paragraph (Word requires this)
