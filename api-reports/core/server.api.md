@@ -137,6 +137,9 @@ export type DocxArchiveOptions = {
 export type DocxParagraphSource = "header" | "body" | "footer";
 
 // @public
+export function docxToMarkdown(input: ArrayBuffer | Uint8Array, opts?: MarkdownOptions): Promise<string>;
+
+// @public
 export const ensureParaIds: (docx: Uint8Array | ArrayBuffer, options?: EnsureParaIdsOptions) => Promise<EnsureParaIdsResult>;
 
 // @public

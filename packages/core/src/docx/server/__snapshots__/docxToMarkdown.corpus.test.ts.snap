@@ -1,0 +1,106 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`docxToMarkdown corpus snapshots extracts alt-prefix-sdt.docx 1`] = `"Due date: 31 December 2026"`;
+
+exports[`docxToMarkdown corpus snapshots extracts authored-empty-paragraph.docx 1`] = `
+"Heading paragraph.
+
+Trailing paragraph."
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts block-sdt-richtext.docx 1`] = `
+"Heads of Terms — **Project Acorn**
+
+Trailing paragraph."
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts checkbox-val-false.docx 1`] = `"☐ Boolean false form."`;
+
+exports[`docxToMarkdown corpus snapshots extracts checkbox-val-true.docx 1`] = `"☒ Boolean true form."`;
+
+exports[`docxToMarkdown corpus snapshots extracts datahash-sdt.docx 1`] = `"Hashed content."`;
+
+exports[`docxToMarkdown corpus snapshots extracts date-fractional-seconds.docx 1`] = `"2026-06-02"`;
+
+exports[`docxToMarkdown corpus snapshots extracts dropdown-empty-value.docx 1`] = `"Choose: (none)"`;
+
+exports[`docxToMarkdown corpus snapshots extracts empty-sdt-content.docx 1`] = `"Before:  :after"`;
+
+exports[`docxToMarkdown corpus snapshots extracts extraspec-bookmark-sibling.docx 1`] = `
+"Inside bookmarked sdt.
+
+After."
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts extraspec-commentrange-sibling.docx 1`] = `
+"Inside commented sdt.
+
+After."
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts inline-sdt-checkbox.docx 1`] = `"☒ I accept the NDA."`;
+
+exports[`docxToMarkdown corpus snapshots extracts inline-sdt-dropdown.docx 1`] = `"Governing law: England and Wales."`;
+
+exports[`docxToMarkdown corpus snapshots extracts inline-sdt-mixed-rpr.docx 1`] = `"**Buyer:** *ACME, s.r.o.*"`;
+
+exports[`docxToMarkdown corpus snapshots extracts lock-content-locked.docx 1`] = `"Content is locked."`;
+
+exports[`docxToMarkdown corpus snapshots extracts lock-sdt-content-locked.docx 1`] = `"Both are locked."`;
+
+exports[`docxToMarkdown corpus snapshots extracts lock-sdt-locked.docx 1`] = `"Wrapper is locked."`;
+
+exports[`docxToMarkdown corpus snapshots extracts nested-block-sdt.docx 1`] = `"Nested content paragraph."`;
+
+exports[`docxToMarkdown corpus snapshots extracts opendope-encoded-ampersand-tag.docx 1`] = `"OpenDoPE slot."`;
+
+exports[`docxToMarkdown corpus snapshots extracts placeholder-docpart.docx 1`] = `"(placeholder)"`;
+
+exports[`docxToMarkdown corpus snapshots extracts placeholder-without-docpart.docx 1`] = `"No docPart inside placeholder."`;
+
+exports[`docxToMarkdown corpus snapshots extracts repeating-section.docx 1`] = `"One row of the repeating section."`;
+
+exports[`docxToMarkdown corpus snapshots extracts sdt-rpr-placeholder.docx 1`] = `"**Placeholder text.**"`;
+
+exports[`docxToMarkdown corpus snapshots extracts sdt-self-closing.docx 1`] = `"After empty sdt."`;
+
+exports[`docxToMarkdown corpus snapshots extracts sdt-without-sdtpr.docx 1`] = `"hi"`;
+
+exports[`docxToMarkdown corpus snapshots extracts upstream-complex-styles.docx 1`] = `
+"# Heading 1
+
+This is a paragraph under heading 1. It contains normal text.
+
+## Heading 2
+
+Another paragraph with Times New Roman font and Arial font.
+
+Red text. Blue text. Green text.
+
+Highlighted text and normal text."
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts upstream-empty.docx 1`] = `""`;
+
+exports[`docxToMarkdown corpus snapshots extracts upstream-styled-content.docx 1`] = `
+"Normal text. **Bold text.** *Italic text.* Underlined text.
+
+***Bold and italic text.*** ~~Strikethrough text.~~
+
+Large text (18pt). Small text (8pt).
+
+Centered paragraph.
+
+Right-aligned paragraph."
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts upstream-with-tables.docx 1`] = `
+"Document with tables:
+
+| A1 | B1 | C1 |
+| --- | --- | --- |
+| A2 | B2 | C2 |
+| A3 | B3 | C3 |
+
+End of document."
+`;
