@@ -19,6 +19,7 @@
 // `version` against the version bun.lock has cached for that workspace, so
 // the drift itself gets caught in CI instead of silently persisting.
 
+import { panic } from "better-result";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -37,21 +38,27 @@ const workspaceDirs = entries
 const lockText = await Bun.file(join(ROOT, "bun.lock")).text();
 
 // bun.lock is JSON-with-trailing-commas ("JSONC"-flavored), not strict JSON,
-// so a plain JSON.parse fails on it. Rather than hand-roll a tolerant parser
-// for the whole file (risking mis-parsing the many base64 `sha512-...`
-// strings that legitimately contain `//`), extract just the one shape we
-// need directly: the `"<workspace path>": { "name": "...", "version": "...",
-// "dependencies": { ... }, ... }` block bun emits per workspace entry.
-// Anchor on the block's own indentation and match everything up to the `}`
-// that closes at that same indentation, rather than stopping at the first
-// `}`: a nested map (`dependencies`, `devDependencies`, `bin`, ...) closing
-// before `version` would otherwise truncate the capture and hide the field.
+// so a plain JSON.parse fails on it as-is. Trailing commas only ever appear
+// directly before a closing `}`/`]`, and that exact sequence cannot occur
+// inside any of bun.lock's own string values (workspace paths, package
+// names/versions/specifiers, or the base64 `sha512-...` integrity hashes),
+// so stripping them is a safe, structure-preserving normalize. Parsing the
+// whole file once and reading `workspaces[dir].version` from the resulting
+// object is immune to bun's key ordering or nested-object shape — unlike a
+// per-block regex, there is no block to mis-extract.
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const parsedLock: unknown = JSON.parse(lockText.replace(/,(\s*[}\]])/g, "$1"));
+if (!isRecord(parsedLock) || !isRecord(parsedLock.workspaces)) {
+  panic("bun.lock did not parse into the expected { workspaces: {...} } shape");
+}
+const { workspaces: lockWorkspaces } = parsedLock;
+
 const versionForWorkspace = (workspacePath: string): string | null => {
-  const escaped = workspacePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const blockRe = new RegExp(`^(\\s*)"${escaped}":\\s*\\{([^]*?)^\\1\\}`, "m");
-  const block = blockRe.exec(lockText)?.[2];
-  if (!block) return null;
-  return /"version":\s*"([^"]+)"/.exec(block)?.[1] ?? null;
+  const entry = lockWorkspaces[workspacePath];
+  if (!isRecord(entry) || typeof entry.version !== "string") return null;
+  return entry.version;
 };
 
 const mismatches: string[] = [];
