@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.14.1
+
+### Patch Changes
+
+- [#434](https://github.com/stella/folio/pull/434) [`70217a6`](https://github.com/stella/folio/commit/70217a6fabaf0807807f2c790da856fdd9108c5d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Correct the `@stll/docx-core` dependency range: folio-core imports `normalizeRevisionId`, which only exists in docx-core 0.5.0, but 0.14.0 was published declaring `^0.4.0` (excludes 0.5.0 under 0.x semver). Republish so the range resolves to `^0.5.0`.
+
 ## 0.14.0
 
 ### Minor Changes
