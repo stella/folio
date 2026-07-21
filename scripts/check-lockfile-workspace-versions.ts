@@ -23,7 +23,7 @@ import { panic } from "better-result";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = join(import.meta.dirname, "..");
 
 const readJson = async (path: string): Promise<Record<string, unknown>> =>
   JSON.parse(await Bun.file(path).text());
@@ -64,7 +64,11 @@ const versionForWorkspace = (workspacePath: string): string | null => {
 const mismatches: string[] = [];
 
 for (const workspaceDir of workspaceDirs) {
-  const pkg = await readJson(join(ROOT, workspaceDir, "package.json"));
+  // A directory under packages/ is not necessarily a real workspace: skip
+  // it (rather than crash the guard) if its package.json is missing or
+  // fails to parse.
+  const pkg = await readJson(join(ROOT, workspaceDir, "package.json")).catch(() => null);
+  if (pkg === null) continue;
   const name = pkg.name;
   const version = pkg.version;
   if (typeof name !== "string" || typeof version !== "string") continue;
