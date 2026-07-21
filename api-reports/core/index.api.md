@@ -927,6 +927,9 @@ export type MarkdownResult = {
     warnings: string[];
 };
 
+// @public
+export function mergeDocumentContent(target: import__stll_docx_core_model.Document, source: import__stll_docx_core_model.Document): import__stll_docx_core_model.Document;
+
 // @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;
 

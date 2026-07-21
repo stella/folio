@@ -7,6 +7,7 @@
 // entry re-exports all of this and adds the React components on top.
 
 export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
+export { mergeDocumentContent } from "./utils/mergeDocumentContent";
 export {
   extractDocumentStyleSet,
   extractDocumentStyleSetFromDocx,
