@@ -14,7 +14,7 @@ import { docxToMarkdown } from "../docx/server/docxToMarkdown";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { createStellaStyleDocumentPreset } from "../style-sets/stellaStyle";
-import type { Document, Paragraph } from "../types/document";
+import type { BlockContent, Document, Paragraph, Table, TableCell } from "../types/document";
 import { createEmptyDocument } from "./createDocument";
 import { mergeDocumentContent } from "./mergeDocumentContent";
 
@@ -97,5 +97,119 @@ describe("mergeDocumentContent", () => {
     // (decimal at level 0), not a plain unnumbered paragraph.
     const clauseLine = markdown.split("\n").find((line) => line.includes("Clause text."));
     expect(clauseLine).toMatch(/^1[.)]?\s+Clause text\.$/);
+  });
+
+  test("remaps a colliding numId inside a nested table (table cell containing a table)", () => {
+    const target = stellaTargetWithClause();
+    const listItem = fromMarkdown("1. first").package.document.content[0];
+    if (!listItem || listItem.type !== "paragraph") {
+      throw new Error("expected fromMarkdown to produce a list paragraph");
+    }
+
+    const nestedTable: Table = {
+      type: "table",
+      rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [listItem] }] }],
+    };
+    const outerTable: Table = {
+      type: "table",
+      rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [nestedTable] }] }],
+    };
+    const source: Document = {
+      ...fromMarkdown("1. first"),
+      package: {
+        ...fromMarkdown("1. first").package,
+        document: { ...fromMarkdown("1. first").package.document, content: [outerTable] },
+      },
+    };
+
+    const merged = mergeDocumentContent(target, source);
+    const mergedOuterTable = merged.package.document.content.at(-1);
+    if (mergedOuterTable?.type !== "table") {
+      throw new Error("expected the merged content to end with the outer table");
+    }
+    const mergedNestedTable = mergedOuterTable.rows[0]?.cells[0]?.content[0];
+    if (mergedNestedTable?.type !== "table") {
+      throw new Error("expected the outer cell to contain the nested table");
+    }
+    const mergedParagraph = mergedNestedTable.rows[0]?.cells[0]?.content[0];
+
+    expect(mergedParagraph?.type).toBe("paragraph");
+    const remappedNumId =
+      mergedParagraph?.type === "paragraph" ? mergedParagraph.formatting?.numPr?.numId : undefined;
+    // Remapped above the target's reserved numId range (1-5), not left at
+    // the colliding numId 1 fromMarkdown minted.
+    expect(remappedNumId).toBeGreaterThan(5);
+  });
+
+  test("a table cell holding an unexpected (non paragraph/table) block does not crash", () => {
+    // `TableCell.content` is statically typed as `(Paragraph | Table)[]` —
+    // folio's own DOCX parser flattens a `w:sdt` inside a cell into its
+    // children rather than keeping a `blockSdt` wrapper (see
+    // `tableParser.ts`) — but `mergeDocumentContent` is a general helper
+    // that also has to tolerate hand-built `Document` values that don't
+    // honor that invariant. Build one here to lock in the crash fix: passing
+    // a non-table block straight into `remapTable` used to throw on
+    // `table.rows`.
+    const foreignBlock = {
+      type: "blockSdt",
+      properties: { sdtType: "richText" },
+      content: [] as BlockContent[],
+    } satisfies Extract<BlockContent, { type: "blockSdt" }>;
+    // SAFETY: simulating an untrusted/hand-built Document whose cell content
+    // does not conform to `TableCell.content`'s static type — see the test
+    // description above.
+    const cell = { type: "tableCell", content: [foreignBlock] } as unknown as TableCell;
+    const table: Table = { type: "table", rows: [{ type: "tableRow", cells: [cell] }] };
+
+    const target = stellaTargetWithClause();
+    const source: Document = {
+      ...fromMarkdown("1. first"),
+      package: {
+        ...fromMarkdown("1. first").package,
+        document: { ...fromMarkdown("1. first").package.document, content: [table] },
+      },
+    };
+
+    expect(() => mergeDocumentContent(target, source)).not.toThrow();
+
+    const merged = mergeDocumentContent(target, source);
+    const mergedTable = merged.package.document.content.at(-1);
+    if (mergedTable?.type !== "table") {
+      throw new Error("expected the merged content to end with the table");
+    }
+    // The foreign block is preserved unchanged, not dropped or crashed on.
+    expect(mergedTable.rows[0]?.cells[0]?.content[0]).toEqual(foreignBlock);
+  });
+
+  test("recurses into a top-level blockSdt content control", () => {
+    const target = stellaTargetWithClause();
+    const listItem = fromMarkdown("1. first").package.document.content[0];
+    if (!listItem || listItem.type !== "paragraph") {
+      throw new Error("expected fromMarkdown to produce a list paragraph");
+    }
+
+    const sdt: Extract<BlockContent, { type: "blockSdt" }> = {
+      type: "blockSdt",
+      properties: { sdtType: "richText" },
+      content: [listItem],
+    };
+    const source: Document = {
+      ...fromMarkdown("1. first"),
+      package: {
+        ...fromMarkdown("1. first").package,
+        document: { ...fromMarkdown("1. first").package.document, content: [sdt] },
+      },
+    };
+
+    const merged = mergeDocumentContent(target, source);
+    const mergedSdt = merged.package.document.content.at(-1);
+    if (mergedSdt?.type !== "blockSdt") {
+      throw new Error("expected the merged content to end with the blockSdt");
+    }
+    const mergedParagraph = mergedSdt.content[0];
+    expect(mergedParagraph?.type).toBe("paragraph");
+    const remappedNumId =
+      mergedParagraph?.type === "paragraph" ? mergedParagraph.formatting?.numPr?.numId : undefined;
+    expect(remappedNumId).toBeGreaterThan(5);
   });
 });
