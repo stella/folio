@@ -17,12 +17,23 @@
  *   continuous, header/footer-free band (a skill body is a document, not a
  *   Word page). Headers/footers live outside `document.content` and are never
  *   produced here.
+ * - Every markdown list also gets a matching `w:abstractNum`/`w:num` pair in
+ *   `document.package.numbering` (see {@link buildNumbering}), so the result
+ *   is self-consistent and `createDocx` never has to fail with a missing
+ *   numbering definition. Merging this content onto another document that
+ *   has its own numbering (e.g. a styled preset) needs `mergeDocumentContent`
+ *   to renumber the two numbering namespaces apart — appending
+ *   `document.package.document.content` directly can collide.
  */
 import { marked, type Token, type Tokens } from "marked";
 
 import type {
+  AbstractNumbering,
   BlockContent,
   Document,
+  ListLevel,
+  NumberingDefinitions,
+  NumberingInstance,
   ParagraphContent,
   ListRendering,
   Paragraph,
@@ -220,16 +231,55 @@ const tableFromToken = (token: Tokens.Table): Table => ({
   ],
 });
 
+// Twips (720 = 0.5"). Each deeper level indents one more half-inch, matching
+// the step folio's other synthesized numbering (legal-source's checklist
+// profile) uses for a single-column marker + hanging indent.
+const LIST_INDENT_STEP_TWIPS = 720;
+const LIST_HANGING_INDENT_TWIPS = 360;
+
+/**
+ * One `w:abstractNum` level per (numId, ilvl) pair actually used by the
+ * markdown, keyed by ilvl. Built alongside the blocks so {@link fromMarkdown}
+ * can synthesize `document.package.numbering` afterwards — the DOCX
+ * serializer reads numbering defs only from there, never from the
+ * editor-only `listRendering` hint (see `numberingSerializer.ts`).
+ */
+type NumIdLevels = Map<number, ListLevel>;
+
+const buildListLevel = (ilvl: number, isBullet: boolean, start: number): ListLevel => ({
+  ilvl,
+  ...(!isBullet && { start }),
+  numFmt: isBullet ? "bullet" : "decimal",
+  lvlText: isBullet ? "•" : `%${ilvl + 1}.`,
+  suffix: "tab",
+  pPr: {
+    indentLeft: LIST_INDENT_STEP_TWIPS * (ilvl + 1),
+    indentFirstLine: -LIST_HANGING_INDENT_TWIPS,
+    hangingIndent: true,
+  },
+});
+
 // Real list paragraphs with Word-style template markers ("%1." resolves to the
 // live counter at level 0), so inserted/split items renumber instead of
 // repeating a baked-in number. Each top-level markdown list gets its own numId
 // so separate lists restart at 1; nested lists share the parent's numId at a
 // deeper ilvl. toMarkdown resolves the templates back to concrete "N." markers
 // and normalises bullets to "- ", so the markdown round-trips exactly.
-const listBlocks = (list: Tokens.List, level: number, numId: number): BlockContent[] => {
+const listBlocks = (
+  list: Tokens.List,
+  level: number,
+  numId: number,
+  levels: NumIdLevels,
+): BlockContent[] => {
   const out: BlockContent[] = [];
   const start = Number(list.start) || 1;
   const decimalLevels = Array.from({ length: level + 1 }, () => "decimal" as const);
+  // First list to reach this (numId, ilvl) defines the synthesized level —
+  // a nested list that later reuses the same depth under the same numId
+  // shares that counter, matching how `listRendering` already treats it.
+  if (!levels.has(level)) {
+    levels.set(level, buildListLevel(level, !list.ordered, start));
+  }
   for (const item of list.items) {
     const rendering: ListRendering = list.ordered
       ? {
@@ -253,14 +303,18 @@ const listBlocks = (list: Tokens.List, level: number, numId: number): BlockConte
     }
     out.push(listPara(inlineToRuns(inlineTokens, item.text, {}), rendering));
     for (const nested of nestedLists) {
-      out.push(...listBlocks(nested, level + 1, numId));
+      out.push(...listBlocks(nested, level + 1, numId, levels));
     }
   }
   return out;
 };
 
-/** Allocates one numId per markdown list so each list counts independently. */
-type NumIdAllocator = { next: number };
+/**
+ * Allocates one numId per markdown list so each list counts independently,
+ * and collects the level definitions {@link fromMarkdown} needs to
+ * synthesize `document.package.numbering` for every list it mints.
+ */
+type NumIdAllocator = { next: number; levels: Map<number, NumIdLevels> };
 
 const blocksFromTokens = (tokens: Token[] | undefined, numIds: NumIdAllocator): BlockContent[] => {
   const blocks: BlockContent[] = [];
@@ -271,7 +325,10 @@ const blocksFromTokens = (tokens: Token[] | undefined, numIds: NumIdAllocator): 
     } else if (isTokenType(token, "paragraph")) {
       blocks.push(para(inlineToRuns(token.tokens, token.text, {})));
     } else if (isTokenType(token, "list")) {
-      blocks.push(...listBlocks(token, 0, numIds.next++));
+      const numId = numIds.next++;
+      const levels: NumIdLevels = new Map();
+      numIds.levels.set(numId, levels);
+      blocks.push(...listBlocks(token, 0, numId, levels));
     } else if (isTokenType(token, "table")) {
       blocks.push(tableFromToken(token));
     } else if (isTokenType(token, "code")) {
@@ -323,6 +380,29 @@ const applyMarkdownPageGeometry = (document: Document): void => {
   section.footerDistance = 0;
 };
 
+// One `w:abstractNum` per numId (a 1:1 mapping, so `abstractNumId === numId`
+// keeps the synthesis trivial to reason about — callers merging this into a
+// document with its own numbering should not assume the mapping stays 1:1
+// after remapping; see `mergeDocumentContent`, which renumbers both ids
+// independently). Every level actually visited by that markdown list becomes
+// one `w:lvl`, so `createDocx(fromMarkdown(md))` never references a numId
+// with no definition (`DocxModelValidationError: Numbering definition N is
+// missing`) and the DOCX round-trips through `docxToMarkdown` unchanged.
+const buildNumbering = (numIdLevels: Map<number, NumIdLevels>): NumberingDefinitions => {
+  const abstractNums: AbstractNumbering[] = [];
+  const nums: NumberingInstance[] = [];
+  for (const [numId, levels] of numIdLevels) {
+    const sortedLevels = [...levels.entries()].sort(([a], [b]) => a - b).map(([, lvl]) => lvl);
+    abstractNums.push({
+      abstractNumId: numId,
+      multiLevelType: sortedLevels.length > 1 ? "multilevel" : "singleLevel",
+      levels: sortedLevels,
+    });
+    nums.push({ numId, abstractNumId: numId });
+  }
+  return { abstractNums, nums };
+};
+
 /**
  * Convert a markdown string to a parsed `Document`. Synchronous. The result is
  * ready to hand to the editor (`<DocxEditor document={…} />`) and to re-export
@@ -330,9 +410,13 @@ const applyMarkdownPageGeometry = (document: Document): void => {
  */
 export function fromMarkdown(markdown: string): Document {
   const document = createEmptyDocument();
-  const blocks = blocksFromTokens(marked.lexer(markdown), { next: 1 });
+  const numIds: NumIdAllocator = { next: 1, levels: new Map() };
+  const blocks = blocksFromTokens(marked.lexer(markdown), numIds);
   if (blocks.length > 0) {
     document.package.document.content = blocks;
+  }
+  if (numIds.levels.size > 0) {
+    document.package.numbering = buildNumbering(numIds.levels);
   }
   applyMarkdownPageGeometry(document);
   return document;
