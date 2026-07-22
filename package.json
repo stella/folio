@@ -88,7 +88,7 @@
     "@typescript/native": "npm:typescript@7.0.2",
     "@vitejs/plugin-react": "^6.0.3",
     "babel-plugin-react-compiler": "^1.0.0",
-    "better-result": "2.9.2",
+    "better-result": "2.10.0",
     "fast-check": "^4.9.0",
     "fast-xml-parser": "^5.9.3",
     "jszip": "3.10.1",

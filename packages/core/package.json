@@ -59,7 +59,7 @@
     "@stll/docx-core": "workspace:^",
     "@stll/docx-utils": "^0.1.0",
     "@stll/template-conditions": "^0.1.0",
-    "better-result": "2.9.2",
+    "better-result": "2.10.0",
     "csstype": "^3.1.3",
     "dompurify": "^3.4.12",
     "fast-xml-parser": "^5.9.3",

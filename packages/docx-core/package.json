@@ -47,7 +47,7 @@
     "prepack": "bun run build"
   },
   "dependencies": {
-    "better-result": "2.9.2",
+    "better-result": "2.10.0",
     "jszip": "3.10.1"
   },
   "devDependencies": {
