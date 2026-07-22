@@ -103,37 +103,37 @@ watermarkPresets?: readonly string[];
 
 // @public
 export type DocxEditorHandle = EditorHandle & {
-    setZoom: (zoom: number) => void; /** Scroll the visible pages to a raw ProseMirror document position. */
-    scrollToPosition: (pmPos: number) => void; /** Scroll the visible pages to a 1-indexed page number. */
+    setZoom: (zoom: number) => void;
+    scrollToPosition: (pmPos: number) => void;
     scrollToPage: (pageNumber: number) => void;
 };
 
 // @public
 export type DocxEditorRef = {
-    getDocument: () => Document_2 | null; /** Whether the live ProseMirror state has edits that have not been serialized. */
-    hasPendingChanges: () => boolean; /** Get the editor ref */
-    getEditorRef: () => PagedEditorRef | null; /** The headless editor controller (Seam 6), or null before the editor mounts. */
-    getEditor: () => FolioEditor | null; /** Save the document to buffer. Pass { selective: false } to force full repack. */
+    getDocument: () => Document_2 | null;
+    hasPendingChanges: () => boolean;
+    getEditorRef: () => PagedEditorRef | null;
+    getEditor: () => FolioEditor | null;
     save: (options?: {
         selective?: boolean;
-    }) => Promise<ArrayBuffer | null>; /** Set zoom level */
-    setZoom: (zoom: number) => void; /** Get current zoom level */
-    getZoom: () => number; /** Focus the editor */
-    focus: () => void; /** Get current page number */
-    getCurrentPage: () => number; /** Get total page count */
-    getTotalPages: () => number; /** Scroll to a specific page */
+    }) => Promise<ArrayBuffer | null>;
+    setZoom: (zoom: number) => void;
+    getZoom: () => number;
+    focus: () => void;
+    getCurrentPage: () => number;
+    getTotalPages: () => number;
     scrollToPage: (pageNumber: number) => void;
-    scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean; /** Open print preview */
-    openPrintPreview: () => void; /** Print the document directly */
-    print: () => void; /** Load a pre-parsed document programmatically */
-    loadDocument: (doc: Document_2) => void; /** Load a DOCX buffer programmatically (ArrayBuffer, Uint8Array, Blob, or File) */
+    scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean;
+    openPrintPreview: () => void;
+    print: () => void;
+    loadDocument: (doc: Document_2) => void;
     loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;
     ensureEditorView: (options?: {
         focus?: boolean;
-    }) => void; /** Create the block snapshot that an external AI editor should reference. */
-    createAIEditSnapshot: () => FolioAIEditSnapshot | null; /** Apply a versioned document-operation batch against a previously created block snapshot. */
-    applyDocumentOperations: (options: DocxEditorApplyDocumentOperationsOptions) => FolioDocumentOperationResult; /** Undo the latest unchanged document-operation batch. */
-    undoDocumentOperations: (undoHandle: FolioDocumentOperationUndoHandle) => FolioDocumentOperationUndoResult; /** Apply AI-authored operations against a previously created block snapshot. */
+    }) => void;
+    createAIEditSnapshot: () => FolioAIEditSnapshot | null;
+    applyDocumentOperations: (options: DocxEditorApplyDocumentOperationsOptions) => FolioDocumentOperationResult;
+    undoDocumentOperations: (undoHandle: FolioDocumentOperationUndoHandle) => FolioDocumentOperationUndoResult;
     applyAIEditOperations: (options: {
         snapshot: FolioAIEditSnapshot;
         operations: FolioAIEditOperation[];
@@ -146,8 +146,8 @@ export type DocxEditorRef = {
     redo: () => boolean;
     scrollToAIEditOperation: (revisionIds: number | readonly number[]) => boolean;
     scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean;
-    highlightPassage: (options: HighlightPassageOptions) => HighlightPassageResult; /** Clear the passage highlight painted by {@link highlightPassage}, if any. */
-    clearPassageHighlight: () => void; /** Resolve a stable block or text-range target and reveal it in the editor. */
+    highlightPassage: (options: HighlightPassageOptions) => HighlightPassageResult;
+    clearPassageHighlight: () => void;
     showInDocument: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => boolean;
     getSuggestions: () => FolioSuggestion[];
     acceptSuggestion: (suggestionId: string, options?: {
@@ -161,10 +161,10 @@ export type DocxEditorRef = {
     getTrackedChanges: () => FolioReviewChange[];
     getCommentAnchors: () => FolioCommentAnchor[];
     getSelectionText: () => string;
-    getPageText: (page: number) => string | null; /** Resolve a stable block or text range to its real 1-based rendered page. */
+    getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
     getContentControls: (filter?: ContentControlFilter) => {
-        properties: SdtProperties; /** Index in the PM document tree, outer→inner. */
+        properties: SdtProperties;
         path: number[];
         pmPos: number;
     }[];
@@ -183,9 +183,9 @@ export type DocxEditorRef = {
 
 // @public
 export type EditorHandle = {
-    save: () => Promise<Blob | null>; /** Get the current parsed document model. */
-    getDocument: () => Document_2 | null; /** Focus the editor. */
-    focus: () => void; /** Unmount the editor and clean up. */
+    save: () => Promise<Blob | null>;
+    getDocument: () => Document_2 | null;
+    focus: () => void;
     destroy: () => void;
 };
 

@@ -41,8 +41,8 @@ export function findClearLineY(startY: number, lineHeight: number, zones: Floati
 
 // @public
 export type FloatingExclusionRect = {
-    side: "left" | "right"; /** X position relative to the content area. */
-    x: number; /** Y position relative to the content area. */
+    side: "left" | "right";
+    x: number;
     y: number;
     width: number;
     height: number;
@@ -56,10 +56,10 @@ export type FloatingExclusionRect = {
 
 // @public
 export type FloatingImageZone = {
-    leftMargin: number; /** Right margin reduction (pixels from right edge). */
-    rightMargin: number; /** Top Y coordinate of the exclusion zone. */
-    topY: number; /** Bottom Y coordinate of the exclusion zone. */
-    bottomY: number; /** Optional split segments for centered both-sides wrapping. */
+    leftMargin: number;
+    rightMargin: number;
+    topY: number;
+    bottomY: number;
     segments?: FloatingLineSegmentZone[];
     fullWidthBlock?: boolean;
 };
@@ -88,7 +88,7 @@ export type FontMetrics = {
     ascent: number;
     descent: number;
     lineHeight: number;
-    fontFamily: string; /** OS/2 single-line ratio for OOXML line spacing calculation */
+    fontFamily: string;
     singleLineRatio: number;
 };
 
@@ -102,7 +102,7 @@ export type FontStyle = {
     letterSpacing?: number;
     textTransform?: "uppercase";
     fontVariant?: "small-caps";
-    horizontalScale?: number; /** Enable pair kerning for runs whose authored threshold is met. */
+    horizontalScale?: number;
     kerning?: boolean;
 };
 
@@ -162,20 +162,20 @@ export function isWorkerFontMetricsEnabled(): boolean;
 
 // @public
 export type LineBreakPolicy = {
-    locale?: string; /** Apply East Asian first/last-character restrictions (`w:kinsoku`). */
-    kinsoku?: boolean; /** Document replacement list: characters that may not begin a line. */
-    noLineBreaksBefore?: ReadonlySet<string>; /** Document replacement list: characters that may not end a line. */
-    noLineBreaksAfter?: ReadonlySet<string>; /** Use the legacy Ethiopic/Amharic compatibility behavior. */
-    useLegacyEthiopicAmharicRules?: boolean; /** Keep words made entirely of capital letters unhyphenated. */
-    doNotHyphenateCaps?: boolean; /** The run renders with the DOCX all-caps transform. */
+    locale?: string;
+    kinsoku?: boolean;
+    noLineBreaksBefore?: ReadonlySet<string>;
+    noLineBreaksAfter?: ReadonlySet<string>;
+    useLegacyEthiopicAmharicRules?: boolean;
+    doNotHyphenateCaps?: boolean;
     renderedAllCaps?: boolean;
 };
 
 // @public (undocumented)
 export type LineBreakProvider = {
-    findBreaks: (text: string, policy?: LineBreakPolicy) => number[]; /** Grapheme-safe emergency-wrap offsets, in ascending UTF-16 order. */
-    findGraphemeBreaks: (text: string, policy?: LineBreakPolicy) => number[]; /** Dictionary-based discretionary hyphen offsets, in ascending UTF-16 order. */
-    findHyphenationBreaks?: (text: string, policy?: LineBreakPolicy) => number[]; /** Whether a trailing grapheme may overhang the line edge. */
+    findBreaks: (text: string, policy?: LineBreakPolicy) => number[];
+    findGraphemeBreaks: (text: string, policy?: LineBreakPolicy) => number[];
+    findHyphenationBreaks?: (text: string, policy?: LineBreakPolicy) => number[];
     isHangingPunctuation?: (text: string, policy?: LineBreakPolicy) => boolean;
 };
 
@@ -184,7 +184,7 @@ export function measureParagraph(block: ParagraphBlock, maxWidth: number, option
 
 // @public
 export type MeasureParagraphOptions = {
-    floatingZones?: FloatingImageZone[]; /** Y offset of this paragraph relative to the exclusion zones (default: 0) */
+    floatingZones?: FloatingImageZone[];
     paragraphYOffset?: number;
     fieldValues?: ReadonlyMap<number, string>;
 };

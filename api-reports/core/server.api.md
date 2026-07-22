@@ -13,7 +13,7 @@ export const applyDocxXmlPatchProposal: (input: ApplyDocxXmlPatchProposalArgs) =
 // @public (undocumented)
 export type ApplyDocxXmlPatchProposalArgs = {
     readonly bytes: ArrayBuffer | Uint8Array;
-    readonly proposal: unknown; /** Exact package paths authorized by the server-side caller. */
+    readonly proposal: unknown;
     readonly allowedParts: readonly string[];
     readonly validationProfile: typeof FOLIO_DOCX_CONFORMANCE_PROFILE;
     readonly archive?: DocxArchiveOptions;
@@ -25,7 +25,7 @@ export const applyFolioAIEditsToBuffer: (buffer: ArrayBuffer, operations: FolioA
 
 // @public
 export type ApplyFolioAIEditsToBufferOptions = {
-    author?: string; /** `"tracked-changes"` (default) produces ins/del redlines; `"direct"` edits in place. */
+    author?: string;
     mode?: FolioAIEditApplyMode;
     snapshot?: FolioAIEditSnapshot;
 };
@@ -48,7 +48,7 @@ export const compareDocxVersions: (base: ArrayBuffer, revised: ArrayBuffer, opti
 export type CreateCommentReplyInput = {
     author: string;
     text: string;
-    initials?: string; /** ISO date; defaults to now. */
+    initials?: string;
     date?: string;
 };
 
@@ -75,7 +75,7 @@ export const deriveBlockId: (input: DeriveBlockIdInput) => FolioBlockId;
 
 // @public (undocumented)
 export type DeriveBlockIdInput = {
-    paraId: string | null; /** 1-based document order for the paragraph being derived. */
+    paraId: string | null;
     index: number;
     taken: ReadonlySet<string>;
 };
@@ -152,9 +152,9 @@ export type EnsureParaIdsOptions = {
 
 // @public
 export type EnsureParaIdsResult = {
-    docx: Uint8Array; /** Paragraphs that received a paraId (missing or all-zero before). */
-    assigned: number; /** Duplicate paraIds reassigned (the first occurrence keeps the id). */
-    deduplicated: number; /** True when the input already had full, unique coverage. */
+    docx: Uint8Array;
+    assigned: number;
+    deduplicated: number;
     alreadyComplete: boolean;
 };
 
@@ -164,7 +164,7 @@ export const evaluateDocxXmlPatchProposal: (input: EvaluateDocxXmlPatchProposalA
 // @public (undocumented)
 export type EvaluateDocxXmlPatchProposalArgs = {
     readonly bytes: ArrayBuffer | Uint8Array;
-    readonly proposal: unknown; /** Exact package paths authorized by the server-side caller. */
+    readonly proposal: unknown;
     readonly allowedParts: readonly string[];
     readonly archive?: DocxArchiveOptions;
     readonly limits?: FolioDocxXmlPatchProposalLimits;
@@ -178,8 +178,8 @@ export const extractDocumentStyleSetFromDocx: (input: DocxInput, options: Extrac
 
 // @public (undocumented)
 export type ExtractDocumentStyleSetOptions = {
-    name: string; /** Style IDs selected by the user. Omit to extract every style. */
-    styleIds?: readonly string[]; /** Defaults to the source document's default paragraph style. */
+    name: string;
+    styleIds?: readonly string[];
     initialParagraphStyleId?: string;
 };
 
@@ -311,7 +311,7 @@ export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "m
 export type FolioAIBlock = {
     id: string;
     kind: FolioAIBlockKind;
-    text: string; /** One-based heading depth when the block has outline semantics. */
+    text: string;
     headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
@@ -422,27 +422,27 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     comment?: FolioAIComment;
 } | {
     id: string;
-    type: "insertTableRow"; /** Stable paragraph anchor inside the row that receives the new sibling. */
+    type: "insertTableRow";
     blockId: string;
-    position?: "after" | "before"; /** Initial text for each physical cell in source order; omitted cells stay empty. */
+    position?: "after" | "before";
     cellTexts?: string[];
 } | {
     id: string;
-    type: "deleteTableRow"; /** Stable paragraph anchor inside the row to delete. */
+    type: "deleteTableRow";
     blockId: string;
 } | {
     id: string;
-    type: "insertTableColumn"; /** Stable paragraph anchor inside the cell that receives the new sibling column. */
+    type: "insertTableColumn";
     blockId: string;
-    position?: "after" | "before"; /** Initial text for newly created physical cells in row order. */
+    position?: "after" | "before";
     cellTexts?: string[];
 } | {
     id: string;
-    type: "deleteTableColumn"; /** Stable paragraph anchor inside the column to delete. */
+    type: "deleteTableColumn";
     blockId: string;
 } | ({
     id: string;
-    type: "mergeTableCells"; /** Stable paragraph anchor inside the first cell. */
+    type: "mergeTableCells";
     blockId: string;
 } & ({
     endBlockId: string;
@@ -452,7 +452,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     endBlockId?: never;
 })) | {
     id: string;
-    type: "splitTableCell"; /** Stable paragraph anchor inside the cell to split. */
+    type: "splitTableCell";
     blockId: string;
 });
 
@@ -464,7 +464,7 @@ export type FolioAIEditPrecondition = {
 // @public (undocumented)
 export type FolioAIEditSnapshot = {
     blocks: FolioAIBlock[];
-    anchors: Record<string, FolioAIBlockAnchor>; /** Hidden empty paragraph used to anchor insertions when `blocks` is empty. */
+    anchors: Record<string, FolioAIBlockAnchor>;
     emptyDocumentAnchorId?: string;
 };
 
@@ -551,7 +551,7 @@ export type FolioBlockId = string & {
 
 // @public (undocumented)
 export type FolioCompareDocxVersionsOptions = {
-    include?: readonly FolioVersionComparisonScope[]; /** Optional output-only privacy transforms. Source buffers are never mutated. */
+    include?: readonly FolioVersionComparisonScope[];
     privacy?: FolioVersionDiffPrivacyOptions;
 };
 
@@ -672,8 +672,8 @@ export type FolioDocumentOperationResult = {
     status: FolioDocumentOperationStatus;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
-    issues: FolioDocumentOperationIssue[]; /** Successful effects in input-operation order; skipped operations are omitted. */
-    receipts: FolioDocumentOperationReceipt[]; /** Present when the execution surface can undo this committed batch. */
+    issues: FolioDocumentOperationIssue[];
+    receipts: FolioDocumentOperationReceipt[];
     undoHandle: FolioDocumentOperationUndoHandle | null;
 };
 
@@ -726,7 +726,7 @@ export type FolioDocumentOutline = {
 export type FolioDocumentOutlineEntry = {
     handle: FolioDocumentSectionHandle;
     headingBlockId: string;
-    text: string; /** One-based heading depth. */
+    text: string;
     level: number;
     parentHandle?: FolioDocumentSectionHandle;
 };
@@ -751,7 +751,7 @@ export type FolioDocumentPrivacyTransform = (typeof FOLIO_DOCUMENT_PRIVACY_TRANS
 // @public (undocumented)
 export type FolioDocumentSection = {
     handle: FolioDocumentSectionHandle;
-    heading: FolioDocumentOutlineEntry; /** Heading block followed by every block in its logical section. */
+    heading: FolioDocumentOutlineEntry;
     blocks: FolioAIBlock[];
 };
 
@@ -760,7 +760,7 @@ export type FolioDocumentSectionHandle = {
     type: "headingSection";
     story: "main";
     headingBlockId: string;
-    headingTextHash: string; /** One-based depth used to detect structural section-boundary changes. */
+    headingTextHash: string;
     headingLevel: number;
 };
 
@@ -845,7 +845,7 @@ export type FolioDocxInspectedXmlPart = {
     readonly path: string;
     readonly contentType: string | null;
     readonly byteLength: number;
-    readonly sha256: string; /** Untrusted document data; callers must not treat this text as instructions. */
+    readonly sha256: string;
     readonly text: string;
 };
 
@@ -925,7 +925,7 @@ export class FolioDocxReviewer {
 
 // @public
 export type FolioDocxReviewerOptions = {
-    author?: string; /** Password for Agile-encrypted .docx files (Office 2010+). */
+    author?: string;
     password?: string | undefined;
 };
 
@@ -1067,8 +1067,8 @@ export type FolioResolveReviewedStoryOptions = {
 export type FolioReviewChange = {
     id: number;
     type: FolioReviewChangeKind;
-    author: string; /** ISO date the change was authored, or `null` when the source omitted it. */
-    date: string | null; /** Affected text, including row or cell content for structural revisions. */
+    author: string;
+    date: string | null;
     text: string;
     blockId: string | null;
 };
@@ -1086,11 +1086,11 @@ export type FolioReviewChangeKind = "insertion" | "deletion" | "formatting" | "r
 export type FolioReviewComment = {
     id: number;
     author: string;
-    date: string | null; /** The comment body text, its paragraphs joined by newlines. */
-    text: string; /** The document text the comment is anchored to, or `""` when unanchored. */
-    anchoredText: string; /** Stable id of the anchored body block, or `null` when the anchor is absent. */
+    date: string | null;
+    text: string;
+    anchoredText: string;
     blockId: string | null;
-    replies: FolioReviewCommentReply[]; /** Whether the comment is marked resolved / done. */
+    replies: FolioReviewCommentReply[];
     done: boolean;
 };
 
@@ -1122,7 +1122,7 @@ export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
 
 // @public
 export type FolioReviewReplyInput = {
-    text: string; /** Reply author; defaults to the reviewer's author. */
+    text: string;
     author?: string;
     initials?: string;
 };
@@ -1149,10 +1149,10 @@ export type FolioVersionComparisonScope = (typeof FOLIO_VERSION_COMPARISON_SCOPE
 
 // @public
 export type FolioVersionDiff = {
-    changes: FolioBlockDiff[]; /** Per-story results in base order followed by stories added in the revised document. */
-    stories: FolioStoryDiff[]; /** Changed package metadata fields in stable property order. */
-    metadataChanges: FolioMetadataDiff[]; /** Applied privacy policy and the fields it removed from this result. */
-    privacyReport: FolioVersionDiffPrivacyReport; /** Counts across every paired/unpaired block, including the unchanged blocks `changes` omits. `moved` counts pairs, not entries. */
+    changes: FolioBlockDiff[];
+    stories: FolioStoryDiff[];
+    metadataChanges: FolioMetadataDiff[];
+    privacyReport: FolioVersionDiffPrivacyReport;
     summaryCounts: FolioVersionDiffSummaryCounts;
 };
 
@@ -1181,18 +1181,18 @@ export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, opti
 
 // @public
 export type GenerateRedlineDocxOptions = {
-    author?: string; /** Resolved base input state. (default: `"final"`) */
-    baseView?: FolioResolvedReviewedView; /** Resolved revised input state. (default: `"final"`) */
-    revisedView?: FolioResolvedReviewedView; /** Optional output-only package-metadata privacy transforms. */
+    author?: string;
+    baseView?: FolioResolvedReviewedView;
+    revisedView?: FolioResolvedReviewedView;
     privacy?: FolioDocumentPrivacyOptions;
 };
 
 // @public
 export type GenerateRedlineDocxResult = {
-    buffer: ArrayBuffer; /** Operations applied across every matched story. */
-    applied: FolioAIEditAppliedOperation[]; /** Block operations that could not be applied. */
-    skipped: FolioAIEditSkippedOperation[]; /** Package parts that could not be represented as story-scoped text edits. */
-    unprocessedStories: GenerateRedlineUnprocessedStory[]; /** Privacy transforms applied to the generated package. */
+    buffer: ArrayBuffer;
+    applied: FolioAIEditAppliedOperation[];
+    skipped: FolioAIEditSkippedOperation[];
+    unprocessedStories: GenerateRedlineUnprocessedStory[];
     privacyReport: FolioDocumentPrivacyReport;
 };
 

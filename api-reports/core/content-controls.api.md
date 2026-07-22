@@ -13,7 +13,7 @@ export class ContentControlBoundError extends ContentControlBoundError_base {}
 // @public (undocumented)
 export type ContentControlFilter = {
     tag?: string;
-    alias?: string; /** OOXML numeric `w:id`. */
+    alias?: string;
     id?: number;
     sdtType?: import__stll_docx_core_model.SdtProperties["sdtType"];
     pmPos?: number;
@@ -24,8 +24,8 @@ export class ContentControlLockedError extends ContentControlLockedError_base {}
 
 // @public (undocumented)
 export type ContentControlMatch = {
-    control: import__stll_docx_core_model.BlockSdt; /** Outer→inner stack of enclosing controls (empty when at the body root). */
-    ancestry: import__stll_docx_core_model.BlockSdt[]; /** Indices to walk back into the doc, outer→inner. */
+    control: import__stll_docx_core_model.BlockSdt;
+    ancestry: import__stll_docx_core_model.BlockSdt[];
     path: number[];
     location: ContentControlLocation;
 };

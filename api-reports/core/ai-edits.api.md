@@ -98,7 +98,7 @@ export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "fina
 export type FolioAIBlock = {
     id: string;
     kind: FolioAIBlockKind;
-    text: string; /** One-based heading depth when the block has outline semantics. */
+    text: string;
     headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
@@ -218,27 +218,27 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     comment?: FolioAIComment;
 } | {
     id: string;
-    type: "insertTableRow"; /** Stable paragraph anchor inside the row that receives the new sibling. */
+    type: "insertTableRow";
     blockId: string;
-    position?: "after" | "before"; /** Initial text for each physical cell in source order; omitted cells stay empty. */
+    position?: "after" | "before";
     cellTexts?: string[];
 } | {
     id: string;
-    type: "deleteTableRow"; /** Stable paragraph anchor inside the row to delete. */
+    type: "deleteTableRow";
     blockId: string;
 } | {
     id: string;
-    type: "insertTableColumn"; /** Stable paragraph anchor inside the cell that receives the new sibling column. */
+    type: "insertTableColumn";
     blockId: string;
-    position?: "after" | "before"; /** Initial text for newly created physical cells in row order. */
+    position?: "after" | "before";
     cellTexts?: string[];
 } | {
     id: string;
-    type: "deleteTableColumn"; /** Stable paragraph anchor inside the column to delete. */
+    type: "deleteTableColumn";
     blockId: string;
 } | ({
     id: string;
-    type: "mergeTableCells"; /** Stable paragraph anchor inside the first cell. */
+    type: "mergeTableCells";
     blockId: string;
 } & ({
     endBlockId: string;
@@ -248,7 +248,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     endBlockId?: never;
 })) | {
     id: string;
-    type: "splitTableCell"; /** Stable paragraph anchor inside the cell to split. */
+    type: "splitTableCell";
     blockId: string;
 });
 
@@ -273,18 +273,18 @@ export type FolioAIEditSkippedOperation = {
 };
 
 // @public (undocumented)
-export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "staleRange" | "emptyOperation"
+export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "staleRange" | "emptyOperation" |
 /**
 * The operation would not change the document — find equals
 * replace, or replaceBlock's `text` matches the live block.
 * Filtered out so the reviewer doesn't see "X → X" cards.
 */
-| "noopOperation";
+"noopOperation";
 
 // @public (undocumented)
 export type FolioAIEditSnapshot = {
     blocks: FolioAIBlock[];
-    anchors: Record<string, FolioAIBlockAnchor>; /** Hidden empty paragraph used to anchor insertions when `blocks` is empty. */
+    anchors: Record<string, FolioAIBlockAnchor>;
     emptyDocumentAnchorId?: string;
 };
 
@@ -326,8 +326,8 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
 
 // @public
 export type FolioCommentAnchor = {
-    commentId: number; /** Stable id of the anchored body block, or `null` when the anchor is absent. */
-    blockId: string | null; /** The document text the comment is anchored to. */
+    commentId: number;
+    blockId: string | null;
     quote: string;
 };
 
@@ -442,8 +442,8 @@ export type FolioDocumentOperationResult = {
     status: FolioDocumentOperationStatus;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
-    issues: FolioDocumentOperationIssue[]; /** Successful effects in input-operation order; skipped operations are omitted. */
-    receipts: FolioDocumentOperationReceipt[]; /** Present when the execution surface can undo this committed batch. */
+    issues: FolioDocumentOperationIssue[];
+    receipts: FolioDocumentOperationReceipt[];
     undoHandle: FolioDocumentOperationUndoHandle | null;
 };
 
@@ -496,7 +496,7 @@ export type FolioDocumentOutline = {
 export type FolioDocumentOutlineEntry = {
     handle: FolioDocumentSectionHandle;
     headingBlockId: string;
-    text: string; /** One-based heading depth. */
+    text: string;
     level: number;
     parentHandle?: FolioDocumentSectionHandle;
 };
@@ -504,7 +504,7 @@ export type FolioDocumentOutlineEntry = {
 // @public (undocumented)
 export type FolioDocumentSection = {
     handle: FolioDocumentSectionHandle;
-    heading: FolioDocumentOutlineEntry; /** Heading block followed by every block in its logical section. */
+    heading: FolioDocumentOutlineEntry;
     blocks: FolioAIBlock[];
 };
 
@@ -513,7 +513,7 @@ export type FolioDocumentSectionHandle = {
     type: "headingSection";
     story: "main";
     headingBlockId: string;
-    headingTextHash: string; /** One-based depth used to detect structural section-boundary changes. */
+    headingTextHash: string;
     headingLevel: number;
 };
 
@@ -575,8 +575,8 @@ export type FolioResolveReviewedStoryOptions = {
 export type FolioReviewChange = {
     id: number;
     type: FolioReviewChangeKind;
-    author: string; /** ISO date the change was authored, or `null` when the source omitted it. */
-    date: string | null; /** Affected text, including row or cell content for structural revisions. */
+    author: string;
+    date: string | null;
     text: string;
     blockId: string | null;
 };

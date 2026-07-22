@@ -112,24 +112,24 @@ export type MeasureFor<TKind extends Fragment["kind"]> = TKind extends "paragrap
 
 // @public
 export type PainterOptions = {
-    document?: Document; /** Gap between pages in pixels */
-    pageGap?: number; /** Show page shadows */
-    showShadow?: boolean; /** Background color for pages */
-    pageBackground?: string; /** Container background color */
+    document?: Document;
+    pageGap?: number;
+    showShadow?: boolean;
+    pageBackground?: string;
     containerBackground?: string;
     registry?: FeatureRegistry;
 };
 
 // @public
 export type RenderContext = {
-    pageNumber: number; /** Total number of pages */
-    totalPages: number; /** Which section is being rendered */
-    section: "body" | "header" | "footer"; /** Bookmark name -> 1-indexed page, for resolving PAGEREF fields. */
-    bookmarkPages?: ReadonlyMap<string, number>; /** Bookmark name -> paragraph text, for resolving REF fields. */
-    bookmarkText?: ReadonlyMap<string, string>; /** Field run `pmStart` -> precomputed SEQ value, for resolving SEQ fields. */
-    seqValues?: ReadonlyMap<number, number>; /** Pages in this page's section, for resolving SECTIONPAGES fields. */
-    sectionPages?: number; /** Content width in pixels (page width minus margins) - used for justify */
-    contentWidth?: number; /** When true, floating images render in-flow instead of being skipped (for table cells) */
+    pageNumber: number;
+    totalPages: number;
+    section: "body" | "header" | "footer";
+    bookmarkPages?: ReadonlyMap<string, number>;
+    bookmarkText?: ReadonlyMap<string, string>;
+    seqValues?: ReadonlyMap<number, number>;
+    sectionPages?: number;
+    contentWidth?: number;
     insideTableCell?: boolean;
     positioning?: "absolute" | "flow";
 };

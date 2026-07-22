@@ -28,9 +28,9 @@ export class ExtensionManager {
 
 // @public (undocumented)
 export type StarterKitOptions = {
-    disable?: string[]; /** History depth (default: 100) */
-    historyDepth?: number; /** History new group delay (default: 500) */
-    historyNewGroupDelay?: number; /** Selection change callback */
+    disable?: string[];
+    historyDepth?: number;
+    historyNewGroupDelay?: number;
     onSelectionChange?: SelectionChangeCallback;
 };
 

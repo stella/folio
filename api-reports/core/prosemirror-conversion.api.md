@@ -36,7 +36,7 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 
 // @public
 export type ToProseDocOptions = {
-    styles?: import__stll_docx_core_model.StyleDefinitions; /** Theme used when converting themed table/cell values in nested content. */
+    styles?: import__stll_docx_core_model.StyleDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
 };
 

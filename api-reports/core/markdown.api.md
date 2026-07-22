@@ -11,18 +11,18 @@ export function fromMarkdown(markdown: string): import__stll_docx_core_model.Doc
 
 // @public
 export type ImageMeta = {
-    paraId?: string | undefined; /** 1-based ordinal in registration order. Unique per render call. */
-    index: number; /** Path inside the DOCX zip (e.g. `word/media/image1.png`). */
-    originalPath: string; /** MIME type (`image/png`, `image/jpeg`, …). */
-    mimeType: string; /** Alt text from the drawing, when present. */
+    paraId?: string | undefined;
+    index: number;
+    originalPath: string;
+    mimeType: string;
     alt?: string | undefined;
 };
 
 // @public
 export type ImageRef = {
-    data: Uint8Array; /** Base64-encoded contents, without the `data:` prefix. */
-    base64: string; /** `data:<mime>;base64,<base64>` URL. */
-    dataUrl: string; /** The path that appears inside the markdown's `![alt](…)` reference. */
+    data: Uint8Array;
+    base64: string;
+    dataUrl: string;
     virtualPath: string;
 } & ImageMeta;
 
@@ -38,8 +38,8 @@ export type MarkdownOptions = {
 
 // @public
 export type MarkdownResult = {
-    markdown: string; /** Every image referenced in `markdown`, keyed by its virtual path. */
-    images: Map<string, ImageRef>; /** Non-fatal diagnostics; recurring messages are deduped. */
+    markdown: string;
+    images: Map<string, ImageRef>;
     warnings: string[];
 };
 

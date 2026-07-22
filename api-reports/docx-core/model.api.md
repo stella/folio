@@ -6,11 +6,11 @@
 
 // @public
 export type AbstractNumbering = {
-    abstractNumId: number; /** Multi-level type */
-    multiLevelType?: "hybridMultilevel" | "multilevel" | "singleLevel"; /** Numbering style link */
-    numStyleLink?: string; /** Style link */
-    styleLink?: string; /** Level definitions */
-    levels: ListLevel[]; /** Name */
+    abstractNumId: number;
+    multiLevelType?: "hybridMultilevel" | "multilevel" | "singleLevel";
+    numStyleLink?: string;
+    styleLink?: string;
+    levels: ListLevel[];
     name?: string;
 };
 
@@ -19,45 +19,45 @@ export type BlockContent = Paragraph | Table | BlockSdt;
 
 // @public
 export type BlockSdt = {
-    type: "blockSdt"; /** SDT properties (raw XML in `properties.rawPropertiesXml` round-trips losslessly). */
-    properties: SdtProperties; /** Block content inside the control. */
+    type: "blockSdt";
+    properties: SdtProperties;
     content: BlockContent[];
 };
 
 // @public
 export type BookmarkEnd = {
-    type: "bookmarkEnd"; /** Bookmark ID */
+    type: "bookmarkEnd";
     id: number;
 };
 
 // @public
 export type BookmarkStart = {
-    type: "bookmarkStart"; /** Bookmark ID */
-    id: number; /** Bookmark name */
-    name: string; /** Column index for table bookmarks */
+    type: "bookmarkStart";
+    id: number;
+    name: string;
     colFirst?: number;
     colLast?: number;
 };
 
 // @public
 export type BorderSpec = {
-    style: string; /** Color of the border */
-    color?: ColorValue; /** Width in eighths of a point (1/8 pt) */
-    size?: number; /** Spacing from text in points */
-    space?: number; /** Shadow effect */
-    shadow?: boolean; /** Frame effect */
+    style: string;
+    color?: ColorValue;
+    size?: number;
+    space?: number;
+    shadow?: boolean;
     frame?: boolean;
-    artRelationshipId?: string; /** Custom page-border art relationship id for the top-left corner. */
-    topLeftArtRelationshipId?: string; /** Custom page-border art relationship id for the top-right corner. */
-    topRightArtRelationshipId?: string; /** Custom page-border art relationship id for the bottom-left corner. */
-    bottomLeftArtRelationshipId?: string; /** Custom page-border art relationship id for the bottom-right corner. */
+    artRelationshipId?: string;
+    topLeftArtRelationshipId?: string;
+    topRightArtRelationshipId?: string;
+    bottomLeftArtRelationshipId?: string;
     bottomRightArtRelationshipId?: string;
 };
 
 // @public
 export type BreakContent = {
-    type: "break"; /** Break type */
-    breakType?: "page" | "column" | "textWrapping"; /** Clear type for text wrapping break */
+    type: "break";
+    breakType?: "page" | "column" | "textWrapping";
     clear?: "none" | "left" | "right" | "all";
 };
 
@@ -71,27 +71,27 @@ export type CellMargins = {
 
 // @public
 export type ColorValue = {
-    rgb?: string; /** Theme color slot reference */
-    themeColor?: ThemeColorSlot; /** Tint modifier (0-255 as hex string, e.g., "80") - makes color lighter */
-    themeTint?: string; /** Shade modifier (0-255 as hex string) - makes color darker */
-    themeShade?: string; /** Auto color - context-dependent (usually black for text) */
+    rgb?: string;
+    themeColor?: ThemeColorSlot;
+    themeTint?: string;
+    themeShade?: string;
     auto?: boolean;
 };
 
 // @public
 export type Column = {
-    width?: number; /** Space after column in twips */
+    width?: number;
     space?: number;
 };
 
 // @public
 type Comment_2 = {
-    id: number; /** Author name */
-    author: string; /** Author initials */
-    initials?: string; /** Date */
-    date?: string; /** Comment content (paragraphs) */
-    content: Paragraph[]; /** Parent comment ID (for replies) */
-    parentId?: number; /** Whether the comment is resolved/done */
+    id: number;
+    author: string;
+    initials?: string;
+    date?: string;
+    content: Paragraph[];
+    parentId?: number;
     done?: boolean;
 };
 export { Comment_2 as Comment }
@@ -116,60 +116,60 @@ export type CommentReference = {
 
 // @public
 export type ComplexField = {
-    type: "complexField"; /** Field instruction */
-    instruction: string; /** Parsed field type */
-    fieldType: FieldType; /** Field code runs */
-    fieldCode: Run[]; /** Display result runs */
+    type: "complexField";
+    instruction: string;
+    fieldType: FieldType;
+    fieldCode: Run[];
     fieldResult: Run[];
-    formatting?: TextFormatting; /** Field is locked */
-    fldLock?: boolean; /** Field is dirty */
+    formatting?: TextFormatting;
+    fldLock?: boolean;
     dirty?: boolean;
 };
 
 // @public
 export type ConditionalFormatStyle = {
-    firstRow?: boolean; /** Last row */
-    lastRow?: boolean; /** First column */
-    firstColumn?: boolean; /** Last column */
-    lastColumn?: boolean; /** Odd horizontal band */
-    oddHBand?: boolean; /** Even horizontal band */
-    evenHBand?: boolean; /** Odd vertical band */
-    oddVBand?: boolean; /** Even vertical band */
-    evenVBand?: boolean; /** Northwest corner */
-    nwCell?: boolean; /** Northeast corner */
-    neCell?: boolean; /** Southwest corner */
-    swCell?: boolean; /** Southeast corner */
+    firstRow?: boolean;
+    lastRow?: boolean;
+    firstColumn?: boolean;
+    lastColumn?: boolean;
+    oddHBand?: boolean;
+    evenHBand?: boolean;
+    oddVBand?: boolean;
+    evenVBand?: boolean;
+    nwCell?: boolean;
+    neCell?: boolean;
+    swCell?: boolean;
     seCell?: boolean;
 };
 
 // @public
 export type Deletion = {
-    type: "deletion"; /** Tracked change metadata */
-    info: TrackedChangeInfo; /** Deleted content */
+    type: "deletion";
+    info: TrackedChangeInfo;
     content: (Run | Hyperlink)[];
 };
 
 // @public
 export type DocDefaults = {
-    rPr?: TextFormatting; /** Default paragraph properties */
+    rPr?: TextFormatting;
     pPr?: ParagraphFormatting;
 };
 
 // @public
 type Document_2 = {
-    package: DocxPackage; /** Original ArrayBuffer for round-trip */
-    originalBuffer?: ArrayBuffer; /** Detected template variables ({{...}}) */
-    templateVariables?: string[]; /** Font families referenced in the document (extracted during parsing for deferred loading) */
-    requiredFonts?: string[]; /** Parsing warnings/errors */
+    package: DocxPackage;
+    originalBuffer?: ArrayBuffer;
+    templateVariables?: string[];
+    requiredFonts?: string[];
     warnings?: string[];
 };
 export { Document_2 as Document }
 
 // @public
 export type DocumentBody = {
-    content: BlockContent[]; /** Sections (derived from sectPr in paragraphs and final sectPr) */
-    sections?: Section[]; /** Final section properties (from body's sectPr) */
-    finalSectionProperties?: SectionProperties; /** Comments from comments.xml */
+    content: BlockContent[];
+    sections?: Section[];
+    finalSectionProperties?: SectionProperties;
     comments?: Comment_2[];
 };
 
@@ -181,11 +181,11 @@ export type DocumentSettings = {
     themeFontLang?: {
         eastAsia?: string;
         bidi?: string;
-    }; /** Automatically hyphenate eligible paragraphs (`w:autoHyphenation`). */
-    autoHyphenation?: boolean; /** Keep all-capital words unhyphenated (`w:doNotHyphenateCaps`). */
-    doNotHyphenateCaps?: boolean; /** Maximum consecutive automatically hyphenated lines; zero means unlimited. */
-    consecutiveHyphenLimit?: number; /** Legacy hyphenation zone (`w:hyphenationZone`) in twips; retained for compatibility tooling. */
-    hyphenationZoneTwips?: number; /** Word/OOXML document-wide line-breaking overrides. */
+    };
+    autoHyphenation?: boolean;
+    doNotHyphenateCaps?: boolean;
+    consecutiveHyphenLimit?: number;
+    hyphenationZoneTwips?: number;
     lineBreakRules?: {
         noLineBreaksBefore?: {
             language?: string;
@@ -196,7 +196,7 @@ export type DocumentSettings = {
             characters: string;
         };
         useLegacyEthiopicAmharicRules?: boolean;
-    }; /** Move a break-only paragraph mark onto the page after its hard page break. */
+    };
     splitPageBreakAndParagraphMark?: boolean;
 };
 
@@ -212,19 +212,19 @@ export type DocxConformanceClass = (typeof DOCX_CONFORMANCE_CLASSES)[keyof typeo
 
 // @public
 export type DocxPackage = {
-    conformanceClass?: DocxConformanceClass; /** Document body */
-    document: DocumentBody; /** Document-wide settings (`word/settings.xml`). */
-    settings?: DocumentSettings; /** Style definitions */
-    styles?: StyleDefinitions; /** Theme */
-    theme?: Theme; /** Numbering definitions */
-    numbering?: NumberingDefinitions; /** Font table */
-    fontTable?: FontTable; /** Footnotes */
-    footnotes?: Footnote[]; /** Endnotes */
-    endnotes?: Endnote[]; /** Headers by relationship ID */
-    headers?: Map<string, HeaderFooter>; /** Footers by relationship ID */
-    footers?: Map<string, HeaderFooter>; /** Document relationships */
-    relationships?: RelationshipMap; /** Media files */
-    media?: Map<string, MediaFile>; /** Document properties */
+    conformanceClass?: DocxConformanceClass;
+    document: DocumentBody;
+    settings?: DocumentSettings;
+    styles?: StyleDefinitions;
+    theme?: Theme;
+    numbering?: NumberingDefinitions;
+    fontTable?: FontTable;
+    footnotes?: Footnote[];
+    endnotes?: Endnote[];
+    headers?: Map<string, HeaderFooter>;
+    footers?: Map<string, HeaderFooter>;
+    relationships?: RelationshipMap;
+    media?: Map<string, MediaFile>;
     properties?: {
         title?: string;
         subject?: string;
@@ -240,8 +240,8 @@ export type DocxPackage = {
 
 // @public
 export type DrawingContent = {
-    type: "drawing"; /** Image data */
-    image: Image_2; /** Original OOXML for package-preserving round-trips of unsupported drawing markup. */
+    type: "drawing";
+    image: Image_2;
     rawXml?: string;
 };
 
@@ -250,8 +250,8 @@ export type EmphasisMark = "none" | "dot" | "comma" | "circle" | "underDot";
 
 // @public
 export type Endnote = {
-    type: "endnote"; /** Endnote ID */
-    id: number; /** Special endnote type */
+    type: "endnote";
+    id: number;
     noteType?: "normal" | "separator" | "continuationSeparator" | "continuationNotice";
     content: (Paragraph | Table | BlockSdt)[];
 };
@@ -272,9 +272,9 @@ export type Field = SimpleField | ComplexField;
 
 // @public
 export type FieldCharContent = {
-    type: "fieldChar"; /** Field character type */
-    charType: "begin" | "separate" | "end"; /** Field is locked */
-    fldLock?: boolean; /** Field is dirty (needs update) */
+    type: "fieldChar";
+    charType: "begin" | "separate" | "end";
+    fldLock?: boolean;
     dirty?: boolean;
     originalValue?: string;
 };
@@ -284,12 +284,12 @@ export type FieldType = "PAGE" | "NUMPAGES" | "NUMWORDS" | "NUMCHARS" | "DATE" |
 
 // @public
 export type FloatingTableProperties = {
-    horzAnchor?: "margin" | "page" | "text"; /** Vertical anchor */
-    vertAnchor?: "margin" | "page" | "text"; /** Horizontal position */
+    horzAnchor?: "margin" | "page" | "text";
+    vertAnchor?: "margin" | "page" | "text";
     tblpX?: number;
-    tblpXSpec?: "left" | "center" | "right" | "inside" | "outside"; /** Vertical position */
+    tblpXSpec?: "left" | "center" | "right" | "inside" | "outside";
     tblpY?: number;
-    tblpYSpec?: "top" | "center" | "bottom" | "inside" | "outside" | "inline"; /** Distance from surrounding text */
+    tblpYSpec?: "top" | "center" | "bottom" | "inside" | "outside" | "inline";
     topFromText?: number;
     bottomFromText?: number;
     leftFromText?: number;
@@ -298,12 +298,12 @@ export type FloatingTableProperties = {
 
 // @public
 export type FontInfo = {
-    name: string; /** Alternate names */
-    altName?: string; /** Panose-1 classification */
-    panose1?: string; /** Character set */
-    charset?: string; /** Font family type */
-    family?: "decorative" | "modern" | "roman" | "script" | "swiss" | "auto"; /** Pitch (fixed or variable) */
-    pitch?: "default" | "fixed" | "variable"; /** Signature */
+    name: string;
+    altName?: string;
+    panose1?: string;
+    charset?: string;
+    family?: "decorative" | "modern" | "roman" | "script" | "swiss" | "auto";
+    pitch?: "default" | "fixed" | "variable";
     sig?: {
         usb0?: string;
         usb1?: string;
@@ -311,7 +311,7 @@ export type FontInfo = {
         usb3?: string;
         csb0?: string;
         csb1?: string;
-    }; /** Embedded font data reference */
+    };
     embedRegular?: string;
     embedBold?: string;
     embedItalic?: string;
@@ -331,8 +331,8 @@ export type FooterReference = {
 
 // @public
 export type Footnote = {
-    type: "footnote"; /** Footnote ID */
-    id: number; /** Special footnote type */
+    type: "footnote";
+    id: number;
     noteType?: "normal" | "separator" | "continuationSeparator" | "continuationNotice";
     content: (Paragraph | Table | BlockSdt)[];
 };
@@ -350,8 +350,8 @@ export type FootnoteProperties = {
 
 // @public
 export type HeaderFooter = {
-    type: "header" | "footer"; /** Header/footer type */
-    hdrFtrType: HeaderFooterType; /** Content (paragraphs, tables, block-level content controls). */
+    type: "header" | "footer";
+    hdrFtrType: HeaderFooterType;
     content: BlockContent[];
     watermark?: Watermark;
     rawWatermarkXml?: string;
@@ -369,40 +369,40 @@ export type HeaderReference = {
 
 // @public
 export type Hyperlink = {
-    type: "hyperlink"; /** Relationship ID for external link */
-    rId?: string; /** Resolved URL (from relationships) */
-    href?: string; /** Internal bookmark anchor */
-    anchor?: string; /** Tooltip text */
-    tooltip?: string; /** Target frame */
-    target?: string; /** Link history tracking */
-    history?: boolean; /** Document location */
-    docLocation?: string; /** Child runs */
+    type: "hyperlink";
+    rId?: string;
+    href?: string;
+    anchor?: string;
+    tooltip?: string;
+    target?: string;
+    history?: boolean;
+    docLocation?: string;
     children: (Run | BookmarkStart | BookmarkEnd)[];
 };
 
 // @public
 type Image_2 = {
-    type: "image"; /** Unique ID */
-    id?: string; /** Relationship ID for the image data */
-    rId: string; /** Resolved image data (base64 or blob URL) */
-    src?: string; /** Image MIME type */
-    mimeType?: string; /** Original filename */
-    filename?: string; /** Alt text for accessibility */
-    alt?: string; /** Title/description */
-    title?: string; /** Image size */
-    size: ImageSize; /** Original size before any transforms */
-    originalSize?: ImageSize; /** Wrap settings */
-    wrap: ImageWrap; /** Position for floating images */
-    position?: ImagePosition; /** Image transformations */
-    transform?: ImageTransform; /** Padding around image */
-    padding?: ImagePadding; /** Source-bitmap crop (wp:srcRect), eigenpal #424 */
+    type: "image";
+    id?: string;
+    rId: string;
+    src?: string;
+    mimeType?: string;
+    filename?: string;
+    alt?: string;
+    title?: string;
+    size: ImageSize;
+    originalSize?: ImageSize;
+    wrap: ImageWrap;
+    position?: ImagePosition;
+    transform?: ImageTransform;
+    padding?: ImagePadding;
     crop?: ImageCrop;
     opacity?: number;
     layoutInCell?: boolean;
-    allowOverlap?: boolean; /** Whether this is a decorative image */
-    decorative?: boolean; /** Hyperlink URL for clickable image */
-    hlinkHref?: string; /** Image outline/border */
-    outline?: ShapeOutline; /** Image effects */
+    allowOverlap?: boolean;
+    decorative?: boolean;
+    hlinkHref?: string;
+    outline?: ShapeOutline;
     effects?: {
         brightness?: number;
         contrast?: number;
@@ -433,7 +433,7 @@ export type ImagePosition = {
         relativeTo: "character" | "column" | "insideMargin" | "leftMargin" | "margin" | "outsideMargin" | "page" | "rightMargin";
         alignment?: "left" | "right" | "center" | "inside" | "outside";
         posOffset?: number;
-    }; /** Vertical positioning */
+    };
     vertical: {
         relativeTo: "insideMargin" | "line" | "margin" | "outsideMargin" | "page" | "paragraph" | "topMargin" | "bottomMargin";
         alignment?: "top" | "bottom" | "center" | "inside" | "outside";
@@ -443,21 +443,21 @@ export type ImagePosition = {
 
 // @public
 export type ImageSize = {
-    width: number; /** Height in EMUs */
+    width: number;
     height: number;
 };
 
 // @public
 export type ImageTransform = {
-    rotation?: number; /** Flip horizontal */
-    flipH?: boolean; /** Flip vertical */
+    rotation?: number;
+    flipH?: boolean;
     flipV?: boolean;
 };
 
 // @public
 export type ImageWrap = {
-    type: "inline" | "square" | "tight" | "through" | "topAndBottom" | "behind" | "inFront"; /** Wrap text direction */
-    wrapText?: "bothSides" | "left" | "right" | "largest"; /** Distance from text */
+    type: "inline" | "square" | "tight" | "through" | "topAndBottom" | "behind" | "inFront";
+    wrapText?: "bothSides" | "left" | "right" | "largest";
     distT?: number;
     distB?: number;
     distL?: number;
@@ -466,21 +466,21 @@ export type ImageWrap = {
 
 // @public
 export type InlineSdt = {
-    type: "inlineSdt"; /** SDT properties */
-    properties: SdtProperties; /** Inline content held inside the control */
+    type: "inlineSdt";
+    properties: SdtProperties;
     content: (Run | Hyperlink | SimpleField | ComplexField | InlineSdt | Insertion | Deletion | MoveFrom | MoveTo | MathEquation)[];
 };
 
 // @public
 export type Insertion = {
-    type: "insertion"; /** Tracked change metadata */
-    info: TrackedChangeInfo; /** Inserted content */
+    type: "insertion";
+    info: TrackedChangeInfo;
     content: (Run | Hyperlink)[];
 };
 
 // @public
 export type InstrTextContent = {
-    type: "instrText"; /** Field instruction */
+    type: "instrText";
     text: string;
 };
 
@@ -498,16 +498,16 @@ export type LineSpacingRule = "auto" | "exact" | "atLeast";
 
 // @public
 export type ListLevel = {
-    ilvl: number; /** Starting number */
-    start?: number; /** Number format */
-    numFmt: NumberFormat; /** Level text (e.g., "%1." or "•") */
-    lvlText: string; /** Justification */
-    lvlJc?: "left" | "center" | "right"; /** Suffix after number */
-    suffix?: LevelSuffix; /** Paragraph properties for this level */
-    pPr?: ParagraphFormatting; /** Run properties for the number/bullet */
-    rPr?: TextFormatting; /** Restart numbering from higher level */
-    lvlRestart?: number; /** Is legal numbering style */
-    isLgl?: boolean; /** Legacy settings */
+    ilvl: number;
+    start?: number;
+    numFmt: NumberFormat;
+    lvlText: string;
+    lvlJc?: "left" | "center" | "right";
+    suffix?: LevelSuffix;
+    pPr?: ParagraphFormatting;
+    rPr?: TextFormatting;
+    lvlRestart?: number;
+    isLgl?: boolean;
     legacy?: {
         legacy?: boolean;
         legacySpace?: number;
@@ -517,21 +517,21 @@ export type ListLevel = {
 
 // @public
 export type ListRendering = {
-    marker: string; /** List level (0-8) */
-    level: number; /** Numbering ID */
-    numId: number; /** Whether this is a bullet or numbered list */
-    isBullet: boolean; /** Whether this level uses legal numbering (parent placeholders render decimal). */
-    isLegal?: boolean; /** Number format type (decimal, lowerRoman, upperRoman, etc.) */
-    numFmt?: NumberFormat; /** Whether the list marker is hidden (w:vanish on level rPr) */
-    markerHidden?: boolean; /** Marker font family from numbering level rPr (ascii name) */
-    markerFontFamily?: string; /** Marker font size from numbering level rPr, in points */
-    markerFontSize?: number; /** Marker bold state from numbering level rPr */
-    markerBold?: boolean; /** Horizontal alignment of the marker around the paragraph's list anchor. */
+    marker: string;
+    level: number;
+    numId: number;
+    isBullet: boolean;
+    isLegal?: boolean;
+    numFmt?: NumberFormat;
+    markerHidden?: boolean;
+    markerFontFamily?: string;
+    markerFontSize?: number;
+    markerBold?: boolean;
     markerAlignment?: "left" | "center" | "right";
     markerAllCaps?: boolean;
-    markerSuffix?: LevelSuffix; /** Number format for each level from 0 through this paragraph's level. */
-    levelNumFmts?: NumberFormat[]; /** Abstract numbering definition shared by one or more numIds. */
-    abstractNumId?: number; /** Start override for this numId/level, if the numbering instance defines one. */
+    markerSuffix?: LevelSuffix;
+    levelNumFmts?: NumberFormat[];
+    abstractNumId?: number;
     startOverride?: number;
     implicitChildLevelAdvances?: number;
     markerSecondSlotOffsetTwips?: number;
@@ -539,9 +539,9 @@ export type ListRendering = {
 
 // @public
 export type MathEquation = {
-    type: "mathEquation"; /** Whether this is a block (oMathPara) or inline (oMath) equation */
-    display: "inline" | "block"; /** Raw OMML XML for round-trip preservation */
-    ommlXml: string; /** Plain text representation for accessibility/fallback */
+    type: "mathEquation";
+    display: "inline" | "block";
+    ommlXml: string;
     plainText?: string;
 };
 
@@ -550,18 +550,18 @@ export const MAX_REVISION_ID = 2147483647;
 
 // @public
 export type MediaFile = {
-    path: string; /** Original filename */
-    filename?: string; /** MIME type */
-    mimeType: string; /** Binary data */
-    data: ArrayBuffer; /** Base64 encoded data for rendering */
-    base64?: string; /** Data URL for direct use in src attributes */
+    path: string;
+    filename?: string;
+    mimeType: string;
+    data: ArrayBuffer;
+    base64?: string;
     dataUrl?: string;
 };
 
 // @public
 export type MoveFrom = {
-    type: "moveFrom"; /** Tracked change metadata */
-    info: TrackedChangeInfo; /** Moved content */
+    type: "moveFrom";
+    info: TrackedChangeInfo;
     content: (Run | Hyperlink)[];
 };
 
@@ -580,8 +580,8 @@ export type MoveFromRangeStart = {
 
 // @public
 export type MoveTo = {
-    type: "moveTo"; /** Tracked change metadata */
-    info: TrackedChangeInfo; /** Moved content */
+    type: "moveTo";
+    info: TrackedChangeInfo;
     content: (Run | Hyperlink)[];
 };
 
@@ -611,7 +611,7 @@ export type NoteNumberRestart = "continuous" | "eachSect" | "eachPage";
 
 // @public
 export type NoteReferenceContent = {
-    type: "footnoteRef" | "endnoteRef"; /** Note ID */
+    type: "footnoteRef" | "endnoteRef";
     id: number;
 };
 
@@ -620,14 +620,14 @@ export type NumberFormat = "decimal" | "upperRoman" | "lowerRoman" | "upperLette
 
 // @public
 export type NumberingDefinitions = {
-    abstractNums: AbstractNumbering[]; /** Numbering instances */
+    abstractNums: AbstractNumbering[];
     nums: NumberingInstance[];
 };
 
 // @public
 export type NumberingInstance = {
-    numId: number; /** Reference to abstract numbering */
-    abstractNumId: number; /** Level overrides */
+    numId: number;
+    abstractNumId: number;
     levelOverrides?: {
         ilvl: number;
         startOverride?: number;
@@ -640,15 +640,15 @@ export type PageOrientation = "portrait" | "landscape";
 
 // @public (undocumented)
 export type Paragraph = {
-    type: "paragraph"; /** Unique paragraph ID */
-    paraId?: string; /** Text ID */
-    textId?: string; /** Paragraph formatting */
-    formatting?: ParagraphFormatting; /** Paragraph-level tracked property changes (w:pPrChange) */
-    propertyChanges?: ParagraphPropertyChange[]; /** Paragraph-mark insertion / deletion (w:pPr / w:rPr / w:ins | w:del) */
-    pPrMark?: ParagraphMarkChange; /** Paragraph content */
-    content: ParagraphContent[]; /** Computed list rendering (if this is a list item) */
-    listRendering?: ListRendering; /** Word's cached layout says this paragraph started on a new rendered page. */
-    renderedPageBreakBefore?: boolean; /** Section properties (if this paragraph ends a section) */
+    type: "paragraph";
+    paraId?: string;
+    textId?: string;
+    formatting?: ParagraphFormatting;
+    propertyChanges?: ParagraphPropertyChange[];
+    pPrMark?: ParagraphMarkChange;
+    content: ParagraphContent[];
+    listRendering?: ListRendering;
+    renderedPageBreakBefore?: boolean;
     sectionProperties?: SectionProperties;
 };
 
@@ -660,22 +660,22 @@ export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | S
 
 // @public (undocumented)
 export type ParagraphFormatting = {
-    alignment?: ParagraphAlignment; /** Text direction (w:bidi) */
-    bidi?: boolean; /** Apply East Asian first/last-character line-breaking rules (w:kinsoku). */
-    kinsoku?: boolean; /** Allow punctuation to hang beyond the text margin (w:overflowPunct). */
-    overflowPunctuation?: boolean; /** Spacing before in twips (w:spacing/@w:before) */
-    spaceBefore?: number; /** Spacing after in twips (w:spacing/@w:after) */
-    spaceAfter?: number; /** Line spacing value (w:spacing/@w:line) */
-    lineSpacing?: number; /** Line spacing rule (w:spacing/@w:lineRule) */
-    lineSpacingRule?: LineSpacingRule; /** Whether the paragraph participates in the section document grid (w:snapToGrid). */
-    snapToGrid?: boolean; /** Auto space before (w:spacing/@w:beforeAutospacing) */
-    beforeAutospacing?: boolean; /** Auto space after (w:spacing/@w:afterAutospacing) */
-    afterAutospacing?: boolean; /** Which spacing sides came from this paragraph's own pPr. */
-    spacingExplicit?: SpacingExplicit; /** Left indent in twips (w:ind/@w:left) */
-    indentLeft?: number; /** Right indent in twips (w:ind/@w:right) */
-    indentRight?: number; /** First line indent in twips - positive for indent, negative for hanging (w:ind/@w:firstLine or @w:hanging) */
-    indentFirstLine?: number; /** Whether first line is hanging indent */
-    hangingIndent?: boolean; /** Paragraph borders (w:pBdr) */
+    alignment?: ParagraphAlignment;
+    bidi?: boolean;
+    kinsoku?: boolean;
+    overflowPunctuation?: boolean;
+    spaceBefore?: number;
+    spaceAfter?: number;
+    lineSpacing?: number;
+    lineSpacingRule?: LineSpacingRule;
+    snapToGrid?: boolean;
+    beforeAutospacing?: boolean;
+    afterAutospacing?: boolean;
+    spacingExplicit?: SpacingExplicit;
+    indentLeft?: number;
+    indentRight?: number;
+    indentFirstLine?: number;
+    hangingIndent?: boolean;
     borders?: {
         top?: BorderSpec;
         bottom?: BorderSpec;
@@ -683,24 +683,24 @@ export type ParagraphFormatting = {
         right?: BorderSpec;
         between?: BorderSpec;
         bar?: BorderSpec;
-    }; /** Paragraph shading (w:shd) */
-    shading?: ShadingProperties; /** Custom tab stops (w:tabs) */
-    tabs?: TabStop[]; /** Keep with next paragraph (w:keepNext) */
-    keepNext?: boolean; /** Keep lines together (w:keepLines) */
-    keepLines?: boolean; /** Widow/orphan control (w:widowControl) */
-    widowControl?: boolean; /** Page break before (w:pageBreakBefore) */
-    pageBreakBefore?: boolean; /** Contextual spacing — suppress space between paragraphs of the same style (w:contextualSpacing) */
-    contextualSpacing?: boolean; /** Numbering properties (w:numPr) */
+    };
+    shading?: ShadingProperties;
+    tabs?: TabStop[];
+    keepNext?: boolean;
+    keepLines?: boolean;
+    widowControl?: boolean;
+    pageBreakBefore?: boolean;
+    contextualSpacing?: boolean;
     numPr?: {
-        numId?: number; /** List level (0-8) (w:ilvl) */
+        numId?: number;
         ilvl?: number;
     };
     numPrFromStyle?: {
         numId?: number;
         ilvl?: number;
-    }; /** Outline level 0-9 (w:outlineLvl) */
-    outlineLevel?: number; /** Paragraph style ID (w:pStyle) */
-    styleId?: string; /** Text frame properties (w:framePr) */
+    };
+    outlineLevel?: number;
+    styleId?: string;
     frame?: {
         dropCap?: "none" | "drop" | "margin";
         lines?: number;
@@ -715,9 +715,9 @@ export type ParagraphFormatting = {
         xAlign?: "left" | "center" | "right" | "inside" | "outside";
         yAlign?: "top" | "center" | "bottom" | "inside" | "outside" | "inline";
         wrap?: "around" | "auto" | "none" | "notBeside" | "through" | "tight";
-    }; /** Suppress line numbers (w:suppressLineNumbers) */
-    suppressLineNumbers?: boolean; /** Suppress auto hyphens (w:suppressAutoHyphens) */
-    suppressAutoHyphens?: boolean; /** Run properties to apply to all runs (w:rPr) */
+    };
+    suppressLineNumbers?: boolean;
+    suppressAutoHyphens?: boolean;
     runProperties?: TextFormatting;
     runInWithNext?: boolean;
 };
@@ -730,20 +730,20 @@ export type ParagraphMarkChange = {
 
 // @public
 export type ParagraphPropertyChange = {
-    type: "paragraphPropertyChange"; /** Tracked change metadata */
-    info: PropertyChangeInfo; /** Paragraph properties before the tracked change */
-    previousFormatting?: ParagraphFormatting; /** Paragraph properties after the tracked change (editor model convenience) */
+    type: "paragraphPropertyChange";
+    info: PropertyChangeInfo;
+    previousFormatting?: ParagraphFormatting;
     currentFormatting?: ParagraphFormatting;
 };
 
 // @public (undocumented)
 export type PictureWatermark = {
-    kind: "picture"; /** Relationship id of the image part in `word/_rels/header*.xml.rels`. */
+    kind: "picture";
     imageRId: string;
     imageTarget?: string;
-    imageTargetExternal?: boolean; /** Optional scale factor (1.0 = native, 0.5 = half-size). */
+    imageTargetExternal?: boolean;
     scale?: number;
-    widthPt?: number; /** Display height in points from the VML shape. See {@link widthPt}. */
+    widthPt?: number;
     heightPt?: number;
     washout?: boolean;
 };
@@ -755,9 +755,9 @@ export type PropertyChangeInfo = {
 
 // @public
 export type Relationship = {
-    id: string; /** Relationship type URI */
-    type: RelationshipType; /** Target path or URL */
-    target: string; /** Target mode */
+    id: string;
+    type: RelationshipType;
+    target: string;
     targetMode?: "External" | "Internal";
 };
 
@@ -769,9 +769,9 @@ export type RelationshipType = string;
 
 // @public
 export type Run = {
-    type: "run"; /** Text formatting properties */
-    formatting?: TextFormatting; /** Run-level tracked property changes (w:rPrChange) */
-    propertyChanges?: RunPropertyChange[]; /** Run content (text, tabs, breaks, etc.) */
+    type: "run";
+    formatting?: TextFormatting;
+    propertyChanges?: RunPropertyChange[];
     content: RunContent[];
 };
 
@@ -780,32 +780,32 @@ export type RunContent = TextContent | TabContent | BreakContent | SymbolContent
 
 // @public
 export type RunPropertyChange = {
-    type: "runPropertyChange"; /** Tracked change metadata */
-    info: PropertyChangeInfo; /** Run properties before the tracked change */
-    previousFormatting?: TextFormatting; /** Run properties after the tracked change (editor model convenience) */
+    type: "runPropertyChange";
+    info: PropertyChangeInfo;
+    previousFormatting?: TextFormatting;
     currentFormatting?: TextFormatting;
 };
 
 // @public
 export type SdtProperties = {
-    sdtType: SdtType; /** Numeric id (`w:id/@w:val`). */
-    id?: number; /** Alias (friendly name, `w:alias`). */
-    alias?: string; /** Tag (developer identifier, `w:tag`). */
-    tag?: string; /** Lock setting (`w:lock`). */
+    sdtType: SdtType;
+    id?: number;
+    alias?: string;
+    tag?: string;
     lock?: "sdtLocked" | "contentLocked" | "sdtContentLocked" | "unlocked";
-    placeholder?: string; /** Whether the placeholder is currently shown (`w:showingPlcHdr`). */
-    showingPlaceholder?: boolean; /** Date display format (`w:date/w:dateFormat@w:val`). */
+    placeholder?: string;
+    showingPlaceholder?: boolean;
     dateFormat?: string;
-    dateValueISO?: string; /** Dropdown/combobox list items. */
+    dateValueISO?: string;
     listItems?: {
         displayText: string;
         value: string;
     }[];
-    dropdownLastValue?: string; /** Checkbox checked state (`w14:checkbox/w14:checked`). */
+    dropdownLastValue?: string;
     checked?: boolean;
-    rawPropertiesXml?: string; /** Verbatim `<w:sdtEndPr>…</w:sdtEndPr>` captured at parse time. */
+    rawPropertiesXml?: string;
     rawEndPropertiesXml?: string;
-    rawSdtChildrenBeforeContent?: string; /** Verbatim XML for non-content sdt children that appear AFTER `<w:sdtContent>`. */
+    rawSdtChildrenBeforeContent?: string;
     rawSdtChildrenAfterContent?: string;
 };
 
@@ -814,86 +814,86 @@ export type SdtType = "richText" | "plainText" | "date" | "dropdown" | "comboBox
 
 // @public
 export type Section = {
-    properties: SectionProperties; /** Content in this section */
-    content: BlockContent[]; /** Headers for this section */
-    headers?: Map<HeaderFooterType, HeaderFooter>; /** Footers for this section */
+    properties: SectionProperties;
+    content: BlockContent[];
+    headers?: Map<HeaderFooterType, HeaderFooter>;
     footers?: Map<HeaderFooterType, HeaderFooter>;
 };
 
 // @public (undocumented)
 export type SectionProperties = {
-    pageWidth?: number; /** Page height in twips */
-    pageHeight?: number; /** Page orientation */
-    orientation?: PageOrientation; /** Top margin in twips */
-    marginTop?: number; /** Bottom margin in twips */
-    marginBottom?: number; /** Left margin in twips */
-    marginLeft?: number; /** Right margin in twips */
-    marginRight?: number; /** Header distance from top in twips */
-    headerDistance?: number; /** Footer distance from bottom in twips */
-    footerDistance?: number; /** Gutter margin in twips */
-    gutter?: number; /** Number of columns */
-    columnCount?: number; /** Space between columns in twips */
-    columnSpace?: number; /** Equal width columns */
-    equalWidth?: boolean; /** Separator line between columns */
-    separator?: boolean; /** Individual column definitions */
-    columns?: Column[]; /** Section start type */
-    sectionStart?: SectionStart; /** Vertical alignment of text */
-    verticalAlign?: VerticalAlign; /** Section text direction */
-    textDirection?: SectionTextDirection; /** Right-to-left section */
-    bidi?: boolean; /** Header references */
-    headerReferences?: HeaderReference[]; /** Footer references */
-    footerReferences?: FooterReference[]; /** Different first page header/footer */
-    titlePg?: boolean; /** Different odd/even page headers/footers */
-    evenAndOddHeaders?: boolean; /** Line numbering settings */
+    pageWidth?: number;
+    pageHeight?: number;
+    orientation?: PageOrientation;
+    marginTop?: number;
+    marginBottom?: number;
+    marginLeft?: number;
+    marginRight?: number;
+    headerDistance?: number;
+    footerDistance?: number;
+    gutter?: number;
+    columnCount?: number;
+    columnSpace?: number;
+    equalWidth?: boolean;
+    separator?: boolean;
+    columns?: Column[];
+    sectionStart?: SectionStart;
+    verticalAlign?: VerticalAlign;
+    textDirection?: SectionTextDirection;
+    bidi?: boolean;
+    headerReferences?: HeaderReference[];
+    footerReferences?: FooterReference[];
+    titlePg?: boolean;
+    evenAndOddHeaders?: boolean;
     lineNumbers?: {
         start?: number;
         countBy?: number;
         distance?: number;
         restart?: LineNumberRestart;
-    }; /** Page numbering settings */
+    };
     pageNumbering?: {
         format?: string;
         start?: number;
         chapterStyle?: number;
         chapterSeparator?: string;
-    }; /** Page borders */
+    };
     pageBorders?: {
         top?: BorderSpec;
         bottom?: BorderSpec;
         left?: BorderSpec;
-        right?: BorderSpec; /** Display setting */
-        display?: "allPages" | "firstPage" | "notFirstPage"; /** Offset from */
-        offsetFrom?: "page" | "text"; /** Z-order */
+        right?: BorderSpec;
+        display?: "allPages" | "firstPage" | "notFirstPage";
+        offsetFrom?: "page" | "text";
         zOrder?: "front" | "back";
-    }; /** Page background */
+    };
     background?: {
         color?: ColorValue;
         themeColor?: ThemeColorSlot;
         themeTint?: string;
         themeShade?: string;
-    }; /** Footnote properties for this section */
-    footnotePr?: FootnoteProperties; /** Number of footnote columns in this section (`w15:footnoteColumns`) */
-    footnoteColumns?: number; /** Endnote properties for this section */
-    endnotePr?: EndnoteProperties; /** Document grid */
+    };
+    footnotePr?: FootnoteProperties;
+    footnoteColumns?: number;
+    endnotePr?: EndnoteProperties;
     docGrid?: {
         type?: "default" | "lines" | "linesAndChars" | "snapToChars";
         linePitch?: number;
         charSpace?: number;
-    }; /** First page paper source */
-    paperSrcFirst?: number; /** Other pages paper source */
-    paperSrcOther?: number; /** Protected forms in this section */
-    formProtection?: boolean; /** Suppress endnotes in this section */
-    noEndnote?: boolean; /** Use right-to-left gutter in this section */
-    rtlGutter?: boolean; /** Relationship id for printer settings */
-    printerSettingsRelationshipId?: string; /** Section-level tracked property changes (w:sectPrChange) */
+    };
+    paperSrcFirst?: number;
+    paperSrcOther?: number;
+    formProtection?: boolean;
+    noEndnote?: boolean;
+    rtlGutter?: boolean;
+    printerSettingsRelationshipId?: string;
     propertyChanges?: SectionPropertyChange[];
 };
 
 // @public
 export type SectionPropertyChange = {
-    type: "sectionPropertyChange"; /** Tracked change metadata */
-    info: PropertyChangeInfo; /** Section properties before the tracked change */
-    previousProperties?: SectionProperties; /** Section properties after the tracked change (editor model convenience) */
+    type: "sectionPropertyChange";
+    info: PropertyChangeInfo;
+    previousProperties?: SectionProperties;
     currentProperties?: SectionProperties;
 };
 
@@ -902,37 +902,37 @@ export type SectionStart = "continuous" | "nextPage" | "oddPage" | "evenPage" | 
 
 // @public
 export type ShadingProperties = {
-    color?: ColorValue; /** Background fill color */
-    fill?: ColorValue; /** Shading pattern type */
+    color?: ColorValue;
+    fill?: ColorValue;
     pattern?: "clear" | "solid" | "horzStripe" | "vertStripe" | "reverseDiagStripe" | "diagStripe" | "horzCross" | "diagCross" | "thinHorzStripe" | "thinVertStripe" | "thinReverseDiagStripe" | "thinDiagStripe" | "thinHorzCross" | "thinDiagCross" | "pct5" | "pct10" | "pct12" | "pct15" | "pct20" | "pct25" | "pct30" | "pct35" | "pct37" | "pct40" | "pct45" | "pct50" | "pct55" | "pct60" | "pct62" | "pct65" | "pct70" | "pct75" | "pct80" | "pct85" | "pct87" | "pct90" | "pct95" | "nil";
 };
 
 // @public
 export type Shape = {
-    type: "shape"; /** Shape type preset */
-    shapeType: ShapeType; /** Unique ID */
-    id?: string; /** Name */
-    name?: string; /** Size in EMUs */
-    size: ImageSize; /** Position for floating shapes */
-    position?: ImagePosition; /** Wrap settings */
-    wrap?: ImageWrap; /** Fill */
-    fill?: ShapeFill; /** Outline/stroke */
-    outline?: ShapeOutline; /** Transform */
-    transform?: ImageTransform; /** Text content inside the shape */
-    textBody?: ShapeTextBody; /** Custom geometry points */
+    type: "shape";
+    shapeType: ShapeType;
+    id?: string;
+    name?: string;
+    size: ImageSize;
+    position?: ImagePosition;
+    wrap?: ImageWrap;
+    fill?: ShapeFill;
+    outline?: ShapeOutline;
+    transform?: ImageTransform;
+    textBody?: ShapeTextBody;
     customGeometry?: string;
 };
 
 // @public
 export type ShapeContent = {
-    type: "shape"; /** Shape data */
+    type: "shape";
     shape: Shape;
 };
 
 // @public
 export type ShapeFill = {
-    type: "none" | "solid" | "gradient" | "pattern" | "picture"; /** Solid fill color */
-    color?: ColorValue; /** Gradient stops for gradient fill */
+    type: "none" | "solid" | "gradient" | "pattern" | "picture";
+    color?: ColorValue;
     gradient?: {
         type: "linear" | "radial" | "rectangular" | "path";
         angle?: number;
@@ -945,16 +945,16 @@ export type ShapeFill = {
 
 // @public
 export type ShapeOutline = {
-    width?: number; /** Line color */
-    color?: ColorValue; /** Line style */
-    style?: "solid" | "dot" | "dash" | "lgDash" | "dashDot" | "lgDashDot" | "lgDashDotDot" | "sysDot" | "sysDash" | "sysDashDot" | "sysDashDotDot"; /** Line cap */
-    cap?: "flat" | "round" | "square"; /** Line join */
-    join?: "bevel" | "miter" | "round"; /** Head arrow */
+    width?: number;
+    color?: ColorValue;
+    style?: "solid" | "dot" | "dash" | "lgDash" | "dashDot" | "lgDashDot" | "lgDashDotDot" | "sysDot" | "sysDash" | "sysDashDot" | "sysDashDotDot";
+    cap?: "flat" | "round" | "square";
+    join?: "bevel" | "miter" | "round";
     headEnd?: {
         type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
         width?: "sm" | "med" | "lg";
         length?: "sm" | "med" | "lg";
-    }; /** Tail arrow */
+    };
     tailEnd?: {
         type: "none" | "triangle" | "stealth" | "diamond" | "oval" | "arrow";
         width?: "sm" | "med" | "lg";
@@ -964,17 +964,17 @@ export type ShapeOutline = {
 
 // @public
 export type ShapeTextBody = {
-    vertical?: boolean; /** Rotation */
-    rotation?: number; /** Anchor/vertical alignment */
-    anchor?: "top" | "middle" | "bottom" | "distributed" | "justified"; /** Anchor center */
-    anchorCenter?: boolean; /** Auto fit */
-    autoFit?: "none" | "normal" | "shape"; /** Text margins */
+    vertical?: boolean;
+    rotation?: number;
+    anchor?: "top" | "middle" | "bottom" | "distributed" | "justified";
+    anchorCenter?: boolean;
+    autoFit?: "none" | "normal" | "shape";
     margins?: {
         top?: number;
         bottom?: number;
         left?: number;
         right?: number;
-    }; /** Block content inside the shape */
+    };
     content: (Paragraph | Table)[];
 };
 
@@ -983,11 +983,11 @@ export type ShapeType = "rect" | "roundRect" | "ellipse" | "triangle" | "rtTrian
 
 // @public
 export type SimpleField = {
-    type: "simpleField"; /** Field instruction (e.g., "PAGE \\* MERGEFORMAT") */
-    instruction: string; /** Parsed field type */
-    fieldType: FieldType; /** Current display value */
-    content: (Run | Hyperlink)[]; /** Field is locked */
-    fldLock?: boolean; /** Field is dirty */
+    type: "simpleField";
+    instruction: string;
+    fieldType: FieldType;
+    content: (Run | Hyperlink)[];
+    fldLock?: boolean;
     dirty?: boolean;
 };
 
@@ -1004,24 +1004,24 @@ export type SpacingExplicit = {
 
 // @public
 export type Style = {
-    styleId: string; /** Style type */
-    type: StyleType; /** Display name */
-    name?: string; /** Based on style ID */
-    basedOn?: string; /** Next style after Enter (for paragraph styles) */
-    next?: string; /** Linked style (paragraph/character pair) */
-    link?: string; /** UI sort priority */
-    uiPriority?: number; /** Hidden from UI */
-    hidden?: boolean; /** Semi-hidden from UI */
-    semiHidden?: boolean; /** Unhide when used */
-    unhideWhenUsed?: boolean; /** Quick format in gallery */
-    qFormat?: boolean; /** Is default style */
-    default?: boolean; /** Personal style (custom) */
-    personal?: boolean; /** Paragraph properties (for paragraph/table styles) */
-    pPr?: ParagraphFormatting; /** Run properties */
-    rPr?: TextFormatting; /** Table properties (for table styles) */
-    tblPr?: TableFormatting; /** Table row properties */
-    trPr?: TableRowFormatting; /** Table cell properties */
-    tcPr?: TableCellFormatting; /** Conditional table style parts */
+    styleId: string;
+    type: StyleType;
+    name?: string;
+    basedOn?: string;
+    next?: string;
+    link?: string;
+    uiPriority?: number;
+    hidden?: boolean;
+    semiHidden?: boolean;
+    unhideWhenUsed?: boolean;
+    qFormat?: boolean;
+    default?: boolean;
+    personal?: boolean;
+    pPr?: ParagraphFormatting;
+    rPr?: TextFormatting;
+    tblPr?: TableFormatting;
+    trPr?: TableRowFormatting;
+    tcPr?: TableCellFormatting;
     tblStylePr?: {
         type: "band1Horz" | "band1Vert" | "band2Horz" | "band2Vert" | "firstCol" | "firstRow" | "lastCol" | "lastRow" | "neCell" | "nwCell" | "seCell" | "swCell" | "wholeTable";
         pPr?: ParagraphFormatting;
@@ -1034,7 +1034,7 @@ export type Style = {
 
 // @public
 export type StyleDefinitions = {
-    docDefaults?: DocDefaults; /** Latent styles */
+    docDefaults?: DocDefaults;
     latentStyles?: {
         defLockedState?: boolean;
         defUIPriority?: number;
@@ -1042,7 +1042,7 @@ export type StyleDefinitions = {
         defUnhideWhenUsed?: boolean;
         defQFormat?: boolean;
         count?: number;
-    }; /** Style definitions */
+    };
     styles: Style[];
 };
 
@@ -1051,8 +1051,8 @@ export type StyleType = "paragraph" | "character" | "numbering" | "table";
 
 // @public
 export type SymbolContent = {
-    type: "symbol"; /** Font name */
-    font: string; /** Character code */
+    type: "symbol";
+    font: string;
     char: string;
 };
 
@@ -1063,10 +1063,10 @@ export type TabContent = {
 
 // @public
 export type Table = {
-    type: "table"; /** Table formatting */
-    formatting?: TableFormatting; /** Table-level tracked property changes (w:tblPrChange) */
-    propertyChanges?: TablePropertyChange[]; /** Column widths in twips */
-    columnWidths?: number[]; /** Table rows */
+    type: "table";
+    formatting?: TableFormatting;
+    propertyChanges?: TablePropertyChange[];
+    columnWidths?: number[];
     rows: TableRow[];
 };
 
@@ -1085,10 +1085,10 @@ export type TableBorders = {
 
 // @public
 export type TableCell = {
-    type: "tableCell"; /** Cell formatting */
-    formatting?: TableCellFormatting; /** Cell-level tracked property changes (w:tcPrChange) */
-    propertyChanges?: TableCellPropertyChange[]; /** Tracked structural changes (cell insert/delete/merge) */
-    structuralChange?: TableStructuralChangeInfo; /** Cell content (paragraphs, tables, etc.) */
+    type: "tableCell";
+    formatting?: TableCellFormatting;
+    propertyChanges?: TableCellPropertyChange[];
+    structuralChange?: TableStructuralChangeInfo;
     content: (Paragraph | Table)[];
 };
 
@@ -1100,42 +1100,42 @@ export type TableCellBorders = TableBorders & {
 
 // @public
 export type TableCellFormatting = {
-    width?: TableMeasurement; /** Cell borders */
-    borders?: TableCellBorders; /** Cell margins (override table default) */
-    margins?: CellMargins; /** Cell shading/background */
-    shading?: ShadingProperties; /** Vertical alignment */
-    verticalAlign?: "top" | "center" | "bottom"; /** Text direction */
-    textDirection?: "lr" | "lrV" | "rl" | "rlV" | "tb" | "tbV" | "tbRl" | "tbRlV" | "btLr"; /** Grid span (horizontal merge) */
-    gridSpan?: number; /** Vertical merge */
-    vMerge?: "restart" | "continue"; /** Fit text to cell width */
-    fitText?: boolean; /** Wrap text */
-    noWrap?: boolean; /** Hide cell marker */
-    hideMark?: boolean; /** Conditional format style */
+    width?: TableMeasurement;
+    borders?: TableCellBorders;
+    margins?: CellMargins;
+    shading?: ShadingProperties;
+    verticalAlign?: "top" | "center" | "bottom";
+    textDirection?: "lr" | "lrV" | "rl" | "rlV" | "tb" | "tbV" | "tbRl" | "tbRlV" | "btLr";
+    gridSpan?: number;
+    vMerge?: "restart" | "continue";
+    fitText?: boolean;
+    noWrap?: boolean;
+    hideMark?: boolean;
     conditionalFormat?: ConditionalFormatStyle;
 };
 
 // @public
 export type TableCellPropertyChange = {
-    type: "tableCellPropertyChange"; /** Tracked change metadata */
-    info: PropertyChangeInfo; /** Cell properties before the tracked change */
-    previousFormatting?: TableCellFormatting; /** Cell properties after the tracked change (editor model convenience) */
+    type: "tableCellPropertyChange";
+    info: PropertyChangeInfo;
+    previousFormatting?: TableCellFormatting;
     currentFormatting?: TableCellFormatting;
 };
 
 // @public
 export type TableFormatting = {
-    width?: TableMeasurement; /** Table justification */
-    justification?: "left" | "center" | "right"; /** Cell spacing */
-    cellSpacing?: TableMeasurement; /** Table indent from left margin */
-    indent?: TableMeasurement; /** Table borders */
-    borders?: TableBorders; /** Default cell margins */
-    cellMargins?: CellMargins; /** Table layout */
-    layout?: "fixed" | "autofit"; /** Table style ID */
-    styleId?: string; /** Table look (conditional formatting flags) */
-    look?: TableLook; /** Shading/background */
-    shading?: ShadingProperties; /** Overlap for floating tables */
-    overlap?: "never" | "overlap"; /** Floating table properties */
-    floating?: FloatingTableProperties; /** Right to left table */
+    width?: TableMeasurement;
+    justification?: "left" | "center" | "right";
+    cellSpacing?: TableMeasurement;
+    indent?: TableMeasurement;
+    borders?: TableBorders;
+    cellMargins?: CellMargins;
+    layout?: "fixed" | "autofit";
+    styleId?: string;
+    look?: TableLook;
+    shading?: ShadingProperties;
+    overlap?: "never" | "overlap";
+    floating?: FloatingTableProperties;
     bidi?: boolean;
 };
 
@@ -1151,58 +1151,58 @@ export type TableLook = {
 
 // @public
 export type TableMeasurement = {
-    value: number; /** Measurement type */
+    value: number;
     type: TableWidthType;
 };
 
 // @public
 export type TablePropertyChange = {
-    type: "tablePropertyChange"; /** Tracked change metadata */
-    info: PropertyChangeInfo; /** Table properties before the tracked change */
-    previousFormatting?: TableFormatting; /** Table properties after the tracked change (editor model convenience) */
+    type: "tablePropertyChange";
+    info: PropertyChangeInfo;
+    previousFormatting?: TableFormatting;
     currentFormatting?: TableFormatting;
 };
 
 // @public
 export type TableRow = {
-    type: "tableRow"; /** Row formatting */
-    formatting?: TableRowFormatting; /** Row-level tracked property changes (w:trPrChange) */
-    propertyChanges?: TableRowPropertyChange[]; /** Tracked structural changes (row insert/delete) */
-    structuralChange?: TableStructuralChangeInfo; /** Cells in this row */
+    type: "tableRow";
+    formatting?: TableRowFormatting;
+    propertyChanges?: TableRowPropertyChange[];
+    structuralChange?: TableStructuralChangeInfo;
     cells: TableCell[];
 };
 
 // @public
 export type TableRowFormatting = {
-    gridBefore?: number; /** Preferred width of the omitted leading grid columns */
-    widthBefore?: TableMeasurement; /** Number of table grid columns omitted after the last cell */
-    gridAfter?: number; /** Preferred width of the omitted trailing grid columns */
-    widthAfter?: TableMeasurement; /** Row height */
-    height?: TableMeasurement; /** Height rule */
-    heightRule?: "auto" | "atLeast" | "exact"; /** Header row (repeats on each page) */
-    header?: boolean; /** Allow row to break across pages */
-    cantSplit?: boolean; /** Row justification */
-    justification?: "left" | "center" | "right"; /** Hidden row */
-    hidden?: boolean; /** Conditional format style */
+    gridBefore?: number;
+    widthBefore?: TableMeasurement;
+    gridAfter?: number;
+    widthAfter?: TableMeasurement;
+    height?: TableMeasurement;
+    heightRule?: "auto" | "atLeast" | "exact";
+    header?: boolean;
+    cantSplit?: boolean;
+    justification?: "left" | "center" | "right";
+    hidden?: boolean;
     conditionalFormat?: ConditionalFormatStyle;
 };
 
 // @public
 export type TableRowPropertyChange = {
-    type: "tableRowPropertyChange"; /** Tracked change metadata */
-    info: PropertyChangeInfo; /** Row properties before the tracked change */
-    previousFormatting?: TableRowFormatting; /** Row properties after the tracked change (editor model convenience) */
+    type: "tableRowPropertyChange";
+    info: PropertyChangeInfo;
+    previousFormatting?: TableRowFormatting;
     currentFormatting?: TableRowFormatting;
 };
 
 // @public
 export type TableStructuralChangeInfo = {
-    type: "tableRowInsertion" | "tableRowDeletion" | "tableCellInsertion" | "tableCellDeletion"; /** Tracked change metadata */
+    type: "tableRowInsertion" | "tableRowDeletion" | "tableCellInsertion" | "tableCellDeletion";
     info: TrackedChangeInfo;
 } | {
-    type: "tableCellMerge"; /** Tracked change metadata */
-    info: TrackedChangeInfo; /** Vertical merge state applied by the revision. */
-    verticalMerge?: "continue" | "rest"; /** Vertical merge state that existed before the revision. */
+    type: "tableCellMerge";
+    info: TrackedChangeInfo;
+    verticalMerge?: "continue" | "rest";
     verticalMergeOriginal?: "continue" | "rest";
 };
 
@@ -1211,8 +1211,8 @@ export type TableWidthType = "auto" | "dxa" | "nil" | "pct";
 
 // @public
 export type TabStop = {
-    position: number; /** Alignment at tab stop */
-    alignment: TabStopAlignment; /** Leader character */
+    position: number;
+    alignment: TabStopAlignment;
     leader?: TabLeader;
 };
 
@@ -1221,15 +1221,15 @@ export type TabStopAlignment = "left" | "center" | "right" | "decimal" | "bar" |
 
 // @public
 export type TextBox = {
-    type: "textBox"; /** Unique ID */
-    id?: string; /** Size */
-    size: ImageSize; /** Position */
-    position?: ImagePosition; /** Wrap settings */
-    wrap?: ImageWrap; /** Fill */
-    fill?: ShapeFill; /** Outline */
-    outline?: ShapeOutline; /** Text and table content */
-    content: (Paragraph | Table)[]; /** Text fitting behavior */
-    autoFit?: ShapeTextBody["autoFit"]; /** Internal margins */
+    type: "textBox";
+    id?: string;
+    size: ImageSize;
+    position?: ImagePosition;
+    wrap?: ImageWrap;
+    fill?: ShapeFill;
+    outline?: ShapeOutline;
+    content: (Paragraph | Table)[];
+    autoFit?: ShapeTextBody["autoFit"];
     margins?: {
         top?: number;
         bottom?: number;
@@ -1240,8 +1240,8 @@ export type TextBox = {
 
 // @public
 export type TextContent = {
-    type: "text"; /** The text string */
-    text: string; /** Preserve whitespace (xml:space="preserve") */
+    type: "text";
+    text: string;
     preserveSpace?: boolean;
 };
 
@@ -1250,59 +1250,59 @@ export type TextEffect = "none" | "blinkBackground" | "lights" | "antsBlack" | "
 
 // @public
 export type TextFormatting = {
-    bold?: boolean; /** Bold complex script (w:bCs) */
-    boldCs?: boolean; /** Italic (w:i) */
-    italic?: boolean; /** Italic complex script (w:iCs) */
-    italicCs?: boolean; /** Underline style and color (w:u) */
+    bold?: boolean;
+    boldCs?: boolean;
+    italic?: boolean;
+    italicCs?: boolean;
     underline?: {
         style: UnderlineStyle;
         color?: ColorValue;
-    }; /** Strikethrough (w:strike) */
-    strike?: boolean; /** Double strikethrough (w:dstrike) */
-    doubleStrike?: boolean; /** Superscript/subscript (w:vertAlign) */
-    vertAlign?: "baseline" | "superscript" | "subscript"; /** Small caps (w:smallCaps) */
-    smallCaps?: boolean; /** All caps (w:caps) */
-    allCaps?: boolean; /** Hidden text (w:vanish) */
-    hidden?: boolean; /** Text color (w:color) */
-    color?: ColorValue; /** Highlight/background color (w:highlight) */
-    highlight?: "black" | "blue" | "cyan" | "darkBlue" | "darkCyan" | "darkGray" | "darkGreen" | "darkMagenta" | "darkRed" | "darkYellow" | "green" | "lightGray" | "magenta" | "none" | "red" | "white" | "yellow"; /** Character shading (w:shd) */
-    shading?: ShadingProperties; /** Font size in half-points (w:sz) - e.g., 24 = 12pt */
-    fontSize?: number; /** Font size complex script (w:szCs) */
-    fontSizeCs?: number; /** Font family (w:rFonts) */
+    };
+    strike?: boolean;
+    doubleStrike?: boolean;
+    vertAlign?: "baseline" | "superscript" | "subscript";
+    smallCaps?: boolean;
+    allCaps?: boolean;
+    hidden?: boolean;
+    color?: ColorValue;
+    highlight?: "black" | "blue" | "cyan" | "darkBlue" | "darkCyan" | "darkGray" | "darkGreen" | "darkMagenta" | "darkRed" | "darkYellow" | "green" | "lightGray" | "magenta" | "none" | "red" | "white" | "yellow";
+    shading?: ShadingProperties;
+    fontSize?: number;
+    fontSizeCs?: number;
     fontFamily?: {
         ascii?: string;
         hAnsi?: string;
         eastAsia?: string;
-        cs?: string; /** Theme font reference */
+        cs?: string;
         asciiTheme?: "majorAscii" | "majorHAnsi" | "majorEastAsia" | "majorBidi" | "minorAscii" | "minorHAnsi" | "minorEastAsia" | "minorBidi";
         hAnsiTheme?: string;
         eastAsiaTheme?: string;
         csTheme?: string;
-    }; /** Run language metadata (`w:lang`) used by spelling and line breaking. */
+    };
     language?: {
         val?: string;
         eastAsia?: string;
         bidi?: string;
-    }; /** Character spacing in twips (w:spacing) */
-    spacing?: number; /** Raised/lowered text position in half-points (w:position) */
-    position?: number; /** Horizontal text scale percentage (w:w) */
-    scale?: number; /** Kerning threshold in half-points (w:kern) */
-    kerning?: number; /** Text effect animation (w:effect) */
-    effect?: TextEffect; /** Emphasis mark (w:em) */
-    emphasisMark?: EmphasisMark; /** Emboss effect (w:emboss) */
-    emboss?: boolean; /** Imprint/engrave effect (w:imprint) */
-    imprint?: boolean; /** Outline effect (w:outline) */
-    outline?: boolean; /** Shadow effect (w:shadow) */
-    shadow?: boolean; /** Right-to-left text (w:rtl) */
-    rtl?: boolean; /** Complex script formatting (w:cs) */
-    cs?: boolean; /** Character style ID (w:rStyle) */
+    };
+    spacing?: number;
+    position?: number;
+    scale?: number;
+    kerning?: number;
+    effect?: TextEffect;
+    emphasisMark?: EmphasisMark;
+    emboss?: boolean;
+    imprint?: boolean;
+    outline?: boolean;
+    shadow?: boolean;
+    rtl?: boolean;
+    cs?: boolean;
     styleId?: string;
 };
 
 // @public (undocumented)
 export type TextWatermark = {
-    kind: "text"; /** Visible string. Required. */
-    text: string; /** Font family. Word's default is Calibri. */
+    kind: "text";
+    text: string;
     font?: string;
     color?: string;
     diagonal?: boolean;
@@ -1311,9 +1311,9 @@ export type TextWatermark = {
 
 // @public
 export type Theme = {
-    name?: string; /** Color scheme */
-    colorScheme?: ThemeColorScheme; /** Font scheme */
-    fontScheme?: ThemeFontScheme; /** Format scheme (fills, lines, effects) - simplified */
+    name?: string;
+    colorScheme?: ThemeColorScheme;
+    fontScheme?: ThemeFontScheme;
     formatScheme?: {
         name?: string;
     };
@@ -1321,17 +1321,17 @@ export type Theme = {
 
 // @public
 export type ThemeColorScheme = {
-    dk1?: string; /** Light 1 color (usually white) */
-    lt1?: string; /** Dark 2 color */
-    dk2?: string; /** Light 2 color */
-    lt2?: string; /** Accent colors 1-6 */
+    dk1?: string;
+    lt1?: string;
+    dk2?: string;
+    lt2?: string;
     accent1?: string;
     accent2?: string;
     accent3?: string;
     accent4?: string;
     accent5?: string;
-    accent6?: string; /** Hyperlink color */
-    hlink?: string; /** Followed hyperlink color */
+    accent6?: string;
+    hlink?: string;
     folHlink?: string;
 };
 
@@ -1340,22 +1340,22 @@ export type ThemeColorSlot = "dk1" | "lt1" | "dk2" | "lt2" | "accent1" | "accent
 
 // @public
 export type ThemeFont = {
-    latin?: string; /** East Asian font */
-    ea?: string; /** Complex script font */
-    cs?: string; /** Script-specific fonts */
+    latin?: string;
+    ea?: string;
+    cs?: string;
     fonts?: Record<string, string>;
 };
 
 // @public
 export type ThemeFontScheme = {
-    majorFont?: ThemeFont; /** Minor font (body text) */
+    majorFont?: ThemeFont;
     minorFont?: ThemeFont;
 };
 
 // @public
 export type TrackedChangeInfo = {
-    id: number; /** Author who made the change */
-    author: string; /** Date of the change */
+    id: number;
+    author: string;
     date?: string;
     initials?: string;
 };

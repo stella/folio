@@ -233,15 +233,15 @@ export const AutocompleteCaretOverlay: (input: AutocompleteCaretOverlayProps) =>
 
 // @public (undocumented)
 export type AutocompleteCaretOverlayProps = {
-    caret: AutocompleteCaretRect | null; /** The full streamed ghost text so far. */
-    text: string; /** Whether tokens are still arriving from the model. */
+    caret: AutocompleteCaretRect | null;
+    text: string;
     isStreaming: boolean;
 };
 
 // @public (undocumented)
 export type AutocompleteCaretRect = {
-    x: number; /** Container-relative pixel y (top of the cursor line). */
-    y: number; /** Line height in pixels at the anchor. */
+    x: number;
+    y: number;
     lineHeight: number;
     maxWidth?: number | undefined;
 };
@@ -350,74 +350,74 @@ export type DocxEditorCollaboration = {
 
 // @public
 export type DocxEditorHandle = EditorHandle & {
-    setZoom: (zoom: number) => void; /** Scroll the visible pages to a raw ProseMirror document position. */
-    scrollToPosition: (pmPos: number) => void; /** Scroll the visible pages to a 1-indexed page number. */
+    setZoom: (zoom: number) => void;
+    scrollToPosition: (pmPos: number) => void;
     scrollToPage: (pageNumber: number) => void;
 };
 
 // @public (undocumented)
 export type DocxEditorProps = {
-    documentBuffer?: DocxInput | null; /** Password for Agile-encrypted .docx files (Office 2010+). */
-    password?: string | undefined; /** Pre-parsed document (alternative to documentBuffer) */
+    documentBuffer?: DocxInput | null;
+    password?: string | undefined;
     document?: Document_2 | null;
-    documentKey?: string; /** Callback when document is saved */
-    onSave?: (buffer: ArrayBuffer) => void; /** Author name used for comments and track changes */
-    author?: string; /** Callback when document changes */
-    onChange?: (document: Document_2) => void; /** Callback when selection changes */
+    documentKey?: string;
+    onSave?: (buffer: ArrayBuffer) => void;
+    author?: string;
+    onChange?: (document: Document_2) => void;
     onSelectionChange?: (state: SelectionState | null) => void;
     onSelectionTextChange?: (selection: {
         from: number;
         to: number;
         text: string;
-    }) => void; /** Callback on error */
-    onError?: (error: Error) => void; /** Callback when fonts are loaded */
+    }) => void;
+    onError?: (error: Error) => void;
     onFontsLoaded?: () => void;
     fontFamilies?: ReadonlyArray<string | FontOption>;
-    fonts?: ReadonlyArray<FontDefinition>; /** Theme for styling */
-    theme?: Theme | null; /** Whether to show toolbar (default: true) */
-    showToolbar?: boolean; /** Whether to show zoom control (default: true) */
+    fonts?: ReadonlyArray<FontDefinition>;
+    theme?: Theme | null;
+    showToolbar?: boolean;
     showZoomControl?: boolean;
     showReviewControls?: boolean;
-    showHeaderFooterEditing?: boolean; /** Whether to show page margin guides/boundaries (default: false) */
-    showMarginGuides?: boolean; /** Color for margin guides (default: '#c0c0c0') */
+    showHeaderFooterEditing?: boolean;
+    showMarginGuides?: boolean;
     marginGuideColor?: string;
-    showRuler?: boolean; /** Measurement unit shown on the rulers (default: 'inch'). */
-    rulerUnit?: "inch" | "cm"; /** Initial zoom level (default: 1.0) */
-    initialZoom?: number; /** Whether Ctrl/Cmd+wheel and trackpad-pinch zoom are enabled (default: true) */
-    enableWheelZoom?: boolean; /** Whether the editor is read-only. When true, hides toolbar and rulers */
-    readOnly?: boolean; /** Whether comments/tracked changes should auto-open the review sidebar (default: true) */
+    showRuler?: boolean;
+    rulerUnit?: "inch" | "cm";
+    initialZoom?: number;
+    enableWheelZoom?: boolean;
+    readOnly?: boolean;
     autoOpenReviewSidebar?: boolean;
-    components?: Partial<FolioUIComponents>; /** Custom toolbar actions */
-    toolbarExtra?: ReactNode; /** Additional CSS class name */
-    className?: string; /** Additional inline styles */
-    style?: CSSProperties; /** Placeholder when no document */
-    placeholder?: ReactNode; /** Loading indicator */
-    loadingIndicator?: ReactNode; /** Keep the current parsed document visible while a new buffer is loading. */
-    preserveDocumentWhileLoading?: boolean; /** Initial scroll offset for the editor's document scroll container. */
-    initialScrollTop?: number; /** Callback when the editor's document scroll container scrolls. */
-    onScrollTopChange?: (scrollTop: number) => void; /** Whether to show the document outline sidebar (default: false) */
-    showOutline?: boolean; /** Whether to show print button in toolbar (default: true) */
-    showPrintButton?: boolean; /** Callback when print is triggered */
+    components?: Partial<FolioUIComponents>;
+    toolbarExtra?: ReactNode;
+    className?: string;
+    style?: CSSProperties;
+    placeholder?: ReactNode;
+    loadingIndicator?: ReactNode;
+    preserveDocumentWhileLoading?: boolean;
+    initialScrollTop?: number;
+    onScrollTopChange?: (scrollTop: number) => void;
+    showOutline?: boolean;
+    showPrintButton?: boolean;
     onPrint?: () => void;
-    onInsertImage?: (() => void) | undefined; /** Insert a `rows × columns` table at the current selection. */
-    onInsertTable?: ((rows: number, columns: number) => void) | undefined; /** Whether the Insert Table control is shown when `onInsertTable` is set (default: true). */
-    showTableInsert?: boolean | undefined; /** Insert a page break at the current selection. */
-    onInsertPageBreak?: (() => void) | undefined; /** Insert a table of contents generated from the document's headings. */
-    onInsertTOC?: (() => void) | undefined; /** Callback when content is copied */
-    onCopy?: () => void; /** Callback when content is cut */
-    onCut?: () => void; /** Callback when content is pasted */
-    onPaste?: () => void; /** Editor mode: 'editing' (direct edits), 'suggesting' (track changes), or 'viewing' (read-only). Default: 'editing' */
-    mode?: EditorMode; /** Callback when the editing mode changes */
-    onModeChange?: (mode: EditorMode) => void; /** Callback when a readonly user action would mutate the document. */
+    onInsertImage?: (() => void) | undefined;
+    onInsertTable?: ((rows: number, columns: number) => void) | undefined;
+    showTableInsert?: boolean | undefined;
+    onInsertPageBreak?: (() => void) | undefined;
+    onInsertTOC?: (() => void) | undefined;
+    onCopy?: () => void;
+    onCut?: () => void;
+    onPaste?: () => void;
+    mode?: EditorMode;
+    onModeChange?: (mode: EditorMode) => void;
     onReadonlyEditAttempt?: () => void;
-    comments?: Comment_2[]; /** Fires whenever the comments array changes (controlled and uncontrolled). */
-    onCommentsChange?: (comments: Comment_2[]) => void; /** Callback with the parsed document's editing compatibility report. */
+    comments?: Comment_2[];
+    onCommentsChange?: (comments: Comment_2[]) => void;
     onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
-    onEditorViewReady?: (view: EditorView | null) => void; /** Yjs-backed collaboration owner. Experimental and opt-in. */
+    onEditorViewReady?: (view: EditorView | null) => void;
     collaboration?: DocxEditorCollaboration | undefined;
     onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
     onAnonymizationTermClick?: ((canonical: string, label: string) => void) | undefined;
-    selectedAnonymizationCanonical?: string | null | undefined; /** Monotonic counter from the bridge store; drives the re-scroll. */
+    selectedAnonymizationCanonical?: string | null | undefined;
     anonymizationSelectionSeq?: number | undefined;
     showTemplateDirectives?: boolean | undefined;
     onSlashMenuChange?: ((state: TemplateSlashMenuState) => void) | undefined;
@@ -438,30 +438,30 @@ export type DocxEditorProps = {
 
 // @public
 export type DocxEditorRef = {
-    getDocument: () => Document_2 | null; /** Whether the live ProseMirror state has edits that have not been serialized. */
-    hasPendingChanges: () => boolean; /** Get the editor ref */
-    getEditorRef: () => PagedEditorRef | null; /** The headless editor controller (Seam 6), or null before the editor mounts. */
-    getEditor: () => FolioEditor | null; /** Save the document to buffer. Pass { selective: false } to force full repack. */
+    getDocument: () => Document_2 | null;
+    hasPendingChanges: () => boolean;
+    getEditorRef: () => PagedEditorRef | null;
+    getEditor: () => FolioEditor | null;
     save: (options?: {
         selective?: boolean;
-    }) => Promise<ArrayBuffer | null>; /** Set zoom level */
-    setZoom: (zoom: number) => void; /** Get current zoom level */
-    getZoom: () => number; /** Focus the editor */
-    focus: () => void; /** Get current page number */
-    getCurrentPage: () => number; /** Get total page count */
-    getTotalPages: () => number; /** Scroll to a specific page */
+    }) => Promise<ArrayBuffer | null>;
+    setZoom: (zoom: number) => void;
+    getZoom: () => number;
+    focus: () => void;
+    getCurrentPage: () => number;
+    getTotalPages: () => number;
     scrollToPage: (pageNumber: number) => void;
-    scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean; /** Open print preview */
-    openPrintPreview: () => void; /** Print the document directly */
-    print: () => void; /** Load a pre-parsed document programmatically */
-    loadDocument: (doc: Document_2) => void; /** Load a DOCX buffer programmatically (ArrayBuffer, Uint8Array, Blob, or File) */
+    scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean;
+    openPrintPreview: () => void;
+    print: () => void;
+    loadDocument: (doc: Document_2) => void;
     loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;
     ensureEditorView: (options?: {
         focus?: boolean;
-    }) => void; /** Create the block snapshot that an external AI editor should reference. */
-    createAIEditSnapshot: () => FolioAIEditSnapshot | null; /** Apply a versioned document-operation batch against a previously created block snapshot. */
-    applyDocumentOperations: (options: DocxEditorApplyDocumentOperationsOptions) => FolioDocumentOperationResult; /** Undo the latest unchanged document-operation batch. */
-    undoDocumentOperations: (undoHandle: FolioDocumentOperationUndoHandle) => FolioDocumentOperationUndoResult; /** Apply AI-authored operations against a previously created block snapshot. */
+    }) => void;
+    createAIEditSnapshot: () => FolioAIEditSnapshot | null;
+    applyDocumentOperations: (options: DocxEditorApplyDocumentOperationsOptions) => FolioDocumentOperationResult;
+    undoDocumentOperations: (undoHandle: FolioDocumentOperationUndoHandle) => FolioDocumentOperationUndoResult;
     applyAIEditOperations: (options: {
         snapshot: FolioAIEditSnapshot;
         operations: FolioAIEditOperation[];
@@ -474,8 +474,8 @@ export type DocxEditorRef = {
     redo: () => boolean;
     scrollToAIEditOperation: (revisionIds: number | readonly number[]) => boolean;
     scrollToBlock: (blockId: string, snapshot?: FolioAIEditSnapshot) => boolean;
-    highlightPassage: (options: HighlightPassageOptions) => HighlightPassageResult; /** Clear the passage highlight painted by {@link highlightPassage}, if any. */
-    clearPassageHighlight: () => void; /** Resolve a stable block or text-range target and reveal it in the editor. */
+    highlightPassage: (options: HighlightPassageOptions) => HighlightPassageResult;
+    clearPassageHighlight: () => void;
     showInDocument: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => boolean;
     getSuggestions: () => FolioSuggestion[];
     acceptSuggestion: (suggestionId: string, options?: {
@@ -489,10 +489,10 @@ export type DocxEditorRef = {
     getTrackedChanges: () => FolioReviewChange[];
     getCommentAnchors: () => FolioCommentAnchor[];
     getSelectionText: () => string;
-    getPageText: (page: number) => string | null; /** Resolve a stable block or text range to its real 1-based rendered page. */
+    getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
     getContentControls: (filter?: ContentControlFilter) => {
-        properties: SdtProperties; /** Index in the PM document tree, outer→inner. */
+        properties: SdtProperties;
         path: number[];
         pmPos: number;
     }[];
@@ -511,9 +511,9 @@ export type DocxEditorRef = {
 
 // @public
 export type EditorHandle = {
-    save: () => Promise<Blob | null>; /** Get the current parsed document model. */
-    getDocument: () => Document_2 | null; /** Focus the editor. */
-    focus: () => void; /** Unmount the editor and clean up. */
+    save: () => Promise<Blob | null>;
+    getDocument: () => Document_2 | null;
+    focus: () => void;
     destroy: () => void;
 };
 
@@ -530,19 +530,19 @@ export function FindReplaceDialog(input: FindReplaceDialogProps): React_2.ReactE
 
 // @public
 export type FindReplaceDialogProps = {
-    isOpen: boolean; /** Callback when dialog is closed */
-    onClose: () => void; /** Callback when searching for text */
-    onFind: (searchText: string, options: FindOptions) => FindResult | null; /** Callback when navigating to next match */
-    onFindNext: () => FindMatch | null; /** Callback when navigating to previous match */
-    onFindPrevious: () => FindMatch | null; /** Callback when replacing current match */
-    onReplace: (replaceText: string) => boolean; /** Callback when replacing all matches */
-    onReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => number; /** Callback to highlight matches in document */
-    onHighlightMatches?: (matches: FindMatch[]) => void; /** Callback to clear highlights */
-    onClearHighlights?: () => void; /** Initial search text (e.g., from selected text) */
-    initialSearchText?: string; /** Whether to start in replace mode */
-    replaceMode?: boolean; /** Current match result (from external state) */
-    currentResult?: FindResult | null; /** Additional CSS class */
-    className?: string; /** Additional inline styles */
+    isOpen: boolean;
+    onClose: () => void;
+    onFind: (searchText: string, options: FindOptions) => FindResult | null;
+    onFindNext: () => FindMatch | null;
+    onFindPrevious: () => FindMatch | null;
+    onReplace: (replaceText: string) => boolean;
+    onReplaceAll: (searchText: string, replaceText: string, options: FindOptions) => number;
+    onHighlightMatches?: (matches: FindMatch[]) => void;
+    onClearHighlights?: () => void;
+    initialSearchText?: string;
+    replaceMode?: boolean;
+    currentResult?: FindResult | null;
+    className?: string;
     style?: CSSProperties;
 };
 
@@ -610,9 +610,9 @@ export function FolioUIProvider(input: {
 
 // @public
 export type FontDefinition = {
-    family: string; /** URL to the font file (woff2, woff, ttf, or otf). */
-    src: string; /** CSS `font-weight` for this face (a number like `700`, or a keyword). Defaults to `normal`. */
-    weight?: number | string; /** CSS `font-style` for this face (for example `italic`). Defaults to `normal`. */
+    family: string;
+    src: string;
+    weight?: number | string;
     style?: string;
 };
 
@@ -640,10 +640,10 @@ export function FormattingBar(props: FormattingBarProps): React_2.JSX.Element;
 
 // @public (undocumented)
 export type FormattingBarProps = {
-    children?: ReactNode; /** Host controls that should stay in the primary row before text formatting */
-    priorityExtra?: ReactNode; /** Extra controls rendered inline in the center column (after formatting buttons) */
-    inlineExtra?: ReactNode; /** Display label for the style picker when the backing document is hydrating. */
-    stylePickerLabel?: string | undefined; /** Computed preview style for the hydrating style picker label. */
+    children?: ReactNode;
+    priorityExtra?: ReactNode;
+    inlineExtra?: ReactNode;
+    stylePickerLabel?: string | undefined;
     stylePickerLabelStyle?: CSSProperties | undefined;
     inline?: boolean;
 } & ToolbarProps;
@@ -843,9 +843,9 @@ export { normalizeFolioAIBlockText }
 // @public
 export type OutlineItem = {
     id: string;
-    label: string; /** Nesting depth; drives indent + tick taper. */
-    level: number; /** Optional trailing annotation in the panel (e.g. a page number). */
-    meta?: string; /** Optional CSS custom-property name colouring this entry. */
+    label: string;
+    level: number;
+    meta?: string;
     color?: string;
 };
 
@@ -989,31 +989,31 @@ export function useWheelZoom(options?: UseWheelZoomOptions): UseWheelZoomReturn;
 
 // @public
 export type UseWheelZoomOptions = {
-    initialZoom?: number; /** Minimum zoom level (default: 0.25) */
-    minZoom?: number; /** Maximum zoom level (default: 4.0) */
-    maxZoom?: number; /** Zoom step for each scroll event (default: 0.1) */
-    zoomStep?: number; /** Whether zoom is enabled (default: true) */
-    enabled?: boolean; /** Container element ref to attach wheel listener */
+    initialZoom?: number;
+    minZoom?: number;
+    maxZoom?: number;
+    zoomStep?: number;
+    enabled?: boolean;
     containerRef?: RefObject<HTMLElement | null>;
-    getCurrentZoom?: () => number; /** Callback when zoom changes */
-    onZoomChange?: (zoom: number) => void; /** Whether to enable keyboard shortcuts (Ctrl++, Ctrl+-, Ctrl+0) */
-    enableKeyboardShortcuts?: boolean; /** Whether to prevent default browser zoom behavior */
+    getCurrentZoom?: () => number;
+    onZoomChange?: (zoom: number) => void;
+    enableKeyboardShortcuts?: boolean;
     preventDefault?: boolean;
 };
 
 // @public
 export type UseWheelZoomReturn = {
-    zoom: number; /** Set zoom level directly */
-    setZoom: (zoom: number) => void; /** Zoom in by step */
-    zoomIn: () => void; /** Zoom out by step */
-    zoomOut: () => void; /** Reset zoom to initial level */
-    resetZoom: () => void; /** Reset zoom to 100% */
-    zoomTo100: () => void; /** Zoom to fit width */
-    zoomToFit: (containerWidth: number, contentWidth: number) => void; /** Whether currently at minimum zoom */
-    isMinZoom: boolean; /** Whether currently at maximum zoom */
-    isMaxZoom: boolean; /** Zoom percentage (e.g., 100 for zoom level 1.0) */
-    zoomPercent: number; /** Wheel event handler (for manual attachment) */
-    handleWheel: (event: WheelEvent) => void; /** Keyboard event handler (for manual attachment) */
+    zoom: number;
+    setZoom: (zoom: number) => void;
+    zoomIn: () => void;
+    zoomOut: () => void;
+    resetZoom: () => void;
+    zoomTo100: () => void;
+    zoomToFit: (containerWidth: number, contentWidth: number) => void;
+    isMinZoom: boolean;
+    isMaxZoom: boolean;
+    zoomPercent: number;
+    handleWheel: (event: WheelEvent) => void;
     handleKeyDown: (event: KeyboardEvent) => void;
 };
 
@@ -1040,11 +1040,11 @@ export function ZoomControl(input: ZoomControlProps): JSX.Element;
 
 // @public (undocumented)
 export type ZoomControlProps = {
-    value?: number; /** Called with the chosen zoom level. */
-    onChange?: (zoom: number) => void; /** Override the preset levels offered in the dropdown. */
+    value?: number;
+    onChange?: (zoom: number) => void;
     levels?: ZoomLevel[];
     disabled?: boolean;
-    className?: string; /** Render the trigger at the smaller toolbar-chrome size. */
+    className?: string;
     compact?: boolean;
 };
 

@@ -48,10 +48,10 @@ export const createEditorRefBridge: (options: CreateEditorRefBridgeOptions) => F
 
 // @public
 export type CreateEditorRefBridgeOptions = {
-    ref: FolioAgentEditorRefLike; /** Author attributed to tracked changes, comments, and replies this bridge creates. */
-    author: string; /** Read the host app's current comment state (e.g. the `DocxEditor` `comments` prop). */
-    getComments(): Comment_2[]; /** Replace the host app's comment state (e.g. the setter backing that same prop). */
-    setComments(comments: Comment_2[]): void; /** `"tracked-changes"` (default) produces ins/del redlines; `"direct"` edits in place. */
+    ref: FolioAgentEditorRefLike;
+    author: string;
+    getComments(): Comment_2[];
+    setComments(comments: Comment_2[]): void;
     mode?: FolioAIEditApplyMode;
 };
 
@@ -2155,19 +2155,19 @@ export type FolioAgentBlockDiff = FolioBlockDiff;
 // @public
 export type FolioAgentBridge = {
     snapshot(): FolioAIEditSnapshot;
-    applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult; /** Undo the latest unchanged batch when the execution surface supports it. */
-    undoDocumentOperations?(undoHandle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult; /** The comment threads present in the document. */
-    getComments(): FolioAgentComment[]; /** The pending tracked changes (insertions/deletions) present in the document. */
-    getChanges(): FolioAgentChange[]; /** Discover typed document stories when the surface exposes package parts. */
-    listStories?(): FolioDocumentStory[]; /** Read one previously discovered story. */
-    readStory?(handle: FolioDocumentStoryHandle): FolioDocumentStory | null; /** Reply to a comment thread. Returns `false` when the target comment does not exist. */
-    replyToComment(commentId: string, text: string): boolean; /** Mark a comment thread resolved or reopen it. Returns `false` when the target comment does not exist. */
-    resolveComment(commentId: string, resolved: boolean): boolean; /** Scroll the live editor to the given block and select it. */
-    scrollToBlock?(blockId: string): boolean; /** The user's current text selection in the live editor, as plain text. */
-    getSelectionText?(): string; /** Total page count in the live, paginated editor. */
-    getPageCount?(): number; /** Plain text of the given 1-based page in the live editor. */
-    getPageText?(page: number): string; /** Resolve a main-story block or exact text range to its real rendered page. */
-    getTargetPage?(target: FolioDocumentNavigationTarget): number | null; /** Select and reveal a stable block or text range in the live editor. */
+    applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult;
+    undoDocumentOperations?(undoHandle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult;
+    getComments(): FolioAgentComment[];
+    getChanges(): FolioAgentChange[];
+    listStories?(): FolioDocumentStory[];
+    readStory?(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
+    replyToComment(commentId: string, text: string): boolean;
+    resolveComment(commentId: string, resolved: boolean): boolean;
+    scrollToBlock?(blockId: string): boolean;
+    getSelectionText?(): string;
+    getPageCount?(): number;
+    getPageText?(page: number): string;
+    getTargetPage?(target: FolioDocumentNavigationTarget): number | null;
     showInDocument?(target: FolioDocumentNavigationTarget): boolean;
 };
 
@@ -2220,22 +2220,22 @@ export type FolioAgentEditorApplyDocumentOperationsOptions = {
 
 // @public
 export type FolioAgentEditorRefLike = {
-    createAIEditSnapshot(): FolioAIEditSnapshot | null; /** `DocxEditorRef.applyAIEditOperations`. */
+    createAIEditSnapshot(): FolioAIEditSnapshot | null;
     applyAIEditOperations(options: {
         snapshot: FolioAIEditSnapshot;
         operations: FolioAIEditOperation[];
         mode?: FolioAIEditApplyMode;
         author?: string;
-    }): FolioAIEditApplyResult; /** `DocxEditorRef.applyDocumentOperations`, when available on newer refs. */
-    applyDocumentOperations?(options: FolioAgentEditorApplyDocumentOperationsOptions): FolioDocumentOperationResult; /** `DocxEditorRef.undoDocumentOperations`, when available on newer refs. */
-    undoDocumentOperations?(undoHandle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult; /** `DocxEditorRef.scrollToBlock`. */
-    scrollToBlock(blockId: string, snapshot?: FolioAIEditSnapshot): boolean; /** `DocxEditorRef.getTotalPages`. */
+    }): FolioAIEditApplyResult;
+    applyDocumentOperations?(options: FolioAgentEditorApplyDocumentOperationsOptions): FolioDocumentOperationResult;
+    undoDocumentOperations?(undoHandle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult;
+    scrollToBlock(blockId: string, snapshot?: FolioAIEditSnapshot): boolean;
     getTotalPages(): number;
     getTrackedChanges?(): FolioReviewChange[];
     getCommentAnchors?(): FolioCommentAnchor[];
     getSelectionText?(): string;
-    getPageText?(page: number): string | null; /** `DocxEditorRef.getTargetPage`, when available on newer refs. */
-    getTargetPage?(target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot): number | null; /** `DocxEditorRef.showInDocument`, when available on newer refs. */
+    getPageText?(page: number): string | null;
+    getTargetPage?(target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot): number | null;
     showInDocument?(target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot): boolean;
 };
 
@@ -2277,7 +2277,7 @@ export type FolioAgentStoryTextMatch = {
         type: "main";
     }>;
     startOffset: number;
-    endOffset: number; /** 0-based index of this occurrence within the story. */
+    endOffset: number;
     occurrenceInStory: number;
     context: string;
 };
@@ -2288,10 +2288,10 @@ export type FolioAgentTextMatch = {
     story?: {
         type: "main";
     };
-    blockId: string; /** Normalized-text hash of the whole containing block; see {@link FolioAgentBlock.blockTextHash}. */
-    blockTextHash: string; /** Stable handle that can be passed directly to `show_in_document` or a range operation. */
-    range: FolioAITextRangeHandle; /** 0-based index of this occurrence within its block. */
-    occurrenceInBlock: number; /** Real rendered page when a live paginated surface supplies it. */
+    blockId: string;
+    blockTextHash: string;
+    range: FolioAITextRangeHandle;
+    occurrenceInBlock: number;
     page?: number;
     context: string;
 };
