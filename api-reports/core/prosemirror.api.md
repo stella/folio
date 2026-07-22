@@ -208,31 +208,31 @@ export type HyperlinkAttrs = {
 export type ImageAttrs = {
     src: string;
     alt?: string;
-    title?: string; /** Width in pixels (already converted from EMU) */
-    width?: number; /** Height in pixels (already converted from EMU) */
+    title?: string;
+    width?: number;
     height?: number;
-    rId?: string; /** Wrap type from DOCX: inline, square, tight, through, topAndBottom, behind, inFront */
-    wrapType?: import__stll_docx_core_model.ImageWrap["type"]; /** Display mode for CSS: inline (flows with text), float (left/right float), block (centered) */
-    displayMode?: "inline" | "float" | "block"; /** CSS float direction for floating images */
-    cssFloat?: "left" | "right" | "none"; /** CSS transform string (rotation, flip) */
+    rId?: string;
+    wrapType?: import__stll_docx_core_model.ImageWrap["type"];
+    displayMode?: "inline" | "float" | "block";
+    cssFloat?: "left" | "right" | "none";
     transform?: string;
-    opacity?: number; /** Distance from text above (pixels) */
-    distTop?: number; /** Distance from text below (pixels) */
-    distBottom?: number; /** Distance from text left (pixels) */
-    distLeft?: number; /** Distance from text right (pixels) */
+    opacity?: number;
+    distTop?: number;
+    distBottom?: number;
+    distLeft?: number;
     distRight?: number;
     cropTop?: number;
     cropRight?: number;
     cropBottom?: number;
-    cropLeft?: number; /** Position for floating images (horizontal and vertical alignment) */
-    position?: ImagePositionAttrs; /** Use the containing table cell as the anchor's positioning scope (the OOXML default). */
-    layoutInCell?: boolean; /** Border width in pixels */
-    borderWidth?: number; /** Border color as CSS color string */
-    borderColor?: string; /** Border style (CSS border-style value) */
-    borderStyle?: string; /** Wrap text setting from DOCX (left, right, bothSides, largest) for round-trip */
-    wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>; /** Hyperlink URL for clickable image */
-    hlinkHref?: string; /** Original OOXML for opaque/unsupported DOCX drawings. */
-    _docxRawXml?: string; /** Embedded-object previews use their authored box as the exact line height. */
+    cropLeft?: number;
+    position?: ImagePositionAttrs;
+    layoutInCell?: boolean;
+    borderWidth?: number;
+    borderColor?: string;
+    borderStyle?: string;
+    wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>;
+    hlinkHref?: string;
+    _docxRawXml?: string;
     _docxObjectPreview?: boolean;
 };
 
@@ -285,17 +285,17 @@ export const PAINTABLE_MARK_NAMES: ReadonlySet<string>;
 export type ParagraphAttrs = {
     paraId?: string;
     textId?: string;
-    alignment?: import__stll_docx_core_model.ParagraphAlignment; /** Effective East Asian line-edge policy (`w:kinsoku`). */
-    kinsoku?: boolean; /** Effective hanging-punctuation policy (`w:overflowPunct`). */
-    overflowPunctuation?: boolean; /** Effective paragraph opt-out from document automatic hyphenation. */
+    alignment?: import__stll_docx_core_model.ParagraphAlignment;
+    kinsoku?: boolean;
+    overflowPunctuation?: boolean;
     suppressAutoHyphens?: boolean;
     spaceBefore?: number;
     spaceAfter?: number;
     lineSpacing?: number;
     lineSpacingRule?: import__stll_docx_core_model.LineSpacingRule;
     snapToGrid?: boolean;
-    spacingExplicit?: SpacingExplicit; /** Layout provenance: document defaults survive on empty paragraphs. */
-    spacingFromDocDefaults?: SpacingExplicit; /** Layout provenance: implicit default-style spacing survives on empty paragraphs. */
+    spacingExplicit?: SpacingExplicit;
+    spacingFromDocDefaults?: SpacingExplicit;
     spacingFromImplicitDefaultStyle?: SpacingExplicit;
     indentLeft?: number;
     indentRight?: number;
@@ -308,23 +308,23 @@ export type ParagraphAttrs = {
     numPrFromStyle?: {
         numId?: number;
         ilvl?: number;
-    }; /** List number format (decimal, lowerRoman, upperRoman, etc.) for CSS counter styling */
-    listNumFmt?: import__stll_docx_core_model.NumberFormat; /** Whether this is a bullet list */
-    listIsBullet?: boolean; /** Whether this level uses legal numbering (parent placeholders render decimal). */
-    listIsLegal?: boolean; /** Computed list marker text (e.g., "1.", "1.1.", "•") */
-    listMarker?: string; /** Whether the list marker is hidden (w:vanish on numbering level rPr) */
-    listMarkerHidden?: boolean; /** Marker font family from numbering level rPr */
-    listMarkerFontFamily?: string; /** Marker font size from numbering level rPr, in points */
-    listMarkerFontSize?: number; /** Marker bold state from numbering level rPr */
-    listMarkerBold?: boolean; /** Horizontal alignment of the marker around the paragraph's list anchor. */
+    };
+    listNumFmt?: import__stll_docx_core_model.NumberFormat;
+    listIsBullet?: boolean;
+    listIsLegal?: boolean;
+    listMarker?: string;
+    listMarkerHidden?: boolean;
+    listMarkerFontFamily?: string;
+    listMarkerFontSize?: number;
+    listMarkerBold?: boolean;
     listMarkerAlignment?: "left" | "center" | "right";
-    listMarkerSuffix?: "tab" | "space" | "nothing"; /** `w:caps` on the numbering level rPr — render marker in upper case. */
+    listMarkerSuffix?: "tab" | "space" | "nothing";
     listMarkerAllCaps?: boolean;
     listImplicitChildLevelAdvances?: number;
-    listMarkerSecondSlotOffsetTwips?: number; /** Number format for each level used by multi-level marker templates. */
-    listLevelNumFmts?: import__stll_docx_core_model.NumberFormat[]; /** Initial counter for each level used by multi-level marker templates. */
-    listLevelStarts?: number[]; /** Abstract numbering ID shared by numbering instances. */
-    listAbstractNumId?: number; /** Numbering start override for this numId/level. */
+    listMarkerSecondSlotOffsetTwips?: number;
+    listLevelNumFmts?: import__stll_docx_core_model.NumberFormat[];
+    listLevelStarts?: number[];
+    listAbstractNumId?: number;
     listStartOverride?: number;
     styleId?: string;
     borders?: {
@@ -337,13 +337,13 @@ export type ParagraphAttrs = {
     };
     shading?: import__stll_docx_core_model.ShadingProperties;
     tabs?: import__stll_docx_core_model.TabStop[];
-    pageBreakBefore?: boolean; /** Word's cached rendered-page-break marker; preserved for round-trip only. */
-    renderedPageBreakBefore?: boolean; /** Internal import marker for a paragraph whose only run content is a hard page break. */
-    _pageBreakCarrier?: boolean; /** Internal import marker for a hard page break after this paragraph's text. */
+    pageBreakBefore?: boolean;
+    renderedPageBreakBefore?: boolean;
+    _pageBreakCarrier?: boolean;
     _trailingPageBreak?: boolean;
     keepNext?: boolean;
     keepLines?: boolean;
-    widowControl?: boolean; /** Contextual spacing — suppress space between same-style paragraphs */
+    widowControl?: boolean;
     contextualSpacing?: boolean;
     defaultTextFormatting?: import__stll_docx_core_model.TextFormatting;
     sectionBreakType?: "nextPage" | "continuous" | "oddPage" | "evenPage";
@@ -392,7 +392,7 @@ export function removeTabStop(position: number): Command;
 
 // @public
 export type ResolvedParagraphStyle = {
-    paragraphFormatting?: import__stll_docx_core_model.ParagraphFormatting; /** Default run formatting from the style */
+    paragraphFormatting?: import__stll_docx_core_model.ParagraphFormatting;
     runFormatting?: import__stll_docx_core_model.TextFormatting;
 };
 
@@ -407,28 +407,28 @@ export type SelectionChangeCallback = (context: SelectionContext) => void;
 
 // @public
 export type SelectionContext = {
-    hasSelection: boolean; /** Whether selection spans multiple paragraphs */
-    isMultiParagraph: boolean; /** Current text formatting at cursor/selection */
-    textFormatting: import__stll_docx_core_model.TextFormatting; /** Current paragraph formatting */
-    paragraphFormatting: import__stll_docx_core_model.ParagraphFormatting; /** Start paragraph index */
-    startParagraphIndex: number; /** End paragraph index */
-    endParagraphIndex: number; /** Whether cursor is in a list */
-    inList: boolean; /** List type if in list */
-    listType?: "bullet" | "numbered"; /** List level (0-8) */
-    listLevel?: number; /** Active comment IDs at cursor position */
-    activeCommentIds: number[]; /** Whether cursor is inside a tracked insertion */
-    inInsertion: boolean; /** Whether cursor is inside a tracked deletion */
+    hasSelection: boolean;
+    isMultiParagraph: boolean;
+    textFormatting: import__stll_docx_core_model.TextFormatting;
+    paragraphFormatting: import__stll_docx_core_model.ParagraphFormatting;
+    startParagraphIndex: number;
+    endParagraphIndex: number;
+    inList: boolean;
+    listType?: "bullet" | "numbered";
+    listLevel?: number;
+    activeCommentIds: number[];
+    inInsertion: boolean;
     inDeletion: boolean;
 };
 
 // @public
 export type SelectionState = {
-    hasSelection: boolean; /** Whether selection spans multiple paragraphs */
-    isMultiParagraph: boolean; /** Current text formatting at selection/cursor */
-    textFormatting: import__stll_docx_core_model.TextFormatting; /** Current paragraph formatting */
-    paragraphFormatting: import__stll_docx_core_model.ParagraphFormatting; /** Current paragraph style ID (e.g., 'Heading1', 'Normal') */
-    styleId: string | null; /** Start paragraph index */
-    startParagraphIndex: number; /** End paragraph index */
+    hasSelection: boolean;
+    isMultiParagraph: boolean;
+    textFormatting: import__stll_docx_core_model.TextFormatting;
+    paragraphFormatting: import__stll_docx_core_model.ParagraphFormatting;
+    styleId: string | null;
+    startParagraphIndex: number;
     endParagraphIndex: number;
 };
 
@@ -595,8 +595,8 @@ export type TableContextInfo = {
     rowCount?: number;
     columnCount?: number;
     hasMultiCellSelection?: boolean;
-    canSplitCell?: boolean; /** Current cell's dominant border color, if any */
-    cellBorderColor?: ColorValue; /** Current cell's background/fill color (RGB hex without #), if any */
+    canSplitCell?: boolean;
+    cellBorderColor?: ColorValue;
     cellBackgroundColor?: string;
 };
 
@@ -648,7 +648,7 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 
 // @public
 export type ToProseDocOptions = {
-    styles?: import__stll_docx_core_model.StyleDefinitions; /** Theme used when converting themed table/cell values in nested content. */
+    styles?: import__stll_docx_core_model.StyleDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
 };
 

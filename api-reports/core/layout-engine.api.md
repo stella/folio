@@ -35,8 +35,8 @@ export type BorderStyle = {
 
 // @public
 export type BreakDecision = {
-    forcePageBreak: boolean; /** Force a mid-page region change (for column layout changes). */
-    forceMidPageRegion: boolean; /** Required page parity (even or odd). */
+    forcePageBreak: boolean;
+    forceMidPageRegion: boolean;
     requiredParity?: "even" | "odd";
 };
 
@@ -83,9 +83,9 @@ export type ColumnBreakMeasure = {
 export type ColumnLayout = {
     count: number;
     gap: number;
-    equalWidth?: boolean; /** Authored widths for unequal-width section columns. */
-    widths?: number[]; /** Authored space after each column except the last. */
-    gaps?: number[]; /** Draw vertical separator line between columns (w:sep). */
+    equalWidth?: boolean;
+    widths?: number[];
+    gaps?: number[];
     separator?: boolean;
 };
 
@@ -100,9 +100,9 @@ export function createInitialSectionState(margins: PageMargins, pageSize: {
 
 // @public
 export function createPaginator(options: PaginatorOptions): {
-    pages: Page[]; /** All page states. */
-    states: PageState[]; /** Column width in pixels (use getColumnWidth() for current value after updates). */
-    readonly columnWidth: number; /** Get current column layout (returns copy to prevent external mutation). */
+    pages: Page[];
+    states: PageState[];
+    readonly columnWidth: number;
     readonly columns: {
         count: number;
         gap: number;
@@ -110,28 +110,28 @@ export function createPaginator(options: PaginatorOptions): {
         widths?: number[];
         gaps?: number[];
         separator?: boolean;
-    }; /** Get current state. */
-    getCurrentState: () => PageState; /** Get available height in current column. */
-    getAvailableHeight: () => number; /** Full content height of a fresh page in the active section. */
-    getContentHeight: () => number; /** Get content width for the active section. */
-    getContentWidth: () => number; /** Check if height fits in current column. */
-    fits: (height: number) => boolean; /** Ensure height fits, advancing if needed. */
-    ensureFits: (height: number) => PageState; /** Add a fragment to current page. */
+    };
+    getCurrentState: () => PageState;
+    getAvailableHeight: () => number;
+    getContentHeight: () => number;
+    getContentWidth: () => number;
+    fits: (height: number) => boolean;
+    ensureFits: (height: number) => PageState;
     addFragment: (fragment: Fragment, height: number, spaceBefore?: number, spaceAfter?: number) => {
         state: PageState;
         x: number;
         y: number;
-    }; /** Reserve additional footnote area on the current page. */
-    addFootnoteHeight: (additionalHeight: number, footnoteIds?: number[]) => void; /** Force a page break. */
-    forcePageBreak: (breakOptions?: ForcePageBreakOptions) => PageState; /** Reuse an already blank current page for the active section/layout. */
-    retargetCurrentBlankPage: () => boolean; /** Force a column break. */
-    forceColumnBreak: () => PageState; /** Get X position for column. */
-    getColumnX: (columnIndex: number) => number; /** Update column layout (for section breaks). */
-    updateColumns: (newColumns: ColumnLayout) => void; /** Update page size/margins for subsequent pages. */
+    };
+    addFootnoteHeight: (additionalHeight: number, footnoteIds?: number[]) => void;
+    forcePageBreak: (breakOptions?: ForcePageBreakOptions) => PageState;
+    retargetCurrentBlankPage: () => boolean;
+    forceColumnBreak: () => PageState;
+    getColumnX: (columnIndex: number) => number;
+    updateColumns: (newColumns: ColumnLayout) => void;
     updatePageLayout: (newPageSize?: {
         w: number;
         h: number;
-    }, newMargins?: PageMargins, applyImmediately?: boolean) => void; /** Mark the next created page as the first page of a new section. */
+    }, newMargins?: PageMargins, applyImmediately?: boolean) => void;
     startSection: (sectionIndex: number) => void;
 };
 
@@ -148,18 +148,18 @@ export const DEFAULT_TEXTBOX_WIDTH = 200;
 
 // @public
 export type DocumentPosition = {
-    blockIndex: number; /** Run index within the block (for paragraphs). */
-    runIndex?: number; /** Character offset within the run. */
-    charOffset?: number; /** ProseMirror position. */
+    blockIndex: number;
+    runIndex?: number;
+    charOffset?: number;
     pmPos?: number;
 };
 
 // @public
 export type FieldRun = RunFormatting & {
-    kind: "field"; /** Coarse render category, kept for cache keys and caret-width fast paths. */
+    kind: "field";
     fieldType: "PAGE" | "NUMPAGES" | "DATE" | "TIME" | "OTHER";
-    instruction?: string; /** Fallback text if field can't be resolved */
-    fallback?: string; /** Whether OOXML marked this field as locked (`w:fldLock`). */
+    instruction?: string;
+    fallback?: string;
     fldLock?: boolean;
     pmStart?: number;
     pmEnd?: number;
@@ -202,10 +202,10 @@ export const FOOTNOTE_SEPARATOR_HEIGHT = 12;
 
 // @public
 export type FootnoteContent = {
-    id: number; /** Display number (e.g. 1, 2, 3). */
-    displayNumber: number; /** FlowBlocks for rendering the footnote content. */
-    blocks: FlowBlock[]; /** Measurements for the blocks. */
-    measures: Measure[]; /** Total height in pixels. */
+    id: number;
+    displayNumber: number;
+    blocks: FlowBlock[];
+    measures: Measure[];
     height: number;
 };
 
@@ -214,11 +214,11 @@ export type Fragment = ParagraphFragment | TableFragment | ImageFragment | TextB
 
 // @public
 export type FragmentBase = {
-    blockId: BlockId; /** X position on page (relative to page left). */
-    x: number; /** Y position on page (relative to page top). */
-    y: number; /** Width of the fragment. */
-    width: number; /** ProseMirror start position (for click mapping). */
-    pmStart?: number; /** ProseMirror end position (for click mapping). */
+    blockId: BlockId;
+    x: number;
+    y: number;
+    width: number;
+    pmStart?: number;
     pmEnd?: number;
     sdtGroups?: SdtGroup[];
 };
@@ -252,10 +252,10 @@ export function hasPageBreakBefore(block: FlowBlock): boolean;
 
 // @public
 export type HeaderFooterContent = {
-    blocks: FlowBlock[]; /** Measurements for the blocks. */
-    measures: Measure[]; /** Total height of the content. */
-    height: number; /** Top-most visual extent relative to the nominal flow origin. */
-    visualTop?: number; /** Bottom-most visual extent relative to the nominal flow origin. */
+    blocks: FlowBlock[];
+    measures: Measure[];
+    height: number;
+    visualTop?: number;
     visualBottom?: number;
     marginPushTop?: number;
     marginPushBottom?: number;
@@ -274,9 +274,9 @@ export type HeaderFooterLayout = {
 
 // @public
 export type HitTestResult = {
-    pageIndex: number; /** Fragment that was hit, if any. */
-    fragment?: Fragment; /** Local X coordinate within the fragment. */
-    localX?: number; /** Local Y coordinate within the fragment. */
+    pageIndex: number;
+    fragment?: Fragment;
+    localX?: number;
     localY?: number;
 };
 
@@ -294,7 +294,7 @@ export type ImageBlock = {
     src: string;
     width: number;
     height: number;
-    alt?: string; /** CSS transform string (rotation, flip) */
+    alt?: string;
     transform?: string;
     opacity?: number;
     anchor?: {
@@ -302,14 +302,14 @@ export type ImageBlock = {
         offsetH?: number;
         offsetV?: number;
         behindDoc?: boolean;
-    }; /** Hyperlink URL for clickable image */
+    };
     hlinkHref?: string;
     cropTop?: number;
     cropRight?: number;
     cropBottom?: number;
-    cropLeft?: number; /** CSS border width in pixels. eigenpal #1096. */
-    borderWidth?: number; /** CSS border color. eigenpal #1096. */
-    borderColor?: string; /** CSS border style. eigenpal #1096. */
+    cropLeft?: number;
+    borderWidth?: number;
+    borderColor?: string;
     borderStyle?: string;
     pmStart?: number;
     pmEnd?: number;
@@ -317,9 +317,9 @@ export type ImageBlock = {
 
 // @public
 export type ImageFragment = FragmentBase & {
-    kind: "image"; /** Height of the image. */
-    height: number; /** True if this is an anchored/floating image. */
-    isAnchored?: boolean; /** Z-index for layering. */
+    kind: "image";
+    height: number;
+    isAnchored?: boolean;
     zIndex?: number;
 };
 
@@ -337,30 +337,30 @@ export type ImageRun = {
     src: string;
     width: number;
     height: number;
-    alt?: string; /** CSS transform string (rotation, flip) */
+    alt?: string;
     transform?: string;
-    opacity?: number; /** Position for floating/anchored images */
-    position?: ImageRunPosition; /** Whether a table-cell anchor uses the cell as its positioning scope. Undefined defaults true. */
-    layoutInCell?: boolean; /** Wrap type from DOCX (inline, square, tight, through, topAndBottom, etc.) */
-    wrapType?: ImageWrap["type"]; /** Display mode for CSS rendering */
-    displayMode?: "inline" | "block" | "float"; /** CSS float direction */
-    cssFloat?: "left" | "right" | "none"; /** Wrap distances in pixels */
+    opacity?: number;
+    position?: ImageRunPosition;
+    layoutInCell?: boolean;
+    wrapType?: ImageWrap["type"];
+    displayMode?: "inline" | "block" | "float";
+    cssFloat?: "left" | "right" | "none";
     distTop?: number;
     distBottom?: number;
     distLeft?: number;
-    distRight?: number; /** Use the image box as the exact line height for an embedded-object preview. */
+    distRight?: number;
     exactLineHeight?: boolean;
     cropTop?: number;
     cropRight?: number;
     cropBottom?: number;
-    cropLeft?: number; /** CSS border width in pixels. eigenpal #1096. */
-    borderWidth?: number; /** CSS border color. eigenpal #1096. */
-    borderColor?: string; /** CSS border style. eigenpal #1096. */
-    borderStyle?: string; /** Whether this picture is itself a tracked insertion (`<w:ins>`). eigenpal #641. */
-    isInsertion?: boolean; /** Whether this picture is itself a tracked deletion (`<w:del>`). eigenpal #641. */
-    isDeletion?: boolean; /** Author of the tracked change wrapping the picture. eigenpal #641. */
-    changeAuthor?: string; /** Date of the tracked change wrapping the picture. eigenpal #641. */
-    changeDate?: string; /** Revision id of the tracked change wrapping the picture. eigenpal #641. */
+    cropLeft?: number;
+    borderWidth?: number;
+    borderColor?: string;
+    borderStyle?: string;
+    isInsertion?: boolean;
+    isDeletion?: boolean;
+    changeAuthor?: string;
+    changeDate?: string;
     changeRevisionId?: number;
     pmStart?: number;
     pmEnd?: number;
@@ -391,9 +391,9 @@ export const isTextWrappingFloatingImageRun: (run: ImageRun) => boolean;
 
 // @public
 export type KeepNextChain = {
-    startIndex: number; /** Index of the last keepNext or pass-through empty member. */
-    endIndex: number; /** All keepNext and pass-through empty paragraph indices in the chain. */
-    memberIndices: number[]; /** Index of the anchor paragraph (first non-keepNext after chain), or -1 if none. */
+    startIndex: number;
+    endIndex: number;
+    memberIndices: number[];
     anchorIndex: number;
 };
 
@@ -402,11 +402,11 @@ export type Layout = {
     pageSize: {
         w: number;
         h: number;
-    }; /** All rendered pages with positioned fragments. */
-    pages: Page[]; /** Column configuration (if multi-column). */
-    columns?: ColumnLayout; /** Header layouts by type (default, first, even). */
-    headers?: Record<string, HeaderFooterLayout>; /** Footer layouts by type (default, first, even). */
-    footers?: Record<string, HeaderFooterLayout>; /** Gap between pages in pixels (for rendering). */
+    };
+    pages: Page[];
+    columns?: ColumnLayout;
+    headers?: Record<string, HeaderFooterLayout>;
+    footers?: Record<string, HeaderFooterLayout>;
     pageGap?: number;
 };
 
@@ -418,27 +418,27 @@ export type LayoutOptions = {
     pageSize: {
         w: number;
         h: number;
-    }; /** Initial page margins. */
+    };
     margins: PageMargins;
-    firstPageMargins?: PageMargins; /** Per-section body margins used on even section pages. */
-    sectionEvenPageMargins?: (PageMargins | undefined)[]; /** Body-level final section page size. */
+    firstPageMargins?: PageMargins;
+    sectionEvenPageMargins?: (PageMargins | undefined)[];
     finalPageSize?: {
         w: number;
         h: number;
-    }; /** Body-level final section margins. */
-    finalMargins?: PageMargins; /** Body-level final section column configuration. */
-    finalColumns?: ColumnLayout; /** Column configuration. */
-    columns?: ColumnLayout; /** Gap between rendered pages (for UI). */
-    pageGap?: number; /** Default line height multiplier. */
-    defaultLineHeight?: number; /** Header content heights by variant. */
-    headerContentHeights?: HeaderFooterContentHeights; /** Footer content heights by variant. */
-    footerContentHeights?: HeaderFooterContentHeights; /** Whether section has different first page header/footer. */
-    titlePage?: boolean; /** Whether section has different even/odd headers/footers. */
-    evenAndOddHeaders?: boolean; /** Swap left/right margins on even physical pages. */
-    mirrorMargins?: boolean; /** Per-page footnote reserved heights (pageNumber → height in pixels). */
+    };
+    finalMargins?: PageMargins;
+    finalColumns?: ColumnLayout;
+    columns?: ColumnLayout;
+    pageGap?: number;
+    defaultLineHeight?: number;
+    headerContentHeights?: HeaderFooterContentHeights;
+    footerContentHeights?: HeaderFooterContentHeights;
+    titlePage?: boolean;
+    evenAndOddHeaders?: boolean;
+    mirrorMargins?: boolean;
     footnoteReservedHeights?: Map<number, number>;
-    footnoteHeightById?: Map<number, number>; /** Section break type for the body-level (final) section (for section transition logic). */
-    bodyBreakType?: "continuous" | "nextPage" | "evenPage" | "oddPage"; /** Header/footer references for each document section, by section index. */
+    footnoteHeightById?: Map<number, number>;
+    bodyBreakType?: "continuous" | "nextPage" | "evenPage" | "oddPage";
     sectionHeaderFooterRefs?: PageHeaderFooterRefs[];
 };
 
@@ -457,9 +457,9 @@ export type ListNumPr = {
 
 // @public
 export type MathRun = RunFormatting & {
-    kind: "math"; /** `inline` = `<m:oMath>`, `block` = `<m:oMathPara>`. */
-    display: "inline" | "block"; /** Raw OMML XML for conversion + round-trip. */
-    ommlXml: string; /** Plain-text fallback used when MathML rendering is unavailable. */
+    kind: "math";
+    display: "inline" | "block";
+    ommlXml: string;
     plainText: string;
     pmStart?: number;
     pmEnd?: number;
@@ -470,38 +470,38 @@ export type Measure = ParagraphMeasure | ImageMeasure | TableMeasure | TextBoxMe
 
 // @public
 export type MeasuredLine = {
-    fromRun: number; /** Starting character index within fromRun. */
-    fromChar: number; /** Ending run index (inclusive). */
-    toRun: number; /** Ending character index within toRun (exclusive). */
-    toChar: number; /** Total width of the line in pixels. */
-    width: number; /** Ascent (height above baseline) in pixels. */
-    ascent: number; /** Descent (height below baseline) in pixels. */
-    descent: number; /** Total line height in pixels. */
-    lineHeight: number; /** Left offset from floating images (pixels from content left edge). */
-    leftOffset?: number; /** Right offset from floating images (pixels from content right edge). */
+    fromRun: number;
+    fromChar: number;
+    toRun: number;
+    toChar: number;
+    width: number;
+    ascent: number;
+    descent: number;
+    lineHeight: number;
+    leftOffset?: number;
     rightOffset?: number;
-    floatSkipBefore?: number; /** Decorative hyphen inserted at a dictionary break without changing source text. */
+    floatSkipBefore?: number;
     discretionaryHyphen?: {
         runIndex: number;
-    }; /** A cached pagination boundary occurs immediately before this line. */
+    };
     renderedPageBreakBefore?: boolean;
 };
 
 // @public
 export type Page = {
-    number: number; /** Fragments positioned on this page. */
-    fragments: Fragment[]; /** Page margins. */
-    margins: PageMargins; /** Page size (width, height). */
+    number: number;
+    fragments: Fragment[];
+    margins: PageMargins;
     size: {
         w: number;
         h: number;
-    }; /** Page orientation. */
-    orientation?: "portrait" | "landscape"; /** Section index this page belongs to. */
-    sectionIndex?: number; /** 1-based page number within the active section. */
-    sectionPageNumber?: number; /** Header/footer references for this page. */
-    headerFooterRefs?: PageHeaderFooterRefs; /** Footnote IDs that appear on this page (for rendering). */
-    footnoteIds?: number[]; /** Height reserved for the footnote area at page bottom (pixels). */
-    footnoteReservedHeight?: number; /** Column layout for this page (if multi-column). */
+    };
+    orientation?: "portrait" | "landscape";
+    sectionIndex?: number;
+    sectionPageNumber?: number;
+    headerFooterRefs?: PageHeaderFooterRefs;
+    footnoteIds?: number[];
+    footnoteReservedHeight?: number;
     columns?: ColumnLayout;
 };
 
@@ -535,20 +535,20 @@ export type PageMargins = {
     top: number;
     right: number;
     bottom: number;
-    left: number; /** Distance from page top to header content. */
-    header?: number; /** Distance from page bottom to footer content. */
+    left: number;
+    header?: number;
     footer?: number;
 };
 
 // @public
 export type PageState = {
-    page: Page; /** Current Y position (cursor) from page top. */
-    cursorY: number; /** Current column index (0-based). */
-    columnIndex: number; /** Top margin of content area. */
+    page: Page;
+    cursorY: number;
+    columnIndex: number;
     topMargin: number;
-    contentBottom: number; /** Raw bottom of content area (page height - bottom margin); excludes fn area. */
-    rawContentBottom: number; /** Total height reserved for footnotes on this page (grows as refs are placed). */
-    footnoteHeight: number; /** Accumulated trailing spacing (space after previous block). */
+    contentBottom: number;
+    rawContentBottom: number;
+    footnoteHeight: number;
     trailingSpacing: number;
 };
 
@@ -560,32 +560,32 @@ export type PaginatorOptions = {
     pageSize: {
         w: number;
         h: number;
-    }; /** Page margins. */
-    margins: PageMargins; /** Swap left/right margins on even physical pages. */
+    };
+    margins: PageMargins;
     mirrorMargins?: boolean;
-    firstPageMargins?: PageMargins; /** Per-section body margins used on even section pages. */
-    sectionEvenPageMargins?: (PageMargins | undefined)[]; /** Column configuration (optional). */
-    columns?: ColumnLayout; /** Per-page footnote reserved heights (pageNumber → height in pixels). */
-    footnoteReservedHeights?: Map<number, number>; /** Header/footer refs by section index. */
-    sectionHeaderFooterRefs?: PageHeaderFooterRefs[]; /** Callback when a new page is created. */
+    firstPageMargins?: PageMargins;
+    sectionEvenPageMargins?: (PageMargins | undefined)[];
+    columns?: ColumnLayout;
+    footnoteReservedHeights?: Map<number, number>;
+    sectionHeaderFooterRefs?: PageHeaderFooterRefs[];
     onNewPage?: (state: PageState) => void;
 };
 
 // @public
 export type ParagraphAttrs = {
-    alignment?: "left" | "center" | "right" | "justify"; /** Document-generation policy for justified line fitting. */
+    alignment?: "left" | "center" | "right" | "justify";
     justificationCompatibility?: {
         type: "legacy";
-    }; /** East Asian first/last-character restrictions (`w:kinsoku`). */
-    kinsoku?: boolean; /** Hanging punctuation (`w:overflowPunct`); defaults to enabled when omitted. */
-    overflowPunctuation?: boolean; /** Exempt this paragraph from document automatic hyphenation. */
-    suppressAutoHyphens?: boolean; /** Document-wide automatic hyphenation controls retained for line layout. */
+    };
+    kinsoku?: boolean;
+    overflowPunctuation?: boolean;
+    suppressAutoHyphens?: boolean;
     automaticHyphenation?: {
         enabled: true;
         doNotHyphenateCaps?: boolean;
-        consecutiveLineLimit?: number; /** Maximum tolerated line-end whitespace before hyphenation, in twips. */
+        consecutiveLineLimit?: number;
         hyphenationZoneTwips?: number;
-    }; /** Document-wide custom line-edge characters and compatibility behavior. */
+    };
     lineBreakRules?: {
         noLineBreaksBefore?: {
             language?: string;
@@ -596,11 +596,11 @@ export type ParagraphAttrs = {
             characters: string;
         };
         useLegacyEthiopicAmharicRules?: boolean;
-    }; /** OOXML outline level (`w:outlineLvl`), where zero is the top level. */
+    };
     outlineLevel?: number;
-    spacing?: ParagraphSpacing; /** Whether this paragraph participates in the active section line grid. */
-    snapToGrid?: boolean; /** Active section line pitch in pixels; present only on top-level body paragraphs. */
-    documentGridLinePitch?: number; /** Spacing sides resolved from OOXML automatic paragraph spacing. */
+    spacing?: ParagraphSpacing;
+    snapToGrid?: boolean;
+    documentGridLinePitch?: number;
     automaticSpacing?: {
         before?: boolean;
         after?: boolean;
@@ -609,22 +609,22 @@ export type ParagraphAttrs = {
         before?: boolean;
         after?: boolean;
     };
-    hasDirectParagraphFormatting?: boolean; /** Whether an empty paragraph carries direct formatting on its paragraph mark. */
+    hasDirectParagraphFormatting?: boolean;
     hasDirectParagraphMarkFormatting?: boolean;
     indent?: ParagraphIndent;
     keepNext?: boolean;
     keepLines?: boolean;
     widowControl?: boolean;
-    pageBreakBefore?: boolean; /** Cached OOXML pagination hint (`w:lastRenderedPageBreak`). */
+    pageBreakBefore?: boolean;
     renderedPageBreakBefore?: boolean;
     styleId?: string;
     contextualSpacing?: boolean;
-    runInWithNext?: boolean; /** Right-to-left paragraph direction */
+    runInWithNext?: boolean;
     bidi?: boolean;
     borders?: ParagraphBorders;
     shading?: string;
-    tabs?: TabStop[]; /** Render structural empty paragraphs as zero-height anchors. */
-    suppressEmptyParagraphHeight?: boolean; /** Reserve the reference extra line advance for a story-leading empty level-0 outline paragraph. */
+    tabs?: TabStop[];
+    suppressEmptyParagraphHeight?: boolean;
     reserveEmptyOutlineHeight?: boolean;
     numPr?: ListNumPr;
     listMarker?: string;
@@ -633,7 +633,7 @@ export type ParagraphAttrs = {
     listMarkerFontFamily?: string;
     listMarkerFontSize?: number;
     listParagraphMarkFontSize?: number;
-    listMarkerBold?: boolean; /** Horizontal alignment of the marker around the paragraph's list anchor. */
+    listMarkerBold?: boolean;
     listMarkerAlignment?: "left" | "center" | "right";
     listMarkerSuffix?: "tab" | "space" | "nothing";
     listMarkerRevision?: {
@@ -651,12 +651,12 @@ export type ParagraphAttrs = {
 // @public
 export type ParagraphBlock = {
     kind: "paragraph";
-    id: BlockId; /** Stable Word `w14:paraId` / PM `paraId`, when available. */
+    id: BlockId;
     paraId?: string;
     runs: Run[];
     attrs?: ParagraphAttrs;
-    bookmarks?: string[]; /** ProseMirror start position for this block. */
-    pmStart?: number; /** ProseMirror end position for this block. */
+    bookmarks?: string[];
+    pmStart?: number;
     pmEnd?: number;
     sdtGroups?: SdtGroup[];
 };
@@ -673,11 +673,11 @@ export type ParagraphBorders = {
 
 // @public
 export type ParagraphFragment = FragmentBase & {
-    kind: "paragraph"; /** First line index (inclusive) from the measure. */
-    fromLine: number; /** Last line index (exclusive) from the measure. */
-    toLine: number; /** Height of this fragment. */
-    height: number; /** True if this continues from a previous page. */
-    continuesFromPrev?: boolean; /** True if this continues onto the next page. */
+    kind: "paragraph";
+    fromLine: number;
+    toLine: number;
+    height: number;
+    continuesFromPrev?: boolean;
     continuesOnNext?: boolean;
 };
 
@@ -732,7 +732,7 @@ export type RunFormatting = {
     highlight?: string;
     shading?: string;
     fontFamily?: string;
-    eastAsiaFontFamily?: string; /** Run language metadata resolved from `w:lang`. */
+    eastAsiaFontFamily?: string;
     language?: {
         val?: string;
         eastAsia?: string;
@@ -741,11 +741,11 @@ export type RunFormatting = {
     fontSize?: number;
     letterSpacing?: number;
     superscript?: boolean;
-    subscript?: boolean; /** Render glyphs as uppercase regardless of source case. */
-    allCaps?: boolean; /** Render lowercase glyphs as small uppercase. */
-    smallCaps?: boolean; /** Vertical baseline shift in CSS pixels. */
-    positionPx?: number; /** Horizontal text scale as a percentage. */
-    horizontalScale?: number; /** Minimum font size in points at which kerning is enabled. */
+    subscript?: boolean;
+    allCaps?: boolean;
+    smallCaps?: boolean;
+    positionPx?: number;
+    horizontalScale?: number;
     kerningMinPt?: number;
     imprint?: boolean;
     emboss?: boolean;
@@ -754,17 +754,17 @@ export type RunFormatting = {
     emphasisMark?: "dot" | "comma" | "circle" | "underDot";
     hidden?: boolean;
     rtl?: boolean;
-    textEffect?: "blinkBackground" | "lights" | "antsBlack" | "antsRed" | "shimmer" | "sparkle"; /** Hyperlink info if this run is a link */
-    hyperlink?: HyperlinkInfo; /** Footnote reference ID (if this run contains a footnote reference) */
-    footnoteRefId?: number; /** Endnote reference ID (if this run contains an endnote reference) */
-    endnoteRefId?: number; /** Comment IDs if this run is within a comment range */
-    commentIds?: number[]; /** Whether this run is a tracked insertion */
-    isInsertion?: boolean; /** Whether this run is a tracked deletion */
-    isDeletion?: boolean; /** Author of the tracked change */
-    changeAuthor?: string; /** Date of the tracked change */
-    changeDate?: string; /** Revision ID of the tracked change (for sidebar matching) */
+    textEffect?: "blinkBackground" | "lights" | "antsBlack" | "antsRed" | "shimmer" | "sparkle";
+    hyperlink?: HyperlinkInfo;
+    footnoteRefId?: number;
+    endnoteRefId?: number;
+    commentIds?: number[];
+    isInsertion?: boolean;
+    isDeletion?: boolean;
+    changeAuthor?: string;
+    changeDate?: string;
     changeRevisionId?: number;
-    isSuggestion?: boolean; /** Groups a suggestion's runs for accept/reject and scroll-to. */
+    isSuggestion?: boolean;
     suggestionId?: string;
 };
 
@@ -778,14 +778,14 @@ export function scheduleSectionBreak(block: SectionBreakBlock, state: SectionSta
 export type SdtGroup = {
     id: string;
     pmPos: number;
-    sdtType: SdtType; /** OOXML `w:alias` (friendly display name). */
-    alias?: string; /** OOXML `w:tag` (developer identifier — anchor for addressing API). */
-    tag?: string; /** OOXML numeric `w:id`. */
-    sdtId?: number; /** OOXML `w:lock` setting. */
-    lock?: NonNullable<SdtProperties["lock"]>; /** True if `w:showingPlcHdr` is set. */
-    showingPlaceholder?: boolean; /** Modeled checkbox state, when the control is `w14:checkbox`. */
-    checked?: boolean; /** Modeled `w:date/w:dateFormat`. */
-    dateFormat?: string; /** Modeled `w:dropDownList`/`w:comboBox` items (JSON-encoded). */
+    sdtType: SdtType;
+    alias?: string;
+    tag?: string;
+    sdtId?: number;
+    lock?: NonNullable<SdtProperties["lock"]>;
+    showingPlaceholder?: boolean;
+    checked?: boolean;
+    dateFormat?: string;
     listItemsJson?: string;
     position?: "first" | "middle" | "last" | "only";
 };
@@ -801,7 +801,7 @@ export type SectionBreakBlock = {
     };
     orientation?: "portrait" | "landscape";
     margins?: PageMargins;
-    columns?: ColumnLayout; /** Line pitch authored by the section properties that end at this boundary, in twips. */
+    columns?: ColumnLayout;
     documentGridLinePitchTwips?: number;
 };
 
@@ -822,26 +822,26 @@ export type SectionLayoutConfig = {
 
 // @public
 export type SectionState = {
-    activeTopMargin: number; /** Currently active bottom margin. */
-    activeBottomMargin: number; /** Currently active left margin. */
-    activeLeftMargin: number; /** Currently active right margin. */
-    activeRightMargin: number; /** Scheduled top margin for next page. */
-    pendingTopMargin: number | null; /** Scheduled bottom margin for next page. */
-    pendingBottomMargin: number | null; /** Scheduled left margin for next page. */
-    pendingLeftMargin: number | null; /** Scheduled right margin for next page. */
-    pendingRightMargin: number | null; /** Currently active page size. */
+    activeTopMargin: number;
+    activeBottomMargin: number;
+    activeLeftMargin: number;
+    activeRightMargin: number;
+    pendingTopMargin: number | null;
+    pendingBottomMargin: number | null;
+    pendingLeftMargin: number | null;
+    pendingRightMargin: number | null;
     activePageSize: {
         w: number;
         h: number;
-    }; /** Scheduled page size for next page. */
+    };
     pendingPageSize: {
         w: number;
         h: number;
-    } | null; /** Currently active column layout. */
-    activeColumns: ColumnLayout; /** Scheduled column layout for next page. */
-    pendingColumns: ColumnLayout | null; /** Currently active orientation. */
-    activeOrientation: "portrait" | "landscape" | null; /** Scheduled orientation for next page. */
-    pendingOrientation: "portrait" | "landscape" | null; /** Whether any pages have been created yet. */
+    } | null;
+    activeColumns: ColumnLayout;
+    pendingColumns: ColumnLayout | null;
+    activeOrientation: "portrait" | "landscape" | null;
+    pendingOrientation: "portrait" | "landscape" | null;
     hasAnyPages: boolean;
 };
 
@@ -853,16 +853,16 @@ export type TableBlock = {
     kind: "table";
     id: BlockId;
     rows: TableRow[];
-    columnWidths?: number[]; /** Table width value (twips for dxa, 50ths of percent for pct). */
-    width?: number; /** Table width type ('auto', 'pct', 'dxa', 'nil'). */
+    columnWidths?: number[];
+    width?: number;
     widthType?: TableWidthType;
-    layout?: "fixed" | "autofit"; /** Table horizontal alignment */
-    justification?: "left" | "center" | "right"; /** Table indent from left margin (in pixels, from w:tblInd) */
-    indent?: number; /** Right-to-left column order (w:bidiVisual): logical column 0 paints on the right. */
-    bidi?: boolean; /** Floating table properties (pixel values). */
+    layout?: "fixed" | "autofit";
+    justification?: "left" | "center" | "right";
+    indent?: number;
+    bidi?: boolean;
     floating?: FloatingTablePosition;
     pmStart?: number;
-    pmEnd?: number; /** Outer→inner SDT wrappers enclosing this table (see ParagraphBlock). */
+    pmEnd?: number;
     sdtGroups?: SdtGroup[];
 };
 
@@ -876,7 +876,7 @@ export type TableCell = {
     verticalAlign?: "top" | "center" | "bottom";
     textDirection?: NonNullable<TableCellFormatting["textDirection"]>;
     background?: string;
-    borders?: CellBorders; /** Per-cell padding in pixels (from w:tcMar or table-level w:tblCellMar) */
+    borders?: CellBorders;
     padding?: {
         top: number;
         right: number;
@@ -900,13 +900,13 @@ export function tableColumnsArePinned(table: TableBlock): boolean;
 
 // @public
 export type TableFragment = FragmentBase & {
-    kind: "table"; /** First row index (inclusive). */
-    fromRow: number; /** Last row index (exclusive). */
-    toRow: number; /** Height of this fragment. */
-    height: number; /** True if this is a floating table. */
-    isFloating?: boolean; /** True if this continues from a previous page. */
-    continuesFromPrev?: boolean; /** True if this continues onto the next page. */
-    continuesOnNext?: boolean; /** Number of header rows prepended to this continuation fragment (0 or undefined for first fragment). */
+    kind: "table";
+    fromRow: number;
+    toRow: number;
+    height: number;
+    isFloating?: boolean;
+    continuesFromPrev?: boolean;
+    continuesOnNext?: boolean;
     headerRowCount?: number;
     topClip?: number;
     bottomClip?: number;
@@ -930,7 +930,7 @@ export type TableRow = {
     gridAfter?: number;
     height?: number;
     heightRule?: "auto" | "atLeast" | "exact";
-    isHeader?: boolean; /** `w:cantSplit`: keep this row in one flow region. */
+    isHeader?: boolean;
     cantSplit?: boolean;
     hidden?: boolean;
 };
@@ -951,34 +951,34 @@ export type TabRun = RunFormatting & {
 
 // @public
 export type TabStop = {
-    val: TabAlignment; /** Position in twips from left margin */
-    pos: number; /** Optional leader character */
+    val: TabAlignment;
+    pos: number;
     leader?: "none" | "dot" | "hyphen" | "underscore" | "heavy" | "middleDot";
 };
 
 // @public
 export type TextBoxBlock = {
     kind: "textBox";
-    id: BlockId; /** Width in pixels */
-    width: number; /** Height in pixels (may be auto-calculated) */
-    height?: number; /** Text fitting behavior */
-    autoFit?: ShapeTextBody["autoFit"]; /** Fill/background color */
-    fillColor?: string; /** Border width in pixels */
-    outlineWidth?: number; /** Border color */
-    outlineColor?: string; /** Outline dash style, or `"none"` for an explicit no-outline. */
-    outlineStyle?: OutlineStyleAttr; /** Internal padding */
+    id: BlockId;
+    width: number;
+    height?: number;
+    autoFit?: ShapeTextBody["autoFit"];
+    fillColor?: string;
+    outlineWidth?: number;
+    outlineColor?: string;
+    outlineStyle?: OutlineStyleAttr;
     margins?: {
         top: number;
         bottom: number;
         left: number;
         right: number;
-    }; /** Flow blocks inside the text box */
-    content: (ParagraphBlock | TableBlock)[]; /** Display mode copied from the ProseMirror text box node. */
-    displayMode?: "inline" | "float" | "block"; /** CSS float direction copied from the ProseMirror text box node. */
-    cssFloat?: "left" | "right" | "none"; /** OOXML wrap type for anchored text boxes. */
-    wrapType?: ImageWrap["type"]; /** OOXML wrapText direction for anchored text boxes. */
-    wrapText?: "bothSides" | "left" | "right" | "largest"; /** Position for floating/anchored text boxes (OOXML EMU offsets). */
-    position?: ImageRunPosition; /** Wrap distances in pixels. */
+    };
+    content: (ParagraphBlock | TableBlock)[];
+    displayMode?: "inline" | "float" | "block";
+    cssFloat?: "left" | "right" | "none";
+    wrapType?: ImageWrap["type"];
+    wrapText?: "bothSides" | "left" | "right" | "largest";
+    position?: ImageRunPosition;
     distTop?: number;
     distBottom?: number;
     distLeft?: number;
@@ -992,7 +992,7 @@ export type TextBoxFlowAttrs = Pick<TextBoxBlock, "displayMode" | "wrapType">;
 
 // @public
 export type TextBoxFragment = FragmentBase & {
-    kind: "textBox"; /** Height of the text box. */
+    kind: "textBox";
     height: number;
 };
 
@@ -1000,16 +1000,16 @@ export type TextBoxFragment = FragmentBase & {
 export type TextBoxMeasure = {
     kind: "textBox";
     width: number;
-    height: number; /** Pre-measured inner content (avoids re-measuring during render) */
+    height: number;
     innerMeasures: (ParagraphMeasure | TableMeasure)[];
 };
 
 // @public
 export type TextRun = RunFormatting & {
     kind: "text";
-    text: string; /** Hyperlink information if this run is a link. */
-    hyperlink?: HyperlinkInfo; /** Absolute ProseMirror position (inclusive) of first character. */
-    pmStart?: number; /** Absolute ProseMirror position (exclusive) after last character. */
+    text: string;
+    hyperlink?: HyperlinkInfo;
+    pmStart?: number;
     pmEnd?: number;
     templatePreview?: "highlighted" | "plain";
 };

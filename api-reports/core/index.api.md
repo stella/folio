@@ -40,9 +40,9 @@ export type AIChatMode = "ask" | "edit";
 
 // @public (undocumented)
 export type AICitation = {
-    id: string; /** Short label rendered in the inline chip ("1", "§3.2", etc.). */
-    label: string; /** Verbatim quoted text from the source — surfaces on hover/expand. */
-    quote: string; /** Where the cited text lives in the source document. */
+    id: string;
+    label: string;
+    quote: string;
     source: AICitationSource;
 };
 
@@ -55,7 +55,7 @@ export type AICitationRange = {
 
 // @public
 export type AICitationSource = {
-    kind: "folio-range"; /** ProseMirror positions in the live document. */
+    kind: "folio-range";
     from: number;
     to: number;
 } | {
@@ -70,8 +70,8 @@ export type AICitationSource = {
 // @public
 export type AIGenerateInput = {
     prompt: string;
-    mode: AIChatMode; /** Selected text, if any. Empty string when no selection. */
-    selectionText: string; /** PM range of the selection, or null when there is no selection. */
+    mode: AIChatMode;
+    selectionText: string;
     selectionRange: {
         from: number;
         to: number;
@@ -79,7 +79,7 @@ export type AIGenerateInput = {
     cursorPosition: {
         from: number;
         to: number;
-    } | null; /** Plain-text snapshot of the document body. */
+    } | null;
     documentText: string;
     visibleText: string;
     visibleRange: {
@@ -102,11 +102,11 @@ export type AISuggestion = {
     suggestedText: string;
     contextBefore: string;
     contextAfter: string;
-    rationale: string; /** 0..1 model confidence. Optional — not displayed prominently. */
+    rationale: string;
     confidence?: number;
     status: AISuggestionStatus;
     display?: {
-        valueKind?: string; /** `personAi`: a person writes a stub and AI adapts it in place. */
+        valueKind?: string;
         filledBy?: "person" | "ai" | "personAi";
     };
 };
@@ -116,9 +116,9 @@ export type AISuggestionApplyMode = "direct" | "tracked-changes";
 
 // @public
 export type AISuggestionPreset = {
-    id: string; /** Short label shown in the dropdown (e.g., "Catch typos"). */
-    label: string; /** Optional one-line description shown beneath the label. */
-    description?: string; /** Prompt text sent to the generator when the preset is picked. */
+    id: string;
+    label: string;
+    description?: string;
     prompt: string;
     mode?: AIChatMode;
 };
@@ -134,7 +134,7 @@ export const anonymizationDecorationsKey: PluginKey<AnonymizationDecorationState
 
 // @public (undocumented)
 export type AnonymizationMatch = {
-    from: number; /** Exclusive PM doc position of the match end. */
+    from: number;
     to: number;
     label: string;
     canonical: string;
@@ -142,8 +142,8 @@ export type AnonymizationMatch = {
 
 // @public (undocumented)
 export type AnonymizationTerm = {
-    canonical: string; /** Label slug (e.g. "person", "organization"). */
-    label: string; /** Optional alternate surface forms also matched verbatim. */
+    canonical: string;
+    label: string;
     variants?: readonly string[];
 };
 
@@ -275,7 +275,7 @@ export const deriveBlockId: (input: DeriveBlockIdInput) => FolioBlockId;
 
 // @public (undocumented)
 export type DeriveBlockIdInput = {
-    paraId: string | null; /** 1-based document order for the paragraph being derived. */
+    paraId: string | null;
     index: number;
     taken: ReadonlySet<string>;
 };
@@ -287,11 +287,11 @@ export { DirectiveKind }
 
 // @public (undocumented)
 export type DirectiveRange = {
-    from: number; /** Exclusive PM doc position of the marker end. */
+    from: number;
     to: number;
-    kind: DirectiveKind; /** Field path, clause name, or condition/loop expression. */
-    expr: string; /** Clause-slot version selector, e.g. "v3" or "latest". */
-    clauseVersion?: string; /** True for block directives that occupy their own paragraph. */
+    kind: DirectiveKind;
+    expr: string;
+    clauseVersion?: string;
     block: boolean;
 };
 
@@ -388,18 +388,18 @@ export type DocxConformanceClass = import__stll_docx_core_model.DocxConformanceC
 
 // @public
 export type EmbeddedFont = {
-    family: string; /** Original Word font name (`w:font w:name`), before scoping. */
-    originalFamily: string; /** CSS `font-style` the face maps to (`embed*Italic` → `italic`). */
-    style: "normal" | "italic"; /** CSS `font-weight` the face maps to (`embedBold*` → `700`). */
-    weight: 400 | 700; /** De-obfuscated OpenType/TrueType bytes (backed by a fresh, non-shared buffer). */
-    bytes: Uint8Array<ArrayBuffer>; /** Whether the source face was subsetted (`w:subsetted`). */
+    family: string;
+    originalFamily: string;
+    style: "normal" | "italic";
+    weight: 400 | 700;
+    bytes: Uint8Array<ArrayBuffer>;
     subsetted: boolean;
 };
 
 // @public
 export type EmbeddedFontParts = {
-    fontTableXml: string | null | undefined; /** Raw `word/_rels/fontTable.xml.rels`. */
-    fontTableRelsXml: string | null | undefined; /** Unzipped font binaries keyed by package path (e.g. `word/fonts/font1.odttf`). */
+    fontTableXml: string | null | undefined;
+    fontTableRelsXml: string | null | undefined;
     fonts: ReadonlyMap<string, ArrayBuffer>;
 };
 
@@ -411,8 +411,8 @@ export const extractDocumentStyleSetFromDocx: (input: DocxInput, options: Extrac
 
 // @public (undocumented)
 export type ExtractDocumentStyleSetOptions = {
-    name: string; /** Style IDs selected by the user. Omit to extract every style. */
-    styleIds?: readonly string[]; /** Defaults to the source document's default paragraph style. */
+    name: string;
+    styleIds?: readonly string[];
     initialParagraphStyleId?: string;
 };
 
@@ -464,7 +464,7 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replac
 export type FolioAIBlock = {
     id: string;
     kind: FolioAIBlockKind;
-    text: string; /** One-based heading depth when the block has outline semantics. */
+    text: string;
     headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
@@ -584,27 +584,27 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     comment?: FolioAIComment;
 } | {
     id: string;
-    type: "insertTableRow"; /** Stable paragraph anchor inside the row that receives the new sibling. */
+    type: "insertTableRow";
     blockId: string;
-    position?: "after" | "before"; /** Initial text for each physical cell in source order; omitted cells stay empty. */
+    position?: "after" | "before";
     cellTexts?: string[];
 } | {
     id: string;
-    type: "deleteTableRow"; /** Stable paragraph anchor inside the row to delete. */
+    type: "deleteTableRow";
     blockId: string;
 } | {
     id: string;
-    type: "insertTableColumn"; /** Stable paragraph anchor inside the cell that receives the new sibling column. */
+    type: "insertTableColumn";
     blockId: string;
-    position?: "after" | "before"; /** Initial text for newly created physical cells in row order. */
+    position?: "after" | "before";
     cellTexts?: string[];
 } | {
     id: string;
-    type: "deleteTableColumn"; /** Stable paragraph anchor inside the column to delete. */
+    type: "deleteTableColumn";
     blockId: string;
 } | ({
     id: string;
-    type: "mergeTableCells"; /** Stable paragraph anchor inside the first cell. */
+    type: "mergeTableCells";
     blockId: string;
 } & ({
     endBlockId: string;
@@ -614,7 +614,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     endBlockId?: never;
 })) | {
     id: string;
-    type: "splitTableCell"; /** Stable paragraph anchor inside the cell to split. */
+    type: "splitTableCell";
     blockId: string;
 });
 
@@ -639,18 +639,18 @@ export type FolioAIEditSkippedOperation = {
 };
 
 // @public (undocumented)
-export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "staleRange" | "emptyOperation"
+export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "staleRange" | "emptyOperation" |
 /**
 * The operation would not change the document — find equals
 * replace, or replaceBlock's `text` matches the live block.
 * Filtered out so the reviewer doesn't see "X → X" cards.
 */
-| "noopOperation";
+"noopOperation";
 
 // @public (undocumented)
 export type FolioAIEditSnapshot = {
     blocks: FolioAIBlock[];
-    anchors: Record<string, FolioAIBlockAnchor>; /** Hidden empty paragraph used to anchor insertions when `blocks` is empty. */
+    anchors: Record<string, FolioAIBlockAnchor>;
     emptyDocumentAnchorId?: string;
 };
 
@@ -770,8 +770,8 @@ export type FolioDocumentOperationResult = {
     status: FolioDocumentOperationStatus;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
-    issues: FolioDocumentOperationIssue[]; /** Successful effects in input-operation order; skipped operations are omitted. */
-    receipts: FolioDocumentOperationReceipt[]; /** Present when the execution surface can undo this committed batch. */
+    issues: FolioDocumentOperationIssue[];
+    receipts: FolioDocumentOperationReceipt[];
     undoHandle: FolioDocumentOperationUndoHandle | null;
 };
 
@@ -865,18 +865,18 @@ export const hashFolioAIBlockText: (text: string) => string;
 
 // @public
 export type ImageMeta = {
-    paraId?: string | undefined; /** 1-based ordinal in registration order. Unique per render call. */
-    index: number; /** Path inside the DOCX zip (e.g. `word/media/image1.png`). */
-    originalPath: string; /** MIME type (`image/png`, `image/jpeg`, …). */
-    mimeType: string; /** Alt text from the drawing, when present. */
+    paraId?: string | undefined;
+    index: number;
+    originalPath: string;
+    mimeType: string;
     alt?: string | undefined;
 };
 
 // @public
 export type ImageRef = {
-    data: Uint8Array; /** Base64-encoded contents, without the `data:` prefix. */
-    base64: string; /** `data:<mime>;base64,<base64>` URL. */
-    dataUrl: string; /** The path that appears inside the markdown's `![alt](…)` reference. */
+    data: Uint8Array;
+    base64: string;
+    dataUrl: string;
     virtualPath: string;
 } & ImageMeta;
 
@@ -922,8 +922,8 @@ export type MarkdownOptions = {
 
 // @public
 export type MarkdownResult = {
-    markdown: string; /** Every image referenced in `markdown`, keyed by its virtual path. */
-    images: Map<string, ImageRef>; /** Non-fatal diagnostics; recurring messages are deduped. */
+    markdown: string;
+    images: Map<string, ImageRef>;
     warnings: string[];
 };
 
@@ -1040,7 +1040,7 @@ export type TemplatePreviewValue = string | {
 
 // @public (undocumented)
 export type TemplatePreviewValues = {
-    values: Record<string, TemplatePreviewValue>; /** `highlighted` marks substitutions with the preview accent. */
+    values: Record<string, TemplatePreviewValue>;
     mode: "highlighted" | "plain";
 };
 

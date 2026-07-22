@@ -17,20 +17,20 @@ import { SpacingExplicit } from '@stll/docx-core/model';
 export type BlockSdtAttrs = {
     sdtType: import__stll_docx_core_model.SdtType;
     alias?: string;
-    tag?: string; /** Numeric `w:id/@w:val`. */
+    tag?: string;
     id?: number;
     lock?: NonNullable<import__stll_docx_core_model.SdtProperties["lock"]>;
     placeholder?: string;
     showingPlaceholder?: boolean;
-    dateFormat?: string; /** ISO 8601 bound date value (`w:date@w:fullDate`). */
-    dateValueISO?: string; /** Dropdown/combobox list items as JSON string. */
-    listItems?: string; /** Selected dropdown / comboBox value (`w:dropDownList@w:lastValue`). */
+    dateFormat?: string;
+    dateValueISO?: string;
+    listItems?: string;
     dropdownLastValue?: string;
     checked?: boolean;
-    _originallyEmpty?: boolean; /** Captured `<w:sdtPr>…</w:sdtPr>` for round-trip replay. */
-    rawPropertiesXml?: string; /** Captured `<w:sdtEndPr>…</w:sdtEndPr>` for round-trip replay. */
-    rawEndPropertiesXml?: string; /** Verbatim XML for sdt siblings before sdtContent (range markers). */
-    rawSdtChildrenBeforeContent?: string; /** Verbatim XML for sdt siblings after sdtContent (range markers). */
+    _originallyEmpty?: boolean;
+    rawPropertiesXml?: string;
+    rawEndPropertiesXml?: string;
+    rawSdtChildrenBeforeContent?: string;
     rawSdtChildrenAfterContent?: string;
 };
 
@@ -69,11 +69,11 @@ export type EmphasisMarkAttrs = {
 
 // @public
 export type FieldAttrs = {
-    fieldType: import__stll_docx_core_model.FieldType; /** Full field instruction (e.g. "PAGE \\* MERGEFORMAT") */
-    instruction: string; /** Current/cached display text */
-    displayText: string; /** Whether the field came from w:fldSimple or a complex fldChar range */
-    fieldKind: "simple" | "complex"; /** Field is locked */
-    fldLock?: boolean; /** Field is dirty and should be recalculated by the host application */
+    fieldType: import__stll_docx_core_model.FieldType;
+    instruction: string;
+    displayText: string;
+    fieldKind: "simple" | "complex";
+    fldLock?: boolean;
     dirty?: boolean;
 };
 
@@ -123,31 +123,31 @@ export type HyperlinkAttrs = {
 export type ImageAttrs = {
     src: string;
     alt?: string;
-    title?: string; /** Width in pixels (already converted from EMU) */
-    width?: number; /** Height in pixels (already converted from EMU) */
+    title?: string;
+    width?: number;
     height?: number;
-    rId?: string; /** Wrap type from DOCX: inline, square, tight, through, topAndBottom, behind, inFront */
-    wrapType?: import__stll_docx_core_model.ImageWrap["type"]; /** Display mode for CSS: inline (flows with text), float (left/right float), block (centered) */
-    displayMode?: "inline" | "float" | "block"; /** CSS float direction for floating images */
-    cssFloat?: "left" | "right" | "none"; /** CSS transform string (rotation, flip) */
+    rId?: string;
+    wrapType?: import__stll_docx_core_model.ImageWrap["type"];
+    displayMode?: "inline" | "float" | "block";
+    cssFloat?: "left" | "right" | "none";
     transform?: string;
-    opacity?: number; /** Distance from text above (pixels) */
-    distTop?: number; /** Distance from text below (pixels) */
-    distBottom?: number; /** Distance from text left (pixels) */
-    distLeft?: number; /** Distance from text right (pixels) */
+    opacity?: number;
+    distTop?: number;
+    distBottom?: number;
+    distLeft?: number;
     distRight?: number;
     cropTop?: number;
     cropRight?: number;
     cropBottom?: number;
-    cropLeft?: number; /** Position for floating images (horizontal and vertical alignment) */
-    position?: ImagePositionAttrs; /** Use the containing table cell as the anchor's positioning scope (the OOXML default). */
-    layoutInCell?: boolean; /** Border width in pixels */
-    borderWidth?: number; /** Border color as CSS color string */
-    borderColor?: string; /** Border style (CSS border-style value) */
-    borderStyle?: string; /** Wrap text setting from DOCX (left, right, bothSides, largest) for round-trip */
-    wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>; /** Hyperlink URL for clickable image */
-    hlinkHref?: string; /** Original OOXML for opaque/unsupported DOCX drawings. */
-    _docxRawXml?: string; /** Embedded-object previews use their authored box as the exact line height. */
+    cropLeft?: number;
+    position?: ImagePositionAttrs;
+    layoutInCell?: boolean;
+    borderWidth?: number;
+    borderColor?: string;
+    borderStyle?: string;
+    wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>;
+    hlinkHref?: string;
+    _docxRawXml?: string;
     _docxObjectPreview?: boolean;
 };
 
@@ -174,8 +174,8 @@ export type LanguageAttrs = {
 
 // @public
 export type MathAttrs = {
-    display?: "inline" | "block"; /** Raw OMML XML for round-trip preservation */
-    ommlXml: string; /** Plain text fallback used by the editor and layout engine */
+    display?: "inline" | "block";
+    ommlXml: string;
     plainText?: string;
 };
 
@@ -183,17 +183,17 @@ export type MathAttrs = {
 export type ParagraphAttrs = {
     paraId?: string;
     textId?: string;
-    alignment?: import__stll_docx_core_model.ParagraphAlignment; /** Effective East Asian line-edge policy (`w:kinsoku`). */
-    kinsoku?: boolean; /** Effective hanging-punctuation policy (`w:overflowPunct`). */
-    overflowPunctuation?: boolean; /** Effective paragraph opt-out from document automatic hyphenation. */
+    alignment?: import__stll_docx_core_model.ParagraphAlignment;
+    kinsoku?: boolean;
+    overflowPunctuation?: boolean;
     suppressAutoHyphens?: boolean;
     spaceBefore?: number;
     spaceAfter?: number;
     lineSpacing?: number;
     lineSpacingRule?: import__stll_docx_core_model.LineSpacingRule;
     snapToGrid?: boolean;
-    spacingExplicit?: SpacingExplicit; /** Layout provenance: document defaults survive on empty paragraphs. */
-    spacingFromDocDefaults?: SpacingExplicit; /** Layout provenance: implicit default-style spacing survives on empty paragraphs. */
+    spacingExplicit?: SpacingExplicit;
+    spacingFromDocDefaults?: SpacingExplicit;
     spacingFromImplicitDefaultStyle?: SpacingExplicit;
     indentLeft?: number;
     indentRight?: number;
@@ -206,23 +206,23 @@ export type ParagraphAttrs = {
     numPrFromStyle?: {
         numId?: number;
         ilvl?: number;
-    }; /** List number format (decimal, lowerRoman, upperRoman, etc.) for CSS counter styling */
-    listNumFmt?: import__stll_docx_core_model.NumberFormat; /** Whether this is a bullet list */
-    listIsBullet?: boolean; /** Whether this level uses legal numbering (parent placeholders render decimal). */
-    listIsLegal?: boolean; /** Computed list marker text (e.g., "1.", "1.1.", "•") */
-    listMarker?: string; /** Whether the list marker is hidden (w:vanish on numbering level rPr) */
-    listMarkerHidden?: boolean; /** Marker font family from numbering level rPr */
-    listMarkerFontFamily?: string; /** Marker font size from numbering level rPr, in points */
-    listMarkerFontSize?: number; /** Marker bold state from numbering level rPr */
-    listMarkerBold?: boolean; /** Horizontal alignment of the marker around the paragraph's list anchor. */
+    };
+    listNumFmt?: import__stll_docx_core_model.NumberFormat;
+    listIsBullet?: boolean;
+    listIsLegal?: boolean;
+    listMarker?: string;
+    listMarkerHidden?: boolean;
+    listMarkerFontFamily?: string;
+    listMarkerFontSize?: number;
+    listMarkerBold?: boolean;
     listMarkerAlignment?: "left" | "center" | "right";
-    listMarkerSuffix?: "tab" | "space" | "nothing"; /** `w:caps` on the numbering level rPr — render marker in upper case. */
+    listMarkerSuffix?: "tab" | "space" | "nothing";
     listMarkerAllCaps?: boolean;
     listImplicitChildLevelAdvances?: number;
-    listMarkerSecondSlotOffsetTwips?: number; /** Number format for each level used by multi-level marker templates. */
-    listLevelNumFmts?: import__stll_docx_core_model.NumberFormat[]; /** Initial counter for each level used by multi-level marker templates. */
-    listLevelStarts?: number[]; /** Abstract numbering ID shared by numbering instances. */
-    listAbstractNumId?: number; /** Numbering start override for this numId/level. */
+    listMarkerSecondSlotOffsetTwips?: number;
+    listLevelNumFmts?: import__stll_docx_core_model.NumberFormat[];
+    listLevelStarts?: number[];
+    listAbstractNumId?: number;
     listStartOverride?: number;
     styleId?: string;
     borders?: {
@@ -235,13 +235,13 @@ export type ParagraphAttrs = {
     };
     shading?: import__stll_docx_core_model.ShadingProperties;
     tabs?: import__stll_docx_core_model.TabStop[];
-    pageBreakBefore?: boolean; /** Word's cached rendered-page-break marker; preserved for round-trip only. */
-    renderedPageBreakBefore?: boolean; /** Internal import marker for a paragraph whose only run content is a hard page break. */
-    _pageBreakCarrier?: boolean; /** Internal import marker for a hard page break after this paragraph's text. */
+    pageBreakBefore?: boolean;
+    renderedPageBreakBefore?: boolean;
+    _pageBreakCarrier?: boolean;
     _trailingPageBreak?: boolean;
     keepNext?: boolean;
     keepLines?: boolean;
-    widowControl?: boolean; /** Contextual spacing — suppress space between same-style paragraphs */
+    widowControl?: boolean;
     contextualSpacing?: boolean;
     defaultTextFormatting?: import__stll_docx_core_model.TextFormatting;
     sectionBreakType?: "nextPage" | "continuous" | "oddPage" | "evenPage";
@@ -271,13 +271,13 @@ export type ParagraphAttrs = {
 };
 
 // @public (undocumented)
-export type RunFormattingOverrideAttrs = { [K in keyof Pick<import__stll_docx_core_model.TextFormatting, "bold" | "italic" | "strike" | "doubleStrike" | "allCaps" | "smallCaps" | "hidden" | "emboss" | "imprint" | "shadow" | "outline" | "rtl">]?: false } & {
+export type RunFormattingOverrideAttrs = { [K in keyof Pick<import__stll_docx_core_model.TextFormatting, "bold" | "italic" | "strike" | "doubleStrike" | "allCaps" | "smallCaps" | "hidden" | "emboss" | "imprint" | "shadow" | "outline" | "rtl">]?: false; } & {
     underline?: "none";
 };
 
 // @public
 export type RunPropertyChangeMarkAttrs = {
-    changes: import__stll_docx_core_model.RunPropertyChange[]; /** See {@link TrackedChangeProvenance}. Defaults to `"user"`. */
+    changes: import__stll_docx_core_model.RunPropertyChange[];
     provenance: TrackedChangeProvenance;
     suggestionId?: string;
 };
@@ -293,54 +293,54 @@ export const schema: Schema<any, any>;
 
 // @public
 export type SdtAttrs = {
-    sdtType: import__stll_docx_core_model.SdtType; /** Alias (friendly name) */
-    alias?: string; /** Tag (developer identifier) */
-    tag?: string; /** Numeric `w:id/@w:val`. */
-    id?: number; /** Lock setting */
-    lock?: NonNullable<import__stll_docx_core_model.SdtProperties["lock"]>; /** Placeholder text */
-    placeholder?: string; /** Whether showing placeholder */
-    showingPlaceholder?: boolean; /** Date format for date controls */
-    dateFormat?: string; /** ISO 8601 bound date value (`w:date@w:fullDate`). */
-    dateValueISO?: string; /** Dropdown/combobox list items as JSON string */
-    listItems?: string; /** Selected dropdown / comboBox value (`w:dropDownList@w:lastValue`). */
-    dropdownLastValue?: string; /** Checkbox checked state */
-    checked?: boolean; /** Captured `<w:sdtPr>…</w:sdtPr>` for round-trip replay. */
-    rawPropertiesXml?: string; /** Captured `<w:sdtEndPr>…</w:sdtEndPr>` for round-trip replay. */
+    sdtType: import__stll_docx_core_model.SdtType;
+    alias?: string;
+    tag?: string;
+    id?: number;
+    lock?: NonNullable<import__stll_docx_core_model.SdtProperties["lock"]>;
+    placeholder?: string;
+    showingPlaceholder?: boolean;
+    dateFormat?: string;
+    dateValueISO?: string;
+    listItems?: string;
+    dropdownLastValue?: string;
+    checked?: boolean;
+    rawPropertiesXml?: string;
     rawEndPropertiesXml?: string;
 };
 
 // @public
 export type ShapeAttrs = {
-    shapeType?: string; /** Unique identifier */
-    shapeId?: string; /** Width in pixels */
-    width?: number; /** Height in pixels */
-    height?: number; /** Fill color as CSS color */
-    fillColor?: string; /** Fill type: none, solid, gradient, pattern, picture */
-    fillType?: import__stll_docx_core_model.ShapeFill["type"]; /** Gradient type: linear, radial, rectangular, path */
-    gradientType?: NonNullable<import__stll_docx_core_model.ShapeFill["gradient"]>["type"]; /** Gradient angle in degrees (for linear) */
-    gradientAngle?: number; /** Gradient stops as JSON string: [{position, color}] */
-    gradientStops?: string; /** Outline width in pixels */
-    outlineWidth?: number; /** Outline color as CSS color */
-    outlineColor?: string; /** Outline dash style, or `"none"` for an explicit no-outline. */
-    outlineStyle?: OutlineStyleAttr; /** Line cap */
-    outlineCap?: NonNullable<import__stll_docx_core_model.ShapeOutline["cap"]>; /** Head arrow/end marker */
-    outlineHeadEnd?: NonNullable<import__stll_docx_core_model.ShapeOutline["headEnd"]>; /** Tail arrow/end marker */
-    outlineTailEnd?: NonNullable<import__stll_docx_core_model.ShapeOutline["tailEnd"]>; /** CSS transform */
-    transform?: string; /** Display mode */
-    displayMode?: "inline" | "float" | "block"; /** CSS float */
-    cssFloat?: "left" | "right" | "none"; /** Wrap type */
-    wrapType?: import__stll_docx_core_model.ImageWrap["type"]; /** Wrap text setting from DOCX (left, right, bothSides, largest) for round-trip */
-    wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>; /** Distance from text above (pixels) */
-    distTop?: number; /** Distance from text below (pixels) */
-    distBottom?: number; /** Distance from text left (pixels) */
-    distLeft?: number; /** Distance from text right (pixels) */
-    distRight?: number; /** Position for floating shapes (horizontal and vertical alignment) */
-    position?: ImagePositionAttrs; /** Shadow color as CSS color */
-    shadowColor?: string; /** Shadow blur radius in pixels */
-    shadowBlur?: number; /** Shadow X offset in pixels */
-    shadowOffsetX?: number; /** Shadow Y offset in pixels */
-    shadowOffsetY?: number; /** Glow color as CSS color */
-    glowColor?: string; /** Glow radius in pixels */
+    shapeType?: string;
+    shapeId?: string;
+    width?: number;
+    height?: number;
+    fillColor?: string;
+    fillType?: import__stll_docx_core_model.ShapeFill["type"];
+    gradientType?: NonNullable<import__stll_docx_core_model.ShapeFill["gradient"]>["type"];
+    gradientAngle?: number;
+    gradientStops?: string;
+    outlineWidth?: number;
+    outlineColor?: string;
+    outlineStyle?: OutlineStyleAttr;
+    outlineCap?: NonNullable<import__stll_docx_core_model.ShapeOutline["cap"]>;
+    outlineHeadEnd?: NonNullable<import__stll_docx_core_model.ShapeOutline["headEnd"]>;
+    outlineTailEnd?: NonNullable<import__stll_docx_core_model.ShapeOutline["tailEnd"]>;
+    transform?: string;
+    displayMode?: "inline" | "float" | "block";
+    cssFloat?: "left" | "right" | "none";
+    wrapType?: import__stll_docx_core_model.ImageWrap["type"];
+    wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>;
+    distTop?: number;
+    distBottom?: number;
+    distLeft?: number;
+    distRight?: number;
+    position?: ImagePositionAttrs;
+    shadowColor?: string;
+    shadowBlur?: number;
+    shadowOffsetX?: number;
+    shadowOffsetY?: number;
+    glowColor?: string;
     glowRadius?: number;
 };
 
@@ -354,55 +354,55 @@ export type StrikeAttrs = {
 
 // @public
 export type TableAttrs = {
-    styleId?: string; /** Table width (in twips) */
-    width?: number; /** Table width type ('auto', 'pct', 'dxa') */
-    widthType?: import__stll_docx_core_model.TableWidthType; /** Table justification/alignment */
-    justification?: "left" | "center" | "right"; /** Column widths (in twips) from w:tblGrid */
-    columnWidths?: number[]; /** Floating table properties (w:tblpPr) */
-    floating?: import__stll_docx_core_model.FloatingTableProperties; /** Default cell margins for the table (w:tblCellMar), in twips */
+    styleId?: string;
+    width?: number;
+    widthType?: import__stll_docx_core_model.TableWidthType;
+    justification?: "left" | "center" | "right";
+    columnWidths?: number[];
+    floating?: import__stll_docx_core_model.FloatingTableProperties;
     cellMargins?: {
         top?: number;
         bottom?: number;
         left?: number;
         right?: number;
-    }; /** Table look flags for conditional formatting (w:tblLook) */
-    look?: import__stll_docx_core_model.TableLook; /** Table-level borders (w:tblBorders) — full BorderSpec per side */
-    borders?: import__stll_docx_core_model.TableBorders; /** Effective table indent after style resolution. PM-only; never serialized. */
-    _resolvedIndent?: NonNullable<import__stll_docx_core_model.TableFormatting["indent"]>; /** Original table formatting from DOCX for lossless round-trip serialization */
-    _originalFormatting?: import__stll_docx_core_model.TableFormatting; /** Tracked table property changes (w:tblPrChange) for round-trip + accept/reject */
+    };
+    look?: import__stll_docx_core_model.TableLook;
+    borders?: import__stll_docx_core_model.TableBorders;
+    _resolvedIndent?: NonNullable<import__stll_docx_core_model.TableFormatting["indent"]>;
+    _originalFormatting?: import__stll_docx_core_model.TableFormatting;
     tblPrChange?: import__stll_docx_core_model.TablePropertyChange[];
     _suggestedInsert?: SuggestedStructuralMarker | null;
 };
 
 // @public
 export type TableCellAttrs = {
-    colspan: number; /** Row span */
-    rowspan: number; /** Column widths for prosemirror-tables resizing (array of pixel widths) */
-    colwidth?: number[] | null; /** Cell width (in twips) */
-    width?: number; /** Cell width type */
-    widthType?: import__stll_docx_core_model.TableWidthType; /** Vertical alignment */
-    verticalAlign?: "top" | "center" | "bottom"; /** Background color (RGB hex) */
-    backgroundColor?: string; /** Resolved source color. PM-only; distinguishes theme rendering from a user override. */
-    _resolvedBackgroundColor?: string; /** OOXML text direction (e.g. 'tbRl', 'btLr') */
-    textDirection?: NonNullable<import__stll_docx_core_model.TableCellFormatting["textDirection"]>; /** No text wrapping in cell */
-    noWrap?: boolean; /** Effective end-of-cell marker suppression (`w:hideMark`). */
-    hideMark?: boolean; /** Cell borders — full BorderSpec per side (style, color, size) */
-    borders?: import__stll_docx_core_model.TableCellBorders; /** Cell margins/padding in twips per side */
+    colspan: number;
+    rowspan: number;
+    colwidth?: number[] | null;
+    width?: number;
+    widthType?: import__stll_docx_core_model.TableWidthType;
+    verticalAlign?: "top" | "center" | "bottom";
+    backgroundColor?: string;
+    _resolvedBackgroundColor?: string;
+    textDirection?: NonNullable<import__stll_docx_core_model.TableCellFormatting["textDirection"]>;
+    noWrap?: boolean;
+    hideMark?: boolean;
+    borders?: import__stll_docx_core_model.TableCellBorders;
     margins?: {
         top?: number;
         bottom?: number;
         left?: number;
         right?: number;
-    }; /** Original cell formatting from DOCX for lossless round-trip serialization */
-    _originalFormatting?: import__stll_docx_core_model.TableCellFormatting; /** Tracked cell property changes (w:tcPrChange) for round-trip + accept/reject */
-    tcPrChange?: import__stll_docx_core_model.TableCellPropertyChange[]; /** Tracked cell structural revision for round-trip + accept/reject. */
+    };
+    _originalFormatting?: import__stll_docx_core_model.TableCellFormatting;
+    tcPrChange?: import__stll_docx_core_model.TableCellPropertyChange[];
     cellMarker?: {
         kind: "ins" | "del";
         info: {
             revisionId: number;
             author: string;
             date?: string | null;
-            initials?: string | null; /** `"suggested"` marks this as an AI proposal (stripped until accepted). */
+            initials?: string | null;
             provenance?: TrackedChangeProvenance;
             suggestionId?: string | null;
         };
@@ -416,18 +416,18 @@ export type TableCellAttrs = {
         };
         verticalMerge?: "continue" | "rest";
         verticalMergeOriginal?: "continue" | "rest";
-    }; /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
-    _preserveVMergeRestart?: boolean; /** Original DOCX vMerge continuation cells skipped into this PM rowspan. */
+    };
+    _preserveVMergeRestart?: boolean;
     _docxVMergeContinuationCells?: import__stll_docx_core_model.TableCell[];
 };
 
 // @public
 export type TableRowAttrs = {
-    height?: number; /** Height rule ('auto', 'exact', 'atLeast') */
-    heightRule?: NonNullable<import__stll_docx_core_model.TableRowFormatting["heightRule"]>; /** Is header row */
-    isHeader?: boolean; /** Whether the row is hidden (`w:hidden`) */
-    hidden?: boolean; /** Original row formatting from DOCX for lossless round-trip serialization */
-    _originalFormatting?: import__stll_docx_core_model.TableRowFormatting; /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */
+    height?: number;
+    heightRule?: NonNullable<import__stll_docx_core_model.TableRowFormatting["heightRule"]>;
+    isHeader?: boolean;
+    hidden?: boolean;
+    _originalFormatting?: import__stll_docx_core_model.TableRowFormatting;
     trPrChange?: import__stll_docx_core_model.TableRowPropertyChange[];
 } & ({
     trIns: {
@@ -440,7 +440,7 @@ export type TableRowAttrs = {
     };
     trDel?: never;
 } | {
-    trIns?: never; /** Tracked structural row deletion (w:trPr/w:del). */
+    trIns?: never;
     trDel: {
         revisionId: number;
         author: string;
@@ -456,31 +456,31 @@ export type TableRowAttrs = {
 
 // @public
 export type TextBoxAttrs = {
-    width?: number; /** Height in pixels */
-    height?: number; /** Text fitting behavior */
-    autoFit?: import__stll_docx_core_model.ShapeTextBody["autoFit"]; /** Unique identifier */
-    textBoxId?: string; /** Fill color as CSS color */
-    fillColor?: string; /** Outline width in pixels */
-    outlineWidth?: number; /** Outline color as CSS color */
-    outlineColor?: string; /** Outline dash style, or `"none"` for an explicit no-outline. */
-    outlineStyle?: OutlineStyleAttr; /** Internal margin top in pixels */
-    marginTop?: number; /** Internal margin bottom in pixels */
-    marginBottom?: number; /** Internal margin left in pixels */
-    marginLeft?: number; /** Internal margin right in pixels */
-    marginRight?: number; /** Vertical text alignment */
-    verticalAlign?: string; /** Display mode */
-    displayMode?: "inline" | "float" | "block"; /** CSS float direction */
-    cssFloat?: "left" | "right" | "none"; /** Wrap type */
-    wrapType?: import__stll_docx_core_model.ImageWrap["type"]; /** OOXML wrapText direction for anchored text boxes (eigenpal #474). */
-    wrapText?: "bothSides" | "left" | "right" | "largest"; /** Wrap distance from top edge, in pixels (OOXML distT, EMU-converted). */
-    distTop?: number; /** Wrap distance from bottom edge, in pixels. */
-    distBottom?: number; /** Wrap distance from left edge, in pixels. */
-    distLeft?: number; /** Wrap distance from right edge, in pixels. */
-    distRight?: number; /** Position for floating/anchored text boxes */
-    position?: ImagePositionAttrs; /** Original DOCX placement hint for save-path reconstruction. */
-    _docxPlacement?: "standalone" | "inlineWithPrevious"; /** Original DOCX paragraph group for standalone text-box reconstruction. */
-    _docxGroupId?: string; /** Inline anchor linking this block node to its source run position. */
-    _docxAnchorId?: string; /** Original run-level revision wrapper for save-path reconstruction. */
+    width?: number;
+    height?: number;
+    autoFit?: import__stll_docx_core_model.ShapeTextBody["autoFit"];
+    textBoxId?: string;
+    fillColor?: string;
+    outlineWidth?: number;
+    outlineColor?: string;
+    outlineStyle?: OutlineStyleAttr;
+    marginTop?: number;
+    marginBottom?: number;
+    marginLeft?: number;
+    marginRight?: number;
+    verticalAlign?: string;
+    displayMode?: "inline" | "float" | "block";
+    cssFloat?: "left" | "right" | "none";
+    wrapType?: import__stll_docx_core_model.ImageWrap["type"];
+    wrapText?: "bothSides" | "left" | "right" | "largest";
+    distTop?: number;
+    distBottom?: number;
+    distLeft?: number;
+    distRight?: number;
+    position?: ImagePositionAttrs;
+    _docxPlacement?: "standalone" | "inlineWithPrevious";
+    _docxGroupId?: string;
+    _docxAnchorId?: string;
     _docxTrackedChange?: {
         type: "insertion";
         info: import__stll_docx_core_model.TrackedChangeInfo;
@@ -493,7 +493,7 @@ export type TextBoxAttrs = {
     } | {
         type: "moveTo";
         info: import__stll_docx_core_model.TrackedChangeInfo;
-    }; /** Original inline content-control ancestry for save-path reconstruction. */
+    };
     _docxInlineSdts?: SdtAttrs[];
 };
 
@@ -514,9 +514,9 @@ export type TextEffectAttrs = {
 export type TrackedChangeMarkAttrs = {
     revisionId: number;
     author: string;
-    date?: string; /** Optional author initials (w:initials) carried through the round-trip. */
+    date?: string;
     initials?: string;
-    moveKind?: "moveTo" | "moveFrom"; /** Defaults to `"user"`; `"suggested"` for AI-proposed, non-serialized edits. */
+    moveKind?: "moveTo" | "moveFrom";
     provenance: TrackedChangeProvenance;
     suggestionId?: string;
 };

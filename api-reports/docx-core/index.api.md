@@ -19,8 +19,8 @@ export type BlockContent = Paragraph | Table | BlockSdt;
 
 // @public
 export type BreakContent = {
-    type: "break"; /** Break type */
-    breakType?: "page" | "column" | "textWrapping"; /** Clear type for text wrapping break */
+    type: "break";
+    breakType?: "page" | "column" | "textWrapping";
     clear?: "none" | "left" | "right" | "all";
 };
 
@@ -40,19 +40,19 @@ export const compileLegalSourceToDocx: (source: string, options?: LegalSourceCom
 
 // @public
 type Document_2 = {
-    package: DocxPackage; /** Original ArrayBuffer for round-trip */
-    originalBuffer?: ArrayBuffer; /** Detected template variables ({{...}}) */
-    templateVariables?: string[]; /** Font families referenced in the document (extracted during parsing for deferred loading) */
-    requiredFonts?: string[]; /** Parsing warnings/errors */
+    package: DocxPackage;
+    originalBuffer?: ArrayBuffer;
+    templateVariables?: string[];
+    requiredFonts?: string[];
     warnings?: string[];
 };
 export { Document_2 as Document }
 
 // @public
 export type DocumentBody = {
-    content: BlockContent[]; /** Sections (derived from sectPr in paragraphs and final sectPr) */
-    sections?: Section[]; /** Final section properties (from body's sectPr) */
-    finalSectionProperties?: SectionProperties; /** Comments from comments.xml */
+    content: BlockContent[];
+    sections?: Section[];
+    finalSectionProperties?: SectionProperties;
     comments?: Comment_2[];
 };
 
@@ -68,19 +68,19 @@ export type DocxConformanceClass = (typeof DOCX_CONFORMANCE_CLASSES)[keyof typeo
 
 // @public
 export type DocxPackage = {
-    conformanceClass?: DocxConformanceClass; /** Document body */
-    document: DocumentBody; /** Document-wide settings (`word/settings.xml`). */
-    settings?: DocumentSettings; /** Style definitions */
-    styles?: StyleDefinitions; /** Theme */
-    theme?: Theme; /** Numbering definitions */
-    numbering?: NumberingDefinitions; /** Font table */
-    fontTable?: FontTable; /** Footnotes */
-    footnotes?: Footnote[]; /** Endnotes */
-    endnotes?: Endnote[]; /** Headers by relationship ID */
-    headers?: Map<string, HeaderFooter>; /** Footers by relationship ID */
-    footers?: Map<string, HeaderFooter>; /** Document relationships */
-    relationships?: RelationshipMap; /** Media files */
-    media?: Map<string, MediaFile>; /** Document properties */
+    conformanceClass?: DocxConformanceClass;
+    document: DocumentBody;
+    settings?: DocumentSettings;
+    styles?: StyleDefinitions;
+    theme?: Theme;
+    numbering?: NumberingDefinitions;
+    fontTable?: FontTable;
+    footnotes?: Footnote[];
+    endnotes?: Endnote[];
+    headers?: Map<string, HeaderFooter>;
+    footers?: Map<string, HeaderFooter>;
+    relationships?: RelationshipMap;
+    media?: Map<string, MediaFile>;
     properties?: {
         title?: string;
         subject?: string;
@@ -173,15 +173,15 @@ export type LegalSourceParseResult = {
 
 // @public (undocumented)
 export type Paragraph = {
-    type: "paragraph"; /** Unique paragraph ID */
-    paraId?: string; /** Text ID */
-    textId?: string; /** Paragraph formatting */
-    formatting?: ParagraphFormatting; /** Paragraph-level tracked property changes (w:pPrChange) */
-    propertyChanges?: ParagraphPropertyChange[]; /** Paragraph-mark insertion / deletion (w:pPr / w:rPr / w:ins | w:del) */
-    pPrMark?: ParagraphMarkChange; /** Paragraph content */
-    content: ParagraphContent[]; /** Computed list rendering (if this is a list item) */
-    listRendering?: ListRendering; /** Word's cached layout says this paragraph started on a new rendered page. */
-    renderedPageBreakBefore?: boolean; /** Section properties (if this paragraph ends a section) */
+    type: "paragraph";
+    paraId?: string;
+    textId?: string;
+    formatting?: ParagraphFormatting;
+    propertyChanges?: ParagraphPropertyChange[];
+    pPrMark?: ParagraphMarkChange;
+    content: ParagraphContent[];
+    listRendering?: ListRendering;
+    renderedPageBreakBefore?: boolean;
     sectionProperties?: SectionProperties;
 };
 
@@ -195,9 +195,9 @@ export const parseLegalSource: (source: string, options?: {
 
 // @public
 export type Run = {
-    type: "run"; /** Text formatting properties */
-    formatting?: TextFormatting; /** Run-level tracked property changes (w:rPrChange) */
-    propertyChanges?: RunPropertyChange[]; /** Run content (text, tabs, breaks, etc.) */
+    type: "run";
+    formatting?: TextFormatting;
+    propertyChanges?: RunPropertyChange[];
     content: RunContent[];
 };
 
@@ -206,70 +206,70 @@ export type RunContent = TextContent | TabContent | BreakContent | SymbolContent
 
 // @public (undocumented)
 export type SectionProperties = {
-    pageWidth?: number; /** Page height in twips */
-    pageHeight?: number; /** Page orientation */
-    orientation?: PageOrientation; /** Top margin in twips */
-    marginTop?: number; /** Bottom margin in twips */
-    marginBottom?: number; /** Left margin in twips */
-    marginLeft?: number; /** Right margin in twips */
-    marginRight?: number; /** Header distance from top in twips */
-    headerDistance?: number; /** Footer distance from bottom in twips */
-    footerDistance?: number; /** Gutter margin in twips */
-    gutter?: number; /** Number of columns */
-    columnCount?: number; /** Space between columns in twips */
-    columnSpace?: number; /** Equal width columns */
-    equalWidth?: boolean; /** Separator line between columns */
-    separator?: boolean; /** Individual column definitions */
-    columns?: Column[]; /** Section start type */
-    sectionStart?: SectionStart; /** Vertical alignment of text */
-    verticalAlign?: VerticalAlign; /** Section text direction */
-    textDirection?: SectionTextDirection; /** Right-to-left section */
-    bidi?: boolean; /** Header references */
-    headerReferences?: HeaderReference[]; /** Footer references */
-    footerReferences?: FooterReference[]; /** Different first page header/footer */
-    titlePg?: boolean; /** Different odd/even page headers/footers */
-    evenAndOddHeaders?: boolean; /** Line numbering settings */
+    pageWidth?: number;
+    pageHeight?: number;
+    orientation?: PageOrientation;
+    marginTop?: number;
+    marginBottom?: number;
+    marginLeft?: number;
+    marginRight?: number;
+    headerDistance?: number;
+    footerDistance?: number;
+    gutter?: number;
+    columnCount?: number;
+    columnSpace?: number;
+    equalWidth?: boolean;
+    separator?: boolean;
+    columns?: Column[];
+    sectionStart?: SectionStart;
+    verticalAlign?: VerticalAlign;
+    textDirection?: SectionTextDirection;
+    bidi?: boolean;
+    headerReferences?: HeaderReference[];
+    footerReferences?: FooterReference[];
+    titlePg?: boolean;
+    evenAndOddHeaders?: boolean;
     lineNumbers?: {
         start?: number;
         countBy?: number;
         distance?: number;
         restart?: LineNumberRestart;
-    }; /** Page numbering settings */
+    };
     pageNumbering?: {
         format?: string;
         start?: number;
         chapterStyle?: number;
         chapterSeparator?: string;
-    }; /** Page borders */
+    };
     pageBorders?: {
         top?: BorderSpec;
         bottom?: BorderSpec;
         left?: BorderSpec;
-        right?: BorderSpec; /** Display setting */
-        display?: "allPages" | "firstPage" | "notFirstPage"; /** Offset from */
-        offsetFrom?: "page" | "text"; /** Z-order */
+        right?: BorderSpec;
+        display?: "allPages" | "firstPage" | "notFirstPage";
+        offsetFrom?: "page" | "text";
         zOrder?: "front" | "back";
-    }; /** Page background */
+    };
     background?: {
         color?: ColorValue;
         themeColor?: ThemeColorSlot;
         themeTint?: string;
         themeShade?: string;
-    }; /** Footnote properties for this section */
-    footnotePr?: FootnoteProperties; /** Number of footnote columns in this section (`w15:footnoteColumns`) */
-    footnoteColumns?: number; /** Endnote properties for this section */
-    endnotePr?: EndnoteProperties; /** Document grid */
+    };
+    footnotePr?: FootnoteProperties;
+    footnoteColumns?: number;
+    endnotePr?: EndnoteProperties;
     docGrid?: {
         type?: "default" | "lines" | "linesAndChars" | "snapToChars";
         linePitch?: number;
         charSpace?: number;
-    }; /** First page paper source */
-    paperSrcFirst?: number; /** Other pages paper source */
-    paperSrcOther?: number; /** Protected forms in this section */
-    formProtection?: boolean; /** Suppress endnotes in this section */
-    noEndnote?: boolean; /** Use right-to-left gutter in this section */
-    rtlGutter?: boolean; /** Relationship id for printer settings */
-    printerSettingsRelationshipId?: string; /** Section-level tracked property changes (w:sectPrChange) */
+    };
+    paperSrcFirst?: number;
+    paperSrcOther?: number;
+    formProtection?: boolean;
+    noEndnote?: boolean;
+    rtlGutter?: boolean;
+    printerSettingsRelationshipId?: string;
     propertyChanges?: SectionPropertyChange[];
 };
 
@@ -278,24 +278,24 @@ export const serializeDocumentToDocx: (document: Document_2, options?: Serialize
 
 // @public
 export type Style = {
-    styleId: string; /** Style type */
-    type: StyleType; /** Display name */
-    name?: string; /** Based on style ID */
-    basedOn?: string; /** Next style after Enter (for paragraph styles) */
-    next?: string; /** Linked style (paragraph/character pair) */
-    link?: string; /** UI sort priority */
-    uiPriority?: number; /** Hidden from UI */
-    hidden?: boolean; /** Semi-hidden from UI */
-    semiHidden?: boolean; /** Unhide when used */
-    unhideWhenUsed?: boolean; /** Quick format in gallery */
-    qFormat?: boolean; /** Is default style */
-    default?: boolean; /** Personal style (custom) */
-    personal?: boolean; /** Paragraph properties (for paragraph/table styles) */
-    pPr?: ParagraphFormatting; /** Run properties */
-    rPr?: TextFormatting; /** Table properties (for table styles) */
-    tblPr?: TableFormatting; /** Table row properties */
-    trPr?: TableRowFormatting; /** Table cell properties */
-    tcPr?: TableCellFormatting; /** Conditional table style parts */
+    styleId: string;
+    type: StyleType;
+    name?: string;
+    basedOn?: string;
+    next?: string;
+    link?: string;
+    uiPriority?: number;
+    hidden?: boolean;
+    semiHidden?: boolean;
+    unhideWhenUsed?: boolean;
+    qFormat?: boolean;
+    default?: boolean;
+    personal?: boolean;
+    pPr?: ParagraphFormatting;
+    rPr?: TextFormatting;
+    tblPr?: TableFormatting;
+    trPr?: TableRowFormatting;
+    tcPr?: TableCellFormatting;
     tblStylePr?: {
         type: "band1Horz" | "band1Vert" | "band2Horz" | "band2Vert" | "firstCol" | "firstRow" | "lastCol" | "lastRow" | "neCell" | "nwCell" | "seCell" | "swCell" | "wholeTable";
         pPr?: ParagraphFormatting;
@@ -308,35 +308,35 @@ export type Style = {
 
 // @public
 export type Table = {
-    type: "table"; /** Table formatting */
-    formatting?: TableFormatting; /** Table-level tracked property changes (w:tblPrChange) */
-    propertyChanges?: TablePropertyChange[]; /** Column widths in twips */
-    columnWidths?: number[]; /** Table rows */
+    type: "table";
+    formatting?: TableFormatting;
+    propertyChanges?: TablePropertyChange[];
+    columnWidths?: number[];
     rows: TableRow[];
 };
 
 // @public
 export type TableCell = {
-    type: "tableCell"; /** Cell formatting */
-    formatting?: TableCellFormatting; /** Cell-level tracked property changes (w:tcPrChange) */
-    propertyChanges?: TableCellPropertyChange[]; /** Tracked structural changes (cell insert/delete/merge) */
-    structuralChange?: TableStructuralChangeInfo; /** Cell content (paragraphs, tables, etc.) */
+    type: "tableCell";
+    formatting?: TableCellFormatting;
+    propertyChanges?: TableCellPropertyChange[];
+    structuralChange?: TableStructuralChangeInfo;
     content: (Paragraph | Table)[];
 };
 
 // @public
 export type TableRow = {
-    type: "tableRow"; /** Row formatting */
-    formatting?: TableRowFormatting; /** Row-level tracked property changes (w:trPrChange) */
-    propertyChanges?: TableRowPropertyChange[]; /** Tracked structural changes (row insert/delete) */
-    structuralChange?: TableStructuralChangeInfo; /** Cells in this row */
+    type: "tableRow";
+    formatting?: TableRowFormatting;
+    propertyChanges?: TableRowPropertyChange[];
+    structuralChange?: TableStructuralChangeInfo;
     cells: TableCell[];
 };
 
 // @public
 export type TextContent = {
-    type: "text"; /** The text string */
-    text: string; /** Preserve whitespace (xml:space="preserve") */
+    type: "text";
+    text: string;
     preserveSpace?: boolean;
 };
 

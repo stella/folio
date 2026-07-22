@@ -2,10 +2,11 @@
 
 // Invokes the native TypeScript 7 compiler (installed as the aliased
 // `@typescript/native` package) directly, bypassing the `tsc` bin shim.
-// The classic `typescript` package is pinned to 6.x for tooling that still
-// needs the JS compiler API (tsdown, vue-tsc, nuxt build), and its `tsc` bin
-// would otherwise shadow the native one. Resolving the binary by path keeps
-// the two compilers unambiguous.
+// Official 7.0 guidance: keep classic TypeScript 6.x side-by-side for tools
+// that still need the JS Compiler API (named-exports.mjs, vue-tsc, nuxt,
+// tsdown peers). The 7.0 npm package does not export that API (expected in
+// 7.1). Resolving the binary by path keeps the two compilers unambiguous.
+// See: https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/
 
 import { spawnSync } from "node:child_process";
 import path from "node:path";

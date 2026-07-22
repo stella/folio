@@ -17,7 +17,7 @@ export type DecryptDocxOptions = {
 
 // @public (undocumented)
 export type DecryptDocxResult = {
-    data: ArrayBuffer; /** True when the input was an encrypted CFB container and decryption ran. */
+    data: ArrayBuffer;
     wasEncrypted: boolean;
 };
 
