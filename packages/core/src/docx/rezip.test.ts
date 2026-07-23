@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import type { Document } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
-import { DocxPackageFidelityError, repackDocx } from "./rezip";
+import { createDocx, DocxPackageFidelityError, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -213,6 +213,39 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
 }
 
 describe("repackDocx", () => {
+  test("reuses a sanitized source package while preserving later model edits", async () => {
+    const sourceZip = await JSZip.loadAsync(await createHeaderFixture());
+    sourceZip.file("word/vbaProject.bin", new Uint8Array([1, 2, 3]));
+    const sourceBuffer = await sourceZip.generateAsync({ type: "arraybuffer" });
+    const document = await parseDocx(sourceBuffer, { preloadFonts: false });
+
+    const firstSave = await createDocx(document);
+    expect((await JSZip.loadAsync(firstSave)).file("word/vbaProject.bin")).toBeNull();
+
+    const body = document.package.document.content.at(0);
+    if (!body || body.type !== "paragraph") {
+      throw new Error("expected a body paragraph");
+    }
+    const run = body.content.at(0);
+    if (!run || run.type !== "run") {
+      throw new Error("expected a body run");
+    }
+    const text = run.content.at(0);
+    if (!text || text.type !== "text") {
+      throw new Error("expected body text");
+    }
+    text.text = "Edited after first save";
+
+    const secondSave = await createDocx(document);
+    const secondZip = await JSZip.loadAsync(secondSave);
+
+    expect(await secondZip.file("word/document.xml")?.async("text")).toContain(
+      "Edited after first save",
+    );
+    expect(secondZip.file("word/vbaProject.bin")).toBeNull();
+    expect((await JSZip.loadAsync(sourceBuffer)).file("word/vbaProject.bin")).not.toBeNull();
+  });
+
   test("drops orphan comment references before full repack validation", async () => {
     const originalBuffer = await createHeaderFixture();
     const document: Document = {

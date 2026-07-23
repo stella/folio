@@ -676,6 +676,118 @@ export type RepackOptions = {
   modifiedBy?: string;
 };
 
+const generateDocxZip = (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> =>
+  zip.generateAsync({
+    type: "arraybuffer",
+    compression: "DEFLATE",
+    compressionOptions: { level: compressionLevel },
+  });
+
+type ParsedZipSource = {
+  buffer: ArrayBuffer;
+  zip: JSZip;
+  documentXml: string | undefined;
+  corePropertiesXml: string | undefined;
+};
+
+const parsedZipSources = new WeakMap<Document, ParsedZipSource>();
+
+const loadParsedZipSource = async (
+  document: Document,
+  buffer: ArrayBuffer,
+): Promise<ParsedZipSource> => {
+  const cached = parsedZipSources.get(document);
+  if (cached?.buffer === buffer) {
+    return cached;
+  }
+
+  const zip = await JSZip.loadAsync(buffer);
+  for (const [path, file] of Object.entries(zip.files)) {
+    if (!file.dir && !isPreservableDocxEntry(path)) {
+      zip.remove(path);
+    }
+  }
+  const [documentXml, corePropertiesXml] = await Promise.all([
+    zip.file("word/document.xml")?.async("text"),
+    zip.file("docProps/core.xml")?.async("text"),
+  ]);
+  const source = { buffer, zip, documentXml, corePropertiesXml };
+  parsedZipSources.set(document, source);
+  return source;
+};
+
+const cloneDocxZip = (source: JSZip): JSZip => {
+  const clone = new JSZip();
+  clone.files = { ...source.files };
+  return clone;
+};
+
+type FinishRepackOptions = {
+  document: Document;
+  originalZip: JSZip;
+  outputZip: JSZip;
+  originalDocumentXml: string | undefined;
+  originalCorePropertiesXml: string | undefined;
+  compressionLevel: number;
+  updateModifiedDate: boolean;
+  modifiedBy?: string;
+};
+
+const finishRepack = async ({
+  document,
+  originalZip,
+  outputZip,
+  originalDocumentXml,
+  originalCorePropertiesXml,
+  compressionLevel,
+  updateModifiedDate,
+  modifiedBy,
+}: FinishRepackOptions): Promise<ArrayBuffer> => {
+  await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
+
+  await processNewImages(collectImageParts(document), outputZip, compressionLevel);
+
+  const newHyperlinks = collectHyperlinksWithoutRId(document.package.document.content);
+  await processNewHyperlinks(newHyperlinks, outputZip, compressionLevel);
+
+  assertValidFolioDocumentModel(document, "Cannot repack invalid DOCX document model");
+
+  applyReplyThreadMarkers(document);
+
+  const documentXml = serializeDocument(document);
+  if (originalDocumentXml) {
+    assertDocumentPackageFidelity(originalDocumentXml, documentXml, document);
+  }
+  outputZip.file("word/document.xml", documentXml, {
+    compression: "DEFLATE",
+    compressionOptions: { level: compressionLevel },
+  });
+
+  await rebindWatermarkRelIds(document, outputZip, compressionLevel);
+
+  serializeHeadersFootersToZip(document, outputZip, compressionLevel);
+
+  await serializeNotesToZip(document, originalZip, outputZip, compressionLevel);
+
+  await serializeNumberingIntoZip(document, originalZip, outputZip, compressionLevel);
+
+  await serializeCommentsToZip(document, outputZip, compressionLevel);
+
+  if (updateModifiedDate && originalCorePropertiesXml) {
+    const updatedCoreProperties = updateCoreProperties(originalCorePropertiesXml, {
+      updateModifiedDate,
+      ...(modifiedBy !== undefined ? { modifiedBy } : {}),
+    });
+
+    outputZip.file("docProps/core.xml", updatedCoreProperties, {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    });
+  }
+
+  return generateDocxZip(outputZip, compressionLevel);
+};
+
 /**
  * Repack a Document into a valid DOCX file
  *
@@ -698,6 +810,10 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
 
   // Load the original ZIP
   const originalZip = await JSZip.loadAsync(doc.originalBuffer);
+  const [originalDocumentXml, originalCorePropertiesXml] = await Promise.all([
+    originalZip.file("word/document.xml")?.async("text"),
+    originalZip.file("docProps/core.xml")?.async("text"),
+  ]);
 
   // Create a new ZIP with all original files
   const newZip = new JSZip();
@@ -725,83 +841,16 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
     });
   }
 
-  // Promote in-memory header/footer parts to real parts/relationships first, so
-  // collectImageParts sees them and processNewImages can write image relations
-  // into a newly created header/footer's own rels.
-  await materializeNewHeaderFooterParts(exportDocument, newZip, compressionLevel);
-
-  // Process newly inserted images (data URLs → binary media files + relationships).
-  // This mutates image rIds in-place so the serializer outputs correct references.
-  await processNewImages(collectImageParts(exportDocument), newZip, compressionLevel);
-
-  // Process newly created hyperlinks (assign rIds + add relationship entries).
-  // This mutates hyperlink rIds in-place so the serializer outputs correct references.
-  const newHyperlinks = collectHyperlinksWithoutRId(exportDocument.package.document.content);
-  await processNewHyperlinks(newHyperlinks, newZip, compressionLevel);
-
-  assertValidFolioDocumentModel(exportDocument, "Cannot repack invalid DOCX document model");
-
-  // Give every reply comment its parent's anchor before serializing, so the
-  // reply round-trips with matching commentRange markers + reference.
-  applyReplyThreadMarkers(exportDocument);
-
-  // Serialize and update document.xml (after image/hyperlink rIds have been rewritten)
-  const documentXml = serializeDocument(exportDocument);
-  const originalDocumentXml = await originalZip.file("word/document.xml")?.async("text");
-  if (originalDocumentXml) {
-    assertDocumentPackageFidelity(originalDocumentXml, documentXml, exportDocument);
-  }
-  newZip.file("word/document.xml", documentXml, {
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
+  return finishRepack({
+    document: exportDocument,
+    originalZip,
+    outputZip: newZip,
+    originalDocumentXml,
+    originalCorePropertiesXml,
+    compressionLevel,
+    updateModifiedDate,
+    ...(modifiedBy !== undefined ? { modifiedBy } : {}),
   });
-
-  // Rebind picture-watermark image rIds so each header references the image in
-  // its own rels (materialization, run before image processing above, gave
-  // coverage-created header parts a relationship target to anchor against).
-  await rebindWatermarkRelIds(exportDocument, newZip, compressionLevel);
-
-  // Serialize and update modified headers/footers
-  serializeHeadersFootersToZip(exportDocument, newZip, compressionLevel);
-
-  // Splice edited footnote/endnote bodies back into their parts (separators and
-  // unedited notes stay byte-exact).
-  await serializeNotesToZip(exportDocument, originalZip, newZip, compressionLevel);
-
-  // Splice edited numbering definitions back into word/numbering.xml (untouched
-  // definitions and the parts the model omits stay byte-exact).
-  await serializeNumberingIntoZip(exportDocument, originalZip, newZip, compressionLevel);
-
-  // Serialize comments
-  await serializeCommentsToZip(exportDocument, newZip, compressionLevel);
-
-  // Optionally update modification date in docProps/core.xml
-  if (updateModifiedDate) {
-    const corePropsPath = "docProps/core.xml";
-    const corePropsFile = originalZip.file(corePropsPath);
-
-    if (corePropsFile) {
-      const originalCoreProps = await corePropsFile.async("text");
-      const updatedCoreProps = updateCoreProperties(originalCoreProps, {
-        updateModifiedDate,
-        ...(modifiedBy !== undefined ? { modifiedBy } : {}),
-      });
-
-      newZip.file(corePropsPath, updatedCoreProps, {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      });
-    }
-  }
-
-  // Generate the new DOCX file
-  const arrayBuffer = await newZip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
-  });
-
-  return arrayBuffer;
 }
 
 /**
@@ -1747,6 +1796,14 @@ async function serializeNotesToZip(
  * (lossy) parse+serialize, so an unedited definition matches its baseline and
  * is left byte-exact; only a genuine definition edit differs and is spliced.
  */
+type NumberingBaseline = {
+  originalBuffer: ArrayBuffer | undefined;
+  originalXml: string;
+  serializedXml: string;
+};
+
+const numberingBaselines = new WeakMap<Document, NumberingBaseline>();
+
 async function serializeNumberingIntoZip(
   doc: Document,
   originalZip: JSZip,
@@ -1761,14 +1818,22 @@ async function serializeNumberingIntoZip(
   if (!file) {
     return;
   }
-  const originalXml = await file.async("text");
-  const baselineXml = serializeNumberingXml(parseNumbering(originalXml).definitions);
+  let baseline = numberingBaselines.get(doc);
+  if (!baseline || baseline.originalBuffer !== doc.originalBuffer) {
+    const originalXml = await file.async("text");
+    baseline = {
+      originalBuffer: doc.originalBuffer,
+      originalXml,
+      serializedXml: serializeNumberingXml(parseNumbering(originalXml).definitions),
+    };
+    numberingBaselines.set(doc, baseline);
+  }
   const currentXml = serializeNumberingXml(numbering);
-  const changed = collectChangedNumberingDefs(baselineXml, currentXml);
+  const changed = collectChangedNumberingDefs(baseline.serializedXml, currentXml);
   if (changed.abstractNums.size === 0 && changed.nums.size === 0) {
     return;
   }
-  const patched = buildPatchedNumberingXml(originalXml, currentXml, changed);
+  const patched = buildPatchedNumberingXml(baseline.originalXml, currentXml, changed);
   if (patched === null) {
     return;
   }
@@ -2032,6 +2097,10 @@ export function isDocxBuffer(buffer: ArrayBuffer): boolean {
  * @returns Promise resolving to minimal DOCX as ArrayBuffer
  */
 export function createEmptyDocx(): Promise<ArrayBuffer> {
+  return generateDocxZip(createEmptyDocxZip(), 6);
+}
+
+const createEmptyDocxZip = (): JSZip => {
   const zip = new JSZip();
 
   // Content Types
@@ -2133,12 +2202,8 @@ export function createEmptyDocx(): Promise<ArrayBuffer> {
 </Properties>`,
   );
 
-  return zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 },
-  });
-}
+  return zip;
+};
 
 /**
  * Create a new DOCX from a Document (without requiring original buffer)
@@ -2147,21 +2212,33 @@ export function createEmptyDocx(): Promise<ArrayBuffer> {
  * @returns Promise resolving to DOCX as ArrayBuffer
  */
 export async function createDocx(doc: Document): Promise<ArrayBuffer> {
-  const emptyBuffer = await createDocumentSeedDocx(doc);
+  if (doc.originalBuffer) {
+    const source = await loadParsedZipSource(doc, doc.originalBuffer);
+    return finishRepack({
+      document: withoutOrphanCommentRanges(doc),
+      originalZip: source.zip,
+      outputZip: cloneDocxZip(source.zip),
+      originalDocumentXml: source.documentXml,
+      originalCorePropertiesXml: source.corePropertiesXml,
+      compressionLevel: 6,
+      updateModifiedDate: true,
+    });
+  }
 
-  // Add document as original buffer
-  const docWithBuffer: Document = {
-    ...doc,
-    originalBuffer: emptyBuffer,
-  };
-
-  // Repack with the document content
-  return repackDocx(docWithBuffer);
+  const zip = await createDocumentSeedZip(doc);
+  return finishRepack({
+    document: withoutOrphanCommentRanges(doc),
+    originalZip: zip,
+    outputZip: zip,
+    originalDocumentXml: await zip.file("word/document.xml")?.async("text"),
+    originalCorePropertiesXml: await zip.file("docProps/core.xml")?.async("text"),
+    compressionLevel: 6,
+    updateModifiedDate: true,
+  });
 }
 
-const createDocumentSeedDocx = async (doc: Document): Promise<ArrayBuffer> => {
-  const buffer = await createEmptyDocx();
-  const zip = await JSZip.loadAsync(buffer);
+const createDocumentSeedZip = async (doc: Document): Promise<JSZip> => {
+  const zip = createEmptyDocxZip();
   const relationships: string[] = [
     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>',
   ];
@@ -2237,11 +2314,7 @@ const createDocumentSeedDocx = async (doc: Document): Promise<ArrayBuffer> => {
     );
   }
 
-  return zip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: 6 },
-  });
+  return zip;
 };
 
 const relationshipXml = (id: number, type: string, target: string): string =>

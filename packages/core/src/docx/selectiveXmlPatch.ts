@@ -619,8 +619,29 @@ function extractNumberingElementXml(
   );
 }
 
-function collectNumberingElementIds(xml: string, kind: NumberingElementKind): Map<string, number> {
-  return collectElementIds(xml, NUMBERING_OPEN_LITERAL[kind], NUMBERING_ID_ATTR[kind]);
+type ElementOffsets = { start: number; end: number };
+
+function buildNumberingElementOffsetIndex(
+  xml: string,
+  kind: NumberingElementKind,
+): Map<string, ElementOffsets | null> {
+  const index = new Map<string, ElementOffsets | null>();
+  const openLiteral = NUMBERING_OPEN_LITERAL[kind];
+  const pattern = new RegExp(
+    `${escapeRegExp(openLiteral)}[\\s][^>]*?${escapeRegExp(NUMBERING_ID_ATTR[kind])}="(?<id>[^"]+)"`,
+    "gu",
+  );
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(xml)) !== null) {
+    // SAFETY: named group `id` always exists when this pattern matches.
+    const id = match.groups!["id"]!;
+    if (index.has(id)) {
+      index.set(id, null);
+      continue;
+    }
+    index.set(id, scanElementRange(xml, match.index, openLiteral, NUMBERING_CLOSE_TAG[kind]));
+  }
+  return index;
 }
 
 // Synthetic number formats folio's parser mints from custom / mc:AlternateContent
@@ -646,14 +667,16 @@ export function collectChangedNumberingDefs(
 ): ChangedNumberingDefs {
   const changedForKind = (kind: NumberingElementKind): Set<string> => {
     const changed = new Set<string>();
-    const baselineIds = collectNumberingElementIds(baselineXml, kind);
-    for (const [id, count] of collectNumberingElementIds(currentXml, kind)) {
-      if (count !== 1 || baselineIds.get(id) !== 1) {
+    const baselineIndex = buildNumberingElementOffsetIndex(baselineXml, kind);
+    const currentIndex = buildNumberingElementOffsetIndex(currentXml, kind);
+    for (const [id, afterRange] of currentIndex) {
+      const beforeRange = baselineIndex.get(id);
+      if (!beforeRange || !afterRange) {
         continue;
       }
-      const before = extractNumberingElementXml(baselineXml, kind, id);
-      const after = extractNumberingElementXml(currentXml, kind, id);
-      if (before !== null && after !== null && before !== after) {
+      const before = baselineXml.slice(beforeRange.start, beforeRange.end);
+      const after = currentXml.slice(afterRange.start, afterRange.end);
+      if (before !== after) {
         changed.add(id);
       }
     }

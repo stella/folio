@@ -20,7 +20,7 @@ import JSZip from "jszip";
 import type { Document } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
-import { repackDocx } from "./rezip";
+import { createDocx, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -225,6 +225,19 @@ describe("numbering-definition write path (selective save)", () => {
 });
 
 describe("numbering-definition write path (full repack)", () => {
+  test("detects an in-place numbering edit after a prior save", async () => {
+    const buffer = await createNumberingFixture();
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+
+    await createDocx(doc);
+    editFirstLevelText(doc, EDITED_ABSTRACT_ID, EDITED_LVL_TEXT);
+    const edited = await createDocx(doc);
+
+    expect(levelText(await parseDocx(edited, { preloadFonts: false }), EDITED_ABSTRACT_ID)).toBe(
+      EDITED_LVL_TEXT,
+    );
+  });
+
   test("edited numbering definition persists through repackDocx; untouched parts intact", async () => {
     const buffer = await createNumberingFixture();
 
