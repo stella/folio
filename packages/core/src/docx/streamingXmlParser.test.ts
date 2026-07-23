@@ -24,7 +24,7 @@ const XML_CASES = [
     </w:p>
   </w:body>
 </w:document>`,
-  "<document>\r\n  <body><p><![CDATA[raw <xml> & text]]></p></body>\r</document>",
+  "<document>\r\n  <body><p><![CDATA[raw <xml>\r\n&\rtext]]></p></body>\r</document>",
   "<document><text><![CDATA[first]]><!-- ignored -->second</text></document>",
   "<x:document><x:body><x:p/><x:tbl><x:tr><x:tc/></x:tr></x:tbl></x:body></x:document>",
 ] as const;

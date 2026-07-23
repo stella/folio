@@ -53,7 +53,7 @@ export const parseStreamingXml = (xml: string): ParseXmlResult => {
 
     if (xml.startsWith("<![CDATA[", open)) {
       const close = xml.indexOf("]]>", open + 9);
-      if (close === -1 || !appendRawText(xml.slice(open + 9, close), stack)) {
+      if (close === -1 || !appendRawText(normalizeLineEndings(xml.slice(open + 9, close)), stack)) {
         return { status: "unsupported" };
       }
       cursor = close + 3;
