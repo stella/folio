@@ -695,7 +695,7 @@ function serializeComplexField(field: ComplexField): string {
   // Field code (instrText)
   if (field.fieldCode.length > 0) {
     parts.push(...field.fieldCode.map((run) => serializeRun(run)));
-  } else {
+  } else if (field.instruction.length > 0) {
     // Fallback: create instrText from instruction
     const needsPreserve =
       field.instruction.startsWith(" ") ||
