@@ -12,6 +12,9 @@ const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 const ONE_PIXEL_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
+const URI_ENCODED_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>';
+
 async function createHeaderFixture(): Promise<ArrayBuffer> {
   const zip = new JSZip();
   zip.file(
@@ -213,6 +216,47 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
 }
 
 describe("repackDocx", () => {
+  test("writes URI-encoded SVG data URLs as image parts", async () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  content: [
+                    {
+                      type: "drawing",
+                      image: {
+                        type: "image",
+                        src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(URI_ENCODED_SVG)}`,
+                        filename: "shape.svg",
+                        alt: "Shape",
+                        size: { width: 95_250, height: 95_250 },
+                        wrap: { type: "inline" },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const result = await createDocx(document);
+    const zip = await JSZip.loadAsync(result);
+
+    expect(await zip.file("word/media/image1.svg")?.async("text")).toBe(URI_ENCODED_SVG);
+    expect(await zip.file("word/document.xml")?.async("text")).toContain('r:embed="rId2"');
+    expect(await zip.file("[Content_Types].xml")?.async("text")).toContain(
+      'Extension="svg" ContentType="image/svg+xml"',
+    );
+  });
+
   test("reuses a sanitized source package while preserving later model edits", async () => {
     const sourceZip = await JSZip.loadAsync(await createHeaderFixture());
     sourceZip.file("word/vbaProject.bin", new Uint8Array([1, 2, 3]));

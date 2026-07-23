@@ -491,20 +491,28 @@ function decodeDataUrl(dataUrl: string): {
   data: ArrayBuffer;
   extension: string;
 } {
-  const match = /^data:(?<mime>[^;]+);base64,(?<data>.+)$/u.exec(dataUrl);
+  const match = /^data:(?<mime>[^;,]+)(?<parameters>(?:;[^,]*)?),(?<data>[\s\S]*)$/u.exec(dataUrl);
   if (!match) {
     panic("Invalid data URL");
   }
 
-  // SAFETY: named groups `mime` and `data` always present when regex matches
-  const binary = atob(match.groups!["data"]!);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.codePointAt(i) ?? 0;
+  // SAFETY: named groups are always present when the regex matches.
+  const payload = match.groups!["data"]!;
+  const parameters = match.groups!["parameters"]!;
+  let bytes: Uint8Array;
+  const isBase64 = parameters.split(";").some((parameter) => parameter.toLowerCase() === "base64");
+  if (isBase64) {
+    const binary = atob(payload);
+    bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.codePointAt(i) ?? 0;
+    }
+  } else {
+    bytes = new TextEncoder().encode(decodeURIComponent(payload));
   }
 
   return {
-    data: bytes.buffer,
+    data: bytes.slice().buffer,
     extension: MIME_TO_EXT[match.groups!["mime"]!] ?? "png",
   };
 }
