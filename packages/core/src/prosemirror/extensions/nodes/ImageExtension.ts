@@ -41,6 +41,7 @@ export const ImageExtension = createNodeExtension({
       borderStyle: { default: null },
       wrapText: { default: null },
       hlinkHref: { default: null },
+      hlinkRId: { default: null },
       _docxRawXml: { default: null },
       _docxObjectPreview: { default: null },
     },

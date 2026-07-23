@@ -402,6 +402,7 @@ type Image_2 = {
     allowOverlap?: boolean;
     decorative?: boolean;
     hlinkHref?: string;
+    hlinkRId?: string;
     outline?: ShapeOutline;
     effects?: {
         brightness?: number;

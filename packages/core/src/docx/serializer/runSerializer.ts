@@ -846,6 +846,15 @@ function serializeDrawingContent(content: DrawingContent): string {
   const effectExtentEl = `<wp:effectExtent l="${intAttr(effL)}" t="${intAttr(effT)}" r="${intAttr(effR)}" b="${intAttr(effB)}"/>`;
   const docPrId = getUniqueId(image.id);
   const docPrName = image.title || image.filename || `Picture ${docPrId}`;
+  const hlinkClick = image.hlinkRId ? `<a:hlinkClick r:id="${escapeXml(image.hlinkRId)}"/>` : "";
+  const inlineDocPrAttrs = `id="${docPrId}" name="${escapeXml(docPrName)}"${image.alt ? ` descr="${escapeXml(image.alt)}"` : ""}${image.decorative ? ' hidden="1"' : ""}`;
+  const inlineDocPr = hlinkClick
+    ? `<wp:docPr ${inlineDocPrAttrs}>${hlinkClick}</wp:docPr>`
+    : `<wp:docPr ${inlineDocPrAttrs}/>`;
+  const anchorDocPrAttrs = `id="${docPrId}" name="${escapeXml(docPrName)}"${image.alt ? ` descr="${escapeXml(image.alt)}"` : ""}`;
+  const anchorDocPr = hlinkClick
+    ? `<wp:docPr ${anchorDocPrAttrs}>${hlinkClick}</wp:docPr>`
+    : `<wp:docPr ${anchorDocPrAttrs}/>`;
 
   const graphic = serializePicGraphic(image, docPrId);
 
@@ -856,7 +865,7 @@ function serializeDrawingContent(content: DrawingContent): string {
       `<wp:inline distT="${intAttr(distT)}" distB="${intAttr(distB)}" distL="${intAttr(distL)}" distR="${intAttr(distR)}">`,
       `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
       effectExtentEl,
-      `<wp:docPr id="${docPrId}" name="${escapeXml(docPrName)}"${image.alt ? ` descr="${escapeXml(image.alt)}"` : ""}${image.decorative ? ' hidden="1"' : ""}/>`,
+      inlineDocPr,
       '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>',
       graphic,
       "</wp:inline>",
@@ -883,7 +892,7 @@ function serializeDrawingContent(content: DrawingContent): string {
     `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
     effectExtentEl,
     wrap,
-    `<wp:docPr id="${docPrId}" name="${escapeXml(docPrName)}"${image.alt ? ` descr="${escapeXml(image.alt)}"` : ""}/>`,
+    anchorDocPr,
     '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>',
     graphic,
     "</wp:anchor>",

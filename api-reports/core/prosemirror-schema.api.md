@@ -147,6 +147,7 @@ export type ImageAttrs = {
     borderStyle?: string;
     wrapText?: NonNullable<import__stll_docx_core_model.ImageWrap["wrapText"]>;
     hlinkHref?: string;
+    hlinkRId?: string;
     _docxRawXml?: string;
     _docxObjectPreview?: boolean;
 };

@@ -548,6 +548,7 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalString(attrs, "borderStyle", "image.attrs.borderStyle", issues);
   optionalOneOf(attrs, "wrapText", "image.attrs.wrapText", issues, IMAGE_WRAP_TEXT_VALUES);
   optionalString(attrs, "hlinkHref", "image.attrs.hlinkHref", issues);
+  optionalString(attrs, "hlinkRId", "image.attrs.hlinkRId", issues);
   optionalString(attrs, "_docxRawXml", "image.attrs._docxRawXml", issues);
   optionalBoolean(attrs, "_docxObjectPreview", "image.attrs._docxObjectPreview", issues);
 

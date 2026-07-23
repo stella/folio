@@ -2609,6 +2609,7 @@ function convertImage(image: Image, rawXml?: string): PMNode {
     borderStyle,
     wrapText,
     hlinkHref: image.hlinkHref,
+    hlinkRId: image.hlinkRId,
     _docxRawXml: rawXml,
     _docxObjectPreview:
       rawXml !== undefined && /<(?:[A-Za-z_][\w.-]*:)?object(?:\s|>)/u.test(rawXml),

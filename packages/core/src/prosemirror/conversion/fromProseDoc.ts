@@ -2203,6 +2203,9 @@ function createImageRun(node: PMNode): Run {
   if (attrs.hlinkHref) {
     image.hlinkHref = attrs.hlinkHref;
   }
+  if (attrs.hlinkRId) {
+    image.hlinkRId = attrs.hlinkRId;
+  }
 
   // eigenpal #424: fold crop fractions back into Image.crop. PM defaults are
   // `null`, so `!= null` catches both null and undefined; zero sides are

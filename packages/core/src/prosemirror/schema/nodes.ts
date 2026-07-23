@@ -331,6 +331,8 @@ export type ImageAttrs = {
   wrapText?: NonNullable<ImageWrap["wrapText"]>;
   /** Hyperlink URL for clickable image */
   hlinkHref?: string;
+  /** DOCX relationship ID for the clickable image hyperlink */
+  hlinkRId?: string;
   /** Original OOXML for opaque/unsupported DOCX drawings. */
   _docxRawXml?: string;
   /** Embedded-object previews use their authored box as the exact line height. */

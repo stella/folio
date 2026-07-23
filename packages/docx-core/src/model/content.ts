@@ -484,6 +484,8 @@ export type Image = {
   decorative?: boolean;
   /** Hyperlink URL for clickable image */
   hlinkHref?: string;
+  /** Relationship ID for the clickable image hyperlink */
+  hlinkRId?: string;
   /** Image outline/border */
   outline?: ShapeOutline;
   /** Image effects */

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import type { Document } from "../types/document";
+import type { Document, Image } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createDocx, DocxPackageFidelityError, repackDocx } from "./rezip";
@@ -142,6 +142,80 @@ async function createAlternateContentImageFixture(): Promise<ArrayBuffer> {
   return zip.generateAsync({ type: "arraybuffer" });
 }
 
+async function createHyperlinkedImageFixture(): Promise<ArrayBuffer> {
+  const zip = new JSZip();
+  zip.file(
+    "[Content_Types].xml",
+    `${XML_DECLARATION}
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+  );
+  zip.file(
+    "_rels/.rels",
+    `${XML_DECLARATION}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="${RELATIONSHIP_TYPES.officeDocument}" Target="word/document.xml"/>
+</Relationships>`,
+  );
+  zip.file(
+    "word/_rels/document.xml.rels",
+    `${XML_DECLARATION}
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId5" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>
+  <Relationship Id="rId6" Type="${RELATIONSHIP_TYPES.hyperlink}" Target="https://example.test/guide" TargetMode="External"/>
+</Relationships>`,
+  );
+  zip.file(
+    "word/document.xml",
+    `${XML_DECLARATION}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+  <w:body>
+    <w:p>
+      <w:r>
+        <w:drawing>
+          <wp:inline>
+            <wp:extent cx="9525" cy="9525"/>
+            <wp:docPr id="7" name="image1.png"><a:hlinkClick r:id="rId6"/></wp:docPr>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:nvPicPr><pic:cNvPr id="7" name="image1.png"/><pic:cNvPicPr/></pic:nvPicPr>
+                  <pic:blipFill><a:blip r:embed="rId5"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+                  <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="9525" cy="9525"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+    </w:p>
+  </w:body>
+</w:document>`,
+  );
+  zip.file("word/media/image1.png", new Uint8Array([1, 2, 3, 4]));
+  return zip.generateAsync({ type: "arraybuffer" });
+}
+
+function getFirstImage(document: Document): Image {
+  const paragraph = document.package.document.content.at(0);
+  if (!paragraph || paragraph.type !== "paragraph") {
+    throw new Error("expected a paragraph");
+  }
+  const run = paragraph.content.at(0);
+  if (!run || run.type !== "run") {
+    throw new Error("expected a run");
+  }
+  const drawing = run.content.at(0);
+  if (!drawing || drawing.type !== "drawing") {
+    throw new Error("expected a drawing");
+  }
+  return drawing.image;
+}
+
 async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer> {
   const zip = new JSZip();
   zip.file(
@@ -216,6 +290,29 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
 }
 
 describe("repackDocx", () => {
+  test("preserves clickable image hyperlinks across full save and reopen", async () => {
+    const parsed = await parseDocx(await createHyperlinkedImageFixture(), {
+      preloadFonts: false,
+    });
+    expect(getFirstImage(parsed)).toMatchObject({
+      hlinkHref: "https://example.test/guide",
+      hlinkRId: "rId6",
+    });
+
+    const saved = await repackDocx(parsed, { updateModifiedDate: false });
+    const savedZip = await JSZip.loadAsync(saved);
+    expect(await savedZip.file("word/document.xml")?.async("text")).toContain(
+      '<a:hlinkClick r:id="rId6"/>',
+    );
+
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+    expect(getFirstImage(reopened)).toMatchObject({
+      hlinkHref: "https://example.test/guide",
+      hlinkRId: "rId6",
+    });
+    expect(reopened.package.document.content).toEqual(parsed.package.document.content);
+  });
+
   test("writes URI-encoded SVG data URLs as image parts", async () => {
     const document: Document = {
       package: {

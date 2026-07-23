@@ -660,6 +660,7 @@ function parseInline(
     const safeHref = sanitizeExternalUrl(href);
     if (safeHref) {
       image.hlinkHref = safeHref;
+      image.hlinkRId = props.hlinkRId;
     }
   }
 
@@ -808,6 +809,7 @@ function parseAnchor(
     const safeHref = sanitizeExternalUrl(href);
     if (safeHref) {
       image.hlinkHref = safeHref;
+      image.hlinkRId = props.hlinkRId;
     }
   }
 
