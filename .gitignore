@@ -8,6 +8,7 @@ test-results/
 playwright-report/
 blob-report/
 .DS_Store
+.claude/worktrees/
 
 # Rust cross-language benchmark build artifacts
 benchmarks/cross-language/rust/target/
