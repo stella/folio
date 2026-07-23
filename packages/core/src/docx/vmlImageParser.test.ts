@@ -312,6 +312,46 @@ describe("VML w:pict inline images", () => {
     expect(firstDrawing(doc.package.document.content.at(0))).toBeUndefined();
   });
 
+  test("stabilizes a cached page-break hint when later inline content is omitted", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:lastRenderedPageBreak/><w:pict><v:rect/></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+    const paragraph = doc.package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected a paragraph");
+    }
+    expect(paragraph.renderedPageBreakBefore).toBeUndefined();
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    const reopened = await parseDocx(out, { preloadFonts: false });
+
+    expect(reopened.package.document.content.at(0)).toEqual(paragraph);
+  });
+
+  test("keeps a cached page-break hint when the following VML content is retained", async () => {
+    const doc = await parseDocx(
+      await pictDocx({ runXml: `<w:lastRenderedPageBreak/>${PICT_WITH_IMAGE}` }),
+      { preloadFonts: false },
+    );
+    const paragraph = doc.package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected a paragraph");
+    }
+    expect(paragraph.renderedPageBreakBefore).toBe(true);
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    const reopened = await parseDocx(out, { preloadFonts: false });
+
+    expect(reopened.package.document.content.at(0)).toEqual(paragraph);
+  });
+
   test("renders a positioned solid rectangle without embedded image data", async () => {
     const doc = await parseDocx(
       await pictDocx({

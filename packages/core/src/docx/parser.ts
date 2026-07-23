@@ -56,6 +56,7 @@ import { parseFontTable } from "./fontTableParser";
 import type { NumberingMap } from "./numberingParser";
 import { normalizeNumberingReferences } from "./numberingReferenceNormalization";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
+import { normalizeRenderedPageBreakHints } from "./renderedPageBreakNormalization";
 import { parseSettings } from "./settingsParser";
 import { parseStylesPackage } from "./styleParser";
 import type { StyleMap } from "./styleParser";
@@ -280,6 +281,13 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     if (comments.length > 0) {
       documentBody.comments = comments;
     }
+    normalizeRenderedPageBreakHints({
+      documentBody,
+      ...(headers !== undefined ? { headers } : {}),
+      ...(footers !== undefined ? { footers } : {}),
+      ...(footnotes !== undefined ? { footnotes } : {}),
+      ...(endnotes !== undefined ? { endnotes } : {}),
+    });
     const commentReferenceNormalization = normalizeCommentReferences({
       documentBody,
       comments,
