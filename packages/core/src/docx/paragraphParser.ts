@@ -812,9 +812,13 @@ const RENDERED_BREAK_NON_CONTENT_MARKERS = new Set([
   "permStart",
   "permEnd",
   "rsidR",
+  "sdtPr",
+  "sdtEndPr",
+  "smartTagPr",
 ]);
 
 const RENDERED_BREAK_VISIBLE_RUN_CONTENT = new Set([
+  "AlternateContent",
   "t",
   "tab",
   "br",

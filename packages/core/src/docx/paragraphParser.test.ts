@@ -393,6 +393,54 @@ describe("parseParagraph rendered page break markers", () => {
 
     expect(paragraph.renderedPageBreakBefore).toBe(true);
   });
+
+  test("treats alternate drawing content after a rendered-page marker as visible", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+      >
+        <w:r>
+          <w:lastRenderedPageBreak/>
+          <mc:AlternateContent>
+            <mc:Choice Requires="wpg"><w:drawing/></mc:Choice>
+            <mc:Fallback><w:pict/></mc:Fallback>
+          </mc:AlternateContent>
+        </w:r>
+      </w:p>
+    `);
+
+    expect(paragraph.renderedPageBreakBefore).toBe(true);
+  });
+
+  test("skips smart-tag metadata while finding a leading rendered-page marker", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:smartTag>
+          <w:smartTagPr><w:attr w:name="kind" w:val="example"/></w:smartTagPr>
+          <w:r><w:lastRenderedPageBreak/><w:t>Tagged text</w:t></w:r>
+        </w:smartTag>
+      </w:p>
+    `);
+
+    expect(paragraph.renderedPageBreakBefore).toBe(true);
+  });
+
+  test("skips content-control metadata while finding a leading rendered-page marker", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:sdt>
+          <w:sdtPr><w:tag w:val="example"/></w:sdtPr>
+          <w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>
+          <w:sdtContent>
+            <w:r><w:lastRenderedPageBreak/><w:t>Controlled text</w:t></w:r>
+          </w:sdtContent>
+        </w:sdt>
+      </w:p>
+    `);
+
+    expect(paragraph.renderedPageBreakBefore).toBe(true);
+  });
 });
 
 describe("parseParagraph spacing explicit flags", () => {
