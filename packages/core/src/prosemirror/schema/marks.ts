@@ -53,6 +53,7 @@ export type FontFamilyAttrs = {
   hAnsi?: string;
   eastAsia?: string;
   cs?: string;
+  hint?: NonNullable<NonNullable<TextFormatting["fontFamily"]>["hint"]>;
   asciiTheme?: string;
   hAnsiTheme?: string;
   eastAsiaTheme?: string;

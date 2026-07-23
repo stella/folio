@@ -29,6 +29,7 @@ import {
   FIELD_TYPE_VALUES,
   FLOATING_TABLE_X_SPEC_VALUES,
   FLOATING_TABLE_Y_SPEC_VALUES,
+  FONT_HINT_VALUES,
   FONT_THEME_VALUES,
   FRAME_WRAP_VALUES,
   FRAME_X_ALIGN_VALUES,
@@ -96,6 +97,8 @@ export const TextEffectSchema = v.picklist(TEXT_EFFECT_VALUES);
 export const EmphasisMarkSchema = v.picklist(EMPHASIS_MARK_VALUES);
 
 export const FontThemeSchema = v.picklist(FONT_THEME_VALUES);
+
+export const FontHintSchema = v.picklist(FONT_HINT_VALUES);
 
 // ---------------------------------------------------------------------------
 // Paragraph formatting enums

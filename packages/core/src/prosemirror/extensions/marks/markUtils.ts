@@ -88,9 +88,11 @@ function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
           mark.attrs["hAnsi"] !== null && mark.attrs["hAnsi"] !== undefined
             ? String(mark.attrs["hAnsi"])
             : undefined;
+        const hint = mark.attrs["hint"];
         formatting.fontFamily = {
           ...(ascii !== undefined ? { ascii } : {}),
           ...(hAnsi !== undefined ? { hAnsi } : {}),
+          ...(hint === "default" || hint === "eastAsia" || hint === "cs" ? { hint } : {}),
         };
         break;
       }
@@ -349,6 +351,7 @@ export function textFormattingToMarks(formatting: TextFormatting, schema: Schema
       schema.marks["fontFamily"].create({
         ascii: formatting.fontFamily.ascii,
         hAnsi: formatting.fontFamily.hAnsi,
+        hint: formatting.fontFamily.hint,
         asciiTheme: formatting.fontFamily.asciiTheme,
       }),
     );

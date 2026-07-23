@@ -2461,6 +2461,9 @@ export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
         if (attrs.eastAsia) {
           ff.eastAsia = attrs.eastAsia;
         }
+        if (attrs.hint) {
+          ff.hint = attrs.hint;
+        }
         // Use stored cs value, falling back to ascii for Complex Script compatibility
         const csVal = attrs.cs || attrs.ascii;
         if (csVal) {

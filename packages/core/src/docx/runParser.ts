@@ -46,6 +46,7 @@ import { parseGroupDrawing } from "./groupDrawingParser";
 import { parseImage } from "./imageParser";
 import {
   EmphasisMarkSchema,
+  FontHintSchema,
   FontThemeSchema,
   HighlightColorSchema,
   ShadingPatternSchema,
@@ -483,6 +484,10 @@ export function parseRunProperties(
     const csFont = getAttribute(rFonts, "w", "cs");
     if (csFont) {
       fontFamily.cs = csFont;
+    }
+    const hint = narrowEnum(getAttribute(rFonts, "w", "hint"), FontHintSchema);
+    if (hint) {
+      fontFamily.hint = hint;
     }
 
     // Theme font references

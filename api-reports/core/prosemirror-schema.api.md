@@ -83,6 +83,7 @@ export type FontFamilyAttrs = {
     hAnsi?: string;
     eastAsia?: string;
     cs?: string;
+    hint?: NonNullable<NonNullable<import__stll_docx_core_model.TextFormatting["fontFamily"]>["hint"]>;
     asciiTheme?: string;
     hAnsiTheme?: string;
     eastAsiaTheme?: string;

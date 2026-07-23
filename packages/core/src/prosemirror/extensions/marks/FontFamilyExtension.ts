@@ -18,6 +18,7 @@ export const FontFamilyExtension = createMarkExtension({
       hAnsi: { default: null },
       eastAsia: { default: null },
       cs: { default: null },
+      hint: { default: null },
       asciiTheme: { default: null },
       hAnsiTheme: { default: null },
       eastAsiaTheme: { default: null },

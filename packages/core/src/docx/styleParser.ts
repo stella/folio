@@ -42,6 +42,7 @@ import {
   BorderStyleSchema,
   ConditionalStyleTypeSchema,
   EmphasisMarkSchema,
+  FontHintSchema,
   FontThemeSchema,
   HighlightColorSchema,
   LineSpacingRuleSchema,
@@ -238,6 +239,10 @@ function parseRunProperties(
     const csFont = getAttribute(rFonts, "w", "cs");
     if (csFont) {
       fontFamily.cs = csFont;
+    }
+    const hint = narrowEnum(getAttribute(rFonts, "w", "hint"), FontHintSchema);
+    if (hint) {
+      fontFamily.hint = hint;
     }
 
     // Theme font references - resolve to actual font names
