@@ -918,6 +918,23 @@ function serializeShapeTextBody(
     .join("");
 }
 
+function serializeShapeWrapDistances(wrap: ImageWrap | undefined): string {
+  const attrs: string[] = [];
+  if (wrap?.distT !== undefined) {
+    attrs.push(`distT="${intAttr(wrap.distT)}"`);
+  }
+  if (wrap?.distB !== undefined) {
+    attrs.push(`distB="${intAttr(wrap.distB)}"`);
+  }
+  if (wrap?.distL !== undefined) {
+    attrs.push(`distL="${intAttr(wrap.distL)}"`);
+  }
+  if (wrap?.distR !== undefined) {
+    attrs.push(`distR="${intAttr(wrap.distR)}"`);
+  }
+  return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
+}
+
 /**
  * Serialize shape content to full DrawingML XML (wps:wsp inside w:drawing)
  */
@@ -927,10 +944,7 @@ function serializeShapeContent(content: ShapeContent): string {
   const cy = shape.size.height;
   const isTextBox = shape.shapeType === "textBox";
   const isFloating = shape.wrap && shape.wrap.type !== "inline";
-  const distT = shape.wrap?.distT ?? 0;
-  const distB = shape.wrap?.distB ?? 0;
-  const distL = shape.wrap?.distL ?? 0;
-  const distR = shape.wrap?.distR ?? 0;
+  const wrapDistances = serializeShapeWrapDistances(shape.wrap);
   const docPrId = getUniqueId(shape.id);
   const docPrName = shape.name ?? (isTextBox ? `TextBox ${docPrId}` : `Shape ${docPrId}`);
 
@@ -1030,7 +1044,7 @@ function serializeShapeContent(content: ShapeContent): string {
   if (!isFloating) {
     return [
       "<w:drawing>",
-      `<wp:inline distT="${intAttr(distT)}" distB="${intAttr(distB)}" distL="${intAttr(distL)}" distR="${intAttr(distR)}">`,
+      `<wp:inline${wrapDistances}>`,
       `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
       '<wp:effectExtent l="0" t="0" r="0" b="0"/>',
       `<wp:docPr id="${docPrId}" name="${escapeXml(docPrName)}"/>`,
@@ -1053,7 +1067,7 @@ function serializeShapeContent(content: ShapeContent): string {
 
   return [
     "<w:drawing>",
-    `<wp:anchor distT="${intAttr(distT)}" distB="${intAttr(distB)}" distL="${intAttr(distL)}" distR="${intAttr(distR)}" simplePos="0" relativeHeight="251658240" behindDoc="${behindDoc}" locked="0" layoutInCell="1" allowOverlap="1">`,
+    `<wp:anchor${wrapDistances} simplePos="0" relativeHeight="251658240" behindDoc="${behindDoc}" locked="0" layoutInCell="1" allowOverlap="1">`,
     '<wp:simplePos x="0" y="0"/>',
     position,
     `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,

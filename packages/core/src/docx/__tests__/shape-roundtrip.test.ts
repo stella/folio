@@ -11,14 +11,18 @@ function shapeDrawingXml({
   anchor,
   fill,
   outline,
+  distances = "explicit-zero",
 }: {
   prst: string;
   anchor?: boolean;
   fill?: string;
   outline?: string;
+  distances?: "absent" | "explicit-zero";
 }): string {
+  const distanceAttrs =
+    distances === "explicit-zero" ? ' distT="0" distB="0" distL="0" distR="0"' : "";
   const container = anchor
-    ? `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="251658240" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">
+    ? `<wp:anchor${distanceAttrs} simplePos="0" relativeHeight="251658240" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">
         <wp:simplePos x="0" y="0"/>
         <wp:positionH relativeFrom="column"><wp:posOffset>100000</wp:posOffset></wp:positionH>
         <wp:positionV relativeFrom="paragraph"><wp:posOffset>200000</wp:posOffset></wp:positionV>
@@ -202,6 +206,43 @@ describe("shape parse → serialize round-trip", () => {
     });
     expect(xml).toContain("<wp:wrapSquare");
     expect(xml).toContain("<wp:anchor");
+  });
+
+  test("distinguishes absent wrap distances from explicit zero", () => {
+    const absentRoot = parseXmlDocument(
+      shapeDrawingXml({ prst: "rect", anchor: true, distances: "absent" }),
+    );
+    const absentShape = absentRoot ? parseShapeFromDrawing(absentRoot) : null;
+    expect(absentShape?.wrap).toEqual({ type: "square", wrapText: "bothSides" });
+    if (!absentShape) {
+      return;
+    }
+
+    const absentXml = serializeRun({
+      type: "run",
+      content: [{ type: "shape", shape: absentShape }],
+    });
+    expect(absentXml).not.toContain("distT=");
+    expect(absentXml).not.toContain("distB=");
+    expect(absentXml).not.toContain("distL=");
+    expect(absentXml).not.toContain("distR=");
+
+    const reopenedRoot = parseXmlDocument(absentXml);
+    const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
+    const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
+    expect(reopenedShape?.wrap).toEqual({ type: "square", wrapText: "bothSides" });
+
+    const zeroRoot = parseXmlDocument(shapeDrawingXml({ prst: "rect", anchor: true }));
+    const zeroShape = zeroRoot ? parseShapeFromDrawing(zeroRoot) : null;
+    expect(zeroShape?.wrap).toMatchObject({ distT: 0, distB: 0, distL: 0, distR: 0 });
+    if (!zeroShape) {
+      return;
+    }
+    const zeroXml = serializeRun({
+      type: "run",
+      content: [{ type: "shape", shape: zeroShape }],
+    });
+    expect(zeroXml).toContain('distT="0" distB="0" distL="0" distR="0"');
   });
 
   test("serializes normalized line cap values as OOXML tokens", () => {
