@@ -5,76 +5,27 @@
  */
 
 import { deterministicHexId } from "../../utils/hexId";
-import type { Comment, Paragraph, Run } from "../../types/content";
+import type { Comment, Paragraph } from "../../types/content";
+import { serializeParagraph } from "./paragraphSerializer";
 import { escapeXml } from "./xmlUtils";
 
-function serializeRunContent(run: Run): string {
-  let xml = "<w:r>";
-  // Run properties (minimal — just preserve formatting basics)
-  const rPr: string[] = [];
-  if (run.formatting?.bold) {
-    rPr.push("<w:b/>");
-  }
-  if (run.formatting?.italic) {
-    rPr.push("<w:i/>");
-  }
-  if (rPr.length > 0) {
-    xml += `<w:rPr>${rPr.join("")}</w:rPr>`;
-  }
-
-  for (const c of run.content) {
-    if (c.type === "text") {
-      const preserveSpace = c.text !== c.text.trim() || c.text.includes("  ");
-      xml += preserveSpace
-        ? `<w:t xml:space="preserve">${escapeXml(c.text)}</w:t>`
-        : `<w:t>${escapeXml(c.text)}</w:t>`;
-    } else if (c.type === "break") {
-      xml += "<w:br/>";
-    }
-  }
-  xml += "</w:r>";
-  return xml;
-}
-
-/**
- * `w14:paraId` / `w14:textId` open tag for a comment paragraph. Word keys
- * commentsExtended.xml (reply threading) and commentsExtensible.xml (UTC
- * dates) on the paraId of a comment's LAST paragraph, so the id must survive
- * serialization; the parser stores it on `Paragraph.paraId`.
- */
-function commentParagraphOpenTag(p: Paragraph): string {
-  const attrs: string[] = [];
-  if (p.paraId) {
-    attrs.push(`w14:paraId="${escapeXml(p.paraId)}"`);
-  }
-  if (p.textId) {
-    attrs.push(`w14:textId="${escapeXml(p.textId)}"`);
-  }
-  return attrs.length > 0 ? `<w:p ${attrs.join(" ")}>` : "<w:p>";
-}
-
-function serializeParagraph(p: Paragraph): string {
-  let xml = commentParagraphOpenTag(p);
-  for (const item of p.content) {
-    if (item.type === "run") {
-      xml += serializeRunContent(item);
-    }
-  }
-  xml += "</w:p>";
-  return xml;
-}
+const ANNOTATION_REFERENCE_XML =
+  '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r>';
+const PARAGRAPH_PROPERTIES_END = "</w:pPr>";
 
 /** Serialize a paragraph, prepending an annotationRef run (required by Word in first paragraph of a comment) */
-function serializeParagraphWithAnnotationRef(p: Paragraph): string {
-  let xml = commentParagraphOpenTag(p);
-  xml += '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r>';
-  for (const item of p.content) {
-    if (item.type === "run") {
-      xml += serializeRunContent(item);
-    }
+function serializeParagraphWithAnnotationRef(paragraph: Paragraph): string {
+  const xml = serializeParagraph(paragraph);
+  const propertiesEnd = xml.indexOf(PARAGRAPH_PROPERTIES_END);
+  if (propertiesEnd !== -1) {
+    const contentStart = propertiesEnd + PARAGRAPH_PROPERTIES_END.length;
+    return `${xml.slice(0, contentStart)}${ANNOTATION_REFERENCE_XML}${xml.slice(contentStart)}`;
   }
-  xml += "</w:p>";
-  return xml;
+
+  return xml.replace(
+    /^<w:p(?=[\s>])[^>]*>/u,
+    (openingTag) => `${openingTag}${ANNOTATION_REFERENCE_XML}`,
+  );
 }
 
 function serializeComment(comment: Comment): string {
