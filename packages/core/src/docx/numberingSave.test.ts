@@ -18,6 +18,7 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import type { Document } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createDocx, repackDocx } from "./rezip";
@@ -225,6 +226,49 @@ describe("numbering-definition write path (selective save)", () => {
 });
 
 describe("numbering-definition write path (full repack)", () => {
+  test("a repeated fresh-document save retains newly added numbering definitions", async () => {
+    const doc = createEmptyDocument();
+    doc.package.numbering = {
+      abstractNums: [
+        {
+          abstractNumId: 0,
+          levels: [
+            {
+              ilvl: 0,
+              start: 1,
+              numFmt: "decimal",
+              lvlText: ORIGINAL_LVL_TEXT,
+            },
+          ],
+        },
+      ],
+      nums: [{ numId: 1, abstractNumId: 0 }],
+    };
+
+    await createDocx(doc);
+    editFirstLevelText(doc, 0, EDITED_LVL_TEXT);
+    doc.package.numbering.abstractNums.push({
+      abstractNumId: 1,
+      levels: [
+        {
+          ilvl: 0,
+          start: 1,
+          numFmt: "lowerLetter",
+          lvlText: "%1.",
+        },
+      ],
+    });
+    doc.package.numbering.nums.push({ numId: 2, abstractNumId: 1 });
+
+    const reparsed = await parseDocx(await createDocx(doc), { preloadFonts: false });
+
+    expect(levelText(reparsed, 0)).toBe(EDITED_LVL_TEXT);
+    expect(
+      reparsed.package.numbering?.abstractNums.map(({ abstractNumId }) => abstractNumId),
+    ).toEqual([0, 1]);
+    expect(reparsed.package.numbering?.nums.map(({ numId }) => numId)).toEqual([1, 2]);
+  });
+
   test("detects an in-place numbering edit after a prior save", async () => {
     const buffer = await createNumberingFixture();
     const doc = await parseDocx(buffer, { preloadFonts: false });

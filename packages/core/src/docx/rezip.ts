@@ -692,6 +692,14 @@ type ParsedZipSource = {
 
 const parsedZipSources = new WeakMap<Document, ParsedZipSource>();
 
+const removeNonPreservableEntries = (zip: JSZip): void => {
+  for (const [path, file] of Object.entries(zip.files)) {
+    if (!file.dir && !isPreservableDocxEntry(path)) {
+      zip.remove(path);
+    }
+  }
+};
+
 const loadParsedZipSource = async (
   document: Document,
   buffer: ArrayBuffer,
@@ -702,11 +710,7 @@ const loadParsedZipSource = async (
   }
 
   const zip = await JSZip.loadAsync(buffer);
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (!file.dir && !isPreservableDocxEntry(path)) {
-      zip.remove(path);
-    }
-  }
+  removeNonPreservableEntries(zip);
   const [documentXml, corePropertiesXml] = await Promise.all([
     zip.file("word/document.xml")?.async("text"),
     zip.file("docProps/core.xml")?.async("text"),
@@ -815,31 +819,8 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
     originalZip.file("docProps/core.xml")?.async("text"),
   ]);
 
-  // Create a new ZIP with all original files
-  const newZip = new JSZip();
-
-  // Copy all files from original ZIP
-  for (const [path, file] of Object.entries(originalZip.files)) {
-    // Skip directories
-    if (file.dir) {
-      newZip.folder(path.replace(/\/$/u, ""));
-      continue;
-    }
-
-    if (!isPreservableDocxEntry(path)) {
-      continue;
-    }
-
-    // Get original file content
-    // oxlint-disable-next-line no-await-in-loop -- entries are decoded and written into the shared newZip in original order to keep deterministic output
-    const content = await file.async("arraybuffer");
-
-    // Add to new ZIP (we'll update specific files below)
-    newZip.file(path, content, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    });
-  }
+  removeNonPreservableEntries(originalZip);
+  const newZip = cloneDocxZip(originalZip);
 
   return finishRepack({
     document: exportDocument,
@@ -1818,7 +1799,7 @@ async function serializeNumberingIntoZip(
   if (!file) {
     return;
   }
-  let baseline = numberingBaselines.get(doc);
+  let baseline = doc.originalBuffer ? numberingBaselines.get(doc) : undefined;
   if (!baseline || baseline.originalBuffer !== doc.originalBuffer) {
     const originalXml = await file.async("text");
     baseline = {
@@ -1826,7 +1807,9 @@ async function serializeNumberingIntoZip(
       originalXml,
       serializedXml: serializeNumberingXml(parseNumbering(originalXml).definitions),
     };
-    numberingBaselines.set(doc, baseline);
+    if (doc.originalBuffer) {
+      numberingBaselines.set(doc, baseline);
+    }
   }
   const currentXml = serializeNumberingXml(numbering);
   const changed = collectChangedNumberingDefs(baseline.serializedXml, currentXml);
@@ -2230,7 +2213,7 @@ export async function createDocx(doc: Document): Promise<ArrayBuffer> {
     document: withoutOrphanCommentRanges(doc),
     originalZip: zip,
     outputZip: zip,
-    originalDocumentXml: await zip.file("word/document.xml")?.async("text"),
+    originalDocumentXml: undefined,
     originalCorePropertiesXml: await zip.file("docProps/core.xml")?.async("text"),
     compressionLevel: 6,
     updateModifiedDate: true,
