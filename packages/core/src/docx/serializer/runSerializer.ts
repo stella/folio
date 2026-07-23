@@ -41,6 +41,7 @@ import type {
 import { requiresXmlSpacePreserve } from "../textWhitespace";
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 import { isValidHexColor } from "../../utils/colorResolver";
+import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
@@ -599,7 +600,8 @@ function serializeDrawingColor(color: ColorValue | undefined): string {
     return `<a:srgbClr val="${escapeXml(color.rgb.replace("#", ""))}"/>`;
   }
   if (color.themeColor) {
-    let clr = `<a:schemeClr val="${escapeXml(color.themeColor)}"`;
+    const schemeColor = THEME_COLOR_TO_DRAWING_SCHEME[color.themeColor];
+    let clr = `<a:schemeClr val="${schemeColor}"`;
     if (color.themeTint) {
       clr += `><a:tint val="${escapeXml(color.themeTint)}"/></a:schemeClr>`;
     } else if (color.themeShade) {

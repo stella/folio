@@ -58,6 +58,29 @@ const SCHEME_TO_THEME_COLOR: Record<string, ColorValue["themeColor"]> = {
 };
 
 /**
+ * Map normalized theme color slots back to DrawingML scheme color names.
+ * DrawingML uses bg1/bg2/tx1/tx2 where the document model uses descriptive names.
+ */
+export const THEME_COLOR_TO_DRAWING_SCHEME = {
+  dk1: "dk1",
+  lt1: "lt1",
+  dk2: "dk2",
+  lt2: "lt2",
+  accent1: "accent1",
+  accent2: "accent2",
+  accent3: "accent3",
+  accent4: "accent4",
+  accent5: "accent5",
+  accent6: "accent6",
+  hlink: "hlink",
+  folHlink: "folHlink",
+  background1: "bg1",
+  text1: "tx1",
+  background2: "bg2",
+  text2: "tx2",
+} as const satisfies Record<NonNullable<ColorValue["themeColor"]>, string>;
+
+/**
  * sRGB hex per OOXML (ST_HexColorRGB): exactly six hex digits, case-insensitive.
  * Anything else is rejected so untrusted DOCX input cannot smuggle markup through
  * downstream renderers that interpolate the value into HTML/SVG.
