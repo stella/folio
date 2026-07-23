@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { getParagraphText, parseParagraph } from "./paragraphParser";
+import { serializeParagraph } from "./serializer/paragraphSerializer";
 import type { XmlElement } from "./xmlParser";
 import { parseXmlDocument } from "./xmlParser";
 
@@ -255,6 +256,34 @@ describe("parseParagraph tracked-change hardening", () => {
     expect(paragraph.pPrMark).toBeDefined();
     expect(paragraph.pPrMark?.info.id).toBeLessThanOrEqual(2_147_483_647);
     expect(paragraph.pPrMark?.info.id).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("parseParagraph whitespace normalization", () => {
+  test("normalizes whitespace-sensitive text to a save/reopen fixed point", () => {
+    const parsed = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:r>
+          <w:t> leading</w:t>
+          <w:t>trailing </w:t>
+          <w:t>two  spaces</w:t>
+        </w:r>
+      </w:p>
+    `);
+
+    const run = parsed.content.at(0);
+    expect(run?.type).toBe("run");
+    if (!run || run.type !== "run") {
+      return;
+    }
+    expect(run.content).toEqual([
+      { type: "text", text: " leading", preserveSpace: true },
+      { type: "text", text: "trailing ", preserveSpace: true },
+      { type: "text", text: "two  spaces", preserveSpace: true },
+    ]);
+
+    const serialized = serializeParagraph(parsed);
+    expect(parseParagraphXml(serialized)).toEqual(parsed);
   });
 });
 

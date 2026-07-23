@@ -11,6 +11,7 @@
  */
 
 import { panic } from "better-result";
+import { normalizeRevisionId } from "@stll/docx-core/model";
 
 import type {
   Run,
@@ -37,7 +38,7 @@ import type {
   BlockContent,
   RunPropertyChange,
 } from "../../types/document";
-import { normalizeRevisionId } from "@stll/docx-core/model";
+import { requiresXmlSpacePreserve } from "../textWhitespace";
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 import { isValidHexColor } from "../../utils/colorResolver";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
@@ -487,11 +488,7 @@ function serializeRunProperties(
  * Serialize text content (w:t)
  */
 function serializeTextContent(content: TextContent): string {
-  const needsPreserve =
-    content.preserveSpace ||
-    content.text.startsWith(" ") ||
-    content.text.endsWith(" ") ||
-    content.text.includes("  ");
+  const needsPreserve = content.preserveSpace || requiresXmlSpacePreserve(content.text);
 
   const spaceAttr = needsPreserve ? ' xml:space="preserve"' : "";
 

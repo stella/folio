@@ -58,6 +58,7 @@ import { parseShapeFromDrawing, shouldPreserveRawShapeDrawing } from "./shapePar
 import type { StyleMap } from "./styleParser";
 import { parseVmlImageContent } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
+import { requiresXmlSpacePreserve } from "./textWhitespace";
 import {
   cloneWithXmlnsDeclarations,
   findAllDeep,
@@ -709,7 +710,8 @@ function parseRunPropertyChanges(
  */
 function parseTextContent(element: XmlElement): TextContent {
   const text = getTextContent(element);
-  const preserveSpace = getAttribute(element, "xml", "space") === "preserve";
+  const preserveSpace =
+    getAttribute(element, "xml", "space") === "preserve" || requiresXmlSpacePreserve(text);
 
   const content: TextContent = { type: "text", text };
   if (preserveSpace) {
