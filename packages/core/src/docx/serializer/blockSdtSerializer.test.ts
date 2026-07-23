@@ -149,6 +149,62 @@ describe("serializeBlockSdt — raw sdtPr replay", () => {
     expect(xml).toContain("</w:dropDownList>");
   });
 
+  test.each(["dropDownList", "comboBox"])(
+    "does not infer a %s lastValue for an untouched parsed control",
+    (marker) => {
+      const blocks = parseBlocks(`<w:body ${NS}>
+        <w:sdt>
+          <w:sdtPr>
+            <w:${marker}>
+              <w:listItem w:displayText="Visible label" w:value="stored-value"/>
+            </w:${marker}>
+          </w:sdtPr>
+          <w:sdtContent>
+            <w:p><w:r><w:t>Visible label</w:t></w:r></w:p>
+          </w:sdtContent>
+        </w:sdt>
+      </w:body>`);
+      const first = blocks.at(0);
+      if (!first || first.type !== "blockSdt") {
+        throw new Error(`expected blockSdt, got ${String(first?.type)}`);
+      }
+      const rawPropertiesXml = first.properties.rawPropertiesXml;
+      if (rawPropertiesXml === undefined) {
+        throw new Error("expected captured sdtPr XML");
+      }
+
+      const xml = serializeBlockSdt(first, noChildSerializer);
+
+      expect(xml).toContain(rawPropertiesXml);
+      expect(xml).not.toContain("lastValue");
+
+      const reopened = parseBlocks(`<w:body ${NS}>${xml}</w:body>`).at(0);
+      if (!reopened || reopened.type !== "blockSdt") {
+        throw new Error(`expected reopened blockSdt, got ${String(reopened?.type)}`);
+      }
+      expect(reopened.properties.dropdownLastValue).toBeUndefined();
+      expect(reopened.properties.rawPropertiesXml).toBe(rawPropertiesXml);
+    },
+  );
+
+  test("infers lastValue for a programmatic dropdown without a raw property snapshot", () => {
+    const sdt: BlockSdt = {
+      type: "blockSdt",
+      properties: {
+        sdtType: "dropdown",
+        listItems: [{ displayText: "Visible label", value: "stored-value" }],
+      },
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "run", content: [{ type: "text", text: "Visible label" }] }],
+        },
+      ],
+    };
+
+    expect(serializeBlockSdt(sdt, noChildSerializer)).toContain('w:lastValue="stored-value"');
+  });
+
   test("dropdownLastValue from the model wins over body-text matching when displayText collides", () => {
     // Two list items share a displayText ("Other"). The body shows the
     // friendly label, but the API set the picked OOXML value to "other-b".

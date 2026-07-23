@@ -117,8 +117,8 @@ function extractDropdownLastValue(blockSdt: BlockSdt): string | undefined {
   // and reload-recovered by the parser from the source `w:lastValue`).
   // Recovering it from the body's display text mis-selects the wrong entry
   // when two list items share a displayText, so the body-text fallback
-  // below only kicks in for documents that have neither been updated via
-  // the API nor parsed from a doc that carried a w:lastValue.
+  // below only applies to programmatic controls that have no captured raw
+  // property snapshot.
   const modeled = blockSdt.properties.dropdownLastValue;
   // `""` is a legitimate OOXML lastValue (a producer can author
   // `<w:listItem w:value=""/>` and `setContentControlValue` will pick
@@ -127,6 +127,12 @@ function extractDropdownLastValue(blockSdt: BlockSdt): string | undefined {
   // serialize the wrong sibling when display text collides.
   if (modeled !== undefined) {
     return modeled;
+  }
+  // A parsed raw snapshot is authoritative about whether the producer
+  // authored a selection. Inferring one from visible text would turn an
+  // intentionally absent @lastValue into a persisted selection on save.
+  if (blockSdt.properties.rawPropertiesXml !== undefined) {
+    return undefined;
   }
   const firstBlock = blockSdt.content[0];
   if (!firstBlock || firstBlock.type !== "paragraph") {
