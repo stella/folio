@@ -183,6 +183,7 @@ async function bodyScopedPictDocx(bodyInnerXml: string): Promise<ArrayBuffer> {
 }
 
 const PICT_WITH_IMAGE = `<w:pict><v:shape id="Picture 1" type="#_x0000_t75" style="width:2in;height:1in"><v:imagedata r:id="rIdImg" o:title="logo"/></v:shape></w:pict>`;
+const PICT_WITH_CHARACTER_REFERENCED_LINE_ENDINGS = `<w:pict><v:shape id="Picture 1" type="#_x0000_t75" style="width:2in;height:1in">&#xD;&#xA;<v:imagedata r:id="rIdImg" o:title="logo"/>&#xD;&#xA;</v:shape></w:pict>`;
 const OBJECT_WITH_PREVIEW = `<w:object><v:shape id="Object 1" type="#_x0000_t75" style="width:20pt;height:18pt"><v:imagedata r:id="rIdImg" o:title="preview"/></v:shape><w:control r:id="rIdControl" w:name="Control 1" w:shapeid="Object 1"/></w:object>`;
 
 // A VML shape/imagedata whose prefixes (`v2`, `r2`) are declared on an ancestor
@@ -237,6 +238,32 @@ describe("VML w:pict inline images", () => {
     const doc = await parseDocx(await pictDocx({ runXml: PICT_WITH_IMAGE }), {
       preloadFonts: false,
     });
+    const rawXml = firstDrawing(doc.package.document.content.at(0))?.rawXml;
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    const reopened = await parseDocx(out, { preloadFonts: false });
+
+    expect(firstDrawing(reopened.package.document.content.at(0))?.rawXml).toBe(rawXml);
+  });
+
+  test("keeps character-referenced VML line endings stable after save and reopen", async () => {
+    const doc = await parseDocx(
+      await pictDocx({ runXml: PICT_WITH_CHARACTER_REFERENCED_LINE_ENDINGS }),
+      { preloadFonts: false },
+    );
+    const rawXml = firstDrawing(doc.package.document.content.at(0))?.rawXml;
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    const reopened = await parseDocx(out, { preloadFonts: false });
+
+    expect(firstDrawing(reopened.package.document.content.at(0))?.rawXml).toBe(rawXml);
+  });
+
+  test("stabilizes VML that omits standard namespace declarations", async () => {
+    const doc = await parseDocx(
+      await bodyScopedPictDocx(`<w:p><w:r>${PICT_WITH_IMAGE}</w:r></w:p>`),
+      { preloadFonts: false },
+    );
     const rawXml = firstDrawing(doc.package.document.content.at(0))?.rawXml;
 
     const out = await repackDocx(doc, { updateModifiedDate: false });

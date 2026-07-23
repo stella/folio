@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { collectXmlnsDeclarations, elementToXml, parseXmlDocument } from "./xmlParser";
+import {
+  cloneWithXmlnsDeclarations,
+  collectXmlnsDeclarations,
+  elementToXml,
+  NAMESPACES,
+  parseXmlDocument,
+} from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 describe("OOXML parsing", () => {
@@ -53,6 +59,27 @@ describe("OOXML parsing", () => {
     expect(document ? elementToXml(document) : "").toContain(
       '<w:binData w:name="image1">QUJDRA==</w:binData>',
     );
+  });
+
+  test("keeps character-referenced carriage returns stable when serialized", () => {
+    const document = parseXmlDocument("<v:shape>&#xD;&#xA;<v:path/></v:shape>");
+    const serialized = document ? elementToXml(document) : "";
+    const reopened = parseXmlDocument(serialized);
+
+    expect(serialized).not.toContain("\r");
+    expect(reopened ? elementToXml(reopened) : "").toBe(serialized);
+  });
+
+  test("supplies canonical bindings for known unbound OOXML prefixes", () => {
+    const document = parseXmlDocument(
+      '<w:pict><v:shape><v:imagedata r:id="image"/></v:shape></w:pict>',
+    );
+    const selfContained = document ? cloneWithXmlnsDeclarations(document, {}) : null;
+    const serialized = selfContained ? elementToXml(selfContained) : "";
+
+    expect(serialized).toContain(`xmlns:w="${NAMESPACES.w}"`);
+    expect(serialized).toContain(`xmlns:v="${NAMESPACES.v}"`);
+    expect(serialized).toContain(`xmlns:r="${NAMESPACES.r}"`);
   });
 });
 

@@ -96,6 +96,8 @@ const fxpBuilder = new XMLBuilder(fxpBuilderOptions);
 const TEXT_KEY = "#text";
 /** Attribute group key used by fast-xml-parser in preserveOrder mode. */
 const ATTR_KEY = ":@";
+/** Character reference required to keep carriage returns through XML end-of-line normalization. */
+const XML_CARRIAGE_RETURN_REFERENCE = "&#13;";
 
 type MutableFxpNode = XmlElement & Record<string, unknown>;
 
@@ -210,7 +212,8 @@ export function parseXml(xml: string): XmlElement {
  */
 export function elementToXml(element: XmlElement): string {
   const fxpNode = elementToFxpNode(element);
-  return fxpBuilder.build([fxpNode]) as string;
+  const xml = fxpBuilder.build([fxpNode]) as string;
+  return xml.replaceAll("\r", XML_CARRIAGE_RETURN_REFERENCE);
 }
 
 /**
@@ -1040,6 +1043,9 @@ const collectUsedNamespacePrefixes = (
   return prefixes;
 };
 
+const isCanonicalNamespacePrefix = (prefix: string): prefix is keyof typeof NAMESPACES =>
+  Object.hasOwn(NAMESPACES, prefix);
+
 /**
  * Return a shallow clone of `element` carrying the inherited namespace
  * declarations needed by its raw subtree.
@@ -1047,6 +1053,8 @@ const collectUsedNamespacePrefixes = (
  * Existing declarations retain their authored order. Only missing, referenced
  * bindings are appended, which makes repeated detach/replay cycles idempotent
  * even when the surrounding document declares a different namespace superset.
+ * If a producer omitted a binding for a standard OOXML prefix, use its
+ * canonical binding so the detached subtree is valid on its first replay.
  */
 export function cloneWithXmlnsDeclarations(
   element: XmlElement,
@@ -1060,6 +1068,18 @@ export function cloneWithXmlnsDeclarations(
     if (prefixes.has(prefix) && attributes[name] === undefined) {
       additions[name] = value;
     }
+  }
+  for (const prefix of prefixes) {
+    const name = `xmlns:${prefix}`;
+    if (
+      !prefix ||
+      attributes[name] !== undefined ||
+      additions[name] !== undefined ||
+      !isCanonicalNamespacePrefix(prefix)
+    ) {
+      continue;
+    }
+    additions[name] = NAMESPACES[prefix];
   }
   for (const _key in additions) {
     return {
