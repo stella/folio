@@ -853,13 +853,15 @@ function serializeDrawingContent(content: DrawingContent): string {
   const effB = image.padding?.bottom ?? 0;
   const effectExtentEl = `<wp:effectExtent l="${intAttr(effL)}" t="${intAttr(effT)}" r="${intAttr(effR)}" b="${intAttr(effB)}"/>`;
   const docPrId = getUniqueId(image.id);
-  const docPrName = image.title || image.filename || `Picture ${docPrId}`;
+  const docPrName = image.docPrName ?? image.filename ?? `Picture ${docPrId}`;
+  const docPrDescription = image.alt !== undefined ? ` descr="${escapeXml(image.alt)}"` : "";
+  const docPrTitle = image.title !== undefined ? ` title="${escapeXml(image.title)}"` : "";
   const hlinkClick = image.hlinkRId ? `<a:hlinkClick r:id="${escapeXml(image.hlinkRId)}"/>` : "";
-  const inlineDocPrAttrs = `id="${docPrId}" name="${escapeXml(docPrName)}"${image.alt ? ` descr="${escapeXml(image.alt)}"` : ""}${image.decorative ? ' hidden="1"' : ""}`;
+  const inlineDocPrAttrs = `id="${docPrId}" name="${escapeXml(docPrName)}"${docPrDescription}${docPrTitle}${image.decorative ? ' hidden="1"' : ""}`;
   const inlineDocPr = hlinkClick
     ? `<wp:docPr ${inlineDocPrAttrs}>${hlinkClick}</wp:docPr>`
     : `<wp:docPr ${inlineDocPrAttrs}/>`;
-  const anchorDocPrAttrs = `id="${docPrId}" name="${escapeXml(docPrName)}"${image.alt ? ` descr="${escapeXml(image.alt)}"` : ""}`;
+  const anchorDocPrAttrs = `id="${docPrId}" name="${escapeXml(docPrName)}"${docPrDescription}${docPrTitle}`;
   const anchorDocPr = hlinkClick
     ? `<wp:docPr ${anchorDocPrAttrs}>${hlinkClick}</wp:docPr>`
     : `<wp:docPr ${anchorDocPrAttrs}/>`;

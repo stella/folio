@@ -123,6 +123,7 @@ export type HyperlinkAttrs = {
 // @public
 export type ImageAttrs = {
     src: string;
+    docPrName?: string;
     alt?: string;
     title?: string;
     width?: number;

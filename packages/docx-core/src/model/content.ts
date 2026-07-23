@@ -443,9 +443,11 @@ export type Image = {
   mimeType?: string;
   /** Original filename */
   filename?: string;
+  /** Authored non-visual drawing name (`wp:docPr@name`) */
+  docPrName?: string;
   /** Alt text for accessibility */
   alt?: string;
-  /** Title/description */
+  /** Authored non-visual drawing title (`wp:docPr@title`) */
   title?: string;
   /** Image size */
   size: ImageSize;

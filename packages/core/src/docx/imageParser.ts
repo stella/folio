@@ -620,10 +620,13 @@ function parseInline(
   if (props.id) {
     image.id = props.id;
   }
-  if (props.alt) {
+  if (props.name !== undefined) {
+    image.docPrName = props.name;
+  }
+  if (props.alt !== undefined) {
     image.alt = props.alt;
   }
-  if (props.title) {
+  if (props.title !== undefined) {
     image.title = props.title;
   }
   if (props.decorative) {
@@ -760,10 +763,13 @@ function parseAnchor(
   if (props.id) {
     image.id = props.id;
   }
-  if (props.alt) {
+  if (props.name !== undefined) {
+    image.docPrName = props.name;
+  }
+  if (props.alt !== undefined) {
     image.alt = props.alt;
   }
-  if (props.title) {
+  if (props.title !== undefined) {
     image.title = props.title;
   }
   if (props.decorative) {
