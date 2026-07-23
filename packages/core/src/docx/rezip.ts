@@ -32,12 +32,13 @@
 import { panic } from "better-result";
 import JSZip from "jszip";
 
-import type { BlockContent, Comment, HeaderFooter, Image, Hyperlink } from "../types/content";
+import type { BlockContent, Comment, HeaderFooter, Image, Hyperlink, Run } from "../types/content";
 import type { Document, Watermark } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { assertValidFolioDocumentModel } from "./modelValidation";
+import { isNewDataUrlDrawing } from "./newImage";
 import { parseNumbering } from "./numberingParser";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
@@ -417,24 +418,12 @@ async function registerImageExtensions(
   });
 }
 
-/**
- * Collect all newly inserted images with data-URL src from the document content.
- * Existing DOCX images may also have a resolved data URL for preview; those must
- * continue to reference their original media part. Editor-created images use a
- * synthetic rId until they are assigned a real DOCX relationship here.
- */
-const SYNTHETIC_IMAGE_RID_PREFIX = "rId_img_";
-
-const isNewDataUrlImage = (image: Image) =>
-  image.src?.startsWith("data:") &&
-  (!image.rId || image.rId.startsWith(SYNTHETIC_IMAGE_RID_PREFIX));
-
 function collectNewImages(blocks: BlockContent[]): Image[] {
   const images: Image[] = [];
 
-  const collectFromRun = (run: { content: { type: string; image?: Image }[] }): void => {
+  const collectFromRun = (run: Run): void => {
     for (const c of run.content) {
-      if (c.type === "drawing" && c.image && isNewDataUrlImage(c.image)) {
+      if (isNewDataUrlDrawing(c)) {
         images.push(c.image);
       }
     }
