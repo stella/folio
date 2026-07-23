@@ -316,12 +316,14 @@ export type ShapeAttrs = {
     width?: number;
     height?: number;
     fillColor?: string;
+    fillColorValue?: import__stll_docx_core_model.ShapeFill["color"];
     fillType?: import__stll_docx_core_model.ShapeFill["type"];
     gradientType?: NonNullable<import__stll_docx_core_model.ShapeFill["gradient"]>["type"];
     gradientAngle?: number;
     gradientStops?: string;
     outlineWidth?: number;
     outlineColor?: string;
+    outlineColorValue?: import__stll_docx_core_model.ShapeOutline["color"];
     outlineStyle?: OutlineStyleAttr;
     outlineCap?: NonNullable<import__stll_docx_core_model.ShapeOutline["cap"]>;
     outlineHeadEnd?: NonNullable<import__stll_docx_core_model.ShapeOutline["headEnd"]>;
