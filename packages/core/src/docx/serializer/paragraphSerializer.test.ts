@@ -97,11 +97,47 @@ describe("serializeComplexField structural-run formatting round-trip", () => {
       </w:r>
     `);
     const field = fieldOf(original);
+    expect(field.fieldCode).toHaveLength(1);
+    expect(field.fieldCode[0]?.content).toEqual([{ type: "instrText", text: " PAGE " }]);
     expect(field.fieldResult).toHaveLength(0);
     expect(field.formatting).toEqual({ color: { rgb: "595959" }, fontSize: 14 });
 
-    const roundTripped = fieldOf(reparse(serializeParagraph(original)));
-    expect(roundTripped.formatting).toEqual(field.formatting);
+    const roundTripped = reparse(serializeParagraph(original));
+    expect(roundTripped).toEqual(original);
+    expect(reparse(serializeParagraph(roundTripped))).toEqual(roundTripped);
+  });
+
+  test("a field without a separator does not retain its closing marker as field code", () => {
+    const original = parseInner(`
+      <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+      <w:r><w:instrText xml:space="preserve"> INCLUDEPICTURE image.png </w:instrText></w:r>
+      <w:r><w:fldChar w:fldCharType="end"/></w:r>
+    `);
+    const field = fieldOf(original);
+
+    expect(field.fieldCode).toHaveLength(1);
+    expect(field.fieldCode[0]?.content).toEqual([
+      { type: "instrText", text: " INCLUDEPICTURE image.png " },
+    ]);
+
+    const roundTripped = reparse(serializeParagraph(original));
+    expect(roundTripped).toEqual(original);
+    expect(reparse(serializeParagraph(roundTripped))).toEqual(roundTripped);
+  });
+
+  test("an empty field does not gain a synthetic empty code run", () => {
+    const original = parseInner(`
+      <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+      <w:r><w:fldChar w:fldCharType="end"/></w:r>
+    `);
+    const field = fieldOf(original);
+
+    expect(field.instruction).toBe("");
+    expect(field.fieldCode).toHaveLength(0);
+
+    const roundTripped = reparse(serializeParagraph(original));
+    expect(roundTripped).toEqual(original);
+    expect(reparse(serializeParagraph(roundTripped))).toEqual(roundTripped);
   });
 
   test("a field with no run formatting keeps field.formatting undefined (never {})", () => {

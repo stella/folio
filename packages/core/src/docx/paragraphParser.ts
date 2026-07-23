@@ -1373,6 +1373,29 @@ function parseParagraphContents(
             complexFieldFormatting = run.formatting;
           }
 
+          // A single physical run may contain both the instruction text and
+          // structural begin/separate/end markers. Preserve only the content
+          // inside the code region: fieldCode owns authored code content, while
+          // the ComplexField serializer owns all structural markers.
+          let inFieldCodeRegion = !hasFieldBegin && !afterSeparator;
+          const fieldCodeContent: Run["content"] = [];
+          for (const content of run.content) {
+            if (content.type === "fieldChar") {
+              inFieldCodeRegion = content.charType === "begin";
+              continue;
+            }
+            if (inFieldCodeRegion) {
+              fieldCodeContent.push(content);
+            }
+          }
+          if (fieldCodeContent.length > 0) {
+            complexFieldCodeRuns.push(
+              fieldCodeContent.length === run.content.length
+                ? run
+                : { ...run, content: fieldCodeContent },
+            );
+          }
+
           if (hasFieldSeparate) {
             afterSeparator = true;
           }
@@ -1382,9 +1405,6 @@ function parseParagraphContents(
             if (!hasFieldSeparate) {
               complexFieldResultRuns.push(run);
             }
-          } else if (!afterSeparator && !hasFieldBegin) {
-            // Add to code runs
-            complexFieldCodeRuns.push(run);
           }
 
           if (hasFieldEnd) {
