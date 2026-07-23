@@ -363,16 +363,12 @@ function fillNeedsRawPreservation(fill: ShapeFill | undefined): boolean {
     return false;
   }
   if (fill.type === "solid") {
-    return colorNeedsRawPreservation(fill.color);
+    return false;
   }
   if (fill.type === "gradient") {
     return fill.gradient?.stops.some((stop) => colorNeedsRawPreservation(stop.color)) ?? false;
   }
   return false;
-}
-
-function outlineNeedsRawPreservation(outline: ShapeOutline | undefined): boolean {
-  return colorNeedsRawPreservation(outline?.color);
 }
 
 // ---------------------------------------------------------------------------
@@ -457,8 +453,7 @@ export function parseShapeFromDrawing(drawingEl: XmlElement): Shape | null {
     hasUnsupportedGeometry(spPr) ||
     hasUnsupportedRgbColorModifiers(spPr) ||
     hasUnmodeledFill(spPr) ||
-    fillNeedsRawPreservation(parseShapeFill(spPr)) ||
-    outlineNeedsRawPreservation(parseShapeOutline(spPr))
+    fillNeedsRawPreservation(parseShapeFill(spPr))
   ) {
     return null;
   }
@@ -466,10 +461,20 @@ export function parseShapeFromDrawing(drawingEl: XmlElement): Shape | null {
   const shape = parseShape(wsp);
 
   // The container's wp:extent supersedes spPr's a:ext when both exist.
+  // Word can author straight connectors with a zero outer dimension while
+  // keeping the actual line length in a:xfrm; retain that non-zero dimension.
   const extent = findChildByLocalName(container, "extent");
   if (extent) {
-    const cx = parseNumericAttribute(extent, null, "cx") ?? shape.size.width;
-    const cy = parseNumericAttribute(extent, null, "cy") ?? shape.size.height;
+    const outerWidth = parseNumericAttribute(extent, null, "cx");
+    const outerHeight = parseNumericAttribute(extent, null, "cy");
+    const cx =
+      outerWidth !== undefined && (outerWidth > 0 || shape.size.width === 0)
+        ? outerWidth
+        : shape.size.width;
+    const cy =
+      outerHeight !== undefined && (outerHeight > 0 || shape.size.height === 0)
+        ? outerHeight
+        : shape.size.height;
     shape.size = { width: cx, height: cy };
   }
 
@@ -525,8 +530,5 @@ export function shouldPreserveRawShapeDrawing(drawingEl: XmlElement): boolean {
   if (hasUnmodeledFill(spPr)) {
     return true;
   }
-  return (
-    fillNeedsRawPreservation(parseShapeFill(spPr)) ||
-    outlineNeedsRawPreservation(parseShapeOutline(spPr))
-  );
+  return fillNeedsRawPreservation(parseShapeFill(spPr));
 }

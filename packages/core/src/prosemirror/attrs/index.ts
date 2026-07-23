@@ -653,12 +653,14 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
   optionalNumber(attrs, "width", "shape.attrs.width", issues);
   optionalNumber(attrs, "height", "shape.attrs.height", issues);
   optionalString(attrs, "fillColor", "shape.attrs.fillColor", issues);
+  optionalColorValue(attrs, "fillColorValue", "shape.attrs.fillColorValue", issues);
   optionalOneOf(attrs, "fillType", "shape.attrs.fillType", issues, SHAPE_FILL_TYPES);
   optionalOneOf(attrs, "gradientType", "shape.attrs.gradientType", issues, SHAPE_GRADIENT_TYPES);
   optionalNumber(attrs, "gradientAngle", "shape.attrs.gradientAngle", issues);
   optionalGradientStops(attrs, "gradientStops", "shape.attrs.gradientStops", issues);
   optionalNumber(attrs, "outlineWidth", "shape.attrs.outlineWidth", issues);
   optionalString(attrs, "outlineColor", "shape.attrs.outlineColor", issues);
+  optionalColorValue(attrs, "outlineColorValue", "shape.attrs.outlineColorValue", issues);
   optionalOneOf(
     attrs,
     "outlineStyle",

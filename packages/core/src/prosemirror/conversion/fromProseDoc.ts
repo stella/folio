@@ -2321,7 +2321,7 @@ function createShapeRun(node: PMNode): Run {
   } else if (attrs.fillColor) {
     shape.fill = {
       type: attrs.fillType ?? "solid",
-      color: { rgb: attrs.fillColor.replace("#", "") },
+      color: attrs.fillColorValue ?? { rgb: attrs.fillColor.replace("#", "") },
     };
   } else if (attrs.fillType === "none") {
     shape.fill = { type: "none" };
@@ -2357,7 +2357,9 @@ function createShapeRun(node: PMNode): Run {
       shapeOutline.tailEnd = attrs.outlineTailEnd;
     }
     if (attrs.outlineColor) {
-      shapeOutline.color = { rgb: attrs.outlineColor.replace("#", "") };
+      shapeOutline.color = attrs.outlineColorValue ?? {
+        rgb: attrs.outlineColor.replace("#", ""),
+      };
     }
     shape.outline = shapeOutline;
   }

@@ -453,6 +453,8 @@ export type ShapeAttrs = {
   height?: number;
   /** Fill color as CSS color */
   fillColor?: string;
+  /** Authored OOXML fill color, retained when it references a theme slot. */
+  fillColorValue?: ShapeFill["color"];
   /** Fill type: none, solid, gradient, pattern, picture */
   fillType?: ShapeFill["type"];
   /** Gradient type: linear, radial, rectangular, path */
@@ -465,6 +467,8 @@ export type ShapeAttrs = {
   outlineWidth?: number;
   /** Outline color as CSS color */
   outlineColor?: string;
+  /** Authored OOXML outline color, retained when it references a theme slot. */
+  outlineColorValue?: ShapeOutline["color"];
   /** Outline dash style, or `"none"` for an explicit no-outline. */
   outlineStyle?: OutlineStyleAttr;
   /** Line cap */

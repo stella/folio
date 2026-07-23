@@ -51,6 +51,7 @@ import {
   mergeParagraphFormatting,
   mergeParagraphTabStops,
 } from "../../utils/paragraphFormattingMerge";
+import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { emuToPixels } from "../../utils/units";
 import { setAutospacingBaseValue } from "../autospacingBase";
@@ -2868,14 +2869,16 @@ function convertShape(shape: Shape): PMNode {
   const shapeAttrs: { shapeType?: Shape["shapeType"] } = shape;
 
   let fillColor: string | undefined;
+  let fillColorValue: NonNullable<Shape["fill"]>["color"] | undefined;
   let fillType: string = "solid";
   let gradientType: string | undefined;
   let gradientAngle: number | undefined;
   let gradientStops: string | undefined;
   if (shape.fill) {
     fillType = shape.fill.type;
-    if (shape.fill.color?.rgb) {
-      fillColor = `#${shape.fill.color.rgb}`;
+    if (shape.fill.color) {
+      fillColorValue = shape.fill.color;
+      fillColor = resolveColorValueToHex(shape.fill.color);
     }
     // Extract gradient data
     if (shape.fill.type === "gradient" && shape.fill.gradient) {
@@ -2894,6 +2897,7 @@ function convertShape(shape: Shape): PMNode {
 
   let outlineWidth: number | undefined;
   let outlineColor: string | undefined;
+  let outlineColorValue: NonNullable<Shape["outline"]>["color"] | undefined;
   let outlineStyle: string | undefined = "none";
   let outlineCap: NonNullable<Shape["outline"]>["cap"] | undefined;
   let outlineHeadEnd: NonNullable<Shape["outline"]>["headEnd"] | undefined;
@@ -2902,8 +2906,9 @@ function convertShape(shape: Shape): PMNode {
     if (shape.outline.width) {
       outlineWidth = Math.round((shape.outline.width / 914_400) * 96 * 100) / 100;
     }
-    if (shape.outline.color?.rgb) {
-      outlineColor = `#${shape.outline.color.rgb}`;
+    if (shape.outline.color) {
+      outlineColorValue = shape.outline.color;
+      outlineColor = resolveColorValueToHex(shape.outline.color);
     }
     outlineStyle = shape.outline.style || "solid";
     outlineCap = shape.outline.cap;
@@ -2967,12 +2972,14 @@ function convertShape(shape: Shape): PMNode {
     width: widthPx,
     height: heightPx,
     fillColor,
+    fillColorValue,
     fillType,
     gradientType,
     gradientAngle,
     gradientStops,
     outlineWidth,
     outlineColor,
+    outlineColorValue,
     outlineStyle,
     outlineCap,
     outlineHeadEnd,

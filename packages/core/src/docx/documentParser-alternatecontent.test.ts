@@ -7,6 +7,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type { MediaFile, RelationshipMap } from "../types/document";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { parseDocumentBody } from "./documentParser";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -36,6 +38,69 @@ const textBoxDrawingXml = (text: string) => `
   </w:drawing>`;
 
 describe("parseDocumentBody — AlternateContent text boxes", () => {
+  test("parses theme-coloured straight connectors as editable shapes", () => {
+    const body = parseDocumentBody(`${XML_DECLARATION}
+<w:document
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+  <w:body><w:p><w:r><mc:AlternateContent>
+    <mc:Choice Requires="wps"><w:drawing><wp:anchor>
+      <wp:extent cx="0" cy="25400"/>
+      <wp:positionH relativeFrom="column"><wp:posOffset>1</wp:posOffset></wp:positionH>
+      <wp:positionV relativeFrom="paragraph"><wp:posOffset>190500</wp:posOffset></wp:positionV>
+      <wp:wrapNone/>
+      <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+        <wps:wsp><wps:spPr>
+          <a:xfrm><a:off x="2323400" y="3780000"/><a:ext cx="6045200" cy="0"/></a:xfrm>
+          <a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom>
+          <a:noFill/>
+          <a:ln w="25400"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:ln>
+        </wps:spPr></wps:wsp>
+      </a:graphicData></a:graphic>
+    </wp:anchor></w:drawing></mc:Choice>
+    <mc:Fallback><w:drawing/></mc:Fallback>
+  </mc:AlternateContent></w:r></w:p></w:body>
+</w:document>`);
+
+    const paragraph = body.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    const shape = paragraph.content
+      .filter((content) => content.type === "run")
+      .flatMap((run) => run.content)
+      .find((content) => content.type === "shape");
+
+    expect(shape?.type).toBe("shape");
+    if (shape?.type !== "shape") {
+      throw new Error("Expected editable shape");
+    }
+    expect(shape.shape).toMatchObject({
+      shapeType: "straightConnector1",
+      size: { width: 6_045_200, height: 25_400 },
+      outline: {
+        color: { themeColor: "accent1" },
+        width: 25_400,
+      },
+    });
+
+    const converted = fromProseDoc(toProseDoc({ package: { document: body } }));
+    const convertedParagraph = converted.package.document.content.at(0);
+    if (convertedParagraph?.type !== "paragraph") {
+      throw new Error("Expected converted paragraph");
+    }
+    const convertedShape = convertedParagraph.content
+      .filter((content) => content.type === "run")
+      .flatMap((run) => run.content)
+      .find((content) => content.type === "shape");
+    expect(
+      convertedShape?.type === "shape" ? convertedShape.shape.outline?.color : undefined,
+    ).toEqual({ themeColor: "accent1" });
+  });
+
   test("prefers a renderable grouped Choice over a flattened fallback picture", () => {
     const rels: RelationshipMap = new Map([
       [

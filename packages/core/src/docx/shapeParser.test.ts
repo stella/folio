@@ -165,7 +165,7 @@ describe("parseShapeFromDrawing — fill", () => {
     });
   });
 
-  test("theme-colour shapes are preserved as raw drawings until attrs carry ColorValue", () => {
+  test("captures theme-colour shape fills for editable round-trips", () => {
     const root = parseXmlDocument(
       drawingWith(
         buildSpPr({
@@ -174,8 +174,11 @@ describe("parseShapeFromDrawing — fill", () => {
         }),
       ),
     );
-    expect(root ? shouldPreserveRawShapeDrawing(root) : false).toBe(true);
-    expect(root ? parseShapeFromDrawing(root) : null).toBeNull();
+    expect(root ? shouldPreserveRawShapeDrawing(root) : false).toBe(false);
+    expect(root ? parseShapeFromDrawing(root)?.fill : undefined).toEqual({
+      type: "solid",
+      color: { themeColor: "accent1" },
+    });
   });
 
   test("RGB colours with alpha modifiers are preserved as raw drawings", () => {
