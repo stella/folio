@@ -233,6 +233,18 @@ describe("VML w:pict inline images", () => {
     expect(zip.file("word/media/image1.png")).not.toBeNull();
   });
 
+  test("keeps captured VML XML stable after save and reopen", async () => {
+    const doc = await parseDocx(await pictDocx({ runXml: PICT_WITH_IMAGE }), {
+      preloadFonts: false,
+    });
+    const rawXml = firstDrawing(doc.package.document.content.at(0))?.rawXml;
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    const reopened = await parseDocx(out, { preloadFonts: false });
+
+    expect(firstDrawing(reopened.package.document.content.at(0))?.rawXml).toBe(rawXml);
+  });
+
   test("parses an embedded object's VML preview with its authored dimensions", async () => {
     const doc = await parseDocx(await pictDocx({ runXml: OBJECT_WITH_PREVIEW }), {
       preloadFonts: false,

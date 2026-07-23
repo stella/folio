@@ -979,19 +979,92 @@ export function mergeXmlnsDeclarations(
   return inherited;
 }
 
+const QNAME_VALUE_ATTRIBUTES = new Set([
+  "Ignorable",
+  "PreserveAttributes",
+  "PreserveElements",
+  "ProcessContent",
+  "Requires",
+]);
+
+const addPrefix = (name: string, prefixes: Set<string>): void => {
+  const separatorIndex = name.indexOf(":");
+  if (separatorIndex > 0) {
+    prefixes.add(name.slice(0, separatorIndex));
+  }
+};
+
 /**
- * Return a shallow clone of `element` whose attributes carry every declaration
- * in `xmlnsDecls`. Existing attributes (including any namespace declarations the
- * element already carries) win over the injected ones.
+ * Collect namespace prefixes whose bindings a detached raw subtree needs.
+ *
+ * Element and attribute names use prefixes directly. Markup-compatibility and
+ * QName-valued attributes can also refer to prefixes in their values, so keep
+ * those bindings even when no descendant name uses them.
+ */
+const collectUsedNamespacePrefixes = (
+  element: XmlElement,
+  prefixes = new Set<string>(),
+): Set<string> => {
+  if (element.name) {
+    if (element.name.includes(":")) {
+      addPrefix(element.name, prefixes);
+    } else {
+      prefixes.add("");
+    }
+  }
+
+  if (element.attributes) {
+    for (const [name, value] of Object.entries(element.attributes)) {
+      if (name === "xmlns" || name.startsWith("xmlns:")) {
+        continue;
+      }
+      addPrefix(name, prefixes);
+      const localName = name.slice(name.indexOf(":") + 1);
+      if (name !== "xsi:type" && !QNAME_VALUE_ATTRIBUTES.has(localName)) {
+        continue;
+      }
+      for (const token of String(value).split(/\s+/u)) {
+        const separatorIndex = token.indexOf(":");
+        prefixes.add(separatorIndex > 0 ? token.slice(0, separatorIndex) : token);
+      }
+    }
+  }
+
+  if (element.elements) {
+    for (const child of element.elements) {
+      if (child.type === "element") {
+        collectUsedNamespacePrefixes(child, prefixes);
+      }
+    }
+  }
+  return prefixes;
+};
+
+/**
+ * Return a shallow clone of `element` carrying the inherited namespace
+ * declarations needed by its raw subtree.
+ *
+ * Existing declarations retain their authored order. Only missing, referenced
+ * bindings are appended, which makes repeated detach/replay cycles idempotent
+ * even when the surrounding document declares a different namespace superset.
  */
 export function cloneWithXmlnsDeclarations(
   element: XmlElement,
   xmlnsDecls: Record<string, string>,
 ): XmlElement {
-  for (const _key in xmlnsDecls) {
+  const prefixes = collectUsedNamespacePrefixes(element);
+  const additions: Record<string, string> = {};
+  const attributes = element.attributes ?? {};
+  for (const [name, value] of Object.entries(xmlnsDecls)) {
+    const prefix = name === "xmlns" ? "" : name.slice("xmlns:".length);
+    if (prefixes.has(prefix) && attributes[name] === undefined) {
+      additions[name] = value;
+    }
+  }
+  for (const _key in additions) {
     return {
       ...element,
-      attributes: { ...xmlnsDecls, ...element.attributes },
+      attributes: { ...attributes, ...additions },
     };
   }
   return element;
