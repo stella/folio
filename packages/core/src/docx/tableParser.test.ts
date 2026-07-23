@@ -4,6 +4,7 @@ import {
   serializeTableCellFormatting,
   serializeTableRowFormatting,
 } from "./serializer/tableSerializer";
+import { parseBlockContent } from "./blockContentParser";
 import {
   parseTable,
   parseTableCellProperties,
@@ -18,7 +19,11 @@ function parseTableXml(xml: string) {
   if (!root) {
     throw new Error("Failed to parse table XML");
   }
-  return parseTable(root, null, null, null, null, new Map());
+  const table = parseTable(root, null, null, null, null, new Map());
+  if (!table) {
+    throw new Error("Expected a table with at least one row");
+  }
+  return table;
 }
 
 const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
@@ -37,6 +42,20 @@ describe("parseTableMeasurement", () => {
 
   test("keeps canonical pct integers unchanged", () => {
     expect(tblW("5000")).toEqual({ value: 5000, type: "pct" });
+  });
+});
+
+describe("rowless tables", () => {
+  test("omits a placeholder table instead of creating an invalid model", () => {
+    const root = parseXmlDocument(`<w:body ${NS}>
+      <w:p><w:r><w:t>before</w:t></w:r></w:p>
+      <w:tbl><w:tblPr/></w:tbl>
+      <w:p><w:r><w:t>after</w:t></w:r></w:p>
+    </w:body>`) as XmlElement;
+
+    expect(
+      parseBlockContent(root, null, null, null, null, new Map()).map(({ type }) => type),
+    ).toEqual(["paragraph", "paragraph"]);
   });
 });
 

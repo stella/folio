@@ -374,6 +374,9 @@ const parseBlockContentWithState = (
 
     if (localName === "tbl") {
       const table = parseTable(child, styles, theme, numbering, rels, media, state.options);
+      if (!table) {
+        continue;
+      }
       if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
         pendingBookmarkMarkers.length = 0;
       }

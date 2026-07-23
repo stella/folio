@@ -156,7 +156,7 @@ export type TableParserFn = (
   numbering: NumberingMap | null,
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
-) => Table;
+) => Table | undefined;
 
 /**
  * Parse text box content with provided parser functions
@@ -189,7 +189,10 @@ export function parseTextBoxContent(
       const paragraph = parseParagraph(child, styles, theme, numbering, rels, media);
       blocks.push(paragraph);
     } else if (localName === "tbl" && parseTable) {
-      blocks.push(parseTable(child, styles, theme, numbering, rels, media));
+      const table = parseTable(child, styles, theme, numbering, rels, media);
+      if (table) {
+        blocks.push(table);
+      }
     }
   }
 
