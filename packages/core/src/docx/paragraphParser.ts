@@ -272,7 +272,7 @@ function parseTabStops(tabs: XmlElement | null): TabStop[] | undefined {
       };
 
       const leader = narrowEnum(getAttribute(tab, "w", "leader"), TabLeaderSchema);
-      if (leader) {
+      if (leader && leader !== "none") {
         tabStop.leader = leader;
       }
 

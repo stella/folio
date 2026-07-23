@@ -287,6 +287,30 @@ describe("parseParagraph whitespace normalization", () => {
   });
 });
 
+describe("parseParagraph tab leader normalization", () => {
+  test("normalizes the default leader to a save/reopen fixed point", () => {
+    const parsed = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:pPr>
+          <w:tabs>
+            <w:tab w:val="left" w:pos="720" w:leader="none"/>
+            <w:tab w:val="right" w:pos="1440" w:leader="dot"/>
+          </w:tabs>
+        </w:pPr>
+        <w:r><w:t>text</w:t></w:r>
+      </w:p>
+    `);
+
+    expect(parsed.formatting.tabs).toEqual([
+      { position: 720, alignment: "left" },
+      { position: 1440, alignment: "right", leader: "dot" },
+    ]);
+
+    const serialized = serializeParagraph(parsed);
+    expect(parseParagraphXml(serialized)).toEqual(parsed);
+  });
+});
+
 describe("parseParagraph rendered page break markers", () => {
   test("marks a paragraph when Word rendered-page-break appears before visible text", () => {
     const paragraph = parseParagraphXml(`

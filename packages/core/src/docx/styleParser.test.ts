@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { serializeStylesXml } from "./serializer/stylesSerializer";
 import { parseStyleDefinitions, parseStyles } from "./styleParser";
 
 const STYLES_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
@@ -40,6 +41,33 @@ describe("docDefaults presence (#909)", () => {
       eastAsia: "ja-JP",
       bidi: "ar-SA",
     });
+  });
+});
+
+describe("style tab leader normalization", () => {
+  test("normalizes the default leader to a save/reopen fixed point", () => {
+    const parsed = parseStyleDefinitions(
+      `<w:styles ${STYLES_NS}>
+        <w:docDefaults><w:pPrDefault><w:pPr/></w:pPrDefault></w:docDefaults>
+        <w:style w:type="paragraph" w:styleId="BodyText">
+          <w:name w:val="Body Text"/>
+          <w:pPr>
+            <w:tabs>
+              <w:tab w:val="left" w:pos="720" w:leader="none"/>
+              <w:tab w:val="right" w:pos="1440" w:leader="dot"/>
+            </w:tabs>
+          </w:pPr>
+        </w:style>
+      </w:styles>`,
+      null,
+    );
+
+    expect(parsed.styles.at(0)?.pPr?.tabs).toEqual([
+      { position: 720, alignment: "left" },
+      { position: 1440, alignment: "right", leader: "dot" },
+    ]);
+
+    expect(parseStyleDefinitions(serializeStylesXml(parsed), null)).toEqual(parsed);
   });
 });
 
