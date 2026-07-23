@@ -1275,6 +1275,7 @@ export type TextFormatting = {
         hAnsi?: string;
         eastAsia?: string;
         cs?: string;
+        hint?: "default" | "eastAsia" | "cs";
         asciiTheme?: "majorAscii" | "majorHAnsi" | "majorEastAsia" | "majorBidi" | "minorAscii" | "minorHAnsi" | "minorEastAsia" | "minorBidi";
         hAnsiTheme?: string;
         eastAsiaTheme?: string;
