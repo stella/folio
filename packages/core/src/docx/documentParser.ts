@@ -26,6 +26,7 @@ import { parseBlockContent } from "./blockContentParser";
 import type { NumberingMap } from "./numberingParser";
 import { getParagraphText } from "./paragraphParser";
 import { parseSectionProperties, getDefaultSectionProperties } from "./sectionParser";
+import { parseStreamingXml } from "./streamingXmlParser";
 import type { StyleMap } from "./styleParser";
 import { parseXml, findChild, collectXmlnsDeclarations } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -209,7 +210,8 @@ export function parseDocumentBody(
   }
 
   // Parse XML
-  const doc = parseXml(xml);
+  const streamed = parseStreamingXml(xml);
+  const doc = streamed.status === "parsed" ? streamed.value : parseXml(xml);
 
   // Find root document element (w:document)
   const documentEl = (doc.elements ?? []).find(
