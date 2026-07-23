@@ -484,6 +484,11 @@ export function serializeTableRowFormatting(
   const parts: string[] = [];
 
   if (formatting) {
+    const cnfStyleXml = serializeConditionalFormatStyle(formatting.conditionalFormat);
+    if (cnfStyleXml) {
+      parts.push(cnfStyleXml);
+    }
+
     if (formatting.gridBefore) {
       parts.push(`<w:gridBefore w:val="${intAttr(formatting.gridBefore)}"/>`);
     }
