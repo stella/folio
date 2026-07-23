@@ -38,10 +38,13 @@ describe("parseStreamingXml", () => {
   });
 
   test("falls back for declarations and malformed nesting outside its contract", () => {
+    const deeplyNested = `<document>${"<x>".repeat(101)}value${"</x>".repeat(101)}</document>`;
+
     expect(parseStreamingXml("<!DOCTYPE document><document/>").status).toBe("unsupported");
     expect(parseStreamingXml("<document><body></document>").status).toBe("unsupported");
     expect(parseStreamingXml("<document>&custom;</document>").status).toBe("unsupported");
     expect(parseStreamingXml('<document __proto__="unsafe"/>').status).toBe("unsupported");
+    expect(parseStreamingXml(deeplyNested).status).toBe("unsupported");
   });
 
   test("matches entity and line-ending behavior for generated values", () => {
