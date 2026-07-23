@@ -2580,6 +2580,7 @@ function convertImage(image: Image, rawXml?: string): PMNode {
 
   return schema.node("image", {
     src: image.src || "",
+    docPrName: image.docPrName,
     alt: image.alt,
     title: image.title,
     width: widthPx,

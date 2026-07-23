@@ -280,6 +280,7 @@ export type ImagePositionAttrs = {
  */
 export type ImageAttrs = {
   src: string;
+  docPrName?: string;
   alt?: string;
   title?: string;
   /** Width in pixels (already converted from EMU) */

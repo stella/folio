@@ -2149,10 +2149,13 @@ function createImageRun(node: PMNode): Run {
     },
     wrap,
   };
-  if (attrs.alt) {
+  if (attrs.docPrName != null) {
+    image.docPrName = attrs.docPrName;
+  }
+  if (attrs.alt != null) {
     image.alt = attrs.alt;
   }
-  if (attrs.title) {
+  if (attrs.title != null) {
     image.title = attrs.title;
   }
 

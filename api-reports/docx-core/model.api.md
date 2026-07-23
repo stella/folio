@@ -388,6 +388,7 @@ type Image_2 = {
     src?: string;
     mimeType?: string;
     filename?: string;
+    docPrName?: string;
     alt?: string;
     title?: string;
     size: ImageSize;

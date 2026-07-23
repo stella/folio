@@ -528,6 +528,7 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   expectNodeType(node, "image", issues);
 
   requiredString(attrs, "src", "image.attrs.src", issues);
+  optionalString(attrs, "docPrName", "image.attrs.docPrName", issues);
   optionalString(attrs, "alt", "image.attrs.alt", issues);
   optionalString(attrs, "title", "image.attrs.title", issues);
   optionalString(attrs, "rId", "image.attrs.rId", issues);
