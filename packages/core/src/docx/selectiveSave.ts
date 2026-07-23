@@ -10,11 +10,13 @@
 
 import type JSZip from "jszip";
 
+import type { Run } from "../types/content";
 import type { Document, BlockContent, Comment } from "../types/document";
 import { parseCommentsExtended, type CommentExtendedInfo } from "./commentParser";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { validateFolioDocumentModel } from "./modelValidation";
+import { isNewDataUrlDrawing } from "./newImage";
 import { parseNumbering } from "./numberingParser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { isPreservableDocxEntry } from "./unzip";
@@ -48,23 +50,13 @@ import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 
-const SYNTHETIC_IMAGE_RID_PREFIX = "rId_img_";
-
 /**
  * Check if document content has new images (data: URL without rId) or
  * new hyperlinks (href without rId). Combined into a single traversal
  * to avoid walking the block tree twice.
  */
 function hasNewImagesOrHyperlinks(blocks: BlockContent[]): boolean {
-  const runHasNewImage = (run: {
-    content: { type: string; image?: { src?: string; rId?: string } }[];
-  }): boolean =>
-    run.content.some(
-      (c) =>
-        c.type === "drawing" &&
-        c.image?.src?.startsWith("data:") === true &&
-        (!c.image.rId || c.image.rId.startsWith(SYNTHETIC_IMAGE_RID_PREFIX)),
-    );
+  const runHasNewImage = (run: Run): boolean => run.content.some(isNewDataUrlDrawing);
 
   for (const block of blocks) {
     if (block.type === "paragraph") {

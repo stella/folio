@@ -307,6 +307,32 @@ describe("VML w:pict inline images", () => {
     expect(drawing?.rawXml).toContain("<w:pict");
   });
 
+  test("does not package a raw VML preview as a new image", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:rect style="width:1in;height:.5in" fillcolor="black"/></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    const rawXml = drawing?.rawXml;
+
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    expect(drawing?.image.rId).toBe("");
+
+    const zip = await JSZip.loadAsync(out);
+    const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    expect(rels).not.toContain(`Type="${RELATIONSHIP_TYPES.image}"`);
+    expect(Object.keys(zip.files).some((path) => path.startsWith("word/media/"))).toBe(false);
+
+    const reopened = await parseDocx(out, { preloadFonts: false });
+    const reopenedDrawing = firstDrawing(reopened.package.document.content.at(0));
+    expect(reopenedDrawing?.image.rId).toBe("");
+    expect(reopenedDrawing?.rawXml).toBe(rawXml);
+  });
+
   test("renders bounded rectangle and line children from a positioned VML group", async () => {
     const doc = await parseDocx(
       await pictDocx({
