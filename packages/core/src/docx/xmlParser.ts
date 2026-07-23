@@ -223,7 +223,12 @@ export function parseXmlDocument(xml: string): XmlElement | null {
     // The root is typically the declaration + elements array
     if (parsed.elements && parsed.elements.length > 0) {
       // Return the first real element (skip declarations)
-      return parsed.elements.find((e) => e.type === "element") ?? null;
+      for (const element of parsed.elements) {
+        if (element.type === "element") {
+          return element;
+        }
+      }
+      return null;
     }
 
     return parsed;
@@ -277,22 +282,14 @@ function hasLocalName(name: string | undefined, localName: string): boolean {
  * @param namespace - Namespace prefix (e.g., "w", "a")
  * @param localName - Local element name (e.g., "p", "r")
  */
-export function matchesName(element: XmlElement, namespace: string, localName: string): boolean {
+export function matchesName(element: XmlElement, _namespace: string, localName: string): boolean {
   if (!element.name) {
     return false;
   }
 
-  const fullName = `${namespace}:${localName}`;
-  if (element.name === fullName) {
-    return true;
-  }
-
-  // Also check just the local name if no namespace prefix in element
-  if (hasLocalName(element.name, localName)) {
-    return true;
-  }
-
-  return false;
+  // Namespace prefixes are aliases, so preserve the existing any-prefix
+  // compatibility without allocating a canonical qualified name.
+  return hasLocalName(element.name, localName);
 }
 
 /**
@@ -305,25 +302,20 @@ export function matchesName(element: XmlElement, namespace: string, localName: s
  */
 export function findChild(
   parent: XmlElement | null | undefined,
-  namespace: string,
+  _namespace: string,
   localName: string,
 ): XmlElement | null {
   if (!parent || !parent.elements) {
     return null;
   }
 
-  const fullName = `${namespace}:${localName}`;
-
   for (const child of parent.elements) {
     if (child.type !== "element") {
       continue;
     }
 
-    if (child.name === fullName) {
-      return child;
-    }
-
-    // Check local name match
+    // Namespace prefixes are aliases, so this recognizes the canonical,
+    // alternate-prefix, and unprefixed forms in one allocation-free check.
     if (hasLocalName(child.name, localName)) {
       return child;
     }
@@ -342,14 +334,13 @@ export function findChild(
  */
 export function findChildren(
   parent: XmlElement | null | undefined,
-  namespace: string,
+  _namespace: string,
   localName: string,
 ): XmlElement[] {
   if (!parent || !parent.elements) {
     return [];
   }
 
-  const fullName = `${namespace}:${localName}`;
   const results: XmlElement[] = [];
 
   for (const child of parent.elements) {
@@ -357,7 +348,7 @@ export function findChildren(
       continue;
     }
 
-    if (child.name === fullName || hasLocalName(child.name, localName)) {
+    if (hasLocalName(child.name, localName)) {
       results.push(child);
     }
   }
@@ -408,9 +399,13 @@ export function findChildrenByLocalName(
     return [];
   }
 
-  return parent.elements.filter(
-    (child) => child.type === "element" && hasLocalName(child.name, localName),
-  );
+  const results: XmlElement[] = [];
+  for (const child of parent.elements) {
+    if (child.type === "element" && hasLocalName(child.name, localName)) {
+      results.push(child);
+    }
+  }
+  return results;
 }
 
 /**
@@ -450,7 +445,13 @@ export function getChildElements(parent: XmlElement | null | undefined): XmlElem
   if (!parent || !parent.elements) {
     return [];
   }
-  return parent.elements.filter((child) => child.type === "element");
+  const results: XmlElement[] = [];
+  for (const child of parent.elements) {
+    if (child.type === "element") {
+      results.push(child);
+    }
+  }
+  return results;
 }
 
 /**
@@ -554,10 +555,13 @@ export function getAttributeAnyPrefix(
   // similar stay empty and tag-keyed lookups break.
   const attrs = element.attributes;
   if (attrs) {
-    const suffix = `:${localName}`;
-    for (const [key, value] of Object.entries(attrs as Record<string, string>)) {
-      if (key === localName || key.endsWith(suffix)) {
-        return value;
+    for (const key in attrs) {
+      if (hasLocalName(key, localName)) {
+        const value = attrs[key];
+        if (value === undefined) {
+          return null;
+        }
+        return typeof value === "string" ? value : String(value);
       }
     }
   }
