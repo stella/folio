@@ -30,6 +30,7 @@ import type { StyleMap } from "./styleParser";
 import {
   getAttribute,
   getChildElements,
+  getLocalName,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
 } from "./xmlParser";
@@ -38,17 +39,6 @@ import type { XmlElement } from "./xmlParser";
 // ============================================================================
 // HYPERLINK PARSER
 // ============================================================================
-
-/**
- * Get the local name of an element (without namespace prefix)
- */
-function getLocalName(name: string | undefined): string {
-  if (!name) {
-    return "";
-  }
-  const colonIndex = name.indexOf(":");
-  return colonIndex !== -1 ? name.slice(colonIndex + 1) : name;
-}
 
 /**
  * Parse bookmark start (w:bookmarkStart)

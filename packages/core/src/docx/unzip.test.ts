@@ -115,6 +115,22 @@ describe("unzipDocx security limits", () => {
     expect(content.media.has("word/media/image1.png")).toBe(true);
   });
 
+  test("can keep unused XML in the source package without decompressing it", async () => {
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", "<Types />");
+    zip.file("word/document.xml", "<w:document />");
+    zip.file("customXml/item1.xml", "<data />");
+
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const fullContent = await unzipDocx(buffer);
+    const content = await unzipDocx(buffer, { extractAllXml: false });
+
+    expect(fullContent.allXml.get("customXml/item1.xml")).toBe("<data />");
+    expect(content.originalBuffer).toBe(buffer);
+    expect(content.allXml.has("customXml/item1.xml")).toBe(false);
+    expect(content.originalZip.file("customXml/item1.xml")).not.toBeNull();
+  });
+
   test("skips oversized raster media instead of rejecting the document", async () => {
     const zip = new JSZip();
     zip.file("[Content_Types].xml", "<Types />");

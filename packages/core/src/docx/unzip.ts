@@ -79,8 +79,34 @@ const DEFAULT_UNZIP_LIMITS: DocxUnzipLimits = {
   allowedMediaMimeTypes: DEFAULT_ALLOWED_MEDIA_MIME_TYPES,
 };
 
+const PARSED_XML_PARTS = new Set([
+  "[content_types].xml",
+  "_rels/.rels",
+  "docprops/app.xml",
+  "docprops/core.xml",
+  "docprops/custom.xml",
+  "word/_rels/document.xml.rels",
+  "word/_rels/fonttable.xml.rels",
+  "word/comments.xml",
+  "word/commentsextended.xml",
+  "word/commentsextensible.xml",
+  "word/document.xml",
+  "word/endnotes.xml",
+  "word/fonttable.xml",
+  "word/footnotes.xml",
+  "word/numbering.xml",
+  "word/settings.xml",
+  "word/styles.xml",
+  "word/theme/theme1.xml",
+]);
+
+const shouldExtractXmlPart = (path: string): boolean =>
+  PARSED_XML_PARTS.has(path) || path.startsWith("word/");
+
 export type DocxUnzipOptions = Partial<Omit<DocxUnzipLimits, "allowedMediaMimeTypes">> & {
   allowedMediaMimeTypes?: Iterable<string>;
+  /** Extract every XML part into allXml instead of only parts used by the parser. */
+  extractAllXml?: boolean;
   /** Password for Agile-encrypted .docx files (Office 2010+). */
   password?: string | undefined;
 };
@@ -103,6 +129,25 @@ type CentralDirectoryInfo = {
   offset: number;
   size: number;
 };
+
+type ExtractedEntry =
+  | {
+      type: "xml";
+      path: string;
+      lowerPath: string;
+      content: string;
+    }
+  | {
+      type: "media";
+      path: string;
+      mimeType: string;
+      content: ArrayBuffer;
+    }
+  | {
+      type: "font";
+      path: string;
+      content: ArrayBuffer;
+    };
 
 const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06_05_4b_50;
 const ZIP_CENTRAL_DIRECTORY_FILE_HEADER_SIGNATURE = 0x02_01_4b_50;
@@ -194,12 +239,16 @@ export async function unzipDocx(
     throw new DocxSecurityError("DOCX file exceeds the maximum allowed size");
   }
 
-  const zipBuffer = await openDocxBuffer(buffer, { password: options.password });
+  const containerType = detectDocxContainerType(buffer);
+  const zipBuffer =
+    containerType === DOCX_CONTAINER_TYPES.ZIP
+      ? buffer
+      : await openDocxBuffer(buffer, { password: options.password });
   if (zipBuffer.byteLength > limits.maxInputBytes) {
     throw new DocxSecurityError("DOCX file exceeds the maximum allowed size");
   }
 
-  const wasEncrypted = detectDocxContainerType(buffer) === DOCX_CONTAINER_TYPES.CFB;
+  const wasEncrypted = containerType === DOCX_CONTAINER_TYPES.CFB;
   const loaded = await loadDocxZip(zipBuffer, limits.maxFiles);
   if (loaded.buffer.byteLength > limits.maxInputBytes) {
     throw new DocxSecurityError("DOCX file exceeds the maximum allowed size");
@@ -243,8 +292,11 @@ export async function unzipDocx(
   };
 
   let totalUncompressedBytes = 0;
+  const extractionTasks: Promise<ExtractedEntry | null>[] = [];
 
-  // Process each file in the ZIP
+  // Validate the complete package before decompressing accepted entries. The
+  // extraction promises are awaited together so independent ZIP parts do not
+  // pay JSZip's scheduling overhead one at a time.
   for (const [path, file] of entries) {
     if (!isSafeDocxPath(path)) {
       throw new DocxSecurityError("DOCX file contains an unsafe entry path");
@@ -267,55 +319,15 @@ export async function unzipDocx(
     // Determine file type and extract
     if (lowerPath.endsWith(".xml") || lowerPath.endsWith(".rels")) {
       assertEntrySize(path, declaredSize, limits.maxXmlBytes);
-      // oxlint-disable-next-line no-await-in-loop -- entries share a running totalUncompressedBytes budget and write into ordered content maps
-      const xmlContent = await file.async("text");
-      assertExtractedSize(path, xmlContent.length, limits.maxXmlBytes);
-      content.allXml.set(path, xmlContent);
-
-      // Categorize known XML files
-      if (lowerPath === "word/document.xml") {
-        content.documentXml = xmlContent;
-      } else if (lowerPath === "word/styles.xml") {
-        content.stylesXml = xmlContent;
-      } else if (lowerPath === "word/theme/theme1.xml") {
-        content.themeXml = xmlContent;
-      } else if (lowerPath === "word/numbering.xml") {
-        content.numberingXml = xmlContent;
-      } else if (lowerPath === "word/fonttable.xml") {
-        content.fontTableXml = xmlContent;
-      } else if (lowerPath === "word/settings.xml") {
-        content.settingsXml = xmlContent;
-      } else if (lowerPath === "word/websettings.xml") {
-        content.webSettingsXml = xmlContent;
-      } else if (lowerPath === "word/footnotes.xml") {
-        content.footnotesXml = xmlContent;
-      } else if (lowerPath === "word/endnotes.xml") {
-        content.endnotesXml = xmlContent;
-      } else if (lowerPath === "word/comments.xml") {
-        content.commentsXml = xmlContent;
-      } else if (lowerPath === "word/commentsextensible.xml") {
-        content.commentsExtensibleXml = xmlContent;
-      } else if (lowerPath === "word/commentsextended.xml") {
-        content.commentsExtendedXml = xmlContent;
-      } else if (lowerPath === "word/_rels/document.xml.rels") {
-        content.documentRels = xmlContent;
-      } else if (lowerPath === "_rels/.rels") {
-        content.packageRels = xmlContent;
-      } else if (lowerPath === "[content_types].xml") {
-        content.contentTypesXml = xmlContent;
-      } else if (lowerPath === "docprops/core.xml") {
-        content.corePropsXml = xmlContent;
-      } else if (lowerPath === "docprops/app.xml") {
-        content.appPropsXml = xmlContent;
-      } else if (lowerPath === "docprops/custom.xml") {
-        content.customPropsXml = xmlContent;
-      } else if (/^word\/header[^/]*\.xml$/u.test(lowerPath)) {
-        const filename = path.split("/").pop() || path;
-        content.headers.set(filename, xmlContent);
-      } else if (/^word\/footer[^/]*\.xml$/u.test(lowerPath)) {
-        const filename = path.split("/").pop() || path;
-        content.footers.set(filename, xmlContent);
+      if (options.extractAllXml === false && !shouldExtractXmlPart(lowerPath)) {
+        continue;
       }
+      extractionTasks.push(
+        file.async("text").then((xmlContent) => {
+          assertExtractedSize(path, xmlContent.length, limits.maxXmlBytes);
+          return { type: "xml", path, lowerPath, content: xmlContent };
+        }),
+      );
     } else if (lowerPath.startsWith("word/media/")) {
       // Media files (images, etc.)
       const mimeType = getMediaMimeType(path);
@@ -328,34 +340,104 @@ export async function unzipDocx(
         );
         continue;
       }
-      // oxlint-disable-next-line no-await-in-loop -- entries share a running totalUncompressedBytes budget and write into ordered content maps
-      const binaryContent = await file.async("arraybuffer");
-      if (binaryContent.byteLength > limits.maxMediaBytes) {
-        content.warnings.push(
-          `Skipped oversized media file: ${path}; original entry preserved for round-trip.`,
-        );
-        continue;
-      }
-      if (!isMediaContentAllowed(binaryContent, mimeType)) {
-        continue;
-      }
-      content.media.set(path, binaryContent);
+      extractionTasks.push(
+        file.async("arraybuffer").then((binaryContent) => {
+          if (binaryContent.byteLength > limits.maxMediaBytes) {
+            content.warnings.push(
+              `Skipped oversized media file: ${path}; original entry preserved for round-trip.`,
+            );
+            return null;
+          }
+          if (!isMediaContentAllowed(binaryContent, mimeType)) {
+            return null;
+          }
+          return { type: "media", path, mimeType, content: binaryContent };
+        }),
+      );
     } else if (lowerPath.startsWith("word/fonts/")) {
       // Embedded fonts are optional for editing and original ZIP preservation.
       // Skip oversized fonts instead of rejecting otherwise readable documents.
       if (isEntryTooLarge(declaredSize, limits.maxFontBytes)) {
         continue;
       }
-      // oxlint-disable-next-line no-await-in-loop -- entries share a running totalUncompressedBytes budget and write into ordered content maps
-      const binaryContent = await file.async("arraybuffer");
-      if (binaryContent.byteLength > limits.maxFontBytes) {
-        continue;
-      }
-      content.fonts.set(path, binaryContent);
+      extractionTasks.push(
+        file.async("arraybuffer").then((binaryContent) => {
+          if (binaryContent.byteLength > limits.maxFontBytes) {
+            return null;
+          }
+          return { type: "font", path, content: binaryContent };
+        }),
+      );
     }
   }
 
+  for (const extracted of await Promise.all(extractionTasks)) {
+    if (!extracted) {
+      continue;
+    }
+    if (extracted.type === "xml") {
+      assignXmlContent(content, extracted);
+      continue;
+    }
+    if (extracted.type === "media") {
+      content.media.set(extracted.path, extracted.content);
+      continue;
+    }
+    content.fonts.set(extracted.path, extracted.content);
+  }
+
   return content;
+}
+
+function assignXmlContent(
+  content: RawDocxContent,
+  { path, lowerPath, content: xmlContent }: Extract<ExtractedEntry, { type: "xml" }>,
+): void {
+  content.allXml.set(path, xmlContent);
+
+  if (lowerPath === "word/document.xml") {
+    content.documentXml = xmlContent;
+  } else if (lowerPath === "word/styles.xml") {
+    content.stylesXml = xmlContent;
+  } else if (lowerPath === "word/theme/theme1.xml") {
+    content.themeXml = xmlContent;
+  } else if (lowerPath === "word/numbering.xml") {
+    content.numberingXml = xmlContent;
+  } else if (lowerPath === "word/fonttable.xml") {
+    content.fontTableXml = xmlContent;
+  } else if (lowerPath === "word/settings.xml") {
+    content.settingsXml = xmlContent;
+  } else if (lowerPath === "word/websettings.xml") {
+    content.webSettingsXml = xmlContent;
+  } else if (lowerPath === "word/footnotes.xml") {
+    content.footnotesXml = xmlContent;
+  } else if (lowerPath === "word/endnotes.xml") {
+    content.endnotesXml = xmlContent;
+  } else if (lowerPath === "word/comments.xml") {
+    content.commentsXml = xmlContent;
+  } else if (lowerPath === "word/commentsextensible.xml") {
+    content.commentsExtensibleXml = xmlContent;
+  } else if (lowerPath === "word/commentsextended.xml") {
+    content.commentsExtendedXml = xmlContent;
+  } else if (lowerPath === "word/_rels/document.xml.rels") {
+    content.documentRels = xmlContent;
+  } else if (lowerPath === "_rels/.rels") {
+    content.packageRels = xmlContent;
+  } else if (lowerPath === "[content_types].xml") {
+    content.contentTypesXml = xmlContent;
+  } else if (lowerPath === "docprops/core.xml") {
+    content.corePropsXml = xmlContent;
+  } else if (lowerPath === "docprops/app.xml") {
+    content.appPropsXml = xmlContent;
+  } else if (lowerPath === "docprops/custom.xml") {
+    content.customPropsXml = xmlContent;
+  } else if (/^word\/header[^/]*\.xml$/u.test(lowerPath)) {
+    const filename = path.split("/").pop() || path;
+    content.headers.set(filename, xmlContent);
+  } else if (/^word\/footer[^/]*\.xml$/u.test(lowerPath)) {
+    const filename = path.split("/").pop() || path;
+    content.footers.set(filename, xmlContent);
+  }
 }
 
 async function loadDocxZip(buffer: ArrayBuffer, maxFiles: number): Promise<LoadedZip> {
