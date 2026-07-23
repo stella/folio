@@ -382,8 +382,9 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
   if (props.titlePg) {
     parts.push("<w:titlePg/>");
   }
-  if (props.bidi) {
-    parts.push("<w:bidi/>");
+  const bidiXml = serializeOnOffElement(props.bidi, "bidi");
+  if (bidiXml) {
+    parts.push(bidiXml);
   }
   for (const xml of [
     serializeOnOffElement(props.formProtection, "formProt"),

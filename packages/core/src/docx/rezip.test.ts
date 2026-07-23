@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import type { Document, Image } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
-import { createDocx, DocxPackageFidelityError, repackDocx } from "./rezip";
+import { createDocx, createEmptyDocx, DocxPackageFidelityError, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -290,6 +290,29 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
 }
 
 describe("repackDocx", () => {
+  test("preserves an explicit false final-section bidi setting across save and reopen", async () => {
+    const sourceZip = await JSZip.loadAsync(await createEmptyDocx());
+    const documentFile = sourceZip.file("word/document.xml");
+    if (!documentFile) {
+      throw new Error("expected word/document.xml");
+    }
+    const documentXml = await documentFile.async("text");
+    const explicitLtrXml = documentXml.replace("</w:sectPr>", '<w:bidi w:val="0"/></w:sectPr>');
+    expect(explicitLtrXml).not.toBe(documentXml);
+    sourceZip.file("word/document.xml", explicitLtrXml);
+
+    const parsed = await parseDocx(await sourceZip.generateAsync({ type: "arraybuffer" }), {
+      preloadFonts: false,
+    });
+    expect(parsed.package.document.finalSectionProperties?.bidi).toBe(false);
+
+    const saved = await repackDocx(parsed, { updateModifiedDate: false });
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+
+    expect(reopened.package.document.finalSectionProperties?.bidi).toBe(false);
+    expect(reopened.package.document.sections?.at(-1)?.properties.bidi).toBe(false);
+  });
+
   test("preserves clickable image hyperlinks across full save and reopen", async () => {
     const parsed = await parseDocx(await createHyperlinkedImageFixture(), {
       preloadFonts: false,
