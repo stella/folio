@@ -614,7 +614,10 @@ function serializeDrawingColor(color: ColorValue | undefined): string {
 
 /** Serialize shape fill to DrawingML */
 function serializeFill(fill: ShapeFill | undefined): string {
-  if (!fill || fill.type === "none") {
+  if (!fill) {
+    return "";
+  }
+  if (fill.type === "none") {
     return "<a:noFill/>";
   }
   if (fill.type === "solid" && fill.color) {

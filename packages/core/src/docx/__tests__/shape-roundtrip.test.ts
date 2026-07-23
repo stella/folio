@@ -130,6 +130,38 @@ describe("shape parse → serialize round-trip", () => {
     expect(xml).toContain('<a:path path="circle"/>');
   });
 
+  test("distinguishes an absent fill from an explicit no-fill", () => {
+    const root = parseXmlDocument(shapeDrawingXml({ prst: "rect" }));
+    const shape = root ? parseShapeFromDrawing(root) : null;
+    expect(shape?.fill).toBeUndefined();
+    if (!shape) {
+      return;
+    }
+
+    const xml = serializeRun({
+      type: "run",
+      content: [{ type: "shape", shape }],
+    });
+    expect(xml).not.toContain("<a:noFill/>");
+
+    const reopenedRoot = parseXmlDocument(xml);
+    const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
+    const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
+    expect(reopenedShape?.fill).toBeUndefined();
+
+    const noFillRoot = parseXmlDocument(shapeDrawingXml({ prst: "rect", fill: "<a:noFill/>" }));
+    const noFillShape = noFillRoot ? parseShapeFromDrawing(noFillRoot) : null;
+    expect(noFillShape?.fill).toEqual({ type: "none" });
+    if (!noFillShape) {
+      return;
+    }
+    const noFillXml = serializeRun({
+      type: "run",
+      content: [{ type: "shape", shape: noFillShape }],
+    });
+    expect(noFillXml).toContain("<a:noFill/>");
+  });
+
   test("preserves anchored wrap type", () => {
     const root = parseXmlDocument(shapeDrawingXml({ prst: "rightArrow", anchor: true }));
     const shape = root ? parseShapeFromDrawing(root) : null;
