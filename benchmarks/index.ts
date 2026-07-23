@@ -21,8 +21,8 @@ type Group = {
 };
 
 const GROUPS: readonly Group[] = [
-  { name: "parse · DOCX → model (folio vs eigenpal vs mammoth)", make: parseBench },
-  { name: "serialize · model → DOCX (folio vs eigenpal)", make: serializeBench },
+  { name: "parse · DOCX → model (folio)", make: parseBench },
+  { name: "serialize · model → DOCX (folio)", make: serializeBench },
   { name: "markdown · model ↔ Markdown (folio)", make: markdownBench },
   { name: "line breaking · paragraph text → wrap offsets (folio)", make: lineBreakBench },
 ];

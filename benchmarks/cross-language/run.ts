@@ -1,7 +1,7 @@
 /**
  * Cross-language parse benchmark.
  *
- * Unlike the in-process tinybench suite (folio vs other JS libs, CodSpeed-gated),
+ * Unlike the in-process tinybench suite (folio-only, CodSpeed-gated),
  * this spawns each language's DOCX parser on the same fixtures, has each
  * self-time a parse loop, and tabulates the median per-parse time next to folio.
  * It answers "where does a JS DOCX parser sit beside native (Rust) and

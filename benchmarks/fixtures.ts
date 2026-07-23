@@ -64,17 +64,11 @@ export const FIXTURES: readonly Fixture[] = SPECS.map(loadFixture);
 /**
  * A fresh `ArrayBuffer` copy of the fixture bytes. Each parse iteration gets
  * its own copy so a parser that retains or transfers its input cannot affect
- * the next iteration, and so the copy cost is identical across the libraries
- * being compared.
+ * the next iteration.
  */
 export function freshArrayBuffer(fixture: Fixture): ArrayBuffer {
   const { buffer } = fixture;
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-}
-
-/** A fresh `Buffer` copy of the fixture bytes (for libraries that want a Node `Buffer`). */
-export function freshBuffer(fixture: Fixture): Buffer {
-  return Buffer.from(fixture.buffer);
 }
 
 /** Short "label (NN KB)" string for bench case names. */
