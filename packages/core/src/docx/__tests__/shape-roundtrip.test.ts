@@ -104,6 +104,31 @@ describe("shape parse → serialize round-trip", () => {
     expect(xml).toContain('<a:srgbClr val="5B9BD5"');
   });
 
+  test("preserves DrawingML background theme aliases through round-trip", () => {
+    const root = parseXmlDocument(
+      shapeDrawingXml({
+        prst: "rect",
+        fill: `<a:solidFill><a:schemeClr val="bg1"/></a:solidFill>`,
+      }),
+    );
+    const shape = root ? parseShapeFromDrawing(root) : null;
+    expect(shape?.fill?.color?.themeColor).toBe("background1");
+    if (!shape) {
+      return;
+    }
+
+    const xml = serializeRun({
+      type: "run",
+      content: [{ type: "shape", shape }],
+    });
+    expect(xml).toContain('<a:schemeClr val="bg1"/>');
+
+    const reopenedRoot = parseXmlDocument(xml);
+    const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
+    const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
+    expect(reopenedShape?.fill?.color?.themeColor).toBe("background1");
+  });
+
   test("preserves radial gradient path through round-trip", () => {
     const root = parseXmlDocument(
       shapeDrawingXml({
