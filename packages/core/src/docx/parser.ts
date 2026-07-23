@@ -43,6 +43,7 @@ import { parseCoreProperties } from "./corePropertiesParser";
 import { parseDocumentBody, extractAllTemplateVariables } from "./documentParser";
 import { parseFootnotes, parseEndnotes } from "./footnoteParser";
 import { parseHeader, parseFooter } from "./headerFooterParser";
+import { assignHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import { normalizeHeaderFooterReferences } from "./headerFooterReferenceNormalization";
 import {
   DocxModelValidationError,
@@ -649,6 +650,10 @@ function parseHeadersAndFooters(
               watermark.imageTarget = resolveRelativePath(headerRelsPath, imageRel.target);
             }
           }
+          // parseHeader fingerprints the modeled fields before the package-level
+          // image target can be resolved. Refresh it after adding that derived
+          // target so an untouched header remains eligible for verbatim replay.
+          assignHeaderFooterVerbatimXml(header, headerXml);
         }
         headers.set(rId, header);
       }

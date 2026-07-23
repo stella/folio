@@ -14,6 +14,7 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { getDocumentWatermark, setDocumentWatermark } from "../watermark";
+import { canReplayHeaderFooterVerbatim, getHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { createEmptyDocx, repackDocx, validateDocx } from "./rezip";
@@ -100,6 +101,33 @@ const countMediaImages = async (zip: JSZip): Promise<number> =>
   Object.keys(zip.files).filter((p) => /^word\/media\/image/u.test(p)).length;
 
 describe("picture watermark relationship rebinding (eigenpal #684)", () => {
+  test("keeps an untouched picture watermark header byte-stable after save and reopen", async () => {
+    const doc = await parseDocx(await twoHeaderPictureWatermarkDocx(), {
+      preloadFonts: false,
+    });
+    const header = doc.package.headers?.get("rId10");
+    expect(header).toBeDefined();
+    if (!header) {
+      return;
+    }
+    const sourceXml = getHeaderFooterVerbatimXml(header);
+
+    expect(sourceXml).toBeDefined();
+    expect(canReplayHeaderFooterVerbatim(header)).toBe(true);
+    const out = await repackDocx(doc, { updateModifiedDate: false });
+    const outZip = await JSZip.loadAsync(out);
+    expect(await outZip.file("word/header1.xml")?.async("text")).toBe(sourceXml);
+
+    const reopened = await parseDocx(out, { preloadFonts: false });
+    const reopenedHeader = reopened.package.headers?.get("rId10");
+    expect(reopenedHeader).toBeDefined();
+    if (!reopenedHeader) {
+      return;
+    }
+    expect(reopenedHeader.rawWatermarkXml).toBe(header.rawWatermarkXml);
+    expect(getHeaderFooterVerbatimXml(reopenedHeader)).toBe(sourceXml);
+  });
+
   test("setDocumentWatermark spans multiple headers without throwing and clones per header", async () => {
     const doc = await parseDocx(await twoHeaderPictureWatermarkDocx(), {
       preloadFonts: false,
