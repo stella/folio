@@ -1240,13 +1240,15 @@ function parseSimpleField(
     field.dirty = true;
   }
 
-  // Parse child runs (the display value)
+  // Parse display content without changing its authored field form.
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
   const children = getChildElements(node);
   for (const child of children) {
     const localName = getLocalName(child.name);
     if (localName === "r") {
       field.content.push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
+    } else if (localName === "hyperlink") {
+      field.content.push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns));
     }
   }
 

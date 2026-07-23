@@ -50,15 +50,13 @@ describe("inline SDT serialization round-trip", () => {
     const sdt = getInlineSdt(xml);
     expect(sdt.content[0].type).toBe("simpleField");
 
-    // Field lives inside the surviving SDT wrapper. folio's serializer
-    // emits simple fields in their complex-form fldChar equivalent for
-    // broader Word/Pages/Docs compatibility, so assert on the field
-    // instruction and result text rather than the literal element name.
+    // Field lives inside the surviving SDT wrapper and keeps its authored
+    // simple-field representation.
     const serialized = serializeParagraph(parseParagraphXml(xml));
     expect(serialized).toContain("<w:sdt>");
     expect(serialized).toContain("TITLE");
     expect(serialized).toContain("Cached title");
-    expect(serialized).toContain("<w:fldChar");
+    expect(serialized).toContain('<w:fldSimple w:instr="TITLE">');
   });
 
   test("preserves a complex field inside SDT content through parse → serialize", () => {
@@ -201,6 +199,6 @@ describe("inline SDT serialization round-trip", () => {
     const serialized = serializeParagraph(parseParagraphXml(xml));
     expect(serialized).toContain("Page ");
     expect(serialized).toContain("PAGE");
-    expect(serialized).toContain("<w:fldChar");
+    expect(serialized).toContain('<w:fldSimple w:instr="PAGE">');
   });
 });

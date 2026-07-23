@@ -122,6 +122,79 @@ describe("serializeComplexField structural-run formatting round-trip", () => {
   });
 });
 
+describe("serializeSimpleField structural round-trip", () => {
+  test("keeps an authored simple field simple", () => {
+    const namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const instruction = ' HYPERLINK "https://example.com/reference?x=1&y=2" ';
+    const source = parseXmlDocument(`
+      <w:p ${namespace}>
+        <w:fldSimple
+          w:instr=" HYPERLINK &quot;https://example.com/reference?x=1&amp;y=2&quot; "
+          w:fldLock="true"
+          w:dirty="true"
+        >
+          <w:r><w:rPr><w:i/></w:rPr><w:t>Reference</w:t></w:r>
+        </w:fldSimple>
+      </w:p>
+    `);
+    if (!source) {
+      throw new Error("failed to parse simple field fixture");
+    }
+    const original = parseParagraph(source, null, null, null, null, null);
+
+    const serialized = serializeParagraph(original);
+    expect(serialized).toContain("<w:fldSimple");
+    expect(serialized).not.toContain("<w:fldChar");
+    expect(serialized).toContain(
+      'w:instr=" HYPERLINK &quot;https://example.com/reference?x=1&amp;y=2&quot; "',
+    );
+
+    const reopenedSource = parseXmlDocument(
+      serialized.replace(/^<w:p(?=[\s>])/u, `<w:p ${namespace}`),
+    );
+    if (!reopenedSource) {
+      throw new Error("failed to reparse simple field fixture");
+    }
+    const reopened = parseParagraph(reopenedSource, null, null, null, null, null);
+    expect(reopened.content.at(0)).toEqual(original.content.at(0));
+    expect(reopened.content.at(0)).toMatchObject({
+      type: "simpleField",
+      instruction,
+      fldLock: true,
+      dirty: true,
+    });
+  });
+
+  test("keeps hyperlink display content inside a simple field", () => {
+    const namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const source = parseXmlDocument(`
+      <w:p ${namespace}>
+        <w:fldSimple w:instr="PAGE">
+          <w:hyperlink w:anchor="_page">
+            <w:r><w:t>1</w:t></w:r>
+          </w:hyperlink>
+        </w:fldSimple>
+      </w:p>
+    `);
+    if (!source) {
+      throw new Error("failed to parse hyperlink field fixture");
+    }
+    const original = parseParagraph(source, null, null, null, null, null);
+
+    const serialized = serializeParagraph(original);
+    const reopenedSource = parseXmlDocument(
+      serialized.replace(/^<w:p(?=[\s>])/u, `<w:p ${namespace}`),
+    );
+    if (!reopenedSource) {
+      throw new Error("failed to reparse hyperlink field fixture");
+    }
+    const reopened = parseParagraph(reopenedSource, null, null, null, null, null);
+    expect(serialized).toContain('<w:fldSimple w:instr="PAGE">');
+    expect(serialized).toContain('<w:hyperlink w:anchor="_page">');
+    expect(reopened.content.at(0)).toEqual(original.content.at(0));
+  });
+});
+
 describe("serializeParagraph tracked-change hardening", () => {
   test("serializes deletion runs using delText and delInstrText", () => {
     const paragraph: Paragraph = {
