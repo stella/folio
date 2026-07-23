@@ -206,4 +206,17 @@ describe("serializeSectionProperties", () => {
     expect(serialized).toContain('w:orient="portrait"');
     expect(parseSectPr(serialized).orientation).toBe("portrait");
   });
+
+  test("round-trips an explicit single-column count", () => {
+    const section = parseSectPr(`
+      <w:sectPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:cols w:num="1"/>
+      </w:sectPr>
+    `);
+
+    const serialized = serializeSectionProperties(section);
+
+    expect(serialized).toContain('w:num="1"');
+    expect(parseSectPr(serialized).columnCount).toBe(1);
+  });
 });
