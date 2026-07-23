@@ -67,8 +67,20 @@ describe("normalizeNumberingReferences", () => {
     expect(documentBody.comments?.at(0)?.content.at(0)?.formatting?.numPr).toBeUndefined();
   });
 
+  test("ignores negative list levels when numbering is explicitly disabled", async () => {
+    const buffer = await createNumberingReferenceFixture({ ilvl: -1, numId: 0 });
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    const block = doc.package.document.content.at(0);
+
+    expect(block?.type).toBe("paragraph");
+    if (block?.type !== "paragraph") {
+      throw new Error("Expected first block to be a paragraph");
+    }
+    expect(block.formatting?.numPr).toEqual({ numId: 0 });
+  });
+
   test("parses and saves documents that reference a missing numbering part", async () => {
-    const buffer = await createMissingNumberingReferenceFixture();
+    const buffer = await createNumberingReferenceFixture({ ilvl: 0, numId: 2 });
     const doc = await parseDocx(buffer, { preloadFonts: false });
     const block = doc.package.document.content.at(0);
 
@@ -98,7 +110,15 @@ describe("normalizeNumberingReferences", () => {
   });
 });
 
-const createMissingNumberingReferenceFixture = async (): Promise<ArrayBuffer> => {
+type NumberingReferenceFixtureOptions = {
+  ilvl: number;
+  numId: number;
+};
+
+const createNumberingReferenceFixture = async ({
+  ilvl,
+  numId,
+}: NumberingReferenceFixtureOptions): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -129,8 +149,8 @@ const createMissingNumberingReferenceFixture = async (): Promise<ArrayBuffer> =>
     <w:p>
       <w:pPr>
         <w:numPr>
-          <w:ilvl w:val="0"/>
-          <w:numId w:val="2"/>
+          <w:ilvl w:val="${ilvl}"/>
+          <w:numId w:val="${numId}"/>
         </w:numPr>
       </w:pPr>
       <w:r><w:t>Body</w:t></w:r>

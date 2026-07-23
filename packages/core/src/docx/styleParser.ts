@@ -66,6 +66,7 @@ import {
   getAttribute,
   getLocalName,
   parseBooleanElement,
+  parseNumberingLevelAttribute,
   parseNumericAttribute,
   parseTableMeasurementValue,
 } from "./xmlParser";
@@ -750,7 +751,7 @@ function parseParagraphProperties(
         }
       }
       if (ilvl) {
-        const val = parseNumericAttribute(ilvl, "w", "val");
+        const val = parseNumberingLevelAttribute(ilvl);
         if (val !== undefined) {
           formatting.numPr.ilvl = val;
         }

@@ -744,6 +744,20 @@ export function parseNumericAttribute(
 }
 
 /**
+ * Parse a zero-based numbering level reference.
+ *
+ * OOXML numbering levels cannot be negative. Some producers emit negative
+ * sentinel values alongside `w:numId="0"` to disable numbering; treat those
+ * as an omitted level instead of leaking an invalid value into the model.
+ */
+export function parseNumberingLevelAttribute(
+  element: XmlElement | null | undefined,
+): number | undefined {
+  const level = parseNumericAttribute(element, "w", "val");
+  return level !== undefined && level >= 0 ? level : undefined;
+}
+
+/**
  * Parse `w:w` on a table width/height element. For `w:type="pct"`, producers
  * sometimes emit human-readable percentages (`100%`) instead of 50ths-of-percent
  * (`5000`); normalize those to the ECMA-376 unit the layout engine expects.
