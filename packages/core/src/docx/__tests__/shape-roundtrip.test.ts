@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { serializeRun } from "../serializer/runSerializer";
 import { parseShapeFromDrawing } from "../shapeParser";
-import { parseXmlDocument } from "../xmlParser";
+import { findDeep, parseXmlDocument } from "../xmlParser";
 
 const NS = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`;
 
@@ -10,10 +10,12 @@ function shapeDrawingXml({
   prst,
   anchor,
   fill,
+  outline,
 }: {
   prst: string;
   anchor?: boolean;
   fill?: string;
+  outline?: string;
 }): string {
   const container = anchor
     ? `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="251658240" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">
@@ -40,7 +42,7 @@ function shapeDrawingXml({
                 </a:xfrm>
                 <a:prstGeom prst="${prst}"><a:avLst/></a:prstGeom>
                 ${fill ?? ""}
-                <a:ln w="9525"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>
+                ${outline ?? '<a:ln w="9525"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>'}
               </wps:spPr>
               <wps:bodyPr/>
             </wps:wsp>
@@ -164,5 +166,31 @@ describe("shape parse → serialize round-trip", () => {
     });
     expect(xml).toContain('cap="rnd"');
     expect(xml).not.toContain('cap="round"');
+  });
+
+  test("preserves an explicitly authored solid outline style", () => {
+    const root = parseXmlDocument(
+      shapeDrawingXml({
+        prst: "line",
+        outline:
+          '<a:ln w="9525"><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:prstDash val="solid"/></a:ln>',
+      }),
+    );
+    const shape = root ? parseShapeFromDrawing(root) : null;
+    expect(shape?.outline?.style).toBe("solid");
+    if (!shape) {
+      return;
+    }
+
+    const xml = serializeRun({
+      type: "run",
+      content: [{ type: "shape", shape }],
+    });
+    expect(xml).toContain('<a:prstDash val="solid"/>');
+
+    const reopenedRoot = parseXmlDocument(xml);
+    const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
+    const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
+    expect(reopenedShape?.outline?.style).toBe("solid");
   });
 });

@@ -669,7 +669,7 @@ function serializeOutline(outline: ShapeOutline | undefined): string {
   if (outline.color) {
     parts.push(`<a:solidFill>${serializeDrawingColor(outline.color)}</a:solidFill>`);
   }
-  if (outline.style && outline.style !== "solid") {
+  if (outline.style) {
     parts.push(`<a:prstDash val="${outline.style}"/>`);
   }
   if (outline.join === "bevel") {
