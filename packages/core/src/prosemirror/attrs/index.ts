@@ -862,6 +862,7 @@ export const readFontFamilyMarkAttrs = (
   optionalString(attrs, "hAnsi", "fontFamily.attrs.hAnsi", issues);
   optionalString(attrs, "eastAsia", "fontFamily.attrs.eastAsia", issues);
   optionalString(attrs, "cs", "fontFamily.attrs.cs", issues);
+  optionalString(attrs, "hint", "fontFamily.attrs.hint", issues);
   optionalString(attrs, "asciiTheme", "fontFamily.attrs.asciiTheme", issues);
   optionalString(attrs, "hAnsiTheme", "fontFamily.attrs.hAnsiTheme", issues);
   optionalString(attrs, "eastAsiaTheme", "fontFamily.attrs.eastAsiaTheme", issues);

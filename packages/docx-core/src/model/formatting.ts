@@ -126,6 +126,8 @@ export type TextFormatting = {
     hAnsi?: string;
     eastAsia?: string;
     cs?: string;
+    /** Script slot Word should prefer when selecting a glyph font (w:hint). */
+    hint?: "default" | "eastAsia" | "cs";
     /** Theme font reference */
     asciiTheme?:
       | "majorAscii"

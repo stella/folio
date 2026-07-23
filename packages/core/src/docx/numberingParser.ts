@@ -21,7 +21,7 @@ import type {
   ParagraphFormatting,
   TextFormatting,
 } from "../types/document";
-import { LevelSuffixSchema, ThemeColorSlotSchema, narrowEnum } from "./parserEnums";
+import { FontHintSchema, LevelSuffixSchema, ThemeColorSlotSchema, narrowEnum } from "./parserEnums";
 import {
   parseXmlDocument,
   findChild,
@@ -748,11 +748,13 @@ function parseLevelRunProps(rPr: XmlElement): TextFormatting {
     const hAnsi = getAttribute(rFontsEl, "w", "hAnsi");
     const eastAsia = getAttribute(rFontsEl, "w", "eastAsia");
     const cs = getAttribute(rFontsEl, "w", "cs");
+    const hint = narrowEnum(getAttribute(rFontsEl, "w", "hint"), FontHintSchema);
     formatting.fontFamily = {
       ...(ascii != null ? { ascii } : {}),
       ...(hAnsi != null ? { hAnsi } : {}),
       ...(eastAsia != null ? { eastAsia } : {}),
       ...(cs != null ? { cs } : {}),
+      ...(hint !== undefined ? { hint } : {}),
     };
   }
 

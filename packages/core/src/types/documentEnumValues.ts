@@ -133,6 +133,7 @@ export const EMPHASIS_MARK_VALUES = [
 ] as const satisfies readonly EmphasisMark[];
 
 type FontTheme = NonNullable<NonNullable<TextFormatting["fontFamily"]>["asciiTheme"]>;
+type FontHint = NonNullable<NonNullable<TextFormatting["fontFamily"]>["hint"]>;
 
 export const FONT_THEME_VALUES = [
   "majorAscii",
@@ -144,6 +145,12 @@ export const FONT_THEME_VALUES = [
   "minorEastAsia",
   "minorBidi",
 ] as const satisfies readonly FontTheme[];
+
+export const FONT_HINT_VALUES = [
+  "default",
+  "eastAsia",
+  "cs",
+] as const satisfies readonly FontHint[];
 
 export const PARAGRAPH_ALIGNMENT_VALUES = [
   "left",

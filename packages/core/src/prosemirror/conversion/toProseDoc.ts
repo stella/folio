@@ -2767,6 +2767,7 @@ export function textFormattingToMarks(
         hAnsi: formatting.fontFamily.hAnsi,
         eastAsia: formatting.fontFamily.eastAsia,
         cs: formatting.fontFamily.cs,
+        hint: formatting.fontFamily.hint,
         asciiTheme: formatting.fontFamily.asciiTheme,
         hAnsiTheme: formatting.fontFamily.hAnsiTheme,
         eastAsiaTheme: formatting.fontFamily.eastAsiaTheme,

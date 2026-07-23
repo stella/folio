@@ -205,6 +205,9 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
     if (formatting.fontFamily.cs) {
       fontAttrs.push(`w:cs="${escapeXml(formatting.fontFamily.cs)}"`);
     }
+    if (formatting.fontFamily.hint) {
+      fontAttrs.push(`w:hint="${escapeXml(formatting.fontFamily.hint)}"`);
+    }
     if (formatting.fontFamily.asciiTheme) {
       fontAttrs.push(`w:asciiTheme="${formatting.fontFamily.asciiTheme}"`);
     }
