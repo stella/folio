@@ -130,6 +130,25 @@ describe("table row grid offsets", () => {
   });
 });
 
+describe("table row conditional formatting", () => {
+  test("round-trips conditional table-style flags", () => {
+    const root = parseXmlDocument(
+      `<w:trPr ${NS}><w:cnfStyle w:val="100000100000"/></w:trPr>`,
+    ) as XmlElement;
+    const formatting = parseTableRowProperties(root);
+
+    expect(formatting).toEqual({
+      conditionalFormat: {
+        firstRow: true,
+        oddHBand: true,
+      },
+    });
+
+    const serialized = serializeTableRowFormatting(formatting);
+    expect(parseTableRowProperties(parseXmlDocument(serialized))).toEqual(formatting);
+  });
+});
+
 describe("inferImplicitSingleCellRowSpans", () => {
   test("does not expand a vMerge continuation single-cell row", () => {
     const table = parseTableXml(`<w:tbl ${NS}>
