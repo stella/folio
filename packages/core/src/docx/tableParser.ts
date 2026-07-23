@@ -1265,6 +1265,9 @@ function parseCellContent(
     if (localName === "tbl") {
       // Parse nested table (recursive)
       const table = parseTable(child, styles, theme, numbering, rels, media, options);
+      if (!table) {
+        return;
+      }
       if (prependBookmarkMarkersToFirstParagraphInBlocks([table], pendingBookmarkMarkers)) {
         pendingBookmarkMarkers.length = 0;
       }
@@ -1632,7 +1635,7 @@ export function parseTable(
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
   options?: { inHeaderFooter?: boolean; rootXmlns?: Record<string, string> },
-): Table {
+): Table | undefined {
   const table: Table = {
     type: "table",
     rows: [],
@@ -1685,6 +1688,14 @@ export function parseTable(
 
   for (const child of getChildElements(tblElement)) {
     parseTableChild(child);
+  }
+
+  // OOXML encountered in the wild can contain placeholder w:tbl elements
+  // without rows. They have no visible content, while the canonical model
+  // intentionally requires every table to contain a row. Omit the placeholder
+  // instead of inventing a visible row or rejecting the entire document.
+  if (table.rows.length === 0) {
+    return undefined;
   }
 
   inferImplicitSingleCellRowSpans(table, rowsWithGridOffsets);

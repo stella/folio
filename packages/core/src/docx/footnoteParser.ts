@@ -160,7 +160,10 @@ function parseNoteBlockContent(
     if (localName === "p") {
       blocks.push(parseParagraph(child, styles, theme, numbering, rels));
     } else if (localName === "tbl") {
-      blocks.push(parseTable(child, styles, theme, numbering, rels, media));
+      const table = parseTable(child, styles, theme, numbering, rels, media);
+      if (table) {
+        blocks.push(table);
+      }
     } else if (localName === "sdt") {
       // Recurse into sdtContent so SDT children inside notes are
       // recognized; otherwise the note body silently drops citation
