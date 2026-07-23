@@ -144,7 +144,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     // ========================================================================
     onProgress("Extracting DOCX...", 0);
     const raw = await timeStageAsync("unzip", () =>
-      unzipDocx(buffer, { ...unzipLimits, password }),
+      unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
     if (raw.wasEncrypted) {
       warnings.push(

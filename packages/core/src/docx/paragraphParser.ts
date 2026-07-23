@@ -67,6 +67,7 @@ import {
   findChildren,
   getAttribute,
   getChildElements,
+  getLocalName,
   mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumericAttribute,
@@ -785,17 +786,6 @@ export function parseParagraphProperties(
 // ============================================================================
 // PARAGRAPH CONTENT PARSERS
 // ============================================================================
-
-/**
- * Get the local name of an element (without namespace prefix)
- */
-function getLocalName(name: string | undefined): string {
-  if (!name) {
-    return "";
-  }
-  const colonIndex = name.indexOf(":");
-  return colonIndex !== -1 ? name.slice(colonIndex + 1) : name;
-}
 
 const RENDERED_BREAK_INLINE_WRAPPERS = new Set([
   "hyperlink",

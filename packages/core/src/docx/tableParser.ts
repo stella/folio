@@ -77,6 +77,7 @@ import {
   findChildren,
   getAttribute,
   getChildElements,
+  getLocalName,
   mergeXmlnsDeclarations,
   parseNumericAttribute,
   parseTableMeasurementValue,
@@ -1458,14 +1459,6 @@ export function parseTableRow(
   }
 
   return row;
-}
-
-function getLocalName(name: string | undefined): string {
-  if (!name) {
-    return "";
-  }
-  const colonIndex = name.indexOf(":");
-  return colonIndex === -1 ? name : name.slice(colonIndex + 1);
 }
 
 function parseBookmarkMarker(

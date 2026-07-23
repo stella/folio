@@ -97,6 +97,8 @@ const TEXT_KEY = "#text";
 /** Attribute group key used by fast-xml-parser in preserveOrder mode. */
 const ATTR_KEY = ":@";
 
+type MutableFxpNode = XmlElement & Record<string, unknown>;
+
 /**
  * Convert a fast-xml-parser preserveOrder node into an XmlElement.
  *
@@ -104,7 +106,7 @@ const ATTR_KEY = ":@";
  * (the tag name or `#text`) whose value is the children array, plus an
  * optional `:@` key holding the attributes object.
  */
-function fxpNodeToElement(node: Record<string, unknown>): XmlElement {
+function fxpNodeToElement(node: Record<string, unknown>): MutableFxpNode {
   // Text node: { "#text": "some text" }
   if (TEXT_KEY in node) {
     return { type: "text", text: node[TEXT_KEY] as string };
@@ -120,8 +122,8 @@ function fxpNodeToElement(node: Record<string, unknown>): XmlElement {
       continue;
     }
 
-    const children = node[key] as Record<string, unknown>[];
-    const element: XmlElement = { type: "element", name: key };
+    const children = node[key] as MutableFxpNode[];
+    const element: MutableFxpNode = { type: "element", name: key };
 
     // fast-xml-parser only emits the attribute group when it contains an
     // attribute, so a second Object.keys allocation is unnecessary.
@@ -130,11 +132,10 @@ function fxpNodeToElement(node: Record<string, unknown>): XmlElement {
     }
 
     if (children.length > 0) {
-      const elements: XmlElement[] = [];
-      for (const child of children) {
-        elements.push(fxpNodeToElement(child));
+      for (let index = 0; index < children.length; index += 1) {
+        children[index] = fxpNodeToElement(children[index]!);
       }
-      element.elements = elements;
+      element.elements = children;
     }
 
     return element;
@@ -149,14 +150,13 @@ function fxpNodeToElement(node: Record<string, unknown>): XmlElement {
  * XmlElement that matches xml-js's non-compact root structure:
  * `{ elements: [...] }`.
  */
-function fxpToRootElement(nodes: Record<string, unknown>[]): XmlElement {
-  const elements: XmlElement[] = [];
-  for (const node of nodes) {
-    elements.push(fxpNodeToElement(node));
+function fxpToRootElement(nodes: MutableFxpNode[]): XmlElement {
+  for (let index = 0; index < nodes.length; index += 1) {
+    nodes[index] = fxpNodeToElement(nodes[index]!);
   }
 
   return {
-    elements,
+    elements: nodes,
   };
 }
 
@@ -201,7 +201,7 @@ export function parseXml(xml: string): XmlElement {
   // <w:t xml:space="preserve"> </w:t> are preserved — matching the old
   // xml-js captureSpacesBetweenElements behaviour.
   const parser = xml.includes("binData") ? fxpParserWithStopNodes : fxpParser;
-  const nodes = parser.parse(xml) as Record<string, unknown>[];
+  const nodes = parser.parse(xml) as MutableFxpNode[];
   return fxpToRootElement(nodes);
 }
 
@@ -236,7 +236,13 @@ export function parseXmlDocument(xml: string): XmlElement | null {
  * Get local name from a prefixed element name
  * e.g., "w:p" -> "p", "a:graphic" -> "graphic"
  */
-export function getLocalName(name: string): string {
+export function getLocalName(name: string | undefined): string {
+  if (!name) {
+    return "";
+  }
+  if (name[1] === ":") {
+    return name.slice(2);
+  }
   const colonIndex = name.indexOf(":");
   return colonIndex !== -1 ? name.slice(colonIndex + 1) : name;
 }
@@ -246,8 +252,22 @@ export function getLocalName(name: string): string {
  * e.g., "w:p" -> "w", "a:graphic" -> "a"
  */
 export function getNamespacePrefix(name: string): string | null {
+  if (name[1] === ":") {
+    return name[0] ?? null;
+  }
   const colonIndex = name.indexOf(":");
   return colonIndex !== -1 ? name.slice(0, colonIndex) : null;
+}
+
+function hasLocalName(name: string | undefined, localName: string): boolean {
+  if (!name) {
+    return false;
+  }
+  if (name === localName) {
+    return true;
+  }
+  const localNameOffset = name.length - localName.length;
+  return localNameOffset > 0 && name[localNameOffset - 1] === ":" && name.endsWith(localName);
 }
 
 /**
@@ -268,7 +288,7 @@ export function matchesName(element: XmlElement, namespace: string, localName: s
   }
 
   // Also check just the local name if no namespace prefix in element
-  if (getLocalName(element.name) === localName) {
+  if (hasLocalName(element.name, localName)) {
     return true;
   }
 
@@ -304,7 +324,7 @@ export function findChild(
     }
 
     // Check local name match
-    if (getLocalName(child.name || "") === localName) {
+    if (hasLocalName(child.name, localName)) {
       return child;
     }
   }
@@ -337,7 +357,7 @@ export function findChildren(
       continue;
     }
 
-    if (child.name === fullName || getLocalName(child.name || "") === localName) {
+    if (child.name === fullName || hasLocalName(child.name, localName)) {
       results.push(child);
     }
   }
@@ -365,7 +385,7 @@ export function findChildByLocalName(
       continue;
     }
 
-    if (getLocalName(child.name || "") === localName) {
+    if (hasLocalName(child.name, localName)) {
       return child;
     }
   }
@@ -389,7 +409,7 @@ export function findChildrenByLocalName(
   }
 
   return parent.elements.filter(
-    (child) => child.type === "element" && getLocalName(child.name || "") === localName,
+    (child) => child.type === "element" && hasLocalName(child.name, localName),
   );
 }
 
@@ -465,15 +485,16 @@ export function getAttribute(
 
   // Try with namespace prefix first
   if (namespace) {
-    const prefixedName = `${namespace}:${name}`;
-    if (prefixedName in attrs) {
-      return attrs[prefixedName] ?? null;
+    const prefixedValue = attrs[`${namespace}:${name}`];
+    if (prefixedValue !== undefined) {
+      return prefixedValue;
     }
   }
 
   // Try without namespace
-  if (name in attrs) {
-    return attrs[name] ?? null;
+  const unprefixedValue = attrs[name];
+  if (unprefixedValue !== undefined) {
+    return unprefixedValue;
   }
 
   // Fall back to any-prefix local-name match so alt-prefix producers keep
@@ -481,9 +502,8 @@ export function getAttribute(
   // namespaced attribute; if `namespace` is null the caller explicitly
   // wanted an unprefixed attribute.
   if (namespace) {
-    const suffix = `:${name}`;
-    for (const key of Object.keys(attrs)) {
-      if (key.endsWith(suffix)) {
+    for (const key in attrs) {
+      if (hasLocalName(key, name)) {
         return attrs[key] ?? null;
       }
     }
@@ -908,12 +928,15 @@ export function collectXmlnsDeclarations(element: XmlElement): Record<string, st
   if (!attrs) {
     return out;
   }
-  for (const [key, value] of Object.entries(attrs)) {
-    if (Object.keys(out).length >= MAX_XMLNS_DECLARATIONS_PER_ELEMENT) {
+  let declarationCount = 0;
+  for (const key in attrs) {
+    if (declarationCount >= MAX_XMLNS_DECLARATIONS_PER_ELEMENT) {
       break;
     }
+    const value = attrs[key];
     if ((key === "xmlns" || key.startsWith("xmlns:")) && value !== undefined) {
       out[key] = String(value);
+      declarationCount += 1;
     }
   }
   return out;
@@ -932,10 +955,10 @@ export function mergeXmlnsDeclarations(
   element: XmlElement,
 ): Record<string, string> {
   const own = collectXmlnsDeclarations(element);
-  if (Object.keys(own).length === 0) {
-    return inherited;
+  for (const _key in own) {
+    return { ...inherited, ...own };
   }
-  return { ...inherited, ...own };
+  return inherited;
 }
 
 /**
@@ -947,11 +970,11 @@ export function cloneWithXmlnsDeclarations(
   element: XmlElement,
   xmlnsDecls: Record<string, string>,
 ): XmlElement {
-  if (Object.keys(xmlnsDecls).length === 0) {
-    return element;
+  for (const _key in xmlnsDecls) {
+    return {
+      ...element,
+      attributes: { ...xmlnsDecls, ...element.attributes },
+    };
   }
-  return {
-    ...element,
-    attributes: { ...xmlnsDecls, ...element.attributes },
-  };
+  return element;
 }

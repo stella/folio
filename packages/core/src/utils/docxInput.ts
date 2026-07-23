@@ -23,7 +23,15 @@ export function toArrayBuffer(input: DocxInput): Promise<ArrayBuffer> {
     return Promise.resolve(input);
   }
   if (input instanceof Uint8Array) {
-    // Copy into a fresh ArrayBuffer (input may be a view over a larger or shared buffer)
+    if (
+      input.buffer instanceof ArrayBuffer &&
+      input.byteOffset === 0 &&
+      input.byteLength === input.buffer.byteLength
+    ) {
+      return Promise.resolve(input.buffer);
+    }
+
+    // Copy views over larger or shared buffers into an exact-size ArrayBuffer.
     const copy = new ArrayBuffer(input.byteLength);
     new Uint8Array(copy).set(input);
     return Promise.resolve(copy);

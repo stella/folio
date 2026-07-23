@@ -44,8 +44,17 @@ export const bytesEqual = (left: Uint8Array, right: Uint8Array): boolean => {
   return mismatch === 0;
 };
 
-export const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+export const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  if (
+    bytes.buffer instanceof ArrayBuffer &&
+    bytes.byteOffset === 0 &&
+    bytes.byteLength === bytes.buffer.byteLength
+  ) {
+    return bytes.buffer;
+  }
+
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+};
 
 export const decodeBase64 = (encoded: string): Uint8Array => {
   if (typeof atob === "function") {
