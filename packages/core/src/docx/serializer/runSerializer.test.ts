@@ -152,7 +152,7 @@ describe("image EMU attributes are integer-only (issue #417)", () => {
     // wp:inline distT/B/L/R. With padding {top: 0.4, bottom: 0.6},
     // intAttr rounds → t="0" b="1" on the effectExtent element.
     expect(xml).toContain('<wp:effectExtent l="0" t="0" r="0" b="1"/>');
-    expect(xml).toContain('distT="0" distB="0" distL="0" distR="0"');
+    expect(xml).not.toMatch(/\bdist[TLBR]=/u);
   });
 
   test("floating image with float position/extent serializes integer attrs", () => {

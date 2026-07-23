@@ -832,6 +832,27 @@ function serializePicGraphic(image: Image, sharedId: string): string {
 }
 
 /**
+ * Serialize only authored wrap-distance attributes. OOXML defaults omitted
+ * values to zero, but preserving absence keeps untouched models stable.
+ */
+function serializeWrapDistanceAttrs(wrap: ImageWrap | undefined): string {
+  const attrs: string[] = [];
+  if (wrap?.distT !== undefined) {
+    attrs.push(`distT="${intAttr(wrap.distT)}"`);
+  }
+  if (wrap?.distB !== undefined) {
+    attrs.push(`distB="${intAttr(wrap.distB)}"`);
+  }
+  if (wrap?.distL !== undefined) {
+    attrs.push(`distL="${intAttr(wrap.distL)}"`);
+  }
+  if (wrap?.distR !== undefined) {
+    attrs.push(`distR="${intAttr(wrap.distR)}"`);
+  }
+  return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
+}
+
+/**
  * Serialize drawing/image content (w:drawing) to full DrawingML XML
  */
 function serializeDrawingContent(content: DrawingContent): string {
@@ -843,10 +864,7 @@ function serializeDrawingContent(content: DrawingContent): string {
   // distances. Per §20.4.2.5, the visual-effect reservation lives on the
   // separate <wp:effectExtent> element. Don't fold `image.padding`
   // (effectExtent) into wrap dist* — that's the eigenpal #424 fix.
-  const distT = image.wrap.distT ?? 0;
-  const distB = image.wrap.distB ?? 0;
-  const distL = image.wrap.distL ?? 0;
-  const distR = image.wrap.distR ?? 0;
+  const wrapDistanceAttrs = serializeWrapDistanceAttrs(image.wrap);
   const effL = image.padding?.left ?? 0;
   const effT = image.padding?.top ?? 0;
   const effR = image.padding?.right ?? 0;
@@ -872,7 +890,7 @@ function serializeDrawingContent(content: DrawingContent): string {
     // Inline image
     return [
       "<w:drawing>",
-      `<wp:inline distT="${intAttr(distT)}" distB="${intAttr(distB)}" distL="${intAttr(distL)}" distR="${intAttr(distR)}">`,
+      `<wp:inline${wrapDistanceAttrs}>`,
       `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
       effectExtentEl,
       inlineDocPr,
@@ -896,7 +914,7 @@ function serializeDrawingContent(content: DrawingContent): string {
 
   return [
     "<w:drawing>",
-    `<wp:anchor distT="${intAttr(distT)}" distB="${intAttr(distB)}" distL="${intAttr(distL)}" distR="${intAttr(distR)}" simplePos="0" relativeHeight="251658240" behindDoc="${behindDoc}" locked="0" layoutInCell="${layoutInCellAttr}" allowOverlap="${allowOverlapAttr}">`,
+    `<wp:anchor${wrapDistanceAttrs} simplePos="0" relativeHeight="251658240" behindDoc="${behindDoc}" locked="0" layoutInCell="${layoutInCellAttr}" allowOverlap="${allowOverlapAttr}">`,
     '<wp:simplePos x="0" y="0"/>',
     position,
     `<wp:extent cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
@@ -923,23 +941,6 @@ function serializeShapeTextBody(
     .join("");
 }
 
-function serializeShapeWrapDistances(wrap: ImageWrap | undefined): string {
-  const attrs: string[] = [];
-  if (wrap?.distT !== undefined) {
-    attrs.push(`distT="${intAttr(wrap.distT)}"`);
-  }
-  if (wrap?.distB !== undefined) {
-    attrs.push(`distB="${intAttr(wrap.distB)}"`);
-  }
-  if (wrap?.distL !== undefined) {
-    attrs.push(`distL="${intAttr(wrap.distL)}"`);
-  }
-  if (wrap?.distR !== undefined) {
-    attrs.push(`distR="${intAttr(wrap.distR)}"`);
-  }
-  return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
-}
-
 /**
  * Serialize shape content to full DrawingML XML (wps:wsp inside w:drawing)
  */
@@ -949,7 +950,7 @@ function serializeShapeContent(content: ShapeContent): string {
   const cy = shape.size.height;
   const isTextBox = shape.shapeType === "textBox";
   const isFloating = shape.wrap && shape.wrap.type !== "inline";
-  const wrapDistances = serializeShapeWrapDistances(shape.wrap);
+  const wrapDistances = serializeWrapDistanceAttrs(shape.wrap);
   const docPrId = getUniqueId(shape.id);
   const docPrName = shape.name ?? (isTextBox ? `TextBox ${docPrId}` : `Shape ${docPrId}`);
 

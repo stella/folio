@@ -67,8 +67,10 @@ describe("wp:effectExtent stays separate from wp:inline/wp:anchor dist*", () => 
       padding: { top: 100, bottom: 200, left: 300, right: 400 },
     });
     expect(xml).toContain('<wp:effectExtent l="300" t="100" r="400" b="200"/>');
-    // No wrap distances were set, so dist* on wp:inline must be zero.
-    expect(xml).toContain('distT="0" distB="0" distL="0" distR="0"');
+    // An omitted distance is semantically zero but remains absent so an
+    // untouched parse → save → parse is a model fixed point.
+    expect(xml).not.toMatch(/\bdist[TLBR]=/u);
+    expect(reparseSerializedImage(xml)?.wrap).toEqual({ type: "inline" });
   });
 
   test("inline image wrap.dist* serializes to wp:inline dist* attrs", () => {
@@ -97,6 +99,41 @@ describe("wp:effectExtent stays separate from wp:inline/wp:anchor dist*", () => 
     });
     expect(xml).toContain('distT="10" distB="20" distL="30" distR="40"');
     expect(xml).toContain('<wp:effectExtent l="3" t="1" r="4" b="2"/>');
+  });
+
+  test("floating image preserves absent wrap distances", () => {
+    const xml = serializeImage({
+      type: "image",
+      rId: "rId1",
+      size: { width: 100, height: 100 },
+      wrap: { type: "behind" },
+      position: {
+        horizontal: { relativeTo: "column", posOffset: 0 },
+        vertical: { relativeTo: "paragraph", posOffset: 0 },
+      },
+    });
+
+    expect(xml).toContain("<wp:anchor simplePos=");
+    expect(xml).not.toMatch(/\bdist[TLBR]=/u);
+    expect(reparseSerializedImage(xml)?.wrap).toEqual({ type: "behind" });
+  });
+
+  test("explicit zero wrap distances remain explicit", () => {
+    const xml = serializeImage({
+      type: "image",
+      rId: "rId1",
+      size: { width: 100, height: 100 },
+      wrap: { type: "inline", distT: 0, distB: 0, distL: 0, distR: 0 },
+    });
+
+    expect(xml).toContain('distT="0" distB="0" distL="0" distR="0"');
+    expect(reparseSerializedImage(xml)?.wrap).toEqual({
+      type: "inline",
+      distT: 0,
+      distB: 0,
+      distL: 0,
+      distR: 0,
+    });
   });
 
   test("padding survives a full XML round-trip", () => {
