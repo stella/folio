@@ -33,8 +33,10 @@ details unless they are already public in the repository.
 
 ## GitHub Interactions
 
-- When commenting on GitHub (PRs, issues), include "CC on behalf of @username" where
-  username is the GitHub handle of the person who requested the comment.
+- When commenting on GitHub (PRs, issues), append `CC on behalf of username`, where
+  `username` is the GitHub handle of the person who requested the comment. Keep the
+  handle as plain text: never prefix it with `@` or link the account, because the
+  attribution must not trigger a GitHub mention notification.
 - This repository (including PRs, commits, comments) is public. Never include
   marketing language, internal business context, pricing, competitive analysis, user
   identities, conversation specifics, or security architecture beyond what the diff
@@ -45,14 +47,25 @@ details unless they are already public in the repository.
 - Never manually reformat code you did not semantically change (auto-formatter output
   from `bun run format` is fine to include)
 - Vary punctuation: prefer colons, semicolons, commas, and parentheses over em dashes
+- Omit needless words. Vigorous writing is concise: a sentence should contain no
+  unnecessary words, a paragraph no unnecessary sentences, for the same reason that a
+  drawing should have no unnecessary lines and a machine no unnecessary parts. Applies
+  to comments, commits, PRs, and docs.
 - Prefer explicit over implicit; when a backend endpoint accepts a discriminator
   (e.g., `?type=document|file`), thread it through the full stack (URL params,
   component props) instead of hardcoding a default on the frontend
 - If TypeScript can make a class of bug structurally impossible (branded types,
   discriminated unions, exhaustive checks), prefer that over runtime validation or
   manual discipline
+- Avoid boolean fields for states that may grow. Use a named discriminator or
+  domain type for values that answer "which kind/status/mode/type?" rather than
+  a permanent yes/no question; a two-value union, enum, or equivalent domain type
+  now is usually cheaper than migrating an `isX` flag later.
 - Conventional Commits: `feat:`, `chore:`, `fix:`, `docs:`
 - Rebase feature branches onto main (linear history)
+- Enable `git rerere` (`git config --global rerere.enabled true`, plus
+  `rerere.autoupdate true` to auto-stage what it resolves) so conflict
+  resolutions are recorded and auto-replayed across repeated or long rebases
 - Fail fast: validate at boundaries, return/throw early
 - Minimize brace nesting: invert conditions, early returns
 - Use named constants, not string literals for domain values
@@ -60,6 +73,12 @@ details unless they are already public in the repository.
 - Avoid spread in loop accumulators (use `.push()`)
 - If you encounter a pre-existing bug or lint error while working on something else,
   fix it (separate commit)
+- Orchestrate across model tiers when your harness supports subagents and model
+  selection: delegate well-scoped, mechanical, or independently verifiable subtasks
+  (edits, searches, refactors, test runs) to a subagent on the cheapest model that
+  does them correctly; keep planning, cross-cutting design, security-sensitive work,
+  and final review on the primary model. If your tooling has no subagents or model
+  selection, ignore this.
 
 ## Design Principles
 
@@ -288,13 +307,6 @@ the browser, built on ProseMirror. Two published packages plus a dev playground:
   differential parity gate — extend them when you change parsing, layout, or
   editor interactions.
 - Return minimal data from public APIs; do not export types that have no consumer.
-- **Add a changeset with any `packages/core/src` or `packages/react/src`
-  change.** Run `bunx changeset` (pick the packages, bump level, and a one-line
-  summary) and commit the generated `.changeset/*.md`. For a src change that
-  needs no release, use `bunx changeset --empty`. CI (`bun run changeset:check`)
-  fails the PR otherwise. The private playground is not published and needs no
-  changesets. Releases: merging the changeset-generated "Version Packages" PR
-  bumps `package.json`, which triggers the existing `publish.yml`.
 
 ### Fidelity Consolidation
 

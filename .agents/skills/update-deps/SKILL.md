@@ -164,11 +164,16 @@ update --latest` will move them; edit the pin by hand to the
    - if the new tree introduces untrusted packages with scripts,
      inspect them before trusting anything
 
-10. **Validate in layers**: - run the smallest focused checks for the affected ecosystem
-    first - then run repo checks relevant to the touched surfaces - for Bun package updates, default to `bun run lint`, `bun run
-typecheck`, and the relevant tests - for Cargo updates, run `cargo check` and `cargo test` when
-    crates touch logic, not just deps - verify generated artifacts explicitly when the upgraded
-    dependency affects them
+10. **Validate in layers**:
+    - run the smallest focused checks for the affected ecosystem
+      first
+    - then run repo checks relevant to the touched surfaces
+    - for Bun package updates, default to `bun run lint`, `bun run
+typecheck`, and the relevant tests
+    - for Cargo updates, run `cargo check` and `cargo test` when
+      crates touch logic, not just deps
+    - verify generated artifacts explicitly when the upgraded
+      dependency affects them
 
 11. **Prefer removal and consolidation over passive growth**:
     - if the upgrade makes a local helper, polyfill, or wrapper
