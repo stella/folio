@@ -251,7 +251,7 @@ function serializeIndentation(formatting: ParagraphFormatting): string {
     if (formatting.hangingIndent) {
       // Hanging indent is stored as positive value but uses w:hanging attribute
       attrs.push(`w:hanging="${intAttr(Math.abs(formatting.indentFirstLine))}"`);
-    } else if (formatting.indentFirstLine !== 0) {
+    } else {
       attrs.push(`w:firstLine="${intAttr(formatting.indentFirstLine)}"`);
     }
   }
