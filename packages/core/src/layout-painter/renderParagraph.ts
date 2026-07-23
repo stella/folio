@@ -1991,11 +1991,16 @@ export function renderLine(
   // Per-line floating margins (leftOffset/rightOffset) are now applied by
   // renderParagraphFragment via MeasuredLine offsets from re-measurement.
 
-  // Build tab context if we have tab runs - also create for text measurement
+  // Build tab context if we have tab runs.
   let tabContext: TabContext | undefined;
 
-  // Always create text measurer for accurate X position tracking
-  const measureText = createTextMeasurer(doc);
+  const hasScaledTextRun = runsForLine.some(
+    (run) =>
+      (isTextRun(run) || isFieldRun(run) || isMathRun(run)) &&
+      run.horizontalScale !== undefined &&
+      run.horizontalScale !== 100,
+  );
+  const measureText = hasTabRuns || hasScaledTextRun ? createTextMeasurer(doc) : undefined;
 
   if (hasTabRuns) {
     // Convert tab stops from layout engine format to tab calculator format
@@ -2042,7 +2047,7 @@ export function renderLine(
   for (let i = 0; i < runsForLine.length; i++) {
     const run = runsForLine[i]!; // SAFETY: i < runsForLine.length
 
-    if (isTabRun(run) && tabContext) {
+    if (isTabRun(run) && tabContext && measureText) {
       // Per-run measurement (not a single-font pass over the joined string)
       // keeps the tab width accurate when trailing runs differ in font/size.
       const followingWidth = measureFollowingContentWidth(
@@ -2212,6 +2217,9 @@ export function renderLine(
       if (isCollapsedLineEdgeSpaceRun(run)) {
         continue;
       }
+      if (!measureText) {
+        continue;
+      }
       const fontSize = run.fontSize || 11;
       const fontFamily = run.fontFamily || "Calibri";
       const measuredWidth = measureText(
@@ -2257,6 +2265,9 @@ export function renderLine(
       // Render field run with context for PAGE/NUMPAGES substitution
       const runEl = renderFieldRun(run, doc, options.context);
       lineEl.append(runEl);
+      if (!measureText) {
+        continue;
+      }
       // Estimate field text width for tab calculations (same value the field
       // painted, so tab math matches).
       const fieldText = resolveFieldText(run, options.context);
@@ -2273,6 +2284,9 @@ export function renderLine(
     } else if (isMathRun(run)) {
       const runEl = renderMathRun(run, doc);
       lineEl.append(runEl);
+      if (!measureText) {
+        continue;
+      }
       const measuredWidth = measureText(
         run.plainText,
         run.fontSize ?? 11,

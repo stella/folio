@@ -60,6 +60,82 @@ function findTabEls(lineEl: FakeElement): FakeElement[] {
 }
 
 describe("renderLine box model", () => {
+  test("does not create a text measurer for an ordinary unscaled line", () => {
+    let canvasCreations = 0;
+    const countingDocument = {
+      createElement(tagName: string): FakeElement {
+        if (tagName === "canvas") {
+          canvasCreations += 1;
+        }
+        return new FakeElement(tagName);
+      },
+    } as unknown as Document;
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "unscaled-line",
+      runs: [{ kind: "text", text: "No tabs or scaling" }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: "No tabs or scaling".length,
+      width: 112,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, countingDocument, {
+      availableWidth: 360,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+
+    expect(lineEl.children.at(0)?.textContent).toBe("No tabs or scaling");
+    expect(canvasCreations).toBe(0);
+  });
+
+  test("measures a horizontally scaled run to reserve its painted advance", () => {
+    let canvasCreations = 0;
+    const countingDocument = {
+      createElement(tagName: string): FakeElement {
+        if (tagName === "canvas") {
+          canvasCreations += 1;
+        }
+        return new FakeElement(tagName);
+      },
+    } as unknown as Document;
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "scaled-line",
+      runs: [{ kind: "text", text: "scaled", horizontalScale: 50 }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: "scaled".length,
+      width: 21,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, countingDocument, {
+      availableWidth: 360,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      leftIndentPx: 0,
+    }) as unknown as FakeElement;
+
+    expect(lineEl.children.at(0)?.style["width"]).toBe("21px");
+    expect(canvasCreations).toBe(1);
+  });
+
   test("paints no-break hyphens without changing document positions", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
