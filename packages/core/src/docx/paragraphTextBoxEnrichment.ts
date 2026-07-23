@@ -383,7 +383,14 @@ const scanRunForTextBoxDrawings = (xmlRun: XmlElement): TextBoxRunScan => {
     }
     if (name === "pict") {
       if (findDeep(el, "v", "textbox")) {
-        vmlTextBoxes.push(el);
+        // An image-backed VML container is preserved as one raw drawing by
+        // runParser. Adding an editable text-box shape here would serialize a
+        // second representation beside that raw replay on every save.
+        if (findDeep(el, "v", "imagedata")) {
+          hasNonTextBoxContent = true;
+        } else {
+          vmlTextBoxes.push(el);
+        }
       } else {
         hasNonTextBoxContent = true;
       }

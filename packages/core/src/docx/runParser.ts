@@ -57,6 +57,7 @@ import {
 } from "./parserEnums";
 import { parseShapeFromDrawing, shouldPreserveRawShapeDrawing } from "./shapeParser";
 import type { StyleMap } from "./styleParser";
+import { isTextBoxDrawing } from "./textBoxParser";
 import { parseVmlImageContent } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
@@ -1022,6 +1023,11 @@ function parseRunContents(
         const alternateChildren = getChildElements(child);
         const choiceEl = alternateChildren.find((el) => getLocalName(el.name) === "Choice");
         const fallbackEl = alternateChildren.find((el) => getLocalName(el.name) === "Fallback");
+        const choiceTextBoxDrawing = choiceEl
+          ? getChildElements(choiceEl).find(
+              (element) => getLocalName(element.name) === "drawing" && isTextBoxDrawing(element),
+            )
+          : undefined;
 
         const groupedChoiceDrawing = choiceEl
           ? getChildElements(choiceEl).find(
@@ -1042,9 +1048,10 @@ function parseRunContents(
         const fallbackPict = fallbackEl
           ? getChildElements(fallbackEl).find((el) => getLocalName(el.name) === "pict")
           : undefined;
-        const fallbackVml = fallbackPict
-          ? parseVmlImageContent(fallbackPict, rels, media, rootXmlns)
-          : null;
+        const fallbackVml =
+          fallbackPict && !choiceTextBoxDrawing
+            ? parseVmlImageContent(fallbackPict, rels, media, rootXmlns)
+            : null;
         if (fallbackVml?.image.src) {
           fallbackVml.rawXml = elementToXml(cloneWithXmlnsDeclarations(child, rootXmlns));
           contents.push(fallbackVml);

@@ -38,6 +38,7 @@ import {
   elementToXml,
   findAllDeep,
   findChild,
+  findDeep,
   getChildElements,
   getAttribute,
   getLocalName,
@@ -234,6 +235,12 @@ const parseStandaloneShapePreview = (
   shape: XmlElement,
   rootXmlns: Record<string, string>,
 ): DrawingContent | null => {
+  // A VML text box is an editable document shape, not a preview image. Its
+  // content is owned by paragraphTextBoxEnrichment; rendering it here as a
+  // synthetic SVG would materialize the same OOXML object twice.
+  if (findDeep(shape, "v", "textbox")) {
+    return null;
+  }
   const style = parseStyleAttr(getAttribute(shape, null, "style"));
   const widthPx = cssLengthToPx(style["width"]);
   const heightPx = cssLengthToPx(style["height"]);
@@ -271,6 +278,9 @@ const parseGroupPreview = (
     .slice(0, MAX_VML_PREVIEW_SHAPES)
     .map((child) => {
       const localName = getLocalName(child.name ?? "");
+      if (findDeep(child, "v", "textbox")) {
+        return "";
+      }
       if (localName === "line") {
         const from = coordinatePair(getAttribute(child, null, "from"));
         const to = coordinatePair(getAttribute(child, null, "to"));
