@@ -193,4 +193,34 @@ describe("shape parse → serialize round-trip", () => {
     const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
     expect(reopenedShape?.outline?.style).toBe("solid");
   });
+
+  test("preserves an explicitly authored empty shape name", () => {
+    const root = parseXmlDocument(
+      shapeDrawingXml({ prst: "line" }).replaceAll('name="Shape 9"', 'name=""'),
+    );
+    const shape = root ? parseShapeFromDrawing(root) : null;
+    expect(shape?.name).toBe("");
+    if (!shape) {
+      return;
+    }
+
+    const xml = serializeRun({
+      type: "run",
+      content: [{ type: "shape", shape }],
+    });
+    expect(xml).toContain('<wp:docPr id="9" name=""/>');
+
+    const reopenedRoot = parseXmlDocument(xml);
+    const reopenedDrawing = findDeep(reopenedRoot, "w", "drawing");
+    const reopenedShape = reopenedDrawing ? parseShapeFromDrawing(reopenedDrawing) : null;
+    expect(reopenedShape?.name).toBe("");
+
+    const shapeWithoutName = { ...shape };
+    delete shapeWithoutName.name;
+    const fallbackXml = serializeRun({
+      type: "run",
+      content: [{ type: "shape", shape: shapeWithoutName }],
+    });
+    expect(fallbackXml).toContain('<wp:docPr id="9" name="Shape 9"/>');
+  });
 });

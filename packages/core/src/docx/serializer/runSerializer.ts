@@ -918,7 +918,7 @@ function serializeShapeContent(content: ShapeContent): string {
   const distL = shape.wrap?.distL ?? 0;
   const distR = shape.wrap?.distR ?? 0;
   const docPrId = getUniqueId(shape.id);
-  const docPrName = shape.name || (isTextBox ? `TextBox ${docPrId}` : `Shape ${docPrId}`);
+  const docPrName = shape.name ?? (isTextBox ? `TextBox ${docPrId}` : `Shape ${docPrId}`);
 
   // Build xfrm
   let xfrmAttrs = "";
