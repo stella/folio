@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Comment } from "../../types/content";
+import { parseComments } from "../commentParser";
 import { serializeComments, serializeCommentsExtended } from "./commentSerializer";
 
 function makeComment(id: number, parentId?: number): Comment {
@@ -73,6 +74,30 @@ describe("serializeComments", () => {
     expect(xml).toContain("w14:paraId=");
     expect(xml).toContain("&lt;script&gt;");
     expect(xml).toContain("&quot;");
+  });
+
+  test("round-trips supported paragraph and run formatting in comment content", () => {
+    const comment = makeComment(1);
+    const paragraph = comment.content[0]!;
+    paragraph.formatting = {
+      alignment: "center",
+      spaceAfter: 120,
+    };
+    const run = paragraph.content[0]!;
+    if (run.type !== "run") {
+      throw new Error("Expected synthetic comment content to contain a run");
+    }
+    run.formatting = {
+      fontSize: 24,
+      underline: { style: "single" },
+    };
+
+    const reparsed = parseComments(serializeComments([comment]), null, null, new Map(), new Map());
+    const reparsedParagraph = reparsed[0]?.content[0];
+    const reparsedRun = reparsedParagraph?.content.find((item) => item.type === "run");
+
+    expect(reparsedParagraph?.formatting).toMatchObject(paragraph.formatting);
+    expect(reparsedRun?.formatting).toMatchObject(run.formatting);
   });
 });
 
