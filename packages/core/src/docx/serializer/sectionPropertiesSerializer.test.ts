@@ -193,4 +193,17 @@ describe("serializeSectionProperties", () => {
       '<w:sectPr><w15:footnoteColumns w:val="2"/></w:sectPr>',
     );
   });
+
+  test("round-trips an explicit portrait orientation", () => {
+    const section = parseSectPr(`
+      <w:sectPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:pgSz w:w="11906" w:h="16838" w:orient="portrait"/>
+      </w:sectPr>
+    `);
+
+    const serialized = serializeSectionProperties(section);
+
+    expect(serialized).toContain('w:orient="portrait"');
+    expect(parseSectPr(serialized).orientation).toBe("portrait");
+  });
 });
