@@ -1379,6 +1379,11 @@
 :where(.folio-default-select-trigger) {
   display: inline-flex;
   align-items: center;
+  /* Keep the label left and the trailing chevron pinned to the right edge on
+     fixed-width triggers (e.g. the style / markup / zoom pickers), instead of
+     leaving the chevron mid-button. A content-width trigger has no free space
+     to distribute, so this is a no-op there. */
+  justify-content: space-between;
   gap: 0.375rem;
   height: 2rem;
   padding: 0 0.625rem;
