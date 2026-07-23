@@ -75,8 +75,8 @@ function serializePageSize(props: SectionProperties): string {
   if (props.pageHeight !== undefined) {
     attrs.push(`w:h="${intAttr(props.pageHeight)}"`);
   }
-  if (props.orientation === "landscape") {
-    attrs.push('w:orient="landscape"');
+  if (props.orientation !== undefined) {
+    attrs.push(`w:orient="${props.orientation}"`);
   }
   return attrs.length > 0 ? `<w:pgSz ${attrs.join(" ")}/>` : "";
 }
