@@ -64,6 +64,7 @@ import { serializeThemeXml } from "./serializer/themeSerializer";
 import { escapeXml } from "./serializer/xmlUtils";
 import { isPreservableDocxEntry } from "./unzip";
 import type { RawDocxContent } from "./unzip";
+import { findChild, getChildElements, matchesName, parseXml } from "./xmlParser";
 import { isAllowedExternalWatermarkImageUrl } from "../watermark";
 
 export class DocxPackageFidelityError extends Error {
@@ -158,14 +159,22 @@ async function serializeCommentsToZip(
   compressionLevel: number,
 ): Promise<void> {
   const comments = doc.package.document.comments ?? [];
-  // Whether the source DOCX already had a `word/comments.xml`. If it did
-  // and we now have zero comments (e.g., the user deleted the only
-  // anchored thread), we MUST overwrite with an empty <w:comments/>
-  // — otherwise the previous file is copied through the rezip baseline
-  // and the saved DOCX still surfaces the now-phantom threads.
-  const hadCommentsFile = zip.file("word/comments.xml") !== null;
-  if (comments.length === 0 && !hadCommentsFile) {
-    return;
+  const sourceCommentsFile = findZipEntryCaseInsensitive(zip, "word/comments.xml");
+  if (comments.length === 0) {
+    if (!sourceCommentsFile) {
+      return;
+    }
+    // An empty source part is already a fixed point. Preserve it and its
+    // packaging verbatim: adding a missing relationship or pruning an empty
+    // extension part would turn a no-op save into a structural package edit.
+    //
+    // A non-empty source part with an empty current model is different: the
+    // user removed the last comment, so it must still be overwritten below to
+    // prevent the old thread from reappearing.
+    const sourceCommentsXml = await sourceCommentsFile.async("text");
+    if (!hasCommentEntries(sourceCommentsXml)) {
+      return;
+    }
   }
 
   // Threaded/resolved comments need a stable last-paragraph paraId so
@@ -173,7 +182,7 @@ async function serializeCommentsToZip(
   ensureThreadedCommentParaIds(comments);
 
   const commentsXml = serializeComments(comments);
-  zip.file("word/comments.xml", commentsXml, {
+  zip.file(sourceCommentsFile?.name ?? "word/comments.xml", commentsXml, {
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
   });
@@ -185,6 +194,12 @@ async function serializeCommentsToZip(
   await ensureCommentsRelationship(zip, compressionLevel);
   await syncCommentsExtendedPart(comments, zip, compressionLevel);
 }
+
+const hasCommentEntries = (xml: string): boolean => {
+  const root = parseXml(xml);
+  const comments = findChild(root, "w", "comments") ?? root;
+  return getChildElements(comments).some((element) => matchesName(element, "w", "comment"));
+};
 
 /**
  * Bring `word/commentsExtended.xml` and its packaging (content-type override +
