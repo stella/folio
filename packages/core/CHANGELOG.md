@@ -1,5 +1,88 @@
 # @stll/folio-core
 
+## 0.15.1
+
+### Patch Changes
+
+- [#440](https://github.com/stella/folio/pull/440) [`8df8081`](https://github.com/stella/folio/commit/8df80815d500c213680b273ce4ad98f19f950d8b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Parse theme-colored straight connectors as editable shapes.
+
+- [#481](https://github.com/stella/folio/pull/481) [`dafe214`](https://github.com/stella/folio/commit/dafe21438306ed4681c4c2b7c3a47478523f2646) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep cached rendered page-break metadata stable when later inline content is omitted.
+
+- [#464](https://github.com/stella/folio/pull/464) [`d64e659`](https://github.com/stella/folio/commit/d64e65904cf8e407f5f36157790755c582cfe18e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Avoid creating unused image parts for raw OOXML drawing previews.
+
+- [#470](https://github.com/stella/folio/pull/470) [`db702de`](https://github.com/stella/folio/commit/db702dea23ca7f7374031c13aac64ad2f520d981) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve Word font script hints across document edits and saves.
+
+- [#472](https://github.com/stella/folio/pull/472) [`76c46d5`](https://github.com/stella/folio/commit/76c46d53f980c1651c83bd600bfbd565822cfa53) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve distinct image names, descriptions, and titles when saving DOCX files.
+
+- [#453](https://github.com/stella/folio/pull/453) [`9606a11`](https://github.com/stella/folio/commit/9606a115a39bc9d185a64f451386a07b342ccad0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicit portrait section orientation when saving DOCX files.
+
+- [#442](https://github.com/stella/folio/pull/442) [`4088787`](https://github.com/stella/folio/commit/408878732db508d72d269d8da3704278b97f500a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Speed up DOCX serialization by reusing unchanged package entries.
+
+- [#452](https://github.com/stella/folio/pull/452) [`c36a6cd`](https://github.com/stella/folio/commit/c36a6cd73cf5d568c7a31b6aea60a0ff79de2637) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicit zero first-line paragraph indents during DOCX saves.
+
+- [#449](https://github.com/stella/folio/pull/449) [`987c956`](https://github.com/stella/folio/commit/987c9564faa048f2ed3162e4903001b2afbd3650) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep whitespace-sensitive text models stable across save and reopen.
+
+- [#475](https://github.com/stella/folio/pull/475) [`7f5ab65`](https://github.com/stella/folio/commit/7f5ab655e532a840733677687749ee7a86dfcced) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep preserved OOXML fragments stable across save and reopen.
+
+- [#458](https://github.com/stella/folio/pull/458) [`0528c1c`](https://github.com/stella/folio/commit/0528c1ca6733df2bc6a20ce29a485b0a9ec564bb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicitly authored solid shape outlines when saving DOCX files.
+
+- [#456](https://github.com/stella/folio/pull/456) [`5152140`](https://github.com/stella/folio/commit/5152140be45bef9ceebe0939ca99bb745b125dec) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep captured VML run XML stable across repeated document round trips.
+
+- [#443](https://github.com/stella/folio/pull/443) [`5c42d4e`](https://github.com/stella/folio/commit/5c42d4e77934fe995f52d954eb495022fe041e7e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Speed up DOCX parsing with batched package extraction and lower-allocation XML lookups.
+
+- [#480](https://github.com/stella/folio/pull/480) [`c66ecc7`](https://github.com/stella/folio/commit/c66ecc733f52b9d7ffd19d4f28c87a02176fb6d0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve omitted image wrap distances when saving documents.
+
+- [#461](https://github.com/stella/folio/pull/461) [`9ce81df`](https://github.com/stella/folio/commit/9ce81dffee6ed812b91ee7a5cdb839c5d2d0f690) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve clickable image hyperlinks across DOCX save and reopen.
+
+- [#460](https://github.com/stella/folio/pull/460) [`2f85509`](https://github.com/stella/folio/commit/2f85509b0fbf9e69e043991f32805ea90c48e033) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep untouched picture watermark headers byte-stable when documents are saved.
+
+- [#473](https://github.com/stella/folio/pull/473) [`352c66a`](https://github.com/stella/folio/commit/352c66a8784ab525f70cca01d9148f3a0a57da42) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve empty comment package parts during no-op document saves.
+
+- [#468](https://github.com/stella/folio/pull/468) [`142a301`](https://github.com/stella/folio/commit/142a3017846535748588b2f79ca0ce4f7c226247) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicit left-to-right section bidi settings across DOCX save and reopen.
+
+- [#469](https://github.com/stella/folio/pull/469) [`862b62b`](https://github.com/stella/folio/commit/862b62b74ce31ac2d7a27abda4c4cec2c168df1a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve absent shape wrap distances when saving DrawingML.
+
+- [#465](https://github.com/stella/folio/pull/465) [`0db58c8`](https://github.com/stella/folio/commit/0db58c84dc713e0c86840af5f4a56bd78d3c2383) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Allow DOCX parsing to omit rowless placeholder tables.
+
+- [#474](https://github.com/stella/folio/pull/474) [`8b532b8`](https://github.com/stella/folio/commit/8b532b84594554323f5bee96a9ec6f31d8540c94) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Skip painter text measurement for lines that do not need tab or horizontal-scale geometry.
+
+- [#459](https://github.com/stella/folio/pull/459) [`f124920`](https://github.com/stella/folio/commit/f12492029ef25eeedeb67c87dae639c1fe097bd9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicitly authored empty shape names when saving DOCX files.
+
+- [#446](https://github.com/stella/folio/pull/446) [`3c6d290`](https://github.com/stella/folio/commit/3c6d290c6c7478fdebaae16b9bbd0016e09b6d07) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Parse document XML with a faster single-pass path and compatibility fallback.
+
+- [#483](https://github.com/stella/folio/pull/483) [`3fdbea2`](https://github.com/stella/folio/commit/3fdbea22fec5046273209c39516db9648d692a3c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reduce paragraph layout text measurements by reusing visible word widths for ordinary trailing whitespace.
+
+- [#444](https://github.com/stella/folio/pull/444) [`580d7bf`](https://github.com/stella/folio/commit/580d7bff9952a2dd5d7e32aa98e8149decbc2414) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reduce allocation overhead in namespace-tolerant XML name lookups.
+
+- [#477](https://github.com/stella/folio/pull/477) [`fd04f0b`](https://github.com/stella/folio/commit/fd04f0bb8fe624f618dd10f46abf29e5240378c5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve paragraph and run formatting when serializing comment content.
+
+- [#479](https://github.com/stella/folio/pull/479) [`4eda1fb`](https://github.com/stella/folio/commit/4eda1fb28a18cdfc536bdace1a3c23337aaded41) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep complex fields structurally stable across repeated DOCX save and reopen cycles.
+
+- [#466](https://github.com/stella/folio/pull/466) [`a17c937`](https://github.com/stella/folio/commit/a17c9374fd44138487b36e2010dc44af9696ebfe) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve the authored simple-field structure when saving DOCX files.
+
+- [#455](https://github.com/stella/folio/pull/455) [`0e959dc`](https://github.com/stella/folio/commit/0e959dcf1c331ff4a65b40a47894670777c38307) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Ignore negative OOXML list levels instead of rejecting the document model.
+
+- [#457](https://github.com/stella/folio/pull/457) [`316d1dc`](https://github.com/stella/folio/commit/316d1dc92b11cfd46c55c12e603eba656c8f973d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize the default paragraph tab leader during DOCX parsing.
+
+- [#476](https://github.com/stella/folio/pull/476) [`b166291`](https://github.com/stella/folio/commit/b166291647e19bfe39697ca665c58868f6c1a17d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Prevent compatibility text boxes from being duplicated during document saves.
+
+- [#467](https://github.com/stella/folio/pull/467) [`14e508f`](https://github.com/stella/folio/commit/14e508fb8960d306a8691e9097825e2eda35eb90) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve DrawingML background and text theme colors when saving shapes.
+
+- [#462](https://github.com/stella/folio/pull/462) [`263a646`](https://github.com/stella/folio/commit/263a646e9c5024e9353a2ab1ab5f03be8d16cc91) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve conditional table-row formatting across DOCX save and reopen.
+
+- [#454](https://github.com/stella/folio/pull/454) [`b0b0fdf`](https://github.com/stella/folio/commit/b0b0fdf4f12891c6b459d262199b53a58da32b04) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicit single-column section counts when saving DOCX files.
+
+- [#478](https://github.com/stella/folio/pull/478) [`a285d18`](https://github.com/stella/folio/commit/a285d18f3120efae15ba7866fa8e5c9d7372d7e5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve an absent dropdown selection when saving untouched content controls.
+
+- [#471](https://github.com/stella/folio/pull/471) [`2556c9b`](https://github.com/stella/folio/commit/2556c9b25a3c8b78f2ae02f53520017a35c75c8c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve cached rendered-page starts before compatibility-wrapped paragraph content.
+
+- [#450](https://github.com/stella/folio/pull/450) [`4f446fb`](https://github.com/stella/folio/commit/4f446fb3acd70d28a9457a2d17b0811e37b427cc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Save URI-encoded SVG image data URLs without requiring base64 encoding.
+
+- [#463](https://github.com/stella/folio/pull/463) [`c6abe66`](https://github.com/stella/folio/commit/c6abe6678c1eadf4fa21aa719243668c7dc7391f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve the distinction between absent and explicitly disabled shape fills.
+
+- Updated dependencies [[`db702de`](https://github.com/stella/folio/commit/db702dea23ca7f7374031c13aac64ad2f520d981), [`76c46d5`](https://github.com/stella/folio/commit/76c46d53f980c1651c83bd600bfbd565822cfa53), [`9ce81df`](https://github.com/stella/folio/commit/9ce81dffee6ed812b91ee7a5cdb839c5d2d0f690)]:
+  - @stll/docx-core@0.5.1
+
 ## 0.15.0
 
 ### Minor Changes
