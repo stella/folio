@@ -41,6 +41,10 @@ the browser, built on ProseMirror. Two published packages plus a dev playground:
   differential parity gate — extend them when you change parsing, layout, or
   editor interactions.
 - Return minimal data from public APIs; do not export types that have no consumer.
+- **Never delete or regenerate `bun.lock` to apply package version bumps.** Run
+  `bun scripts/check-lockfile-workspace-versions.ts --write`, then
+  `bun install --frozen-lockfile`. The synchronizer is the sole owner of cached
+  workspace self-versions; dependency-graph changes belong in an explicit install.
 
 ### Fidelity Consolidation
 

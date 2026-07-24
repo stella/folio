@@ -28,7 +28,9 @@ without one of the above.
 1. PRs merge to `main`, each carrying its changeset(s).
 2. `release-pr.yml` maintains a **"Version Packages"** PR that applies the
    pending changesets: it bumps the affected `package.json` versions, updates the
-   changelogs, and re-syncs `bun.lock`.
+   changelogs, and surgically synchronizes workspace self-versions in `bun.lock`
+   before a frozen install. The resolved dependency graph is never regenerated
+   as a side effect of versioning.
 3. Merging that PR lands the version bumps on `main`. `publish.yml` builds and
    packs all six public packages without a publishing credential, then delegates
    registry state, dependency ordering, OIDC publishing, and per-package GitHub

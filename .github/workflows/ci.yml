@@ -74,9 +74,8 @@ jobs:
       # `--frozen-lockfile` above only checks that the dependency graph still
       # satisfies bun.lock; it does not notice a workspace's cached "version"
       # field drifting behind its package.json (a plain `bun install` doesn't
-      # rewrite that field either — only a full lockfile regenerate does). See
-      # scripts/check-lockfile-workspace-versions.ts for the incident this
-      # guards against.
+      # rewrite that field either. The release path uses the same script in
+      # byte-preserving --write mode; CI keeps it in check-only mode.
       - name: Lockfile workspace-version check
         run: bun run check:lockfile-versions
 

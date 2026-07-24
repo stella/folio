@@ -14,14 +14,13 @@
 // dependency range (see the @stll/docx-core ^0.4.0-vs-0.5.0 incident this
 // script was added to prevent).
 //
-// The only fix once it drifts is `rm bun.lock && bun install` (a full
-// regenerate). This script cross-checks each packages/*/package.json
-// `version` against the version bun.lock has cached for that workspace, so
-// the drift itself gets caught in CI instead of silently persisting.
+// This script is the single owner of workspace self-version synchronization:
+// check-only by default for CI, or byte-preserving repair with `--write`.
 
 import { panic } from "better-result";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { syncWorkspaceVersions } from "./lib/bun-lock-workspace-versions";
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -37,31 +36,13 @@ const workspaceDirs = entries
 
 const lockText = await Bun.file(join(ROOT, "bun.lock")).text();
 
-// bun.lock is JSON-with-trailing-commas ("JSONC"-flavored), not strict JSON,
-// so a plain JSON.parse fails on it as-is. Trailing commas only ever appear
-// directly before a closing `}`/`]`, and that exact sequence cannot occur
-// inside any of bun.lock's own string values (workspace paths, package
-// names/versions/specifiers, or the base64 `sha512-...` integrity hashes),
-// so stripping them is a safe, structure-preserving normalize. Parsing the
-// whole file once and reading `workspaces[dir].version` from the resulting
-// object is immune to bun's key ordering or nested-object shape — unlike a
-// per-block regex, there is no block to mis-extract.
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const parsedLock: unknown = JSON.parse(lockText.replace(/,(\s*[}\]])/g, "$1"));
-if (!isRecord(parsedLock) || !isRecord(parsedLock.workspaces)) {
-  panic("bun.lock did not parse into the expected { workspaces: {...} } shape");
+const args = process.argv.slice(2);
+if (args.some((arg) => arg !== "--write") || args.filter((arg) => arg === "--write").length > 1) {
+  panic("Usage: bun scripts/check-lockfile-workspace-versions.ts [--write]");
 }
-const { workspaces: lockWorkspaces } = parsedLock;
-
-const versionForWorkspace = (workspacePath: string): string | null => {
-  const entry = lockWorkspaces[workspacePath];
-  if (!isRecord(entry) || typeof entry.version !== "string") return null;
-  return entry.version;
-};
-
-const mismatches: string[] = [];
+const write = args[0] === "--write";
+const expectedVersions = new Map<string, string>();
+const packageNames = new Map<string, string>();
 
 for (const workspaceDir of workspaceDirs) {
   // A directory under packages/ is not necessarily a real workspace: skip
@@ -73,17 +54,24 @@ for (const workspaceDir of workspaceDirs) {
   const version = pkg.version;
   if (typeof name !== "string" || typeof version !== "string") continue;
 
-  const lockedVersion = versionForWorkspace(workspaceDir);
-  if (lockedVersion === null) {
-    mismatches.push(`${name} (${workspaceDir}): no bun.lock entry found`);
-    continue;
-  }
-  if (lockedVersion !== version) {
-    mismatches.push(
-      `${name} (${workspaceDir}): package.json is ${version}, bun.lock has ${lockedVersion}`,
-    );
-  }
+  expectedVersions.set(workspaceDir, version);
+  packageNames.set(workspaceDir, name);
 }
+
+const result = syncWorkspaceVersions(lockText, expectedVersions);
+const unrepairable = result.mismatches.filter(({ actual }) => actual === null);
+
+if (write && unrepairable.length === 0 && result.text !== lockText) {
+  await Bun.write(join(ROOT, "bun.lock"), result.text);
+  console.log(`bun.lock workspace-version sync: updated ${result.mismatches.length} workspace(s).`);
+  process.exit(0);
+}
+
+const mismatches = result.mismatches.map(({ workspace, expected, actual }) =>
+  actual === null
+    ? `${packageNames.get(workspace)} (${workspace}): no writable bun.lock version entry found`
+    : `${packageNames.get(workspace)} (${workspace}): package.json is ${expected}, bun.lock has ${actual}`,
+);
 
 if (mismatches.length > 0) {
   console.error(
@@ -92,11 +80,12 @@ if (mismatches.length > 0) {
       "",
       ...mismatches.map((line) => `  - ${line}`),
       "",
-      "A plain `bun install` will not fix this (it doesn't rewrite cached",
-      "workspace versions for entries that already exist). Regenerate the",
-      "lockfile instead:",
+      write
+        ? "The lockfile shape is incomplete; workspace entries must exist before they can be synchronized."
+        : "A plain `bun install` will not fix cached workspace self-versions. Synchronize them with:",
       "",
-      "    rm bun.lock && bun install",
+      "    bun scripts/check-lockfile-workspace-versions.ts --write",
+      "    bun install --frozen-lockfile",
       "",
       "Then commit the refreshed bun.lock.",
     ].join("\n"),
@@ -104,4 +93,8 @@ if (mismatches.length > 0) {
   process.exit(1);
 }
 
-console.log("bun.lock workspace-version check: all workspace versions match. OK.");
+console.log(
+  write
+    ? "bun.lock workspace-version sync: already current. OK."
+    : "bun.lock workspace-version check: all workspace versions match. OK.",
+);
