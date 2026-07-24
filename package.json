@@ -57,7 +57,6 @@
     "api:update": "bun scripts/api-reports.ts --update",
     "api:check": "bun scripts/api-reports.ts",
     "changeset:version": "changeset version && rm -f bun.lock && bun install",
-    "changeset:check": "bun scripts/check-changeset.ts",
     "bench": "bun benchmarks/index.ts",
     "bench:cross-language": "bun benchmarks/cross-language/run.ts",
     "parity": "bun parity/cli.ts",

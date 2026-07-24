@@ -1,58 +1,9 @@
 name: Publish
 
-# Publishes the folio packages to npm with SLSA provenance via OIDC trusted
-# publishing (no long-lived NPM_TOKEN). The monorepo ships six packages:
-# @stll/docx-core (canonical model and serializer), @stll/folio-core (headless engine),
-# @stll/folio-react (React editor),
-# @stll/folio-agents (agent tool-schema bindings over core), @stll/folio-vue
-# (Vue editor), and @stll/folio-nuxt (Nuxt module wrapping the Vue editor). All
-# are released by this workflow as a matrix.
-#
-# Least privilege: packing and publishing are separate jobs. The `pack` job runs
-# the untrusted build (bun install, build, prepare-publish, bun pm pack) with NO
-# id-token, so a compromised build/postinstall script cannot mint an OIDC
-# credential. Only the `publish` job — which downloads the prebuilt tarballs and
-# runs the hardened action — is granted id-token: write.
-#
-# Dependency order: @stll/docx-core publishes before @stll/folio-core, which publishes before @stll/folio-react,
-# @stll/folio-agents, and @stll/folio-vue (all three pin `@stll/folio-core` via
-# `workspace:^`, which bun pm pack rewrites to the concrete version), and
-# @stll/folio-vue before @stll/folio-nuxt (nuxt pins `@stll/folio-vue`). The
-# publish job runs the matrix with `max-parallel: 1` in docx-core → core → react → agents →
-# vue → nuxt order.
-#
-# @stll/folio-vue and @stll/folio-nuxt ship dist-shaped `exports` in-repo, so the
-# pack job skips the prepare-publish source->dist transform for them (it only
-# understands source-shaped `./src/*.ts` string exports); bun pm pack
-# still rewrites their `workspace:` deps to concrete versions.
-#
-# Prerequisite (one-time, by a maintainer on npmjs.com): configure an npm
-# "trusted publisher" for EACH package pointing at this repository and this
-# workflow file. The hardened action refuses to fall back to token auth, so the
-# first publish of a package fails until its trusted publisher exists. NOTE:
-# @stll/docx-core, @stll/folio-agents, @stll/folio-vue, and @stll/folio-nuxt still need their
-# trusted-publisher / OIDC entries created on npm before their publish jobs can
-# succeed — a manual npm-side step, done once per package.
-#
-# Auto-release: a version bump to either package.json merged to main publishes
-# that version. The hardened action is idempotent: it skips a name@version
-# already on the registry, so bumping only one package republishes only it.
-# Manual dispatch with `publish` unchecked builds + packs only (a dry run).
-#
-# Each run also cuts a GitHub Release (tag `<name>@<version>`) with this run's
-# tarball attached as an asset. When the publish step actually shipped the
-# version (not a no-op), that tarball is the content-addressed link between the
-# public GitHub reference and the npm artifact: downstream users can verify
-# byte-for-byte that what they install matches this release. When the version
-# was already on the registry before this run (idempotent publish skip), the
-# release notes say so instead of asserting byte-identity, since this run's
-# rebuild was never the artifact npm actually accepted. Release creation is
-# idempotent — it skips if the tag already exists, mirroring the hardened
-# action's version-level idempotency.
-
-env:
-  NODE_VERSION: "22"
-  NPM_VERSION: "11.11.1"
+# Keep this filename stable: npm trusted publishing authorizes the local calling
+# workflow, even though the privileged release transaction runs in a reusable
+# workflow. Build and pack remain here, without an OIDC credential; the central
+# workflow validates and publishes the resulting tarballs.
 
 on:
   push:
@@ -75,6 +26,8 @@ concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
 
+permissions: {}
+
 jobs:
   pack:
     name: Build and pack ${{ matrix.pkg }}
@@ -83,13 +36,15 @@ jobs:
       matrix:
         pkg: [docx-core, core, react, agents, vue, nuxt]
     permissions:
-      contents: read # deliberately NO id-token: untrusted build scripts run here
+      contents: read # Deliberately no id-token while dependency and build scripts run.
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version-file: "package.json"
+          bun-version-file: package.json
 
       - run: bun install --frozen-lockfile
 
@@ -99,32 +54,29 @@ jobs:
           PKG: ${{ matrix.pkg }}
         run: |
           set -euo pipefail
-          # Build the package, then transform its package.json from the in-repo
-          # source shape (exports -> ./src/*.ts) to the published dist shape
-          # (exports -> ./dist, real .d.ts, no src). No restore needed: ephemeral
-          # checkout.
-          #
-          # Pack with `bun pm pack`, NOT `npm pack`: only Bun rewrites the
-          # `workspace:` / `catalog:` dependency protocols to concrete versions
-          # in the published package.json (react's `@stll/folio-core` dep).
           case "${PKG}" in
             docx-core) package_name="@stll/docx-core" ;;
             *) package_name="@stll/folio-${PKG}" ;;
           esac
           bun --filter "${package_name}" build
-          # docx-core/core/react/agents carry source-shaped exports (./src/*.ts) that
-          # prepare-publish rewrites to dist; vue/nuxt already ship dist-shaped
-          # exports, so skip the transform (it panics on their { types, import }
-          # objects). bun pm pack still rewrites their workspace: deps below.
+
+          # These packages keep source-shaped exports in the repository; convert
+          # those manifests to their published dist shape before packing. Vue and
+          # Nuxt already use dist-shaped export objects.
           case "${PKG}" in
             docx-core|core|react|agents) bun scripts/prepare-publish.ts "packages/${PKG}" ;;
             *) echo "skip prepare-publish for ${PKG} (already dist-shaped)" ;;
           esac
-          mkdir -p "${GITHUB_WORKSPACE}/release-artifacts"
-          ( cd "packages/${PKG}" && bun pm pack --destination "${GITHUB_WORKSPACE}/release-artifacts" )
-          sha256sum release-artifacts/*.tgz >> "release-artifacts/SHA256SUMS-${PKG}"
 
-      - name: Upload tarball
+          mkdir -p "${GITHUB_WORKSPACE}/release-artifacts"
+          (
+            cd "packages/${PKG}"
+            # Bun rewrites workspace/catalog protocols to concrete versions.
+            bun pm pack --destination "${GITHUB_WORKSPACE}/release-artifacts"
+          )
+          sha256sum release-artifacts/*.tgz > "release-artifacts/SHA256SUMS-${PKG}"
+
+      - name: Upload packed package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: npm-tarball-${{ matrix.pkg }}
@@ -132,169 +84,21 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  publish:
-    name: Publish ${{ matrix.pkg }}
+  release:
+    name: Release packages
     needs: pack
-    # Auto-publish only from main: a version-bump push to main, or a manual
-    # dispatch from main with the publish checkbox ticked. A dispatch from any
-    # other branch is a dry run (pack only), never a publish.
     if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish) }}
-    runs-on: ubuntu-latest
-    strategy:
-      # Ordered so every package's published deps already exist on the registry
-      # for downstream installs: docx-core before core, core before
-      # react/agents/vue, and vue before nuxt.
-      max-parallel: 1
-      matrix:
-        pkg: [docx-core, core, react, agents, vue, nuxt]
     permissions:
-      # contents: write cuts the per-version GitHub Release below. Safe to grant
-      # alongside id-token here: this job runs no untrusted build scripts (they
-      # ran in the pack job); it only downloads a prebuilt tarball, publishes it,
-      # and creates the release.
-      contents: write
-      id-token: write # OIDC only here; build scripts already ran in the pack job
-      attestations: write # build provenance attestation for the published tarball
-    steps:
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          registry-url: https://registry.npmjs.org
-
-      - name: Install npm for trusted publishing
-        # --ignore-scripts: this job holds id-token: write, so do not run any
-        # lifecycle hooks from the fetched npm package before the hardened
-        # publish step (npm itself needs none to run).
-        run: npm install --global --ignore-scripts "npm@${{ env.NPM_VERSION }}"
-
-      - name: Download tarball
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: npm-tarball-${{ matrix.pkg }}
-          path: release-artifacts/
-
-      - name: Resolve tarball metadata
-        id: tarball
-        shell: bash
-        run: |
-          set -euo pipefail
-          tgz="$(ls release-artifacts/*.tgz)"
-          # Read name and version from the tarball's bundled package.json — the
-          # published artifact is whatever bytes are in the .tgz, so the release
-          # tag must reflect that (and `bun pm pack` has already rewritten any
-          # `workspace:`/`catalog:` deps to concrete versions inside it).
-          tar -xOf "${tgz}" package/package.json > "${RUNNER_TEMP}/pkg.json"
-          name="$(node -p "require('${RUNNER_TEMP}/pkg.json').name")"
-          version="$(node -p "require('${RUNNER_TEMP}/pkg.json').version")"
-          {
-            echo "path=${tgz}"
-            echo "name=${name}"
-            echo "version=${version}"
-            echo "tag=${name}@${version}"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Check whether this version already exists on npm
-        id: registry-check
-        shell: bash
-        env:
-          NAME: ${{ steps.tarball.outputs.name }}
-          VERSION: ${{ steps.tarball.outputs.version }}
-        run: |
-          set -euo pipefail
-          # The hardened publish action is idempotent: it no-ops if NAME@VERSION
-          # is already on the registry. Capture that pre-publish state here (an
-          # independent check, not a claimed output of the action) so the
-          # release step below can tell "this run actually published" from "this
-          # run skipped because it was already there" and avoid asserting
-          # byte-identity for a tarball npm never accepted this run.
-          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
-            echo "already-published=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "already-published=false" >> "${GITHUB_OUTPUT}"
-          fi
-
-      - name: Publish to npm
-        uses: stella/.github/.github/actions/npm-publish-hardened@96b8912e0786548c4e62046ce3965769991dd0e0
-        with:
-          # Real releases ship as `latest`, promoting past the one-time
-          # `placeholder`-tagged bootstrap stubs. `latest` is the action default,
-          # set here explicitly so the intent is visible at the call site.
-          tarball: ${{ steps.tarball.outputs.path }}
-          tag: latest
-
-      - name: Create GitHub Release
-        # Attach this run's tarball so the GitHub Release is a content-addressed
-        # public reference for the artifact. Idempotent: on a re-run (or when the
-        # sibling package was not bumped), the tag already exists and we skip.
-        # The release notes below only claim byte-identity with the npm artifact
-        # when `registry-check` observed no pre-existing publish (i.e. this run's
-        # `npm publish` was not a no-op); see ALREADY_PUBLISHED handling below.
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # The job does not check out the repository, so gh cannot infer the
-          # repository from a git remote; pass it explicitly.
-          GH_REPO: ${{ github.repository }}
-          PKG: ${{ matrix.pkg }}
-          TAG: ${{ steps.tarball.outputs.tag }}
-          NAME: ${{ steps.tarball.outputs.name }}
-          VERSION: ${{ steps.tarball.outputs.version }}
-          TARBALL: ${{ steps.tarball.outputs.path }}
-          ALREADY_PUBLISHED: ${{ steps.registry-check.outputs.already-published }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "::notice::Release ${TAG} already exists; skipping."
-            exit 0
-          fi
-          changelog="${RUNNER_TEMP}/CHANGELOG.md"
-          notes="${RUNNER_TEMP}/release-notes.md"
-          gh api "repos/${GH_REPO}/contents/packages/${PKG}/CHANGELOG.md?ref=${GITHUB_SHA}" \
-            --jq '.content' | base64 -d > "${changelog}"
-          # shellcheck disable=SC2016 # Keep JavaScript template literals intact.
-          CHANGELOG_PATH="${changelog}" NOTES_PATH="${notes}" node -e '
-          const fs = require("node:fs");
-
-          const {
-            ALREADY_PUBLISHED: alreadyPublishedRaw,
-            CHANGELOG_PATH: changelogPath,
-            NAME: name,
-            NOTES_PATH: notesPath,
-            VERSION: version,
-          } = process.env;
-          if (!alreadyPublishedRaw || !changelogPath || !name || !notesPath || !version) {
-            throw new Error("Missing release note generation environment variables");
-          }
-          const alreadyPublished = alreadyPublishedRaw === "true";
-
-          const lines = fs.readFileSync(changelogPath, "utf8").split(/\r?\n/);
-          const heading = `## ${version}`;
-          const start = lines.findIndex((line) => line.trim() === heading);
-
-          if (start === -1) {
-            throw new Error(`Missing ${heading} section in ${changelogPath}`);
-          }
-
-          const next = lines.findIndex(
-            (line, index) => index > start && line.startsWith("## "),
-          );
-          const sectionLines = lines.slice(start + 1, next === -1 ? undefined : next);
-          const section = sectionLines.join("\n").trim();
-
-          if (!section) {
-            throw new Error(`Empty ${heading} section in ${changelogPath}`);
-          }
-
-          // "already-published" means NAME@VERSION was already on the registry
-          // before the publish step ran in this workflow run, so the hardened
-          // action was a no-op: the tarball built in this run was never
-          // accepted by npm and must not be claimed as the registry artifact.
-          const provenance = alreadyPublished
-            ? `\`${name}@${version}\` was already published to npm before this workflow run (this run'"'"'s publish step was a no-op). The attached tarball is a local rebuild of the same source and is not guaranteed to be byte-identical to the artifact on the registry.`
-            : `\`${name}@${version}\` published to npm via OIDC trusted publishing with SLSA provenance. The attached tarball is the exact artifact published to the registry.`;
-          fs.writeFileSync(notesPath, `${section}\n\n---\n\n${provenance}\n`);
-          '
-          gh release create "${TAG}" "${TARBALL}" \
-            --target "${GITHUB_SHA}" \
-            --title "${NAME}@${VERSION}" \
-            --notes-file "${notes}"
+      contents: write # Create immutable package tags and GitHub releases.
+      id-token: write # npm trusted publishing; build scripts ran without this permission.
+    # The repository owner publishes this versioned shared contract.
+    uses: stella/.github/.github/workflows/npm-independent-release.yml@v1.0.0 # zizmor: ignore[unpinned-uses]
+    with:
+      artifact-pattern: npm-tarball-*
+      package-files: |
+        packages/docx-core/package.json
+        packages/core/package.json
+        packages/react/package.json
+        packages/agents/package.json
+        packages/vue/package.json
+        packages/nuxt/package.json
