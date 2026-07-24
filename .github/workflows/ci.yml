@@ -25,7 +25,7 @@ jobs:
 
       - name: Enforce release intent
         # The repository owner publishes this versioned shared contract.
-        uses: stella/.github/.github/actions/changeset-policy@v1.0.0 # zizmor: ignore[unpinned-uses]
+        uses: stella/.github/.github/actions/changeset-policy@c47bb87cc82047b5fdc2540983148d4e3efa9a37 # v1.3.0
         with:
           release-paths: |
             packages/docx-core/src/**
