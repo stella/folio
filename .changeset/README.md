@@ -2,8 +2,8 @@
 
 This folder is managed by [Changesets](https://github.com/changesets/changesets).
 
-Every PR that changes the published source of `@stll/folio-core` or
-`@stll/folio-react` must ship a changeset describing the release:
+Every PR that changes published source under `packages/{docx-core,core,react,
+agents,vue,nuxt}/src` must ship a changeset describing the release:
 
 ```sh
 bunx changeset
@@ -20,8 +20,8 @@ do not affect the published API), record that explicitly:
 bunx changeset --empty
 ```
 
-CI (`bun run changeset:check`) fails a PR that touches `packages/*/src` without
-one of the above.
+The shared Changesets policy check fails a PR that touches those source paths
+without one of the above.
 
 ## How a release happens
 
@@ -29,9 +29,10 @@ one of the above.
 2. `release-pr.yml` maintains a **"Version Packages"** PR that applies the
    pending changesets: it bumps the affected `package.json` versions, updates the
    changelogs, and re-syncs `bun.lock`.
-3. Merging that PR lands the version bumps on `main`. The existing `publish.yml`
-   path filter (`packages/{core,react}/package.json`) fires and runs the
-   hardened OIDC publish + GitHub Release for whichever package changed.
+3. Merging that PR lands the version bumps on `main`. `publish.yml` builds and
+   packs all six public packages without a publishing credential, then delegates
+   registry state, dependency ordering, OIDC publishing, and per-package GitHub
+   Releases to the versioned shared workflow.
 
 Changesets never publishes here; `publish.yml` remains the sole publish
 mechanism.
