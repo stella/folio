@@ -1,0 +1,22 @@
+{
+  "name": "@stll/premirror-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Separately-versioned folio plugin: a @chenglou/pretext-backed SegmentFitEngine for folio-core's measurement seam, with frozen parity tests. Consumers pin this package; it depends only on published @stll/folio-core plus its own third-party deps.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@chenglou/pretext": "0.0.3",
+    "@stll/folio-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14"
+  }
+}
