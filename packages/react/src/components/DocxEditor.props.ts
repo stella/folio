@@ -160,8 +160,12 @@ export type DocxEditorProps = {
   showRuler?: boolean;
   /** Measurement unit shown on the rulers (default: 'inch'). */
   rulerUnit?: "inch" | "cm";
-  /** Initial zoom level (default: 1.0) */
-  initialZoom?: number;
+  /**
+   * Initial zoom level as a number (default: 1.0 = 100%), or `"fit-width"` to
+   * size the page to the editor's width and keep it fit as the editor resizes.
+   * A manual zoom (toolbar or `ref.setZoom`) afterwards overrides the fit.
+   */
+  initialZoom?: number | "fit-width";
   /** Whether Ctrl/Cmd+wheel and trackpad-pinch zoom are enabled (default: true) */
   enableWheelZoom?: boolean;
   /** Whether the editor is read-only. When true, hides toolbar and rulers */

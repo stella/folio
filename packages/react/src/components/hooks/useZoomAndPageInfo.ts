@@ -13,11 +13,23 @@ import type { PagedEditorRef } from "../../paged-editor/PagedEditor";
 
 const PAGE_INFO_FADE_MS = 600;
 
+// Breathing room kept between the fitted page and the scroll container edges so
+// the page does not sit flush against them (matched to the viewport padding).
+const FIT_TO_WIDTH_PADDING_PX = 16;
+const FIT_TO_WIDTH_MIN_ZOOM = 0.1;
+// A page never grows past 100% in fit-width: a container wider than the page
+// leaves the page at natural size, centred, rather than magnified.
+const FIT_TO_WIDTH_MAX_ZOOM = 1;
+
 export type UseZoomAndPageInfoArgs = {
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   pagedEditorRef: RefObject<PagedEditorRef | null>;
-  /** Initial zoom on mount. Subsequent changes do not apply. */
-  initialZoom: number;
+  /**
+   * Initial zoom on mount as a number (1 = 100%), or `"fit-width"` to size the
+   * page to the scroll container's width and keep it fit as the container
+   * resizes. A later imperative `setZoom`/toolbar change overrides the fit.
+   */
+  initialZoom: number | "fit-width";
 };
 
 export type UseZoomAndPageInfoReturn = {
@@ -43,7 +55,8 @@ export function useZoomAndPageInfo({
   pagedEditorRef,
   initialZoom,
 }: UseZoomAndPageInfoArgs): UseZoomAndPageInfoReturn {
-  const [zoom, setZoom] = useState(initialZoom);
+  const fitToWidth = initialZoom === "fit-width";
+  const [zoom, setZoom] = useState(typeof initialZoom === "number" ? initialZoom : 1);
   const zoomRef = useRef(zoom);
   const pendingZoomAnchorRef = useRef<ViewportCenterZoomAnchor | null>(null);
 
@@ -160,6 +173,49 @@ export function useZoomAndPageInfo({
       }
     };
   }, [scrollContainerEl, scheduleScrollPageInfoFade, updateScrollPageInfo]);
+
+  // fit-width: scale the page so its width fills the scroll container, and keep
+  // it fit as the container resizes. The page's natural width comes from the
+  // laid-out geometry (`layout.pages[0].size.w`), so the scaled page never has
+  // to be measured in the DOM; a rAF retry covers the window before the first
+  // layout completes. A manual zoom afterwards wins (this only re-fires on a
+  // container resize), matching the documented "override the fit" behaviour.
+  useEffect(() => {
+    if (!fitToWidth || !scrollContainerEl) {
+      return undefined;
+    }
+    let rafId = 0;
+    const applyFit = () => {
+      const pageWidth = pagedEditorRef.current?.getLayout()?.pages[0]?.size.w ?? 0;
+      if (pageWidth <= 0) {
+        rafId = requestAnimationFrame(applyFit); // layout not ready yet
+        return;
+      }
+      const available = scrollContainerEl.clientWidth - FIT_TO_WIDTH_PADDING_PX;
+      if (available <= 0) {
+        return;
+      }
+      const target = Math.min(
+        FIT_TO_WIDTH_MAX_ZOOM,
+        Math.max(FIT_TO_WIDTH_MIN_ZOOM, Math.round((available / pageWidth) * 100) / 100),
+      );
+      // Guard against a redundant zoom set (which would re-anchor the scroll)
+      // and sub-percent jitter.
+      if (Math.abs(target - zoomRef.current) > 0.005) {
+        setZoomWithViewportAnchor(target);
+      }
+    };
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(applyFit);
+    });
+    observer.observe(scrollContainerEl);
+    applyFit();
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+    };
+  }, [fitToWidth, scrollContainerEl, pagedEditorRef, setZoomWithViewportAnchor]);
 
   return {
     zoom,
