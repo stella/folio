@@ -9,6 +9,7 @@ import type { ParagraphBlock, ParagraphMeasure } from "../types";
 import { lineBreakPolicyCacheParts } from "./effectiveLineBreakPolicy";
 import { getLineBreakProviderGeneration } from "./lineBreakProvider";
 import { clearFontResolvedCache } from "./measureHelpers";
+import { clearSegmentFitEngineCaches } from "./segmentFit";
 
 // =============================================================================
 // TEXT WIDTH CACHE
@@ -451,6 +452,9 @@ export function clearAllCaches(): void {
   clearFontMetricsCache();
   clearParagraphMeasureCache();
   clearFontResolvedCache();
+  // Engine-prepared segment widths are derived from the same canvas metrics
+  // as the caches above; a font-environment change must drop them too.
+  clearSegmentFitEngineCaches();
 }
 
 /**

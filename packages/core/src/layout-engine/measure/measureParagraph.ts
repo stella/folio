@@ -38,8 +38,9 @@ import {
   type FloatingLineSegmentZone,
 } from "./floatingZones";
 import { getListMarkerInlineWidth } from "./listMarkerWidth";
-import { buildRunFontStyle, ptToPx, twipsToPx } from "./measureHelpers";
+import { buildFontString, buildRunFontStyle, ptToPx, twipsToPx } from "./measureHelpers";
 import { getFontMetrics, measureRun, measureTextWidth } from "./measureProvider";
+import { isSegmentFitActive, runSegmentFitWalk, styleSupportsSegmentFit } from "./segmentFit";
 import type { FontMetrics, FontStyle } from "./measureTypes";
 import {
   findGraphemeBreaks,
@@ -1810,13 +1811,72 @@ export function measureParagraph(
         continue;
       }
 
+      // Segment-fit strategy (premirror port): when an engine is installed and
+      // the flag is on, fit plain text runs from prepared segment widths
+      // instead of measuring word slices per call. Admission is deliberately
+      // conservative — only runs whose line breaks the seam reproduces exactly
+      // are handed to it; everything the legacy walk does beyond a plain word
+      // fit stays legacy: justified shrink tolerance, automatic hyphenation's
+      // mid-word breaks, cross-run glue (#991, both plain and protected), and
+      // styles outside the engine's font-string model. Pieces the engine
+      // refuses (e.g. an overlong token on an empty line) fall through to the
+      // legacy walk at `segmentConsumedUpTo`. With the flag off or no engine
+      // installed (production default), the whole block is skipped and the
+      // legacy walk runs byte-identically.
+      let segmentConsumedUpTo = 0;
+      if (
+        isSegmentFitActive() &&
+        styleSupportsSegmentFit(style) &&
+        !isJustifiedParagraph &&
+        effectiveLineBreakPolicy.automaticHyphenation.type === "disabled" &&
+        (trailingGlueWidths[runIndex] ?? 0) === 0 &&
+        (protectedCrossRunGlueWidths[runIndex] ?? 0) === 0
+      ) {
+        let lastConsumed = 0;
+        /* eslint-disable no-loop-func -- SAFETY: the host callbacks are
+           consumed synchronously inside runSegmentFitWalk before this loop
+           iteration advances; they never escape the call. */
+        segmentConsumedUpTo = runSegmentFitWalk(text, buildFontString(style), {
+          spaceLeft: () => currentLine.availableWidth - currentLine.width + WIDTH_TOLERANCE,
+          lineHasContent: () => currentLine.width > 0,
+          commit: (width, endChar) => {
+            const piece = text.slice(lastConsumed, endChar);
+            const trimmedPiece = trimTrailingSpacesAndTabs(piece);
+            currentLine.width += width;
+            currentLine.trailingWhitespaceWidth =
+              piece === trimmedPiece
+                ? 0
+                : Math.max(0, width - measureTextWidth(trimmedPiece, style));
+            currentLine.regularSpaceWidth += compressibleSpaceWidth(piece, style);
+            currentLine.toRun = runIndex;
+            currentLine.toChar = endChar;
+            lastConsumed = endChar;
+          },
+          wrap: (fromChar) => {
+            startNewLine(runIndex, fromChar);
+            updateMaxFont(lineHeightStyle);
+          },
+        });
+        /* eslint-enable no-loop-func */
+        if (segmentConsumedUpTo >= text.length) {
+          continue;
+        }
+      }
+
       // Find word break points for wrapping
       const wordBreaks = findWordBreaks(text, breakPolicy);
 
-      // Process text word by word
-      let charIndex = crossRunResume?.runIndex === runIndex ? crossRunResume.charIndex : 0;
-      if (crossRunResume?.runIndex === runIndex) {
+      // Process text word by word. When the segment-fit engine consumed the
+      // head of this run, the legacy walk resumes at that offset; otherwise it
+      // honours a pending cross-run hyphenation resume.
+      let charIndex: number;
+      if (segmentConsumedUpTo > 0) {
+        charIndex = segmentConsumedUpTo;
+      } else if (crossRunResume?.runIndex === runIndex) {
+        charIndex = crossRunResume.charIndex;
         crossRunResume = undefined;
+      } else {
+        charIndex = 0;
       }
       let wordBreakIndex = 0;
       let activeHyphenationWord:
