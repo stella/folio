@@ -1,5 +1,11 @@
 # @stll/folio-react
 
+## 0.13.0
+
+### Minor Changes
+
+- [#484](https://github.com/stella/folio/pull/484) [`21943ab`](https://github.com/stella/folio/commit/21943ab82a62be2b39b630d132c6dc46fff74263) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add `initialZoom="fit-width"` to `DocxEditor`. It sizes the page to the editor's width and keeps it fit as the editor resizes (never enlarging past 100%), so a document embedded in a container narrower than its page no longer overflows and clips on the right. A manual zoom (toolbar or `ref.setZoom`) afterwards overrides the fit. The fit is computed from the laid-out page geometry, so the scaled page never has to be measured in the DOM.
+
 ## 0.12.3
 
 ### Patch Changes
