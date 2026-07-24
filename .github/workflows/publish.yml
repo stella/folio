@@ -9,12 +9,14 @@ on:
   push:
     branches: [main]
     paths:
-      - packages/docx-core/package.json
-      - packages/core/package.json
-      - packages/react/package.json
-      - packages/agents/package.json
-      - packages/vue/package.json
-      - packages/nuxt/package.json
+      # Changesets owns these files, so ordinary manifest maintenance cannot
+      # accidentally start a release transaction.
+      - packages/docx-core/CHANGELOG.md
+      - packages/core/CHANGELOG.md
+      - packages/react/CHANGELOG.md
+      - packages/agents/CHANGELOG.md
+      - packages/vue/CHANGELOG.md
+      - packages/nuxt/CHANGELOG.md
   workflow_dispatch:
     inputs:
       publish:
