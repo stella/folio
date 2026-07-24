@@ -734,6 +734,35 @@ function trimTrailingSpacesAndTabs(text: string): string {
   return text.slice(0, end);
 }
 
+function measureWordWithTrailingWhitespace(
+  word: string,
+  style: FontStyle,
+): { measuredWord: string; wordWidth: number; fullWordWidth: number } {
+  const measuredWord = trimTrailingSpacesAndTabs(word);
+  const wordWidth = measureTextWidth(measuredWord, style);
+  const trailingWhitespace = word.slice(measuredWord.length);
+  if (trailingWhitespace.length === 0) {
+    return { measuredWord, wordWidth, fullWordWidth: wordWidth };
+  }
+
+  // Tabs have contextual advances, while kerning can change the advance at
+  // the split boundary. Keep the exact full-string measurement for both.
+  if (style.kerning || trailingWhitespace.includes("\t")) {
+    return { measuredWord, wordWidth, fullWordWidth: measureTextWidth(word, style) };
+  }
+
+  const trailingWhitespaceWidth = measureTextWidth(trailingWhitespace, style);
+  const boundarySpacing =
+    measuredWord.length > 0
+      ? (style.letterSpacing ?? 0) * ((style.horizontalScale ?? 100) / 100)
+      : 0;
+  return {
+    measuredWord,
+    wordWidth,
+    fullWordWidth: wordWidth + trailingWhitespaceWidth + boundarySpacing,
+  };
+}
+
 function trailingCodePoint(text: string): string | undefined {
   if (text.length === 0) {
     return undefined;
@@ -1835,9 +1864,10 @@ export function measureParagraph(
         // Keep the full width while accumulating in case another word follows
         // on this line, then remove any whitespace still trailing at finalize.
         const word = text.slice(charIndex, nextBreak);
-        const measuredWord = trimTrailingSpacesAndTabs(word);
-        const wordWidth = measureTextWidth(measuredWord, style);
-        const fullWordWidth = measureTextWidth(word, style);
+        const { measuredWord, wordWidth, fullWordWidth } = measureWordWithTrailingWhitespace(
+          word,
+          style,
+        );
         const hangingPunctuationWidth = trailingHangingPunctuationWidth(
           measuredWord,
           style,

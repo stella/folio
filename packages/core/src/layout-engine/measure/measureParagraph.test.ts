@@ -8,9 +8,14 @@ import {
 } from "./__tests__/fakeTextMeasure";
 import { hashParagraphBlock } from "./cache";
 import { resetLineBreakProvider, setLineBreakProvider } from "./lineBreakProvider";
-import { buildFontString } from "./measureHelpers";
+import { buildFontString, buildRunFontStyle } from "./measureHelpers";
 import { clampFloatingWrapMargins, getRunCharWidths, measureParagraph } from "./measureParagraph";
-import { getFontMetrics, measureTextWidth } from "./measureProvider";
+import {
+  getFontMetrics,
+  getMeasureProvider,
+  measureTextWidth,
+  setMeasureProvider,
+} from "./measureProvider";
 
 const PT_TO_PX = 96 / 72;
 
@@ -549,6 +554,70 @@ describe("measureParagraph cross-run line breaking", () => {
     runIndex: number,
     charIndex: number,
   ): boolean => lines.some((line) => line.fromRun === runIndex && line.fromChar === charIndex);
+
+  test("reuses visible-word measurements for ordinary trailing spaces", () => {
+    withFakeTextMeasure(
+      (getMeasureCount) => {
+        const text = "alpha beta gamma delta epsilon zeta eta theta";
+        measureParagraph(paragraph([{ kind: "text", text }]), 1000);
+
+        // Eight visible words, one shared space measurement, and one font-metrics probe.
+        expect(getMeasureCount()).toBe(10);
+      },
+      { charWidth: fixedCharWidth(5) },
+    );
+  });
+
+  test("includes scaled letter spacing at the visible-word boundary", () => {
+    withFakeTextMeasure(
+      () => {
+        const run = {
+          kind: "text" as const,
+          text: "ab cd",
+          letterSpacing: 2,
+          horizontalScale: 150,
+        };
+        const fontStyle = buildRunFontStyle(run, "Calibri", 11);
+        const expectedWidth =
+          measureTextWidth("ab ", fontStyle) + measureTextWidth("cd", fontStyle);
+        const measured = measureParagraph(paragraph([run]), 1000);
+
+        expect(measured.lines[0]?.width).toBe(expectedWidth);
+      },
+      { charWidth: fixedCharWidth(5) },
+    );
+  });
+
+  test("keeps exact full-string measurement for kerning and literal tabs", () => {
+    withFakeTextMeasure(
+      () => {
+        const baseProvider = getMeasureProvider();
+        setMeasureProvider({
+          ...baseProvider,
+          measureTextWidth: (text, measuredStyle) => {
+            const measuredWidth = baseProvider.measureTextWidth(text, measuredStyle);
+            if (measuredStyle.kerning && text === "AV ") {
+              return measuredWidth - 2;
+            }
+            if (text === "a\t") {
+              return 40;
+            }
+            return measuredWidth;
+          },
+        });
+
+        const kerned = measureParagraph(
+          paragraph([{ kind: "text", text: "AV X", kerningMinPt: 1 }]),
+          1000,
+        );
+        const tabbed = measureParagraph(paragraph([{ kind: "text", text: "a\tb" }]), 1000);
+
+        expect(kerned.lines[0]?.width).toBe(18);
+        expect(tabbed.lines[0]?.width).toBe(45);
+      },
+      { charWidth: fixedCharWidth(5) },
+    );
+  });
 
   test("keeps an adjacent footnote marker glued to the preceding word", () => {
     withFakeTextMeasure(() => {
