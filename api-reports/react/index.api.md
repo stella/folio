@@ -383,7 +383,7 @@ export type DocxEditorProps = {
     marginGuideColor?: string;
     showRuler?: boolean;
     rulerUnit?: "inch" | "cm";
-    initialZoom?: number;
+    initialZoom?: number | "fit-width";
     enableWheelZoom?: boolean;
     readOnly?: boolean;
     autoOpenReviewSidebar?: boolean;
