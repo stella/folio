@@ -751,6 +751,13 @@ export type PictureWatermark = {
 };
 
 // @public
+export type PositionalTab = {
+    relativeTo?: "margin" | "indent";
+    alignment?: "left" | "center" | "right";
+    leader?: "none" | "dot" | "hyphen" | "underscore" | "middleDot";
+};
+
+// @public
 export type PropertyChangeInfo = {
     rsid?: string;
 } & TrackedChangeInfo;
@@ -1060,9 +1067,10 @@ export type SymbolContent = {
     char: string;
 };
 
-// @public
+// @public (undocumented)
 export type TabContent = {
     type: "tab";
+    positional?: PositionalTab;
 };
 
 // @public

@@ -357,6 +357,11 @@ export type StrikeAttrs = {
     double?: boolean;
 };
 
+// @public (undocumented)
+export type TabAttrs = {
+    positional?: import__stll_docx_core_model.PositionalTab;
+};
+
 // @public
 export type TableAttrs = {
     styleId?: string;

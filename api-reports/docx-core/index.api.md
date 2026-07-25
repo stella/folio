@@ -194,6 +194,13 @@ export const parseLegalSource: (source: string, options?: {
 }) => LegalSourceParseResult;
 
 // @public
+export type PositionalTab = {
+    relativeTo?: "margin" | "indent";
+    alignment?: "left" | "center" | "right";
+    leader?: "none" | "dot" | "hyphen" | "underscore" | "middleDot";
+};
+
+// @public
 export type Run = {
     type: "run";
     formatting?: TextFormatting;
