@@ -685,6 +685,11 @@ export type ShapeType =
  */
 export type ShapeFill = {
   type: "none" | "solid" | "gradient" | "pattern" | "picture";
+  /**
+   * Authored DrawingML retained when the normalized projection is incomplete.
+   * Serializers prefer this value; omit it when modifying the fill.
+   */
+  rawXml?: string;
   /** Solid fill color */
   color?: ColorValue;
   /** Gradient stops for gradient fill */

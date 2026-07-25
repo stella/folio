@@ -27,6 +27,9 @@ import {
   getTextContent,
   parseNumericAttribute,
   findByFullName,
+  findChildByLocalName,
+  findChildrenByLocalName,
+  elementToXml,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -201,23 +204,74 @@ export function parseFill(spPr: XmlElement | null): ShapeFill | undefined {
     return undefined;
   }
 
-  const children = getChildElements(spPr);
-
-  if (children.some((el) => el.name === "a:noFill")) {
+  if (findChildByLocalName(spPr, "noFill")) {
     return { type: "none" };
   }
 
-  const solidFill = children.find((el) => el.name === "a:solidFill");
+  const solidFill = findChildByLocalName(spPr, "solidFill");
   if (solidFill) {
     const color = parseColorElement(solidFill);
     return color !== undefined ? { type: "solid", color } : { type: "solid" };
   }
 
-  if (children.some((el) => el.name === "a:gradFill")) {
-    return { type: "gradient" };
+  const gradientFill = findChildByLocalName(spPr, "gradFill");
+  if (gradientFill) {
+    return parseGradientFill(gradientFill);
   }
 
   return undefined;
+}
+
+function parseGradientFill(gradientFill: XmlElement): ShapeFill {
+  let type: "linear" | "radial" | "rectangular" | "path" = "linear";
+  let angle: number | undefined;
+
+  const linear = findChildByLocalName(gradientFill, "lin");
+  if (linear) {
+    const authoredAngle = getAttribute(linear, null, "ang");
+    if (authoredAngle) {
+      const parsedAngle = Number.parseInt(authoredAngle, 10);
+      angle = Number.isNaN(parsedAngle) ? undefined : parsedAngle / 60_000;
+    }
+  }
+
+  const path = findChildByLocalName(gradientFill, "path");
+  if (path) {
+    const pathType = getAttribute(path, null, "path");
+    if (pathType === "circle") {
+      type = "radial";
+    } else if (pathType === "rect") {
+      type = "rectangular";
+    } else {
+      type = "path";
+    }
+  }
+
+  const stops: NonNullable<ShapeFill["gradient"]>["stops"] = [];
+  const stopList = findChildByLocalName(gradientFill, "gsLst");
+  if (stopList) {
+    for (const stop of findChildrenByLocalName(stopList, "gs")) {
+      const authoredPosition = getAttribute(stop, null, "pos");
+      const parsedPosition = authoredPosition ? Number.parseInt(authoredPosition, 10) : 0;
+      const color = parseColorElement(stop);
+      if (color) {
+        stops.push({
+          position: Number.isNaN(parsedPosition) ? 0 : parsedPosition,
+          color,
+        });
+      }
+    }
+  }
+
+  return {
+    type: "gradient",
+    rawXml: elementToXml(gradientFill),
+    gradient: {
+      type,
+      ...(angle !== undefined ? { angle } : {}),
+      stops,
+    },
+  };
 }
 
 /**

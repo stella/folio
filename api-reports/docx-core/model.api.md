@@ -934,6 +934,7 @@ export type ShapeContent = {
 // @public
 export type ShapeFill = {
     type: "none" | "solid" | "gradient" | "pattern" | "picture";
+    rawXml?: string;
     color?: ColorValue;
     gradient?: {
         type: "linear" | "radial" | "rectangular" | "path";

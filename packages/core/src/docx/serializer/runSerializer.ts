@@ -623,6 +623,9 @@ function serializeFill(fill: ShapeFill | undefined): string {
   if (!fill) {
     return "";
   }
+  if (fill.rawXml) {
+    return fill.rawXml;
+  }
   if (fill.type === "none") {
     return "<a:noFill/>";
   }

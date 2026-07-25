@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseColorElement } from "./drawingUtils";
+import { parseColorElement, parseFill } from "./drawingUtils";
+import { serializeRun } from "./serializer/runSerializer";
 import type { XmlElement } from "./xmlParser";
+import { parseXmlDocument } from "./xmlParser";
 
 function el(name: string, attributes: Record<string, string> = {}): XmlElement {
   return { name, type: "element", attributes };
@@ -45,5 +47,66 @@ describe("drawingUtils.parseColorElement", () => {
       wrap(el("a:sysClr", { val: "windowText", lastClr: "1f497d" })),
     );
     expect(result).toEqual({ rgb: "1F497D" });
+  });
+});
+
+describe("drawingUtils.parseFill", () => {
+  test("projects gradient details while preserving authored DrawingML", () => {
+    const shapeProperties = parseXmlDocument(`
+      <wps:spPr
+        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+        xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+      >
+        <a:gradFill rotWithShape="0">
+          <a:gsLst>
+            <a:gs pos="0"><a:srgbClr val="FFFFFF"><a:lumMod val="95000"/></a:srgbClr></a:gs>
+            <a:gs pos="100000"><a:srgbClr val="5B9BD5"/></a:gs>
+          </a:gsLst>
+          <a:lin ang="5400000" scaled="0"/>
+          <a:tileRect/>
+        </a:gradFill>
+      </wps:spPr>
+    `);
+    expect(shapeProperties).not.toBeNull();
+    if (!shapeProperties) {
+      return;
+    }
+
+    const fill = parseFill(shapeProperties);
+    expect(fill).toMatchObject({
+      type: "gradient",
+      gradient: {
+        type: "linear",
+        angle: 90,
+        stops: [
+          { position: 0, color: { rgb: "FFFFFF" } },
+          { position: 100_000, color: { rgb: "5B9BD5" } },
+        ],
+      },
+    });
+    expect(fill?.rawXml).toContain('<a:gradFill rotWithShape="0">');
+    expect(fill?.rawXml).toContain('<a:lumMod val="95000"/>');
+    expect(fill?.rawXml).toContain('<a:lin ang="5400000" scaled="0"/>');
+    expect(fill?.rawXml).toContain("<a:tileRect/>");
+    if (!fill?.rawXml) {
+      return;
+    }
+
+    const serialized = serializeRun({
+      type: "run",
+      content: [
+        {
+          type: "shape",
+          shape: {
+            type: "shape",
+            shapeType: "textBox",
+            size: { width: 914_400, height: 457_200 },
+            fill,
+            textBody: { content: [] },
+          },
+        },
+      ],
+    });
+    expect(serialized).toContain(fill.rawXml);
   });
 });

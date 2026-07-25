@@ -34,17 +34,11 @@ import type {
   ShapeFill,
   ShapeOutline,
 } from "../types/document";
-import {
-  parseAnchorPosition,
-  parseAnchorWrap,
-  parseColorElement,
-  parseFill as parseSpPrFill,
-} from "./drawingUtils";
+import { parseAnchorPosition, parseAnchorWrap, parseColorElement, parseFill } from "./drawingUtils";
 import { narrowEnum, ShapeOutlineStyleSchema, ShapeTypeSchema } from "./parserEnums";
 import {
   findAllDeep,
   findChildByLocalName,
-  findChildrenByLocalName,
   getAttribute,
   parseNumericAttribute,
 } from "./xmlParser";
@@ -59,78 +53,12 @@ function rotToDegrees(rot: string | null | undefined): number | undefined {
   return Number.isNaN(val) ? undefined : val / 60_000;
 }
 
-// ---------------------------------------------------------------------------
-// FILL — extends drawingUtils.parseFill with gradient stop fidelity
-// ---------------------------------------------------------------------------
-
 /**
  * Parse a fill with full gradient stop capture (eigenpal #21).
  * Falls through to `drawingUtils.parseFill` for solid / none cases.
  */
 function parseShapeFill(spPr: XmlElement | null): ShapeFill | undefined {
-  const base = parseSpPrFill(spPr);
-  if (base?.type !== "gradient" || !spPr) {
-    return base;
-  }
-  // Re-parse gradients locally for stop-level detail.
-  const gradFill = findChildByLocalName(spPr, "gradFill");
-  if (!gradFill) {
-    return base;
-  }
-  return parseGradientFill(gradFill);
-}
-
-function parseGradientFill(gradFill: XmlElement): ShapeFill {
-  let gradientType: "linear" | "radial" | "rectangular" | "path" = "linear";
-  let angle: number | undefined;
-
-  const lin = findChildByLocalName(gradFill, "lin");
-  if (lin) {
-    gradientType = "linear";
-    const ang = getAttribute(lin, null, "ang");
-    if (ang) {
-      // Word stores `ang` in 60000ths of a degree, same as rotation.
-      const parsed = Number.parseInt(ang, 10);
-      angle = Number.isNaN(parsed) ? undefined : parsed / 60_000;
-    }
-  }
-
-  const path = findChildByLocalName(gradFill, "path");
-  if (path) {
-    const pathType = getAttribute(path, null, "path");
-    if (pathType === "circle") {
-      gradientType = "radial";
-    } else if (pathType === "rect") {
-      gradientType = "rectangular";
-    } else {
-      gradientType = "path";
-    }
-  }
-
-  const stops: { position: number; color: ColorValue }[] = [];
-  const gsLst = findChildByLocalName(gradFill, "gsLst");
-  if (gsLst) {
-    for (const gs of findChildrenByLocalName(gsLst, "gs")) {
-      const pos = getAttribute(gs, null, "pos");
-      const position = pos ? Number.parseInt(pos, 10) : 0;
-      const color = parseColorElement(gs);
-      if (color) {
-        stops.push({
-          position: Number.isNaN(position) ? 0 : position,
-          color,
-        });
-      }
-    }
-  }
-
-  return {
-    type: "gradient",
-    gradient: {
-      type: gradientType,
-      ...(angle !== undefined ? { angle } : {}),
-      stops,
-    },
-  };
+  return parseFill(spPr);
 }
 
 // ---------------------------------------------------------------------------
