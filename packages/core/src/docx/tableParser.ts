@@ -911,11 +911,11 @@ export function parseTableRowProperties(
     const heightVal = parseNumericAttribute(heightElement, "w", "val");
     if (heightVal !== undefined && heightVal > 0) {
       formatting.height = { value: heightVal, type: "dxa" as const };
-    }
 
-    const hRule = getAttribute(heightElement, "w", "hRule");
-    if (hRule === "auto" || hRule === "atLeast" || hRule === "exact") {
-      formatting.heightRule = hRule;
+      const hRule = getAttribute(heightElement, "w", "hRule");
+      if (hRule === "auto" || hRule === "atLeast" || hRule === "exact") {
+        formatting.heightRule = hRule;
+      }
     }
   }
 

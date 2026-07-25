@@ -149,6 +149,16 @@ describe("table row grid offsets", () => {
   });
 });
 
+describe("table row height", () => {
+  test("omits a height rule when its non-positive height is normalized away", () => {
+    const root = parseXmlDocument(
+      `<w:trPr ${NS}><w:trHeight w:val="0" w:hRule="atLeast"/></w:trPr>`,
+    );
+
+    expect(parseTableRowProperties(root)).toBeUndefined();
+  });
+});
+
 describe("table row conditional formatting", () => {
   test("round-trips conditional table-style flags", () => {
     const root = parseXmlDocument(
