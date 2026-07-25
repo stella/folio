@@ -707,6 +707,11 @@ export type ShapeFill = {
  * Shape outline/stroke
  */
 export type ShapeOutline = {
+  /**
+   * Authored DrawingML retained for lossless round-trips. Serializers prefer
+   * this value; callers modifying structured outline fields must omit it.
+   */
+  rawXml?: string;
   /** Line width in EMUs */
   width?: number;
   /** Line color */

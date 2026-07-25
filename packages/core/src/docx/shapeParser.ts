@@ -26,16 +26,9 @@
  *                     └── wps:bodyPr           (text body properties)
  */
 
-import type {
-  ColorValue,
-  ImageSize,
-  ImageTransform,
-  Shape,
-  ShapeFill,
-  ShapeOutline,
-} from "../types/document";
-import { parseAnchorPosition, parseAnchorWrap, parseColorElement, parseFill } from "./drawingUtils";
-import { narrowEnum, ShapeOutlineStyleSchema, ShapeTypeSchema } from "./parserEnums";
+import type { ColorValue, ImageSize, ImageTransform, Shape, ShapeFill } from "../types/document";
+import { parseAnchorPosition, parseAnchorWrap, parseFill, parseOutline } from "./drawingUtils";
+import { narrowEnum, ShapeTypeSchema } from "./parserEnums";
 import {
   findAllDeep,
   findChildByLocalName,
@@ -59,133 +52,6 @@ function rotToDegrees(rot: string | null | undefined): number | undefined {
  */
 function parseShapeFill(spPr: XmlElement | null): ShapeFill | undefined {
   return parseFill(spPr);
-}
-
-// ---------------------------------------------------------------------------
-// OUTLINE — extends drawingUtils.parseOutline with cap/join/end metadata
-// ---------------------------------------------------------------------------
-
-type LineEndType = NonNullable<ShapeOutline["headEnd"]>["type"];
-type LineEndSize = NonNullable<ShapeOutline["headEnd"]>["width"];
-
-const LINE_END_TYPES = new Set<LineEndType>([
-  "none",
-  "triangle",
-  "stealth",
-  "diamond",
-  "oval",
-  "arrow",
-]);
-
-function narrowLineEndType(value: string | null | undefined): LineEndType {
-  if (value === null || value === undefined) {
-    return "none";
-  }
-  for (const allowed of LINE_END_TYPES) {
-    if (allowed === value) {
-      return allowed;
-    }
-  }
-  return "none";
-}
-
-function narrowLineEndSize(value: string | null | undefined): LineEndSize {
-  if (value === "sm" || value === "med" || value === "lg") {
-    return value;
-  }
-  return undefined;
-}
-
-function parseLineEnd(element: XmlElement): NonNullable<ShapeOutline["headEnd"]> {
-  const type = narrowLineEndType(getAttribute(element, null, "type"));
-  const width = narrowLineEndSize(getAttribute(element, null, "w"));
-  const length = narrowLineEndSize(getAttribute(element, null, "len"));
-  return {
-    type,
-    ...(width !== undefined ? { width } : {}),
-    ...(length !== undefined ? { length } : {}),
-  };
-}
-
-/**
- * Parse a shape outline with cap, join, and arrow end fidelity. Returns
- * `undefined` when the spPr has no `<a:ln>`, an explicit `<a:noFill/>`,
- * or no usable attributes.
- */
-function parseShapeOutline(spPr: XmlElement | null): ShapeOutline | undefined {
-  const ln = findChildByLocalName(spPr, "ln");
-  if (!ln) {
-    return undefined;
-  }
-
-  if (findChildByLocalName(ln, "noFill")) {
-    return undefined;
-  }
-
-  const outline: ShapeOutline = {};
-
-  const w = getAttribute(ln, null, "w");
-  if (w) {
-    const parsed = Number.parseInt(w, 10);
-    if (!Number.isNaN(parsed)) {
-      outline.width = parsed;
-    }
-  }
-
-  const cap = getAttribute(ln, null, "cap");
-  if (cap === "flat") {
-    outline.cap = "flat";
-  } else if (cap === "rnd") {
-    outline.cap = "round";
-  } else if (cap === "sq") {
-    outline.cap = "square";
-  }
-
-  if (findChildByLocalName(ln, "bevel")) {
-    outline.join = "bevel";
-  } else if (findChildByLocalName(ln, "round")) {
-    outline.join = "round";
-  } else if (findChildByLocalName(ln, "miter")) {
-    outline.join = "miter";
-  }
-
-  const solidFill = findChildByLocalName(ln, "solidFill");
-  if (solidFill) {
-    const color = parseColorElement(solidFill);
-    if (color) {
-      outline.color = color;
-    }
-  }
-
-  const prstDash = findChildByLocalName(ln, "prstDash");
-  if (prstDash) {
-    const narrowed = narrowEnum(getAttribute(prstDash, null, "val"), ShapeOutlineStyleSchema);
-    if (narrowed !== undefined) {
-      outline.style = narrowed;
-    }
-  }
-
-  const headEnd = findChildByLocalName(ln, "headEnd");
-  if (headEnd) {
-    outline.headEnd = parseLineEnd(headEnd);
-  }
-  const tailEnd = findChildByLocalName(ln, "tailEnd");
-  if (tailEnd) {
-    outline.tailEnd = parseLineEnd(tailEnd);
-  }
-
-  if (
-    outline.width === undefined &&
-    outline.color === undefined &&
-    outline.cap === undefined &&
-    outline.join === undefined &&
-    outline.style === undefined &&
-    outline.headEnd === undefined &&
-    outline.tailEnd === undefined
-  ) {
-    return undefined;
-  }
-  return outline;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,7 +182,7 @@ export function parseShape(node: XmlElement): Shape {
   const xfrm = findChildByLocalName(spPr, "xfrm");
   const { size, transform } = parseTransform(xfrm);
   const fill = parseShapeFill(spPr);
-  const outline = parseShapeOutline(spPr);
+  const outline = parseOutline(spPr);
 
   const id = cNvPr ? (getAttribute(cNvPr, null, "id") ?? undefined) : undefined;
   const name = cNvPr ? (getAttribute(cNvPr, null, "name") ?? undefined) : undefined;

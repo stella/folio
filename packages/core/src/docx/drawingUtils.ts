@@ -278,25 +278,45 @@ function parseGradientFill(gradientFill: XmlElement): ShapeFill {
  * Parse outline from shape properties (a:ln).
  */
 export function parseOutline(spPr: XmlElement | null): ShapeOutline | undefined {
-  const ln = spPr ? findByFullName(spPr, "a:ln") : null;
+  const ln = spPr ? findChildByLocalName(spPr, "ln") : null;
   if (!ln) {
     return undefined;
   }
 
-  const children = getChildElements(ln);
-
-  if (children.some((el) => el.name === "a:noFill")) {
+  if (findChildByLocalName(ln, "noFill")) {
     return undefined;
   }
 
-  const outline: ShapeOutline = {};
+  const outline: ShapeOutline = {
+    rawXml: elementToXml(ln),
+  };
 
   const w = getAttribute(ln, null, "w");
   if (w) {
-    outline.width = Number.parseInt(w, 10);
+    const parsed = Number.parseInt(w, 10);
+    if (!Number.isNaN(parsed)) {
+      outline.width = parsed;
+    }
   }
 
-  const solidFill = children.find((el) => el.name === "a:solidFill");
+  const cap = getAttribute(ln, null, "cap");
+  if (cap === "flat") {
+    outline.cap = "flat";
+  } else if (cap === "rnd") {
+    outline.cap = "round";
+  } else if (cap === "sq") {
+    outline.cap = "square";
+  }
+
+  if (findChildByLocalName(ln, "bevel")) {
+    outline.join = "bevel";
+  } else if (findChildByLocalName(ln, "round")) {
+    outline.join = "round";
+  } else if (findChildByLocalName(ln, "miter")) {
+    outline.join = "miter";
+  }
+
+  const solidFill = findChildByLocalName(ln, "solidFill");
   if (solidFill) {
     const color = parseColorElement(solidFill);
     if (color !== undefined) {
@@ -304,7 +324,7 @@ export function parseOutline(spPr: XmlElement | null): ShapeOutline | undefined 
     }
   }
 
-  const prstDash = children.find((el) => el.name === "a:prstDash");
+  const prstDash = findChildByLocalName(ln, "prstDash");
   if (prstDash) {
     const val = narrowEnum(getAttribute(prstDash, null, "val"), ShapeOutlineStyleSchema);
     if (val) {
@@ -312,7 +332,51 @@ export function parseOutline(spPr: XmlElement | null): ShapeOutline | undefined 
     }
   }
 
+  const headEnd = findChildByLocalName(ln, "headEnd");
+  if (headEnd) {
+    outline.headEnd = parseLineEnd(headEnd);
+  }
+
+  const tailEnd = findChildByLocalName(ln, "tailEnd");
+  if (tailEnd) {
+    outline.tailEnd = parseLineEnd(tailEnd);
+  }
+
   return outline;
+}
+
+type LineEndType = NonNullable<ShapeOutline["headEnd"]>["type"];
+type LineEndSize = NonNullable<ShapeOutline["headEnd"]>["width"];
+
+const LINE_END_TYPES = [
+  "none",
+  "triangle",
+  "stealth",
+  "diamond",
+  "oval",
+  "arrow",
+] as const satisfies readonly LineEndType[];
+
+function parseLineEnd(element: XmlElement): NonNullable<ShapeOutline["headEnd"]> {
+  const authoredType = getAttribute(element, null, "type");
+  const type = LINE_END_TYPES.find((allowed) => allowed === authoredType) ?? "none";
+
+  const authoredWidth = getAttribute(element, null, "w");
+  const authoredLength = getAttribute(element, null, "len");
+  const width: LineEndSize =
+    authoredWidth === "sm" || authoredWidth === "med" || authoredWidth === "lg"
+      ? authoredWidth
+      : undefined;
+  const length: LineEndSize =
+    authoredLength === "sm" || authoredLength === "med" || authoredLength === "lg"
+      ? authoredLength
+      : undefined;
+
+  return {
+    type,
+    ...(width !== undefined ? { width } : {}),
+    ...(length !== undefined ? { length } : {}),
+  };
 }
 
 // ============================================================================

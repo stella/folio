@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseColorElement, parseFill } from "./drawingUtils";
+import { parseColorElement, parseFill, parseOutline } from "./drawingUtils";
 import { serializeRun } from "./serializer/runSerializer";
 import type { XmlElement } from "./xmlParser";
 import { parseXmlDocument } from "./xmlParser";
@@ -108,5 +108,87 @@ describe("drawingUtils.parseFill", () => {
       ],
     });
     expect(serialized).toContain(fill.rawXml);
+  });
+});
+
+describe("drawingUtils.parseOutline", () => {
+  test("projects outline details while preserving authored DrawingML", () => {
+    const shapeProperties = parseXmlDocument(`
+      <wps:spPr
+        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+        xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+      >
+        <a:ln w="12700" cap="rnd" cmpd="dbl" algn="in">
+          <a:solidFill>
+            <a:schemeClr val="accent1">
+              <a:shade val="50000"/>
+              <a:satMod val="80000"/>
+            </a:schemeClr>
+          </a:solidFill>
+          <a:prstDash val="dash"/>
+          <a:miter lim="800000"/>
+          <a:headEnd type="triangle" w="lg" len="sm"/>
+          <a:tailEnd type="oval"/>
+        </a:ln>
+      </wps:spPr>
+    `);
+    expect(shapeProperties).not.toBeNull();
+    if (!shapeProperties) {
+      return;
+    }
+
+    const outline = parseOutline(shapeProperties);
+    expect(outline).toMatchObject({
+      width: 12_700,
+      cap: "round",
+      color: { themeColor: "accent1", themeShade: "80" },
+      style: "dash",
+      join: "miter",
+      headEnd: { type: "triangle", width: "lg", length: "sm" },
+      tailEnd: { type: "oval" },
+    });
+    expect(outline?.rawXml).toContain('<a:ln w="12700" cap="rnd" cmpd="dbl" algn="in">');
+    expect(outline?.rawXml).toContain('<a:satMod val="80000"/>');
+    expect(outline?.rawXml).toContain('<a:miter lim="800000"/>');
+    if (!outline?.rawXml) {
+      return;
+    }
+
+    const serialized = serializeRun({
+      type: "run",
+      content: [
+        {
+          type: "shape",
+          shape: {
+            type: "shape",
+            shapeType: "textBox",
+            size: { width: 914_400, height: 457_200 },
+            outline,
+            textBody: { content: [] },
+          },
+        },
+      ],
+    });
+    expect(serialized).toContain(outline.rawXml);
+
+    const { rawXml: authoredXml, ...structuredOutline } = outline;
+    expect(authoredXml).toBe(outline.rawXml);
+    const edited = serializeRun({
+      type: "run",
+      content: [
+        {
+          type: "shape",
+          shape: {
+            type: "shape",
+            shapeType: "textBox",
+            size: { width: 914_400, height: 457_200 },
+            outline: { ...structuredOutline, width: 25_400 },
+            textBody: { content: [] },
+          },
+        },
+      ],
+    });
+    expect(edited).toContain('<a:ln w="25400" cap="rnd">');
+    expect(edited).not.toContain('cmpd="dbl"');
   });
 });

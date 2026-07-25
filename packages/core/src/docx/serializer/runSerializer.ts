@@ -669,6 +669,9 @@ function serializeOutline(outline: ShapeOutline | undefined): string {
   if (!outline) {
     return "";
   }
+  if (outline.rawXml) {
+    return outline.rawXml;
+  }
   const attrs: string[] = [];
   if (typeof outline.width === "number") {
     attrs.push(`w="${outline.width}"`);

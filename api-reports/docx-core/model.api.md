@@ -948,6 +948,7 @@ export type ShapeFill = {
 
 // @public
 export type ShapeOutline = {
+    rawXml?: string;
     width?: number;
     color?: ColorValue;
     style?: "solid" | "dot" | "dash" | "lgDash" | "dashDot" | "lgDashDot" | "lgDashDotDot" | "sysDot" | "sysDash" | "sysDashDot" | "sysDashDotDot";
