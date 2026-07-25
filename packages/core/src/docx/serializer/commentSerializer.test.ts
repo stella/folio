@@ -126,6 +126,23 @@ describe("serializeComments", () => {
     expect(serialized).toContain('<w:rStyle w:val="LocalizedCommentReference"/>');
     expect(parseComments(serialized, null, null, new Map(), new Map())).toEqual(parsed);
   });
+
+  test("preserves localized annotation-reference formatting for an empty comment", () => {
+    const comment: Comment = {
+      id: 1,
+      author: "Tester",
+      annotationReferenceFormatting: { styleId: "LocalizedCommentReference" },
+      content: [],
+    };
+
+    const serialized = serializeComments([comment]);
+    expect(serialized).toContain('<w:rStyle w:val="LocalizedCommentReference"/>');
+
+    const reparsed = parseComments(serialized, null, null, new Map(), new Map()).at(0);
+    expect(reparsed?.annotationReferenceFormatting).toEqual(comment.annotationReferenceFormatting);
+    expect(reparsed?.content).toHaveLength(1);
+    expect(reparsed?.content.at(0)?.content).toEqual([]);
+  });
 });
 
 describe("serializeCommentsExtended", () => {
