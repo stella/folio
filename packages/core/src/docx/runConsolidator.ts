@@ -384,10 +384,6 @@ export function consolidateRuns(runs: Run[]): Run[] {
 export function consolidateParagraphContent(content: Hyperlink["children"]): Hyperlink["children"];
 export function consolidateParagraphContent(content: ParagraphContent[]): ParagraphContent[];
 export function consolidateParagraphContent(content: ParagraphContent[]): ParagraphContent[] {
-  if (content.length <= 1) {
-    return content;
-  }
-
   const result: ParagraphContent[] = [];
   const pendingRuns: Run[] = [];
 

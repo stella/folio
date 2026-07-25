@@ -371,6 +371,35 @@ describe("parseParagraph empty-run normalization", () => {
     );
     expect(parseParagraphXml(serialized)).toEqual(paragraph);
   });
+
+  test("normalizes empty runs inside a sole hyperlink", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:hyperlink w:anchor="_Toc1">
+          <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+          <w:r><w:instrText> PAGEREF _Toc1 \\h </w:instrText></w:r>
+          <w:r><w:rPr/></w:r>
+          <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+          <w:r><w:t>7</w:t></w:r>
+          <w:r><w:fldChar w:fldCharType="end"/></w:r>
+        </w:hyperlink>
+      </w:p>
+    `);
+
+    const hyperlink = paragraph.content.at(0);
+    expect(hyperlink?.type).toBe("hyperlink");
+    if (!hyperlink || hyperlink.type !== "hyperlink") {
+      return;
+    }
+
+    expect(hyperlink.children).toHaveLength(5);
+    expect(
+      hyperlink.children.some((child) => child.type === "run" && child.content.length === 0),
+    ).toBe(false);
+
+    const serialized = serializeParagraph(paragraph);
+    expect(parseParagraphXml(serialized)).toEqual(paragraph);
+  });
 });
 
 describe("parseParagraph rendered page break markers", () => {
