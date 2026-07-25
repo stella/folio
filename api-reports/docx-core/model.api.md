@@ -91,6 +91,7 @@ type Comment_2 = {
     initials?: string;
     date?: string;
     content: Paragraph[];
+    annotationReferenceFormatting?: TextFormatting;
     parentId?: number;
     done?: boolean;
 };

@@ -6,25 +6,38 @@
 
 import { deterministicHexId } from "../../utils/hexId";
 import type { Comment, Paragraph } from "../../types/content";
+import type { TextFormatting } from "../../types/formatting";
 import { serializeParagraph } from "./paragraphSerializer";
+import { serializeTextFormatting } from "./runSerializer";
 import { escapeXml } from "./xmlUtils";
 
-const ANNOTATION_REFERENCE_XML =
-  '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r>';
+const DEFAULT_ANNOTATION_REFERENCE_PROPERTIES =
+  '<w:rPr><w:rStyle w:val="CommentReference"/></w:rPr>';
 const PARAGRAPH_PROPERTIES_END = "</w:pPr>";
 
+const serializeAnnotationReference = (formatting: TextFormatting | undefined): string => {
+  const properties = formatting
+    ? serializeTextFormatting(formatting)
+    : DEFAULT_ANNOTATION_REFERENCE_PROPERTIES;
+  return `<w:r>${properties}<w:annotationRef/></w:r>`;
+};
+
 /** Serialize a paragraph, prepending an annotationRef run (required by Word in first paragraph of a comment) */
-function serializeParagraphWithAnnotationRef(paragraph: Paragraph): string {
+function serializeParagraphWithAnnotationRef(
+  paragraph: Paragraph,
+  formatting: TextFormatting | undefined,
+): string {
   const xml = serializeParagraph(paragraph);
+  const annotationReference = serializeAnnotationReference(formatting);
   const propertiesEnd = xml.indexOf(PARAGRAPH_PROPERTIES_END);
   if (propertiesEnd !== -1) {
     const contentStart = propertiesEnd + PARAGRAPH_PROPERTIES_END.length;
-    return `${xml.slice(0, contentStart)}${ANNOTATION_REFERENCE_XML}${xml.slice(contentStart)}`;
+    return `${xml.slice(0, contentStart)}${annotationReference}${xml.slice(contentStart)}`;
   }
 
   return xml.replace(
     /^<w:p(?=[\s>])[^>]*>/u,
-    (openingTag) => `${openingTag}${ANNOTATION_REFERENCE_XML}`,
+    (openingTag) => `${openingTag}${annotationReference}`,
   );
 }
 
@@ -41,15 +54,17 @@ function serializeComment(comment: Comment): string {
   if (comment.content.length > 0) {
     // First paragraph must contain an annotationRef run for Word to link the comment
     // SAFETY: length > 0 verified by condition above
-    xml += serializeParagraphWithAnnotationRef(comment.content[0]!);
+    xml += serializeParagraphWithAnnotationRef(
+      comment.content[0]!,
+      comment.annotationReferenceFormatting,
+    );
     for (let i = 1; i < comment.content.length; i++) {
       // SAFETY: i < comment.content.length in for loop
       xml += serializeParagraph(comment.content[i]!);
     }
   } else {
     // Empty comment — still needs a paragraph with annotationRef
-    xml +=
-      '<w:p><w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r></w:p>';
+    xml += `<w:p>${serializeAnnotationReference(comment.annotationReferenceFormatting)}</w:p>`;
   }
   xml += "</w:comment>";
   return xml;

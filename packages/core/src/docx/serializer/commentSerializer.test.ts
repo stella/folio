@@ -96,8 +96,35 @@ describe("serializeComments", () => {
     const reparsedParagraph = reparsed[0]?.content[0];
     const reparsedRun = reparsedParagraph?.content.find((item) => item.type === "run");
 
+    expect(reparsed[0]?.annotationReferenceFormatting).toBeUndefined();
     expect(reparsedParagraph?.formatting).toMatchObject(paragraph.formatting);
     expect(reparsedRun?.formatting).toMatchObject(run.formatting);
+  });
+
+  test("preserves localized annotation-reference formatting outside editable content", () => {
+    const commentsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+      <w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:comment w:id="1" w:author="Tester">
+          <w:p>
+            <w:r>
+              <w:rPr><w:rStyle w:val="LocalizedCommentReference"/></w:rPr>
+              <w:annotationRef/>
+            </w:r>
+            <w:bookmarkStart w:id="0" w:name="marker"/>
+            <w:r><w:t>body</w:t></w:r>
+            <w:bookmarkEnd w:id="0"/>
+          </w:p>
+        </w:comment>
+      </w:comments>`;
+    const parsed = parseComments(commentsXml, null, null, new Map(), new Map());
+
+    expect(parsed[0]?.annotationReferenceFormatting?.styleId).toBe("LocalizedCommentReference");
+    expect(parsed[0]?.content[0]?.content.at(0)?.type).toBe("bookmarkStart");
+
+    const serialized = serializeComments(parsed);
+    expect(serialized.match(/<w:annotationRef\/>/gu)).toHaveLength(1);
+    expect(serialized).toContain('<w:rStyle w:val="LocalizedCommentReference"/>');
+    expect(parseComments(serialized, null, null, new Map(), new Map())).toEqual(parsed);
   });
 });
 

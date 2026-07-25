@@ -17,10 +17,76 @@
  * - Comment content: child w:p elements
  */
 
-import type { Comment, Paragraph, Theme, RelationshipMap, MediaFile } from "../types/document";
+import type {
+  Comment,
+  Paragraph,
+  Theme,
+  RelationshipMap,
+  MediaFile,
+  TextFormatting,
+} from "../types/document";
 import { parseParagraph } from "./paragraphParser";
+import { parseRunProperties } from "./runParser";
 import type { StyleMap } from "./styleParser";
-import { parseXml, findChild, getChildElements, getAttribute } from "./xmlParser";
+import {
+  parseXml,
+  findChild,
+  getChildElements,
+  getAttribute,
+  getLocalName,
+  type XmlElement,
+} from "./xmlParser";
+
+type ParsedFirstCommentParagraph = {
+  paragraph: Paragraph;
+  annotationReferenceFormatting?: TextFormatting;
+};
+
+const DEFAULT_ANNOTATION_REFERENCE_STYLE_ID = "CommentReference";
+
+const normalizeAnnotationReferenceFormatting = (
+  formatting: TextFormatting | undefined,
+): TextFormatting | undefined => {
+  if (
+    formatting?.styleId === DEFAULT_ANNOTATION_REFERENCE_STYLE_ID &&
+    Object.keys(formatting).length === 1
+  ) {
+    return undefined;
+  }
+  return formatting;
+};
+
+const normalizeFirstCommentParagraph = (
+  paragraphElement: XmlElement,
+  paragraph: Paragraph,
+  theme: Theme | null,
+): ParsedFirstCommentParagraph => {
+  const firstContentElement = getChildElements(paragraphElement).find(
+    (element) => getLocalName(element.name) !== "pPr",
+  );
+  if (
+    !firstContentElement ||
+    getLocalName(firstContentElement.name) !== "r" ||
+    !findChild(firstContentElement, "w", "annotationRef")
+  ) {
+    return { paragraph };
+  }
+
+  const runProperties = findChild(firstContentElement, "w", "rPr");
+  const annotationReferenceFormatting = normalizeAnnotationReferenceFormatting(
+    runProperties ? parseRunProperties(runProperties, theme) : undefined,
+  );
+  const firstParsedContent = paragraph.content.at(0);
+  const normalizedParagraph =
+    firstParsedContent?.type === "run" && firstParsedContent.content.length === 0
+      ? { ...paragraph, content: paragraph.content.slice(1) }
+      : paragraph;
+
+  return {
+    paragraph: normalizedParagraph,
+    ...(annotationReferenceFormatting !== undefined ? { annotationReferenceFormatting } : {}),
+  };
+};
 
 /**
  * Build a lookup from paraId → dateUtc from commentsExtensible.xml
@@ -215,11 +281,18 @@ export function parseComments(
 
     // Parse comment content (paragraphs)
     const paragraphs: Paragraph[] = [];
+    let annotationReferenceFormatting: TextFormatting | undefined;
     for (const contentChild of getChildElements(child)) {
       const contentName = contentChild.name?.replace(/^.*:/u, "") ?? "";
       if (contentName === "p") {
         const paragraph = parseParagraph(contentChild, styles, theme, null, rels, media);
-        paragraphs.push(paragraph);
+        if (paragraphs.length > 0) {
+          paragraphs.push(paragraph);
+          continue;
+        }
+        const normalized = normalizeFirstCommentParagraph(contentChild, paragraph, theme);
+        annotationReferenceFormatting = normalized.annotationReferenceFormatting;
+        paragraphs.push(normalized.paragraph);
       }
     }
 
@@ -235,6 +308,7 @@ export function parseComments(
       ...(initials !== undefined ? { initials } : {}),
       ...(date !== undefined ? { date } : {}),
       ...(done !== undefined ? { done } : {}),
+      ...(annotationReferenceFormatting !== undefined ? { annotationReferenceFormatting } : {}),
       content: paragraphs,
     });
   }

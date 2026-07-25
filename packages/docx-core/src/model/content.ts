@@ -906,6 +906,8 @@ export type Comment = {
   date?: string;
   /** Comment content (paragraphs) */
   content: Paragraph[];
+  /** Formatting of the structural annotation-reference run in the first paragraph */
+  annotationReferenceFormatting?: TextFormatting;
   /** Parent comment ID (for replies) */
   parentId?: number;
   /** Whether the comment is resolved/done */
