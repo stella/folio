@@ -68,6 +68,7 @@ import {
   getAttribute,
   getChildElements,
   getLocalName,
+  matchesName,
   mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumberingLevelAttribute,
@@ -1259,6 +1260,10 @@ function parseSimpleField(
   return field;
 }
 
+function hasRunPayloadElement(runElement: XmlElement): boolean {
+  return getChildElements(runElement).some((child) => !matchesName(child, "w", "rPr"));
+}
+
 /**
  * Parse all content within a paragraph
  *
@@ -1466,7 +1471,9 @@ function parseParagraphContents(
           });
         } else {
           // Regular run, not part of a field
-          contents.push(run);
+          if (run.content.length > 0 || hasRunPayloadElement(runElement)) {
+            contents.push(run);
+          }
         }
         break;
       }

@@ -311,6 +311,35 @@ describe("parseParagraph tab leader normalization", () => {
   });
 });
 
+describe("parseParagraph empty-run normalization", () => {
+  test("ignores syntactically empty runs before consolidating adjacent text", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:r><w:t>A</w:t></w:r>
+        <w:r/>
+        <w:r><w:rPr/></w:r>
+        <w:r><w:t>B</w:t></w:r>
+      </w:p>
+    `);
+
+    expect(paragraph.content).toHaveLength(1);
+    expect(getParagraphText(paragraph)).toBe("AB");
+  });
+
+  test("keeps an unsupported run payload as a consolidation boundary", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:r><w:t>A</w:t></w:r>
+        <w:r><w:ptab/></w:r>
+        <w:r><w:t>B</w:t></w:r>
+      </w:p>
+    `);
+
+    expect(paragraph.content).toHaveLength(2);
+    expect(getParagraphText(paragraph)).toBe("AB");
+  });
+});
+
 describe("parseParagraph rendered page break markers", () => {
   test("marks a paragraph when Word rendered-page-break appears before visible text", () => {
     const paragraph = parseParagraphXml(`
