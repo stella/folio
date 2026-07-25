@@ -379,8 +379,9 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
   if (props.textDirection) {
     parts.push(`<w:textDirection w:val="${props.textDirection}"/>`);
   }
-  if (props.titlePg) {
-    parts.push("<w:titlePg/>");
+  const titlePgXml = serializeOnOffElement(props.titlePg, "titlePg");
+  if (titlePgXml) {
+    parts.push(titlePgXml);
   }
   const bidiXml = serializeOnOffElement(props.bidi, "bidi");
   if (bidiXml) {

@@ -39,6 +39,20 @@ describe("serializeSectionProperties", () => {
     expect(xml.indexOf("<w:bidi/>")).toBeGreaterThan(xml.indexOf("<w:titlePg/>"));
   });
 
+  test("preserves an explicitly disabled title page", () => {
+    const section = parseSectPr(`
+      <w:sectPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:titlePg w:val="0"/>
+      </w:sectPr>
+    `);
+
+    expect(section.titlePg).toBe(false);
+
+    const xml = serializeSectionProperties(section);
+    expect(xml).toContain('<w:titlePg w:val="0"/>');
+    expect(parseSectPr(xml).titlePg).toBe(false);
+  });
+
   test("does not serialize evenAndOddHeaders inside sectPr", () => {
     const xml = serializeSectionProperties({
       evenAndOddHeaders: true,
