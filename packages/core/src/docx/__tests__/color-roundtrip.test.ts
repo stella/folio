@@ -119,6 +119,7 @@ describe("Named highlight color round-trip", () => {
     "darkGray",
     "black",
     "white",
+    "none",
   ];
 
   for (const hl of highlights) {

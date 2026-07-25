@@ -75,7 +75,7 @@ function getUniqueId(id: string | number | undefined): string {
 }
 
 /** Valid OOXML highlight color names (ECMA-376 §17.18.40) */
-const VALID_HIGHLIGHT_COLORS = new Set(HIGHLIGHT_COLOR_VALUES.filter((color) => color !== "none"));
+const VALID_HIGHLIGHT_COLORS = new Set(HIGHLIGHT_COLOR_VALUES);
 
 // ============================================================================
 // COLOR SERIALIZATION
@@ -367,8 +367,9 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
   }
 
   // Highlight — emit valid OOXML named colors via w:highlight,
-  // fall back to w:shd for custom hex colors
-  if (formatting.highlight && formatting.highlight !== "none") {
+  // including `none`, which explicitly cancels an inherited highlight.
+  // Fall back to w:shd for custom hex colors.
+  if (formatting.highlight) {
     if (VALID_HIGHLIGHT_COLORS.has(formatting.highlight)) {
       parts.push(`<w:highlight w:val="${formatting.highlight}"/>`);
     } else if (!formatting.shading) {
