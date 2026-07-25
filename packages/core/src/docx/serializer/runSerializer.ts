@@ -432,8 +432,10 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
     parts.push('<w:rtl w:val="0"/>');
   }
 
-  if (formatting.cs) {
+  if (formatting.cs === true) {
     parts.push("<w:cs/>");
+  } else if (formatting.cs === false) {
+    parts.push('<w:cs w:val="0"/>');
   }
 
   if (parts.length === 0) {
