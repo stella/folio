@@ -356,6 +356,8 @@ export function parseTextBox(drawingEl: XmlElement): TextBox | null {
     if (wrap) {
       textBox.wrap = wrap;
     }
+  } else {
+    textBox.wrap = { type: "inline" };
   }
 
   return textBox;

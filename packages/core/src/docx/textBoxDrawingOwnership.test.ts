@@ -77,6 +77,26 @@ const bodyDrawingTypes = ({ package: { document } }: ParsedDocx): string[] =>
       : [],
   );
 
+const bodyShapeWrapTypes = ({ package: { document } }: ParsedDocx): string[] => {
+  const wrapTypes: string[] = [];
+  for (const block of document.content) {
+    if (block.type !== "paragraph") {
+      continue;
+    }
+    for (const content of block.content) {
+      if (content.type !== "run") {
+        continue;
+      }
+      for (const item of content.content) {
+        if (item.type === "shape" && item.shape.wrap) {
+          wrapTypes.push(item.shape.wrap.type);
+        }
+      }
+    }
+  }
+  return wrapTypes;
+};
+
 const savedDocumentXml = async (buffer: ArrayBuffer): Promise<string> => {
   const zip = await JSZip.loadAsync(buffer);
   return zip.file("word/document.xml")!.async("text");
@@ -125,5 +145,23 @@ describe("text-box drawing ownership", () => {
     const savedXml = await savedDocumentXml(saved);
     expect(savedXml.match(/<w:pict(?:\s|>)/gu)).toHaveLength(1);
     expect(savedXml).not.toContain("<w:drawing");
+  });
+
+  test("inline VML text boxes keep their wrap state after DrawingML normalization", async () => {
+    const source = await buildDocx(`
+      <w:pict>
+        <v:shape style="width:2in;height:1in">
+          <v:textbox>
+            <w:txbxContent><w:p><w:r><w:t>Legacy text</w:t></w:r></w:p></w:txbxContent>
+          </v:textbox>
+        </v:shape>
+      </w:pict>`);
+    const parsed = await parseDocx(source, { preloadFonts: false });
+
+    expect(bodyShapeWrapTypes(parsed)).toEqual(["inline"]);
+
+    const saved = await repackDocx(parsed, { updateModifiedDate: false });
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+    expect(bodyShapeWrapTypes(reopened)).toEqual(["inline"]);
   });
 });
