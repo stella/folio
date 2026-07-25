@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseColorElement, parseFill, parseOutline } from "./drawingUtils";
+import {
+  parseAnchorPosition,
+  parseColorElement,
+  parseFill,
+  parseOutline,
+  parsePositionH,
+  parsePositionV,
+} from "./drawingUtils";
 import { serializeRun } from "./serializer/runSerializer";
 import type { XmlElement } from "./xmlParser";
 import { parseXmlDocument } from "./xmlParser";
@@ -12,6 +19,71 @@ function el(name: string, attributes: Record<string, string> = {}): XmlElement {
 function wrap(child: XmlElement): XmlElement {
   return { name: "wrapper", type: "element", elements: [child] };
 }
+
+describe("drawingUtils position parsing", () => {
+  test("normalizes omitted anchor positions to serializer defaults", () => {
+    const anchor = parseXmlDocument(`
+      <wp:anchor
+        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+      />
+    `);
+    expect(anchor).not.toBeNull();
+    if (!anchor) {
+      return;
+    }
+
+    expect(parseAnchorPosition(anchor)).toEqual({
+      horizontal: { relativeTo: "column", posOffset: 0 },
+      vertical: { relativeTo: "paragraph", posOffset: 0 },
+    });
+  });
+
+  test("normalizes position axes that omit both alignment and offset", () => {
+    const positionH = parseXmlDocument(`
+      <wp:positionH
+        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        relativeFrom="character"
+      />
+    `);
+    const positionV = parseXmlDocument(`
+      <wp:positionV
+        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        relativeFrom="page"
+      />
+    `);
+
+    expect(parsePositionH(positionH)).toEqual({ relativeTo: "character", posOffset: 0 });
+    expect(parsePositionV(positionV)).toEqual({ relativeTo: "page", posOffset: 0 });
+  });
+
+  test("keeps valid alignments instead of materializing an offset", () => {
+    const positionH = parseXmlDocument(`
+      <wp:positionH
+        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        relativeFrom="margin"
+      >
+        <wp:align>center</wp:align>
+      </wp:positionH>
+    `);
+    const positionV = parseXmlDocument(`
+      <wp:positionV
+        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        relativeFrom="page"
+      >
+        <wp:align>bottom</wp:align>
+      </wp:positionV>
+    `);
+
+    expect(parsePositionH(positionH)).toEqual({
+      relativeTo: "margin",
+      alignment: "center",
+    });
+    expect(parsePositionV(positionV)).toEqual({
+      relativeTo: "page",
+      alignment: "bottom",
+    });
+  });
+});
 
 describe("drawingUtils.parseColorElement", () => {
   test("accepts a well-formed srgbClr value and uppercases it", () => {

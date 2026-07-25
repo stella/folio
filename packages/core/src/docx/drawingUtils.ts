@@ -398,12 +398,10 @@ export function parsePositionH(posH: XmlElement | null): ImagePosition["horizont
   const alignEl = findByFullName(posH, "wp:align");
   if (alignEl) {
     const text = getTextContent(alignEl);
-    const result: ImagePosition["horizontal"] = { relativeTo };
     const alignment = narrowEnum(text, ImageHorizontalAlignmentSchema);
     if (alignment) {
-      result.alignment = alignment;
+      return { relativeTo, alignment };
     }
-    return result;
   }
 
   const posOffsetEl = findByFullName(posH, "wp:posOffset");
@@ -416,7 +414,7 @@ export function parsePositionH(posH: XmlElement | null): ImagePosition["horizont
     };
   }
 
-  return { relativeTo };
+  return { relativeTo, posOffset: 0 };
 }
 
 /**
@@ -434,12 +432,10 @@ export function parsePositionV(posV: XmlElement | null): ImagePosition["vertical
   const alignEl = findByFullName(posV, "wp:align");
   if (alignEl) {
     const text = getTextContent(alignEl);
-    const result: ImagePosition["vertical"] = { relativeTo };
     const alignment = narrowEnum(text, ImageVerticalAlignmentSchema);
     if (alignment) {
-      result.alignment = alignment;
+      return { relativeTo, alignment };
     }
-    return result;
   }
 
   const posOffsetEl = findByFullName(posV, "wp:posOffset");
@@ -452,23 +448,19 @@ export function parsePositionV(posV: XmlElement | null): ImagePosition["vertical
     };
   }
 
-  return { relativeTo };
+  return { relativeTo, posOffset: 0 };
 }
 
 /**
  * Parse position for anchored drawings (combines positionH + positionV).
  */
-export function parseAnchorPosition(anchor: XmlElement): ImagePosition | undefined {
+export function parseAnchorPosition(anchor: XmlElement): ImagePosition {
   const positionH = findByFullName(anchor, "wp:positionH");
   const positionV = findByFullName(anchor, "wp:positionV");
 
-  if (!positionH && !positionV) {
-    return undefined;
-  }
-
   return {
-    horizontal: parsePositionH(positionH) ?? { relativeTo: "column" },
-    vertical: parsePositionV(positionV) ?? { relativeTo: "paragraph" },
+    horizontal: parsePositionH(positionH) ?? { relativeTo: "column", posOffset: 0 },
+    vertical: parsePositionV(positionV) ?? { relativeTo: "paragraph", posOffset: 0 },
   };
 }
 
