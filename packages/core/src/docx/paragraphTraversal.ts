@@ -11,7 +11,7 @@ import type {
   Table,
 } from "../types/document";
 
-type VisitDocxParagraphsInput = {
+export type DocxParagraphSurfaces = {
   documentBody: DocumentBody;
   headers?: Map<string, HeaderFooter> | undefined;
   footers?: Map<string, HeaderFooter> | undefined;
@@ -19,33 +19,10 @@ type VisitDocxParagraphsInput = {
   endnotes?: readonly Endnote[] | undefined;
 };
 
-export const visitDocxParagraphs = (
-  { documentBody, headers, footers, footnotes, endnotes }: VisitDocxParagraphsInput,
-  visit: (paragraph: Paragraph) => void,
-): void => {
-  const seenParagraphs = new WeakSet<Paragraph>();
-
-  const visitParagraph = (paragraph: Paragraph): void => {
-    if (seenParagraphs.has(paragraph)) {
-      return;
-    }
-    seenParagraphs.add(paragraph);
-
-    visit(paragraph);
-    for (const content of paragraph.content) {
-      visitParagraphContent(content);
-    }
-  };
-
+/** Visit every run directly owned by a paragraph's inline-content tree. */
+export const visitParagraphRuns = (paragraph: Paragraph, visit: (run: Run) => void): void => {
   const visitRun = (run: Run): void => {
-    for (const content of run.content) {
-      if (content.type !== "shape" || !content.shape.textBody) {
-        continue;
-      }
-      for (const block of content.shape.textBody.content) {
-        visitBlock(block);
-      }
-    }
+    visit(run);
   };
 
   const visitHyperlink = (hyperlink: Hyperlink): void => {
@@ -86,10 +63,6 @@ export const visitDocxParagraphs = (
       return;
     }
     if (content.type === "inlineSdt") {
-      // Inline SDT children include simple/complex fields, nested SDTs,
-      // and math equations alongside runs/hyperlinks. Recurse through
-      // the regular paragraph-content visitor so each child is dispatched
-      // to its existing handler instead of being narrowed to Run|Hyperlink.
       for (const child of content.content) {
         visitParagraphContent(child);
       }
@@ -101,6 +74,38 @@ export const visitDocxParagraphs = (
       }
       for (const run of content.fieldResult) {
         visitRun(run);
+      }
+    }
+  };
+
+  for (const content of paragraph.content) {
+    visitParagraphContent(content);
+  }
+};
+
+export const visitDocxParagraphs = (
+  { documentBody, headers, footers, footnotes, endnotes }: DocxParagraphSurfaces,
+  visit: (paragraph: Paragraph) => void,
+): void => {
+  const seenParagraphs = new WeakSet<Paragraph>();
+
+  const visitParagraph = (paragraph: Paragraph): void => {
+    if (seenParagraphs.has(paragraph)) {
+      return;
+    }
+    seenParagraphs.add(paragraph);
+
+    visit(paragraph);
+    visitParagraphRuns(paragraph, visitRun);
+  };
+
+  const visitRun = (run: Run): void => {
+    for (const content of run.content) {
+      if (content.type !== "shape" || !content.shape.textBody) {
+        continue;
+      }
+      for (const block of content.shape.textBody.content) {
+        visitBlock(block);
       }
     }
   };

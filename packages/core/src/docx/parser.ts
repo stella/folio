@@ -41,9 +41,13 @@ import { normalizeCommentReferences } from "./commentReferenceNormalization";
 import { detectDocxConformanceClass } from "./conformance";
 import { parseCoreProperties } from "./corePropertiesParser";
 import { parseDocumentBody, extractAllTemplateVariables } from "./documentParser";
+import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { parseFootnotes, parseEndnotes } from "./footnoteParser";
 import { parseHeader, parseFooter } from "./headerFooterParser";
-import { assignHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
+import {
+  assignHeaderFooterVerbatimXml,
+  refreshHeaderFooterVerbatimFingerprint,
+} from "./headerFooterVerbatim";
 import { normalizeHeaderFooterReferences } from "./headerFooterReferenceNormalization";
 import {
   DocxModelValidationError,
@@ -280,6 +284,22 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     );
     if (comments.length > 0) {
       documentBody.comments = comments;
+    }
+    normalizeDrawingIds({
+      documentBody,
+      ...(headers !== undefined ? { headers } : {}),
+      ...(footers !== undefined ? { footers } : {}),
+      ...(footnotes !== undefined ? { footnotes } : {}),
+      ...(endnotes !== undefined ? { endnotes } : {}),
+    });
+    // Header/footer fingerprints are captured by their part parsers. Refresh
+    // them after package-level ID normalization so untouched raw parts remain
+    // replayable; subsequent normalizers will still invalidate changed parts.
+    for (const header of headers?.values() ?? []) {
+      refreshHeaderFooterVerbatimFingerprint(header);
+    }
+    for (const footer of footers?.values() ?? []) {
+      refreshHeaderFooterVerbatimFingerprint(footer);
     }
     normalizeRenderedPageBreakHints({
       documentBody,

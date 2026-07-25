@@ -37,6 +37,14 @@ export const assignHeaderFooterVerbatimXml = (hf: HeaderFooter, xml: string): vo
   ext.verbatimFingerprint = headerFooterSerializationFingerprint(hf);
 };
 
+export const refreshHeaderFooterVerbatimFingerprint = (hf: HeaderFooter): void => {
+  const ext = hf as HeaderFooterWithVerbatim;
+  if (!ext.verbatimXml) {
+    return;
+  }
+  ext.verbatimFingerprint = headerFooterSerializationFingerprint(hf);
+};
+
 export const clearHeaderFooterVerbatimXml = (hf: HeaderFooter): void => {
   const ext = hf as HeaderFooterWithVerbatim;
   delete ext.verbatimXml;
