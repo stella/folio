@@ -70,6 +70,7 @@ export type {
   SdtType,
   SoftHyphenContent,
   SymbolContent,
+  PositionalTab,
   TabContent,
   Table,
   TableCell,

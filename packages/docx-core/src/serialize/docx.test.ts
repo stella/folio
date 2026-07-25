@@ -78,3 +78,37 @@ describe("DOCX border serialization escapes attribute values", () => {
     expect(xml).toContain('w:color="CCCCCC"');
   });
 });
+
+describe("DOCX positional tab serialization", () => {
+  test("writes positional tab attributes", async () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  content: [
+                    {
+                      type: "tab",
+                      positional: {
+                        relativeTo: "margin",
+                        alignment: "right",
+                        leader: "dot",
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const xml = await readDocumentXml(await serializeDocumentToDocx(document));
+    expect(xml).toContain('<w:ptab w:relativeTo="margin" w:alignment="right" w:leader="dot"/>');
+  });
+});

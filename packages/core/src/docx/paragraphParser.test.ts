@@ -330,13 +330,46 @@ describe("parseParagraph empty-run normalization", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:r><w:t>A</w:t></w:r>
-        <w:r><w:ptab/></w:r>
+        <w:r><w:yearLong/></w:r>
         <w:r><w:t>B</w:t></w:r>
       </w:p>
     `);
 
     expect(paragraph.content).toHaveLength(2);
     expect(getParagraphText(paragraph)).toBe("AB");
+  });
+
+  test("preserves positional tab semantics across XML serialization", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:r><w:t>Section</w:t></w:r>
+        <w:r>
+          <w:ptab w:relativeTo="margin" w:alignment="right" w:leader="dot"/>
+        </w:r>
+        <w:r><w:t>A.1</w:t></w:r>
+      </w:p>
+    `);
+
+    expect(paragraph.content).toHaveLength(3);
+    expect(paragraph.content.at(1)).toEqual({
+      type: "run",
+      content: [
+        {
+          type: "tab",
+          positional: {
+            relativeTo: "margin",
+            alignment: "right",
+            leader: "dot",
+          },
+        },
+      ],
+    });
+
+    const serialized = serializeParagraph(paragraph);
+    expect(serialized).toContain(
+      '<w:ptab w:relativeTo="margin" w:alignment="right" w:leader="dot"/>',
+    );
+    expect(parseParagraphXml(serialized)).toEqual(paragraph);
   });
 });
 

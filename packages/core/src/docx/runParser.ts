@@ -49,6 +49,9 @@ import {
   FontHintSchema,
   FontThemeSchema,
   HighlightColorSchema,
+  PositionalTabAlignmentSchema,
+  PositionalTabLeaderSchema,
+  PositionalTabRelativeToSchema,
   ShadingPatternSchema,
   TextEffectSchema,
   ThemeColorSlotSchema,
@@ -733,6 +736,29 @@ function parseTabContent(): TabContent {
   return { type: "tab" };
 }
 
+function parsePositionalTabContent(element: XmlElement): TabContent {
+  const positional: NonNullable<TabContent["positional"]> = {};
+  const relativeTo = narrowEnum(
+    getAttribute(element, "w", "relativeTo"),
+    PositionalTabRelativeToSchema,
+  );
+  const alignment = narrowEnum(
+    getAttribute(element, "w", "alignment"),
+    PositionalTabAlignmentSchema,
+  );
+  const leader = narrowEnum(getAttribute(element, "w", "leader"), PositionalTabLeaderSchema);
+  if (relativeTo !== undefined) {
+    positional.relativeTo = relativeTo;
+  }
+  if (alignment !== undefined) {
+    positional.alignment = alignment;
+  }
+  if (leader !== undefined) {
+    positional.leader = leader;
+  }
+  return { type: "tab", positional };
+}
+
 /**
  * Parse break element (w:br)
  */
@@ -922,6 +948,10 @@ function parseRunContents(
       case "tab":
         // Tab character
         contents.push(parseTabContent());
+        break;
+
+      case "ptab":
+        contents.push(parsePositionalTabContent(child));
         break;
 
       case "br":

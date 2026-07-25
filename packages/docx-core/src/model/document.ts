@@ -67,6 +67,7 @@ export { MAX_REVISION_ID, normalizeRevisionId } from "./content";
 
 export type {
   TextContent,
+  PositionalTab,
   TabContent,
   BreakContent,
   SymbolContent,

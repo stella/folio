@@ -503,8 +503,18 @@ function serializeTextContent(content: TextContent): string {
 /**
  * Serialize tab content (w:tab)
  */
-function serializeTabContent(_content: TabContent): string {
-  return "<w:tab/>";
+function serializeTabContent(content: TabContent): string {
+  if (!content.positional) {
+    return "<w:tab/>";
+  }
+  const attrs = [
+    content.positional.relativeTo
+      ? ` w:relativeTo="${escapeXml(content.positional.relativeTo)}"`
+      : "",
+    content.positional.alignment ? ` w:alignment="${escapeXml(content.positional.alignment)}"` : "",
+    content.positional.leader ? ` w:leader="${escapeXml(content.positional.leader)}"` : "",
+  ].join("");
+  return `<w:ptab${attrs}/>`;
 }
 
 /**

@@ -13,6 +13,7 @@ import { createStarterKit } from "../extensions/StarterKit";
 // Re-export type interfaces (used by toProseDoc, fromProseDoc, and other modules)
 export type {
   HardBreakAttrs,
+  TabAttrs,
   ParagraphAttrs,
   FieldAttrs,
   ImageAttrs,

@@ -88,6 +88,7 @@ import {
   expectSdtAttrs,
   expectShapeAttrs,
   expectStrikeMarkAttrs,
+  expectTabAttrs,
   expectTableAttrs,
   expectTableCellAttrs,
   expectTableRowAttrs,
@@ -1602,7 +1603,7 @@ function extractParagraphContent(
     } else if (node.type.name === "tab") {
       // Tab ends current run
       flushCurrentInline();
-      content.push(createTabRun());
+      content.push(createTabRun(node));
     } else if (node.type.name === "renderedPageBreak") {
       flushCurrentInline();
       content.push(createRenderedPageBreakRun());
@@ -1691,7 +1692,7 @@ function createTrackedChangeRun(node: PMNode, marks: readonly Mark[]): Run | nul
     return createShapeRun(node);
   }
   if (node.type.name === "tab") {
-    return createTabRun();
+    return createTabRun(node);
   }
   if (node.type.name === "renderedPageBreak") {
     return createRenderedPageBreakRun();
@@ -1839,7 +1840,7 @@ function addNodeToHyperlink(hyperlink: Hyperlink, node: PMNode): void {
   }
 
   if (node.type.name === "tab") {
-    hyperlink.children.push(createTabRun(nonLinkMarks));
+    hyperlink.children.push(createTabRun(node, nonLinkMarks));
     return;
   }
 
@@ -1982,9 +1983,11 @@ function readHardBreakType(node: PMNode): BreakContent["breakType"] {
 /**
  * Create a Run containing a tab
  */
-function createTabRun(marks?: readonly Mark[]): Run {
+function createTabRun(node: PMNode, marks?: readonly Mark[]): Run {
+  const { positional } = expectTabAttrs(node);
   const tabContent: TabContent = {
     type: "tab",
+    ...(positional ? { positional } : {}),
   };
 
   const run: Run = {

@@ -2332,7 +2332,11 @@ function convertRunContent(
     case "tab":
       // Convert to tab node for proper rendering. Keep the run marks because
       // Word commonly represents signature blanks as underlined tab runs.
-      return [schema.node("tab").mark(marks)];
+      return [
+        schema
+          .node("tab", content.positional ? { positional: content.positional } : undefined)
+          .mark(marks),
+      ];
 
     case "drawing":
       return [withHyperlinkBoundaryMarks(convertImage(content.image, content.rawXml), marks)];

@@ -9,6 +9,7 @@ import type {
   NumberFormat,
   ParagraphAlignment,
   ParagraphFormatting,
+  PositionalTab,
   SdtProperties,
   SdtType,
   ShadingProperties,
@@ -188,6 +189,25 @@ export const TAB_LEADER_VALUES = [
   "heavy",
   "middleDot",
 ] as const satisfies readonly TabLeader[];
+
+export const POSITIONAL_TAB_RELATIVE_TO_VALUES = [
+  "margin",
+  "indent",
+] as const satisfies readonly NonNullable<PositionalTab["relativeTo"]>[];
+
+export const POSITIONAL_TAB_ALIGNMENT_VALUES = [
+  "left",
+  "center",
+  "right",
+] as const satisfies readonly NonNullable<PositionalTab["alignment"]>[];
+
+export const POSITIONAL_TAB_LEADER_VALUES = [
+  "none",
+  "dot",
+  "hyphen",
+  "underscore",
+  "middleDot",
+] as const satisfies readonly NonNullable<PositionalTab["leader"]>[];
 
 type Frame = NonNullable<ParagraphFormatting["frame"]>;
 

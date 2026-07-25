@@ -12,6 +12,7 @@ import type {
   ParagraphFormatting,
   ParagraphMarkChange,
   ParagraphPropertyChange,
+  PositionalTab,
   FieldType,
   Hyperlink,
   LineSpacingRule,
@@ -47,6 +48,10 @@ import type { TrackedChangeProvenance } from "./marks";
 
 export type HardBreakAttrs = {
   breakType?: "column";
+};
+
+export type TabAttrs = {
+  positional?: PositionalTab;
 };
 
 /**

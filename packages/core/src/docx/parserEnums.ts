@@ -44,6 +44,9 @@ import {
   LINE_SPACING_RULE_VALUES,
   NUMBER_FORMAT_VALUES,
   PARAGRAPH_ALIGNMENT_VALUES,
+  POSITIONAL_TAB_ALIGNMENT_VALUES,
+  POSITIONAL_TAB_LEADER_VALUES,
+  POSITIONAL_TAB_RELATIVE_TO_VALUES,
   SDT_LOCK_VALUES,
   SHADING_PATTERN_VALUES,
   SHAPE_OUTLINE_STYLE_VALUES,
@@ -111,6 +114,12 @@ export const LineSpacingRuleSchema = v.picklist(LINE_SPACING_RULE_VALUES);
 export const TabStopAlignmentSchema = v.picklist(TAB_STOP_ALIGNMENT_VALUES);
 
 export const TabLeaderSchema = v.picklist(TAB_LEADER_VALUES);
+
+export const PositionalTabRelativeToSchema = v.picklist(POSITIONAL_TAB_RELATIVE_TO_VALUES);
+
+export const PositionalTabAlignmentSchema = v.picklist(POSITIONAL_TAB_ALIGNMENT_VALUES);
+
+export const PositionalTabLeaderSchema = v.picklist(POSITIONAL_TAB_LEADER_VALUES);
 
 export const FrameXAlignSchema = v.picklist(FRAME_X_ALIGN_VALUES);
 

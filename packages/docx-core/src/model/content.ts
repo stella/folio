@@ -37,8 +37,16 @@ export type TextContent = {
 /**
  * Tab character
  */
+export type PositionalTab = {
+  relativeTo?: "margin" | "indent";
+  alignment?: "left" | "center" | "right";
+  leader?: "none" | "dot" | "hyphen" | "underscore" | "middleDot";
+};
+
 export type TabContent = {
   type: "tab";
+  /** Word positional-tab properties (`w:ptab`); absent for a regular `w:tab`. */
+  positional?: PositionalTab;
 };
 
 /**

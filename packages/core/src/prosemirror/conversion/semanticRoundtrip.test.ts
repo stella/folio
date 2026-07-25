@@ -322,4 +322,59 @@ describe("semantic ProseMirror round-trip fixture", () => {
     });
     expect(textBoxShape.outline).toBeUndefined();
   });
+
+  test("preserves positional tabs through the editor model", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                runText("Section"),
+                {
+                  type: "run",
+                  content: [
+                    {
+                      type: "tab",
+                      positional: {
+                        relativeTo: "margin",
+                        alignment: "right",
+                        leader: "dot",
+                      },
+                    },
+                  ],
+                },
+                runText("A.1"),
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const tab = pmDoc.firstChild?.child(1);
+    expect(tab?.type.name).toBe("tab");
+    expect(tab?.attrs["positional"]).toEqual({
+      relativeTo: "margin",
+      alignment: "right",
+      leader: "dot",
+    });
+
+    const roundtripped = fromProseDoc(pmDoc, document);
+    expect(firstParagraph(roundtripped).content.at(1)).toEqual({
+      type: "run",
+      content: [
+        {
+          type: "tab",
+          positional: {
+            relativeTo: "margin",
+            alignment: "right",
+            leader: "dot",
+          },
+        },
+      ],
+    });
+  });
 });

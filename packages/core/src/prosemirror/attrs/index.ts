@@ -13,6 +13,9 @@ import {
   LINE_SPACING_RULE_VALUES,
   OUTLINE_STYLE_ATTR_VALUES,
   PARAGRAPH_ALIGNMENT_VALUES,
+  POSITIONAL_TAB_ALIGNMENT_VALUES,
+  POSITIONAL_TAB_LEADER_VALUES,
+  POSITIONAL_TAB_RELATIVE_TO_VALUES,
   SDT_LOCK_VALUES,
   SDT_TYPE_VALUES,
   SHADING_PATTERN_VALUES,
@@ -42,6 +45,7 @@ import type {
   HighlightAttrs,
   HyperlinkAttrs,
   HardBreakAttrs,
+  TabAttrs,
   ImageAttrs,
   MathAttrs,
   ParagraphAttrs,
@@ -213,6 +217,7 @@ const SECTION_VERTICAL_ALIGNMENTS = ["top", "center", "both", "bottom"] as const
 
 const paragraphAttrsCache = new WeakMap<PMNode, ParagraphAttrs>();
 const hardBreakAttrsCache = new WeakMap<PMNode, HardBreakAttrs>();
+const tabAttrsCache = new WeakMap<PMNode, TabAttrs>();
 const tableAttrsCache = new WeakMap<PMNode, TableAttrs>();
 const tableRowAttrsCache = new WeakMap<PMNode, TableRowAttrs>();
 const tableCellAttrsCache = new WeakMap<PMNode, TableCellAttrs>();
@@ -390,6 +395,43 @@ export const readHardBreakAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Har
 
 export const expectHardBreakAttrs = (node: PMNode): HardBreakAttrs =>
   expectCachedNodeAttrs(node, hardBreakAttrsCache, readHardBreakAttrs, "hard break attrs");
+
+export const readTabAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TabAttrs> => {
+  const attrs = attrsRecord(node.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectNodeType(node, "tab", issues);
+
+  optionalRecord(attrs, "positional", "tab.attrs.positional", issues);
+  const positional = attrs["positional"];
+  if (isRecord(positional)) {
+    optionalOneOf(
+      positional,
+      "relativeTo",
+      "tab.attrs.positional.relativeTo",
+      issues,
+      POSITIONAL_TAB_RELATIVE_TO_VALUES,
+    );
+    optionalOneOf(
+      positional,
+      "alignment",
+      "tab.attrs.positional.alignment",
+      issues,
+      POSITIONAL_TAB_ALIGNMENT_VALUES,
+    );
+    optionalOneOf(
+      positional,
+      "leader",
+      "tab.attrs.positional.leader",
+      issues,
+      POSITIONAL_TAB_LEADER_VALUES,
+    );
+  }
+
+  return attrsResult(attrs, issues);
+};
+
+export const expectTabAttrs = (node: PMNode): TabAttrs =>
+  expectCachedNodeAttrs(node, tabAttrsCache, readTabAttrs, "tab attrs");
 
 export const readTableAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableAttrs> => {
   const attrs = attrsRecord(node.attrs);

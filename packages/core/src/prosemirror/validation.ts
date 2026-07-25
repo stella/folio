@@ -24,6 +24,7 @@ import {
   readSdtAttrs,
   readShapeAttrs,
   readStrikeMarkAttrs,
+  readTabAttrs,
   readTableAttrs,
   readTableCellAttrs,
   readTableRowAttrs,
@@ -130,7 +131,10 @@ const validateNodeAttrs = (
     case "horizontalRule":
     case "pageBreak":
     case "renderedPageBreak":
+      return;
+
     case "tab":
+      appendAttrIssues(path, readTabAttrs(node), issues);
       return;
 
     case "hardBreak":

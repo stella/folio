@@ -39,6 +39,7 @@ export type {
 
   // Run Content
   TextContent,
+  PositionalTab,
   TabContent,
   BreakContent,
   SymbolContent,

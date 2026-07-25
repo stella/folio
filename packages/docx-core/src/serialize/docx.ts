@@ -333,7 +333,13 @@ const serializeRunContent = (content: RunContent): string => {
         content.preserveSpace ? ' xml:space="preserve"' : ""
       }>${escapeXml(content.text)}</w:t>`;
     case "tab":
-      return "<w:tab/>";
+      if (!content.positional) {
+        return "<w:tab/>";
+      }
+      return `<w:ptab${attr("w:relativeTo", content.positional.relativeTo)}${attr(
+        "w:alignment",
+        content.positional.alignment,
+      )}${attr("w:leader", content.positional.leader)}/>`;
     case "break":
       return `<w:br${attr("w:type", content.breakType)}/>`;
     case "renderedPageBreak":

@@ -7,6 +7,7 @@ export type {
   DocxPackage,
   Paragraph,
   ParagraphContent,
+  PositionalTab,
   Run,
   RunContent,
   SectionProperties,
