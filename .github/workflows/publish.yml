@@ -23,6 +23,11 @@ on:
         description: Publish to npm (leave unchecked for a build + pack dry run)
         type: boolean
         default: false
+      source-ref:
+        description: Commit or ref to build and publish (defaults to the dispatched commit)
+        type: string
+        required: false
+        default: ""
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -43,6 +48,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.source-ref || github.sha }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -97,6 +103,7 @@ jobs:
     uses: stella/.github/.github/workflows/npm-independent-release.yml@aa71261ae4ac03405195b3470b16b0bf5669be67 # v1.4.0
     with:
       artifact-pattern: npm-tarball-*
+      source-ref: ${{ inputs.source-ref || github.sha }}
       package-files: |
         packages/docx-core/package.json
         packages/core/package.json
