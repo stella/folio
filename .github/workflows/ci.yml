@@ -79,6 +79,9 @@ jobs:
       - name: Lockfile workspace-version check
         run: bun run check:lockfile-versions
 
+      - name: Dependency audit
+        run: bun run audit
+
       - name: Lint
         run: bun run lint
 
