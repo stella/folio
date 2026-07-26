@@ -233,4 +233,18 @@ describe("serializeSectionProperties", () => {
     expect(serialized).toContain('w:num="1"');
     expect(parseSectPr(serialized).columnCount).toBe(1);
   });
+
+  test("round-trips an explicit unequal-width column mode without other attributes", () => {
+    const section = parseSectPr(`
+      <w:sectPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:cols w:equalWidth="0"/>
+      </w:sectPr>
+    `);
+
+    expect(section.equalWidth).toBe(false);
+
+    const serialized = serializeSectionProperties(section);
+    expect(serialized).toContain('<w:cols w:equalWidth="0">');
+    expect(parseSectPr(serialized).equalWidth).toBe(false);
+  });
 });
