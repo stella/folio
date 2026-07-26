@@ -485,11 +485,11 @@ const parseVmlTextBoxShape = (
     shape.position = {
       horizontal: {
         relativeTo: horizontalRelativeTo(style["mso-position-horizontal-relative"]),
-        ...(left === undefined ? {} : { posOffset: pixelsToEmu(left) }),
+        posOffset: pixelsToEmu(left ?? 0),
       },
       vertical: {
         relativeTo: verticalRelativeTo(style["mso-position-vertical-relative"]),
-        ...(top === undefined ? {} : { posOffset: pixelsToEmu(top) }),
+        posOffset: pixelsToEmu(top ?? 0),
       },
     };
   }

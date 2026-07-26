@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import type { ImagePosition } from "../types/document";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
 
@@ -97,6 +98,26 @@ const bodyShapeWrapTypes = ({ package: { document } }: ParsedDocx): string[] => 
   return wrapTypes;
 };
 
+const bodyShapePositions = ({ package: { document } }: ParsedDocx): ImagePosition[] => {
+  const positions: ImagePosition[] = [];
+  for (const block of document.content) {
+    if (block.type !== "paragraph") {
+      continue;
+    }
+    for (const content of block.content) {
+      if (content.type !== "run") {
+        continue;
+      }
+      for (const item of content.content) {
+        if (item.type === "shape" && item.shape.position) {
+          positions.push(item.shape.position);
+        }
+      }
+    }
+  }
+  return positions;
+};
+
 const savedDocumentXml = async (buffer: ArrayBuffer): Promise<string> => {
   const zip = await JSZip.loadAsync(buffer);
   return zip.file("word/document.xml")!.async("text");
@@ -163,5 +184,51 @@ describe("text-box drawing ownership", () => {
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const reopened = await parseDocx(saved, { preloadFonts: false });
     expect(bodyShapeWrapTypes(reopened)).toEqual(["inline"]);
+  });
+
+  test("positioned VML text boxes normalize every omitted axis offset before DrawingML conversion", async () => {
+    const cases = [
+      {
+        style: "top:10pt",
+        expectedPosition: {
+          horizontal: { relativeTo: "character", posOffset: 0 },
+          vertical: { relativeTo: "paragraph", posOffset: 127_000 },
+        },
+      },
+      {
+        style: "left:20pt",
+        expectedPosition: {
+          horizontal: { relativeTo: "character", posOffset: 254_000 },
+          vertical: { relativeTo: "paragraph", posOffset: 0 },
+        },
+      },
+      {
+        style: "",
+        expectedPosition: {
+          horizontal: { relativeTo: "character", posOffset: 0 },
+          vertical: { relativeTo: "paragraph", posOffset: 0 },
+        },
+      },
+    ] as const satisfies readonly {
+      style: string;
+      expectedPosition: ImagePosition;
+    }[];
+
+    for (const { style, expectedPosition } of cases) {
+      const source = await buildDocx(`
+        <w:pict>
+          <v:shape style="position:absolute;${style};width:2in;height:1in">
+            <v:textbox>
+              <w:txbxContent><w:p><w:r><w:t>Legacy text</w:t></w:r></w:p></w:txbxContent>
+            </v:textbox>
+          </v:shape>
+        </w:pict>`);
+      const parsed = await parseDocx(source, { preloadFonts: false });
+      expect(bodyShapePositions(parsed)).toEqual([expectedPosition]);
+
+      const saved = await repackDocx(parsed, { updateModifiedDate: false });
+      const reopened = await parseDocx(saved, { preloadFonts: false });
+      expect(bodyShapePositions(reopened)).toEqual([expectedPosition]);
+    }
   });
 });
