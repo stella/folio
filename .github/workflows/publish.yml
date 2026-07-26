@@ -28,6 +28,11 @@ on:
         type: string
         required: false
         default: ""
+      artifact-run-id:
+        description: Earlier run ID containing exact artifacts for release recovery
+        type: string
+        required: false
+        default: ""
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -97,12 +102,14 @@ jobs:
     needs: pack
     if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish) }}
     permissions:
+      actions: read # Recover exact artifacts from a verified earlier publish run.
       contents: write # Create immutable package tags and GitHub releases.
       id-token: write # npm trusted publishing; build scripts ran without this permission.
     # The repository owner publishes this versioned shared contract.
-    uses: stella/.github/.github/workflows/npm-independent-release.yml@aa71261ae4ac03405195b3470b16b0bf5669be67 # v1.4.0
+    uses: stella/.github/.github/workflows/npm-independent-release.yml@6c814558499cf9792072dad3bb36ca3983202dd2 # v1.5.0
     with:
       artifact-pattern: npm-tarball-*
+      artifact-run-id: ${{ inputs.artifact-run-id }}
       source-ref: ${{ inputs.source-ref || github.sha }}
       package-files: |
         packages/docx-core/package.json
