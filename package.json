@@ -23,6 +23,7 @@
     "check:export-parity": "node scripts/check-export-parity.mjs",
     "check:react-compiler": "bun scripts/react-compiler-bailouts.ts --check",
     "check:lockfile-versions": "bun scripts/check-lockfile-workspace-versions.ts",
+    "check:build-reproducibility": "bun scripts/check-build-reproducibility.ts",
     "specifications:check": "bun scripts/specification-sources.ts check",
     "specifications:fetch": "bun scripts/specification-sources.ts fetch",
     "specifications:generate": "bun scripts/generate-ooxml-schema-graph.ts write",

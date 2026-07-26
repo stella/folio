@@ -1,5 +1,7 @@
 import { defineConfig } from "tsdown";
 
+import { stableRelativeImportOrder } from "../../scripts/lib/stable-relative-import-order.ts";
+
 // @stll/folio-core publishes a source-mirrored dist: every source module maps
 // 1:1 to a `dist/*.js` + `dist/*.d.ts` (`unbundle: true`). The package's
 // `exports` expose a `"./*"` subpath wildcard onto that tree, so adapters
@@ -42,6 +44,11 @@ const shared = {
 // tsdown runs array configs concurrently, so neither pass may `clean` (it would
 // race the other's output). The `build` script clears `dist` up front instead.
 export default defineConfig([
-  { ...shared, dts: false, clean: false },
+  {
+    ...shared,
+    dts: false,
+    clean: false,
+    plugins: [stableRelativeImportOrder()],
+  },
   { ...shared, dts: { emitDtsOnly: true }, clean: false },
 ]);
