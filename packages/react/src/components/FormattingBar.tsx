@@ -223,9 +223,9 @@ export function FormattingBar(props: FormattingBarProps) {
     onFormatPainter(true);
   }, [disabled, onFormatPainter]);
 
-  // Normalize the host's `fontFamilies` prop into the picker's FontOption[].
-  // folio runs no React Compiler, so this memo is load-bearing: it keeps a
-  // stable list reference across renders (undefined falls back to defaults).
+  // FormattingBar is a guarded React Compiler bailout, so this memo remains
+  // load-bearing: it keeps a stable list reference across renders (undefined
+  // falls back to defaults).
   const fontPickerOptions = useMemo(() => normalizeFontFamilies(fontFamilies), [fontFamilies]);
 
   const handleFontFamilyChange = useCallback(
