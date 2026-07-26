@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Run } from "../../types/document";
+import { EMPHASIS_MARK_VALUES } from "../../types/documentEnumValues";
 import { serializeRun } from "./runSerializer";
 
 // Issue #417 (eigenpal): image and shape dimension/offset attributes leaked
@@ -137,6 +138,18 @@ describe("runSerializer vertical alignment", () => {
 
     expect(xml).toContain('<w:vertAlign w:val="baseline"/>');
     expect(xml).toContain('<w:footnoteReference w:id="1"/>');
+  });
+});
+
+describe("runSerializer emphasis marks", () => {
+  test.each(EMPHASIS_MARK_VALUES)("serializes the explicit %s value", (emphasisMark) => {
+    const xml = serializeRun({
+      type: "run",
+      formatting: { emphasisMark },
+      content: [{ type: "text", text: "Text" }],
+    });
+
+    expect(xml).toContain(`<w:em w:val="${emphasisMark}"/>`);
   });
 });
 

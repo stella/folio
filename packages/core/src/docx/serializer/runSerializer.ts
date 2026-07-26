@@ -408,7 +408,7 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
   }
 
   // Emphasis mark
-  if (formatting.emphasisMark && formatting.emphasisMark !== "none") {
+  if (formatting.emphasisMark) {
     parts.push(`<w:em w:val="${formatting.emphasisMark}"/>`);
   }
 
