@@ -60,6 +60,14 @@ describe("serializeComments", () => {
     expect(xml).toContain('<w:comment w:id="1" w:author=""');
   });
 
+  test("preserves an explicitly empty initials attribute", () => {
+    const comment = { ...makeComment(1), initials: "" };
+    const xml = serializeComments([comment]);
+
+    expect(xml).toContain('w:initials=""');
+    expect(parseComments(xml, null, null, new Map(), new Map()).at(0)?.initials).toBe("");
+  });
+
   test("escapes a paragraph paraId that carries markup instead of a real Word id", () => {
     // A malformed/attacker-supplied `paraId` (e.g. relayed through a
     // collaboration payload) must not be able to break out of the
