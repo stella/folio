@@ -42,7 +42,7 @@
 - Reserve `Props` for React component props.
 - Reuse React utility types instead of hand-rolling equivalents: for example,
   `React.PropsWithChildren<P>` for props with children and
-  `React.ComponentProps<"button">` for native element props.
+  `React.ComponentProps<typeof ExistingComponent>` when wrapping a component.
 
 ## React Adapter
 
