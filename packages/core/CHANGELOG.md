@@ -1,5 +1,46 @@
 # @stll/folio-core
 
+## 0.15.2
+
+### Patch Changes
+
+- [#504](https://github.com/stella/folio/pull/504) [`adc62f3`](https://github.com/stella/folio/commit/adc62f3b1a2357a22b431ba715bd46a11533e9b7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicit unequal-width section column settings without companion attributes.
+
+- [#497](https://github.com/stella/folio/pull/497) [`3b28632`](https://github.com/stella/folio/commit/3b28632025d3798b4bd4b9c8268fbb444237ce6c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve Word positional tabs across parsing, editing, and serialization.
+
+- [#502](https://github.com/stella/folio/pull/502) [`8b2535e`](https://github.com/stella/folio/commit/8b2535ec268eba128895251a3d573af29c241b16) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve localized comment annotation-reference formatting across DOCX serialization.
+
+- [#498](https://github.com/stella/folio/pull/498) [`c915317`](https://github.com/stella/folio/commit/c91531724c50c2199f679019846f5db0daeafe60) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize nested hyperlink runs even when the hyperlink is the paragraph's only child.
+
+- [#501](https://github.com/stella/folio/pull/501) [`cc17b71`](https://github.com/stella/folio/commit/cc17b7140a5cbf943b338a2242237ac1e243ee95) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicit complex-script formatting overrides during DOCX serialization.
+
+- [#499](https://github.com/stella/folio/pull/499) [`18a900f`](https://github.com/stella/folio/commit/18a900f88e1cb313a6747b006e9431b4a020e499) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Assign deterministic, collision-free IDs to parsed drawings that omit them.
+
+- [#493](https://github.com/stella/folio/pull/493) [`b06a26d`](https://github.com/stella/folio/commit/b06a26d6efeb818d12ed78799a626f5d058494e8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve DrawingML gradient fill details across text boxes and other shared fill consumers.
+
+- [#496](https://github.com/stella/folio/pull/496) [`d762d06`](https://github.com/stella/folio/commit/d762d061fb0693d1b9d81803ba6fff9227de048d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve inline text box wrapping across document saves.
+
+- [#506](https://github.com/stella/folio/pull/506) [`55a5913`](https://github.com/stella/folio/commit/55a5913202a82e1eee9caef2b59deab8be7e6a00) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicitly empty initials on comments.
+
+- [#490](https://github.com/stella/folio/pull/490) [`ea689e2`](https://github.com/stella/folio/commit/ea689e24e1c7744715bee672554167e952e0d02b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicit no-highlight run formatting when saving DOCX files.
+
+- [#494](https://github.com/stella/folio/pull/494) [`0a613b8`](https://github.com/stella/folio/commit/0a613b879914f40ea2fc143caaed54fa2bd9412e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored DrawingML outline details across shapes and text boxes.
+
+- [#500](https://github.com/stella/folio/pull/500) [`7a0c72f`](https://github.com/stella/folio/commit/7a0c72f32aa19b0f3956ed02aff0c2adaf23c8b8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize omitted floating drawing positions to deterministic zero offsets.
+
+- [#492](https://github.com/stella/folio/pull/492) [`e254b3b`](https://github.com/stella/folio/commit/e254b3bd681176138e757225025512f050038224) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize syntactically empty Word runs without hiding unsupported run payloads.
+
+- [#505](https://github.com/stella/folio/pull/505) [`4ffed02`](https://github.com/stella/folio/commit/4ffed0279600c89db755d3aa385e945f7dbdd88a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored clear behavior on every break type.
+
+- [#503](https://github.com/stella/folio/pull/503) [`fe20374`](https://github.com/stella/folio/commit/fe20374491d851dec25bb9754526d72f8cfdd561) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicitly disabled first-page section headers and footers.
+
+- [#495](https://github.com/stella/folio/pull/495) [`4b3cdc8`](https://github.com/stella/folio/commit/4b3cdc8b3b9a103866107c20f34882e7196f7d39) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize no-op zero-height table row rules.
+
+- [#507](https://github.com/stella/folio/pull/507) [`008fd68`](https://github.com/stella/folio/commit/008fd68ab8c3686a575f0dfdefcd9ba2ac77aa5e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicit disabled emphasis marks in run formatting.
+
+- Updated dependencies [[`3b28632`](https://github.com/stella/folio/commit/3b28632025d3798b4bd4b9c8268fbb444237ce6c), [`8b2535e`](https://github.com/stella/folio/commit/8b2535ec268eba128895251a3d573af29c241b16), [`b06a26d`](https://github.com/stella/folio/commit/b06a26d6efeb818d12ed78799a626f5d058494e8), [`0a613b8`](https://github.com/stella/folio/commit/0a613b879914f40ea2fc143caaed54fa2bd9412e)]:
+  - @stll/docx-core@0.5.2
+
 ## 0.15.1
 
 ### Patch Changes
