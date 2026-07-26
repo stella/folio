@@ -1,0 +1,30 @@
+## Core Architecture
+
+- **Keep `@stll/folio-core` React-free.** Never import `react`, `react-dom`, or a
+  React-package type. Framework-agnostic UI behavior belongs in a core manager that
+  extends `Subscribable`; framework hooks are thin bindings. Declare a minimal
+  structural type in core instead of importing one from an adapter package.
+- Preserve the parser, normalized model, measurement, pagination, and painting
+  boundaries. Central pipeline files orchestrate; a new state concept or
+  compatibility policy belongs in a typed helper or focused module.
+- Behavior is guarded by interaction e2e and python-docx differential parity. Extend
+  the relevant gate when parsing, layout, or editor interactions change.
+
+## Fidelity Consolidation
+
+- Express every fidelity fix as a reusable OOXML or layout invariant. Never branch on
+  fixture identity, source metadata, document text, or another corpus-specific signal.
+- Add a minimal synthetic regression test for the invariant. Keep source documents and
+  identifying corpus details out of the repository, commits, PRs, and test names.
+- After roughly five to ten behavior fixes in one subsystem, land a standalone,
+  behavior-preserving consolidation before adding more conditions there.
+- Prefer discriminated state machines and explicit coordinate-space types over related
+  booleans, optional-field combinations, and mutable flags.
+- Keep normalization and layout inputs immutable and idempotent. Derive effective
+  values instead of overwriting authored model values during measurement or
+  pagination.
+- Consolidate shared OOXML syntax, units, geometry, and compatibility rules; do not
+  let feature parsers grow subtly different implementations.
+- A consolidation PR must preserve behavior, include focused invariant tests, and
+  avoid unrelated fidelity changes. Put a behavior bug discovered during extraction
+  in a separate commit or focused PR.

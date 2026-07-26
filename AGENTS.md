@@ -46,7 +46,9 @@ details unless they are already public in the repository.
 
 - Never manually reformat code you did not semantically change (auto-formatter output
   from `bun run format` is fine to include)
-- Vary punctuation: prefer colons, semicolons, commas, and parentheses over em dashes
+- In prose, vary punctuation: prefer colons, semicolons, commas, and parentheses
+  over em dashes. This does not apply to source code, command syntax, generated
+  content, or exact identifiers.
 - Omit needless words. Vigorous writing is concise: a sentence should contain no
   unnecessary words, a paragraph no unnecessary sentences, for the same reason that a
   drawing should have no unnecessary lines and a machine no unnecessary parts. Applies
@@ -57,6 +59,14 @@ details unless they are already public in the repository.
 - If TypeScript can make a class of bug structurally impossible (branded types,
   discriminated unions, exhaustive checks), prefer that over runtime validation or
   manual discipline
+- Kill the bug class, not the instance: for a recurring or systemic defect, use the
+  strongest applicable mechanism. Make invalid states unrepresentable first; cover
+  remaining behavior with a property, invariant, idempotence, or fixed-point test over
+  the input class. Enforce boundaries with a lint rule or CI check. Keep a minimal
+  example regression only when the broader invariant cannot express the failure. When
+  correctness depends on a helper being called at every call site, enforce it with a
+  custom lint rule, not developer discipline. Do not over-apply this to genuine
+  heuristics (a debounce timer is not a bug class).
 - Avoid boolean fields for states that may grow. Use a named discriminator or
   domain type for values that answer "which kind/status/mode/type?" rather than
   a permanent yes/no question; a two-value union, enum, or equivalent domain type
@@ -71,8 +81,10 @@ details unless they are already public in the repository.
 - Use named constants, not string literals for domain values
 - No direct `document.cookie` assignment
 - Avoid spread in loop accumulators (use `.push()`)
-- If you encounter a pre-existing bug or lint error while working on something else,
-  fix it (separate commit)
+- If you encounter a pre-existing bug or lint error, fix it. Preserve focus through
+  isolation, not omission: use a separate commit when the fix is small and shares the
+  same validation surface; use a separate focused PR when it expands the subsystem,
+  risk, or review burden. Never leave a confirmed defect merely to keep a diff narrow.
 - Orchestrate across model tiers when your harness supports subagents and model
   selection: delegate well-scoped, mechanical, or independently verifiable subtasks
   (edits, searches, refactors, test runs) to a subagent on the cheapest model that
@@ -100,6 +112,11 @@ details unless they are already public in the repository.
 - Model mutually exclusive internal states as discriminated unions with a stable
   `type`, `status`, or domain-specific discriminator. Avoid boolean flag sets plus
   optional payload fields when only some combinations are valid.
+- Construct a discriminated-union branch transition explicitly: list the target
+  branch's fields rather than spreading the previous object and overriding the
+  discriminator, so stale fields from the old branch cannot leak through the spread.
+  Read a union with a `switch` plus a `never` exhaustiveness check over an `if`/`else`
+  chain.
 - When the linter blocks an `as` cast, restructure to narrow properly (type guards,
   `in` checks, records instead of arrays). If truly unavoidable, ask before adding and
   include a `// SAFETY:` comment explaining why the cast is sound.
@@ -107,14 +124,15 @@ details unless they are already public in the repository.
   that produces the wrong type) rather than casting at the consumer. Check git to
   verify you did not introduce the mismatch yourself before blaming the framework.
 - Never annotate or cast a value the compiler already infers, and never pass explicit
-  type arguments to inference-driven hooks (`useLoaderData<T>()`, `useQuery<T>()`, Eden
-  calls). Every annotation or explicit generic masks real errors and breaks the
-  inference chain; let inference flow and narrow at the boundary instead.
+  type arguments to inference-driven APIs. Every redundant annotation or generic can
+  mask real errors and break the inference chain; let inference flow and narrow at
+  the boundary instead.
 - Validate object literals against a large union type (route, link, query options) with
   `as const satisfies T`, not a `: T` annotation. `satisfies` checks the value without
   widening it or paying the annotation's instantiation cost.
 - Use `.at(0)` when the element may not exist (signals possible absence). Use `[0]`
   only when existence is already established (length check, or a `// SAFETY:` comment).
+- Skip barrel files (`index.ts`); import from explicit module paths.
 - Prefer arrow functions over function expressions
 - Destructure in the parameter when the intermediate variable is not reused
   (e.g., `{ body: { file, name } }` not `body` then `const { file, name } = body`)
@@ -125,21 +143,18 @@ details unless they are already public in the repository.
   argument, and also for two arguments when their types are different enough to stay
   readable. Use a named `SomethingOptions`, `SomethingArgs`, or `SomethingParams`
   object for 3+ arguments, or when two same-type or otherwise interchangeable
-  positional arguments would be easy to mix up. Reserve `Props` for React component
-  props.
-- Reuse util types from libraries instead of hand-rolling (e.g.,
-  `React.PropsWithChildren<P>` for props with children,
-  `React.ComponentProps<"button">` for HTML element props). Check React, TanStack, and
-  other deps before defining custom equivalents.
+  positional arguments would be easy to mix up.
+- Reuse utility types from libraries instead of hand-rolling equivalents. Check the
+  dependencies already in use before defining a custom helper type.
 - Keep helper-local types close to the helper they describe: put `SomethingOptions`,
   `SomethingResult`, and similar aliases immediately above the function, not in a
   file-level type dump far away from the implementation.
 - If a return type is noisy enough to hurt readability, hoist it into a nearby alias
   such as `SomethingResult` and use it in the signature (e.g., `SomethingResult` or
   `Promise<SomethingResult>`). If the return type is simple, keep it inline.
-- Watch type-instantiation cost in hot generic paths (route trees, query options, Eden
-  surfaces): prefer narrowing (`satisfies`, route `from`, query `select`) over
-  annotation, and keep large unused types out of inferred return positions.
+- Watch type-instantiation cost in hot generic paths such as schema builders, route
+  trees, and query-option graphs. Prefer narrowing over annotation, and keep large
+  unused types out of inferred return positions.
 
 ### Module Side Effects
 
@@ -154,86 +169,6 @@ details unless they are already public in the repository.
   (`betterAuth()`, `drizzle()`) depends on another module's export, wrap it in a
   `getX()` getter so it runs at first use, not at import time. This prevents TDZ
   errors from non-deterministic module evaluation order.
-
-## UX & Brand
-
-Use semantic tokens (`bg-muted`, `text-foreground`, `border`), not raw colour values.
-Full brand deck, micro-interaction guidelines, and visual noise rules in
-`/conventions-ux`.
-
-## React
-
-- Put the root/exported component at the top of the file (after imports); helper
-  components and types follow below.
-- Prefer `if` statements over nested ternaries for conditional rendering. Extract
-  complex logic into a small component that returns early with `if` branches instead
-  of chaining ternaries.
-- React Compiler is enabled in the Vite build. Prefer plain React over prophylactic
-  `useMemo`, `useCallback`, and `React.memo`.
-- Clean up legacy memoization gradually when touching a file; do not do broad
-  mechanical removals. Keep manual memoization only when a library contract requires
-  referential stability or profiling proves a real benefit.
-- Zustand with `useShallow()` for multi-slice selectors
-- Skip barrel files (`index.ts`): import from explicit paths
-- Use coss (Base UI) components, registered as `@coss` in `components.json`. Prefer
-  coss primitives over hand-rolling.
-- Use semantic HTML elements (`<button>`, `<nav>`, `<main>`) over generic `<div>`s with
-  ARIA roles. Provide meaningful `alt` text, proper heading hierarchy, labels for form
-  inputs, and keyboard event handlers alongside mouse events.
-- Never construct Tailwind class names dynamically (e.g. `` `bg-${color}-200` ``);
-  Tailwind cannot detect them. Use `style` with CSS variables instead
-  (e.g. ``style={{ backgroundColor: `var(--color-${name}-200)` }}``).
-- `cn()` utility for conditional class names
-- Frontend calls the API via Eden treaty (`apps/web/src/lib/api.ts`). The `api` export
-  is a typed proxy mirroring backend routes; use dot notation with HTTP verbs:
-  `api.workspaces({ workspaceId }).get()`. Unwrap responses with `.data` / `.error`
-  checks or `toAPIError()`.
-- Return minimal data from endpoints and mutations. Backend handlers should only return
-  what callers actually need; frontend response types should only type what they
-  consume. Do not speculatively return extra fields "for completeness."
-- Do not create single-use mutation hooks just to wrap an API call. Inline the API call
-  at the usage site and use `Result.tryPromise` for retries instead of React Query's
-  `retry` on throwaway mutations.
-- Reuse existing components (`Button`, `Input`, etc.) with `className` overrides
-  instead of writing inline `<button>`, `<input>`, or similar raw HTML elements. This
-  keeps behaviour (focus rings, accessibility, sizing) consistent across the app.
-- Prefer `useRouteContext` for data already provided by parent route loaders
-  (`beforeLoad`) over firing a separate query. Extend the route context if needed
-  rather than adding a query.
-- When a route loader only primes a TanStack Query cache, return `void` from it so its
-  return type stays out of the route tree and does not inflate type-inference cost.
-- Use `useSuspenseQuery` only in route/page content where the query is preloaded or
-  wrapped by an explicit local `Suspense` boundary. In shared chrome (breadcrumbs,
-  headers, toolbars, sidebar shell), prefer `useQuery` so a cache miss cannot suspend
-  the whole layout.
-- Always use `select` with `useParams`, `useSearch`, and `useRouteContext` to subscribe
-  only to the fields the component needs. Without `select`, the component rerenders on
-  any param/search/context change.
-- Pass `from` to `useParams`/`useSearch`/`Link` (or `strict: false` to `useParams`/
-  `useSearch` in shared chrome that spans routes) so types narrow from the full route
-  union to a single route. The unnarrowed union is both imprecise and expensive to
-  typecheck.
-- Use `useDebouncedCallback` from `use-debounce` instead of hand-rolling debounce with
-  `useRef<setTimeout>` + manual `clearTimeout`. The library handles cleanup
-  automatically.
-- Query option file ordering: key type -> key helpers -> input type
-  (`QueryOptionsInput`) -> option factory -> hook (e.g., `useEntitiesOptions`).
-- Query option factories that use `QueryOptionsInput` with a `TContext` must: define a
-  named type alias matching the factory name (e.g., `ViewsOptionsInput` for
-  `viewsOptions`, `ChatThreadOptionsInput` for `chatThreadOptions`), destructure
-  `{ key, context }` in the parameter, and reference `key.*` / `context.*` directly in
-  the body (no further destructuring). This makes it obvious at the call site and
-  inside the function which values drive the cache key vs. which are runtime-only deps.
-- Define a separate key type (e.g., `EntitiesPageKey`) and use it in both the
-  `QueryOptionsInput` and the key helper. The key helper's parameter type must be the
-  key type, not the full options input, so the key builder only accepts cache-identity
-  fields.
-- Never spread input objects into query keys. Explicitly destructure and reconstruct
-  the key object so extra properties from callers cannot leak into the cache identity
-  and cause spurious refetches.
-- Key helpers must compose by spreading the parent key
-  (e.g., `...entitiesKeys.all(workspaceId)`), never by duplicating the parent's array
-  literal. This ensures changes to the parent key shape propagate automatically.
 
 ## Error Handling
 
@@ -266,101 +201,67 @@ oxlint (ultracite preset) + oxfmt. To suppress a rule:
 
 ## Repository Specifics
 
-folio is a Bun-first TypeScript monorepo: a Word-document (`.docx`) editor for
-the browser, built on ProseMirror. Two published packages plus a dev playground:
+folio is a Bun-first TypeScript monorepo for browser-based Word-document (`.docx`)
+editing. Its published packages have explicit ownership boundaries:
 
-- `@stll/folio-core` (`packages/core`) — the headless engine: OOXML parsing, the
-  document model, the ProseMirror integration, and the page-layout engine. It is
-  **framework-neutral and must stay React-free** (enforced by the
-  `react-free-core` + `model-purity` arch tests and the clean-room dist check).
-- `@stll/folio-react` (`packages/react`) — the React editor: a thin renderer over
-  folio-core. UI logic lives in core managers; the hooks are thin bindings.
-- `packages/playground` — a private Vite app that mounts the editor for the
-  visual + interaction e2e tests; not published.
+- `@stll/docx-core` (`packages/docx-core`) owns the typed OOXML document model,
+  validation, serialization, and legal-source compiler.
+- `@stll/folio-core` (`packages/core`) owns DOCX parsing, ProseMirror integration,
+  framework-neutral editor behavior, and page layout.
+- `@stll/folio-react` and `@stll/folio-vue` (`packages/react`, `packages/vue`) are thin
+  framework adapters over folio-core.
+- `@stll/folio-nuxt` (`packages/nuxt`) provides the SSR-safe Nuxt integration.
+- `@stll/folio-agents` (`packages/agents`) provides agent tooling over the public
+  editor contracts.
+- `packages/playground` and `packages/playground-vue` are private test applications;
+  they are not published.
 
 ### Commands
 
 - `bun install`
-- `bun run build` (core first, then react)
+- `bun run build`
 - `bun run typecheck`
-- `bun run test` (unit suites, both packages)
+- `bun run test`
+- `bun run test:property`
 - `bun run lint`
-- `bun run validate-dist` (clean-room publish-shape check)
-- `bun run test:interactions` (Playwright behaviour e2e via the playground)
-- `bun run test:differential` (folio vs python-docx parse parity; full corpus)
-- `bun run format` (oxfmt)
+- `bun run format:check`
+- `bun run validate-dist`
+- `bun run test:interactions`
+- `bun run test:e2e:vue`
+- `bun run test:e2e:parity`
+- `bun run test:differential`
 
 ### Working Rules
 
-- **Keep `@stll/folio-core` React-free.** Never import `react`/`react-dom` (or a
-  React-package type) into `packages/core`. Framework-agnostic UI logic belongs in
-  a core manager (`extends Subscribable`, which documents both a React
-  `useSyncExternalStore` and a Vue `watchEffect` binding); the React hook is a
-  thin binding only. Declare a minimal structural type in core rather than
-  importing one from the React package.
-- **Preserve upstream attribution.** folio is a fork of the Eigenpal docx-editor
-  (see `NOTICE.md`). `NOTICE.md`, `LICENSE`, and the `eigenpal` / `docx-editor`
-  attribution comments must stay verbatim — never scrub them.
-- **Fix pre-existing bugs you find** (separate commit) rather than preserving
-  known-wrong behaviour to "keep behaviour identical".
-- Behaviour is guarded by the interaction e2e suite and the python-docx
-  differential parity gate — extend them when you change parsing, layout, or
-  editor interactions.
-- Return minimal data from public APIs; do not export types that have no consumer.
+- **Preserve upstream attribution.** folio is a fork of the Eigenpal docx-editor (see
+  `NOTICE.md`). `NOTICE.md`, `LICENSE`, and the `eigenpal` / `docx-editor` attribution
+  comments must stay verbatim; never scrub them.
+- Keep React and Vue public contracts in parity. Run
+  `bun run check:parity-contract` and `bun run check:export-parity` when an adapter
+  contract changes.
+- Return minimal data from public APIs; do not export types with no consumer.
+- **Add a changeset for any published-package `src` change.** Select every affected
+  package, choose the appropriate bump, and add a one-line summary. Use
+  `bunx changeset --empty` only when the source change intentionally needs no release.
+  The private playground packages need no changeset.
 - **Never delete or regenerate `bun.lock` to apply package version bumps.** Run
   `bun scripts/check-lockfile-workspace-versions.ts --write`, then
-  `bun install --frozen-lockfile`. The synchronizer is the sole owner of cached
-  workspace self-versions; dependency-graph changes belong in an explicit install.
-
-### Fidelity Consolidation
-
-- Express every fidelity fix as a reusable OOXML or layout invariant. Never branch on
-  fixture identity, source metadata, document text, or other corpus-specific signals.
-- Add a minimal synthetic regression test for the invariant. Keep source documents and
-  identifying corpus details out of the repository, commits, PRs, and test names.
-- Keep parser, normalized model, measurement, pagination, and painting responsibilities
-  separate. Central pipeline files should orchestrate; extract a typed helper or module
-  when a change introduces a new state concept or compatibility policy.
-- After roughly five to ten behavior fixes in one subsystem, land a standalone
-  behavior-preserving consolidation before adding more conditions there.
-- Prefer discriminated state machines and explicit coordinate-space types over related
-  booleans, optional-field combinations, and mutable local flags. Make invalid layout
-  states structurally difficult to represent.
-- Keep normalization and layout inputs immutable and idempotent. Derive effective values
-  instead of overwriting authored model values during measurement or pagination.
-- Consolidate shared OOXML syntax handling, units, geometry, and compatibility rules;
-  do not let separate feature parsers grow subtly different implementations.
-- Shared editor behavior belongs in framework-neutral core code so React and Vue remain
-  thin bindings over the same implementation.
-- A consolidation PR must preserve behavior, include focused invariant tests, and avoid
-  unrelated formatting or fidelity changes. If a real behavior bug is discovered during
-  extraction, fix it in a separate commit or PR.
+  `bun install --frozen-lockfile`. The synchronizer owns cached workspace
+  self-versions; dependency-graph changes belong in an explicit install.
 
 ## Cursor Cloud specific instructions
 
-Toolchain and standard commands live under `## Repository Specifics` → `### Commands`
-above; this section only records the non-obvious cloud-VM caveats.
+Toolchain and standard commands live under `## Repository Specifics` → `### Commands`;
+this section records only non-obvious cloud-VM caveats.
 
 - **Toolchain lives in the user profile, not the base image.** Bun `1.3.14` is at
-  `~/.bun/bin` and Node is provided by nvm (default `v22.22.2`). A login/interactive
-  shell sources `~/.bashrc` and puts both on `PATH` (and activates the nvm Node). A
-  plain non-login `bash -c` does **not**, and falls back to `/exec-daemon/node`
-  (Node 22.14). Prefer a login shell, or reference bun explicitly as
-  `~/.bun/bin/bun`.
-- **`bun run build` / `bun run validate-dist` need Node ≥ 22.18.** tsdown loads
-  `packages/*/tsdown.config.ts` with a config loader that requires native TS
-  type-stripping. The default `/exec-daemon/node` (22.14) lacks it and the optional
-  `unrun` loader is not installed, so building under that node fails with
-  `Failed to import module "unrun"`. Run these with the nvm Node 22.22.2 active (it
-  is the nvm default; a login shell or `nvm use default` selects it). lint,
-  typecheck (`tsgo`), and `bun test` are unaffected by the node version.
-- **Dev server:** `bun --filter @stll/playground dev` serves the editor at
-  http://localhost:4200 (Vite, `strictPort`). It loads an empty document by default;
-  `?file=<name>` loads a fixture from `tests/visual/fixtures` (e.g.
-  `?file=sample.docx`). The product is fully client-side — there is no backend,
-  database, or external service to start.
-- **Optional test dependencies (not installed by the update script):** Playwright
-  chromium (`bunx playwright install chromium`) for `test:interactions` /
-  `test:visual`; `python-docx` for `test:differential` (the test auto-skips if it is
-  missing). `bun run sync-ai` needs the private `.ai/shared` git submodule, which is
-  not initialized here, so do not run it.
+  `~/.bun/bin`; Node is provided by nvm (default `v22.22.2`). A login shell sources
+  `~/.bashrc` and activates both. A plain non-login `bash -c` falls back to
+  `/exec-daemon/node` (Node 22.14).
+- **Build and dist validation need Node ≥ 22.18.** Use the nvm default Node before
+  running commands that load tsdown configuration.
+- Playwright Chromium is optional locally and required for interaction, visual, and
+  adapter e2e suites. `python-docx` is optional for differential tests, which skip
+  when it is unavailable.
+- `.ai/shared` is a submodule. Initialize it before running `bun run sync-ai`; do not
+  fetch a floating shared revision during normal CI.

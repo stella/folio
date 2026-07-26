@@ -63,14 +63,16 @@ cargo-outdated` when available (prebuilt binary, seconds)
      over `cargo install cargo-outdated` (compiles from source,
      several minutes). As a fallback, use `cargo update --dry-run`
      plus targeted `cargo search` / `cargo info` checks
-   - flag prerelease-pinned deps separately: `bun outdated` and
-     `bun update` resolve the npm `latest` dist-tag, so a
-     dependency intentionally pinned to a prerelease channel
-     (`alpha`, `beta`, `rc`, `next`, `canary`, `dev`) never shows
-     up as outdated and never moves, even when newer prereleases
-     exist on its own channel. Grep the manifests and catalog for
-     prerelease specifiers, then compare each pin against its real
-     channel with `npm view <pkg> dist-tags`. A `bunfig.toml`
+   - flag prerelease-pinned deps separately. `bun outdated` reports
+     the latest version allowed by the declared requirement as
+     `Update` and the registry's `latest` release as `Latest`.
+     Exact prerelease pins, and ranges that exclude newer releases
+     from the intended prerelease channel (`alpha`, `beta`, `rc`,
+     `next`, `canary`, `dev`), can therefore show no applicable
+     update even when that channel has advanced. Grep manifests and
+     catalogs for prerelease versions and non-`latest` tags, then
+     compare each one with `npm view <pkg> dist-tags` and the
+     intended channel's version. A `bunfig.toml`
      `minimumReleaseAgeExcludes` entry is a strong hint that a
      package is deliberately tracked ahead of stable.
    - inspect open dependency PRs if the request is about triage
@@ -148,10 +150,14 @@ cargo-outdated` when available (prebuilt binary, seconds)
    - for Cargo, prefer `cargo update -p <crate>` when the
      existing semver range already covers the new version; edit
      `Cargo.toml` only when bumping past the range
-   - prerelease-pinned deps are usually exact-pinned to a
-     non-`latest` dist-tag, so neither `bun update` nor `bun
-update --latest` will move them; edit the pin by hand to the
-     target prerelease version and run `bun install`
+   - ordinary `bun update` respects the declared requirement, but
+     `bun update --latest` ignores it and can replace an exact
+     prerelease pin or non-`latest` tag with the registry's
+     `latest` release while rewriting the manifest. Use `--latest`
+     only when that channel change is intentional. To remain on a
+     prerelease channel, resolve the target explicitly (for example,
+     `npm view <pkg>@<tag> version`), edit the real source of truth
+     to that exact prerelease or deliberate tag. Then run `bun install`
    - after each batch passes validation, commit that batch before
      moving to the next one
 

@@ -6,11 +6,41 @@
       "stella-public-repo",
       "engineering",
       "typescript",
-      "frontend-react",
       "error-handling",
       "testing",
       "linting"
     ],
-    "local": ".ai/local/agents.md"
+    "local": ".ai/local/agents.md",
+    "scopes": [
+      {
+        "path": "packages/core",
+        "title": "folio-core Development Guidelines",
+        "local": ".ai/local/core-agents.md"
+      },
+      {
+        "path": "packages/react",
+        "title": "folio-react Development Guidelines",
+        "modules": ["frontend", "react"],
+        "local": ".ai/local/react-agents.md"
+      },
+      {
+        "path": "packages/vue",
+        "title": "folio-vue Development Guidelines",
+        "modules": ["frontend"],
+        "local": ".ai/local/vue-agents.md"
+      },
+      {
+        "path": "packages/playground",
+        "title": "React Playground Guidelines",
+        "modules": ["frontend", "react"],
+        "local": ".ai/local/playground-agents.md"
+      },
+      {
+        "path": "packages/playground-vue",
+        "title": "Vue Playground Guidelines",
+        "modules": ["frontend"],
+        "local": ".ai/local/playground-agents.md"
+      }
+    ]
   }
 }
