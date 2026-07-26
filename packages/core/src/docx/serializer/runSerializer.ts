@@ -531,9 +531,10 @@ function serializeBreakContent(content: BreakContent): string {
     attrs.push('w:type="column"');
   } else if (content.breakType === "textWrapping") {
     attrs.push('w:type="textWrapping"');
-    if (content.clear && content.clear !== "none") {
-      attrs.push(`w:clear="${content.clear}"`);
-    }
+  }
+
+  if (content.clear !== undefined) {
+    attrs.push(`w:clear="${content.clear}"`);
   }
 
   if (attrs.length === 0) {

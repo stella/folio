@@ -327,3 +327,17 @@ describe("run formatting integer attributes (issue #417)", () => {
     expect(xml).toContain('<w:position w:val="-6"/>');
   });
 });
+
+describe("break clear serialization", () => {
+  test.each(["none", "left", "right", "all"] as const)(
+    "preserves %s clear behavior independently of the break type",
+    (clear) => {
+      const xml = serializeRun({
+        type: "run",
+        content: [{ type: "break", breakType: "page", clear }],
+      });
+
+      expect(xml).toContain(`<w:br w:type="page" w:clear="${clear}"/>`);
+    },
+  );
+});
