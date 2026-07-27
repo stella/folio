@@ -16,7 +16,6 @@ import initializeRuntime, {
   type DocxProjectionStructure,
   type DocxProjectionUnknownReason,
   type DocxProjectionWire,
-  type InitInput,
 } from "./generated/docx_kernel.js";
 
 export type {
@@ -48,12 +47,19 @@ export class DocxProjectionError extends TaggedError("DocxProjectionError")<{
   cause: unknown;
 }>() {}
 
+export type DocxProjectionWasmSource =
+  | RequestInfo
+  | URL
+  | Response
+  | BufferSource
+  | WebAssembly.Module;
+
 export type InitializeDocxProjectionOptions = {
   /**
    * Optional explicit WebAssembly source for runtimes that do not load assets
    * by URL. Browsers normally omit this and use the package-relative asset.
    */
-  wasm?: InitInput;
+  wasm?: DocxProjectionWasmSource;
 };
 
 let initialization: Promise<void> | undefined;
