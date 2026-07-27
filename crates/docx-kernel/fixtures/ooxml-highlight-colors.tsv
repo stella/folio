@@ -8,10 +8,10 @@ darkMagenta	semantic
 darkRed	semantic
 darkYellow	semantic
 green	semantic
-lightGray	semantic
+lightGray	ignored
 magenta	semantic
 none	ignored
 red	semantic
 white	ignored
 yellow	semantic
-darkGray	semantic
+darkGray	ignored

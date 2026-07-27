@@ -2,4 +2,4 @@
 "@stll/docx-core": minor
 ---
 
-Bound and report WordprocessingML XML-event and inline-context scan work.
+Bound WordprocessingML scan work and exclude neutral gray highlight colors from semantic spans.

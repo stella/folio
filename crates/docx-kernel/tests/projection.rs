@@ -560,7 +560,7 @@ fn projects_only_semantic_direct_highlights_with_unicode_offsets() {
         vec![
             TextFormattingSpan {
                 start_utf16: 0,
-                end_utf16: 13,
+                end_utf16: 2,
                 style: TextStyle::Highlight,
             },
             TextFormattingSpan {
