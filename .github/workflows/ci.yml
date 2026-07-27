@@ -40,6 +40,7 @@ jobs:
             Cargo.lock
             Cargo.toml
             bun.lock
+            packages/docx-core/src/generated/**
             packages/docx-core/CHANGELOG.md
             packages/docx-core/package.json
             packages/core/CHANGELOG.md
