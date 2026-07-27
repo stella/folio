@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.7.0
+
+### Minor Changes
+
+- [#520](https://github.com/stella/folio/pull/520) [`e40ccd4`](https://github.com/stella/folio/commit/e40ccd435ea17102fc75910b175e2f78561ac359) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bound WordprocessingML scan work and exclude neutral gray highlight colors from semantic spans.
+
 ## 0.6.0
 
 ### Minor Changes
