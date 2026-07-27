@@ -112,6 +112,7 @@ pub enum ProjectionError {
     InvalidStylesXml,
     MissingDocumentBody,
     TooManyParagraphs,
+    TooManyStructuralFacts,
     InvalidInternalParagraphId,
     DuplicateInternalParagraphId,
 }
@@ -148,6 +149,9 @@ impl fmt::Display for ProjectionError {
             Self::InvalidStylesXml => "word/styles.xml is invalid XML",
             Self::MissingDocumentBody => "DOCX main document part has no document body",
             Self::TooManyParagraphs => "DOCX main document part has too many paragraphs",
+            Self::TooManyStructuralFacts => {
+                "DOCX main document part produces too many structural facts"
+            }
             Self::InvalidInternalParagraphId => "application paragraph ID is invalid",
             Self::DuplicateInternalParagraphId => "application paragraph IDs are not unique",
         };
@@ -199,6 +203,7 @@ where
     project_document_xml_with_limit(
         &parts.document_xml,
         limits.maximum_paragraphs,
+        limits.maximum_structural_facts,
         options,
         styles.as_ref().map_err(|reason| *reason),
         allocate_id,
@@ -238,6 +243,7 @@ where
     project_document_xml_with_limit(
         xml,
         DocxLimits::default().maximum_paragraphs,
+        DocxLimits::default().maximum_structural_facts,
         options,
         Err(StructuralFactUnknownReason::DocumentPartOnly),
         allocate_id,
@@ -247,6 +253,7 @@ where
 fn project_document_xml_with_limit<F>(
     xml: &[u8],
     maximum_paragraphs: usize,
+    maximum_structural_facts: usize,
     options: ProjectionOptions,
     styles: Result<&structure::StyleSheet, StructuralFactUnknownReason>,
     mut allocate_id: F,
@@ -292,6 +299,7 @@ where
             references: projected.references.as_deref().map_err(|reason| *reason),
         },
         styles,
+        maximum_structural_facts,
     )?;
     let mut paragraphs = Vec::with_capacity(projected.paragraphs.len());
     for (id, paragraph) in ids.into_iter().zip(projected.paragraphs) {

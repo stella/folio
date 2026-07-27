@@ -17,6 +17,7 @@ pub struct DocxLimits {
     pub maximum_entries: u64,
     pub maximum_compression_ratio: u64,
     pub maximum_paragraphs: usize,
+    pub maximum_structural_facts: usize,
 }
 
 impl Default for DocxLimits {
@@ -28,6 +29,7 @@ impl Default for DocxLimits {
             maximum_entries: 4096,
             maximum_compression_ratio: 200,
             maximum_paragraphs: 250_000,
+            maximum_structural_facts: 1_000_000,
         }
     }
 }

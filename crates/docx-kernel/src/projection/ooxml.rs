@@ -731,11 +731,15 @@ impl ProjectionState {
                 })
             }
             b"showingPlcHdr" => {
-                self.mark_placeholder();
+                if on_off_element_enabled(reader, element)? {
+                    self.mark_placeholder();
+                }
                 Frame::Other
             }
             b"vanish" => {
-                self.mark_hidden_run();
+                if on_off_element_enabled(reader, element)? {
+                    self.mark_hidden_run();
+                }
                 Frame::Other
             }
             b"rStyle" => {
@@ -748,10 +752,7 @@ impl ProjectionState {
                 Frame::Other
             }
             b"b" | b"bCs" => {
-                let enabled = attribute(reader, element, b"val")?.is_none_or(|value| {
-                    !matches!(value.to_ascii_lowercase().as_str(), "0" | "false" | "off")
-                });
-                if enabled {
+                if on_off_element_enabled(reader, element)? {
                     self.mark_bold_run();
                 }
                 Frame::Other
@@ -1421,6 +1422,14 @@ fn preserves_xml_space(
         }
     }
     Ok(false)
+}
+
+fn on_off_element_enabled(
+    reader: &NsReader<&[u8]>,
+    element: &BytesStart<'_>,
+) -> Result<bool, ProjectionError> {
+    Ok(attribute(reader, element, b"val")?
+        .is_none_or(|value| !matches!(value.to_ascii_lowercase().as_str(), "0" | "false" | "off")))
 }
 
 fn trim_xml_whitespace(value: &str) -> &str {

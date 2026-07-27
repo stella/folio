@@ -246,10 +246,32 @@ pub(super) struct RawStructureInput<'a> {
     pub references: Result<&'a [RawInternalReference], StructuralFactUnknownReason>,
 }
 
+struct StructuralFactBudget {
+    remaining: usize,
+}
+
+impl StructuralFactBudget {
+    const fn new(maximum_facts: usize) -> Self {
+        Self {
+            remaining: maximum_facts,
+        }
+    }
+
+    fn consume(&mut self, facts: usize) -> Result<(), ProjectionError> {
+        self.remaining = self
+            .remaining
+            .checked_sub(facts)
+            .ok_or(ProjectionError::TooManyStructuralFacts)?;
+        Ok(())
+    }
+}
+
 pub(super) fn materialize_structure(
     input: RawStructureInput<'_>,
     styles: Result<&StyleSheet, StructuralFactUnknownReason>,
+    maximum_facts: usize,
 ) -> Result<DocumentStructureFacts, ProjectionError> {
+    let mut fact_budget = StructuralFactBudget::new(maximum_facts);
     let resolved = styles.and_then(|styles| {
         input
             .properties
@@ -278,18 +300,26 @@ pub(super) fn materialize_structure(
             StructuralFactSet::Unknown(reason),
         ),
     };
+    if let StructuralFactSet::Known(facts) = &indentation {
+        fact_budget.consume(facts.len())?;
+    }
+    if let StructuralFactSet::Known(facts) = &numbering_hierarchy {
+        fact_budget.consume(facts.len())?;
+    }
 
     let bookmarks = match input.bookmarks {
-        Ok(ranges) => {
-            StructuralFactSet::Known(materialize_bookmarks(input.paragraph_texts, ranges)?)
-        }
+        Ok(ranges) => StructuralFactSet::Known(materialize_bookmarks(
+            input.paragraph_texts,
+            ranges,
+            &mut fact_budget,
+        )?),
         Err(reason) => StructuralFactSet::Unknown(reason),
     };
     let internal_references = match (input.references, &bookmarks) {
         (Ok([]), _) => StructuralFactSet::Known(Vec::new()),
-        (Ok(references), StructuralFactSet::Known(bookmark_facts)) => {
-            StructuralFactSet::Known(materialize_references(references, bookmark_facts))
-        }
+        (Ok(references), StructuralFactSet::Known(bookmark_facts)) => StructuralFactSet::Known(
+            materialize_references(references, bookmark_facts, &mut fact_budget)?,
+        ),
         (Err(reason), _) => StructuralFactSet::Unknown(reason),
         (_, StructuralFactSet::Unknown(_)) => {
             StructuralFactSet::Unknown(StructuralFactUnknownReason::IncompleteBookmarkRanges)
@@ -378,17 +408,20 @@ fn materialize_numbering(
 fn materialize_bookmarks(
     texts: &[&str],
     ranges: &[RawBookmarkRange],
+    fact_budget: &mut StructuralFactBudget,
 ) -> Result<Vec<BookmarkFact>, ProjectionError> {
     let mut facts = Vec::new();
     for range in ranges {
-        for (paragraph, span) in segment_range(texts, &range.start, &range.end)? {
+        segment_range(texts, &range.start, &range.end, |paragraph, span| {
+            fact_budget.consume(1)?;
             facts.push(BookmarkFact {
                 paragraph_ordinal: paragraph,
                 bookmark_id: range.id,
                 name: range.name.clone(),
                 span,
             });
-        }
+            Ok(())
+        })?;
     }
     facts.sort_by(|left, right| {
         (
@@ -414,7 +447,8 @@ fn materialize_bookmarks(
 fn materialize_references(
     references: &[RawInternalReference],
     bookmarks: &[BookmarkFact],
-) -> Vec<InternalReferenceFact> {
+    fact_budget: &mut StructuralFactBudget,
+) -> Result<Vec<InternalReferenceFact>, ProjectionError> {
     let mut facts = Vec::new();
     let mut targets_by_name: HashMap<&str, Vec<&BookmarkFact>> = HashMap::new();
     for bookmark in bookmarks {
@@ -425,6 +459,7 @@ fn materialize_references(
     }
     let mut emitted_target_names = HashSet::new();
     for reference in references {
+        fact_budget.consume(1)?;
         facts.push(InternalReferenceFact {
             paragraph_ordinal: reference.source.paragraph,
             reference_id: reference.reference_id.clone(),
@@ -440,12 +475,15 @@ fn materialize_references(
         if emitted_target_names.insert(reference.reference_id.as_str())
             && let Some(targets) = targets_by_name.get(reference.reference_id.as_str())
         {
-            facts.extend(targets.iter().map(|bookmark| InternalReferenceFact {
-                paragraph_ordinal: bookmark.paragraph_ordinal,
-                reference_id: reference.reference_id.clone(),
-                role: InternalReferenceRole::Target,
-                span: bookmark.span,
-            }));
+            for bookmark in targets {
+                fact_budget.consume(1)?;
+                facts.push(InternalReferenceFact {
+                    paragraph_ordinal: bookmark.paragraph_ordinal,
+                    reference_id: reference.reference_id.clone(),
+                    role: InternalReferenceRole::Target,
+                    span: bookmark.span,
+                });
+            }
         }
     }
     facts.sort_by(|left, right| {
@@ -466,21 +504,21 @@ fn materialize_references(
                 right.span.coverage,
             ))
     });
-    facts
+    Ok(facts)
 }
 
 fn segment_range(
     texts: &[&str],
     start: &RawBlockPoint,
     end: &RawBlockPoint,
-) -> Result<Vec<(usize, StructuralSpan)>, ProjectionError> {
+    mut visit: impl FnMut(usize, StructuralSpan) -> Result<(), ProjectionError>,
+) -> Result<(), ProjectionError> {
     if start.paragraph > end.paragraph || end.paragraph >= texts.len() {
         return Err(ProjectionError::InvalidDocumentXml);
     }
     if start.paragraph == end.paragraph && (start.utf8 > end.utf8 || start.utf16 > end.utf16) {
         return Err(ProjectionError::InvalidDocumentXml);
     }
-    let mut output = Vec::new();
     for (paragraph, text) in texts
         .iter()
         .enumerate()
@@ -516,7 +554,7 @@ fn segment_range(
             (false, true) => SpanCoverage::ContinuesAfter,
             (true, true) => SpanCoverage::ContinuesBeforeAndAfter,
         };
-        output.push((
+        visit(
             paragraph,
             StructuralSpan {
                 start_utf8,
@@ -525,7 +563,7 @@ fn segment_range(
                 end_utf16,
                 coverage,
             },
-        ));
+        )?;
     }
-    Ok(output)
+    Ok(())
 }

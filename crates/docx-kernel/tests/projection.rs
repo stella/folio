@@ -231,6 +231,20 @@ fn matches_visible_text_semantics_of_existing_ooxml_fixtures() {
 }
 
 #[test]
+fn respects_explicit_false_on_off_values() {
+    let xml = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:r><w:rPr><w:vanish w:val="0"/></w:rPr><w:t>visible zero</w:t></w:r></w:p>
+      <w:p><w:r><w:rPr><w:vanish w:val="false"/></w:rPr><w:t>visible false</w:t></w:r></w:p>
+      <w:sdt><w:sdtPr><w:showingPlcHdr w:val="off"/></w:sdtPr><w:sdtContent><w:p><w:r><w:t>real content</w:t></w:r></w:p></w:sdtContent></w:sdt>
+    </w:body></w:document>"#;
+
+    assert_eq!(
+        texts(xml),
+        ["visible zero", "visible false", "real content"]
+    );
+}
+
+#[test]
 fn fixture_paragraph_id_contract_is_explicit() {
     for fixture in [
         BASIC_XML,
@@ -802,6 +816,24 @@ fn rejects_paragraph_counts_above_the_configured_limit() {
     assert_eq!(
         project_docx(&package, limits, allocate),
         Err(ProjectionError::TooManyParagraphs)
+    );
+}
+
+#[test]
+fn rejects_structural_fact_expansion_above_the_configured_limit() {
+    let xml = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:bookmarkStart w:id="1" w:name="first"/><w:bookmarkStart w:id="2" w:name="second"/><w:r><w:t>A</w:t></w:r></w:p>
+      <w:p><w:r><w:t>B</w:t></w:r><w:bookmarkEnd w:id="2"/><w:bookmarkEnd w:id="1"/></w:p>
+    </w:body></w:document>"#;
+    let package = package(&[("word/document.xml", xml)], CompressionMethod::Deflated);
+    let limits = DocxLimits {
+        maximum_structural_facts: 3,
+        ..DocxLimits::default()
+    };
+
+    assert_eq!(
+        project_docx(&package, limits, allocate),
+        Err(ProjectionError::TooManyStructuralFacts)
     );
 }
 
