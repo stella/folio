@@ -27,6 +27,7 @@ import {
   consumerSrc,
   coreDir,
   docxCoreDir,
+  isDocxKernelWasmAsset,
   reactPeerInstallArgs,
   reactDir,
   repoRoot,
@@ -135,9 +136,9 @@ try {
       const distFiles = await readdir(path.join(consumerDir, runtimeDistDirectory), {
         recursive: true,
       });
-      if (!distFiles.some((file) => file.endsWith(".wasm"))) {
+      if (!distFiles.some(isDocxKernelWasmAsset)) {
         throw new Error(
-          `packaged-consumer-smoke: React ${reactMajor} production app emitted no lazy WebAssembly asset.`,
+          `packaged-consumer-smoke: React ${reactMajor} production app emitted no lazy DOCX kernel WebAssembly asset.`,
         );
       }
 

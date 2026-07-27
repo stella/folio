@@ -47,6 +47,30 @@ struct PackageEntry {
     xml: XmlEntry,
 }
 
+struct EntryExtractionErrors {
+    invalid_entry: ProjectionError,
+    too_large: ProjectionError,
+    integrity: ProjectionError,
+}
+
+impl EntryExtractionErrors {
+    const DOCUMENT_XML: Self = Self {
+        invalid_entry: ProjectionError::InvalidDocumentXmlEntry,
+        too_large: ProjectionError::DocumentXmlTooLarge,
+        integrity: ProjectionError::DocumentXmlIntegrity,
+    };
+    const PACKAGE_RELATIONSHIPS: Self = Self {
+        invalid_entry: ProjectionError::InvalidPackageRelationships,
+        too_large: ProjectionError::PackageRelationshipsTooLarge,
+        integrity: ProjectionError::InvalidPackageRelationships,
+    };
+    const STYLES_XML: Self = Self {
+        invalid_entry: ProjectionError::InvalidStylesXmlEntry,
+        too_large: ProjectionError::StylesXmlTooLarge,
+        integrity: ProjectionError::StylesXmlIntegrity,
+    };
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocumentParts {
     pub document_xml: Vec<u8>,
@@ -103,9 +127,7 @@ pub fn extract_document_parts(
         document,
         &document_path,
         limits.maximum_document_xml_bytes,
-        ProjectionError::InvalidDocumentXmlEntry,
-        ProjectionError::DocumentXmlTooLarge,
-        ProjectionError::DocumentXmlIntegrity,
+        EntryExtractionErrors::DOCUMENT_XML,
     )?;
     let styles_xml = unique_entry(
         &package_entries,
@@ -125,9 +147,7 @@ pub fn extract_document_parts(
             styles,
             STYLES_XML_PATH,
             limits.maximum_styles_xml_bytes,
-            ProjectionError::InvalidStylesXmlEntry,
-            ProjectionError::StylesXmlTooLarge,
-            ProjectionError::StylesXmlIntegrity,
+            EntryExtractionErrors::STYLES_XML,
         )
     })
     .transpose()?;
@@ -195,9 +215,7 @@ fn resolve_document_path(
             relationships,
             ROOT_RELATIONSHIPS_PATH,
             MAXIMUM_ROOT_RELATIONSHIPS_BYTES,
-            ProjectionError::InvalidPackageRelationships,
-            ProjectionError::PackageRelationshipsTooLarge,
-            ProjectionError::InvalidPackageRelationships,
+            EntryExtractionErrors::PACKAGE_RELATIONSHIPS,
         )?;
         main_document_path(&relationships_xml)
     } else {
@@ -250,36 +268,34 @@ fn extract_entry(
     entry: XmlEntry,
     expected_path: &[u8],
     maximum_bytes: usize,
-    invalid_entry: ProjectionError,
-    too_large: ProjectionError,
-    integrity: ProjectionError,
+    errors: EntryExtractionErrors,
 ) -> Result<Vec<u8>, ProjectionError> {
     let local = archive
         .get_entry(entry.wayfinder)
-        .map_err(|_| invalid_entry.clone())?;
+        .map_err(|_| errors.invalid_entry.clone())?;
     let local_header = local.local_header();
     if local_header.compression_method() != entry.method
         || local_header.file_path().as_ref() != expected_path
         || local_header.flags().is_encrypted()
     {
-        return Err(invalid_entry);
+        return Err(errors.invalid_entry);
     }
     let output = match entry.method {
         CompressionMethod::STORE => local.data().to_vec(),
         CompressionMethod::DEFLATE => decompress_to_vec_with_limit(local.data(), maximum_bytes)
-            .map_err(|_| invalid_entry.clone())?,
+            .map_err(|_| errors.invalid_entry.clone())?,
         _ => {
             return Err(ProjectionError::UnsupportedCompression(
                 entry.method.as_u16(),
             ));
         }
     };
-    let expected_size = usize::try_from(entry.uncompressed_size).map_err(|_| too_large)?;
+    let expected_size = usize::try_from(entry.uncompressed_size).map_err(|_| errors.too_large)?;
     if output.len() != expected_size || crc32(&output) != entry.crc32 {
-        return Err(integrity);
+        return Err(errors.integrity);
     }
     if u64::try_from(local.data().len()).ok() != Some(entry.compressed_size) {
-        return Err(integrity);
+        return Err(errors.integrity);
     }
     Ok(output)
 }

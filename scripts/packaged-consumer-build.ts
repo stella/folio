@@ -34,6 +34,7 @@ import {
   consumerSrc,
   coreDir,
   docxCoreDir,
+  isDocxKernelWasmAsset,
   reactPeerInstallArgs,
   reactDir,
   type ReactPeerMajor,
@@ -102,10 +103,15 @@ try {
     workerChunks.push(`React ${reactMajor}: ${workerChunk}`);
 
     const main = await readFile(path.join(consumerDir, "dist", "main.js"), "utf8");
-    const wasmAsset = distFiles.find((file) => file.endsWith(".wasm"));
-    const inlineWasm = main.includes("data:application/wasm;base64,");
+    const wasmAsset = distFiles.find(isDocxKernelWasmAsset);
+    const packagedWasm = await readFile(
+      path.join(consumerDir, "node_modules", "@stll", "docx-core", "dist", "docx_kernel_bg.wasm"),
+    );
+    const inlineWasm = main.includes(
+      `data:application/wasm;base64,${packagedWasm.toString("base64")}`,
+    );
     if (!wasmAsset && !inlineWasm) {
-      failure = `✗ packaged-consumer: React ${reactMajor} build produced no usable WebAssembly output. dist: ${distFiles.join(", ")}`;
+      failure = `✗ packaged-consumer: React ${reactMajor} build produced no DOCX kernel WebAssembly output. dist: ${distFiles.join(", ")}`;
       return;
     }
     wasmOutputs.push(`React ${reactMajor}: ${wasmAsset ?? "library-mode inline asset"}`);

@@ -8,6 +8,8 @@ use crate::{
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
 
+const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 2;
+
 #[wasm_bindgen(typescript_custom_section)]
 const TYPESCRIPT_TYPES: &str = r#"
 export type DocxProjectionFormattingSpan = readonly [
@@ -129,6 +131,8 @@ extern "C" {
 pub fn project_compressed_docx(bytes: &[u8]) -> Result<DocxProjectionWire, JsValue> {
     project_docx_projection(bytes)
         .and_then(|projection| output_projection_with_structure(&projection))
+        // SAFETY: the output builder constructs the exact tuple declared as
+        // `DocxProjectionWire` in the wasm-bindgen TypeScript custom section.
         .map(JsCast::unchecked_into)
         .map_err(|error| js_error(&error))
 }
@@ -184,7 +188,10 @@ fn output_projected_paragraph(
 
 fn output_projection_with_structure(projection: &DocumentProjection) -> Result<JsValue, String> {
     let output = Array::new_with_length(4);
-    output.set(0, JsValue::from_f64(2.0));
+    output.set(
+        0,
+        JsValue::from_f64(f64::from(DOCX_PROJECTION_SCHEMA_VERSION)),
+    );
     output.set(1, output_paragraphs(projection)?);
     output.set(2, output_structural_facts(&projection.structural_facts)?);
     output.set(3, output_revision_status(&projection.revision_status));

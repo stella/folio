@@ -8,6 +8,7 @@
 // The integration fixtures intentionally use assertion-style failure and index
 // only after constructing or checking the exact collection shape under test.
 
+use std::collections::HashSet;
 use std::io::{Cursor, Write};
 
 use stella_docx_kernel::{
@@ -230,6 +231,38 @@ fn matches_visible_text_semantics_of_existing_ooxml_fixtures() {
 }
 
 #[test]
+fn fixture_paragraph_id_contract_is_explicit() {
+    for fixture in [
+        BASIC_XML,
+        COMMENT_XML,
+        HIDDEN_XML,
+        PLACEHOLDER_XML,
+        TEXTBOX_XML,
+    ] {
+        let projection = project_document_xml(fixture, allocate).unwrap();
+        let ids = projection
+            .paragraphs
+            .iter()
+            .filter_map(|paragraph| paragraph.package_paragraph_id)
+            .collect::<Vec<_>>();
+        assert!(
+            projection
+                .paragraphs
+                .iter()
+                .all(|paragraph| paragraph.package_paragraph_id.is_some())
+        );
+        assert_eq!(ids.iter().copied().collect::<HashSet<_>>().len(), ids.len());
+    }
+    let missing = project_document_xml(MISSING_ID_XML, allocate).unwrap();
+    assert!(
+        missing
+            .paragraphs
+            .iter()
+            .all(|paragraph| paragraph.package_paragraph_id.is_none())
+    );
+}
+
+#[test]
 fn resolves_predefined_and_numeric_xml_character_references() {
     let projection = project_document_xml(
         br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Legal &amp; &#9746; &#x1F600; &lt; text</w:t></w:r></w:p></w:body></w:document>"#,
@@ -238,6 +271,20 @@ fn resolves_predefined_and_numeric_xml_character_references() {
     .unwrap();
 
     assert_eq!(projection.paragraphs[0].text, "Legal & ☒ 😀 < text");
+}
+
+#[test]
+fn applies_xml_space_after_collecting_each_text_element() {
+    let xml = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:r><w:t>  A &amp; B  </w:t></w:r></w:p>
+      <w:p><w:r><w:t xml:space="preserve">  C &amp; D  </w:t></w:r></w:p>
+      <w:p><w:del><w:r><w:delText>  old &amp; stale  </w:delText></w:r></w:del></w:p>
+    </w:body></w:document>"#;
+
+    assert_eq!(
+        texts_in_view(xml, RevisionView::Original),
+        ["A & B", "  C & D  ", "old & stale"]
+    );
 }
 
 #[test]
@@ -423,12 +470,63 @@ fn projects_direct_bold_utf16_offsets_and_table_facts() {
 }
 
 #[test]
+fn preserves_table_coordinates_through_row_and_cell_wrappers() {
+    let xml = br#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body><w:tbl>
+          <w:customXml w:element="row"><w:tr>
+            <w:sdt><w:sdtContent><w:tc><w:p><w:r><w:t>Left</w:t></w:r></w:p></w:tc></w:sdtContent></w:sdt>
+            <w:customXml w:element="cell"><w:tc><w:p><w:r><w:t>Right</w:t></w:r></w:p></w:tc></w:customXml>
+          </w:tr></w:customXml>
+          <w:sdt><w:sdtContent><w:tr><w:tc><w:p><w:r><w:t>Next</w:t></w:r></w:p></w:tc></w:tr></w:sdtContent></w:sdt>
+        </w:tbl></w:body>
+      </w:document>
+    "#;
+    let projection = project_document_xml(xml, allocate).unwrap();
+
+    assert_eq!(
+        projection
+            .paragraphs
+            .iter()
+            .map(|paragraph| (paragraph.text.as_str(), paragraph.structure.clone()))
+            .collect::<Vec<_>>(),
+        [
+            (
+                "Left",
+                Some(ParagraphStructure {
+                    table_ordinal: 0,
+                    row: 0,
+                    column: 0,
+                }),
+            ),
+            (
+                "Right",
+                Some(ParagraphStructure {
+                    table_ordinal: 0,
+                    row: 0,
+                    column: 1,
+                }),
+            ),
+            (
+                "Next",
+                Some(ParagraphStructure {
+                    table_ordinal: 0,
+                    row: 1,
+                    column: 0,
+                }),
+            ),
+        ]
+    );
+}
+
+#[test]
 fn projects_only_semantic_direct_highlights_with_unicode_offsets() {
     let xml = r#"
       <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:body><w:p>
           <w:r><w:rPr><w:highlight w:val="cyan"/></w:rPr><w:t>😀</w:t></w:r>
           <w:r><w:rPr><w:highlight w:val="lightGray"/></w:rPr><w:t>Muted</w:t></w:r>
+          <w:r><w:rPr><w:highlight w:val="darkGray"/></w:rPr><w:t>Review</w:t></w:r>
           <w:r><w:rPr><w:shd w:val="clear" w:fill="FFFF00"/></w:rPr><w:t>Shaded</w:t></w:r>
           <w:r><w:rPr><w:b/><w:highlight w:val="yellow"/></w:rPr><w:t>Both</w:t></w:r>
           <w:r><w:rPr><w:highlight w:val="none"/></w:rPr><w:t>None</w:t></w:r>
@@ -441,24 +539,24 @@ fn projects_only_semantic_direct_highlights_with_unicode_offsets() {
 
     assert_eq!(
         projection.paragraphs[0].text,
-        "😀MutedShadedBothNoneUnknown"
+        "😀MutedReviewShadedBothNoneUnknown"
     );
     assert_eq!(
         projection.paragraphs[0].formatting,
         vec![
             TextFormattingSpan {
                 start_utf16: 0,
-                end_utf16: 2,
+                end_utf16: 13,
                 style: TextStyle::Highlight,
             },
             TextFormattingSpan {
-                start_utf16: 13,
-                end_utf16: 17,
+                start_utf16: 19,
+                end_utf16: 23,
                 style: TextStyle::Bold,
             },
             TextFormattingSpan {
-                start_utf16: 13,
-                end_utf16: 17,
+                start_utf16: 19,
+                end_utf16: 23,
                 style: TextStyle::Highlight,
             },
         ]
@@ -662,6 +760,23 @@ fn rejects_encryption_unsupported_compression_and_crc_drift() {
         extract_document_xml(&corrupt, DocxLimits::default()),
         Err(ProjectionError::DocumentXmlIntegrity)
     );
+
+    let styles =
+        br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>"#;
+    let mut corrupt_styles = package(
+        &[
+            ("word/document.xml", BASIC_XML),
+            ("word/styles.xml", styles),
+        ],
+        CompressionMethod::Stored,
+    );
+    let styles_offset =
+        find_bytes(&corrupt_styles, styles).expect("stored styles should be literal");
+    corrupt_styles[styles_offset] ^= 1;
+    assert_eq!(
+        extract_document_parts(&corrupt_styles, DocxLimits::default()),
+        Err(ProjectionError::StylesXmlIntegrity)
+    );
 }
 
 #[test]
@@ -771,7 +886,7 @@ fn projects_unicode_bookmark_and_internal_reference_boundaries() {
       <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
         <w:p><w:r><w:t>A</w:t></w:r><w:bookmarkStart w:id="9" w:name="Target"/><w:r><w:t>😀</w:t></w:r></w:p>
         <w:p><w:r><w:t>é</w:t></w:r><w:bookmarkEnd w:id="9"/><w:r><w:t>Z</w:t></w:r></w:p>
-        <w:p><w:r><w:t>See </w:t></w:r><w:hyperlink w:anchor="Target"><w:r><w:t>here</w:t></w:r></w:hyperlink></w:p>
+        <w:p><w:r><w:t xml:space="preserve">See </w:t></w:r><w:hyperlink w:anchor="Target"><w:r><w:t>here</w:t></w:r></w:hyperlink></w:p>
       </w:body></w:document>
     "#
     .replace('é', "e\u{301}");
@@ -809,6 +924,42 @@ fn projects_unicode_bookmark_and_internal_reference_boundaries() {
     assert_eq!(references[2].span.start_utf16, 4);
     assert_eq!(references[2].span.start_utf8, references[2].span.end_utf8);
     assert_eq!(references[2].span.start_utf16, references[2].span.end_utf16);
+}
+
+#[test]
+fn emits_each_internal_reference_target_once() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:bookmarkStart w:id="9" w:name="Target"/><w:r><w:t>Target</w:t></w:r><w:bookmarkEnd w:id="9"/></w:p>
+      <w:p><w:hyperlink w:anchor="Target"><w:r><w:t>First</w:t></w:r></w:hyperlink></w:p>
+      <w:p><w:hyperlink w:anchor="Target"><w:r><w:t>Second</w:t></w:r></w:hyperlink></w:p>
+    </w:body></w:document>"#;
+    let projection = project_docx(
+        &package_with_minimal_styles(document),
+        DocxLimits::default(),
+        allocate,
+    )
+    .unwrap();
+    let StructuralFactSet::Known(references) = projection.structural_facts.internal_references
+    else {
+        panic!("supported references should be known");
+    };
+
+    assert_eq!(references.len(), 3);
+    assert_eq!(
+        references
+            .iter()
+            .filter(|reference| reference.role == InternalReferenceRole::Target)
+            .count(),
+        1
+    );
+    assert_eq!(
+        references
+            .iter()
+            .filter(|reference| reference.role == InternalReferenceRole::Source)
+            .map(|reference| reference.paragraph_ordinal)
+            .collect::<Vec<_>>(),
+        [1, 2]
+    );
 }
 
 #[test]
@@ -896,7 +1047,7 @@ fn projects_standard_field_references_and_body_level_bookmark_boundaries() {
       <w:p><w:bookmarkStart w:id="4" w:name="Target"/><w:r><w:t>Target text</w:t></w:r></w:p>
       <w:bookmarkEnd w:id="4"/>
       <w:p>
-        <w:r><w:t>See </w:t></w:r>
+        <w:r><w:t xml:space="preserve">See </w:t></w:r>
         <w:r><w:fldChar w:fldCharType="begin"/></w:r>
         <w:r><w:instrText> REF </w:instrText><w:instrText>"Target" \h </w:instrText></w:r>
         <w:r><w:fldChar w:fldCharType="separate"/></w:r>

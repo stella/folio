@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ProjectionError;
 
@@ -423,6 +423,7 @@ fn materialize_references(
             .or_default()
             .push(bookmark);
     }
+    let mut emitted_target_names = HashSet::new();
     for reference in references {
         facts.push(InternalReferenceFact {
             paragraph_ordinal: reference.source.paragraph,
@@ -436,7 +437,9 @@ fn materialize_references(
                 coverage: SpanCoverage::Complete,
             },
         });
-        if let Some(targets) = targets_by_name.get(reference.reference_id.as_str()) {
+        if emitted_target_names.insert(reference.reference_id.as_str())
+            && let Some(targets) = targets_by_name.get(reference.reference_id.as_str())
+        {
             facts.extend(targets.iter().map(|bookmark| InternalReferenceFact {
                 paragraph_ordinal: bookmark.paragraph_ordinal,
                 reference_id: reference.reference_id.clone(),

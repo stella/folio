@@ -245,9 +245,30 @@ struct SdtFrame {
 }
 
 #[derive(Clone, Copy)]
-enum PseudoTextFrame {
-    Text,
+enum PseudoTextKind {
+    Text { preserve_space: bool },
     Instruction,
+}
+
+struct PseudoTextFrame {
+    kind: PseudoTextKind,
+    text: String,
+}
+
+impl PseudoTextFrame {
+    const fn text(preserve_space: bool) -> Self {
+        Self {
+            kind: PseudoTextKind::Text { preserve_space },
+            text: String::new(),
+        }
+    }
+
+    const fn instruction() -> Self {
+        Self {
+            kind: PseudoTextKind::Instruction,
+            text: String::new(),
+        }
+    }
 }
 
 struct FieldFrame {
@@ -321,39 +342,28 @@ pub(super) fn project_document_xml(
             }
             Event::Text(text) => {
                 if !compatibility.is_suppressed()
-                    && let Some(Frame::PseudoText(kind)) = state.frames.last()
+                    && matches!(state.frames.last(), Some(Frame::PseudoText(_)))
                 {
-                    let pseudo_text_kind = *kind;
                     let decoded = text
                         .xml10_content()
                         .map_err(|_| ProjectionError::InvalidDocumentXml)?;
-                    let unescaped = quick_xml::escape::unescape(&decoded)
-                        .map_err(|_| ProjectionError::InvalidDocumentXml)?;
-                    match pseudo_text_kind {
-                        PseudoTextFrame::Text => state.append_pseudo_text(&unescaped)?,
-                        PseudoTextFrame::Instruction => state.append_field_instruction(&unescaped),
-                    }
+                    state.append_pseudo_content(&decoded)?;
                 }
             }
             Event::CData(text) => {
                 if !compatibility.is_suppressed()
-                    && let Some(Frame::PseudoText(kind)) = state.frames.last()
+                    && matches!(state.frames.last(), Some(Frame::PseudoText(_)))
                 {
-                    let pseudo_text_kind = *kind;
                     let decoded = text
                         .xml10_content()
                         .map_err(|_| ProjectionError::InvalidDocumentXml)?;
-                    match pseudo_text_kind {
-                        PseudoTextFrame::Text => state.append_pseudo_text(&decoded)?,
-                        PseudoTextFrame::Instruction => state.append_field_instruction(&decoded),
-                    }
+                    state.append_pseudo_content(&decoded)?;
                 }
             }
             Event::GeneralRef(reference) => {
                 if !compatibility.is_suppressed()
-                    && let Some(Frame::PseudoText(kind)) = state.frames.last()
+                    && matches!(state.frames.last(), Some(Frame::PseudoText(_)))
                 {
-                    let pseudo_text_kind = *kind;
                     let resolved_character = reference
                         .resolve_char_ref()
                         .map_err(|_| ProjectionError::InvalidDocumentXml)?;
@@ -367,12 +377,7 @@ pub(super) fn project_document_xml(
                             .ok_or(ProjectionError::InvalidDocumentXml)?
                             .to_owned()
                     };
-                    match pseudo_text_kind {
-                        PseudoTextFrame::Text => state.append_pseudo_text(&resolved)?,
-                        PseudoTextFrame::Instruction => {
-                            state.append_field_instruction(&resolved);
-                        }
-                    }
+                    state.append_pseudo_content(&resolved)?;
                 }
             }
             Event::End(element) => {
@@ -538,7 +543,7 @@ impl ProjectionState {
                 })
             }
             b"tr" => {
-                let Some(Frame::Table(table)) = self.frames.last_mut() else {
+                let Some(table) = enclosing_table(&mut self.frames) else {
                     self.frames.push(Frame::Other);
                     return Ok(());
                 };
@@ -554,7 +559,7 @@ impl ProjectionState {
                 })
             }
             b"tc" => {
-                let Some(Frame::Row(row)) = self.frames.last_mut() else {
+                let Some(row) = enclosing_row(&mut self.frames) else {
                     self.frames.push(Frame::Other);
                     return Ok(());
                 };
@@ -687,7 +692,7 @@ impl ProjectionState {
                 self.field_character(reader, element)?;
                 Frame::Other
             }
-            b"instrText" | b"delInstrText" => Frame::PseudoText(PseudoTextFrame::Instruction),
+            b"instrText" | b"delInstrText" => Frame::PseudoText(PseudoTextFrame::instruction()),
             b"ins" | b"del" | b"moveFrom" | b"moveTo" => {
                 if self.inside_table_row_properties() {
                     self.revision_unsupported
@@ -760,7 +765,9 @@ impl ProjectionState {
                 }
                 Frame::Other
             }
-            b"t" | b"delText" => Frame::PseudoText(PseudoTextFrame::Text),
+            b"t" | b"delText" => {
+                Frame::PseudoText(PseudoTextFrame::text(preserves_xml_space(reader, element)?))
+            }
             b"tab" | b"ptab" => {
                 self.append_text_control(TextControl::Tab)?;
                 Frame::Other
@@ -833,6 +840,17 @@ impl ProjectionState {
                 });
             }
             Frame::Hyperlink(Some(reference)) => self.references.push(reference),
+            Frame::PseudoText(frame) => match frame.kind {
+                PseudoTextKind::Text { preserve_space } => {
+                    let text = if preserve_space {
+                        frame.text.as_str()
+                    } else {
+                        trim_xml_whitespace(&frame.text)
+                    };
+                    self.append_pseudo_text(text)?;
+                }
+                PseudoTextKind::Instruction => self.append_field_instruction(&frame.text),
+            },
             Frame::Run(run) if !run.hidden && !self.pseudo_text_is_suppressed() => {
                 if let Some(paragraph) = self.current_paragraph.as_mut() {
                     paragraph.append(&run.text, run.bold, run.highlighted)?;
@@ -905,6 +923,14 @@ impl ProjectionState {
             .as_mut()
             .ok_or(ProjectionError::InvalidDocumentXml)?
             .append(text, false, false)
+    }
+
+    fn append_pseudo_content(&mut self, text: &str) -> Result<(), ProjectionError> {
+        let Some(Frame::PseudoText(frame)) = self.frames.last_mut() else {
+            return Err(ProjectionError::InvalidDocumentXml);
+        };
+        frame.text.push_str(text);
+        Ok(())
     }
 
     fn append_text_control(&mut self, control: TextControl) -> Result<(), ProjectionError> {
@@ -1148,6 +1174,28 @@ impl ProjectionState {
     }
 }
 
+fn enclosing_table(frames: &mut [Frame]) -> Option<&mut TableFrame> {
+    for frame in frames.iter_mut().rev() {
+        match frame {
+            Frame::Table(table) => return Some(table),
+            Frame::Row(_) | Frame::Cell(_) | Frame::Paragraph | Frame::Run(_) => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn enclosing_row(frames: &mut [Frame]) -> Option<&mut RowFrame> {
+    for frame in frames.iter_mut().rev() {
+        match frame {
+            Frame::Row(row) => return Some(row),
+            Frame::Table(_) | Frame::Cell(_) | Frame::Paragraph | Frame::Run(_) => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
 fn revision_is_suppressed(name: &[u8], view: RevisionView) -> bool {
     match view {
         RevisionView::Current => matches!(name, b"del" | b"moveFrom"),
@@ -1314,11 +1362,13 @@ pub fn is_semantic_highlight_color(value: &str) -> bool {
             | "cyan"
             | "darkBlue"
             | "darkCyan"
+            | "darkGray"
             | "darkGreen"
             | "darkMagenta"
             | "darkRed"
             | "darkYellow"
             | "green"
+            | "lightGray"
             | "magenta"
             | "red"
             | "yellow"
@@ -1343,6 +1393,38 @@ fn attribute(
         }
     }
     Ok(None)
+}
+
+fn preserves_xml_space(
+    reader: &NsReader<&[u8]>,
+    element: &BytesStart<'_>,
+) -> Result<bool, ProjectionError> {
+    const XML_NAMESPACE: &[u8] = b"http://www.w3.org/XML/1998/namespace";
+
+    for attribute in element.attributes() {
+        let attribute = attribute.map_err(|_| ProjectionError::InvalidDocumentXml)?;
+        let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
+        if matches!(
+            namespace,
+            quick_xml::name::ResolveResult::Bound(namespace)
+                if namespace.as_ref() == XML_NAMESPACE
+        ) && local_name.as_ref() == b"space"
+        {
+            let value = attribute
+                .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                .map_err(|_| ProjectionError::InvalidDocumentXml)?;
+            return match value.as_ref() {
+                "default" => Ok(false),
+                "preserve" => Ok(true),
+                _ => Err(ProjectionError::InvalidDocumentXml),
+            };
+        }
+    }
+    Ok(false)
+}
+
+fn trim_xml_whitespace(value: &str) -> &str {
+    value.trim_matches(['\u{0009}', '\u{000a}', '\u{000d}', '\u{0020}'])
 }
 
 fn attribute_2010(

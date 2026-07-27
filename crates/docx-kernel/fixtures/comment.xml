@@ -4,16 +4,16 @@
     xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
 >
     <w:body>
-        <w:p w14:paraId="1">
+        <w:p w14:paraId="00000001">
             <w:r>
                 <w:t>test</w:t>
             </w:r>
         </w:p>
-        <w:p w14:paraId="last" />
+        <w:p w14:paraId="00000002" />
     </w:body>
     <w:comments>
         <w:comment w:id="C" w:author="author" w:date="2025-01-01T00:00:00Z" w:initials="a">
-            <w:p w14:paraId="C1">
+            <w:p w14:paraId="00000003">
                 <w:r>
                     <w:annotationRef />
                 </w:r>

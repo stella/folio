@@ -6,13 +6,13 @@
     xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
 >
     <w:body>
-        <w:p w14:paraId="1">
+        <w:p w14:paraId="00000001">
             <w:r>
                 <w:t xml:space="preserve">test</w:t>
             </w:r>
             <v:textbox>
                 <w:txbxContent>
-                    <w:p w14:paraId="1.1">
+                    <w:p w14:paraId="00000002">
                         <w:r>
                             <w:t xml:space="preserve">test</w:t>
                         </w:r>
@@ -21,7 +21,7 @@
             </v:textbox>
             <w:txbx>
                 <w:txbxContent>
-                    <w:p w14:paraId="1.1">
+                    <w:p w14:paraId="00000003">
                         <w:r>
                             <w:t xml:space="preserve">test</w:t>
                         </w:r>
@@ -30,7 +30,7 @@
             </w:txbx>
             <a:graphicData>
                 <w:txbxContent>
-                    <w:p w14:paraId="1.1">
+                    <w:p w14:paraId="00000004">
                         <w:r>
                             <w:t xml:space="preserve">test</w:t>
                         </w:r>
@@ -38,6 +38,6 @@
                 </w:txbxContent>
             </a:graphicData>
         </w:p>
-        <w:p w14:paraId="last" />
+        <w:p w14:paraId="00000005" />
     </w:body>
 </w:document>

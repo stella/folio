@@ -27,6 +27,10 @@ export const consumerSrc = path.join(repoRoot, "test", "packaged-consumer");
 export const REACT_PEER_MAJORS = ["18", "19"] as const;
 export type ReactPeerMajor = (typeof REACT_PEER_MAJORS)[number];
 
+const DOCX_KERNEL_WASM_ASSET = /(?:^|\/)docx_kernel_bg(?:-[^/]+)?\.wasm$/u;
+
+export const isDocxKernelWasmAsset = (file: string): boolean => DOCX_KERNEL_WASM_ASSET.test(file);
+
 export const reactPeerInstallArgs = (major: ReactPeerMajor): string[] => [
   `react@^${major}`,
   `react-dom@^${major}`,

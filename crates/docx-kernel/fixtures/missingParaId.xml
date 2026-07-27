@@ -5,6 +5,6 @@
 >
     <w:body>
         <w:p />
-        <w:p w14:paraId="last" />
+        <w:p />
     </w:body>
 </w:document>

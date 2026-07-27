@@ -4,7 +4,7 @@
     xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
 >
     <w:body>
-        <w:p w14:paraId="1">
+        <w:p w14:paraId="00000001">
             <w:r>
                 <w:t xml:space="preserve">test</w:t>
             </w:r>
@@ -45,7 +45,7 @@
                 <w:t xml:space="preserve">test</w:t>
             </w:r>
         </w:p>
-        <w:p w14:paraId="2">
+        <w:p w14:paraId="00000002">
             <w:r>
                 <w:t xml:space="preserve">test</w:t>
             </w:r>
@@ -79,6 +79,6 @@
                 <w:t xml:space="preserve">test</w:t>
             </w:r>
         </w:p>
-        <w:p w14:paraId="last" />
+        <w:p w14:paraId="00000003" />
     </w:body>
 </w:document>

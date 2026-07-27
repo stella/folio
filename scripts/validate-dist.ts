@@ -718,6 +718,11 @@ record(
 );
 
 if (target === "docx-core") {
+  // Do not call the default initializer in this Node process: wasm-bindgen's
+  // browser target resolves a package-relative file URL and loads it with
+  // `fetch`, while Node does not fetch `file:` URLs. The packed-consumer browser
+  // smoke invokes `projectCompressedDocx` without an override, covering the
+  // real default URL, bundler, server, MIME fallback, and execution path.
   const wasmPath = path.join(installedDist, "docx_kernel_bg.wasm");
   const wasmBytes = existsSync(wasmPath) ? await readFile(wasmPath) : null;
   const validWasm = wasmBytes !== null && WebAssembly.validate(wasmBytes);

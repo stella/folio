@@ -143,9 +143,12 @@ jobs:
 
       - name: Install matching wasm-bindgen CLI
         run: |
-          version="$(cargo metadata --locked --format-version 1 --features wasm | jq -r '.packages[] | select(.name == "wasm-bindgen") | .version')"
-          test -n "${version}"
-          cargo install wasm-bindgen-cli --version "${version}" --locked
+          mapfile -t versions < <(cargo metadata --locked --format-version 1 --features wasm | jq -r '[.packages[] | select(.name == "wasm-bindgen") | .version] | unique | .[]')
+          if (( ${#versions[@]} != 1 )); then
+            echo "expected exactly one wasm-bindgen version, found: ${versions[*]:-none}" >&2
+            exit 1
+          fi
+          cargo install wasm-bindgen-cli --version "${versions[0]}" --locked
 
       - name: Rust format
         run: cargo fmt --all -- --check
@@ -168,7 +171,13 @@ jobs:
         run: bun --filter '@stll/docx-core' wasm:generate
 
       - name: Verify canonical WebAssembly artifacts are committed
-        run: git diff --exit-code -- packages/docx-core/src/generated
+        run: |
+          drift="$(git status --porcelain=v1 --untracked-files=all -- packages/docx-core/src/generated)"
+          if [[ -n "${drift}" ]]; then
+            echo "canonical WebAssembly artifacts are stale or untracked:" >&2
+            echo "${drift}" >&2
+            exit 1
+          fi
 
       - name: Upload canonical WebAssembly artifacts after a drift failure
         if: failure()

@@ -5,7 +5,7 @@
     xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
 >
     <w:body>
-        <w:p w14:paraId="1">
+        <w:p w14:paraId="00000001">
             <w:r>
                 <w:t xml:space="preserve">test</w:t>
                 <w:tab />
@@ -34,8 +34,8 @@
                 </m:oMath>
             </m:oMathPara>
         </w:p>
-        <w:p w14:paraId="2" />
-        <w:p w14:paraId="3">
+        <w:p w14:paraId="00000002" />
+        <w:p w14:paraId="00000003">
             <w:r>
                 <w:del author="author">
                     <w:delText xml:space="preserve">deleted</w:delText>
@@ -53,6 +53,6 @@
                 </w:del>
             </w:r>
         </w:p>
-        <w:p w14:paraId="last" />
+        <w:p w14:paraId="00000004" />
     </w:body>
 </w:document>

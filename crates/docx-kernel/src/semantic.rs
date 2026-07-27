@@ -6,7 +6,7 @@ use quick_xml::{
     XmlVersion,
     escape::resolve_predefined_entity,
     events::{BytesStart, Event},
-    name::{Namespace, ResolveResult},
+    name::{Namespace, PrefixDeclaration, ResolveResult},
     reader::NsReader,
 };
 use thiserror::Error;
@@ -125,6 +125,8 @@ pub enum ScanError {
     TooManySegments,
     #[error("WordprocessingML text length overflowed")]
     TextLengthOverflow,
+    #[error("WordprocessingML part must be UTF-8 encoded")]
+    UnsupportedEncoding,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -175,10 +177,31 @@ fn attribute(
     Ok(None)
 }
 
+fn unqualified_attribute(
+    reader: &NsReader<&[u8]>,
+    element: &BytesStart<'_>,
+    local_name: &[u8],
+) -> Result<Option<String>, ScanError> {
+    for item in element.attributes() {
+        let item = item.map_err(|_| ScanError::InvalidXml)?;
+        let (resolved, name) = reader.resolver().resolve_attribute(item.key);
+        if matches!(resolved, ResolveResult::Unbound) && name.as_ref() == local_name {
+            return item
+                .decoded_and_normalized_value(XmlVersion::default(), reader.decoder())
+                .map(|value| Some(value.into_owned()))
+                .map_err(|_| ScanError::InvalidXml);
+        }
+    }
+    Ok(None)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FrameKind {
+    AlternateContent { branch_selected: bool },
+    AlternateContentBranch,
     Other,
     Paragraph(usize),
+    Run,
     Text,
 }
 
@@ -190,6 +213,7 @@ struct Frame {
     row_path: Option<Vec<usize>>,
     cell_path: Option<Vec<usize>>,
     text_box_path: Option<Vec<usize>>,
+    content_suppressed: bool,
 }
 
 impl Frame {
@@ -202,6 +226,7 @@ impl Frame {
             row_path: None,
             cell_path: None,
             text_box_path: None,
+            content_suppressed: false,
         }
     }
 }
@@ -271,8 +296,19 @@ where
     fn current_block_id(&self) -> Option<usize> {
         self.frames.iter().rev().find_map(|frame| match frame.kind {
             FrameKind::Paragraph(block_id) => Some(block_id),
-            FrameKind::Other | FrameKind::Text => None,
+            FrameKind::AlternateContent { .. }
+            | FrameKind::AlternateContentBranch
+            | FrameKind::Other
+            | FrameKind::Run
+            | FrameKind::Text => None,
         })
+    }
+
+    fn inside_run(&self) -> bool {
+        self.frames
+            .iter()
+            .rev()
+            .any(|frame| frame.kind == FrameKind::Run)
     }
 
     fn contexts(&self) -> Vec<InlineContext> {
@@ -380,6 +416,83 @@ where
         }
     }
 
+    fn alternate_choice_supported(
+        reader: &NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+    ) -> Result<bool, ScanError> {
+        let Some(requires) = unqualified_attribute(reader, element, b"Requires")? else {
+            return Ok(false);
+        };
+        let mut prefixes = requires.split_ascii_whitespace().peekable();
+        if prefixes.peek().is_none() {
+            return Ok(false);
+        }
+        Ok(prefixes.all(|required_prefix| {
+            reader.resolver().bindings().any(|(prefix, namespace)| {
+                matches!(prefix, PrefixDeclaration::Named(value) if value == required_prefix.as_bytes())
+                    && matches!(
+                        namespace_kind(&ResolveResult::Bound(namespace)),
+                        NamespaceKind::OfficeRelationships | NamespaceKind::Wordprocessing
+                    )
+            })
+        }))
+    }
+
+    fn push_plain_frame(&mut self, kind: FrameKind, content_suppressed: bool) {
+        self.frames.push(Frame {
+            kind,
+            next_child: 0,
+            context_pushed: false,
+            table_path: None,
+            row_path: None,
+            cell_path: None,
+            text_box_path: None,
+            content_suppressed,
+        });
+    }
+
+    fn start_alternate_content(
+        &mut self,
+        reader: &NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+        namespace: NamespaceKind,
+        name: &[u8],
+        parent_suppressed: bool,
+    ) -> Result<bool, ScanError> {
+        let parent_is_alternate_content = matches!(
+            self.frames.last().map(|frame| frame.kind),
+            Some(FrameKind::AlternateContent { .. })
+        );
+        if parent_is_alternate_content {
+            let eligible = namespace == NamespaceKind::MarkupCompatibility
+                && match name {
+                    b"Choice" => Self::alternate_choice_supported(reader, element)?,
+                    b"Fallback" => true,
+                    _ => false,
+                };
+            let parent = self.frames.last_mut().ok_or(ScanError::InvalidXml)?;
+            let FrameKind::AlternateContent { branch_selected } = &mut parent.kind else {
+                return Err(ScanError::InvalidXml);
+            };
+            let selected = !*branch_selected && eligible && !parent_suppressed;
+            if selected {
+                *branch_selected = true;
+            }
+            self.push_plain_frame(FrameKind::AlternateContentBranch, !selected);
+            return Ok(true);
+        }
+        if namespace == NamespaceKind::MarkupCompatibility && name == b"AlternateContent" {
+            self.push_plain_frame(
+                FrameKind::AlternateContent {
+                    branch_selected: false,
+                },
+                parent_suppressed,
+            );
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     fn start(
         &mut self,
         reader: &NsReader<&[u8]>,
@@ -399,16 +512,21 @@ where
         let namespace = namespace_kind(&resolved);
         let name = local_name.as_ref();
         self.record_coverage(namespace, name)?;
+
+        let parent_suppressed = self
+            .frames
+            .last()
+            .ok_or(ScanError::InvalidXml)?
+            .content_suppressed;
+        if self.start_alternate_content(reader, element, namespace, name, parent_suppressed)? {
+            return Ok(());
+        }
+        if parent_suppressed {
+            self.push_plain_frame(FrameKind::Other, true);
+            return Ok(());
+        }
         if namespace != NamespaceKind::Wordprocessing {
-            self.frames.push(Frame {
-                kind: FrameKind::Other,
-                next_child: 0,
-                context_pushed: false,
-                table_path: None,
-                row_path: None,
-                cell_path: None,
-                text_box_path: None,
-            });
+            self.push_plain_frame(FrameKind::Other, false);
             return Ok(());
         }
         let table_path = (name == b"tbl").then(|| self.element_path.clone());
@@ -424,7 +542,9 @@ where
         let kind = if name == b"p" {
             let path = self.element_path.clone();
             self.begin_paragraph(&path)?
-        } else if matches!(name, b"t" | b"delText") {
+        } else if name == b"r" && self.current_block_id().is_some() {
+            FrameKind::Run
+        } else if matches!(name, b"t" | b"delText") && self.inside_run() {
             self.pending_text = Some(PendingText {
                 block_id: self.current_block_id(),
                 path: self.element_path.clone(),
@@ -432,9 +552,9 @@ where
             });
             FrameKind::Text
         } else {
-            if name == b"tab" {
+            if name == b"tab" && self.inside_run() {
                 self.append_segment("\t", SegmentSource::Tab, self.element_path.clone())?;
-            } else if matches!(name, b"br" | b"cr") {
+            } else if matches!(name, b"br" | b"cr") && self.inside_run() {
                 self.append_segment("\n", SegmentSource::Break, self.element_path.clone())?;
             }
             FrameKind::Other
@@ -448,6 +568,7 @@ where
             row_path,
             cell_path,
             text_box_path,
+            content_suppressed: false,
         });
         Ok(())
     }
@@ -566,7 +687,10 @@ where
                     )?;
                 }
             }
-            FrameKind::Other => {}
+            FrameKind::AlternateContent { .. }
+            | FrameKind::AlternateContentBranch
+            | FrameKind::Other
+            | FrameKind::Run => {}
         }
         if frame.context_pushed {
             self.active_contexts.pop().ok_or(ScanError::InvalidXml)?;
@@ -610,6 +734,10 @@ where
 /// element. Callers that require atomic behavior must stage sink output until
 /// this function returns successfully.
 ///
+/// The input boundary is deliberately UTF-8. DOCX producers conventionally
+/// store `WordprocessingML` parts as UTF-8; callers with another XML encoding
+/// must transcode before scanning.
+///
 /// # Errors
 ///
 /// Returns [`ScanError`] when the XML is malformed, violates a configured
@@ -620,7 +748,7 @@ pub fn scan_wordprocessing_part_with(
     limits: ScanLimits,
     sink: impl FnMut(TextBlock) -> Result<(), ScanError>,
 ) -> Result<PartCoverage, ScanError> {
-    std::str::from_utf8(xml).map_err(|_| ScanError::InvalidXml)?;
+    std::str::from_utf8(xml).map_err(|_| ScanError::UnsupportedEncoding)?;
     let mut reader = NsReader::from_reader(xml);
     reader.config_mut().check_end_names = true;
     let mut scanner = Scanner::new(limits, sink);
@@ -633,9 +761,7 @@ pub fn scan_wordprocessing_part_with(
             }
             Event::Text(text) => {
                 let decoded = text.xml10_content().map_err(|_| ScanError::InvalidXml)?;
-                let unescaped =
-                    quick_xml::escape::unescape(&decoded).map_err(|_| ScanError::InvalidXml)?;
-                scanner.append_text(&unescaped);
+                scanner.append_text(&decoded);
             }
             Event::CData(text) => {
                 let decoded = text.xml10_content().map_err(|_| ScanError::InvalidXml)?;
@@ -693,6 +819,7 @@ mod tests {
 
     const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     const R: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const MC: &str = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 
     #[test]
     fn scans_locations_contexts_controls_and_utf16() -> Result<(), super::ScanError> {
@@ -742,6 +869,86 @@ mod tests {
             BlockLocation::TableCellParagraph { .. }
         ));
         Ok(())
+    }
+
+    #[test]
+    fn projects_exactly_one_markup_compatibility_branch() -> Result<(), super::ScanError> {
+        let unsupported_choice = format!(
+            "<w:document xmlns:w=\"{W}\" xmlns:mc=\"{MC}\" xmlns:x=\"urn:unsupported\"><w:body><mc:AlternateContent><mc:Choice Requires=\"x\"><w:p><w:r><w:t>choice</w:t></w:r></w:p></mc:Choice><mc:Fallback><w:p><w:r><w:t>fallback</w:t></w:r></w:p></mc:Fallback></mc:AlternateContent></w:body></w:document>"
+        );
+        let fallback_scan =
+            scan_wordprocessing_part(unsupported_choice.as_bytes(), ScanLimits::default())?;
+        assert_eq!(
+            fallback_scan
+                .blocks
+                .iter()
+                .map(|block| block.text.as_str())
+                .collect::<Vec<_>>(),
+            ["fallback"]
+        );
+        assert_eq!(fallback_scan.coverage.unsupported_alternate_content, 1);
+
+        let supported_choice = format!(
+            "<w:document xmlns:w=\"{W}\" xmlns:mc=\"{MC}\"><w:body><mc:AlternateContent><mc:Choice Requires=\"w\"><w:p><w:r><w:t>choice</w:t></w:r></w:p></mc:Choice><mc:Fallback><w:p><w:r><w:t>fallback</w:t></w:r></w:p></mc:Fallback></mc:AlternateContent></w:body></w:document>"
+        );
+        let choice_scan =
+            scan_wordprocessing_part(supported_choice.as_bytes(), ScanLimits::default())?;
+        assert_eq!(
+            choice_scan
+                .blocks
+                .iter()
+                .map(|block| block.text.as_str())
+                .collect::<Vec<_>>(),
+            ["choice"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn emits_text_controls_only_from_run_content() -> Result<(), super::ScanError> {
+        let xml = format!(
+            "<w:document xmlns:w=\"{W}\"><w:body><w:p><w:pPr><w:tabs><w:tab w:val=\"left\"/></w:tabs></w:pPr><w:r><w:t>A</w:t><w:tab/><w:br/></w:r></w:p></w:body></w:document>"
+        );
+        let scan = scan_wordprocessing_part(xml.as_bytes(), ScanLimits::default())?;
+        let block = scan.blocks.first().ok_or(super::ScanError::InvalidXml)?;
+        assert_eq!(block.text, "A\t\n");
+        assert_eq!(
+            block
+                .segments
+                .iter()
+                .map(|segment| segment.source)
+                .collect::<Vec<_>>(),
+            [
+                SegmentSource::Text,
+                SegmentSource::Tab,
+                SegmentSource::Break
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn decodes_xml_references_exactly_once() -> Result<(), super::ScanError> {
+        let xml = format!(
+            "<w:document xmlns:w=\"{W}\"><w:body><w:p><w:r><w:t>&amp;amp; &lt; &#x1F600;</w:t></w:r></w:p></w:body></w:document>"
+        );
+        let scan = scan_wordprocessing_part(xml.as_bytes(), ScanLimits::default())?;
+        assert_eq!(
+            scan.blocks
+                .first()
+                .ok_or(super::ScanError::InvalidXml)?
+                .text,
+            "&amp; < 😀"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn reports_the_utf8_input_boundary_explicitly() {
+        assert_eq!(
+            scan_wordprocessing_part(&[0xff], ScanLimits::default()),
+            Err(super::ScanError::UnsupportedEncoding)
+        );
     }
 
     #[test]

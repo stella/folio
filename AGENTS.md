@@ -243,7 +243,7 @@ editing. Its published packages have explicit ownership boundaries:
   contract changes.
 - Return minimal data from public APIs; do not export types with no consumer.
 - Keep DOCX projection semantics in `crates/docx-kernel`. TypeScript bindings may
-  initialize WebAssembly, validate its versioned result, and translate boundary
+  initialize WebAssembly, preserve its versioned result, and translate boundary
   errors; they must not contain a fallback OOXML parser or duplicate Rust logic.
 - Keep the portable DOCX kernel single-threaded and browser-native: no WASI, workers,
   shared memory, `SharedArrayBuffer`, or cross-origin-isolation requirement. Run

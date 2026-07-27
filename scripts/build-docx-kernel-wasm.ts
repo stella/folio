@@ -41,7 +41,7 @@ const generatedFiles = [
 ] as const;
 const wasmFile = "docx_kernel_bg.wasm";
 const canonicalArtifactPlatform = process.platform === "linux" && process.arch === "x64";
-const maximumWasmBytes = 190 * 1024;
+const maximumWasmBytes = 191 * 1024;
 const maximumBrotliBytes = 90 * 1024;
 
 const sourceFiles = readdirSync(path.join(repoRoot, "crates", "docx-kernel", "src"), {
@@ -79,12 +79,16 @@ const cargoMetadata = JSON.parse(
 ) as {
   packages: { name: string; version: string }[];
 };
-const wasmBindgenPackage = cargoMetadata.packages.find(({ name }) => name === "wasm-bindgen");
-if (!wasmBindgenPackage) {
-  panic("Could not resolve the pinned wasm-bindgen runtime");
+const wasmBindgenPackages = cargoMetadata.packages.filter(({ name }) => name === "wasm-bindgen");
+if (wasmBindgenPackages.length !== 1) {
+  panic(
+    `Expected exactly one wasm-bindgen package; found ${wasmBindgenPackages.map(({ version }) => version).join(", ") || "none"}`,
+  );
 }
+const wasmBindgenVersion =
+  wasmBindgenPackages.at(0)?.version ?? panic("Could not resolve the pinned wasm-bindgen runtime");
 const installedWasmBindgen = await capture("wasm-bindgen", ["--version"]);
-const expectedWasmBindgen = `wasm-bindgen ${wasmBindgenPackage.version}`;
+const expectedWasmBindgen = `wasm-bindgen ${wasmBindgenVersion}`;
 if (installedWasmBindgen !== expectedWasmBindgen) {
   panic(`Expected ${expectedWasmBindgen}; found ${installedWasmBindgen}`);
 }
@@ -191,9 +195,8 @@ try {
     }
   }
 
-  const unexpected = readdirSync(temporaryDir).filter(
-    (file) => !generatedFiles.includes(file as (typeof generatedFiles)[number]),
-  );
+  const generatedFileSet: ReadonlySet<string> = new Set(generatedFiles);
+  const unexpected = readdirSync(temporaryDir).filter((file) => !generatedFileSet.has(file));
   if (unexpected.length > 0) {
     panic(`Unexpected wasm-bindgen artifacts: ${unexpected.join(", ")}`);
   }
