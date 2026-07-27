@@ -37,9 +37,37 @@ const generatedFiles = [
   "docx_kernel.d.ts",
   "docx_kernel_bg.wasm",
   "docx_kernel_bg.wasm.d.ts",
+  "docx_kernel.inputs.sha256",
 ] as const;
+const wasmFile = "docx_kernel_bg.wasm";
+const canonicalArtifactPlatform = process.platform === "linux" && process.arch === "x64";
 const maximumWasmBytes = 190 * 1024;
 const maximumBrotliBytes = 90 * 1024;
+
+const sourceFiles = readdirSync(path.join(repoRoot, "crates", "docx-kernel", "src"), {
+  recursive: true,
+})
+  .filter((file): file is string => typeof file === "string" && file.endsWith(".rs"))
+  .map((file) => path.join(repoRoot, "crates", "docx-kernel", "src", file));
+const generationInputs = [
+  path.join(repoRoot, "Cargo.lock"),
+  path.join(repoRoot, "Cargo.toml"),
+  path.join(repoRoot, "rust-toolchain.toml"),
+  path.join(repoRoot, "crates", "docx-kernel", "Cargo.toml"),
+  path.join(repoRoot, "scripts", "build-docx-kernel-wasm.ts"),
+  ...sourceFiles,
+].sort();
+
+const generationInputDigest = (): string => {
+  const digest = createHash("sha256");
+  for (const file of generationInputs) {
+    digest.update(path.relative(repoRoot, file));
+    digest.update("\0");
+    digest.update(readFileSync(file));
+    digest.update("\0");
+  }
+  return `${digest.digest("hex")}\n`;
+};
 
 const capture = async (command: string, arguments_: string[]): Promise<string> => {
   const result = await $`${command} ${arguments_}`.cwd(repoRoot).quiet();
@@ -97,6 +125,7 @@ try {
   }
   writeFileSync(wasmPath, wasmModule.emitBinary());
   wasmModule.dispose();
+  writeFileSync(path.join(temporaryDir, "docx_kernel.inputs.sha256"), generationInputDigest());
 
   const wasmBytes = readFileSync(wasmPath);
   const brotliBytes = brotliCompressSync(wasmBytes, {
@@ -131,7 +160,10 @@ try {
       writeFileSync(path.join(generatedDir, file), readFileSync(path.join(temporaryDir, file)));
     }
   } else {
-    const stale = generatedFiles.filter((file) => {
+    const comparableFiles = canonicalArtifactPlatform
+      ? generatedFiles
+      : generatedFiles.filter((file) => file !== wasmFile);
+    const stale = comparableFiles.filter((file) => {
       const expectedPath = path.join(generatedDir, file);
       if (!existsSync(expectedPath)) {
         return true;
@@ -146,6 +178,16 @@ try {
       panic(
         `Generated DOCX kernel artifacts are stale: ${stale.join(", ")}. Run bun --filter @stll/docx-core wasm:generate.`,
       );
+    }
+
+    if (!canonicalArtifactPlatform) {
+      const committedWasmPath = path.join(generatedDir, wasmFile);
+      if (
+        !existsSync(committedWasmPath) ||
+        !WebAssembly.validate(readFileSync(committedWasmPath))
+      ) {
+        panic("Committed DOCX kernel artifact is not valid WebAssembly");
+      }
     }
   }
 

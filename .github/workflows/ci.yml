@@ -164,8 +164,20 @@ jobs:
       - name: npm and Cargo version parity
         run: bun run check:docx-kernel-version
 
-      - name: Reproducible single-thread WebAssembly and size budgets
-        run: bun run check:docx-kernel
+      - name: Generate canonical single-thread WebAssembly and enforce size budgets
+        run: bun --filter '@stll/docx-core' wasm:generate
+
+      - name: Verify canonical WebAssembly artifacts are committed
+        run: git diff --exit-code -- packages/docx-core/src/generated
+
+      - name: Upload canonical WebAssembly artifacts after a drift failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: canonical-docx-kernel-wasm
+          path: packages/docx-core/src/generated/
+          retention-days: 1
+          if-no-files-found: error
 
   interactions:
     name: Interaction e2e (playground)
