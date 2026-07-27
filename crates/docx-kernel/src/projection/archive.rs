@@ -2,9 +2,12 @@ use miniz_oxide::inflate::decompress_to_vec_with_limit;
 use rawzip::{CompressionMethod, ZipArchive, ZipSliceArchive, crc32};
 
 use crate::ProjectionError;
+use crate::projection::relationships::main_document_path;
 
 const DOCUMENT_XML_PATH: &[u8] = b"word/document.xml";
 const STYLES_XML_PATH: &[u8] = b"word/styles.xml";
+const ROOT_RELATIONSHIPS_PATH: &[u8] = b"_rels/.rels";
+const MAXIMUM_ROOT_RELATIONSHIPS_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DocxLimits {
@@ -36,6 +39,12 @@ struct XmlEntry {
     compressed_size: u64,
     uncompressed_size: u64,
     crc32: u32,
+    encrypted: bool,
+}
+
+struct PackageEntry {
+    path: Vec<u8>,
+    xml: XmlEntry,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -44,7 +53,7 @@ pub struct DocumentParts {
     pub styles_xml: Option<Vec<u8>>,
 }
 
-/// Extracts `word/document.xml` from a bounded DOCX package.
+/// Extracts the relationship-resolved main document part from a bounded DOCX package.
 ///
 /// # Errors
 ///
@@ -54,8 +63,8 @@ pub fn extract_document_xml(bytes: &[u8], limits: DocxLimits) -> Result<Vec<u8>,
     extract_document_parts(bytes, limits).map(|parts| parts.document_xml)
 }
 
-/// Extracts the main document and its conventional paragraph-style part in one
-/// bounded pass over the ZIP directory.
+/// Extracts the main document and its conventional paragraph-style part from one
+/// bounded scan of the ZIP directory.
 ///
 /// `styles_xml: None` is not evidence that a package has no effective styles:
 /// relationship targets may use another path. Callers therefore retain an
@@ -73,12 +82,70 @@ pub fn extract_document_parts(
         return Err(ProjectionError::ArchiveTooLarge);
     }
     let archive = ZipArchive::from_slice(bytes).map_err(|_| ProjectionError::InvalidArchive)?;
+    let package_entries = scan_package_entries(&archive, limits)?;
+
+    let document_path = resolve_document_path(&archive, &package_entries, limits)?;
+    let document = unique_entry(
+        &package_entries,
+        &document_path,
+        ProjectionError::DuplicateDocumentXml,
+    )?
+    .ok_or(ProjectionError::MissingDocumentXml)?;
+    validate_selected_entry(
+        document,
+        limits.maximum_document_xml_bytes,
+        ProjectionError::DocumentXmlTooLarge,
+        ProjectionError::EncryptedDocumentXml,
+        limits,
+    )?;
+    let document_xml = extract_entry(
+        &archive,
+        document,
+        &document_path,
+        limits.maximum_document_xml_bytes,
+        ProjectionError::InvalidDocumentXmlEntry,
+        ProjectionError::DocumentXmlTooLarge,
+        ProjectionError::DocumentXmlIntegrity,
+    )?;
+    let styles_xml = unique_entry(
+        &package_entries,
+        STYLES_XML_PATH,
+        ProjectionError::DuplicateStylesXml,
+    )?
+    .map(|styles| {
+        validate_selected_entry(
+            styles,
+            limits.maximum_styles_xml_bytes,
+            ProjectionError::StylesXmlTooLarge,
+            ProjectionError::InvalidStylesXmlEntry,
+            limits,
+        )?;
+        extract_entry(
+            &archive,
+            styles,
+            STYLES_XML_PATH,
+            limits.maximum_styles_xml_bytes,
+            ProjectionError::InvalidStylesXmlEntry,
+            ProjectionError::StylesXmlTooLarge,
+            ProjectionError::StylesXmlIntegrity,
+        )
+    })
+    .transpose()?;
+    Ok(DocumentParts {
+        document_xml,
+        styles_xml,
+    })
+}
+
+fn scan_package_entries(
+    archive: &ZipSliceArchive<&[u8]>,
+    limits: DocxLimits,
+) -> Result<Vec<PackageEntry>, ProjectionError> {
     if archive.entries_hint() > limits.maximum_entries {
         return Err(ProjectionError::TooManyArchiveEntries);
     }
 
-    let mut document = None;
-    let mut styles = None;
+    let mut package_entries = Vec::new();
     let mut entries = archive.entries();
     let mut entry_count = 0_u64;
     while let Some(entry) = entries
@@ -91,86 +158,91 @@ pub fn extract_document_parts(
         if entry_count > limits.maximum_entries {
             return Err(ProjectionError::TooManyArchiveEntries);
         }
-        let path = entry.file_path();
-        let path = path.as_ref();
-        if path != DOCUMENT_XML_PATH && path != STYLES_XML_PATH {
-            continue;
-        }
-        let slot = if path == DOCUMENT_XML_PATH {
-            &mut document
-        } else {
-            &mut styles
-        };
-        if slot.is_some() {
-            return Err(if path == DOCUMENT_XML_PATH {
-                ProjectionError::DuplicateDocumentXml
-            } else {
-                ProjectionError::DuplicateStylesXml
-            });
-        }
-        if entry.flags().is_encrypted() {
-            return Err(ProjectionError::EncryptedDocumentXml);
-        }
-        let method = entry.compression_method();
-        if method != CompressionMethod::STORE && method != CompressionMethod::DEFLATE {
-            return Err(ProjectionError::UnsupportedCompression(method.as_u16()));
-        }
-        let compressed_size = entry.compressed_size_hint();
-        let uncompressed_size = entry.uncompressed_size_hint();
-        let (maximum_bytes, too_large) = if path == DOCUMENT_XML_PATH {
-            (
-                limits.maximum_document_xml_bytes,
-                ProjectionError::DocumentXmlTooLarge,
-            )
-        } else {
-            (
-                limits.maximum_styles_xml_bytes,
-                ProjectionError::StylesXmlTooLarge,
-            )
-        };
-        validate_declared_sizes(
-            compressed_size,
-            uncompressed_size,
-            maximum_bytes,
-            too_large,
-            limits,
-        )?;
-        *slot = Some(XmlEntry {
-            wayfinder: entry.wayfinder(),
-            method,
-            compressed_size,
-            uncompressed_size,
-            crc32: entry.crc32(),
+        package_entries.push(PackageEntry {
+            path: entry.file_path().as_ref().to_vec(),
+            xml: XmlEntry {
+                wayfinder: entry.wayfinder(),
+                method: entry.compression_method(),
+                compressed_size: entry.compressed_size_hint(),
+                uncompressed_size: entry.uncompressed_size_hint(),
+                crc32: entry.crc32(),
+                encrypted: entry.flags().is_encrypted(),
+            },
         });
     }
+    Ok(package_entries)
+}
 
-    let document = document.ok_or(ProjectionError::MissingDocumentXml)?;
-    let document_xml = extract_entry(
-        &archive,
-        document,
-        DOCUMENT_XML_PATH,
-        limits.maximum_document_xml_bytes,
-        ProjectionError::InvalidDocumentXmlEntry,
-        ProjectionError::DocumentXmlTooLarge,
-        ProjectionError::DocumentXmlIntegrity,
-    )?;
-    let styles_xml = styles
-        .map(|styles| {
-            extract_entry(
-                &archive,
-                styles,
-                STYLES_XML_PATH,
-                limits.maximum_styles_xml_bytes,
-                ProjectionError::InvalidStylesXmlEntry,
-                ProjectionError::StylesXmlTooLarge,
-                ProjectionError::StylesXmlIntegrity,
-            )
-        })
-        .transpose()?;
-    Ok(DocumentParts {
-        document_xml,
-        styles_xml,
-    })
+fn resolve_document_path(
+    archive: &ZipSliceArchive<&[u8]>,
+    package_entries: &[PackageEntry],
+    limits: DocxLimits,
+) -> Result<Vec<u8>, ProjectionError> {
+    if let Some(relationships) = unique_entry(
+        package_entries,
+        ROOT_RELATIONSHIPS_PATH,
+        ProjectionError::InvalidPackageRelationships,
+    )? {
+        validate_selected_entry(
+            relationships,
+            MAXIMUM_ROOT_RELATIONSHIPS_BYTES,
+            ProjectionError::PackageRelationshipsTooLarge,
+            ProjectionError::InvalidPackageRelationships,
+            limits,
+        )?;
+        let relationships_xml = extract_entry(
+            archive,
+            relationships,
+            ROOT_RELATIONSHIPS_PATH,
+            MAXIMUM_ROOT_RELATIONSHIPS_BYTES,
+            ProjectionError::InvalidPackageRelationships,
+            ProjectionError::PackageRelationshipsTooLarge,
+            ProjectionError::InvalidPackageRelationships,
+        )?;
+        main_document_path(&relationships_xml)
+    } else {
+        Ok(DOCUMENT_XML_PATH.to_vec())
+    }
+}
+
+fn unique_entry(
+    entries: &[PackageEntry],
+    path: &[u8],
+    duplicate: ProjectionError,
+) -> Result<Option<XmlEntry>, ProjectionError> {
+    let mut matches = entries
+        .iter()
+        .filter(|entry| entry.path == path)
+        .map(|entry| entry.xml);
+    let first = matches.next();
+    if matches.next().is_some() {
+        return Err(duplicate);
+    }
+    Ok(first)
+}
+
+fn validate_selected_entry(
+    entry: XmlEntry,
+    maximum_bytes: usize,
+    too_large: ProjectionError,
+    encrypted: ProjectionError,
+    limits: DocxLimits,
+) -> Result<(), ProjectionError> {
+    if entry.encrypted {
+        return Err(encrypted);
+    }
+    if entry.method != CompressionMethod::STORE && entry.method != CompressionMethod::DEFLATE {
+        return Err(ProjectionError::UnsupportedCompression(
+            entry.method.as_u16(),
+        ));
+    }
+    validate_declared_sizes(
+        entry.compressed_size,
+        entry.uncompressed_size,
+        maximum_bytes,
+        too_large,
+        limits,
+    )
 }
 
 fn extract_entry(

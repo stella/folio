@@ -6,6 +6,7 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::NsReader;
 
 use crate::ProjectionError;
+use crate::projection::compatibility::{CompatibilityAction, MarkupCompatibility};
 use crate::projection::namespaces::OoxmlNamespace;
 use crate::projection::structure::{
     ParagraphProperties, RawBlockPoint, RawBookmarkRange, RawInternalReference,
@@ -293,6 +294,7 @@ pub(super) fn project_document_xml(
         references_complete: true,
         ..ProjectionState::default()
     };
+    let mut compatibility = MarkupCompatibility::default();
     loop {
         match reader
             .read_event()
@@ -300,15 +302,27 @@ pub(super) fn project_document_xml(
         {
             Event::Start(element) => {
                 let (namespace, _) = reader.resolver().resolve_element(element.name());
-                state.start(&reader, OoxmlNamespace::from_resolved(&namespace), &element)?;
+                let namespace = OoxmlNamespace::from_resolved(&namespace);
+                if compatibility.start(&reader, namespace, &element)?
+                    == CompatibilityAction::Process
+                {
+                    state.start(&reader, namespace, &element)?;
+                }
             }
             Event::Empty(element) => {
                 let (namespace, _) = reader.resolver().resolve_element(element.name());
-                state.start(&reader, OoxmlNamespace::from_resolved(&namespace), &element)?;
-                state.end()?;
+                let namespace = OoxmlNamespace::from_resolved(&namespace);
+                if compatibility.empty(&reader, namespace, &element)?
+                    == CompatibilityAction::Process
+                {
+                    state.start(&reader, namespace, &element)?;
+                    state.end()?;
+                }
             }
             Event::Text(text) => {
-                if let Some(Frame::PseudoText(kind)) = state.frames.last() {
+                if !compatibility.is_suppressed()
+                    && let Some(Frame::PseudoText(kind)) = state.frames.last()
+                {
                     let pseudo_text_kind = *kind;
                     let decoded = text
                         .xml10_content()
@@ -322,7 +336,9 @@ pub(super) fn project_document_xml(
                 }
             }
             Event::CData(text) => {
-                if let Some(Frame::PseudoText(kind)) = state.frames.last() {
+                if !compatibility.is_suppressed()
+                    && let Some(Frame::PseudoText(kind)) = state.frames.last()
+                {
                     let pseudo_text_kind = *kind;
                     let decoded = text
                         .xml10_content()
@@ -334,7 +350,9 @@ pub(super) fn project_document_xml(
                 }
             }
             Event::GeneralRef(reference) => {
-                if let Some(Frame::PseudoText(kind)) = state.frames.last() {
+                if !compatibility.is_suppressed()
+                    && let Some(Frame::PseudoText(kind)) = state.frames.last()
+                {
                     let pseudo_text_kind = *kind;
                     let resolved_character = reference
                         .resolve_char_ref()
@@ -357,7 +375,16 @@ pub(super) fn project_document_xml(
                     }
                 }
             }
-            Event::End(_) => state.end()?,
+            Event::End(element) => {
+                let (namespace, local_name) = reader.resolver().resolve_element(element.name());
+                if compatibility.end(
+                    OoxmlNamespace::from_resolved(&namespace),
+                    local_name.as_ref(),
+                )? == CompatibilityAction::Process
+                {
+                    state.end()?;
+                }
+            }
             Event::Eof => break,
             _ => {}
         }
@@ -365,7 +392,8 @@ pub(super) fn project_document_xml(
     if !state.body_seen {
         return Err(ProjectionError::MissingDocumentBody);
     }
-    if state.current_paragraph.is_some() || !state.frames.is_empty() {
+    if state.current_paragraph.is_some() || !state.frames.is_empty() || !compatibility.is_complete()
+    {
         return Err(ProjectionError::InvalidDocumentXml);
     }
     let paragraph_merges = if state.paragraph_mark_revisions.is_empty() {

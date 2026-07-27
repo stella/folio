@@ -284,6 +284,72 @@ fn resolves_wordprocessing_namespaces_independently_of_prefix() {
 }
 
 #[test]
+fn selects_exactly_one_supported_alternate_content_branch() {
+    let supported_after_unknown = br#"
+      <w:document
+        xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:future="urn:future-wordprocessing">
+        <w:body><mc:AlternateContent>
+          <mc:Choice Requires="future"><w:p><w:r><w:t>unknown</w:t></w:r></w:p></mc:Choice>
+          <mc:Choice Requires="w"><w:p><w:r><w:t>selected</w:t></w:r></w:p></mc:Choice>
+          <mc:Fallback><w:p><w:r><w:t>fallback</w:t></w:r></w:p></mc:Fallback>
+        </mc:AlternateContent></w:body>
+      </w:document>
+    "#;
+    assert_eq!(texts(supported_after_unknown), ["selected"]);
+
+    let fallback = br#"
+      <w:document
+        xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:future="urn:future-wordprocessing">
+        <w:body><mc:AlternateContent>
+          <mc:Choice Requires="future"><w:p><w:r><w:t>unknown</w:t></w:r></w:p></mc:Choice>
+          <mc:Fallback><w:p><w:r><w:t>fallback</w:t></w:r></w:p></mc:Fallback>
+        </mc:AlternateContent></w:body>
+      </w:document>
+    "#;
+    assert_eq!(texts(fallback), ["fallback"]);
+
+    let transparent = br#"
+      <w:document
+        xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+        <w:body><w:tbl><mc:AlternateContent>
+          <mc:Choice Requires="w"><w:tr><w:tc><w:p><w:r>
+            <mc:AlternateContent>
+              <mc:Choice Requires="w"><w:rPr><w:b/></w:rPr><w:t>Bold</w:t></mc:Choice>
+              <mc:Fallback><w:t>Wrong</w:t></mc:Fallback>
+            </mc:AlternateContent>
+          </w:r></w:p></w:tc></w:tr></mc:Choice>
+          <mc:Fallback><w:tr><w:tc><w:p><w:r><w:t>Wrong</w:t></w:r></w:p></w:tc></w:tr></mc:Fallback>
+        </mc:AlternateContent></w:tbl></w:body>
+      </w:document>
+    "#;
+    let projection = project_document_xml(transparent, allocate)
+        .expect("selected compatibility branches should be semantically transparent");
+    assert_eq!(projection.paragraphs.len(), 1);
+    assert_eq!(projection.paragraphs[0].text, "Bold");
+    assert_eq!(
+        projection.paragraphs[0].structure,
+        Some(ParagraphStructure {
+            table_ordinal: 0,
+            row: 0,
+            column: 0,
+        })
+    );
+    assert_eq!(
+        projection.paragraphs[0].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 4,
+            style: TextStyle::Bold,
+        }]
+    );
+}
+
+#[test]
 fn materializes_typed_text_controls_for_each_consumer_view() {
     let xml = br#"<x:document xmlns:x="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><x:body><x:p><x:r><x:t>A</x:t><x:tab/><x:br/><x:br x:type="page"/><x:br x:type="column"/><x:cr/><x:footnoteReference/><x:softHyphen/><x:noBreakHyphen/><x:t>Z</x:t></x:r></x:p></x:body></x:document>"#;
 
@@ -467,6 +533,52 @@ fn extracts_store_and_deflate_packages_before_projection() {
             4
         );
     }
+}
+
+#[test]
+fn resolves_the_main_document_from_package_relationships() {
+    let custom_document = br#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body><w:p><w:r><w:t>Relationship target</w:t></w:r></w:p></w:body>
+      </w:document>
+    "#;
+    let relationships = br#"
+      <r:Relationships xmlns:r="http://schemas.openxmlformats.org/package/2006/relationships">
+        <r:Relationship Id="metadata" Type="urn:unrelated" Target="metadata.xml"/>
+        <r:Relationship
+          Id="document"
+          Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+          Target="./custom/main.xml"/>
+      </r:Relationships>
+    "#;
+    let conventional_document = br#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body><w:p><w:r><w:t>Wrong conventional part</w:t></w:r></w:p></w:body>
+      </w:document>
+    "#;
+    let package = package(
+        &[
+            ("_rels/.rels", relationships),
+            ("custom/main.xml", custom_document),
+            ("word/document.xml", conventional_document),
+        ],
+        CompressionMethod::Deflated,
+    );
+
+    assert_eq!(
+        extract_document_xml(&package, DocxLimits::default())
+            .expect("relationship-resolved main part should extract"),
+        custom_document
+    );
+    assert_eq!(
+        project_docx(&package, DocxLimits::default(), allocate)
+            .expect("relationship-resolved main part should project")
+            .paragraphs
+            .into_iter()
+            .map(|paragraph| paragraph.text)
+            .collect::<Vec<_>>(),
+        ["Relationship target"]
+    );
 }
 
 #[test]

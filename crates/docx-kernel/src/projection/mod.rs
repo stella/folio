@@ -5,8 +5,10 @@
 //! remains optional package metadata and is never treated as a host navigation ID.
 
 mod archive;
+mod compatibility;
 mod namespaces;
 mod ooxml;
+mod relationships;
 mod structure;
 mod styles;
 
@@ -92,6 +94,8 @@ pub enum ProjectionError {
     ArchiveTooLarge,
     InvalidArchive,
     TooManyArchiveEntries,
+    InvalidPackageRelationships,
+    PackageRelationshipsTooLarge,
     MissingDocumentXml,
     DuplicateDocumentXml,
     DuplicateStylesXml,
@@ -118,24 +122,32 @@ impl fmt::Display for ProjectionError {
             Self::ArchiveTooLarge => "DOCX archive exceeds the configured size limit",
             Self::InvalidArchive => "DOCX archive is invalid",
             Self::TooManyArchiveEntries => "DOCX archive has too many entries",
-            Self::MissingDocumentXml => "DOCX archive has no word/document.xml",
-            Self::DuplicateDocumentXml => "DOCX archive has duplicate word/document.xml entries",
-            Self::DuplicateStylesXml => "DOCX archive has duplicate word/styles.xml entries",
-            Self::EncryptedDocumentXml => "word/document.xml is encrypted",
-            Self::UnsupportedCompression(_) => "word/document.xml uses unsupported compression",
-            Self::DocumentXmlTooLarge => "word/document.xml exceeds the configured size limit",
-            Self::SuspiciousCompressionRatio => {
-                "word/document.xml exceeds the compression-ratio limit"
+            Self::InvalidPackageRelationships => "DOCX archive has invalid package relationships",
+            Self::PackageRelationshipsTooLarge => {
+                "DOCX package relationships exceed the configured size limit"
             }
-            Self::InvalidDocumentXmlEntry => "word/document.xml has an invalid ZIP entry",
-            Self::DocumentXmlIntegrity => "word/document.xml failed size or CRC validation",
+            Self::MissingDocumentXml => "DOCX archive has no main document part",
+            Self::DuplicateDocumentXml => "DOCX archive has duplicate main document parts",
+            Self::DuplicateStylesXml => "DOCX archive has duplicate word/styles.xml entries",
+            Self::EncryptedDocumentXml => "DOCX main document part is encrypted",
+            Self::UnsupportedCompression(_) => {
+                "selected DOCX package part uses unsupported compression"
+            }
+            Self::DocumentXmlTooLarge => {
+                "DOCX main document part exceeds the configured size limit"
+            }
+            Self::SuspiciousCompressionRatio => {
+                "selected DOCX package part exceeds the compression-ratio limit"
+            }
+            Self::InvalidDocumentXmlEntry => "DOCX main document part has an invalid ZIP entry",
+            Self::DocumentXmlIntegrity => "DOCX main document part failed size or CRC validation",
             Self::StylesXmlTooLarge => "word/styles.xml exceeds the configured size limit",
             Self::InvalidStylesXmlEntry => "word/styles.xml has an invalid ZIP entry",
             Self::StylesXmlIntegrity => "word/styles.xml failed size or CRC validation",
-            Self::InvalidDocumentXml => "word/document.xml is invalid XML",
+            Self::InvalidDocumentXml => "DOCX main document part is invalid XML",
             Self::InvalidStylesXml => "word/styles.xml is invalid XML",
-            Self::MissingDocumentBody => "word/document.xml has no document body",
-            Self::TooManyParagraphs => "word/document.xml has too many paragraphs",
+            Self::MissingDocumentBody => "DOCX main document part has no document body",
+            Self::TooManyParagraphs => "DOCX main document part has too many paragraphs",
             Self::InvalidInternalParagraphId => "application paragraph ID is invalid",
             Self::DuplicateInternalParagraphId => "application paragraph IDs are not unique",
         };
