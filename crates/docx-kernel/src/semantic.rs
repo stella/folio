@@ -115,6 +115,8 @@ pub struct PartScan {
 pub enum ScanError {
     #[error("WordprocessingML part is invalid XML")]
     InvalidXml,
+    #[error("WordprocessingML part must not contain a document type declaration")]
+    DocumentTypeDeclaration,
     #[error("WordprocessingML text is outside a paragraph")]
     TextOutsideParagraph,
     #[error("WordprocessingML part exceeds the configured nesting depth")]
@@ -544,7 +546,7 @@ where
             self.begin_paragraph(&path)?
         } else if name == b"r" && self.current_block_id().is_some() {
             FrameKind::Run
-        } else if matches!(name, b"t" | b"delText") && self.inside_run() {
+        } else if matches!(name, b"t" | b"delText") {
             self.pending_text = Some(PendingText {
                 block_id: self.current_block_id(),
                 path: self.element_path.clone(),
@@ -782,7 +784,7 @@ pub fn scan_wordprocessing_part_with(
                 scanner.append_text(&value);
             }
             Event::End(_) => scanner.end()?,
-            Event::DocType(_) => return Err(ScanError::InvalidXml),
+            Event::DocType(_) => return Err(ScanError::DocumentTypeDeclaration),
             Event::Eof => break,
             _ => {}
         }
@@ -818,6 +820,7 @@ mod tests {
     };
 
     const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const W_STRICT: &str = "http://purl.oclc.org/ooxml/wordprocessingml/main";
     const R: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     const MC: &str = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 
@@ -952,6 +955,27 @@ mod tests {
     }
 
     #[test]
+    fn rejects_nonempty_text_bearing_elements_outside_paragraphs() {
+        let xml = format!(
+            "<w:document xmlns:w=\"{W}\"><w:body><w:r><w:t>outside</w:t></w:r></w:body></w:document>"
+        );
+        assert_eq!(
+            scan_wordprocessing_part(xml.as_bytes(), ScanLimits::default()),
+            Err(super::ScanError::TextOutsideParagraph)
+        );
+
+        let empty =
+            format!("<w:document xmlns:w=\"{W}\"><w:body><w:r><w:t/></w:r></w:body></w:document>");
+        assert_eq!(
+            scan_wordprocessing_part(empty.as_bytes(), ScanLimits::default()),
+            Ok(super::PartScan {
+                blocks: Vec::new(),
+                coverage: super::PartCoverage::default(),
+            })
+        );
+    }
+
+    #[test]
     fn rejects_namespace_spoofing_and_accepts_strict_ooxml() -> Result<(), super::ScanError> {
         let spoof = b"<w:document xmlns:w=\"urn:not-word\"><w:body><w:p><w:r><w:t>secret</w:t></w:r></w:p></w:body></w:document>";
         let spoof_scan = scan_wordprocessing_part(spoof, ScanLimits::default())?;
@@ -987,15 +1011,19 @@ mod tests {
     }
 
     #[test]
-    fn rejects_multiple_roots_doctypes_and_resource_limit_overruns() {
-        let multiple_roots = format!("<w:p xmlns:w=\"{W}\"/><w:p xmlns:w=\"{W}\"/>");
-        assert_eq!(
-            scan_wordprocessing_part(multiple_roots.as_bytes(), ScanLimits::default()),
-            Err(super::ScanError::InvalidXml)
-        );
+    fn rejects_document_type_declarations() {
         let doctype = format!("<!DOCTYPE w:document><w:document xmlns:w=\"{W}\"/>");
         assert_eq!(
             scan_wordprocessing_part(doctype.as_bytes(), ScanLimits::default()),
+            Err(super::ScanError::DocumentTypeDeclaration)
+        );
+    }
+
+    #[test]
+    fn rejects_multiple_roots_and_resource_limit_overruns() {
+        let multiple_roots = format!("<w:p xmlns:w=\"{W}\"/><w:p xmlns:w=\"{W}\"/>");
+        assert_eq!(
+            scan_wordprocessing_part(multiple_roots.as_bytes(), ScanLimits::default()),
             Err(super::ScanError::InvalidXml)
         );
         let two_blocks =
@@ -1043,6 +1071,44 @@ mod tests {
           expected_start = segment.end_utf16;
         }
         prop_assert_eq!(expected_start, block.text.encode_utf16().count());
+      }
+
+      #[test]
+      fn nonempty_wordprocessing_text_requires_a_paragraph(
+        prefix in "[a-z]{1,8}",
+        namespace in proptest::sample::select(&[W, W_STRICT][..]),
+        text_element in proptest::sample::select(&["t", "delText"][..]),
+        value in "[A-Za-z0-9 ]{1,32}",
+        run_wrapped in proptest::bool::ANY,
+      ) {
+        let text = format!(
+          "<{prefix}:{text_element}>{value}</{prefix}:{text_element}>"
+        );
+        let content = if run_wrapped {
+          format!("<{prefix}:r>{text}</{prefix}:r>")
+        } else {
+          text
+        };
+        let xml = format!(
+          "<{prefix}:document xmlns:{prefix}=\"{namespace}\"><{prefix}:body>{content}</{prefix}:body></{prefix}:document>"
+        );
+        prop_assert_eq!(
+          scan_wordprocessing_part(xml.as_bytes(), ScanLimits::default()),
+          Err(super::ScanError::TextOutsideParagraph)
+        );
+      }
+
+      #[test]
+      fn document_type_declarations_have_a_stable_typed_error(
+        document_type in "[A-Za-z][A-Za-z0-9]{0,15}",
+      ) {
+        let xml = format!(
+          "<!DOCTYPE {document_type}><w:document xmlns:w=\"{W}\"/>"
+        );
+        prop_assert_eq!(
+          scan_wordprocessing_part(xml.as_bytes(), ScanLimits::default()),
+          Err(super::ScanError::DocumentTypeDeclaration)
+        );
       }
     }
 }
