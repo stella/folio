@@ -1079,6 +1079,25 @@ mod tests {
             Err(super::ScanError::TooManyBlocks)
         );
 
+        let empty_document = format!("<w:document xmlns:w=\"{W}\"/>");
+        let one_event = scan_wordprocessing_part(
+            empty_document.as_bytes(),
+            ScanLimits {
+                events: 1,
+                ..ScanLimits::default()
+            },
+        );
+        assert!(matches!(
+            one_event,
+            Ok(super::PartScan {
+                coverage: super::PartCoverage {
+                    work: super::ScanWork { events: 1, .. },
+                    ..
+                },
+                ..
+            })
+        ));
+
         let one_block = format!(
             "<w:document xmlns:w=\"{W}\"><w:body><w:p><w:r><w:t>x</w:t></w:r></w:p></w:body></w:document>"
         );
