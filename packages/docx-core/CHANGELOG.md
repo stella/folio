@@ -1,5 +1,15 @@
 # @stll/docx-core
 
+## 0.6.0
+
+### Minor Changes
+
+- [#516](https://github.com/stella/folio/pull/516) [`5ea99cd`](https://github.com/stella/folio/commit/5ea99cd32d44db94afac8bb44c31c8f32bc2aa19) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add a browser-native DOCX projection API backed by a bounded Rust WebAssembly kernel.
+
+### Patch Changes
+
+- [#519](https://github.com/stella/folio/pull/519) [`b003927`](https://github.com/stella/folio/commit/b003927467052dcc6c6c2c3ddd66cebf057e7f84) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve typed errors for invalid WordprocessingML text placement and document type declarations.
+
 ## 0.5.2
 
 ### Patch Changes

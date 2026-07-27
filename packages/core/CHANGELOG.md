@@ -1,5 +1,16 @@
 # @stll/folio-core
 
+## 0.15.3
+
+### Patch Changes
+
+- [#517](https://github.com/stella/folio/pull/517) [`4c943b3`](https://github.com/stella/folio/commit/4c943b308ed29f4ee76226ccf142f60477534080) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve renderable drawing namespaces and mixed-section page order during DOCX round-trips.
+
+- [#511](https://github.com/stella/folio/pull/511) [`1e5681b`](https://github.com/stella/folio/commit/1e5681bfaa71082bfbf6d795a004a14ca76ed61b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize omitted offsets on positioned legacy text boxes.
+
+- Updated dependencies [[`5ea99cd`](https://github.com/stella/folio/commit/5ea99cd32d44db94afac8bb44c31c8f32bc2aa19), [`b003927`](https://github.com/stella/folio/commit/b003927467052dcc6c6c2c3ddd66cebf057e7f84)]:
+  - @stll/docx-core@0.6.0
+
 ## 0.15.2
 
 ### Patch Changes
