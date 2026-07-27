@@ -18,5 +18,6 @@ pub use projection::{
 };
 pub use semantic::{
     BlockLocation, InlineContext, PartCoverage, PartScan, RevisionKind, ScanError, ScanLimits,
-    SegmentSource, TextBlock, TextSegment, scan_wordprocessing_part, scan_wordprocessing_part_with,
+    ScanWork, SegmentSource, TextBlock, TextSegment, scan_wordprocessing_part,
+    scan_wordprocessing_part_with,
 };

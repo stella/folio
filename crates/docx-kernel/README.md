@@ -8,4 +8,6 @@ The crate supports native Rust consumers directly. Browser consumers can enable 
 binding.
 
 The parser treats package identifiers as document facts, not durable application
-identities. ZIP and XML resource limits are enforced at the input boundary.
+identities. ZIP and XML resource limits are enforced at the input boundary;
+semantic scans also bound XML events and inline-context copies and report both as
+deterministic work units.

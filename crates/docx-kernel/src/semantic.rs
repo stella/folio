@@ -27,6 +27,8 @@ pub struct ScanLimits {
     pub blocks: usize,
     pub segments: usize,
     pub depth: usize,
+    pub events: usize,
+    pub inline_context_copies: usize,
 }
 
 impl Default for ScanLimits {
@@ -35,8 +37,16 @@ impl Default for ScanLimits {
             blocks: 100_000,
             segments: 1_000_000,
             depth: 256,
+            events: 10_000_000,
+            inline_context_copies: 20_000_000,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ScanWork {
+    pub events: usize,
+    pub inline_context_copies: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -103,6 +113,7 @@ pub struct PartCoverage {
     pub unsupported_alternate_content: usize,
     pub unsupported_symbols: usize,
     pub unsupported_field_instructions: usize,
+    pub work: ScanWork,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -125,6 +136,10 @@ pub enum ScanError {
     TooManyBlocks,
     #[error("WordprocessingML part exceeds the configured segment limit")]
     TooManySegments,
+    #[error("WordprocessingML part exceeds the configured XML event limit")]
+    TooManyEvents,
+    #[error("WordprocessingML part exceeds the configured inline-context copy limit")]
+    TooManyInlineContextCopies,
     #[error("WordprocessingML text length overflowed")]
     TextLengthOverflow,
     #[error("WordprocessingML part must be UTF-8 encoded")]
@@ -313,8 +328,32 @@ where
             .any(|frame| frame.kind == FrameKind::Run)
     }
 
-    fn contexts(&self) -> Vec<InlineContext> {
-        self.active_contexts.clone()
+    fn contexts(&mut self) -> Result<Vec<InlineContext>, ScanError> {
+        let copies = self
+            .coverage
+            .work
+            .inline_context_copies
+            .checked_add(self.active_contexts.len())
+            .ok_or(ScanError::TooManyInlineContextCopies)?;
+        if copies > self.limits.inline_context_copies {
+            return Err(ScanError::TooManyInlineContextCopies);
+        }
+        self.coverage.work.inline_context_copies = copies;
+        Ok(self.active_contexts.clone())
+    }
+
+    fn record_event(&mut self) -> Result<(), ScanError> {
+        let events = self
+            .coverage
+            .work
+            .events
+            .checked_add(1)
+            .ok_or(ScanError::TooManyEvents)?;
+        if events > self.limits.events {
+            return Err(ScanError::TooManyEvents);
+        }
+        self.coverage.work.events = events;
+        Ok(())
     }
 
     fn nearest_path(&self, select: impl Fn(&Frame) -> Option<&Vec<usize>>) -> Option<Vec<usize>> {
@@ -611,7 +650,7 @@ where
             .segment_count
             .checked_add(1)
             .ok_or(ScanError::TooManySegments)?;
-        let contexts = self.contexts();
+        let contexts = self.contexts()?;
         let builder = self
             .builders
             .get_mut(&block_id)
@@ -755,7 +794,9 @@ pub fn scan_wordprocessing_part_with(
     reader.config_mut().check_end_names = true;
     let mut scanner = Scanner::new(limits, sink);
     loop {
-        match reader.read_event().map_err(|_| ScanError::InvalidXml)? {
+        let event = reader.read_event().map_err(|_| ScanError::InvalidXml)?;
+        scanner.record_event()?;
+        match event {
             Event::Start(element) => scanner.start(&reader, &element)?,
             Event::Empty(element) => {
                 scanner.start(&reader, &element)?;
@@ -955,7 +996,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_nonempty_text_bearing_elements_outside_paragraphs() {
+    fn rejects_nonempty_text_bearing_elements_outside_paragraphs() -> Result<(), super::ScanError> {
         let xml = format!(
             "<w:document xmlns:w=\"{W}\"><w:body><w:r><w:t>outside</w:t></w:r></w:body></w:document>"
         );
@@ -966,13 +1007,9 @@ mod tests {
 
         let empty =
             format!("<w:document xmlns:w=\"{W}\"><w:body><w:r><w:t/></w:r></w:body></w:document>");
-        assert_eq!(
-            scan_wordprocessing_part(empty.as_bytes(), ScanLimits::default()),
-            Ok(super::PartScan {
-                blocks: Vec::new(),
-                coverage: super::PartCoverage::default(),
-            })
-        );
+        let empty_scan = scan_wordprocessing_part(empty.as_bytes(), ScanLimits::default())?;
+        assert!(empty_scan.blocks.is_empty());
+        Ok(())
     }
 
     #[test]
@@ -1038,6 +1075,84 @@ mod tests {
             ),
             Err(super::ScanError::TooManyBlocks)
         );
+
+        let one_block = format!(
+            "<w:document xmlns:w=\"{W}\"><w:body><w:p><w:r><w:t>x</w:t></w:r></w:p></w:body></w:document>"
+        );
+        assert_eq!(
+            scan_wordprocessing_part(
+                one_block.as_bytes(),
+                ScanLimits {
+                    events: 1,
+                    ..ScanLimits::default()
+                }
+            ),
+            Err(super::ScanError::TooManyEvents)
+        );
+
+        let contextual = format!(
+            "<w:document xmlns:w=\"{W}\"><w:body><w:p><w:ins><w:r><w:t>x</w:t></w:r></w:ins></w:p></w:body></w:document>"
+        );
+        assert_eq!(
+            scan_wordprocessing_part(
+                contextual.as_bytes(),
+                ScanLimits {
+                    inline_context_copies: 0,
+                    ..ScanLimits::default()
+                }
+            ),
+            Err(super::ScanError::TooManyInlineContextCopies)
+        );
+    }
+
+    fn sibling_run_fixture(run_count: usize) -> String {
+        let mut runs = String::new();
+        for _ in 0..run_count {
+            runs.push_str("<w:r><w:t>x</w:t></w:r>");
+        }
+        format!("<w:document xmlns:w=\"{W}\"><w:body><w:p>{runs}</w:p></w:body></w:document>")
+    }
+
+    fn sibling_paragraph_fixture(paragraph_count: usize) -> String {
+        let mut paragraphs = String::new();
+        for _ in 0..paragraph_count {
+            paragraphs.push_str("<w:p><w:r><w:t>x</w:t></w:r></w:p>");
+        }
+        format!("<w:document xmlns:w=\"{W}\"><w:body>{paragraphs}</w:body></w:document>")
+    }
+
+    #[test]
+    fn scan_work_is_additive_across_independent_growth_axes() -> Result<(), super::ScanError> {
+        let empty_runs =
+            scan_wordprocessing_part(sibling_run_fixture(0).as_bytes(), ScanLimits::default())?;
+        let small_runs =
+            scan_wordprocessing_part(sibling_run_fixture(512).as_bytes(), ScanLimits::default())?;
+        let large_runs =
+            scan_wordprocessing_part(sibling_run_fixture(1_024).as_bytes(), ScanLimits::default())?;
+        assert_eq!(
+            large_runs.coverage.work.events - empty_runs.coverage.work.events,
+            2 * (small_runs.coverage.work.events - empty_runs.coverage.work.events),
+        );
+        assert_eq!(small_runs.coverage.work.inline_context_copies, 0);
+        assert_eq!(large_runs.coverage.work.inline_context_copies, 0);
+
+        let empty_paragraphs = scan_wordprocessing_part(
+            sibling_paragraph_fixture(0).as_bytes(),
+            ScanLimits::default(),
+        )?;
+        let small_paragraphs = scan_wordprocessing_part(
+            sibling_paragraph_fixture(256).as_bytes(),
+            ScanLimits::default(),
+        )?;
+        let large_paragraphs = scan_wordprocessing_part(
+            sibling_paragraph_fixture(512).as_bytes(),
+            ScanLimits::default(),
+        )?;
+        assert_eq!(
+            large_paragraphs.coverage.work.events - empty_paragraphs.coverage.work.events,
+            2 * (small_paragraphs.coverage.work.events - empty_paragraphs.coverage.work.events),
+        );
+        Ok(())
     }
 
     proptest! {
