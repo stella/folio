@@ -35,12 +35,21 @@ describe("document section properties are integer-only (issue #417)", () => {
   test("document root declares the full namespace set needed by raw-replay paths", () => {
     // The parser preserves unmodeled OOXML children (data hashes, cex /
     // cid extensions) inside `rawPropertiesXml`. A canonical
-    // `<w:sdtPr>` with a `<w16sdtdh:dataHash>` would replay an
-    // undeclared prefix if the document root only emits the minimal
-    // set — Word would refuse to open the file. Pin every w16* prefix
-    // here so the regression can't drift.
+    // `<w:sdtPr>` with a `<w16sdtdh:dataHash>` or a captured DrawingML
+    // picture would replay an undeclared prefix if the document root only
+    // emitted the minimal set. Pin the raw-replay namespace set here.
     const xml = serializeDocument(createEmptyDocument());
-    for (const prefix of ["w14", "w15", "w16", "w16cex", "w16cid", "w16sdtdh", "w16se"]) {
+    for (const prefix of [
+      "a",
+      "pic",
+      "w14",
+      "w15",
+      "w16",
+      "w16cex",
+      "w16cid",
+      "w16sdtdh",
+      "w16se",
+    ]) {
       expect(xml).toContain(`xmlns:${prefix}="`);
     }
   });

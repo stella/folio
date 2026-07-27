@@ -28,7 +28,7 @@ import { getParagraphText } from "./paragraphParser";
 import { parseSectionProperties, getDefaultSectionProperties } from "./sectionParser";
 import { parseStreamingXml } from "./streamingXmlParser";
 import type { StyleMap } from "./styleParser";
-import { parseXml, findChild, collectXmlnsDeclarations } from "./xmlParser";
+import { parseXml, findChild, collectXmlnsDeclarations, getLocalName } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 // ============================================================================
@@ -178,6 +178,48 @@ function buildSections(
   return sections;
 }
 
+/**
+ * Some producers place the body-level sectPr before all content. Consumers
+ * apply section properties in source order, but canonical serialization moves
+ * the body-level sectPr to the end and would therefore reverse the effective
+ * formats around paragraph section breaks.
+ *
+ * Rotate that leading property through the canonical paragraph-break slots so
+ * serialization repairs the element order without changing the observed
+ * section sequence.
+ */
+function canonicalizeLeadingBodySectionProperties(
+  bodyElement: XmlElement,
+  body: DocumentBody,
+): void {
+  const firstBodyChild = bodyElement.elements?.find(({ type }) => type === "element");
+  if (
+    getLocalName(firstBodyChild?.name) !== "sectPr" ||
+    body.finalSectionProperties === undefined
+  ) {
+    return;
+  }
+
+  const sectionBreakParagraphs = body.content.filter(
+    (
+      block,
+    ): block is Paragraph & {
+      sectionProperties: SectionProperties;
+    } => block.type === "paragraph" && block.sectionProperties !== undefined,
+  );
+  if (sectionBreakParagraphs.length === 0) {
+    return;
+  }
+
+  let nextProperties = body.finalSectionProperties;
+  for (const paragraph of sectionBreakParagraphs) {
+    const currentProperties = paragraph.sectionProperties;
+    paragraph.sectionProperties = nextProperties;
+    nextProperties = currentProperties;
+  }
+  body.finalSectionProperties = nextProperties;
+}
+
 // ============================================================================
 // MAIN PARSER
 // ============================================================================
@@ -240,6 +282,8 @@ export function parseDocumentBody(
   if (finalSectPr) {
     result.finalSectionProperties = parseSectionProperties(finalSectPr);
   }
+
+  canonicalizeLeadingBodySectionProperties(bodyEl, result);
 
   // Build sections from content
   result.sections = buildSections(result.content, result.finalSectionProperties);

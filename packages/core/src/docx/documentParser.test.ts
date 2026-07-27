@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { Paragraph, Run } from "../types/document";
 import { parseDocumentBody } from "./documentParser";
 import { parseNumbering } from "./numberingParser";
+import { serializeDocumentBody } from "./serializer/documentSerializer";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -77,6 +78,38 @@ const textBoxDrawingContentXml = (content: string, bodyProperties = "<wps:bodyPr
 
 const textBoxDrawingXml = (text: string, bodyProperties = "<wps:bodyPr/>") =>
   textBoxDrawingContentXml(`<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`, bodyProperties);
+
+describe("parseDocumentBody section ordering", () => {
+  test("canonicalizes a leading body sectPr without reversing effective section formats", () => {
+    const body = parseDocumentBody(`${XML_DECLARATION}
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>
+    <w:p><w:r><w:t>First section</w:t></w:r></w:p>
+    <w:p>
+      <w:pPr><w:sectPr/></w:pPr>
+      <w:r><w:t>Section break</w:t></w:r>
+    </w:p>
+    <w:p><w:r><w:t>Second section</w:t></w:r></w:p>
+  </w:body>
+</w:document>`);
+
+    const sectionBreak = body.content.at(1);
+    expect(sectionBreak?.type).toBe("paragraph");
+    if (sectionBreak?.type !== "paragraph") {
+      throw new Error("expected the second block to be a paragraph");
+    }
+    expect(sectionBreak.sectionProperties).toMatchObject({
+      pageWidth: 11_906,
+      pageHeight: 16_838,
+    });
+    expect(body.finalSectionProperties?.pageWidth).toBeUndefined();
+    expect(body.finalSectionProperties?.pageHeight).toBeUndefined();
+
+    const serialized = serializeDocumentBody(body);
+    expect(serialized.indexOf('w:w="11906"')).toBeLessThan(serialized.lastIndexOf("<w:sectPr/>"));
+  });
+});
 
 describe("parseDocumentBody list numbering", () => {
   test("renders legal multilevel numbering with decimal parent counters", () => {

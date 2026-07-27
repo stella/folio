@@ -26,6 +26,7 @@ import { serializeTable } from "./tableSerializer";
  * Standard OOXML namespaces for document.xml
  */
 const NAMESPACES = {
+  a: "http://schemas.openxmlformats.org/drawingml/2006/main",
   wpc: "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas",
   cx: "http://schemas.microsoft.com/office/drawing/2014/chartex",
   cx1: "http://schemas.microsoft.com/office/drawing/2015/9/8/chartex",
@@ -41,6 +42,7 @@ const NAMESPACES = {
   am3d: "http://schemas.microsoft.com/office/drawing/2017/model3d",
   o: "urn:schemas-microsoft-com:office:office",
   oel: "http://schemas.microsoft.com/office/2019/extlst",
+  pic: "http://schemas.openxmlformats.org/drawingml/2006/picture",
   r: "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
   m: "http://schemas.openxmlformats.org/officeDocument/2006/math",
   v: "urn:schemas-microsoft-com:vml",
@@ -73,9 +75,11 @@ function buildNamespaceDeclarations(): string {
   // document root, the replayed XML would carry undefined prefixes and
   // Word refuses to open the file.
   const declared = {
+    a: NAMESPACES.a,
     wpc: NAMESPACES.wpc,
     mc: NAMESPACES.mc,
     o: NAMESPACES.o,
+    pic: NAMESPACES.pic,
     r: NAMESPACES.r,
     m: NAMESPACES.m,
     v: NAMESPACES.v,
