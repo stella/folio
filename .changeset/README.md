@@ -3,7 +3,9 @@
 This folder is managed by [Changesets](https://github.com/changesets/changesets).
 
 Every PR that changes published source under `packages/{docx-core,core,react,
-agents,vue,nuxt}/src` must ship a changeset describing the release:
+agents,vue,nuxt}/src`, or the `stella-docx-kernel` manifest or source, must ship
+a changeset describing the release. Rust kernel changes select `@stll/docx-core`
+so the npm and Cargo surfaces keep one version:
 
 ```sh
 bunx changeset
@@ -28,13 +30,23 @@ without one of the above.
 1. PRs merge to `main`, each carrying its changeset(s).
 2. `release-pr.yml` maintains a **"Version Packages"** PR that applies the
    pending changesets: it bumps the affected `package.json` versions, updates the
-   changelogs, and surgically synchronizes workspace self-versions in `bun.lock`
-   before a frozen install. The resolved dependency graph is never regenerated
-   as a side effect of versioning.
+   changelogs, and surgically synchronizes the DOCX kernel version in `Cargo.toml`
+   and `Cargo.lock` plus workspace self-versions in `bun.lock` before a frozen
+   install. The resolved dependency graphs are never regenerated as a side effect
+   of versioning.
 3. Merging that PR lands the version bumps on `main`. `publish.yml` builds and
-   packs all six public packages without a publishing credential, then delegates
-   registry state, dependency ordering, OIDC publishing, and per-package GitHub
-   Releases to the versioned shared workflow.
+   packs all six public npm packages without a publishing credential, then
+   delegates registry state, dependency ordering, OIDC publishing, and
+   per-package GitHub Releases to the versioned shared workflow.
+4. A `docx-core` changelog release also runs `publish-crate.yml`: it verifies the
+   registry package without a credential, then obtains a short-lived crates.io
+   token through OIDC and publishes the matching Rust crate.
 
-Changesets never publishes here; `publish.yml` remains the sole publish
-mechanism.
+Changesets only versions packages here; the two publish workflows own registry
+mutations.
+
+The first `stella-docx-kernel` version must be published manually because
+crates.io can configure trusted publishing only after the crate exists. Before
+merging its first Version Packages PR, publish the current synchronized version,
+then configure the trusted publisher for `stella/folio` and
+`.github/workflows/publish-crate.yml`.

@@ -9,17 +9,23 @@ import { defineConfig } from "vite";
 // this build with UNRESOLVED_ENTRY — exactly the failure a source-consuming
 // build (the playground) cannot surface.
 //
-// Bundle the @stll/folio-* packages (so their internals, and the worker inside
-// folio-core, go through the bundler) and externalize everything else (React,
-// ProseMirror, yjs, jszip, …): a consumer installs those itself, and leaving
-// them external keeps the build fast and focused on folio's own output.
-const isFolio = (id: string): boolean => id === "@stll/folio-react" || id === "@stll/folio-core";
+// Bundle the workspace packages under test so their internals, assets, and the
+// worker inside folio-core go through the bundler. Externalize everything else
+// (React, ProseMirror, yjs, jszip, …): a consumer installs those itself, and
+// leaving them external keeps the build fast and focused on workspace output.
+const BUNDLED_WORKSPACE_PACKAGES = [
+  "@stll/docx-core",
+  "@stll/folio-core",
+  "@stll/folio-react",
+] as const;
+
+const isBundledWorkspacePackage = (id: string): boolean =>
+  BUNDLED_WORKSPACE_PACKAGES.some(
+    (packageName) => id === packageName || id.startsWith(`${packageName}/`),
+  );
+
 const isBundled = (id: string): boolean =>
-  id.startsWith(".") ||
-  id.startsWith("/") ||
-  isFolio(id) ||
-  id.startsWith("@stll/folio-react/") ||
-  id.startsWith("@stll/folio-core/");
+  id.startsWith(".") || id.startsWith("/") || isBundledWorkspacePackage(id);
 
 export default defineConfig({
   build: {

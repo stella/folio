@@ -24,12 +24,14 @@ import {
 } from "@stll/folio-core/layout-engine/measure/measureWorker";
 import { getCachedTextWidth } from "@stll/folio-core/layout-engine/measure/cache";
 import { WORKER_FONT_FINGERPRINT_TEXT } from "@stll/folio-core/layout-engine/measure/measureWorkerProtocol";
+import { projectCompressedDocx, type DocxProjectionWire } from "@stll/docx-core/projection";
 
 import "@stll/folio-react/editor.css";
 
 import { useEffect, useRef, useState } from "react";
 
 const LOCALE = "en";
+let projectionPromise: Promise<DocxProjectionWire> | undefined;
 
 // Turn ON the off-main-thread font-metrics worker. It is OFF by default and is a
 // best-effort cache pre-warm (never on the critical layout path), so mounting
@@ -99,6 +101,7 @@ declare global {
     | {
         getEditorRef: () => DocxEditorRef | null;
         measureRoundTrip: () => Promise<{ width: number; alive: boolean }>;
+        projectFixture: () => Promise<DocxProjectionWire>;
       }
     | undefined;
 }
@@ -117,7 +120,10 @@ function App() {
       if (!response.ok) {
         throw new Error(`fixture fetch failed: HTTP ${response.status} for /fixture.docx`);
       }
-      setBuffer(await response.arrayBuffer());
+      const documentBuffer = await response.arrayBuffer();
+      projectionPromise = projectCompressedDocx(new Uint8Array(documentBuffer));
+      await projectionPromise;
+      setBuffer(documentBuffer);
     })();
   }, []);
 
@@ -125,6 +131,12 @@ function App() {
     globalThis.__folioSmoke = {
       getEditorRef: () => editorRef.current,
       measureRoundTrip,
+      projectFixture: () => {
+        if (projectionPromise === undefined) {
+          throw new Error("DOCX projection has not started");
+        }
+        return projectionPromise;
+      },
     };
     return () => {
       globalThis.__folioSmoke = undefined;

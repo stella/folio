@@ -1,0 +1,97 @@
+<?xml version="1.0" standalone="yes"?>
+<w:document
+    xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+>
+    <w:body>
+        <w:p w14:paraId="1">
+            <w:r>
+                <w:rPr>
+                    <w:rStyle w:val="test" />
+                    <w:vanish />
+                </w:rPr>
+                <w:t xml:space="preserve">test</w:t>
+                <w:tab />
+                <w:ptab />
+                <w:br w:type="page" />
+                <w:br w:type="column" />
+                <w:br />
+                <w:cr />
+                <w:softHyphen />
+                <w:noBreakHyphen />
+                <w:sym w:char="00A9" />
+            </w:r>
+            <w:r>
+                <w:del author="author">
+                    <w:delText xml:space="preserve">deleted</w:delText>
+                </w:del>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="2">
+            <w:r>
+                <w:rPr>
+                    <w:rStyle w:val="test" />
+                    <w:rStyle w:val="HideTWBInt" />
+                </w:rPr>
+                <w:t xml:space="preserve">test</w:t>
+                <w:tab />
+                <w:ptab />
+                <w:br w:type="page" />
+                <w:br w:type="column" />
+                <w:br />
+                <w:cr />
+                <w:softHyphen />
+                <w:noBreakHyphen />
+                <w:sym w:char="00A9" />
+            </w:r>
+            <w:r>
+                <w:del author="author">
+                    <w:delText xml:space="preserve">deleted</w:delText>
+                </w:del>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="3">
+            <w:r>
+                <w:rPr>
+                    <w:rStyle w:val="test" />
+                    <w:rStyle w:val="HideTWBExt" />
+                </w:rPr>
+                <w:t xml:space="preserve">test</w:t>
+                <w:tab />
+                <w:ptab />
+                <w:br w:type="page" />
+                <w:br w:type="column" />
+                <w:br />
+                <w:cr />
+                <w:softHyphen />
+                <w:noBreakHyphen />
+                <w:sym w:char="00A9" />
+            </w:r>
+            <w:r>
+                <w:del author="author">
+                    <w:delText xml:space="preserve">deleted</w:delText>
+                </w:del>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="4">
+            <w:r>
+                <w:t xml:space="preserve">test</w:t>
+                <w:tab />
+                <w:ptab />
+                <w:br w:type="page" />
+                <w:br w:type="column" />
+                <w:br />
+                <w:cr />
+                <w:softHyphen />
+                <w:noBreakHyphen />
+                <w:sym w:char="00A9" />
+            </w:r>
+            <w:r>
+                <w:del author="author">
+                    <w:delText xml:space="preserve">deleted</w:delText>
+                </w:del>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="last" />
+    </w:body>
+</w:document>

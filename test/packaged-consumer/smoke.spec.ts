@@ -26,12 +26,14 @@ import { expect, test } from "@playwright/test";
 import type { ConsoleMessage } from "@playwright/test";
 
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
+import type { DocxProjectionWire } from "@stll/docx-core/projection";
 
 declare global {
   var __folioSmoke:
     | {
         getEditorRef: () => DocxEditorRef | null;
         measureRoundTrip: () => Promise<{ width: number; alive: boolean }>;
+        projectFixture: () => Promise<DocxProjectionWire>;
       }
     | undefined;
 }
@@ -64,6 +66,12 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
     },
   );
   await page.evaluate(() => document.fonts.ready);
+
+  const projection = await page.evaluate(() => globalThis.__folioSmoke?.projectFixture());
+  expect(projection?.[0], "packed DOCX projection schema must load through WASM").toBe(2);
+  expect(projection?.[1].length ?? 0, "fixture must contain projected paragraphs").toBeGreaterThan(
+    0,
+  );
 
   // A painted page with real geometry: paged layout ran to completion.
   const pageBox = await page.locator(".layout-page").first().boundingBox();

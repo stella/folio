@@ -55,6 +55,7 @@ describe("bun.lock workspace self-version synchronization", () => {
     const command = packageJson.scripts["changeset:version"];
 
     expect(command).not.toMatch(/\brm\b/);
+    expect(command).toContain("sync-docx-kernel-version.ts --write");
     expect(command).toContain("check-lockfile-workspace-versions.ts --write");
     expect(command).toEndWith("bun install --frozen-lockfile");
   });

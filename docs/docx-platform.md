@@ -46,6 +46,24 @@ When a DOCX capability is useful outside one product, its implementation and
 tests should originate in Folio. Hosts consume a released Folio API instead of
 copying parsers, transforms, or serializers into application code.
 
+### Portable projection kernel
+
+Folio's bounded package projection is implemented once in Rust under
+`crates/docx-kernel`. Browser consumers use the ordinary asynchronous TypeScript
+surface at `@stll/docx-core/projection`; that surface loads and caches the
+single-threaded WebAssembly artifact but does not implement an alternate OOXML
+parser. Native Rust consumers use the same crate and versioned projection model.
+
+The browser profile requires standard WebAssembly only. It does not require WASI,
+workers, shared memory, or cross-origin isolation. The package-relative artifact is
+verified through a packed downstream browser build, while native and WebAssembly
+tests share namespace, revision, structure, resource-limit, and output contracts.
+
+Package paragraph identifiers and projection ordinals describe one immutable DOCX
+snapshot. They are not host object identifiers or durable application addresses. A
+host may attach its own navigation identity only after proving that its ordered
+document view describes the same revision.
+
 The boundary does not prevent a host from storing Folio operation records in
 its own audit log or presenting domain-specific UI. It prevents storage and
 workflow concerns from leaking into the document engine.

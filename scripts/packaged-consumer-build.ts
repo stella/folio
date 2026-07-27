@@ -24,7 +24,7 @@
 // Exits non-zero on any failure. Run via `bun run test:packaged-consumer`.
 
 import { $ } from "bun";
-import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -46,6 +46,7 @@ import {
 // error still propagates (Bun exits non-zero on it) after cleanup runs.
 let failure: string | null = null;
 const workerChunks: string[] = [];
+const wasmOutputs: string[] = [];
 
 let docxCorePackDir = "";
 let corePackDir = "";
@@ -99,6 +100,15 @@ try {
       return;
     }
     workerChunks.push(`React ${reactMajor}: ${workerChunk}`);
+
+    const main = await readFile(path.join(consumerDir, "dist", "main.js"), "utf8");
+    const wasmAsset = distFiles.find((file) => file.endsWith(".wasm"));
+    const inlineWasm = main.includes("data:application/wasm;base64,");
+    if (!wasmAsset && !inlineWasm) {
+      failure = `✗ packaged-consumer: React ${reactMajor} build produced no usable WebAssembly output. dist: ${distFiles.join(", ")}`;
+      return;
+    }
+    wasmOutputs.push(`React ${reactMajor}: ${wasmAsset ?? "library-mode inline asset"}`);
   };
 
   for (const reactMajor of REACT_PEER_MAJORS) {
@@ -123,5 +133,5 @@ if (failure !== null) {
 }
 
 console.log(
-  `\n✓ packaged-consumer: production vite build succeeded for React 18 and 19; worker chunks emitted (${workerChunks.join(", ")}).`,
+  `\n✓ packaged-consumer: production Vite build emitted worker chunks (${workerChunks.join(", ")}) and WebAssembly outputs (${wasmOutputs.join(", ")}).`,
 );

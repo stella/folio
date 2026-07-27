@@ -205,7 +205,9 @@ folio is a Bun-first TypeScript monorepo for browser-based Word-document (`.docx
 editing. Its published packages have explicit ownership boundaries:
 
 - `@stll/docx-core` (`packages/docx-core`) owns the typed OOXML document model,
-  validation, serialization, and legal-source compiler.
+  validation, serialization, legal-source compiler, and portable DOCX projection
+  kernel. The kernel's Rust source lives in `crates/docx-kernel`; the package exposes
+  its browser binding through `@stll/docx-core/projection`.
 - `@stll/folio-core` (`packages/core`) owns DOCX parsing, ProseMirror integration,
   framework-neutral editor behavior, and page layout.
 - `@stll/folio-react` and `@stll/folio-vue` (`packages/react`, `packages/vue`) are thin
@@ -240,6 +242,17 @@ editing. Its published packages have explicit ownership boundaries:
   `bun run check:parity-contract` and `bun run check:export-parity` when an adapter
   contract changes.
 - Return minimal data from public APIs; do not export types with no consumer.
+- Keep DOCX projection semantics in `crates/docx-kernel`. TypeScript bindings may
+  initialize WebAssembly, validate its versioned result, and translate boundary
+  errors; they must not contain a fallback OOXML parser or duplicate Rust logic.
+- Keep the portable DOCX kernel single-threaded and browser-native: no WASI, workers,
+  shared memory, `SharedArrayBuffer`, or cross-origin-isolation requirement. Run
+  `bun run check:docx-kernel` after Rust changes; the gate checks deterministic
+  generation, runtime constraints, and transfer-size budgets.
+- Resolve OOXML elements by namespace URI plus local name, never by a hard-coded
+  prefix. Support Strict and Transitional namespace profiles explicitly, bound ZIP
+  and XML resource use, and preserve package paragraph identifiers as facts rather
+  than treating them as durable application or host-navigation identities.
 - **Add a changeset for any published-package `src` change.** Select every affected
   package, choose the appropriate bump, and add a one-line summary. Use
   `bunx changeset --empty` only when the source change intentionally needs no release.

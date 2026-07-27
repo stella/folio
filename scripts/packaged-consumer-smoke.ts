@@ -17,7 +17,7 @@
 // failure. Run via `bun run test:packaged-consumer-smoke`.
 
 import { $ } from "bun";
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -37,6 +37,7 @@ import {
 const previewPortForReactMajor = (reactMajor: ReactPeerMajor): number => 4300 + Number(reactMajor);
 const previewUrlForReactMajor = (reactMajor: ReactPeerMajor): string =>
   `http://localhost:${previewPortForReactMajor(reactMajor)}`;
+const runtimeDistDirectory = "dist-runtime";
 
 // Poll the preview server until it answers or the deadline passes.
 const waitForServer = async (url: string, timeoutMs: number): Promise<boolean> => {
@@ -129,6 +130,14 @@ try {
         console.error(build.stderr.toString() || build.stdout.toString());
         throw new Error(
           `packaged-consumer-smoke: React ${reactMajor} production vite build FAILED against the tarballs.`,
+        );
+      }
+      const distFiles = await readdir(path.join(consumerDir, runtimeDistDirectory), {
+        recursive: true,
+      });
+      if (!distFiles.some((file) => file.endsWith(".wasm"))) {
+        throw new Error(
+          `packaged-consumer-smoke: React ${reactMajor} production app emitted no lazy WebAssembly asset.`,
         );
       }
 

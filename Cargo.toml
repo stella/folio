@@ -1,0 +1,108 @@
+[workspace]
+members = ["crates/docx-kernel"]
+resolver = "3"
+
+[workspace.package]
+version = "0.5.2"
+edition = "2024"
+rust-version = "1.96"
+license = "Apache-2.0"
+publish = false
+repository = "https://github.com/stella/folio"
+
+[workspace.lints.rust]
+warnings = { level = "deny", priority = -1 }
+dead_code = "deny"
+future_incompatible = { level = "deny", priority = -1 }
+nonstandard_style = { level = "deny", priority = -1 }
+rust_2018_idioms = { level = "deny", priority = -1 }
+unreachable_code = "deny"
+unreachable_patterns = "deny"
+unreachable_pub = "deny"
+unsafe_code = "deny"
+unused_imports = "deny"
+unused_macros = "deny"
+unused_mut = "deny"
+unused_variables = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+bare_urls = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+panic = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "warn"
+integer_division = "warn"
+arithmetic_side_effects = "warn"
+as_conversions = "warn"
+clone_on_ref_ptr = "deny"
+create_dir = "deny"
+disallowed_macros = "deny"
+disallowed_methods = "deny"
+disallowed_types = "deny"
+empty_enum_variants_with_brackets = "deny"
+empty_structs_with_brackets = "deny"
+enum_glob_use = "deny"
+exit = "deny"
+filetype_is_file = "deny"
+float_cmp = "warn"
+fn_to_numeric_cast_any = "deny"
+format_collect = "deny"
+if_then_some_else_none = "deny"
+implicit_clone = "deny"
+inefficient_to_string = "deny"
+large_enum_variant = "deny"
+large_stack_arrays = "deny"
+large_stack_frames = "deny"
+manual_let_else = "deny"
+manual_memcpy = "deny"
+map_unwrap_or = "deny"
+mem_forget = "deny"
+missing_assert_message = "warn"
+module_name_repetitions = "allow"
+multiple_crate_versions = "allow"
+needless_collect = "deny"
+needless_continue = "deny"
+needless_pass_by_ref_mut = "deny"
+needless_pass_by_value = "deny"
+or_fun_call = "deny"
+print_stderr = "deny"
+print_stdout = "deny"
+redundant_clone = "deny"
+same_name_method = "deny"
+self_named_module_files = "allow"
+semicolon_if_nothing_returned = "deny"
+shadow_reuse = "allow"
+shadow_same = "warn"
+shadow_unrelated = "warn"
+std_instead_of_alloc = "allow"
+std_instead_of_core = "allow"
+string_slice = "warn"
+tests_outside_test_module = "allow"
+trivially_copy_pass_by_ref = "deny"
+unnecessary_wraps = "deny"
+unneeded_field_pattern = "deny"
+unreachable = "deny"
+unused_async = "deny"
+unused_self = "deny"
+use_self = "warn"
+used_underscore_binding = "deny"
+verbose_file_reads = "deny"
+wildcard_imports = "deny"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = "z"
+panic = "abort"
+strip = "symbols"

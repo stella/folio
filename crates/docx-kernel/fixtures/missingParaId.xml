@@ -1,0 +1,10 @@
+<?xml version="1.0" standalone="yes"?>
+<w:document
+    xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+>
+    <w:body>
+        <w:p />
+        <w:p w14:paraId="last" />
+    </w:body>
+</w:document>

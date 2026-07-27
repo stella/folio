@@ -1,0 +1,34 @@
+[package]
+name = "stella-docx-kernel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Bounded DOCX package projection and WordprocessingML scanning"
+license.workspace = true
+readme = "README.md"
+publish = ["crates-io"]
+repository.workspace = true
+keywords = ["docx", "ooxml", "wasm", "wordprocessingml"]
+categories = ["parser-implementations", "wasm"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+wasm = ["dep:js-sys", "dep:wasm-bindgen"]
+
+[dependencies]
+js-sys = { version = "0.3.103", optional = true }
+miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
+quick-xml = { version = "0.41", default-features = false }
+rawzip = { version = "0.5.1", default-features = false, features = ["alloc"] }
+thiserror = "2"
+wasm-bindgen = { version = "0.2.126", optional = true }
+
+[dev-dependencies]
+proptest = "1"
+zip = { version = "8.3.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+[lints]
+workspace = true

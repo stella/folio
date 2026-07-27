@@ -1,0 +1,43 @@
+<?xml version="1.0" standalone="yes"?>
+<w:document
+    xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+    xmlns:v="urn:schemas-microsoft-com:vml"
+    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+>
+    <w:body>
+        <w:p w14:paraId="1">
+            <w:r>
+                <w:t xml:space="preserve">test</w:t>
+            </w:r>
+            <v:textbox>
+                <w:txbxContent>
+                    <w:p w14:paraId="1.1">
+                        <w:r>
+                            <w:t xml:space="preserve">test</w:t>
+                        </w:r>
+                    </w:p>
+                </w:txbxContent>
+            </v:textbox>
+            <w:txbx>
+                <w:txbxContent>
+                    <w:p w14:paraId="1.1">
+                        <w:r>
+                            <w:t xml:space="preserve">test</w:t>
+                        </w:r>
+                    </w:p>
+                </w:txbxContent>
+            </w:txbx>
+            <a:graphicData>
+                <w:txbxContent>
+                    <w:p w14:paraId="1.1">
+                        <w:r>
+                            <w:t xml:space="preserve">test</w:t>
+                        </w:r>
+                    </w:p>
+                </w:txbxContent>
+            </a:graphicData>
+        </w:p>
+        <w:p w14:paraId="last" />
+    </w:body>
+</w:document>

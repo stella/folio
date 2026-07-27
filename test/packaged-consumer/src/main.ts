@@ -8,6 +8,7 @@
 import { DocxEditor, FolioUIProvider } from "@stll/folio-react";
 import { getFolioMessages } from "@stll/folio-react/messages";
 import { canPrefetchMeasurement } from "@stll/folio-core/layout-engine/measure/measureWorker";
+import { projectCompressedDocx } from "@stll/docx-core/projection";
 
 // Reference every import so nothing is eliminated before the bundler's worker
 // transform runs. Exported (not executed): the build is what is under test.
@@ -16,4 +17,5 @@ export const consumed = {
   FolioUIProvider,
   getFolioMessages,
   canPrefetchMeasurement,
+  projectCompressedDocx,
 };

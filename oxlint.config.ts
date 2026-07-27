@@ -75,6 +75,9 @@ export default library({
     // shape mirrors en.json byte-for-byte so `i18n-typegen --check` can diff it;
     // linting/`--fix` would rewrite it and break that drift check.
     "**/*.gen.ts",
+    // wasm-bindgen output is verified byte-for-byte by wasm:check. Formatting
+    // or lint fixes would make the committed artifact differ from its source.
+    "packages/docx-core/src/generated/**",
     // Lint-rule fixtures contain deliberate violations; the repo-wide run must
     // skip them. scripts/no-untranslated-jsx-literal.test.ts lints them
     // explicitly with `--no-ignore` to assert the rule's behaviour.
