@@ -795,6 +795,9 @@ pub fn scan_wordprocessing_part_with(
     let mut scanner = Scanner::new(limits, sink);
     loop {
         let event = reader.read_event().map_err(|_| ScanError::InvalidXml)?;
+        if matches!(event, Event::Eof) {
+            break;
+        }
         scanner.record_event()?;
         match event {
             Event::Start(element) => scanner.start(&reader, &element)?,
@@ -826,7 +829,7 @@ pub fn scan_wordprocessing_part_with(
             }
             Event::End(_) => scanner.end()?,
             Event::DocType(_) => return Err(ScanError::DocumentTypeDeclaration),
-            Event::Eof => break,
+            Event::Eof => return Err(ScanError::InvalidXml),
             _ => {}
         }
     }
