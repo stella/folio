@@ -142,10 +142,8 @@ export const projectCompressedDocx = (bytes: Uint8Array): Promise<DocxProjection
 export const projectCompressedDocxWithReviewFacts = (
   bytes: Uint8Array,
 ): Promise<DocxPackageProjectionWire> =>
-  projectWith(
-    {
-      bytes,
-      project: projectCompressedDocxWithReviewFactsInWasm,
-      message: PACKAGE_PROJECTION_FAILURE_MESSAGE,
-    },
-  );
+  projectWith({
+    bytes,
+    project: projectCompressedDocxWithReviewFactsInWasm,
+    message: PACKAGE_PROJECTION_FAILURE_MESSAGE,
+  });
