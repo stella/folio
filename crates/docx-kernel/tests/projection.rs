@@ -1382,7 +1382,7 @@ fn comment_controls_follow_the_requested_text_materialization() {
 #[test]
 fn comment_markers_inside_suppressed_textboxes_cannot_create_known_anchors() {
     let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>
-      <w:r><w:t>A</w:t></w:r><w:txbxContent><w:p><w:commentRangeStart w:id="1"/><w:r><w:t>hidden</w:t><w:commentReference w:id="1"/></w:r><w:commentRangeEnd w:id="1"/></w:p></w:txbxContent><w:r><w:t>B</w:t></w:r>
+      <w:r><w:t>A</w:t></w:r><w:txbxContent><w:p><w:commentRangeStart w:id="1"/><w:ins w:id="2" w:author="Reviewer"><w:r><w:t>hidden</w:t><w:commentReference w:id="1"/></w:r></w:ins><w:commentRangeEnd w:id="1"/></w:p></w:txbxContent><w:r><w:t>B</w:t></w:r>
     </w:p></w:body></w:document>"#;
     let comments_xml = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="1"><w:p><w:r><w:t>Review</w:t></w:r></w:p></w:comment></w:comments>"#;
     let projection = project_docx_with_review_facts(
@@ -1405,6 +1405,15 @@ fn comment_markers_inside_suppressed_textboxes_cannot_create_known_anchors() {
     };
     assert_eq!(
         comments[0].content,
+        ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation)
+    );
+    let ReviewFactSet::Known(revisions) = projection.review_facts.revisions else {
+        panic!("valid revision attribution should be known");
+    };
+    assert_eq!(revisions.len(), 1);
+    assert_eq!(revisions[0].author, "Reviewer");
+    assert_eq!(
+        revisions[0].content,
         ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation)
     );
 }

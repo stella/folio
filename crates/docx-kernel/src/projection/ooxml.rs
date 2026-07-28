@@ -564,6 +564,7 @@ impl ProjectionState {
             self.frames.push(Frame::Other);
             return Ok(());
         }
+        let attributed_revision = self.record_attributed_revision(reader, element, name)?;
         if name == b"txbxContent" {
             self.frames.push(Frame::Textbox);
             return Ok(());
@@ -578,7 +579,6 @@ impl ProjectionState {
             self.frames.push(Frame::Other);
             return Ok(());
         }
-        let attributed_revision = self.record_attributed_revision(reader, element, name)?;
         match name {
             b"commentRangeStart" => self.start_review_comment_anchor(reader, element)?,
             b"commentRangeEnd" => self.end_review_comment_anchor(reader, element)?,
