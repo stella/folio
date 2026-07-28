@@ -1271,6 +1271,145 @@ fn fuses_document_projection_with_attributed_revisions_and_comment_threads() {
 }
 
 #[test]
+fn bounds_aggregate_review_detail_bytes_before_repeating_anchor_text() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:commentRangeStart w:id="1"/><w:commentRangeStart w:id="2"/><w:ins w:id="3"><w:r><w:t>0123456789</w:t></w:r></w:ins><w:commentRangeEnd w:id="1"/><w:commentRangeEnd w:id="2"/></w:p>
+    </w:body></w:document>"#;
+    let comments =
+        br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:comment w:id="1"><w:p><w:r><w:t>A</w:t></w:r></w:p></w:comment>
+      <w:comment w:id="2"><w:p><w:r><w:t>B</w:t></w:r></w:p></w:comment>
+    </w:comments>"#;
+    let package_bytes = package(
+        &[
+            ("word/document.xml", document),
+            ("word/comments.xml", comments),
+        ],
+        CompressionMethod::Deflated,
+    );
+    let project = |maximum_review_detail_bytes| {
+        project_docx_with_review_facts(
+            &package_bytes,
+            DocxLimits::default(),
+            ReviewFactLimits {
+                maximum_review_detail_bytes,
+                ..ReviewFactLimits::default()
+            },
+            ProjectionOptions::default(),
+            allocate,
+        )
+        .unwrap()
+    };
+
+    let ReviewFactSet::Known(at_boundary) = project(32).review_facts.comments else {
+        panic!("the exact aggregate output boundary must remain known");
+    };
+    assert_eq!(at_boundary.len(), 2);
+    assert_eq!(
+        project(31).review_facts.comments,
+        ReviewFactSet::Unknown(ReviewFactUnknownReason::ResourceLimit)
+    );
+}
+
+#[test]
+fn whitespace_only_revision_content_is_not_formatting_only() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>
+      <w:ins w:id="1"><w:r><w:t xml:space="preserve"> </w:t><w:tab/><w:br/><w:t>&#xA0;&#x2003;</w:t></w:r></w:ins>
+    </w:p></w:body></w:document>"#;
+    let projection = project_docx_with_review_facts(
+        &package(
+            &[("word/document.xml", document)],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        ReviewFactLimits::default(),
+        ProjectionOptions::default(),
+        allocate,
+    )
+    .unwrap();
+    let ReviewFactSet::Known(revisions) = projection.review_facts.revisions else {
+        panic!("bounded revision facts should be known");
+    };
+    let ReviewDetail::Known(content) = &revisions[0].content else {
+        panic!("inline revision content should be known");
+    };
+    assert_eq!(content.text, " \t\u{000b}\u{00a0}\u{2003}");
+    assert!(!content.formatting_only);
+}
+
+#[test]
+fn comment_controls_follow_the_requested_text_materialization() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:commentRangeStart w:id="1"/><w:r><w:t>X</w:t></w:r><w:commentRangeEnd w:id="1"/></w:p></w:body></w:document>"#;
+    let comments_xml = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="1"><w:p><w:r><w:t>A</w:t><w:tab/><w:br/><w:br w:type="page"/><w:br w:type="column"/><w:cr/><w:softHyphen/><w:noBreakHyphen/><w:t>Z</w:t></w:r></w:p></w:comment></w:comments>"#;
+    let package_bytes = package(
+        &[
+            ("word/document.xml", document),
+            ("word/comments.xml", comments_xml),
+        ],
+        CompressionMethod::Deflated,
+    );
+    for (materialization, expected) in [
+        (
+            TextMaterialization::WordHost,
+            "A\t\u{000b}\u{000c}\u{000e}\r\u{001f}\u{001e}Z",
+        ),
+        (
+            TextMaterialization::ReadablePlainText,
+            "A\t\n\n\n\n\u{00ad}\u{2011}Z",
+        ),
+    ] {
+        let projection = project_docx_with_review_facts(
+            &package_bytes,
+            DocxLimits::default(),
+            ReviewFactLimits::default(),
+            ProjectionOptions {
+                text_materialization: materialization,
+                ..ProjectionOptions::default()
+            },
+            allocate,
+        )
+        .unwrap();
+        let ReviewFactSet::Known(comments) = projection.review_facts.comments else {
+            panic!("valid comments should be known");
+        };
+        let ReviewDetail::Known(content) = &comments[0].content else {
+            panic!("anchored comment content should be known");
+        };
+        assert_eq!(content.comment_text, expected);
+    }
+}
+
+#[test]
+fn comment_markers_inside_suppressed_textboxes_cannot_create_known_anchors() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>
+      <w:r><w:t>A</w:t></w:r><w:txbxContent><w:p><w:commentRangeStart w:id="1"/><w:r><w:t>hidden</w:t><w:commentReference w:id="1"/></w:r><w:commentRangeEnd w:id="1"/></w:p></w:txbxContent><w:r><w:t>B</w:t></w:r>
+    </w:p></w:body></w:document>"#;
+    let comments_xml = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="1"><w:p><w:r><w:t>Review</w:t></w:r></w:p></w:comment></w:comments>"#;
+    let projection = project_docx_with_review_facts(
+        &package(
+            &[
+                ("word/document.xml", document),
+                ("word/comments.xml", comments_xml),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        ReviewFactLimits::default(),
+        ProjectionOptions::default(),
+        allocate,
+    )
+    .unwrap();
+    assert_eq!(projection.document.paragraphs[0].text, "AB");
+    let ReviewFactSet::Known(comments) = projection.review_facts.comments else {
+        panic!("valid comments should be known");
+    };
+    assert_eq!(
+        comments[0].content,
+        ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation)
+    );
+}
+
+#[test]
 fn accepts_sparse_extensions_wrapper_ids_case_variants_and_full_on_off_values() {
     let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>"#;
     let comments = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">

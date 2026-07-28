@@ -272,6 +272,7 @@ where
         parts.comments,
         parts.comments_extended,
         review_limits,
+        options.text_materialization,
     );
     Ok(DocumentPackageProjection {
         document,

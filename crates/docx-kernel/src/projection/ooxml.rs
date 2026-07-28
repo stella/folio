@@ -98,7 +98,7 @@ enum ParagraphMarkRevision {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TextControl {
+pub(super) enum TextControl {
     Tab,
     LineBreak,
     PageBreak,
@@ -110,7 +110,10 @@ enum TextControl {
 }
 
 impl TextControl {
-    const fn materialize(self, materialization: TextMaterialization) -> Option<&'static str> {
+    pub(super) const fn materialize(
+        self,
+        materialization: TextMaterialization,
+    ) -> Option<&'static str> {
         match materialization {
             TextMaterialization::WordHost => Some(match self {
                 Self::Tab => "\t",
@@ -561,20 +564,26 @@ impl ProjectionState {
             self.frames.push(Frame::Other);
             return Ok(());
         }
+        if name == b"txbxContent" {
+            self.frames.push(Frame::Textbox);
+            return Ok(());
+        }
+        if self.inside_textbox() {
+            if matches!(
+                name,
+                b"commentRangeStart" | b"commentRangeEnd" | b"commentReference"
+            ) {
+                self.suppress_review_comment_anchor(reader, element)?;
+            }
+            self.frames.push(Frame::Other);
+            return Ok(());
+        }
         let attributed_revision = self.record_attributed_revision(reader, element, name)?;
         match name {
             b"commentRangeStart" => self.start_review_comment_anchor(reader, element)?,
             b"commentRangeEnd" => self.end_review_comment_anchor(reader, element)?,
             b"commentReference" => self.record_review_comment_reference(reader, element)?,
             _ => {}
-        }
-        if name == b"txbxContent" {
-            self.frames.push(Frame::Textbox);
-            return Ok(());
-        }
-        if self.inside_textbox() {
-            self.frames.push(Frame::Other);
-            return Ok(());
         }
         if is_change_snapshot(name) {
             if self.revision_view == RevisionView::Original {
@@ -979,7 +988,7 @@ impl ProjectionState {
             .ok_or(ProjectionError::InvalidDocumentXml)?;
         attributed.content = ReviewDetail::Known(RevisionContent {
             span: ReviewSpan { start, end },
-            formatting_only: revision.text.trim().is_empty(),
+            formatting_only: revision.text.is_empty(),
             text: revision.text,
         });
         Ok(())
@@ -1153,6 +1162,20 @@ impl ProjectionState {
             self.review_comment_anchors.remove(&comment_id);
             self.invalid_review_comment_anchors.insert(comment_id);
         }
+        Ok(())
+    }
+
+    fn suppress_review_comment_anchor(
+        &mut self,
+        reader: &NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+    ) -> Result<(), ProjectionError> {
+        let Some(comment_id) = Self::review_comment_id(reader, element)? else {
+            return Ok(());
+        };
+        self.open_review_comment_anchors.remove(&comment_id);
+        self.review_comment_anchors.remove(&comment_id);
+        self.invalid_review_comment_anchors.insert(comment_id);
         Ok(())
     }
 

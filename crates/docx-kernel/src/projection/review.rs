@@ -8,7 +8,8 @@ use quick_xml::{
     reader::NsReader,
 };
 
-use super::DocumentProjection;
+use super::{DocumentProjection, TextMaterialization};
+use crate::projection::ooxml::TextControl;
 
 const WORDPROCESSING_TRANSITIONAL: &[u8] =
     b"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -21,6 +22,7 @@ pub struct ReviewFactLimits {
     pub maximum_comments_xml_bytes: usize,
     pub maximum_comments_extended_xml_bytes: usize,
     pub maximum_facts_per_family: usize,
+    pub maximum_review_detail_bytes: usize,
 }
 
 impl Default for ReviewFactLimits {
@@ -29,6 +31,7 @@ impl Default for ReviewFactLimits {
             maximum_comments_xml_bytes: 16 * 1024 * 1024,
             maximum_comments_extended_xml_bytes: 16 * 1024 * 1024,
             maximum_facts_per_family: 1_000_000,
+            maximum_review_detail_bytes: 32 * 1024 * 1024,
         }
     }
 }
@@ -166,7 +169,10 @@ pub(super) fn project_review_facts(
     comments_xml: Result<Option<Vec<u8>>, ReviewFactUnknownReason>,
     comments_extended_xml: Result<Option<Vec<u8>>, ReviewFactUnknownReason>,
     limits: ReviewFactLimits,
+    text_materialization: TextMaterialization,
 ) -> DocumentReviewFacts {
+    let (revisions, remaining_detail_bytes) =
+        bound_revision_details(revisions, limits.maximum_review_detail_bytes);
     let comments = match comments_xml {
         Ok(None) => ReviewFactSet::Known(Vec::new()),
         Ok(Some(comments_xml)) => match comments_extended_xml {
@@ -176,6 +182,8 @@ pub(super) fn project_review_facts(
                 comment_anchors,
                 document,
                 limits.maximum_facts_per_family,
+                remaining_detail_bytes,
+                text_materialization,
             )
             .map_or_else(ReviewFactSet::Unknown, ReviewFactSet::Known),
             Err(reason) => ReviewFactSet::Unknown(reason),
@@ -186,6 +194,30 @@ pub(super) fn project_review_facts(
         revisions,
         comments,
     }
+}
+
+fn bound_revision_details(
+    revisions: ReviewFactSet<AttributedRevision>,
+    maximum_detail_bytes: usize,
+) -> (ReviewFactSet<AttributedRevision>, usize) {
+    let ReviewFactSet::Known(facts) = &revisions else {
+        return (revisions, maximum_detail_bytes);
+    };
+    let detail_bytes = facts.iter().try_fold(0_usize, |total, fact| {
+        let bytes = match &fact.content {
+            ReviewDetail::Known(content) => content.text.len(),
+            ReviewDetail::Unknown(_) => 0,
+        };
+        total.checked_add(bytes)
+    });
+    let Some(remaining) = detail_bytes.and_then(|bytes| maximum_detail_bytes.checked_sub(bytes))
+    else {
+        return (
+            ReviewFactSet::Unknown(ReviewFactUnknownReason::ResourceLimit),
+            maximum_detail_bytes,
+        );
+    };
+    (revisions, remaining)
 }
 
 fn namespace_kind(namespace: &ResolveResult<'_>) -> NamespaceKind {
@@ -265,16 +297,18 @@ fn parse_comments(
     comment_anchors: Option<&HashMap<String, ReviewSpan>>,
     document: &DocumentProjection,
     maximum_facts: usize,
+    maximum_detail_bytes: usize,
+    text_materialization: TextMaterialization,
 ) -> Result<Vec<AttributedComment>, ReviewFactUnknownReason> {
-    let comments = parse_comment_rows(comments_xml, maximum_facts)?;
+    let comments = parse_comment_rows(comments_xml, maximum_facts, text_materialization)?;
+    let mut detail_budget = ReviewDetailBudget::new(maximum_detail_bytes);
     let Some(comments_extended_xml) = comments_extended_xml else {
-        return Ok(comments
-            .into_iter()
-            .map(|comment| {
-                let content = comment_content(&comment, comment_anchors, document);
-                attributed_comment(comment, None, false, content)
-            })
-            .collect());
+        let mut output = Vec::with_capacity(comments.len());
+        for comment in comments {
+            let content = comment_content(&comment, comment_anchors, document, &mut detail_budget)?;
+            output.push(attributed_comment(comment, None, false, content));
+        }
+        return Ok(output);
     };
     let mut extensions = parse_comment_extensions(comments_extended_xml, maximum_facts)?;
     let comment_ids_by_paragraph = comments
@@ -295,7 +329,7 @@ fn parse_comments(
     }
     let mut output = Vec::with_capacity(comments.len());
     for comment in comments {
-        let content = comment_content(&comment, comment_anchors, document);
+        let content = comment_content(&comment, comment_anchors, document, &mut detail_budget)?;
         let extension = comment
             .paragraph_id
             .as_ref()
@@ -347,32 +381,92 @@ fn comment_content(
     comment: &CommentRow,
     anchors: Option<&HashMap<String, ReviewSpan>>,
     document: &DocumentProjection,
-) -> ReviewDetail<CommentContent> {
+    detail_budget: &mut ReviewDetailBudget,
+) -> Result<ReviewDetail<CommentContent>, ReviewFactUnknownReason> {
     let Some(anchor) = anchors
         .and_then(|anchors| anchors.get(&comment.comment_id))
         .copied()
     else {
-        return ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation);
+        return Ok(ReviewDetail::Unknown(
+            ReviewFactUnknownReason::UnsupportedLocation,
+        ));
     };
-    let Some(referenced_text) = text_for_span(document, anchor) else {
-        return ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation);
+    let Some(referenced_text_bytes) = text_for_span_bytes(document, anchor) else {
+        return Ok(ReviewDetail::Unknown(
+            ReviewFactUnknownReason::UnsupportedLocation,
+        ));
     };
-    ReviewDetail::Known(CommentContent {
+    let detail_bytes = comment
+        .content
+        .len()
+        .checked_add(referenced_text_bytes)
+        .ok_or(ReviewFactUnknownReason::ResourceLimit)?;
+    detail_budget.reserve(detail_bytes)?;
+    let Some(referenced_text) = text_for_span(document, anchor, referenced_text_bytes) else {
+        return Ok(ReviewDetail::Unknown(
+            ReviewFactUnknownReason::UnsupportedLocation,
+        ));
+    };
+    Ok(ReviewDetail::Known(CommentContent {
         anchor,
         comment_text: comment.content.clone(),
         referenced_text,
-    })
+    }))
 }
 
-fn text_for_span(document: &DocumentProjection, span: ReviewSpan) -> Option<String> {
+struct ReviewDetailBudget {
+    remaining: usize,
+}
+
+impl ReviewDetailBudget {
+    const fn new(maximum: usize) -> Self {
+        Self { remaining: maximum }
+    }
+
+    fn reserve(&mut self, bytes: usize) -> Result<(), ReviewFactUnknownReason> {
+        self.remaining = self
+            .remaining
+            .checked_sub(bytes)
+            .ok_or(ReviewFactUnknownReason::ResourceLimit)?;
+        Ok(())
+    }
+}
+
+fn text_for_span_bytes(document: &DocumentProjection, span: ReviewSpan) -> Option<usize> {
     let start = document.paragraphs.get(span.start.paragraph_ordinal)?;
     let end = document.paragraphs.get(span.end.paragraph_ordinal)?;
     let start_utf8 = usize::try_from(span.start.utf8).ok()?;
     let end_utf8 = usize::try_from(span.end.utf8).ok()?;
     if span.start.paragraph_ordinal == span.end.paragraph_ordinal {
-        return start.text.get(start_utf8..end_utf8).map(str::to_owned);
+        return Some(start.text.get(start_utf8..end_utf8)?.len());
     }
-    let mut text = start.text.get(start_utf8..)?.to_owned();
+    let mut bytes = start.text.get(start_utf8..)?.len();
+    for paragraph in document
+        .paragraphs
+        .get(span.start.paragraph_ordinal.checked_add(1)?..span.end.paragraph_ordinal)?
+    {
+        bytes = bytes.checked_add(1)?.checked_add(paragraph.text.len())?;
+    }
+    bytes
+        .checked_add(1)?
+        .checked_add(end.text.get(..end_utf8)?.len())
+}
+
+fn text_for_span(
+    document: &DocumentProjection,
+    span: ReviewSpan,
+    byte_length: usize,
+) -> Option<String> {
+    let start = document.paragraphs.get(span.start.paragraph_ordinal)?;
+    let end = document.paragraphs.get(span.end.paragraph_ordinal)?;
+    let start_utf8 = usize::try_from(span.start.utf8).ok()?;
+    let end_utf8 = usize::try_from(span.end.utf8).ok()?;
+    let mut text = String::with_capacity(byte_length);
+    if span.start.paragraph_ordinal == span.end.paragraph_ordinal {
+        text.push_str(start.text.get(start_utf8..end_utf8)?);
+        return Some(text);
+    }
+    text.push_str(start.text.get(start_utf8..)?);
     for paragraph in document
         .paragraphs
         .get(span.start.paragraph_ordinal.checked_add(1)?..span.end.paragraph_ordinal)?
@@ -389,6 +483,7 @@ fn text_for_span(document: &DocumentProjection, span: ReviewSpan) -> Option<Stri
 fn parse_comment_rows(
     xml: &[u8],
     maximum_facts: usize,
+    text_materialization: TextMaterialization,
 ) -> Result<Vec<CommentRow>, ReviewFactUnknownReason> {
     let invalid = ReviewFactUnknownReason::InvalidComments;
     let mut reader = NsReader::from_reader(xml);
@@ -491,13 +586,31 @@ fn parse_comment_rows(
                 } else if kind == NamespaceKind::Wordprocessing
                     && let Some((_, comment)) = current.as_mut()
                 {
-                    match element.local_name().as_ref() {
-                        b"tab" | b"ptab" => comment.content.push('\t'),
-                        b"br" => comment.content.push('\u{000b}'),
-                        b"cr" => comment.content.push('\r'),
-                        b"softHyphen" => comment.content.push('\u{001f}'),
-                        b"noBreakHyphen" => comment.content.push('\u{001e}'),
-                        _ => {}
+                    let control = match element.local_name().as_ref() {
+                        b"tab" | b"ptab" => Some(TextControl::Tab),
+                        b"br" => Some(
+                            match comment_attribute(
+                                &reader,
+                                &element,
+                                NamespaceKind::Wordprocessing,
+                                b"type",
+                            )?
+                            .as_deref()
+                            {
+                                Some("page") => TextControl::PageBreak,
+                                Some("column") => TextControl::ColumnBreak,
+                                _ => TextControl::LineBreak,
+                            },
+                        ),
+                        b"cr" => Some(TextControl::CarriageReturn),
+                        b"softHyphen" => Some(TextControl::SoftHyphen),
+                        b"noBreakHyphen" => Some(TextControl::NoBreakHyphen),
+                        _ => None,
+                    };
+                    if let Some(text) =
+                        control.and_then(|control| control.materialize(text_materialization))
+                    {
+                        comment.content.push_str(text);
                     }
                 }
                 depth = depth.checked_add(1).ok_or(invalid)?;
