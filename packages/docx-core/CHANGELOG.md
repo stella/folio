@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.9.0
+
+### Minor Changes
+
+- [#525](https://github.com/stella/folio/pull/525) [`d0ad1db`](https://github.com/stella/folio/commit/d0ad1db29b9fc6758c77512eeba6b093d539c3b3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Project bounded review text and UTF-8/UTF-16 document spans for attributed revisions and comments when OOXML supplies an unambiguous anchor.
+
 ## 0.8.0
 
 ### Minor Changes

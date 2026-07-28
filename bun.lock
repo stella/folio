@@ -48,7 +48,7 @@
     },
     "packages/core": {
       "name": "@stll/folio-core",
-      "version": "0.15.5",
+      "version": "0.15.6",
       "dependencies": {
         "@stll/docx-core": "workspace:^",
         "@stll/docx-utils": "^0.1.0",
@@ -81,7 +81,7 @@
     },
     "packages/docx-core": {
       "name": "@stll/docx-core",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "dependencies": {
         "better-result": "2.10.0",
         "jszip": "3.10.1",
