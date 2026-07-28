@@ -8,6 +8,8 @@ use crate::projection::structure::{
     ParagraphIndentation, ParagraphProperties, StyleDefinition, StyleSheet,
 };
 
+const MAXIMUM_OUTLINE_LEVEL: u8 = 9;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PropertiesOwner {
     DocumentDefaults,
@@ -166,7 +168,7 @@ fn start(
             if let Some(owner) = paragraph_properties_owner(frames)
                 && let Some(properties) = properties_mut(owner, sheet, current_style)
             {
-                properties.outline_level = Some(parse_level_attribute(reader, element)?);
+                properties.outline_level = Some(parse_outline_level_attribute(reader, element)?);
             }
             Frame::Other
         }
@@ -288,6 +290,17 @@ pub(super) fn parse_level_attribute(
 ) -> Result<u8, ProjectionError> {
     let level = parse_u32_attribute(reader, element)?;
     u8::try_from(level).map_err(|_| ProjectionError::InvalidDocumentXml)
+}
+
+pub(super) fn parse_outline_level_attribute(
+    reader: &NsReader<&[u8]>,
+    element: &BytesStart<'_>,
+) -> Result<u8, ProjectionError> {
+    let level = parse_level_attribute(reader, element)?;
+    if level > MAXIMUM_OUTLINE_LEVEL {
+        return Err(ProjectionError::InvalidDocumentXml);
+    }
+    Ok(level)
 }
 
 fn signed_attribute(

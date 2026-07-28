@@ -864,6 +864,35 @@ fn counts_outline_levels_against_the_shared_structural_fact_budget() {
 }
 
 #[test]
+fn rejects_outline_levels_outside_the_ooxml_range() {
+    let direct = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:outlineLvl w:val="10"/></w:pPr></w:p></w:body></w:document>"#;
+    assert_eq!(
+        project_document_xml(direct, allocate),
+        Err(ProjectionError::InvalidDocumentXml)
+    );
+
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Heading"/></w:pPr><w:r><w:t>Text</w:t></w:r></w:p></w:body></w:document>"#;
+    let styles = br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Heading"><w:pPr><w:outlineLvl w:val="10"/></w:pPr></w:style></w:styles>"#;
+    let projection = project_docx(
+        &package(
+            &[("word/document.xml", document), ("word/styles.xml", styles)],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("an unsupported optional styles part should preserve direct document facts");
+    assert_eq!(
+        projection.paragraphs[0].style_id.as_deref(),
+        Some("Heading")
+    );
+    assert_eq!(
+        projection.structural_facts.outline_levels,
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles)
+    );
+}
+
+#[test]
 fn resolves_inherited_indentation_and_numbering_without_partial_facts() {
     let document = br#"
       <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
