@@ -82,6 +82,26 @@ pub struct CommentContent {
 pub enum RevisionFactKind {
     Insertion,
     Deletion,
+    MoveFrom,
+    MoveTo,
+    CellInsertion,
+    CellDeletion,
+    CellMerge,
+    ParagraphPropertiesChange,
+    RunPropertiesChange,
+    SectionPropertiesChange,
+    TablePropertiesChange,
+    TableRowPropertiesChange,
+    TableCellPropertiesChange,
+    TableGridChange,
+    CustomXmlDeletionRangeStart,
+    CustomXmlDeletionRangeEnd,
+    CustomXmlInsertionRangeStart,
+    CustomXmlInsertionRangeEnd,
+    CustomXmlMoveFromRangeStart,
+    CustomXmlMoveFromRangeEnd,
+    CustomXmlMoveToRangeStart,
+    CustomXmlMoveToRangeEnd,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -117,6 +137,7 @@ struct CommentRow {
     initials: Option<String>,
     date: Option<String>,
     paragraph_id: Option<String>,
+    paragraph_id_from_wrapper: bool,
 }
 
 #[derive(Clone)]
@@ -213,6 +234,22 @@ fn comment_extension_attribute(
     .map_err(|_| ReviewFactUnknownReason::InvalidCommentsExtended)
 }
 
+fn comment_paragraph_id(
+    reader: &NsReader<&[u8]>,
+    element: &BytesStart<'_>,
+) -> Result<Option<String>, ReviewFactUnknownReason> {
+    for namespace in [
+        NamespaceKind::Wordprocessing2010,
+        NamespaceKind::Wordprocessing2012,
+        NamespaceKind::Wordprocessing,
+    ] {
+        if let Some(value) = comment_attribute(reader, element, namespace, b"paraId")? {
+            return Ok(Some(value.to_ascii_uppercase()));
+        }
+    }
+    Ok(None)
+}
+
 fn parse_comments(
     comments_xml: &[u8],
     comments_extended_xml: Option<&[u8]>,
@@ -226,46 +263,42 @@ fn parse_comments(
             .collect());
     };
     let mut extensions = parse_comment_extensions(comments_extended_xml, maximum_facts)?;
-    if extensions.len() != comments.len() {
-        return Err(ReviewFactUnknownReason::InvalidCommentsExtended);
-    }
     let comment_ids_by_paragraph = comments
         .iter()
-        .map(|comment| {
+        .filter_map(|comment| {
             comment
                 .paragraph_id
                 .as_ref()
                 .map(|paragraph_id| (paragraph_id.clone(), comment.comment_id.clone()))
-                .ok_or(ReviewFactUnknownReason::InvalidCommentsExtended)
         })
-        .collect::<Result<HashMap<_, _>, _>>()?;
-    if comment_ids_by_paragraph.len() != comments.len() {
+        .collect::<HashMap<_, _>>();
+    let comments_with_paragraph_ids = comments
+        .iter()
+        .filter(|comment| comment.paragraph_id.is_some())
+        .count();
+    if comment_ids_by_paragraph.len() != comments_with_paragraph_ids {
         return Err(ReviewFactUnknownReason::InvalidCommentsExtended);
     }
     let mut output = Vec::with_capacity(comments.len());
     for comment in comments {
-        let paragraph_id = comment
+        let extension = comment
             .paragraph_id
             .as_ref()
-            .ok_or(ReviewFactUnknownReason::InvalidCommentsExtended)?;
-        let extension = extensions
-            .remove(paragraph_id)
-            .ok_or(ReviewFactUnknownReason::InvalidCommentsExtended)?;
-        let parent_comment_id = extension
-            .parent_paragraph_id
-            .as_ref()
-            .map(|parent| {
-                comment_ids_by_paragraph
-                    .get(parent)
-                    .cloned()
-                    .ok_or(ReviewFactUnknownReason::InvalidCommentsExtended)
-            })
-            .transpose()?;
-        output.push(attributed_comment(
-            comment,
-            parent_comment_id,
-            extension.resolved,
-        ));
+            .and_then(|paragraph_id| extensions.remove(paragraph_id));
+        let (parent_comment_id, resolved) = extension.map_or(Ok((None, false)), |extension| {
+            let parent = extension
+                .parent_paragraph_id
+                .as_ref()
+                .map(|parent| {
+                    comment_ids_by_paragraph
+                        .get(parent)
+                        .cloned()
+                        .ok_or(ReviewFactUnknownReason::InvalidCommentsExtended)
+                })
+                .transpose()?;
+            Ok((parent, extension.resolved))
+        })?;
+        output.push(attributed_comment(comment, parent_comment_id, resolved));
     }
     if !extensions.is_empty() || contains_parent_cycle(&output) {
         return Err(ReviewFactUnknownReason::InvalidCommentsExtended);
@@ -339,6 +372,8 @@ fn parse_comment_rows(
                     if !comment_ids.insert(comment_id.clone()) {
                         return Err(invalid);
                     }
+                    let wrapper_paragraph_id = comment_paragraph_id(&reader, &element)?;
+                    let paragraph_id_from_wrapper = wrapper_paragraph_id.is_some();
                     current = Some((
                         depth,
                         CommentRow {
@@ -362,7 +397,8 @@ fn parse_comment_rows(
                                 NamespaceKind::Wordprocessing,
                                 b"date",
                             )?,
-                            paragraph_id: None,
+                            paragraph_id: wrapper_paragraph_id,
+                            paragraph_id_from_wrapper,
                         },
                     ));
                 } else if kind == NamespaceKind::Wordprocessing
@@ -370,14 +406,11 @@ fn parse_comment_rows(
                     && let Some((comment_depth, comment)) = current.as_mut()
                     && depth == comment_depth.saturating_add(1)
                 {
-                    // Word keys commentsExtended by the last direct-child
-                    // paragraph of the comment, not the first paragraph.
-                    comment.paragraph_id = comment_attribute(
-                        &reader,
-                        &element,
-                        NamespaceKind::Wordprocessing2010,
-                        b"paraId",
-                    )?;
+                    // Exporters may put the join key on the wrapper. Otherwise
+                    // Word keys commentsExtended by the last direct-child paragraph.
+                    if !comment.paragraph_id_from_wrapper {
+                        comment.paragraph_id = comment_paragraph_id(&reader, &element)?;
+                    }
                 }
                 depth = depth.checked_add(1).ok_or(invalid)?;
             }
@@ -441,11 +474,15 @@ fn parse_comment_extensions(
                         return Err(ReviewFactUnknownReason::ResourceLimit);
                     }
                     let paragraph_id = comment_extension_attribute(&reader, &element, b"paraId")?
-                        .ok_or(invalid)?;
+                        .ok_or(invalid)?
+                        .to_ascii_uppercase();
                     let parent_paragraph_id =
-                        comment_extension_attribute(&reader, &element, b"paraIdParent")?;
+                        comment_extension_attribute(&reader, &element, b"paraIdParent")?
+                            .map(|value| value.to_ascii_uppercase());
                     let resolved = comment_extension_attribute(&reader, &element, b"done")?
-                        .is_some_and(|value| matches!(value.as_str(), "1" | "true"));
+                        .map(|value| parse_on_off(&value))
+                        .transpose()?
+                        .unwrap_or(false);
                     if output
                         .insert(
                             paragraph_id,
@@ -465,6 +502,14 @@ fn parse_comment_extensions(
             Ok((_, Event::DocType(_))) | Err(_) => return Err(invalid),
             Ok(_) => {}
         }
+    }
+}
+
+fn parse_on_off(value: &str) -> Result<bool, ReviewFactUnknownReason> {
+    match value.to_ascii_lowercase().as_str() {
+        "1" | "true" | "on" => Ok(true),
+        "0" | "false" | "off" => Ok(false),
+        _ => Err(ReviewFactUnknownReason::InvalidCommentsExtended),
     }
 }
 

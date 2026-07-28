@@ -9,6 +9,7 @@
 // only after constructing or checking the exact collection shape under test.
 
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
 use stella_docx_kernel::{
@@ -1212,6 +1213,167 @@ fn fuses_document_projection_with_attributed_revisions_and_comment_threads() {
 }
 
 #[test]
+fn accepts_sparse_extensions_wrapper_ids_case_variants_and_full_on_off_values() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>"#;
+    let comments = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
+      <w:comment w:id="1" w14:paraId="a1b2c3d4"><w:p w14:paraId="FFFFFFFF"/></w:comment>
+      <w:comment w:id="2"><w:p/></w:comment>
+      <w:comment w:id="3"><w:p w14:paraId="e5f607a8"/></w:comment>
+    </w:comments>"#;
+    for (value, expected) in [
+        ("1", true),
+        ("true", true),
+        ("ON", true),
+        ("0", false),
+        ("False", false),
+        ("off", false),
+    ] {
+        let extended = format!(
+            r#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">
+              <w15:commentEx w15:paraId="A1B2C3D4"/>
+              <w15:commentEx w15:paraId="E5F607A8" w15:paraIdParent="A1b2C3d4" w15:done="{value}"/>
+            </w15:commentsEx>"#
+        );
+        let projection = project_docx_with_review_facts(
+            &package(
+                &[
+                    ("word/document.xml", document),
+                    ("word/comments.xml", comments),
+                    ("word/commentsExtended.xml", extended.as_bytes()),
+                ],
+                CompressionMethod::Deflated,
+            ),
+            DocxLimits::default(),
+            ReviewFactLimits::default(),
+            ProjectionOptions::default(),
+            allocate,
+        )
+        .unwrap();
+        let ReviewFactSet::Known(facts) = projection.review_facts.comments else {
+            panic!("valid sparse comment extension maps must remain known");
+        };
+        assert_eq!(facts.len(), 3);
+        assert_eq!(facts[2].parent_comment_id.as_deref(), Some("1"));
+        assert_eq!(facts[2].resolved, expected);
+        assert!(!facts[1].resolved);
+    }
+}
+
+#[test]
+fn records_every_supported_attributed_revision_kind_in_the_effective_body() {
+    let tags = [
+        "ins",
+        "del",
+        "moveFrom",
+        "moveTo",
+        "cellIns",
+        "cellDel",
+        "cellMerge",
+        "pPrChange",
+        "rPrChange",
+        "sectPrChange",
+        "tblPrChange",
+        "trPrChange",
+        "tcPrChange",
+        "tblGridChange",
+        "customXmlDelRangeStart",
+        "customXmlDelRangeEnd",
+        "customXmlInsRangeStart",
+        "customXmlInsRangeEnd",
+        "customXmlMoveFromRangeStart",
+        "customXmlMoveFromRangeEnd",
+        "customXmlMoveToRangeStart",
+        "customXmlMoveToRangeEnd",
+    ];
+    let mut markup = String::new();
+    for (index, tag) in tags.iter().enumerate() {
+        write!(markup, r#"<w:{tag} w:id="{index}" w:author="Reviewer"/>"#).unwrap();
+    }
+    let document = format!(
+        r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>{markup}</w:p></w:body></w:document>"#
+    );
+    let projection = project_docx_with_review_facts(
+        &package(
+            &[("word/document.xml", document.as_bytes())],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        ReviewFactLimits::default(),
+        ProjectionOptions::default(),
+        allocate,
+    )
+    .unwrap();
+    let ReviewFactSet::Known(revisions) = projection.review_facts.revisions else {
+        panic!("all recognized revision markup must produce complete attribution");
+    };
+    assert_eq!(
+        revisions
+            .iter()
+            .map(|revision| revision.kind)
+            .collect::<Vec<_>>(),
+        [
+            RevisionFactKind::Insertion,
+            RevisionFactKind::Deletion,
+            RevisionFactKind::MoveFrom,
+            RevisionFactKind::MoveTo,
+            RevisionFactKind::CellInsertion,
+            RevisionFactKind::CellDeletion,
+            RevisionFactKind::CellMerge,
+            RevisionFactKind::ParagraphPropertiesChange,
+            RevisionFactKind::RunPropertiesChange,
+            RevisionFactKind::SectionPropertiesChange,
+            RevisionFactKind::TablePropertiesChange,
+            RevisionFactKind::TableRowPropertiesChange,
+            RevisionFactKind::TableCellPropertiesChange,
+            RevisionFactKind::TableGridChange,
+            RevisionFactKind::CustomXmlDeletionRangeStart,
+            RevisionFactKind::CustomXmlDeletionRangeEnd,
+            RevisionFactKind::CustomXmlInsertionRangeStart,
+            RevisionFactKind::CustomXmlInsertionRangeEnd,
+            RevisionFactKind::CustomXmlMoveFromRangeStart,
+            RevisionFactKind::CustomXmlMoveFromRangeEnd,
+            RevisionFactKind::CustomXmlMoveToRangeStart,
+            RevisionFactKind::CustomXmlMoveToRangeEnd,
+        ]
+    );
+    assert!(
+        revisions
+            .iter()
+            .all(|revision| revision.author == "Reviewer")
+    );
+}
+
+#[test]
+fn resolves_review_parts_only_through_document_relationships() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>"#;
+    let comments = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="7" w:author="Ada"/></w:comments>"#;
+    let relationships = br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="review" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/comments" Target="review/comments-custom.xml"/></Relationships>"#;
+    let package_relationships = br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="document" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="custom/main.xml"/></Relationships>"#;
+    let projection = project_docx_with_review_facts(
+        &package(
+            &[
+                ("_rels/.rels", package_relationships),
+                ("custom/main.xml", document),
+                ("custom/_rels/main.xml.rels", relationships),
+                ("custom/review/comments-custom.xml", comments),
+                ("word/comments.xml", b"not XML"),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        ReviewFactLimits::default(),
+        ProjectionOptions::default(),
+        allocate,
+    )
+    .unwrap();
+    let ReviewFactSet::Known(projected_comments) = projection.review_facts.comments else {
+        panic!("relationship-selected comments should be known");
+    };
+    assert_eq!(projected_comments.len(), 1);
+    assert_eq!(projected_comments[0].comment_id, "7");
+}
+
+#[test]
 fn missing_comments_are_authoritatively_empty() {
     let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>"#;
     let projection = project_docx_with_review_facts(
@@ -1238,7 +1400,7 @@ fn missing_comments_are_authoritatively_empty() {
 fn malformed_or_incomplete_comment_graphs_fail_closed_without_losing_the_document() {
     let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>kept</w:t></w:r></w:p></w:body></w:document>"#;
     let comment = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:comment w:id="1"><w:p w14:paraId="AAAAAAAA"/></w:comment></w:comments>"#;
-    let cases: [(&[u8], ReviewFactUnknownReason); 4] = [
+    let cases: [(&[u8], ReviewFactUnknownReason); 5] = [
         (b"<broken", ReviewFactUnknownReason::InvalidCommentsExtended),
         (
             br#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="BBBBBBBB"/></w15:commentsEx>"#,
@@ -1250,6 +1412,10 @@ fn malformed_or_incomplete_comment_graphs_fail_closed_without_losing_the_documen
         ),
         (
             br#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="AAAAAAAA" w15:paraIdParent="AAAAAAAA"/></w15:commentsEx>"#,
+            ReviewFactUnknownReason::InvalidCommentsExtended,
+        ),
+        (
+            br#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="AAAAAAAA" w15:done="perhaps"/></w15:commentsEx>"#,
             ReviewFactUnknownReason::InvalidCommentsExtended,
         ),
     ];
@@ -1361,6 +1527,30 @@ fn duplicate_comment_parts_and_fact_limits_are_explicit_unknowns() {
         size_limited.review_facts.comments,
         ReviewFactSet::Unknown(ReviewFactUnknownReason::ResourceLimit)
     );
+
+    let mut dishonest_size = package(
+        &[
+            ("word/document.xml", document),
+            ("word/comments.xml", comments),
+        ],
+        CompressionMethod::Deflated,
+    );
+    set_zip_entry_uncompressed_size(&mut dishonest_size, b"word/comments.xml", 1);
+    let overflow = project_docx_with_review_facts(
+        &dishonest_size,
+        DocxLimits::default(),
+        ReviewFactLimits {
+            maximum_comments_xml_bytes: comments.len().saturating_sub(1),
+            ..ReviewFactLimits::default()
+        },
+        ProjectionOptions::default(),
+        allocate,
+    )
+    .unwrap();
+    assert_eq!(
+        overflow.review_facts.comments,
+        ReviewFactSet::Unknown(ReviewFactUnknownReason::ResourceLimit)
+    );
 }
 
 proptest::proptest! {
@@ -1406,6 +1596,39 @@ fn package(entries: &[(&str, &[u8])], method: CompressionMethod) -> Vec<u8> {
             .write_all(contents)
             .expect("test ZIP entry should write");
     }
+    let has_document_relationships = entries
+        .iter()
+        .any(|(name, _)| *name == "word/_rels/document.xml.rels");
+    if !has_document_relationships {
+        let mut relationships = Vec::new();
+        if entries.iter().any(|(name, _)| *name == "word/comments.xml") {
+            relationships.push(
+                r#"<Relationship Id="comments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>"#,
+            );
+        }
+        if entries
+            .iter()
+            .any(|(name, _)| *name == "word/commentsExtended.xml")
+        {
+            relationships.push(
+                r#"<Relationship Id="commentsExtended" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/>"#,
+            );
+        }
+        if !relationships.is_empty() {
+            archive
+                .start_file("word/_rels/document.xml.rels", options)
+                .expect("test relationships entry should start");
+            archive
+                .write_all(
+                    format!(
+                        r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{}</Relationships>"#,
+                        relationships.join("")
+                    )
+                    .as_bytes(),
+                )
+                .expect("test relationships entry should write");
+        }
+    }
     archive
         .finish()
         .expect("test ZIP should finish")
@@ -1429,6 +1652,30 @@ fn mutate_zip_headers(bytes: &mut [u8], mut mutate: impl FnMut(&mut u16, &mut u1
         bytes[flags_offset..flags_offset + 2].copy_from_slice(&flags.to_le_bytes());
         bytes[method_offset..method_offset + 2].copy_from_slice(&method.to_le_bytes());
         offset = method_offset + 2;
+    }
+}
+
+fn set_zip_entry_uncompressed_size(bytes: &mut [u8], expected_name: &[u8], size: u32) {
+    let mut offset = 0;
+    while offset + 46 <= bytes.len() {
+        let (name_length_offset, name_offset, size_offset) =
+            if bytes[offset..].starts_with(b"PK\x03\x04") {
+                (offset + 26, offset + 30, offset + 22)
+            } else if bytes[offset..].starts_with(b"PK\x01\x02") {
+                (offset + 28, offset + 46, offset + 24)
+            } else {
+                offset += 1;
+                continue;
+            };
+        let name_length = usize::from(u16::from_le_bytes([
+            bytes[name_length_offset],
+            bytes[name_length_offset + 1],
+        ]));
+        let name_end = name_offset.saturating_add(name_length);
+        if bytes.get(name_offset..name_end) == Some(expected_name) {
+            bytes[size_offset..size_offset + 4].copy_from_slice(&size.to_le_bytes());
+        }
+        offset = name_end;
     }
 }
 

@@ -508,7 +508,6 @@ impl ProjectionState {
         } else {
             b""
         };
-        self.record_attributed_revision(reader, element, name)?;
         let direct_run_child = if let Some(Frame::Run(run)) = self.frames.last_mut() {
             let child = run.direct_child_count;
             run.direct_child_count = run
@@ -537,15 +536,16 @@ impl ProjectionState {
             self.frames.push(Frame::Other);
             return Ok(());
         }
+        if self.inside_change_snapshot() {
+            self.frames.push(Frame::Other);
+            return Ok(());
+        }
+        self.record_attributed_revision(reader, element, name)?;
         if name == b"txbxContent" {
             self.frames.push(Frame::Textbox);
             return Ok(());
         }
         if self.inside_textbox() {
-            self.frames.push(Frame::Other);
-            return Ok(());
-        }
-        if self.inside_change_snapshot() {
             self.frames.push(Frame::Other);
             return Ok(());
         }
@@ -902,10 +902,8 @@ impl ProjectionState {
         element: &BytesStart<'_>,
         name: &[u8],
     ) -> Result<(), ProjectionError> {
-        let kind = match name {
-            b"ins" => RevisionFactKind::Insertion,
-            b"del" => RevisionFactKind::Deletion,
-            _ => return Ok(()),
+        let Some(kind) = revision_fact_kind(name) else {
+            return Ok(());
         };
         let ReviewRevisionCollection::Complete {
             maximum_facts,
@@ -1238,6 +1236,34 @@ impl ProjectionState {
         if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
             run.highlighted = true;
         }
+    }
+}
+
+const fn revision_fact_kind(name: &[u8]) -> Option<RevisionFactKind> {
+    match name {
+        b"ins" => Some(RevisionFactKind::Insertion),
+        b"del" => Some(RevisionFactKind::Deletion),
+        b"moveFrom" => Some(RevisionFactKind::MoveFrom),
+        b"moveTo" => Some(RevisionFactKind::MoveTo),
+        b"cellIns" => Some(RevisionFactKind::CellInsertion),
+        b"cellDel" => Some(RevisionFactKind::CellDeletion),
+        b"cellMerge" => Some(RevisionFactKind::CellMerge),
+        b"pPrChange" => Some(RevisionFactKind::ParagraphPropertiesChange),
+        b"rPrChange" => Some(RevisionFactKind::RunPropertiesChange),
+        b"sectPrChange" => Some(RevisionFactKind::SectionPropertiesChange),
+        b"tblPrChange" => Some(RevisionFactKind::TablePropertiesChange),
+        b"trPrChange" => Some(RevisionFactKind::TableRowPropertiesChange),
+        b"tcPrChange" => Some(RevisionFactKind::TableCellPropertiesChange),
+        b"tblGridChange" => Some(RevisionFactKind::TableGridChange),
+        b"customXmlDelRangeStart" => Some(RevisionFactKind::CustomXmlDeletionRangeStart),
+        b"customXmlDelRangeEnd" => Some(RevisionFactKind::CustomXmlDeletionRangeEnd),
+        b"customXmlInsRangeStart" => Some(RevisionFactKind::CustomXmlInsertionRangeStart),
+        b"customXmlInsRangeEnd" => Some(RevisionFactKind::CustomXmlInsertionRangeEnd),
+        b"customXmlMoveFromRangeStart" => Some(RevisionFactKind::CustomXmlMoveFromRangeStart),
+        b"customXmlMoveFromRangeEnd" => Some(RevisionFactKind::CustomXmlMoveFromRangeEnd),
+        b"customXmlMoveToRangeStart" => Some(RevisionFactKind::CustomXmlMoveToRangeStart),
+        b"customXmlMoveToRangeEnd" => Some(RevisionFactKind::CustomXmlMoveToRangeEnd),
+        _ => None,
     }
 }
 

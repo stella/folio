@@ -260,7 +260,9 @@ where
         allocate_id,
     )?;
     let review_facts = review::project_review_facts(
-        revisions.ok_or(ProjectionError::InvalidDocumentXml)?,
+        revisions.unwrap_or(ReviewFactSet::Unknown(
+            ReviewFactUnknownReason::InvalidDocument,
+        )),
         parts.comments,
         parts.comments_extended,
         review_limits,

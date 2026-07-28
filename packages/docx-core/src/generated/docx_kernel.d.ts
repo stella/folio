@@ -117,37 +117,64 @@ export type DocxReviewSpan = readonly [
 start: DocxReviewPoint,
 end: DocxReviewPoint,
 ];
+/** Compact versioned boundary tuple. Field order is stable within schema version 1. */
 export type DocxRevisionContent = readonly [
 span: DocxReviewSpan,
 text: string,
-formattingOnly: boolean,
+contentKind: "text" | "formatting-only",
 ];
 export type DocxCommentContent = readonly [
 anchor: DocxReviewSpan,
 commentText: string,
 referencedText: string,
 ];
+/** Attributed revision wire tuple; positions are named and versioned by its container. */
 export type DocxAttributedRevision = readonly [
-type: "insertion" | "deletion",
+type:
+| "insertion"
+| "deletion"
+| "moveFrom"
+| "moveTo"
+| "cellIns"
+| "cellDel"
+| "cellMerge"
+| "pPrChange"
+| "rPrChange"
+| "sectPrChange"
+| "tblPrChange"
+| "trPrChange"
+| "tcPrChange"
+| "tblGridChange"
+| "customXmlDelRangeStart"
+| "customXmlDelRangeEnd"
+| "customXmlInsRangeStart"
+| "customXmlInsRangeEnd"
+| "customXmlMoveFromRangeStart"
+| "customXmlMoveFromRangeEnd"
+| "customXmlMoveToRangeStart"
+| "customXmlMoveToRangeEnd",
 author: string,
 date: string | null,
 revisionId: string | null,
 content: DocxReviewDetail<DocxRevisionContent>,
 ];
+/** Attributed comment wire tuple; positions are named and versioned by its container. */
 export type DocxAttributedComment = readonly [
 commentId: string,
 author: string,
 initials: string | null,
 date: string | null,
 parentCommentId: string | null,
-resolved: boolean,
+threadState: "open" | "resolved",
 content: DocxReviewDetail<DocxCommentContent>,
 ];
+/** Review-fact wire schema. A new tuple layout requires a schema-version bump. */
 export type DocxReviewFactsWire = readonly [
 schemaVersion: 1,
 revisions: DocxReviewFactSet<DocxAttributedRevision>,
 comments: DocxReviewFactSet<DocxAttributedComment>,
 ];
+/** Fused package wire schema. A new tuple layout requires a schema-version bump. */
 export type DocxPackageProjectionWire = readonly [
 schemaVersion: 1,
 document: DocxProjectionWire,

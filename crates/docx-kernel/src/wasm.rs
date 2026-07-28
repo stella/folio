@@ -12,6 +12,8 @@ use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
 
 const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 2;
+const DOCX_PACKAGE_PROJECTION_SCHEMA_VERSION: u32 = 1;
+const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 1;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TYPESCRIPT_TYPES: &str = r#"
@@ -131,37 +133,64 @@ export type DocxReviewSpan = readonly [
   start: DocxReviewPoint,
   end: DocxReviewPoint,
 ];
+/** Compact versioned boundary tuple. Field order is stable within schema version 1. */
 export type DocxRevisionContent = readonly [
   span: DocxReviewSpan,
   text: string,
-  formattingOnly: boolean,
+  contentKind: "text" | "formatting-only",
 ];
 export type DocxCommentContent = readonly [
   anchor: DocxReviewSpan,
   commentText: string,
   referencedText: string,
 ];
+/** Attributed revision wire tuple; positions are named and versioned by its container. */
 export type DocxAttributedRevision = readonly [
-  type: "insertion" | "deletion",
+  type:
+    | "insertion"
+    | "deletion"
+    | "moveFrom"
+    | "moveTo"
+    | "cellIns"
+    | "cellDel"
+    | "cellMerge"
+    | "pPrChange"
+    | "rPrChange"
+    | "sectPrChange"
+    | "tblPrChange"
+    | "trPrChange"
+    | "tcPrChange"
+    | "tblGridChange"
+    | "customXmlDelRangeStart"
+    | "customXmlDelRangeEnd"
+    | "customXmlInsRangeStart"
+    | "customXmlInsRangeEnd"
+    | "customXmlMoveFromRangeStart"
+    | "customXmlMoveFromRangeEnd"
+    | "customXmlMoveToRangeStart"
+    | "customXmlMoveToRangeEnd",
   author: string,
   date: string | null,
   revisionId: string | null,
   content: DocxReviewDetail<DocxRevisionContent>,
 ];
+/** Attributed comment wire tuple; positions are named and versioned by its container. */
 export type DocxAttributedComment = readonly [
   commentId: string,
   author: string,
   initials: string | null,
   date: string | null,
   parentCommentId: string | null,
-  resolved: boolean,
+  threadState: "open" | "resolved",
   content: DocxReviewDetail<DocxCommentContent>,
 ];
+/** Review-fact wire schema. A new tuple layout requires a schema-version bump. */
 export type DocxReviewFactsWire = readonly [
   schemaVersion: 1,
   revisions: DocxReviewFactSet<DocxAttributedRevision>,
   comments: DocxReviewFactSet<DocxAttributedComment>,
 ];
+/** Fused package wire schema. A new tuple layout requires a schema-version bump. */
 export type DocxPackageProjectionWire = readonly [
   schemaVersion: 1,
   document: DocxProjectionWire,
@@ -294,7 +323,10 @@ fn output_projection_with_structure(projection: &DocumentProjection) -> Result<J
 
 fn output_package_projection(projection: &DocumentPackageProjection) -> Result<JsValue, String> {
     let output = Array::new_with_length(3);
-    output.set(0, JsValue::from_f64(1.0));
+    output.set(
+        0,
+        JsValue::from_f64(f64::from(DOCX_PACKAGE_PROJECTION_SCHEMA_VERSION)),
+    );
     output.set(1, output_projection_with_structure(&projection.document)?);
     output.set(2, output_review_facts(&projection.review_facts)?);
     Ok(output.into())
@@ -302,7 +334,10 @@ fn output_package_projection(projection: &DocumentPackageProjection) -> Result<J
 
 fn output_review_facts(facts: &DocumentReviewFacts) -> Result<JsValue, String> {
     let output = Array::new_with_length(3);
-    output.set(0, JsValue::from_f64(1.0));
+    output.set(
+        0,
+        JsValue::from_f64(f64::from(DOCX_REVIEW_FACTS_SCHEMA_VERSION)),
+    );
     output.set(
         1,
         output_review_fact_set(&facts.revisions, output_revision_fact)?,
@@ -343,6 +378,26 @@ fn output_revision_fact(fact: &AttributedRevision) -> Result<JsValue, String> {
         JsValue::from_str(match fact.kind {
             RevisionFactKind::Insertion => "insertion",
             RevisionFactKind::Deletion => "deletion",
+            RevisionFactKind::MoveFrom => "moveFrom",
+            RevisionFactKind::MoveTo => "moveTo",
+            RevisionFactKind::CellInsertion => "cellIns",
+            RevisionFactKind::CellDeletion => "cellDel",
+            RevisionFactKind::CellMerge => "cellMerge",
+            RevisionFactKind::ParagraphPropertiesChange => "pPrChange",
+            RevisionFactKind::RunPropertiesChange => "rPrChange",
+            RevisionFactKind::SectionPropertiesChange => "sectPrChange",
+            RevisionFactKind::TablePropertiesChange => "tblPrChange",
+            RevisionFactKind::TableRowPropertiesChange => "trPrChange",
+            RevisionFactKind::TableCellPropertiesChange => "tcPrChange",
+            RevisionFactKind::TableGridChange => "tblGridChange",
+            RevisionFactKind::CustomXmlDeletionRangeStart => "customXmlDelRangeStart",
+            RevisionFactKind::CustomXmlDeletionRangeEnd => "customXmlDelRangeEnd",
+            RevisionFactKind::CustomXmlInsertionRangeStart => "customXmlInsRangeStart",
+            RevisionFactKind::CustomXmlInsertionRangeEnd => "customXmlInsRangeEnd",
+            RevisionFactKind::CustomXmlMoveFromRangeStart => "customXmlMoveFromRangeStart",
+            RevisionFactKind::CustomXmlMoveFromRangeEnd => "customXmlMoveFromRangeEnd",
+            RevisionFactKind::CustomXmlMoveToRangeStart => "customXmlMoveToRangeStart",
+            RevisionFactKind::CustomXmlMoveToRangeEnd => "customXmlMoveToRangeEnd",
         }),
     );
     output.set(1, JsValue::from_str(&fact.author));
@@ -362,7 +417,10 @@ fn output_comment_fact(fact: &AttributedComment) -> Result<JsValue, String> {
     output.set(2, optional_string(fact.initials.as_deref()));
     output.set(3, optional_string(fact.date.as_deref()));
     output.set(4, optional_string(fact.parent_comment_id.as_deref()));
-    output.set(5, JsValue::from_bool(fact.resolved));
+    output.set(
+        5,
+        JsValue::from_str(if fact.resolved { "resolved" } else { "open" }),
+    );
     output.set(
         6,
         output_review_detail(&fact.content, output_comment_content)?,
@@ -396,7 +454,14 @@ fn output_revision_content(content: &RevisionContent) -> Result<JsValue, String>
     let output = Array::new_with_length(3);
     output.set(0, output_review_span(content.span)?);
     output.set(1, JsValue::from_str(&content.text));
-    output.set(2, JsValue::from_bool(content.formatting_only));
+    output.set(
+        2,
+        JsValue::from_str(if content.formatting_only {
+            "formatting-only"
+        } else {
+            "text"
+        }),
+    );
     Ok(output.into())
 }
 

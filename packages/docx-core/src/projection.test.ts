@@ -8,6 +8,7 @@ import {
   projectCompressedDocx,
   projectCompressedDocxWithReviewFacts,
 } from "./projection";
+import type { DocxReviewFactsWire } from "./projection";
 
 const documentXml = `<?xml version="1.0" encoding="UTF-8"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -57,6 +58,10 @@ describe("DOCX projection TypeScript binding", () => {
       "word/commentsExtended.xml",
       `<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="AAAAAAAA" w15:done="1"/></w15:commentsEx>`,
     );
+    archive.file(
+      "word/_rels/document.xml.rels",
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="comments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/><Relationship Id="commentsExtended" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/></Relationships>`,
+    );
 
     const projection = await projectCompressedDocxWithReviewFacts(
       await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
@@ -64,10 +69,14 @@ describe("DOCX projection TypeScript binding", () => {
 
     expect(projection[0]).toBe(1);
     expect(projection[1][1][0]?.[1]).toBe("new");
-    expect(projection[2]).toEqual([
+    const expectedReviewFacts = [
       1,
       ["known", [["insertion", "Ada", null, "7", ["unknown", "unsupported-location"]]]],
-      ["known", [["1", "Lin", null, null, null, true, ["unknown", "unsupported-location"]]]],
-    ]);
+      [
+        "known",
+        [["1", "Lin", null, null, null, "resolved", ["unknown", "unsupported-location"]]],
+      ],
+    ] as const satisfies DocxReviewFactsWire;
+    expect(projection[2]).toEqual(expectedReviewFacts);
   });
 });
