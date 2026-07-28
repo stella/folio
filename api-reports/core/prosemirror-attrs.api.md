@@ -77,6 +77,9 @@ export const expectShapeAttrs: (node: Node_2) => ShapeAttrs;
 export const expectStrikeMarkAttrs: (mark: Mark) => StrikeAttrs;
 
 // @public (undocumented)
+export const expectSymbolAttrs: (node: Node_2) => SymbolAttrs;
+
+// @public (undocumented)
 export const expectTabAttrs: (node: Node_2) => TabAttrs;
 
 // @public (undocumented)
@@ -198,6 +201,9 @@ export const readShapeAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<ShapeA
 
 // @public (undocumented)
 export const readStrikeMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<StrikeAttrs>;
+
+// @public (undocumented)
+export const readSymbolAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<SymbolAttrs>;
 
 // @public (undocumented)
 export const readTabAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<TabAttrs>;

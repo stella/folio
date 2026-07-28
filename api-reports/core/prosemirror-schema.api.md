@@ -358,6 +358,12 @@ export type StrikeAttrs = {
 };
 
 // @public (undocumented)
+export type SymbolAttrs = {
+    font: string;
+    char: string;
+};
+
+// @public (undocumented)
 export type TabAttrs = {
     positional?: import__stll_docx_core_model.PositionalTab;
 };
