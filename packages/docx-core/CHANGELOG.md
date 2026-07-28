@@ -1,5 +1,15 @@
 # @stll/docx-core
 
+## 0.8.0
+
+### Minor Changes
+
+- [#524](https://github.com/stella/folio/pull/524) [`ff873db`](https://github.com/stella/folio/commit/ff873db582719ecf692391bb90054daf25cb0adc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Project attributed revisions and comments alongside the document snapshot through one bounded DOCX package call.
+
+### Patch Changes
+
+- [#522](https://github.com/stella/folio/pull/522) [`003ea02`](https://github.com/stella/folio/commit/003ea02f4ac98c29529da7fc4a92bef9d06d9c63) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render OOXML symbol characters with their declared fonts and preserve them through editing.
+
 ## 0.7.0
 
 ### Minor Changes
