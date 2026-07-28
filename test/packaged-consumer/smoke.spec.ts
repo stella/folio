@@ -68,7 +68,7 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
   await page.evaluate(() => document.fonts.ready);
 
   const projection = await page.evaluate(() => globalThis.__folioSmoke?.projectFixture());
-  expect(projection?.[0], "packed DOCX projection schema must load through WASM").toBe(2);
+  expect(projection?.[0], "packed DOCX projection schema must load through WASM").toBe(3);
   expect(projection?.[1].length ?? 0, "fixture must contain projected paragraphs").toBeGreaterThan(
     0,
   );
