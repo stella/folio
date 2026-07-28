@@ -492,6 +492,7 @@ fn parse_comment_rows(
     let mut output = Vec::new();
     let mut current: Option<(usize, CommentRow)> = None;
     let mut text_depth: Option<usize> = None;
+    let mut property_depth: Option<usize> = None;
     let mut depth = 0_usize;
     let mut root_seen = false;
     let mut comment_ids = HashSet::new();
@@ -499,7 +500,12 @@ fn parse_comment_rows(
     loop {
         match reader.read_resolved_event() {
             Ok((_, Event::Eof)) => {
-                if depth != 0 || current.is_some() || text_depth.is_some() || !root_seen {
+                if depth != 0
+                    || current.is_some()
+                    || text_depth.is_some()
+                    || property_depth.is_some()
+                    || !root_seen
+                {
                     return Err(invalid);
                 }
                 return Ok(output);
@@ -577,14 +583,22 @@ fn parse_comment_rows(
                     }
                     comment.paragraph_seen = true;
                 } else if kind == NamespaceKind::Wordprocessing
+                    && matches!(element.local_name().as_ref(), b"pPr" | b"rPr")
+                    && current.is_some()
+                    && property_depth.is_none()
+                {
+                    property_depth = Some(depth);
+                } else if kind == NamespaceKind::Wordprocessing
                     && matches!(element.local_name().as_ref(), b"t" | b"delText")
                     && current.is_some()
+                    && property_depth.is_none()
                 {
                     if text_depth.replace(depth).is_some() {
                         return Err(invalid);
                     }
                 } else if kind == NamespaceKind::Wordprocessing
                     && let Some((_, comment)) = current.as_mut()
+                    && property_depth.is_none()
                 {
                     let control = match element.local_name().as_ref() {
                         b"tab" | b"ptab" => Some(TextControl::Tab),
@@ -654,11 +668,14 @@ fn parse_comment_rows(
                 if text_depth == Some(depth) {
                     text_depth = None;
                 }
+                if property_depth == Some(depth) {
+                    property_depth = None;
+                }
                 if namespace_kind(&namespace) == NamespaceKind::Wordprocessing
                     && element.local_name().as_ref() == b"comment"
                 {
                     let (comment_depth, comment) = current.take().ok_or(invalid)?;
-                    if depth != comment_depth || text_depth.is_some() {
+                    if depth != comment_depth || text_depth.is_some() || property_depth.is_some() {
                         return Err(invalid);
                     }
                     if let Some(paragraph_id) = &comment.paragraph_id

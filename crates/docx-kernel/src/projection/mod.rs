@@ -260,7 +260,10 @@ where
         limits.maximum_structural_facts,
         options,
         styles.as_ref().map_err(|reason| *reason),
-        Some(review_limits.maximum_facts_per_family),
+        Some(ooxml::ReviewProjectionLimits {
+            maximum_facts: review_limits.maximum_facts_per_family,
+            maximum_detail_bytes: review_limits.maximum_review_detail_bytes,
+        }),
         allocate_id,
     )?;
     let review_facts = review::project_review_facts(
@@ -355,7 +358,7 @@ fn project_document_xml_with_limit_and_review<F>(
     maximum_structural_facts: usize,
     options: ProjectionOptions,
     styles: Result<&structure::StyleSheet, StructuralFactUnknownReason>,
-    maximum_review_facts: Option<usize>,
+    review_limits: Option<ooxml::ReviewProjectionLimits>,
     mut allocate_id: F,
 ) -> Result<ProjectedDocumentWithReview, ProjectionError>
 where
@@ -366,10 +369,10 @@ where
         maximum_paragraphs,
         options.revision_view,
         options.text_materialization,
-        maximum_review_facts,
+        review_limits,
     )?;
     let review_revisions = projected.review_revisions;
-    let review_comment_anchors = maximum_review_facts
+    let review_comment_anchors = review_limits
         .is_some()
         .then_some(projected.review_comment_anchors);
     let mut seen_ids = HashSet::with_capacity(projected.paragraphs.len());

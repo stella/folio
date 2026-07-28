@@ -1338,9 +1338,52 @@ fn whitespace_only_revision_content_is_not_formatting_only() {
 }
 
 #[test]
+fn nested_revision_text_populates_every_enclosing_fact_under_one_budget() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>
+      <w:ins w:id="1" w:author="Outer"><w:r><w:t>A</w:t></w:r><w:del w:id="2" w:author="Inner"><w:r><w:delText>B</w:delText></w:r></w:del><w:r><w:t>C</w:t></w:r></w:ins>
+    </w:p></w:body></w:document>"#;
+    let package_bytes = package(
+        &[("word/document.xml", document)],
+        CompressionMethod::Deflated,
+    );
+    let project = |maximum_review_detail_bytes| {
+        project_docx_with_review_facts(
+            &package_bytes,
+            DocxLimits::default(),
+            ReviewFactLimits {
+                maximum_review_detail_bytes,
+                ..ReviewFactLimits::default()
+            },
+            ProjectionOptions::default(),
+            allocate,
+        )
+        .unwrap()
+    };
+
+    let ReviewFactSet::Known(revisions) = project(4).review_facts.revisions else {
+        panic!("the exact nested revision output boundary should remain known");
+    };
+    assert_eq!(revisions.len(), 2);
+    let ReviewDetail::Known(outer) = &revisions[0].content else {
+        panic!("the outer revision should have textual content");
+    };
+    let ReviewDetail::Known(inner) = &revisions[1].content else {
+        panic!("the inner revision should have textual content");
+    };
+    assert_eq!(outer.text, "ABC");
+    assert_eq!(inner.text, "B");
+    assert!(!outer.formatting_only);
+    assert!(!inner.formatting_only);
+    assert_eq!(
+        project(3).review_facts.revisions,
+        ReviewFactSet::Unknown(ReviewFactUnknownReason::ResourceLimit)
+    );
+}
+
+#[test]
 fn comment_controls_follow_the_requested_text_materialization() {
     let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:commentRangeStart w:id="1"/><w:r><w:t>X</w:t></w:r><w:commentRangeEnd w:id="1"/></w:p></w:body></w:document>"#;
-    let comments_xml = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="1"><w:p><w:r><w:t>A</w:t><w:tab/><w:br/><w:br w:type="page"/><w:br w:type="column"/><w:cr/><w:softHyphen/><w:noBreakHyphen/><w:t>Z</w:t></w:r></w:p></w:comment></w:comments>"#;
+    let comments_xml = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="1"><w:p><w:pPr><w:tabs><w:tab w:val="right" w:pos="8640"/></w:tabs><w:rPr><w:tab/></w:rPr></w:pPr><w:r><w:rPr><w:tab/></w:rPr><w:t>A</w:t><w:tab/><w:br/><w:br w:type="page"/><w:br w:type="column"/><w:cr/><w:softHyphen/><w:noBreakHyphen/><w:t>Z</w:t></w:r></w:p></w:comment></w:comments>"#;
     let package_bytes = package(
         &[
             ("word/document.xml", document),

@@ -300,9 +300,16 @@ enum ReviewRevisionCollection {
     Disabled,
     Complete {
         maximum_facts: usize,
+        remaining_detail_bytes: usize,
         revisions: Vec<AttributedRevision>,
     },
     LimitExceeded,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct ReviewProjectionLimits {
+    pub maximum_facts: usize,
+    pub maximum_detail_bytes: usize,
 }
 
 enum Frame {
@@ -332,7 +339,7 @@ pub(super) fn project_document_xml(
     maximum_paragraphs: usize,
     revision_view: RevisionView,
     text_materialization: TextMaterialization,
-    maximum_review_facts: Option<usize>,
+    review_limits: Option<ReviewProjectionLimits>,
 ) -> Result<RawDocumentProjection, ProjectionError> {
     let mut reader = NsReader::from_reader(xml);
     reader.config_mut().check_end_names = true;
@@ -342,13 +349,13 @@ pub(super) fn project_document_xml(
         text_materialization,
         bookmarks_complete: true,
         references_complete: true,
-        review_revisions: maximum_review_facts.map_or(
-            ReviewRevisionCollection::Disabled,
-            |maximum_facts| ReviewRevisionCollection::Complete {
-                maximum_facts,
+        review_revisions: review_limits.map_or(ReviewRevisionCollection::Disabled, |limits| {
+            ReviewRevisionCollection::Complete {
+                maximum_facts: limits.maximum_facts,
+                remaining_detail_bytes: limits.maximum_detail_bytes,
                 revisions: Vec::new(),
-            },
-        ),
+            }
+        }),
         ..ProjectionState::default()
     };
     let mut compatibility = MarkupCompatibility::default();
@@ -949,6 +956,7 @@ impl ProjectionState {
         let ReviewRevisionCollection::Complete {
             maximum_facts,
             revisions,
+            ..
         } = &mut self.review_revisions
         else {
             return Ok(None);
@@ -1082,11 +1090,28 @@ impl ProjectionState {
     }
 
     fn append_review_text(&mut self, text: &str) {
-        if let Some(revision) = self.frames.iter_mut().rev().find_map(|frame| match frame {
-            Frame::Revision(revision) if revision.review_index.is_some() => Some(revision),
-            _ => None,
-        }) {
-            revision.text.push_str(text);
+        let ReviewRevisionCollection::Complete {
+            remaining_detail_bytes,
+            ..
+        } = &mut self.review_revisions
+        else {
+            return;
+        };
+        let mut limit_exceeded = false;
+        for frame in &mut self.frames {
+            if let Frame::Revision(revision) = frame
+                && revision.review_index.is_some()
+            {
+                let Some(remaining) = remaining_detail_bytes.checked_sub(text.len()) else {
+                    limit_exceeded = true;
+                    break;
+                };
+                *remaining_detail_bytes = remaining;
+                revision.text.push_str(text);
+            }
+        }
+        if limit_exceeded {
+            self.review_revisions = ReviewRevisionCollection::LimitExceeded;
         }
     }
 
