@@ -855,6 +855,7 @@ pub fn scan_wordprocessing_part(xml: &[u8], limits: ScanLimits) -> Result<PartSc
 mod tests {
     use std::fmt::Write as _;
 
+    use proptest::strategy::Strategy;
     use proptest::test_runner::TestCaseError;
     use proptest::{collection, prop_assert, prop_assert_eq, proptest};
 
@@ -1180,7 +1181,10 @@ mod tests {
     proptest! {
       #[test]
       fn arbitrary_prefixes_and_run_splits_preserve_text_and_utf16_offsets(
-        prefix in "[a-z]{1,8}",
+        prefix in "[a-z]{1,8}".prop_filter(
+          "XML namespace prefixes must not use reserved names",
+          |prefix| !matches!(prefix.as_str(), "xml" | "xmlns"),
+        ),
         fragments in collection::vec("[A-Za-z0-9 ]{0,16}", 1..32),
       ) {
         let mut runs = String::new();
@@ -1212,7 +1216,10 @@ mod tests {
 
       #[test]
       fn nonempty_wordprocessing_text_requires_a_paragraph(
-        prefix in "[a-z]{1,8}",
+        prefix in "[a-z]{1,8}".prop_filter(
+          "XML namespace prefixes must not use reserved names",
+          |prefix| !matches!(prefix.as_str(), "xml" | "xmlns"),
+        ),
         namespace in proptest::sample::select(&[W, W_STRICT][..]),
         text_element in proptest::sample::select(&["t", "delText"][..]),
         value in "[A-Za-z0-9 ]{1,32}",
