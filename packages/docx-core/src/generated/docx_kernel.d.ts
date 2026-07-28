@@ -200,6 +200,16 @@ reviewFacts: DocxReviewFactsWire,
 export function projectCompressedDocx(bytes: Uint8Array): DocxProjectionWire;
 
 /**
+ * Projects the same fused snapshot with controls normalized for readable text.
+ *
+ * # Errors
+ *
+ * Returns a JavaScript `Error` under the same conditions as
+ * [`project_compressed_docx_with_review_facts`].
+ */
+export function projectCompressedDocxWithReadableReviewFacts(bytes: Uint8Array): DocxPackageProjectionWire;
+
+/**
  * Projects the document snapshot and attributed review facts from one bounded
  * package-directory scan.
  *
@@ -215,6 +225,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly projectCompressedDocx: (a: number, b: number, c: number) => void;
+    readonly projectCompressedDocxWithReadableReviewFacts: (a: number, b: number, c: number) => void;
     readonly projectCompressedDocxWithReviewFacts: (a: number, b: number, c: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;

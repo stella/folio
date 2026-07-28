@@ -97,4 +97,21 @@ describe("DOCX projection TypeScript binding", () => {
     ] as const satisfies DocxReviewFactsWire;
     expect(projection[2]).toEqual(expectedReviewFacts);
   });
+
+  test("keeps host controls explicit while readable review projection omits footnote markers", async () => {
+    const archive = new JSZip();
+    archive.file(
+      "word/document.xml",
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Title</w:t><w:footnoteReference w:id="1"/></w:r></w:p></w:body></w:document>`,
+    );
+    const bytes = await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
+
+    const host = await projectCompressedDocxWithReviewFacts(bytes);
+    const readable = await projectCompressedDocxWithReviewFacts(bytes, {
+      textMaterialization: "readable-plain-text",
+    });
+
+    expect(host[1][1][0]?.[1]).toBe("Title\u0002");
+    expect(readable[1][1][0]?.[1]).toBe("Title");
+  });
 });

@@ -36,6 +36,34 @@ export function projectCompressedDocx(bytes) {
 }
 
 /**
+ * Projects the same fused snapshot with controls normalized for readable text.
+ *
+ * # Errors
+ *
+ * Returns a JavaScript `Error` under the same conditions as
+ * [`project_compressed_docx_with_review_facts`].
+ * @param {Uint8Array} bytes
+ * @returns {DocxPackageProjectionWire}
+ */
+export function projectCompressedDocxWithReadableReviewFacts(bytes) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.projectCompressedDocxWithReadableReviewFacts(retptr, ptr0, len0);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return takeObject(r0);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * Projects the document snapshot and attributed review facts from one bounded
  * package-directory scan.
  *

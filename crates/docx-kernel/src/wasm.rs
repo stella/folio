@@ -6,7 +6,7 @@ use crate::{
     ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
     ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionProjectionStatus,
     RevisionUnsupportedReason, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
-    StructuralSpan, TextStyle, project_docx, project_docx_with_review_facts,
+    StructuralSpan, TextMaterialization, TextStyle, project_docx, project_docx_with_review_facts,
 };
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
@@ -239,7 +239,25 @@ pub fn project_compressed_docx(bytes: &[u8]) -> Result<DocxProjectionWire, JsVal
 pub fn project_compressed_docx_with_review_facts(
     bytes: &[u8],
 ) -> Result<DocxPackageProjectionWire, JsValue> {
-    project_docx_package_projection(bytes)
+    project_docx_package_projection(bytes, TextMaterialization::WordHost)
+        .and_then(|projection| output_package_projection(&projection))
+        // SAFETY: the output builder constructs the exact tuple declared as
+        // `DocxPackageProjectionWire` in the TypeScript custom section.
+        .map(JsCast::unchecked_into)
+        .map_err(|error| js_error(&error))
+}
+
+/// Projects the same fused snapshot with controls normalized for readable text.
+///
+/// # Errors
+///
+/// Returns a JavaScript `Error` under the same conditions as
+/// [`project_compressed_docx_with_review_facts`].
+#[wasm_bindgen(js_name = projectCompressedDocxWithReadableReviewFacts)]
+pub fn project_compressed_docx_with_readable_review_facts(
+    bytes: &[u8],
+) -> Result<DocxPackageProjectionWire, JsValue> {
+    project_docx_package_projection(bytes, TextMaterialization::ReadablePlainText)
         .and_then(|projection| output_package_projection(&projection))
         // SAFETY: the output builder constructs the exact tuple declared as
         // `DocxPackageProjectionWire` in the TypeScript custom section.
@@ -255,12 +273,18 @@ fn project_docx_projection(bytes: &[u8]) -> Result<DocumentProjection, String> {
     .map_err(|error| error.to_string())
 }
 
-fn project_docx_package_projection(bytes: &[u8]) -> Result<DocumentPackageProjection, String> {
+fn project_docx_package_projection(
+    bytes: &[u8],
+    text_materialization: TextMaterialization,
+) -> Result<DocumentPackageProjection, String> {
     project_docx_with_review_facts(
         bytes,
         DocxLimits::default(),
         ReviewFactLimits::default(),
-        ProjectionOptions::default(),
+        ProjectionOptions {
+            text_materialization,
+            ..ProjectionOptions::default()
+        },
         |facts: ParagraphIdentityFacts<'_>| {
             InternalParagraphId::new(format!("projected-{}", facts.ordinal))
         },

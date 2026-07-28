@@ -2,6 +2,7 @@ import { TaggedError } from "better-result";
 
 import initializeRuntime, {
   projectCompressedDocx as projectCompressedDocxInWasm,
+  projectCompressedDocxWithReadableReviewFacts as projectCompressedDocxWithReadableReviewFactsInWasm,
   projectCompressedDocxWithReviewFacts as projectCompressedDocxWithReviewFactsInWasm,
   type DocxAttributedComment,
   type DocxAttributedRevision,
@@ -85,6 +86,11 @@ export type InitializeDocxProjectionOptions = {
   wasm?: DocxProjectionWasmSource;
 };
 
+export type ProjectCompressedDocxWithReviewFactsOptions = {
+  /** Selects host-coordinate controls or normalized readable text. */
+  textMaterialization?: "word-host" | "readable-plain-text";
+};
+
 let initialization: Promise<void> | undefined;
 const DOCUMENT_PROJECTION_FAILURE_MESSAGE = "Could not project the DOCX document";
 const PACKAGE_PROJECTION_FAILURE_MESSAGE = "Could not project the DOCX package with review facts";
@@ -141,9 +147,13 @@ export const projectCompressedDocx = (bytes: Uint8Array): Promise<DocxProjection
  */
 export const projectCompressedDocxWithReviewFacts = (
   bytes: Uint8Array,
+  { textMaterialization = "word-host" }: ProjectCompressedDocxWithReviewFactsOptions = {},
 ): Promise<DocxPackageProjectionWire> =>
   projectWith({
     bytes,
-    project: projectCompressedDocxWithReviewFactsInWasm,
+    project:
+      textMaterialization === "word-host"
+        ? projectCompressedDocxWithReviewFactsInWasm
+        : projectCompressedDocxWithReadableReviewFactsInWasm,
     message: PACKAGE_PROJECTION_FAILURE_MESSAGE,
   });
