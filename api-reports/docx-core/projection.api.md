@@ -102,7 +102,12 @@ export type InitializeDocxProjectionOptions = {
 export const projectCompressedDocx: (bytes: Uint8Array) => Promise<DocxProjectionWire>;
 
 // @public
-export const projectCompressedDocxWithReviewFacts: (bytes: Uint8Array) => Promise<DocxPackageProjectionWire>;
+export const projectCompressedDocxWithReviewFacts: (bytes: Uint8Array, input?: ProjectCompressedDocxWithReviewFactsOptions) => Promise<DocxPackageProjectionWire>;
+
+// @public
+export type ProjectCompressedDocxWithReviewFactsOptions = {
+    textMaterialization?: "word-host" | "readable-plain-text";
+};
 
 // (No @packageDocumentation comment for this package)
 

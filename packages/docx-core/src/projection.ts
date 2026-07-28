@@ -86,6 +86,7 @@ export type InitializeDocxProjectionOptions = {
   wasm?: DocxProjectionWasmSource;
 };
 
+/** Controls text materialization for fused document and review-fact projection. */
 export type ProjectCompressedDocxWithReviewFactsOptions = {
   /** Selects host-coordinate controls or normalized readable text. */
   textMaterialization?: "word-host" | "readable-plain-text";
