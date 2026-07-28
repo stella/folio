@@ -2,7 +2,12 @@ import JSZip from "jszip";
 import { readFile } from "node:fs/promises";
 import { beforeAll, describe, expect, test } from "bun:test";
 
-import { DocxProjectionError, initializeDocxProjection, projectCompressedDocx } from "./projection";
+import {
+  DocxProjectionError,
+  initializeDocxProjection,
+  projectCompressedDocx,
+  projectCompressedDocxWithReviewFacts,
+} from "./projection";
 
 const documentXml = `<?xml version="1.0" encoding="UTF-8"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -36,5 +41,33 @@ describe("DOCX projection TypeScript binding", () => {
     const projection = projectCompressedDocx(new Uint8Array([1, 2, 3]));
 
     await expect(projection).rejects.toBeInstanceOf(DocxProjectionError);
+  });
+
+  test("returns document and review facts from one package projection", async () => {
+    const archive = new JSZip();
+    archive.file(
+      "word/document.xml",
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:ins w:id="7" w:author="Ada"><w:r><w:t>new</w:t></w:r></w:ins></w:p></w:body></w:document>`,
+    );
+    archive.file(
+      "word/comments.xml",
+      `<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:comment w:id="1" w:author="Lin"><w:p w14:paraId="AAAAAAAA"/></w:comment></w:comments>`,
+    );
+    archive.file(
+      "word/commentsExtended.xml",
+      `<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="AAAAAAAA" w15:done="1"/></w15:commentsEx>`,
+    );
+
+    const projection = await projectCompressedDocxWithReviewFacts(
+      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+    );
+
+    expect(projection[0]).toBe(1);
+    expect(projection[1][1][0]?.[1]).toBe("new");
+    expect(projection[2]).toEqual([
+      1,
+      ["known", [["insertion", "Ada", null, "7", ["unknown", "unsupported-location"]]]],
+      ["known", [["1", "Lin", null, null, null, true, ["unknown", "unsupported-location"]]]],
+    ]);
   });
 });

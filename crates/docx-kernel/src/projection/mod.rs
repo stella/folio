@@ -9,6 +9,7 @@ mod compatibility;
 mod namespaces;
 mod ooxml;
 mod relationships;
+mod review;
 mod structure;
 mod styles;
 
@@ -19,6 +20,11 @@ pub use archive::{DocumentParts, DocxLimits, extract_document_parts, extract_doc
 pub use ooxml::{
     PackageParagraphId, ParagraphStructure, RevisionProjectionStatus, RevisionUnsupportedReason,
     RevisionView, TextFormattingSpan, TextMaterialization, TextStyle, is_semantic_highlight_color,
+};
+pub use review::{
+    AttributedComment, AttributedRevision, CommentContent, DocumentReviewFacts, ReviewDetail,
+    ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason, ReviewPoint, ReviewSpan,
+    RevisionContent, RevisionFactKind,
 };
 pub use structure::{
     BookmarkFact, DocumentStructureFacts, InternalReferenceFact, InternalReferenceRole,
@@ -72,6 +78,12 @@ pub struct DocumentProjection {
     pub paragraphs: Vec<ProjectedParagraph>,
     pub revision_status: RevisionProjectionStatus,
     pub structural_facts: DocumentStructureFacts,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DocumentPackageProjection {
+    pub document: DocumentProjection,
+    pub review_facts: DocumentReviewFacts,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -210,6 +222,55 @@ where
     )
 }
 
+/// Projects a bounded DOCX package and its attributed review facts in one
+/// package-directory scan.
+///
+/// Invalid optional review parts produce an explicit unknown fact family; they
+/// do not discard an otherwise valid document projection.
+///
+/// # Errors
+///
+/// Returns [`ProjectionError`] for an invalid document projection or package
+/// boundary. Optional comments-part failures remain represented in
+/// [`DocumentReviewFacts`].
+pub fn project_docx_with_review_facts<F>(
+    bytes: &[u8],
+    limits: DocxLimits,
+    review_limits: ReviewFactLimits,
+    options: ProjectionOptions,
+    allocate_id: F,
+) -> Result<DocumentPackageProjection, ProjectionError>
+where
+    F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
+{
+    let parts = archive::extract_projection_parts(bytes, limits, review_limits)?;
+    let styles = parts.styles.as_deref().map_or(
+        Err(StructuralFactUnknownReason::StylesPartUnavailable),
+        |styles| {
+            styles::parse_styles(styles).map_err(|_| StructuralFactUnknownReason::UnsupportedStyles)
+        },
+    );
+    let (document, revisions) = project_document_xml_with_limit_and_review(
+        &parts.document,
+        limits.maximum_paragraphs,
+        limits.maximum_structural_facts,
+        options,
+        styles.as_ref().map_err(|reason| *reason),
+        Some(review_limits.maximum_facts_per_family),
+        allocate_id,
+    )?;
+    let review_facts = review::project_review_facts(
+        revisions.ok_or(ProjectionError::InvalidDocumentXml)?,
+        parts.comments,
+        parts.comments_extended,
+        review_limits,
+    );
+    Ok(DocumentPackageProjection {
+        document,
+        review_facts,
+    })
+}
+
 /// Projects an uncompressed main OOXML document part with default options.
 ///
 /// # Errors
@@ -256,8 +317,38 @@ fn project_document_xml_with_limit<F>(
     maximum_structural_facts: usize,
     options: ProjectionOptions,
     styles: Result<&structure::StyleSheet, StructuralFactUnknownReason>,
-    mut allocate_id: F,
+    allocate_id: F,
 ) -> Result<DocumentProjection, ProjectionError>
+where
+    F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
+{
+    project_document_xml_with_limit_and_review(
+        xml,
+        maximum_paragraphs,
+        maximum_structural_facts,
+        options,
+        styles,
+        None,
+        allocate_id,
+    )
+    .map(|(projection, _)| projection)
+}
+
+fn project_document_xml_with_limit_and_review<F>(
+    xml: &[u8],
+    maximum_paragraphs: usize,
+    maximum_structural_facts: usize,
+    options: ProjectionOptions,
+    styles: Result<&structure::StyleSheet, StructuralFactUnknownReason>,
+    maximum_review_facts: Option<usize>,
+    mut allocate_id: F,
+) -> Result<
+    (
+        DocumentProjection,
+        Option<ReviewFactSet<AttributedRevision>>,
+    ),
+    ProjectionError,
+>
 where
     F: FnMut(ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError>,
 {
@@ -266,7 +357,9 @@ where
         maximum_paragraphs,
         options.revision_view,
         options.text_materialization,
+        maximum_review_facts,
     )?;
+    let review_revisions = projected.review_revisions;
     let mut seen_ids = HashSet::with_capacity(projected.paragraphs.len());
     let mut ids = Vec::with_capacity(projected.paragraphs.len());
     for paragraph in &projected.paragraphs {
@@ -312,9 +405,12 @@ where
             structure: paragraph.structure,
         });
     }
-    Ok(DocumentProjection {
-        paragraphs,
-        revision_status: projected.revision_status,
-        structural_facts,
-    })
+    Ok((
+        DocumentProjection {
+            paragraphs,
+            revision_status: projected.revision_status,
+            structural_facts,
+        },
+        review_revisions,
+    ))
 }

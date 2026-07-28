@@ -8,6 +8,9 @@ use quick_xml::reader::NsReader;
 use crate::ProjectionError;
 use crate::projection::compatibility::{CompatibilityAction, MarkupCompatibility};
 use crate::projection::namespaces::OoxmlNamespace;
+use crate::projection::review::{
+    AttributedRevision, ReviewDetail, ReviewFactSet, ReviewFactUnknownReason, RevisionFactKind,
+};
 use crate::projection::structure::{
     ParagraphProperties, RawBlockPoint, RawBookmarkRange, RawInternalReference,
     StructuralFactUnknownReason,
@@ -145,6 +148,7 @@ pub(super) struct RawDocumentProjection {
     pub bookmarks: Result<Vec<RawBookmarkRange>, StructuralFactUnknownReason>,
     pub references: Result<Vec<RawInternalReference>, StructuralFactUnknownReason>,
     pub revision_status: RevisionProjectionStatus,
+    pub review_revisions: Option<ReviewFactSet<AttributedRevision>>,
 }
 
 struct ParagraphBuilder {
@@ -277,6 +281,17 @@ struct FieldFrame {
     separated: bool,
 }
 
+#[derive(Default)]
+enum ReviewRevisionCollection {
+    #[default]
+    Disabled,
+    Complete {
+        maximum_facts: usize,
+        revisions: Vec<AttributedRevision>,
+    },
+    LimitExceeded,
+}
+
 enum Frame {
     Other,
     Body,
@@ -304,6 +319,7 @@ pub(super) fn project_document_xml(
     maximum_paragraphs: usize,
     revision_view: RevisionView,
     text_materialization: TextMaterialization,
+    maximum_review_facts: Option<usize>,
 ) -> Result<RawDocumentProjection, ProjectionError> {
     let mut reader = NsReader::from_reader(xml);
     reader.config_mut().check_end_names = true;
@@ -313,6 +329,13 @@ pub(super) fn project_document_xml(
         text_materialization,
         bookmarks_complete: true,
         references_complete: true,
+        review_revisions: maximum_review_facts.map_or(
+            ReviewRevisionCollection::Disabled,
+            |maximum_facts| ReviewRevisionCollection::Complete {
+                maximum_facts,
+                revisions: Vec::new(),
+            },
+        ),
         ..ProjectionState::default()
     };
     let mut compatibility = MarkupCompatibility::default();
@@ -437,6 +460,15 @@ pub(super) fn project_document_xml(
         } else {
             RevisionProjectionStatus::Incomplete(state.revision_unsupported.into_iter().collect())
         },
+        review_revisions: match state.review_revisions {
+            ReviewRevisionCollection::Disabled => None,
+            ReviewRevisionCollection::Complete { revisions, .. } => {
+                Some(ReviewFactSet::Known(revisions))
+            }
+            ReviewRevisionCollection::LimitExceeded => Some(ReviewFactSet::Unknown(
+                ReviewFactUnknownReason::ResourceLimit,
+            )),
+        },
     })
 }
 
@@ -459,6 +491,7 @@ struct ProjectionState {
     revision_view: RevisionView,
     text_materialization: TextMaterialization,
     revision_unsupported: BTreeSet<RevisionUnsupportedReason>,
+    review_revisions: ReviewRevisionCollection,
 }
 
 impl ProjectionState {
@@ -475,6 +508,7 @@ impl ProjectionState {
         } else {
             b""
         };
+        self.record_attributed_revision(reader, element, name)?;
         let direct_run_child = if let Some(Frame::Run(run)) = self.frames.last_mut() {
             let child = run.direct_child_count;
             run.direct_child_count = run
@@ -859,6 +893,38 @@ impl ProjectionState {
             }
             _ => {}
         }
+        Ok(())
+    }
+
+    fn record_attributed_revision(
+        &mut self,
+        reader: &NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+        name: &[u8],
+    ) -> Result<(), ProjectionError> {
+        let kind = match name {
+            b"ins" => RevisionFactKind::Insertion,
+            b"del" => RevisionFactKind::Deletion,
+            _ => return Ok(()),
+        };
+        let ReviewRevisionCollection::Complete {
+            maximum_facts,
+            revisions,
+        } = &mut self.review_revisions
+        else {
+            return Ok(());
+        };
+        if revisions.len() >= *maximum_facts {
+            self.review_revisions = ReviewRevisionCollection::LimitExceeded;
+            return Ok(());
+        }
+        revisions.push(AttributedRevision {
+            kind,
+            author: attribute(reader, element, b"author")?.unwrap_or_default(),
+            date: attribute(reader, element, b"date")?,
+            revision_id: attribute(reader, element, b"id")?,
+            content: ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation),
+        });
         Ok(())
     }
 

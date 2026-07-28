@@ -2,6 +2,11 @@ import { TaggedError } from "better-result";
 
 import initializeRuntime, {
   projectCompressedDocx as projectCompressedDocxInWasm,
+  projectCompressedDocxWithReviewFacts as projectCompressedDocxWithReviewFactsInWasm,
+  type DocxAttributedComment,
+  type DocxAttributedRevision,
+  type DocxCommentContent,
+  type DocxPackageProjectionWire,
   type DocxProjectionBookmarkFact,
   type DocxProjectionFactSet,
   type DocxProjectionFormattingSpan,
@@ -16,9 +21,20 @@ import initializeRuntime, {
   type DocxProjectionStructure,
   type DocxProjectionUnknownReason,
   type DocxProjectionWire,
+  type DocxReviewFactsWire,
+  type DocxReviewFactSet,
+  type DocxReviewDetail,
+  type DocxReviewPoint,
+  type DocxReviewSpan,
+  type DocxReviewUnknownReason,
+  type DocxRevisionContent,
 } from "./generated/docx_kernel.js";
 
 export type {
+  DocxAttributedComment,
+  DocxAttributedRevision,
+  DocxCommentContent,
+  DocxPackageProjectionWire,
   DocxProjectionBookmarkFact,
   DocxProjectionFactSet,
   DocxProjectionFormattingSpan,
@@ -33,6 +49,13 @@ export type {
   DocxProjectionStructure,
   DocxProjectionUnknownReason,
   DocxProjectionWire,
+  DocxReviewFactsWire,
+  DocxReviewFactSet,
+  DocxReviewDetail,
+  DocxReviewPoint,
+  DocxReviewSpan,
+  DocxReviewUnknownReason,
+  DocxRevisionContent,
 };
 
 export class DocxProjectionInitializationError extends TaggedError(
@@ -89,6 +112,25 @@ export const projectCompressedDocx = async (bytes: Uint8Array): Promise<DocxProj
   await initializeDocxProjection();
   try {
     return projectCompressedDocxInWasm(bytes);
+  } catch (cause) {
+    throw new DocxProjectionError({
+      message: "Could not project the DOCX package",
+      cause,
+    });
+  }
+};
+
+/**
+ * Projects the document snapshot and attributed review facts through one
+ * bounded package scan. Optional review-part failures remain explicit unknown
+ * fact families rather than invalidating the document snapshot.
+ */
+export const projectCompressedDocxWithReviewFacts = async (
+  bytes: Uint8Array,
+): Promise<DocxPackageProjectionWire> => {
+  await initializeDocxProjection();
+  try {
+    return projectCompressedDocxWithReviewFactsInWasm(bytes);
   } catch (cause) {
     throw new DocxProjectionError({
       message: "Could not project the DOCX package",

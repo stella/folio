@@ -34,6 +34,35 @@ export function projectCompressedDocx(bytes) {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
 }
+
+/**
+ * Projects the document snapshot and attributed review facts from one bounded
+ * package-directory scan.
+ *
+ * # Errors
+ *
+ * Returns a JavaScript `Error` when the document package itself cannot be
+ * projected. Invalid optional review parts are represented as unknown facts.
+ * @param {Uint8Array} bytes
+ * @returns {DocxPackageProjectionWire}
+ */
+export function projectCompressedDocxWithReviewFacts(bytes) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.projectCompressedDocxWithReviewFacts(retptr, ptr0, len0);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return takeObject(r0);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,

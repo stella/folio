@@ -1,9 +1,12 @@
 use crate::{
-    BookmarkFact, DocumentProjection, DocumentStructureFacts, DocxLimits, InternalParagraphId,
-    InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact, ParagraphIdentityFacts,
-    ParagraphIndentationFact, ParagraphStructure, ProjectedParagraph, RevisionProjectionStatus,
+    AttributedComment, AttributedRevision, BookmarkFact, CommentContent, DocumentPackageProjection,
+    DocumentProjection, DocumentReviewFacts, DocumentStructureFacts, DocxLimits,
+    InternalParagraphId, InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact,
+    ParagraphIdentityFacts, ParagraphIndentationFact, ParagraphStructure, ProjectedParagraph,
+    ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
+    ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionProjectionStatus,
     RevisionUnsupportedReason, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
-    StructuralSpan, TextStyle, project_docx,
+    StructuralSpan, TextStyle, project_docx, project_docx_with_review_facts,
 };
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
@@ -107,12 +110,71 @@ export type DocxProjectionWire = readonly [
   structuralFacts: DocxProjectionStructuralFacts,
   revisionStatus: DocxProjectionRevisionStatus,
 ];
+export type DocxReviewUnknownReason =
+  | "invalid-document"
+  | "invalid-comments"
+  | "invalid-comments-extended"
+  | "resource-limit"
+  | "unsupported-location";
+export type DocxReviewFactSet<T> =
+  | readonly [status: "known", items: readonly T[]]
+  | readonly [status: "unknown", reason: DocxReviewUnknownReason];
+export type DocxReviewDetail<T> =
+  | readonly [status: "known", value: T]
+  | readonly [status: "unknown", reason: DocxReviewUnknownReason];
+export type DocxReviewPoint = readonly [
+  paragraphOrdinal: number,
+  utf8: number,
+  utf16: number,
+];
+export type DocxReviewSpan = readonly [
+  start: DocxReviewPoint,
+  end: DocxReviewPoint,
+];
+export type DocxRevisionContent = readonly [
+  span: DocxReviewSpan,
+  text: string,
+  formattingOnly: boolean,
+];
+export type DocxCommentContent = readonly [
+  anchor: DocxReviewSpan,
+  commentText: string,
+  referencedText: string,
+];
+export type DocxAttributedRevision = readonly [
+  type: "insertion" | "deletion",
+  author: string,
+  date: string | null,
+  revisionId: string | null,
+  content: DocxReviewDetail<DocxRevisionContent>,
+];
+export type DocxAttributedComment = readonly [
+  commentId: string,
+  author: string,
+  initials: string | null,
+  date: string | null,
+  parentCommentId: string | null,
+  resolved: boolean,
+  content: DocxReviewDetail<DocxCommentContent>,
+];
+export type DocxReviewFactsWire = readonly [
+  schemaVersion: 1,
+  revisions: DocxReviewFactSet<DocxAttributedRevision>,
+  comments: DocxReviewFactSet<DocxAttributedComment>,
+];
+export type DocxPackageProjectionWire = readonly [
+  schemaVersion: 1,
+  document: DocxProjectionWire,
+  reviewFacts: DocxReviewFactsWire,
+];
 "#;
 
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(typescript_type = "DocxProjectionWire")]
     pub type DocxProjectionWire;
+    #[wasm_bindgen(typescript_type = "DocxPackageProjectionWire")]
+    pub type DocxPackageProjectionWire;
 }
 
 /// Projects compressed DOCX bytes into a versioned host-independent snapshot.
@@ -137,11 +199,43 @@ pub fn project_compressed_docx(bytes: &[u8]) -> Result<DocxProjectionWire, JsVal
         .map_err(|error| js_error(&error))
 }
 
+/// Projects the document snapshot and attributed review facts from one bounded
+/// package-directory scan.
+///
+/// # Errors
+///
+/// Returns a JavaScript `Error` when the document package itself cannot be
+/// projected. Invalid optional review parts are represented as unknown facts.
+#[wasm_bindgen(js_name = projectCompressedDocxWithReviewFacts)]
+pub fn project_compressed_docx_with_review_facts(
+    bytes: &[u8],
+) -> Result<DocxPackageProjectionWire, JsValue> {
+    project_docx_package_projection(bytes)
+        .and_then(|projection| output_package_projection(&projection))
+        // SAFETY: the output builder constructs the exact tuple declared as
+        // `DocxPackageProjectionWire` in the TypeScript custom section.
+        .map(JsCast::unchecked_into)
+        .map_err(|error| js_error(&error))
+}
+
 fn project_docx_projection(bytes: &[u8]) -> Result<DocumentProjection, String> {
     let limits = DocxLimits::default();
     project_docx(bytes, limits, |facts: ParagraphIdentityFacts<'_>| {
         InternalParagraphId::new(format!("projected-{}", facts.ordinal))
     })
+    .map_err(|error| error.to_string())
+}
+
+fn project_docx_package_projection(bytes: &[u8]) -> Result<DocumentPackageProjection, String> {
+    project_docx_with_review_facts(
+        bytes,
+        DocxLimits::default(),
+        ReviewFactLimits::default(),
+        ProjectionOptions::default(),
+        |facts: ParagraphIdentityFacts<'_>| {
+            InternalParagraphId::new(format!("projected-{}", facts.ordinal))
+        },
+    )
     .map_err(|error| error.to_string())
 }
 
@@ -196,6 +290,147 @@ fn output_projection_with_structure(projection: &DocumentProjection) -> Result<J
     output.set(2, output_structural_facts(&projection.structural_facts)?);
     output.set(3, output_revision_status(&projection.revision_status));
     Ok(output.into())
+}
+
+fn output_package_projection(projection: &DocumentPackageProjection) -> Result<JsValue, String> {
+    let output = Array::new_with_length(3);
+    output.set(0, JsValue::from_f64(1.0));
+    output.set(1, output_projection_with_structure(&projection.document)?);
+    output.set(2, output_review_facts(&projection.review_facts)?);
+    Ok(output.into())
+}
+
+fn output_review_facts(facts: &DocumentReviewFacts) -> Result<JsValue, String> {
+    let output = Array::new_with_length(3);
+    output.set(0, JsValue::from_f64(1.0));
+    output.set(
+        1,
+        output_review_fact_set(&facts.revisions, output_revision_fact)?,
+    );
+    output.set(
+        2,
+        output_review_fact_set(&facts.comments, output_comment_fact)?,
+    );
+    Ok(output.into())
+}
+
+fn output_review_fact_set<T>(
+    facts: &ReviewFactSet<T>,
+    mut output_item: impl FnMut(&T) -> Result<JsValue, String>,
+) -> Result<JsValue, String> {
+    let output = Array::new_with_length(2);
+    match facts {
+        ReviewFactSet::Known(items) => {
+            output.set(0, JsValue::from_str("known"));
+            let values = Array::new();
+            for item in items {
+                values.push(&output_item(item)?);
+            }
+            output.set(1, values.into());
+        }
+        ReviewFactSet::Unknown(reason) => {
+            output.set(0, JsValue::from_str("unknown"));
+            output.set(1, JsValue::from_str(review_unknown_reason(*reason)));
+        }
+    }
+    Ok(output.into())
+}
+
+fn output_revision_fact(fact: &AttributedRevision) -> Result<JsValue, String> {
+    let output = Array::new_with_length(5);
+    output.set(
+        0,
+        JsValue::from_str(match fact.kind {
+            RevisionFactKind::Insertion => "insertion",
+            RevisionFactKind::Deletion => "deletion",
+        }),
+    );
+    output.set(1, JsValue::from_str(&fact.author));
+    output.set(2, optional_string(fact.date.as_deref()));
+    output.set(3, optional_string(fact.revision_id.as_deref()));
+    output.set(
+        4,
+        output_review_detail(&fact.content, output_revision_content)?,
+    );
+    Ok(output.into())
+}
+
+fn output_comment_fact(fact: &AttributedComment) -> Result<JsValue, String> {
+    let output = Array::new_with_length(7);
+    output.set(0, JsValue::from_str(&fact.comment_id));
+    output.set(1, JsValue::from_str(&fact.author));
+    output.set(2, optional_string(fact.initials.as_deref()));
+    output.set(3, optional_string(fact.date.as_deref()));
+    output.set(4, optional_string(fact.parent_comment_id.as_deref()));
+    output.set(5, JsValue::from_bool(fact.resolved));
+    output.set(
+        6,
+        output_review_detail(&fact.content, output_comment_content)?,
+    );
+    Ok(output.into())
+}
+
+fn optional_string(value: Option<&str>) -> JsValue {
+    value.map_or(JsValue::NULL, JsValue::from_str)
+}
+
+fn output_review_detail<T>(
+    detail: &ReviewDetail<T>,
+    output_value: impl FnOnce(&T) -> Result<JsValue, String>,
+) -> Result<JsValue, String> {
+    let output = Array::new_with_length(2);
+    match detail {
+        ReviewDetail::Known(value) => {
+            output.set(0, JsValue::from_str("known"));
+            output.set(1, output_value(value)?);
+        }
+        ReviewDetail::Unknown(reason) => {
+            output.set(0, JsValue::from_str("unknown"));
+            output.set(1, JsValue::from_str(review_unknown_reason(*reason)));
+        }
+    }
+    Ok(output.into())
+}
+
+fn output_revision_content(content: &RevisionContent) -> Result<JsValue, String> {
+    let output = Array::new_with_length(3);
+    output.set(0, output_review_span(content.span)?);
+    output.set(1, JsValue::from_str(&content.text));
+    output.set(2, JsValue::from_bool(content.formatting_only));
+    Ok(output.into())
+}
+
+fn output_comment_content(content: &CommentContent) -> Result<JsValue, String> {
+    let output = Array::new_with_length(3);
+    output.set(0, output_review_span(content.anchor)?);
+    output.set(1, JsValue::from_str(&content.comment_text));
+    output.set(2, JsValue::from_str(&content.referenced_text));
+    Ok(output.into())
+}
+
+fn output_review_span(span: ReviewSpan) -> Result<JsValue, String> {
+    let output = Array::new_with_length(2);
+    output.set(0, output_review_point(span.start)?);
+    output.set(1, output_review_point(span.end)?);
+    Ok(output.into())
+}
+
+fn output_review_point(point: ReviewPoint) -> Result<JsValue, String> {
+    let output = Array::new_with_length(3);
+    output.set(0, usize_number(point.paragraph_ordinal)?);
+    output.set(1, JsValue::from_f64(f64::from(point.utf8)));
+    output.set(2, JsValue::from_f64(f64::from(point.utf16)));
+    Ok(output.into())
+}
+
+const fn review_unknown_reason(reason: ReviewFactUnknownReason) -> &'static str {
+    match reason {
+        ReviewFactUnknownReason::InvalidDocument => "invalid-document",
+        ReviewFactUnknownReason::InvalidComments => "invalid-comments",
+        ReviewFactUnknownReason::InvalidCommentsExtended => "invalid-comments-extended",
+        ReviewFactUnknownReason::ResourceLimit => "resource-limit",
+        ReviewFactUnknownReason::UnsupportedLocation => "unsupported-location",
+    }
 }
 
 fn output_revision_status(status: &RevisionProjectionStatus) -> JsValue {

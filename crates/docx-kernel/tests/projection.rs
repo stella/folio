@@ -14,10 +14,12 @@ use std::io::{Cursor, Write};
 use stella_docx_kernel::{
     DocxLimits, InternalParagraphId, InternalReferenceRole, PackageParagraphId,
     ParagraphIdentityFacts, ParagraphStructure, ProjectionError, ProjectionOptions,
+    ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason, RevisionFactKind,
     RevisionProjectionStatus, RevisionUnsupportedReason, RevisionView, SpanCoverage,
     StructuralFactSet, StructuralFactUnknownReason, TextFormattingSpan, TextMaterialization,
     TextStyle, extract_document_parts, extract_document_xml, project_document_xml,
     project_document_xml_with_options, project_docx, project_docx_with_options,
+    project_docx_with_review_facts,
 };
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -1155,6 +1157,229 @@ fn package_projection_is_deterministic_and_styles_extraction_is_bounded() {
         extract_document_parts(&equal_limits_package, equal_limits),
         Err(ProjectionError::StylesXmlTooLarge)
     );
+}
+
+#[test]
+fn fuses_document_projection_with_attributed_revisions_and_comment_threads() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:ins w:id="7" w:author="Ada" w:date="2026-07-01T10:00:00Z"><w:r><w:t>new</w:t></w:r></w:ins><w:del w:id="8" w:author="Lin"><w:r><w:delText>old</w:delText></w:r></w:del></w:p>
+    </w:body></w:document>"#;
+    let comments_xml = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
+      <w:comment w:id="19" w:author="Ada" w:initials="AA"><w:p w14:paraId="AAAAAAAA"/><w:p w14:paraId="1F21D71D"/></w:comment>
+      <w:comment w:id="20" w:author="Lin"><w:p w14:paraId="0D537B10"/></w:comment>
+      <w:comment w:id="22" w:author="Mae"><w:p w14:paraId="0ED2E4B2"/></w:comment>
+    </w:comments>"#;
+    let extended =
+        br#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">
+      <w15:commentEx w15:paraId="1F21D71D"/>
+      <w15:commentEx w15:paraId="0D537B10" w15:paraIdParent="1F21D71D" w15:done="0"/>
+      <w15:commentEx w15:paraId="0ED2E4B2" w15:done="1"/>
+    </w15:commentsEx>"#;
+    let projection = project_docx_with_review_facts(
+        &package(
+            &[
+                ("word/document.xml", document),
+                ("word/comments.xml", comments_xml),
+                ("word/commentsExtended.xml", extended),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        ReviewFactLimits::default(),
+        ProjectionOptions::default(),
+        allocate,
+    )
+    .unwrap();
+
+    assert_eq!(projection.document.paragraphs[0].text, "new");
+    let ReviewFactSet::Known(revisions) = projection.review_facts.revisions else {
+        panic!("valid revisions should be complete");
+    };
+    assert_eq!(revisions.len(), 2);
+    assert_eq!(revisions[0].kind, RevisionFactKind::Insertion);
+    assert_eq!(revisions[0].author, "Ada");
+    assert_eq!(revisions[0].revision_id.as_deref(), Some("7"));
+    assert_eq!(revisions[1].kind, RevisionFactKind::Deletion);
+
+    let ReviewFactSet::Known(comments) = projection.review_facts.comments else {
+        panic!("valid comments should be complete");
+    };
+    assert_eq!(comments.len(), 3);
+    assert_eq!(comments[1].comment_id, "20");
+    assert_eq!(comments[1].parent_comment_id.as_deref(), Some("19"));
+    assert!(!comments[1].resolved);
+    assert!(comments[2].resolved);
+}
+
+#[test]
+fn missing_comments_are_authoritatively_empty() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>"#;
+    let projection = project_docx_with_review_facts(
+        &package(
+            &[
+                ("word/document.xml", document),
+                ("word/commentsExtended.xml", b"not XML"),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        ReviewFactLimits::default(),
+        ProjectionOptions::default(),
+        allocate,
+    )
+    .unwrap();
+    assert_eq!(
+        projection.review_facts.comments,
+        ReviewFactSet::Known(Vec::new())
+    );
+}
+
+#[test]
+fn malformed_or_incomplete_comment_graphs_fail_closed_without_losing_the_document() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>kept</w:t></w:r></w:p></w:body></w:document>"#;
+    let comment = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:comment w:id="1"><w:p w14:paraId="AAAAAAAA"/></w:comment></w:comments>"#;
+    let cases: [(&[u8], ReviewFactUnknownReason); 4] = [
+        (b"<broken", ReviewFactUnknownReason::InvalidCommentsExtended),
+        (
+            br#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="BBBBBBBB"/></w15:commentsEx>"#,
+            ReviewFactUnknownReason::InvalidCommentsExtended,
+        ),
+        (
+            br#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="AAAAAAAA" w15:paraIdParent="BBBBBBBB"/></w15:commentsEx>"#,
+            ReviewFactUnknownReason::InvalidCommentsExtended,
+        ),
+        (
+            br#"<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="AAAAAAAA" w15:paraIdParent="AAAAAAAA"/></w15:commentsEx>"#,
+            ReviewFactUnknownReason::InvalidCommentsExtended,
+        ),
+    ];
+    for (extended, expected) in cases {
+        let projection = project_docx_with_review_facts(
+            &package(
+                &[
+                    ("word/document.xml", document),
+                    ("word/comments.xml", comment),
+                    ("word/commentsExtended.xml", extended),
+                ],
+                CompressionMethod::Deflated,
+            ),
+            DocxLimits::default(),
+            ReviewFactLimits::default(),
+            ProjectionOptions::default(),
+            allocate,
+        )
+        .unwrap();
+        assert_eq!(projection.document.paragraphs[0].text, "kept");
+        assert_eq!(
+            projection.review_facts.comments,
+            ReviewFactSet::Unknown(expected)
+        );
+    }
+
+    for malformed_comments in [
+        &b"<broken"[..],
+        &b"<wrong-root/>"[..],
+        &br#"<!DOCTYPE w:comments [<!ENTITY x "value">]><w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>"#[..],
+    ] {
+        let projection = project_docx_with_review_facts(
+            &package(
+                &[
+                    ("word/document.xml", document),
+                    ("word/comments.xml", malformed_comments),
+                ],
+                CompressionMethod::Deflated,
+            ),
+            DocxLimits::default(),
+            ReviewFactLimits::default(),
+            ProjectionOptions::default(),
+            allocate,
+        )
+        .unwrap();
+        assert_eq!(
+            projection.review_facts.comments,
+            ReviewFactSet::Unknown(ReviewFactUnknownReason::InvalidComments)
+        );
+    }
+}
+
+#[test]
+fn duplicate_comment_parts_and_fact_limits_are_explicit_unknowns() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:ins/><w:del/></w:p></w:body></w:document>"#;
+    let comments =
+        br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>"#;
+    let mut package_bytes = package(
+        &[
+            ("word/document.xml", document),
+            ("word/comments.xml", comments),
+            ("word/commentz.xml", comments),
+        ],
+        CompressionMethod::Deflated,
+    );
+    replace_all_equal_length(
+        &mut package_bytes,
+        b"word/commentz.xml",
+        b"word/comments.xml",
+    );
+    let projection = project_docx_with_review_facts(
+        &package_bytes,
+        DocxLimits::default(),
+        ReviewFactLimits {
+            maximum_facts_per_family: 1,
+            ..ReviewFactLimits::default()
+        },
+        ProjectionOptions::default(),
+        allocate,
+    )
+    .unwrap();
+    assert_eq!(
+        projection.review_facts.revisions,
+        ReviewFactSet::Unknown(ReviewFactUnknownReason::ResourceLimit)
+    );
+    assert_eq!(
+        projection.review_facts.comments,
+        ReviewFactSet::Unknown(ReviewFactUnknownReason::InvalidComments)
+    );
+
+    let size_limited = project_docx_with_review_facts(
+        &package(
+            &[
+                ("word/document.xml", document),
+                ("word/comments.xml", comments),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        ReviewFactLimits {
+            maximum_comments_xml_bytes: 1,
+            ..ReviewFactLimits::default()
+        },
+        ProjectionOptions::default(),
+        allocate,
+    )
+    .unwrap();
+    assert_eq!(
+        size_limited.review_facts.comments,
+        ReviewFactSet::Unknown(ReviewFactUnknownReason::ResourceLimit)
+    );
+}
+
+proptest::proptest! {
+    #[test]
+    fn arbitrary_comments_never_abort_a_valid_document(comments in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..2048)) {
+        let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>stable</w:t></w:r></w:p></w:body></w:document>"#;
+        let package_bytes = package(
+            &[("word/document.xml", document), ("word/comments.xml", &comments)],
+            CompressionMethod::Deflated,
+        );
+        let projection = project_docx_with_review_facts(
+            &package_bytes,
+            DocxLimits::default(),
+            ReviewFactLimits::default(),
+            ProjectionOptions::default(),
+            allocate,
+        ).expect("optional comment bytes must not abort document projection");
+        proptest::prop_assert_eq!(projection.document.paragraphs[0].text.as_str(), "stable");
+    }
 }
 
 fn package_with_minimal_styles(document: &[u8]) -> Vec<u8> {
