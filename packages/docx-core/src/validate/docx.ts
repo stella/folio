@@ -450,8 +450,13 @@ const validateRunContent = (content: RunContent, path: string, ctx: ValidationCo
     return;
   }
 
-  if (content.type === "symbol" && content.char.trim() === "") {
-    addError(ctx, `${path}.char`, "Symbol content must include a character.");
+  if (content.type === "symbol") {
+    if (content.font.trim() === "") {
+      addError(ctx, `${path}.font`, "Symbol content must include a font name.");
+    }
+    if (!/^[\dA-Fa-f]{4}$/u.test(content.char)) {
+      addError(ctx, `${path}.char`, "Symbol character must be exactly four hexadecimal digits.");
+    }
   }
 };
 

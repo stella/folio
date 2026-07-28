@@ -15,6 +15,7 @@ import type {
   TableCell,
   TableRow,
 } from "../types/document";
+import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { escapeTableCell } from "./escape";
 import { registerImage } from "./images";
 import { pushWarning } from "./internals";
@@ -329,7 +330,7 @@ function renderHtmlRun(
         text += "<br>";
         break;
       case "symbol":
-        text += escapeHtml(item.char);
+        text += escapeHtml(decodeOoxmlSymbolCharacter(item.char) ?? item.char);
         break;
       case "noBreakHyphen":
         text += "&#8209;";

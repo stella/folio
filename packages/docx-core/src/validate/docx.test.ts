@@ -97,6 +97,33 @@ describe("canonical DOCX document model validation", () => {
     expect(result.issues).toEqual([]);
   });
 
+  test("rejects malformed symbol attributes", () => {
+    const result = validateDocumentModel(
+      createDocument({
+        content: [
+          paragraph([
+            {
+              type: "run",
+              content: [{ type: "symbol", font: "", char: "not-hex" }],
+            },
+          ]),
+        ],
+      }),
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.issues).toContainEqual({
+      path: "package.document.content[0].content[0].content[0].font",
+      message: "Symbol content must include a font name.",
+      severity: "error",
+    });
+    expect(result.issues).toContainEqual({
+      path: "package.document.content[0].content[0].content[0].char",
+      message: "Symbol character must be exactly four hexadecimal digits.",
+      severity: "error",
+    });
+  });
+
   test("rejects a whitespace-only comment author", () => {
     const result = validateDocumentModel(
       createDocument({

@@ -49,6 +49,7 @@ import type {
   TableBorders,
   ShapeContent,
   Shape,
+  SymbolContent,
   NoteReferenceContent,
   SimpleField,
   ComplexField,
@@ -87,6 +88,7 @@ import {
   expectBlockSdtAttrs,
   expectSdtAttrs,
   expectShapeAttrs,
+  expectSymbolAttrs,
   expectStrikeMarkAttrs,
   expectTabAttrs,
   expectTableAttrs,
@@ -1588,6 +1590,9 @@ function extractParagraphContent(
         currentRun = createRunFromText(node.text || "", node.marks);
         currentMarksKey = marksKey;
       }
+    } else if (node.type.name === "symbol") {
+      flushCurrentInline();
+      content.push(createSymbolRun(node, node.marks));
     } else if (node.type.name === "hardBreak") {
       // Hard break ends current run
       flushCurrentInline();
@@ -1681,6 +1686,9 @@ function createTrackedChangeRun(node: PMNode, marks: readonly Mark[]): Run | nul
     };
     restoreRunPropertyChanges(run, marks);
     return run;
+  }
+  if (node.type.name === "symbol") {
+    return createSymbolRun(node, marks);
   }
   if (node.type.name === "hardBreak") {
     return createBreakRun(readHardBreakType(node));
@@ -1834,6 +1842,11 @@ function addNodeToHyperlink(hyperlink: Hyperlink, node: PMNode): void {
     return;
   }
 
+  if (node.type.name === "symbol") {
+    hyperlink.children.push(createSymbolRun(node, nonLinkMarks));
+    return;
+  }
+
   if (node.type.name === "hardBreak") {
     hyperlink.children.push(createBreakRun(readHardBreakType(node), nonLinkMarks));
     return;
@@ -1906,6 +1919,18 @@ function createRunFromText(text: string, marks: readonly Mark[]): Run {
   };
 
   const run: Run = { type: "run", content: [textContent] };
+  if (formatting) {
+    run.formatting = formatting;
+  }
+  restoreRunPropertyChanges(run, marks);
+  return run;
+}
+
+function createSymbolRun(node: PMNode, marks: readonly Mark[]): Run {
+  const { font, char } = expectSymbolAttrs(node);
+  const symbolContent: SymbolContent = { type: "symbol", font, char };
+  const run: Run = { type: "run", content: [symbolContent] };
+  const formatting = getRunFormattingFromMarks(marks);
   if (formatting) {
     run.formatting = formatting;
   }

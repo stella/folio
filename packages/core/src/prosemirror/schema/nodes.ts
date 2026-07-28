@@ -54,6 +54,11 @@ export type TabAttrs = {
   positional?: PositionalTab;
 };
 
+export type SymbolAttrs = {
+  font: string;
+  char: string;
+};
+
 /**
  * Paragraph node attributes - maps to ParagraphFormatting
  */

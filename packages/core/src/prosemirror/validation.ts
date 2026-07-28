@@ -24,6 +24,7 @@ import {
   readSdtAttrs,
   readShapeAttrs,
   readStrikeMarkAttrs,
+  readSymbolAttrs,
   readTabAttrs,
   readTableAttrs,
   readTableCellAttrs,
@@ -135,6 +136,10 @@ const validateNodeAttrs = (
 
     case "tab":
       appendAttrIssues(path, readTabAttrs(node), issues);
+      return;
+
+    case "symbol":
+      appendAttrIssues(path, readSymbolAttrs(node), issues);
       return;
 
     case "hardBreak":

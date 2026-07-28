@@ -1,5 +1,8 @@
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 
+import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
+import { expectSymbolAttrs } from "./attrs";
+
 import { findAllMatches } from "../utils/findReplace";
 import type { FindOptions } from "../utils/findReplace";
 
@@ -192,7 +195,7 @@ function getSearchTextTokenLength(node: ProseMirrorNode): number {
     return node.text?.length ?? 0;
   }
 
-  if (node.type.name === "tab" || node.type.name === "hardBreak") {
+  if (node.type.name === "tab" || node.type.name === "hardBreak" || node.type.name === "symbol") {
     return 1;
   }
 
@@ -212,6 +215,10 @@ function getSearchableParagraphText(paragraph: ProseMirrorNode): string {
     }
     if (node.type.name === "hardBreak") {
       text += "\n";
+      return false;
+    }
+    if (node.type.name === "symbol") {
+      text += decodeOoxmlSymbolCharacter(expectSymbolAttrs(node).char) ?? "";
       return false;
     }
     return true;

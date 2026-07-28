@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import type { Document, ShadingProperties, TableCell, Theme } from "../../types/document";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
@@ -44,6 +45,60 @@ function firstTableCellAttrs(doc: Document): Record<string, unknown> {
 }
 
 describe("toProseDoc", () => {
+  test("renders OOXML symbol characters with their declared font", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "symbol", font: "Wingdings", char: "F06F" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const symbol = pmDoc.firstChild?.firstChild;
+
+    expect(symbol?.type.name).toBe("symbol");
+    expect(symbol?.attrs).toMatchObject({ font: "Wingdings", char: "F06F" });
+    expect(symbol?.type.spec.toDOM?.(symbol)).toEqual([
+      "span",
+      {
+        "data-docx-symbol-char": "F06F",
+        "data-docx-symbol-font": "Wingdings",
+        style: 'font-family: "Wingdings";',
+      },
+      "\uF06F",
+    ]);
+
+    const paragraph = toFlowBlocks(pmDoc).at(0);
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind !== "paragraph") {
+      return;
+    }
+    expect(paragraph.runs).toMatchObject([
+      { kind: "text", text: "\uF06F", fontFamily: "Wingdings" },
+    ]);
+
+    const rebuilt = fromProseDoc(pmDoc, document);
+    const rebuiltParagraph = rebuilt.package.document.content.at(0);
+    const rebuiltRun =
+      rebuiltParagraph?.type === "paragraph" ? rebuiltParagraph.content.at(0) : undefined;
+    expect(rebuiltRun?.type).toBe("run");
+    if (rebuiltRun?.type !== "run") {
+      return;
+    }
+    expect(rebuiltRun.content).toEqual([{ type: "symbol", font: "Wingdings", char: "F06F" }]);
+  });
+
   test("converts table-cell text-box shapes into block nodes", () => {
     const document: Document = {
       package: {

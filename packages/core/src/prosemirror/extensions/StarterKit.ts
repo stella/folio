@@ -78,6 +78,7 @@ import { PageBreakExtension } from "./nodes/PageBreakExtension";
 import { RenderedPageBreakExtension } from "./nodes/RenderedPageBreakExtension";
 import { SdtExtension } from "./nodes/SdtExtension";
 import { ShapeExtension } from "./nodes/ShapeExtension";
+import { SymbolExtension } from "./nodes/SymbolExtension";
 import { TabExtension } from "./nodes/TabExtension";
 import { createTableExtensions } from "./nodes/TableExtension";
 import { TextBoxExtension } from "./nodes/TextBoxExtension";
@@ -162,6 +163,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   // Nodes
   add("hardBreak", HardBreakExtension());
   add("tab", TabExtension());
+  add("symbol", SymbolExtension());
   add("image", ImageExtension());
   add("textBox", TextBoxExtension());
   add("textBoxAnchor", TextBoxAnchorExtension());

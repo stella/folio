@@ -23,6 +23,7 @@ import type {
   Run,
   RunContent,
 } from "../types/document";
+import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { wrapComment, wrapDeletion, wrapInsertion, wrapMoveFrom, wrapMoveTo } from "./annotations";
 import { escapeAltText, escapeInline, escapeLinkUrl } from "./escape";
 import { registerImage } from "./images";
@@ -136,7 +137,7 @@ function renderRunContent(
         }
         break;
       case "symbol":
-        out += escapeInline(item.char);
+        out += escapeInline(decodeOoxmlSymbolCharacter(item.char) ?? item.char);
         break;
       case "softHyphen":
         // U+00AD soft hyphen. Word displays it only when needed for line

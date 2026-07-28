@@ -14,6 +14,7 @@ import { createStarterKit } from "../extensions/StarterKit";
 export type {
   HardBreakAttrs,
   TabAttrs,
+  SymbolAttrs,
   ParagraphAttrs,
   FieldAttrs,
   ImageAttrs,

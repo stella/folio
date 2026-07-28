@@ -56,6 +56,7 @@ import {
   expectParagraphAttrs,
   expectRunFormattingOverrideMarkAttrs,
   expectRunShadingMarkAttrs,
+  expectSymbolAttrs,
   expectTableAttrs,
   expectTableCellAttrs,
   expectTableRowAttrs,
@@ -85,6 +86,7 @@ import { NUMBER_FORMAT_VALUES } from "../../types/documentEnumValues";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
+import { decodeOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
 import {
   AUTO_PARAGRAPH_SPACING_PX,
   pointsToPixels,
@@ -1073,6 +1075,26 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
         pmEnd: childPos + child.nodeSize,
       };
       runs.push(run);
+      return;
+    }
+    if (child.type.name === "symbol") {
+      const attrs = expectSymbolAttrs(child);
+      const text = decodeOoxmlSymbolCharacter(attrs.char);
+      if (text === null) {
+        return;
+      }
+      const formatting = extractRunFormatting(child.marks, theme);
+      if (inTocParagraph) {
+        stripTocHyperlinkStyle(formatting);
+      }
+      runs.push({
+        kind: "text",
+        text,
+        ...mergeRunFormatting(paraDefaults, formatting),
+        fontFamily: attrs.font,
+        pmStart: childPos,
+        pmEnd: childPos + child.nodeSize,
+      });
       return;
     }
     if (child.type.name === "hardBreak") {

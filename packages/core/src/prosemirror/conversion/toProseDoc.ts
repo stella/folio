@@ -556,6 +556,7 @@ function canCarryTrackedRunMark(node: PMNode, markType: MarkType): boolean {
         node.type.name === "shape" ||
         node.type.name === "hardBreak" ||
         node.type.name === "tab" ||
+        node.type.name === "symbol" ||
         node.type.name === "textBoxAnchor"))
   );
 }
@@ -2391,9 +2392,7 @@ function convertRunContent(
       return [schema.text("­", marks)];
 
     case "symbol":
-      // Plain Unicode symbol — fall through to text if the parsed
-      // character is available; otherwise drop.
-      return content.char ? [schema.text(content.char, marks)] : [];
+      return [schema.node("symbol", { font: content.font, char: content.char }).mark(marks)];
   }
 }
 

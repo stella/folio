@@ -30,6 +30,7 @@ import {
   THEME_COLOR_SLOT_VALUES,
   UNDERLINE_STYLE_VALUES,
 } from "../../types/documentEnumValues";
+import { isOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
 import { isParagraphDirection } from "../paragraphDirection";
 import type {
   BlockSdtAttrs,
@@ -46,6 +47,7 @@ import type {
   HyperlinkAttrs,
   HardBreakAttrs,
   TabAttrs,
+  SymbolAttrs,
   ImageAttrs,
   MathAttrs,
   ParagraphAttrs,
@@ -218,6 +220,7 @@ const SECTION_VERTICAL_ALIGNMENTS = ["top", "center", "both", "bottom"] as const
 const paragraphAttrsCache = new WeakMap<PMNode, ParagraphAttrs>();
 const hardBreakAttrsCache = new WeakMap<PMNode, HardBreakAttrs>();
 const tabAttrsCache = new WeakMap<PMNode, TabAttrs>();
+const symbolAttrsCache = new WeakMap<PMNode, SymbolAttrs>();
 const tableAttrsCache = new WeakMap<PMNode, TableAttrs>();
 const tableRowAttrsCache = new WeakMap<PMNode, TableRowAttrs>();
 const tableCellAttrsCache = new WeakMap<PMNode, TableCellAttrs>();
@@ -432,6 +435,29 @@ export const readTabAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TabAttrs>
 
 export const expectTabAttrs = (node: PMNode): TabAttrs =>
   expectCachedNodeAttrs(node, tabAttrsCache, readTabAttrs, "tab attrs");
+
+export const readSymbolAttrs = (node: PMNode): ReadProseMirrorAttrsResult<SymbolAttrs> => {
+  const attrs = attrsRecord(node.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectNodeType(node, "symbol", issues);
+
+  requiredString(attrs, "font", "symbol.attrs.font", issues);
+  requiredString(attrs, "char", "symbol.attrs.char", issues);
+  if (typeof attrs["font"] === "string" && attrs["font"].trim() === "") {
+    issues.push({ path: "symbol.attrs.font", message: "Expected a non-empty font name." });
+  }
+  if (typeof attrs["char"] === "string" && !isOoxmlSymbolCharacter(attrs["char"])) {
+    issues.push({
+      path: "symbol.attrs.char",
+      message: "Expected exactly four hexadecimal digits.",
+    });
+  }
+
+  return attrsResult(attrs, issues);
+};
+
+export const expectSymbolAttrs = (node: PMNode): SymbolAttrs =>
+  expectCachedNodeAttrs(node, symbolAttrsCache, readSymbolAttrs, "symbol attrs");
 
 export const readTableAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableAttrs> => {
   const attrs = attrsRecord(node.attrs);
