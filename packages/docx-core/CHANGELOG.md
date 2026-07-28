@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.10.0
+
+### Minor Changes
+
+- [#527](https://github.com/stella/folio/pull/527) [`b4c2b15`](https://github.com/stella/folio/commit/b4c2b1536f1e3483ed0fa55e72c564d543964a41) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Project direct paragraph style identifiers and resolved outline levels through the versioned DOCX kernel boundary.
+
 ## 0.9.0
 
 ### Minor Changes
