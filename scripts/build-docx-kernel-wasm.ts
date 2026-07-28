@@ -45,8 +45,13 @@ const canonicalArtifactPlatform = process.platform === "linux" && process.arch =
 // unrelated feature growth cannot consume their allowance unnoticed.
 const maximumReviewDetailBytes = 11 * 1024;
 const maximumReviewDetailBrotliBytes = 2 * 1024;
-const maximumWasmBytes = 222 * 1024 + maximumReviewDetailBytes;
-const maximumBrotliBytes = 100 * 1024 + maximumReviewDetailBrotliBytes;
+// Direct paragraph styles and resolved outline levels have their own bounded
+// allowance so future projection growth cannot consume it silently.
+const maximumParagraphStructureBytes = 2 * 1024;
+const maximumParagraphStructureBrotliBytes = 1024;
+const maximumWasmBytes = 222 * 1024 + maximumReviewDetailBytes + maximumParagraphStructureBytes;
+const maximumBrotliBytes =
+  100 * 1024 + maximumReviewDetailBrotliBytes + maximumParagraphStructureBrotliBytes;
 
 const sourceFiles = readdirSync(path.join(repoRoot, "crates", "docx-kernel", "src"), {
   recursive: true,

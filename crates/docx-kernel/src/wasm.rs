@@ -2,16 +2,17 @@ use crate::{
     AttributedComment, AttributedRevision, BookmarkFact, CommentContent, DocumentPackageProjection,
     DocumentProjection, DocumentReviewFacts, DocumentStructureFacts, DocxLimits,
     InternalParagraphId, InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact,
-    ParagraphIdentityFacts, ParagraphIndentationFact, ParagraphStructure, ProjectedParagraph,
-    ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
-    ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionProjectionStatus,
-    RevisionUnsupportedReason, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
-    StructuralSpan, TextMaterialization, TextStyle, project_docx, project_docx_with_review_facts,
+    ParagraphIdentityFacts, ParagraphIndentationFact, ParagraphOutlineLevelFact,
+    ParagraphStructure, ProjectedParagraph, ProjectionOptions, ReviewDetail, ReviewFactLimits,
+    ReviewFactSet, ReviewFactUnknownReason, ReviewPoint, ReviewSpan, RevisionContent,
+    RevisionFactKind, RevisionProjectionStatus, RevisionUnsupportedReason, SpanCoverage,
+    StructuralFactSet, StructuralFactUnknownReason, StructuralSpan, TextMaterialization, TextStyle,
+    project_docx, project_docx_with_review_facts,
 };
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
 
-const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 2;
+const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 3;
 const DOCX_PACKAGE_PROJECTION_SCHEMA_VERSION: u32 = 1;
 const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 1;
 
@@ -36,6 +37,7 @@ export type DocxProjectionParagraph = readonly [
   packageParagraphId: string | null,
   formatting: readonly DocxProjectionFormattingSpan[],
   structure: DocxProjectionStructure,
+  styleId: string | null,
 ];
 export type DocxProjectionFactSet<T> =
   | readonly [status: "known", items: readonly T[]]
@@ -67,6 +69,10 @@ export type DocxProjectionNumberingFact = readonly [
   parentParagraphOrdinal: number | null,
   childParagraphOrdinals: readonly number[],
 ];
+export type DocxProjectionOutlineLevelFact = readonly [
+  paragraphOrdinal: number,
+  outlineLevel: number,
+];
 export type DocxProjectionBookmarkFact = readonly [
   paragraphOrdinal: number,
   bookmarkId: number,
@@ -95,6 +101,7 @@ export type DocxProjectionStructuralFacts = readonly [
   numberingHierarchy: DocxProjectionFactSet<DocxProjectionNumberingFact>,
   bookmarks: DocxProjectionFactSet<DocxProjectionBookmarkFact>,
   internalReferences: DocxProjectionFactSet<DocxProjectionReferenceFact>,
+  outlineLevels: DocxProjectionFactSet<DocxProjectionOutlineLevelFact>,
 ];
 export type DocxProjectionRevisionUnsupportedReason =
   | "incompatible-paragraph-merge"
@@ -107,7 +114,7 @@ export type DocxProjectionRevisionStatus =
       reasons: readonly DocxProjectionRevisionUnsupportedReason[],
     ];
 export type DocxProjectionWire = readonly [
-  schemaVersion: 2,
+  schemaVersion: 3,
   paragraphs: readonly DocxProjectionParagraph[],
   structuralFacts: DocxProjectionStructuralFacts,
   revisionStatus: DocxProjectionRevisionStatus,
@@ -304,7 +311,7 @@ fn output_projected_paragraph(
     ordinal: usize,
     paragraph: &ProjectedParagraph,
 ) -> Result<JsValue, String> {
-    let output = Array::new_with_length(5);
+    let output = Array::new_with_length(6);
     output.set(0, usize_number(ordinal)?);
     output.set(1, JsValue::from_str(&paragraph.text));
     output.set(
@@ -330,6 +337,13 @@ fn output_projected_paragraph(
     }
     output.set(3, formatting.into());
     output.set(4, output_paragraph_structure(paragraph.structure.clone())?);
+    output.set(
+        5,
+        paragraph
+            .style_id
+            .as_ref()
+            .map_or(JsValue::NULL, |style_id| JsValue::from_str(style_id)),
+    );
     Ok(output.into())
 }
 
@@ -551,7 +565,7 @@ fn output_revision_status(status: &RevisionProjectionStatus) -> JsValue {
 }
 
 fn output_structural_facts(facts: &DocumentStructureFacts) -> Result<JsValue, String> {
-    let output = Array::new_with_length(4);
+    let output = Array::new_with_length(5);
     output.set(
         0,
         output_fact_set(&facts.indentation, output_indentation_fact)?,
@@ -564,6 +578,10 @@ fn output_structural_facts(facts: &DocumentStructureFacts) -> Result<JsValue, St
     output.set(
         3,
         output_fact_set(&facts.internal_references, output_reference_fact)?,
+    );
+    output.set(
+        4,
+        output_fact_set(&facts.outline_levels, output_outline_level_fact)?,
     );
     Ok(output.into())
 }
@@ -634,6 +652,13 @@ fn output_numbering_fact(fact: &NumberingHierarchyFact) -> Result<JsValue, Strin
         children.push(&usize_number(*child)?);
     }
     output.set(2, children.into());
+    Ok(output.into())
+}
+
+fn output_outline_level_fact(fact: &ParagraphOutlineLevelFact) -> Result<JsValue, String> {
+    let output = Array::new_with_length(2);
+    output.set(0, usize_number(fact.paragraph_ordinal)?);
+    output.set(1, number(f64::from(fact.outline_level)));
     Ok(output.into())
 }
 

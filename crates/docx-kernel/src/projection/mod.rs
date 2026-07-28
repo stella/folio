@@ -28,8 +28,9 @@ pub use review::{
 };
 pub use structure::{
     BookmarkFact, DocumentStructureFacts, InternalReferenceFact, InternalReferenceRole,
-    NumberingHierarchyFact, ParagraphIndentation, ParagraphIndentationFact, SpanCoverage,
-    StructuralFactSet, StructuralFactUnknownReason, StructuralSpan,
+    NumberingHierarchyFact, ParagraphIndentation, ParagraphIndentationFact,
+    ParagraphOutlineLevelFact, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
+    StructuralSpan,
 };
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -68,6 +69,7 @@ pub struct ProjectedParagraph {
     pub id: InternalParagraphId,
     pub ordinal: usize,
     pub package_paragraph_id: Option<PackageParagraphId>,
+    pub style_id: Option<String>,
     pub text: String,
     pub formatting: Vec<TextFormattingSpan>,
     pub structure: Option<ParagraphStructure>,
@@ -397,7 +399,7 @@ where
     let properties = projected
         .paragraphs
         .iter()
-        .map(|paragraph| paragraph.properties.clone())
+        .map(|paragraph| &paragraph.properties)
         .collect::<Vec<_>>();
     let structural_facts = structure::materialize_structure(
         structure::RawStructureInput {
@@ -415,6 +417,7 @@ where
             id,
             ordinal: paragraph.ordinal,
             package_paragraph_id: paragraph.package_paragraph_id,
+            style_id: paragraph.properties.style_id,
             text: paragraph.text,
             formatting: paragraph.formatting,
             structure: paragraph.structure,

@@ -162,6 +162,14 @@ fn start(
             }
             Frame::Other
         }
+        b"outlineLvl" => {
+            if let Some(owner) = paragraph_properties_owner(frames)
+                && let Some(properties) = properties_mut(owner, sheet, current_style)
+            {
+                properties.outline_level = Some(parse_level_attribute(reader, element)?);
+            }
+            Frame::Other
+        }
         b"numId" => {
             if let Some(owner) = numbering_properties_owner(frames)
                 && let Some(properties) = properties_mut(owner, sheet, current_style)

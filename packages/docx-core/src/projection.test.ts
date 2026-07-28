@@ -33,9 +33,34 @@ describe("DOCX projection TypeScript binding", () => {
   test("runs the versioned Rust projection through WebAssembly", async () => {
     const projection = await projectCompressedDocx(await createDocument());
 
-    expect(projection[0]).toBe(2);
+    expect(projection[0]).toBe(3);
     expect(projection[1].map(([, text]) => text)).toEqual(["Before", "Inside"]);
     expect(projection[1][1]?.[4]).toEqual(["table", "table-0", 0, 0]);
+  });
+
+  test("exposes direct style identifiers separately from resolved outline levels", async () => {
+    const archive = new JSZip();
+    archive.file(
+      "word/document.xml",
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Derived"/></w:pPr><w:r><w:t>Inherited</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="Derived"/><w:outlineLvl w:val="3"/></w:pPr><w:r><w:t>Direct</w:t></w:r></w:p></w:body></w:document>`,
+    );
+    archive.file(
+      "word/styles.xml",
+      `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Base"><w:pPr><w:outlineLvl w:val="1"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Derived"><w:basedOn w:val="Base"/></w:style></w:styles>`,
+    );
+
+    const projection = await projectCompressedDocx(
+      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+    );
+
+    expect(projection[1].map((paragraph) => paragraph[5])).toEqual(["Derived", "Derived"]);
+    expect(projection[2][4]).toEqual([
+      "known",
+      [
+        [0, 1],
+        [1, 3],
+      ],
+    ]);
   });
 
   test("wraps malformed packages in a typed boundary error", async () => {

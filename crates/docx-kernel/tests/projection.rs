@@ -841,21 +841,45 @@ fn rejects_structural_fact_expansion_above_the_configured_limit() {
 }
 
 #[test]
+fn counts_outline_levels_against_the_shared_structural_fact_budget() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:pPr><w:outlineLvl w:val="0"/></w:pPr><w:r><w:t>First</w:t></w:r></w:p>
+      <w:p><w:pPr><w:outlineLvl w:val="1"/></w:pPr><w:r><w:t>Second</w:t></w:r></w:p>
+    </w:body></w:document>"#;
+    let package = package_with_minimal_styles(document);
+    let constrained = DocxLimits {
+        maximum_structural_facts: 1,
+        ..DocxLimits::default()
+    };
+
+    assert_eq!(
+        project_docx(&package, constrained, allocate),
+        Err(ProjectionError::TooManyStructuralFacts)
+    );
+    let exact = DocxLimits {
+        maximum_structural_facts: 2,
+        ..DocxLimits::default()
+    };
+    assert!(project_docx(&package, exact, allocate).is_ok());
+}
+
+#[test]
 fn resolves_inherited_indentation_and_numbering_without_partial_facts() {
     let document = br#"
       <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
         <w:p><w:pPr><w:pStyle w:val="ListRoot"/></w:pPr><w:r><w:t>Root</w:t></w:r></w:p>
-        <w:p><w:pPr><w:pStyle w:val="ListChild"/></w:pPr><w:r><w:t>Child</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="ListChild"/><w:outlineLvl w:val="2"/></w:pPr><w:r><w:t>Child</w:t></w:r></w:p>
         <w:p><w:pPr><w:pStyle w:val="Normal"/><w:ind w:firstLine="240"/></w:pPr><w:r><w:t>Body</w:t></w:r></w:p>
+        <w:p><w:r><w:t>Default</w:t></w:r></w:p>
       </w:body></w:document>
     "#;
     let styles = br#"
       <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-        <w:docDefaults><w:pPrDefault><w:pPr><w:ind w:left="120"/></w:pPr></w:pPrDefault></w:docDefaults>
-        <w:style w:type="paragraph" w:styleId="Normal" w:default="1"/>
+        <w:docDefaults><w:pPrDefault><w:pPr><w:ind w:left="120"/><w:outlineLvl w:val="7"/></w:pPr></w:pPrDefault></w:docDefaults>
+        <w:style w:type="paragraph" w:styleId="Normal" w:default="1"><w:pPr><w:outlineLvl w:val="4"/></w:pPr></w:style>
         <w:style w:type="paragraph" w:styleId="ListRoot">
           <w:basedOn w:val="Normal"/>
-          <w:pPr><w:ind w:left="720" w:hanging="360"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr></w:pPr>
+          <w:pPr><w:ind w:left="720" w:hanging="360"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr><w:outlineLvl w:val="1"/></w:pPr>
         </w:style>
         <w:style w:type="paragraph" w:styleId="ListChild">
           <w:basedOn w:val="ListRoot"/>
@@ -870,10 +894,18 @@ fn resolves_inherited_indentation_and_numbering_without_partial_facts() {
 
     let projection = project_docx(&package, DocxLimits::default(), allocate)
         .expect("supported package structure should project");
+    assert_eq!(
+        projection
+            .paragraphs
+            .iter()
+            .map(|paragraph| paragraph.style_id.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("ListRoot"), Some("ListChild"), Some("Normal"), None]
+    );
     let StructuralFactSet::Known(indentation) = &projection.structural_facts.indentation else {
         panic!("resolved indentation must be known");
     };
-    assert_eq!(indentation.len(), 3);
+    assert_eq!(indentation.len(), 4);
     assert_eq!(indentation[0].value.left_twips, Some(720));
     assert_eq!(indentation[0].value.hanging_twips, Some(360));
     assert_eq!(indentation[1].value.left_twips, Some(1440));
@@ -890,13 +922,29 @@ fn resolves_inherited_indentation_and_numbering_without_partial_facts() {
     assert_eq!(numbering[0].parent_paragraph_ordinal, None);
     assert_eq!(numbering[0].child_paragraph_ordinals, [1]);
     assert_eq!(numbering[1].parent_paragraph_ordinal, Some(0));
+
+    let StructuralFactSet::Known(outline_levels) = &projection.structural_facts.outline_levels
+    else {
+        panic!("resolved outline levels must be known");
+    };
+    assert_eq!(
+        outline_levels
+            .iter()
+            .map(|fact| (fact.paragraph_ordinal, fact.outline_level))
+            .collect::<Vec<_>>(),
+        [(0, 1), (1, 2), (2, 4), (3, 4)]
+    );
 }
 
 #[test]
 fn document_part_only_does_not_claim_style_dependent_facts() {
-    let xml = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Plain</w:t></w:r></w:p></w:body></w:document>"#;
+    let xml = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Heading"/><w:outlineLvl w:val="2"/></w:pPr><w:r><w:t>Plain</w:t></w:r></w:p></w:body></w:document>"#;
     let projection = project_document_xml(xml, allocate).expect("document part should project");
 
+    assert_eq!(
+        projection.paragraphs[0].style_id.as_deref(),
+        Some("Heading")
+    );
     assert_eq!(
         projection.structural_facts.indentation,
         StructuralFactSet::Unknown(StructuralFactUnknownReason::DocumentPartOnly)
@@ -906,11 +954,88 @@ fn document_part_only_does_not_claim_style_dependent_facts() {
         StructuralFactSet::Unknown(StructuralFactUnknownReason::DocumentPartOnly)
     );
     assert_eq!(
+        projection.structural_facts.outline_levels,
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::DocumentPartOnly)
+    );
+    assert_eq!(
         projection.structural_facts.bookmarks,
         StructuralFactSet::Known(Vec::new())
     );
     assert_eq!(
         projection.structural_facts.internal_references,
+        StructuralFactSet::Known(Vec::new())
+    );
+}
+
+#[test]
+fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:pPr><w:pStyle w:val="Heading"/></w:pPr><w:r><w:t>Text</w:t></w:r></w:p>
+    </w:body></w:document>"#;
+    let unavailable = project_docx(
+        &package(
+            &[("word/document.xml", document)],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("a missing optional styles part should preserve the document");
+    assert_eq!(
+        unavailable.paragraphs[0].style_id.as_deref(),
+        Some("Heading")
+    );
+    assert_eq!(
+        unavailable.structural_facts.outline_levels,
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::StylesPartUnavailable)
+    );
+
+    let malformed = project_docx(
+        &package(
+            &[
+                ("word/document.xml", document),
+                ("word/styles.xml", b"<not-styles/>"),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("an invalid optional styles part should preserve the document");
+    assert_eq!(malformed.paragraphs[0].style_id.as_deref(), Some("Heading"));
+    assert_eq!(
+        malformed.structural_facts.outline_levels,
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles)
+    );
+
+    let unknown_style = project_docx(
+        &package_with_minimal_styles(document),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("an unknown style reference should preserve the document");
+    assert_eq!(
+        unknown_style.paragraphs[0].style_id.as_deref(),
+        Some("Heading")
+    );
+    assert_eq!(
+        unknown_style.structural_facts.outline_levels,
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles)
+    );
+}
+
+#[test]
+fn valid_style_sheets_make_absent_outline_levels_authoritatively_empty() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Plain</w:t></w:r></w:p></w:body></w:document>"#;
+    let projection = project_docx(
+        &package_with_minimal_styles(document),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("a supported style sheet should resolve outline facts");
+
+    assert_eq!(
+        projection.structural_facts.outline_levels,
         StructuralFactSet::Known(Vec::new())
     );
 }
@@ -1073,6 +1198,15 @@ fn downgrades_whole_fact_families_for_unsupported_or_incomplete_constructs() {
     assert_eq!(
         cyclic_style_projection.structural_facts.numbering_hierarchy,
         StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles)
+    );
+    assert_eq!(
+        cyclic_style_projection.structural_facts.outline_levels,
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles)
+    );
+    assert_eq!(
+        cyclic_style_projection.paragraphs[0].style_id.as_deref(),
+        Some("CycleA"),
+        "unsupported inheritance must not discard direct paragraph facts"
     );
 }
 

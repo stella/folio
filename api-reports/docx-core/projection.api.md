@@ -40,7 +40,10 @@ export class DocxProjectionInitializationError extends DocxProjectionInitializat
 export type DocxProjectionNumberingFact = readonly [paragraphOrdinal: number, parentParagraphOrdinal: number | null, childParagraphOrdinals: readonly number[]];
 
 // @public (undocumented)
-export type DocxProjectionParagraph = readonly [ordinal: number, text: string, packageParagraphId: string | null, formatting: readonly DocxProjectionFormattingSpan[], structure: DocxProjectionStructure];
+export type DocxProjectionOutlineLevelFact = readonly [paragraphOrdinal: number, outlineLevel: number];
+
+// @public (undocumented)
+export type DocxProjectionParagraph = readonly [ordinal: number, text: string, packageParagraphId: string | null, formatting: readonly DocxProjectionFormattingSpan[], structure: DocxProjectionStructure, styleId: string | null];
 
 // @public (undocumented)
 export type DocxProjectionReferenceFact = readonly [paragraphOrdinal: number, referenceId: string, role: "source" | "target", span: DocxProjectionStructuralSpan];
@@ -52,7 +55,7 @@ export type DocxProjectionRevisionStatus = readonly [status: "complete"] | reado
 export type DocxProjectionRevisionUnsupportedReason = "incompatible-paragraph-merge" | "structural-table-revision" | "unsupported-revision-markup";
 
 // @public (undocumented)
-export type DocxProjectionStructuralFacts = readonly [indentation: DocxProjectionFactSet<DocxProjectionIndentationFact>, numberingHierarchy: DocxProjectionFactSet<DocxProjectionNumberingFact>, bookmarks: DocxProjectionFactSet<DocxProjectionBookmarkFact>, internalReferences: DocxProjectionFactSet<DocxProjectionReferenceFact>];
+export type DocxProjectionStructuralFacts = readonly [indentation: DocxProjectionFactSet<DocxProjectionIndentationFact>, numberingHierarchy: DocxProjectionFactSet<DocxProjectionNumberingFact>, bookmarks: DocxProjectionFactSet<DocxProjectionBookmarkFact>, internalReferences: DocxProjectionFactSet<DocxProjectionReferenceFact>, outlineLevels: DocxProjectionFactSet<DocxProjectionOutlineLevelFact>];
 
 // @public (undocumented)
 export type DocxProjectionStructuralSpan = readonly [startUtf8: number, endUtf8: number, startUtf16: number, endUtf16: number, coverage: "complete" | "continues-before" | "continues-after" | "continues-before-and-after"];
@@ -67,7 +70,7 @@ export type DocxProjectionUnknownReason = "document-part-only" | "styles-part-un
 export type DocxProjectionWasmSource = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 // @public (undocumented)
-export type DocxProjectionWire = readonly [schemaVersion: 2, paragraphs: readonly DocxProjectionParagraph[], structuralFacts: DocxProjectionStructuralFacts, revisionStatus: DocxProjectionRevisionStatus];
+export type DocxProjectionWire = readonly [schemaVersion: 3, paragraphs: readonly DocxProjectionParagraph[], structuralFacts: DocxProjectionStructuralFacts, revisionStatus: DocxProjectionRevisionStatus];
 
 // @public (undocumented)
 export type DocxReviewDetail<T> = readonly [status: "known", value: T] | readonly [status: "unknown", reason: DocxReviewUnknownReason];

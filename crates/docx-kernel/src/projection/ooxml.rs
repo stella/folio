@@ -716,6 +716,13 @@ impl ProjectionState {
                 }
                 Frame::Other
             }
+            b"outlineLvl" if matches!(self.frames.last(), Some(Frame::ParagraphProperties)) => {
+                if let Some(paragraph) = self.current_paragraph.as_mut() {
+                    paragraph.properties.outline_level =
+                        Some(parse_level_attribute(reader, element)?);
+                }
+                Frame::Other
+            }
             b"numPr" if matches!(self.frames.last(), Some(Frame::ParagraphProperties)) => {
                 if let Some(paragraph) = self.current_paragraph.as_mut() {
                     paragraph.properties.numbering.present = true;

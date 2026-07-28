@@ -20,6 +20,7 @@ text: string,
 packageParagraphId: string | null,
 formatting: readonly DocxProjectionFormattingSpan[],
 structure: DocxProjectionStructure,
+styleId: string | null,
 ];
 export type DocxProjectionFactSet<T> =
 | readonly [status: "known", items: readonly T[]]
@@ -51,6 +52,10 @@ paragraphOrdinal: number,
 parentParagraphOrdinal: number | null,
 childParagraphOrdinals: readonly number[],
 ];
+export type DocxProjectionOutlineLevelFact = readonly [
+paragraphOrdinal: number,
+outlineLevel: number,
+];
 export type DocxProjectionBookmarkFact = readonly [
 paragraphOrdinal: number,
 bookmarkId: number,
@@ -79,6 +84,7 @@ indentation: DocxProjectionFactSet<DocxProjectionIndentationFact>,
 numberingHierarchy: DocxProjectionFactSet<DocxProjectionNumberingFact>,
 bookmarks: DocxProjectionFactSet<DocxProjectionBookmarkFact>,
 internalReferences: DocxProjectionFactSet<DocxProjectionReferenceFact>,
+outlineLevels: DocxProjectionFactSet<DocxProjectionOutlineLevelFact>,
 ];
 export type DocxProjectionRevisionUnsupportedReason =
 | "incompatible-paragraph-merge"
@@ -91,7 +97,7 @@ status: "incomplete",
 reasons: readonly DocxProjectionRevisionUnsupportedReason[],
 ];
 export type DocxProjectionWire = readonly [
-schemaVersion: 2,
+schemaVersion: 3,
 paragraphs: readonly DocxProjectionParagraph[],
 structuralFacts: DocxProjectionStructuralFacts,
 revisionStatus: DocxProjectionRevisionStatus,

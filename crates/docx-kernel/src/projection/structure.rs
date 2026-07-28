@@ -89,6 +89,12 @@ pub struct ParagraphIndentationFact {
     pub value: ParagraphIndentation,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ParagraphOutlineLevelFact {
+    pub paragraph_ordinal: usize,
+    pub outline_level: u8,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NumberingHierarchyFact {
     pub paragraph_ordinal: usize,
@@ -141,6 +147,7 @@ pub struct DocumentStructureFacts {
     pub numbering_hierarchy: StructuralFactSet<NumberingHierarchyFact>,
     pub bookmarks: StructuralFactSet<BookmarkFact>,
     pub internal_references: StructuralFactSet<InternalReferenceFact>,
+    pub outline_levels: StructuralFactSet<ParagraphOutlineLevelFact>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -166,6 +173,7 @@ impl NumberingProperties {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct ParagraphProperties {
     pub style_id: Option<String>,
+    pub outline_level: Option<u8>,
     pub indentation: ParagraphIndentation,
     pub numbering: NumberingProperties,
 }
@@ -231,9 +239,11 @@ impl StyleSheet {
                 .ok_or(StructuralFactUnknownReason::UnsupportedStyles)?;
             resolved.indentation = resolved.indentation.inherit(style.properties.indentation);
             resolved.numbering = resolved.numbering.inherit(style.properties.numbering);
+            resolved.outline_level = style.properties.outline_level.or(resolved.outline_level);
         }
         resolved.indentation = resolved.indentation.inherit(direct.indentation);
         resolved.numbering = resolved.numbering.inherit(direct.numbering);
+        resolved.outline_level = direct.outline_level.or(resolved.outline_level);
         Ok(resolved)
     }
 }
@@ -241,7 +251,7 @@ impl StyleSheet {
 #[derive(Clone, Copy)]
 pub(super) struct RawStructureInput<'a> {
     pub paragraph_texts: &'a [&'a str],
-    pub properties: &'a [ParagraphProperties],
+    pub properties: &'a [&'a ParagraphProperties],
     pub bookmarks: Result<&'a [RawBookmarkRange], StructuralFactUnknownReason>,
     pub references: Result<&'a [RawInternalReference], StructuralFactUnknownReason>,
 }
@@ -280,7 +290,7 @@ pub(super) fn materialize_structure(
             .collect::<Result<Vec<_>, _>>()
     });
 
-    let (indentation, numbering_hierarchy) = match resolved {
+    let (indentation, numbering_hierarchy, outline_levels) = match resolved {
         Ok(properties) => (
             StructuralFactSet::Known(
                 properties
@@ -294,8 +304,23 @@ pub(super) fn materialize_structure(
                     .collect(),
             ),
             materialize_numbering(&properties),
+            StructuralFactSet::Known(
+                properties
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(paragraph_ordinal, properties)| {
+                        properties
+                            .outline_level
+                            .map(|outline_level| ParagraphOutlineLevelFact {
+                                paragraph_ordinal,
+                                outline_level,
+                            })
+                    })
+                    .collect(),
+            ),
         ),
         Err(reason) => (
+            StructuralFactSet::Unknown(reason),
             StructuralFactSet::Unknown(reason),
             StructuralFactSet::Unknown(reason),
         ),
@@ -304,6 +329,9 @@ pub(super) fn materialize_structure(
         fact_budget.consume(facts.len())?;
     }
     if let StructuralFactSet::Known(facts) = &numbering_hierarchy {
+        fact_budget.consume(facts.len())?;
+    }
+    if let StructuralFactSet::Known(facts) = &outline_levels {
         fact_budget.consume(facts.len())?;
     }
 
@@ -331,6 +359,7 @@ pub(super) fn materialize_structure(
         numbering_hierarchy,
         bookmarks,
         internal_references,
+        outline_levels,
     })
 }
 
