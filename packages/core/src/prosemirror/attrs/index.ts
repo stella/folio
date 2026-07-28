@@ -30,7 +30,7 @@ import {
   THEME_COLOR_SLOT_VALUES,
   UNDERLINE_STYLE_VALUES,
 } from "../../types/documentEnumValues";
-import { isOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
+import { isOoxmlSymbolCharacter } from "@stll/docx-core/model";
 import { isParagraphDirection } from "../paragraphDirection";
 import type {
   BlockSdtAttrs,

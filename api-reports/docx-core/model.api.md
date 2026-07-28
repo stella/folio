@@ -487,6 +487,9 @@ export type InstrTextContent = {
     text: string;
 };
 
+// @public
+export const isOoxmlSymbolCharacter: (value: string) => boolean;
+
 // @public (undocumented)
 export type KnownBorderStyle = "none" | "single" | "double" | "dotted" | "dashed" | "thick" | "triple" | "thinThickSmallGap" | "thickThinSmallGap" | "thinThickMediumGap" | "thickThinMediumGap" | "thinThickLargeGap" | "thickThinLargeGap" | "wave" | "doubleWave" | "dashSmallGap" | "dashDotStroked" | "threeDEmboss" | "threeDEngrave" | "outset" | "inset" | "nil";
 

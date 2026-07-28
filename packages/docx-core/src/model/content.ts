@@ -71,6 +71,12 @@ export type SymbolContent = {
   char: string;
 };
 
+const OOXML_SYMBOL_CHARACTER_PATTERN = /^[\dA-Fa-f]{4}$/u;
+
+/** Whether a symbol character is exactly four hexadecimal digits. */
+export const isOoxmlSymbolCharacter = (value: string): boolean =>
+  OOXML_SYMBOL_CHARACTER_PATTERN.test(value);
+
 /**
  * Footnote or endnote reference
  */

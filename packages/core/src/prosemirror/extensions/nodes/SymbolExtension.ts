@@ -1,3 +1,5 @@
+import { isOoxmlSymbolCharacter } from "@stll/docx-core/model";
+
 import { expectSymbolAttrs } from "../../attrs";
 import { decodeOoxmlSymbolCharacter } from "../../../utils/ooxmlSymbol";
 import { createNodeExtension } from "../create";
@@ -32,7 +34,10 @@ export const SymbolExtension = createNodeExtension({
           }
           const font = node.dataset["docxSymbolFont"];
           const char = node.dataset["docxSymbolChar"];
-          return font && char ? { font, char } : false;
+          if (!font || font.trim() === "" || !char || !isOoxmlSymbolCharacter(char)) {
+            return false;
+          }
+          return { font, char };
         },
       },
     ],

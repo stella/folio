@@ -62,8 +62,8 @@ export type {
   NumberingDefinitions,
 } from "./lists";
 
-// Content Model — revision-id bounds (values, not types)
-export { MAX_REVISION_ID, normalizeRevisionId } from "./content";
+// Content Model — shared values
+export { isOoxmlSymbolCharacter, MAX_REVISION_ID, normalizeRevisionId } from "./content";
 
 export type {
   TextContent,

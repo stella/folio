@@ -1,24 +1,25 @@
 import { panic } from "better-result";
 import JSZip from "jszip";
 
-import type {
-  BlockContent,
-  Comment,
-  Document,
-  HeaderFooter,
-  HeaderFooterType,
-  Hyperlink,
-  Image,
-  Paragraph,
-  ParagraphContent,
-  Run,
-  RunContent,
-  SectionProperties,
-  Shape,
-  Table,
-  TableCell,
-  TableRow,
-  TrackedRunChange,
+import {
+  isOoxmlSymbolCharacter,
+  type BlockContent,
+  type Comment,
+  type Document,
+  type HeaderFooter,
+  type HeaderFooterType,
+  type Hyperlink,
+  type Image,
+  type Paragraph,
+  type ParagraphContent,
+  type Run,
+  type RunContent,
+  type SectionProperties,
+  type Shape,
+  type Table,
+  type TableCell,
+  type TableRow,
+  type TrackedRunChange,
 } from "../model/document";
 
 export type ValidateDocxPackageResult = { valid: true } | { valid: false; error: string };
@@ -454,7 +455,7 @@ const validateRunContent = (content: RunContent, path: string, ctx: ValidationCo
     if (content.font.trim() === "") {
       addError(ctx, `${path}.font`, "Symbol content must include a font name.");
     }
-    if (!/^[\dA-Fa-f]{4}$/u.test(content.char)) {
+    if (!isOoxmlSymbolCharacter(content.char)) {
       addError(ctx, `${path}.char`, "Symbol character must be exactly four hexadecimal digits.");
     }
   }
