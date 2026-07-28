@@ -9,7 +9,8 @@ use crate::ProjectionError;
 use crate::projection::compatibility::{CompatibilityAction, MarkupCompatibility};
 use crate::projection::namespaces::OoxmlNamespace;
 use crate::projection::review::{
-    AttributedRevision, ReviewDetail, ReviewFactSet, ReviewFactUnknownReason, RevisionFactKind,
+    AttributedRevision, ReviewDetail, ReviewFactSet, ReviewFactUnknownReason, ReviewPoint,
+    ReviewSpan, RevisionContent, RevisionFactKind,
 };
 use crate::projection::structure::{
     ParagraphProperties, RawBlockPoint, RawBookmarkRange, RawInternalReference,
@@ -138,6 +139,7 @@ pub(super) struct RawProjectedParagraph {
     pub ordinal: usize,
     pub package_paragraph_id: Option<PackageParagraphId>,
     pub text: String,
+    utf16_len: u32,
     pub formatting: Vec<TextFormattingSpan>,
     pub structure: Option<ParagraphStructure>,
     pub properties: ParagraphProperties,
@@ -149,6 +151,7 @@ pub(super) struct RawDocumentProjection {
     pub references: Result<Vec<RawInternalReference>, StructuralFactUnknownReason>,
     pub revision_status: RevisionProjectionStatus,
     pub review_revisions: Option<ReviewFactSet<AttributedRevision>>,
+    pub review_comment_anchors: HashMap<String, ReviewSpan>,
 }
 
 struct ParagraphBuilder {
@@ -281,6 +284,13 @@ struct FieldFrame {
     separated: bool,
 }
 
+struct RevisionFrame {
+    review_index: Option<usize>,
+    start: Option<ReviewPoint>,
+    suppressed: bool,
+    text: String,
+}
+
 #[derive(Default)]
 enum ReviewRevisionCollection {
     #[default]
@@ -306,7 +316,7 @@ enum Frame {
     TableCellProperties,
     NumberingProperties,
     Hyperlink(Option<RawInternalReference>),
-    Revision { suppressed: bool },
+    Revision(RevisionFrame),
     ChangeSnapshot,
     Textbox,
     Sdt(SdtFrame),
@@ -437,6 +447,13 @@ pub(super) fn project_document_xml(
     if paragraph_merges {
         state.bookmarks_complete = false;
         state.references_complete = false;
+        state.review_comment_anchors.clear();
+        if let ReviewRevisionCollection::Complete { revisions, .. } = &mut state.review_revisions {
+            for revision in revisions {
+                revision.content =
+                    ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation);
+            }
+        }
     }
     let bookmarks = if state.bookmarks_complete
         && state.open_bookmarks.is_empty()
@@ -469,6 +486,7 @@ pub(super) fn project_document_xml(
                 ReviewFactUnknownReason::ResourceLimit,
             )),
         },
+        review_comment_anchors: state.review_comment_anchors,
     })
 }
 
@@ -492,6 +510,9 @@ struct ProjectionState {
     text_materialization: TextMaterialization,
     revision_unsupported: BTreeSet<RevisionUnsupportedReason>,
     review_revisions: ReviewRevisionCollection,
+    open_review_comment_anchors: HashMap<String, ReviewPoint>,
+    review_comment_anchors: HashMap<String, ReviewSpan>,
+    invalid_review_comment_anchors: HashSet<String>,
 }
 
 impl ProjectionState {
@@ -540,7 +561,13 @@ impl ProjectionState {
             self.frames.push(Frame::Other);
             return Ok(());
         }
-        self.record_attributed_revision(reader, element, name)?;
+        let attributed_revision = self.record_attributed_revision(reader, element, name)?;
+        match name {
+            b"commentRangeStart" => self.start_review_comment_anchor(reader, element)?,
+            b"commentRangeEnd" => self.end_review_comment_anchor(reader, element)?,
+            b"commentReference" => self.record_review_comment_reference(reader, element)?,
+            _ => {}
+        }
         if name == b"txbxContent" {
             self.frames.push(Frame::Textbox);
             return Ok(());
@@ -743,9 +770,12 @@ impl ProjectionState {
                     }
                     Frame::Other
                 } else {
-                    Frame::Revision {
+                    Frame::Revision(RevisionFrame {
+                        review_index: attributed_revision,
+                        start: self.current_review_point(),
                         suppressed: revision_is_suppressed(name, self.revision_view),
-                    }
+                        text: String::new(),
+                    })
                 }
             }
             b"cellIns" | b"cellDel" | b"cellMerge" => {
@@ -869,6 +899,7 @@ impl ProjectionState {
                     ordinal: self.paragraphs.len(),
                     package_paragraph_id: paragraph.package_paragraph_id,
                     text: paragraph.text,
+                    utf16_len: paragraph.utf16_len,
                     formatting: paragraph.formatting,
                     structure: paragraph.structure,
                     properties: paragraph.properties,
@@ -891,6 +922,7 @@ impl ProjectionState {
                     paragraph.append(&run.text, run.bold, run.highlighted)?;
                 }
             }
+            Frame::Revision(revision) => self.finish_attributed_revision(revision)?,
             _ => {}
         }
         Ok(())
@@ -901,27 +933,54 @@ impl ProjectionState {
         reader: &NsReader<&[u8]>,
         element: &BytesStart<'_>,
         name: &[u8],
-    ) -> Result<(), ProjectionError> {
+    ) -> Result<Option<usize>, ProjectionError> {
         let Some(kind) = revision_fact_kind(name) else {
-            return Ok(());
+            return Ok(None);
         };
         let ReviewRevisionCollection::Complete {
             maximum_facts,
             revisions,
         } = &mut self.review_revisions
         else {
-            return Ok(());
+            return Ok(None);
         };
         if revisions.len() >= *maximum_facts {
             self.review_revisions = ReviewRevisionCollection::LimitExceeded;
-            return Ok(());
+            return Ok(None);
         }
+        let review_index = revisions.len();
         revisions.push(AttributedRevision {
             kind,
             author: attribute(reader, element, b"author")?.unwrap_or_default(),
             date: attribute(reader, element, b"date")?,
             revision_id: attribute(reader, element, b"id")?,
             content: ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation),
+        });
+        Ok(Some(review_index))
+    }
+
+    fn finish_attributed_revision(
+        &mut self,
+        revision: RevisionFrame,
+    ) -> Result<(), ProjectionError> {
+        let (Some(review_index), Some(start), Some(end)) = (
+            revision.review_index,
+            revision.start,
+            self.current_review_point(),
+        ) else {
+            return Ok(());
+        };
+        let ReviewRevisionCollection::Complete { revisions, .. } = &mut self.review_revisions
+        else {
+            return Ok(());
+        };
+        let attributed = revisions
+            .get_mut(review_index)
+            .ok_or(ProjectionError::InvalidDocumentXml)?;
+        attributed.content = ReviewDetail::Known(RevisionContent {
+            span: ReviewSpan { start, end },
+            formatting_only: revision.text.trim().is_empty(),
+            text: revision.text,
         });
         Ok(())
     }
@@ -967,14 +1026,37 @@ impl ProjectionState {
                 Frame::ParagraphProperties
                     | Frame::RunProperties(_)
                     | Frame::ChangeSnapshot
-                    | Frame::Revision { suppressed: true }
+                    | Frame::Textbox
+            ) || matches!(frame, Frame::Revision(revision) if revision.suppressed)
+                || matches!(frame, Frame::Sdt(sdt) if sdt.placeholder)
+        })
+    }
+
+    fn pseudo_text_is_structurally_suppressed(&self) -> bool {
+        self.frames.iter().any(|frame| {
+            matches!(
+                frame,
+                Frame::ParagraphProperties
+                    | Frame::RunProperties(_)
+                    | Frame::ChangeSnapshot
                     | Frame::Textbox
             ) || matches!(frame, Frame::Sdt(sdt) if sdt.placeholder)
         })
     }
 
     fn append_pseudo_text(&mut self, text: &str) -> Result<(), ProjectionError> {
-        if self.current_paragraph.is_none() || self.pseudo_text_is_suppressed() {
+        if self.current_paragraph.is_none()
+            || self.pseudo_text_is_structurally_suppressed()
+            || self
+                .frames
+                .iter()
+                .rev()
+                .any(|frame| matches!(frame, Frame::Run(run) if run.hidden))
+        {
+            return Ok(());
+        }
+        self.append_review_text(text);
+        if self.pseudo_text_is_suppressed() {
             return Ok(());
         }
         if let Some(run) = self.frames.iter_mut().rev().find_map(|frame| match frame {
@@ -988,6 +1070,148 @@ impl ProjectionState {
             .as_mut()
             .ok_or(ProjectionError::InvalidDocumentXml)?
             .append(text, false, false)
+    }
+
+    fn append_review_text(&mut self, text: &str) {
+        if let Some(revision) = self.frames.iter_mut().rev().find_map(|frame| match frame {
+            Frame::Revision(revision) if revision.review_index.is_some() => Some(revision),
+            _ => None,
+        }) {
+            revision.text.push_str(text);
+        }
+    }
+
+    fn current_review_point(&self) -> Option<ReviewPoint> {
+        let paragraph = self.current_paragraph.as_ref()?;
+        let run_text = self.frames.iter().rev().find_map(|frame| match frame {
+            Frame::Run(run) if !run.hidden && !self.pseudo_text_is_suppressed() => {
+                Some(run.text.as_str())
+            }
+            _ => None,
+        });
+        let run_utf8 = run_text.map_or(0, str::len);
+        let run_utf16 = run_text.map_or(0, |text| text.encode_utf16().count());
+        Some(ReviewPoint {
+            paragraph_ordinal: self.paragraphs.len(),
+            utf8: u32::try_from(paragraph.text.len().checked_add(run_utf8)?).ok()?,
+            utf16: paragraph
+                .utf16_len
+                .checked_add(u32::try_from(run_utf16).ok()?)?,
+        })
+    }
+
+    fn next_paragraph_start_review_point(&self) -> Option<ReviewPoint> {
+        if self.current_paragraph.is_some() {
+            return self.current_review_point();
+        }
+        self.inside_body().then_some(ReviewPoint {
+            paragraph_ordinal: self.paragraphs.len(),
+            utf8: 0,
+            utf16: 0,
+        })
+    }
+
+    fn previous_paragraph_end_review_point(&self) -> Option<ReviewPoint> {
+        if self.current_paragraph.is_some() {
+            return self.current_review_point();
+        }
+        let paragraph = self.paragraphs.last()?;
+        Some(ReviewPoint {
+            paragraph_ordinal: paragraph.ordinal,
+            utf8: u32::try_from(paragraph.text.len()).ok()?,
+            utf16: paragraph.utf16_len,
+        })
+    }
+
+    fn review_comment_id(
+        reader: &NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+    ) -> Result<Option<String>, ProjectionError> {
+        attribute(reader, element, b"id")
+    }
+
+    fn start_review_comment_anchor(
+        &mut self,
+        reader: &NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+    ) -> Result<(), ProjectionError> {
+        let (Some(comment_id), Some(point)) = (
+            Self::review_comment_id(reader, element)?,
+            self.next_paragraph_start_review_point(),
+        ) else {
+            return Ok(());
+        };
+        if self.invalid_review_comment_anchors.contains(&comment_id) {
+            return Ok(());
+        }
+        if self
+            .open_review_comment_anchors
+            .insert(comment_id.clone(), point)
+            .is_some()
+        {
+            self.open_review_comment_anchors.remove(&comment_id);
+            self.review_comment_anchors.remove(&comment_id);
+            self.invalid_review_comment_anchors.insert(comment_id);
+        }
+        Ok(())
+    }
+
+    fn end_review_comment_anchor(
+        &mut self,
+        reader: &NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+    ) -> Result<(), ProjectionError> {
+        let (Some(comment_id), Some(end)) = (
+            Self::review_comment_id(reader, element)?,
+            self.previous_paragraph_end_review_point(),
+        ) else {
+            return Ok(());
+        };
+        if self.invalid_review_comment_anchors.contains(&comment_id) {
+            return Ok(());
+        }
+        let Some(start) = self.open_review_comment_anchors.remove(&comment_id) else {
+            self.review_comment_anchors.remove(&comment_id);
+            self.invalid_review_comment_anchors.insert(comment_id);
+            return Ok(());
+        };
+        if self
+            .review_comment_anchors
+            .insert(comment_id.clone(), ReviewSpan { start, end })
+            .is_some()
+        {
+            self.review_comment_anchors.remove(&comment_id);
+            self.invalid_review_comment_anchors.insert(comment_id);
+        }
+        Ok(())
+    }
+
+    fn record_review_comment_reference(
+        &mut self,
+        reader: &NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+    ) -> Result<(), ProjectionError> {
+        let (Some(comment_id), Some(point)) = (
+            Self::review_comment_id(reader, element)?,
+            self.current_review_point(),
+        ) else {
+            return Ok(());
+        };
+        if self.invalid_review_comment_anchors.contains(&comment_id) {
+            return Ok(());
+        }
+        if !self.review_comment_anchors.contains_key(&comment_id)
+            && !self.open_review_comment_anchors.contains_key(&comment_id)
+        {
+            self.review_comment_anchors.insert(
+                comment_id,
+                ReviewSpan {
+                    start: point,
+                    end: point,
+                },
+            );
+        }
+        Ok(())
     }
 
     fn append_pseudo_content(&mut self, text: &str) -> Result<(), ProjectionError> {
@@ -1361,8 +1585,7 @@ fn normalize_paragraph_revision_view(
                 merge_previous = merge_next;
                 continue;
             }
-            let utf16_offset = u32::try_from(previous.text.encode_utf16().count())
-                .map_err(|_| ProjectionError::InvalidDocumentXml)?;
+            let utf16_offset = previous.utf16_len;
             for mut span in paragraph.formatting {
                 span.start_utf16 = span
                     .start_utf16
@@ -1375,6 +1598,10 @@ fn normalize_paragraph_revision_view(
                 previous.formatting.push(span);
             }
             previous.text.push_str(&paragraph.text);
+            previous.utf16_len = previous
+                .utf16_len
+                .checked_add(paragraph.utf16_len)
+                .ok_or(ProjectionError::InvalidDocumentXml)?;
             merge_previous = merge_next;
             merged_any = true;
             continue;

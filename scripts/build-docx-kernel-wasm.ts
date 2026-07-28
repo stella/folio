@@ -41,8 +41,12 @@ const generatedFiles = [
 ] as const;
 const wasmFile = "docx_kernel_bg.wasm";
 const canonicalArtifactPlatform = process.platform === "linux" && process.arch === "x64";
-const maximumWasmBytes = 222 * 1024;
-const maximumBrotliBytes = 100 * 1024;
+// Review content and UTF-8/UTF-16 spans have an explicit additive budget so
+// unrelated feature growth cannot consume their allowance unnoticed.
+const maximumReviewDetailBytes = 11 * 1024;
+const maximumReviewDetailBrotliBytes = 2 * 1024;
+const maximumWasmBytes = 222 * 1024 + maximumReviewDetailBytes;
+const maximumBrotliBytes = 100 * 1024 + maximumReviewDetailBrotliBytes;
 
 const sourceFiles = readdirSync(path.join(repoRoot, "crates", "docx-kernel", "src"), {
   recursive: true,

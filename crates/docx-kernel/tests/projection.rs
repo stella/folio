@@ -13,14 +13,14 @@ use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
 use stella_docx_kernel::{
-    DocxLimits, InternalParagraphId, InternalReferenceRole, PackageParagraphId,
-    ParagraphIdentityFacts, ParagraphStructure, ProjectionError, ProjectionOptions,
-    ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason, RevisionFactKind,
-    RevisionProjectionStatus, RevisionUnsupportedReason, RevisionView, SpanCoverage,
-    StructuralFactSet, StructuralFactUnknownReason, TextFormattingSpan, TextMaterialization,
-    TextStyle, extract_document_parts, extract_document_xml, project_document_xml,
-    project_document_xml_with_options, project_docx, project_docx_with_options,
-    project_docx_with_review_facts,
+    CommentContent, DocxLimits, InternalParagraphId, InternalReferenceRole, PackageParagraphId,
+    ParagraphIdentityFacts, ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail,
+    ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason, ReviewPoint, ReviewSpan,
+    RevisionContent, RevisionFactKind, RevisionProjectionStatus, RevisionUnsupportedReason,
+    RevisionView, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason, TextFormattingSpan,
+    TextMaterialization, TextStyle, extract_document_parts, extract_document_xml,
+    project_document_xml, project_document_xml_with_options, project_docx,
+    project_docx_with_options, project_docx_with_review_facts,
 };
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -1161,12 +1161,13 @@ fn package_projection_is_deterministic_and_styles_extraction_is_bounded() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // One end-to-end fixture asserts the fused projection contract.
 fn fuses_document_projection_with_attributed_revisions_and_comment_threads() {
     let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
-      <w:p><w:ins w:id="7" w:author="Ada" w:date="2026-07-01T10:00:00Z"><w:r><w:t>new</w:t></w:r></w:ins><w:del w:id="8" w:author="Lin"><w:r><w:delText>old</w:delText></w:r></w:del></w:p>
+      <w:p><w:commentRangeStart w:id="19"/><w:ins w:id="7" w:author="Ada" w:date="2026-07-01T10:00:00Z"><w:r><w:t>new</w:t></w:r></w:ins><w:commentRangeEnd w:id="19"/><w:r><w:commentReference w:id="19"/></w:r><w:del w:id="8" w:author="Lin"><w:r><w:delText>old</w:delText></w:r></w:del></w:p>
     </w:body></w:document>"#;
     let comments_xml = br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
-      <w:comment w:id="19" w:author="Ada" w:initials="AA"><w:p w14:paraId="AAAAAAAA"/><w:p w14:paraId="1F21D71D"/></w:comment>
+      <w:comment w:id="19" w:author="Ada" w:initials="AA"><w:p w14:paraId="AAAAAAAA"><w:r><w:t>First</w:t></w:r></w:p><w:p w14:paraId="1F21D71D"><w:r><w:t>second</w:t></w:r></w:p></w:comment>
       <w:comment w:id="20" w:author="Lin"><w:p w14:paraId="0D537B10"/></w:comment>
       <w:comment w:id="22" w:author="Mae"><w:p w14:paraId="0ED2E4B2"/></w:comment>
     </w:comments>"#;
@@ -1200,12 +1201,69 @@ fn fuses_document_projection_with_attributed_revisions_and_comment_threads() {
     assert_eq!(revisions[0].kind, RevisionFactKind::Insertion);
     assert_eq!(revisions[0].author, "Ada");
     assert_eq!(revisions[0].revision_id.as_deref(), Some("7"));
+    assert_eq!(
+        revisions[0].content,
+        ReviewDetail::Known(RevisionContent {
+            span: ReviewSpan {
+                start: ReviewPoint {
+                    paragraph_ordinal: 0,
+                    utf8: 0,
+                    utf16: 0,
+                },
+                end: ReviewPoint {
+                    paragraph_ordinal: 0,
+                    utf8: 3,
+                    utf16: 3,
+                },
+            },
+            text: "new".to_owned(),
+            formatting_only: false,
+        })
+    );
     assert_eq!(revisions[1].kind, RevisionFactKind::Deletion);
+    assert_eq!(
+        revisions[1].content,
+        ReviewDetail::Known(RevisionContent {
+            span: ReviewSpan {
+                start: ReviewPoint {
+                    paragraph_ordinal: 0,
+                    utf8: 3,
+                    utf16: 3,
+                },
+                end: ReviewPoint {
+                    paragraph_ordinal: 0,
+                    utf8: 3,
+                    utf16: 3,
+                },
+            },
+            text: "old".to_owned(),
+            formatting_only: false,
+        })
+    );
 
     let ReviewFactSet::Known(comments) = projection.review_facts.comments else {
         panic!("valid comments should be complete");
     };
     assert_eq!(comments.len(), 3);
+    assert_eq!(
+        comments[0].content,
+        ReviewDetail::Known(CommentContent {
+            anchor: ReviewSpan {
+                start: ReviewPoint {
+                    paragraph_ordinal: 0,
+                    utf8: 0,
+                    utf16: 0,
+                },
+                end: ReviewPoint {
+                    paragraph_ordinal: 0,
+                    utf8: 3,
+                    utf16: 3,
+                },
+            },
+            comment_text: "First\nsecond".to_owned(),
+            referenced_text: "new".to_owned(),
+        })
+    );
     assert_eq!(comments[1].comment_id, "20");
     assert_eq!(comments[1].parent_comment_id.as_deref(), Some("19"));
     assert!(!comments[1].resolved);
@@ -1371,6 +1429,60 @@ fn resolves_review_parts_only_through_document_relationships() {
     };
     assert_eq!(projected_comments.len(), 1);
     assert_eq!(projected_comments[0].comment_id, "7");
+}
+
+#[test]
+fn projects_whole_and_multiple_paragraph_comment_ranges_without_cross_id_poisoning() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:commentRangeStart w:id="1"/><w:p><w:r><w:t>whole&#x1F600;</w:t></w:r></w:p><w:p><w:r><w:t>second</w:t></w:r></w:p><w:commentRangeEnd w:id="1"/>
+      <w:p><w:commentRangeStart w:id="2"/><w:commentRangeStart w:id="2"/><w:r><w:t>invalid</w:t></w:r><w:commentRangeEnd w:id="2"/></w:p>
+    </w:body></w:document>"#;
+    let comments_xml =
+        br#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:comment w:id="1" w:author="Ada"><w:p><w:r><w:t>Valid</w:t></w:r></w:p></w:comment>
+      <w:comment w:id="2" w:author="Lin"><w:p><w:r><w:t>Invalid anchor</w:t></w:r></w:p></w:comment>
+    </w:comments>"#;
+    let projection = project_docx_with_review_facts(
+        &package(
+            &[
+                ("word/document.xml", document),
+                ("word/comments.xml", comments_xml),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        ReviewFactLimits::default(),
+        ProjectionOptions::default(),
+        allocate,
+    )
+    .unwrap();
+
+    let ReviewFactSet::Known(comments) = projection.review_facts.comments else {
+        panic!("valid comments should be complete");
+    };
+    assert_eq!(
+        comments[0].content,
+        ReviewDetail::Known(CommentContent {
+            anchor: ReviewSpan {
+                start: ReviewPoint {
+                    paragraph_ordinal: 0,
+                    utf8: 0,
+                    utf16: 0,
+                },
+                end: ReviewPoint {
+                    paragraph_ordinal: 1,
+                    utf8: 6,
+                    utf16: 6,
+                },
+            },
+            comment_text: "Valid".to_owned(),
+            referenced_text: "whole😀\nsecond".to_owned(),
+        })
+    );
+    assert_eq!(
+        comments[1].content,
+        ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation)
+    );
 }
 
 #[test]

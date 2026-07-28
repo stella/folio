@@ -2,10 +2,13 @@ use std::collections::{HashMap, HashSet};
 
 use quick_xml::{
     XmlVersion,
+    escape::resolve_predefined_entity,
     events::{BytesStart, Event},
     name::{Namespace, ResolveResult},
     reader::NsReader,
 };
+
+use super::DocumentProjection;
 
 const WORDPROCESSING_TRANSITIONAL: &[u8] =
     b"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -138,6 +141,8 @@ struct CommentRow {
     date: Option<String>,
     paragraph_id: Option<String>,
     paragraph_id_from_wrapper: bool,
+    content: String,
+    paragraph_seen: bool,
 }
 
 #[derive(Clone)]
@@ -156,6 +161,8 @@ enum NamespaceKind {
 
 pub(super) fn project_review_facts(
     revisions: ReviewFactSet<AttributedRevision>,
+    comment_anchors: Option<&HashMap<String, ReviewSpan>>,
+    document: &DocumentProjection,
     comments_xml: Result<Option<Vec<u8>>, ReviewFactUnknownReason>,
     comments_extended_xml: Result<Option<Vec<u8>>, ReviewFactUnknownReason>,
     limits: ReviewFactLimits,
@@ -166,6 +173,8 @@ pub(super) fn project_review_facts(
             Ok(comments_extended_xml) => parse_comments(
                 &comments_xml,
                 comments_extended_xml.as_deref(),
+                comment_anchors,
+                document,
                 limits.maximum_facts_per_family,
             )
             .map_or_else(ReviewFactSet::Unknown, ReviewFactSet::Known),
@@ -253,13 +262,18 @@ fn comment_paragraph_id(
 fn parse_comments(
     comments_xml: &[u8],
     comments_extended_xml: Option<&[u8]>,
+    comment_anchors: Option<&HashMap<String, ReviewSpan>>,
+    document: &DocumentProjection,
     maximum_facts: usize,
 ) -> Result<Vec<AttributedComment>, ReviewFactUnknownReason> {
     let comments = parse_comment_rows(comments_xml, maximum_facts)?;
     let Some(comments_extended_xml) = comments_extended_xml else {
         return Ok(comments
             .into_iter()
-            .map(|comment| attributed_comment(comment, None, false))
+            .map(|comment| {
+                let content = comment_content(&comment, comment_anchors, document);
+                attributed_comment(comment, None, false, content)
+            })
             .collect());
     };
     let mut extensions = parse_comment_extensions(comments_extended_xml, maximum_facts)?;
@@ -281,6 +295,7 @@ fn parse_comments(
     }
     let mut output = Vec::with_capacity(comments.len());
     for comment in comments {
+        let content = comment_content(&comment, comment_anchors, document);
         let extension = comment
             .paragraph_id
             .as_ref()
@@ -298,7 +313,12 @@ fn parse_comments(
                 .transpose()?;
             Ok((parent, extension.resolved))
         })?;
-        output.push(attributed_comment(comment, parent_comment_id, resolved));
+        output.push(attributed_comment(
+            comment,
+            parent_comment_id,
+            resolved,
+            content,
+        ));
     }
     if !extensions.is_empty() || contains_parent_cycle(&output) {
         return Err(ReviewFactUnknownReason::InvalidCommentsExtended);
@@ -310,6 +330,7 @@ fn attributed_comment(
     comment: CommentRow,
     parent_comment_id: Option<String>,
     resolved: bool,
+    content: ReviewDetail<CommentContent>,
 ) -> AttributedComment {
     AttributedComment {
         comment_id: comment.comment_id,
@@ -318,8 +339,50 @@ fn attributed_comment(
         date: comment.date,
         parent_comment_id,
         resolved,
-        content: ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation),
+        content,
     }
+}
+
+fn comment_content(
+    comment: &CommentRow,
+    anchors: Option<&HashMap<String, ReviewSpan>>,
+    document: &DocumentProjection,
+) -> ReviewDetail<CommentContent> {
+    let Some(anchor) = anchors
+        .and_then(|anchors| anchors.get(&comment.comment_id))
+        .copied()
+    else {
+        return ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation);
+    };
+    let Some(referenced_text) = text_for_span(document, anchor) else {
+        return ReviewDetail::Unknown(ReviewFactUnknownReason::UnsupportedLocation);
+    };
+    ReviewDetail::Known(CommentContent {
+        anchor,
+        comment_text: comment.content.clone(),
+        referenced_text,
+    })
+}
+
+fn text_for_span(document: &DocumentProjection, span: ReviewSpan) -> Option<String> {
+    let start = document.paragraphs.get(span.start.paragraph_ordinal)?;
+    let end = document.paragraphs.get(span.end.paragraph_ordinal)?;
+    let start_utf8 = usize::try_from(span.start.utf8).ok()?;
+    let end_utf8 = usize::try_from(span.end.utf8).ok()?;
+    if span.start.paragraph_ordinal == span.end.paragraph_ordinal {
+        return start.text.get(start_utf8..end_utf8).map(str::to_owned);
+    }
+    let mut text = start.text.get(start_utf8..)?.to_owned();
+    for paragraph in document
+        .paragraphs
+        .get(span.start.paragraph_ordinal.checked_add(1)?..span.end.paragraph_ordinal)?
+    {
+        text.push('\n');
+        text.push_str(&paragraph.text);
+    }
+    text.push('\n');
+    text.push_str(end.text.get(..end_utf8)?);
+    Some(text)
 }
 
 #[allow(clippy::too_many_lines)] // One event loop keeps comment shape and depth validation atomic.
@@ -333,6 +396,7 @@ fn parse_comment_rows(
     reader.config_mut().check_end_names = true;
     let mut output = Vec::new();
     let mut current: Option<(usize, CommentRow)> = None;
+    let mut text_depth: Option<usize> = None;
     let mut depth = 0_usize;
     let mut root_seen = false;
     let mut comment_ids = HashSet::new();
@@ -340,7 +404,7 @@ fn parse_comment_rows(
     loop {
         match reader.read_resolved_event() {
             Ok((_, Event::Eof)) => {
-                if depth != 0 || current.is_some() || !root_seen {
+                if depth != 0 || current.is_some() || text_depth.is_some() || !root_seen {
                     return Err(invalid);
                 }
                 return Ok(output);
@@ -399,6 +463,8 @@ fn parse_comment_rows(
                             )?,
                             paragraph_id: wrapper_paragraph_id,
                             paragraph_id_from_wrapper,
+                            content: String::new(),
+                            paragraph_seen: false,
                         },
                     ));
                 } else if kind == NamespaceKind::Wordprocessing
@@ -411,17 +477,75 @@ fn parse_comment_rows(
                     if !comment.paragraph_id_from_wrapper {
                         comment.paragraph_id = comment_paragraph_id(&reader, &element)?;
                     }
+                    if comment.paragraph_seen {
+                        comment.content.push('\n');
+                    }
+                    comment.paragraph_seen = true;
+                } else if kind == NamespaceKind::Wordprocessing
+                    && matches!(element.local_name().as_ref(), b"t" | b"delText")
+                    && current.is_some()
+                {
+                    if text_depth.replace(depth).is_some() {
+                        return Err(invalid);
+                    }
+                } else if kind == NamespaceKind::Wordprocessing
+                    && let Some((_, comment)) = current.as_mut()
+                {
+                    match element.local_name().as_ref() {
+                        b"tab" | b"ptab" => comment.content.push('\t'),
+                        b"br" => comment.content.push('\u{000b}'),
+                        b"cr" => comment.content.push('\r'),
+                        b"softHyphen" => comment.content.push('\u{001f}'),
+                        b"noBreakHyphen" => comment.content.push('\u{001e}'),
+                        _ => {}
+                    }
                 }
                 depth = depth.checked_add(1).ok_or(invalid)?;
             }
             Ok((_, Event::DocType(_))) | Err(_) => return Err(invalid),
+            Ok((_, Event::Text(text))) if text_depth.is_some() => {
+                let decoded = text.xml10_content().map_err(|_| invalid)?;
+                current
+                    .as_mut()
+                    .ok_or(invalid)?
+                    .1
+                    .content
+                    .push_str(&decoded);
+            }
+            Ok((_, Event::CData(text))) if text_depth.is_some() => {
+                let decoded = text.xml10_content().map_err(|_| invalid)?;
+                current
+                    .as_mut()
+                    .ok_or(invalid)?
+                    .1
+                    .content
+                    .push_str(&decoded);
+            }
+            Ok((_, Event::GeneralRef(reference))) if text_depth.is_some() => {
+                let resolved_character = reference.resolve_char_ref().map_err(|_| invalid)?;
+                let resolved = if let Some(character) = resolved_character {
+                    character.to_string()
+                } else {
+                    let name = reference.decode().map_err(|_| invalid)?;
+                    resolve_predefined_entity(&name).ok_or(invalid)?.to_owned()
+                };
+                current
+                    .as_mut()
+                    .ok_or(invalid)?
+                    .1
+                    .content
+                    .push_str(&resolved);
+            }
             Ok((namespace, Event::End(element))) => {
                 depth = depth.checked_sub(1).ok_or(invalid)?;
+                if text_depth == Some(depth) {
+                    text_depth = None;
+                }
                 if namespace_kind(&namespace) == NamespaceKind::Wordprocessing
                     && element.local_name().as_ref() == b"comment"
                 {
                     let (comment_depth, comment) = current.take().ok_or(invalid)?;
-                    if depth != comment_depth {
+                    if depth != comment_depth || text_depth.is_some() {
                         return Err(invalid);
                     }
                     if let Some(paragraph_id) = &comment.paragraph_id

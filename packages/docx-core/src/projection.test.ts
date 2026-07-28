@@ -71,7 +71,28 @@ describe("DOCX projection TypeScript binding", () => {
     expect(projection[1][1][0]?.[1]).toBe("new");
     const expectedReviewFacts = [
       1,
-      ["known", [["insertion", "Ada", null, "7", ["unknown", "unsupported-location"]]]],
+      [
+        "known",
+        [
+          [
+            "insertion",
+            "Ada",
+            null,
+            "7",
+            [
+              "known",
+              [
+                [
+                  [0, 0, 0],
+                  [0, 3, 3],
+                ],
+                "new",
+                "text",
+              ],
+            ],
+          ],
+        ],
+      ],
       ["known", [["1", "Lin", null, null, null, "resolved", ["unknown", "unsupported-location"]]]],
     ] as const satisfies DocxReviewFactsWire;
     expect(projection[2]).toEqual(expectedReviewFacts);
