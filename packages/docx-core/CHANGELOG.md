@@ -1,5 +1,13 @@
 # @stll/docx-core
 
+## 0.12.0
+
+### Minor Changes
+
+- [#534](https://github.com/stella/folio/pull/534) [`2ef7445`](https://github.com/stella/folio/commit/2ef74452c34153a09b1af7496f27d8abd2074efc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Flatten attributed review facts at the WebAssembly boundary to reduce projection allocation and retained heap.
+
+- [#536](https://github.com/stella/folio/pull/536) [`51cbe7d`](https://github.com/stella/folio/commit/51cbe7d708fe44786a7fe8165c42225d2e35b93e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Project effective paragraph indentation from bounded OOXML numbering definitions.
+
 ## 0.11.0
 
 ### Minor Changes
