@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.15.11
+
+### Patch Changes
+
+- [#538](https://github.com/stella/folio/pull/538) [`ccb1953`](https://github.com/stella/folio/commit/ccb19531e3a0780573d6c7c7a83842434b138b56) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Create required DOCX package parts when adding footnotes or endnotes to a document that had none.
+
 ## 0.15.10
 
 ### Patch Changes
