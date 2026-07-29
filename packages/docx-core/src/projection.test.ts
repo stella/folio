@@ -8,7 +8,7 @@ import {
   projectCompressedDocx,
   projectCompressedDocxWithReviewFacts,
 } from "./projection";
-import type { DocxReviewFactsWire } from "./projection";
+import type { DocxAttributedComment, DocxReviewFactsWire, DocxReviewFactSet } from "./projection";
 
 const documentXml = `<?xml version="1.0" encoding="UTF-8"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -124,7 +124,7 @@ describe("DOCX projection TypeScript binding", () => {
     const archive = new JSZip();
     archive.file(
       "word/document.xml",
-      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:commentRangeStart w:id="1"/><w:r><w:t>Title</w:t><w:footnoteReference w:id="1"/></w:r><w:commentRangeEnd w:id="1"/><w:r><w:commentReference w:id="1"/></w:r></w:p></w:body></w:document>`,
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:commentRangeStart w:id="1"/><w:r><w:t>Tit😀le</w:t><w:footnoteReference w:id="1"/></w:r><w:commentRangeEnd w:id="1"/><w:r><w:commentReference w:id="1"/></w:r></w:p></w:body></w:document>`,
     );
     archive.file(
       "word/comments.xml",
@@ -141,15 +141,35 @@ describe("DOCX projection TypeScript binding", () => {
       textMaterialization: "readable-plain-text",
     });
 
-    expect(host[1][1][0]?.[1]).toBe("Title\u0002");
-    expect(readable[1][1][0]?.[1]).toBe("Title");
-    expect(host[2][2]).toEqual([
+    expect(host[1][1][0]?.[1]).toBe("Tit😀le\u0002");
+    expect(readable[1][1][0]?.[1]).toBe("Tit😀le");
+    const expectedHostComments = [
       "known",
-      [["1", "Ada", null, null, null, "open", "known", 0, 0, 0, 0, 6, 6, "Review", "Title\u0002"]],
-    ]);
-    expect(readable[2][2]).toEqual([
+      [
+        [
+          "1",
+          "Ada",
+          null,
+          null,
+          null,
+          "open",
+          "known",
+          0,
+          0,
+          0,
+          0,
+          10,
+          8,
+          "Review",
+          "Tit😀le\u0002",
+        ],
+      ],
+    ] as const satisfies DocxReviewFactSet<DocxAttributedComment>;
+    const expectedReadableComments = [
       "known",
-      [["1", "Ada", null, null, null, "open", "known", 0, 0, 0, 0, 5, 5, "Review", "Title"]],
-    ]);
+      [["1", "Ada", null, null, null, "open", "known", 0, 0, 0, 0, 9, 7, "Review", "Tit😀le"]],
+    ] as const satisfies DocxReviewFactSet<DocxAttributedComment>;
+    expect(host[2][2]).toEqual(expectedHostComments);
+    expect(readable[2][2]).toEqual(expectedReadableComments);
   });
 });
