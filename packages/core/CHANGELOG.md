@@ -1,5 +1,12 @@
 # @stll/folio-core
 
+## 0.15.8
+
+### Patch Changes
+
+- Updated dependencies [[`ae98003`](https://github.com/stella/folio/commit/ae98003cf69b31ce86b44b5be0ff30834ee71455)]:
+  - @stll/docx-core@0.11.0
+
 ## 0.15.7
 
 ### Patch Changes

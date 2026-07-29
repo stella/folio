@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.11.0
+
+### Minor Changes
+
+- [#529](https://github.com/stella/folio/pull/529) [`ae98003`](https://github.com/stella/folio/commit/ae98003cf69b31ce86b44b5be0ff30834ee71455) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Project direct superscript formatting from DOCX runs.
+
 ## 0.10.0
 
 ### Minor Changes
