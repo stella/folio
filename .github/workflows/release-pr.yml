@@ -16,9 +16,10 @@ jobs:
     permissions:
       contents: read
     # The repository owner publishes this versioned shared contract.
-    uses: stella/.github/.github/workflows/changeset-release-pr.yml@c47bb87cc82047b5fdc2540983148d4e3efa9a37 # v1.3.0
+    uses: stella/.github/.github/workflows/changeset-release-pr.yml@b8c0884053fb8d4fb6ba157692189e0f1aae1785 # v1.6.0
     with:
       bun-version-file: package.json
+      prepare-rust-wasm: true
     secrets:
       CHANGELOG_APP_ID: ${{ secrets.CHANGELOG_APP_ID }}
       CHANGELOG_APP_PRIVATE_KEY: ${{ secrets.CHANGELOG_APP_PRIVATE_KEY }}
