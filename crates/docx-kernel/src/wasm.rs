@@ -525,21 +525,22 @@ fn output_review_span_fields(
     start_index: u32,
     span: ReviewSpan,
 ) -> Result<(), String> {
-    output.set(start_index, usize_number(span.start.paragraph_ordinal)?);
-    output.set(
-        start_index + 1,
+    let fields = [
+        usize_number(span.start.paragraph_ordinal)?,
         JsValue::from_f64(f64::from(span.start.utf8)),
-    );
-    output.set(
-        start_index + 2,
         JsValue::from_f64(f64::from(span.start.utf16)),
-    );
-    output.set(start_index + 3, usize_number(span.end.paragraph_ordinal)?);
-    output.set(start_index + 4, JsValue::from_f64(f64::from(span.end.utf8)));
-    output.set(
-        start_index + 5,
+        usize_number(span.end.paragraph_ordinal)?,
+        JsValue::from_f64(f64::from(span.end.utf8)),
         JsValue::from_f64(f64::from(span.end.utf16)),
-    );
+    ];
+    for (offset, field) in fields.into_iter().enumerate() {
+        let offset = u32::try_from(offset)
+            .map_err(|_| "review span output index does not fit u32".to_owned())?;
+        let index = start_index
+            .checked_add(offset)
+            .ok_or_else(|| "review span output index overflow".to_owned())?;
+        output.set(index, field);
+    }
     Ok(())
 }
 
