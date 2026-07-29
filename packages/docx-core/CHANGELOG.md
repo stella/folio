@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.13.0
+
+### Minor Changes
+
+- [#537](https://github.com/stella/folio/pull/537) [`886b6f6`](https://github.com/stella/folio/commit/886b6f6cd0f2a407c872c90c2ef294192ea3bc0c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Project effective text formatting, visible Office Math text, font-bound symbols, and bookmarks at document or table boundaries from DOCX packages. Style and numbering parts follow the main document's OPC relationships, and formatting projections report when unsupported package style layers prevent their spans from being authoritative.
+
 ## 0.12.0
 
 ### Minor Changes
