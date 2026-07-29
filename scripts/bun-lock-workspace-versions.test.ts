@@ -51,12 +51,13 @@ describe("bun.lock workspace self-version synchronization", () => {
     ]);
   });
 
-  test("release versioning cannot delete or regenerate bun.lock", () => {
+  test("release versioning synchronizes lock and generated kernel artifacts", () => {
     const command = packageJson.scripts["changeset:version"];
 
     expect(command).not.toMatch(/\brm\b/);
     expect(command).toContain("sync-docx-kernel-version.ts --write");
     expect(command).toContain("check-lockfile-workspace-versions.ts --write");
-    expect(command).toEndWith("bun install --frozen-lockfile");
+    expect(command).toContain("bun install --frozen-lockfile");
+    expect(command).toEndWith("bun --filter '@stll/docx-core' wasm:generate");
   });
 });

@@ -61,7 +61,7 @@
     "validate-dist:vue": "bun scripts/validate-dist.ts vue",
     "api:update": "bun scripts/api-reports.ts --update",
     "api:check": "bun scripts/api-reports.ts",
-    "changeset:version": "changeset version && bun scripts/sync-docx-kernel-version.ts --write && bun scripts/check-lockfile-workspace-versions.ts --write && bun install --frozen-lockfile",
+    "changeset:version": "changeset version && bun scripts/sync-docx-kernel-version.ts --write && bun scripts/check-lockfile-workspace-versions.ts --write && bun install --frozen-lockfile && bun --filter '@stll/docx-core' wasm:generate",
     "bench": "bun benchmarks/index.ts",
     "bench:cross-language": "bun benchmarks/cross-language/run.ts",
     "parity": "bun parity/cli.ts",
