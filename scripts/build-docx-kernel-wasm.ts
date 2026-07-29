@@ -49,9 +49,20 @@ const maximumReviewDetailBrotliBytes = 2 * 1024;
 // allowance so future projection growth cannot consume it silently.
 const maximumParagraphStructureBytes = 2 * 1024;
 const maximumParagraphStructureBrotliBytes = 1024;
-const maximumWasmBytes = 222 * 1024 + maximumReviewDetailBytes + maximumParagraphStructureBytes;
+// Bounded numbering parsing and effective indentation resolution have a
+// separate allowance so later projection work cannot silently consume it.
+const maximumNumberingStructureBytes = 13 * 1024;
+const maximumNumberingStructureBrotliBytes = 5 * 1024;
+const maximumWasmBytes =
+  222 * 1024 +
+  maximumReviewDetailBytes +
+  maximumParagraphStructureBytes +
+  maximumNumberingStructureBytes;
 const maximumBrotliBytes =
-  100 * 1024 + maximumReviewDetailBrotliBytes + maximumParagraphStructureBrotliBytes;
+  100 * 1024 +
+  maximumReviewDetailBrotliBytes +
+  maximumParagraphStructureBrotliBytes +
+  maximumNumberingStructureBrotliBytes;
 
 const sourceFiles = readdirSync(path.join(repoRoot, "crates", "docx-kernel", "src"), {
   recursive: true,

@@ -9,6 +9,7 @@ use crate::projection::review::{ReviewFactLimits, ReviewFactUnknownReason};
 
 const DOCUMENT_XML_PATH: &[u8] = b"word/document.xml";
 const STYLES_XML_PATH: &[u8] = b"word/styles.xml";
+const NUMBERING_XML_PATH: &[u8] = b"word/numbering.xml";
 const ROOT_RELATIONSHIPS_PATH: &[u8] = b"_rels/.rels";
 const MAXIMUM_ROOT_RELATIONSHIPS_BYTES: usize = 1024 * 1024;
 const MAXIMUM_DOCUMENT_RELATIONSHIPS_BYTES: usize = 1024 * 1024;
@@ -18,6 +19,8 @@ pub struct DocxLimits {
     pub maximum_archive_bytes: usize,
     pub maximum_document_xml_bytes: usize,
     pub maximum_styles_xml_bytes: usize,
+    pub maximum_numbering_xml_bytes: usize,
+    pub maximum_numbering_items: usize,
     pub maximum_entries: u64,
     pub maximum_compression_ratio: u64,
     pub maximum_paragraphs: usize,
@@ -30,6 +33,8 @@ impl Default for DocxLimits {
             maximum_archive_bytes: 64 * 1024 * 1024,
             maximum_document_xml_bytes: 32 * 1024 * 1024,
             maximum_styles_xml_bytes: 8 * 1024 * 1024,
+            maximum_numbering_xml_bytes: 8 * 1024 * 1024,
+            maximum_numbering_items: 100_000,
             maximum_entries: 4096,
             maximum_compression_ratio: 200,
             maximum_paragraphs: 250_000,
@@ -75,17 +80,24 @@ impl EntryExtractionErrors {
         too_large: ProjectionError::StylesXmlTooLarge,
         integrity: ProjectionError::StylesXmlIntegrity,
     };
+    const NUMBERING_XML: Self = Self {
+        invalid_entry: ProjectionError::InvalidNumberingXmlEntry,
+        too_large: ProjectionError::NumberingXmlTooLarge,
+        integrity: ProjectionError::NumberingXmlIntegrity,
+    };
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocumentParts {
     pub document_xml: Vec<u8>,
     pub styles_xml: Option<Vec<u8>>,
+    pub numbering_xml: Option<Vec<u8>>,
 }
 
 pub(super) struct ProjectionPackageParts {
     pub document: Vec<u8>,
     pub styles: Option<Vec<u8>>,
+    pub numbering: Option<Vec<u8>>,
     pub comments: Result<Option<Vec<u8>>, ReviewFactUnknownReason>,
     pub comments_extended: Result<Option<Vec<u8>>, ReviewFactUnknownReason>,
 }
@@ -94,6 +106,7 @@ struct RequiredPackageParts {
     document_path: Vec<u8>,
     document: Vec<u8>,
     styles: Option<Vec<u8>>,
+    numbering: Option<Vec<u8>>,
 }
 
 struct ReviewPackageParts {
@@ -111,12 +124,12 @@ pub fn extract_document_xml(bytes: &[u8], limits: DocxLimits) -> Result<Vec<u8>,
     extract_document_parts(bytes, limits).map(|parts| parts.document_xml)
 }
 
-/// Extracts the main document and its conventional paragraph-style part from one
-/// bounded scan of the ZIP directory.
+/// Extracts the main document and its conventional paragraph-style and numbering
+/// parts from one bounded scan of the ZIP directory.
 ///
-/// `styles_xml: None` is not evidence that a package has no effective styles:
-/// relationship targets may use another path. Callers therefore retain an
-/// explicit unknown state for style-derived structural facts when it is absent.
+/// An absent optional part is not evidence that its effective properties are
+/// empty: relationship targets may use another path. Callers therefore retain an
+/// explicit unknown state for dependent structural facts.
 ///
 /// # Errors
 ///
@@ -150,6 +163,7 @@ pub(super) fn extract_projection_parts(
     Ok(ProjectionPackageParts {
         document: required.document,
         styles: required.styles,
+        numbering: required.numbering,
         comments: review.comments,
         comments_extended: review.comments_extended,
     })
@@ -169,6 +183,7 @@ fn extract_required_parts(
     Ok(DocumentParts {
         document_xml: required.document,
         styles_xml: required.styles,
+        numbering_xml: required.numbering,
     })
 }
 
@@ -220,10 +235,33 @@ fn extract_required_parts_from_archive(
         )
     })
     .transpose()?;
+    let numbering_xml = unique_entry(
+        package_entries,
+        NUMBERING_XML_PATH,
+        ProjectionError::DuplicateNumberingXml,
+    )?
+    .map(|numbering| {
+        validate_selected_entry(
+            numbering,
+            limits.maximum_numbering_xml_bytes,
+            ProjectionError::NumberingXmlTooLarge,
+            ProjectionError::InvalidNumberingXmlEntry,
+            limits,
+        )?;
+        extract_entry(
+            archive,
+            numbering,
+            NUMBERING_XML_PATH,
+            limits.maximum_numbering_xml_bytes,
+            EntryExtractionErrors::NUMBERING_XML,
+        )
+    })
+    .transpose()?;
     Ok(RequiredPackageParts {
         document_path,
         document: document_xml,
         styles: styles_xml,
+        numbering: numbering_xml,
     })
 }
 

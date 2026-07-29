@@ -7,6 +7,7 @@
 mod archive;
 mod compatibility;
 mod namespaces;
+mod numbering;
 mod ooxml;
 mod relationships;
 mod review;
@@ -113,6 +114,7 @@ pub enum ProjectionError {
     MissingDocumentXml,
     DuplicateDocumentXml,
     DuplicateStylesXml,
+    DuplicateNumberingXml,
     EncryptedDocumentXml,
     UnsupportedCompression(u16),
     DocumentXmlTooLarge,
@@ -122,11 +124,16 @@ pub enum ProjectionError {
     StylesXmlTooLarge,
     InvalidStylesXmlEntry,
     StylesXmlIntegrity,
+    NumberingXmlTooLarge,
+    InvalidNumberingXmlEntry,
+    NumberingXmlIntegrity,
     InvalidDocumentXml,
     InvalidStylesXml,
+    InvalidNumberingXml,
     MissingDocumentBody,
     TooManyParagraphs,
     TooManyStructuralFacts,
+    TooManyNumberingItems,
     InvalidInternalParagraphId,
     DuplicateInternalParagraphId,
 }
@@ -144,6 +151,7 @@ impl fmt::Display for ProjectionError {
             Self::MissingDocumentXml => "DOCX archive has no main document part",
             Self::DuplicateDocumentXml => "DOCX archive has duplicate main document parts",
             Self::DuplicateStylesXml => "DOCX archive has duplicate word/styles.xml entries",
+            Self::DuplicateNumberingXml => "DOCX archive has duplicate word/numbering.xml entries",
             Self::EncryptedDocumentXml => "DOCX main document part is encrypted",
             Self::UnsupportedCompression(_) => {
                 "selected DOCX package part uses unsupported compression"
@@ -159,13 +167,18 @@ impl fmt::Display for ProjectionError {
             Self::StylesXmlTooLarge => "word/styles.xml exceeds the configured size limit",
             Self::InvalidStylesXmlEntry => "word/styles.xml has an invalid ZIP entry",
             Self::StylesXmlIntegrity => "word/styles.xml failed size or CRC validation",
+            Self::NumberingXmlTooLarge => "word/numbering.xml exceeds the configured size limit",
+            Self::InvalidNumberingXmlEntry => "word/numbering.xml has an invalid ZIP entry",
+            Self::NumberingXmlIntegrity => "word/numbering.xml failed size or CRC validation",
             Self::InvalidDocumentXml => "DOCX main document part is invalid XML",
             Self::InvalidStylesXml => "word/styles.xml is invalid XML",
+            Self::InvalidNumberingXml => "word/numbering.xml is invalid XML",
             Self::MissingDocumentBody => "DOCX main document part has no document body",
             Self::TooManyParagraphs => "DOCX main document part has too many paragraphs",
             Self::TooManyStructuralFacts => {
                 "DOCX main document part produces too many structural facts"
             }
+            Self::TooManyNumberingItems => "word/numbering.xml exceeds the configured item limit",
             Self::InvalidInternalParagraphId => "application paragraph ID is invalid",
             Self::DuplicateInternalParagraphId => "application paragraph IDs are not unique",
         };
@@ -214,12 +227,21 @@ where
             styles::parse_styles(styles).map_err(|_| StructuralFactUnknownReason::UnsupportedStyles)
         },
     );
+    let numbering = parse_optional_numbering(
+        parts.numbering_xml.as_deref(),
+        limits.maximum_numbering_items,
+    )?;
     project_document_xml_with_limit(
         &parts.document_xml,
         limits.maximum_paragraphs,
         limits.maximum_structural_facts,
         options,
-        styles.as_ref().map_err(|reason| *reason),
+        ProjectionDependencies {
+            styles: styles.as_ref().map_err(|reason| *reason),
+            numbering: numbering
+                .as_ref()
+                .ok_or(StructuralFactUnknownReason::UnsupportedNumbering),
+        },
         allocate_id,
     )
 }
@@ -252,6 +274,8 @@ where
             styles::parse_styles(styles).map_err(|_| StructuralFactUnknownReason::UnsupportedStyles)
         },
     );
+    let numbering =
+        parse_optional_numbering(parts.numbering.as_deref(), limits.maximum_numbering_items)?;
     let ProjectedDocumentWithReview {
         document,
         revisions,
@@ -261,7 +285,12 @@ where
         limits.maximum_paragraphs,
         limits.maximum_structural_facts,
         options,
-        styles.as_ref().map_err(|reason| *reason),
+        ProjectionDependencies {
+            styles: styles.as_ref().map_err(|reason| *reason),
+            numbering: numbering
+                .as_ref()
+                .ok_or(StructuralFactUnknownReason::UnsupportedNumbering),
+        },
         Some(ooxml::ReviewProjectionLimits {
             maximum_facts: review_limits.maximum_facts_per_family,
             maximum_detail_bytes: review_limits.maximum_review_detail_bytes,
@@ -283,6 +312,20 @@ where
         document,
         review_facts,
     })
+}
+
+fn parse_optional_numbering(
+    xml: Option<&[u8]>,
+    maximum_items: usize,
+) -> Result<Option<numbering::NumberingCatalog>, ProjectionError> {
+    let Some(xml) = xml else {
+        return Ok(None);
+    };
+    match numbering::parse_numbering(xml, maximum_items) {
+        Ok(catalog) => Ok(Some(catalog)),
+        Err(ProjectionError::TooManyNumberingItems) => Err(ProjectionError::TooManyNumberingItems),
+        Err(_) => Ok(None),
+    }
 }
 
 /// Projects an uncompressed main OOXML document part with default options.
@@ -320,7 +363,10 @@ where
         DocxLimits::default().maximum_paragraphs,
         DocxLimits::default().maximum_structural_facts,
         options,
-        Err(StructuralFactUnknownReason::DocumentPartOnly),
+        ProjectionDependencies {
+            styles: Err(StructuralFactUnknownReason::DocumentPartOnly),
+            numbering: Err(StructuralFactUnknownReason::DocumentPartOnly),
+        },
         allocate_id,
     )
 }
@@ -330,7 +376,7 @@ fn project_document_xml_with_limit<F>(
     maximum_paragraphs: usize,
     maximum_structural_facts: usize,
     options: ProjectionOptions,
-    styles: Result<&structure::StyleSheet, StructuralFactUnknownReason>,
+    dependencies: ProjectionDependencies<'_>,
     allocate_id: F,
 ) -> Result<DocumentProjection, ProjectionError>
 where
@@ -341,7 +387,7 @@ where
         maximum_paragraphs,
         maximum_structural_facts,
         options,
-        styles,
+        dependencies,
         None,
         allocate_id,
     )
@@ -354,12 +400,18 @@ struct ProjectedDocumentWithReview {
     comment_anchors: Option<HashMap<String, ReviewSpan>>,
 }
 
+#[derive(Clone, Copy)]
+struct ProjectionDependencies<'a> {
+    styles: Result<&'a structure::StyleSheet, StructuralFactUnknownReason>,
+    numbering: Result<&'a numbering::NumberingCatalog, StructuralFactUnknownReason>,
+}
+
 fn project_document_xml_with_limit_and_review<F>(
     xml: &[u8],
     maximum_paragraphs: usize,
     maximum_structural_facts: usize,
     options: ProjectionOptions,
-    styles: Result<&structure::StyleSheet, StructuralFactUnknownReason>,
+    dependencies: ProjectionDependencies<'_>,
     review_limits: Option<ooxml::ReviewProjectionLimits>,
     mut allocate_id: F,
 ) -> Result<ProjectedDocumentWithReview, ProjectionError>
@@ -408,7 +460,8 @@ where
             bookmarks: projected.bookmarks.as_deref().map_err(|reason| *reason),
             references: projected.references.as_deref().map_err(|reason| *reason),
         },
-        styles,
+        dependencies.styles,
+        dependencies.numbering,
         maximum_structural_facts,
     )?;
     let mut paragraphs = Vec::with_capacity(projected.paragraphs.len());

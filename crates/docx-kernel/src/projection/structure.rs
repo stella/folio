@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ProjectionError;
+use crate::projection::numbering::NumberingCatalog;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StructuralFactUnknownReason {
@@ -80,6 +81,22 @@ impl ParagraphIndentation {
             start_chars_hundredths: child.start_chars_hundredths.or(self.start_chars_hundredths),
             end_chars_hundredths: child.end_chars_hundredths.or(self.end_chars_hundredths),
         }
+    }
+
+    fn inherit_numbered_direct(self, mut direct: Self) -> Self {
+        if direct.first_line_twips == Some(0) {
+            direct.first_line_twips = None;
+        }
+        if direct.hanging_twips == Some(0) {
+            direct.hanging_twips = None;
+        }
+        if direct.first_line_chars_hundredths == Some(0) {
+            direct.first_line_chars_hundredths = None;
+        }
+        if direct.hanging_chars_hundredths == Some(0) {
+            direct.hanging_chars_hundredths = None;
+        }
+        self.inherit(direct)
     }
 }
 
@@ -212,11 +229,19 @@ pub(super) struct StyleSheet {
     pub styles: HashMap<String, StyleDefinition>,
 }
 
+#[derive(Clone, Debug)]
+struct ResolvedParagraphProperties {
+    indentation: Result<ParagraphIndentation, StructuralFactUnknownReason>,
+    numbering: NumberingProperties,
+    outline_level: Option<u8>,
+}
+
 impl StyleSheet {
-    pub(super) fn resolve(
+    fn resolve(
         &self,
         direct: &ParagraphProperties,
-    ) -> Result<ParagraphProperties, StructuralFactUnknownReason> {
+        numbering_catalog: Result<&NumberingCatalog, StructuralFactUnknownReason>,
+    ) -> Result<ResolvedParagraphProperties, StructuralFactUnknownReason> {
         let initial_style_id = direct.style_id.as_ref().or(self.default_style_id.as_ref());
         let mut chain = Vec::new();
         let mut current = initial_style_id;
@@ -231,20 +256,58 @@ impl StyleSheet {
             current = style.based_on.as_ref();
         }
 
-        let mut resolved = self.document_defaults.clone();
+        let mut numbering = self.document_defaults.numbering;
+        let mut outline_level = self.document_defaults.outline_level;
         for current_style_id in chain.iter().rev() {
             let style = self
                 .styles
                 .get(current_style_id)
                 .ok_or(StructuralFactUnknownReason::UnsupportedStyles)?;
-            resolved.indentation = resolved.indentation.inherit(style.properties.indentation);
-            resolved.numbering = resolved.numbering.inherit(style.properties.numbering);
-            resolved.outline_level = style.properties.outline_level.or(resolved.outline_level);
+            numbering = numbering.inherit(style.properties.numbering);
+            outline_level = style.properties.outline_level.or(outline_level);
         }
-        resolved.indentation = resolved.indentation.inherit(direct.indentation);
-        resolved.numbering = resolved.numbering.inherit(direct.numbering);
-        resolved.outline_level = direct.outline_level.or(resolved.outline_level);
-        Ok(resolved)
+        numbering = numbering.inherit(direct.numbering);
+        outline_level = direct.outline_level.or(outline_level);
+
+        let numbered = numbering.present && numbering.num_id != Some(0);
+        let numbering_is_direct = direct.numbering.present;
+        let indentation = if numbered {
+            numbering
+                .num_id
+                .ok_or(StructuralFactUnknownReason::UnsupportedNumbering)
+                .and_then(|num_id| {
+                    numbering_catalog.and_then(|catalog| {
+                        catalog.indentation(num_id, numbering.level.unwrap_or(0))
+                    })
+                })
+        } else {
+            Ok(ParagraphIndentation::default())
+        }
+        .map(|level_indentation| {
+            let mut indentation = self.document_defaults.indentation;
+            if !numbering_is_direct {
+                indentation = indentation.inherit(level_indentation);
+            }
+            for current_style_id in chain.iter().rev() {
+                // The style graph and IDs were validated while constructing the chain.
+                if let Some(style) = self.styles.get(current_style_id) {
+                    indentation = indentation.inherit(style.properties.indentation);
+                }
+            }
+            if numbering_is_direct {
+                indentation = indentation.inherit(level_indentation);
+            }
+            if numbered {
+                indentation.inherit_numbered_direct(direct.indentation)
+            } else {
+                indentation.inherit(direct.indentation)
+            }
+        });
+        Ok(ResolvedParagraphProperties {
+            indentation,
+            numbering,
+            outline_level,
+        })
     }
 }
 
@@ -279,6 +342,7 @@ impl StructuralFactBudget {
 pub(super) fn materialize_structure(
     input: RawStructureInput<'_>,
     styles: Result<&StyleSheet, StructuralFactUnknownReason>,
+    numbering: Result<&NumberingCatalog, StructuralFactUnknownReason>,
     maximum_facts: usize,
 ) -> Result<DocumentStructureFacts, ProjectionError> {
     let mut fact_budget = StructuralFactBudget::new(maximum_facts);
@@ -286,39 +350,48 @@ pub(super) fn materialize_structure(
         input
             .properties
             .iter()
-            .map(|properties| styles.resolve(properties))
+            .map(|properties| styles.resolve(properties, numbering))
             .collect::<Result<Vec<_>, _>>()
     });
 
     let (indentation, numbering_hierarchy, outline_levels) = match resolved {
-        Ok(properties) => (
-            StructuralFactSet::Known(
-                properties
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, properties)| !properties.indentation.is_empty())
-                    .map(|(ordinal, properties)| ParagraphIndentationFact {
-                        paragraph_ordinal: ordinal,
-                        value: properties.indentation,
-                    })
-                    .collect(),
-            ),
-            materialize_numbering(&properties),
-            StructuralFactSet::Known(
-                properties
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(paragraph_ordinal, properties)| {
-                        properties
-                            .outline_level
-                            .map(|outline_level| ParagraphOutlineLevelFact {
+        Ok(properties) => {
+            let indentation = properties
+                .iter()
+                .map(|properties| properties.indentation)
+                .collect::<Result<Vec<_>, _>>()
+                .map_or_else(StructuralFactSet::Unknown, |indentations| {
+                    StructuralFactSet::Known(
+                        indentations
+                            .into_iter()
+                            .enumerate()
+                            .filter(|(_, indentation)| !indentation.is_empty())
+                            .map(|(paragraph_ordinal, value)| ParagraphIndentationFact {
                                 paragraph_ordinal,
-                                outline_level,
+                                value,
                             })
-                    })
-                    .collect(),
-            ),
-        ),
+                            .collect(),
+                    )
+                });
+            (
+                indentation,
+                materialize_numbering(&properties),
+                StructuralFactSet::Known(
+                    properties
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(paragraph_ordinal, properties)| {
+                            properties.outline_level.map(|outline_level| {
+                                ParagraphOutlineLevelFact {
+                                    paragraph_ordinal,
+                                    outline_level,
+                                }
+                            })
+                        })
+                        .collect(),
+                ),
+            )
+        }
         Err(reason) => (
             StructuralFactSet::Unknown(reason),
             StructuralFactSet::Unknown(reason),
@@ -364,7 +437,7 @@ pub(super) fn materialize_structure(
 }
 
 fn materialize_numbering(
-    properties: &[ParagraphProperties],
+    properties: &[ResolvedParagraphProperties],
 ) -> StructuralFactSet<NumberingHierarchyFact> {
     let mut stacks: HashMap<u32, [Option<usize>; 9]> = HashMap::new();
     let mut parents = vec![None; properties.len()];

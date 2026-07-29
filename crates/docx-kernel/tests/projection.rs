@@ -14,13 +14,14 @@ use std::io::{Cursor, Write};
 
 use stella_docx_kernel::{
     CommentContent, DocxLimits, InternalParagraphId, InternalReferenceRole, PackageParagraphId,
-    ParagraphIdentityFacts, ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail,
-    ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason, ReviewPoint, ReviewSpan,
-    RevisionContent, RevisionFactKind, RevisionProjectionStatus, RevisionUnsupportedReason,
-    RevisionView, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason, TextFormattingSpan,
-    TextMaterialization, TextStyle, extract_document_parts, extract_document_xml,
-    project_document_xml, project_document_xml_with_options, project_docx,
-    project_docx_with_options, project_docx_with_review_facts,
+    ParagraphIdentityFacts, ParagraphOutlineLevelFact, ParagraphStructure, ProjectionError,
+    ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
+    ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionProjectionStatus,
+    RevisionUnsupportedReason, RevisionView, SpanCoverage, StructuralFactSet,
+    StructuralFactUnknownReason, TextFormattingSpan, TextMaterialization, TextStyle,
+    extract_document_parts, extract_document_xml, project_document_xml,
+    project_document_xml_with_options, project_docx, project_docx_with_options,
+    project_docx_with_review_facts,
 };
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -31,6 +32,7 @@ const HIDDEN_XML: &[u8] = include_bytes!("../fixtures/hidden.xml");
 const MISSING_ID_XML: &[u8] = include_bytes!("../fixtures/missingParaId.xml");
 const PLACEHOLDER_XML: &[u8] = include_bytes!("../fixtures/placeholder.xml");
 const TEXTBOX_XML: &[u8] = include_bytes!("../fixtures/textbox.xml");
+const MINIMAL_STYLES: &[u8] = br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Normal" w:default="1"/></w:styles>"#;
 const SPECIAL_VISIBLE_TEXT: &str = "\t\t\u{000c}\u{000e}\u{000b}\r\u{001f}\u{001e}©";
 
 fn allocate(facts: ParagraphIdentityFacts<'_>) -> Result<InternalParagraphId, ProjectionError> {
@@ -891,7 +893,7 @@ fn rejects_structural_fact_expansion_above_the_configured_limit() {
 
 #[test]
 fn counts_outline_levels_against_the_shared_structural_fact_budget() {
-    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+    let document: &[u8] = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
       <w:p><w:pPr><w:outlineLvl w:val="0"/></w:pPr><w:r><w:t>First</w:t></w:r></w:p>
       <w:p><w:pPr><w:outlineLvl w:val="1"/></w:pPr><w:r><w:t>Second</w:t></w:r></w:p>
     </w:body></w:document>"#;
@@ -965,8 +967,18 @@ fn resolves_inherited_indentation_and_numbering_without_partial_facts() {
         </w:style>
       </w:styles>
     "#;
+    let numbering_xml = br#"
+      <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:abstractNum w:abstractNumId="3"><w:lvl w:ilvl="0"/><w:lvl w:ilvl="1"/></w:abstractNum>
+        <w:num w:numId="7"><w:abstractNumId w:val="3"/></w:num>
+      </w:numbering>
+    "#;
     let package = package(
-        &[("word/document.xml", document), ("word/styles.xml", styles)],
+        &[
+            ("word/document.xml", document),
+            ("word/styles.xml", styles),
+            ("word/numbering.xml", numbering_xml),
+        ],
         CompressionMethod::Deflated,
     );
 
@@ -1011,6 +1023,146 @@ fn resolves_inherited_indentation_and_numbering_without_partial_facts() {
             .map(|fact| (fact.paragraph_ordinal, fact.outline_level))
             .collect::<Vec<_>>(),
         [(0, 1), (1, 2), (2, 4), (3, 4)]
+    );
+}
+
+#[test]
+fn resolves_numbering_level_indentation_through_the_ooxml_cascade() {
+    let document = br#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+        <w:p><w:pPr><w:pStyle w:val="StyledList"/></w:pPr><w:r><w:t>Styled</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="StyledList"/><w:ind w:left="2000" w:firstLine="300"/></w:pPr><w:r><w:t>Direct</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="Base"/><w:numPr><w:ilvl w:val="1"/><w:numId w:val="5"/></w:numPr><w:ind w:firstLine="0"/></w:pPr><w:r><w:t>Level</w:t></w:r></w:p>
+        <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="6"/></w:numPr></w:pPr><w:r><w:t>Override</w:t></w:r></w:p>
+        <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr></w:pPr><w:r><w:t>Linked</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="Base"/><w:numPr><w:ilvl w:val="1"/><w:numId w:val="5"/></w:numPr><w:ind w:hanging="0"/></w:pPr><w:r><w:t>Neutral hanging</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="Base"/><w:numPr><w:ilvl w:val="1"/><w:numId w:val="5"/></w:numPr><w:ind w:hanging="180"/></w:pPr><w:r><w:t>Direct hanging</w:t></w:r></w:p>
+      </w:body></w:document>
+    "#;
+    let styles = br#"
+      <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:docDefaults><w:pPrDefault><w:pPr><w:ind w:right="100"/></w:pPr></w:pPrDefault></w:docDefaults>
+        <w:style w:type="paragraph" w:styleId="Base"><w:pPr><w:ind w:left="1000"/></w:pPr></w:style>
+        <w:style w:type="paragraph" w:styleId="StyledList"><w:basedOn w:val="Base"/><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="5"/></w:numPr></w:pPr></w:style>
+      </w:styles>
+    "#;
+    let numbering = br#"
+      <n:numbering xmlns:n="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <n:abstractNum n:abstractNumId="30"><n:styleLink n:val="Shared"/><n:lvl n:ilvl="1"><n:pPr><n:ind n:left="1417" n:right="200" n:hanging="793"/></n:pPr></n:lvl></n:abstractNum>
+        <n:abstractNum n:abstractNumId="31"><n:numStyleLink n:val="Shared"/></n:abstractNum>
+        <n:num n:numId="5"><n:abstractNumId n:val="30"/></n:num>
+        <n:num n:numId="6"><n:abstractNumId n:val="30"/><n:lvlOverride n:ilvl="1"><n:lvl n:ilvl="1"><n:pPr><n:ind n:left="900" n:firstLine="120"/></n:pPr></n:lvl></n:lvlOverride></n:num>
+        <n:num n:numId="7"><n:abstractNumId n:val="31"/></n:num>
+      </n:numbering>
+    "#;
+    let projection = project_docx(
+        &package(
+            &[
+                ("word/document.xml", document),
+                ("word/styles.xml", styles),
+                ("word/numbering.xml", numbering),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("supported numbering cascade should project");
+    let StructuralFactSet::Known(indentation) = projection.structural_facts.indentation else {
+        panic!("numbering-derived indentation should be known");
+    };
+    assert_eq!(indentation.len(), 7);
+    assert_eq!(indentation[0].value.left_twips, Some(1000));
+    assert_eq!(indentation[0].value.right_twips, Some(200));
+    assert_eq!(indentation[0].value.hanging_twips, Some(793));
+    assert_eq!(indentation[1].value.left_twips, Some(2000));
+    assert_eq!(indentation[1].value.first_line_twips, Some(300));
+    assert_eq!(indentation[1].value.hanging_twips, None);
+    assert_eq!(indentation[2].value.left_twips, Some(1417));
+    assert_eq!(indentation[2].value.hanging_twips, Some(793));
+    assert_eq!(indentation[3].value.left_twips, Some(900));
+    assert_eq!(indentation[3].value.first_line_twips, Some(120));
+    assert_eq!(indentation[4].value.left_twips, Some(1417));
+    assert_eq!(indentation[5].value.left_twips, Some(1417));
+    assert_eq!(indentation[5].value.hanging_twips, Some(793));
+    assert_eq!(indentation[6].value.left_twips, Some(1417));
+    assert_eq!(indentation[6].value.hanging_twips, Some(180));
+}
+
+#[test]
+fn invalid_or_missing_numbering_fails_closed_without_losing_other_structure() {
+    let document: &[u8] = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:pPr><w:numPr><w:numId w:val="5"/></w:numPr><w:outlineLvl w:val="2"/></w:pPr><w:r><w:t>Numbered</w:t></w:r></w:p>
+    </w:body></w:document>"#;
+    let invalid_numbering: &[u8] = br#"<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:num w:numId="5"/></w:numbering>"#;
+    for entries in [
+        vec![
+            ("word/document.xml", document),
+            ("word/styles.xml", MINIMAL_STYLES),
+        ],
+        vec![
+            ("word/document.xml", document),
+            ("word/styles.xml", MINIMAL_STYLES),
+            ("word/numbering.xml", invalid_numbering),
+        ],
+    ] {
+        let projection = project_docx(
+            &package(&entries, CompressionMethod::Deflated),
+            DocxLimits::default(),
+            allocate,
+        )
+        .expect("unsupported optional numbering should preserve the document");
+        assert_eq!(
+            projection.structural_facts.indentation,
+            StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedNumbering)
+        );
+        assert_eq!(
+            projection.structural_facts.outline_levels,
+            StructuralFactSet::Known(vec![ParagraphOutlineLevelFact {
+                paragraph_ordinal: 0,
+                outline_level: 2,
+            }])
+        );
+        assert_eq!(
+            projection.structural_facts.numbering_hierarchy,
+            StructuralFactSet::Known(Vec::new())
+        );
+    }
+}
+
+#[test]
+fn enforces_numbering_package_and_item_limits() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>"#;
+    let numbering = br#"<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"/></w:abstractNum></w:numbering>"#;
+    let package = package(
+        &[
+            ("word/document.xml", document),
+            ("word/styles.xml", MINIMAL_STYLES),
+            ("word/numbering.xml", numbering),
+        ],
+        CompressionMethod::Deflated,
+    );
+    assert_eq!(
+        project_docx(
+            &package,
+            DocxLimits {
+                maximum_numbering_xml_bytes: numbering.len() - 1,
+                ..DocxLimits::default()
+            },
+            allocate,
+        ),
+        Err(ProjectionError::NumberingXmlTooLarge)
+    );
+    assert_eq!(
+        project_docx(
+            &package,
+            DocxLimits {
+                maximum_numbering_items: 1,
+                ..DocxLimits::default()
+            },
+            allocate,
+        ),
+        Err(ProjectionError::TooManyNumberingItems)
     );
 }
 
@@ -1249,7 +1401,7 @@ fn downgrades_whole_fact_families_for_unsupported_or_incomplete_constructs() {
     );
     assert!(matches!(
         skipped_level_projection.structural_facts.indentation,
-        StructuralFactSet::Known(_)
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedNumbering)
     ));
 
     let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="CycleA"/></w:pPr><w:r><w:t>Text</w:t></w:r></w:p></w:body></w:document>"#;
@@ -2106,16 +2258,33 @@ proptest::proptest! {
         ).expect("optional comment bytes must not abort document projection");
         proptest::prop_assert_eq!(projection.document.paragraphs[0].text.as_str(), "stable");
     }
+
+    #[test]
+    fn arbitrary_numbering_never_aborts_a_valid_document(numbering in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..2048)) {
+        let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>stable</w:t></w:r></w:p></w:body></w:document>"#;
+        let package_bytes = package(
+            &[
+                ("word/document.xml", document),
+                ("word/styles.xml", MINIMAL_STYLES),
+                ("word/numbering.xml", &numbering),
+            ],
+            CompressionMethod::Deflated,
+        );
+        let projection = project_docx(&package_bytes, DocxLimits::default(), allocate)
+            .expect("optional numbering bytes must not abort document projection");
+        proptest::prop_assert_eq!(projection.paragraphs[0].text.as_str(), "stable");
+        proptest::prop_assert!(matches!(
+            projection.structural_facts.numbering_hierarchy,
+            StructuralFactSet::Known(_)
+        ));
+    }
 }
 
 fn package_with_minimal_styles(document: &[u8]) -> Vec<u8> {
     package(
         &[
             ("word/document.xml", document),
-            (
-                "word/styles.xml",
-                br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Normal" w:default="1"/></w:styles>"#,
-            ),
+            ("word/styles.xml", MINIMAL_STYLES),
         ],
         CompressionMethod::Deflated,
     )
