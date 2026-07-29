@@ -89,6 +89,57 @@ function serializeNote(elementName: "footnote" | "endnote", note: Footnote | End
   return `<w:${elementName} ${attrs.join(" ")}>${body}</w:${elementName}>`;
 }
 
+const NOTE_SEPARATOR_BODY =
+  '<w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>';
+
+function serializeRequiredNoteSeparators(elementName: "footnote" | "endnote"): string {
+  return (
+    `<w:${elementName} w:type="separator" w:id="-1">${NOTE_SEPARATOR_BODY}` +
+    `<w:r><w:separator/></w:r></w:p></w:${elementName}>` +
+    `<w:${elementName} w:type="continuationSeparator" w:id="0">${NOTE_SEPARATOR_BODY}` +
+    `<w:r><w:continuationSeparator/></w:r></w:p></w:${elementName}>`
+  );
+}
+
+function insertNoteReferenceMark(xml: string, elementName: "footnote" | "endnote"): string {
+  const paragraphOpen = /<w:p(?=[\s>])[^>]*>/u.exec(xml);
+  if (!paragraphOpen) {
+    const referenceParagraph =
+      `<w:p><w:r><w:rPr><w:rStyle w:val="${elementName === "footnote" ? "FootnoteReference" : "EndnoteReference"}"/></w:rPr>` +
+      `<w:${elementName}Ref/></w:r></w:p>`;
+    return `${referenceParagraph}${xml}`;
+  }
+
+  const paragraphStart = paragraphOpen.index + paragraphOpen[0].length;
+  const paragraphEnd = xml.indexOf("</w:p>", paragraphStart);
+  const propertiesEnd = xml.indexOf("</w:pPr>", paragraphStart);
+  const insertAt =
+    propertiesEnd !== -1 && propertiesEnd < paragraphEnd
+      ? propertiesEnd + "</w:pPr>".length
+      : paragraphStart;
+  const referenceRun =
+    `<w:r><w:rPr><w:rStyle w:val="${elementName === "footnote" ? "FootnoteReference" : "EndnoteReference"}"/></w:rPr>` +
+    `<w:${elementName}Ref/></w:r>`;
+  return `${xml.slice(0, insertAt)}${referenceRun}${xml.slice(insertAt)}`;
+}
+
+function serializeNewNotePart(
+  elementName: "footnote" | "endnote",
+  notes: readonly (Footnote | Endnote)[],
+): string {
+  const nsDecl = buildNamespaceDeclarations();
+  const serializedNotes = notes
+    .map((note) => insertNoteReferenceMark(serializeNote(elementName, note), elementName))
+    .join("");
+  return (
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+    `<w:${elementName}s ${nsDecl} mc:Ignorable="w14 w15 wp14">` +
+    serializeRequiredNoteSeparators(elementName) +
+    serializedNotes +
+    `</w:${elementName}s>`
+  );
+}
+
 /**
  * Serialize footnotes to a complete word/footnotes.xml string.
  *
@@ -111,4 +162,16 @@ export function serializeEndnotes(endnotes: readonly Endnote[]): string {
   const nsDecl = buildNamespaceDeclarations();
   const notes = endnotes.map((en) => serializeNote("endnote", en)).join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:endnotes ${nsDecl} mc:Ignorable="w14 w15 wp14">${notes}</w:endnotes>`;
+}
+
+/** Serialize a brand-new footnote part, including Word's required separators
+ * and the automatic reference mark at the start of every normal note. */
+export function serializeNewFootnotesPart(footnotes: readonly Footnote[]): string {
+  return serializeNewNotePart("footnote", footnotes);
+}
+
+/** Serialize a brand-new endnote part, including Word's required separators
+ * and the automatic reference mark at the start of every normal note. */
+export function serializeNewEndnotesPart(endnotes: readonly Endnote[]): string {
+  return serializeNewNotePart("endnote", endnotes);
 }

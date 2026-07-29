@@ -18,8 +18,9 @@ import JSZip from "jszip";
 import type { Endnote, Footnote } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
-import { repackDocx } from "./rezip";
+import { createDocx, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
+import { createEmptyDocument } from "../utils/createDocument";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -261,6 +262,63 @@ describe("footnote / endnote body write path (selective save)", () => {
 });
 
 describe("footnote / endnote body write path (full repack)", () => {
+  test("createDocx materializes new note parts and their package declarations", async () => {
+    const doc = createEmptyDocument({ initialText: "Body text" });
+    const body = doc.package.document.content.at(0);
+    if (!body || body.type !== "paragraph") {
+      throw new Error("expected a body paragraph");
+    }
+    body.content.push(
+      { type: "run", content: [{ type: "footnoteRef", id: 1 }] },
+      { type: "run", content: [{ type: "endnoteRef", id: 1 }] },
+    );
+    doc.package.footnotes = [
+      {
+        type: "footnote",
+        id: 1,
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text: "New footnote" }] }],
+          },
+        ],
+      },
+    ];
+    doc.package.endnotes = [
+      {
+        type: "endnote",
+        id: 1,
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text: "New endnote" }] }],
+          },
+        ],
+      },
+    ];
+
+    const result = await createDocx(doc);
+    const contentTypes = await readPart(result, "[Content_Types].xml");
+    const relationships = await readPart(result, "word/_rels/document.xml.rels");
+    const savedFootnotes = await readPart(result, "word/footnotes.xml");
+    const savedEndnotes = await readPart(result, "word/endnotes.xml");
+
+    expect(contentTypes).toContain('PartName="/word/footnotes.xml"');
+    expect(contentTypes).toContain('PartName="/word/endnotes.xml"');
+    expect(relationships).toContain(`Type="${RELATIONSHIP_TYPES.footnotes}"`);
+    expect(relationships).toContain(`Type="${RELATIONSHIP_TYPES.endnotes}"`);
+    expect(savedFootnotes).toContain('<w:footnote w:type="separator" w:id="-1">');
+    expect(savedFootnotes).toContain("<w:footnoteRef/>");
+    expect(savedFootnotes).toContain("New footnote");
+    expect(savedEndnotes).toContain('<w:endnote w:type="separator" w:id="-1">');
+    expect(savedEndnotes).toContain("<w:endnoteRef/>");
+    expect(savedEndnotes).toContain("New endnote");
+
+    const reparsed = await parseDocx(result, { preloadFonts: false });
+    expect(noteBodyText(reparsed.package.footnotes?.at(0))).toBe("New footnote");
+    expect(noteBodyText(reparsed.package.endnotes?.at(0))).toBe("New endnote");
+  });
+
   test("edited footnote body persists through repackDocx; endnote + separators intact", async () => {
     const buffer = await createNotesFixture();
     const originalEndnotesXml = await readPart(buffer, "word/endnotes.xml");

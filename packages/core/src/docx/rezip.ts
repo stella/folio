@@ -55,7 +55,12 @@ import {
 } from "./serializer/commentSerializer";
 import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
-import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
+import {
+  serializeEndnotes,
+  serializeFootnotes,
+  serializeNewEndnotesPart,
+  serializeNewFootnotesPart,
+} from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { serializeFontTableXml } from "./serializer/fontTableSerializer";
 import { serializeSettingsXml } from "./serializer/settingsSerializer";
@@ -1752,26 +1757,108 @@ async function serializeNotesToZip(
 ): Promise<void> {
   const footnotes = doc.package.footnotes ?? [];
   if (footnotes.length > 0) {
-    await patchNotePartIntoZip(
-      "word/footnotes.xml",
-      serializeFootnotes(footnotes),
-      (xml) => serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
-      originalZip,
-      newZip,
-      compressionLevel,
-    );
+    if (findNotePartEntry(originalZip, "word/footnotes.xml")) {
+      await patchNotePartIntoZip(
+        "word/footnotes.xml",
+        serializeFootnotes(footnotes),
+        (xml) => serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
+        originalZip,
+        newZip,
+        compressionLevel,
+      );
+    } else {
+      await materializeNewNotePart({
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+        newZip,
+        partPath: "word/footnotes.xml",
+        relationshipType: RELATIONSHIP_TYPES.footnotes,
+        serializedPart: serializeNewFootnotesPart(footnotes),
+        compressionLevel,
+      });
+    }
   }
   const endnotes = doc.package.endnotes ?? [];
   if (endnotes.length > 0) {
-    await patchNotePartIntoZip(
-      "word/endnotes.xml",
-      serializeEndnotes(endnotes),
-      (xml) => serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
-      originalZip,
-      newZip,
-      compressionLevel,
+    if (findNotePartEntry(originalZip, "word/endnotes.xml")) {
+      await patchNotePartIntoZip(
+        "word/endnotes.xml",
+        serializeEndnotes(endnotes),
+        (xml) => serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
+        originalZip,
+        newZip,
+        compressionLevel,
+      );
+    } else {
+      await materializeNewNotePart({
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
+        newZip,
+        partPath: "word/endnotes.xml",
+        relationshipType: RELATIONSHIP_TYPES.endnotes,
+        serializedPart: serializeNewEndnotesPart(endnotes),
+        compressionLevel,
+      });
+    }
+  }
+}
+
+type MaterializeNewNotePartOptions = {
+  contentType: string;
+  newZip: JSZip;
+  partPath: "word/footnotes.xml" | "word/endnotes.xml";
+  relationshipType: string;
+  serializedPart: string;
+  compressionLevel: number;
+};
+
+async function materializeNewNotePart({
+  contentType,
+  newZip,
+  partPath,
+  relationshipType,
+  serializedPart,
+  compressionLevel,
+}: MaterializeNewNotePartOptions): Promise<void> {
+  const contentTypesFile = findNotePartEntry(newZip, "[content_types].xml");
+  const relationshipsFile = findNotePartEntry(newZip, "word/_rels/document.xml.rels");
+  if (!contentTypesFile || !relationshipsFile) {
+    throw new DocxPackageFidelityError(
+      `Cannot create ${partPath}: the DOCX package is missing content types or document relationships`,
     );
   }
+
+  const compressionOptions = { level: compressionLevel };
+  const contentTypesXml = await contentTypesFile.async("text");
+  const partName = `/${partPath}`;
+  if (!contentTypesXml.toLowerCase().includes(partName.toLowerCase())) {
+    newZip.file(
+      contentTypesFile.name,
+      contentTypesXml.replace(
+        "</Types>",
+        () => `<Override PartName="${partName}" ContentType="${contentType}"/></Types>`,
+      ),
+      { compression: "DEFLATE", compressionOptions },
+    );
+  }
+
+  const relationshipsXml = await relationshipsFile.async("text");
+  if (!relationshipsXml.includes(relationshipType)) {
+    const relationshipId = `rId${findMaxRId(relationshipsXml) + 1}`;
+    const target = partPath.slice("word/".length);
+    newZip.file(
+      relationshipsFile.name,
+      relationshipsXml.replace(
+        "</Relationships>",
+        () =>
+          `<Relationship Id="${relationshipId}" Type="${relationshipType}" Target="${target}"/></Relationships>`,
+      ),
+      { compression: "DEFLATE", compressionOptions },
+    );
+  }
+
+  newZip.file(partPath, serializedPart, {
+    compression: "DEFLATE",
+    compressionOptions,
+  });
 }
 
 /**
