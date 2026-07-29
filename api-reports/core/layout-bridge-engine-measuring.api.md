@@ -80,6 +80,7 @@ export type FloatingLineSegmentZone = {
 // @public
 export type FolioMeasurementFeatureFlags = {
     workerFontMetrics?: boolean;
+    segmentFitLineBreaking?: boolean;
 };
 
 // @public
