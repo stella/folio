@@ -1,20 +1,19 @@
 use crate::{
-    AttributedComment, AttributedRevision, BookmarkFact, CommentContent, DocumentPackageProjection,
+    AttributedComment, AttributedRevision, BookmarkFact, DocumentPackageProjection,
     DocumentProjection, DocumentReviewFacts, DocumentStructureFacts, DocxLimits,
     InternalParagraphId, InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact,
     ParagraphIdentityFacts, ParagraphIndentationFact, ParagraphOutlineLevelFact,
     ParagraphStructure, ProjectedParagraph, ProjectionOptions, ReviewDetail, ReviewFactLimits,
-    ReviewFactSet, ReviewFactUnknownReason, ReviewPoint, ReviewSpan, RevisionContent,
-    RevisionFactKind, RevisionProjectionStatus, RevisionUnsupportedReason, SpanCoverage,
-    StructuralFactSet, StructuralFactUnknownReason, StructuralSpan, TextMaterialization, TextStyle,
-    project_docx, project_docx_with_review_facts,
+    ReviewFactSet, ReviewFactUnknownReason, ReviewSpan, RevisionFactKind, RevisionProjectionStatus,
+    RevisionUnsupportedReason, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
+    StructuralSpan, TextMaterialization, TextStyle, project_docx, project_docx_with_review_facts,
 };
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
 
 const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 3;
-const DOCX_PACKAGE_PROJECTION_SCHEMA_VERSION: u32 = 1;
-const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 1;
+const DOCX_PACKAGE_PROJECTION_SCHEMA_VERSION: u32 = 2;
+const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 2;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TYPESCRIPT_TYPES: &str = r#"
@@ -128,32 +127,7 @@ export type DocxReviewUnknownReason =
 export type DocxReviewFactSet<T> =
   | readonly [status: "known", items: readonly T[]]
   | readonly [status: "unknown", reason: DocxReviewUnknownReason];
-export type DocxReviewDetail<T> =
-  | readonly [status: "known", value: T]
-  | readonly [status: "unknown", reason: DocxReviewUnknownReason];
-export type DocxReviewPoint = readonly [
-  paragraphOrdinal: number,
-  utf8: number,
-  utf16: number,
-];
-export type DocxReviewSpan = readonly [
-  start: DocxReviewPoint,
-  end: DocxReviewPoint,
-];
-/** Compact versioned boundary tuple. Field order is stable within schema version 1. */
-export type DocxRevisionContent = readonly [
-  span: DocxReviewSpan,
-  text: string,
-  contentKind: "text" | "formatting-only",
-];
-export type DocxCommentContent = readonly [
-  anchor: DocxReviewSpan,
-  commentText: string,
-  referencedText: string,
-];
-/** Attributed revision wire tuple; positions are named and versioned by its container. */
-export type DocxAttributedRevision = readonly [
-  type:
+export type DocxRevisionKind =
     | "insertion"
     | "deletion"
     | "moveFrom"
@@ -175,31 +149,76 @@ export type DocxAttributedRevision = readonly [
     | "customXmlMoveFromRangeStart"
     | "customXmlMoveFromRangeEnd"
     | "customXmlMoveToRangeStart"
-    | "customXmlMoveToRangeEnd",
-  author: string,
-  date: string | null,
-  revisionId: string | null,
-  content: DocxReviewDetail<DocxRevisionContent>,
-];
-/** Attributed comment wire tuple; positions are named and versioned by its container. */
-export type DocxAttributedComment = readonly [
-  commentId: string,
-  author: string,
-  initials: string | null,
-  date: string | null,
-  parentCommentId: string | null,
-  threadState: "open" | "resolved",
-  content: DocxReviewDetail<DocxCommentContent>,
-];
+    | "customXmlMoveToRangeEnd";
+/**
+ * Attributed revision wire tuple. Known content is flattened into the item so
+ * one review fact creates one JavaScript array at the WASM boundary.
+ */
+export type DocxAttributedRevision =
+  | readonly [
+      type: DocxRevisionKind,
+      author: string,
+      date: string | null,
+      revisionId: string | null,
+      contentStatus: "known",
+      startParagraphOrdinal: number,
+      startUtf8: number,
+      startUtf16: number,
+      endParagraphOrdinal: number,
+      endUtf8: number,
+      endUtf16: number,
+      text: string,
+      contentKind: "text" | "formatting-only",
+    ]
+  | readonly [
+      type: DocxRevisionKind,
+      author: string,
+      date: string | null,
+      revisionId: string | null,
+      contentStatus: "unknown",
+      reason: DocxReviewUnknownReason,
+    ];
+/**
+ * Attributed comment wire tuple. Known content is flattened into the item so
+ * one review fact creates one JavaScript array at the WASM boundary.
+ */
+export type DocxAttributedComment =
+  | readonly [
+      commentId: string,
+      author: string,
+      initials: string | null,
+      date: string | null,
+      parentCommentId: string | null,
+      threadState: "open" | "resolved",
+      contentStatus: "known",
+      startParagraphOrdinal: number,
+      startUtf8: number,
+      startUtf16: number,
+      endParagraphOrdinal: number,
+      endUtf8: number,
+      endUtf16: number,
+      commentText: string,
+      referencedText: string,
+    ]
+  | readonly [
+      commentId: string,
+      author: string,
+      initials: string | null,
+      date: string | null,
+      parentCommentId: string | null,
+      threadState: "open" | "resolved",
+      contentStatus: "unknown",
+      reason: DocxReviewUnknownReason,
+    ];
 /** Review-fact wire schema. A new tuple layout requires a schema-version bump. */
 export type DocxReviewFactsWire = readonly [
-  schemaVersion: 1,
+  schemaVersion: 2,
   revisions: DocxReviewFactSet<DocxAttributedRevision>,
   comments: DocxReviewFactSet<DocxAttributedComment>,
 ];
 /** Fused package wire schema. A new tuple layout requires a schema-version bump. */
 export type DocxPackageProjectionWire = readonly [
-  schemaVersion: 1,
+  schemaVersion: 2,
   document: DocxProjectionWire,
   reviewFacts: DocxReviewFactsWire,
 ];
@@ -412,7 +431,10 @@ fn output_review_fact_set<T>(
 }
 
 fn output_revision_fact(fact: &AttributedRevision) -> Result<JsValue, String> {
-    let output = Array::new_with_length(5);
+    let output = Array::new_with_length(match &fact.content {
+        ReviewDetail::Known(_) => 13,
+        ReviewDetail::Unknown(_) => 6,
+    });
     output.set(
         0,
         JsValue::from_str(match fact.kind {
@@ -443,15 +465,33 @@ fn output_revision_fact(fact: &AttributedRevision) -> Result<JsValue, String> {
     output.set(1, JsValue::from_str(&fact.author));
     output.set(2, optional_string(fact.date.as_deref()));
     output.set(3, optional_string(fact.revision_id.as_deref()));
-    output.set(
-        4,
-        output_review_detail(&fact.content, output_revision_content)?,
-    );
+    match &fact.content {
+        ReviewDetail::Known(content) => {
+            output.set(4, JsValue::from_str("known"));
+            output_review_span_fields(&output, 5, content.span)?;
+            output.set(11, JsValue::from_str(&content.text));
+            output.set(
+                12,
+                JsValue::from_str(if content.formatting_only {
+                    "formatting-only"
+                } else {
+                    "text"
+                }),
+            );
+        }
+        ReviewDetail::Unknown(reason) => {
+            output.set(4, JsValue::from_str("unknown"));
+            output.set(5, JsValue::from_str(review_unknown_reason(*reason)));
+        }
+    }
     Ok(output.into())
 }
 
 fn output_comment_fact(fact: &AttributedComment) -> Result<JsValue, String> {
-    let output = Array::new_with_length(7);
+    let output = Array::new_with_length(match &fact.content {
+        ReviewDetail::Known(_) => 15,
+        ReviewDetail::Unknown(_) => 8,
+    });
     output.set(0, JsValue::from_str(&fact.comment_id));
     output.set(1, JsValue::from_str(&fact.author));
     output.set(2, optional_string(fact.initials.as_deref()));
@@ -461,10 +501,18 @@ fn output_comment_fact(fact: &AttributedComment) -> Result<JsValue, String> {
         5,
         JsValue::from_str(if fact.resolved { "resolved" } else { "open" }),
     );
-    output.set(
-        6,
-        output_review_detail(&fact.content, output_comment_content)?,
-    );
+    match &fact.content {
+        ReviewDetail::Known(content) => {
+            output.set(6, JsValue::from_str("known"));
+            output_review_span_fields(&output, 7, content.anchor)?;
+            output.set(13, JsValue::from_str(&content.comment_text));
+            output.set(14, JsValue::from_str(&content.referenced_text));
+        }
+        ReviewDetail::Unknown(reason) => {
+            output.set(6, JsValue::from_str("unknown"));
+            output.set(7, JsValue::from_str(review_unknown_reason(*reason)));
+        }
+    }
     Ok(output.into())
 }
 
@@ -472,60 +520,27 @@ fn optional_string(value: Option<&str>) -> JsValue {
     value.map_or(JsValue::NULL, JsValue::from_str)
 }
 
-fn output_review_detail<T>(
-    detail: &ReviewDetail<T>,
-    output_value: impl FnOnce(&T) -> Result<JsValue, String>,
-) -> Result<JsValue, String> {
-    let output = Array::new_with_length(2);
-    match detail {
-        ReviewDetail::Known(value) => {
-            output.set(0, JsValue::from_str("known"));
-            output.set(1, output_value(value)?);
-        }
-        ReviewDetail::Unknown(reason) => {
-            output.set(0, JsValue::from_str("unknown"));
-            output.set(1, JsValue::from_str(review_unknown_reason(*reason)));
-        }
-    }
-    Ok(output.into())
-}
-
-fn output_revision_content(content: &RevisionContent) -> Result<JsValue, String> {
-    let output = Array::new_with_length(3);
-    output.set(0, output_review_span(content.span)?);
-    output.set(1, JsValue::from_str(&content.text));
+fn output_review_span_fields(
+    output: &Array,
+    start_index: u32,
+    span: ReviewSpan,
+) -> Result<(), String> {
+    output.set(start_index, usize_number(span.start.paragraph_ordinal)?);
     output.set(
-        2,
-        JsValue::from_str(if content.formatting_only {
-            "formatting-only"
-        } else {
-            "text"
-        }),
+        start_index + 1,
+        JsValue::from_f64(f64::from(span.start.utf8)),
     );
-    Ok(output.into())
-}
-
-fn output_comment_content(content: &CommentContent) -> Result<JsValue, String> {
-    let output = Array::new_with_length(3);
-    output.set(0, output_review_span(content.anchor)?);
-    output.set(1, JsValue::from_str(&content.comment_text));
-    output.set(2, JsValue::from_str(&content.referenced_text));
-    Ok(output.into())
-}
-
-fn output_review_span(span: ReviewSpan) -> Result<JsValue, String> {
-    let output = Array::new_with_length(2);
-    output.set(0, output_review_point(span.start)?);
-    output.set(1, output_review_point(span.end)?);
-    Ok(output.into())
-}
-
-fn output_review_point(point: ReviewPoint) -> Result<JsValue, String> {
-    let output = Array::new_with_length(3);
-    output.set(0, usize_number(point.paragraph_ordinal)?);
-    output.set(1, JsValue::from_f64(f64::from(point.utf8)));
-    output.set(2, JsValue::from_f64(f64::from(point.utf16)));
-    Ok(output.into())
+    output.set(
+        start_index + 2,
+        JsValue::from_f64(f64::from(span.start.utf16)),
+    );
+    output.set(start_index + 3, usize_number(span.end.paragraph_ordinal)?);
+    output.set(start_index + 4, JsValue::from_f64(f64::from(span.end.utf8)));
+    output.set(
+        start_index + 5,
+        JsValue::from_f64(f64::from(span.end.utf16)),
+    );
+    Ok(())
 }
 
 const fn review_unknown_reason(reason: ReviewFactUnknownReason) -> &'static str {

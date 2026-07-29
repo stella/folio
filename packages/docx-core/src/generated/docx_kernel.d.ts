@@ -111,32 +111,7 @@ export type DocxReviewUnknownReason =
 export type DocxReviewFactSet<T> =
 | readonly [status: "known", items: readonly T[]]
 | readonly [status: "unknown", reason: DocxReviewUnknownReason];
-export type DocxReviewDetail<T> =
-| readonly [status: "known", value: T]
-| readonly [status: "unknown", reason: DocxReviewUnknownReason];
-export type DocxReviewPoint = readonly [
-paragraphOrdinal: number,
-utf8: number,
-utf16: number,
-];
-export type DocxReviewSpan = readonly [
-start: DocxReviewPoint,
-end: DocxReviewPoint,
-];
-/** Compact versioned boundary tuple. Field order is stable within schema version 1. */
-export type DocxRevisionContent = readonly [
-span: DocxReviewSpan,
-text: string,
-contentKind: "text" | "formatting-only",
-];
-export type DocxCommentContent = readonly [
-anchor: DocxReviewSpan,
-commentText: string,
-referencedText: string,
-];
-/** Attributed revision wire tuple; positions are named and versioned by its container. */
-export type DocxAttributedRevision = readonly [
-type:
+export type DocxRevisionKind =
 | "insertion"
 | "deletion"
 | "moveFrom"
@@ -158,31 +133,76 @@ type:
 | "customXmlMoveFromRangeStart"
 | "customXmlMoveFromRangeEnd"
 | "customXmlMoveToRangeStart"
-| "customXmlMoveToRangeEnd",
+| "customXmlMoveToRangeEnd";
+/**
+ * Attributed revision wire tuple. Known content is flattened into the item so
+ * one review fact creates one JavaScript array at the WASM boundary.
+ */
+export type DocxAttributedRevision =
+| readonly [
+type: DocxRevisionKind,
 author: string,
 date: string | null,
 revisionId: string | null,
-content: DocxReviewDetail<DocxRevisionContent>,
+contentStatus: "known",
+startParagraphOrdinal: number,
+startUtf8: number,
+startUtf16: number,
+endParagraphOrdinal: number,
+endUtf8: number,
+endUtf16: number,
+text: string,
+contentKind: "text" | "formatting-only",
+]
+| readonly [
+type: DocxRevisionKind,
+author: string,
+date: string | null,
+revisionId: string | null,
+contentStatus: "unknown",
+reason: DocxReviewUnknownReason,
 ];
-/** Attributed comment wire tuple; positions are named and versioned by its container. */
-export type DocxAttributedComment = readonly [
+/**
+ * Attributed comment wire tuple. Known content is flattened into the item so
+ * one review fact creates one JavaScript array at the WASM boundary.
+ */
+export type DocxAttributedComment =
+| readonly [
 commentId: string,
 author: string,
 initials: string | null,
 date: string | null,
 parentCommentId: string | null,
 threadState: "open" | "resolved",
-content: DocxReviewDetail<DocxCommentContent>,
+contentStatus: "known",
+startParagraphOrdinal: number,
+startUtf8: number,
+startUtf16: number,
+endParagraphOrdinal: number,
+endUtf8: number,
+endUtf16: number,
+commentText: string,
+referencedText: string,
+]
+| readonly [
+commentId: string,
+author: string,
+initials: string | null,
+date: string | null,
+parentCommentId: string | null,
+threadState: "open" | "resolved",
+contentStatus: "unknown",
+reason: DocxReviewUnknownReason,
 ];
 /** Review-fact wire schema. A new tuple layout requires a schema-version bump. */
 export type DocxReviewFactsWire = readonly [
-schemaVersion: 1,
+schemaVersion: 2,
 revisions: DocxReviewFactSet<DocxAttributedRevision>,
 comments: DocxReviewFactSet<DocxAttributedComment>,
 ];
 /** Fused package wire schema. A new tuple layout requires a schema-version bump. */
 export type DocxPackageProjectionWire = readonly [
-schemaVersion: 1,
+schemaVersion: 2,
 document: DocxProjectionWire,
 reviewFacts: DocxReviewFactsWire,
 ];

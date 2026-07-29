@@ -110,33 +110,12 @@ describe("DOCX projection TypeScript binding", () => {
       await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
     );
 
-    expect(projection[0]).toBe(1);
+    expect(projection[0]).toBe(2);
     expect(projection[1][1][0]?.[1]).toBe("new");
     const expectedReviewFacts = [
-      1,
-      [
-        "known",
-        [
-          [
-            "insertion",
-            "Ada",
-            null,
-            "7",
-            [
-              "known",
-              [
-                [
-                  [0, 0, 0],
-                  [0, 3, 3],
-                ],
-                "new",
-                "text",
-              ],
-            ],
-          ],
-        ],
-      ],
-      ["known", [["1", "Lin", null, null, null, "resolved", ["unknown", "unsupported-location"]]]],
+      2,
+      ["known", [["insertion", "Ada", null, "7", "known", 0, 0, 0, 0, 3, 3, "new", "text"]]],
+      ["known", [["1", "Lin", null, null, null, "resolved", "unknown", "unsupported-location"]]],
     ] as const satisfies DocxReviewFactsWire;
     expect(projection[2]).toEqual(expectedReviewFacts);
   });
@@ -166,51 +145,11 @@ describe("DOCX projection TypeScript binding", () => {
     expect(readable[1][1][0]?.[1]).toBe("Title");
     expect(host[2][2]).toEqual([
       "known",
-      [
-        [
-          "1",
-          "Ada",
-          null,
-          null,
-          null,
-          "open",
-          [
-            "known",
-            [
-              [
-                [0, 0, 0],
-                [0, 6, 6],
-              ],
-              "Review",
-              "Title\u0002",
-            ],
-          ],
-        ],
-      ],
+      [["1", "Ada", null, null, null, "open", "known", 0, 0, 0, 0, 6, 6, "Review", "Title\u0002"]],
     ]);
     expect(readable[2][2]).toEqual([
       "known",
-      [
-        [
-          "1",
-          "Ada",
-          null,
-          null,
-          null,
-          "open",
-          [
-            "known",
-            [
-              [
-                [0, 0, 0],
-                [0, 5, 5],
-              ],
-              "Review",
-              "Title",
-            ],
-          ],
-        ],
-      ],
+      [["1", "Ada", null, null, null, "open", "known", 0, 0, 0, 0, 5, 5, "Review", "Title"]],
     ]);
   });
 });

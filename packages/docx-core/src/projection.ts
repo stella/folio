@@ -6,7 +6,6 @@ import initializeRuntime, {
   projectCompressedDocxWithReviewFacts as projectCompressedDocxWithReviewFactsInWasm,
   type DocxAttributedComment,
   type DocxAttributedRevision,
-  type DocxCommentContent,
   type DocxPackageProjectionWire,
   type DocxProjectionBookmarkFact,
   type DocxProjectionFactSet,
@@ -25,17 +24,13 @@ import initializeRuntime, {
   type DocxProjectionWire,
   type DocxReviewFactsWire,
   type DocxReviewFactSet,
-  type DocxReviewDetail,
-  type DocxReviewPoint,
-  type DocxReviewSpan,
   type DocxReviewUnknownReason,
-  type DocxRevisionContent,
+  type DocxRevisionKind,
 } from "./generated/docx_kernel.js";
 
 export type {
   DocxAttributedComment,
   DocxAttributedRevision,
-  DocxCommentContent,
   DocxPackageProjectionWire,
   DocxProjectionBookmarkFact,
   DocxProjectionFactSet,
@@ -54,11 +49,8 @@ export type {
   DocxProjectionWire,
   DocxReviewFactsWire,
   DocxReviewFactSet,
-  DocxReviewDetail,
-  DocxReviewPoint,
-  DocxReviewSpan,
   DocxReviewUnknownReason,
-  DocxRevisionContent,
+  DocxRevisionKind,
 };
 
 export class DocxProjectionInitializationError extends TaggedError(

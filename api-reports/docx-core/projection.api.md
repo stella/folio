@@ -7,16 +7,13 @@
 import { TaggedErrorClass } from 'better-result';
 
 // @public
-export type DocxAttributedComment = readonly [commentId: string, author: string, initials: string | null, date: string | null, parentCommentId: string | null, threadState: "open" | "resolved", content: DocxReviewDetail<DocxCommentContent>];
+export type DocxAttributedComment = readonly [commentId: string, author: string, initials: string | null, date: string | null, parentCommentId: string | null, threadState: "open" | "resolved", contentStatus: "known", startParagraphOrdinal: number, startUtf8: number, startUtf16: number, endParagraphOrdinal: number, endUtf8: number, endUtf16: number, commentText: string, referencedText: string] | readonly [commentId: string, author: string, initials: string | null, date: string | null, parentCommentId: string | null, threadState: "open" | "resolved", contentStatus: "unknown", reason: DocxReviewUnknownReason];
 
 // @public
-export type DocxAttributedRevision = readonly [type: "insertion" | "deletion" | "moveFrom" | "moveTo" | "cellIns" | "cellDel" | "cellMerge" | "pPrChange" | "rPrChange" | "sectPrChange" | "tblPrChange" | "trPrChange" | "tcPrChange" | "tblGridChange" | "customXmlDelRangeStart" | "customXmlDelRangeEnd" | "customXmlInsRangeStart" | "customXmlInsRangeEnd" | "customXmlMoveFromRangeStart" | "customXmlMoveFromRangeEnd" | "customXmlMoveToRangeStart" | "customXmlMoveToRangeEnd", author: string, date: string | null, revisionId: string | null, content: DocxReviewDetail<DocxRevisionContent>];
-
-// @public (undocumented)
-export type DocxCommentContent = readonly [anchor: DocxReviewSpan, commentText: string, referencedText: string];
+export type DocxAttributedRevision = readonly [type: DocxRevisionKind, author: string, date: string | null, revisionId: string | null, contentStatus: "known", startParagraphOrdinal: number, startUtf8: number, startUtf16: number, endParagraphOrdinal: number, endUtf8: number, endUtf16: number, text: string, contentKind: "text" | "formatting-only"] | readonly [type: DocxRevisionKind, author: string, date: string | null, revisionId: string | null, contentStatus: "unknown", reason: DocxReviewUnknownReason];
 
 // @public
-export type DocxPackageProjectionWire = readonly [schemaVersion: 1, document: DocxProjectionWire, reviewFacts: DocxReviewFactsWire];
+export type DocxPackageProjectionWire = readonly [schemaVersion: 2, document: DocxProjectionWire, reviewFacts: DocxReviewFactsWire];
 
 // @public (undocumented)
 export type DocxProjectionBookmarkFact = readonly [paragraphOrdinal: number, bookmarkId: number, name: string, span: DocxProjectionStructuralSpan];
@@ -73,25 +70,16 @@ export type DocxProjectionWasmSource = RequestInfo | URL | Response | BufferSour
 export type DocxProjectionWire = readonly [schemaVersion: 3, paragraphs: readonly DocxProjectionParagraph[], structuralFacts: DocxProjectionStructuralFacts, revisionStatus: DocxProjectionRevisionStatus];
 
 // @public (undocumented)
-export type DocxReviewDetail<T> = readonly [status: "known", value: T] | readonly [status: "unknown", reason: DocxReviewUnknownReason];
-
-// @public (undocumented)
 export type DocxReviewFactSet<T> = readonly [status: "known", items: readonly T[]] | readonly [status: "unknown", reason: DocxReviewUnknownReason];
 
 // @public
-export type DocxReviewFactsWire = readonly [schemaVersion: 1, revisions: DocxReviewFactSet<DocxAttributedRevision>, comments: DocxReviewFactSet<DocxAttributedComment>];
-
-// @public (undocumented)
-export type DocxReviewPoint = readonly [paragraphOrdinal: number, utf8: number, utf16: number];
-
-// @public (undocumented)
-export type DocxReviewSpan = readonly [start: DocxReviewPoint, end: DocxReviewPoint];
+export type DocxReviewFactsWire = readonly [schemaVersion: 2, revisions: DocxReviewFactSet<DocxAttributedRevision>, comments: DocxReviewFactSet<DocxAttributedComment>];
 
 // @public (undocumented)
 export type DocxReviewUnknownReason = "invalid-document" | "invalid-comments" | "invalid-comments-extended" | "resource-limit" | "unsupported-location";
 
-// @public
-export type DocxRevisionContent = readonly [span: DocxReviewSpan, text: string, contentKind: "text" | "formatting-only"];
+// @public (undocumented)
+export type DocxRevisionKind = "insertion" | "deletion" | "moveFrom" | "moveTo" | "cellIns" | "cellDel" | "cellMerge" | "pPrChange" | "rPrChange" | "sectPrChange" | "tblPrChange" | "trPrChange" | "tcPrChange" | "tblGridChange" | "customXmlDelRangeStart" | "customXmlDelRangeEnd" | "customXmlInsRangeStart" | "customXmlInsRangeEnd" | "customXmlMoveFromRangeStart" | "customXmlMoveFromRangeEnd" | "customXmlMoveToRangeStart" | "customXmlMoveToRangeEnd";
 
 // @public
 export const initializeDocxProjection: (input?: InitializeDocxProjectionOptions) => Promise<void>;
