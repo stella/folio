@@ -5,12 +5,16 @@ const WORDPROCESSINGML_TRANSITIONAL: &[u8] =
 const WORDPROCESSINGML_STRICT: &[u8] = b"http://purl.oclc.org/ooxml/wordprocessingml/main";
 const WORDPROCESSINGML_2010: &[u8] = b"http://schemas.microsoft.com/office/word/2010/wordml";
 const MARKUP_COMPATIBILITY: &[u8] = b"http://schemas.openxmlformats.org/markup-compatibility/2006";
+const OFFICE_MATH_TRANSITIONAL: &[u8] =
+    b"http://schemas.openxmlformats.org/officeDocument/2006/math";
+const OFFICE_MATH_STRICT: &[u8] = b"http://purl.oclc.org/ooxml/officeDocument/math";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum OoxmlNamespace {
     Wordprocessing,
     Wordprocessing2010,
     MarkupCompatibility,
+    OfficeMath,
     Other,
 }
 
@@ -23,6 +27,7 @@ impl OoxmlNamespace {
             WORDPROCESSINGML_TRANSITIONAL | WORDPROCESSINGML_STRICT => Self::Wordprocessing,
             WORDPROCESSINGML_2010 => Self::Wordprocessing2010,
             MARKUP_COMPATIBILITY => Self::MarkupCompatibility,
+            OFFICE_MATH_TRANSITIONAL | OFFICE_MATH_STRICT => Self::OfficeMath,
             _ => Self::Other,
         }
     }

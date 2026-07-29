@@ -1,17 +1,18 @@
 use crate::{
     AttributedComment, AttributedRevision, BookmarkFact, DocumentPackageProjection,
     DocumentProjection, DocumentReviewFacts, DocumentStructureFacts, DocxLimits,
-    InternalParagraphId, InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact,
-    ParagraphIdentityFacts, ParagraphIndentationFact, ParagraphOutlineLevelFact,
-    ParagraphStructure, ProjectedParagraph, ProjectionOptions, ReviewDetail, ReviewFactLimits,
-    ReviewFactSet, ReviewFactUnknownReason, ReviewSpan, RevisionFactKind, RevisionProjectionStatus,
-    RevisionUnsupportedReason, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
-    StructuralSpan, TextMaterialization, TextStyle, project_docx, project_docx_with_review_facts,
+    FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
+    InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact, ParagraphIdentityFacts,
+    ParagraphIndentationFact, ParagraphOutlineLevelFact, ParagraphStructure, ProjectedParagraph,
+    ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
+    ReviewSpan, RevisionFactKind, RevisionProjectionStatus, RevisionUnsupportedReason,
+    SpanCoverage, StructuralFactSet, StructuralFactUnknownReason, StructuralSpan,
+    TextMaterialization, TextStyle, project_docx, project_docx_with_review_facts,
 };
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
 
-const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 3;
+const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 4;
 const DOCX_PACKAGE_PROJECTION_SCHEMA_VERSION: u32 = 2;
 const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 2;
 
@@ -38,6 +39,16 @@ export type DocxProjectionParagraph = readonly [
   structure: DocxProjectionStructure,
   styleId: string | null,
 ];
+export type DocxProjectionFormattingUnknownReason =
+  | "document-part-only"
+  | "styles-part-unavailable"
+  | "unsupported-styles";
+export type DocxProjectionFormattingStatus =
+  | readonly [status: "complete"]
+  | readonly [
+      status: "incomplete",
+      reason: DocxProjectionFormattingUnknownReason,
+    ];
 export type DocxProjectionFactSet<T> =
   | readonly [status: "known", items: readonly T[]]
   | readonly [status: "unknown", reason: DocxProjectionUnknownReason];
@@ -113,10 +124,11 @@ export type DocxProjectionRevisionStatus =
       reasons: readonly DocxProjectionRevisionUnsupportedReason[],
     ];
 export type DocxProjectionWire = readonly [
-  schemaVersion: 3,
+  schemaVersion: 4,
   paragraphs: readonly DocxProjectionParagraph[],
   structuralFacts: DocxProjectionStructuralFacts,
   revisionStatus: DocxProjectionRevisionStatus,
+  formattingStatus: DocxProjectionFormattingStatus,
 ];
 export type DocxReviewUnknownReason =
   | "invalid-document"
@@ -369,7 +381,7 @@ const fn text_style_wire_name(style: TextStyle) -> &'static str {
 }
 
 fn output_projection_with_structure(projection: &DocumentProjection) -> Result<JsValue, String> {
-    let output = Array::new_with_length(4);
+    let output = Array::new_with_length(5);
     output.set(
         0,
         JsValue::from_f64(f64::from(DOCX_PROJECTION_SCHEMA_VERSION)),
@@ -377,7 +389,26 @@ fn output_projection_with_structure(projection: &DocumentProjection) -> Result<J
     output.set(1, output_paragraphs(projection)?);
     output.set(2, output_structural_facts(&projection.structural_facts)?);
     output.set(3, output_revision_status(&projection.revision_status));
+    output.set(4, output_formatting_status(projection.formatting_status));
     Ok(output.into())
+}
+
+fn output_formatting_status(status: FormattingProjectionStatus) -> JsValue {
+    let output = Array::new();
+    match status {
+        FormattingProjectionStatus::Complete => {
+            output.push(&JsValue::from_str("complete"));
+        }
+        FormattingProjectionStatus::Incomplete(reason) => {
+            output.push(&JsValue::from_str("incomplete"));
+            output.push(&JsValue::from_str(match reason {
+                FormattingUnknownReason::DocumentPartOnly => "document-part-only",
+                FormattingUnknownReason::StylesPartUnavailable => "styles-part-unavailable",
+                FormattingUnknownReason::UnsupportedStyles => "unsupported-styles",
+            }));
+        }
+    }
+    output.into()
 }
 
 fn output_package_projection(projection: &DocumentPackageProjection) -> Result<JsValue, String> {

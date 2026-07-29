@@ -12,6 +12,12 @@ identities. ZIP and XML resource limits are enforced at the input boundary;
 semantic scans also bound XML events and inline-context copies and report both as
 deterministic work units.
 
+Effective text-formatting spans use Word-compatible style inheritance. The
+projection reports a separate completeness status, so callers can retain
+best-known direct spans without mistaking them for authoritative effective
+formatting when package styles are missing, malformed, unresolved, or involve an
+unsupported style level.
+
 `project_docx_with_review_facts` reuses the package-directory scan and selected
 part decompression for the document projection, plus attributed revisions and
 comments. Each review family is complete or explicitly unknown. Content and

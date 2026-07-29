@@ -13,10 +13,11 @@ use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
 use stella_docx_kernel::{
-    CommentContent, DocxLimits, InternalParagraphId, InternalReferenceRole, PackageParagraphId,
-    ParagraphIdentityFacts, ParagraphOutlineLevelFact, ParagraphStructure, ProjectionError,
-    ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
-    ReviewPoint, ReviewSpan, RevisionContent, RevisionFactKind, RevisionProjectionStatus,
+    CommentContent, DocxLimits, FormattingProjectionStatus, FormattingUnknownReason,
+    InternalParagraphId, InternalReferenceRole, PackageParagraphId, ParagraphIdentityFacts,
+    ParagraphOutlineLevelFact, ParagraphStructure, ProjectionError, ProjectionOptions,
+    ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason, ReviewPoint,
+    ReviewSpan, RevisionContent, RevisionFactKind, RevisionProjectionStatus,
     RevisionUnsupportedReason, RevisionView, SpanCoverage, StructuralFactSet,
     StructuralFactUnknownReason, TextFormattingSpan, TextMaterialization, TextStyle,
     extract_document_parts, extract_document_xml, project_document_xml,
@@ -206,7 +207,7 @@ fn matches_visible_text_semantics_of_existing_ooxml_fixtures() {
     assert_eq!(
         texts(BASIC_XML),
         vec![
-            format!("test{SPECIAL_VISIBLE_TEXT}"),
+            format!("test{SPECIAL_VISIBLE_TEXT}∮"),
             String::new(),
             String::new(),
             String::new(),
@@ -233,6 +234,41 @@ fn matches_visible_text_semantics_of_existing_ooxml_fixtures() {
             String::new(),
         ]
     );
+}
+
+#[test]
+fn projects_only_visible_office_math_text() {
+    let xml = r#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
+        xmlns:fake="urn:not-office-math">
+        <w:body><w:p>
+          <w:r><w:t>A</w:t></w:r>
+          <m:oMath><m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>x&amp;&#x1F600;</m:t></m:r></m:oMath>
+          <fake:oMath><fake:r><fake:t>spoofed</fake:t></fake:r></fake:oMath>
+          <m:t>detached</m:t>
+          <w:r><w:t>Z</w:t></w:r>
+        </w:p></w:body>
+      </w:document>
+    "#;
+
+    assert_eq!(texts(xml.as_bytes()), ["Ax&😀Z"]);
+}
+
+#[test]
+fn decodes_font_bound_word_symbols_without_trusting_spoofed_attributes() {
+    let xml = br#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:fake="urn:not-wordprocessingml">
+        <w:body><w:p><w:r>
+          <w:sym w:font="Wingdings" w:char="F06C"/>
+          <w:sym w:font="Courier New" w:char="F06C"/>
+          <w:sym fake:font="Wingdings" w:font="Courier New" w:char="F06C"/>
+        </w:r></w:p></w:body>
+      </w:document>
+    "#;
+
+    assert_eq!(texts(xml), ["●\u{f06c}\u{f06c}"]);
 }
 
 #[test]
@@ -385,6 +421,19 @@ fn selects_exactly_one_supported_alternate_content_branch() {
       </w:document>
     "#;
     assert_eq!(texts(fallback), ["fallback"]);
+
+    let partial_math_support_uses_fallback = br#"
+      <w:document
+        xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+        <w:body><mc:AlternateContent>
+          <mc:Choice Requires="m"><w:p><w:r><w:t>unclaimed-math</w:t></w:r></w:p></mc:Choice>
+          <mc:Fallback><w:p><w:r><w:t>math-fallback</w:t></w:r></w:p></mc:Fallback>
+        </mc:AlternateContent></w:body>
+      </w:document>
+    "#;
+    assert_eq!(texts(partial_math_support_uses_fallback), ["math-fallback"]);
 
     let transparent = br#"
       <w:document
@@ -632,6 +681,522 @@ fn projects_only_direct_superscript_and_coalesces_adjacent_runs() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // One table covers slot selection and exact UTF-16 spans.
+fn selects_regular_and_complex_script_bold_from_the_effective_run_state() {
+    let xml = r#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body>
+          <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Aع&#x1F600;</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:bCs/></w:rPr><w:t>Aع،B</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:b/><w:bCs w:val="false"/></w:rPr><w:t>Aع،B</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:b w:val="false"/><w:bCs/></w:rPr><w:t>Aع،B</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:b w:val="false"/><w:bCs/><w:cs/></w:rPr><w:t>forced</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:b/><w:bCs w:val="false"/><w:cs/></w:rPr><w:t>forced</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:bCs/><w:cs w:val="0"/></w:rPr><w:t>عربي</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:bCs/></w:rPr><w:t>&#x1F600;Aع،B</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:bCs/><w:rtl/></w:rPr><w:t>Latin</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:b/><w:bCs w:val="false"/><w:rtl/></w:rPr><w:t>Latin</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:bCs/></w:rPr><w:t>&#x1820;</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:bCs/></w:rPr><w:t>A&#x1E900;B</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:bCs/></w:rPr><w:t>A&#x11000;B</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:bCs/></w:rPr><w:t>A&#x301;ع&#x651;B</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:bCs/></w:rPr><w:t>한</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>한</w:t></w:r></w:p>
+        </w:body>
+      </w:document>
+    "#;
+    let projection = project_document_xml(xml.as_bytes(), allocate).unwrap();
+
+    assert_eq!(
+        projection.paragraphs[0].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 1,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert_eq!(
+        projection.paragraphs[1].formatting,
+        [TextFormattingSpan {
+            start_utf16: 1,
+            end_utf16: 3,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert_eq!(
+        projection.paragraphs[2].formatting,
+        [
+            TextFormattingSpan {
+                start_utf16: 0,
+                end_utf16: 1,
+                style: TextStyle::Bold,
+            },
+            TextFormattingSpan {
+                start_utf16: 3,
+                end_utf16: 4,
+                style: TextStyle::Bold,
+            },
+        ]
+    );
+    assert_eq!(
+        projection.paragraphs[3].formatting,
+        [TextFormattingSpan {
+            start_utf16: 1,
+            end_utf16: 3,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert_eq!(
+        projection.paragraphs[4].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 6,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert!(projection.paragraphs[5].formatting.is_empty());
+    assert_eq!(
+        projection.paragraphs[6].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 4,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert_eq!(
+        projection.paragraphs[7].formatting,
+        [TextFormattingSpan {
+            start_utf16: 3,
+            end_utf16: 5,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert_eq!(
+        projection.paragraphs[8].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 5,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert!(projection.paragraphs[9].formatting.is_empty());
+    assert_eq!(
+        projection.paragraphs[10].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 1,
+            style: TextStyle::Bold,
+        }]
+    );
+    for paragraph in &projection.paragraphs[11..13] {
+        assert_eq!(
+            paragraph.formatting,
+            [TextFormattingSpan {
+                start_utf16: 1,
+                end_utf16: 3,
+                style: TextStyle::Bold,
+            }]
+        );
+    }
+    assert_eq!(
+        projection.paragraphs[13].formatting,
+        [TextFormattingSpan {
+            start_utf16: 2,
+            end_utf16: 4,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert!(projection.paragraphs[14].formatting.is_empty());
+    assert_eq!(
+        projection.paragraphs[15].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 1,
+            style: TextStyle::Bold,
+        }]
+    );
+}
+
+fn assert_effective_text_formatting_through_style_cascades(namespace: &str) {
+    let document = format!(
+        r#"
+      <w:document xmlns:w="{namespace}">
+        <w:body><w:p><w:pPr><w:pStyle w:val="Clause"/></w:pPr>
+          <w:r><w:t>A</w:t></w:r>
+          <w:r><w:rPr><w:rStyle w:val="Emphasis"/></w:rPr><w:t>B</w:t></w:r>
+          <w:r><w:rPr><w:rStyle w:val="Raised"/></w:rPr><w:t>C</w:t></w:r>
+          <w:r><w:rPr><w:rStyle w:val="Raised"/><w:b w:val="0"/><w:highlight w:val="cyan"/><w:vertAlign w:val="baseline"/></w:rPr><w:t>D</w:t></w:r>
+        </w:p></w:body>
+      </w:document>
+    "#
+    );
+    let styles = format!(
+        r#"
+      <w:styles xmlns:w="{namespace}">
+        <w:docDefaults><w:rPrDefault><w:rPr><w:b/></w:rPr></w:rPrDefault></w:docDefaults>
+        <w:style w:type="paragraph" w:styleId="Base"><w:rPr><w:highlight w:val="yellow"/></w:rPr></w:style>
+        <w:style w:type="paragraph" w:styleId="Clause" w:default="1"><w:basedOn w:val="Base"/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>
+        <w:style w:type="character" w:styleId="Emphasis"><w:rPr><w:b w:val="off"/><w:highlight w:val="none"/><w:vertAlign w:val="baseline"/></w:rPr></w:style>
+        <w:style w:type="character" w:styleId="Raised"><w:basedOn w:val="Emphasis"/><w:rPr><w:b/><w:vertAlign w:val="superscript"/></w:rPr></w:style>
+      </w:styles>
+    "#
+    );
+    let projection = project_docx(
+        &package(
+            &[
+                ("word/document.xml", document.as_bytes()),
+                ("word/styles.xml", styles.as_bytes()),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .unwrap();
+
+    assert_eq!(
+        projection.paragraphs[0].text, "ABCD",
+        "the namespace profile must not change visible text"
+    );
+    assert_eq!(
+        projection.paragraphs[0].formatting,
+        [
+            TextFormattingSpan {
+                start_utf16: 0,
+                end_utf16: 2,
+                style: TextStyle::Bold,
+            },
+            TextFormattingSpan {
+                start_utf16: 0,
+                end_utf16: 1,
+                style: TextStyle::Highlight,
+            },
+            TextFormattingSpan {
+                start_utf16: 0,
+                end_utf16: 1,
+                style: TextStyle::Superscript,
+            },
+            TextFormattingSpan {
+                start_utf16: 2,
+                end_utf16: 3,
+                style: TextStyle::Superscript,
+            },
+            TextFormattingSpan {
+                start_utf16: 3,
+                end_utf16: 4,
+                style: TextStyle::Highlight,
+            },
+        ],
+        "the namespace profile must not change effective formatting"
+    );
+}
+
+#[test]
+fn resolves_effective_text_formatting_through_transitional_style_cascades() {
+    assert_effective_text_formatting_through_style_cascades(
+        "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    );
+}
+
+#[test]
+fn resolves_effective_text_formatting_through_strict_style_cascades() {
+    assert_effective_text_formatting_through_style_cascades(
+        "http://purl.oclc.org/ooxml/wordprocessingml/main",
+    );
+}
+
+#[test]
+fn ignores_missing_and_cross_kind_based_on_targets_without_dropping_the_current_style() {
+    let document = br#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+        <w:p><w:pPr><w:pStyle w:val="MissingParent"/></w:pPr><w:r><w:t>A</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="CrossKindParent"/></w:pPr><w:r><w:t>B</w:t></w:r></w:p>
+      </w:body></w:document>
+    "#;
+    let styles = br#"
+      <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:style w:type="character" w:styleId="CharacterRoot"/>
+        <w:style w:type="paragraph" w:styleId="MissingParent"><w:basedOn w:val="Absent"/><w:rPr><w:b/></w:rPr></w:style>
+        <w:style w:type="paragraph" w:styleId="CrossKindParent"><w:basedOn w:val="CharacterRoot"/><w:rPr><w:b/></w:rPr></w:style>
+      </w:styles>
+    "#;
+    let projection = project_docx(
+        &package(
+            &[("word/document.xml", document), ("word/styles.xml", styles)],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("Word-ignored basedOn targets should preserve the current style");
+
+    for paragraph in &projection.paragraphs {
+        assert_eq!(
+            paragraph.formatting,
+            [TextFormattingSpan {
+                start_utf16: 0,
+                end_utf16: 1,
+                style: TextStyle::Bold,
+            }]
+        );
+    }
+    assert_eq!(
+        projection.formatting_status,
+        FormattingProjectionStatus::Complete
+    );
+}
+
+#[test]
+fn resolves_markup_compatibility_inside_the_styles_part() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Compatible"/></w:pPr><w:r><w:t>A</w:t></w:r></w:p></w:body></w:document>"#;
+    let styles = br#"
+      <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+        <w:style w:type="paragraph" w:styleId="Compatible"><w:rPr>
+          <mc:AlternateContent>
+            <mc:Choice Requires="w"><w:b/></mc:Choice>
+            <mc:Fallback><w:b w:val="false"/></mc:Fallback>
+          </mc:AlternateContent>
+        </w:rPr></w:style>
+      </w:styles>
+    "#;
+    let projection = project_docx(
+        &package(
+            &[("word/document.xml", document), ("word/styles.xml", styles)],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("supported styles markup-compatibility content should project");
+
+    assert_eq!(
+        projection.paragraphs[0].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 1,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert_eq!(
+        projection.formatting_status,
+        FormattingProjectionStatus::Complete
+    );
+}
+
+#[test]
+fn reports_numbering_and_math_formatting_hierarchies_as_incomplete() {
+    let numbered_document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:numPr><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>A</w:t></w:r></w:p></w:body></w:document>"#;
+    let numbering = br#"<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:rPr><w:b/></w:rPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num></w:numbering>"#;
+    let numbered = project_docx(
+        &package(
+            &[
+                ("word/document.xml", numbered_document),
+                ("word/styles.xml", MINIMAL_STYLES),
+                ("word/numbering.xml", numbering),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("numbering-level formatting should preserve best-known spans");
+    assert!(numbered.paragraphs[0].formatting.is_empty());
+    assert_eq!(
+        numbered.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+    );
+
+    let math_document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body><w:p><m:oMath><m:r><w:rPr><w:b/></w:rPr><m:t>A</m:t></m:r></m:oMath></w:p></w:body></w:document>"#;
+    let math = project_docx(
+        &package_with_minimal_styles(math_document),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("math text should survive unsupported math formatting");
+    assert_eq!(math.paragraphs[0].text, "A");
+    assert!(math.paragraphs[0].formatting.is_empty());
+    assert_eq!(
+        math.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+    );
+}
+
+#[test]
+fn resolves_toggle_levels_and_ignores_historical_style_snapshots() {
+    let document = br#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body>
+          <w:p><w:pPr><w:pStyle w:val="BoldParagraph"/></w:pPr>
+            <w:r><w:t>A</w:t></w:r>
+            <w:r><w:rPr><w:rStyle w:val="AlsoBold"/></w:rPr><w:t>B</w:t></w:r>
+            <w:r><w:rPr><w:rStyle w:val="ExplicitFalse"/></w:rPr><w:t>C</w:t></w:r>
+            <w:r><w:rPr><w:rStyle w:val="AlsoBold"/><w:b w:val="false"/></w:rPr><w:t>D</w:t></w:r>
+            <w:r><w:rPr><w:rStyle w:val="AlsoBold"/><w:b/></w:rPr><w:t>E</w:t></w:r>
+          </w:p>
+          <w:p><w:pPr><w:pStyle w:val="Historical"/></w:pPr><w:r><w:t>F</w:t></w:r></w:p>
+          <w:p><w:r><w:rPr><w:rStyle w:val="DefaultParagraphFont"/></w:rPr><w:t>G</w:t></w:r></w:p>
+          <w:p><w:pPr><w:pStyle w:val="DerivedTrue"/></w:pPr><w:r><w:t>H</w:t></w:r></w:p>
+          <w:p><w:pPr><w:pStyle w:val="DerivedFalse"/></w:pPr><w:r><w:t>I</w:t></w:r></w:p>
+        </w:body>
+      </w:document>
+    "#;
+    let styles = br#"
+      <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:style w:type="paragraph" w:styleId="Normal" w:default="1"/>
+        <w:style w:type="paragraph" w:styleId="BoldParagraph"><w:rPr><w:b/></w:rPr></w:style>
+        <w:style w:type="character" w:styleId="AlsoBold"><w:rPr><w:b/></w:rPr></w:style>
+        <w:style w:type="character" w:styleId="ExplicitFalse"><w:rPr><w:b w:val="false"/></w:rPr></w:style>
+        <w:style w:type="paragraph" w:styleId="Historical"><w:rPr><w:rPrChange w:id="1"><w:rPr><w:b/></w:rPr></w:rPrChange></w:rPr></w:style>
+        <w:style w:type="character" w:styleId="DefaultParagraphFont"><w:rPr><w:b/></w:rPr></w:style>
+        <w:style w:type="paragraph" w:styleId="BoldBase"><w:rPr><w:b/></w:rPr></w:style>
+        <w:style w:type="paragraph" w:styleId="MiddleFalse"><w:basedOn w:val="BoldBase"/><w:rPr><w:b w:val="false"/></w:rPr></w:style>
+        <w:style w:type="paragraph" w:styleId="DerivedTrue"><w:basedOn w:val="MiddleFalse"/><w:rPr><w:b/></w:rPr></w:style>
+        <w:style w:type="paragraph" w:styleId="DerivedFalse"><w:basedOn w:val="MiddleFalse"/><w:rPr><w:b w:val="false"/></w:rPr></w:style>
+      </w:styles>
+    "#;
+    let projection = project_docx(
+        &package(
+            &[("word/document.xml", document), ("word/styles.xml", styles)],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("toggle fixtures should project");
+
+    assert_eq!(
+        projection.paragraphs[0].formatting,
+        [
+            TextFormattingSpan {
+                start_utf16: 0,
+                end_utf16: 1,
+                style: TextStyle::Bold,
+            },
+            TextFormattingSpan {
+                start_utf16: 2,
+                end_utf16: 3,
+                style: TextStyle::Bold,
+            },
+            TextFormattingSpan {
+                start_utf16: 4,
+                end_utf16: 5,
+                style: TextStyle::Bold,
+            },
+        ]
+    );
+    assert!(projection.paragraphs[1].formatting.is_empty());
+    assert!(projection.paragraphs[2].formatting.is_empty());
+    assert!(projection.paragraphs[3].formatting.is_empty());
+    assert_eq!(
+        projection.paragraphs[4].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 1,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert_eq!(
+        projection.formatting_status,
+        FormattingProjectionStatus::Complete
+    );
+}
+
+#[test]
+fn ignores_style_identifiers_beyond_the_word_limit() {
+    let overlong_id = "x".repeat(254);
+    let document = format!(
+        r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+          <w:p><w:pPr><w:pStyle w:val="{overlong_id}"/></w:pPr>
+            <w:r><w:rPr><w:rStyle w:val="{overlong_id}"/></w:rPr><w:t>Plain</w:t></w:r>
+          </w:p>
+        </w:body></w:document>"#
+    );
+    let styles = format!(
+        r#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:style w:type="paragraph" w:styleId="Normal" w:default="1"/>
+          <w:style w:type="paragraph" w:styleId="{overlong_id}"><w:rPr><w:b/></w:rPr></w:style>
+          <w:style w:type="character" w:styleId="{overlong_id}"><w:rPr><w:b/></w:rPr></w:style>
+        </w:styles>"#
+    );
+    let projection = project_docx(
+        &package(
+            &[
+                ("word/document.xml", document.as_bytes()),
+                ("word/styles.xml", styles.as_bytes()),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("Word-ignored style identifiers should not invalidate the package");
+
+    assert_eq!(projection.paragraphs[0].style_id, None);
+    assert!(projection.paragraphs[0].formatting.is_empty());
+    assert_eq!(
+        projection.formatting_status,
+        FormattingProjectionStatus::Complete
+    );
+}
+
+#[test]
+fn style_toggle_chains_preserve_false_and_direct_values_remain_absolute() {
+    let document = r#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body>
+          <w:p><w:pPr><w:pStyle w:val="Cancel"/></w:pPr>
+            <w:r><w:t>ع</w:t></w:r>
+            <w:r><w:rPr><w:rStyle w:val="Restore"/></w:rPr><w:t>ب</w:t></w:r>
+            <w:r><w:rPr><w:rStyle w:val="Restore"/><w:bCs w:val="false"/></w:rPr><w:t>ج</w:t></w:r>
+          </w:p>
+          <w:p><w:r><w:t>Latin</w:t></w:r></w:p>
+          <w:p><w:pPr><w:pStyle w:val="Forced"/></w:pPr>
+            <w:r><w:t>Latin</w:t></w:r>
+            <w:r><w:rPr><w:rtl w:val="false"/></w:rPr><w:t>plain</w:t></w:r>
+          </w:p>
+        </w:body>
+      </w:document>
+    "#;
+    let styles = br#"
+      <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:docDefaults><w:rPrDefault><w:rPr><w:bCs/></w:rPr></w:rPrDefault></w:docDefaults>
+        <w:style w:type="paragraph" w:styleId="CancelBase"><w:rPr><w:bCs/></w:rPr></w:style>
+        <w:style w:type="paragraph" w:styleId="CancelMiddle"><w:basedOn w:val="CancelBase"/><w:rPr><w:bCs w:val="0"/></w:rPr></w:style>
+        <w:style w:type="paragraph" w:styleId="Cancel"><w:basedOn w:val="CancelMiddle"/><w:rPr><w:bCs/></w:rPr></w:style>
+        <w:style w:type="paragraph" w:styleId="Forced"><w:rPr><w:bCs/><w:rtl/></w:rPr></w:style>
+        <w:style w:type="character" w:styleId="RestoreBase"><w:rPr><w:bCs/></w:rPr></w:style>
+        <w:style w:type="character" w:styleId="RestoreMiddle"><w:basedOn w:val="RestoreBase"/><w:rPr><w:bCs w:val="false"/></w:rPr></w:style>
+        <w:style w:type="character" w:styleId="Restore"><w:basedOn w:val="RestoreMiddle"/><w:rPr><w:bCs/><w:cs/></w:rPr></w:style>
+      </w:styles>
+    "#;
+    let projection = project_docx(
+        &package(
+            &[
+                ("word/document.xml", document.as_bytes()),
+                ("word/styles.xml", styles),
+            ],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .unwrap();
+
+    assert_eq!(projection.paragraphs[0].text, "عبج");
+    assert_eq!(
+        projection.paragraphs[0].formatting,
+        [TextFormattingSpan {
+            start_utf16: 0,
+            end_utf16: 2,
+            style: TextStyle::Bold,
+        }]
+    );
+    assert!(projection.paragraphs[1].formatting.is_empty());
+    assert!(projection.paragraphs[2].formatting.is_empty());
+}
+
+#[test]
 fn semantic_highlight_color_contract_is_exhaustive() {
     let contract = include_str!("../fixtures/ooxml-highlight-colors.tsv");
     let cases = contract
@@ -744,6 +1309,104 @@ fn resolves_the_main_document_from_package_relationships() {
             .map(|paragraph| paragraph.text)
             .collect::<Vec<_>>(),
         ["Relationship target"]
+    );
+}
+
+#[test]
+fn resolves_styles_and_numbering_from_document_relationships() {
+    for (package_namespace, office_namespace, word_namespace) in [
+        (
+            "http://schemas.openxmlformats.org/package/2006/relationships",
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+            "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        ),
+        (
+            "http://purl.oclc.org/ooxml/package/relationships",
+            "http://purl.oclc.org/ooxml/officeDocument/relationships",
+            "http://purl.oclc.org/ooxml/wordprocessingml/main",
+        ),
+    ] {
+        let root_relationships = format!(
+            r#"<Relationships xmlns="{package_namespace}"><Relationship Type="{office_namespace}/officeDocument" Target="/custom/main.xml"/></Relationships>"#
+        );
+        let document_relationships = format!(
+            r#"<Relationships xmlns="{package_namespace}"><Relationship Type="{office_namespace}/styles" Target="../shared/./discarded/../styles.xml"/><Relationship Type="{office_namespace}/numbering" Target="/lists/./nested/../numbering.xml" TargetMode="Internal"/></Relationships>"#
+        );
+        let document = format!(
+            r#"<w:document xmlns:w="{word_namespace}"><w:body><w:p><w:pPr><w:pStyle w:val="List"/></w:pPr><w:r><w:t>Related</w:t></w:r></w:p></w:body></w:document>"#
+        );
+        let styles = format!(
+            r#"<w:styles xmlns:w="{word_namespace}"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"/><w:style w:type="paragraph" w:styleId="List"><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr></w:pPr><w:rPr><w:b/></w:rPr></w:style></w:styles>"#
+        );
+        let numbering = format!(
+            r#"<w:numbering xmlns:w="{word_namespace}"><w:abstractNum w:abstractNumId="3"><w:lvl w:ilvl="0"><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="5"><w:abstractNumId w:val="3"/></w:num></w:numbering>"#
+        );
+        let package_bytes = package(
+            &[
+                ("_rels/.rels", root_relationships.as_bytes()),
+                ("custom/main.xml", document.as_bytes()),
+                (
+                    "custom/_rels/main.xml.rels",
+                    document_relationships.as_bytes(),
+                ),
+                ("shared/styles.xml", styles.as_bytes()),
+                ("lists/numbering.xml", numbering.as_bytes()),
+            ],
+            CompressionMethod::Deflated,
+        );
+
+        let parts = extract_document_parts(&package_bytes, DocxLimits::default()).unwrap();
+        assert_eq!(parts.styles_xml.as_deref(), Some(styles.as_bytes()));
+        assert_eq!(parts.numbering_xml.as_deref(), Some(numbering.as_bytes()));
+        let projection = project_docx(&package_bytes, DocxLimits::default(), allocate).unwrap();
+        assert_eq!(projection.paragraphs[0].text, "Related");
+        assert_eq!(projection.paragraphs[0].formatting.len(), 1);
+        let StructuralFactSet::Known(indentation) = projection.structural_facts.indentation else {
+            panic!("relationship-selected numbering should resolve indentation");
+        };
+        assert_eq!(indentation[0].value.left_twips, Some(720));
+        assert_eq!(indentation[0].value.hanging_twips, Some(360));
+    }
+}
+
+#[test]
+fn ignores_unrelated_optional_parts_and_rejects_missing_relationship_targets() {
+    let empty_relationships =
+        br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>"#;
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Heading"/></w:pPr><w:r><w:t>Unrelated parts</w:t></w:r></w:p></w:body></w:document>"#;
+    let unreferenced = package(
+        &[
+            ("word/document.xml", document),
+            ("word/_rels/document.xml.rels", empty_relationships),
+            ("word/styles.xml", MINIMAL_STYLES),
+            ("word/numbering.xml", b"<numbering/>"),
+        ],
+        CompressionMethod::Deflated,
+    );
+    let parts = extract_document_parts(&unreferenced, DocxLimits::default()).unwrap();
+    assert_eq!(parts.styles_xml, None);
+    assert_eq!(parts.numbering_xml, None);
+    let projection = project_docx(&unreferenced, DocxLimits::default(), allocate).unwrap();
+    assert_eq!(
+        projection.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::StylesPartUnavailable)
+    );
+    assert_eq!(
+        projection.structural_facts.indentation,
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::StylesPartUnavailable)
+    );
+
+    let missing_styles_relationships = br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="missing.xml"/></Relationships>"#;
+    let missing = package(
+        &[
+            ("word/document.xml", BASIC_XML),
+            ("word/_rels/document.xml.rels", missing_styles_relationships),
+        ],
+        CompressionMethod::Deflated,
+    );
+    assert_eq!(
+        extract_document_parts(&missing, DocxLimits::default()),
+        Err(ProjectionError::InvalidStylesXmlEntry)
     );
 }
 
@@ -938,6 +1601,10 @@ fn rejects_outline_levels_outside_the_ooxml_range() {
         Some("Heading")
     );
     assert_eq!(
+        projection.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+    );
+    assert_eq!(
         projection.structural_facts.outline_levels,
         StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles)
     );
@@ -1101,6 +1768,57 @@ fn resolves_numbering_level_indentation_through_the_ooxml_cascade() {
 }
 
 #[test]
+fn resolves_character_and_twip_indentation_without_conflating_zero_semantics() {
+    let document = br#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+        <w:p><w:pPr><w:pStyle w:val="Twips"/><w:ind w:firstLineChars="0" w:startChars="0"/></w:pPr><w:r><w:t>Zero chars</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="Chars"/></w:pPr><w:r><w:t>Character units</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="Chars"/><w:ind w:firstLine="600" w:left="700"/></w:pPr><w:r><w:t>Inherited chars</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="Chars"/><w:ind w:firstLine="600" w:left="700" w:firstLineChars="0" w:startChars="0"/></w:pPr><w:r><w:t>Cancelled chars</w:t></w:r></w:p>
+        <w:p><w:pPr><w:ind w:firstLine="300" w:hanging="400"/></w:pPr><w:r><w:t>Hanging twips wins</w:t></w:r></w:p>
+        <w:p><w:pPr><w:ind w:firstLineChars="100" w:hangingChars="200"/></w:pPr><w:r><w:t>Hanging chars wins</w:t></w:r></w:p>
+      </w:body></w:document>
+    "#;
+    let styles = br#"
+      <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:style w:type="paragraph" w:styleId="Twips"><w:pPr><w:ind w:firstLine="300" w:left="400"/></w:pPr></w:style>
+        <w:style w:type="paragraph" w:styleId="Chars"><w:basedOn w:val="Twips"/><w:pPr><w:ind w:firstLineChars="100" w:startChars="200"/></w:pPr></w:style>
+      </w:styles>
+    "#;
+    let projection = project_docx(
+        &package(
+            &[("word/document.xml", document), ("word/styles.xml", styles)],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .unwrap();
+    let StructuralFactSet::Known(indentation) = projection.structural_facts.indentation else {
+        panic!("effective indentation should be known");
+    };
+
+    assert_eq!(indentation[0].value.first_line_twips, Some(300));
+    assert_eq!(indentation[0].value.left_twips, Some(400));
+    assert_eq!(indentation[0].value.first_line_chars_hundredths, None);
+    assert_eq!(indentation[0].value.start_chars_hundredths, None);
+    for fact in [&indentation[1], &indentation[2]] {
+        assert_eq!(fact.value.first_line_twips, None);
+        assert_eq!(fact.value.left_twips, None);
+        assert_eq!(fact.value.first_line_chars_hundredths, Some(100));
+        assert_eq!(fact.value.start_chars_hundredths, Some(200));
+    }
+    assert_eq!(indentation[3].value.first_line_twips, Some(600));
+    assert_eq!(indentation[3].value.left_twips, Some(700));
+    assert_eq!(indentation[3].value.first_line_chars_hundredths, None);
+    assert_eq!(indentation[3].value.start_chars_hundredths, None);
+    assert_eq!(indentation[4].value.first_line_twips, None);
+    assert_eq!(indentation[4].value.hanging_twips, Some(400));
+    assert_eq!(indentation[5].value.first_line_chars_hundredths, None);
+    assert_eq!(indentation[5].value.hanging_chars_hundredths, Some(200));
+}
+
+#[test]
 fn invalid_or_missing_numbering_fails_closed_without_losing_other_structure() {
     let document: &[u8] = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
       <w:p><w:pPr><w:numPr><w:numId w:val="5"/></w:numPr><w:outlineLvl w:val="2"/></w:pPr><w:r><w:t>Numbered</w:t></w:r></w:p>
@@ -1187,6 +1905,10 @@ fn document_part_only_does_not_claim_style_dependent_facts() {
         Some("Heading")
     );
     assert_eq!(
+        projection.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::DocumentPartOnly)
+    );
+    assert_eq!(
         projection.structural_facts.indentation,
         StructuralFactSet::Unknown(StructuralFactUnknownReason::DocumentPartOnly)
     );
@@ -1227,6 +1949,10 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
         Some("Heading")
     );
     assert_eq!(
+        unavailable.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::StylesPartUnavailable)
+    );
+    assert_eq!(
         unavailable.structural_facts.outline_levels,
         StructuralFactSet::Unknown(StructuralFactUnknownReason::StylesPartUnavailable)
     );
@@ -1245,6 +1971,10 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
     .expect("an invalid optional styles part should preserve the document");
     assert_eq!(malformed.paragraphs[0].style_id.as_deref(), Some("Heading"));
     assert_eq!(
+        malformed.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+    );
+    assert_eq!(
         malformed.structural_facts.outline_levels,
         StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles)
     );
@@ -1258,6 +1988,10 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
     assert_eq!(
         unknown_style.paragraphs[0].style_id.as_deref(),
         Some("Heading")
+    );
+    assert_eq!(
+        unknown_style.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
     );
     assert_eq!(
         unknown_style.structural_facts.outline_levels,
@@ -1433,6 +2167,10 @@ fn downgrades_whole_fact_families_for_unsupported_or_incomplete_constructs() {
     )
     .expect("unsupported style graphs should preserve paragraph projection");
     assert_eq!(
+        cyclic_style_projection.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
+    );
+    assert_eq!(
         cyclic_style_projection.structural_facts.indentation,
         StructuralFactSet::Unknown(StructuralFactUnknownReason::UnsupportedStyles)
     );
@@ -1495,12 +2233,132 @@ fn projects_standard_field_references_and_body_level_bookmark_boundaries() {
 }
 
 #[test]
+fn projects_bookmarks_at_table_row_boundaries() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:tbl><w:tr>
+        <w:bookmarkStart w:id="4" w:name="RowRange"/>
+        <w:tc><w:p><w:r><w:t>Alpha</w:t></w:r></w:p></w:tc>
+        <w:bookmarkEnd w:id="4"/>
+      </w:tr></w:tbl>
+    </w:body></w:document>"#;
+    let projection = project_docx(
+        &package_with_minimal_styles(document),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("row-level bookmark boundaries should project");
+
+    let StructuralFactSet::Known(bookmarks) = projection.structural_facts.bookmarks else {
+        panic!("row-level bookmark boundaries should remain complete");
+    };
+    assert_eq!(bookmarks.len(), 1);
+    assert_eq!(bookmarks[0].paragraph_ordinal, 0);
+    assert_eq!(bookmarks[0].span.start_utf8, 0);
+    assert_eq!(bookmarks[0].span.end_utf8, 5);
+    assert_eq!(bookmarks[0].span.coverage, SpanCoverage::Complete);
+}
+
+#[test]
+fn projects_bookmarks_between_table_cells_and_across_rows() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:tbl>
+        <w:tr>
+          <w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc>
+          <w:bookmarkStart w:id="7" w:name="CrossRow"/>
+          <w:tc><w:p><w:r><w:t>Bravo</w:t></w:r></w:p></w:tc>
+        </w:tr>
+        <w:tr>
+          <w:tc><w:p><w:r><w:t>Charlie</w:t></w:r></w:p></w:tc>
+          <w:bookmarkEnd w:id="7"/>
+          <w:tc><w:p><w:r><w:t>D</w:t></w:r></w:p></w:tc>
+        </w:tr>
+      </w:tbl>
+    </w:body></w:document>"#;
+    let projection = project_docx(
+        &package_with_minimal_styles(document),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("cross-row bookmark boundaries should project");
+
+    let StructuralFactSet::Known(bookmarks) = projection.structural_facts.bookmarks else {
+        panic!("cross-row bookmark boundaries should remain complete");
+    };
+    assert_eq!(bookmarks.len(), 2);
+    assert_eq!(bookmarks[0].paragraph_ordinal, 1);
+    assert_eq!(bookmarks[0].span.start_utf8, 0);
+    assert_eq!(bookmarks[0].span.end_utf8, 5);
+    assert_eq!(bookmarks[0].span.coverage, SpanCoverage::ContinuesAfter);
+    assert_eq!(bookmarks[1].paragraph_ordinal, 2);
+    assert_eq!(bookmarks[1].span.start_utf8, 0);
+    assert_eq!(bookmarks[1].span.end_utf8, 7);
+    assert_eq!(bookmarks[1].span.coverage, SpanCoverage::ContinuesBefore);
+}
+
+#[test]
+fn projects_body_and_zero_width_bookmark_boundaries() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:bookmarkStart w:id="4" w:name="BodyRange"/>
+      <w:p><w:r><w:t>Alpha</w:t></w:r></w:p>
+      <w:bookmarkEnd w:id="4"/>
+      <w:bookmarkStart w:id="7" w:name="Cursor"/><w:bookmarkEnd w:id="7"/>
+      <w:p><w:r><w:t>Bravo</w:t></w:r></w:p>
+    </w:body></w:document>"#;
+    let projection = project_docx(
+        &package_with_minimal_styles(document),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("body-level and zero-width bookmark boundaries should project");
+
+    let StructuralFactSet::Known(bookmarks) = projection.structural_facts.bookmarks else {
+        panic!("body-level and zero-width bookmark boundaries should remain complete");
+    };
+    assert_eq!(bookmarks.len(), 2);
+    assert_eq!(bookmarks[0].name, "BodyRange");
+    assert_eq!(bookmarks[0].paragraph_ordinal, 0);
+    assert_eq!(bookmarks[0].span.start_utf8, 0);
+    assert_eq!(bookmarks[0].span.end_utf8, 5);
+    assert_eq!(bookmarks[1].name, "Cursor");
+    assert_eq!(bookmarks[1].paragraph_ordinal, 1);
+    assert_eq!(bookmarks[1].span.start_utf8, 0);
+    assert_eq!(bookmarks[1].span.end_utf8, 0);
+    assert_eq!(bookmarks[1].span.coverage, SpanCoverage::Complete);
+}
+
+#[test]
+fn malformed_bookmark_boundaries_fail_the_whole_fact_family_closed() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:bookmarkStart w:id="4" w:name="OtherwiseValid"/>
+      <w:p><w:r><w:t>Alpha</w:t></w:r></w:p>
+      <w:bookmarkEnd w:id="4"/>
+      <w:bookmarkEnd w:id="999"/>
+    </w:body></w:document>"#;
+    let projection = project_docx(
+        &package_with_minimal_styles(document),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("malformed bookmark boundaries should preserve paragraph projection");
+
+    assert_eq!(
+        projection.structural_facts.bookmarks,
+        StructuralFactSet::Unknown(StructuralFactUnknownReason::IncompleteBookmarkRanges),
+        "one malformed range must invalidate every bookmark fact"
+    );
+}
+
+#[test]
 fn package_projection_is_deterministic_and_styles_extraction_is_bounded() {
     let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Stable</w:t></w:r></w:p></w:body></w:document>"#;
     let package_bytes = package_with_minimal_styles(document);
     let first = project_docx(&package_bytes, DocxLimits::default(), allocate).unwrap();
     let second = project_docx(&package_bytes, DocxLimits::default(), allocate).unwrap();
     assert_eq!(first, second);
+    assert_eq!(
+        first.formatting_status,
+        FormattingProjectionStatus::Complete
+    );
     assert!(
         extract_document_parts(&package_bytes, DocxLimits::default())
             .unwrap()
@@ -1532,6 +2390,45 @@ fn package_projection_is_deterministic_and_styles_extraction_is_bounded() {
     assert_eq!(
         extract_document_parts(&equal_limits_package, equal_limits),
         Err(ProjectionError::StylesXmlTooLarge)
+    );
+
+    let two_styles =
+        br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:style w:type="table" w:styleId="TableOne"/>
+      <w:style w:type="paragraph" w:styleId="Normal" w:default="1"/>
+    </w:styles>"#;
+    let style_count_package = package(
+        &[
+            ("word/document.xml", document),
+            ("word/styles.xml", two_styles),
+        ],
+        CompressionMethod::Deflated,
+    );
+    let accepted = project_docx(
+        &style_count_package,
+        DocxLimits {
+            maximum_styles: 2,
+            ..DocxLimits::default()
+        },
+        allocate,
+    )
+    .expect("the exact style-count boundary should be accepted");
+    assert_eq!(
+        accepted.formatting_status,
+        FormattingProjectionStatus::Complete
+    );
+    let rejected = project_docx(
+        &style_count_package,
+        DocxLimits {
+            maximum_styles: 1,
+            ..DocxLimits::default()
+        },
+        allocate,
+    )
+    .expect("an oversized optional styles part should preserve direct document facts");
+    assert_eq!(
+        rejected.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::UnsupportedStyles)
     );
 }
 
@@ -2317,6 +3214,19 @@ fn package(entries: &[(&str, &[u8])], method: CompressionMethod) -> Vec<u8> {
         .any(|(name, _)| *name == "word/_rels/document.xml.rels");
     if !has_document_relationships {
         let mut relationships = Vec::new();
+        if entries.iter().any(|(name, _)| *name == "word/styles.xml") {
+            relationships.push(
+                r#"<Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>"#,
+            );
+        }
+        if entries
+            .iter()
+            .any(|(name, _)| *name == "word/numbering.xml")
+        {
+            relationships.push(
+                r#"<Relationship Id="numbering" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>"#,
+            );
+        }
         if entries.iter().any(|(name, _)| *name == "word/comments.xml") {
             relationships.push(
                 r#"<Relationship Id="comments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>"#,

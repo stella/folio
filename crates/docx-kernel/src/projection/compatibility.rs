@@ -19,13 +19,45 @@ struct AlternateContent {
     fallback_seen: bool,
 }
 
-#[derive(Default)]
 pub(super) struct MarkupCompatibility {
     alternate_content: Vec<AlternateContent>,
     suppressed_depth: usize,
+    invalid_part: InvalidPart,
+}
+
+#[derive(Clone, Copy, Default)]
+enum InvalidPart {
+    #[default]
+    Document,
+    Styles,
+}
+
+impl Default for MarkupCompatibility {
+    fn default() -> Self {
+        Self {
+            alternate_content: Vec::new(),
+            suppressed_depth: 0,
+            invalid_part: InvalidPart::Document,
+        }
+    }
 }
 
 impl MarkupCompatibility {
+    pub(super) const fn for_styles() -> Self {
+        Self {
+            alternate_content: Vec::new(),
+            suppressed_depth: 0,
+            invalid_part: InvalidPart::Styles,
+        }
+    }
+
+    const fn invalid_error(&self) -> ProjectionError {
+        match self.invalid_part {
+            InvalidPart::Document => ProjectionError::InvalidDocumentXml,
+            InvalidPart::Styles => ProjectionError::InvalidStylesXml,
+        }
+    }
+
     pub(super) fn start(
         &mut self,
         reader: &NsReader<&[u8]>,
@@ -36,7 +68,7 @@ impl MarkupCompatibility {
             self.suppressed_depth = self
                 .suppressed_depth
                 .checked_add(1)
-                .ok_or(ProjectionError::InvalidDocumentXml)?;
+                .ok_or_else(|| self.invalid_error())?;
             return Ok(CompatibilityAction::Skip);
         }
 
@@ -59,12 +91,12 @@ impl MarkupCompatibility {
                     .last()
                     .is_some_and(|content| !content.branch_active)
                 {
-                    return Err(ProjectionError::InvalidDocumentXml);
+                    return Err(self.invalid_error());
                 }
                 self.alternate_content.push(AlternateContent::default());
             }
             b"Choice" => {
-                let supported = choice_is_supported(reader, element)?;
+                let supported = choice_is_supported(reader, element, self.invalid_part)?;
                 self.start_branch(supported, false)?;
             }
             b"Fallback" => self.start_branch(true, true)?,
@@ -103,11 +135,11 @@ impl MarkupCompatibility {
                     .last()
                     .is_some_and(|content| !content.branch_active)
                 {
-                    return Err(ProjectionError::InvalidDocumentXml);
+                    return Err(self.invalid_error());
                 }
             }
             b"Choice" => {
-                let supported = choice_is_supported(reader, element)?;
+                let supported = choice_is_supported(reader, element, self.invalid_part)?;
                 self.select_empty_branch(supported, false)?;
             }
             b"Fallback" => self.select_empty_branch(true, true)?,
@@ -125,7 +157,7 @@ impl MarkupCompatibility {
             self.suppressed_depth = self
                 .suppressed_depth
                 .checked_sub(1)
-                .ok_or(ProjectionError::InvalidDocumentXml)?;
+                .ok_or_else(|| self.invalid_error())?;
             return Ok(CompatibilityAction::Skip);
         }
         if namespace != OoxmlNamespace::MarkupCompatibility {
@@ -137,18 +169,19 @@ impl MarkupCompatibility {
                 let content = self
                     .alternate_content
                     .pop()
-                    .ok_or(ProjectionError::InvalidDocumentXml)?;
+                    .ok_or_else(|| self.invalid_error())?;
                 if content.branch_active {
-                    return Err(ProjectionError::InvalidDocumentXml);
+                    return Err(self.invalid_error());
                 }
             }
             b"Choice" | b"Fallback" => {
+                let invalid = self.invalid_error();
                 let content = self
                     .alternate_content
                     .last_mut()
-                    .ok_or(ProjectionError::InvalidDocumentXml)?;
+                    .ok_or_else(|| invalid.clone())?;
                 if !content.branch_active {
-                    return Err(ProjectionError::InvalidDocumentXml);
+                    return Err(invalid);
                 }
                 content.branch_active = false;
             }
@@ -166,11 +199,12 @@ impl MarkupCompatibility {
     }
 
     fn start_branch(&mut self, supported: bool, fallback: bool) -> Result<(), ProjectionError> {
+        let invalid = self.invalid_error();
         let content = self
             .alternate_content
             .last_mut()
-            .ok_or(ProjectionError::InvalidDocumentXml)?;
-        validate_branch_order(content, fallback)?;
+            .ok_or_else(|| invalid.clone())?;
+        validate_branch_order(content, fallback, invalid)?;
         let active = !content.branch_selected && supported;
         if active {
             content.branch_selected = true;
@@ -186,11 +220,12 @@ impl MarkupCompatibility {
         supported: bool,
         fallback: bool,
     ) -> Result<(), ProjectionError> {
+        let invalid = self.invalid_error();
         let content = self
             .alternate_content
             .last_mut()
-            .ok_or(ProjectionError::InvalidDocumentXml)?;
-        validate_branch_order(content, fallback)?;
+            .ok_or_else(|| invalid.clone())?;
+        validate_branch_order(content, fallback, invalid)?;
         if !content.branch_selected && supported {
             content.branch_selected = true;
         }
@@ -201,9 +236,10 @@ impl MarkupCompatibility {
 const fn validate_branch_order(
     content: &mut AlternateContent,
     fallback: bool,
+    invalid: ProjectionError,
 ) -> Result<(), ProjectionError> {
     if content.branch_active || content.fallback_seen {
-        return Err(ProjectionError::InvalidDocumentXml);
+        return Err(invalid);
     }
     if fallback {
         content.fallback_seen = true;
@@ -214,27 +250,32 @@ const fn validate_branch_order(
 fn choice_is_supported(
     reader: &NsReader<&[u8]>,
     element: &BytesStart<'_>,
+    invalid: InvalidPart,
 ) -> Result<bool, ProjectionError> {
+    let invalid = match invalid {
+        InvalidPart::Document => ProjectionError::InvalidDocumentXml,
+        InvalidPart::Styles => ProjectionError::InvalidStylesXml,
+    };
     let mut requires = None;
     for attribute in element.attributes() {
-        let attribute = attribute.map_err(|_| ProjectionError::InvalidDocumentXml)?;
+        let attribute = attribute.map_err(|_| invalid.clone())?;
         let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
         if namespace == ResolveResult::Unbound && local_name.as_ref() == b"Requires" {
             if requires.is_some() {
-                return Err(ProjectionError::InvalidDocumentXml);
+                return Err(invalid);
             }
             requires = Some(
                 attribute
                     .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
-                    .map_err(|_| ProjectionError::InvalidDocumentXml)?
+                    .map_err(|_| invalid.clone())?
                     .into_owned(),
             );
         }
     }
-    let requires = requires.ok_or(ProjectionError::InvalidDocumentXml)?;
+    let requires = requires.ok_or_else(|| invalid.clone())?;
     let mut prefixes = requires.split_ascii_whitespace().peekable();
     if prefixes.peek().is_none() {
-        return Err(ProjectionError::InvalidDocumentXml);
+        return Err(invalid);
     }
     Ok(prefixes.all(|required| {
         reader.resolver().bindings().any(|(prefix, namespace)| {

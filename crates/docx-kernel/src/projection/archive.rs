@@ -3,13 +3,12 @@ use rawzip::{CompressionMethod, ZipArchive, ZipSliceArchive, crc32};
 
 use crate::ProjectionError;
 use crate::projection::relationships::{
-    document_relationships_path, main_document_path, review_part_paths,
+    InvalidReviewRelationships, ReviewPartPaths, document_relationship_paths,
+    document_relationships_path, main_document_path,
 };
 use crate::projection::review::{ReviewFactLimits, ReviewFactUnknownReason};
 
 const DOCUMENT_XML_PATH: &[u8] = b"word/document.xml";
-const STYLES_XML_PATH: &[u8] = b"word/styles.xml";
-const NUMBERING_XML_PATH: &[u8] = b"word/numbering.xml";
 const ROOT_RELATIONSHIPS_PATH: &[u8] = b"_rels/.rels";
 const MAXIMUM_ROOT_RELATIONSHIPS_BYTES: usize = 1024 * 1024;
 const MAXIMUM_DOCUMENT_RELATIONSHIPS_BYTES: usize = 1024 * 1024;
@@ -19,6 +18,7 @@ pub struct DocxLimits {
     pub maximum_archive_bytes: usize,
     pub maximum_document_xml_bytes: usize,
     pub maximum_styles_xml_bytes: usize,
+    pub maximum_styles: usize,
     pub maximum_numbering_xml_bytes: usize,
     pub maximum_numbering_items: usize,
     pub maximum_entries: u64,
@@ -33,6 +33,7 @@ impl Default for DocxLimits {
             maximum_archive_bytes: 64 * 1024 * 1024,
             maximum_document_xml_bytes: 32 * 1024 * 1024,
             maximum_styles_xml_bytes: 8 * 1024 * 1024,
+            maximum_styles: 4_079,
             maximum_numbering_xml_bytes: 8 * 1024 * 1024,
             maximum_numbering_items: 100_000,
             maximum_entries: 4096,
@@ -62,6 +63,15 @@ struct EntryExtractionErrors {
     invalid_entry: ProjectionError,
     too_large: ProjectionError,
     integrity: ProjectionError,
+}
+
+struct RelatedPartExtraction<'a> {
+    path: Option<&'a [u8]>,
+    maximum_bytes: usize,
+    duplicate: ProjectionError,
+    invalid_entry: ProjectionError,
+    too_large: ProjectionError,
+    errors: EntryExtractionErrors,
 }
 
 impl EntryExtractionErrors {
@@ -103,8 +113,8 @@ pub(super) struct ProjectionPackageParts {
 }
 
 struct RequiredPackageParts {
-    document_path: Vec<u8>,
     document: Vec<u8>,
+    review_paths: Result<ReviewPartPaths, InvalidReviewRelationships>,
     styles: Option<Vec<u8>>,
     numbering: Option<Vec<u8>>,
 }
@@ -124,12 +134,8 @@ pub fn extract_document_xml(bytes: &[u8], limits: DocxLimits) -> Result<Vec<u8>,
     extract_document_parts(bytes, limits).map(|parts| parts.document_xml)
 }
 
-/// Extracts the main document and its conventional paragraph-style and numbering
-/// parts from one bounded scan of the ZIP directory.
-///
-/// An absent optional part is not evidence that its effective properties are
-/// empty: relationship targets may use another path. Callers therefore retain an
-/// explicit unknown state for dependent structural facts.
+/// Extracts the main document and its relationship-selected paragraph-style and
+/// numbering parts from one bounded scan of the ZIP directory.
 ///
 /// # Errors
 ///
@@ -156,7 +162,7 @@ pub(super) fn extract_projection_parts(
     let review = extract_review_parts(
         &archive,
         &package_entries,
-        &required.document_path,
+        required.review_paths,
         review_limits,
         limits,
     );
@@ -213,100 +219,104 @@ fn extract_required_parts_from_archive(
         limits.maximum_document_xml_bytes,
         EntryExtractionErrors::DOCUMENT_XML,
     )?;
-    let styles_xml = unique_entry(
+    let relationships_path = document_relationships_path(&document_path)?;
+    let document_relationships = unique_entry(
         package_entries,
-        STYLES_XML_PATH,
-        ProjectionError::DuplicateStylesXml,
+        &relationships_path,
+        ProjectionError::InvalidPackageRelationships,
     )?
-    .map(|styles| {
+    .map(|relationships| {
         validate_selected_entry(
-            styles,
-            limits.maximum_styles_xml_bytes,
-            ProjectionError::StylesXmlTooLarge,
-            ProjectionError::InvalidStylesXmlEntry,
+            relationships,
+            MAXIMUM_DOCUMENT_RELATIONSHIPS_BYTES,
+            ProjectionError::PackageRelationshipsTooLarge,
+            ProjectionError::InvalidPackageRelationships,
             limits,
         )?;
         extract_entry(
             archive,
-            styles,
-            STYLES_XML_PATH,
-            limits.maximum_styles_xml_bytes,
-            EntryExtractionErrors::STYLES_XML,
+            relationships,
+            &relationships_path,
+            MAXIMUM_DOCUMENT_RELATIONSHIPS_BYTES,
+            EntryExtractionErrors::PACKAGE_RELATIONSHIPS,
         )
     })
     .transpose()?;
-    let numbering_xml = unique_entry(
+    let related_paths = document_relationships
+        .as_deref()
+        .map(|relationships| document_relationship_paths(relationships, &document_path))
+        .transpose()?
+        .unwrap_or_default();
+    let styles_xml = extract_related_part(
+        archive,
         package_entries,
-        NUMBERING_XML_PATH,
-        ProjectionError::DuplicateNumberingXml,
-    )?
-    .map(|numbering| {
-        validate_selected_entry(
-            numbering,
-            limits.maximum_numbering_xml_bytes,
-            ProjectionError::NumberingXmlTooLarge,
-            ProjectionError::InvalidNumberingXmlEntry,
-            limits,
-        )?;
-        extract_entry(
-            archive,
-            numbering,
-            NUMBERING_XML_PATH,
-            limits.maximum_numbering_xml_bytes,
-            EntryExtractionErrors::NUMBERING_XML,
-        )
-    })
-    .transpose()?;
+        limits,
+        RelatedPartExtraction {
+            path: related_paths.styles.as_deref(),
+            maximum_bytes: limits.maximum_styles_xml_bytes,
+            duplicate: ProjectionError::DuplicateStylesXml,
+            invalid_entry: ProjectionError::InvalidStylesXmlEntry,
+            too_large: ProjectionError::StylesXmlTooLarge,
+            errors: EntryExtractionErrors::STYLES_XML,
+        },
+    )?;
+    let numbering_xml = extract_related_part(
+        archive,
+        package_entries,
+        limits,
+        RelatedPartExtraction {
+            path: related_paths.numbering.as_deref(),
+            maximum_bytes: limits.maximum_numbering_xml_bytes,
+            duplicate: ProjectionError::DuplicateNumberingXml,
+            invalid_entry: ProjectionError::InvalidNumberingXmlEntry,
+            too_large: ProjectionError::NumberingXmlTooLarge,
+            errors: EntryExtractionErrors::NUMBERING_XML,
+        },
+    )?;
     Ok(RequiredPackageParts {
-        document_path,
         document: document_xml,
+        review_paths: related_paths.review,
         styles: styles_xml,
         numbering: numbering_xml,
     })
 }
 
+fn extract_related_part(
+    archive: &ZipSliceArchive<&[u8]>,
+    entries: &[PackageEntry],
+    limits: DocxLimits,
+    extraction: RelatedPartExtraction<'_>,
+) -> Result<Option<Vec<u8>>, ProjectionError> {
+    let Some(path) = extraction.path else {
+        return Ok(None);
+    };
+    let selected = unique_entry(entries, path, extraction.duplicate)?
+        .ok_or_else(|| extraction.invalid_entry.clone())?;
+    validate_selected_entry(
+        selected,
+        extraction.maximum_bytes,
+        extraction.too_large,
+        extraction.invalid_entry,
+        limits,
+    )?;
+    extract_entry(
+        archive,
+        selected,
+        path,
+        extraction.maximum_bytes,
+        extraction.errors,
+    )
+    .map(Some)
+}
+
 fn extract_review_parts(
     archive: &ZipSliceArchive<&[u8]>,
     entries: &[PackageEntry],
-    document_path: &[u8],
+    paths: Result<ReviewPartPaths, InvalidReviewRelationships>,
     review_limits: ReviewFactLimits,
     limits: DocxLimits,
 ) -> ReviewPackageParts {
-    let Ok(relationships_path) = document_relationships_path(document_path) else {
-        return ReviewPackageParts {
-            comments: Err(ReviewFactUnknownReason::InvalidComments),
-            comments_extended: Err(ReviewFactUnknownReason::InvalidCommentsExtended),
-        };
-    };
-    let relationships = match extract_optional_review_entry(
-        archive,
-        entries,
-        &relationships_path,
-        MAXIMUM_DOCUMENT_RELATIONSHIPS_BYTES,
-        ReviewFactUnknownReason::InvalidComments,
-        limits,
-    ) {
-        Ok(Some(xml)) => xml,
-        Ok(None) => {
-            return ReviewPackageParts {
-                comments: Ok(None),
-                comments_extended: Ok(None),
-            };
-        }
-        Err(ReviewFactUnknownReason::ResourceLimit) => {
-            return ReviewPackageParts {
-                comments: Err(ReviewFactUnknownReason::ResourceLimit),
-                comments_extended: Err(ReviewFactUnknownReason::ResourceLimit),
-            };
-        }
-        Err(_) => {
-            return ReviewPackageParts {
-                comments: Err(ReviewFactUnknownReason::InvalidComments),
-                comments_extended: Err(ReviewFactUnknownReason::InvalidCommentsExtended),
-            };
-        }
-    };
-    let Ok(paths) = review_part_paths(&relationships, document_path) else {
+    let Ok(paths) = paths else {
         return ReviewPackageParts {
             comments: Err(ReviewFactUnknownReason::InvalidComments),
             comments_extended: Err(ReviewFactUnknownReason::InvalidCommentsExtended),

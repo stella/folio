@@ -42,6 +42,7 @@ type CapturedMessage = { level: string; text: string };
 
 const MISSING_MESSAGE_PATTERN = /MISSING_MESSAGE|IntlError/u;
 const WORKER_PATTERN = /worker/iu;
+const PACKED_DOCX_PROJECTION_SCHEMA_VERSION = 4 satisfies DocxProjectionWire[0];
 
 test("packaged consumer mounts, lays out via the worker, and logs no errors", async ({ page }) => {
   const messages: CapturedMessage[] = [];
@@ -68,7 +69,9 @@ test("packaged consumer mounts, lays out via the worker, and logs no errors", as
   await page.evaluate(() => document.fonts.ready);
 
   const projection = await page.evaluate(() => globalThis.__folioSmoke?.projectFixture());
-  expect(projection?.[0], "packed DOCX projection schema must load through WASM").toBe(3);
+  expect(projection?.[0], "packed DOCX projection schema must load through WASM").toBe(
+    PACKED_DOCX_PROJECTION_SCHEMA_VERSION,
+  );
   expect(projection?.[1].length ?? 0, "fixture must contain projected paragraphs").toBeGreaterThan(
     0,
   );

@@ -20,7 +20,7 @@ use std::fmt;
 pub use archive::{DocumentParts, DocxLimits, extract_document_parts, extract_document_xml};
 pub use ooxml::{
     PackageParagraphId, ParagraphStructure, RevisionProjectionStatus, RevisionUnsupportedReason,
-    RevisionView, TextFormattingSpan, TextMaterialization, TextStyle, is_semantic_highlight_color,
+    RevisionView, TextFormattingSpan, TextMaterialization, TextStyle,
 };
 pub use review::{
     AttributedComment, AttributedRevision, CommentContent, DocumentReviewFacts, ReviewDetail,
@@ -33,6 +33,7 @@ pub use structure::{
     ParagraphOutlineLevelFact, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
     StructuralSpan,
 };
+pub use styles::is_semantic_highlight_color;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct InternalParagraphId(String);
@@ -76,9 +77,29 @@ pub struct ProjectedParagraph {
     pub structure: Option<ParagraphStructure>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FormattingUnknownReason {
+    DocumentPartOnly,
+    StylesPartUnavailable,
+    UnsupportedStyles,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FormattingProjectionStatus {
+    Complete,
+    Incomplete(FormattingUnknownReason),
+}
+
+impl Default for FormattingProjectionStatus {
+    fn default() -> Self {
+        Self::Incomplete(FormattingUnknownReason::DocumentPartOnly)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocumentProjection {
     pub paragraphs: Vec<ProjectedParagraph>,
+    pub formatting_status: FormattingProjectionStatus,
     pub revision_status: RevisionProjectionStatus,
     pub structural_facts: DocumentStructureFacts,
 }
@@ -150,8 +171,10 @@ impl fmt::Display for ProjectionError {
             }
             Self::MissingDocumentXml => "DOCX archive has no main document part",
             Self::DuplicateDocumentXml => "DOCX archive has duplicate main document parts",
-            Self::DuplicateStylesXml => "DOCX archive has duplicate word/styles.xml entries",
-            Self::DuplicateNumberingXml => "DOCX archive has duplicate word/numbering.xml entries",
+            Self::DuplicateStylesXml => "DOCX archive has duplicate entries for its styles part",
+            Self::DuplicateNumberingXml => {
+                "DOCX archive has duplicate entries for its numbering part"
+            }
             Self::EncryptedDocumentXml => "DOCX main document part is encrypted",
             Self::UnsupportedCompression(_) => {
                 "selected DOCX package part uses unsupported compression"
@@ -164,21 +187,21 @@ impl fmt::Display for ProjectionError {
             }
             Self::InvalidDocumentXmlEntry => "DOCX main document part has an invalid ZIP entry",
             Self::DocumentXmlIntegrity => "DOCX main document part failed size or CRC validation",
-            Self::StylesXmlTooLarge => "word/styles.xml exceeds the configured size limit",
-            Self::InvalidStylesXmlEntry => "word/styles.xml has an invalid ZIP entry",
-            Self::StylesXmlIntegrity => "word/styles.xml failed size or CRC validation",
-            Self::NumberingXmlTooLarge => "word/numbering.xml exceeds the configured size limit",
-            Self::InvalidNumberingXmlEntry => "word/numbering.xml has an invalid ZIP entry",
-            Self::NumberingXmlIntegrity => "word/numbering.xml failed size or CRC validation",
+            Self::StylesXmlTooLarge => "DOCX styles part exceeds the configured size limit",
+            Self::InvalidStylesXmlEntry => "DOCX styles part has an invalid ZIP entry",
+            Self::StylesXmlIntegrity => "DOCX styles part failed size or CRC validation",
+            Self::NumberingXmlTooLarge => "DOCX numbering part exceeds the configured size limit",
+            Self::InvalidNumberingXmlEntry => "DOCX numbering part has an invalid ZIP entry",
+            Self::NumberingXmlIntegrity => "DOCX numbering part failed size or CRC validation",
             Self::InvalidDocumentXml => "DOCX main document part is invalid XML",
-            Self::InvalidStylesXml => "word/styles.xml is invalid XML",
-            Self::InvalidNumberingXml => "word/numbering.xml is invalid XML",
+            Self::InvalidStylesXml => "DOCX styles part is invalid XML",
+            Self::InvalidNumberingXml => "DOCX numbering part is invalid XML",
             Self::MissingDocumentBody => "DOCX main document part has no document body",
             Self::TooManyParagraphs => "DOCX main document part has too many paragraphs",
             Self::TooManyStructuralFacts => {
                 "DOCX main document part produces too many structural facts"
             }
-            Self::TooManyNumberingItems => "word/numbering.xml exceeds the configured item limit",
+            Self::TooManyNumberingItems => "DOCX numbering part exceeds the configured item limit",
             Self::InvalidInternalParagraphId => "application paragraph ID is invalid",
             Self::DuplicateInternalParagraphId => "application paragraph IDs are not unique",
         };
@@ -224,7 +247,8 @@ where
     let styles = parts.styles_xml.as_deref().map_or(
         Err(StructuralFactUnknownReason::StylesPartUnavailable),
         |styles| {
-            styles::parse_styles(styles).map_err(|_| StructuralFactUnknownReason::UnsupportedStyles)
+            styles::parse_styles(styles, limits.maximum_styles)
+                .map_err(|_| StructuralFactUnknownReason::UnsupportedStyles)
         },
     );
     let numbering = parse_optional_numbering(
@@ -271,7 +295,8 @@ where
     let styles = parts.styles.as_deref().map_or(
         Err(StructuralFactUnknownReason::StylesPartUnavailable),
         |styles| {
-            styles::parse_styles(styles).map_err(|_| StructuralFactUnknownReason::UnsupportedStyles)
+            styles::parse_styles(styles, limits.maximum_styles)
+                .map_err(|_| StructuralFactUnknownReason::UnsupportedStyles)
         },
     );
     let numbering =
@@ -423,6 +448,7 @@ where
         maximum_paragraphs,
         options.revision_view,
         options.text_materialization,
+        dependencies.styles.map_err(formatting_unknown_reason),
         review_limits,
     )?;
     let review_revisions = projected.review_revisions;
@@ -479,10 +505,26 @@ where
     Ok(ProjectedDocumentWithReview {
         document: DocumentProjection {
             paragraphs,
+            formatting_status: projected.formatting_status,
             revision_status: projected.revision_status,
             structural_facts,
         },
         revisions: review_revisions,
         comment_anchors: review_comment_anchors,
     })
+}
+
+const fn formatting_unknown_reason(reason: StructuralFactUnknownReason) -> FormattingUnknownReason {
+    match reason {
+        StructuralFactUnknownReason::DocumentPartOnly => FormattingUnknownReason::DocumentPartOnly,
+        StructuralFactUnknownReason::StylesPartUnavailable => {
+            FormattingUnknownReason::StylesPartUnavailable
+        }
+        StructuralFactUnknownReason::UnsupportedStyles
+        | StructuralFactUnknownReason::UnsupportedNumbering
+        | StructuralFactUnknownReason::IncompleteBookmarkRanges
+        | StructuralFactUnknownReason::UnsupportedInternalReferences => {
+            FormattingUnknownReason::UnsupportedStyles
+        }
+    }
 }

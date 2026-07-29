@@ -47,39 +47,82 @@ impl ParagraphIndentation {
     }
 
     pub(super) fn inherit(self, child: Self) -> Self {
+        let child_has_hanging =
+            child.hanging_twips.is_some() || child.hanging_chars_hundredths.is_some();
+        let child_has_first_line = !child_has_hanging
+            && (child.first_line_twips.is_some() || child.first_line_chars_hundredths.is_some());
+        let parent_first_line = if child_has_hanging {
+            (None, None)
+        } else {
+            (self.first_line_twips, self.first_line_chars_hundredths)
+        };
+        let parent_hanging = if child_has_first_line {
+            (None, None)
+        } else {
+            (self.hanging_twips, self.hanging_chars_hundredths)
+        };
+        let child_first_line = if child_has_hanging {
+            (None, None)
+        } else {
+            (child.first_line_twips, child.first_line_chars_hundredths)
+        };
+        let (first_line_twips, first_line_chars_hundredths) = inherit_character_indent(
+            parent_first_line.0,
+            parent_first_line.1,
+            child_first_line.0,
+            child_first_line.1,
+        );
+        let (hanging_twips, hanging_chars_hundredths) = inherit_character_indent(
+            parent_hanging.0,
+            parent_hanging.1,
+            child.hanging_twips,
+            child.hanging_chars_hundredths,
+        );
+        let (mut left_twips, left_chars_hundredths) = inherit_character_indent(
+            self.left_twips,
+            self.left_chars_hundredths,
+            child.left_twips,
+            child.left_chars_hundredths,
+        );
+        let (mut right_twips, right_chars_hundredths) = inherit_character_indent(
+            self.right_twips,
+            self.right_chars_hundredths,
+            child.right_twips,
+            child.right_chars_hundredths,
+        );
+        let (mut start_twips, start_chars_hundredths) = inherit_character_indent(
+            self.start_twips,
+            self.start_chars_hundredths,
+            child.start_twips,
+            child.start_chars_hundredths,
+        );
+        let (mut end_twips, end_chars_hundredths) = inherit_character_indent(
+            self.end_twips,
+            self.end_chars_hundredths,
+            child.end_twips,
+            child.end_chars_hundredths,
+        );
+        if left_chars_hundredths.is_some() || start_chars_hundredths.is_some() {
+            left_twips = None;
+            start_twips = None;
+        }
+        if right_chars_hundredths.is_some() || end_chars_hundredths.is_some() {
+            right_twips = None;
+            end_twips = None;
+        }
         Self {
-            first_line_twips: if child.hanging_twips.is_some() {
-                None
-            } else {
-                child.first_line_twips.or(self.first_line_twips)
-            },
-            hanging_twips: if child.first_line_twips.is_some() {
-                None
-            } else {
-                child.hanging_twips.or(self.hanging_twips)
-            },
-            left_twips: child.left_twips.or(self.left_twips),
-            right_twips: child.right_twips.or(self.right_twips),
-            start_twips: child.start_twips.or(self.start_twips),
-            end_twips: child.end_twips.or(self.end_twips),
-            first_line_chars_hundredths: if child.hanging_chars_hundredths.is_some() {
-                None
-            } else {
-                child
-                    .first_line_chars_hundredths
-                    .or(self.first_line_chars_hundredths)
-            },
-            hanging_chars_hundredths: if child.first_line_chars_hundredths.is_some() {
-                None
-            } else {
-                child
-                    .hanging_chars_hundredths
-                    .or(self.hanging_chars_hundredths)
-            },
-            left_chars_hundredths: child.left_chars_hundredths.or(self.left_chars_hundredths),
-            right_chars_hundredths: child.right_chars_hundredths.or(self.right_chars_hundredths),
-            start_chars_hundredths: child.start_chars_hundredths.or(self.start_chars_hundredths),
-            end_chars_hundredths: child.end_chars_hundredths.or(self.end_chars_hundredths),
+            first_line_twips,
+            hanging_twips,
+            left_twips,
+            right_twips,
+            start_twips,
+            end_twips,
+            first_line_chars_hundredths,
+            hanging_chars_hundredths,
+            left_chars_hundredths,
+            right_chars_hundredths,
+            start_chars_hundredths,
+            end_chars_hundredths,
         }
     }
 
@@ -90,13 +133,23 @@ impl ParagraphIndentation {
         if direct.hanging_twips == Some(0) {
             direct.hanging_twips = None;
         }
-        if direct.first_line_chars_hundredths == Some(0) {
-            direct.first_line_chars_hundredths = None;
-        }
-        if direct.hanging_chars_hundredths == Some(0) {
-            direct.hanging_chars_hundredths = None;
-        }
         self.inherit(direct)
+    }
+}
+
+fn inherit_character_indent(
+    parent_twips: Option<i32>,
+    parent_chars: Option<i32>,
+    child_twips: Option<i32>,
+    child_chars: Option<i32>,
+) -> (Option<i32>, Option<i32>) {
+    match child_chars {
+        Some(0) => (child_twips.or(parent_twips), None),
+        Some(value) => (None, Some(value)),
+        None => parent_chars.filter(|value| *value != 0).map_or_else(
+            || (child_twips.or(parent_twips), None),
+            |value| (None, Some(value)),
+        ),
     }
 }
 
@@ -220,13 +273,118 @@ pub(super) struct RawInternalReference {
 pub(super) struct StyleDefinition {
     pub based_on: Option<String>,
     pub properties: ParagraphProperties,
+    pub text_properties: TextProperties,
+    pub kind: StyleKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum StyleKind {
+    Character,
+    Paragraph,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct TextProperties {
+    pub bold: Option<bool>,
+    pub complex_script_bold: Option<bool>,
+    pub force_complex_script: Option<bool>,
+    pub right_to_left: Option<bool>,
+    pub highlighted: Option<bool>,
+    pub superscript: Option<bool>,
+}
+
+impl TextProperties {
+    pub(super) const fn inherit(self, child: Self) -> Self {
+        Self {
+            bold: if child.bold.is_some() {
+                child.bold
+            } else {
+                self.bold
+            },
+            complex_script_bold: if child.complex_script_bold.is_some() {
+                child.complex_script_bold
+            } else {
+                self.complex_script_bold
+            },
+            force_complex_script: if child.force_complex_script.is_some() {
+                child.force_complex_script
+            } else {
+                self.force_complex_script
+            },
+            right_to_left: if child.right_to_left.is_some() {
+                child.right_to_left
+            } else {
+                self.right_to_left
+            },
+            highlighted: if child.highlighted.is_some() {
+                child.highlighted
+            } else {
+                self.highlighted
+            },
+            superscript: if child.superscript.is_some() {
+                child.superscript
+            } else {
+                self.superscript
+            },
+        }
+    }
+
+    pub(super) fn inherit_style(self, child: Self) -> Self {
+        let mut inherited = self.inherit(child);
+        inherited.bold = inherit_style_toggle(self.bold, child.bold);
+        inherited.complex_script_bold =
+            inherit_style_toggle(self.complex_script_bold, child.complex_script_bold);
+        inherited
+    }
+}
+
+fn inherit_style_toggle(inherited: Option<bool>, child: Option<bool>) -> Option<bool> {
+    match child {
+        Some(true) => Some(!inherited.unwrap_or(false)),
+        Some(false) | None => inherited,
+    }
 }
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct StyleSheet {
     pub default_style_id: Option<String>,
     pub document_defaults: ParagraphProperties,
+    pub document_text_defaults: TextProperties,
     pub styles: HashMap<String, StyleDefinition>,
+    resolved_character_text: HashMap<String, TextProperties>,
+    resolved_paragraph_styles: HashMap<String, ResolvedParagraphStyle>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ResolvedParagraphStyle {
+    text: TextProperties,
+    properties: ResolvedParagraphStyleProperties,
+}
+
+impl ResolvedParagraphStyle {
+    fn inherit(self, child: &StyleDefinition) -> Self {
+        Self {
+            text: self.text.inherit_style(child.text_properties),
+            properties: self.properties.inherit(&child.properties),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ResolvedParagraphStyleProperties {
+    indentation: ParagraphIndentation,
+    numbering: NumberingProperties,
+    outline_level: Option<u8>,
+}
+
+impl ResolvedParagraphStyleProperties {
+    fn inherit(self, child: &ParagraphProperties) -> Self {
+        Self {
+            indentation: self.indentation.inherit(child.indentation),
+            numbering: self.numbering.inherit(child.numbering),
+            outline_level: child.outline_level.or(self.outline_level),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -237,35 +395,201 @@ struct ResolvedParagraphProperties {
 }
 
 impl StyleSheet {
+    pub(super) fn prepare_styles(&mut self) {
+        (self.resolved_character_text, _) = self.resolve_character_text_styles();
+        (self.resolved_paragraph_styles, _) = self.resolve_paragraph_styles();
+    }
+
+    pub(super) fn resolve_text(
+        &self,
+        paragraph_style_id: Option<&str>,
+        character_style_id: Option<&str>,
+        direct: TextProperties,
+    ) -> Result<TextProperties, ()> {
+        let paragraph_style_id = paragraph_style_id.or(self.default_style_id.as_deref());
+        let paragraph = paragraph_style_id
+            .map(|style_id| {
+                self.resolved_paragraph_styles
+                    .get(style_id)
+                    .map(|style| style.text)
+                    .ok_or(())
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let character = character_style_id
+            .map(|style_id| {
+                self.resolved_character_text
+                    .get(style_id)
+                    .copied()
+                    .ok_or(())
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let mut effective = self
+            .document_text_defaults
+            .inherit(paragraph)
+            .inherit(character)
+            .inherit(direct);
+        effective.bold = Some(resolve_word_toggle(
+            self.document_text_defaults.bold,
+            paragraph.bold,
+            character.bold,
+            direct.bold,
+        ));
+        effective.complex_script_bold = Some(resolve_word_toggle(
+            self.document_text_defaults.complex_script_bold,
+            paragraph.complex_script_bold,
+            character.complex_script_bold,
+            direct.complex_script_bold,
+        ));
+        Ok(effective)
+    }
+
+    fn resolve_character_text_styles(&self) -> (HashMap<String, TextProperties>, usize) {
+        let mut resolved = HashMap::new();
+        let mut unresolved = HashSet::new();
+        let mut resolution_steps = 0usize;
+        for root_id in self.styles.iter().filter_map(|(style_id, style)| {
+            (style.kind == StyleKind::Character).then_some(style_id)
+        }) {
+            if resolved.contains_key(root_id) || unresolved.contains(root_id) {
+                continue;
+            }
+            let mut chain = Vec::new();
+            let mut seen = HashSet::new();
+            let mut current = Some(root_id.as_str());
+            let mut inherited = TextProperties::default();
+            let mut valid = true;
+            while let Some(style_id) = current {
+                resolution_steps = resolution_steps.saturating_add(1);
+                if let Some(properties) = resolved.get(style_id).copied() {
+                    inherited = properties;
+                    break;
+                }
+                if unresolved.contains(style_id) {
+                    valid = false;
+                    break;
+                }
+                if !seen.insert(style_id) {
+                    valid = false;
+                    break;
+                }
+                let Some(style) = self.styles.get(style_id) else {
+                    // Word ignores a missing basedOn target. A missing initially
+                    // selected style is still unsupported.
+                    valid = !chain.is_empty();
+                    break;
+                };
+                if style.kind != StyleKind::Character {
+                    // basedOn inheritance cannot cross style kinds; Word treats
+                    // the current style as a root instead of discarding it.
+                    valid = !chain.is_empty();
+                    break;
+                }
+                chain.push(style_id);
+                current = style.based_on.as_deref();
+            }
+            if !valid {
+                unresolved.extend(chain.into_iter().map(str::to_owned));
+                continue;
+            }
+            for style_id in chain.into_iter().rev() {
+                // Every ID in the chain was validated above.
+                if let Some(style) = self.styles.get(style_id) {
+                    inherited = inherited.inherit_style(style.text_properties);
+                    resolved.insert(style_id.to_owned(), inherited);
+                }
+            }
+        }
+        debug_assert!(
+            resolution_steps <= self.styles.len().saturating_mul(2).saturating_add(1),
+            "memoized style resolution exceeded its linear work budget"
+        );
+        (resolved, resolution_steps)
+    }
+
+    fn resolve_paragraph_styles(&self) -> (HashMap<String, ResolvedParagraphStyle>, usize) {
+        let mut resolved = HashMap::new();
+        let mut unresolved = HashSet::new();
+        let mut resolution_steps = 0usize;
+        for root_id in self.styles.iter().filter_map(|(style_id, style)| {
+            (style.kind == StyleKind::Paragraph).then_some(style_id)
+        }) {
+            if resolved.contains_key(root_id) || unresolved.contains(root_id) {
+                continue;
+            }
+            let mut chain = Vec::new();
+            let mut seen = HashSet::new();
+            let mut current = Some(root_id.as_str());
+            let mut inherited = ResolvedParagraphStyle::default();
+            let mut valid = true;
+            while let Some(style_id) = current {
+                resolution_steps = resolution_steps.saturating_add(1);
+                if let Some(properties) = resolved.get(style_id).copied() {
+                    inherited = properties;
+                    break;
+                }
+                if unresolved.contains(style_id) || !seen.insert(style_id) {
+                    valid = false;
+                    break;
+                }
+                let Some(style) = self.styles.get(style_id) else {
+                    valid = !chain.is_empty();
+                    break;
+                };
+                if style.kind != StyleKind::Paragraph {
+                    valid = !chain.is_empty();
+                    break;
+                }
+                chain.push(style_id);
+                current = style.based_on.as_deref();
+            }
+            if !valid {
+                unresolved.extend(chain.into_iter().map(str::to_owned));
+                continue;
+            }
+            for style_id in chain.into_iter().rev() {
+                if let Some(style) = self.styles.get(style_id) {
+                    inherited = inherited.inherit(style);
+                    resolved.insert(style_id.to_owned(), inherited);
+                }
+            }
+        }
+        debug_assert!(
+            resolution_steps <= self.styles.len().saturating_mul(2).saturating_add(1),
+            "memoized paragraph style resolution exceeded its linear work budget"
+        );
+        (resolved, resolution_steps)
+    }
+
+    pub(super) fn paragraph_uses_numbering(
+        &self,
+        direct: &ParagraphProperties,
+    ) -> Result<bool, StructuralFactUnknownReason> {
+        self.resolve(
+            direct,
+            Err(StructuralFactUnknownReason::UnsupportedNumbering),
+        )
+        .map(|resolved| resolved.numbering.present && resolved.numbering.num_id != Some(0))
+    }
+
     fn resolve(
         &self,
         direct: &ParagraphProperties,
         numbering_catalog: Result<&NumberingCatalog, StructuralFactUnknownReason>,
     ) -> Result<ResolvedParagraphProperties, StructuralFactUnknownReason> {
         let initial_style_id = direct.style_id.as_ref().or(self.default_style_id.as_ref());
-        let mut chain = Vec::new();
-        let mut current = initial_style_id;
-        while let Some(current_style_id) = current {
-            if chain.iter().any(|seen| seen == current_style_id) || chain.len() >= 128 {
-                return Err(StructuralFactUnknownReason::UnsupportedStyles);
-            }
-            let Some(style) = self.styles.get(current_style_id) else {
-                return Err(StructuralFactUnknownReason::UnsupportedStyles);
-            };
-            chain.push(current_style_id.clone());
-            current = style.based_on.as_ref();
-        }
-
-        let mut numbering = self.document_defaults.numbering;
-        let mut outline_level = self.document_defaults.outline_level;
-        for current_style_id in chain.iter().rev() {
-            let style = self
-                .styles
-                .get(current_style_id)
-                .ok_or(StructuralFactUnknownReason::UnsupportedStyles)?;
-            numbering = numbering.inherit(style.properties.numbering);
-            outline_level = style.properties.outline_level.or(outline_level);
-        }
+        let style = initial_style_id
+            .map(|style_id| {
+                self.resolved_paragraph_styles
+                    .get(style_id)
+                    .map(|style| style.properties)
+                    .ok_or(StructuralFactUnknownReason::UnsupportedStyles)
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let mut numbering = self.document_defaults.numbering.inherit(style.numbering);
+        let mut outline_level = style.outline_level.or(self.document_defaults.outline_level);
         let inherited_numbering = numbering;
         numbering = numbering.inherit(direct.numbering);
         outline_level = direct.outline_level.or(outline_level);
@@ -298,12 +622,7 @@ impl StyleSheet {
                 indentation = indentation.inherit(level_indentation);
             }
             if !numbering_removed {
-                for current_style_id in chain.iter().rev() {
-                    // The style graph and IDs were validated while constructing the chain.
-                    if let Some(style) = self.styles.get(current_style_id) {
-                        indentation = indentation.inherit(style.properties.indentation);
-                    }
-                }
+                indentation = indentation.inherit(style.indentation);
             }
             if numbering_is_direct {
                 indentation = indentation.inherit(level_indentation);
@@ -320,6 +639,18 @@ impl StyleSheet {
             outline_level,
         })
     }
+}
+
+fn resolve_word_toggle(
+    document_default: Option<bool>,
+    paragraph: Option<bool>,
+    character: Option<bool>,
+    direct: Option<bool>,
+) -> bool {
+    if let Some(value) = direct {
+        return value;
+    }
+    document_default.unwrap_or(false) ^ paragraph.unwrap_or(false) ^ character.unwrap_or(false)
 }
 
 #[derive(Clone, Copy)]
@@ -679,4 +1010,94 @@ fn segment_range(
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ParagraphProperties, StyleDefinition, StyleKind, StyleSheet, TextProperties,
+        inherit_style_toggle,
+    };
+
+    const WORD_STYLE_LIMIT: usize = 4_079;
+
+    fn style(based_on: Option<String>, kind: StyleKind) -> StyleDefinition {
+        StyleDefinition {
+            based_on,
+            properties: ParagraphProperties::default(),
+            text_properties: TextProperties {
+                bold: Some(true),
+                ..TextProperties::default()
+            },
+            kind,
+        }
+    }
+
+    #[test]
+    fn style_toggle_truth_table_preserves_false_and_toggles_true() {
+        let cases = [
+            (&[][..], None),
+            (&[false][..], None),
+            (&[true][..], Some(true)),
+            (&[true, false][..], Some(true)),
+            (&[true, true][..], Some(false)),
+            (&[true, false, true][..], Some(false)),
+            (&[true, true, true][..], Some(true)),
+        ];
+
+        for (levels, expected) in cases {
+            let actual = levels.iter().fold(None, |inherited, &level| {
+                inherit_style_toggle(inherited, Some(level))
+            });
+            assert_eq!(actual, expected, "style levels {levels:?}");
+        }
+    }
+
+    #[test]
+    fn style_resolution_stays_within_its_linear_work_budget() -> Result<(), &'static str> {
+        let ids = (0..WORD_STYLE_LIMIT)
+            .map(|index| format!("style-{index}"))
+            .collect::<Vec<_>>();
+
+        let mut paragraph_chain = StyleSheet::default();
+        let mut paragraph_parent = None;
+        for id in &ids {
+            paragraph_chain.styles.insert(
+                id.clone(),
+                style(paragraph_parent.clone(), StyleKind::Paragraph),
+            );
+            paragraph_parent = Some(id.clone());
+        }
+        let (resolved_paragraphs, paragraph_steps) = paragraph_chain.resolve_paragraph_styles();
+        assert_eq!(resolved_paragraphs.len(), WORD_STYLE_LIMIT);
+        assert!(paragraph_steps <= WORD_STYLE_LIMIT.saturating_mul(2).saturating_add(1));
+
+        let mut character_chain = StyleSheet::default();
+        let mut character_parent = None;
+        for id in &ids {
+            character_chain.styles.insert(
+                id.clone(),
+                style(character_parent.clone(), StyleKind::Character),
+            );
+            character_parent = Some(id.clone());
+        }
+        let (resolved_characters, character_steps) =
+            character_chain.resolve_character_text_styles();
+        assert_eq!(resolved_characters.len(), WORD_STYLE_LIMIT);
+        assert!(character_steps <= WORD_STYLE_LIMIT.saturating_mul(2).saturating_add(1));
+
+        let mut cycle = StyleSheet::default();
+        let first = ids.first().ok_or("the fixture must be non-empty")?;
+        for (index, id) in ids.iter().enumerate() {
+            let successor = ids.get(index.saturating_add(1)).unwrap_or(first);
+            cycle.styles.insert(
+                id.clone(),
+                style(Some(successor.clone()), StyleKind::Paragraph),
+            );
+        }
+        let (cycle_resolved, cycle_steps) = cycle.resolve_paragraph_styles();
+        assert!(cycle_resolved.is_empty());
+        assert!(cycle_steps <= WORD_STYLE_LIMIT.saturating_add(1));
+        Ok(())
+    }
 }

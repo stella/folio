@@ -28,6 +28,12 @@ export type DocxProjectionFactSet<T> = readonly [status: "known", items: readonl
 export type DocxProjectionFormattingSpan = readonly [startUtf16: number, endUtf16: number, style: "bold" | "highlight" | "superscript"];
 
 // @public (undocumented)
+export type DocxProjectionFormattingStatus = readonly [status: "complete"] | readonly [status: "incomplete", reason: DocxProjectionFormattingUnknownReason];
+
+// @public (undocumented)
+export type DocxProjectionFormattingUnknownReason = "document-part-only" | "styles-part-unavailable" | "unsupported-styles";
+
+// @public (undocumented)
 export type DocxProjectionIndentationFact = readonly [paragraphOrdinal: number, firstLineTwips: number | null, hangingTwips: number | null, leftTwips: number | null, rightTwips: number | null, startTwips: number | null, endTwips: number | null, firstLineCharsHundredths: number | null, hangingCharsHundredths: number | null, leftCharsHundredths: number | null, rightCharsHundredths: number | null, startCharsHundredths: number | null, endCharsHundredths: number | null];
 
 // @public (undocumented)
@@ -67,7 +73,7 @@ export type DocxProjectionUnknownReason = "document-part-only" | "styles-part-un
 export type DocxProjectionWasmSource = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 // @public (undocumented)
-export type DocxProjectionWire = readonly [schemaVersion: 3, paragraphs: readonly DocxProjectionParagraph[], structuralFacts: DocxProjectionStructuralFacts, revisionStatus: DocxProjectionRevisionStatus];
+export type DocxProjectionWire = readonly [schemaVersion: 4, paragraphs: readonly DocxProjectionParagraph[], structuralFacts: DocxProjectionStructuralFacts, revisionStatus: DocxProjectionRevisionStatus, formattingStatus: DocxProjectionFormattingStatus];
 
 // @public (undocumented)
 export type DocxReviewFactSet<T> = readonly [status: "known", items: readonly T[]] | readonly [status: "unknown", reason: DocxReviewUnknownReason];

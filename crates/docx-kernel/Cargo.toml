@@ -24,6 +24,7 @@ miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-a
 quick-xml = { version = "0.41", default-features = false }
 rawzip = { version = "0.5.1", default-features = false, features = ["alloc"] }
 thiserror = "2"
+unicode-script = "0.5.8"
 wasm-bindgen = { version = "0.2.126", optional = true }
 
 [dev-dependencies]

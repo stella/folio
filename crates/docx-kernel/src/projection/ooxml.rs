@@ -4,8 +4,8 @@ use quick_xml::XmlVersion;
 use quick_xml::escape::resolve_predefined_entity;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::NsReader;
+use unicode_script::{Script, UnicodeScript};
 
-use crate::ProjectionError;
 use crate::projection::compatibility::{CompatibilityAction, MarkupCompatibility};
 use crate::projection::namespaces::OoxmlNamespace;
 use crate::projection::review::{
@@ -14,11 +14,13 @@ use crate::projection::review::{
 };
 use crate::projection::structure::{
     ParagraphProperties, RawBlockPoint, RawBookmarkRange, RawInternalReference,
-    StructuralFactUnknownReason,
+    StructuralFactUnknownReason, StyleSheet, TextProperties,
 };
 use crate::projection::styles::{
     parse_indentation, parse_level_attribute, parse_outline_level_attribute, parse_u32_attribute,
+    semantic_highlight_value, word_style_id,
 };
+use crate::{FormattingProjectionStatus, FormattingUnknownReason, ProjectionError};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PackageParagraphId(u32);
@@ -155,6 +157,7 @@ pub(super) struct RawDocumentProjection {
     pub paragraphs: Vec<RawProjectedParagraph>,
     pub bookmarks: Result<Vec<RawBookmarkRange>, StructuralFactUnknownReason>,
     pub references: Result<Vec<RawInternalReference>, StructuralFactUnknownReason>,
+    pub formatting_status: FormattingProjectionStatus,
     pub revision_status: RevisionProjectionStatus,
     pub review_revisions: Option<ReviewFactSet<AttributedRevision>>,
     pub review_comment_anchors: HashMap<String, ReviewSpan>,
@@ -167,24 +170,23 @@ struct ParagraphBuilder {
     formatting: Vec<TextFormattingSpan>,
     structure: Option<ParagraphStructure>,
     properties: ParagraphProperties,
+    resolved_text_base: Option<Result<TextProperties, ()>>,
     paragraph_mark_revision: Option<ParagraphMarkRevision>,
 }
 
 impl ParagraphBuilder {
-    fn append(&mut self, text: &str, styles: DirectTextStyles) -> Result<(), ProjectionError> {
+    fn append(&mut self, text: &str, styles: TextProperties) -> Result<(), ProjectionError> {
         let units = u32::try_from(text.encode_utf16().count())
             .map_err(|_| ProjectionError::InvalidDocumentXml)?;
         let end = self
             .utf16_len
             .checked_add(units)
             .ok_or(ProjectionError::InvalidDocumentXml)?;
-        if styles.bold {
-            self.append_style(end, TextStyle::Bold);
-        }
-        if styles.highlighted {
+        self.append_bold(text, styles, end)?;
+        if styles.highlighted == Some(true) {
             self.append_style(end, TextStyle::Highlight);
         }
-        if styles.superscript {
+        if styles.superscript == Some(true) {
             self.append_style(end, TextStyle::Superscript);
         }
         self.text.push_str(text);
@@ -192,8 +194,76 @@ impl ParagraphBuilder {
         Ok(())
     }
 
+    fn append_bold(
+        &mut self,
+        text: &str,
+        styles: TextProperties,
+        end_utf16: u32,
+    ) -> Result<(), ProjectionError> {
+        if styles.force_complex_script == Some(true) || styles.right_to_left == Some(true) {
+            if styles.complex_script_bold == Some(true) {
+                self.append_style(end_utf16, TextStyle::Bold);
+            }
+            return Ok(());
+        }
+
+        let regular_bold = styles.bold == Some(true);
+        let complex_bold = styles.complex_script_bold == Some(true);
+        if regular_bold == complex_bold {
+            if regular_bold {
+                self.append_style(end_utf16, TextStyle::Bold);
+            }
+            return Ok(());
+        }
+
+        let mut slot = text
+            .chars()
+            .find_map(character_bold_slot)
+            .unwrap_or(BoldSlot::Regular);
+        let mut range_start = self.utf16_len;
+        let mut position = self.utf16_len;
+        for character in text.chars() {
+            let character_slot = character_bold_slot(character).unwrap_or(slot);
+            if character_slot != slot {
+                if slot.enabled(regular_bold, complex_bold) {
+                    self.append_style_range(range_start, position, TextStyle::Bold);
+                }
+                range_start = position;
+                slot = character_slot;
+            }
+            let character_units = if character.len_utf16() == 1 { 1 } else { 2 };
+            position = position
+                .checked_add(character_units)
+                .ok_or(ProjectionError::InvalidDocumentXml)?;
+        }
+        if slot.enabled(regular_bold, complex_bold) {
+            self.append_style_range(range_start, position, TextStyle::Bold);
+        }
+        if position != end_utf16 {
+            return Err(ProjectionError::InvalidDocumentXml);
+        }
+        Ok(())
+    }
+
+    fn resolve_text_base(&mut self, styles: &StyleSheet) -> Result<TextProperties, ()> {
+        if let Some(resolved) = self.resolved_text_base {
+            return resolved;
+        }
+        let resolved = styles.resolve_text(
+            self.properties.style_id.as_deref(),
+            None,
+            TextProperties::default(),
+        );
+        self.resolved_text_base = Some(resolved);
+        resolved
+    }
+
     fn append_style(&mut self, end_utf16: u32, style: TextStyle) {
-        if self.utf16_len >= end_utf16 {
+        self.append_style_range(self.utf16_len, end_utf16, style);
+    }
+
+    fn append_style_range(&mut self, start_utf16: u32, end_utf16: u32, style: TextStyle) {
+        if start_utf16 >= end_utf16 {
             return;
         }
         if let Some(previous) = self
@@ -201,13 +271,13 @@ impl ParagraphBuilder {
             .iter_mut()
             .rev()
             .find(|span| span.style == style)
-            && previous.end_utf16 == self.utf16_len
+            && previous.end_utf16 == start_utf16
         {
             previous.end_utf16 = end_utf16;
             return;
         }
         self.formatting.push(TextFormattingSpan {
-            start_utf16: self.utf16_len,
+            start_utf16,
             end_utf16,
             style,
         });
@@ -223,16 +293,143 @@ impl ParagraphBuilder {
     }
 }
 
-#[derive(Clone, Copy, Default)]
-struct DirectTextStyles {
-    bold: bool,
-    highlighted: bool,
-    superscript: bool,
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum BoldSlot {
+    Regular,
+    Complex,
+}
+
+impl BoldSlot {
+    const fn enabled(self, regular: bool, complex: bool) -> bool {
+        match self {
+            Self::Regular => regular,
+            Self::Complex => complex,
+        }
+    }
+}
+
+#[allow(clippy::too_many_lines)] // Keep HarfBuzz's Unicode 17 shaper table visible and auditable.
+fn character_bold_slot(character: char) -> Option<BoldSlot> {
+    match character.script() {
+        Script::Common | Script::Inherited => None,
+        // This positive set tracks the Unicode 17 scripts that HarfBuzz's
+        // src/hb-ot-shaper.hh routes through its Arabic, Hebrew, Indic, Khmer,
+        // Myanmar, Thai, or Universal Shaping Engine paths. Hangul remains in
+        // the regular OOXML bold slot: its dedicated shaper does not make it a
+        // complex-script run.
+        Script::Adlam
+        | Script::Ahom
+        | Script::Arabic
+        | Script::Balinese
+        | Script::Batak
+        | Script::Beria_Erfe
+        | Script::Bengali
+        | Script::Bhaiksuki
+        | Script::Brahmi
+        | Script::Buginese
+        | Script::Buhid
+        | Script::Chakma
+        | Script::Cham
+        | Script::Chorasmian
+        | Script::Cypro_Minoan
+        | Script::Devanagari
+        | Script::Dives_Akuru
+        | Script::Dogra
+        | Script::Duployan
+        | Script::Egyptian_Hieroglyphs
+        | Script::Elymaic
+        | Script::Garay
+        | Script::Grantha
+        | Script::Gujarati
+        | Script::Gunjala_Gondi
+        | Script::Gurung_Khema
+        | Script::Gurmukhi
+        | Script::Hanifi_Rohingya
+        | Script::Hanunoo
+        | Script::Hebrew
+        | Script::Javanese
+        | Script::Kaithi
+        | Script::Kannada
+        | Script::Kawi
+        | Script::Kayah_Li
+        | Script::Kharoshthi
+        | Script::Khmer
+        | Script::Khitan_Small_Script
+        | Script::Khojki
+        | Script::Khudawadi
+        | Script::Kirat_Rai
+        | Script::Lao
+        | Script::Lepcha
+        | Script::Limbu
+        | Script::Mahajani
+        | Script::Makasar
+        | Script::Malayalam
+        | Script::Mandaic
+        | Script::Manichaean
+        | Script::Marchen
+        | Script::Masaram_Gondi
+        | Script::Medefaidrin
+        | Script::Meetei_Mayek
+        | Script::Miao
+        | Script::Modi
+        | Script::Mongolian
+        | Script::Multani
+        | Script::Myanmar
+        | Script::Nag_Mundari
+        | Script::Nandinagari
+        | Script::Newa
+        | Script::Nko
+        | Script::Nyiakeng_Puachue_Hmong
+        | Script::Old_Sogdian
+        | Script::Old_Uyghur
+        | Script::Ol_Onal
+        | Script::Oriya
+        | Script::Pahawh_Hmong
+        | Script::Phags_Pa
+        | Script::Psalter_Pahlavi
+        | Script::Rejang
+        | Script::Saurashtra
+        | Script::Sharada
+        | Script::Siddham
+        | Script::Sidetic
+        | Script::Sinhala
+        | Script::Sogdian
+        | Script::Soyombo
+        | Script::Sundanese
+        | Script::Sunuwar
+        | Script::Syloti_Nagri
+        | Script::Syriac
+        | Script::Tagalog
+        | Script::Tagbanwa
+        | Script::Tai_Le
+        | Script::Tai_Tham
+        | Script::Tai_Viet
+        | Script::Tai_Yo
+        | Script::Tamil
+        | Script::Tangsa
+        | Script::Takri
+        | Script::Telugu
+        | Script::Thaana
+        | Script::Thai
+        | Script::Tibetan
+        | Script::Tifinagh
+        | Script::Tirhuta
+        | Script::Todhri
+        | Script::Tolong_Siki
+        | Script::Toto
+        | Script::Tulu_Tigalari
+        | Script::Vithkuqi
+        | Script::Wancho
+        | Script::Yezidi
+        | Script::Zanabazar_Square => Some(BoldSlot::Complex),
+        _ => Some(BoldSlot::Regular),
+    }
 }
 
 struct RunFrame {
     text: String,
-    styles: DirectTextStyles,
+    direct_styles: TextProperties,
+    character_style_id: Option<String>,
     hidden: bool,
     direct_child_count: usize,
 }
@@ -269,6 +466,7 @@ struct SdtFrame {
 #[derive(Clone, Copy)]
 enum PseudoTextKind {
     Text { preserve_space: bool },
+    MathText,
     Instruction,
 }
 
@@ -291,12 +489,122 @@ impl PseudoTextFrame {
             text: String::new(),
         }
     }
+
+    const fn math_text() -> Self {
+        Self {
+            kind: PseudoTextKind::MathText,
+            text: String::new(),
+        }
+    }
 }
 
 struct FieldFrame {
     source: Option<RawBlockPoint>,
     instruction: String,
     separated: bool,
+}
+
+#[derive(Clone, Debug)]
+enum BookmarkPoint {
+    Paragraph(RawBlockPoint),
+    ParagraphBoundary(usize),
+}
+
+#[derive(Clone, Debug)]
+struct PendingBookmarkRange {
+    id: u32,
+    name: String,
+    start: BookmarkPoint,
+    end: BookmarkPoint,
+}
+
+fn resolve_bookmark_ranges(
+    paragraphs: &[RawProjectedParagraph],
+    ranges: Vec<PendingBookmarkRange>,
+) -> Option<Vec<RawBookmarkRange>> {
+    ranges
+        .into_iter()
+        .map(|range| {
+            let same_boundary = matches!(
+                (&range.start, &range.end),
+                (
+                    BookmarkPoint::ParagraphBoundary(start),
+                    BookmarkPoint::ParagraphBoundary(end)
+                ) if start == end
+            );
+            let start = resolve_bookmark_point(paragraphs, &range.start, BoundarySide::Start)?;
+            let end = resolve_bookmark_point(
+                paragraphs,
+                &range.end,
+                if same_boundary {
+                    BoundarySide::Start
+                } else {
+                    BoundarySide::End
+                },
+            )?;
+            bookmark_points_are_ordered(&start, &end).then_some(RawBookmarkRange {
+                id: range.id,
+                name: range.name,
+                start,
+                end,
+            })
+        })
+        .collect()
+}
+
+#[derive(Clone, Copy)]
+enum BoundarySide {
+    Start,
+    End,
+}
+
+fn resolve_bookmark_point(
+    paragraphs: &[RawProjectedParagraph],
+    point: &BookmarkPoint,
+    side: BoundarySide,
+) -> Option<RawBlockPoint> {
+    let boundary = match point {
+        BookmarkPoint::Paragraph(point) => return Some(point.clone()),
+        BookmarkPoint::ParagraphBoundary(boundary) => boundary,
+    };
+    if *boundary > paragraphs.len() || paragraphs.is_empty() {
+        return None;
+    }
+    match side {
+        BoundarySide::Start => paragraphs.get(*boundary).map_or_else(
+            || paragraph_end(paragraphs.last()?),
+            |paragraph| {
+                Some(RawBlockPoint {
+                    paragraph: paragraph.ordinal,
+                    utf8: 0,
+                    utf16: 0,
+                })
+            },
+        ),
+        BoundarySide::End => boundary.checked_sub(1).map_or_else(
+            || {
+                Some(RawBlockPoint {
+                    paragraph: paragraphs.first()?.ordinal,
+                    utf8: 0,
+                    utf16: 0,
+                })
+            },
+            |paragraph| paragraph_end(paragraphs.get(paragraph)?),
+        ),
+    }
+}
+
+fn paragraph_end(paragraph: &RawProjectedParagraph) -> Option<RawBlockPoint> {
+    Some(RawBlockPoint {
+        paragraph: paragraph.ordinal,
+        utf8: u32::try_from(paragraph.text.len()).ok()?,
+        utf16: paragraph.utf16_len,
+    })
+}
+
+const fn bookmark_points_are_ordered(start: &RawBlockPoint, end: &RawBlockPoint) -> bool {
+    start.paragraph < end.paragraph
+        || (start.paragraph == end.paragraph && start.utf8 <= end.utf8 && start.utf16 <= end.utf16)
 }
 
 struct RevisionFrame {
@@ -340,6 +648,8 @@ enum Frame {
     Hyperlink(Option<RawInternalReference>),
     Revision(RevisionFrame),
     ChangeSnapshot,
+    Math,
+    MathRun,
     Textbox,
     Sdt(SdtFrame),
     PseudoText(PseudoTextFrame),
@@ -351,6 +661,7 @@ pub(super) fn project_document_xml(
     maximum_paragraphs: usize,
     revision_view: RevisionView,
     text_materialization: TextMaterialization,
+    styles: Result<&StyleSheet, FormattingUnknownReason>,
     review_limits: Option<ReviewProjectionLimits>,
 ) -> Result<RawDocumentProjection, ProjectionError> {
     let mut reader = NsReader::from_reader(xml);
@@ -361,6 +672,10 @@ pub(super) fn project_document_xml(
         text_materialization,
         bookmarks_complete: true,
         references_complete: true,
+        formatting_status: match styles {
+            Ok(_) => FormattingProjectionStatus::Complete,
+            Err(reason) => FormattingProjectionStatus::Incomplete(reason),
+        },
         review_revisions: review_limits.map_or(ReviewRevisionCollection::Disabled, |limits| {
             ReviewRevisionCollection::Complete {
                 maximum_facts: limits.maximum_facts,
@@ -392,7 +707,7 @@ pub(super) fn project_document_xml(
                     == CompatibilityAction::Process
                 {
                     state.start(&reader, namespace, &element)?;
-                    state.end()?;
+                    state.end(styles)?;
                 }
             }
             Event::Text(text) => {
@@ -442,7 +757,7 @@ pub(super) fn project_document_xml(
                     local_name.as_ref(),
                 )? == CompatibilityAction::Process
                 {
-                    state.end()?;
+                    state.end(styles)?;
                 }
             }
             Event::Eof => break,
@@ -477,11 +792,9 @@ pub(super) fn project_document_xml(
             }
         }
     }
-    let bookmarks = if state.bookmarks_complete
-        && state.open_bookmarks.is_empty()
-        && (state.bookmarks.is_empty() || !state.paragraphs.is_empty())
-    {
-        Ok(state.bookmarks)
+    let bookmarks = if state.bookmarks_complete && state.open_bookmarks.is_empty() {
+        resolve_bookmark_ranges(&state.paragraphs, state.bookmarks)
+            .ok_or(StructuralFactUnknownReason::IncompleteBookmarkRanges)
     } else {
         Err(StructuralFactUnknownReason::IncompleteBookmarkRanges)
     };
@@ -494,6 +807,7 @@ pub(super) fn project_document_xml(
         paragraphs: state.paragraphs,
         bookmarks,
         references,
+        formatting_status: state.formatting_status,
         revision_status: if state.revision_unsupported.is_empty() {
             RevisionProjectionStatus::Complete
         } else {
@@ -520,12 +834,13 @@ struct ProjectionState {
     body_seen: bool,
     next_table_ordinal: usize,
     maximum_paragraphs: usize,
-    open_bookmarks: HashMap<u32, (String, RawBlockPoint)>,
+    open_bookmarks: HashMap<u32, (String, BookmarkPoint)>,
     seen_bookmark_ids: HashSet<u32>,
-    bookmarks: Vec<RawBookmarkRange>,
+    bookmarks: Vec<PendingBookmarkRange>,
     references: Vec<RawInternalReference>,
     bookmarks_complete: bool,
     references_complete: bool,
+    formatting_status: FormattingProjectionStatus,
     fields: Vec<FieldFrame>,
     paragraph_mark_revisions: HashMap<usize, ParagraphMarkRevision>,
     revision_view: RevisionView,
@@ -618,6 +933,27 @@ impl ProjectionState {
             self.frames.push(Frame::Other);
             return Ok(());
         }
+        if namespace == OoxmlNamespace::OfficeMath {
+            let frame = match local_name.as_ref() {
+                b"oMath" | b"oMathPara" if self.current_paragraph.is_some() => {
+                    // Math text participates in paragraph offsets, but OMML run
+                    // properties form a separate formatting hierarchy.
+                    self.formatting_status = FormattingProjectionStatus::Incomplete(
+                        FormattingUnknownReason::UnsupportedStyles,
+                    );
+                    Frame::Math
+                }
+                b"r" if self.frames.iter().any(|frame| matches!(frame, Frame::Math)) => {
+                    Frame::MathRun
+                }
+                b"t" if matches!(self.frames.last(), Some(Frame::MathRun)) => {
+                    Frame::PseudoText(PseudoTextFrame::math_text())
+                }
+                _ => Frame::Other,
+            };
+            self.frames.push(frame);
+            return Ok(());
+        }
 
         let frame = match name {
             b"tbl" => {
@@ -689,13 +1025,15 @@ impl ProjectionState {
                     formatting: Vec::new(),
                     structure,
                     properties: ParagraphProperties::default(),
+                    resolved_text_base: None,
                     paragraph_mark_revision: None,
                 });
                 Frame::Paragraph
             }
             b"r" if self.current_paragraph.is_some() => Frame::Run(RunFrame {
                 text: String::new(),
-                styles: DirectTextStyles::default(),
+                direct_styles: TextProperties::default(),
+                character_style_id: None,
                 hidden: false,
                 direct_child_count: 0,
             }),
@@ -717,7 +1055,9 @@ impl ProjectionState {
             b"tcPr" => Frame::TableCellProperties,
             b"pStyle" if matches!(self.frames.last(), Some(Frame::ParagraphProperties)) => {
                 if let Some(paragraph) = self.current_paragraph.as_mut() {
-                    paragraph.properties.style_id = attribute(reader, element, b"val")?;
+                    paragraph.properties.style_id =
+                        word_style_id(attribute(reader, element, b"val")?);
+                    paragraph.resolved_text_base = None;
                 }
                 Frame::Other
             }
@@ -841,32 +1181,43 @@ impl ProjectionState {
                 Frame::Other
             }
             b"rStyle" => {
-                if matches!(
-                    attribute(reader, element, b"val")?.as_deref(),
-                    Some("HideTWBInt" | "HideTWBExt")
-                ) {
+                let style_id = word_style_id(attribute(reader, element, b"val")?);
+                if matches!(style_id.as_deref(), Some("HideTWBInt" | "HideTWBExt")) {
                     self.mark_hidden_run();
                 }
+                self.set_run_character_style(style_id);
                 Frame::Other
             }
-            b"b" | b"bCs" => {
-                if on_off_element_enabled(reader, element)? {
-                    self.mark_bold_run();
-                }
+            b"b" => {
+                self.mark_bold_run(on_off_element_enabled(reader, element)?);
+                Frame::Other
+            }
+            b"bCs" => {
+                self.mark_complex_script_bold_run(on_off_element_enabled(reader, element)?);
+                Frame::Other
+            }
+            b"cs" => {
+                self.mark_complex_script_run(on_off_element_enabled(reader, element)?);
+                Frame::Other
+            }
+            b"rtl" => {
+                self.mark_right_to_left_run(on_off_element_enabled(reader, element)?);
                 Frame::Other
             }
             b"highlight" => {
-                if attribute(reader, element, b"val")?
+                if let Some(highlighted) = attribute(reader, element, b"val")?
                     .as_deref()
-                    .is_some_and(is_semantic_highlight_color)
+                    .and_then(semantic_highlight_value)
                 {
-                    self.mark_highlighted_run();
+                    self.mark_highlighted_run(highlighted);
                 }
                 Frame::Other
             }
             b"vertAlign" => {
-                if attribute(reader, element, b"val")?.as_deref() == Some("superscript") {
-                    self.mark_superscript_run();
+                match attribute(reader, element, b"val")?.as_deref() {
+                    Some("superscript") => self.mark_superscript_run(true),
+                    Some("baseline" | "subscript") => self.mark_superscript_run(false),
+                    _ => {}
                 }
                 Frame::Other
             }
@@ -910,7 +1261,8 @@ impl ProjectionState {
             }
             b"sym" => {
                 if let Some(value) = attribute(reader, element, b"char")? {
-                    self.append_pseudo_text(&symbol_text(&value))?;
+                    let font = attribute(reader, element, b"font")?;
+                    self.append_pseudo_text(&symbol_text(&value, font.as_deref()))?;
                 }
                 Frame::Other
             }
@@ -920,17 +1272,47 @@ impl ProjectionState {
         Ok(())
     }
 
-    fn end(&mut self) -> Result<(), ProjectionError> {
+    fn end(
+        &mut self,
+        styles: Result<&StyleSheet, FormattingUnknownReason>,
+    ) -> Result<(), ProjectionError> {
         let frame = self
             .frames
             .pop()
             .ok_or(ProjectionError::InvalidDocumentXml)?;
         match frame {
             Frame::Paragraph => {
-                let paragraph = self
+                let mut paragraph = self
                     .current_paragraph
                     .take()
                     .ok_or(ProjectionError::InvalidDocumentXml)?;
+                if styles.is_ok_and(|styles| paragraph.resolve_text_base(styles).is_err()) {
+                    self.formatting_status = FormattingProjectionStatus::Incomplete(
+                        FormattingUnknownReason::UnsupportedStyles,
+                    );
+                }
+                if styles.is_ok_and(|styles| {
+                    styles
+                        .paragraph_uses_numbering(&paragraph.properties)
+                        .unwrap_or(false)
+                }) {
+                    // Numbering-level run properties are another formatting
+                    // hierarchy level. Retain known spans, but do not present
+                    // them as authoritative until that level is projected.
+                    self.formatting_status = FormattingProjectionStatus::Incomplete(
+                        FormattingUnknownReason::UnsupportedStyles,
+                    );
+                }
+                if paragraph.structure.is_some()
+                    && self.formatting_status == FormattingProjectionStatus::Complete
+                {
+                    // Table-style run properties are a distinct style-hierarchy level.
+                    // Until that level is projected, retain best-known spans but do not
+                    // claim that they are authoritative effective formatting.
+                    self.formatting_status = FormattingProjectionStatus::Incomplete(
+                        FormattingUnknownReason::UnsupportedStyles,
+                    );
+                }
                 let ordinal = self.paragraphs.len();
                 if let Some(revision) = paragraph.paragraph_mark_revision {
                     self.paragraph_mark_revisions.insert(ordinal, revision);
@@ -955,11 +1337,34 @@ impl ProjectionState {
                     };
                     self.append_pseudo_text(text)?;
                 }
+                PseudoTextKind::MathText => self.append_pseudo_text(&frame.text)?,
                 PseudoTextKind::Instruction => self.append_field_instruction(&frame.text),
             },
             Frame::Run(run) if !run.hidden && !self.pseudo_text_is_suppressed() => {
                 if let Some(paragraph) = self.current_paragraph.as_mut() {
-                    paragraph.append(&run.text, run.styles)?;
+                    let effective = match styles {
+                        Ok(styles) => {
+                            let resolved = if run.character_style_id.is_none()
+                                && run.direct_styles == TextProperties::default()
+                            {
+                                paragraph.resolve_text_base(styles)
+                            } else {
+                                styles.resolve_text(
+                                    paragraph.properties.style_id.as_deref(),
+                                    run.character_style_id.as_deref(),
+                                    run.direct_styles,
+                                )
+                            };
+                            resolved.unwrap_or_else(|()| {
+                                self.formatting_status = FormattingProjectionStatus::Incomplete(
+                                    FormattingUnknownReason::UnsupportedStyles,
+                                );
+                                run.direct_styles
+                            })
+                        }
+                        Err(_) => run.direct_styles,
+                    };
+                    paragraph.append(&run.text, effective)?;
                 }
             }
             Frame::Revision(revision) => self.finish_attributed_revision(revision)?,
@@ -1110,7 +1515,7 @@ impl ProjectionState {
         self.current_paragraph
             .as_mut()
             .ok_or(ProjectionError::InvalidDocumentXml)?
-            .append(text, DirectTextStyles::default())
+            .append(text, TextProperties::default())
     }
 
     fn append_review_text(&mut self, text: &str) {
@@ -1437,6 +1842,20 @@ impl ProjectionState {
         )
     }
 
+    fn current_bookmark_point(&self) -> Option<BookmarkPoint> {
+        if self.pseudo_text_is_suppressed() {
+            return None;
+        }
+        if self.current_paragraph.is_some() {
+            return self.current_point().map(BookmarkPoint::Paragraph);
+        }
+        matches!(
+            self.frames.last(),
+            Some(Frame::Body | Frame::Table(_) | Frame::Row(_) | Frame::Cell(_))
+        )
+        .then(|| BookmarkPoint::ParagraphBoundary(self.paragraphs.len()))
+    }
+
     fn start_bookmark(
         &mut self,
         reader: &NsReader<&[u8]>,
@@ -1444,7 +1863,7 @@ impl ProjectionState {
     ) -> Result<(), ProjectionError> {
         let id = attribute(reader, element, b"id")?.and_then(|value| value.parse::<u32>().ok());
         let name = attribute(reader, element, b"name")?;
-        let point = self.current_point();
+        let point = self.current_bookmark_point();
         let (Some(id), Some(name), Some(point)) = (id, name, point) else {
             self.bookmarks_complete = false;
             return Ok(());
@@ -1464,7 +1883,7 @@ impl ProjectionState {
         element: &BytesStart<'_>,
     ) -> Result<(), ProjectionError> {
         let id = attribute(reader, element, b"id")?.and_then(|value| value.parse::<u32>().ok());
-        let point = self.current_point();
+        let point = self.current_bookmark_point();
         let (Some(id), Some(end)) = (id, point) else {
             self.bookmarks_complete = false;
             return Ok(());
@@ -1473,7 +1892,7 @@ impl ProjectionState {
             self.bookmarks_complete = false;
             return Ok(());
         };
-        self.bookmarks.push(RawBookmarkRange {
+        self.bookmarks.push(PendingBookmarkRange {
             id,
             name,
             start,
@@ -1514,33 +1933,73 @@ impl ProjectionState {
         }
     }
 
-    fn mark_bold_run(&mut self) {
+    fn set_run_character_style(&mut self, style_id: Option<String>) {
         let Some(Frame::RunProperties(properties)) = self.frames.last() else {
             return;
         };
         let run_frame = properties.run_frame;
         if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
-            run.styles.bold = true;
+            run.character_style_id = style_id;
         }
     }
 
-    fn mark_highlighted_run(&mut self) {
+    fn mark_bold_run(&mut self, enabled: bool) {
         let Some(Frame::RunProperties(properties)) = self.frames.last() else {
             return;
         };
         let run_frame = properties.run_frame;
         if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
-            run.styles.highlighted = true;
+            run.direct_styles.bold = Some(enabled);
         }
     }
 
-    fn mark_superscript_run(&mut self) {
+    fn mark_complex_script_bold_run(&mut self, enabled: bool) {
         let Some(Frame::RunProperties(properties)) = self.frames.last() else {
             return;
         };
         let run_frame = properties.run_frame;
         if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
-            run.styles.superscript = true;
+            run.direct_styles.complex_script_bold = Some(enabled);
+        }
+    }
+
+    fn mark_complex_script_run(&mut self, enabled: bool) {
+        let Some(Frame::RunProperties(properties)) = self.frames.last() else {
+            return;
+        };
+        let run_frame = properties.run_frame;
+        if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
+            run.direct_styles.force_complex_script = Some(enabled);
+        }
+    }
+
+    fn mark_right_to_left_run(&mut self, enabled: bool) {
+        let Some(Frame::RunProperties(properties)) = self.frames.last() else {
+            return;
+        };
+        let run_frame = properties.run_frame;
+        if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
+            run.direct_styles.right_to_left = Some(enabled);
+        }
+    }
+
+    fn mark_highlighted_run(&mut self, enabled: bool) {
+        let Some(Frame::RunProperties(properties)) = self.frames.last() else {
+            return;
+        };
+        let run_frame = properties.run_frame;
+        if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
+            run.direct_styles.highlighted = Some(enabled);
+        }
+    }
+
+    fn mark_superscript_run(&mut self, enabled: bool) {
+        let Some(Frame::RunProperties(properties)) = self.frames.last() else {
+            return;
+        };
+        let run_frame = properties.run_frame;
+        if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
+            run.direct_styles.superscript = Some(enabled);
         }
     }
 }
@@ -1753,28 +2212,6 @@ fn field_tokens(instruction: &str) -> Result<Vec<String>, ()> {
     Ok(tokens)
 }
 
-/// Returns whether an OOXML `ST_HighlightColor` value represents a visible
-/// semantic marker. Run shading (`w:shd`) is a distinct formatting fact.
-#[must_use]
-pub fn is_semantic_highlight_color(value: &str) -> bool {
-    matches!(
-        value,
-        "black"
-            | "blue"
-            | "cyan"
-            | "darkBlue"
-            | "darkCyan"
-            | "darkGreen"
-            | "darkMagenta"
-            | "darkRed"
-            | "darkYellow"
-            | "green"
-            | "magenta"
-            | "red"
-            | "yellow"
-    )
-}
-
 fn attribute(
     reader: &NsReader<&[u8]>,
     element: &BytesStart<'_>,
@@ -1855,7 +2292,7 @@ fn attribute_2010(
     Ok(None)
 }
 
-fn symbol_text(value: &str) -> String {
+fn symbol_text(value: &str, font: Option<&str>) -> String {
     let prefix = value
         .chars()
         .take_while(char::is_ascii_hexdigit)
@@ -1866,5 +2303,34 @@ fn symbol_text(value: &str) -> String {
     else {
         return value.to_owned();
     };
+    if let Some(replacement) = normalized_font_symbol(font, code) {
+        return replacement.to_owned();
+    }
     char::from_u32(code).unwrap_or('\u{fffd}').to_string()
+}
+
+struct FontSymbolMapping {
+    font: &'static str,
+    encoded: u32,
+    unicode: &'static str,
+}
+
+// OOXML resolves w:sym through its named symbol font rather than the run font:
+// https://learn.microsoft.com/dotnet/api/documentformat.openxml.wordprocessing.symbolchar
+// Unicode's Wingdings mapping identifies the corresponding black-circle glyph:
+// https://www.unicode.org/L2/L2011/11196-n4022-wingdings.pdf
+// Keep this compatibility table explicit; unsupported font/code pairs preserve
+// their encoded value instead of guessing from the glyph shape.
+const FONT_SYMBOL_MAPPINGS: &[FontSymbolMapping] = &[FontSymbolMapping {
+    font: "Wingdings",
+    encoded: 0xF06C,
+    unicode: "●",
+}];
+
+fn normalized_font_symbol(font: Option<&str>, encoded: u32) -> Option<&'static str> {
+    let font = font?;
+    FONT_SYMBOL_MAPPINGS
+        .iter()
+        .find(|mapping| mapping.encoded == encoded && mapping.font.eq_ignore_ascii_case(font))
+        .map(|mapping| mapping.unicode)
 }

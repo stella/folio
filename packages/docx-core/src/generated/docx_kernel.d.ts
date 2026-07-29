@@ -22,6 +22,16 @@ formatting: readonly DocxProjectionFormattingSpan[],
 structure: DocxProjectionStructure,
 styleId: string | null,
 ];
+export type DocxProjectionFormattingUnknownReason =
+| "document-part-only"
+| "styles-part-unavailable"
+| "unsupported-styles";
+export type DocxProjectionFormattingStatus =
+| readonly [status: "complete"]
+| readonly [
+status: "incomplete",
+reason: DocxProjectionFormattingUnknownReason,
+];
 export type DocxProjectionFactSet<T> =
 | readonly [status: "known", items: readonly T[]]
 | readonly [status: "unknown", reason: DocxProjectionUnknownReason];
@@ -97,10 +107,11 @@ status: "incomplete",
 reasons: readonly DocxProjectionRevisionUnsupportedReason[],
 ];
 export type DocxProjectionWire = readonly [
-schemaVersion: 3,
+schemaVersion: 4,
 paragraphs: readonly DocxProjectionParagraph[],
 structuralFacts: DocxProjectionStructuralFacts,
 revisionStatus: DocxProjectionRevisionStatus,
+formattingStatus: DocxProjectionFormattingStatus,
 ];
 export type DocxReviewUnknownReason =
 | "invalid-document"

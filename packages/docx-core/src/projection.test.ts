@@ -24,6 +24,14 @@ const createDocument = async (): Promise<Uint8Array> => {
   return archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
 };
 
+const addStylesPart = (archive: JSZip, stylesXml: string) => {
+  archive.file("word/styles.xml", stylesXml);
+  archive.file(
+    "word/_rels/document.xml.rels",
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+  );
+};
+
 beforeAll(async () => {
   const wasm = await readFile(new URL("./generated/docx_kernel_bg.wasm", import.meta.url));
   await initializeDocxProjection({ wasm });
@@ -33,9 +41,10 @@ describe("DOCX projection TypeScript binding", () => {
   test("runs the versioned Rust projection through WebAssembly", async () => {
     const projection = await projectCompressedDocx(await createDocument());
 
-    expect(projection[0]).toBe(3);
+    expect(projection[0]).toBe(4);
     expect(projection[1].map(([, text]) => text)).toEqual(["Before", "Inside"]);
     expect(projection[1][1]?.[4]).toEqual(["table", "table-0", 0, 0]);
+    expect(projection[4]).toEqual(["incomplete", "styles-part-unavailable"]);
   });
 
   test("preserves every direct text style across the WebAssembly wire", async () => {
@@ -56,14 +65,55 @@ describe("DOCX projection TypeScript binding", () => {
     ]);
   });
 
+  test("projects effective styles, Office Math text, and font-bound symbols through WebAssembly", async () => {
+    const archive = new JSZip();
+    archive.file(
+      "word/document.xml",
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body><w:p><w:pPr><w:pStyle w:val="Marked"/></w:pPr><w:r><w:t>A</w:t></w:r><w:r><w:rPr><w:b w:val="0"/></w:rPr><w:t>B</w:t></w:r><m:oMath><m:r><m:t>x&amp;1</m:t></m:r></m:oMath><w:r><w:sym w:font="Wingdings" w:char="F06C"/></w:r></w:p></w:body></w:document>`,
+    );
+    addStylesPart(
+      archive,
+      `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Marked"><w:rPr><w:b/></w:rPr></w:style></w:styles>`,
+    );
+
+    const projection = await projectCompressedDocx(
+      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+    );
+
+    expect(projection[1][0]?.[1]).toBe("ABx&1●");
+    expect(projection[1][0]?.[3]).toEqual([
+      [0, 1, "bold"],
+      [5, 6, "bold"],
+    ]);
+    expect(projection[4]).toEqual(["incomplete", "unsupported-styles"]);
+  });
+
+  test("selects regular and complex-script bold at the WebAssembly boundary", async () => {
+    const archive = new JSZip();
+    archive.file(
+      "word/document.xml",
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Aع</w:t></w:r><w:r><w:rPr><w:bCs/></w:rPr><w:t>Aع</w:t></w:r><w:r><w:rPr><w:bCs/><w:cs/></w:rPr><w:t>xy</w:t></w:r></w:p></w:body></w:document>`,
+    );
+
+    const projection = await projectCompressedDocx(
+      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+    );
+
+    expect(projection[1][0]?.[1]).toBe("AعAعxy");
+    expect(projection[1][0]?.[3]).toEqual([
+      [0, 1, "bold"],
+      [3, 6, "bold"],
+    ]);
+  });
+
   test("exposes direct style identifiers separately from resolved outline levels", async () => {
     const archive = new JSZip();
     archive.file(
       "word/document.xml",
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Derived"/></w:pPr><w:r><w:t>Inherited</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="Derived"/><w:outlineLvl w:val="3"/></w:pPr><w:r><w:t>Direct</w:t></w:r></w:p></w:body></w:document>`,
     );
-    archive.file(
-      "word/styles.xml",
+    addStylesPart(
+      archive,
       `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Base"><w:pPr><w:outlineLvl w:val="1"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Derived"><w:basedOn w:val="Base"/></w:style></w:styles>`,
     );
 
