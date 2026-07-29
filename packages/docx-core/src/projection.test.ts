@@ -38,6 +38,24 @@ describe("DOCX projection TypeScript binding", () => {
     expect(projection[1][1]?.[4]).toEqual(["table", "table-0", 0, 0]);
   });
 
+  test("preserves every direct text style across the WebAssembly wire", async () => {
+    const archive = new JSZip();
+    archive.file(
+      "word/document.xml",
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/><w:highlight w:val="yellow"/><w:vertAlign w:val="superscript"/></w:rPr><w:t>Styled</w:t></w:r></w:p></w:body></w:document>`,
+    );
+
+    const projection = await projectCompressedDocx(
+      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+    );
+
+    expect(projection[1][0]?.[3]).toEqual([
+      [0, 6, "bold"],
+      [0, 6, "highlight"],
+      [0, 6, "superscript"],
+    ]);
+  });
+
   test("exposes direct style identifiers separately from resolved outline levels", async () => {
     const archive = new JSZip();
     archive.file(

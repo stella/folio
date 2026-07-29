@@ -43,6 +43,7 @@ impl PackageParagraphId {
 pub enum TextStyle {
     Bold,
     Highlight,
+    Superscript,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -170,18 +171,21 @@ struct ParagraphBuilder {
 }
 
 impl ParagraphBuilder {
-    fn append(&mut self, text: &str, bold: bool, highlighted: bool) -> Result<(), ProjectionError> {
+    fn append(&mut self, text: &str, styles: DirectTextStyles) -> Result<(), ProjectionError> {
         let units = u32::try_from(text.encode_utf16().count())
             .map_err(|_| ProjectionError::InvalidDocumentXml)?;
         let end = self
             .utf16_len
             .checked_add(units)
             .ok_or(ProjectionError::InvalidDocumentXml)?;
-        if bold {
+        if styles.bold {
             self.append_style(end, TextStyle::Bold);
         }
-        if highlighted {
+        if styles.highlighted {
             self.append_style(end, TextStyle::Highlight);
+        }
+        if styles.superscript {
+            self.append_style(end, TextStyle::Superscript);
         }
         self.text.push_str(text);
         self.utf16_len = end;
@@ -219,10 +223,16 @@ impl ParagraphBuilder {
     }
 }
 
-struct RunFrame {
-    text: String,
+#[derive(Clone, Copy, Default)]
+struct DirectTextStyles {
     bold: bool,
     highlighted: bool,
+    superscript: bool,
+}
+
+struct RunFrame {
+    text: String,
+    styles: DirectTextStyles,
     hidden: bool,
     direct_child_count: usize,
 }
@@ -685,8 +695,7 @@ impl ProjectionState {
             }
             b"r" if self.current_paragraph.is_some() => Frame::Run(RunFrame {
                 text: String::new(),
-                bold: false,
-                highlighted: false,
+                styles: DirectTextStyles::default(),
                 hidden: false,
                 direct_child_count: 0,
             }),
@@ -855,6 +864,12 @@ impl ProjectionState {
                 }
                 Frame::Other
             }
+            b"vertAlign" => {
+                if attribute(reader, element, b"val")?.as_deref() == Some("superscript") {
+                    self.mark_superscript_run();
+                }
+                Frame::Other
+            }
             b"t" | b"delText" => {
                 Frame::PseudoText(PseudoTextFrame::text(preserves_xml_space(reader, element)?))
             }
@@ -944,7 +959,7 @@ impl ProjectionState {
             },
             Frame::Run(run) if !run.hidden && !self.pseudo_text_is_suppressed() => {
                 if let Some(paragraph) = self.current_paragraph.as_mut() {
-                    paragraph.append(&run.text, run.bold, run.highlighted)?;
+                    paragraph.append(&run.text, run.styles)?;
                 }
             }
             Frame::Revision(revision) => self.finish_attributed_revision(revision)?,
@@ -1095,7 +1110,7 @@ impl ProjectionState {
         self.current_paragraph
             .as_mut()
             .ok_or(ProjectionError::InvalidDocumentXml)?
-            .append(text, false, false)
+            .append(text, DirectTextStyles::default())
     }
 
     fn append_review_text(&mut self, text: &str) {
@@ -1505,7 +1520,7 @@ impl ProjectionState {
         };
         let run_frame = properties.run_frame;
         if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
-            run.bold = true;
+            run.styles.bold = true;
         }
     }
 
@@ -1515,7 +1530,17 @@ impl ProjectionState {
         };
         let run_frame = properties.run_frame;
         if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
-            run.highlighted = true;
+            run.styles.highlighted = true;
+        }
+    }
+
+    fn mark_superscript_run(&mut self) {
+        let Some(Frame::RunProperties(properties)) = self.frames.last() else {
+            return;
+        };
+        let run_frame = properties.run_frame;
+        if let Some(Frame::Run(run)) = self.frames.get_mut(run_frame) {
+            run.styles.superscript = true;
         }
     }
 }

@@ -21,7 +21,7 @@ const TYPESCRIPT_TYPES: &str = r#"
 export type DocxProjectionFormattingSpan = readonly [
   startUtf16: number,
   endUtf16: number,
-  style: "bold" | "highlight",
+  style: "bold" | "highlight" | "superscript",
 ];
 export type DocxProjectionStructure =
   | readonly []
@@ -326,13 +326,7 @@ fn output_projected_paragraph(
         let output_span = Array::new_with_length(3);
         output_span.set(0, JsValue::from_f64(f64::from(span.start_utf16)));
         output_span.set(1, JsValue::from_f64(f64::from(span.end_utf16)));
-        output_span.set(
-            2,
-            JsValue::from_str(match span.style {
-                TextStyle::Bold => "bold",
-                TextStyle::Highlight => "highlight",
-            }),
-        );
+        output_span.set(2, JsValue::from_str(text_style_wire_name(span.style)));
         formatting.push(&output_span);
     }
     output.set(3, formatting.into());
@@ -345,6 +339,14 @@ fn output_projected_paragraph(
             .map_or(JsValue::NULL, |style_id| JsValue::from_str(style_id)),
     );
     Ok(output.into())
+}
+
+const fn text_style_wire_name(style: TextStyle) -> &'static str {
+    match style {
+        TextStyle::Bold => "bold",
+        TextStyle::Highlight => "highlight",
+        TextStyle::Superscript => "superscript",
+    }
 }
 
 fn output_projection_with_structure(projection: &DocumentProjection) -> Result<JsValue, String> {

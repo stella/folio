@@ -311,10 +311,18 @@ fn resolves_wordprocessing_namespaces_independently_of_prefix() {
         "http://purl.oclc.org/ooxml/wordprocessingml/main",
     ] {
         let xml = format!(
-            r#"<x:document xmlns:x="{namespace}" xmlns:id="http://schemas.microsoft.com/office/word/2010/wordml"><x:body><x:p id:paraId="00000001"><x:r><x:t>Alias</x:t></x:r></x:p></x:body></x:document>"#,
+            r#"<x:document xmlns:x="{namespace}" xmlns:id="http://schemas.microsoft.com/office/word/2010/wordml"><x:body><x:p id:paraId="00000001"><x:r><x:rPr><x:vertAlign x:val="superscript"/></x:rPr><x:t>Alias</x:t></x:r></x:p></x:body></x:document>"#,
         );
         let projection = project_document_xml(xml.as_bytes(), allocate).unwrap();
         assert_eq!(projection.paragraphs[0].text, "Alias");
+        assert_eq!(
+            projection.paragraphs[0].formatting,
+            [TextFormattingSpan {
+                start_utf16: 0,
+                end_utf16: 5,
+                style: TextStyle::Superscript,
+            }]
+        );
         assert_eq!(
             projection.paragraphs[0].package_paragraph_id,
             PackageParagraphId::parse("00000001")
@@ -575,6 +583,47 @@ fn projects_only_semantic_direct_highlights_with_unicode_offsets() {
                 start_utf16: 19,
                 end_utf16: 23,
                 style: TextStyle::Highlight,
+            },
+        ]
+    );
+}
+
+#[test]
+fn projects_only_direct_superscript_and_coalesces_adjacent_runs() {
+    let xml = r#"
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:body><w:p>
+          <w:r><w:t>A</w:t></w:r>
+          <w:r><w:rPr><w:b/><w:highlight w:val="yellow"/><w:vertAlign w:val="superscript"/></w:rPr><w:t>😀)</w:t></w:r>
+          <w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:t>x</w:t></w:r>
+          <w:r><w:rPr><w:vertAlign w:val="baseline"/></w:rPr><w:t>B</w:t></w:r>
+          <w:r><w:rPr><w:vertAlign w:val="subscript"/></w:rPr><w:t>C</w:t></w:r>
+          <w:r><w:rPr><w:vertAlign/></w:rPr><w:t>D</w:t></w:r>
+          <w:r><w:rPr><w:rPrChange w:id="1"><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:rPrChange></w:rPr><w:t>E</w:t></w:r>
+        </w:p></w:body>
+      </w:document>
+    "#;
+    let projection =
+        project_document_xml(xml.as_bytes(), allocate).expect("synthetic OOXML should project");
+
+    assert_eq!(projection.paragraphs[0].text, "A😀)xBCDE");
+    assert_eq!(
+        projection.paragraphs[0].formatting,
+        vec![
+            TextFormattingSpan {
+                start_utf16: 1,
+                end_utf16: 4,
+                style: TextStyle::Bold,
+            },
+            TextFormattingSpan {
+                start_utf16: 1,
+                end_utf16: 4,
+                style: TextStyle::Highlight,
+            },
+            TextFormattingSpan {
+                start_utf16: 1,
+                end_utf16: 5,
+                style: TextStyle::Superscript,
             },
         ]
     );
@@ -2020,6 +2069,27 @@ fn duplicate_comment_parts_and_fact_limits_are_explicit_unknowns() {
 }
 
 proptest::proptest! {
+    #[test]
+    fn arbitrary_vertical_alignment_values_only_project_superscript(
+        value in proptest::string::string_regex("[A-Za-z]{0,20}").unwrap()
+    ) {
+        let xml = format!(
+            r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:vertAlign w:val="{value}"/></w:rPr><w:t>x</w:t></w:r></w:p></w:body></w:document>"#,
+        );
+        let projection = project_document_xml(xml.as_bytes(), allocate)
+            .expect("generated OOXML should project");
+        let expected = if value == "superscript" {
+            vec![TextFormattingSpan {
+                start_utf16: 0,
+                end_utf16: 1,
+                style: TextStyle::Superscript,
+            }]
+        } else {
+            Vec::new()
+        };
+        proptest::prop_assert_eq!(&projection.paragraphs[0].formatting, &expected);
+    }
+
     #[test]
     fn arbitrary_comments_never_abort_a_valid_document(comments in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..2048)) {
         let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>stable</w:t></w:r></w:p></w:body></w:document>"#;

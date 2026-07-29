@@ -4,7 +4,7 @@
 export type DocxProjectionFormattingSpan = readonly [
 startUtf16: number,
 endUtf16: number,
-style: "bold" | "highlight",
+style: "bold" | "highlight" | "superscript",
 ];
 export type DocxProjectionStructure =
 | readonly []

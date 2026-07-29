@@ -28,7 +28,7 @@ export class DocxProjectionError extends DocxProjectionError_base {}
 export type DocxProjectionFactSet<T> = readonly [status: "known", items: readonly T[]] | readonly [status: "unknown", reason: DocxProjectionUnknownReason];
 
 // @public (undocumented)
-export type DocxProjectionFormattingSpan = readonly [startUtf16: number, endUtf16: number, style: "bold" | "highlight"];
+export type DocxProjectionFormattingSpan = readonly [startUtf16: number, endUtf16: number, style: "bold" | "highlight" | "superscript"];
 
 // @public (undocumented)
 export type DocxProjectionIndentationFact = readonly [paragraphOrdinal: number, firstLineTwips: number | null, hangingTwips: number | null, leftTwips: number | null, rightTwips: number | null, startTwips: number | null, endTwips: number | null, firstLineCharsHundredths: number | null, hangingCharsHundredths: number | null, leftCharsHundredths: number | null, rightCharsHundredths: number | null, startCharsHundredths: number | null, endCharsHundredths: number | null];
