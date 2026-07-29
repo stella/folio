@@ -1037,6 +1037,8 @@ fn resolves_numbering_level_indentation_through_the_ooxml_cascade() {
         <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr></w:pPr><w:r><w:t>Linked</w:t></w:r></w:p>
         <w:p><w:pPr><w:pStyle w:val="Base"/><w:numPr><w:ilvl w:val="1"/><w:numId w:val="5"/></w:numPr><w:ind w:hanging="0"/></w:pPr><w:r><w:t>Neutral hanging</w:t></w:r></w:p>
         <w:p><w:pPr><w:pStyle w:val="Base"/><w:numPr><w:ilvl w:val="1"/><w:numId w:val="5"/></w:numPr><w:ind w:hanging="180"/></w:pPr><w:r><w:t>Direct hanging</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="StyledList"/><w:numPr><w:numId w:val="0"/></w:numPr><w:ind w:left="357"/></w:pPr><w:r><w:t>Cancelled with direct indent</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pStyle w:val="StyledList"/><w:numPr><w:numId w:val="0"/></w:numPr></w:pPr><w:r><w:t>Cancelled without direct indent</w:t></w:r></w:p>
       </w:body></w:document>
     "#;
     let styles = br#"
@@ -1071,7 +1073,7 @@ fn resolves_numbering_level_indentation_through_the_ooxml_cascade() {
     let StructuralFactSet::Known(indentation) = projection.structural_facts.indentation else {
         panic!("numbering-derived indentation should be known");
     };
-    assert_eq!(indentation.len(), 7);
+    assert_eq!(indentation.len(), 8);
     assert_eq!(indentation[0].value.left_twips, Some(1000));
     assert_eq!(indentation[0].value.right_twips, Some(200));
     assert_eq!(indentation[0].value.hanging_twips, Some(793));
@@ -1087,6 +1089,15 @@ fn resolves_numbering_level_indentation_through_the_ooxml_cascade() {
     assert_eq!(indentation[5].value.hanging_twips, Some(793));
     assert_eq!(indentation[6].value.left_twips, Some(1417));
     assert_eq!(indentation[6].value.hanging_twips, Some(180));
+    assert_eq!(indentation[7].paragraph_ordinal, 7);
+    assert_eq!(indentation[7].value.left_twips, Some(357));
+    assert_eq!(indentation[7].value.right_twips, None);
+    assert_eq!(indentation[7].value.first_line_twips, None);
+    assert_eq!(indentation[7].value.hanging_twips, None);
+    assert!(
+        indentation.iter().all(|fact| fact.paragraph_ordinal != 8),
+        "a cancelled numbered style without direct indentation must emit no indentation fact"
+    );
 }
 
 #[test]

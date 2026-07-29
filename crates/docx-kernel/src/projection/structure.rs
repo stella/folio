@@ -266,11 +266,16 @@ impl StyleSheet {
             numbering = numbering.inherit(style.properties.numbering);
             outline_level = style.properties.outline_level.or(outline_level);
         }
+        let inherited_numbering = numbering;
         numbering = numbering.inherit(direct.numbering);
         outline_level = direct.outline_level.or(outline_level);
 
         let numbered = numbering.present && numbering.num_id != Some(0);
         let numbering_is_direct = direct.numbering.present;
+        let numbering_removed = numbering_is_direct
+            && direct.numbering.num_id == Some(0)
+            && inherited_numbering.present
+            && inherited_numbering.num_id != Some(0);
         let indentation = if numbered {
             numbering
                 .num_id
@@ -284,14 +289,20 @@ impl StyleSheet {
             Ok(ParagraphIndentation::default())
         }
         .map(|level_indentation| {
-            let mut indentation = self.document_defaults.indentation;
-            if !numbering_is_direct {
+            let mut indentation = if numbering_removed {
+                ParagraphIndentation::default()
+            } else {
+                self.document_defaults.indentation
+            };
+            if !numbering_is_direct && !numbering_removed {
                 indentation = indentation.inherit(level_indentation);
             }
-            for current_style_id in chain.iter().rev() {
-                // The style graph and IDs were validated while constructing the chain.
-                if let Some(style) = self.styles.get(current_style_id) {
-                    indentation = indentation.inherit(style.properties.indentation);
+            if !numbering_removed {
+                for current_style_id in chain.iter().rev() {
+                    // The style graph and IDs were validated while constructing the chain.
+                    if let Some(style) = self.styles.get(current_style_id) {
+                        indentation = indentation.inherit(style.properties.indentation);
+                    }
                 }
             }
             if numbering_is_direct {
