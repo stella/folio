@@ -1,4 +1,36 @@
+import type { Locator, Page } from "@playwright/test";
+
 import { ensureLiveView, expect, forEachAdapter, openEditor } from "./parity-fixture";
+
+type CompositionAnchorOptions = {
+  expectAligned: () => Promise<void>;
+  hiddenHost: Locator;
+  input: Locator;
+  page: Page;
+};
+
+const COMPOSITION_ANCHOR_SENTINEL = "translate3d(1px, 2px, 0px)";
+
+const verifyCompositionAnchorLifecycle = async ({
+  expectAligned,
+  hiddenHost,
+  input,
+  page,
+}: CompositionAnchorOptions): Promise<void> => {
+  await input.dispatchEvent("compositionstart");
+  await hiddenHost.evaluate((host, transform) => {
+    host.style.transform = transform;
+  }, COMPOSITION_ANCHOR_SENTINEL);
+  await page.evaluate(() => window.dispatchEvent(new Event("scroll")));
+  await expect
+    .poll(() => hiddenHost.evaluate((host) => host.style.transform))
+    .toBe(COMPOSITION_ANCHOR_SENTINEL);
+
+  await input.dispatchEvent("compositionend");
+  await page.waitForTimeout(50);
+  await page.evaluate(() => window.dispatchEvent(new Event("scroll")));
+  await expectAligned();
+};
 
 forEachAdapter("CJK IME input caret follows the painted caret", async (adapter, { page }) => {
   await openEditor(page, adapter);
@@ -48,6 +80,13 @@ forEachAdapter("CJK IME input caret follows the painted caret", async (adapter, 
   await page.keyboard.press("Enter");
   await expectAligned();
 
+  await verifyCompositionAnchorLifecycle({
+    expectAligned,
+    hiddenHost: page.locator(".paged-editor__hidden-pm").first(),
+    input: page.locator(".paged-editor__hidden-pm > .ProseMirror").first(),
+    page,
+  });
+
   const scrollContainer = page.locator(
     adapter.name === "react" ? "[data-folio-scroll]" : ".docx-editor-vue__editor-scroll",
   );
@@ -61,6 +100,7 @@ forEachAdapter(
   "CJK IME input caret follows the painted header caret",
   async (adapter, { page }) => {
     await openEditor(page, adapter);
+    await ensureLiveView(page);
 
     const header = page.locator(".layout-page-header").first();
     await header.dblclick();
@@ -106,6 +146,13 @@ forEachAdapter(
     const expectAligned = () => expect.poll(readAlignment).toMatchObject({ aligned: true });
 
     await expectAligned();
+
+    await verifyCompositionAnchorLifecycle({
+      expectAligned,
+      hiddenHost: page.locator(".paged-editor__hidden-hf-pm"),
+      input: page.locator(".paged-editor__hidden-hf-pm .ProseMirror").first(),
+      page,
+    });
 
     const scrollContainer = page.locator(
       adapter.name === "react" ? "[data-folio-scroll]" : ".docx-editor-vue__editor-scroll",
