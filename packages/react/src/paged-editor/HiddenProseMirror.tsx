@@ -109,6 +109,8 @@ export type HiddenProseMirrorRef = {
   ensureView: () => void;
   /** Whether view creation has been requested. */
   isViewRequested: () => boolean;
+  /** Get the off-screen host element. */
+  getHostElement: () => HTMLElement | null;
   /** Get the ProseMirror EditorState */
   getState: () => EditorState | null;
   /** Get the ProseMirror EditorView */
@@ -405,7 +407,14 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     // Imperative Handle
     // ========================================================================
 
-    useImperativeHandle(ref, () => managerRef.current!.api, []);
+    useImperativeHandle(
+      ref,
+      () => ({
+        ...managerRef.current!.api,
+        getHostElement: () => hostRef.current,
+      }),
+      [],
+    );
 
     if (hasCollaboration && collaborationModulesError) {
       let detail = "unknown error";

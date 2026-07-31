@@ -210,6 +210,8 @@
             />
 
             <HeaderFooterSelectionOverlay
+              :editor-view="getActiveHeaderFooterView()"
+              :hidden-container="hiddenHfPmRef"
               :pages-container="pagesRef"
               :selection="activeHeaderFooterSelection"
               :zoom="zoom"
@@ -849,6 +851,7 @@ const {
 
 const selectionSync = useSelectionSync({
   editorView,
+  hiddenContainer: hiddenPmRef,
   pagesRef,
   zoom,
   selectedImage,

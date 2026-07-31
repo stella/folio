@@ -69,6 +69,10 @@ import type {
 import { templatePreviewDirtyRange } from "@stll/folio-core/layout-bridge/convert/templatePreviewFlow";
 import { clickToPositionDom } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
 import {
+  resetImeCaretAnchor,
+  syncImeCaretAnchor,
+} from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
+import {
   findBodyEmptyRuns,
   findBodyPmAnchor,
   findBodyPmSpans,
@@ -677,10 +681,14 @@ type HfCaretSelection = {
 function HfCaretOverlay({
   selection,
   pagesContainer,
+  hiddenHost,
+  editorView,
   zoom,
 }: {
   selection: HfCaretSelection;
   pagesContainer: HTMLDivElement | null;
+  hiddenHost: HTMLElement | null;
+  editorView: EditorView | null;
   zoom: number;
 }) {
   const [caret, setCaret] = useState<{
@@ -724,6 +732,7 @@ function HfCaretOverlay({
         // (Codex #487 P2: 20:32 review).
         const hit = findHfCaretSpan(pageScope, selection.kind, selection.rId, selection.from);
         if (!hit) {
+          syncImeCaretAnchor({ hiddenHost, editorView, visibleCaret: null });
           setCaret(null);
           setRangeRects([]);
           return;
@@ -770,9 +779,15 @@ function HfCaretOverlay({
           y: (absY - cr.top) / zoomDivisor,
           height: absHeight / zoomDivisor,
         });
+        syncImeCaretAnchor({
+          hiddenHost,
+          editorView,
+          visibleCaret: { left: absX, top: absY },
+        });
         setRangeRects([]);
         return;
       }
+      syncImeCaretAnchor({ hiddenHost, editorView, visibleCaret: null });
       // Range selection — walk every painted pm span inside the slot
       // and project the union of those whose [pmStart,pmEnd] intersect
       // [from,to). The painter emits one span per run so this is good
@@ -832,9 +847,29 @@ function HfCaretOverlay({
     };
     recompute();
     const onPainted = () => recompute();
+    let animationFrame: number | null = null;
+    const scheduleRecompute = () => {
+      if (animationFrame !== null) {
+        cancelAnimationFrame(animationFrame);
+      }
+      animationFrame = requestAnimationFrame(() => {
+        animationFrame = null;
+        recompute();
+      });
+    };
     pagesContainer.addEventListener(PAINTER_PAINTED_EVENT, onPainted);
+    hiddenHost?.addEventListener("focusin", recompute);
+    hiddenHost?.addEventListener("compositionend", scheduleRecompute);
+    window.addEventListener("scroll", scheduleRecompute, true);
     return () => {
+      if (animationFrame !== null) {
+        cancelAnimationFrame(animationFrame);
+      }
       pagesContainer.removeEventListener(PAINTER_PAINTED_EVENT, onPainted);
+      hiddenHost?.removeEventListener("focusin", recompute);
+      hiddenHost?.removeEventListener("compositionend", scheduleRecompute);
+      window.removeEventListener("scroll", scheduleRecompute, true);
+      resetImeCaretAnchor(hiddenHost);
     };
     // Destructure selection so the effect only re-runs when a field
     // actually changes; otherwise every handleHfPmTransaction-driven
@@ -847,6 +882,8 @@ function HfCaretOverlay({
     selection.to,
     selection.pageNumber,
     pagesContainer,
+    hiddenHost,
+    editorView,
     zoom,
   ]);
 
@@ -2230,6 +2267,31 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       [],
     );
 
+    const refreshBodyImeCaretAnchor = useCallback(() => {
+      const view = hiddenPMRef.current?.getView();
+      if (!view) {
+        return;
+      }
+
+      const { selection } = view.state;
+      const domCaret = selection.empty ? getCaretFromDom(selection.head, zoom) : null;
+      const overlay = pagesContainerRef.current?.parentElement?.querySelector(
+        '[data-testid="selection-overlay"]',
+      );
+      const overlayRect = overlay?.getBoundingClientRect();
+      syncImeCaretAnchor({
+        hiddenHost: hiddenPMRef.current?.getHostElement(),
+        editorView: view,
+        visibleCaret:
+          domCaret && overlayRect
+            ? {
+                left: overlayRect.left + domCaret.x * zoom,
+                top: overlayRect.top + domCaret.y * zoom,
+              }
+            : null,
+      });
+    }, [getCaretFromDom, zoom]);
+
     /**
      * Update selection overlay from PM selection.
      */
@@ -2264,6 +2326,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         if (suppressSelectionOverlayRef.current) {
           setCaretPosition(null);
           setSelectionRects([]);
+          syncImeCaretAnchor({
+            hiddenHost: hiddenPMRef.current?.getHostElement(),
+            editorView: hiddenPMRef.current?.getView(),
+            visibleCaret: null,
+          });
           return;
         }
 
@@ -2306,6 +2373,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
 
         if (!layout || blocks.length === 0) {
+          syncImeCaretAnchor({
+            hiddenHost: hiddenPMRef.current?.getHostElement(),
+            editorView: hiddenPMRef.current?.getView(),
+            visibleCaret: null,
+          });
           return;
         }
 
@@ -2315,6 +2387,20 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           const domCaret = getCaretFromDom(from, zoom);
           if (domCaret) {
             setCaretPosition(domCaret);
+            const overlay = pagesContainerRef.current?.parentElement?.querySelector(
+              '[data-testid="selection-overlay"]',
+            );
+            const overlayRect = overlay?.getBoundingClientRect();
+            syncImeCaretAnchor({
+              hiddenHost: hiddenPMRef.current?.getHostElement(),
+              editorView: hiddenPMRef.current?.getView(),
+              visibleCaret: overlayRect
+                ? {
+                    left: overlayRect.left + domCaret.x * zoom,
+                    top: overlayRect.top + domCaret.y * zoom,
+                  }
+                : null,
+            });
           } else {
             // Fallback to layout-based calculation if DOM not ready
             const overlay = pagesContainerRef.current?.parentElement?.querySelector(
@@ -2334,29 +2420,58 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
                   const caret = getCaretPosition(layout, blocks, measures, from);
                   if (caret) {
-                    setCaretPosition({
+                    const fallbackCaret = {
                       ...caret,
                       x: caret.x + (pageRect.left - overlayRect.left) / zoom,
                       y: caret.y + (pageRect.top - overlayRect.top) / zoom,
+                    };
+                    setCaretPosition(fallbackCaret);
+                    syncImeCaretAnchor({
+                      hiddenHost: hiddenPMRef.current?.getHostElement(),
+                      editorView: hiddenPMRef.current?.getView(),
+                      visibleCaret: {
+                        left: overlayRect.left + fallbackCaret.x * zoom,
+                        top: overlayRect.top + fallbackCaret.y * zoom,
+                      },
                     });
                   } else {
                     setCaretPosition(null);
+                    syncImeCaretAnchor({
+                      hiddenHost: hiddenPMRef.current?.getHostElement(),
+                      editorView: hiddenPMRef.current?.getView(),
+                      visibleCaret: null,
+                    });
                   }
                   return undefined;
                 },
                 () => {
                   if (isCurrentRequest()) {
                     setCaretPosition(null);
+                    syncImeCaretAnchor({
+                      hiddenHost: hiddenPMRef.current?.getHostElement(),
+                      editorView: hiddenPMRef.current?.getView(),
+                      visibleCaret: null,
+                    });
                   }
                   return undefined;
                 },
               );
             } else {
               setCaretPosition(null);
+              syncImeCaretAnchor({
+                hiddenHost: hiddenPMRef.current?.getHostElement(),
+                editorView: hiddenPMRef.current?.getView(),
+                visibleCaret: null,
+              });
             }
           }
           setSelectionRects([]);
         } else {
+          syncImeCaretAnchor({
+            hiddenHost: hiddenPMRef.current?.getHostElement(),
+            editorView: hiddenPMRef.current?.getView(),
+            visibleCaret: null,
+          });
           // Range selection - show highlight rectangles using DOM-based approach
           const overlay = pagesContainerRef.current?.parentElement?.querySelector(
             '[data-testid="selection-overlay"]',
@@ -3401,8 +3516,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         ensureHiddenEditorView();
       }
       hiddenPMRef.current?.focus();
+      const view = hiddenPMRef.current?.getView();
+      if (view) {
+        updateSelectionOverlay(view.state);
+      }
       setIsFocused(true);
-    }, [ensureHiddenEditorView, readOnly]);
+    }, [ensureHiddenEditorView, readOnly, updateSelectionOverlay]);
 
     const startPointerTextSelection = useCallback(
       (clientX: number, clientY: number) => {
@@ -5364,6 +5483,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
             applyPendingHiddenEditorInput(view);
             view.focus();
+            refreshBodyImeCaretAnchor();
             setIsFocused(true);
           });
         };
@@ -5432,6 +5552,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         document,
         updateAutocompleteOverlay,
         readOnly,
+        refreshBodyImeCaretAnchor,
       ],
     );
 
@@ -5702,6 +5823,39 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       return () => observer.disconnect();
     }, [updateSelectionOverlay]);
 
+    // Native IME UI follows the focused contenteditable in viewport space.
+    // Focus and scrolling can move that anchor without a PM transaction.
+    useEffect(() => {
+      const hiddenHost = hiddenPMRef.current?.getHostElement();
+      if (!hiddenHost) {
+        return;
+      }
+
+      let animationFrame: number | null = null;
+      const scheduleRefresh = () => {
+        if (animationFrame !== null) {
+          cancelAnimationFrame(animationFrame);
+        }
+        animationFrame = requestAnimationFrame(() => {
+          animationFrame = null;
+          refreshBodyImeCaretAnchor();
+        });
+      };
+      const refreshOnFocus = () => refreshBodyImeCaretAnchor();
+
+      hiddenHost.addEventListener("focusin", refreshOnFocus);
+      hiddenHost.addEventListener("compositionend", scheduleRefresh);
+      window.addEventListener("scroll", scheduleRefresh, true);
+      return () => {
+        if (animationFrame !== null) {
+          cancelAnimationFrame(animationFrame);
+        }
+        hiddenHost.removeEventListener("focusin", refreshOnFocus);
+        hiddenHost.removeEventListener("compositionend", scheduleRefresh);
+        window.removeEventListener("scroll", scheduleRefresh, true);
+      };
+    }, [refreshBodyImeCaretAnchor]);
+
     // =========================================================================
     // Imperative Handle
     // =========================================================================
@@ -5741,7 +5895,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           ensureHiddenEditorView(options);
         },
         focus() {
-          getActiveEditorStory().view?.focus();
+          const target = getActiveEditorStory();
+          target.view?.focus();
+          if (target.type === "body") {
+            refreshBodyImeCaretAnchor();
+          }
           setIsFocused(true);
         },
         blur() {
@@ -5848,6 +6006,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         ensureHiddenEditorView,
         folioEditor,
         getActiveEditorStory,
+        refreshBodyImeCaretAnchor,
         scrollToPageImpl,
         scrollToParaIdImpl,
         scrollToPositionImpl,
@@ -6080,6 +6239,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               <HfCaretOverlay
                 selection={hfCaretSelection}
                 pagesContainer={pagesContainerRef.current}
+                hiddenHost={hfPMsRef.current?.getHostElement() ?? null}
+                editorView={hfPMsRef.current?.getView(hfCaretSelection.rId) ?? null}
                 zoom={zoom}
               />
             )}

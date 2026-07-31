@@ -23,6 +23,7 @@ export type HfPartKind = HeaderFooterPartKind;
 export type HfPartKey = HeaderFooterPartKey;
 
 export type HiddenHeaderFooterPMsRef = {
+  getHostElement: () => HTMLElement | null;
   getView: (rId: string) => EditorView | null;
   listSlots: () => HfPartKey[];
 };
@@ -96,13 +97,14 @@ export const HiddenHeaderFooterPMs = memo(
     useImperativeHandle(
       ref,
       () => ({
+        getHostElement: () => hostRef.current,
         getView: (rId) => managerRef.current?.getView(rId) ?? null,
         listSlots: () => managerRef.current?.listSlots() ?? [],
       }),
       [],
     );
 
-    return <div ref={hostRef} style={HOST_STYLES} />;
+    return <div ref={hostRef} className="paged-editor__hidden-hf-pm" style={HOST_STYLES} />;
   }),
 );
 /* eslint-enable prefer-arrow-callback */
