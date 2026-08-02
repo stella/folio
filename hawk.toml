@@ -1,0 +1,7 @@
+# Hawk cannot observe crates.io, npm, or WebAssembly consumers of this library.
+# The rust:hawk script preserves public APIs and denies restricted-visibility findings.
+
+[[production]]
+package = "stella-docx-kernel"
+lib = "stella_docx_kernel"
+reason = "published library; audit restricted visibility without changing its public API"

@@ -27,6 +27,7 @@
     "check:build-reproducibility": "bun scripts/check-build-reproducibility.ts",
     "check:docx-kernel": "bun --filter '@stll/docx-core' wasm:check",
     "check:docx-kernel-version": "bun scripts/sync-docx-kernel-version.ts",
+    "rust:hawk": "cargo +1.97.1 hawk check --target-dir target/hawk -D warnings -A hawk::dead_public -A hawk::unnecessary_public",
     "specifications:check": "bun scripts/specification-sources.ts check",
     "specifications:fetch": "bun scripts/specification-sources.ts fetch",
     "specifications:generate": "bun scripts/generate-ooxml-schema-graph.ts write",

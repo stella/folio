@@ -42,11 +42,11 @@ pub struct ParagraphIndentation {
 }
 
 impl ParagraphIndentation {
-    pub(super) fn is_empty(self) -> bool {
+    fn is_empty(self) -> bool {
         self == Self::default()
     }
 
-    pub(super) fn inherit(self, child: Self) -> Self {
+    fn inherit(self, child: Self) -> Self {
         let child_has_hanging =
             child.hanging_twips.is_some() || child.hanging_chars_hundredths.is_some();
         let child_has_first_line = !child_has_hanging
@@ -228,7 +228,7 @@ pub(super) struct NumberingProperties {
 }
 
 impl NumberingProperties {
-    pub(super) fn inherit(self, child: Self) -> Self {
+    fn inherit(self, child: Self) -> Self {
         if !child.present {
             return self;
         }
@@ -294,7 +294,7 @@ pub(super) struct TextProperties {
 }
 
 impl TextProperties {
-    pub(super) const fn inherit(self, child: Self) -> Self {
+    const fn inherit(self, child: Self) -> Self {
         Self {
             bold: if child.bold.is_some() {
                 child.bold
@@ -329,7 +329,7 @@ impl TextProperties {
         }
     }
 
-    pub(super) fn inherit_style(self, child: Self) -> Self {
+    fn inherit_style(self, child: Self) -> Self {
         let mut inherited = self.inherit(child);
         inherited.bold = inherit_style_toggle(self.bold, child.bold);
         inherited.complex_script_bold =
