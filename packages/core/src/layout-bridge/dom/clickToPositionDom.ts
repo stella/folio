@@ -496,6 +496,51 @@ export type DomCaretPosition = {
   pageIndex: number;
 };
 
+export type CollapsedLineEdgeCaretGeometry = {
+  left: number;
+  top: number;
+  height: number;
+};
+
+/**
+ * Resolve viewport geometry for a line-edge space span that the painter keeps
+ * addressable but collapses to zero font size. Browser ranges inside those
+ * spans report their zero-height baseline as `top`, which makes a caret appear
+ * below the line until visible text is typed. Anchor the caret to the nearest
+ * painted sibling instead; an all-whitespace line falls back to its line box.
+ */
+export function getCollapsedLineEdgeCaretGeometry(
+  spanEl: HTMLElement,
+): CollapsedLineEdgeCaretGeometry | null {
+  const isLeading = spanEl.dataset["collapsedLeadingSpaces"] === "true";
+  const isTrailing = spanEl.dataset["collapsedTrailingSpaces"] === "true";
+  if (!isLeading && !isTrailing) {
+    return null;
+  }
+
+  let sibling: Element | null = isTrailing
+    ? spanEl.previousElementSibling
+    : spanEl.nextElementSibling;
+  while (
+    sibling &&
+    (sibling.getAttribute("data-collapsed-leading-spaces") === "true" ||
+      sibling.getAttribute("data-collapsed-trailing-spaces") === "true")
+  ) {
+    sibling = isTrailing ? sibling.previousElementSibling : sibling.nextElementSibling;
+  }
+
+  const spanRect = spanEl.getBoundingClientRect();
+  const line = closestHtmlElement(spanEl, ".layout-line");
+  const anchorRect = sibling?.getBoundingClientRect() ?? line?.getBoundingClientRect() ?? spanRect;
+  const lineRect = line?.getBoundingClientRect();
+
+  return {
+    left: spanRect.left,
+    top: anchorRect.top,
+    height: anchorRect.height || lineRect?.height || 16,
+  };
+}
+
 export function getCaretPositionFromDom(
   container: HTMLElement,
   pmPos: number,
@@ -536,6 +581,18 @@ export function getCaretPositionFromDom(
 
     // For text runs, use inclusive range
     if (pmPos >= pmStart && pmPos <= pmEnd) {
+      const collapsedGeometry = getCollapsedLineEdgeCaretGeometry(spanEl);
+      if (collapsedGeometry) {
+        const pageEl = closestHtmlElement(spanEl, ".layout-page");
+        const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
+        return {
+          x: collapsedGeometry.left - overlayRect.left,
+          y: collapsedGeometry.top - overlayRect.top,
+          height: collapsedGeometry.height,
+          pageIndex,
+        };
+      }
+
       const textNode = spanEl.firstChild;
       if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
         // No text - use span bounds

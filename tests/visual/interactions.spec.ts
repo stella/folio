@@ -103,6 +103,39 @@ async function openTableCellMenu(page: Page): Promise<Locator> {
 }
 
 test.describe("typing + undo", () => {
+  test("typing a collapsed trailing space keeps the caret on the text row", async ({ page }) => {
+    await mountFixture(page, "sample.docx");
+
+    const paragraph = page.locator(".layout-paragraph").first();
+    const line = paragraph.locator(".layout-line").last();
+    const visibleRun = line
+      .locator(
+        'span[data-pm-start][data-pm-end]:not([data-collapsed-leading-spaces="true"]):not([data-collapsed-trailing-spaces="true"])',
+      )
+      .last();
+    const runBox = await visibleRun.boundingBox();
+    if (!runBox) throw new Error("no painted text run");
+
+    await page.mouse.click(runBox.x + runBox.width - 1, runBox.y + runBox.height / 2);
+    await page.keyboard.press("Space");
+
+    const collapsedRuns = line.locator('[data-collapsed-trailing-spaces="true"]');
+    await expect.poll(() => collapsedRuns.count()).toBeGreaterThan(0);
+    const caret = page.getByTestId("caret");
+    await expect(caret).toBeVisible();
+
+    await expect
+      .poll(async () => {
+        const [caretBox, currentRunBox] = await Promise.all([
+          caret.boundingBox(),
+          visibleRun.boundingBox(),
+        ]);
+        if (!(caretBox && currentRunBox)) return Number.POSITIVE_INFINITY;
+        return Math.abs(caretBox.y - currentRunBox.y);
+      })
+      .toBeLessThan(1);
+  });
+
   test("a rapid burst types as a group, and one undo reverts the whole burst", async ({ page }) => {
     await mountFixture(page, "sample.docx");
 

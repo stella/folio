@@ -67,7 +67,10 @@ import type {
   HeaderFooterMetrics,
 } from "@stll/folio-core/layout-bridge/convert/headerFooterLayout";
 import { templatePreviewDirtyRange } from "@stll/folio-core/layout-bridge/convert/templatePreviewFlow";
-import { clickToPositionDom } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
+import {
+  clickToPositionDom,
+  getCollapsedLineEdgeCaretGeometry,
+} from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
 import {
   resetImeCaretAnchor,
   syncImeCaretAnchor,
@@ -2206,6 +2209,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             pmPos <= pmEnd &&
             spanEl.firstChild?.nodeType === Node.TEXT_NODE
           ) {
+            const collapsedGeometry = getCollapsedLineEdgeCaretGeometry(spanEl);
+            if (collapsedGeometry) {
+              return {
+                x: (collapsedGeometry.left - overlayRect.left) / currentZoom,
+                y: (collapsedGeometry.top - overlayRect.top) / currentZoom,
+                height: getLineHeight(spanEl),
+                pageIndex: getPageIndex(spanEl),
+              };
+            }
+
             const textNode = spanEl.firstChild as Text;
             const charIndex = Math.min(pmPos - pmStart, textNode.length);
 

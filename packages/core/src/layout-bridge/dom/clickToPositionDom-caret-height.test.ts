@@ -26,6 +26,22 @@ class FakeHTMLElement {
     return this.height;
   }
 
+  get nextElementSibling(): FakeHTMLElement | null {
+    if (!this.parent) {
+      return null;
+    }
+    const index = this.parent.children.indexOf(this);
+    return this.parent.children.at(index + 1) ?? null;
+  }
+
+  get previousElementSibling(): FakeHTMLElement | null {
+    if (!this.parent) {
+      return null;
+    }
+    const index = this.parent.children.indexOf(this);
+    return index > 0 ? (this.parent.children.at(index - 1) ?? null) : null;
+  }
+
   get ownerDocument(): { createRange: () => Range } {
     return fakeDocument;
   }
@@ -58,6 +74,16 @@ class FakeHTMLElement {
     return rect(this.rect);
   }
 
+  getAttribute(name: string): string | null {
+    if (name === "data-collapsed-leading-spaces") {
+      return this.dataset["collapsedLeadingSpaces"] ?? null;
+    }
+    if (name === "data-collapsed-trailing-spaces") {
+      return this.dataset["collapsedTrailingSpaces"] ?? null;
+    }
+    return null;
+  }
+
   private collect(selector: string, out: FakeHTMLElement[]): void {
     for (const child of this.children) {
       if (child.matches(selector)) {
@@ -83,12 +109,13 @@ class FakeHTMLElement {
 
 const textNode = { nodeType: 3, length: 5 };
 let rangeHeight = 18;
+let rangeTop = 20;
 const fakeDocument = {
   createRange: () =>
     ({
       setStart: () => undefined,
       setEnd: () => undefined,
-      getBoundingClientRect: () => rect({ left: 12, top: 20, height: rangeHeight }),
+      getBoundingClientRect: () => rect({ left: 12, top: rangeTop, height: rangeHeight }),
     }) as Range,
 };
 
@@ -124,10 +151,51 @@ const buildContainer = (): HTMLElement => {
   return container as unknown as HTMLElement;
 };
 
+const buildCollapsedTrailingSpaceContainer = (): HTMLElement => {
+  const container = new FakeHTMLElement();
+  const page = new FakeHTMLElement(["layout-page"]);
+  page.dataset["pageNumber"] = "1";
+  const content = new FakeHTMLElement(["layout-page-content"]);
+  const line = new FakeHTMLElement(
+    ["layout-line"],
+    { left: 10, top: 15, width: 80, height: 80 },
+    80,
+  );
+  const visible = new FakeHTMLElement(
+    ["layout-run-text"],
+    { left: 10, top: 20, right: 30, bottom: 38, width: 20, height: 18 },
+    18,
+  );
+  visible.dataset["pmStart"] = "1";
+  visible.dataset["pmEnd"] = "6";
+  visible.firstChild = textNode;
+  const spaces = new FakeHTMLElement(["layout-run-text"], {
+    left: 30,
+    top: 70,
+    right: 30,
+    bottom: 70,
+    width: 0,
+    height: 0,
+  });
+  spaces.dataset["pmStart"] = "6";
+  spaces.dataset["pmEnd"] = "8";
+  spaces.dataset["collapsedTrailingSpaces"] = "true";
+  spaces.firstChild = { nodeType: 3, length: 2 };
+
+  container.append(page);
+  page.append(content);
+  content.append(line);
+  line.append(visible, spaces);
+
+  return container as unknown as HTMLElement;
+};
+
 let originalHTMLElement: unknown;
 let originalNode: unknown;
 
 beforeEach(() => {
+  rangeHeight = 18;
+  rangeTop = 20;
   originalHTMLElement = globalThis.HTMLElement;
   originalNode = globalThis.Node;
   Object.assign(globalThis, {
@@ -158,5 +226,12 @@ describe("getCaretPositionFromDom caret height", () => {
     const caret = getCaretPositionFromDom(buildContainer(), 3, rect({}));
 
     expect(caret?.height).toBe(80);
+  });
+
+  test("anchors collapsed trailing-space carets to the visible run", () => {
+    rangeTop = 70;
+    const caret = getCaretPositionFromDom(buildCollapsedTrailingSpaceContainer(), 7, rect({}));
+
+    expect(caret).toEqual({ x: 30, y: 20, height: 18, pageIndex: 0 });
   });
 });

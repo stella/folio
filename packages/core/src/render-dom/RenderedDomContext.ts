@@ -5,6 +5,7 @@
  */
 
 import { findBodyEmptyRuns, findBodyPmSpans } from "../layout-bridge/dom/findBodyPmSpans";
+import { getCollapsedLineEdgeCaretGeometry } from "../layout-bridge/dom/clickToPositionDom";
 import { closestHtmlElement } from "../utils/domGuards";
 
 export type RenderedDomPoint = {
@@ -75,6 +76,15 @@ export class RenderedDomContextImpl implements RenderedDomContext {
         return {
           x: (spanRect.left - containerRect.left) / this.#zoom,
           y: (spanRect.top - containerRect.top) / this.#zoom,
+          height: lineHeightFor(span, this.#zoom),
+        };
+      }
+
+      const collapsedGeometry = getCollapsedLineEdgeCaretGeometry(span);
+      if (collapsedGeometry) {
+        return {
+          x: (collapsedGeometry.left - containerRect.left) / this.#zoom,
+          y: (collapsedGeometry.top - containerRect.top) / this.#zoom,
           height: lineHeightFor(span, this.#zoom),
         };
       }

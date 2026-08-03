@@ -13,6 +13,8 @@
 
 import type { EditorView } from "prosemirror-view";
 
+import { getCollapsedLineEdgeCaretGeometry } from "./dom/clickToPositionDom";
+
 // ============================================================================
 // HF DOM snapshot cache — shared by the caret + selection-rect computations
 // ============================================================================
@@ -123,6 +125,15 @@ export function computeHfCaretRectFromView(
     const end = Number(span.dataset["pmEnd"]);
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
     if (pmPos >= start && pmPos <= end) {
+      const collapsedGeometry = getCollapsedLineEdgeCaretGeometry(span);
+      if (collapsedGeometry) {
+        return {
+          top: collapsedGeometry.top,
+          left: collapsedGeometry.left,
+          height: collapsedGeometry.height,
+        };
+      }
+
       const range = host.ownerDocument.createRange();
       const walker = host.ownerDocument.createTreeWalker(span, NodeFilter.SHOW_TEXT);
       let remaining = pmPos - start;
