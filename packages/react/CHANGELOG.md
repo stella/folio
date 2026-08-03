@@ -1,5 +1,16 @@
 # @stll/folio-react
 
+## 0.13.1
+
+### Patch Changes
+
+- [#541](https://github.com/stella/folio/pull/541) [`b00cb19`](https://github.com/stella/folio/commit/b00cb19b12e3e56885d5eef5b55f63c488e15596) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Anchor CJK IME candidate windows to the painted document caret.
+
+- [#544](https://github.com/stella/folio/pull/544) [`f85e926`](https://github.com/stella/folio/commit/f85e926599e87ca3eab4966eff06aa1e45882643) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the caret aligned with its text row after typing collapsible whitespace.
+
+- Updated dependencies [[`b00cb19`](https://github.com/stella/folio/commit/b00cb19b12e3e56885d5eef5b55f63c488e15596), [`f85e926`](https://github.com/stella/folio/commit/f85e926599e87ca3eab4966eff06aa1e45882643)]:
+  - @stll/folio-core@0.15.12
+
 ## 0.13.0
 
 ### Minor Changes
