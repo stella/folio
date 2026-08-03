@@ -158,8 +158,17 @@ type ApplyInlineFormattingOptions = {
   schema: Schema;
   from: number;
   to: number;
-  formatting: Extract<FolioAIEditOperation, { type: "formatRange" }>["formatting"];
+  formatting: InlineFormattingPatch;
 };
+
+const REPLACEMENT_BACKGROUND_CLEAR_FORMATTING = {
+  highlight: false,
+  runShading: false,
+} as const;
+
+type InlineFormattingPatch =
+  | Extract<FolioAIEditOperation, { type: "formatRange" }>["formatting"]
+  | typeof REPLACEMENT_BACKGROUND_CLEAR_FORMATTING;
 
 const applyInlineFormatting = ({
   tr,
@@ -188,7 +197,7 @@ const applyInlineFormatting = ({
 
 const formattingWouldChange = (
   marks: readonly Mark[],
-  formatting: Extract<FolioAIEditOperation, { type: "formatRange" }>["formatting"],
+  formatting: InlineFormattingPatch,
 ): boolean =>
   Object.entries(formatting).some(([name, enabled]) => {
     const mark = marks.find((candidate) => candidate.type.name === name);
@@ -210,6 +219,61 @@ type ApplyTrackedInlineFormattingOptions = ApplyInlineFormattingOptions & {
   initials?: string | undefined;
   /** Non-null stamps the produced `runPropertyChange` mark as a suggestion. */
   suggestionId?: string | null;
+};
+
+type ClearReplacementBackgroundOptions = {
+  tr: Transaction;
+  schema: Schema;
+  from: number;
+  to: number;
+  mode: FolioAIEditApplyMode;
+  revisionId: number;
+  author: string;
+  date: string;
+  initials?: string | undefined;
+  suggestionId?: string | null;
+};
+
+const clearReplacementBackground = ({
+  tr,
+  schema,
+  from,
+  to,
+  mode,
+  revisionId,
+  author,
+  date,
+  initials,
+  suggestionId = null,
+}: ClearReplacementBackgroundOptions): Transaction => {
+  const hasBackground = [schema.marks["highlight"], schema.marks["runShading"]].some(
+    (markType) => markType !== undefined && tr.doc.rangeHasMark(from, to, markType),
+  );
+  if (!hasBackground) {
+    return tr;
+  }
+  if (mode === "direct") {
+    return applyInlineFormatting({
+      tr,
+      schema,
+      from,
+      to,
+      formatting: REPLACEMENT_BACKGROUND_CLEAR_FORMATTING,
+    });
+  }
+  return applyTrackedInlineFormatting({
+    tr,
+    schema,
+    doc: tr.doc,
+    from,
+    to,
+    formatting: REPLACEMENT_BACKGROUND_CLEAR_FORMATTING,
+    revisionId,
+    author,
+    date,
+    initials,
+    suggestionId,
+  });
 };
 
 const applyTrackedInlineFormatting = ({
@@ -283,9 +347,10 @@ type LiveBlockEntry = { from: number; to: number; node: PMNode };
  */
 let revisionIdCursor = Date.now() * 1000;
 const nextRevisionSeed = (count: number): number => {
-  // Each replace allocates two ids per op; insert/delete one each.
+  // Each replacement allocates up to three ids: deletion, insertion, and
+  // background-format clearing. Insert/delete operations use one each.
   // Reserve `count * 4` to be safely above any conceivable per-op
-  // allocation (current max is 2). Returning the start of the
+  // allocation (current max is 3). Returning the start of the
   // reserved range as the seed is enough — the caller bumps it.
   const start = revisionIdCursor;
   revisionIdCursor += Math.max(count, 1) * 4;
@@ -732,6 +797,21 @@ const applyFolioAIEditOperationsInternal = ({
       case "replaceRange": {
         const revisionIdDelete = revisionSeed++;
         const revisionIdInsert = revisionSeed++;
+        const revisionIdBackground = revisionSeed++;
+        const stepsBeforeBackgroundClear = tr.steps.length;
+        tr = clearReplacementBackground({
+          tr,
+          schema: view.state.schema,
+          from: item.from,
+          to: item.to,
+          mode,
+          revisionId: revisionIdBackground,
+          author,
+          date,
+          initials,
+          suggestionId,
+        });
+        const clearedBackground = tr.steps.length > stepsBeforeBackgroundClear;
         tr = applyTextReplacement({
           tr,
           item,
@@ -745,7 +825,11 @@ const applyFolioAIEditOperationsInternal = ({
           initials,
         });
         if (producesTrackedChanges) {
-          appliedRevisionIds = [revisionIdDelete, revisionIdInsert];
+          appliedRevisionIds = [
+            revisionIdDelete,
+            revisionIdInsert,
+            ...(clearedBackground ? [revisionIdBackground] : []),
+          ];
         }
         break;
       }
@@ -786,6 +870,7 @@ const applyFolioAIEditOperationsInternal = ({
       case "replaceBlock": {
         const revisionIdDelete = revisionSeed++;
         const revisionIdInsert = revisionSeed++;
+        const revisionIdBackground = revisionSeed++;
         // Default to preserving formatting (existing behaviour);
         // when explicitly disabled and we're in direct mode, swap
         // the whole block node for a fresh paragraph that drops
@@ -828,6 +913,20 @@ const applyFolioAIEditOperationsInternal = ({
           tr = tr.replaceWith(item.blockFrom, item.blockTo, node);
           break;
         }
+        const stepsBeforeBackgroundClear = tr.steps.length;
+        tr = clearReplacementBackground({
+          tr,
+          schema: view.state.schema,
+          from: item.from,
+          to: item.to,
+          mode,
+          revisionId: revisionIdBackground,
+          author,
+          date,
+          initials,
+          suggestionId,
+        });
+        const clearedBackground = tr.steps.length > stepsBeforeBackgroundClear;
         tr = applyTextReplacement({
           tr,
           item,
@@ -842,7 +941,11 @@ const applyFolioAIEditOperationsInternal = ({
         });
         tr = applyReplaceBlockStyleId({ item, tr });
         if (producesTrackedChanges) {
-          appliedRevisionIds = [revisionIdDelete, revisionIdInsert];
+          appliedRevisionIds = [
+            revisionIdDelete,
+            revisionIdInsert,
+            ...(clearedBackground ? [revisionIdBackground] : []),
+          ];
         }
         break;
       }

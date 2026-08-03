@@ -40,6 +40,33 @@ const makeView = (text: string) => {
   return view;
 };
 
+const makeHighlightedView = (text: string, highlightedText: string) => {
+  const start = text.indexOf(highlightedText);
+  if (start === -1) {
+    throw new Error("expected highlighted text");
+  }
+  const highlight = schema.marks["highlight"]?.create({ color: "yellow" });
+  const runShading = schema.marks["runShading"]?.create({ rgb: "FFFF00" });
+  if (!highlight || !runShading) {
+    throw new Error("expected background marks");
+  }
+  const content = [
+    ...(start === 0 ? [] : [schema.text(text.slice(0, start))]),
+    schema.text(highlightedText, [highlight, runShading]),
+    ...(start + highlightedText.length === text.length
+      ? []
+      : [schema.text(text.slice(start + highlightedText.length))]),
+  ];
+  const doc = schema.node("doc", null, [schema.node("paragraph", {}, content)]);
+  const view = {
+    state: EditorState.create({ schema, doc }),
+    dispatch(transaction: Transaction) {
+      view.state = view.state.apply(transaction);
+    },
+  };
+  return view;
+};
+
 const marksInDoc = (state: EditorState): Mark[] => {
   const marks: Mark[] = [];
   state.doc.descendants((node) => {
@@ -326,6 +353,36 @@ describe("suggestion commands", () => {
     expect(xml).toContain("<w:ins");
     expect(xml).toContain("swift");
     expect(xml).toContain('w:author="Alice"');
+  });
+
+  test("replacement clears the whole highlighted value and rejection restores it", () => {
+    const applyAmountReplacement = () => {
+      const view = makeHighlightedView("Penalty 2000 CZK", "2000");
+      applySuggestedReplace(view, "2000", "3000");
+      return view;
+    };
+    const backgroundMarkNames = new Set(["highlight", "runShading"]);
+    const backgroundMarks = (view: ReturnType<typeof makeHighlightedView>) =>
+      marksInDoc(view.state).filter((mark) => backgroundMarkNames.has(mark.type.name));
+
+    const accepting = applyAmountReplacement();
+    expect(backgroundMarks(accepting)).toEqual([]);
+    expect(
+      acceptSuggestion("op-1", {
+        author: "Alice",
+        date: "2026-07-17T12:00:00.000Z",
+      })(accepting.state, accepting.dispatch),
+    ).toBe(true);
+    expect(backgroundMarks(accepting)).toEqual([]);
+
+    const rejecting = applyAmountReplacement();
+    expect(rejectSuggestion("op-1")(rejecting.state, rejecting.dispatch)).toBe(true);
+    expect(rejecting.state.doc.textContent).toBe("Penalty 2000 CZK");
+    expect(
+      backgroundMarks(rejecting)
+        .map((mark) => mark.type.name)
+        .toSorted(),
+    ).toEqual(["highlight", "runShading"]);
   });
 
   test("rejectSuggestion removes the proposed insertion text", () => {
