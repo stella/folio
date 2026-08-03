@@ -1,5 +1,17 @@
 # @stll/folio-core
 
+## 0.15.13
+
+### Patch Changes
+
+- [#545](https://github.com/stella/folio/pull/545) [`2bb8980`](https://github.com/stella/folio/commit/2bb8980f7d8a3e5db5bc1863ea5bca0a8316dc10) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Clear inherited highlight and shading across AI-replaced text while preserving suggestion rejection.
+
+- [#545](https://github.com/stella/folio/pull/545) [`2bb8980`](https://github.com/stella/folio/commit/2bb8980f7d8a3e5db5bc1863ea5bca0a8316dc10) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Restart a nested list counter after returning to its parent level, and never
+  paint a non-finite counter value into a document marker.
+
+- [#545](https://github.com/stella/folio/pull/545) [`2bb8980`](https://github.com/stella/folio/commit/2bb8980f7d8a3e5db5bc1863ea5bca0a8316dc10) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Prefer collapsed line-edge spans when adjacent runs share a caret boundary, and
+  advance the caret by the measured width of each collapsed trailing space.
+
 ## 0.15.12
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @stll/folio-react
 
+## 0.13.2
+
+### Patch Changes
+
+- [#545](https://github.com/stella/folio/pull/545) [`2bb8980`](https://github.com/stella/folio/commit/2bb8980f7d8a3e5db5bc1863ea5bca0a8316dc10) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Prefer collapsed line-edge spans when adjacent runs share a caret boundary, and
+  advance the caret by the measured width of each collapsed trailing space.
+- Updated dependencies [[`2bb8980`](https://github.com/stella/folio/commit/2bb8980f7d8a3e5db5bc1863ea5bca0a8316dc10), [`2bb8980`](https://github.com/stella/folio/commit/2bb8980f7d8a3e5db5bc1863ea5bca0a8316dc10), [`2bb8980`](https://github.com/stella/folio/commit/2bb8980f7d8a3e5db5bc1863ea5bca0a8316dc10)]:
+  - @stll/folio-core@0.15.13
+
 ## 0.13.1
 
 ### Patch Changes
