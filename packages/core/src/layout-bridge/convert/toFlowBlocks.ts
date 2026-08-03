@@ -207,7 +207,7 @@ function formatNumberedMarker(counters: number[], level: number): string {
   const parts: number[] = [];
   for (let i = 0; i <= level; i += 1) {
     const value = counters[i] ?? 0;
-    if (value <= 0) {
+    if (!Number.isFinite(value) || value <= 0) {
       break;
     }
     parts.push(value);
@@ -379,9 +379,13 @@ function computeListMarker(
     seenNumIds.add(seenKey);
     if (pmAttrs.listStartOverride != null) {
       counters[level] = pmAttrs.listStartOverride - 1;
-    } else if (Number.isNaN(counters[level])) {
-      counters[level] = (pmAttrs.listLevelStarts?.[level] ?? 1) - 1;
     }
+  }
+  // Returning to a parent level clears every deeper counter. A later child at
+  // a level seen earlier must therefore restart from its authored start; the
+  // lifetime `seenNumIds` set cannot stand in for live counter state.
+  if (Number.isNaN(counters[level])) {
+    counters[level] = (pmAttrs.listLevelStarts?.[level] ?? 1) - 1;
   }
 
   counters[level] = (counters[level] ?? 0) + 1;
