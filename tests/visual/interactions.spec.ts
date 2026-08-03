@@ -117,11 +117,15 @@ test.describe("typing + undo", () => {
     if (!runBox) throw new Error("no painted text run");
 
     await page.mouse.click(runBox.x + runBox.width - 1, runBox.y + runBox.height / 2);
+    const caret = page.getByTestId("caret");
+    await expect(caret).toBeVisible();
+    const caretBeforeSpace = await caret.boundingBox();
+    if (!caretBeforeSpace) throw new Error("no painted caret before typing");
+
     await page.keyboard.press("Space");
 
     const collapsedRuns = line.locator('[data-collapsed-trailing-spaces="true"]');
     await expect.poll(() => collapsedRuns.count()).toBeGreaterThan(0);
-    const caret = page.getByTestId("caret");
     await expect(caret).toBeVisible();
 
     await expect
@@ -131,7 +135,10 @@ test.describe("typing + undo", () => {
           visibleRun.boundingBox(),
         ]);
         if (!(caretBox && currentRunBox)) return Number.POSITIVE_INFINITY;
-        return Math.abs(caretBox.y - currentRunBox.y);
+        return Math.max(
+          Math.abs(caretBox.y - currentRunBox.y),
+          Math.abs(caretBox.height - caretBeforeSpace.height),
+        );
       })
       .toBeLessThan(1);
   });

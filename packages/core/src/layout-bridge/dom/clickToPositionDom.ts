@@ -499,6 +499,8 @@ export type DomCaretPosition = {
 export type CollapsedLineEdgeCaretGeometry = {
   left: number;
   top: number;
+  /** Viewport height of the visual anchor. Full-line caret painters retain
+   * their own line-height policy instead of using this glyph-box height. */
   height: number;
 };
 
