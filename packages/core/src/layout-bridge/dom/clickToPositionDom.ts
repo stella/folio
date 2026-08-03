@@ -543,6 +543,35 @@ export function getCollapsedLineEdgeCaretGeometry(
   };
 }
 
+export type CollapsedLineEdgeCaretTarget = {
+  span: HTMLElement;
+  geometry: CollapsedLineEdgeCaretGeometry;
+};
+
+/**
+ * Prefer a collapsed line-edge span when multiple painted spans share the PM
+ * position. Generic text runs use inclusive endpoints, so DOM order alone
+ * cannot decide which span owns a boundary.
+ */
+export function findCollapsedLineEdgeCaretTarget(
+  spans: readonly HTMLElement[],
+  pmPos: number,
+): CollapsedLineEdgeCaretTarget | null {
+  for (const span of spans) {
+    const pmStart = Number(span.dataset["pmStart"]);
+    const pmEnd = Number(span.dataset["pmEnd"]);
+    if (pmPos < pmStart || pmPos > pmEnd) {
+      continue;
+    }
+
+    const geometry = getCollapsedLineEdgeCaretGeometry(span);
+    if (geometry) {
+      return { span, geometry };
+    }
+  }
+  return null;
+}
+
 export function getCaretPositionFromDom(
   container: HTMLElement,
   pmPos: number,
@@ -555,6 +584,18 @@ export function getCaretPositionFromDom(
   // scope, body selections paint phantom rects on HF text and clicks in
   // body coords could resolve to HF positions.
   const spans = htmlQueryAll(container, ".layout-page-content span[data-pm-start][data-pm-end]");
+
+  const collapsedTarget = findCollapsedLineEdgeCaretTarget(spans, pmPos);
+  if (collapsedTarget) {
+    const pageEl = closestHtmlElement(collapsedTarget.span, ".layout-page");
+    const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
+    return {
+      x: collapsedTarget.geometry.left - overlayRect.left,
+      y: collapsedTarget.geometry.top - overlayRect.top,
+      height: collapsedTarget.geometry.height,
+      pageIndex,
+    };
+  }
 
   for (const spanEl of spans) {
     const pmStart = Number(spanEl.dataset["pmStart"]);
@@ -583,18 +624,6 @@ export function getCaretPositionFromDom(
 
     // For text runs, use inclusive range
     if (pmPos >= pmStart && pmPos <= pmEnd) {
-      const collapsedGeometry = getCollapsedLineEdgeCaretGeometry(spanEl);
-      if (collapsedGeometry) {
-        const pageEl = closestHtmlElement(spanEl, ".layout-page");
-        const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
-        return {
-          x: collapsedGeometry.left - overlayRect.left,
-          y: collapsedGeometry.top - overlayRect.top,
-          height: collapsedGeometry.height,
-          pageIndex,
-        };
-      }
-
       const textNode = spanEl.firstChild;
       if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
         // No text - use span bounds

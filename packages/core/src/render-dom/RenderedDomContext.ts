@@ -5,7 +5,7 @@
  */
 
 import { findBodyEmptyRuns, findBodyPmSpans } from "../layout-bridge/dom/findBodyPmSpans";
-import { getCollapsedLineEdgeCaretGeometry } from "../layout-bridge/dom/clickToPositionDom";
+import { findCollapsedLineEdgeCaretTarget } from "../layout-bridge/dom/clickToPositionDom";
 import { closestHtmlElement } from "../utils/domGuards";
 
 export type RenderedDomPoint = {
@@ -61,7 +61,17 @@ export class RenderedDomContextImpl implements RenderedDomContext {
 
   getCoordinatesForPosition(pmPos: number): RenderedDomPoint | null {
     const containerRect = this.#pagesContainer.getBoundingClientRect();
-    for (const span of findBodyPmSpans(this.#pagesContainer)) {
+    const spans = findBodyPmSpans(this.#pagesContainer);
+    const collapsedTarget = findCollapsedLineEdgeCaretTarget(spans, pmPos);
+    if (collapsedTarget) {
+      return {
+        x: (collapsedTarget.geometry.left - containerRect.left) / this.#zoom,
+        y: (collapsedTarget.geometry.top - containerRect.top) / this.#zoom,
+        height: lineHeightFor(collapsedTarget.span, this.#zoom),
+      };
+    }
+
+    for (const span of spans) {
       const pmStart = Number(span.dataset["pmStart"]);
       const pmEnd = Number(span.dataset["pmEnd"]);
       const containsPosition = span.classList.contains("layout-run-tab")
@@ -76,15 +86,6 @@ export class RenderedDomContextImpl implements RenderedDomContext {
         return {
           x: (spanRect.left - containerRect.left) / this.#zoom,
           y: (spanRect.top - containerRect.top) / this.#zoom,
-          height: lineHeightFor(span, this.#zoom),
-        };
-      }
-
-      const collapsedGeometry = getCollapsedLineEdgeCaretGeometry(span);
-      if (collapsedGeometry) {
-        return {
-          x: (collapsedGeometry.left - containerRect.left) / this.#zoom,
-          y: (collapsedGeometry.top - containerRect.top) / this.#zoom,
           height: lineHeightFor(span, this.#zoom),
         };
       }

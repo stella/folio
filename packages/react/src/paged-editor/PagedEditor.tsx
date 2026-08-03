@@ -69,7 +69,7 @@ import type {
 import { templatePreviewDirtyRange } from "@stll/folio-core/layout-bridge/convert/templatePreviewFlow";
 import {
   clickToPositionDom,
-  getCollapsedLineEdgeCaretGeometry,
+  findCollapsedLineEdgeCaretTarget,
 } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
 import {
   resetImeCaretAnchor,
@@ -2174,6 +2174,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // Find spans with PM position data
         const spans = findBodyPmSpans(pagesContainerRef.current);
 
+        const collapsedTarget = findCollapsedLineEdgeCaretTarget(spans, pmPos);
+        if (collapsedTarget) {
+          return {
+            x: (collapsedTarget.geometry.left - overlayRect.left) / currentZoom,
+            y: (collapsedTarget.geometry.top - overlayRect.top) / currentZoom,
+            height: getLineHeight(collapsedTarget.span),
+            pageIndex: getPageIndex(collapsedTarget.span),
+          };
+        }
+
         for (const spanEl of spans) {
           const pmStart = Number(spanEl.dataset["pmStart"]);
           const pmEnd = Number(spanEl.dataset["pmEnd"]);
@@ -2209,16 +2219,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             pmPos <= pmEnd &&
             spanEl.firstChild?.nodeType === Node.TEXT_NODE
           ) {
-            const collapsedGeometry = getCollapsedLineEdgeCaretGeometry(spanEl);
-            if (collapsedGeometry) {
-              return {
-                x: (collapsedGeometry.left - overlayRect.left) / currentZoom,
-                y: (collapsedGeometry.top - overlayRect.top) / currentZoom,
-                height: getLineHeight(spanEl),
-                pageIndex: getPageIndex(spanEl),
-              };
-            }
-
             const textNode = spanEl.firstChild as Text;
             const charIndex = Math.min(pmPos - pmStart, textNode.length);
 

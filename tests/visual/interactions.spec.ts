@@ -103,7 +103,7 @@ async function openTableCellMenu(page: Page): Promise<Locator> {
 }
 
 test.describe("typing + undo", () => {
-  test("typing a collapsed trailing space keeps the caret on the text row", async ({ page }) => {
+  test("a collapsed trailing space owns its shared caret boundary", async ({ page }) => {
     await mountFixture(page, "sample.docx");
 
     const paragraph = page.locator(".layout-paragraph").first();
@@ -126,6 +126,23 @@ test.describe("typing + undo", () => {
 
     const collapsedRuns = line.locator('[data-collapsed-trailing-spaces="true"]');
     await expect.poll(() => collapsedRuns.count()).toBeGreaterThan(0);
+    const sharedBoundary = await collapsedRuns.first().evaluate((run) => {
+      const pmStart = (run as HTMLElement).dataset["pmStart"];
+      if (pmStart === undefined) throw new Error("collapsed run has no PM start");
+      return Number(pmStart);
+    });
+    await page.evaluate((pmPos) => {
+      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.setSelection(pmPos);
+    }, sharedBoundary);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.selection
+              .from ?? null,
+        ),
+      )
+      .toBe(sharedBoundary);
     await expect(caret).toBeVisible();
 
     await expect
