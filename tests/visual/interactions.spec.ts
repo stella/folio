@@ -103,7 +103,7 @@ async function openTableCellMenu(page: Page): Promise<Locator> {
 }
 
 test.describe("typing + undo", () => {
-  test("a collapsed trailing space owns its shared caret boundary", async ({ page }) => {
+  test("repeated trailing spaces advance the painted caret", async ({ page }) => {
     await mountFixture(page, "sample.docx");
 
     const paragraph = page.locator(".layout-paragraph").first();
@@ -119,69 +119,48 @@ test.describe("typing + undo", () => {
     await page.mouse.click(runBox.x + runBox.width - 1, runBox.y + runBox.height / 2);
     const caret = page.getByTestId("caret");
     await expect(caret).toBeVisible();
-    const caretBeforeSpace = await caret.boundingBox();
-    if (!caretBeforeSpace) throw new Error("no painted caret before typing");
+    let previousCaret = await caret.boundingBox();
+    if (!previousCaret) throw new Error("no painted caret before typing");
+    let previousSelection = await page.evaluate(
+      () =>
+        globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.selection
+          .from ?? null,
+    );
+    if (previousSelection === null) throw new Error("no editor selection before typing");
 
-    await page.keyboard.press("Space");
+    for (let index = 0; index < 4; index += 1) {
+      await page.keyboard.press("Space");
+      const expectedSelection = previousSelection + 1;
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state
+                .selection.from ?? null,
+          ),
+        )
+        .toBe(expectedSelection);
 
-    const collapsedRuns = line.locator('[data-collapsed-trailing-spaces="true"]');
-    await expect.poll(() => collapsedRuns.count()).toBeGreaterThan(0);
-    const sharedBoundary = await collapsedRuns.first().evaluate((run) => {
-      const pmStart = (run as HTMLElement).dataset["pmStart"];
-      if (pmStart === undefined) throw new Error("collapsed run has no PM start");
-      return Number(pmStart);
-    });
-    await page.evaluate((pmPos) => {
-      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.setSelection(pmPos);
-    }, sharedBoundary);
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.selection
-              .from ?? null,
-        ),
-      )
-      .toBe(sharedBoundary);
-    await expect(caret).toBeVisible();
-    const caretAtSharedBoundary = await caret.boundingBox();
-    if (!caretAtSharedBoundary) throw new Error("no caret at shared boundary");
+      const priorCaret = previousCaret;
+      await expect
+        .poll(async () => {
+          const currentCaret = await caret.boundingBox();
+          if (!currentCaret) return null;
+          return {
+            advanced: currentCaret.x - priorCaret.x > 1,
+            sameRow: Math.abs(currentCaret.y - priorCaret.y) < 1,
+          };
+        })
+        .toEqual({ advanced: true, sameRow: true });
 
-    await page.evaluate((pmPos) => {
-      globalThis.__folioPlayground
-        ?.getEditorRef()
-        ?.getEditorRef()
-        ?.setSelection(pmPos + 1);
-    }, sharedBoundary);
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.selection
-              .from ?? null,
-        ),
-      )
-      .toBe(sharedBoundary + 1);
+      previousCaret = await caret.boundingBox();
+      if (!previousCaret) throw new Error("painted caret disappeared after typing");
+      previousSelection = expectedSelection;
+    }
 
-    await expect
-      .poll(async () => {
-        const [caretBox, currentRunBox] = await Promise.all([
-          caret.boundingBox(),
-          visibleRun.boundingBox(),
-        ]);
-        if (!(caretBox && currentRunBox)) return Number.POSITIVE_INFINITY;
-        return Math.max(
-          Math.abs(caretBox.y - currentRunBox.y),
-          Math.abs(caretBox.height - caretBeforeSpace.height),
-        );
-      })
-      .toBeLessThan(1);
-    await expect
-      .poll(async () => {
-        const caretBox = await caret.boundingBox();
-        return caretBox ? caretBox.x - caretAtSharedBoundary.x : 0;
-      })
-      .toBeGreaterThan(1);
+    await expect(
+      line.locator('[data-collapsed-trailing-spaces="true"][data-collapsed-space-advance]'),
+    ).toHaveCount(1);
   });
 
   test("a rapid burst types as a group, and one undo reverts the whole burst", async ({ page }) => {
