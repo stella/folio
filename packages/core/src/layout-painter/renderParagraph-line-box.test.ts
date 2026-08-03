@@ -323,6 +323,7 @@ describe("renderLine box model", () => {
     expect(spaces?.dataset["pmStart"]).toBe("19");
     expect(spaces?.dataset["pmEnd"]).toBe("22");
     expect(spaces?.dataset["collapsedTrailingSpaces"]).toBe("true");
+    expect(Number(spaces?.dataset["collapsedSpaceAdvance"])).toBeGreaterThan(0);
     expect(spaces?.style["fontSize"]).toBe("0");
   });
 

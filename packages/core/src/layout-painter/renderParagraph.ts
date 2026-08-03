@@ -1816,6 +1816,11 @@ export function renderLine(
   } = splitCollapsibleLineEdgeSpaces(splitRuns, startsAfterSoftWrap(block, line));
   const isCollapsedLineEdgeSpaceRun = (run: TextRun): boolean =>
     collapsedLeadingSpaceRuns.has(run) || collapsedTrailingSpaceRuns.has(run);
+  const hasCollapsedLineEdgeSpaceRuns =
+    collapsedLeadingSpaceRuns.size > 0 || collapsedTrailingSpaceRuns.size > 0;
+  const collapsedSpaceMeasureText = hasCollapsedLineEdgeSpaceRuns
+    ? createTextMeasurer(doc)
+    : undefined;
   const renderLineTextRun = (run: TextRun): HTMLElement => {
     const runEl = renderTextRun(run, doc);
     if (collapsedLeadingSpaceRuns.has(run)) {
@@ -1825,6 +1830,15 @@ export function renderLine(
       runEl.dataset["collapsedTrailingSpaces"] = "true";
     }
     if (isCollapsedLineEdgeSpaceRun(run)) {
+      const spaceAdvance =
+        (collapsedSpaceMeasureText?.(
+          " ",
+          run.fontSize || 11,
+          run.fontFamily || "Calibri",
+          runMeasureStyle(run),
+        ) ?? 0) *
+        ((run.horizontalScale ?? 100) / 100);
+      runEl.dataset["collapsedSpaceAdvance"] = String(spaceAdvance);
       runEl.style.fontSize = "0";
       runEl.style.letterSpacing = "0";
       runEl.style.wordSpacing = "0";
@@ -2000,7 +2014,9 @@ export function renderLine(
       run.horizontalScale !== undefined &&
       run.horizontalScale !== 100,
   );
-  const measureText = hasTabRuns || hasScaledTextRun ? createTextMeasurer(doc) : undefined;
+  const measureText =
+    collapsedSpaceMeasureText ??
+    (hasTabRuns || hasScaledTextRun ? createTextMeasurer(doc) : undefined);
 
   if (hasTabRuns) {
     // Convert tab stops from layout engine format to tab calculator format

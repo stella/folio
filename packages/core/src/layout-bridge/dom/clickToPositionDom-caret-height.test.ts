@@ -180,6 +180,7 @@ const buildCollapsedTrailingSpaceContainer = (): HTMLElement => {
   spaces.dataset["pmStart"] = "6";
   spaces.dataset["pmEnd"] = "8";
   spaces.dataset["collapsedTrailingSpaces"] = "true";
+  spaces.dataset["collapsedSpaceAdvance"] = "4";
   spaces.firstChild = { nodeType: 3, length: 2 };
 
   container.append(page);
@@ -271,7 +272,7 @@ describe("getCaretPositionFromDom caret height", () => {
     rangeTop = 70;
     const caret = getCaretPositionFromDom(buildCollapsedTrailingSpaceContainer(), 7, rect({}));
 
-    expect(caret).toEqual({ x: 30, y: 20, height: 18, pageIndex: 0 });
+    expect(caret).toEqual({ x: 34, y: 20, height: 18, pageIndex: 0 });
   });
 
   test("prefers collapsed trailing-space geometry at the shared run boundary", () => {
@@ -279,6 +280,12 @@ describe("getCaretPositionFromDom caret height", () => {
     const caret = getCaretPositionFromDom(buildCollapsedTrailingSpaceContainer(), 6, rect({}));
 
     expect(caret).toEqual({ x: 30, y: 20, height: 18, pageIndex: 0 });
+  });
+
+  test("advances once for every collapsed trailing space", () => {
+    const caret = getCaretPositionFromDom(buildCollapsedTrailingSpaceContainer(), 8, rect({}));
+
+    expect(caret).toEqual({ x: 38, y: 20, height: 18, pageIndex: 0 });
   });
 
   test("keeps collapsed leading-space geometry at the shared run boundary", () => {

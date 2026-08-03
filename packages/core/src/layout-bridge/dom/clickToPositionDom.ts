@@ -513,6 +513,7 @@ export type CollapsedLineEdgeCaretGeometry = {
  */
 export function getCollapsedLineEdgeCaretGeometry(
   spanEl: HTMLElement,
+  pmPos?: number,
 ): CollapsedLineEdgeCaretGeometry | null {
   const isLeading = spanEl.dataset["collapsedLeadingSpaces"] === "true";
   const isTrailing = spanEl.dataset["collapsedTrailingSpaces"] === "true";
@@ -535,9 +536,23 @@ export function getCollapsedLineEdgeCaretGeometry(
   const line = closestHtmlElement(spanEl, ".layout-line");
   const anchorRect = sibling?.getBoundingClientRect() ?? line?.getBoundingClientRect() ?? spanRect;
   const lineRect = line?.getBoundingClientRect();
+  const pmStart = Number(spanEl.dataset["pmStart"]);
+  const pmEnd = Number(spanEl.dataset["pmEnd"]);
+  const storedSpaceAdvance = Number(spanEl.dataset["collapsedSpaceAdvance"]);
+  const lineScale =
+    line && line.offsetWidth > 0 && lineRect ? lineRect.width / line.offsetWidth : 1;
+  const trailingSpaceCount =
+    isTrailing && pmPos !== undefined && Number.isFinite(pmStart) && Number.isFinite(pmEnd)
+      ? Math.max(0, Math.min(pmPos, pmEnd) - pmStart)
+      : 0;
+  const inlineDirection = spanRect.left <= anchorRect.left ? -1 : 1;
+  const trailingAdvance =
+    Number.isFinite(storedSpaceAdvance) && lineScale > 0
+      ? trailingSpaceCount * storedSpaceAdvance * lineScale * inlineDirection
+      : 0;
 
   return {
-    left: spanRect.left,
+    left: spanRect.left + trailingAdvance,
     top: anchorRect.top,
     height: anchorRect.height || lineRect?.height || 16,
   };
@@ -564,7 +579,7 @@ export function findCollapsedLineEdgeCaretTarget(
       continue;
     }
 
-    const geometry = getCollapsedLineEdgeCaretGeometry(span);
+    const geometry = getCollapsedLineEdgeCaretGeometry(span, pmPos);
     if (geometry) {
       return { span, geometry };
     }

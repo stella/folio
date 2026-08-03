@@ -125,7 +125,7 @@ export function computeHfCaretRectFromView(
     const end = Number(span.dataset["pmEnd"]);
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
     if (pmPos >= start && pmPos <= end) {
-      const collapsedGeometry = getCollapsedLineEdgeCaretGeometry(span);
+      const collapsedGeometry = getCollapsedLineEdgeCaretGeometry(span, pmPos);
       if (collapsedGeometry) {
         return {
           top: collapsedGeometry.top,

@@ -144,6 +144,24 @@ test.describe("typing + undo", () => {
       )
       .toBe(sharedBoundary);
     await expect(caret).toBeVisible();
+    const caretAtSharedBoundary = await caret.boundingBox();
+    if (!caretAtSharedBoundary) throw new Error("no caret at shared boundary");
+
+    await page.evaluate((pmPos) => {
+      globalThis.__folioPlayground
+        ?.getEditorRef()
+        ?.getEditorRef()
+        ?.setSelection(pmPos + 1);
+    }, sharedBoundary);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.selection
+              .from ?? null,
+        ),
+      )
+      .toBe(sharedBoundary + 1);
 
     await expect
       .poll(async () => {
@@ -158,6 +176,12 @@ test.describe("typing + undo", () => {
         );
       })
       .toBeLessThan(1);
+    await expect
+      .poll(async () => {
+        const caretBox = await caret.boundingBox();
+        return caretBox ? caretBox.x - caretAtSharedBoundary.x : 0;
+      })
+      .toBeGreaterThan(1);
   });
 
   test("a rapid burst types as a group, and one undo reverts the whole burst", async ({ page }) => {
