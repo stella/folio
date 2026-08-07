@@ -62,8 +62,8 @@
   },
   "devDependencies": {
     "@nuxt/module-builder": "^1.0.0",
-    "@nuxt/schema": "^4.0.0",
-    "nuxt": "^3.14.0 || ^4.0.0",
+    "@nuxt/schema": "^4.5.1",
+    "nuxt": "^4.5.1",
     "vue": "^3.5.0"
   },
   "peerDependencies": {
