@@ -19,6 +19,8 @@
  */
 
 import { TaggedError } from "better-result";
+import { Fragment } from "prosemirror-model";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 import type { Plugin } from "prosemirror-state";
@@ -47,11 +49,11 @@ import {
   headerFooterToProseDoc,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
+import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import {
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
-  ignoreTrackedChanges,
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
@@ -131,44 +133,56 @@ type FolioDocumentOperationUndoEntry = {
  *
  * The shared `ParaIdAllocatorExtension` mints RANDOM ids (correct for freshly
  * typed paragraphs in the live editor); this load-time pass is deterministic so
- * a paraId-less corpus document anchors reproducibly. The transaction is marked
- * ignore-tracked so the change baseline stays clean.
+ * a paraId-less corpus document anchors reproducibly.
+ *
+ * Rebuilding only the changed branches, like {@link ensureParaIdsInDoc}, keeps
+ * the pass linear in paragraph count. Seeding through a transaction instead
+ * costs one `setNodeMarkup` step per paragraph, and both halves of that are
+ * quadratic: every step rebuilds the containing fragment, and the plugin
+ * `appendTransaction` chain rescans the accumulated step maps. Because the pass
+ * runs before the state exists, no history, mapping, or change-tracking
+ * semantics depend on it.
  */
-const ensureDeterministicParaIdsInState = (state: EditorState): EditorState => {
+const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
   const seen = new Set<string>();
-  const updates: { pos: number; attrs: Record<string, unknown> }[] = [];
   let ordinal = 0;
 
-  state.doc.descendants((node, pos) => {
-    if (node.type.name !== "paragraph") {
-      return undefined;
-    }
-    ordinal += 1;
-    const existing = node.attrs["paraId"];
-    if (typeof existing === "string" && existing.length > 0 && !seen.has(existing)) {
-      seen.add(existing);
-      return false;
-    }
-    let paraId = deterministicHexId(`${node.textContent}:${ordinal}`);
-    for (let salt = 1; seen.has(paraId); salt++) {
-      paraId = deterministicHexId(`${node.textContent}:${ordinal}:${salt}`);
-    }
-    seen.add(paraId);
-    updates.push({ pos, attrs: { ...node.attrs, paraId } });
-    return false;
-  });
+  const rewrite = (parent: PMNode): Fragment => {
+    let changed = false;
+    const children: PMNode[] = [];
 
-  if (updates.length === 0) {
-    return state;
-  }
+    parent.forEach((child) => {
+      let next = child;
+      if (child.type.name === "paragraph") {
+        ordinal += 1;
+        const existing = child.attrs["paraId"];
+        if (typeof existing === "string" && existing.length > 0 && !seen.has(existing)) {
+          seen.add(existing);
+        } else {
+          let paraId = deterministicHexId(`${child.textContent}:${ordinal}`);
+          for (let salt = 1; seen.has(paraId); salt++) {
+            paraId = deterministicHexId(`${child.textContent}:${ordinal}:${salt}`);
+          }
+          seen.add(paraId);
+          next = child.type.create({ ...child.attrs, paraId }, child.content, child.marks);
+        }
+      } else if (child.childCount > 0) {
+        const content = rewrite(child);
+        if (content !== child.content) {
+          next = child.copy(content);
+        }
+      }
+      if (next !== child) {
+        changed = true;
+      }
+      children.push(next);
+    });
 
-  const tr = state.tr;
-  for (const update of updates) {
-    tr.setNodeMarkup(update.pos, undefined, update.attrs);
-  }
-  ignoreTrackedChanges(tr);
-  tr.setMeta("addToHistory", false);
-  return state.apply(tr);
+    return changed ? Fragment.fromArray(children) : parent.content;
+  };
+
+  const content = rewrite(doc);
+  return content === doc.content ? doc : doc.copy(content);
 };
 
 /** Options for {@link FolioDocxReviewer.fromBuffer}. */
@@ -504,8 +518,17 @@ export class FolioDocxReviewer {
     // paraId-less document yields the SAME block ids on every parse: ops built
     // from one parse's snapshot then resolve against another parse of the same
     // bytes instead of skipping as stale anchors.
-    const state = ensureDeterministicParaIdsInState(
-      EditorState.create({ schema, doc: toProseDoc(baseDocument), plugins }),
+    //
+    // `ensureBaseDirectionInState` seeds `dir` on RTL paragraphs the same way
+    // the editor load path does. It used to run only as a side effect of the
+    // paraId transaction, so a document that already carried a complete set of
+    // Word-authored paraIds silently skipped bidi seeding.
+    const state = ensureBaseDirectionInState(
+      EditorState.create({
+        schema,
+        doc: ensureDeterministicParaIdsInDoc(toProseDoc(baseDocument)),
+        plugins,
+      }),
     );
     return new FolioDocxReviewer({
       baseDocument,
@@ -1113,13 +1136,14 @@ export class FolioDocxReviewer {
         theme: this.baseDocument.package.theme,
       }),
     };
-    const state = ensureDeterministicParaIdsInState(
+    const storyDoc =
+      story.type === "header" || story.type === "footer"
+        ? headerFooterToProseDoc(source.content, conversionOptions)
+        : footnoteToProseDoc(source.content, conversionOptions);
+    const state = ensureBaseDirectionInState(
       EditorState.create({
         schema,
-        doc:
-          story.type === "header" || story.type === "footer"
-            ? headerFooterToProseDoc(source.content, conversionOptions)
-            : footnoteToProseDoc(source.content, conversionOptions),
+        doc: ensureDeterministicParaIdsInDoc(storyDoc),
         plugins: singletonManager.getPlugins(),
       }),
     );
