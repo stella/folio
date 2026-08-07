@@ -1,5 +1,17 @@
 # @stll/folio-core
 
+## 0.16.0
+
+### Minor Changes
+
+- [#552](https://github.com/stella/folio/pull/552) [`198e98e`](https://github.com/stella/folio/commit/198e98e8dd7fd1c2b76eff944f92602cd3c1bdfb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Extract DOCX tables as markdown rows instead of a flat row-major paragraph list, so a cell stays associated with its column. `ExtractedDocxParagraph` gains an optional `tableRow` describing which table a row belongs to and whether it carries cells.
+
+### Patch Changes
+
+- [#551](https://github.com/stella/folio/pull/551) [`1670559`](https://github.com/stella/folio/commit/16705596439f650174891da6f9e29fe97b0e2e39) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Seed headless `paraId` attributes by rebuilding the document instead of applying one ProseMirror step per paragraph, removing two quadratics from `FolioDocxReviewer.fromBuffer` (-29% on a real DOCX corpus, -45% on the largest file). Also seeds RTL base direction explicitly, which previously rode on the paraId transaction and was skipped entirely for documents that already carried Word-authored paraIds.
+
+- [#553](https://github.com/stella/folio/pull/553) [`e5bd094`](https://github.com/stella/folio/commit/e5bd094c34405a2ec32ba861448d5e35629ed085) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bump `dompurify` to 3.4.13, which fixes an XSS advisory where an `IN_PLACE` hook removal left a detached subtree executable.
+
 ## 0.15.13
 
 ### Patch Changes

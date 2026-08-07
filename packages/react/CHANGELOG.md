@@ -1,5 +1,12 @@
 # @stll/folio-react
 
+## 0.13.3
+
+### Patch Changes
+
+- Updated dependencies [[`198e98e`](https://github.com/stella/folio/commit/198e98e8dd7fd1c2b76eff944f92602cd3c1bdfb), [`1670559`](https://github.com/stella/folio/commit/16705596439f650174891da6f9e29fe97b0e2e39), [`e5bd094`](https://github.com/stella/folio/commit/e5bd094c34405a2ec32ba861448d5e35629ed085)]:
+  - @stll/folio-core@0.16.0
+
 ## 0.13.2
 
 ### Patch Changes
