@@ -24,6 +24,7 @@
     "check:export-parity": "node scripts/check-export-parity.mjs",
     "check:react-compiler": "bun scripts/react-compiler-bailouts.ts --check",
     "check:lockfile-versions": "bun scripts/check-lockfile-workspace-versions.ts",
+    "check:quarantine-excludes": "bun scripts/check-quarantine-excludes.ts",
     "check:build-reproducibility": "bun scripts/check-build-reproducibility.ts",
     "check:docx-kernel": "bun --filter '@stll/docx-core' wasm:check",
     "check:docx-kernel-version": "bun scripts/sync-docx-kernel-version.ts",

@@ -89,6 +89,20 @@ jobs:
       - name: Lockfile workspace-version check
         run: bun run check:lockfile-versions
 
+      - name: Quarantine-exclude guard
+        # The 5-day release-age quarantine is excluded per package for the
+        # first-party @stll/* code folio pulls from npm, and bun matches those
+        # entries EXACTLY (a `@stll/*` glob is accepted and ignored). List a
+        # napi package without its platform subpackages and the parent installs
+        # while its binaries stay quarantined — and a quarantined
+        # optionalDependency is skipped SILENTLY, so the package imports fine
+        # and throws on first use. This fails when the exclude list stops
+        # covering everything in the lock. Temporary third-party exemptions
+        # carry an exact expiry so the same check also fails once Bun's
+        # release-age gate can take over again. The guard's own self-test runs
+        # with `bun run test` below.
+        run: bun run check:quarantine-excludes
+
       - name: Dependency audit
         run: bun run audit
 
