@@ -174,6 +174,8 @@ export {
 export {
   extractDocxText,
   type DocxParagraphSource,
+  type DocxTableRowKind,
+  type DocxTableRowPosition,
   type ExtractedDocxParagraph,
   type ExtractedDocxText,
 } from "./docx/server/extractDocxText";

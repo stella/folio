@@ -137,6 +137,15 @@ export type DocxArchiveOptions = {
 export type DocxParagraphSource = "header" | "body" | "footer";
 
 // @public
+export type DocxTableRowKind = "cells" | "syntheticHeader" | "delimiter";
+
+// @public
+export type DocxTableRowPosition = {
+    table: number;
+    kind: DocxTableRowKind;
+};
+
+// @public
 export function docxToMarkdown(input: ArrayBuffer | Uint8Array, opts?: MarkdownOptions): Promise<string>;
 
 // @public
@@ -195,6 +204,7 @@ export type ExtractedDocxParagraph = {
     bold?: boolean;
     fontSize?: number;
     alignment?: "left" | "center" | "right" | "both";
+    tableRow?: DocxTableRowPosition;
 };
 
 // @public
