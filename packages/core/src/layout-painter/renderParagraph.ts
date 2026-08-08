@@ -1808,6 +1808,13 @@ export function renderLine(
   lineEl.style.height = `${line.lineHeight}px`;
   lineEl.style.lineHeight = `${line.lineHeight}px`;
 
+  // The width the measurer decided this line would be, stamped next to what the
+  // painter actually drew. Folio measures with canvas and paints with the
+  // browser's own text layout: two engines, and until this attribute existed
+  // nothing compared their answers, so they could disagree and every test still
+  // pass. `tests/visual/measure-parity.spec.ts` is that comparison.
+  lineEl.dataset["measuredWidth"] = String(line.width);
+
   // Get runs for this line
   const splitRuns = splitTextRunsByEastAsia(sliceRunsForLine(block, line));
   const {
