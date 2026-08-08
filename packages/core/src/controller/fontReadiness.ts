@@ -231,9 +231,21 @@ function addLayoutFontFamilyFace(
     return;
   }
 
-  const fontFamily = value as { ascii?: unknown; hAnsi?: unknown };
+  // Every slot, not just the Latin ones. `w:cs` carries the complex-script face
+  // (Word writes Arabic and Hebrew there) and `w:eastAsia` the CJK face, so
+  // collecting only ascii/hAnsi left the first layout measuring a fallback for
+  // exactly the scripts whose advances differ most from it, then repainting in
+  // the real face once it loaded.
+  const fontFamily = value as {
+    ascii?: unknown;
+    hAnsi?: unknown;
+    cs?: unknown;
+    eastAsia?: unknown;
+  };
   addLayoutFontFamilyFace(faces, fontFamily.ascii, descriptor);
   addLayoutFontFamilyFace(faces, fontFamily.hAnsi, descriptor);
+  addLayoutFontFamilyFace(faces, fontFamily.cs, descriptor);
+  addLayoutFontFamilyFace(faces, fontFamily.eastAsia, descriptor);
 }
 
 function addLayoutFontFamilyNameFace(

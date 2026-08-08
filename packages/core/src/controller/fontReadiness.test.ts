@@ -110,6 +110,25 @@ describe("initial layout font loading", () => {
     expect(documentFontsAreLoaded()).toBe(true);
   });
 
+  // Word writes the Arabic and Hebrew face into `w:cs` and the CJK face into
+  // `w:eastAsia`, not into ascii/hAnsi. Collecting only the Latin slots left the
+  // first layout measuring a fallback for exactly the scripts whose advances
+  // differ most from it, and the painted result then disagreed with it.
+  test.each([
+    ["cs", "Noto Sans Arabic"],
+    ["eastAsia", "Noto Sans JP"],
+  ])("waits for the %s font slot", (slot, family) => {
+    const fontFamily = schema.marks["fontFamily"]?.create({ [slot]: family });
+    if (!fontFamily) {
+      throw new Error("Expected a fontFamily mark in schema");
+    }
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("text", [fontFamily])]),
+    ]);
+
+    expect(collectInitialLayoutFontFamilies(null, pmDoc)).toContain(family);
+  });
+
   test("always includes the default layout font family for a null document model", () => {
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("plain")]),
