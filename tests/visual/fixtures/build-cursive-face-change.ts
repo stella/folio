@@ -82,7 +82,13 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <w:docDefaults>
     <w:rPrDefault>
       <w:rPr>
-        <w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>
+        <!-- Pin the complex-script face. Without this the runner's own Arabic
+             fallback decides the advances, and the joined-versus-unjoined width
+             relationship differs per font, so the same assertion passed on one
+             OS and failed on another. folio-react loads Noto Sans Arabic 400
+             and 700 as webfonts, so both weights this fixture needs resolve to
+             the same face everywhere. -->
+        <w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Noto Sans Arabic"/>
         <w:sz w:val="28"/>
         <w:szCs w:val="28"/>
       </w:rPr>

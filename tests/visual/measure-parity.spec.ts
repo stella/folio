@@ -156,11 +156,18 @@ test.describe("measure/paint parity", () => {
   });
 
   test("a repaired cursive line is measured no narrower than it paints", async ({ page }) => {
-    // The known residual, pinned as a direction rather than left as a comment.
+    // The known residual, pinned as a number rather than left as a comment.
     // Canvas cannot see the joiners the painter inserts to keep a cursive word
     // connected across a face change, so the measurer reserves the unjoined
-    // width. That must stay conservative: reserving MORE than is drawn breaks a
-    // line early and can never overflow, whereas reserving less would clip.
+    // width and the painted width differs.
+    //
+    // The direction is a property of the FONT, not of the repair: joined forms
+    // are narrower than isolated ones in some faces and wider in others. An
+    // earlier version of this assertion encoded "the measurer always
+    // over-reserves", which held for the macOS fallback face and failed on
+    // Linux. The fixture now pins the complex-script font to one folio ships as
+    // a webfont, so the relationship is the same everywhere and can be asserted
+    // at all.
     await openFixture(page, CURSIVE_FIXTURE);
     const lines = await collectLineParity(page);
     const repaired = lines.filter((line) => line.hasJoiner);

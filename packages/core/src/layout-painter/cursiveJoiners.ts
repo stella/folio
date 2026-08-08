@@ -25,13 +25,17 @@
  * KNOWN RESIDUAL — the measurer does not see this repair. Canvas `measureText`
  * ignores a joiner at a string edge (measuring the two halves with and without
  * one returns bit-identical widths), while DOM layout applies the joined forms.
- * So a repaired word paints NARROWER than the measurer reserved, by roughly the
- * difference between isolated and medial advances. The error is bounded, only
- * arises on words that contain a face change, and is conservative: layout
- * over-reserves, so a line may break marginally early and can never overflow.
- * Closing it needs widths from a real shaper rather than canvas; until then the
- * trade is a correct rendering against a slightly cautious measurement, which
- * beats a measurement that exactly matches a visibly broken rendering.
+ * So a repaired word paints at a different width than the measurer reserved, by
+ * roughly the difference between isolated and medial advances.
+ *
+ * Which DIRECTION depends on the font: joined forms are narrower than isolated
+ * ones in some faces and wider in others, and this was observed to flip between
+ * two Arabic faces on different platforms. So it is a bounded disagreement, not
+ * a safe over-reservation, and it can push a line either way. It arises only on
+ * words that contain a face change. Closing it needs widths from a real shaper
+ * rather than canvas; until then the trade is a correct rendering against a
+ * slightly wrong measurement, which beats a measurement that exactly matches a
+ * visibly broken rendering.
  */
 
 import { hasCursiveLetter, joinsAcrossBoundary } from "../utils/cursiveJoining";
