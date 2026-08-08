@@ -37,6 +37,10 @@ type LineParity = {
  * Sub-pixel slack. Canvas advances and layout advances round independently, and
  * a line accumulates one rounding per run, so the budget scales with run count
  * rather than being a flat number that silently absorbs a real regression.
+ *
+ * Counted over CONTENT runs only. Counting every child would let each joiner
+ * span, list marker and break marker buy another half-pixel of slack, so a
+ * repaired line would be judged more loosely than the plain line beside it.
  */
 const PER_RUN_TOLERANCE_PX = 0.5;
 
@@ -107,7 +111,7 @@ async function collectLineParity(page: Page): Promise<LineParity[]> {
         for (let j = textNodes.length - 1; j >= 0; j--) {
           // SAFETY: j is inside the array bounds.
           const textNode = textNodes[j]!;
-          const trimmed = (textNode.data ?? "").replace(/[\s​]+$/u, "");
+          const trimmed = (textNode.data ?? "").replace(/[\s\u200B]+$/u, "");
           if (trimmed.length === 0) continue;
           range.setEnd(textNode, trimmed.length);
           ended = true;
@@ -127,7 +131,7 @@ async function collectLineParity(page: Page): Promise<LineParity[]> {
         delta: painted - measured,
         text: text.slice(0, 60),
         hasJoiner: lineEl.querySelector("[data-docx-joiner]") !== null,
-        runCount: lineEl.children.length,
+        runCount: content.length,
       });
     });
     return results;
@@ -139,7 +143,9 @@ async function openFixture(page: Page, fixture: string): Promise<void> {
   await page.goto(`/?file=${encodeURIComponent(fixture)}`);
   await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
   // Web fonts change advances, so a comparison taken mid-swap is meaningless.
-  await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
 }
 
 const CURSIVE_FIXTURE = "cursive-face-change.docx";

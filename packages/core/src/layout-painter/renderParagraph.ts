@@ -1846,8 +1846,17 @@ export function renderLine(
     applyRunStyles: applyJoinerRunStyles,
     doc,
   });
-  const withJoiners = (runEl: HTMLElement, run: Run): HTMLElement[] =>
-    withCursiveJoiners(runEl, run, cursiveJoinerPlan, applyJoinerRunStyles, doc);
+  const withJoiners = (runEl: HTMLElement, run: Run): HTMLElement[] => {
+    // A flex line makes every child its own formatting context, and shaping
+    // never crosses a flex item, so a joiner in its own item joins nothing and
+    // would only add an inert node. Cursive words already break apart on these
+    // lines; repairing that needs the runs kept inside one inline item, which
+    // is a change to the tab layout rather than to joining.
+    if (lineEl.style.display === "flex") {
+      return [runEl];
+    }
+    return withCursiveJoiners(runEl, run, cursiveJoinerPlan, applyJoinerRunStyles, doc);
+  };
   const renderLineTextRun = (run: TextRun): HTMLElement => {
     const runEl = renderTextRun(run, doc);
     if (collapsedLeadingSpaceRuns.has(run)) {

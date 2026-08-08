@@ -43,7 +43,7 @@ type JoiningType = "C" | "D" | "L" | "R" | "T" | "U";
 
 type Range = { start: number; end: number };
 
-type SourceEntry = { id: string; cachePath: string; version: string };
+type SourceEntry = { id: string; cachePath: string; version: string; sha256: string };
 
 const readSourceEntries = async (): Promise<Map<string, SourceEntry>> => {
   const raw = await readFile(path.join(REPO_ROOT, "specifications/sources.json"), "utf8");
@@ -66,14 +66,17 @@ const readSourceEntries = async (): Promise<Map<string, SourceEntry>> => {
       "id" in source &&
       "cachePath" in source &&
       "version" in source &&
+      "sha256" in source &&
       typeof source.id === "string" &&
       typeof source.cachePath === "string" &&
-      typeof source.version === "string"
+      typeof source.version === "string" &&
+      typeof source.sha256 === "string"
     ) {
       entries.set(source.id, {
         id: source.id,
         cachePath: source.cachePath,
         version: source.version,
+        sha256: source.sha256,
       });
     }
   }
@@ -92,14 +95,27 @@ const requireSource = (entries: Map<string, SourceEntry>, id: string): SourceEnt
 
 const readCachedSource = async (entry: SourceEntry): Promise<string> => {
   const absolute = path.join(REPO_ROOT, entry.cachePath);
+  let contents: string;
   try {
-    return await readFile(absolute, "utf8");
+    contents = await readFile(absolute, "utf8");
   } catch {
     throw new GenerateJoiningTypesError({
       message: `Cached source missing for \`${entry.id}\` at ${entry.cachePath}. Run \`bun run specifications:fetch\` first.`,
     });
   }
+  // Verify against the manifest digest. Without this an edited cache file would
+  // make `write` emit a table nobody can reproduce while `check` still passed,
+  // because both sides would read the same tampered input.
+  const actual = digest(contents);
+  if (actual !== entry.sha256) {
+    throw new GenerateJoiningTypesError({
+      message: `Cached source \`${entry.id}\` does not match its manifest digest (expected ${entry.sha256}, read ${actual}). Delete ${entry.cachePath} and re-run \`bun run specifications:fetch\`.`,
+    });
+  }
+  return contents;
 };
+
+const digest = (text: string): string => createHash("sha256").update(text).digest("hex");
 
 /** Strip a UCD comment tail and surrounding whitespace from one line. */
 const dataPart = (line: string): string => {
@@ -292,8 +308,6 @@ export const JOINING_LETTER_RANGES: readonly number[] = [
 ${formatRanges(tables.letters)}
 ];
 `;
-
-const digest = (text: string): string => createHash("sha256").update(text).digest("hex");
 
 const main = async (): Promise<void> => {
   const mode = process.argv[2];
