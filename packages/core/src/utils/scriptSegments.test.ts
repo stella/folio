@@ -75,6 +75,11 @@ describe("segmentByScript", () => {
     ["Devanagari", "क"],
     ["Thai", "ก"],
     ["Arabic presentation form", "ﻻ"],
+    // Astral: the BMP ranges stop at U+FEFF, so these need their own intervals
+    // and exercise the code-point (not code-unit) iteration.
+    ["Arabic Extended-C", String.fromCodePoint(0x10_ec_0)],
+    ["Adlam", String.fromCodePoint(0x1e_90_0)],
+    ["Hanifi Rohingya", String.fromCodePoint(0x10_d0_0)],
   ])("classifies %s as complex script", (_name, char) => {
     expect(segmentByScript(char)).toEqual([{ text: char, script: "complex" }]);
   });

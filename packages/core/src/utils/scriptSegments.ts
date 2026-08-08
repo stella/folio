@@ -98,7 +98,15 @@ export function isComplexScriptCodePoint(cp: number): boolean {
     (cp >= 0x17_80 && cp <= 0x17_ff) || // Khmer
     (cp >= 0xfb_1d && cp <= 0xfb_4f) || // Hebrew presentation forms
     (cp >= 0xfb_50 && cp <= 0xfd_ff) || // Arabic presentation forms-A
-    (cp >= 0xfe_70 && cp <= 0xfe_ff) // Arabic presentation forms-B
+    (cp >= 0xfe_70 && cp <= 0xfe_ff) || // Arabic presentation forms-B
+    // Astral blocks. The BMP ranges above stop at U+FEFF, which silently left
+    // every astral Arabic-family script selecting the western slot.
+    (cp >= 0x10_d0_0 && cp <= 0x10_d3_f) || // Hanifi Rohingya
+    (cp >= 0x10_ec_0 && cp <= 0x10_ef_f) || // Arabic Extended-C
+    (cp >= 0x10_f3_0 && cp <= 0x10_f6_f) || // Sogdian
+    (cp >= 0x10_f7_0 && cp <= 0x10_fa_f) || // Old Uyghur
+    (cp >= 0x1e_90_0 && cp <= 0x1e_95_f) || // Adlam
+    (cp >= 0x1e_e0_0 && cp <= 0x1e_ef_f) // Arabic Mathematical Alphabetic Symbols
   );
 }
 
