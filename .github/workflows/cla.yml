@@ -32,6 +32,8 @@ jobs:
       )
     uses: stella/.github/.github/workflows/cla.yml@44c8092f11c2f454916c320aa7d2144c173329d8
     with:
-      allowlist: dependabot[bot],renovate[bot],github-actions[bot],google-labs-jules[bot],cursoragent
+      # Automation accounts cannot sign a CLA, so any app that opens PRs here
+      # has to be listed or its every PR fails the check permanently.
+      allowlist: dependabot[bot],renovate[bot],github-actions[bot],google-labs-jules[bot],stella-provenance-updater[bot],cursoragent
     secrets:
       CLA_APP_PRIVATE_KEY: ${{ secrets.CLA_APP_PRIVATE_KEY }}
