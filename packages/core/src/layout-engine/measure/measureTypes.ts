@@ -19,6 +19,11 @@ export type FontStyle = {
    * and click positioning stay in sync.
    */
   eastAsiaFontFamily?: string;
+  /**
+   * Complex-script font for Arabic, Hebrew, Indic and South-East Asian code
+   * points. Same contract as `eastAsiaFontFamily`, over a different slot.
+   */
+  complexScriptFontFamily?: string;
   fontSize?: number; // in points
   bold?: boolean;
   italic?: boolean;

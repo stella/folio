@@ -2689,6 +2689,9 @@ function runContentKey(run: Run): string {
   if (run.fontFamily) {
     parts.push(`ff:${run.fontFamily}`);
   }
+  if (run.complexScriptFontFamily) {
+    parts.push(`cs:${run.complexScriptFontFamily}`);
+  }
   if (run.eastAsiaFontFamily) {
     parts.push(`ea:${run.eastAsiaFontFamily}`);
   }

@@ -130,6 +130,38 @@ describe("toFlowBlocks style cascade", () => {
     expect(run.eastAsiaFontFamily).toBe("MS Mincho");
   });
 
+  // Word writes the Arabic and Hebrew face into `w:cs`. That slot was parsed and
+  // round-tripped but never reached layout, so complex-script text painted and
+  // measured in the Latin face instead.
+  test("the complex-script slot reaches layout", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "Normal",
+          type: "paragraph",
+          default: true,
+          name: "Normal",
+          rPr: { fontFamily: { ascii: "Calibri", cs: "Traditional Arabic" } },
+        },
+      ],
+    };
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      formatting: { styleId: "Normal" },
+      content: [
+        {
+          type: "run",
+          content: [{ type: "text", text: "مكتب mixed" }],
+        },
+      ],
+    };
+
+    const run = firstRun(toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}));
+
+    expect(run.fontFamily).toBe("Calibri");
+    expect(run.complexScriptFontFamily).toBe("Traditional Arabic");
+  });
+
   test("a direct eastAsia run mark overrides the inherited EA default", () => {
     const styles: StyleDefinitions = {
       styles: [

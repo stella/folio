@@ -51,7 +51,13 @@ import {
   parseRotationDegrees,
   rotatedBoundingBox,
 } from "../utils/rotationBoundingBox";
-import { hasCjk, segmentByScript } from "../utils/scriptSegments";
+import {
+  hasCjk,
+  hasComplexScript,
+  SCRIPT_CLASS,
+  segmentByScript,
+  type ScriptClass,
+} from "../utils/scriptSegments";
 import { borderStrokeToCss, resolveParagraphBorderHorizontalOutsets } from "./borderStroke";
 import { getAutomaticTextColorForBackground } from "./documentColors";
 import {
@@ -1089,7 +1095,7 @@ function renderFieldRun(run: FieldRun, doc: Document, context: RenderContext): H
   // to the EA font. The pm range stays on the grouping wrapper; the segments
   // carry no pm (the field is atomic). Letter-spaced fields stay one span,
   // matching splitTextRunsByEastAsia and the measurer.
-  if (resolvedRun.eastAsiaFontFamily !== undefined && !resolvedRun.letterSpacing && hasCjk(text)) {
+  if (needsPerScriptSpans({ ...resolvedRun, text })) {
     const wrapper = doc.createElement("span");
     applyPmPositions(wrapper, resolvedRun.pmStart, resolvedRun.pmEnd);
     // horizontalScale lives on the wrapper (inline-block so the reserved width
@@ -1113,7 +1119,7 @@ function renderFieldRun(run: FieldRun, doc: Document, context: RenderContext): H
       const segmentRun: TextRun = {
         ...segmentBase,
         text: segment.text,
-        ...(segment.isCjk ? { fontFamily: resolvedRun.eastAsiaFontFamily } : {}),
+        ...scriptFontOverride(resolvedRun, segment.script),
       };
       wrapper.append(renderTextRun(segmentRun, doc));
     }
@@ -1299,6 +1305,32 @@ export function sliceRunsForLine(block: ParagraphBlock, line: MeasuredLine): Run
 }
 
 /**
+ * The font a script segment paints with, mirroring the measurer's
+ * `scriptFontFamily`. Returning undefined leaves the run's own `fontFamily`.
+ */
+const scriptFontOverride = (run: TextRun, script: ScriptClass): { fontFamily?: string } => {
+  if (script === SCRIPT_CLASS.eastAsia && run.eastAsiaFontFamily !== undefined) {
+    return { fontFamily: run.eastAsiaFontFamily };
+  }
+  if (script === SCRIPT_CLASS.complex && run.complexScriptFontFamily !== undefined) {
+    return { fontFamily: run.complexScriptFontFamily };
+  }
+  return {};
+};
+
+/**
+ * Whether a run needs per-script sibling spans: it carries a script-specific
+ * font slot AND text that selects it. A letter-spaced run is excluded because
+ * CSS letter-spacing does not bridge sibling spans, and the measurer skips the
+ * same case so the widths still agree.
+ */
+const needsPerScriptSpans = (run: TextRun): boolean => {
+  if (run.letterSpacing) return false;
+  if (run.eastAsiaFontFamily !== undefined && hasCjk(run.text)) return true;
+  return run.complexScriptFontFamily !== undefined && hasComplexScript(run.text);
+};
+
+/**
  * Split each text run carrying an East-Asian font into per-script sub-runs, so
  * CJK code points render with `eastAsiaFontFamily` and the rest with
  * `fontFamily`. Each sub-run gets a contiguous, exact `pmStart`/`pmEnd` (the
@@ -1311,15 +1343,7 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
   const result: Run[] = [];
 
   for (const run of runs) {
-    if (
-      !isTextRun(run) ||
-      run.eastAsiaFontFamily === undefined ||
-      // A letter-spaced run stays one span: CSS letter-spacing would not bridge
-      // the gap between per-script sibling spans, so it keeps the base font for
-      // CJK too (the measurer skips the EA path identically, so widths agree).
-      run.letterSpacing ||
-      !hasCjk(run.text)
-    ) {
+    if (!isTextRun(run) || !needsPerScriptSpans(run)) {
       result.push(run);
       continue;
     }
@@ -1329,7 +1353,7 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
       result.push({
         ...run,
         text: segment.text,
-        ...(segment.isCjk ? { fontFamily: run.eastAsiaFontFamily } : {}),
+        ...scriptFontOverride(run, segment.script),
         ...(run.pmStart !== undefined
           ? {
               pmStart: run.pmStart + offset,
@@ -1524,6 +1548,9 @@ function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
     ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
     ...(run.smallCaps !== undefined ? { smallCaps: run.smallCaps } : {}),
     ...(run.eastAsiaFontFamily !== undefined ? { eastAsiaFontFamily: run.eastAsiaFontFamily } : {}),
+    ...(run.complexScriptFontFamily !== undefined
+      ? { complexScriptFontFamily: run.complexScriptFontFamily }
+      : {}),
     kerning: getRunFontKerningMode(run, DEFAULT_FONT_SIZE) === FONT_KERNING_MODE.enabled,
   };
 }
@@ -1717,6 +1744,8 @@ type TextMeasureStyle = {
   /** EA font for CJK code points; segments the measured text by script when set
    * (and the run has no letter spacing), mirroring measureContainer. */
   eastAsiaFontFamily?: string;
+  /** Complex-script font for Arabic/Hebrew/Indic code points; same contract. */
+  complexScriptFontFamily?: string;
   kerning?: boolean;
 };
 
@@ -1764,11 +1793,24 @@ function createTextMeasurer(
     // CJK code points measure with the EA font (matching the per-script sub-spans
     // the painter emits and measureContainer's segmentation). Gated off for
     // letter-spaced runs, which keep a single base-font span.
-    if (style.eastAsiaFontFamily && !style.letterSpacing && hasCjk(text)) {
-      const eaFallback = resolveFontFamily(style.eastAsiaFontFamily).cssFallback;
+    const perScriptFallback: Partial<Record<ScriptClass, string>> = {
+      ...(style.eastAsiaFontFamily
+        ? { [SCRIPT_CLASS.eastAsia]: resolveFontFamily(style.eastAsiaFontFamily).cssFallback }
+        : {}),
+      ...(style.complexScriptFontFamily
+        ? {
+            [SCRIPT_CLASS.complex]: resolveFontFamily(style.complexScriptFontFamily).cssFallback,
+          }
+        : {}),
+    };
+    if (
+      !style.letterSpacing &&
+      ((style.eastAsiaFontFamily && hasCjk(text)) ||
+        (style.complexScriptFontFamily && hasComplexScript(text)))
+    ) {
       let segmentedWidth = 0;
       for (const segment of segmentByScript(text)) {
-        ctx.font = `${fontPrefix} ${segment.isCjk ? eaFallback : cssFallback}`;
+        ctx.font = `${fontPrefix} ${perScriptFallback[segment.script] ?? cssFallback}`;
         segmentedWidth += ctx.measureText(segment.text).width;
       }
       return segmentedWidth;

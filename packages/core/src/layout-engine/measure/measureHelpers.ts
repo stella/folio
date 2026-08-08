@@ -39,6 +39,9 @@ export function buildRunFontStyle(
   return {
     fontFamily: run.fontFamily ?? fallbackFontFamily,
     ...(run.eastAsiaFontFamily !== undefined ? { eastAsiaFontFamily: run.eastAsiaFontFamily } : {}),
+    ...(run.complexScriptFontFamily !== undefined
+      ? { complexScriptFontFamily: run.complexScriptFontFamily }
+      : {}),
     fontSize,
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),

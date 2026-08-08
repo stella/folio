@@ -529,6 +529,10 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
         if (eastAsiaFont) {
           formatting.eastAsiaFontFamily = eastAsiaFont;
         }
+        const complexScriptFont = resolveComplexScriptThemeFont(attrs, theme);
+        if (complexScriptFont) {
+          formatting.complexScriptFontFamily = complexScriptFont;
+        }
         break;
       }
 
@@ -703,9 +707,11 @@ type ThemeFontAttributes = {
   ascii?: string | null;
   hAnsi?: string | null;
   eastAsia?: string | null;
+  cs?: string | null;
   asciiTheme?: string | null;
   hAnsiTheme?: string | null;
   eastAsiaTheme?: string | null;
+  cstheme?: string | null;
 };
 
 const resolveWesternThemeFont = (
@@ -715,6 +721,18 @@ const resolveWesternThemeFont = (
   const themeRef = fontFamily.asciiTheme ?? fontFamily.hAnsiTheme;
   const themedFont = themeRef ? resolveThemeFont(themeRef, theme?.fontScheme) : null;
   return themedFont ?? fontFamily.ascii ?? fontFamily.hAnsi ?? undefined;
+};
+
+const resolveComplexScriptThemeFont = (
+  fontFamily: ThemeFontAttributes,
+  theme?: Theme | null,
+): string | undefined => {
+  // OOXML spells this attribute all-lowercase (`w:cstheme`), unlike its
+  // camelCase siblings; the parser reads it that way too.
+  const themedFont = fontFamily.cstheme
+    ? resolveThemeFont(fontFamily.cstheme, theme?.fontScheme)
+    : null;
+  return themedFont ?? fontFamily.cs ?? undefined;
 };
 
 const resolveEastAsiaThemeFont = (
@@ -823,6 +841,12 @@ function paragraphRunDefaults(pmAttrs: PMParagraphAttrs, theme?: Theme | null): 
     : undefined;
   if (eastAsiaFontFamily) {
     result.eastAsiaFontFamily = eastAsiaFontFamily;
+  }
+  const complexScriptFontFamily = defaultTextFormatting.fontFamily
+    ? resolveComplexScriptThemeFont(defaultTextFormatting.fontFamily, theme)
+    : undefined;
+  if (complexScriptFontFamily) {
+    result.complexScriptFontFamily = complexScriptFontFamily;
   }
   if (defaultTextFormatting.language) {
     result.language = { ...defaultTextFormatting.language };

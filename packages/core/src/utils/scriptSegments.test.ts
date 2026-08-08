@@ -43,15 +43,40 @@ describe("hasCjk", () => {
 describe("segmentByScript", () => {
   test("splits mixed text into maximal same-script segments", () => {
     expect(segmentByScript("Hello世界foo")).toEqual([
-      { text: "Hello", isCjk: false },
-      { text: "世界", isCjk: true },
-      { text: "foo", isCjk: false },
+      { text: "Hello", script: "western" },
+      { text: "世界", script: "eastAsia" },
+      { text: "foo", script: "western" },
     ]);
   });
 
   test("returns one segment for single-class input", () => {
-    expect(segmentByScript("plain ascii")).toEqual([{ text: "plain ascii", isCjk: false }]);
-    expect(segmentByScript("日本語")).toEqual([{ text: "日本語", isCjk: true }]);
+    expect(segmentByScript("plain ascii")).toEqual([{ text: "plain ascii", script: "western" }]);
+    expect(segmentByScript("日本語")).toEqual([{ text: "日本語", script: "eastAsia" }]);
+  });
+
+  // Word routes Arabic, Hebrew and the Indic scripts through the `w:cs` slot,
+  // a third answer to "which font does this character take?" that the previous
+  // isCjk boolean could not express.
+  test("separates complex-script text from western and East-Asian", () => {
+    expect(segmentByScript("abcمكتبdef")).toEqual([
+      { text: "abc", script: "western" },
+      { text: "مكتب", script: "complex" },
+      { text: "def", script: "western" },
+    ]);
+    expect(segmentByScript("שלום世界")).toEqual([
+      { text: "שלום", script: "complex" },
+      { text: "世界", script: "eastAsia" },
+    ]);
+  });
+
+  test.each([
+    ["Arabic", "ب"],
+    ["Hebrew", "א"],
+    ["Devanagari", "क"],
+    ["Thai", "ก"],
+    ["Arabic presentation form", "ﻻ"],
+  ])("classifies %s as complex script", (_name, char) => {
+    expect(segmentByScript(char)).toEqual([{ text: char, script: "complex" }]);
   });
 
   test("returns no segments for empty input", () => {
@@ -61,9 +86,9 @@ describe("segmentByScript", () => {
   test("keeps an astral ideograph whole within its CJK segment", () => {
     const segments = segmentByScript("x𠀀y");
     expect(segments).toEqual([
-      { text: "x", isCjk: false },
-      { text: "𠀀", isCjk: true },
-      { text: "y", isCjk: false },
+      { text: "x", script: "western" },
+      { text: "𠀀", script: "eastAsia" },
+      { text: "y", script: "western" },
     ]);
     // The astral glyph must not be split across the surrogate pair.
     expect(segments[1]?.text.length).toBe(2);

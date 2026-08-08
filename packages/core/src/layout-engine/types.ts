@@ -59,6 +59,15 @@ export type RunFormatting = {
    * to `fontFamily`.
    */
   eastAsiaFontFamily?: string;
+  /**
+   * Resolved complex-script font (`w:cs` / `cstheme`). Arabic, Hebrew, Indic
+   * and South-East Asian code points in this run measure and paint with this
+   * font; the rest keeps `fontFamily` (ascii/hAnsi). Mirrors
+   * `eastAsiaFontFamily` exactly, including the shared segmentation. Absent
+   * means complex-script text falls back to `fontFamily`, which is what Word
+   * does NOT do and is why this slot has to reach layout at all.
+   */
+  complexScriptFontFamily?: string;
   /** Run language metadata resolved from `w:lang`. */
   language?: { val?: string; eastAsia?: string; bidi?: string };
   fontSize?: number;

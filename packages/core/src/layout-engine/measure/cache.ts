@@ -299,7 +299,7 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
   for (const run of block.runs) {
     if (run.kind === "text") {
       parts.push(
-        `t:${run.text}|${run.fontFamily}|${run.eastAsiaFontFamily}|${run.fontSize}|${run.bold}|${run.italic}|${run.allCaps}|${run.smallCaps}|${run.horizontalScale}|${run.letterSpacing}|${run.language?.val}|${run.language?.eastAsia}|${run.language?.bidi}`,
+        `t:${run.text}|${run.fontFamily}|${run.eastAsiaFontFamily}|${run.complexScriptFontFamily}|${run.fontSize}|${run.bold}|${run.italic}|${run.allCaps}|${run.smallCaps}|${run.horizontalScale}|${run.letterSpacing}|${run.language?.val}|${run.language?.eastAsia}|${run.language?.bidi}`,
       );
     } else if (run.kind === "tab") {
       parts.push(`tab:${run.width}`);

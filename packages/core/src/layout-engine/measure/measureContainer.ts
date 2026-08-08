@@ -18,7 +18,14 @@
 
 import { panic } from "better-result";
 
-import { hasCjk, isCjkCodePoint, segmentByScript } from "../../utils/scriptSegments";
+import {
+  hasCjk,
+  hasComplexScript,
+  SCRIPT_CLASS,
+  scriptClassOf,
+  segmentByScript,
+  type ScriptClass,
+} from "../../utils/scriptSegments";
 import {
   getCachedFontMetrics,
   getCachedTextWidth,
@@ -193,7 +200,7 @@ function canvasMeasureTextWidth(text: string, style: FontStyle): number {
   // gap across the per-script sibling spans the painter would emit, so a
   // letter-spaced run keeps the base font for CJK too (measurement and painting
   // agree; the EA typeface is the trade-off for that narrow case).
-  if (style.eastAsiaFontFamily && !style.letterSpacing && hasCjk(measuredText)) {
+  if (!style.letterSpacing && needsPerScriptFonts(style, measuredText)) {
     return measureMixedScriptWidth(measuredText, style);
   }
 
@@ -303,14 +310,38 @@ function glyphAdvanceStyle(style: FontStyle, fontFamily: string | undefined): Fo
  * horizontal scale are applied once over the whole string so the total matches
  * the painter, which renders the same segments as sibling spans.
  */
+/**
+ * Whether this run needs more than one font, i.e. it carries a per-script slot
+ * AND text that would select it. Keeps the all-Latin path on a single font.
+ */
+function needsPerScriptFonts(style: FontStyle, measuredText: string): boolean {
+  if (style.eastAsiaFontFamily && hasCjk(measuredText)) {
+    return true;
+  }
+  return Boolean(style.complexScriptFontFamily) && hasComplexScript(measuredText);
+}
+
+/** The font slot a script class selects, falling back to the western one. */
+function scriptFontFamily(style: FontStyle, script: ScriptClass): string | undefined {
+  if (script === SCRIPT_CLASS.eastAsia) {
+    return style.eastAsiaFontFamily ?? style.fontFamily;
+  }
+  if (script === SCRIPT_CLASS.complex) {
+    return style.complexScriptFontFamily ?? style.fontFamily;
+  }
+  return style.fontFamily;
+}
+
 function measureMixedScriptWidth(measuredText: string, style: FontStyle): number {
   const letterSpacing = style.letterSpacing ?? 0;
   const horizontalScale = getHorizontalScaleFactor(style);
 
   let glyphWidth = 0;
   for (const segment of segmentByScript(measuredText)) {
-    const fontFamily = segment.isCjk ? style.eastAsiaFontFamily : style.fontFamily;
-    glyphWidth += canvasMeasureTextWidth(segment.text, glyphAdvanceStyle(style, fontFamily));
+    glyphWidth += canvasMeasureTextWidth(
+      segment.text,
+      glyphAdvanceStyle(style, scriptFontFamily(style, segment.script)),
+    );
   }
 
   let width = glyphWidth;
@@ -411,6 +442,10 @@ function canvasMeasureRun(text: string, style: FontStyle): RunMeasurement {
     style.eastAsiaFontFamily !== undefined && !style.letterSpacing
       ? buildFontString({ ...style, fontFamily: style.eastAsiaFontFamily })
       : undefined;
+  const complexScriptFont =
+    style.complexScriptFontFamily !== undefined && !style.letterSpacing
+      ? buildFontString({ ...style, fontFamily: style.complexScriptFontFamily })
+      : undefined;
 
   const letterSpacing = style.letterSpacing ?? 0;
   const scale = getHorizontalScaleFactor(style);
@@ -426,8 +461,12 @@ function canvasMeasureRun(text: string, style: FontStyle): RunMeasurement {
     // SAFETY: for...of over a string yields whole code points.
     const cp = char.codePointAt(0)!;
     const measured = applyTextTransform(char, style);
-    if (eastAsiaFont !== undefined) {
-      ctx.font = isCjkCodePoint(cp) ? eastAsiaFont : baseFont;
+    if (eastAsiaFont !== undefined || complexScriptFont !== undefined) {
+      const script = scriptClassOf(cp);
+      ctx.font =
+        (script === SCRIPT_CLASS.eastAsia ? eastAsiaFont : undefined) ??
+        (script === SCRIPT_CLASS.complex ? complexScriptFont : undefined) ??
+        baseFont;
     }
     let charWidth = ctx.measureText(measured).width;
 
