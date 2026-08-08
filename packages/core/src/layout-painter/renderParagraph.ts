@@ -42,6 +42,7 @@ import { calculateTabWidth } from "../prosemirror/utils/tabCalculator";
 import type { TabContext, TabStop as TabCalcStop } from "../prosemirror/utils/tabCalculator";
 import { getAuthorColorIdx, AUTHOR_COLORS } from "../utils/authorColors";
 import { detectBaseDirection } from "../utils/baseDirection";
+import { planCursiveJoiners, withCursiveJoiners } from "./cursiveJoiners";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
@@ -1821,6 +1822,25 @@ export function renderLine(
   const collapsedSpaceMeasureText = hasCollapsedLineEdgeSpaceRuns
     ? createTextMeasurer(doc)
     : undefined;
+  // A face change between two adjacent runs stops shaping, which breaks a
+  // cursive word apart mid-word. Planned over the run array (not the painted
+  // DOM) so the joiners are appended through the same path as every other run.
+  // Non-text runs stay in the array so they still break adjacency (an image
+  // between two words means those words were never connected), but they carry
+  // no run styles, so the probe skips them.
+  const applyJoinerRunStyles = (element: HTMLElement, run: Run): void => {
+    if (isTextRun(run) || isTabRun(run)) {
+      applyRunStyles(element, run);
+    }
+  };
+  const cursiveJoinerPlan = planCursiveJoiners({
+    runs: runsForLine,
+    textOf: (run) => (isTextRun(run) ? toPaintedText(run.text) : undefined),
+    applyRunStyles: applyJoinerRunStyles,
+    doc,
+  });
+  const withJoiners = (runEl: HTMLElement, run: Run): HTMLElement[] =>
+    withCursiveJoiners(runEl, run, cursiveJoinerPlan, applyJoinerRunStyles, doc);
   const renderLineTextRun = (run: TextRun): HTMLElement => {
     const runEl = renderTextRun(run, doc);
     if (collapsedLeadingSpaceRuns.has(run)) {
@@ -2173,7 +2193,7 @@ export function renderLine(
             break;
           }
           if (isTextRun(next)) {
-            lineEl.append(renderLineTextRun(next));
+            lineEl.append(...withJoiners(renderLineTextRun(next), next));
           } else if (isFieldRun(next) && options?.context) {
             lineEl.append(renderFieldRun(next, doc, options.context));
           } else if (isImageRun(next)) {
@@ -2227,7 +2247,7 @@ export function renderLine(
     } else if (isTextRun(run)) {
       const runEl = renderLineTextRun(run);
 
-      lineEl.append(runEl);
+      lineEl.append(...withJoiners(runEl, run));
 
       // Measure text width for accurate tab position tracking
       if (isCollapsedLineEdgeSpaceRun(run)) {
