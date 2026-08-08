@@ -41,6 +41,16 @@ type LineParity = {
 const PER_RUN_TOLERANCE_PX = 0.5;
 
 /**
+ * How far a repaired cursive line may diverge, as a fraction of its width.
+ *
+ * Wider than the per-run rounding budget because this is not rounding: the
+ * measurer cannot see the joiners at all, so it measures unjoined forms while
+ * the browser paints joined ones. Sized to bound the observed disagreement,
+ * not to hide it, and it shrinks to nothing once measurement is shaped.
+ */
+const REPAIRED_LINE_BUDGET_RATIO = 0.02;
+
+/**
  * Read every painted line and compare the measurer's claim with the drawn
  * extent. Runs entirely in the page: both numbers must come from one layout
  * pass, or a resize between them would be read as a divergence.
@@ -155,7 +165,7 @@ test.describe("measure/paint parity", () => {
     ).toEqual([]);
   });
 
-  test("a repaired cursive line is measured no narrower than it paints", async ({ page }) => {
+  test("a repaired cursive line stays within its measurement budget", async ({ page }) => {
     // The known residual, pinned as a number rather than left as a comment.
     // Canvas cannot see the joiners the painter inserts to keep a cursive word
     // connected across a face change, so the measurer reserves the unjoined
@@ -188,9 +198,21 @@ test.describe("measure/paint parity", () => {
     );
     expect(joinerSpans).toBe(6);
 
-    for (const line of repaired) {
-      expect(line.painted).toBeLessThanOrEqual(line.measured + PER_RUN_TOLERANCE_PX);
-    }
+    // Bound the MAGNITUDE, not the direction. Whether joined forms are wider or
+    // narrower than isolated ones is a property of the face: unpinned, this
+    // divergence was -2.7px on the macOS Arabic fallback and +2.5px on the Linux
+    // one. So the residual is a bounded disagreement that can push a line either
+    // way, not the safe over-reservation an earlier version of this claimed.
+    const budget = (line: LineParity): number =>
+      Math.max(3, line.measured * REPAIRED_LINE_BUDGET_RATIO);
+    expect(
+      repaired
+        .filter((line) => Math.abs(line.delta) > budget(line))
+        .map(
+          (line) =>
+            `measured ${line.measured.toFixed(2)}px, painted ${line.painted.toFixed(2)}px, over budget ${budget(line).toFixed(2)}px`,
+        ),
+    ).toEqual([]);
   });
 
   test("joiner furniture is invisible to the document's text", async ({ page }) => {

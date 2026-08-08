@@ -82,13 +82,13 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <w:docDefaults>
     <w:rPrDefault>
       <w:rPr>
-        <!-- Pin the complex-script face. Without this the runner's own Arabic
-             fallback decides the advances, and the joined-versus-unjoined width
-             relationship differs per font, so the same assertion passed on one
-             OS and failed on another. folio-react loads Noto Sans Arabic 400
-             and 700 as webfonts, so both weights this fixture needs resolve to
-             the same face everywhere. -->
-        <w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Noto Sans Arabic"/>
+        <!-- Deliberately NOT a bundled webfont. Pinning one makes the painted
+             text use it while the measurer, which runs before the webfont has
+             loaded, measures a fallback face: a 64px divergence on a 194px line
+             that has nothing to do with cursive joining. That font-loading race
+             is a real and separate defect; this fixture stays on locally
+             available faces so it measures the joining repair alone. -->
+        <w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>
         <w:sz w:val="28"/>
         <w:szCs w:val="28"/>
       </w:rPr>

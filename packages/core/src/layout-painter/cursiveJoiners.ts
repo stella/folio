@@ -28,11 +28,12 @@
  * So a repaired word paints at a different width than the measurer reserved, by
  * roughly the difference between isolated and medial advances.
  *
- * Which DIRECTION depends on the font: joined forms are narrower than isolated
- * ones in some faces and wider in others, and this was observed to flip between
- * two Arabic faces on different platforms. So it is a bounded disagreement, not
- * a safe over-reservation, and it can push a line either way. It arises only on
- * words that contain a face change. Closing it needs widths from a real shaper
+ * Which DIRECTION depends on the font: measured against two Arabic fallback
+ * faces the divergence was -2.7px on one and +2.5px on the other. So it is a
+ * bounded disagreement that can push a line either way, NOT a safe
+ * over-reservation, and a line can therefore come out marginally too long. It
+ * arises only on words that contain a face change, and
+ * `tests/visual/measure-parity.spec.ts` holds it to a budget. Closing it needs widths from a real shaper
  * rather than canvas; until then the trade is a correct rendering against a
  * slightly wrong measurement, which beats a measurement that exactly matches a
  * visibly broken rendering.
