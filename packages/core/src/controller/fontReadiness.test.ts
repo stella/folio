@@ -129,6 +129,30 @@ describe("initial layout font loading", () => {
     expect(collectInitialLayoutFontFamilies(null, pmDoc)).toContain(family);
   });
 
+  // The 64px measure/paint divergence this fixed: every resolved stack ends with
+  // folio's bundled Arabic face, so an authored "Arial" run paints its Arabic in
+  // that face. Waiting only for authored names released the first layout before
+  // it had loaded, and the measurement taken then disagreed with what was drawn.
+  test("waits for the substitutes and fallbacks the renderer actually uses", () => {
+    const fontFamily = schema.marks["fontFamily"]?.create({ ascii: "Arial", hAnsi: "Arial" });
+    if (!fontFamily) {
+      throw new Error("Expected a fontFamily mark in schema");
+    }
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("text", [fontFamily])]),
+    ]);
+
+    const families = collectInitialLayoutFontFamilies(null, pmDoc);
+
+    // The authored name, its metric-compatible substitute, and the script
+    // fallback the resolver appends.
+    expect(families).toContain("Arial");
+    expect(families).toContain("Arimo");
+    expect(families).toContain("Noto Sans Arabic");
+    // Generic CSS families are not loadable faces and must not be requested.
+    expect(families).not.toContain("sans-serif");
+  });
+
   test("always includes the default layout font family for a null document model", () => {
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("plain")]),

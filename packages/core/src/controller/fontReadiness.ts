@@ -13,6 +13,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
 import { expectFontFamilyMarkAttrs } from "../prosemirror/attrs";
+import { resolveFontFamily } from "../utils/fontResolver";
 import type { Document, TextFormatting } from "../types/document";
 
 export function getDocumentFontSet(): FontFaceSet | null {
@@ -29,15 +30,6 @@ export function documentFontsAreLoaded(): boolean {
 
 const INITIAL_LAYOUT_FONT_TIMEOUT_MS = 2000;
 const DEFAULT_LAYOUT_FONT_FAMILY = "Calibri";
-const OFFICE_FONT_FAMILY_MAP: Record<string, string> = {
-  Aptos: "Lato",
-  "Aptos Display": "Lato",
-  Arial: "Arimo",
-  Calibri: "Carlito",
-  Cambria: "Caladea",
-  "Times New Roman": "Tinos",
-  "Courier New": "Cousine",
-};
 const CSS_GENERIC_FONT_FAMILIES = new Set([
   "serif",
   "sans-serif",
@@ -259,10 +251,38 @@ function addLayoutFontFamilyNameFace(
   }
 
   addLayoutFontFace(faces, normalized, descriptor);
-  const mappedFamily = OFFICE_FONT_FAMILY_MAP[normalized];
-  if (mappedFamily) {
-    addLayoutFontFace(faces, mappedFamily, descriptor);
+
+  // Wait for the whole stack the renderer will actually use, not just the name
+  // the document wrote. `resolveFontFamily` appends folio's bundled substitutes
+  // and a script fallback, so an authored "Arial" run paints its Arabic in the
+  // bundled Arabic face. Collecting only authored names meant the gate released
+  // the first layout before that face had loaded, and measurement taken against
+  // the pre-load fallback disagreed with what was ultimately painted.
+  //
+  // Derived rather than listed: a hand-kept table of substitutes would be a
+  // second copy of the resolver's mapping, free to drift from it.
+  for (const stackFamily of resolvedStackFamilies(normalized)) {
+    addLayoutFontFace(faces, stackFamily, descriptor);
   }
+}
+
+/**
+ * The concrete families in a resolved CSS font stack, generics dropped.
+ *
+ * Parsed from the stack rather than read from a map because the stack is what
+ * the painter and the measurer put in `ctx.font` and `style.fontFamily`.
+ */
+function resolvedStackFamilies(family: string): string[] {
+  const { cssFallback } = resolveFontFamily(family);
+  const families: string[] = [];
+  for (const entry of cssFallback.split(",")) {
+    const name = entry.trim().replace(/^["']|["']$/gu, "");
+    if (!name || CSS_GENERIC_FONT_FAMILIES.has(name)) {
+      continue;
+    }
+    families.push(name);
+  }
+  return families;
 }
 
 function addLayoutFontFace(
