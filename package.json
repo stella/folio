@@ -33,6 +33,8 @@
     "specifications:fetch": "bun scripts/specification-sources.ts fetch",
     "specifications:generate": "bun scripts/generate-ooxml-schema-graph.ts write",
     "specifications:generate:check": "bun scripts/generate-ooxml-schema-graph.ts check",
+    "generate:joining-types": "bun scripts/generate-joining-types.ts write",
+    "generate:joining-types:check": "bun scripts/generate-joining-types.ts check",
     "test:e2e:vue": "bunx playwright test --project=vue",
     "test:e2e:parity": "bunx playwright test --project=parity",
     "build": "bun --filter '@stll/docx-core' build && bun --filter '@stll/folio-core' build && bun --filter '@stll/folio-react' build && bun --filter '@stll/folio-agents' build && bun --filter '@stll/folio-vue' build && bun --filter '@stll/folio-nuxt' build",
