@@ -96,6 +96,7 @@ export type FontMetrics = {
 export type FontStyle = {
     fontFamily?: string;
     eastAsiaFontFamily?: string;
+    complexScriptFontFamily?: string;
     fontSize?: number;
     bold?: boolean;
     italic?: boolean;

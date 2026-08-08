@@ -733,6 +733,7 @@ export type RunFormatting = {
     shading?: string;
     fontFamily?: string;
     eastAsiaFontFamily?: string;
+    complexScriptFontFamily?: string;
     language?: {
         val?: string;
         eastAsia?: string;
