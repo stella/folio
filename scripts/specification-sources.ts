@@ -461,20 +461,41 @@ const main = async (args: string[]): Promise<void> => {
   const command = args.at(0) ?? "check";
   if (command !== "check" && command !== "fetch") {
     throw new SpecificationSourceError({
-      message: "Usage: bun scripts/specification-sources.ts [check|fetch]",
+      message: "Usage: bun scripts/specification-sources.ts [check|fetch] [--profile <name>]",
     });
   }
+
+  // Narrow to one profile so a job that needs a single small source does not
+  // pull every artifact in the manifest, which includes a 43 MB specification
+  // archive and a git clone.
+  const profileFlag = args.indexOf("--profile");
+  const profile = profileFlag === -1 ? undefined : args.at(profileFlag + 1);
+  if (profileFlag !== -1 && profile === undefined) {
+    throw new SpecificationSourceError({ message: "--profile needs a value" });
+  }
+
   const manifest = await loadManifest();
+  const sources =
+    profile === undefined
+      ? manifest.sources
+      : manifest.sources.filter((source) => source.profiles.includes(profile));
+  if (profile !== undefined && sources.length === 0) {
+    throw new SpecificationSourceError({
+      message: `No specification source declares profile \`${profile}\``,
+    });
+  }
+
   const results = await Promise.all(
-    manifest.sources.map(async (source) => ({
+    sources.map(async (source) => ({
       id: source.id,
       status: await verifySource(source, command === "fetch"),
     })),
   );
   const verified = results.filter(({ status }) => status === "verified").length;
   const missing = results.length - verified;
+  const scope = profile === undefined ? "" : ` (profile ${profile})`;
   process.stdout.write(
-    `Specification sources: ${manifest.sources.length} valid, ${verified} cached, ${missing} not cached\n`,
+    `Specification sources${scope}: ${sources.length} valid, ${verified} cached, ${missing} not cached\n`,
   );
 };
 

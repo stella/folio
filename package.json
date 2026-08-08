@@ -73,6 +73,7 @@
     "parity:build-line-endpoint-fixtures": "bun parity/fixtures/build-word-line-endpoint-fixtures.ts",
     "test:visual": "bunx playwright test",
     "test:interactions": "bunx playwright test --project=interactions",
+    "test:measure-parity": "bunx playwright test --project=measure-parity",
     "test:differential": "cd packages/core && bun test src/docx/__tests__/differential.test.ts",
     "test:visual:update": "bunx playwright test --update-snapshots",
     "test:visual:report": "bunx playwright show-report"

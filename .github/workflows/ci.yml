@@ -115,6 +115,14 @@ jobs:
       - name: i18n check
         run: bun run check:i18n
 
+      # Only the `shaping` profile: fetching every source would pull a 43 MB
+      # specification archive and a git clone for two small UCD text files.
+      - name: Fetch Unicode shaping sources
+        run: bun run specifications:fetch --profile shaping
+
+      - name: Unicode joining tables up to date
+        run: bun run generate:joining-types:check
+
       - name: Adapter parity contract (React <-> Vue props/ref)
         run: bun run check:parity-contract
 
@@ -259,6 +267,12 @@ jobs:
       # via the config's webServer.
       - name: Run interaction specs
         run: bun run test:interactions
+
+      # Safe to gate on, unlike the screenshot baselines above: this compares
+      # the measurer's width against the painted width, both read from the same
+      # browser in one layout pass, so cross-machine font rendering cancels out.
+      - name: Run measure/paint parity specs
+        run: bun run test:measure-parity
 
   differential:
     name: Differential parser parity (folio vs python-docx + Open XML SDK)
