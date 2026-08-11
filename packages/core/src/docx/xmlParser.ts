@@ -42,9 +42,15 @@ export type XmlElement = {
   name?: string;
   /** Resolved namespace URI; non-enumerable so legacy structural comparisons stay stable. */
   namespaceUri?: string;
-  /** In-scope namespace bindings; non-enumerable so legacy structural comparisons stay stable. */
-  namespaceBindings?: ReadonlyMap<string, string>;
+  /** In-scope namespace declarations; non-enumerable so legacy comparisons stay stable. */
+  namespaceScope?: XmlNamespaceScope;
   elements?: XmlElement[];
+};
+
+/** Parent-linked XML namespace declarations; each scope stores only local overrides. */
+export type XmlNamespaceScope = {
+  bindings: ReadonlyMap<string, string>;
+  parent?: XmlNamespaceScope;
 };
 
 // ---------------------------------------------------------------------------
@@ -105,6 +111,23 @@ const XML_CARRIAGE_RETURN_REFERENCE = "&#13;";
 
 type MutableFxpNode = XmlElement & Record<string, unknown>;
 
+const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
+
+const resolveNamespaceUri = (
+  scope: XmlNamespaceScope | undefined,
+  prefix: string,
+): string | undefined => {
+  let current = scope;
+  while (current) {
+    const value = current.bindings.get(prefix);
+    if (value !== undefined) {
+      return value;
+    }
+    current = current.parent;
+  }
+  return undefined;
+};
+
 /**
  * Convert a fast-xml-parser preserveOrder node into an XmlElement.
  *
@@ -114,7 +137,7 @@ type MutableFxpNode = XmlElement & Record<string, unknown>;
  */
 function fxpNodeToElement(
   node: Record<string, unknown>,
-  inheritedNamespaces: ReadonlyMap<string, string> = new Map(),
+  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
 ): MutableFxpNode {
   // Text node: { "#text": "some text" }
   if (TEXT_KEY in node) {
@@ -140,29 +163,32 @@ function fxpNodeToElement(
       element.attributes = attrs;
     }
 
-    let mutableNamespaces: Map<string, string> | null = null;
+    let localBindings: Map<string, string> | null = null;
     if (attrs) {
       for (const [attribute, value] of Object.entries(attrs)) {
         if (attribute !== "xmlns" && !attribute.startsWith("xmlns:")) {
           continue;
         }
-        mutableNamespaces ??= new Map(inheritedNamespaces);
+        localBindings ??= new Map();
         const prefix = attribute === "xmlns" ? "" : attribute.slice("xmlns:".length);
-        mutableNamespaces.set(prefix, value);
+        localBindings.set(prefix, value);
       }
     }
-    const namespaces = mutableNamespaces ?? inheritedNamespaces;
+    const namespaceScope =
+      localBindings === null
+        ? inheritedNamespaceScope
+        : { bindings: localBindings, parent: inheritedNamespaceScope };
 
-    Object.defineProperty(element, "namespaceBindings", {
+    Object.defineProperty(element, "namespaceScope", {
       configurable: false,
       enumerable: false,
-      value: namespaces,
+      value: namespaceScope,
       writable: false,
     });
 
     const colonIndex = key.indexOf(":");
     const prefix = colonIndex === -1 ? "" : key.slice(0, colonIndex);
-    const namespaceUri = namespaces.get(prefix);
+    const namespaceUri = resolveNamespaceUri(namespaceScope, prefix);
     if (namespaceUri !== undefined) {
       Object.defineProperty(element, "namespaceUri", {
         configurable: false,
@@ -174,7 +200,7 @@ function fxpNodeToElement(
 
     if (children.length > 0) {
       for (let index = 0; index < children.length; index += 1) {
-        children[index] = fxpNodeToElement(children[index]!, namespaces);
+        children[index] = fxpNodeToElement(children[index]!, namespaceScope);
       }
       element.elements = children;
     }
@@ -324,7 +350,10 @@ export function getAttributeByNamespaceUri(
       continue;
     }
     const prefix = getNamespacePrefix(name);
-    if (prefix !== null && namespaceUris.has(element.namespaceBindings?.get(prefix) ?? "")) {
+    if (
+      prefix !== null &&
+      namespaceUris.has(resolveNamespaceUri(element.namespaceScope, prefix) ?? "")
+    ) {
       return String(value);
     }
   }
