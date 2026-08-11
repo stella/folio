@@ -149,6 +149,27 @@ const collectText = (element: XmlElement): string => {
   return text;
 };
 
+const countAcceptedTextChars = (element: XmlElement): number => {
+  let chars = 0;
+
+  const walk = (node: XmlElement) => {
+    const localName = wordElementName(node);
+    if (localName === "t") {
+      chars += getTextContent(node).length;
+      return;
+    }
+    if (localName === "del" || localName === "delText" || localName === "moveFrom") {
+      return;
+    }
+    for (const child of childElements(node)) {
+      walk(child);
+    }
+  };
+
+  walk(element);
+  return chars;
+};
+
 const readParagraphProperties = (paragraph: XmlElement): ParagraphProperties => {
   const properties = findWordChild(paragraph, "pPr");
   if (!properties) {
@@ -193,7 +214,7 @@ const readRunMetrics = (paragraph: XmlElement): RunMetrics[] => {
     const parsedSize = sizeValue === null ? Number.NaN : Number.parseInt(sizeValue, 10);
     const fontSize = Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : undefined;
 
-    const chars = collectText(run).length;
+    const chars = countAcceptedTextChars(run);
     if (chars === 0) {
       continue;
     }

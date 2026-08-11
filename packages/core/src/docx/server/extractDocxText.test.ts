@@ -212,11 +212,11 @@ describe("extractDocxText", () => {
     expect(result.paragraphs.at(1)?.alignment).toBe("left");
   });
 
-  test("ignores foreign text when calculating run formatting metadata", async () => {
+  test("ignores controls and foreign text when calculating run formatting metadata", async () => {
     const bytes = await makeDocx({
       body:
-        `<w:p><w:r><w:t>Plain text</w:t></w:r>` +
-        `<w:r><w:rPr><w:b/><w:sz w:val="99"/></w:rPr>` +
+        `<w:p><w:r><w:rPr><w:b/><w:sz w:val="99"/></w:rPr><w:br/><w:tab/></w:r>` +
+        `<w:r><w:t>Plain text</w:t></w:r><w:r><w:rPr><w:b/><w:sz w:val="99"/></w:rPr>` +
         `<x:t xmlns:x="urn:not-wordprocessingml">Foreign text that must not affect metrics</x:t>` +
         `</w:r></w:p>`,
     });
@@ -225,7 +225,7 @@ describe("extractDocxText", () => {
 
     expect(result.paragraphs.at(0)).toEqual({
       index: 0,
-      text: "Plain text",
+      text: "\n\tPlain text",
       source: "body",
     });
   });
