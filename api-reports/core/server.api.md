@@ -139,7 +139,7 @@ export type DocxParagraphSource = "header" | "body" | "footer";
 // @public
 export type DocxTableRowKind = "cells" | "syntheticHeader" | "delimiter";
 
-// @public (undocumented)
+// @public
 export type DocxTableRowPosition = {
     table: number;
     kind: "cells";

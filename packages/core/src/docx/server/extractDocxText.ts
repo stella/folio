@@ -9,12 +9,17 @@ import {
   getAttribute,
   getAttributeAnyPrefix,
   getLocalName,
+  getNamespaceUri,
   getTextContent,
   parseXml,
   type XmlElement,
 } from "../xmlParser";
 
 const DOCUMENT_RELS_PATH = "word/_rels/document.xml.rels";
+const WORDPROCESSINGML_NAMESPACES: ReadonlySet<string> = new Set([
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+  "http://purl.oclc.org/ooxml/wordprocessingml/main",
+]);
 
 /** Document part containing an extracted paragraph. */
 export type DocxParagraphSource = "header" | "body" | "footer";
@@ -96,11 +101,16 @@ type RunMetrics = {
 const childElements = (element: XmlElement): XmlElement[] =>
   element.elements?.filter((child) => child.type === "element") ?? [];
 
+const wordElementName = (element: XmlElement): string | null =>
+  WORDPROCESSINGML_NAMESPACES.has(getNamespaceUri(element) ?? "")
+    ? getLocalName(element.name)
+    : null;
+
 const collectText = (element: XmlElement): string => {
   let text = "";
 
   const walk = (node: XmlElement) => {
-    const localName = getLocalName(node.name ?? "");
+    const localName = wordElementName(node);
     if (localName === "t") {
       text += getTextContent(node);
       return;
@@ -155,7 +165,7 @@ const readRunMetrics = (paragraph: XmlElement): RunMetrics[] => {
   const metrics: RunMetrics[] = [];
 
   for (const run of childElements(paragraph)) {
-    if (getLocalName(run.name ?? "") !== "r") {
+    if (wordElementName(run) !== "r") {
       continue;
     }
 
@@ -251,7 +261,7 @@ const collectTableParts = (parent: XmlElement, localName: "tr" | "tc"): XmlEleme
 
   const walk = (node: XmlElement) => {
     for (const child of childElements(node)) {
-      const childName = getLocalName(child.name ?? "");
+      const childName = wordElementName(child);
       if (childName === localName) {
         parts.push(child);
         continue;
@@ -280,7 +290,7 @@ const readCellSourceParagraphs = (
 
   const walk = (node: XmlElement) => {
     for (const child of childElements(node)) {
-      const childName = getLocalName(child.name ?? "");
+      const childName = wordElementName(child);
       if (childName === "p") {
         const paragraph = readParagraph(child);
         if (paragraph.text.length > 0) {
@@ -314,7 +324,7 @@ const readCellRenderedLines = (cell: XmlElement, depth: number): string[] => {
 
   const walk = (node: XmlElement) => {
     for (const child of childElements(node)) {
-      const childName = getLocalName(child.name ?? "");
+      const childName = wordElementName(child);
       if (childName === "p") {
         const text = collectText(child);
         if (text.length > 0) {
@@ -564,7 +574,7 @@ const extractContainer = ({
    */
   const walkBlocks = (node: XmlElement) => {
     for (const child of childElements(node)) {
-      const childName = getLocalName(child.name ?? "");
+      const childName = wordElementName(child);
       if (childName === "tbl") {
         for (const row of renderTableRows(child, startTableIndex + tableCount)) {
           pushTableRow(row);

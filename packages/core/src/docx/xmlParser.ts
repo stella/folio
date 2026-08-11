@@ -40,6 +40,8 @@ export type XmlElement = {
   text?: string | number | boolean;
   type?: string;
   name?: string;
+  /** Resolved namespace URI; non-enumerable so legacy structural comparisons stay stable. */
+  namespaceUri?: string;
   elements?: XmlElement[];
 };
 
@@ -108,7 +110,10 @@ type MutableFxpNode = XmlElement & Record<string, unknown>;
  * (the tag name or `#text`) whose value is the children array, plus an
  * optional `:@` key holding the attributes object.
  */
-function fxpNodeToElement(node: Record<string, unknown>): MutableFxpNode {
+function fxpNodeToElement(
+  node: Record<string, unknown>,
+  inheritedNamespaces: ReadonlyMap<string, string> = new Map(),
+): MutableFxpNode {
   // Text node: { "#text": "some text" }
   if (TEXT_KEY in node) {
     return { type: "text", text: node[TEXT_KEY] as string };
@@ -133,9 +138,35 @@ function fxpNodeToElement(node: Record<string, unknown>): MutableFxpNode {
       element.attributes = attrs;
     }
 
+    let namespaces = inheritedNamespaces;
+    if (attrs) {
+      for (const [attribute, value] of Object.entries(attrs)) {
+        if (attribute !== "xmlns" && !attribute.startsWith("xmlns:")) {
+          continue;
+        }
+        if (namespaces === inheritedNamespaces) {
+          namespaces = new Map(inheritedNamespaces);
+        }
+        const prefix = attribute === "xmlns" ? "" : attribute.slice("xmlns:".length);
+        (namespaces as Map<string, string>).set(prefix, value);
+      }
+    }
+
+    const colonIndex = key.indexOf(":");
+    const prefix = colonIndex === -1 ? "" : key.slice(0, colonIndex);
+    const namespaceUri = namespaces.get(prefix);
+    if (namespaceUri !== undefined) {
+      Object.defineProperty(element, "namespaceUri", {
+        configurable: false,
+        enumerable: false,
+        value: namespaceUri,
+        writable: false,
+      });
+    }
+
     if (children.length > 0) {
       for (let index = 0; index < children.length; index += 1) {
-        children[index] = fxpNodeToElement(children[index]!);
+        children[index] = fxpNodeToElement(children[index]!, namespaces);
       }
       element.elements = children;
     }
@@ -266,6 +297,9 @@ export function getNamespacePrefix(name: string): string | null {
   const colonIndex = name.indexOf(":");
   return colonIndex !== -1 ? name.slice(0, colonIndex) : null;
 }
+
+/** Namespace URI resolved from the element's in-scope XML declarations. */
+export const getNamespaceUri = (element: XmlElement): string | undefined => element.namespaceUri;
 
 function hasLocalName(name: string | undefined, localName: string): boolean {
   if (!name) {

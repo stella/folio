@@ -5,6 +5,7 @@ import { RELATIONSHIP_TYPES } from "../relsParser";
 import { extractDocxText } from "./extractDocxText";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const STRICT_W_NS = "http://purl.oclc.org/ooxml/wordprocessingml/main";
 const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const PACKAGE_RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
 
@@ -19,6 +20,7 @@ type MakeDocxOptions = {
    * actually wires up, the way a stale or planted part would look.
    */
   orphanParts?: Record<string, "header" | "footer">;
+  wordNamespace?: string;
 };
 
 /**
@@ -33,6 +35,7 @@ const makeDocx = async ({
   headers = {},
   footers = {},
   orphanParts = {},
+  wordNamespace = W_NS,
 }: MakeDocxOptions): Promise<Uint8Array> => {
   const zip = new JSZip();
   const relationships: string[] = [];
@@ -46,7 +49,7 @@ const makeDocx = async ({
   ): void => {
     const rootName = kind === "header" ? "hdr" : "ftr";
     for (const [path, content] of Object.entries(parts)) {
-      zip.file(path, `<w:${rootName} xmlns:w="${W_NS}">${content}</w:${rootName}>`);
+      zip.file(path, `<w:${rootName} xmlns:w="${wordNamespace}">${content}</w:${rootName}>`);
       const rId = `rId${nextRId++}`;
       const target = path.replace(/^word\//, "");
       relationships.push(
@@ -61,7 +64,10 @@ const makeDocx = async ({
 
   for (const [path, kind] of Object.entries(orphanParts)) {
     const rootName = kind === "header" ? "hdr" : "ftr";
-    zip.file(path, `<w:${rootName} xmlns:w="${W_NS}">${paragraph("Orphan")}</w:${rootName}>`);
+    zip.file(
+      path,
+      `<w:${rootName} xmlns:w="${wordNamespace}">${paragraph("Orphan")}</w:${rootName}>`,
+    );
     // Deliberately no Relationship entry and no section reference — this
     // part exists in the archive but nothing wires it up.
   }
@@ -70,7 +76,7 @@ const makeDocx = async ({
     sectionReferences.length > 0 ? `<w:sectPr>${sectionReferences.join("")}</w:sectPr>` : "";
   zip.file(
     "word/document.xml",
-    `<w:document xmlns:w="${W_NS}" xmlns:r="${R_NS}"><w:body>${body}${sectPr}</w:body></w:document>`,
+    `<w:document xmlns:w="${wordNamespace}" xmlns:r="${R_NS}"><w:body>${body}${sectPr}</w:body></w:document>`,
   );
   if (relationships.length > 0) {
     zip.file(
@@ -218,6 +224,35 @@ describe("extractDocxText", () => {
 
     expect(result.paragraphs.at(0)?.text).toBe("Alternate");
     expect(result.paragraphs.at(0)?.style).toBe("Title");
+  });
+
+  test("accepts Strict WordprocessingML and ignores foreign local-name collisions", async () => {
+    const bytes = await makeDocx({
+      body:
+        `<x:p xmlns:x="urn:not-wordprocessingml"><x:r><x:t>foreign prose</x:t></x:r></x:p>` +
+        table(
+          row(
+            cell(
+              `<x:p xmlns:x="urn:not-wordprocessingml"><x:r><x:t>foreign cell</x:t></x:r></x:p>` +
+                paragraph("strict cell"),
+            ),
+          ),
+        ),
+      wordNamespace: STRICT_W_NS,
+    });
+
+    const result = await extractDocxText(bytes);
+
+    expect(result.paragraphs.map(({ text }) => text)).toEqual([
+      "|  |",
+      "| --- |",
+      "| strict cell |",
+    ]);
+    expect(result.paragraphs.at(2)?.tableRow).toEqual({
+      table: 0,
+      kind: "cells",
+      cells: [{ paragraphs: [{ text: "strict cell" }] }],
+    });
   });
 
   test("emits table cells as markdown rows, not a flat row-major paragraph list", async () => {
