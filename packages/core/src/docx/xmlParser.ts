@@ -42,6 +42,8 @@ export type XmlElement = {
   name?: string;
   /** Resolved namespace URI; non-enumerable so legacy structural comparisons stay stable. */
   namespaceUri?: string;
+  /** In-scope namespace bindings; non-enumerable so legacy structural comparisons stay stable. */
+  namespaceBindings?: ReadonlyMap<string, string>;
   elements?: XmlElement[];
 };
 
@@ -138,19 +140,25 @@ function fxpNodeToElement(
       element.attributes = attrs;
     }
 
-    let namespaces = inheritedNamespaces;
+    let mutableNamespaces: Map<string, string> | null = null;
     if (attrs) {
       for (const [attribute, value] of Object.entries(attrs)) {
         if (attribute !== "xmlns" && !attribute.startsWith("xmlns:")) {
           continue;
         }
-        if (namespaces === inheritedNamespaces) {
-          namespaces = new Map(inheritedNamespaces);
-        }
+        mutableNamespaces ??= new Map(inheritedNamespaces);
         const prefix = attribute === "xmlns" ? "" : attribute.slice("xmlns:".length);
-        (namespaces as Map<string, string>).set(prefix, value);
+        mutableNamespaces.set(prefix, value);
       }
     }
+    const namespaces = mutableNamespaces ?? inheritedNamespaces;
+
+    Object.defineProperty(element, "namespaceBindings", {
+      configurable: false,
+      enumerable: false,
+      value: namespaces,
+      writable: false,
+    });
 
     const colonIndex = key.indexOf(":");
     const prefix = colonIndex === -1 ? "" : key.slice(0, colonIndex);
@@ -300,6 +308,29 @@ export function getNamespacePrefix(name: string): string | null {
 
 /** Namespace URI resolved from the element's in-scope XML declarations. */
 export const getNamespaceUri = (element: XmlElement): string | undefined => element.namespaceUri;
+
+/** Get an attribute whose prefix resolves to one of the accepted namespace URIs. */
+export function getAttributeByNamespaceUri(
+  element: XmlElement | null | undefined,
+  namespaceUris: ReadonlySet<string>,
+  localName: string,
+): string | null {
+  if (!element?.attributes) {
+    return null;
+  }
+
+  for (const [name, value] of Object.entries(element.attributes)) {
+    if (value === undefined || getLocalName(name) !== localName) {
+      continue;
+    }
+    const prefix = getNamespacePrefix(name);
+    if (prefix !== null && namespaceUris.has(element.namespaceBindings?.get(prefix) ?? "")) {
+      return String(value);
+    }
+  }
+
+  return null;
+}
 
 function hasLocalName(name: string | undefined, localName: string): boolean {
   if (!name) {

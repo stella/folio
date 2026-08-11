@@ -4,10 +4,9 @@ import { escapeTableCell } from "../../markdown/escape";
 import { parseRelationships, RELATIONSHIP_TYPES } from "../relsParser";
 import {
   findAllDeep,
-  findChild,
   findDeep,
   getAttribute,
-  getAttributeAnyPrefix,
+  getAttributeByNamespaceUri,
   getLocalName,
   getNamespaceUri,
   getTextContent,
@@ -106,6 +105,21 @@ const wordElementName = (element: XmlElement): string | null =>
     ? getLocalName(element.name)
     : null;
 
+const findWordChild = (
+  parent: XmlElement | null | undefined,
+  localName: string,
+): XmlElement | null => {
+  if (!parent) {
+    return null;
+  }
+  return childElements(parent).find((child) => wordElementName(child) === localName) ?? null;
+};
+
+const getWordAttribute = (
+  element: XmlElement | null | undefined,
+  localName: string,
+): string | null => getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACES, localName);
+
 const collectText = (element: XmlElement): string => {
   let text = "";
 
@@ -136,20 +150,20 @@ const collectText = (element: XmlElement): string => {
 };
 
 const readParagraphProperties = (paragraph: XmlElement): ParagraphProperties => {
-  const properties = findChild(paragraph, "w", "pPr");
+  const properties = findWordChild(paragraph, "pPr");
   if (!properties) {
     return {};
   }
 
   const result: ParagraphProperties = {};
-  const style = findChild(properties, "w", "pStyle");
-  const styleValue = getAttributeAnyPrefix(style, "val");
+  const style = findWordChild(properties, "pStyle");
+  const styleValue = getWordAttribute(style, "val");
   if (styleValue !== null) {
     result.style = styleValue;
   }
 
-  const justification = findChild(properties, "w", "jc");
-  const alignment = getAttributeAnyPrefix(justification, "val");
+  const justification = findWordChild(properties, "jc");
+  const alignment = getWordAttribute(justification, "val");
   if (
     alignment === "left" ||
     alignment === "center" ||
@@ -169,13 +183,13 @@ const readRunMetrics = (paragraph: XmlElement): RunMetrics[] => {
       continue;
     }
 
-    const properties = findChild(run, "w", "rPr");
-    const boldProperty = findChild(properties, "w", "b");
-    const boldValue = getAttributeAnyPrefix(boldProperty, "val");
+    const properties = findWordChild(run, "rPr");
+    const boldProperty = findWordChild(properties, "b");
+    const boldValue = getWordAttribute(boldProperty, "val");
     const bold = boldProperty !== null && boldValue !== "0" && boldValue !== "false";
 
-    const sizeProperty = findChild(properties, "w", "sz");
-    const sizeValue = getAttributeAnyPrefix(sizeProperty, "val");
+    const sizeProperty = findWordChild(properties, "sz");
+    const sizeValue = getWordAttribute(sizeProperty, "val");
     const parsedSize = sizeValue === null ? Number.NaN : Number.parseInt(sizeValue, 10);
     const fontSize = Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : undefined;
 
@@ -371,9 +385,9 @@ type ExtractedTableCell = {
 };
 
 const readTableCell = (cell: XmlElement, depth: number): ExtractedTableCell => {
-  const properties = findChild(cell, "w", "tcPr");
+  const properties = findWordChild(cell, "tcPr");
 
-  const gridSpanValue = getAttributeAnyPrefix(findChild(properties, "w", "gridSpan"), "val");
+  const gridSpanValue = getWordAttribute(findWordChild(properties, "gridSpan"), "val");
   const parsedGridSpan = gridSpanValue === null ? 1 : Number.parseInt(gridSpanValue, 10);
   const gridSpan = Number.isFinite(parsedGridSpan) && parsedGridSpan > 1 ? parsedGridSpan : 1;
 
@@ -381,8 +395,8 @@ const readTableCell = (cell: XmlElement, depth: number): ExtractedTableCell => {
   // renders no content of its own there, so emit an empty grid column: it holds
   // the row's column alignment without repeating the anchor cell's value or
   // surfacing content Word itself never shows.
-  const vMerge = findChild(properties, "w", "vMerge");
-  if (vMerge !== null && getAttributeAnyPrefix(vMerge, "val") !== "restart") {
+  const vMerge = findWordChild(properties, "vMerge");
+  if (vMerge !== null && getWordAttribute(vMerge, "val") !== "restart") {
     return { text: "", paragraphs: [], gridSpan };
   }
 
@@ -406,11 +420,11 @@ const readTableCell = (cell: XmlElement, depth: number): ExtractedTableCell => {
  * names invented here would be read back as facts about the document.
  */
 const declaresHeaderRow = (row: XmlElement): boolean => {
-  const header = findChild(findChild(row, "w", "trPr"), "w", "tblHeader");
+  const header = findWordChild(findWordChild(row, "trPr"), "tblHeader");
   if (header === null) {
     return false;
   }
-  const value = getAttributeAnyPrefix(header, "val");
+  const value = getWordAttribute(header, "val");
   return value !== "0" && value !== "false";
 };
 

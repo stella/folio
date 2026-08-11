@@ -232,10 +232,15 @@ describe("extractDocxText", () => {
         `<x:p xmlns:x="urn:not-wordprocessingml"><x:r><x:t>foreign prose</x:t></x:r></x:p>` +
         table(
           row(
-            cell(
+            `<w:tc>` +
+              `<x:tcPr xmlns:x="urn:not-wordprocessingml"><x:gridSpan x:val="256"/><x:vMerge/></x:tcPr>` +
+              `<w:tcPr/>` +
               `<x:p xmlns:x="urn:not-wordprocessingml"><x:r><x:t>foreign cell</x:t></x:r></x:p>` +
-                paragraph("strict cell"),
-            ),
+              paragraph("strict cell") +
+              `</w:tc>` +
+              `<w:tc><w:tcPr><w:gridSpan xmlns:x="urn:not-wordprocessingml" x:val="256" w:val="1"/></w:tcPr>` +
+              paragraph("strict attributes") +
+              `</w:tc>`,
           ),
         ),
       wordNamespace: STRICT_W_NS,
@@ -244,14 +249,17 @@ describe("extractDocxText", () => {
     const result = await extractDocxText(bytes);
 
     expect(result.paragraphs.map(({ text }) => text)).toEqual([
-      "|  |",
-      "| --- |",
-      "| strict cell |",
+      "|  |  |",
+      "| --- | --- |",
+      "| strict cell | strict attributes |",
     ]);
     expect(result.paragraphs.at(2)?.tableRow).toEqual({
       table: 0,
       kind: "cells",
-      cells: [{ paragraphs: [{ text: "strict cell" }] }],
+      cells: [
+        { paragraphs: [{ text: "strict cell" }] },
+        { paragraphs: [{ text: "strict attributes" }] },
+      ],
     });
   });
 
