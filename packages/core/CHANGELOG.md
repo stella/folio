@@ -1,5 +1,31 @@
 # @stll/folio-core
 
+## 0.17.0
+
+### Minor Changes
+
+- [#565](https://github.com/stella/folio/pull/565) [`fdec7b5`](https://github.com/stella/folio/commit/fdec7b5e2662afe85c9d4df75ca87fd17cffaa61) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose source cell paragraphs alongside extracted DOCX table rows.
+
+### Patch Changes
+
+- [#560](https://github.com/stella/folio/pull/560) [`b9b7d25`](https://github.com/stella/folio/commit/b9b7d25f9e4da20d0225eb95a48614b07dcc85da) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render complex-script text in the font the document asks for.
+
+  Word resolves a run's font per character across three slots: `w:eastAsia` for CJK, `w:cs` for Arabic, Hebrew, Indic and South-East Asian text, and `w:ascii`/`w:hAnsi` for everything else. folio honoured the first and third but never the second: `w:cs` was parsed and round-tripped yet never reached layout, so a document written the standard way (`w:ascii="Calibri"` with `w:cs="Traditional Arabic"`) measured and painted its Arabic in Calibri.
+
+  The complex-script slot now flows through the bridge, the measurer and the painter on the same path the East-Asian slot already used, so the two stay segmented identically and line wrapping keeps matching what is drawn. Script segmentation now reports which of the three slots a character selects rather than a CJK yes/no.
+
+- [#556](https://github.com/stella/folio/pull/556) [`768baab`](https://github.com/stella/folio/commit/768baab2a609384057e51bea45957bea9df1bbe1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep cursive words joined when a run boundary splits them mid-word.
+
+  Browsers shape across an inline box boundary only while no shaping-relevant property changes. A bold, italic, resized, or refaced run inside an Arabic word therefore stopped shaping at that boundary, and the word rendered as isolated letter forms. Word joins straight through the same boundary.
+
+  The painter now emits a zero-width joiner on each side of such a boundary. Each joiner sits in its own span, so run text nodes keep their exact ProseMirror offsets. Colour and underline boundaries, which is what tracked changes and comment anchors use, already shaped correctly and are left untouched.
+
+  Joining classes are generated from the pinned Unicode Character Database rather than hand-listed, so combining marks are classified correctly.
+
+- [#558](https://github.com/stella/folio/pull/558) [`14eee8f`](https://github.com/stella/folio/commit/14eee8f644694d3a47060f5445df1465cf91ae77) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Wait for the complex-script and East-Asian fonts before the first layout, not just the Latin ones.
+
+  The font-readiness gate collected only the `ascii` and `hAnsi` slots of a run's font. Word writes the Arabic and Hebrew face into `w:cs` and the CJK face into `w:eastAsia`, so a document that styles those scripts the standard way had its font ignored by the gate. The first layout then measured a fallback face while the painter later drew the real one once it loaded, and the two disagreed for exactly the scripts whose advances differ most from a Latin fallback.
+
 ## 0.16.0
 
 ### Minor Changes
