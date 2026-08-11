@@ -418,6 +418,16 @@ describe("extractDocxText", () => {
       "| only |  |  |",
       "|  |  |  |",
     ]);
+    expect(
+      result.paragraphs.slice(2).map(({ tableRow }) =>
+        tableRow?.kind === "cells" ? tableRow.cells : undefined,
+      ),
+    ).toEqual([
+      [{ paragraphs: ["wide"] }, { paragraphs: [] }, { paragraphs: [] }],
+      [{ paragraphs: ["a"] }, { paragraphs: ["b"] }, { paragraphs: [] }],
+      [{ paragraphs: ["only"] }, { paragraphs: [] }, { paragraphs: [] }],
+      [{ paragraphs: [] }, { paragraphs: [] }, { paragraphs: [] }],
+    ]);
   });
 
   test("emits nothing for a table that has no cell at all", async () => {

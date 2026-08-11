@@ -403,7 +403,9 @@ const renderTableRows = (table: XmlElement, tableIndex: number): RenderedTableRo
       position: {
         table: tableIndex,
         kind: "cells",
-        cells: cells.map(({ paragraphs }) => ({ paragraphs })),
+        cells: Array.from({ length: columnCount }, (_, column) => ({
+          paragraphs: cells.at(column)?.paragraphs ?? [],
+        })),
       },
     });
   };
