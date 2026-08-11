@@ -419,9 +419,9 @@ describe("extractDocxText", () => {
       "|  |  |  |",
     ]);
     expect(
-      result.paragraphs.slice(2).map(({ tableRow }) =>
-        tableRow?.kind === "cells" ? tableRow.cells : undefined,
-      ),
+      result.paragraphs
+        .slice(2)
+        .map(({ tableRow }) => (tableRow?.kind === "cells" ? tableRow.cells : undefined)),
     ).toEqual([
       [{ paragraphs: ["wide"] }, { paragraphs: [] }, { paragraphs: [] }],
       [{ paragraphs: ["a"] }, { paragraphs: ["b"] }, { paragraphs: [] }],
