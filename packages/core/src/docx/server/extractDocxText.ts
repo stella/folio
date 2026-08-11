@@ -30,10 +30,19 @@ export type DocxParagraphSource = "header" | "body" | "footer";
  */
 export type DocxTableRowKind = "cells" | "syntheticHeader" | "delimiter";
 
+/** Source paragraph inside a structured table cell. */
+export type ExtractedDocxTableCellParagraph = {
+  text: string;
+  style?: string;
+  bold?: boolean;
+  fontSize?: number;
+  alignment?: "left" | "center" | "right" | "both";
+};
+
 /** Table membership of a paragraph whose `text` is a markdown table row. */
 export type ExtractedDocxTableCell = {
-  /** Source `w:p` text in document order; empty padding cells have no entries. */
-  paragraphs: readonly string[];
+  /** Source `w:p` records in document order; empty padding cells have no entries. */
+  paragraphs: readonly ExtractedDocxTableCellParagraph[];
 };
 
 export type DocxTableRowPosition =
@@ -177,6 +186,32 @@ const readRunMetrics = (paragraph: XmlElement): RunMetrics[] => {
   return metrics;
 };
 
+const readParagraph = (paragraph: XmlElement): ExtractedDocxTableCellParagraph => {
+  const entry: ExtractedDocxTableCellParagraph = { text: collectText(paragraph) };
+  const { style, alignment } = readParagraphProperties(paragraph);
+  if (style !== undefined) {
+    entry.style = style;
+  }
+  if (alignment !== undefined) {
+    entry.alignment = alignment;
+  }
+
+  const runs = readRunMetrics(paragraph);
+  if (runs.length === 0) {
+    return entry;
+  }
+  const totalChars = runs.reduce((sum, run) => sum + run.chars, 0);
+  const boldChars = runs.reduce((sum, run) => sum + (run.bold ? run.chars : 0), 0);
+  if (boldChars > totalChars / 2) {
+    entry.bold = true;
+  }
+  const firstFontSize = runs.find((run) => run.fontSize !== undefined)?.fontSize;
+  if (firstFontSize !== undefined) {
+    entry.fontSize = firstFontSize;
+  }
+  return entry;
+};
+
 // ---------------------------------------------------------------------------
 // Tables
 //
@@ -236,16 +271,16 @@ const collectTableParts = (parent: XmlElement, localName: "tr" | "tc"): XmlEleme
  * Blank paragraphs are dropped so a cell padded with empty paragraphs does not
  * render as a run of `<br>`. A nested table contributes one line per inner row.
  */
-const readCellParagraphs = (cell: XmlElement, depth: number): string[] => {
-  const lines: string[] = [];
+const readCellParagraphs = (cell: XmlElement, depth: number): ExtractedDocxTableCellParagraph[] => {
+  const lines: ExtractedDocxTableCellParagraph[] = [];
 
   const walk = (node: XmlElement) => {
     for (const child of childElements(node)) {
       const childName = getLocalName(child.name ?? "");
       if (childName === "p") {
-        const text = collectText(child);
-        if (text.length > 0) {
-          lines.push(text);
+        const paragraph = readParagraph(child);
+        if (paragraph.text.length > 0) {
+          lines.push(paragraph);
         }
         // `collectText` already descended for text, including any textbox
         // inside the paragraph; descending again would duplicate the cell text.
@@ -256,7 +291,7 @@ const readCellParagraphs = (cell: XmlElement, depth: number): string[] => {
           continue;
         }
         for (const line of flattenNestedTable(child, depth + 1)) {
-          lines.push(line);
+          lines.push({ text: line });
         }
         continue;
       }
@@ -273,7 +308,9 @@ const flattenNestedTable = (table: XmlElement, depth: number): string[] => {
 
   for (const row of collectTableParts(table, "tr")) {
     const cells = collectTableParts(row, "tc").map((cell) =>
-      readCellParagraphs(cell, depth).join("\n"),
+      readCellParagraphs(cell, depth)
+        .map(({ text }) => text)
+        .join("\n"),
     );
     if (cells.some((text) => text.length > 0)) {
       lines.push(cells.join(NESTED_TABLE_CELL_SEPARATOR));
@@ -287,7 +324,7 @@ type ExtractedTableCell = {
   /** Raw cell text; escaped only when it reaches a row line. */
   text: string;
   /** Source paragraphs before GFM joins them with `<br>`. */
-  paragraphs: string[];
+  paragraphs: ExtractedDocxTableCellParagraph[];
   /** Grid columns the cell occupies (`w:gridSpan`), at least 1. */
   gridSpan: number;
 };
@@ -309,7 +346,11 @@ const readTableCell = (cell: XmlElement, depth: number): ExtractedTableCell => {
   }
 
   const paragraphs = readCellParagraphs(cell, depth);
-  return { text: paragraphs.join("\n"), paragraphs, gridSpan };
+  return {
+    text: paragraphs.map(({ text }) => text).join("\n"),
+    paragraphs,
+    gridSpan,
+  };
 };
 
 /**
@@ -462,32 +503,13 @@ const extractContainer = ({
   let tableCount = 0;
 
   const pushProse = (paragraph: XmlElement) => {
-    const text = collectText(paragraph);
+    const extracted = readParagraph(paragraph);
+    const { text } = extracted;
     const entry: ExtractedDocxParagraph = {
       index: startIndex + paragraphs.length,
-      text,
       source,
+      ...extracted,
     };
-    const { style, alignment } = readParagraphProperties(paragraph);
-    if (style !== undefined) {
-      entry.style = style;
-    }
-    if (alignment !== undefined) {
-      entry.alignment = alignment;
-    }
-
-    const runs = readRunMetrics(paragraph);
-    if (runs.length > 0) {
-      const totalChars = runs.reduce((sum, run) => sum + run.chars, 0);
-      const boldChars = runs.reduce((sum, run) => sum + (run.bold ? run.chars : 0), 0);
-      if (boldChars > totalChars / 2) {
-        entry.bold = true;
-      }
-      const firstFontSize = runs.find((run) => run.fontSize !== undefined)?.fontSize;
-      if (firstFontSize !== undefined) {
-        entry.fontSize = firstFontSize;
-      }
-    }
 
     paragraphs.push(entry);
     charCount += text.length;

@@ -213,7 +213,16 @@ export type ExtractedDocxParagraph = {
 
 // @public
 export type ExtractedDocxTableCell = {
-    paragraphs: readonly string[];
+    paragraphs: readonly ExtractedDocxTableCellParagraph[];
+};
+
+// @public
+export type ExtractedDocxTableCellParagraph = {
+    text: string;
+    style?: string;
+    bold?: boolean;
+    fontSize?: number;
+    alignment?: "left" | "center" | "right" | "both";
 };
 
 // @public

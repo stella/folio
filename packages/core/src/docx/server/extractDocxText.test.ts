@@ -257,14 +257,14 @@ describe("extractDocxText", () => {
     expect(result.paragraphs.map(({ text, tableRow }) => [text, tableRow])).toEqual([
       ["|  |", { table: 0, kind: "syntheticHeader" }],
       ["| --- |", { table: 0, kind: "delimiter" }],
-      ["| x |", { table: 0, kind: "cells", cells: [{ paragraphs: ["x"] }] }],
+      ["| x |", { table: 0, kind: "cells", cells: [{ paragraphs: [{ text: "x" }] }] }],
       ["Prose", undefined],
       ["|  |", { table: 1, kind: "syntheticHeader" }],
       ["| --- |", { table: 1, kind: "delimiter" }],
-      ["| x |", { table: 1, kind: "cells", cells: [{ paragraphs: ["x"] }] }],
+      ["| x |", { table: 1, kind: "cells", cells: [{ paragraphs: [{ text: "x" }] }] }],
       ["|  |", { table: 2, kind: "syntheticHeader" }],
       ["| --- |", { table: 2, kind: "delimiter" }],
-      ["| x |", { table: 2, kind: "cells", cells: [{ paragraphs: ["x"] }] }],
+      ["| x |", { table: 2, kind: "cells", cells: [{ paragraphs: [{ text: "x" }] }] }],
     ]);
   });
 
@@ -297,7 +297,7 @@ describe("extractDocxText", () => {
     expect(declared.paragraphs.at(0)?.tableRow).toEqual({
       table: 0,
       kind: "cells",
-      cells: [{ paragraphs: ["H1"] }, { paragraphs: ["H2"] }],
+      cells: [{ paragraphs: [{ text: "H1" }] }, { paragraphs: [{ text: "H2" }] }],
     });
     expect(undeclared.paragraphs.at(0)?.tableRow).toEqual({ table: 0, kind: "syntheticHeader" });
   });
@@ -369,7 +369,12 @@ describe("extractDocxText", () => {
     const bytes = await makeDocx({
       body: table(
         row(
-          cell(paragraph("first") + `<w:p/>` + paragraph("second")) +
+          cell(
+            `<w:p><w:pPr><w:pStyle w:val="Heading2"/><w:jc w:val="center"/></w:pPr>` +
+              `<w:r><w:rPr><w:b/><w:sz w:val="32"/></w:rPr><w:t>first</w:t></w:r></w:p>` +
+              `<w:p/>` +
+              paragraph("second"),
+          ) +
             cell("") +
             cell(paragraph("pipe|inside")) +
             cell(`<w:p><w:r><w:t>break</w:t><w:br/><w:t>after</w:t></w:r></w:p>`),
@@ -388,10 +393,21 @@ describe("extractDocxText", () => {
       table: 0,
       kind: "cells",
       cells: [
-        { paragraphs: ["first", "second"] },
+        {
+          paragraphs: [
+            {
+              text: "first",
+              style: "Heading2",
+              bold: true,
+              fontSize: 32,
+              alignment: "center",
+            },
+            { text: "second" },
+          ],
+        },
         { paragraphs: [] },
-        { paragraphs: ["pipe|inside"] },
-        { paragraphs: ["break\nafter"] },
+        { paragraphs: [{ text: "pipe|inside" }] },
+        { paragraphs: [{ text: "break\nafter" }] },
       ],
     });
   });
@@ -423,9 +439,9 @@ describe("extractDocxText", () => {
         .slice(2)
         .map(({ tableRow }) => (tableRow?.kind === "cells" ? tableRow.cells : undefined)),
     ).toEqual([
-      [{ paragraphs: ["wide"] }, { paragraphs: [] }, { paragraphs: [] }],
-      [{ paragraphs: ["a"] }, { paragraphs: ["b"] }, { paragraphs: [] }],
-      [{ paragraphs: ["only"] }, { paragraphs: [] }, { paragraphs: [] }],
+      [{ paragraphs: [{ text: "wide" }] }, { paragraphs: [] }, { paragraphs: [] }],
+      [{ paragraphs: [{ text: "a" }] }, { paragraphs: [{ text: "b" }] }, { paragraphs: [] }],
+      [{ paragraphs: [{ text: "only" }] }, { paragraphs: [] }, { paragraphs: [] }],
       [{ paragraphs: [] }, { paragraphs: [] }, { paragraphs: [] }],
     ]);
   });

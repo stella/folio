@@ -178,6 +178,7 @@ export {
   type DocxTableRowPosition,
   type ExtractedDocxParagraph,
   type ExtractedDocxTableCell,
+  type ExtractedDocxTableCellParagraph,
   type ExtractedDocxText,
 } from "./docx/server/extractDocxText";
 export { docxToMarkdown } from "./docx/server/docxToMarkdown";
