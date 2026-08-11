@@ -363,6 +363,16 @@ describe("extractDocxText", () => {
       "| --- | --- |",
       "| outer | in1 / in2<br>in3 / in4 |",
     ]);
+    expect(result.paragraphs.at(2)?.tableRow).toEqual({
+      table: 0,
+      kind: "cells",
+      cells: [
+        { paragraphs: [{ text: "outer" }] },
+        {
+          paragraphs: [{ text: "in1" }, { text: "in2" }, { text: "in3" }, { text: "in4" }],
+        },
+      ],
+    });
   });
 
   test("keeps a multi-paragraph cell on one row and escapes what would split it", async () => {

@@ -39,12 +39,13 @@ export type ExtractedDocxTableCellParagraph = {
   alignment?: "left" | "center" | "right" | "both";
 };
 
-/** Table membership of a paragraph whose `text` is a markdown table row. */
+/** Source paragraphs contained by one physical table cell. */
 export type ExtractedDocxTableCell = {
   /** Source `w:p` records in document order; empty padding cells have no entries. */
   paragraphs: readonly ExtractedDocxTableCellParagraph[];
 };
 
+/** Table membership of a paragraph whose `text` is a markdown table row. */
 export type DocxTableRowPosition =
   | {
       /** 0-based index of the source `w:tbl`, in extraction order across all parts. */
@@ -271,8 +272,11 @@ const collectTableParts = (parent: XmlElement, localName: "tr" | "tc"): XmlEleme
  * Blank paragraphs are dropped so a cell padded with empty paragraphs does not
  * render as a run of `<br>`. A nested table contributes one line per inner row.
  */
-const readCellParagraphs = (cell: XmlElement, depth: number): ExtractedDocxTableCellParagraph[] => {
-  const lines: ExtractedDocxTableCellParagraph[] = [];
+const readCellSourceParagraphs = (
+  cell: XmlElement,
+  depth: number,
+): ExtractedDocxTableCellParagraph[] => {
+  const paragraphs: ExtractedDocxTableCellParagraph[] = [];
 
   const walk = (node: XmlElement) => {
     for (const child of childElements(node)) {
@@ -280,7 +284,7 @@ const readCellParagraphs = (cell: XmlElement, depth: number): ExtractedDocxTable
       if (childName === "p") {
         const paragraph = readParagraph(child);
         if (paragraph.text.length > 0) {
-          lines.push(paragraph);
+          paragraphs.push(paragraph);
         }
         // `collectText` already descended for text, including any textbox
         // inside the paragraph; descending again would duplicate the cell text.
@@ -290,8 +294,37 @@ const readCellParagraphs = (cell: XmlElement, depth: number): ExtractedDocxTable
         if (depth >= MAX_NESTED_TABLE_DEPTH) {
           continue;
         }
-        for (const line of flattenNestedTable(child, depth + 1)) {
-          lines.push({ text: line });
+        for (const row of collectTableParts(child, "tr")) {
+          for (const nestedCell of collectTableParts(row, "tc")) {
+            paragraphs.push(...readCellSourceParagraphs(nestedCell, depth + 1));
+          }
+        }
+        continue;
+      }
+      walk(child);
+    }
+  };
+
+  walk(cell);
+  return paragraphs;
+};
+
+const readCellRenderedLines = (cell: XmlElement, depth: number): string[] => {
+  const lines: string[] = [];
+
+  const walk = (node: XmlElement) => {
+    for (const child of childElements(node)) {
+      const childName = getLocalName(child.name ?? "");
+      if (childName === "p") {
+        const text = collectText(child);
+        if (text.length > 0) {
+          lines.push(text);
+        }
+        continue;
+      }
+      if (childName === "tbl") {
+        if (depth < MAX_NESTED_TABLE_DEPTH) {
+          lines.push(...flattenNestedTable(child, depth + 1));
         }
         continue;
       }
@@ -308,9 +341,7 @@ const flattenNestedTable = (table: XmlElement, depth: number): string[] => {
 
   for (const row of collectTableParts(table, "tr")) {
     const cells = collectTableParts(row, "tc").map((cell) =>
-      readCellParagraphs(cell, depth)
-        .map(({ text }) => text)
-        .join("\n"),
+      readCellRenderedLines(cell, depth).join("\n"),
     );
     if (cells.some((text) => text.length > 0)) {
       lines.push(cells.join(NESTED_TABLE_CELL_SEPARATOR));
@@ -345,9 +376,9 @@ const readTableCell = (cell: XmlElement, depth: number): ExtractedTableCell => {
     return { text: "", paragraphs: [], gridSpan };
   }
 
-  const paragraphs = readCellParagraphs(cell, depth);
+  const paragraphs = readCellSourceParagraphs(cell, depth);
   return {
-    text: paragraphs.map(({ text }) => text).join("\n"),
+    text: readCellRenderedLines(cell, depth).join("\n"),
     paragraphs,
     gridSpan,
   };
