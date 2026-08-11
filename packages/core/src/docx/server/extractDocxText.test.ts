@@ -212,6 +212,24 @@ describe("extractDocxText", () => {
     expect(result.paragraphs.at(1)?.alignment).toBe("left");
   });
 
+  test("ignores foreign text when calculating run formatting metadata", async () => {
+    const bytes = await makeDocx({
+      body:
+        `<w:p><w:r><w:t>Plain text</w:t></w:r>` +
+        `<w:r><w:rPr><w:b/><w:sz w:val="99"/></w:rPr>` +
+        `<x:t xmlns:x="urn:not-wordprocessingml">Foreign text that must not affect metrics</x:t>` +
+        `</w:r></w:p>`,
+    });
+
+    const result = await extractDocxText(bytes);
+
+    expect(result.paragraphs.at(0)).toEqual({
+      index: 0,
+      text: "Plain text",
+      source: "body",
+    });
+  });
+
   test("supports alternate prefixes for the main OOXML namespace", async () => {
     const zip = new JSZip();
     zip.file(
@@ -361,6 +379,33 @@ describe("extractDocxText", () => {
       "| Spans two |  | C |",
       "| a1 | a2 | a3 |",
     ]);
+  });
+
+  test("preserves leading and trailing grid omissions", async () => {
+    const bytes = await makeDocx({
+      body: table(
+        row(cell(paragraph("H2")), `<w:trPr><w:gridBefore w:val="1"/><w:tblHeader/></w:trPr>`) +
+          row(cell(paragraph("v1")), `<w:trPr><w:gridAfter w:val="1"/></w:trPr>`),
+      ),
+    });
+
+    const result = await extractDocxText(bytes);
+
+    expect(result.paragraphs.map(({ text }) => text)).toEqual([
+      "|  | H2 |",
+      "| --- | --- |",
+      "| v1 |  |",
+    ]);
+    expect(result.paragraphs.at(0)?.tableRow).toEqual({
+      table: 0,
+      kind: "cells",
+      cells: [{ paragraphs: [] }, { paragraphs: [{ text: "H2" }] }],
+    });
+    expect(result.paragraphs.at(2)?.tableRow).toEqual({
+      table: 0,
+      kind: "cells",
+      cells: [{ paragraphs: [{ text: "v1" }] }, { paragraphs: [] }],
+    });
   });
 
   test("renders a vertical-merge continuation as an empty column", async () => {

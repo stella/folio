@@ -193,10 +193,7 @@ const readRunMetrics = (paragraph: XmlElement): RunMetrics[] => {
     const parsedSize = sizeValue === null ? Number.NaN : Number.parseInt(sizeValue, 10);
     const fontSize = Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : undefined;
 
-    let chars = 0;
-    for (const textNode of findAllDeep(run, "w", "t")) {
-      chars += getTextContent(textNode).length;
-    }
+    const chars = collectText(run).length;
     if (chars === 0) {
       continue;
     }
@@ -320,7 +317,9 @@ const readCellSourceParagraphs = (
         }
         for (const row of collectTableParts(child, "tr")) {
           for (const nestedCell of collectTableParts(row, "tc")) {
-            paragraphs.push(...readCellSourceParagraphs(nestedCell, depth + 1));
+            for (const paragraph of readCellSourceParagraphs(nestedCell, depth + 1)) {
+              paragraphs.push(paragraph);
+            }
           }
         }
         continue;
@@ -348,7 +347,9 @@ const readCellRenderedLines = (cell: XmlElement, depth: number): string[] => {
       }
       if (childName === "tbl") {
         if (depth < MAX_NESTED_TABLE_DEPTH) {
-          lines.push(...flattenNestedTable(child, depth + 1));
+          for (const line of flattenNestedTable(child, depth + 1)) {
+            lines.push(line);
+          }
         }
         continue;
       }
@@ -383,6 +384,12 @@ type ExtractedTableCell = {
   /** Grid columns the cell occupies (`w:gridSpan`), at least 1. */
   gridSpan: number;
 };
+
+const emptyTableCell = (): ExtractedTableCell => ({
+  text: "",
+  paragraphs: [],
+  gridSpan: 1,
+});
 
 const readTableCell = (cell: XmlElement, depth: number): ExtractedTableCell => {
   const properties = findWordChild(cell, "tcPr");
@@ -428,6 +435,13 @@ const declaresHeaderRow = (row: XmlElement): boolean => {
   return value !== "0" && value !== "false";
 };
 
+const readRowGridOffset = (row: XmlElement, localName: "gridBefore" | "gridAfter"): number => {
+  const properties = findWordChild(row, "trPr");
+  const value = getWordAttribute(findWordChild(properties, localName), "val");
+  const parsed = value === null ? 0 : Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, MAX_TABLE_COLUMNS) : 0;
+};
+
 type TableGrid = {
   /** Raw cell text per row, already expanded across the grid columns each cell spans. */
   rows: ExtractedTableCell[][];
@@ -445,6 +459,10 @@ const readTableGrid = (table: XmlElement): TableGrid => {
       firstRowIsHeader = declaresHeaderRow(row);
     }
     const columns: ExtractedTableCell[] = [];
+    const gridBefore = readRowGridOffset(row, "gridBefore");
+    for (let index = 0; index < gridBefore; index += 1) {
+      columns.push(emptyTableCell());
+    }
     for (const cell of collectTableParts(row, "tc")) {
       if (columns.length >= MAX_TABLE_COLUMNS) {
         break;
@@ -455,8 +473,15 @@ const readTableGrid = (table: XmlElement): TableGrid => {
       // the rest stay empty so every row keeps the same column boundaries.
       const padding = Math.min(extractedCell.gridSpan - 1, MAX_TABLE_COLUMNS - columns.length);
       for (let index = 0; index < padding; index++) {
-        columns.push({ text: "", paragraphs: [], gridSpan: 1 });
+        columns.push(emptyTableCell());
       }
+    }
+    const gridAfter = Math.min(
+      readRowGridOffset(row, "gridAfter"),
+      MAX_TABLE_COLUMNS - columns.length,
+    );
+    for (let index = 0; index < gridAfter; index += 1) {
+      columns.push(emptyTableCell());
     }
     if (columns.length > columnCount) {
       columnCount = columns.length;
@@ -647,7 +672,9 @@ const extractParts = async ({
       startIndex: nextIndex,
       startTableIndex: startTableIndex + tableCount,
     });
-    paragraphs.push(...result.paragraphs);
+    for (const paragraph of result.paragraphs) {
+      paragraphs.push(paragraph);
+    }
     charCount += result.charCount;
     tableCount += result.tableCount;
     nextIndex += result.paragraphs.length;
