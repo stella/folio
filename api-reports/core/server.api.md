@@ -139,10 +139,14 @@ export type DocxParagraphSource = "header" | "body" | "footer";
 // @public
 export type DocxTableRowKind = "cells" | "syntheticHeader" | "delimiter";
 
-// @public
+// @public (undocumented)
 export type DocxTableRowPosition = {
     table: number;
-    kind: DocxTableRowKind;
+    kind: "cells";
+    cells: readonly ExtractedDocxTableCell[];
+} | {
+    table: number;
+    kind: "syntheticHeader" | "delimiter";
 };
 
 // @public
@@ -205,6 +209,11 @@ export type ExtractedDocxParagraph = {
     fontSize?: number;
     alignment?: "left" | "center" | "right" | "both";
     tableRow?: DocxTableRowPosition;
+};
+
+// @public
+export type ExtractedDocxTableCell = {
+    paragraphs: readonly string[];
 };
 
 // @public

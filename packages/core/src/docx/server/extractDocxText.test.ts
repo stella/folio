@@ -257,14 +257,14 @@ describe("extractDocxText", () => {
     expect(result.paragraphs.map(({ text, tableRow }) => [text, tableRow])).toEqual([
       ["|  |", { table: 0, kind: "syntheticHeader" }],
       ["| --- |", { table: 0, kind: "delimiter" }],
-      ["| x |", { table: 0, kind: "cells" }],
+      ["| x |", { table: 0, kind: "cells", cells: [{ paragraphs: ["x"] }] }],
       ["Prose", undefined],
       ["|  |", { table: 1, kind: "syntheticHeader" }],
       ["| --- |", { table: 1, kind: "delimiter" }],
-      ["| x |", { table: 1, kind: "cells" }],
+      ["| x |", { table: 1, kind: "cells", cells: [{ paragraphs: ["x"] }] }],
       ["|  |", { table: 2, kind: "syntheticHeader" }],
       ["| --- |", { table: 2, kind: "delimiter" }],
-      ["| x |", { table: 2, kind: "cells" }],
+      ["| x |", { table: 2, kind: "cells", cells: [{ paragraphs: ["x"] }] }],
     ]);
   });
 
@@ -294,7 +294,11 @@ describe("extractDocxText", () => {
       "| H1 | H2 |",
       "| v1 | v2 |",
     ]);
-    expect(declared.paragraphs.at(0)?.tableRow).toEqual({ table: 0, kind: "cells" });
+    expect(declared.paragraphs.at(0)?.tableRow).toEqual({
+      table: 0,
+      kind: "cells",
+      cells: [{ paragraphs: ["H1"] }, { paragraphs: ["H2"] }],
+    });
     expect(undeclared.paragraphs.at(0)?.tableRow).toEqual({ table: 0, kind: "syntheticHeader" });
   });
 
@@ -380,6 +384,16 @@ describe("extractDocxText", () => {
       "| --- | --- | --- | --- |",
       "| first<br>second |  | pipe&#124;inside | break<br>after |",
     ]);
+    expect(result.paragraphs.at(2)?.tableRow).toEqual({
+      table: 0,
+      kind: "cells",
+      cells: [
+        { paragraphs: ["first", "second"] },
+        { paragraphs: [] },
+        { paragraphs: ["pipe|inside"] },
+        { paragraphs: ["break\nafter"] },
+      ],
+    });
   });
 
   test("gives every row of a table the same column count", async () => {
