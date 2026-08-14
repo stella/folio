@@ -91,12 +91,12 @@ function renderJustifiedFirstLine(firstLine: number): {
     runs: [{ kind: "text", text: "first second third fourth fifth sixth" }],
     attrs: { alignment: "justify", indent: { firstLine } },
   };
-  const line = (toChar: number, fromChar: number) => ({
+  const line = (toChar: number, fromChar: number, width: number) => ({
     fromRun: 0,
     fromChar,
     toRun: 0,
     toChar,
-    width: 380,
+    width,
     ascent: 10,
     descent: 3,
     lineHeight: 14,
@@ -104,7 +104,10 @@ function renderJustifiedFirstLine(firstLine: number): {
   const measure: ParagraphMeasure = {
     kind: "paragraph",
     // Two lines: the first is justified, the second is the (left-aligned) last.
-    lines: [line(18, 0), line(36, 18)],
+    // The first line's measured capacity is 400 - 30 = 370px. The painter
+    // keeps the outer line box at 400px and lets text-indent reserve those
+    // 30px; the measured content itself cannot occupy the full 400px.
+    lines: [line(18, 0, 370), line(36, 18, 380)],
     totalHeight: 28,
   };
   const fragment: ParagraphFragment = {
@@ -296,6 +299,42 @@ describe("Issue #868 — justify first line to full content width on indented pa
     expect(lineEl.style.textAlign).toBe("left");
     expect(lineEl.style.textAlignLast).toBe("auto");
     expect(lineEl.style.wordSpacing).toBe("20px");
+  });
+
+  test("does not distribute space into a positive first-line indent", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-first-line-tab-capacity",
+      runs: [{ kind: "tab" }, { kind: "text", text: "alpha beta" }],
+      attrs: { alignment: "justify", indent: { firstLine: 30 } },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 1,
+      toChar: 10,
+      // The measurer subtracts the 30px first-line shift from the 100px
+      // paragraph width. This line already fills that complete 70px budget.
+      width: 70,
+      ascent: 10,
+      descent: 3,
+      lineHeight: 14,
+    };
+
+    const lineEl = renderLine(block, line, "justify", fakeDocument, {
+      availableWidth: 100,
+      isLastLine: false,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      firstLineIndentPx: 30,
+    });
+
+    // The line box stays at the full paragraph width so CSS text-indent can
+    // place the first line. Explicit word spacing must use the remaining 70px
+    // capacity, or it expands the text by the indent and overruns the margin.
+    expect(lineEl.style.width).toBe("100px");
+    expect(lineEl.style.wordSpacing).toBeUndefined();
+    expect(lineEl.style.textAlign).toBe("justify");
   });
 
   test("includes a hanging first-line region in justified tab capacity", () => {

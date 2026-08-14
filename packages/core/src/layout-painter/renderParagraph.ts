@@ -2029,6 +2029,7 @@ export function renderLine(
 
     if (shouldJustify) {
       const firstLineIndentPx = options.isFirstLine ? (options.firstLineIndentPx ?? 0) : 0;
+      const firstLinePositiveIndentPx = Math.max(0, firstLineIndentPx);
       const firstLineHangingPx = Math.max(0, -firstLineIndentPx);
       const hasVisibleListMarker =
         options.isFirstLine && block.attrs?.listMarker && !block.attrs.listMarkerHidden;
@@ -2041,7 +2042,14 @@ export function renderLine(
       const firstLineHangingExpansionPx = hasVisibleListMarker
         ? Math.min(firstLineHangingPx, Math.max(0, options.leftIndentPx ?? 0))
         : firstLineHangingPx;
-      const justifyCapacityPx = options.availableWidth + firstLineHangingExpansionPx;
+      // Keep the explicit word-spacing budget identical to the measurer's
+      // first-line width. The line box itself stays at the full paragraph
+      // width because CSS text-indent consumes the positive first-line region.
+      // Counting that region again here lets tab-bearing justified lines
+      // distribute it as extra word spacing, shifting their right edge past
+      // the paragraph margin by exactly the first-line indent.
+      const justifyCapacityPx =
+        options.availableWidth - firstLinePositiveIndentPx + firstLineHangingExpansionPx;
       const overfullPx = line.width - justifyCapacityPx;
       const shrinkableSpaces = countShrinkableSpaces(
         runsForLine.filter((run) => !isTextRun(run) || !isCollapsedLineEdgeSpaceRun(run)),
