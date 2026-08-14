@@ -7,6 +7,8 @@ import type { EmbeddedFont } from "@stll/folio-core/fonts/embeddedFonts";
 let extractImpl: (buffer: ArrayBuffer) => Promise<EmbeddedFont[]>;
 void mock.module("@stll/folio-core/fonts/embeddedFonts", () => ({
   extractEmbeddedFonts: (buffer: ArrayBuffer) => extractImpl(buffer),
+  buildEmbeddedFontFamilyMap: (faces: readonly EmbeddedFont[]) =>
+    new Map(faces.map(({ originalFamily, family }) => [originalFamily, family])),
 }));
 
 const { loadEmbeddedFontFaces } = await import("./embeddedFonts");
