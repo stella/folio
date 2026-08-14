@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.17.1
+
+### Patch Changes
+
+- [#566](https://github.com/stella/folio/pull/566) [`0e40ca0`](https://github.com/stella/folio/commit/0e40ca014bb241216dfce01dac0128a1fecbab58) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep justified tabbed first lines within the paragraph's right margin.
+
 ## 0.17.0
 
 ### Minor Changes
