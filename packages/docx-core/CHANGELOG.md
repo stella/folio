@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.14.0
+
+### Minor Changes
+
+- [#569](https://github.com/stella/folio/pull/569) [`a38d902`](https://github.com/stella/folio/commit/a38d9025773e1bdba6bfbb4ffcab3dea1a943d6e) Thanks [@berticeek](https://github.com/berticeek)! - Project effective paragraph alignment (`w:jc` from direct, style chain, and docDefaults) as a seventh paragraph tuple slot; `DOCX_PROJECTION_SCHEMA_VERSION` moves from 4 to 5. `start`/`end` and other unsupported `w:jc` values project as absent; table-style and numbering-level alignment are not consulted, so a paragraph aligned only by those tiers projects the lower-tier style or docDefaults value.
+
 ## 0.13.0
 
 ### Minor Changes

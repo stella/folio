@@ -1,5 +1,16 @@
 # @stll/folio-core
 
+## 0.18.0
+
+### Minor Changes
+
+- [#568](https://github.com/stella/folio/pull/568) [`4197680`](https://github.com/stella/folio/commit/4197680777aee68ebcaf798ed28fa847463f429f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Generate tracked formatting redlines, enumerate every supported body revision, and expose a dedicated redline entry point.
+
+### Patch Changes
+
+- Updated dependencies [[`a38d902`](https://github.com/stella/folio/commit/a38d9025773e1bdba6bfbb4ffcab3dea1a943d6e)]:
+  - @stll/docx-core@0.14.0
+
 ## 0.17.1
 
 ### Patch Changes
