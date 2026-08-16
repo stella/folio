@@ -41,7 +41,7 @@ describe("DOCX projection TypeScript binding", () => {
   test("runs the versioned Rust projection through WebAssembly", async () => {
     const projection = await projectCompressedDocx(await createDocument());
 
-    expect(projection[0]).toBe(4);
+    expect(projection[0]).toBe(5);
     expect(projection[1].map(([, text]) => text)).toEqual(["Before", "Inside"]);
     expect(projection[1][1]?.[4]).toEqual(["table", "table-0", 0, 0]);
     expect(projection[4]).toEqual(["incomplete", "styles-part-unavailable"]);
@@ -128,6 +128,29 @@ describe("DOCX projection TypeScript binding", () => {
         [0, 1],
         [1, 3],
       ],
+    ]);
+  });
+
+  test("resolves paragraph alignment from direct w:jc and from the style chain", async () => {
+    const archive = new JSZip();
+    archive.file(
+      "word/document.xml",
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>Direct</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="Justified"/></w:pPr><w:r><w:t>Styled</w:t></w:r></w:p><w:p><w:r><w:t>Absent</w:t></w:r></w:p></w:body></w:document>`,
+    );
+    addStylesPart(
+      archive,
+      `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Justified"><w:pPr><w:jc w:val="both"/></w:pPr></w:style></w:styles>`,
+    );
+
+    const projection = await projectCompressedDocx(
+      await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" }),
+    );
+
+    expect(projection[1].map((paragraph) => paragraph.length)).toEqual([7, 7, 7]);
+    expect(projection[1].map((paragraph) => paragraph[6])).toEqual([
+      ["center", "direct"],
+      ["justify", "style"],
+      null,
     ]);
   });
 

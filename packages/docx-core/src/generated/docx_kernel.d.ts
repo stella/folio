@@ -14,6 +14,12 @@ tableId: string,
 row: number,
 column: number,
 ];
+export type DocxProjectionAlignmentValue = "center" | "justify" | "left" | "right";
+export type DocxProjectionAlignmentSource = "direct" | "style";
+export type DocxProjectionAlignment = readonly [
+value: DocxProjectionAlignmentValue,
+source: DocxProjectionAlignmentSource,
+] | null;
 export type DocxProjectionParagraph = readonly [
 ordinal: number,
 text: string,
@@ -21,6 +27,7 @@ packageParagraphId: string | null,
 formatting: readonly DocxProjectionFormattingSpan[],
 structure: DocxProjectionStructure,
 styleId: string | null,
+alignment: DocxProjectionAlignment,
 ];
 export type DocxProjectionFormattingUnknownReason =
 | "document-part-only"
@@ -107,7 +114,7 @@ status: "incomplete",
 reasons: readonly DocxProjectionRevisionUnsupportedReason[],
 ];
 export type DocxProjectionWire = readonly [
-schemaVersion: 4,
+schemaVersion: 5,
 paragraphs: readonly DocxProjectionParagraph[],
 structuralFacts: DocxProjectionStructuralFacts,
 revisionStatus: DocxProjectionRevisionStatus,

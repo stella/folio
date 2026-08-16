@@ -16,6 +16,15 @@ export type DocxAttributedRevision = readonly [type: DocxRevisionKind, author: s
 export type DocxPackageProjectionWire = readonly [schemaVersion: 2, document: DocxProjectionWire, reviewFacts: DocxReviewFactsWire];
 
 // @public (undocumented)
+export type DocxProjectionAlignment = readonly [value: DocxProjectionAlignmentValue, source: DocxProjectionAlignmentSource] | null;
+
+// @public (undocumented)
+export type DocxProjectionAlignmentSource = "direct" | "style";
+
+// @public (undocumented)
+export type DocxProjectionAlignmentValue = "center" | "justify" | "left" | "right";
+
+// @public (undocumented)
 export type DocxProjectionBookmarkFact = readonly [paragraphOrdinal: number, bookmarkId: number, name: string, span: DocxProjectionStructuralSpan];
 
 // @public (undocumented)
@@ -46,7 +55,7 @@ export type DocxProjectionNumberingFact = readonly [paragraphOrdinal: number, pa
 export type DocxProjectionOutlineLevelFact = readonly [paragraphOrdinal: number, outlineLevel: number];
 
 // @public (undocumented)
-export type DocxProjectionParagraph = readonly [ordinal: number, text: string, packageParagraphId: string | null, formatting: readonly DocxProjectionFormattingSpan[], structure: DocxProjectionStructure, styleId: string | null];
+export type DocxProjectionParagraph = readonly [ordinal: number, text: string, packageParagraphId: string | null, formatting: readonly DocxProjectionFormattingSpan[], structure: DocxProjectionStructure, styleId: string | null, alignment: DocxProjectionAlignment];
 
 // @public (undocumented)
 export type DocxProjectionReferenceFact = readonly [paragraphOrdinal: number, referenceId: string, role: "source" | "target", span: DocxProjectionStructuralSpan];
@@ -73,7 +82,7 @@ export type DocxProjectionUnknownReason = "document-part-only" | "styles-part-un
 export type DocxProjectionWasmSource = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 // @public (undocumented)
-export type DocxProjectionWire = readonly [schemaVersion: 4, paragraphs: readonly DocxProjectionParagraph[], structuralFacts: DocxProjectionStructuralFacts, revisionStatus: DocxProjectionRevisionStatus, formattingStatus: DocxProjectionFormattingStatus];
+export type DocxProjectionWire = readonly [schemaVersion: 5, paragraphs: readonly DocxProjectionParagraph[], structuralFacts: DocxProjectionStructuralFacts, revisionStatus: DocxProjectionRevisionStatus, formattingStatus: DocxProjectionFormattingStatus];
 
 // @public (undocumented)
 export type DocxReviewFactSet<T> = readonly [status: "known", items: readonly T[]] | readonly [status: "unknown", reason: DocxReviewUnknownReason];

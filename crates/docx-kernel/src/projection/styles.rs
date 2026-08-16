@@ -6,8 +6,8 @@ use crate::ProjectionError;
 use crate::projection::compatibility::{CompatibilityAction, MarkupCompatibility};
 use crate::projection::namespaces::OoxmlNamespace;
 use crate::projection::structure::{
-    ParagraphIndentation, ParagraphProperties, StyleDefinition, StyleKind, StyleSheet,
-    TextProperties,
+    ParagraphAlignmentSetting, ParagraphAlignmentValue, ParagraphIndentation, ParagraphProperties,
+    StyleDefinition, StyleKind, StyleSheet, TextProperties,
 };
 
 const MAXIMUM_OUTLINE_LEVEL: u8 = 9;
@@ -259,6 +259,15 @@ fn paragraph_property_frame(
             }
             Frame::Other
         }
+        b"jc" => {
+            if let Some(owner) = paragraph_properties_owner(&state.frames)
+                && let Some(properties) =
+                    properties_mut(owner, &mut state.sheet, &mut state.current_style)
+            {
+                properties.alignment = Some(parse_alignment(reader, element)?);
+            }
+            Frame::Other
+        }
         b"outlineLvl" => {
             if let Some(owner) = paragraph_properties_owner(&state.frames)
                 && let Some(properties) =
@@ -460,6 +469,35 @@ pub(super) fn parse_indentation(
         start_chars_hundredths: signed_attribute(reader, element, b"startChars")?,
         end_chars_hundredths: signed_attribute(reader, element, b"endChars")?,
     })
+}
+
+pub(super) fn parse_alignment(
+    reader: &NsReader<&[u8]>,
+    element: &BytesStart<'_>,
+) -> Result<ParagraphAlignmentSetting, ProjectionError> {
+    Ok(attribute(reader, element, b"val")?
+        .as_deref()
+        .and_then(alignment_value)
+        .map_or(
+            ParagraphAlignmentSetting::Unsupported,
+            ParagraphAlignmentSetting::Supported,
+        ))
+}
+
+/// Maps a `w:jc/@w:val` token onto the projected alignment set.
+///
+/// `start` and `end` are logical: they resolve against the paragraph's reading
+/// order, which depends on `w:bidi` and is out of scope here. They are
+/// projected as absent rather than resolved to `left` and `right`, so a
+/// right-to-left paragraph is never reported with the mirrored value.
+const fn alignment_value(value: &str) -> Option<ParagraphAlignmentValue> {
+    match value.as_bytes() {
+        b"center" => Some(ParagraphAlignmentValue::Center),
+        b"both" | b"distribute" => Some(ParagraphAlignmentValue::Justify),
+        b"left" => Some(ParagraphAlignmentValue::Left),
+        b"right" => Some(ParagraphAlignmentValue::Right),
+        _ => None,
+    }
 }
 
 pub(super) fn parse_u32_attribute(

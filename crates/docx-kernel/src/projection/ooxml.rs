@@ -17,8 +17,8 @@ use crate::projection::structure::{
     StructuralFactUnknownReason, StyleSheet, TextProperties,
 };
 use crate::projection::styles::{
-    parse_indentation, parse_level_attribute, parse_outline_level_attribute, parse_u32_attribute,
-    semantic_highlight_value, word_style_id,
+    parse_alignment, parse_indentation, parse_level_attribute, parse_outline_level_attribute,
+    parse_u32_attribute, semantic_highlight_value, word_style_id,
 };
 use crate::{FormattingProjectionStatus, FormattingUnknownReason, ProjectionError};
 
@@ -1064,6 +1064,15 @@ impl ProjectionState {
             b"ind" if matches!(self.frames.last(), Some(Frame::ParagraphProperties)) => {
                 if let Some(paragraph) = self.current_paragraph.as_mut() {
                     paragraph.properties.indentation = parse_indentation(reader, element)?;
+                }
+                Frame::Other
+            }
+            // `w:jc` is also legal under `w:trPr` and `w:tblPr`, where it means
+            // row or table justification. Only a direct child of `w:pPr` is
+            // paragraph alignment.
+            b"jc" if matches!(self.frames.last(), Some(Frame::ParagraphProperties)) => {
+                if let Some(paragraph) = self.current_paragraph.as_mut() {
+                    paragraph.properties.alignment = Some(parse_alignment(reader, element)?);
                 }
                 Frame::Other
             }

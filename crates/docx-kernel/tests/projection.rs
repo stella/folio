@@ -12,17 +12,18 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
+use stella_docx_kernel::ParagraphAlignmentValue as Align;
 use stella_docx_kernel::{
     CommentContent, DocxLimits, FormattingProjectionStatus, FormattingUnknownReason,
-    InternalParagraphId, InternalReferenceRole, PackageParagraphId, ParagraphIdentityFacts,
-    ParagraphOutlineLevelFact, ParagraphStructure, ProjectionError, ProjectionOptions,
-    ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason, ReviewPoint,
-    ReviewSpan, RevisionContent, RevisionFactKind, RevisionProjectionStatus,
-    RevisionUnsupportedReason, RevisionView, SpanCoverage, StructuralFactSet,
-    StructuralFactUnknownReason, TextFormattingSpan, TextMaterialization, TextStyle,
-    extract_document_parts, extract_document_xml, project_document_xml,
-    project_document_xml_with_options, project_docx, project_docx_with_options,
-    project_docx_with_review_facts,
+    InternalParagraphId, InternalReferenceRole, PackageParagraphId, ParagraphAlignmentFact,
+    ParagraphAlignmentSource, ParagraphIdentityFacts, ParagraphOutlineLevelFact,
+    ParagraphStructure, ProjectionError, ProjectionOptions, ReviewDetail, ReviewFactLimits,
+    ReviewFactSet, ReviewFactUnknownReason, ReviewPoint, ReviewSpan, RevisionContent,
+    RevisionFactKind, RevisionProjectionStatus, RevisionUnsupportedReason, RevisionView,
+    SpanCoverage, StructuralFactSet, StructuralFactUnknownReason, TextFormattingSpan,
+    TextMaterialization, TextStyle, extract_document_parts, extract_document_xml,
+    project_document_xml, project_document_xml_with_options, project_docx,
+    project_docx_with_options, project_docx_with_review_facts,
 };
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -1999,6 +2000,287 @@ fn direct_style_ids_survive_unavailable_and_malformed_style_sheets() {
     );
 }
 
+fn alignments(document: &[u8], styles: &[u8]) -> Vec<Option<ParagraphAlignmentFact>> {
+    project_docx(
+        &package(
+            &[("word/document.xml", document), ("word/styles.xml", styles)],
+            CompressionMethod::Deflated,
+        ),
+        DocxLimits::default(),
+        allocate,
+    )
+    .expect("a supported style sheet should resolve paragraph alignment")
+    .paragraphs
+    .into_iter()
+    .map(|paragraph| paragraph.alignment)
+    .collect()
+}
+
+fn direct_alignments(document: &[u8]) -> Vec<Option<ParagraphAlignmentFact>> {
+    project_document_xml(document, allocate)
+        .expect("the document part should project")
+        .paragraphs
+        .into_iter()
+        .map(|paragraph| paragraph.alignment)
+        .collect()
+}
+
+const fn direct_alignment(value: Align) -> ParagraphAlignmentFact {
+    ParagraphAlignmentFact {
+        value,
+        source: ParagraphAlignmentSource::Direct,
+    }
+}
+
+const fn style_alignment(value: Align) -> ParagraphAlignmentFact {
+    ParagraphAlignmentFact {
+        value,
+        source: ParagraphAlignmentSource::Style,
+    }
+}
+
+#[test]
+fn paragraph_alignment_prefers_direct_over_style_over_document_defaults() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:pPr><w:pStyle w:val="Body"/><w:jc w:val="right"/></w:pPr><w:r><w:t>Direct</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Body"/></w:pPr><w:r><w:t>Styled</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Plain"/></w:pPr><w:r><w:t>Defaulted</w:t></w:r></w:p>
+    </w:body></w:document>"#;
+    let cascaded = br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:docDefaults><w:pPrDefault><w:pPr><w:jc w:val="both"/></w:pPr></w:pPrDefault></w:docDefaults>
+      <w:style w:type="paragraph" w:styleId="Normal" w:default="1"/>
+      <w:style w:type="paragraph" w:styleId="Body"><w:pPr><w:jc w:val="center"/></w:pPr></w:style>
+      <w:style w:type="paragraph" w:styleId="Plain"/>
+    </w:styles>"#;
+    assert_eq!(
+        alignments(document, cascaded),
+        [
+            Some(direct_alignment(Align::Right)),
+            Some(style_alignment(Align::Center)),
+            Some(style_alignment(Align::Justify)),
+        ]
+    );
+
+    let without_document_defaults =
+        br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:style w:type="paragraph" w:styleId="Normal" w:default="1"/>
+      <w:style w:type="paragraph" w:styleId="Body"><w:pPr><w:jc w:val="center"/></w:pPr></w:style>
+      <w:style w:type="paragraph" w:styleId="Plain"/>
+    </w:styles>"#;
+    assert_eq!(
+        alignments(document, without_document_defaults),
+        [
+            Some(direct_alignment(Align::Right)),
+            Some(style_alignment(Align::Center)),
+            None,
+        ]
+    );
+}
+
+#[test]
+fn paragraph_alignment_resolves_based_on_chains_through_cycles_and_missing_styles() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:pPr><w:pStyle w:val="Level3"/></w:pPr><w:r><w:t>Inherited</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Override"/></w:pPr><w:r><w:t>Overridden</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="CycleA"/></w:pPr><w:r><w:t>Cyclic</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Absent"/></w:pPr><w:r><w:t>Missing</w:t></w:r></w:p>
+    </w:body></w:document>"#;
+    let styles = br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:docDefaults><w:pPrDefault><w:pPr><w:jc w:val="both"/></w:pPr></w:pPrDefault></w:docDefaults>
+      <w:style w:type="paragraph" w:styleId="Normal" w:default="1"/>
+      <w:style w:type="paragraph" w:styleId="Level1"><w:pPr><w:jc w:val="center"/></w:pPr></w:style>
+      <w:style w:type="paragraph" w:styleId="Level2"><w:basedOn w:val="Level1"/></w:style>
+      <w:style w:type="paragraph" w:styleId="Level3"><w:basedOn w:val="Level2"/></w:style>
+      <w:style w:type="paragraph" w:styleId="Override"><w:basedOn w:val="Level1"/><w:pPr><w:jc w:val="right"/></w:pPr></w:style>
+      <w:style w:type="paragraph" w:styleId="CycleA"><w:basedOn w:val="CycleB"/><w:pPr><w:jc w:val="left"/></w:pPr></w:style>
+      <w:style w:type="paragraph" w:styleId="CycleB"><w:basedOn w:val="CycleA"/></w:style>
+    </w:styles>"#;
+    // An unresolvable initial style projects no alignment: Word falls back to
+    // Normal there, so `w:docDefaults` would report a value the document never
+    // resolves to.
+    assert_eq!(
+        alignments(document, styles),
+        [
+            Some(style_alignment(Align::Center)),
+            Some(style_alignment(Align::Right)),
+            None,
+            None,
+        ]
+    );
+}
+
+#[test]
+fn paragraph_alignment_uses_the_default_paragraph_style_when_no_style_is_named() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:r><w:t>Plain</w:t></w:r></w:p>
+    </w:body></w:document>"#;
+    let styles = br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:style w:type="paragraph" w:styleId="Normal" w:default="1"><w:pPr><w:jc w:val="center"/></w:pPr></w:style>
+    </w:styles>"#;
+    assert_eq!(
+        alignments(document, styles),
+        [Some(style_alignment(Align::Center))]
+    );
+    assert_eq!(alignments(document, MINIMAL_STYLES), [None]);
+}
+
+#[test]
+fn paragraph_alignment_maps_justification_tokens_and_shadows_unsupported_ones() {
+    for (token, expected) in [
+        ("center", Some(direct_alignment(Align::Center))),
+        ("both", Some(direct_alignment(Align::Justify))),
+        ("distribute", Some(direct_alignment(Align::Justify))),
+        ("left", Some(direct_alignment(Align::Left))),
+        ("right", Some(direct_alignment(Align::Right))),
+        // `start` and `end` depend on the paragraph's reading order, which is
+        // not resolved here.
+        ("start", None),
+        ("end", None),
+        ("thaiDistribute", None),
+    ] {
+        let xml = format!(
+            r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:jc w:val="{token}"/></w:pPr><w:r><w:t>x</w:t></w:r></w:p></w:body></w:document>"#,
+        );
+        assert_eq!(
+            direct_alignments(xml.as_bytes()),
+            [expected],
+            "w:jc {token}"
+        );
+    }
+
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:pPr><w:pStyle w:val="Body"/><w:jc w:val="thaiDistribute"/></w:pPr><w:r><w:t>Direct</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Exotic"/></w:pPr><w:r><w:t>Styled</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Body"/><w:jc w:val="start"/></w:pPr><w:r><w:t>Logical direct</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Logical"/></w:pPr><w:r><w:t>Logical style</w:t></w:r></w:p>
+    </w:body></w:document>"#;
+    let styles = br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:docDefaults><w:pPrDefault><w:pPr><w:jc w:val="center"/></w:pPr></w:pPrDefault></w:docDefaults>
+      <w:style w:type="paragraph" w:styleId="Normal" w:default="1"/>
+      <w:style w:type="paragraph" w:styleId="Body"><w:pPr><w:jc w:val="center"/></w:pPr></w:style>
+      <w:style w:type="paragraph" w:styleId="Exotic"><w:pPr><w:jc w:val="thaiDistribute"/></w:pPr></w:style>
+      <w:style w:type="paragraph" w:styleId="Logical"><w:pPr><w:jc w:val="end"/></w:pPr></w:style>
+    </w:styles>"#;
+    assert_eq!(alignments(document, styles), [None, None, None, None]);
+}
+
+#[test]
+fn table_cell_paragraph_alignment_ignores_justification_outside_paragraph_properties() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl>
+      <w:tblPr><w:jc w:val="center"/></w:tblPr>
+      <w:tr>
+        <w:trPr><w:jc w:val="center"/></w:trPr>
+        <w:tc><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>Direct</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:pPr><w:pStyle w:val="Body"/></w:pPr><w:r><w:t>Styled</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:jc w:val="center"/><w:r><w:jc w:val="center"/><w:t>Plain</w:t></w:r></w:p></w:tc>
+      </w:tr>
+    </w:tbl></w:body></w:document>"#;
+    let styles =
+        br#"<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:style w:type="paragraph" w:styleId="Normal" w:default="1"/>
+      <w:style w:type="paragraph" w:styleId="Body"><w:pPr><w:jc w:val="left"/></w:pPr></w:style>
+    </w:styles>"#;
+    assert_eq!(
+        alignments(document, styles),
+        [
+            Some(direct_alignment(Align::Right)),
+            Some(style_alignment(Align::Left)),
+            None,
+        ]
+    );
+}
+
+#[test]
+fn paragraph_alignment_ignores_a_paragraph_property_change_snapshot() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:pPr><w:jc w:val="center"/><w:pPrChange w:id="1" w:author="Reviewer" w:date="2024-01-01T00:00:00Z"><w:pPr><w:jc w:val="right"/></w:pPr></w:pPrChange></w:pPr><w:r><w:t>Current</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pPrChange w:id="2" w:author="Reviewer" w:date="2024-01-01T00:00:00Z"><w:pPr><w:jc w:val="right"/></w:pPr></w:pPrChange></w:pPr><w:r><w:t>Cleared</w:t></w:r></w:p>
+    </w:body></w:document>"#;
+    assert_eq!(
+        alignments(document, MINIMAL_STYLES),
+        [Some(direct_alignment(Align::Center)), None]
+    );
+}
+
+#[test]
+fn degraded_style_sheets_project_direct_paragraph_alignment_only() {
+    let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+      <w:p><w:pPr><w:pStyle w:val="Body"/><w:jc w:val="center"/></w:pPr><w:r><w:t>Direct</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Body"/></w:pPr><w:r><w:t>Styled</w:t></w:r></w:p>
+    </w:body></w:document>"#;
+    let expected = [Some(direct_alignment(Align::Center)), None];
+
+    let document_part_only =
+        project_document_xml(document, allocate).expect("the document part should project");
+    assert_eq!(
+        document_part_only
+            .paragraphs
+            .iter()
+            .map(|paragraph| paragraph.alignment)
+            .collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(
+        document_part_only.formatting_status,
+        FormattingProjectionStatus::Incomplete(FormattingUnknownReason::DocumentPartOnly)
+    );
+
+    for (styles, reason) in [
+        (None, FormattingUnknownReason::StylesPartUnavailable),
+        (
+            Some(&b"<not-styles/>"[..]),
+            FormattingUnknownReason::UnsupportedStyles,
+        ),
+    ] {
+        let mut entries = vec![("word/document.xml", &document[..])];
+        if let Some(styles) = styles {
+            entries.push(("word/styles.xml", styles));
+        }
+        let projection = project_docx(
+            &package(&entries, CompressionMethod::Deflated),
+            DocxLimits::default(),
+            allocate,
+        )
+        .expect("a degraded styles part should preserve the document");
+        assert_eq!(
+            projection
+                .paragraphs
+                .iter()
+                .map(|paragraph| paragraph.alignment)
+                .collect::<Vec<_>>(),
+            expected,
+            "{reason:?}"
+        );
+        assert_eq!(
+            projection.formatting_status,
+            FormattingProjectionStatus::Incomplete(reason)
+        );
+    }
+}
+
+#[test]
+fn paragraph_alignment_resolves_under_strict_and_transitional_namespaces() {
+    for namespace in [
+        "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        "http://purl.oclc.org/ooxml/wordprocessingml/main",
+    ] {
+        let document = format!(
+            r#"<a:document xmlns:a="{namespace}"><a:body><a:p><a:pPr><a:pStyle a:val="Body"/></a:pPr><a:r><a:t>Styled</a:t></a:r></a:p><a:p><a:pPr><a:jc a:val="right"/></a:pPr><a:r><a:t>Direct</a:t></a:r></a:p></a:body></a:document>"#,
+        );
+        let styles = format!(
+            r#"<z:styles xmlns:z="{namespace}"><z:style z:type="paragraph" z:styleId="Normal" z:default="1"/><z:style z:type="paragraph" z:styleId="Body"><z:pPr><z:jc z:val="distribute"/></z:pPr></z:style></z:styles>"#,
+        );
+        assert_eq!(
+            alignments(document.as_bytes(), styles.as_bytes()),
+            [
+                Some(style_alignment(Align::Justify)),
+                Some(direct_alignment(Align::Right)),
+            ],
+            "{namespace}"
+        );
+    }
+}
+
 #[test]
 fn valid_style_sheets_make_absent_outline_levels_authoritatively_empty() {
     let document = br#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Plain</w:t></w:r></w:p></w:body></w:document>"#;
@@ -3148,6 +3430,25 @@ proptest::proptest! {
             Vec::new()
         };
         proptest::prop_assert_eq!(&projection.paragraphs[0].formatting, &expected);
+    }
+
+    #[test]
+    fn arbitrary_justification_values_only_project_supported_alignments(
+        value in proptest::string::string_regex(r"[\p{L}\p{N} _:.-]{0,64}").unwrap()
+    ) {
+        let xml = format!(
+            r#"<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:jc w:val="{value}"/></w:pPr><w:r><w:t>x</w:t></w:r></w:p></w:body></w:document>"#,
+        );
+        let projection = project_document_xml(xml.as_bytes(), allocate)
+            .expect("generated OOXML should project");
+        let expected = match value.as_str() {
+            "center" => Some(direct_alignment(Align::Center)),
+            "both" | "distribute" => Some(direct_alignment(Align::Justify)),
+            "left" => Some(direct_alignment(Align::Left)),
+            "right" => Some(direct_alignment(Align::Right)),
+            _ => None,
+        };
+        proptest::prop_assert_eq!(projection.paragraphs[0].alignment, expected);
     }
 
     #[test]

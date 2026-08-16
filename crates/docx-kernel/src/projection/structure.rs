@@ -159,6 +159,42 @@ pub struct ParagraphIndentationFact {
     pub value: ParagraphIndentation,
 }
 
+/// Projected `w:jc/@w:val` tokens.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ParagraphAlignmentValue {
+    Center,
+    Justify,
+    Left,
+    Right,
+}
+
+/// Cascade level that supplied a paragraph's effective `w:jc`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ParagraphAlignmentSource {
+    /// `w:pPr/w:jc` on the paragraph itself.
+    Direct,
+    /// The `w:pStyle` chain, or `w:docDefaults/w:pPrDefault/w:pPr/w:jc`.
+    Style,
+}
+
+/// Effective paragraph alignment resolved for one paragraph.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ParagraphAlignmentFact {
+    pub value: ParagraphAlignmentValue,
+    pub source: ParagraphAlignmentSource,
+}
+
+/// A `w:jc` element observed at one cascade level.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ParagraphAlignmentSetting {
+    Supported(ParagraphAlignmentValue),
+    /// A `w:val` token outside the projected set, or a `w:jc` without a usable
+    /// `w:val`. The element is present, so it still shadows lower cascade
+    /// levels; it projects no value, because a lower level's value would be a
+    /// guess at what the token renders as.
+    Unsupported,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ParagraphOutlineLevelFact {
     pub paragraph_ordinal: usize,
@@ -246,6 +282,7 @@ pub(super) struct ParagraphProperties {
     pub outline_level: Option<u8>,
     pub indentation: ParagraphIndentation,
     pub numbering: NumberingProperties,
+    pub alignment: Option<ParagraphAlignmentSetting>,
 }
 
 #[derive(Clone, Debug)]
@@ -375,6 +412,7 @@ struct ResolvedParagraphStyleProperties {
     indentation: ParagraphIndentation,
     numbering: NumberingProperties,
     outline_level: Option<u8>,
+    alignment: Option<ParagraphAlignmentSetting>,
 }
 
 impl ResolvedParagraphStyleProperties {
@@ -383,6 +421,7 @@ impl ResolvedParagraphStyleProperties {
             indentation: self.indentation.inherit(child.indentation),
             numbering: self.numbering.inherit(child.numbering),
             outline_level: child.outline_level.or(self.outline_level),
+            alignment: child.alignment.or(self.alignment),
         }
     }
 }
@@ -562,6 +601,25 @@ impl StyleSheet {
         (resolved, resolution_steps)
     }
 
+    /// Resolves `w:jc` from the paragraph style chain, then `w:docDefaults`.
+    ///
+    /// An initially selected style that does not resolve (a missing `w:pStyle`
+    /// target, a `w:basedOn` cycle, or a kind-crossing chain) yields no
+    /// style-tier alignment at all, matching [`Self::resolve`] and
+    /// [`Self::resolve_text`]. Word falls back to Normal there, so reporting
+    /// `w:docDefaults` instead would claim a value the document never resolves
+    /// to.
+    fn style_alignment(&self, direct: &ParagraphProperties) -> Option<ParagraphAlignmentSetting> {
+        let initial_style_id = direct.style_id.as_ref().or(self.default_style_id.as_ref());
+        let style = match initial_style_id {
+            Some(style_id) => Some(self.resolved_paragraph_styles.get(style_id)?),
+            None => None,
+        };
+        style
+            .and_then(|style| style.properties.alignment)
+            .or(self.document_defaults.alignment)
+    }
+
     pub(super) fn paragraph_uses_numbering(
         &self,
         direct: &ParagraphProperties,
@@ -638,6 +696,41 @@ impl StyleSheet {
             numbering,
             outline_level,
         })
+    }
+}
+
+/// Resolves the effective paragraph alignment for one paragraph.
+///
+/// Direct `w:pPr/w:jc` wins; otherwise the paragraph style chain and
+/// `w:docDefaults` apply. Without a style sheet only direct alignment is
+/// projected, which never claims a style-dependent value.
+///
+/// Two cascade tiers are out of scope: a table style's `w:tblStyle` ->
+/// `w:pPr/w:jc` and a numbering level's `w:lvl/w:pPr/w:jc`. Neither is
+/// consulted, so a paragraph whose effective alignment comes from either tier
+/// projects the lower-tier `w:docDefaults` or style value instead.
+pub(super) fn resolve_paragraph_alignment(
+    styles: Result<&StyleSheet, StructuralFactUnknownReason>,
+    direct: &ParagraphProperties,
+) -> Option<ParagraphAlignmentFact> {
+    if let Some(setting) = direct.alignment {
+        return alignment_fact(setting, ParagraphAlignmentSource::Direct);
+    }
+    styles
+        .ok()?
+        .style_alignment(direct)
+        .and_then(|setting| alignment_fact(setting, ParagraphAlignmentSource::Style))
+}
+
+const fn alignment_fact(
+    setting: ParagraphAlignmentSetting,
+    source: ParagraphAlignmentSource,
+) -> Option<ParagraphAlignmentFact> {
+    match setting {
+        ParagraphAlignmentSetting::Supported(value) => {
+            Some(ParagraphAlignmentFact { value, source })
+        }
+        ParagraphAlignmentSetting::Unsupported => None,
     }
 }
 

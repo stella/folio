@@ -29,7 +29,8 @@ pub use review::{
 };
 pub use structure::{
     BookmarkFact, DocumentStructureFacts, InternalReferenceFact, InternalReferenceRole,
-    NumberingHierarchyFact, ParagraphIndentation, ParagraphIndentationFact,
+    NumberingHierarchyFact, ParagraphAlignmentFact, ParagraphAlignmentSource,
+    ParagraphAlignmentValue, ParagraphIndentation, ParagraphIndentationFact,
     ParagraphOutlineLevelFact, SpanCoverage, StructuralFactSet, StructuralFactUnknownReason,
     StructuralSpan,
 };
@@ -75,6 +76,7 @@ pub struct ProjectedParagraph {
     pub text: String,
     pub formatting: Vec<TextFormattingSpan>,
     pub structure: Option<ParagraphStructure>,
+    pub alignment: Option<ParagraphAlignmentFact>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -492,6 +494,8 @@ where
     )?;
     let mut paragraphs = Vec::with_capacity(projected.paragraphs.len());
     for (id, paragraph) in ids.into_iter().zip(projected.paragraphs) {
+        let alignment =
+            structure::resolve_paragraph_alignment(dependencies.styles, &paragraph.properties);
         paragraphs.push(ProjectedParagraph {
             id,
             ordinal: paragraph.ordinal,
@@ -500,6 +504,7 @@ where
             text: paragraph.text,
             formatting: paragraph.formatting,
             structure: paragraph.structure,
+            alignment,
         });
     }
     Ok(ProjectedDocumentWithReview {

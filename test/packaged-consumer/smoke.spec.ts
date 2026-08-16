@@ -42,7 +42,7 @@ type CapturedMessage = { level: string; text: string };
 
 const MISSING_MESSAGE_PATTERN = /MISSING_MESSAGE|IntlError/u;
 const WORKER_PATTERN = /worker/iu;
-const PACKED_DOCX_PROJECTION_SCHEMA_VERSION = 4 satisfies DocxProjectionWire[0];
+const PACKED_DOCX_PROJECTION_SCHEMA_VERSION = 5 satisfies DocxProjectionWire[0];
 
 test("packaged consumer mounts, lays out via the worker, and logs no errors", async ({ page }) => {
   const messages: CapturedMessage[] = [];

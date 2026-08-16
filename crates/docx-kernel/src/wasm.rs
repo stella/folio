@@ -2,7 +2,8 @@ use crate::{
     AttributedComment, AttributedRevision, BookmarkFact, DocumentPackageProjection,
     DocumentProjection, DocumentReviewFacts, DocumentStructureFacts, DocxLimits,
     FormattingProjectionStatus, FormattingUnknownReason, InternalParagraphId,
-    InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact, ParagraphIdentityFacts,
+    InternalReferenceFact, InternalReferenceRole, NumberingHierarchyFact, ParagraphAlignmentFact,
+    ParagraphAlignmentSource, ParagraphAlignmentValue, ParagraphIdentityFacts,
     ParagraphIndentationFact, ParagraphOutlineLevelFact, ParagraphStructure, ProjectedParagraph,
     ProjectionOptions, ReviewDetail, ReviewFactLimits, ReviewFactSet, ReviewFactUnknownReason,
     ReviewSpan, RevisionFactKind, RevisionProjectionStatus, RevisionUnsupportedReason,
@@ -12,7 +13,7 @@ use crate::{
 use js_sys::Array;
 use wasm_bindgen::{JsCast, prelude::*};
 
-const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 4;
+const DOCX_PROJECTION_SCHEMA_VERSION: u32 = 5;
 const DOCX_PACKAGE_PROJECTION_SCHEMA_VERSION: u32 = 2;
 const DOCX_REVIEW_FACTS_SCHEMA_VERSION: u32 = 2;
 
@@ -31,6 +32,12 @@ export type DocxProjectionStructure =
       row: number,
       column: number,
     ];
+export type DocxProjectionAlignmentValue = "center" | "justify" | "left" | "right";
+export type DocxProjectionAlignmentSource = "direct" | "style";
+export type DocxProjectionAlignment = readonly [
+  value: DocxProjectionAlignmentValue,
+  source: DocxProjectionAlignmentSource,
+] | null;
 export type DocxProjectionParagraph = readonly [
   ordinal: number,
   text: string,
@@ -38,6 +45,7 @@ export type DocxProjectionParagraph = readonly [
   formatting: readonly DocxProjectionFormattingSpan[],
   structure: DocxProjectionStructure,
   styleId: string | null,
+  alignment: DocxProjectionAlignment,
 ];
 export type DocxProjectionFormattingUnknownReason =
   | "document-part-only"
@@ -124,7 +132,7 @@ export type DocxProjectionRevisionStatus =
       reasons: readonly DocxProjectionRevisionUnsupportedReason[],
     ];
 export type DocxProjectionWire = readonly [
-  schemaVersion: 4,
+  schemaVersion: 5,
   paragraphs: readonly DocxProjectionParagraph[],
   structuralFacts: DocxProjectionStructuralFacts,
   revisionStatus: DocxProjectionRevisionStatus,
@@ -342,7 +350,7 @@ fn output_projected_paragraph(
     ordinal: usize,
     paragraph: &ProjectedParagraph,
 ) -> Result<JsValue, String> {
-    let output = Array::new_with_length(6);
+    let output = Array::new_with_length(7);
     output.set(0, usize_number(ordinal)?);
     output.set(1, JsValue::from_str(&paragraph.text));
     output.set(
@@ -369,7 +377,39 @@ fn output_projected_paragraph(
             .as_ref()
             .map_or(JsValue::NULL, |style_id| JsValue::from_str(style_id)),
     );
+    output.set(6, output_paragraph_alignment(paragraph.alignment));
     Ok(output.into())
+}
+
+fn output_paragraph_alignment(alignment: Option<ParagraphAlignmentFact>) -> JsValue {
+    alignment.map_or(JsValue::NULL, |alignment| {
+        let output = Array::new_with_length(2);
+        output.set(
+            0,
+            JsValue::from_str(alignment_value_wire_name(alignment.value)),
+        );
+        output.set(
+            1,
+            JsValue::from_str(alignment_source_wire_name(alignment.source)),
+        );
+        output.into()
+    })
+}
+
+const fn alignment_value_wire_name(value: ParagraphAlignmentValue) -> &'static str {
+    match value {
+        ParagraphAlignmentValue::Center => "center",
+        ParagraphAlignmentValue::Justify => "justify",
+        ParagraphAlignmentValue::Left => "left",
+        ParagraphAlignmentValue::Right => "right",
+    }
+}
+
+const fn alignment_source_wire_name(source: ParagraphAlignmentSource) -> &'static str {
+    match source {
+        ParagraphAlignmentSource::Direct => "direct",
+        ParagraphAlignmentSource::Style => "style",
+    }
 }
 
 const fn text_style_wire_name(style: TextStyle) -> &'static str {

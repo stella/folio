@@ -69,6 +69,11 @@ const maximumBookmarkBoundaryBrotliBytes = 2 * 1024;
 // separate allowance so later projection work cannot silently consume it.
 const maximumNumberingStructureBytes = 13 * 1024;
 const maximumNumberingStructureBrotliBytes = 5 * 1024;
+// Effective `w:jc` resolution across the paragraph, its style chain, and
+// document defaults has its own allowance so later projection work cannot
+// silently consume it.
+const maximumParagraphAlignmentBytes = 2 * 1024;
+const maximumParagraphAlignmentBrotliBytes = 1024;
 const maximumWasmBytes =
   222 * 1024 +
   maximumReviewDetailBytes +
@@ -77,7 +82,8 @@ const maximumWasmBytes =
   maximumComplexScriptFormattingBytes +
   maximumPreparedStylesBytes +
   maximumBookmarkBoundaryBytes +
-  maximumNumberingStructureBytes;
+  maximumNumberingStructureBytes +
+  maximumParagraphAlignmentBytes;
 const maximumBrotliBytes =
   100 * 1024 +
   maximumReviewDetailBrotliBytes +
@@ -86,7 +92,8 @@ const maximumBrotliBytes =
   maximumComplexScriptFormattingBrotliBytes +
   maximumPreparedStylesBrotliBytes +
   maximumBookmarkBoundaryBrotliBytes +
-  maximumNumberingStructureBrotliBytes;
+  maximumNumberingStructureBrotliBytes +
+  maximumParagraphAlignmentBrotliBytes;
 
 const sourceFiles = readdirSync(path.join(repoRoot, "crates", "docx-kernel", "src"), {
   recursive: true,
