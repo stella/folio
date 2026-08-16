@@ -69,7 +69,16 @@ import { serializeThemeXml } from "./serializer/themeSerializer";
 import { escapeXml } from "./serializer/xmlUtils";
 import { isPreservableDocxEntry } from "./unzip";
 import type { RawDocxContent } from "./unzip";
-import { findChild, getChildElements, matchesName, parseXml, type XmlElement } from "./xmlParser";
+import {
+  findChild,
+  getChildElements,
+  getLocalName,
+  getNamespaceUri,
+  matchesName,
+  parseXml,
+  type XmlElement,
+} from "./xmlParser";
+import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { isAllowedExternalWatermarkImageUrl } from "../watermark";
 
 export class DocxPackageFidelityError extends Error {
@@ -94,18 +103,38 @@ export function findMaxRId(relsXml: string): number {
   return maxId;
 }
 
+const WORDPROCESSINGML_NAMESPACES: ReadonlySet<string> = new Set([
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+  "http://purl.oclc.org/ooxml/wordprocessingml/main",
+]);
+
+const isWordprocessingElement = (element: XmlElement, localName: string): boolean =>
+  getLocalName(element.name) === localName &&
+  WORDPROCESSINGML_NAMESPACES.has(getNamespaceUri(element) ?? "");
+
 const countDocumentSections = (xml: string): number => {
+  assertXmlResourceLimits(xml);
   let count = 0;
-  const visit = (element: XmlElement, insidePropertyChange: boolean): void => {
-    const isPropertyChange = matchesName(element, "w", "sectPrChange");
-    if (!insidePropertyChange && matchesName(element, "w", "sectPr")) {
+  const pending: Array<{ element: XmlElement; insidePropertyChange: boolean }> = [
+    { element: parseXml(xml), insidePropertyChange: false },
+  ];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) {
+      break;
+    }
+    const { element, insidePropertyChange } = current;
+    const isPropertyChange = isWordprocessingElement(element, "sectPrChange");
+    if (!insidePropertyChange && isWordprocessingElement(element, "sectPr")) {
       count += 1;
     }
     for (const child of getChildElements(element)) {
-      visit(child, insidePropertyChange || isPropertyChange);
+      pending.push({
+        element: child,
+        insidePropertyChange: insidePropertyChange || isPropertyChange,
+      });
     }
-  };
-  visit(parseXml(xml), false);
+  }
   return count;
 };
 

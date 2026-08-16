@@ -12,7 +12,10 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
-import { getFolioNodeRevisionCarriers } from "../prosemirror/revisionCarriers";
+import {
+  getFolioNodeRevisionCarriers,
+  type FolioNodeRevisionKind,
+} from "../prosemirror/revisionCarriers";
 import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
 import { createFolioAIEditSnapshot } from "./snapshot";
 
@@ -25,13 +28,7 @@ export type FolioReviewChangeKind =
   | "cellInserted"
   | "cellDeleted"
   | "cellMerged"
-  | "paragraphMarkInserted"
-  | "paragraphMarkDeleted"
-  | "paragraphPropertiesChanged"
-  | "sectionPropertiesChanged"
-  | "tablePropertiesChanged"
-  | "rowPropertiesChanged"
-  | "cellPropertiesChanged";
+  | FolioNodeRevisionKind;
 
 /** A tracked change discovered in the document body. */
 export type FolioReviewChange = {

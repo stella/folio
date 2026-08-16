@@ -123,7 +123,7 @@ const result = reviewer.applyOperations([
 if (result.skipped.length > 0) throw new Error(JSON.stringify(result.skipped));
 const reviewedDocx = await reviewer.toBuffer();
 
-const { buffer: comparisonRedline } = await generateRedlineDocx(originalDocx, revisedDocx, {
+const { buffer: comparisonRedline } = await generateRedlineDocx(sourceDocx, reviewedDocx, {
   author: "Reviewer",
 });
 ```

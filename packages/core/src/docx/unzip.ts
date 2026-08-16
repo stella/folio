@@ -28,6 +28,7 @@ import JSZip from "jszip";
 
 import { openDocxBuffer } from "./encryption/openEncryptedDocx";
 import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/containerFormat";
+import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
 export class DocxSecurityError extends Error {
   constructor(message: string) {
@@ -72,7 +73,7 @@ const MEBIBYTE = 1024 * 1024;
 const DEFAULT_UNZIP_LIMITS: DocxUnzipLimits = {
   maxInputBytes: 50 * MEBIBYTE,
   maxFiles: 5000,
-  maxXmlBytes: 128 * MEBIBYTE,
+  maxXmlBytes: FOLIO_XML_RESOURCE_LIMITS.maxBytes,
   maxMediaBytes: 25 * MEBIBYTE,
   maxFontBytes: 10 * MEBIBYTE,
   maxTotalUncompressedBytes: 250 * MEBIBYTE,

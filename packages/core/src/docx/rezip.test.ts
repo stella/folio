@@ -290,6 +290,52 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
 }
 
 describe("repackDocx", () => {
+  test("ignores foreign-namespace section-like elements in fidelity checks", async () => {
+    const source = await createEmptyDocx();
+    const parsed = await parseDocx(source, { preloadFonts: false });
+    const sourceZip = await JSZip.loadAsync(source);
+    const documentFile = sourceZip.file("word/document.xml");
+    if (!documentFile) {
+      throw new Error("expected word/document.xml");
+    }
+    const documentXml = await documentFile.async("text");
+    sourceZip.file(
+      "word/document.xml",
+      documentXml.replace(
+        "</w:body>",
+        '<foreign:sectPr xmlns:foreign="urn:example:foreign"/></w:body>',
+      ),
+    );
+    parsed.originalBuffer = await sourceZip.generateAsync({ type: "arraybuffer" });
+
+    await expect(repackDocx(parsed, { updateModifiedDate: false })).resolves.toBeInstanceOf(
+      ArrayBuffer,
+    );
+  });
+
+  test("counts Strict WordprocessingML section elements in fidelity checks", async () => {
+    const source = await createEmptyDocx();
+    const parsed = await parseDocx(source, { preloadFonts: false });
+    const sourceZip = await JSZip.loadAsync(source);
+    const documentFile = sourceZip.file("word/document.xml");
+    if (!documentFile) {
+      throw new Error("expected word/document.xml");
+    }
+    const documentXml = await documentFile.async("text");
+    sourceZip.file(
+      "word/document.xml",
+      documentXml.replace(
+        "</w:body>",
+        '<strict:sectPr xmlns:strict="http://purl.oclc.org/ooxml/wordprocessingml/main"/></w:body>',
+      ),
+    );
+    parsed.originalBuffer = await sourceZip.generateAsync({ type: "arraybuffer" });
+
+    await expect(repackDocx(parsed, { updateModifiedDate: false })).rejects.toBeInstanceOf(
+      DocxPackageFidelityError,
+    );
+  });
+
   test("preserves an explicit false final-section bidi setting across save and reopen", async () => {
     const sourceZip = await JSZip.loadAsync(await createEmptyDocx());
     const documentFile = sourceZip.file("word/document.xml");

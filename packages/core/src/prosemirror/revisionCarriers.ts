@@ -39,7 +39,7 @@ type AppendPropertyCarriersOptions = {
   carriers: FolioNodeRevisionCarrier[];
   changes: unknown;
   type: FolioNodeRevisionKind;
-  text: string;
+  node: PMNode;
   from: number;
   to: number;
 };
@@ -48,13 +48,14 @@ const appendPropertyCarriers = ({
   carriers,
   changes,
   type,
-  text,
+  node,
   from,
   to,
 }: AppendPropertyCarriersOptions): void => {
   if (!Array.isArray(changes)) {
     return;
   }
+  let text: string | null = null;
   for (const change of changes) {
     if (!isObjectRecord(change)) {
       continue;
@@ -63,6 +64,7 @@ const appendPropertyCarriers = ({
     if (!metadata) {
       continue;
     }
+    text ??= node.textContent;
     carriers.push({ ...metadata, type, text, from, to });
   }
 };
@@ -76,7 +78,6 @@ export const getFolioNodeRevisionCarriers = (
   nodePos: number,
 ): FolioNodeRevisionCarrier[] => {
   const carriers: FolioNodeRevisionCarrier[] = [];
-  const text = node.textContent;
 
   if (node.type.name === "paragraph") {
     const from = nodePos + node.nodeSize - 1;
@@ -91,7 +92,7 @@ export const getFolioNodeRevisionCarriers = (
         carriers.push({
           ...metadata,
           type: paragraphMark["kind"] === "ins" ? "paragraphMarkInserted" : "paragraphMarkDeleted",
-          text,
+          text: node.textContent,
           from,
           to,
         });
@@ -101,7 +102,7 @@ export const getFolioNodeRevisionCarriers = (
       carriers,
       changes: node.attrs["_propertyChanges"],
       type: "paragraphPropertiesChanged",
-      text,
+      node,
       from,
       to,
     });
@@ -110,7 +111,7 @@ export const getFolioNodeRevisionCarriers = (
       carriers,
       changes: isObjectRecord(sectionProperties) ? sectionProperties["propertyChanges"] : null,
       type: "sectionPropertiesChanged",
-      text,
+      node,
       from,
       to,
     });
@@ -124,7 +125,7 @@ export const getFolioNodeRevisionCarriers = (
         carriers,
         changes: node.attrs["tblPrChange"],
         type: "tablePropertiesChanged",
-        text,
+        node,
         ...range,
       });
       break;
@@ -133,7 +134,7 @@ export const getFolioNodeRevisionCarriers = (
         carriers,
         changes: node.attrs["trPrChange"],
         type: "rowPropertiesChanged",
-        text,
+        node,
         ...range,
       });
       break;
@@ -143,7 +144,7 @@ export const getFolioNodeRevisionCarriers = (
         carriers,
         changes: node.attrs["tcPrChange"],
         type: "cellPropertiesChanged",
-        text,
+        node,
         ...range,
       });
       break;
