@@ -1108,7 +1108,7 @@ export type FolioReviewChangeFilter = {
 };
 
 // @public (undocumented)
-export type FolioReviewChangeKind = "insertion" | "deletion" | "formatting" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted" | "cellMerged" | "paragraphMarkInserted" | "paragraphMarkDeleted" | "paragraphPropertiesChanged" | "sectionPropertiesChanged" | "tablePropertiesChanged" | "rowPropertiesChanged" | "cellPropertiesChanged";
+export type FolioReviewChangeKind = "insertion" | "deletion" | "formatting" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted" | "cellMerged" | FolioNodeRevisionKind;
 
 // @public
 export type FolioReviewComment = {
