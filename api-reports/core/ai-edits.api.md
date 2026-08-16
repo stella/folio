@@ -582,7 +582,7 @@ export type FolioReviewChange = {
 };
 
 // @public (undocumented)
-export type FolioReviewChangeKind = "insertion" | "deletion" | "formatting" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted" | "cellMerged";
+export type FolioReviewChangeKind = "insertion" | "deletion" | "formatting" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted" | "cellMerged" | "paragraphMarkInserted" | "paragraphMarkDeleted" | "paragraphPropertiesChanged" | "sectionPropertiesChanged" | "tablePropertiesChanged" | "rowPropertiesChanged" | "cellPropertiesChanged";
 
 // @public (undocumented)
 export type FolioReviewedStory = {

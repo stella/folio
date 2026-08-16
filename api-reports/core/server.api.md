@@ -1108,7 +1108,7 @@ export type FolioReviewChangeFilter = {
 };
 
 // @public (undocumented)
-export type FolioReviewChangeKind = "insertion" | "deletion" | "formatting" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted" | "cellMerged";
+export type FolioReviewChangeKind = "insertion" | "deletion" | "formatting" | "rowInserted" | "rowDeleted" | "cellInserted" | "cellDeleted" | "cellMerged" | "paragraphMarkInserted" | "paragraphMarkDeleted" | "paragraphPropertiesChanged" | "sectionPropertiesChanged" | "tablePropertiesChanged" | "rowPropertiesChanged" | "cellPropertiesChanged";
 
 // @public
 export type FolioReviewComment = {
@@ -1224,7 +1224,7 @@ export type GenerateRedlineDocxResult = {
     privacyReport: FolioDocumentPrivacyReport;
 };
 
-// @public (undocumented)
+// @public
 export type GenerateRedlineUnprocessedStory = {
     baseStory: FolioDocumentStoryHandle | null;
     revisedStory: FolioDocumentStoryHandle | null;
@@ -1280,7 +1280,7 @@ export class InvalidFolioDocxXmlPatchProposalOptionsError extends InvalidFolioDo
 // @public (undocumented)
 export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsError_base {}
 
-// @public (undocumented)
+// @public
 export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsError_base {}
 
 // @public

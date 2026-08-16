@@ -55,13 +55,13 @@ metodologia de testes completa e a matriz de referências.
 
 Este é um workspace [Bun](https://bun.sh) com os seguintes pacotes publicados:
 
-| Pacote                                    | Uso                                                                                  |
-| ----------------------------------------- | ------------------------------------------------------------------------------------ |
-| [`@stll/folio-core`](./packages/core)     | Análise OOXML, modelo de documento, integração com ProseMirror e layout de página    |
-| [`@stll/folio-react`](./packages/react)   | Interface de edição em React criada sobre o `@stll/folio-core`                       |
-| [`@stll/folio-vue`](./packages/vue)       | Editor para Vue 3 e composables                                                      |
-| [`@stll/folio-nuxt`](./packages/nuxt)     | Registro do editor Vue para Nuxt 3/4                                                 |
-| [`@stll/folio-agents`](./packages/agents) | Ferramentas de revisão que leem arquivos `.docx` e propõem comentários ou alterações |
+| Pacote                                    | Uso                                                                                 |
+| ----------------------------------------- | ----------------------------------------------------------------------------------- |
+| [`@stll/folio-core`](./packages/core)     | Análise OOXML, redlines nativas do Word, revisão, ProseMirror e layout de página    |
+| [`@stll/folio-react`](./packages/react)   | Interface de edição em React criada sobre o `@stll/folio-core`                      |
+| [`@stll/folio-vue`](./packages/vue)       | Editor para Vue 3 e composables                                                     |
+| [`@stll/folio-nuxt`](./packages/nuxt)     | Registro do editor Vue para Nuxt 3/4                                                |
+| [`@stll/folio-agents`](./packages/agents) | Ferramentas de LLM que leem `.docx` e propõem comentários ou alterações controladas |
 
 ## Instalação
 
@@ -94,6 +94,46 @@ export function Editor({ docx }: { docx: ArrayBuffer }) {
 ```
 
 Em aplicações com SSR, carregue o editor somente no cliente ou por meio de uma importação dinâmica.
+
+## Redlines nativas do Word
+
+O Folio grava alterações controladas OOXML que o Microsoft Word pode revisar,
+aceitar ou rejeitar. Aplique operações explícitas ou compare duas versões salvas
+para produzir um `.docx` com redline:
+
+```ts
+import { FolioDocxReviewer } from "@stll/folio-core/server";
+import { generateRedlineDocx } from "@stll/folio-core/redline";
+
+const reviewer = await FolioDocxReviewer.fromBuffer(sourceDocx, {
+  author: "Reviewer",
+});
+const block = reviewer.snapshot().blocks.at(0);
+if (!block) throw new Error("The document has no editable blocks");
+
+const result = reviewer.applyOperations([
+  {
+    id: "replace-term",
+    type: "replaceInBlock",
+    blockId: block.id,
+    find: "Supplier",
+    replace: "Provider",
+  },
+]);
+if (result.skipped.length > 0) throw new Error(JSON.stringify(result.skipped));
+const reviewedDocx = await reviewer.toBuffer();
+
+const { buffer: comparisonRedline } = await generateRedlineDocx(originalDocx, revisedDocx, {
+  author: "Reviewer",
+});
+```
+
+`applyOperations` usa alterações controladas nativas por padrão. Use `getChanges()`,
+`acceptChange()`, `rejectChange()`, `acceptAll()` e `rejectAll()` para gerenciar
+revisões pendentes. O censo inclui edições em linha, formatação, marcas de parágrafo
+e alterações de propriedades de parágrafo, seção, tabela, linha e célula. Para
+ferramentas de revisão voltadas a modelos, consulte
+[`@stll/folio-agents`](./packages/agents).
 
 ## Estilos
 
@@ -202,7 +242,7 @@ Para uma alteração no código-fonte que não precise de uma nova versão, use:
 bunx changeset --empty
 ```
 
-O CI verifica isso com `bun run changeset:check`. O merge do PR **Version Packages** gerado
+O CI verifica isso pelo workflow changeset-policy. O merge do PR **Version Packages** gerado
 publica os pacotes alterados por meio de `publish.yml`.
 
 ## Agradecimentos

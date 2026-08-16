@@ -29,7 +29,8 @@ bun add @stll/folio-core
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `@stll/folio-core`          | the headless public API — `createEmptyDocument`, `createDocx`, the document model, AI-suggestion primitives, ProseMirror plugins                                   |
 | `@stll/folio-core/markdown` | DOCX ↔ Markdown conversion                                                                                                                                         |
-| `@stll/folio-core/server`   | DOM-free helpers for server-side use (block-id derivation, document creation, re-zip)                                                                              |
+| `@stll/folio-core/server`   | DOM-free document review, explicit tracked edits, comparison, creation, and package helpers                                                                        |
+| `@stll/folio-core/redline`  | Compare two `.docx` buffers and generate a native Word redline                                                                                                     |
 | `@stll/folio-core/*`        | the source-mirrored module tree (e.g. `@stll/folio-core/types/document`, `@stll/folio-core/prosemirror/schema`) for adapters that need lower-level building blocks |
 
 ## New documents and reusable style sets
@@ -70,6 +71,28 @@ const document = createEmptyDocument({ styleSet });
 Extraction excludes document content, metadata, relationships, media, comments,
 and revision data. It keeps only the selected styles and the numbering, theme,
 font-table, and settings data required to reproduce their formatting.
+
+## Native Word redlines
+
+Generate a reviewable `.docx` whose text and supported inline-formatting
+differences are native tracked changes:
+
+```ts
+import { generateRedlineDocx } from "@stll/folio-core/redline";
+
+const result = await generateRedlineDocx(originalDocx, revisedDocx, {
+  author: "Reviewer",
+});
+
+await store(result.buffer);
+console.log(result.applied, result.skipped, result.unprocessedStories);
+```
+
+For deterministic operations against one document, use `FolioDocxReviewer`
+from `@stll/folio-core/server`. Its operations default to tracked changes and
+can be enumerated, accepted, or rejected before saving. `getChanges()` includes
+inline edits, formatting, paragraph marks, and paragraph, section, table, row,
+and cell property changes.
 
 ## License
 

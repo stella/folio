@@ -9,6 +9,8 @@
     "ooxml",
     "pagination",
     "prosemirror",
+    "redline",
+    "tracked-changes",
     "word"
   ],
   "homepage": "https://github.com/stella/folio",
@@ -28,6 +30,7 @@
     ".": "./src/index.ts",
     "./markdown": "./src/markdown/index.ts",
     "./server": "./src/server.ts",
+    "./redline": "./src/redline.ts",
     "./ai-edits": "./src/ai-edits/index.ts",
     "./content-controls": "./src/content-controls/index.ts",
     "./compat/eigenpal": "./src/compat/eigenpal.ts",

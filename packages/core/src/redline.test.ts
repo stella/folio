@@ -25,7 +25,13 @@ import { generateRedlineDocx, InvalidGenerateRedlineDocxOptionsError } from "./r
 import type { HeaderFooter, Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 
-type ParagraphSpec = { text: string; paraId?: string };
+type InlineFormattingSpec = { bold?: boolean; italic?: boolean };
+
+type ParagraphSpec = {
+  text: string;
+  paraId?: string;
+  formatting?: InlineFormattingSpec;
+};
 
 const CORE_PROPERTIES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="urn:properties" xmlns:dc="urn:descriptive" xmlns:dcterms="urn:terms"><dc:title>Private title</dc:title><dc:creator>Private creator</dc:creator><cp:lastModifiedBy>Private modifier</cp:lastModifiedBy><cp:revision>7</cp:revision><dcterms:created>2026-07-01T10:30:00Z</dcterms:created><dcterms:modified>2026-07-02T11:45:00Z</dcterms:modified></cp:coreProperties>`;
 
@@ -37,11 +43,49 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
       ...template.package,
       document: {
         ...template.package.document,
-        content: paragraphs.map(({ text, paraId }) => ({
+        content: paragraphs.map(({ text, paraId, formatting }) => ({
           type: "paragraph",
-          content: [{ type: "run", content: [{ type: "text", text }] }],
+          content: [
+            {
+              type: "run",
+              ...(formatting !== undefined && { formatting }),
+              content: [{ type: "text", text }],
+            },
+          ],
           ...(paraId !== undefined && { paraId }),
         })),
+      },
+    },
+  });
+};
+
+type FormattedRunSpec = {
+  text: string;
+  formatting?: InlineFormattingSpec;
+};
+
+const buildFormattedRunDocxBuffer = (
+  runs: readonly FormattedRunSpec[],
+  paraId: string,
+): Promise<ArrayBuffer> => {
+  const template = createEmptyDocument();
+  return createDocx({
+    ...template,
+    package: {
+      ...template.package,
+      document: {
+        ...template.package.document,
+        content: [
+          {
+            type: "paragraph",
+            paraId,
+            content: runs.map(({ text, formatting }) => ({
+              type: "run",
+              ...(formatting !== undefined && { formatting }),
+              content: [{ type: "text", text }],
+            })),
+          },
+        ],
       },
     },
   });
@@ -281,6 +325,70 @@ describe("generateRedlineDocx", () => {
     const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
     rejectView.rejectAll();
     expect(blockTexts(rejectView)).toEqual(baseTexts);
+  });
+
+  test("redlines formatting-only changes and preserves accept/reject invariants", async () => {
+    const base = await buildDocxBuffer([
+      { text: "Payment is due.", paraId: "00000001", formatting: { bold: true } },
+    ]);
+    const revised = await buildDocxBuffer([
+      { text: "Payment is due.", paraId: "00000001", formatting: { italic: true } },
+    ]);
+
+    const result = await generateRedlineDocx(base, revised);
+    const baseFormatting = (await FolioDocxReviewer.fromBuffer(base))
+      .snapshot()
+      .blocks.at(0)?.previewRuns;
+    const revisedFormatting = (await FolioDocxReviewer.fromBuffer(revised))
+      .snapshot()
+      .blocks.at(0)?.previewRuns;
+
+    expect(result.skipped).toEqual([]);
+    expect(result.applied).toHaveLength(1);
+    const output = await FolioDocxReviewer.fromBuffer(result.buffer);
+    expect(output.getChanges()).toEqual([
+      expect.objectContaining({
+        type: "formatting",
+        text: "Payment is due.",
+        author: "folio compare",
+      }),
+    ]);
+    expect(output.snapshot().blocks.at(0)?.previewRuns).toEqual(revisedFormatting);
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
+    rejecting.rejectAll();
+    expect(rejecting.snapshot().blocks.at(0)?.previewRuns).toEqual(baseFormatting);
+  });
+
+  test("redlines only the character span whose formatting changed", async () => {
+    const base = await buildFormattedRunDocxBuffer([{ text: "Payment is due." }], "00000001");
+    const revised = await buildFormattedRunDocxBuffer(
+      [{ text: "Payment " }, { text: "is due", formatting: { bold: true } }, { text: "." }],
+      "00000001",
+    );
+
+    const result = await generateRedlineDocx(base, revised);
+    const baseFormatting = (await FolioDocxReviewer.fromBuffer(base))
+      .snapshot()
+      .blocks.at(0)?.previewRuns;
+    const revisedFormatting = (await FolioDocxReviewer.fromBuffer(revised))
+      .snapshot()
+      .blocks.at(0)?.previewRuns;
+
+    expect(result.skipped).toEqual([]);
+    expect(result.applied).toHaveLength(1);
+    const output = await FolioDocxReviewer.fromBuffer(result.buffer);
+    expect(output.getChanges()).toEqual([
+      expect.objectContaining({
+        type: "formatting",
+        text: "is due",
+      }),
+    ]);
+    expect(output.snapshot().blocks.at(0)?.previewRuns).toEqual(revisedFormatting);
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.buffer);
+    rejecting.rejectAll();
+    expect(rejecting.snapshot().blocks.at(0)?.previewRuns).toEqual(baseFormatting);
   });
 
   test("a relocated block redlines as delete + insert and still satisfies both invariants", async () => {

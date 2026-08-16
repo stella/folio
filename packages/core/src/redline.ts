@@ -1,11 +1,13 @@
 /**
  * Compare two `.docx` buffers and produce a third buffer whose text
- * differences are represented as tracked changes.
+ * and supported inline-formatting differences are represented as tracked changes.
  *
  * Each matched editable story is processed independently through the shared
  * block alignment and document-operation paths. Package parts that exist on
  * only one side are reported because creating or removing those parts is a
  * distinct package-level operation.
+ *
+ * @packageDocumentation
  */
 
 import { panic, TaggedError } from "better-result";
@@ -16,12 +18,15 @@ import {
   type FolioDocumentStoryHandle,
   type FolioResolvedReviewedView,
 } from "./ai-edits/headless";
+import { createFolioAITextRangeHandle } from "./ai-edits/snapshot";
 import type {
   FolioAIBlock,
   FolioAIEditAppliedOperation,
+  FolioAIInlineFormatting,
   FolioAIEditOperation,
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
+  FolioAIBlockPreviewRun,
 } from "./ai-edits/types";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "./document-operations";
 import { pairFolioDocumentStories } from "./document-stories";
@@ -45,6 +50,7 @@ export type GenerateRedlineDocxOptions = {
   privacy?: FolioDocumentPrivacyOptions;
 };
 
+/** Raised when a resolved input view is not `"original"` or `"final"`. */
 export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
   "InvalidGenerateRedlineDocxOptionsError",
 )<{
@@ -53,9 +59,13 @@ export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
   receivedValue: unknown;
 }>() {}
 
+/** A document story that could not be paired across the two input packages. */
 export type GenerateRedlineUnprocessedStory = {
+  /** Story in the base package, or `null` when it exists only in the revision. */
   baseStory: FolioDocumentStoryHandle | null;
+  /** Story in the revised package, or `null` when it exists only in the base. */
   revisedStory: FolioDocumentStoryHandle | null;
+  /** Why the story could not be represented in the generated redline. */
   reason: "missing-base-story" | "missing-revised-story";
 };
 
@@ -94,6 +104,147 @@ type BuildRedlineOperationsOptions = {
   nextOperationId: () => string;
 };
 
+type RedlineFormattingSegment = {
+  startOffset: number;
+  endOffset: number;
+  formatting: FolioAIInlineFormatting;
+};
+
+const changedSupportedFormatting = (
+  base: FolioAIBlockPreviewRun,
+  revised: FolioAIBlockPreviewRun,
+): FolioAIInlineFormatting => ({
+  ...(Boolean(base.bold) !== Boolean(revised.bold) && { bold: Boolean(revised.bold) }),
+  ...(Boolean(base.italic) !== Boolean(revised.italic) && { italic: Boolean(revised.italic) }),
+  ...(Boolean(base.underline) !== Boolean(revised.underline) && {
+    underline: Boolean(revised.underline),
+  }),
+});
+
+const sameInlineFormatting = (
+  left: FolioAIInlineFormatting,
+  right: FolioAIInlineFormatting,
+): boolean =>
+  left.bold === right.bold && left.italic === right.italic && left.underline === right.underline;
+
+const hasInlineFormatting = (formatting: FolioAIInlineFormatting): boolean =>
+  formatting.bold !== undefined ||
+  formatting.italic !== undefined ||
+  formatting.underline !== undefined;
+
+const previewRunsForBlock = (block: FolioAIBlock): readonly FolioAIBlockPreviewRun[] | null => {
+  const runs = block.previewRuns ?? [{ text: block.text }];
+  return runs.map(({ text }) => text).join("") === block.text ? runs : null;
+};
+
+const formattingSegments = (
+  baseBlock: FolioAIBlock,
+  revisedBlock: FolioAIBlock,
+): RedlineFormattingSegment[] => {
+  const baseRuns = previewRunsForBlock(baseBlock);
+  const revisedRuns = previewRunsForBlock(revisedBlock);
+  if (!baseRuns || !revisedRuns || baseBlock.text.length === 0) {
+    return [];
+  }
+
+  const segments: RedlineFormattingSegment[] = [];
+  let baseRunIndex = 0;
+  let revisedRunIndex = 0;
+  let baseRunOffset = 0;
+  let revisedRunOffset = 0;
+  let textOffset = 0;
+
+  while (baseRunIndex < baseRuns.length && revisedRunIndex < revisedRuns.length) {
+    const baseRun = baseRuns[baseRunIndex];
+    const revisedRun = revisedRuns[revisedRunIndex];
+    if (!baseRun || !revisedRun) {
+      break;
+    }
+    const length = Math.min(
+      baseRun.text.length - baseRunOffset,
+      revisedRun.text.length - revisedRunOffset,
+    );
+    if (length <= 0) {
+      if (baseRunOffset >= baseRun.text.length) {
+        baseRunIndex++;
+        baseRunOffset = 0;
+      }
+      if (revisedRunOffset >= revisedRun.text.length) {
+        revisedRunIndex++;
+        revisedRunOffset = 0;
+      }
+      continue;
+    }
+
+    const formatting = changedSupportedFormatting(baseRun, revisedRun);
+    if (hasInlineFormatting(formatting)) {
+      const previous = segments.at(-1);
+      if (
+        previous &&
+        previous.endOffset === textOffset &&
+        sameInlineFormatting(previous.formatting, formatting)
+      ) {
+        previous.endOffset += length;
+      } else {
+        segments.push({
+          startOffset: textOffset,
+          endOffset: textOffset + length,
+          formatting,
+        });
+      }
+    }
+
+    textOffset += length;
+    baseRunOffset += length;
+    revisedRunOffset += length;
+    if (baseRunOffset >= baseRun.text.length) {
+      baseRunIndex++;
+      baseRunOffset = 0;
+    }
+    if (revisedRunOffset >= revisedRun.text.length) {
+      revisedRunIndex++;
+      revisedRunOffset = 0;
+    }
+  }
+
+  return segments;
+};
+
+type BuildFormattingRedlineOperationsOptions = {
+  baseBlock: FolioAIBlock;
+  revisedBlock: FolioAIBlock;
+  nextOperationId: () => string;
+};
+
+const buildFormattingRedlineOperations = ({
+  baseBlock,
+  revisedBlock,
+  nextOperationId,
+}: BuildFormattingRedlineOperationsOptions): FolioAIEditOperation[] => {
+  const operations: FolioAIEditOperation[] = [];
+  for (const { startOffset, endOffset, formatting } of formattingSegments(
+    baseBlock,
+    revisedBlock,
+  )) {
+    const range = createFolioAITextRangeHandle({
+      blockId: baseBlock.id,
+      text: baseBlock.text,
+      startOffset,
+      endOffset,
+    });
+    if (!range) {
+      panic("An aligned formatting range could not be represented");
+    }
+    operations.push({
+      id: nextOperationId(),
+      type: "formatRange",
+      range,
+      formatting,
+    });
+  }
+  return operations;
+};
+
 const buildRedlineOperations = ({
   baseSnapshot,
   revisedBlocks,
@@ -114,6 +265,14 @@ const buildRedlineOperations = ({
           blockId: event.baseBlock.id,
           text: event.revisedBlock.text,
         });
+      } else {
+        operations.push(
+          ...buildFormattingRedlineOperations({
+            baseBlock: event.baseBlock,
+            revisedBlock: event.revisedBlock,
+            nextOperationId,
+          }),
+        );
       }
       return;
     }

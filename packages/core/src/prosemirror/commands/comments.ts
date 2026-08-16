@@ -18,6 +18,7 @@ import type {
 import { expectRunPropertyChangeMarkAttrs } from "../attrs";
 import { textFormattingToMarks } from "../conversion/toProseDoc";
 import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import {
@@ -943,12 +944,10 @@ export function rejectAllChanges(): Command {
 }
 
 /**
- * Find the document range covered by all inline revision marks
- * carrying any of the given AI-edit `revisionIds`. Returns null when
- * none of those marks are present (already accepted/rejected, or
- * never existed). A replace operation typically passes two ids (one
- * for its deletion side, one for its insertion side); inserts and
- * standalone deletions and formatting changes pass a single id.
+ * Find the document range covered by all revision carriers with any of the
+ * given ids. Returns null when none are present (already accepted/rejected, or
+ * never existed). A replace operation typically passes two ids; standalone
+ * text, formatting, paragraph, section, and table revisions pass a single id.
  */
 export function findAIEditRevisionRange(
   state: EditorState,
@@ -960,20 +959,26 @@ export function findAIEditRevisionRange(
   const idSet = new Set<number>(typeof revisionIds === "number" ? [revisionIds] : revisionIds);
 
   const range = { from: null as number | null, to: null as number | null };
+  const includeRange = (from: number, to: number): void => {
+    if (range.from === null || from < range.from) {
+      range.from = from;
+    }
+    if (range.to === null || to > range.to) {
+      range.to = to;
+    }
+  };
 
   state.doc.descendants((node, pos) => {
+    for (const carrier of getFolioNodeRevisionCarriers(node, pos)) {
+      if (idSet.has(carrier.id)) {
+        includeRange(carrier.from, carrier.to);
+      }
+    }
     if (node.type.name === "tableRow") {
       for (const attrName of ["trIns", "trDel"] as const) {
         const marker = node.attrs[attrName];
         if (isTableRowRevisionAttr(marker) && idSet.has(marker.revisionId)) {
-          const start = pos;
-          const end = pos + node.nodeSize;
-          if (range.from === null || start < range.from) {
-            range.from = start;
-          }
-          if (range.to === null || end > range.to) {
-            range.to = end;
-          }
+          includeRange(pos, pos + node.nodeSize);
           return false;
         }
       }
@@ -990,14 +995,7 @@ export function findAIEditRevisionRange(
           return change !== null && idSet.has(change.info.id);
         });
       if (hasDirectRevision || hasCollapsedRevision) {
-        const start = pos;
-        const end = pos + node.nodeSize;
-        if (range.from === null || start < range.from) {
-          range.from = start;
-        }
-        if (range.to === null || end > range.to) {
-          range.to = end;
-        }
+        includeRange(pos, pos + node.nodeSize);
         return false;
       }
     }
@@ -1011,14 +1009,7 @@ export function findAIEditRevisionRange(
         mark.type === runPropertyChangeType &&
         expectRunPropertyChangeMarkAttrs(mark).changes.some((change) => idSet.has(change.info.id))
       ) {
-        const start = pos;
-        const end = pos + node.nodeSize;
-        if (range.from === null || start < range.from) {
-          range.from = start;
-        }
-        if (range.to === null || end > range.to) {
-          range.to = end;
-        }
+        includeRange(pos, pos + node.nodeSize);
         break;
       }
       if (
@@ -1026,14 +1017,7 @@ export function findAIEditRevisionRange(
         typeof mark.attrs["revisionId"] === "number" &&
         idSet.has(mark.attrs["revisionId"])
       ) {
-        const start = pos;
-        const end = pos + node.nodeSize;
-        if (range.from === null || start < range.from) {
-          range.from = start;
-        }
-        if (range.to === null || end > range.to) {
-          range.to = end;
-        }
+        includeRange(pos, pos + node.nodeSize);
         break;
       }
     }

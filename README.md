@@ -55,13 +55,13 @@ testing methodology and reference matrix.
 
 This is a [Bun](https://bun.sh) workspace with these published packages:
 
-| Package                                   | Use it for                                                                        |
-| ----------------------------------------- | --------------------------------------------------------------------------------- |
-| [`@stll/folio-core`](./packages/core)     | OOXML parsing, document model, ProseMirror integration, and page layout           |
-| [`@stll/folio-react`](./packages/react)   | A React editor UI built on `@stll/folio-core`                                     |
-| [`@stll/folio-vue`](./packages/vue)       | A Vue 3 editor and composables                                                    |
-| [`@stll/folio-nuxt`](./packages/nuxt)     | Nuxt 3/4 registration for the Vue editor                                          |
-| [`@stll/folio-agents`](./packages/agents) | Document review tools for reading `.docx` files and proposing comments or changes |
+| Package                                   | Use it for                                                                     |
+| ----------------------------------------- | ------------------------------------------------------------------------------ |
+| [`@stll/folio-core`](./packages/core)     | OOXML parsing, native Word redlining, document review, ProseMirror, and layout |
+| [`@stll/folio-react`](./packages/react)   | A React editor UI built on `@stll/folio-core`                                  |
+| [`@stll/folio-vue`](./packages/vue)       | A Vue 3 editor and composables                                                 |
+| [`@stll/folio-nuxt`](./packages/nuxt)     | Nuxt 3/4 registration for the Vue editor                                       |
+| [`@stll/folio-agents`](./packages/agents) | LLM tools for reading `.docx` files and proposing comments or tracked changes  |
 
 ## Install
 
@@ -94,6 +94,46 @@ export function Editor({ docx }: { docx: ArrayBuffer }) {
 ```
 
 In SSR apps, load the editor with a client-only or dynamic import.
+
+## Native Word redlines
+
+Folio writes OOXML tracked changes that Microsoft Word can review, accept, or
+reject. Apply explicit operations for deterministic edits, or compare two saved
+versions to produce a redlined `.docx`:
+
+```ts
+import { FolioDocxReviewer } from "@stll/folio-core/server";
+import { generateRedlineDocx } from "@stll/folio-core/redline";
+
+const reviewer = await FolioDocxReviewer.fromBuffer(sourceDocx, {
+  author: "Reviewer",
+});
+const block = reviewer.snapshot().blocks.at(0);
+if (!block) throw new Error("The document has no editable blocks");
+
+const result = reviewer.applyOperations([
+  {
+    id: "replace-term",
+    type: "replaceInBlock",
+    blockId: block.id,
+    find: "Supplier",
+    replace: "Provider",
+  },
+]);
+if (result.skipped.length > 0) throw new Error(JSON.stringify(result.skipped));
+const reviewedDocx = await reviewer.toBuffer();
+
+const { buffer: comparisonRedline } = await generateRedlineDocx(originalDocx, revisedDocx, {
+  author: "Reviewer",
+});
+```
+
+`applyOperations` defaults to native tracked changes. Use `getChanges()`,
+`acceptChange()`, `rejectChange()`, `acceptAll()`, and `rejectAll()` to manage
+pending revisions. The change census includes inline edits, formatting,
+paragraph marks, and paragraph, section, table, row, and cell property changes.
+For model-facing review tools, see
+[`@stll/folio-agents`](./packages/agents).
 
 ## Styling
 
@@ -203,7 +243,7 @@ For source changes that do not need a release:
 bunx changeset --empty
 ```
 
-CI checks this with `bun run changeset:check`. Merging the generated
+CI enforces this through the changeset-policy workflow. Merging the generated
 **Version Packages** PR publishes changed packages through `publish.yml`.
 
 ## Acknowledgements

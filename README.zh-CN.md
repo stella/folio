@@ -49,13 +49,13 @@ Folio 通过已发布的标准、差异解析、往返测试、交互测试，�
 
 这是一个使用 [Bun](https://bun.sh) 的工作区，包含以下已发布软件包：
 
-| 软件包                                    | 用途                                                    |
-| ----------------------------------------- | ------------------------------------------------------- |
-| [`@stll/folio-core`](./packages/core)     | OOXML 解析、文档模型、ProseMirror 集成和页面布局        |
-| [`@stll/folio-react`](./packages/react)   | 基于 `@stll/folio-core` 构建的 React 编辑器 UI          |
-| [`@stll/folio-vue`](./packages/vue)       | Vue 3 编辑器和组合式函数                                |
-| [`@stll/folio-nuxt`](./packages/nuxt)     | 为 Vue 编辑器提供 Nuxt 3/4 注册                         |
-| [`@stll/folio-agents`](./packages/agents) | 用于读取 `.docx` 文件并提出批注或修改建议的文档审阅工具 |
+| 软件包                                    | 用途                                                        |
+| ----------------------------------------- | ----------------------------------------------------------- |
+| [`@stll/folio-core`](./packages/core)     | OOXML 解析、Word 原生修订、文档审阅、ProseMirror 和页面布局 |
+| [`@stll/folio-react`](./packages/react)   | 基于 `@stll/folio-core` 构建的 React 编辑器 UI              |
+| [`@stll/folio-vue`](./packages/vue)       | Vue 3 编辑器和组合式函数                                    |
+| [`@stll/folio-nuxt`](./packages/nuxt)     | 为 Vue 编辑器提供 Nuxt 3/4 注册                             |
+| [`@stll/folio-agents`](./packages/agents) | 用于读取 `.docx` 文件并提出批注或修订建议的 LLM 工具        |
 
 ## 安装
 
@@ -88,6 +88,43 @@ export function Editor({ docx }: { docx: ArrayBuffer }) {
 ```
 
 在 SSR 应用中，请通过仅客户端加载或动态导入来加载编辑器。
+
+## Word 原生修订
+
+Folio 写入 Microsoft Word 可以审阅、接受或拒绝的 OOXML 修订。可以应用明确的操作，
+也可以比较两个已保存的版本来生成带修订的 `.docx`：
+
+```ts
+import { FolioDocxReviewer } from "@stll/folio-core/server";
+import { generateRedlineDocx } from "@stll/folio-core/redline";
+
+const reviewer = await FolioDocxReviewer.fromBuffer(sourceDocx, {
+  author: "Reviewer",
+});
+const block = reviewer.snapshot().blocks.at(0);
+if (!block) throw new Error("The document has no editable blocks");
+
+const result = reviewer.applyOperations([
+  {
+    id: "replace-term",
+    type: "replaceInBlock",
+    blockId: block.id,
+    find: "Supplier",
+    replace: "Provider",
+  },
+]);
+if (result.skipped.length > 0) throw new Error(JSON.stringify(result.skipped));
+const reviewedDocx = await reviewer.toBuffer();
+
+const { buffer: comparisonRedline } = await generateRedlineDocx(originalDocx, revisedDocx, {
+  author: "Reviewer",
+});
+```
+
+`applyOperations` 默认生成 Word 原生修订。使用 `getChanges()`、`acceptChange()`、
+`rejectChange()`、`acceptAll()` 和 `rejectAll()` 管理待审阅的修改。修订清单包括行内编辑、
+格式、段落标记，以及段落、节、表格、行和单元格属性变更。面向模型的审阅工具请参阅
+[`@stll/folio-agents`](./packages/agents)。
 
 ## 样式
 
@@ -192,7 +229,7 @@ bunx changeset
 bunx changeset --empty
 ```
 
-CI 会通过 `bun run changeset:check` 检查此项。合并自动生成的 **Version Packages** PR
+CI 会通过 changeset-policy 工作流检查此项。合并自动生成的 **Version Packages** PR
 后，`publish.yml` 会发布有变更的软件包。
 
 ## 致谢

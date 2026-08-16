@@ -69,7 +69,7 @@ import { serializeThemeXml } from "./serializer/themeSerializer";
 import { escapeXml } from "./serializer/xmlUtils";
 import { isPreservableDocxEntry } from "./unzip";
 import type { RawDocxContent } from "./unzip";
-import { findChild, getChildElements, matchesName, parseXml } from "./xmlParser";
+import { findChild, getChildElements, matchesName, parseXml, type XmlElement } from "./xmlParser";
 import { isAllowedExternalWatermarkImageUrl } from "../watermark";
 
 export class DocxPackageFidelityError extends Error {
@@ -94,8 +94,20 @@ export function findMaxRId(relsXml: string): number {
   return maxId;
 }
 
-const countDocumentSections = (xml: string): number =>
-  Array.from(xml.matchAll(/<w:sectPr\b/gu)).length;
+const countDocumentSections = (xml: string): number => {
+  let count = 0;
+  const visit = (element: XmlElement, insidePropertyChange: boolean): void => {
+    const isPropertyChange = matchesName(element, "w", "sectPrChange");
+    if (!insidePropertyChange && matchesName(element, "w", "sectPr")) {
+      count += 1;
+    }
+    for (const child of getChildElements(element)) {
+      visit(child, insidePropertyChange || isPropertyChange);
+    }
+  };
+  visit(parseXml(xml), false);
+  return count;
+};
 
 type HeaderFooterReference = {
   element: "headerReference" | "footerReference";

@@ -21,7 +21,7 @@
 //   docx-core — runtime, types, externals, packaged assets, and attribution.
 //
 //   core  — 4 checks:
-//     1. Runtime  — ESM `import` of `.`, `/markdown`, `/server`, and a `./*`
+//     1. Runtime  — ESM `import` of `.`, `/markdown`, `/server`, `/redline`, and a `./*`
 //                   wildcard subpath loads with the expected exports.
 //     2. Types    — a `.ts` consumer importing every surface typechecks under
 //                   both `moduleResolution: node16` and `bundler`.
@@ -250,6 +250,7 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "FolioDocxReviewer",
       "applyFolioAIEditsToBuffer",
     ],
+    "@stll/folio-core/redline": ["generateRedlineDocx"],
     "@stll/folio-core/types/block-id": ["deriveBlockId", "isFolioBlockId"],
   },
   react: {
@@ -366,11 +367,12 @@ export type Surface = [Document, Paragraph, Run, DocxProjectionWire, DocxPackage
   core: `
 import { createEmptyDocument, createDocx, type Document } from "@stll/folio-core";
 import { fromMarkdown, toMarkdown, type MarkdownOptions } from "@stll/folio-core/markdown";
+import { generateRedlineDocx, type GenerateRedlineDocxResult } from "@stll/folio-core/redline";
 import { deriveBlockId, type FolioBlockId } from "@stll/folio-core/server";
 import { isFolioBlockId } from "@stll/folio-core/types/block-id";
 
-export const used = [createEmptyDocument, createDocx, fromMarkdown, toMarkdown, deriveBlockId, isFolioBlockId];
-export type Surface = [Document, MarkdownOptions, FolioBlockId];
+export const used = [createEmptyDocument, createDocx, fromMarkdown, toMarkdown, generateRedlineDocx, deriveBlockId, isFolioBlockId];
+export type Surface = [Document, MarkdownOptions, GenerateRedlineDocxResult, FolioBlockId];
 `,
   react: `
 import { DocxEditor, FolioUIProvider, createDocx, type DocxEditorProps } from "@stll/folio-react";
