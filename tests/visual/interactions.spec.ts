@@ -523,6 +523,43 @@ test.describe("rendered page-break hints", () => {
   });
 });
 
+test.describe("document loading", () => {
+  test("loading a new document into a live editor view replaces the painted content", async ({
+    page,
+  }) => {
+    await mountFixture(page, "sample.docx");
+    const marker = "LOADED-DOCUMENT-MARKER";
+    expect(await docText(page)).not.toContain(marker);
+
+    // Same metadata as the mounted document (a clone), only the first text
+    // run differs: the load must register as external because it IS a load,
+    // not because the document's signature happens to change.
+    await page.evaluate((text) => {
+      const editor = globalThis.__folioPlayground?.getEditorRef();
+      const current = editor?.getDocument();
+      if (!editor || !current) throw new Error("no loaded document");
+      const next = structuredClone(current);
+      const replaceFirstText = (node: unknown): boolean => {
+        if (Array.isArray(node)) return node.some(replaceFirstText);
+        if (node === null || typeof node !== "object") return false;
+        const record = node as Record<string, unknown>;
+        if (record["type"] === "text" && typeof record["text"] === "string") {
+          record["text"] = text;
+          return true;
+        }
+        return Object.values(record).some(replaceFirstText);
+      };
+      if (!replaceFirstText(next.package.document.content)) {
+        throw new Error("fixture has no text run to replace");
+      }
+      editor.loadDocument(next);
+    }, marker);
+
+    await expect.poll(() => docText(page), { timeout: 10_000 }).toContain(marker);
+    await expect(page.locator(".layout-page").first()).toContainText(marker);
+  });
+});
+
 test.describe("zoom", () => {
   test("setZoom updates getZoom and scales the rendered page", async ({ page }) => {
     await mountFixture(page, "sample.docx");

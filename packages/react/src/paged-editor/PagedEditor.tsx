@@ -232,9 +232,11 @@ export type PagedEditorProps = {
   /** The document to edit. */
   document: Document | null;
   /**
-   * Stable identity of the loaded document (same across internal edits, distinct
-   * per loaded file), used to distinguish a genuine external load from an
-   * edited document passed back. Falls back to a metadata signature when omitted.
+   * Identity of the loaded document (same across internal edits, distinct per
+   * load), used to distinguish a genuine external load from an edited document
+   * passed back. `DocxEditor` supplies its per-load identity here so the key and
+   * the new document reach the hidden editor in the same render. Falls back to
+   * a metadata signature when omitted.
    */
   documentKey?: string;
   /**

@@ -38,6 +38,13 @@ export type DocumentLoaderHistory = {
 export type DocumentLoaderCallbacks = {
   /** Editor history to reset/seed with the loaded document. */
   history: DocumentLoaderHistory;
+  /**
+   * Receives the identity of the document that just landed in history. Every
+   * load allocates a fresh identity, so the adapter can tell an external load
+   * (a new file, or the same file re-parsed) from the loaded document being
+   * round-tripped back through its own state after an internal edit.
+   */
+  setLoadedDocumentIdentity: (identity: string) => void;
   /** Called when an unrecoverable parse error occurs. */
   onError: ((error: Error) => void) | undefined;
   /** Called after parsing to report whether editing can preserve fidelity. */
@@ -67,11 +74,21 @@ export class DocumentLoaderManager {
     this.callbacks.onReset();
   }
 
-  /** Load an already-parsed document. */
+  /**
+   * Load an already-parsed document. Allocates a load generation like
+   * `loadBuffer`, so a buffer parse still in flight when this lands is
+   * discarded instead of overwriting the newer document.
+   */
   loadParsedDocument(doc: Document): void {
-    const { history, onCompatibilityChange, setDocumentLoadState } = this.callbacks;
+    this.commitParsedDocument(doc, ++this.loadGeneration);
+  }
+
+  private commitParsedDocument(doc: Document, generation: number): void {
+    const { history, onCompatibilityChange, setDocumentLoadState, setLoadedDocumentIdentity } =
+      this.callbacks;
     this.resetForNewDocument();
     history.reset(doc);
+    setLoadedDocumentIdentity(String(generation));
     onCompatibilityChange?.(inspectDocxCompatibility(doc));
     setDocumentLoadState({ status: "ready" });
     // Defer font loading so the first page renders immediately.
@@ -113,7 +130,7 @@ export class DocumentLoaderManager {
       if (this.loadGeneration !== generation) {
         return;
       }
-      this.loadParsedDocument(doc);
+      this.commitParsedDocument(doc, generation);
     } catch (error) {
       if (this.loadGeneration !== generation) {
         return;

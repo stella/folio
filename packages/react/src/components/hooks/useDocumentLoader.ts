@@ -55,6 +55,14 @@ type UseDocumentLoaderReturn = {
   resetForNewDocument: () => void;
   /** Ref holding the original ArrayBuffer for selective save / repack. */
   originalBufferRef: React.RefObject<ArrayBuffer | null>;
+  /**
+   * Identity of the document currently in history: fresh per load, stable
+   * across internal edits, `undefined` until the first load lands. Hand it to
+   * the paged editor as its `documentKey` so the hidden editor resets exactly
+   * when a load commits (same render as the new history state), never for the
+   * loaded document round-tripping back through state.
+   */
+  loadedDocumentIdentity: string | undefined;
 };
 
 // ---------------------------------------------------------------------------
@@ -73,6 +81,9 @@ export const useDocumentLoader = ({
 }: UseDocumentLoaderParams): UseDocumentLoaderReturn => {
   /** Original DOCX buffer kept for selective save / full repack. */
   const originalBufferRef = useRef<ArrayBuffer | null>(null);
+  const [loadedDocumentIdentity, setLoadedDocumentIdentity] = useState<string | undefined>(
+    undefined,
+  );
 
   // The manager instance is stable; its bound methods are created once so the
   // returned references stay referentially stable across renders.
@@ -83,6 +94,7 @@ export const useDocumentLoader = ({
       onCompatibilityChange,
       onReset,
       setDocumentLoadState,
+      setLoadedDocumentIdentity,
     });
     return {
       manager: instance,
@@ -101,6 +113,7 @@ export const useDocumentLoader = ({
     onCompatibilityChange,
     onReset,
     setDocumentLoadState,
+    setLoadedDocumentIdentity,
   });
 
   // React to document/documentBuffer prop changes.
@@ -134,5 +147,6 @@ export const useDocumentLoader = ({
     loadParsedDocument: api.loadParsedDocument,
     resetForNewDocument: api.resetForNewDocument,
     originalBufferRef,
+    loadedDocumentIdentity,
   };
 };

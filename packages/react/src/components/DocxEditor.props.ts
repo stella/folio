@@ -82,10 +82,12 @@ export type DocxEditorProps = {
   /** Pre-parsed document (alternative to documentBuffer) */
   document?: Document | null;
   /**
-   * Stable identity of the loaded document (same across internal edits, distinct
-   * per loaded file, e.g. a file/document id). Used to distinguish a genuine
-   * external load from an edited document round-tripped back through state.
-   * Falls back to a document-metadata signature when omitted.
+   * @deprecated Ignored. The editor tracks its own load sequence, so every
+   * `document` / `documentBuffer` load resets the hidden editor and a document
+   * round-tripped back through state after an internal edit never does; a
+   * host-supplied key cannot express that boundary (an unchanged key across a
+   * reload left the hidden editor on the previous document). Kept until the
+   * next breaking release for host and adapter-parity compatibility.
    */
   documentKey?: string;
   /** Callback when document is saved */

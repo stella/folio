@@ -434,7 +434,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     documentBuffer,
     password,
     document: initialDocument,
-    documentKey,
     onSave,
     author = "User",
     onChange,
@@ -1143,7 +1142,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   });
 
   // Document loading (parse buffer, reset UI, keep original buffer for save)
-  const { loadBuffer, loadParsedDocument, originalBufferRef } = useDocumentLoader({
+  const documentLoader = useDocumentLoader({
     documentBuffer: documentBuffer ?? null,
     initialDocument: initialDocument ?? null,
     password,
@@ -1193,6 +1192,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       setState((prev) => ({ ...prev, documentLoad }));
     }, []),
   });
+  const { loadBuffer, loadParsedDocument, originalBufferRef, loadedDocumentIdentity } =
+    documentLoader;
 
   // Extract tracked changes once PM view is ready (after loading completes)
   const trackedChangesLoadedRef = useRef(false);
@@ -4321,7 +4322,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                       <PagedEditor
                         ref={pagedEditorRef}
                         document={history.state}
-                        {...(documentKey !== undefined ? { documentKey } : {})}
+                        {...(loadedDocumentIdentity !== undefined
+                          ? { documentKey: loadedDocumentIdentity }
+                          : {})}
                         {...(fonts !== undefined ? { fonts } : {})}
                         theme={history.state.package.theme || theme || null}
                         sectionProperties={effectiveSectionProperties ?? null}
