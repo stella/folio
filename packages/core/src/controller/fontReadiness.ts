@@ -13,7 +13,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
 import { expectFontFamilyMarkAttrs } from "../prosemirror/attrs";
-import { resolveFontFamily } from "../utils/fontResolver";
+import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
 import type { Document, TextFormatting } from "../types/document";
 
 export function getDocumentFontSet(): FontFaceSet | null {
@@ -274,15 +274,7 @@ function addLayoutFontFamilyNameFace(
  */
 function resolvedStackFamilies(family: string): string[] {
   const { cssFallback } = resolveFontFamily(family);
-  const families: string[] = [];
-  for (const entry of cssFallback.split(",")) {
-    const name = entry.trim().replace(/^["']|["']$/gu, "");
-    if (!name || CSS_GENERIC_FONT_FAMILIES.has(name)) {
-      continue;
-    }
-    families.push(name);
-  }
-  return families;
+  return parseFontFamilyList(cssFallback).filter((name) => !CSS_GENERIC_FONT_FAMILIES.has(name));
 }
 
 function addLayoutFontFace(

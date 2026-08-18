@@ -8,6 +8,7 @@ import {
   getGoogleFontsToLoad,
   hasGoogleFontEquivalent,
   isCjkFont,
+  parseFontFamilyList,
   resolveFontFamily,
   setEmbeddedFontFamilyMap,
   setGoogleFontsEnabled,
@@ -369,5 +370,28 @@ describe("fontResolver — untrusted family names are quoted safely", () => {
     expect(cssFallback).toContain("\\a ");
     expect(cssFallback).toContain("\\d ");
     expect(cssFallback).toContain("\\c ");
+  });
+});
+
+describe("fontResolver — parseFontFamilyList inverts the emitted quoting", () => {
+  // Names the resolver must quote: commas, quotes, backslashes, and the
+  // characters `escapeQuotedFontName` hex-escapes. Each round-trips through the
+  // resolved stack as one family, so a comma inside a quoted name never splits
+  // the list (which would leave the gate waiting on faces that do not exist and
+  // never on the one that does).
+  const authored = ["Foo, Bar", 'Say "Hi"', "Back\\slash", "a\nb\rc\fd", "Plain Sans"];
+
+  test.each(authored)("%j survives resolve -> parse as the first stack entry", (name) => {
+    expect(name).not.toBe(resolveFontFamily(name).cssFallback);
+    expect(parseFontFamilyList(resolveFontFamily(name).cssFallback).at(0)).toBe(name);
+  });
+
+  test("keeps every stack entry and drops nothing but whitespace", () => {
+    const { cssFallback } = resolveFontFamily("Foo, Bar");
+    const families = parseFontFamilyList(cssFallback);
+    // The quoted primary plus each comma-separated fallback, generics included.
+    expect(families.length).toBe(cssFallback.split(",").length - 1);
+    expect(families.at(-1)).toBe("sans-serif");
+    expect(families).not.toContain("Foo");
   });
 });

@@ -153,6 +153,22 @@ describe("initial layout font loading", () => {
     expect(families).not.toContain("sans-serif");
   });
 
+  test("a quoted stack entry containing a comma stays one family", () => {
+    const fontFamily = schema.marks["fontFamily"]?.create({ ascii: "Foo, Bar", hAnsi: "Foo, Bar" });
+    if (!fontFamily) {
+      throw new Error("Expected a fontFamily mark in schema");
+    }
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("text", [fontFamily])]),
+    ]);
+
+    const families = collectInitialLayoutFontFamilies(null, pmDoc);
+
+    expect(families).toContain("Foo, Bar");
+    expect(families).not.toContain("Foo");
+    expect(families).not.toContain("Bar");
+  });
+
   test("always includes the default layout font family for a null document model", () => {
     const pmDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.text("plain")]),

@@ -843,6 +843,70 @@ function quoteFontName(fontName: string): string {
   return fontName;
 }
 
+const CSS_NEWLINE_UNESCAPES: Record<string, string> = {
+  a: "\n",
+  d: "\r",
+  c: "\f",
+};
+
+/**
+ * Split a CSS `font-family` list built by `quoteFontName` back into family
+ * names: the inverse of the quoting and escaping applied there. Quoted entries
+ * may contain commas, quotes (backslash-escaped), and the newline escapes
+ * `escapeQuotedFontName` emits; unquoted entries end at the next comma.
+ */
+export function parseFontFamilyList(list: string): string[] {
+  const families: string[] = [];
+  let current = "";
+  let quote: '"' | "'" | null = null;
+  const push = () => {
+    const name = current.trim();
+    if (name) {
+      families.push(name);
+    }
+    current = "";
+  };
+  for (let index = 0; index < list.length; index += 1) {
+    const char = list[index]!; // SAFETY: index < list.length
+    if (quote === null) {
+      if (char === ",") {
+        push();
+      } else if ((char === '"' || char === "'") && current.trim() === "") {
+        quote = char;
+        current = "";
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (char === quote) {
+      quote = null;
+      continue;
+    }
+    if (char !== "\\") {
+      current += char;
+      continue;
+    }
+    const escaped = list[index + 1];
+    if (escaped === undefined) {
+      continue;
+    }
+    index += 1;
+    const newline = CSS_NEWLINE_UNESCAPES[escaped];
+    if (newline === undefined) {
+      current += escaped;
+      continue;
+    }
+    current += newline;
+    // The escape is terminated by one optional space, which is not content.
+    if (list[index + 1] === " ") {
+      index += 1;
+    }
+  }
+  push();
+  return families;
+}
+
 /**
  * Resolve a theme font reference to actual font names
  *
