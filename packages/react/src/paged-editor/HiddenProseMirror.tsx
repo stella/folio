@@ -62,11 +62,10 @@ export type HiddenProseMirrorProps = {
   /** The document to edit */
   document: Document | null;
   /**
-   * Stable identity of the loaded document (same across internal edits, distinct
-   * per loaded file). When provided it is authoritative for external-load
-   * detection; otherwise a document-metadata signature is used as a fallback.
+   * Identity of the loaded document (same across internal edits, distinct per
+   * load); a change means an external load and resets the editor state.
    */
-  documentKey?: string;
+  documentIdentity: string;
   /** Document styles for style resolution */
   styles?: StyleDefinitions | null;
   /** Theme for styling */
@@ -194,7 +193,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
   (props, ref) => {
     const {
       document,
-      documentKey,
+      documentIdentity,
       styles,
       theme: _theme,
       widthPx = 612, // Default Letter width at 72dpi
@@ -227,7 +226,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     // accessor functions, so it always sees the current render's value.
     const readOnlyRef = useRef(readOnly);
     const documentRef = useRef(document);
-    const documentKeyRef = useRef(documentKey);
+    const documentIdentityRef = useRef(documentIdentity);
     const stylesRef = useRef(styles);
     const extensionManagerRef = useRef(extensionManager);
     const externalPluginsRef = useRef(externalPlugins);
@@ -269,7 +268,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
 
     // Keep document ref in sync
     documentRef.current = document;
-    documentKeyRef.current = documentKey;
+    documentIdentityRef.current = documentIdentity;
 
     // The off-screen EditorView lifecycle (create/destroy, editorProps, and the
     // external-document / editable sync) lives in the framework-agnostic manager;
@@ -288,7 +287,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
         getCollaborationModules: () => collaborationModulesRef.current,
         getPrecomputedInitialState: () => precomputedInitialStateRef.current,
         getReadOnly: () => readOnlyRef.current,
-        getDocumentKey: () => documentKeyRef.current,
+        getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,
         onTransaction: (transaction, newState) => onTransactionRef.current?.(transaction, newState),
         onSelectionChange: (state) => onSelectionChangeRef.current?.(state),
@@ -390,7 +389,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
       managerRef.current?.syncExternalDocument();
     }, [
       document,
-      documentKey,
+      documentIdentity,
       styles,
       extensionManager,
       externalPlugins,

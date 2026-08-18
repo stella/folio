@@ -81,15 +81,6 @@ export type DocxEditorProps = {
   password?: string | undefined;
   /** Pre-parsed document (alternative to documentBuffer) */
   document?: Document | null;
-  /**
-   * @deprecated Ignored. The editor tracks its own load sequence, so every
-   * `document` / `documentBuffer` load resets the hidden editor and a document
-   * round-tripped back through state after an internal edit never does; a
-   * host-supplied key cannot express that boundary (an unchanged key across a
-   * reload left the hidden editor on the previous document). Kept until the
-   * next breaking release for host and adapter-parity compatibility.
-   */
-  documentKey?: string;
   /** Callback when document is saved */
   onSave?: (buffer: ArrayBuffer) => void;
   /** Author name used for comments and track changes */

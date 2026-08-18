@@ -57,12 +57,12 @@ type UseDocumentLoaderReturn = {
   originalBufferRef: React.RefObject<ArrayBuffer | null>;
   /**
    * Identity of the document currently in history: fresh per load, stable
-   * across internal edits, `undefined` until the first load lands. Hand it to
-   * the paged editor as its `documentKey` so the hidden editor resets exactly
+   * across internal edits, `"0"` until the first load lands. Hand it to the
+   * paged editor as its `documentIdentity` so the hidden editor resets exactly
    * when a load commits (same render as the new history state), never for the
    * loaded document round-tripping back through state.
    */
-  loadedDocumentIdentity: string | undefined;
+  loadedDocumentIdentity: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -81,9 +81,7 @@ export const useDocumentLoader = ({
 }: UseDocumentLoaderParams): UseDocumentLoaderReturn => {
   /** Original DOCX buffer kept for selective save / full repack. */
   const originalBufferRef = useRef<ArrayBuffer | null>(null);
-  const [loadedDocumentIdentity, setLoadedDocumentIdentity] = useState<string | undefined>(
-    undefined,
-  );
+  const [loadedDocumentIdentity, setLoadedDocumentIdentity] = useState("0");
 
   // The manager instance is stable; its bound methods are created once so the
   // returned references stay referentially stable across renders.

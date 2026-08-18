@@ -360,7 +360,6 @@ export type DocxEditorProps = {
     documentBuffer?: DocxInput | null;
     password?: string | undefined;
     document?: Document_2 | null;
-    documentKey?: string;
     onSave?: (buffer: ArrayBuffer) => void;
     author?: string;
     onChange?: (document: Document_2) => void;

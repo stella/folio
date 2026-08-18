@@ -128,7 +128,6 @@ export type UseDocxEditorOptions = {
     pageGap?: number;
     showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
     marginGuideColor?: MaybeRefOrGetter<string | undefined>;
-    documentKey?: MaybeRefOrGetter<string | undefined>;
     password?: MaybeRefOrGetter<string | undefined>;
     editorMode?: MaybeRefOrGetter<"editing" | "suggesting" | "viewing">;
     author?: MaybeRefOrGetter<string>;

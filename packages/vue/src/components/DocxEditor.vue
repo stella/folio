@@ -13,7 +13,7 @@
    3. Subscribes to the reactive `isReady` / `parseError` / `layout` surface for
       chrome and to `editor.on("selectionChange" | "docChange" | "layoutComplete")`
       to bump `stateTick` so the toolbar/overlays recompute.
-   4. Passes `readOnly` / `mode` / `author` / `documentKey` and the callback props
+   4. Passes `readOnly` / `mode` / `author` and the callback props
       through to the pipeline.
 
   Wired composables: pointer interactions (`usePagesPointer`: multi-click,
@@ -731,7 +731,6 @@ const {
   editorMode,
   author: () => props.author,
   password: () => props.password,
-  documentKey: () => props.documentKey,
   showMarginGuides: () => props.showMarginGuides,
   marginGuideColor: () => props.marginGuideColor,
   externalPlugins: [],

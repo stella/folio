@@ -4322,9 +4322,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                       <PagedEditor
                         ref={pagedEditorRef}
                         document={history.state}
-                        {...(loadedDocumentIdentity !== undefined
-                          ? { documentKey: loadedDocumentIdentity }
-                          : {})}
+                        documentIdentity={loadedDocumentIdentity}
                         {...(fonts !== undefined ? { fonts } : {})}
                         theme={history.state.package.theme || theme || null}
                         sectionProperties={effectiveSectionProperties ?? null}

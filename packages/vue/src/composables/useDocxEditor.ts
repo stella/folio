@@ -322,12 +322,6 @@ export type UseDocxEditorOptions = {
   showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
   /** CSS color used for margin guides. Reactive. */
   marginGuideColor?: MaybeRefOrGetter<string | undefined>;
-  /**
-   * Stable identity of the loaded document (same across internal edits, distinct
-   * per loaded file). Threaded to the hidden-editor manager's external-load
-   * detection. Reactive.
-   */
-  documentKey?: MaybeRefOrGetter<string | undefined>;
   /** Password for Agile-encrypted .docx files (Office 2010+). Reactive. */
   password?: MaybeRefOrGetter<string | undefined>;
   /**
@@ -472,7 +466,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     pageGap = DEFAULT_PAGE_GAP,
     showMarginGuides,
     marginGuideColor,
-    documentKey,
     password,
     editorMode,
     author,
@@ -499,6 +492,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // `docModel` (not `document`) so the global `document` stays reachable for the
   // FontFaceSet probe + DOM host lookups.
   const docModel = shallowRef<Document | null>(null);
+  // Per-load identity for the hidden-editor manager: advanced on every document
+  // swap, unchanged across internal edits (not reactive; read at sync time).
+  let loadSequence = 0;
   const editorView = shallowRef<EditorView | null>(null);
   const editorState = shallowRef<EditorState | null>(null);
   const collaborationModules = shallowRef<CollaborationModules | null>(null);
@@ -788,7 +784,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getCollaborationModules: () => collaborationModules.value,
     getPrecomputedInitialState: () => null,
     getReadOnly: () => toValue(readOnly),
-    getDocumentKey: () => toValue(documentKey),
+    getDocumentIdentity: () => String(loadSequence),
     getDocumentContext: () => docModel.value,
     onTransaction: handleTransaction,
     onSelectionChange: (state) => {
@@ -1000,11 +996,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   function remountForNewDocument(): void {
-    // A new document is a truly external swap. Rather than rely on the manager's
-    // metadata-signature heuristic (which can skip a same-metadata reload), tear
-    // the view down and rebuild it so the seed state + initial layout run fresh.
-    // The freshly loaded document has no unsaved edits yet (mirrors React
-    // clearing its dirty signals on document reset).
+    // A new document is a truly external swap: tear the view down and rebuild it
+    // so the seed state + initial layout run fresh, and advance the load
+    // identity the hidden-editor manager compares on its next sync. The freshly
+    // loaded document has no unsaved edits yet (mirrors React clearing its dirty
+    // signals on document reset).
+    loadSequence += 1;
     isDirty.value = false;
     headerFooterSelection.value = null;
     activeNoteStory.value = null;

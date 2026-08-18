@@ -234,11 +234,10 @@ export type PagedEditorProps = {
   /**
    * Identity of the loaded document (same across internal edits, distinct per
    * load), used to distinguish a genuine external load from an edited document
-   * passed back. `DocxEditor` supplies its per-load identity here so the key and
-   * the new document reach the hidden editor in the same render. Falls back to
-   * a metadata signature when omitted.
+   * passed back. `DocxEditor` supplies its loader's per-load identity so the
+   * identity and the new document reach the hidden editor in the same render.
    */
-  documentKey?: string;
+  documentIdentity: string;
   /**
    * Host-provided custom font faces to register with the browser (the
    * DocxEditor `fonts` prop). Registered on the same best-effort FontFace path
@@ -1432,7 +1431,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
   function PagedEditor(props, ref) {
     const {
       document,
-      documentKey,
+      documentIdentity,
       fonts: hostFonts,
       styles,
       theme: _theme,
@@ -6144,7 +6143,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         <HiddenProseMirror
           ref={hiddenPMRef}
           document={document}
-          {...(documentKey !== undefined ? { documentKey } : {})}
+          documentIdentity={documentIdentity}
           widthPx={contentWidth}
           precomputedInitialState={validPrecomputedInitialState}
           readOnly={readOnly}

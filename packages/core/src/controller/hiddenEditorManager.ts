@@ -338,19 +338,6 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
   return state;
 }
 
-function getDocumentIdentity(doc: Document | null): string {
-  if (!doc) {
-    return "empty";
-  }
-  // Use the document's package id or a hash of its structure.
-  // For simplicity, compare based on whether it has different metadata.
-  const meta = doc.package.properties;
-  const created = meta?.created ? String(meta.created) : "";
-  const modified = meta?.modified ? String(meta.modified) : "";
-  const title = meta?.title ?? "";
-  return `${created}-${modified}-${title}`;
-}
-
 function syncHiddenEditorAccessibility(view: EditorView, readOnly: boolean): void {
   const { dom } = view;
   if (!dom.hasAttribute("tabindex")) {
@@ -370,12 +357,11 @@ export type HiddenEditorManagerDeps = {
   getPrecomputedInitialState: () => EditorState | null | undefined;
   getReadOnly: () => boolean;
   /**
-   * Caller-provided stable identity of the loaded document: the same key across
-   * internal edits (so typing does not trigger an external re-sync) and a
-   * distinct key per loaded file. Authoritative when present; a metadata
-   * signature is used as a fallback when undefined.
+   * Identity of the loaded document as tracked by the adapter's loader: the
+   * same value across internal edits (so typing does not trigger an external
+   * re-sync) and a distinct value per load.
    */
-  getDocumentKey: () => string | undefined;
+  getDocumentIdentity: () => string;
   /** Document context for the API's `getDocument` (PM state -> Document). */
   getDocumentContext: () => Document | null;
   onTransaction: (transaction: Transaction, newState: EditorState) => void;
@@ -448,12 +434,6 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
   // that originated from editing (which get passed back through props).
   let lastDocumentId: string | null = null;
   let lastCollaborationFragment: XmlFragment | null = null;
-
-  // A caller-provided documentKey is authoritative (stable across internal
-  // edits, distinct per loaded file); fall back to a metadata signature when no
-  // key is supplied.
-  const currentDocumentIdentity = (): string =>
-    deps.getDocumentKey() ?? getDocumentIdentity(deps.getDocument());
 
   const tryCreate = (): void => {
     if (!requested || view !== null || isDestroying) {
@@ -565,7 +545,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     recordHiddenEditorPhase("mount", "editor-view", performance.now() - viewStartedAt);
     syncHiddenEditorAccessibility(view, deps.getReadOnly());
     isInitialized = true;
-    lastDocumentId = currentDocumentIdentity();
+    lastDocumentId = deps.getDocumentIdentity();
     lastCollaborationFragment = collaboration?.yXmlFragment ?? null;
 
     // Notify that view is ready.
@@ -611,7 +591,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     }
 
     const document = deps.getDocument();
-    const currentDocId = currentDocumentIdentity();
+    const currentDocId = deps.getDocumentIdentity();
     const currentCollaborationFragment = collaboration?.yXmlFragment ?? null;
     const collaborationSourceChanged = currentCollaborationFragment !== lastCollaborationFragment;
 

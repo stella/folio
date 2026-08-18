@@ -13,7 +13,6 @@
       "customContextMenuItems",
       "document",
       "documentBuffer",
-      "documentKey",
       "enableWheelZoom",
       "featureFlags",
       "fontFamilies",
@@ -71,7 +70,6 @@
     ],
     "deferredInVue": {},
     "pairedNotes": {
-      "documentKey": "Both declare it; neither adapter needs it for external-load detection any more. React derives the hidden editor's document identity from its own load sequence (`useDocumentLoader.loadedDocumentIdentity`, fresh per `document`/`documentBuffer`/imperative load), so the host prop is a deprecated no-op there. Vue still forwards it to the shared hidden-editor manager, but Vue tears the view down and remounts on every load (`remountForNewDocument`) and only calls `syncExternalDocument` on collaboration changes, where the collaboration-source check decides first; the key never changes an outcome. Removal from both surfaces is a breaking-release follow-up.",
       "showHeaderFooterEditing": "Both wired, default true. Each adapter gates header/footer double-click entry on this prop, routes input into one persistent ProseMirror view per relationship id, repaints live content and selection geometry from that view, and commits immutable document-model snapshots on close/remove/save. Vue binds the shared core manager directly; React's HiddenHeaderFooterPMs is a thin lifecycle wrapper around the same manager.",
       "showMarginGuides": "Both wired through the shared layout-painter overlay. Each adapter forwards the reactive prop into the shared layout pipeline; every page paints its effective body-content boundary without changing layout or intercepting input.",
       "marginGuideColor": "Both wired with the same painter-level CSS color override and the same default. Runtime changes trigger a repaint in each adapter.",
