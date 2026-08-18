@@ -1,5 +1,16 @@
 # @stll/folio-vue
 
+## 0.12.0
+
+### Minor Changes
+
+- [#574](https://github.com/stella/folio/pull/574) [`d6c389e`](https://github.com/stella/folio/commit/d6c389ef5082c58f1bb68c4b0d2a4d6364ddf79f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Remove the `documentKey` prop from the React and Vue `DocxEditor` (deprecated and ignored since the previous release) and the `useDocxEditor` option. Both adapters now hand the hidden-editor manager a per-load identity from their own loaders (`HiddenEditorManagerDeps.getDocumentIdentity`, required); the document-metadata fallback signature is gone.
+
+### Patch Changes
+
+- Updated dependencies [[`d6c389e`](https://github.com/stella/folio/commit/d6c389ef5082c58f1bb68c4b0d2a4d6364ddf79f)]:
+  - @stll/folio-core@0.20.0
+
 ## 0.11.7
 
 ### Patch Changes
