@@ -859,18 +859,25 @@ export function parseFontFamilyList(list: string): string[] {
   const families: string[] = [];
   let current = "";
   let quote: '"' | "'" | null = null;
+  // Set once an entry's quoted content has been read: separator whitespace
+  // around the quotes is not content, whereas whitespace inside them is.
+  let quoted = false;
   const push = () => {
-    const name = current.trim();
+    const name = quoted ? current : current.trim();
     if (name) {
       families.push(name);
     }
     current = "";
+    quoted = false;
   };
   for (let index = 0; index < list.length; index += 1) {
     const char = list[index]!; // SAFETY: index < list.length
     if (quote === null) {
       if (char === ",") {
         push();
+      } else if (quoted) {
+        // Only separator whitespace may follow a closing quote.
+        continue;
       } else if ((char === '"' || char === "'") && current.trim() === "") {
         quote = char;
         current = "";
@@ -881,6 +888,7 @@ export function parseFontFamilyList(list: string): string[] {
     }
     if (char === quote) {
       quote = null;
+      quoted = true;
       continue;
     }
     if (char !== "\\") {

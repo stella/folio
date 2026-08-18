@@ -379,7 +379,7 @@ describe("fontResolver — parseFontFamilyList inverts the emitted quoting", () 
   // resolved stack as one family, so a comma inside a quoted name never splits
   // the list (which would leave the gate waiting on faces that do not exist and
   // never on the one that does).
-  const authored = ["Foo, Bar", 'Say "Hi"', "Back\\slash", "a\nb\rc\fd", "Plain Sans"];
+  const authored = ["Foo, Bar", 'Say "Hi"', "Back\\slash", "a\nb\rc\fd", " Foo ", "Plain Sans"];
 
   test.each(authored)("%j survives resolve -> parse as the first stack entry", (name) => {
     expect(name).not.toBe(resolveFontFamily(name).cssFallback);
