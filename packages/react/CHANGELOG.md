@@ -1,5 +1,16 @@
 # @stll/folio-react
 
+## 0.14.0
+
+### Minor Changes
+
+- [#572](https://github.com/stella/folio/pull/572) [`b7b941a`](https://github.com/stella/folio/commit/b7b941af62a430217b86bba7b4c8c3e9a85d3ce1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reset the hidden editor on every document load, not only when the host's `documentKey` changes. `DocumentLoaderManager` now publishes a per-load identity (`setLoadedDocumentIdentity`) in the same commit as the history reset and orders parsed-document loads against in-flight buffer parses; the React `DocxEditor` feeds that identity to the paged editor, so loading a new `document`/`documentBuffer` (or `loadDocument`) into an editor with a live view replaces the painted content instead of leaving it on the previous document. The `documentKey` prop is deprecated and ignored.
+
+### Patch Changes
+
+- Updated dependencies [[`418e5a1`](https://github.com/stella/folio/commit/418e5a1c18241dce37a36fbc128609ac72c3b161), [`b7b941a`](https://github.com/stella/folio/commit/b7b941af62a430217b86bba7b4c8c3e9a85d3ce1)]:
+  - @stll/folio-core@0.19.0
+
 ## 0.13.5
 
 ### Patch Changes

@@ -1,5 +1,19 @@
 # @stll/folio-core
 
+## 0.19.0
+
+### Minor Changes
+
+- [#572](https://github.com/stella/folio/pull/572) [`b7b941a`](https://github.com/stella/folio/commit/b7b941af62a430217b86bba7b4c8c3e9a85d3ce1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reset the hidden editor on every document load, not only when the host's `documentKey` changes. `DocumentLoaderManager` now publishes a per-load identity (`setLoadedDocumentIdentity`) in the same commit as the history reset and orders parsed-document loads against in-flight buffer parses; the React `DocxEditor` feeds that identity to the paged editor, so loading a new `document`/`documentBuffer` (or `loadDocument`) into an editor with a live view replaces the painted content instead of leaving it on the previous document. The `documentKey` prop is deprecated and ignored.
+
+### Patch Changes
+
+- [#562](https://github.com/stella/folio/pull/562) [`418e5a1`](https://github.com/stella/folio/commit/418e5a1c18241dce37a36fbc128609ac72c3b161) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Wait for the fonts the renderer actually uses, not just the names the document wrote.
+
+  `resolveFontFamily` turns an authored family into a CSS stack that appends folio's bundled metric-compatible substitutes and a script fallback, so an authored `Arial` run paints its Arabic in the bundled Arabic face. The font-readiness gate collected only authored names, so it released the first layout before those faces had loaded; measurement taken against the pre-load fallback then disagreed with what was ultimately painted, by as much as a third of a line's width.
+
+  The gate now expands each family through the resolver and waits for every concrete face in the stack. That also removes a hand-kept substitute table which duplicated the resolver's own mapping and was free to drift from it.
+
 ## 0.18.0
 
 ### Minor Changes
