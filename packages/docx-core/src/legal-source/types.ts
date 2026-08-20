@@ -1,4 +1,5 @@
 import type { Document } from "../model/document";
+import type { Buffer } from "node:buffer";
 
 export type LegalDocumentKind =
   | "agreement"

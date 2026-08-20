@@ -4,6 +4,8 @@
 
 ```ts
 
+import { Buffer } from 'node:buffer';
+
 // @public (undocumented)
 export const assertValidDocumentModel: (document: Document_2) => void;
 
