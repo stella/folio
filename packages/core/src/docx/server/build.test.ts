@@ -13,7 +13,9 @@ import {
   createTableOfContentsField,
   endnote,
   heading,
+  type HeadingLevel,
   hyperlink,
+  InvalidFolioReportBuilderOptionsError,
   pageBreak,
   paragraph,
   run,
@@ -64,6 +66,43 @@ describe("hyperlink relationships outside the main body", () => {
 
     const parsed = await parseDocx(buffer, { preloadFonts: false });
     expect(firstHyperlinkHref(parsed.package.endnotes?.at(0)?.content ?? [])).toBe(LINK);
+  });
+
+  test("a note part cased by the producer keeps its own rels part", async () => {
+    const doc = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const ref = endnote(doc, [paragraph([run("See "), hyperlink({ text: "source", href: LINK })])]);
+    doc.package.document.content = [paragraph([run("Claim"), ref])];
+    const zip = await JSZip.loadAsync(await createDocx(doc));
+
+    // Re-case the note part and its rels the way some producers do.
+    const rename = async (from: string, to: string) => {
+      const xml = await zip.file(from)?.async("string");
+      expect(xml).toBeDefined();
+      zip.remove(from);
+      zip.file(to, xml ?? "");
+    };
+    await rename("word/endnotes.xml", "word/Endnotes.xml");
+    await rename("word/_rels/endnotes.xml.rels", "word/_rels/Endnotes.xml.rels");
+    const recase = async (path: string) => {
+      const xml = await zip.file(path)?.async("string");
+      zip.file(path, (xml ?? "").replaceAll("endnotes.xml", "Endnotes.xml"));
+    };
+    await recase("[Content_Types].xml");
+    await recase("word/_rels/document.xml.rels");
+
+    const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+      preloadFonts: false,
+    });
+    const note = parsed.package.endnotes?.at(0);
+    expect(note).toBeDefined();
+    const secondLink = `${LINK}/second`;
+    note?.content.push(paragraph([hyperlink({ text: "more", href: secondLink })]));
+
+    const buffer = await createDocx(parsed);
+    expect(await zipText(buffer, "word/_rels/endnotes.xml.rels")).toBeUndefined();
+    expect(
+      externalHyperlinkRel(await zipText(buffer, "word/_rels/Endnotes.xml.rels"), secondLink),
+    ).toBe(true);
   });
 
   test("a footer hyperlink is minted into the footer's own rels", async () => {
@@ -173,6 +212,55 @@ describe("table of contents field", () => {
       hyperlinks: false,
     }).content.at(0);
     expect(field?.type === "complexField" && field.instruction).toBe('TOC \\o "1-2" \\z \\u');
+  });
+});
+
+describe("builder input validation", () => {
+  const invalidTocLevels = [
+    { from: 0, to: 3 },
+    { from: 1, to: 10 },
+    { from: 3, to: 1 },
+    { from: 1.5, to: 3 },
+    { from: Number.NaN, to: 3 },
+  ];
+  test.each(invalidTocLevels)("rejects TOC levels %o", (levels) => {
+    expect(() => createTableOfContentsField({ levels })).toThrow(
+      InvalidFolioReportBuilderOptionsError,
+    );
+  });
+
+  test("accepts the full 1-9 TOC range", () => {
+    expect(() => createTableOfContentsField({ levels: { from: 1, to: 9 } })).not.toThrow();
+  });
+
+  test.each([0, -1, 1.5, Number.NaN])("rejects gridSpan %p", (gridSpan) => {
+    expect(() => table({ rows: [[{ content: [paragraph("x")], gridSpan }]] })).toThrow(
+      InvalidFolioReportBuilderOptionsError,
+    );
+  });
+
+  test.each([0, -100, 0.5, Number.POSITIVE_INFINITY])("rejects column width %p", (width) => {
+    expect(() => table({ rows: [["a", "b"]], columnWidths: [1000, width] })).toThrow(
+      InvalidFolioReportBuilderOptionsError,
+    );
+  });
+
+  test("column widths are validated even when no row uses them", () => {
+    expect(() => table({ rows: [], columnWidths: [0] })).toThrow(
+      InvalidFolioReportBuilderOptionsError,
+    );
+  });
+
+  test("rejects a heading level outside HEADING_LEVELS", () => {
+    // SAFETY: test deliberately bypasses the static type to exercise the runtime guard
+    const level = 7 as HeadingLevel;
+    expect(() => heading({ text: "x", level })).toThrow(InvalidFolioReportBuilderOptionsError);
+  });
+
+  test("the error carries the offending path", () => {
+    expect(() => table({ rows: [["a"]], columnWidths: [1000, -1] })).toThrow(
+      expect.objectContaining({ path: "columnWidths[1]" }),
+    );
   });
 });
 

@@ -55,6 +55,7 @@ export {
   heading,
   HEADING_LEVELS,
   hyperlink,
+  InvalidFolioReportBuilderOptionsError,
   pageBreak,
   paragraph,
   run,

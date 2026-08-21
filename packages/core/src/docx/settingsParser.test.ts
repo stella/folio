@@ -225,3 +225,30 @@ describe("parseSettings — break-only paragraph placement", () => {
     expect(parseSettings(wrap("")).splitPageBreakAndParagraphMark).toBeUndefined();
   });
 });
+
+describe("parseSettings — on/off flags resolve by namespace URI", () => {
+  const TRANSITIONAL_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const STRICT_HEAD = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:settings xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main">`;
+  const FOREIGN_HEAD = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:settings xmlns:w="${TRANSITIONAL_NS}" xmlns:x="urn:example:foreign">`;
+  const flags = ["updateFields", "evenAndOddHeaders", "mirrorMargins"] as const;
+
+  test.each(flags)("%s: transitional, strict, and alternate-prefix forms are honoured", (flag) => {
+    expect(parseSettings(wrap(`<w:${flag}/>`))[flag]).toBe(true);
+    expect(parseSettings(`${STRICT_HEAD}<w:${flag}/>${SETTINGS_TAIL}`)[flag]).toBe(true);
+    expect(
+      parseSettings(`${FOREIGN_HEAD}<x:${flag} xmlns:x="${TRANSITIONAL_NS}"/>${SETTINGS_TAIL}`)[
+        flag
+      ],
+    ).toBe(true);
+  });
+
+  test.each(flags)(
+    "%s: a foreign-namespace element with the same local name is ignored",
+    (flag) => {
+      expect(parseSettings(`${FOREIGN_HEAD}<x:${flag}/>${SETTINGS_TAIL}`)[flag]).toBeUndefined();
+      expect(parseSettings(`${FOREIGN_HEAD}<${flag}/>${SETTINGS_TAIL}`)[flag]).toBeUndefined();
+    },
+  );
+});

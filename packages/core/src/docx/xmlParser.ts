@@ -335,6 +335,37 @@ export function getNamespacePrefix(name: string): string | null {
 /** Namespace URI resolved from the element's in-scope XML declarations. */
 export const getNamespaceUri = (element: XmlElement): string | undefined => element.namespaceUri;
 
+/** WordprocessingML main namespace, Transitional and Strict (ECMA-376 Parts 1 and 4). */
+export const WORDPROCESSINGML_NAMESPACE_URIS: ReadonlySet<string> = new Set([
+  NAMESPACES.w,
+  "http://purl.oclc.org/ooxml/wordprocessingml/main",
+]);
+
+/**
+ * First child whose local name matches AND whose resolved namespace URI is
+ * one of `namespaceUris`. Unlike {@link findChild}, a same-named element
+ * from a foreign namespace is not accepted.
+ */
+export function findChildByNamespaceUri(
+  parent: XmlElement | null | undefined,
+  namespaceUris: ReadonlySet<string>,
+  localName: string,
+): XmlElement | null {
+  if (!parent?.elements) {
+    return null;
+  }
+  for (const child of parent.elements) {
+    if (
+      child.type === "element" &&
+      hasLocalName(child.name, localName) &&
+      namespaceUris.has(child.namespaceUri ?? "")
+    ) {
+      return child;
+    }
+  }
+  return null;
+}
+
 /** Get an attribute whose prefix resolves to one of the accepted namespace URIs. */
 export function getAttributeByNamespaceUri(
   element: XmlElement | null | undefined,

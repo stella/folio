@@ -7,6 +7,8 @@
  * serializer owns the OOXML.
  */
 
+import { TaggedError } from "better-result";
+
 import type { ShadingProperties } from "../../types/colors";
 import type {
   BookmarkEnd,
@@ -38,6 +40,51 @@ const FULL_WIDTH_PCT = 5000;
 export const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 export type HeadingLevel = (typeof HEADING_LEVELS)[number];
 
+/** Outline levels a `TOC \o` switch may name (ECMA-376 `w:outlineLvl` 0-8). */
+const TOC_LEVEL_MIN = 1;
+const TOC_LEVEL_MAX = 9;
+
+/**
+ * A builder received a value outside the model's domain (a zero `gridSpan`,
+ * a negative column width, a reversed TOC range). Thrown at the boundary so
+ * the invalid value never reaches the serializer.
+ */
+export class InvalidFolioReportBuilderOptionsError extends TaggedError(
+  "InvalidFolioReportBuilderOptionsError",
+)<{
+  message: string;
+  path: string;
+}>() {}
+
+const assertPositiveInteger = (value: number, path: string): void => {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new InvalidFolioReportBuilderOptionsError({
+      message: `${path} must be a positive integer, got ${String(value)}`,
+      path,
+    });
+  }
+};
+
+const assertHeadingLevel = (level: number): void => {
+  if (!HEADING_LEVELS.some((known) => known === level)) {
+    throw new InvalidFolioReportBuilderOptionsError({
+      message: `level must be one of ${HEADING_LEVELS.join(", ")}, got ${String(level)}`,
+      path: "level",
+    });
+  }
+};
+
+const assertTocLevels = ({ from, to }: { from: number; to: number }): void => {
+  const inRange = (value: number) =>
+    Number.isInteger(value) && value >= TOC_LEVEL_MIN && value <= TOC_LEVEL_MAX;
+  if (!inRange(from) || !inRange(to) || from > to) {
+    throw new InvalidFolioReportBuilderOptionsError({
+      message: `levels must satisfy ${TOC_LEVEL_MIN} <= from <= to <= ${TOC_LEVEL_MAX}, got ${String(from)}-${String(to)}`,
+      path: "levels",
+    });
+  }
+};
+
 export const run = (text: string, formatting?: TextFormatting): Run => ({
   type: "run",
   ...(formatting ? { formatting } : {}),
@@ -59,8 +106,10 @@ type HeadingOptions = {
 };
 
 /** A paragraph in the `Heading<level>` style. */
-export const heading = ({ text, level }: HeadingOptions): Paragraph =>
-  paragraph(text, { styleId: `Heading${level}` });
+export const heading = ({ text, level }: HeadingOptions): Paragraph => {
+  assertHeadingLevel(level);
+  return paragraph(text, { styleId: `Heading${level}` });
+};
 
 /** An empty paragraph carrying a hard page break. */
 export const pageBreak = (): Paragraph => ({
@@ -174,6 +223,7 @@ const buildCell = ({
       ? { content: [paragraph([run(spec, textFormatting)])], shading }
       : { ...spec, shading: spec.shading ?? shading };
   const gridSpan = resolved.gridSpan ?? 1;
+  assertPositiveInteger(gridSpan, "gridSpan");
   const width = cellWidth(columnWidths, gridIndex, gridSpan);
   const formatting = {
     ...(width !== undefined ? { width: { type: "dxa" as const, value: width } } : {}),
@@ -230,6 +280,7 @@ export const table = ({
   headerShading,
   repeatHeader = true,
 }: TableOptions): Table => {
+  columnWidths?.forEach((width, index) => assertPositiveInteger(width, `columnWidths[${index}]`));
   const builtRows: TableRow[] = [];
   if (header) {
     builtRows.push(
@@ -288,7 +339,7 @@ export const endnote = (doc: Document, content: string | Paragraph[]): Run => {
 };
 
 type TableOfContentsOptions = {
-  /** Heading levels to include (default 1-3). */
+  /** Heading levels to include, `1 <= from <= to <= 9` (default 1-3). */
   levels?: { from: number; to: number };
   /** Make entries hyperlinks (`\h`, default true). */
   hyperlinks?: boolean;
@@ -309,6 +360,7 @@ export const createTableOfContentsField = ({
   hyperlinks = true,
   placeholderText = DEFAULT_TOC_PLACEHOLDER,
 }: TableOfContentsOptions = {}): Paragraph => {
+  assertTocLevels(levels);
   const switches = [`\\o "${levels.from}-${levels.to}"`];
   if (hyperlinks) {
     switches.push("\\h");

@@ -1306,6 +1306,9 @@ export class InvalidFolioDocxXmlPatchProposalError extends InvalidFolioDocxXmlPa
 // @public (undocumented)
 export class InvalidFolioDocxXmlPatchProposalOptionsError extends InvalidFolioDocxXmlPatchProposalOptionsError_base {}
 
+// @public
+export class InvalidFolioReportBuilderOptionsError extends InvalidFolioReportBuilderOptionsError_base {}
+
 // @public (undocumented)
 export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsError_base {}
 

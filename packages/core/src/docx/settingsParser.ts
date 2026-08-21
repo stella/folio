@@ -12,10 +12,12 @@
 import type { DocumentSettings } from "../types/document";
 import {
   findChild,
+  findChildByNamespaceUri,
   findChildren,
   getAttribute,
   parseBooleanElement,
   parseXmlDocument,
+  WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -56,18 +58,22 @@ export function parseSettings(xml: string | null): FolioDocumentSettings {
   const settings: FolioDocumentSettings = {
     defaultTabStop: parseDefaultTabStop(root),
   };
+  // On/off flags are resolved by namespace URI: a foreign-namespace element
+  // that happens to share the local name must not switch them on (and
+  // `updateFields` in particular makes the consumer recompute every field).
+  const wordprocessingFlag = (localName: string): boolean => {
+    const element = findChildByNamespaceUri(root, WORDPROCESSINGML_NAMESPACE_URIS, localName);
+    return element !== null && parseBooleanElement(element);
+  };
   // `w:evenAndOddHeaders` lives in settings.xml, not sectPr. Only record the
   // "on" state; absence means odd/even share one header.
-  const evenAndOddHeaders = root ? findChild(root, "w", "evenAndOddHeaders") : null;
-  if (evenAndOddHeaders && parseBooleanElement(evenAndOddHeaders)) {
+  if (wordprocessingFlag("evenAndOddHeaders")) {
     settings.evenAndOddHeaders = true;
   }
-  const mirrorMargins = root ? findChild(root, "w", "mirrorMargins") : null;
-  if (mirrorMargins && parseBooleanElement(mirrorMargins)) {
+  if (wordprocessingFlag("mirrorMargins")) {
     settings.mirrorMargins = true;
   }
-  const updateFields = root ? findChild(root, "w", "updateFields") : null;
-  if (updateFields && parseBooleanElement(updateFields)) {
+  if (wordprocessingFlag("updateFields")) {
     settings.updateFields = true;
   }
 

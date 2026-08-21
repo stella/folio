@@ -85,6 +85,7 @@ import {
   getNamespaceUri,
   matchesName,
   parseXml,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
@@ -112,14 +113,9 @@ export function findMaxRId(relsXml: string): number {
   return maxId;
 }
 
-const WORDPROCESSINGML_NAMESPACES: ReadonlySet<string> = new Set([
-  "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-  "http://purl.oclc.org/ooxml/wordprocessingml/main",
-]);
-
 const isWordprocessingElement = (element: XmlElement, localName: string): boolean =>
   getLocalName(element.name) === localName &&
-  WORDPROCESSINGML_NAMESPACES.has(getNamespaceUri(element) ?? "");
+  WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "");
 
 const countDocumentSections = (xml: string): number => {
   assertXmlResourceLimits(xml);
@@ -398,9 +394,11 @@ function relativeTargetForPart(partPath: string, absoluteTarget: string): string
  * Every package part whose block content may mint relationships (images,
  * external hyperlinks), paired with the rels part those relationships belong
  * to. Header/footer parts own `word/_rels/<part>.rels`; footnotes and endnotes
- * own `word/_rels/footnotes.xml.rels` / `endnotes.xml.rels`.
+ * own `word/_rels/<notes part>.rels`, derived from the ZIP entry the note
+ * serializer resolves (case-insensitively) so a producer's casing is reused
+ * instead of minting a second, lowercase rels part.
  */
-function collectDocxParts(doc: Document): DocxPart[] {
+function collectDocxParts(doc: Document, zip: JSZip): DocxPart[] {
   const parts: DocxPart[] = [
     {
       relsPath: "word/_rels/document.xml.rels",
@@ -427,14 +425,21 @@ function collectDocxParts(doc: Document): DocxPart[] {
   addHeaderFooterParts(doc.package.headers, RELATIONSHIP_TYPES.header);
   addHeaderFooterParts(doc.package.footers, RELATIONSHIP_TYPES.footer);
 
-  const addNoteParts = (notes: readonly (Footnote | Endnote)[] | undefined, relsPath: string) => {
+  const addNoteParts = (
+    notes: readonly (Footnote | Endnote)[] | undefined,
+    conventionalLowerPath: "word/footnotes.xml" | "word/endnotes.xml",
+  ) => {
     if (!notes || notes.length === 0) {
       return;
     }
-    parts.push({ relsPath, blocks: notes.flatMap((note) => note.content) });
+    const partPath = findNotePartEntry(zip, conventionalLowerPath)?.name ?? conventionalLowerPath;
+    parts.push({
+      relsPath: notePartRelsPath(partPath),
+      blocks: notes.flatMap((note) => note.content),
+    });
   };
-  addNoteParts(doc.package.footnotes, "word/_rels/footnotes.xml.rels");
-  addNoteParts(doc.package.endnotes, "word/_rels/endnotes.xml.rels");
+  addNoteParts(doc.package.footnotes, "word/footnotes.xml");
+  addNoteParts(doc.package.endnotes, "word/endnotes.xml");
 
   return parts;
 }
@@ -828,7 +833,7 @@ const finishRepack = async ({
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
   await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
 
-  const parts = collectDocxParts(document);
+  const parts = collectDocxParts(document, outputZip);
   await processNewImages(parts, outputZip, compressionLevel);
   await processNewHyperlinks(parts, outputZip, compressionLevel);
 
@@ -959,7 +964,7 @@ export async function repackDocxFromRaw(
   // into a newly created header/footer's own rels.
   await materializeNewHeaderFooterParts(exportDocument, newZip, compressionLevel);
 
-  const parts = collectDocxParts(exportDocument);
+  const parts = collectDocxParts(exportDocument, newZip);
   await processNewImages(parts, newZip, compressionLevel);
   await processNewHyperlinks(parts, newZip, compressionLevel);
 
@@ -2051,6 +2056,12 @@ function collectChangedNoteParaIds(baselineXml: string, currentXml: string): Set
     }
   }
   return changed;
+}
+
+/** `word/Footnotes.xml` -> `word/_rels/Footnotes.xml.rels` (casing preserved). */
+export function notePartRelsPath(partPath: string): string {
+  const lastSlash = partPath.lastIndexOf("/");
+  return `${partPath.slice(0, lastSlash + 1)}_rels/${partPath.slice(lastSlash + 1)}.rels`;
 }
 
 /**
