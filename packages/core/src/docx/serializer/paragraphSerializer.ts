@@ -684,11 +684,15 @@ function serializeComplexField(field: ComplexField): string {
   const structuralFormatting = field.formatting ?? field.fieldResult[0]?.formatting;
   const rPrXml = structuralFormatting ? serializeTextFormatting(structuralFormatting) : "";
 
-  // Begin field character (never set dirty — dirty causes apps to recalculate
-  // and potentially discard run formatting)
+  // Begin field character. `dirty` is emitted only when the model asks for it:
+  // it makes consumers recompute the field on open (and may discard result
+  // run formatting), which is what a generated TOC wants and nothing else.
   const beginAttrs: string[] = ['w:fldCharType="begin"'];
   if (field.fldLock) {
     beginAttrs.push('w:fldLock="true"');
+  }
+  if (field.dirty) {
+    beginAttrs.push('w:dirty="true"');
   }
   parts.push(`<w:r>${rPrXml}<w:fldChar ${beginAttrs.join(" ")}/></w:r>`);
 

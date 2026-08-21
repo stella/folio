@@ -1311,6 +1311,8 @@ function parseParagraphContents(
 
         // Look for field characters
         let hasFieldBegin = false;
+        let beginFldLock = false;
+        let beginDirty = false;
         let hasFieldSeparate = false;
         let hasFieldEnd = false;
         let endOriginalValue: string | undefined;
@@ -1320,12 +1322,8 @@ function parseParagraphContents(
           if (content.type === "fieldChar") {
             if (content.charType === "begin") {
               hasFieldBegin = true;
-              if (content.fldLock) {
-                complexFieldLock = true;
-              }
-              if (content.dirty) {
-                complexFieldDirty = true;
-              }
+              beginFldLock = content.fldLock === true;
+              beginDirty = content.dirty === true;
             } else if (content.charType === "separate") {
               hasFieldSeparate = true;
             } else {
@@ -1357,8 +1355,9 @@ function parseParagraphContents(
           complexFieldInstr = "";
           complexFieldCodeRuns = [];
           complexFieldResultRuns = [];
-          complexFieldLock = false;
-          complexFieldDirty = false;
+          // `w:fldLock` / `w:dirty` live on the begin fldChar of this field.
+          complexFieldLock = beginFldLock;
+          complexFieldDirty = beginDirty;
           // The structural run carrying `begin` often holds the field's run
           // formatting (e.g. a footer PAGE field collapsed into one run).
           complexFieldFormatting = run.formatting;

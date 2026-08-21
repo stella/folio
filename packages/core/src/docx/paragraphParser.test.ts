@@ -774,3 +774,28 @@ describe("parseParagraph native frame geometry", () => {
     });
   });
 });
+
+describe("complex field begin flags", () => {
+  test("keeps w:dirty and w:fldLock from the begin fldChar and re-serialises them", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:r><w:fldChar w:fldCharType="begin" w:dirty="true" w:fldLock="true"/></w:r>
+        <w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" </w:instrText></w:r>
+        <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+        <w:r><w:t>placeholder</w:t></w:r>
+        <w:r><w:fldChar w:fldCharType="end"/></w:r>
+      </w:p>
+    `);
+
+    const field = paragraph.content[0];
+    expect(field?.type).toBe("complexField");
+    if (field?.type !== "complexField") {
+      return;
+    }
+    expect(field.dirty).toBe(true);
+    expect(field.fldLock).toBe(true);
+
+    const xml = serializeParagraph(paragraph);
+    expect(xml).toContain('w:fldCharType="begin" w:fldLock="true" w:dirty="true"');
+  });
+});
