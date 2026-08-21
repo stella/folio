@@ -204,6 +204,7 @@ export {
   type BilingualParagraphRef,
   type BilingualRow,
   type BilingualRowKind,
+  type BilingualTableParagraphRef,
   type CreateBilingualDocumentOptions,
   type CreateBilingualDocumentResult,
 } from "./docx/server/createBilingualDocument";

@@ -66,11 +66,17 @@ export type BilingualRow = ({
 } & BilingualParagraphRef) | {
     kind: "table";
     rowId: string;
-    paragraphs: BilingualParagraphRef[];
+    paragraphs: BilingualTableParagraphRef[];
 };
 
 // @public (undocumented)
 export type BilingualRowKind = "paragraph" | "heading" | "listItem";
+
+// @public (undocumented)
+export type BilingualTableParagraphRef = {
+    paraId: string | undefined;
+    sourceText: string;
+};
 
 // @public
 export const bookmark: (input: BookmarkOptions) => ParagraphContent[];

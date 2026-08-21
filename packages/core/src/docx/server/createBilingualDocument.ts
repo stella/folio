@@ -10,8 +10,9 @@
  *
  * Section breaks cannot live inside a table cell, so the body is split at
  * paragraphs carrying `sectionProperties`: each section becomes its own table
- * and the break paragraph stays between the tables. Nested source tables become
- * one row holding the table in both cells.
+ * and the break paragraph stays between the tables. A source table (parties,
+ * signature block) is kept once, in a row spanning both columns: it is signed
+ * and read once, and its labels are translated inline rather than duplicated.
  */
 
 import { getParagraphText } from "../paragraphParser";
@@ -54,9 +55,17 @@ export type BilingualRow =
   | {
       kind: "table";
       rowId: string;
-      /** Every paragraph inside the copied table, in document order. */
-      paragraphs: BilingualParagraphRef[];
+      /**
+       * Every paragraph inside the table, in document order. The table is not
+       * copied, so these are the paragraphs to translate in place.
+       */
+      paragraphs: BilingualTableParagraphRef[];
     };
+
+export type BilingualTableParagraphRef = {
+  paraId: string | undefined;
+  sourceText: string;
+};
 
 export type BilingualBorders = "none" | "grid";
 
@@ -170,19 +179,16 @@ export function createBilingualDocument(
       sectionRows.push(buildRow(block, copy));
       continue;
     }
-    const paragraphs: BilingualParagraphRef[] = [];
-    const copy = cloneTableForTarget(block, (paragraph) => {
-      const result = copyParagraph(paragraph);
-      paragraphs.push(result.ref);
-      return result.copy;
-    });
-    const firstParagraph = paragraphs.at(0);
+    const paragraphs = collectTableParagraphs(block).map((paragraph) => ({
+      paraId: paragraph.paraId,
+      sourceText: getParagraphText(paragraph),
+    }));
     rows.push({
       kind: "table",
-      rowId: firstParagraph ? firstParagraph.targetParaId : paraIds.mint(undefined),
+      rowId: paragraphs.at(0)?.paraId ?? paraIds.mint(undefined),
       paragraphs,
     });
-    sectionRows.push(buildRow(block, copy));
+    sectionRows.push(buildSpanningRow(block));
   }
   flushSection();
 
@@ -531,37 +537,54 @@ const remapListRendering = (rendering: ListRendering, cloner: NumberingCloner): 
   };
 };
 
-const cloneTableForTarget = (
-  table: Table,
-  copyParagraph: (paragraph: Paragraph) => Paragraph,
-): Table => ({
-  ...table,
-  rows: table.rows.map((row) => ({
-    ...row,
-    cells: row.cells.map((cell) => ({
-      ...cell,
-      content: cell.content.map((item) =>
-        item.type === "paragraph" ? copyParagraph(item) : cloneTableForTarget(item, copyParagraph),
-      ),
-    })),
-  })),
-});
+const collectTableParagraphs = (table: Table): Paragraph[] => {
+  const out: Paragraph[] = [];
+  for (const row of table.rows) {
+    for (const cell of row.cells) {
+      for (const item of cell.content) {
+        if (item.type === "paragraph") {
+          out.push(item);
+        } else {
+          out.push(...collectTableParagraphs(item));
+        }
+      }
+    }
+  }
+  return out;
+};
 
 // ----------------------------------------------------------------------------
 // Output table
 // ----------------------------------------------------------------------------
 
-const buildRow = (left: BodyBlock, right: BodyBlock): Table["rows"][number] => ({
+const buildRow = (left: Paragraph, right: Paragraph): Table["rows"][number] => ({
   type: "tableRow",
   formatting: { cantSplit: true },
   cells: [buildCell(left), buildCell(right)],
 });
 
-const buildCell = (block: BodyBlock): TableCell => ({
+const buildCell = (paragraph: Paragraph): TableCell => ({
   type: "tableCell",
   formatting: { width: { value: HALF_WIDTH_PCT, type: "pct" }, verticalAlign: "top" },
-  // A cell must end with a paragraph; a bare nested table is invalid OOXML.
-  content: block.type === "table" ? [block, { type: "paragraph", content: [] }] : [block],
+  content: [paragraph],
+});
+
+/** A source table kept once, across both columns. */
+const buildSpanningRow = (table: Table): Table["rows"][number] => ({
+  type: "tableRow",
+  formatting: { cantSplit: true },
+  cells: [
+    {
+      type: "tableCell",
+      formatting: {
+        width: { value: FULL_WIDTH_PCT, type: "pct" },
+        gridSpan: 2,
+        verticalAlign: "top",
+      },
+      // A cell must end with a paragraph; a bare nested table is invalid OOXML.
+      content: [table, { type: "paragraph", content: [] }],
+    },
+  ],
 });
 
 const buildTable = (rows: Table["rows"], borders: BilingualBorders, textWidth: number): Table => ({

@@ -115,8 +115,12 @@ const columnParagraphs = (doc: Document): ColumnParagraphs => {
   for (const table of bodyTables(doc)) {
     for (const row of table.rows) {
       const [leftCell, rightCell] = row.cells;
-      if (!leftCell || !rightCell) {
-        throw new Error("bilingual row without two cells");
+      if (!leftCell) {
+        throw new Error("bilingual row without cells");
+      }
+      if (!rightCell) {
+        // A spanning row carries a source table once; not a column pair.
+        continue;
       }
       left.push(...cellParagraphs(leftCell));
       right.push(...cellParagraphs(rightCell));
@@ -164,16 +168,40 @@ describe("createBilingualDocument", () => {
     const source = await buildSource();
     const { document } = createBilingualDocument(source, { targetStyleSuffix: SUFFIX });
 
-    const sourceParagraphs = source.package.document.content.flatMap((block): Paragraph[] => {
-      if (block.type === "table") {
-        return block.rows.flatMap((row) => row.cells.flatMap(cellParagraphs));
-      }
-      if (block.type === "paragraph" && !block.sectionProperties && block.content.length > 0) {
-        return [block];
-      }
-      return [];
-    });
+    const sourceParagraphs = source.package.document.content.flatMap((block): Paragraph[] =>
+      block.type === "paragraph" && !block.sectionProperties && block.content.length > 0
+        ? [block]
+        : [],
+    );
     expect(columnParagraphs(document).left).toEqual(sourceParagraphs);
+  });
+
+  test("keeps a source table once, in a row spanning both columns", async () => {
+    const source = await buildSource();
+    const { document, rows } = createBilingualDocument(source, { targetStyleSuffix: SUFFIX });
+
+    const allRows = bodyTables(document).flatMap((table) => table.rows);
+    const spanningRows = allRows.filter((row) => row.cells.length === 1);
+    expect(spanningRows).toHaveLength(1);
+    expect(allRows.every((row) => row.cells.length === 1 || row.cells.length === 2)).toBe(true);
+
+    const spanningCell = spanningRows[0]!.cells[0]!;
+    expect(spanningCell.formatting?.gridSpan).toBe(2);
+    const nested = spanningCell.content.filter((item): item is Table => item.type === "table");
+    expect(nested).toHaveLength(1);
+    const originalTable = source.package.document.content.find(
+      (block): block is Table => block.type === "table",
+    );
+    expect(nested[0]).toEqual(originalTable!);
+
+    // The manifest points at the table's own paragraphs (translated in place).
+    const tableRow = rows.find((row) => row.kind === "table");
+    const tableParaIds = originalTable!.rows.flatMap((row) =>
+      row.cells.flatMap((c) => cellParagraphs(c).map((p) => p.paraId)),
+    );
+    expect(tableRow?.kind === "table" && tableRow.paragraphs.map((p) => p.paraId)).toEqual(
+      tableParaIds,
+    );
   });
 
   test("right column never shares a numbering instance or abstract with the left", async () => {
@@ -319,11 +347,10 @@ describe("createBilingualDocx", () => {
     // paragraph in the reparsed right column.
     const rightIds = new Set(right.map((p) => p.paraId));
     for (const row of rows) {
-      const ids =
-        row.kind === "table" ? row.paragraphs.map((p) => p.targetParaId) : [row.targetParaId];
-      for (const id of ids) {
-        expect(rightIds.has(id)).toBe(true);
+      if (row.kind === "table") {
+        continue;
       }
+      expect(rightIds.has(row.targetParaId)).toBe(true);
     }
   });
 
