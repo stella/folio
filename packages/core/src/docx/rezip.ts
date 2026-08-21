@@ -32,7 +32,16 @@
 import { panic } from "better-result";
 import JSZip from "jszip";
 
-import type { BlockContent, Comment, HeaderFooter, Image, Hyperlink, Run } from "../types/content";
+import type {
+  BlockContent,
+  Comment,
+  Endnote,
+  Footnote,
+  HeaderFooter,
+  Image,
+  Hyperlink,
+  Run,
+} from "../types/content";
 import type { Document, Watermark } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
@@ -385,20 +394,23 @@ function relativeTargetForPart(partPath: string, absoluteTarget: string): string
   return `${"../".repeat(fromDir.length - shared)}${to.slice(shared).join("/")}`;
 }
 
-function collectImageParts(doc: Document): DocxPart[] {
+/**
+ * Every package part whose block content may mint relationships (images,
+ * external hyperlinks), paired with the rels part those relationships belong
+ * to. Header/footer parts own `word/_rels/<part>.rels`; footnotes and endnotes
+ * own `word/_rels/footnotes.xml.rels` / `endnotes.xml.rels`.
+ */
+function collectDocxParts(doc: Document): DocxPart[] {
   const parts: DocxPart[] = [
     {
       relsPath: "word/_rels/document.xml.rels",
       blocks: doc.package.document.content,
     },
   ];
-  const rels = doc.package.relationships;
-  if (!rels) {
-    return parts;
-  }
 
+  const rels = doc.package.relationships;
   const addHeaderFooterParts = (map: Map<string, HeaderFooter> | undefined, type: string) => {
-    if (!map) {
+    if (!map || !rels) {
       return;
     }
     for (const [rId, headerFooter] of map.entries()) {
@@ -412,9 +424,17 @@ function collectImageParts(doc: Document): DocxPart[] {
       });
     }
   };
-
   addHeaderFooterParts(doc.package.headers, RELATIONSHIP_TYPES.header);
   addHeaderFooterParts(doc.package.footers, RELATIONSHIP_TYPES.footer);
+
+  const addNoteParts = (notes: readonly (Footnote | Endnote)[] | undefined, relsPath: string) => {
+    if (!notes || notes.length === 0) {
+      return;
+    }
+    parts.push({ relsPath, blocks: notes.flatMap((note) => note.content) });
+  };
+  addNoteParts(doc.package.footnotes, "word/_rels/footnotes.xml.rels");
+  addNoteParts(doc.package.endnotes, "word/_rels/endnotes.xml.rels");
 
   return parts;
 }
@@ -649,7 +669,7 @@ async function processNewImages(
  * Collect all hyperlinks that have an href but no rId from block content.
  * These are newly created hyperlinks that need relationship entries.
  */
-function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[] {
+export function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[] {
   const hyperlinks: Hyperlink[] = [];
 
   for (const block of blocks) {
@@ -665,6 +685,8 @@ function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[] {
           hyperlinks.push(...collectHyperlinksWithoutRId(cell.content));
         }
       }
+    } else {
+      hyperlinks.push(...collectHyperlinksWithoutRId(block.content));
     }
   }
 
@@ -672,49 +694,48 @@ function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[] {
 }
 
 /**
- * Process newly created hyperlinks: assign rIds and add relationship entries.
- * Mutates the hyperlinks' rId fields in-place.
+ * Process newly created hyperlinks in every part: assign rIds and add
+ * relationship entries to the owning part's rels. Mutates the hyperlinks' rId
+ * fields in-place.
  */
 async function processNewHyperlinks(
-  newHyperlinks: Hyperlink[],
+  parts: DocxPart[],
   zip: JSZip,
   compressionLevel: number,
 ): Promise<void> {
-  if (newHyperlinks.length === 0) {
-    return;
-  }
-
-  const relsPath = "word/_rels/document.xml.rels";
-  const relsFile = zip.file(relsPath);
-  if (!relsFile) {
-    return;
-  }
-  let relsXml = await relsFile.async("text");
-
-  let maxId = findMaxRId(relsXml);
-  const relEntries: string[] = [];
-
-  for (const hyperlink of newHyperlinks) {
-    maxId++;
-    const newRId = `rId${maxId}`;
-
-    if (!hyperlink.href) {
+  for (const { relsPath, blocks } of parts) {
+    const newHyperlinks = collectHyperlinksWithoutRId(blocks);
+    if (newHyperlinks.length === 0) {
       continue;
     }
-    relEntries.push(
-      `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.hyperlink}" Target="${escapeXml(hyperlink.href)}" TargetMode="External"/>`,
+
+    // oxlint-disable-next-line no-await-in-loop -- rels parts are read and rewritten one at a time so each part's rId counter stays consistent
+    const relsXml = await readRelsOrStub(zip, relsPath);
+    let maxId = findMaxRId(relsXml);
+    const relEntries: string[] = [];
+
+    for (const hyperlink of newHyperlinks) {
+      if (!hyperlink.href) {
+        continue;
+      }
+      maxId++;
+      const newRId = `rId${maxId}`;
+      relEntries.push(
+        `<Relationship Id="${newRId}" Type="${RELATIONSHIP_TYPES.hyperlink}" Target="${escapeXml(hyperlink.href)}" TargetMode="External"/>`,
+      );
+
+      // Rewrite the hyperlink's rId so the serializer outputs the correct reference
+      hyperlink.rId = newRId;
+    }
+
+    zip.file(
+      relsPath,
+      relsXml.replace("</Relationships>", `${relEntries.join("")}</Relationships>`),
+      {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      },
     );
-
-    // Rewrite the hyperlink's rId so the serializer outputs the correct reference
-    hyperlink.rId = newRId;
-  }
-
-  if (relEntries.length > 0) {
-    relsXml = relsXml.replace("</Relationships>", `${relEntries.join("")}</Relationships>`);
-    zip.file(relsPath, relsXml, {
-      compression: "DEFLATE",
-      compressionOptions: { level: compressionLevel },
-    });
   }
 }
 
@@ -807,10 +828,9 @@ const finishRepack = async ({
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
   await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
 
-  await processNewImages(collectImageParts(document), outputZip, compressionLevel);
-
-  const newHyperlinks = collectHyperlinksWithoutRId(document.package.document.content);
-  await processNewHyperlinks(newHyperlinks, outputZip, compressionLevel);
+  const parts = collectDocxParts(document);
+  await processNewImages(parts, outputZip, compressionLevel);
+  await processNewHyperlinks(parts, outputZip, compressionLevel);
 
   assertValidFolioDocumentModel(document, "Cannot repack invalid DOCX document model");
 
@@ -935,14 +955,13 @@ export async function repackDocxFromRaw(
   }
 
   // Promote in-memory header/footer parts to real parts/relationships first, so
-  // collectImageParts sees them and processNewImages can write image relations
+  // collectDocxParts sees them and processNewImages can write image relations
   // into a newly created header/footer's own rels.
   await materializeNewHeaderFooterParts(exportDocument, newZip, compressionLevel);
 
-  await processNewImages(collectImageParts(exportDocument), newZip, compressionLevel);
-
-  const newHyperlinks = collectHyperlinksWithoutRId(exportDocument.package.document.content);
-  await processNewHyperlinks(newHyperlinks, newZip, compressionLevel);
+  const parts = collectDocxParts(exportDocument);
+  await processNewImages(parts, newZip, compressionLevel);
+  await processNewHyperlinks(parts, newZip, compressionLevel);
 
   assertValidFolioDocumentModel(exportDocument, "Cannot repack invalid DOCX document model");
 
@@ -1406,24 +1425,31 @@ async function materializeNewHeaderFooterParts(
   zip: JSZip,
   compressionLevel: number,
 ): Promise<void> {
-  const rels = doc.package.relationships;
-  if (!rels) {
-    return;
-  }
   // Cheap guard so the common repack (no in-memory parts) skips the zip scans
   // and rels walk below.
   if (!hasUnmaterializedHeaderFooter(doc)) {
     return;
   }
+  // A from-scratch document has no relationship map yet; the minted
+  // relationships below become its first entries.
+  doc.package.relationships ??= new Map();
+  const rels = doc.package.relationships;
 
   const relEntries: string[] = [];
   const overrides: string[] = [];
   let maxHeaderNum = findMaxHeaderFooterNum(zip, "header");
   let maxFooterNum = findMaxHeaderFooterNum(zip, "footer");
+  // The zip's document rels may hold relationships the model map does not
+  // (the fresh-document seed writes styles/numbering/settings rels directly),
+  // so they count as taken ids too.
+  const relsPath = "word/_rels/document.xml.rels";
+  const relsXml = await readRelsOrStub(zip, relsPath);
+  const zipRels = parseRelationships(relsXml);
   // Seed the rId counter above every numeric id already in use — in the
-  // relationship map AND as a header/footer map key — so a freshly minted id
-  // can never collide with another (possibly not-yet-materialized) part.
-  let maxRId = 0;
+  // relationship map, the zip rels, AND as a header/footer map key — so a
+  // freshly minted id can never collide with another (possibly
+  // not-yet-materialized) part.
+  let maxRId = findMaxRId(relsXml);
   const considerNumericRId = (id: string): void => {
     const match = /^rId(?<num>\d+)$/u.exec(id);
     if (match) {
@@ -1463,7 +1489,7 @@ async function materializeNewHeaderFooterParts(
       return;
     }
     for (const rId of [...map.keys()]) {
-      const existing = rels.get(rId);
+      const existing = rels.get(rId) ?? zipRels.get(rId);
       if (existing && existing.type === relType && existing.target) {
         continue; // Already a materialized part of this kind.
       }
@@ -1518,8 +1544,6 @@ async function materializeNewHeaderFooterParts(
   }
 
   const compressionOptions = { level: compressionLevel };
-  const relsPath = "word/_rels/document.xml.rels";
-  const relsXml = await readRelsOrStub(zip, relsPath);
   zip.file(
     relsPath,
     relsXml.replace("</Relationships>", `${relEntries.join("")}</Relationships>`),

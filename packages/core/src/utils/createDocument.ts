@@ -368,6 +368,7 @@ export function createEmptyDocument(options: CreateEmptyDocumentOptions = {}): D
   const docxPackage: DocxPackage = {
     conformanceClass: DOCX_CONFORMANCE_CLASSES.TRANSITIONAL,
     document: documentBody,
+    relationships: new Map(),
     styles: structuredClone(styleSet?.styles ?? defaultStyleDefinitions),
   };
   if (styleSet?.numbering) {

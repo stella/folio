@@ -385,10 +385,22 @@ export async function attemptSelectiveSave(
   if (originalBuffer.byteLength > maxBytes) {
     return null;
   }
-  // Check for new images/hyperlinks that need relationship management
+  // Check for new images/hyperlinks that need relationship management; a
+  // header, footer, or note part mints them into its own rels, which only the
+  // full repack path writes.
   const content = doc.package.document.content;
   if (hasNewImagesOrHyperlinks(content)) {
     return null;
+  }
+  for (const part of [
+    ...(doc.package.headers?.values() ?? []),
+    ...(doc.package.footers?.values() ?? []),
+    ...(doc.package.footnotes ?? []),
+    ...(doc.package.endnotes ?? []),
+  ]) {
+    if (hasNewImagesOrHyperlinks(part.content)) {
+      return null;
+    }
   }
   // A header/footer created in memory needs a new part + relationship +
   // [Content_Types] Override, which only the full repack path writes.

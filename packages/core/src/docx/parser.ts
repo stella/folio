@@ -724,9 +724,29 @@ function parseNotesContent(
   rels: RelationshipMap,
   media: Map<string, MediaFile>,
 ): { footnotes: Footnote[]; endnotes: Endnote[] } {
-  const footnoteMap = parseFootnotes(raw.footnotesXml, styles, theme, numbering, rels, media);
+  // Note parts own their relationships (word/_rels/footnotes.xml.rels); fall
+  // back to the document rels only when the part has none.
+  const relsForNotePart = (partPath: string): RelationshipMap => {
+    const xml = getMapCaseInsensitive(raw.allXml, getRelationshipsPathForPart(partPath));
+    return xml ? parseRelationships(xml) : rels;
+  };
+  const footnoteMap = parseFootnotes(
+    raw.footnotesXml,
+    styles,
+    theme,
+    numbering,
+    relsForNotePart("word/footnotes.xml"),
+    media,
+  );
 
-  const endnoteMap = parseEndnotes(raw.endnotesXml, styles, theme, numbering, rels, media);
+  const endnoteMap = parseEndnotes(
+    raw.endnotesXml,
+    styles,
+    theme,
+    numbering,
+    relsForNotePart("word/endnotes.xml"),
+    media,
+  );
 
   return {
     footnotes: footnoteMap.getNormalFootnotes(),
