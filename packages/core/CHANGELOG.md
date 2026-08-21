@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.22.0
+
+### Minor Changes
+
+- [#578](https://github.com/stella/folio/pull/578) [`fe0900d`](https://github.com/stella/folio/commit/fe0900df163f0317aed6218ba0b0e69a275eae44) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add `createBilingualDocument` / `createBilingualDocx` to the server entry: lay a document body out as a two-column table (source | copy) with numbering and numbered paragraph styles cloned per language so both columns count independently. Repacking now appends numbering definitions and styles the model adds to the original parts.
+
 ## 0.21.0
 
 ### Minor Changes
