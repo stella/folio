@@ -198,6 +198,19 @@ export {
   type ExtractedDocxText,
 } from "./docx/server/extractDocxText";
 export { docxToMarkdown } from "./docx/server/docxToMarkdown";
+export {
+  createBilingualDocument,
+  type BilingualBorders,
+  type BilingualParagraphRef,
+  type BilingualRow,
+  type BilingualRowKind,
+  type CreateBilingualDocumentOptions,
+  type CreateBilingualDocumentResult,
+} from "./docx/server/createBilingualDocument";
+export {
+  createBilingualDocx,
+  type CreateBilingualDocxResult,
+} from "./docx/server/createBilingualDocx";
 export { DocxArchiveError, type DocxArchiveOptions } from "./docx/server/boundedArchive";
 export {
   applyDocxXmlPatchProposal,

@@ -39,7 +39,7 @@ const serializeLatentStyles = (definitions: StyleDefinitions): string => {
   return `<w:latentStyles${attrs.length > 0 ? ` ${attrs.join(" ")}` : ""}/>`;
 };
 
-const serializeStyle = (style: Style): string => {
+export const serializeStyle = (style: Style): string => {
   const attrs = [`w:type="${style.type}"`, `w:styleId="${escapeXml(style.styleId)}"`];
   if (style.default) {
     attrs.push('w:default="1"');

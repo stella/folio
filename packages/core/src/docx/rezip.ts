@@ -51,9 +51,11 @@ import { isNewDataUrlDrawing } from "./newImage";
 import { parseNumbering } from "./numberingParser";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
+  appendNumberingDefs,
   buildParagraphOffsetIndex,
   buildPatchedNoteXml,
   buildPatchedNumberingXml,
+  collectAddedNumberingDefs,
   collectChangedNumberingDefs,
   collectParaIds,
 } from "./selectiveXmlPatch";
@@ -73,7 +75,7 @@ import {
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { serializeFontTableXml } from "./serializer/fontTableSerializer";
 import { serializeSettingsXml } from "./serializer/settingsSerializer";
-import { serializeStylesXml } from "./serializer/stylesSerializer";
+import { serializeStyle, serializeStylesXml } from "./serializer/stylesSerializer";
 import { serializeThemeXml } from "./serializer/themeSerializer";
 import { escapeXml } from "./serializer/xmlUtils";
 import { isPreservableDocxEntry } from "./unzip";
@@ -857,6 +859,7 @@ const finishRepack = async ({
   await serializeNotesToZip(document, originalZip, outputZip, compressionLevel);
 
   await serializeNumberingIntoZip(document, originalZip, outputZip, compressionLevel);
+  await serializeAddedStylesIntoZip(document, originalZip, outputZip, compressionLevel);
 
   await serializeCommentsToZip(document, outputZip, compressionLevel);
 
@@ -998,6 +1001,12 @@ export async function repackDocxFromRaw(
   // Splice edited numbering definitions back into word/numbering.xml (untouched
   // definitions and the parts the model omits stay byte-exact).
   await serializeNumberingIntoZip(exportDocument, rawContent.originalZip, newZip, compressionLevel);
+  await serializeAddedStylesIntoZip(
+    exportDocument,
+    rawContent.originalZip,
+    newZip,
+    compressionLevel,
+  );
 
   // Serialize comments
   await serializeCommentsToZip(exportDocument, newZip, compressionLevel);
@@ -1982,13 +1991,71 @@ async function serializeNumberingIntoZip(
   }
   const currentXml = serializeNumberingXml(numbering);
   const changed = collectChangedNumberingDefs(baseline.serializedXml, currentXml);
-  if (changed.abstractNums.size === 0 && changed.nums.size === 0) {
+  const added = collectAddedNumberingDefs(baseline.serializedXml, currentXml);
+  const hasChanged = changed.abstractNums.size > 0 || changed.nums.size > 0;
+  const hasAdded = added.abstractNums.size > 0 || added.nums.size > 0;
+  if (!hasChanged && !hasAdded) {
     return;
   }
-  const patched = buildPatchedNumberingXml(baseline.originalXml, currentXml, changed);
+  const spliced = buildPatchedNumberingXml(baseline.originalXml, currentXml, changed);
+  if (spliced === null) {
+    return;
+  }
+  // Definitions the model minted (no counterpart in the original part) are
+  // appended after the in-place splice; splicing by id cannot place them.
+  const patched = appendNumberingDefs(spliced, currentXml, added);
   if (patched === null) {
     return;
   }
+  newZip.file(file.name, patched, {
+    compression: "DEFLATE",
+    compressionOptions: { level: compressionLevel },
+  });
+}
+
+const STYLES_PART_PATH = "word/styles.xml";
+const STYLES_CLOSE_ROOT = "</w:styles>";
+const STYLE_ID_PATTERN = /<w:style\b[^>]*?\bw:styleId="(?<id>[^"]+)"/gu;
+
+/**
+ * Append styles the model defines but the original `word/styles.xml` lacks.
+ * Existing styles stay byte-exact (edits to them are not written here, the
+ * part is otherwise preserved verbatim); only minted definitions, such as the
+ * per-language clones a bilingual transform adds, are emitted before the root
+ * close so paragraphs referencing them resolve on reopen.
+ */
+async function serializeAddedStylesIntoZip(
+  doc: Document,
+  originalZip: JSZip,
+  newZip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
+  const styles = doc.package.styles;
+  if (!styles || styles.styles.length === 0) {
+    return;
+  }
+  const file = findNotePartEntry(originalZip, STYLES_PART_PATH);
+  if (!file) {
+    return;
+  }
+  const originalXml = await file.async("text");
+  const rootClose = originalXml.lastIndexOf(STYLES_CLOSE_ROOT);
+  if (rootClose < 0) {
+    return;
+  }
+  const existing = new Set<string>();
+  for (const match of originalXml.matchAll(STYLE_ID_PATTERN)) {
+    // SAFETY: named group `id` always exists when this pattern matches.
+    existing.add(match.groups!["id"]!);
+  }
+  const added = styles.styles.filter((style) => !existing.has(style.styleId));
+  if (added.length === 0) {
+    return;
+  }
+  const patched =
+    originalXml.slice(0, rootClose) +
+    added.map(serializeStyle).join("") +
+    originalXml.slice(rootClose);
   newZip.file(file.name, patched, {
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },

@@ -902,6 +902,115 @@ export function buildPatchedNumberingXml(
   return result;
 }
 
+/**
+ * Numbering definitions present in `currentXml` (the model's serialization)
+ * but absent from `baselineXml` (the re-parsed original): definitions a
+ * transform minted. `collectChangedNumberingDefs` deliberately skips these
+ * because they cannot be spliced by id; they are appended instead.
+ */
+export function collectAddedNumberingDefs(
+  baselineXml: string,
+  currentXml: string,
+): ChangedNumberingDefs {
+  const addedForKind = (kind: NumberingElementKind): Set<string> => {
+    const added = new Set<string>();
+    const baselineIndex = buildNumberingElementOffsetIndex(baselineXml, kind);
+    const currentIndex = buildNumberingElementOffsetIndex(currentXml, kind);
+    for (const [id, range] of currentIndex) {
+      if (range && !baselineIndex.has(id)) {
+        added.add(id);
+      }
+    }
+    return added;
+  };
+  return { abstractNums: addedForKind("abstractNum"), nums: addedForKind("num") };
+}
+
+const NUMBERING_CLOSE_ROOT = "</w:numbering>";
+
+/**
+ * Append added `w:abstractNum` / `w:num` definitions from `currentXml` to
+ * `xml`. ECMA-376 §17.9 orders every `w:abstractNum` before the first `w:num`,
+ * so abstract definitions go right before the first `<w:num ` (or the root
+ * close when the part has none) and instances before the root close. A
+ * synthetic numFmt in an added abstract is restored from the original
+ * definition it was cloned from (the one with an identical body), so a custom
+ * format survives cloning. Returns null when an added id cannot be extracted
+ * or the part has no `</w:numbering>`.
+ */
+export function appendNumberingDefs(
+  xml: string,
+  currentXml: string,
+  added: ChangedNumberingDefs,
+): string | null {
+  if (added.abstractNums.size === 0 && added.nums.size === 0) {
+    return xml;
+  }
+  const rootClose = xml.lastIndexOf(NUMBERING_CLOSE_ROOT);
+  if (rootClose < 0) {
+    return null;
+  }
+  const abstractXmls: string[] = [];
+  for (const id of added.abstractNums) {
+    const def = extractNumberingElementXml(currentXml, "abstractNum", id);
+    if (def === null) {
+      return null;
+    }
+    abstractXmls.push(restoreClonedLevelNumFmts(xml, currentXml, def, id));
+  }
+  const numXmls: string[] = [];
+  for (const id of added.nums) {
+    const def = extractNumberingElementXml(currentXml, "num", id);
+    if (def === null) {
+      return null;
+    }
+    numXmls.push(def);
+  }
+
+  const firstNum = findFirstElement(xml, NUMBERING_OPEN_LITERAL.num, NUMBERING_CLOSE_TAG.num);
+  const abstractInsertAt = firstNum ? firstNum.start : rootClose;
+  const head = xml.slice(0, abstractInsertAt);
+  const middle = xml.slice(abstractInsertAt, rootClose);
+  const tail = xml.slice(rootClose);
+  return head + abstractXmls.join("") + middle + numXmls.join("") + tail;
+}
+
+/**
+ * For an added abstract definition that still carries a synthetic numFmt, find
+ * the original abstract it was cloned from (same serialized body apart from the
+ * id) and restore the level formats from it.
+ */
+function restoreClonedLevelNumFmts(
+  originalXml: string,
+  currentXml: string,
+  addedDefXml: string,
+  addedId: string,
+): string {
+  if (!SYNTHETIC_NUM_FMT_PATTERN.test(addedDefXml)) {
+    return addedDefXml;
+  }
+  const addedBody = stripAbstractNumId(addedDefXml, addedId);
+  const originalIds = collectElementIds(
+    originalXml,
+    NUMBERING_OPEN_LITERAL.abstractNum,
+    NUMBERING_ID_ATTR.abstractNum,
+  );
+  for (const [id] of originalIds) {
+    const candidate = extractNumberingElementXml(currentXml, "abstractNum", id);
+    if (candidate === null || stripAbstractNumId(candidate, id) !== addedBody) {
+      continue;
+    }
+    const originalDef = extractNumberingElementXml(originalXml, "abstractNum", id);
+    if (originalDef !== null) {
+      return restoreLevelNumFmts(originalDef, addedDefXml);
+    }
+  }
+  return restoreLevelNumFmts("", addedDefXml);
+}
+
+const stripAbstractNumId = (defXml: string, id: string): string =>
+  defXml.replace(`${NUMBERING_ID_ATTR.abstractNum}="${id}"`, "");
+
 function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
