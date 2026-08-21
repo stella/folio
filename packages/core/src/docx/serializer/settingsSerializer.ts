@@ -8,6 +8,9 @@ export const serializeSettingsXml = (settings: DocumentSettings): string => {
   if (settings.evenAndOddHeaders) {
     parts.push("<w:evenAndOddHeaders/>");
   }
+  if (settings.updateFields) {
+    parts.push('<w:updateFields w:val="true"/>');
+  }
   if (settings.themeFontLang) {
     const attrs: string[] = [];
     if (settings.themeFontLang.eastAsia) {

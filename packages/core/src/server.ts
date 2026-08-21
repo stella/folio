@@ -48,6 +48,20 @@ export {
 export { replyToComment, type CreateCommentReplyInput } from "./docx/replyToComment";
 export { createEmptyDocument, type CreateEmptyDocumentOptions } from "./utils/createDocument";
 export {
+  bookmark,
+  createTableOfContentsField,
+  endnote,
+  heading,
+  HEADING_LEVELS,
+  hyperlink,
+  pageBreak,
+  paragraph,
+  run,
+  table,
+  type HeadingLevel,
+  type TableCellSpec,
+} from "./docx/server/build";
+export {
   extractDocumentStyleSet,
   extractDocumentStyleSetFromDocx,
   inspectDocumentStyles,

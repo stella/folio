@@ -66,6 +66,10 @@ export function parseSettings(xml: string | null): FolioDocumentSettings {
   if (mirrorMargins && parseBooleanElement(mirrorMargins)) {
     settings.mirrorMargins = true;
   }
+  const updateFields = root ? findChild(root, "w", "updateFields") : null;
+  if (updateFields && parseBooleanElement(updateFields)) {
+    settings.updateFields = true;
+  }
 
   // `w:themeFontLang` selects the concrete typeface for the empty `<a:ea>` /
   // `<a:cs>` theme slots (see eigenpal/docx-editor#949). Record only the

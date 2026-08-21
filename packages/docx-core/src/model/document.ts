@@ -203,6 +203,12 @@ export type DocumentSettings = {
    */
   evenAndOddHeaders?: boolean;
   /**
+   * `w:updateFields` (§17.15.1.93) — ask the consuming application to
+   * recompute every field when the document opens. Set by generators that
+   * emit a TOC or cross-references without computed results.
+   */
+  updateFields?: boolean;
+  /**
    * `w:themeFontLang` (§17.15.1.88) — language Word uses to fill empty
    * `<a:ea>`/`<a:cs>` theme font slots from the script-specific
    * `<a:font script="…">` entries. Absent for non-CJK/bidi docs.

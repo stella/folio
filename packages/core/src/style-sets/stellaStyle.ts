@@ -139,6 +139,8 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         pPr: { keepNext: true, spaceBefore: 240 },
         rPr: { bold: true },
       },
+      ...createHeadingStyles(),
+      ...createTableOfContentsStyles(),
       ...createClauseStyles(),
       ...createDefinitionStyles(),
       {
@@ -205,6 +207,39 @@ export const createStellaStyleSet = (): DocumentStyleSet => ({
         styleId: "FootnoteReference",
         type: "character",
         name: "Footnote Reference",
+        basedOn: "DefaultParagraphFont",
+        semiHidden: true,
+        unhideWhenUsed: true,
+        uiPriority: 99,
+        rPr: { vertAlign: "superscript" },
+      },
+      {
+        styleId: "EndnoteText",
+        type: "paragraph",
+        name: "Endnote Text",
+        basedOn: "Normal",
+        link: "EndnoteTextChar",
+        semiHidden: true,
+        unhideWhenUsed: true,
+        uiPriority: 99,
+        pPr: { spaceAfter: 0 },
+        rPr: { fontSize: 18, fontSizeCs: 18 },
+      },
+      {
+        styleId: "EndnoteTextChar",
+        type: "character",
+        name: "Endnote Text Char",
+        basedOn: "DefaultParagraphFont",
+        link: "EndnoteText",
+        semiHidden: true,
+        unhideWhenUsed: true,
+        uiPriority: 99,
+        rPr: { fontSize: 18, fontSizeCs: 18 },
+      },
+      {
+        styleId: "EndnoteReference",
+        type: "character",
+        name: "Endnote Reference",
         basedOn: "DefaultParagraphFont",
         semiHidden: true,
         unhideWhenUsed: true,
@@ -282,6 +317,63 @@ export const createStellaStyleDocumentPreset = (): DocumentPreset => ({
     verticalAlign: "top",
   },
 });
+
+/**
+ * Built-in `Heading1`..`Heading6` with outline levels, so a TOC field and
+ * the document navigation pane pick the headings up.
+ */
+const createHeadingStyles = (): DocumentStyleSet["styles"]["styles"] => {
+  const levels = [
+    { styleId: "Heading1", name: "heading 1", fontSize: 28, spaceBefore: 360 },
+    { styleId: "Heading2", name: "heading 2", fontSize: 24, spaceBefore: 240 },
+    { styleId: "Heading3", name: "heading 3", fontSize: 22, spaceBefore: 240 },
+    { styleId: "Heading4", name: "heading 4", fontSize: 20, spaceBefore: 120 },
+    { styleId: "Heading5", name: "heading 5", fontSize: 20, spaceBefore: 120 },
+    { styleId: "Heading6", name: "heading 6", fontSize: 20, spaceBefore: 120 },
+  ] as const;
+  return levels.map(({ styleId, name, fontSize, spaceBefore }, level) => ({
+    styleId,
+    type: "paragraph",
+    name,
+    basedOn: "Normal",
+    next: "BodyText",
+    qFormat: true,
+    uiPriority: 9,
+    pPr: { keepNext: true, keepLines: true, spaceBefore, spaceAfter: 120, outlineLevel: level },
+    rPr: { bold: true, fontSize, fontSizeCs: fontSize },
+  }));
+};
+
+/** `TOCHeading` plus `TOC1`..`TOC3`, the styles a `TOC \o "1-3"` field fills. */
+const createTableOfContentsStyles = (): DocumentStyleSet["styles"]["styles"] => {
+  const levels = [
+    { styleId: "TOC1", name: "toc 1", indent: 0 },
+    { styleId: "TOC2", name: "toc 2", indent: 220 },
+    { styleId: "TOC3", name: "toc 3", indent: 440 },
+  ] as const;
+  return [
+    {
+      styleId: "TOCHeading",
+      type: "paragraph",
+      name: "TOC Heading",
+      basedOn: "Heading1",
+      next: "BodyText",
+      unhideWhenUsed: true,
+      uiPriority: 39,
+      pPr: { outlineLevel: 9 },
+    },
+    ...levels.map(({ styleId, name, indent }) => ({
+      styleId,
+      type: "paragraph" as const,
+      name,
+      basedOn: "Normal",
+      next: "Normal",
+      unhideWhenUsed: true,
+      uiPriority: 39,
+      pPr: { indentLeft: indent, spaceAfter: 100 },
+    })),
+  ];
+};
 
 const createClauseStyles = (): DocumentStyleSet["styles"]["styles"] => {
   const levels = [

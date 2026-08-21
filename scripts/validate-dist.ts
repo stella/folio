@@ -247,6 +247,7 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "deriveBlockId",
       "createEmptyDocument",
       "createDocx",
+      "createTableOfContentsField",
       "FolioDocxReviewer",
       "applyFolioAIEditsToBuffer",
     ],
