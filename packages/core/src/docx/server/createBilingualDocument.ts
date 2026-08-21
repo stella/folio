@@ -664,3 +664,84 @@ const createParaIdMinter = (taken: Set<string>): ParaIdMinter => {
     },
   };
 };
+
+// ----------------------------------------------------------------------------
+// Reading a bilingual document back
+// ----------------------------------------------------------------------------
+
+/**
+ * Re-derive the row manifest from a document produced by
+ * {@link createBilingualDocument}. Detection is structural: a top-level table
+ * whose rows are all either a left | right pair of single-paragraph cells or
+ * one cell spanning both columns. Rows are returned in document order; the
+ * right paragraph's `paraId` is the row handle, as at creation.
+ */
+export function readBilingualDocument(document: Document): BilingualRow[] {
+  const styleById = new Map(
+    (document.package.styles?.styles ?? []).map((style) => [style.styleId, style]),
+  );
+  const rows: BilingualRow[] = [];
+  let ordinal = 0;
+  for (const block of flattenBlocks(document.package.document.content)) {
+    if (block.type !== "table" || !isBilingualTable(block)) {
+      continue;
+    }
+    for (const row of block.rows) {
+      ordinal += 1;
+      const [left, right] = row.cells;
+      if (!left) {
+        continue;
+      }
+      if (!right) {
+        const paragraphs = left.content
+          .filter((item): item is Table => item.type === "table")
+          .flatMap(collectTableParagraphs)
+          .map((paragraph) => ({
+            paraId: paragraph.paraId,
+            sourceText: getParagraphText(paragraph),
+          }));
+        rows.push({
+          kind: "table",
+          rowId: paragraphs.at(0)?.paraId ?? `table-${ordinal}`,
+          paragraphs,
+        });
+        continue;
+      }
+      const source = left.content.at(0);
+      const target = right.content.at(0);
+      if (source?.type !== "paragraph" || target?.type !== "paragraph" || !target.paraId) {
+        continue;
+      }
+      rows.push({
+        kind: classifyParagraph(source, styleById),
+        rowId: target.paraId,
+        sourceParaId: source.paraId,
+        targetParaId: target.paraId,
+        sourceText: getParagraphText(source),
+      });
+    }
+  }
+  return rows;
+}
+
+const isBilingualTable = (table: Table): boolean => {
+  let pairs = 0;
+  for (const row of table.rows) {
+    const cells = row.cells;
+    if (cells.length === 2) {
+      const singleParagraphCells = cells.every(
+        (cell) => cell.content.length === 1 && cell.content[0]?.type === "paragraph",
+      );
+      if (!singleParagraphCells) {
+        return false;
+      }
+      pairs += 1;
+      continue;
+    }
+    if (cells.length === 1 && cells[0]?.formatting?.gridSpan === 2) {
+      continue;
+    }
+    return false;
+  }
+  return pairs > 0;
+};

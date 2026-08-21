@@ -13,7 +13,7 @@ import { createEmptyDocument } from "../../utils/createDocument";
 import { parseDocx } from "../parser";
 import { createDocx } from "../rezip";
 import { createBilingualDocument } from "./createBilingualDocument";
-import { createBilingualDocx } from "./createBilingualDocx";
+import { createBilingualDocx, readBilingualDocx } from "./createBilingualDocx";
 
 const SUFFIX = "en";
 
@@ -352,6 +352,24 @@ describe("createBilingualDocx", () => {
       }
       expect(rightIds.has(row.targetParaId)).toBe(true);
     }
+  });
+
+  test("reads the same row manifest back from the saved document", async () => {
+    const source = await buildSource();
+    const { buffer, rows } = await createBilingualDocx(source.originalBuffer!, {
+      targetStyleSuffix: SUFFIX,
+    });
+
+    const read = await readBilingualDocx(buffer);
+    expect(read).toEqual(rows);
+    // Every left paragraph is addressable: the stamp pass gave it a paraId.
+    for (const row of read) {
+      if (row.kind !== "table") {
+        expect(row.sourceParaId).toBeDefined();
+      }
+    }
+    // A plain document has no bilingual table to read.
+    expect(await readBilingualDocx(source.originalBuffer!)).toEqual([]);
   });
 
   test("leaves a document without numbering free of clones", async () => {

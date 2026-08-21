@@ -1428,6 +1428,12 @@ export type ParseOptions = {
 };
 
 // @public
+export function readBilingualDocument(document: import__stll_docx_core_model.Document): BilingualRow[];
+
+// @public
+export function readBilingualDocx(input: ArrayBuffer | Uint8Array): Promise<BilingualRow[]>;
+
+// @public
 export const readFolioDocumentSection: (snapshot: FolioAIEditSnapshot, handle: FolioDocumentSectionHandle) => FolioDocumentSectionReadResult;
 
 // @public

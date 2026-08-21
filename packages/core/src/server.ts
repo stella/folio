@@ -200,6 +200,7 @@ export {
 export { docxToMarkdown } from "./docx/server/docxToMarkdown";
 export {
   createBilingualDocument,
+  readBilingualDocument,
   type BilingualBorders,
   type BilingualParagraphRef,
   type BilingualRow,
@@ -210,6 +211,7 @@ export {
 } from "./docx/server/createBilingualDocument";
 export {
   createBilingualDocx,
+  readBilingualDocx,
   type CreateBilingualDocxResult,
 } from "./docx/server/createBilingualDocx";
 export { DocxArchiveError, type DocxArchiveOptions } from "./docx/server/boundedArchive";
