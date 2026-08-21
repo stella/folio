@@ -248,6 +248,7 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "createEmptyDocument",
       "createDocx",
       "createTableOfContentsField",
+      "parseDocx",
       "FolioDocxReviewer",
       "applyFolioAIEditsToBuffer",
     ],

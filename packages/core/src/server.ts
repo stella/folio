@@ -39,6 +39,7 @@ export {
   type FolioBlockId,
 } from "./types/block-id";
 export { createDocx } from "./docx/rezip";
+export { parseDocx, type ParseOptions } from "./docx/parser";
 export {
   ensureParaIds,
   EnsureParaIdsError,
