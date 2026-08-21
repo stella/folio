@@ -2037,7 +2037,7 @@ async function serializeAddedStylesIntoZip(
   const file = findNotePartEntry(originalZip, STYLES_PART_PATH);
   const originalXml = file ? await file.async("text") : null;
   const rootClose = originalXml?.lastIndexOf(STYLES_CLOSE_ROOT) ?? -1;
-  if (originalXml === null || rootClose < 0) {
+  if (file === null || originalXml === null || rootClose < 0) {
     // No usable styles part: write the whole model serialization so every
     // style `document.xml` references resolves, and wire the part up.
     await materializeNewNotePart({
