@@ -1,5 +1,12 @@
 # @stll/folio-vue
 
+## 0.12.1
+
+### Patch Changes
+
+- Updated dependencies [[`9385d46`](https://github.com/stella/folio/commit/9385d464b85effe1d4aaa558ebea8e29cfcb84e3)]:
+  - @stll/folio-core@0.21.0
+
 ## 0.12.0
 
 ### Minor Changes

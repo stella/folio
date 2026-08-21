@@ -1,5 +1,16 @@
 # @stll/folio-core
 
+## 0.21.0
+
+### Minor Changes
+
+- [#577](https://github.com/stella/folio/pull/577) [`9385d46`](https://github.com/stella/folio/commit/9385d464b85effe1d4aaa558ebea8e29cfcb84e3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Headless DOCX report generation: `/server` exports typed builders (`heading`, `paragraph`, `run`, `table`, `pageBreak`, `hyperlink`, `bookmark`, `endnote`, `createTableOfContentsField`); external hyperlinks inside headers, footers, footnotes and endnotes now get relationships in their own rels part; `createEmptyDocument` initialises `package.relationships` so in-memory headers and footers materialise; `DocumentSettings.updateFields` round-trips; the Stella style set gains `Heading1`-`Heading6`, `TOCHeading`, `TOC1`-`TOC3`, `EndnoteReference` and `EndnoteText`; complex fields keep `w:dirty`/`w:fldLock` across parse and save.
+
+### Patch Changes
+
+- Updated dependencies [[`9385d46`](https://github.com/stella/folio/commit/9385d464b85effe1d4aaa558ebea8e29cfcb84e3)]:
+  - @stll/docx-core@0.15.0
+
 ## 0.20.0
 
 ### Minor Changes
