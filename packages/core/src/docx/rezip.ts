@@ -1883,7 +1883,7 @@ async function serializeNotesToZip(
 type MaterializeNewNotePartOptions = {
   contentType: string;
   newZip: JSZip;
-  partPath: "word/footnotes.xml" | "word/endnotes.xml";
+  partPath: "word/footnotes.xml" | "word/endnotes.xml" | typeof STYLES_PART_PATH;
   relationshipType: string;
   serializedPart: string;
   compressionLevel: number;
@@ -2035,12 +2035,19 @@ async function serializeAddedStylesIntoZip(
     return;
   }
   const file = findNotePartEntry(originalZip, STYLES_PART_PATH);
-  if (!file) {
-    return;
-  }
-  const originalXml = await file.async("text");
-  const rootClose = originalXml.lastIndexOf(STYLES_CLOSE_ROOT);
-  if (rootClose < 0) {
+  const originalXml = file ? await file.async("text") : null;
+  const rootClose = originalXml?.lastIndexOf(STYLES_CLOSE_ROOT) ?? -1;
+  if (originalXml === null || rootClose < 0) {
+    // No usable styles part: write the whole model serialization so every
+    // style `document.xml` references resolves, and wire the part up.
+    await materializeNewNotePart({
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
+      newZip,
+      partPath: STYLES_PART_PATH,
+      relationshipType: RELATIONSHIP_TYPES.styles,
+      serializedPart: serializeStylesXml(styles),
+      compressionLevel,
+    });
     return;
   }
   const existing = new Set<string>();

@@ -1350,6 +1350,9 @@ export type InspectDocxPackageOptions = {
 };
 
 // @public (undocumented)
+export class InvalidBilingualDocumentOptionsError extends InvalidBilingualDocumentOptionsError_base {}
+
+// @public (undocumented)
 export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
 
 // @public (undocumented)

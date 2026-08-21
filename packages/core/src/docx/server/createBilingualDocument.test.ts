@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 
 import { createStellaStyleDocumentPreset } from "../../style-sets/stellaStyle";
 import type {
@@ -12,7 +13,10 @@ import type {
 import { createEmptyDocument } from "../../utils/createDocument";
 import { parseDocx } from "../parser";
 import { createDocx } from "../rezip";
-import { createBilingualDocument } from "./createBilingualDocument";
+import {
+  createBilingualDocument,
+  InvalidBilingualDocumentOptionsError,
+} from "./createBilingualDocument";
 import { createBilingualDocx, readBilingualDocx } from "./createBilingualDocx";
 
 const SUFFIX = "en";
@@ -299,7 +303,7 @@ describe("createBilingualDocument", () => {
   test("rejects a style suffix that cannot form a style id", async () => {
     const source = await buildSource();
     expect(() => createBilingualDocument(source, { targetStyleSuffix: "en US" })).toThrow(
-      RangeError,
+      InvalidBilingualDocumentOptionsError,
     );
   });
 
@@ -370,6 +374,71 @@ describe("createBilingualDocx", () => {
     }
     // A plain document has no bilingual table to read.
     expect(await readBilingualDocx(source.originalBuffer!)).toEqual([]);
+  });
+
+  test("materializes a styles part when the source package has none", async () => {
+    const source = await buildSource();
+    // Strip word/styles.xml and its relationship: legal OOXML, and the path
+    // where minted styles used to be dropped silently on save.
+    const zip = await JSZip.loadAsync(source.originalBuffer!);
+    zip.remove("word/styles.xml");
+    const relsPath = "word/_rels/document.xml.rels";
+    const rels = await zip.file(relsPath)!.async("text");
+    zip.file(relsPath, rels.replace(/<Relationship [^>]*relationships\/styles"[^>]*\/>/u, ""));
+    const stripped = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+      preloadFonts: false,
+    });
+    expect(stripped.package.styles).toBeUndefined();
+
+    // Give the model a numbered style the body uses, so the copy must mint a
+    // clone that only a written styles part can carry.
+    const numId = stripped.package.numbering?.nums.at(0)?.numId;
+    expect(numId).toBeDefined();
+    const styled: Document = {
+      ...stripped,
+      package: {
+        ...stripped.package,
+        styles: {
+          styles: [
+            {
+              styleId: "Clause",
+              type: "paragraph",
+              name: "Clause",
+              pPr: { numPr: { numId: numId!, ilvl: 0 } },
+            },
+          ],
+        },
+        document: {
+          ...stripped.package.document,
+          content: stripped.package.document.content.map((block): BlockContent => {
+            if (
+              block.type !== "paragraph" ||
+              block.content.length === 0 ||
+              block.sectionProperties
+            ) {
+              return block;
+            }
+            const restyled: Paragraph = {
+              type: "paragraph",
+              content: block.content,
+              formatting: { styleId: "Clause" },
+            };
+            return restyled;
+          }),
+        },
+      },
+    };
+    const { document } = createBilingualDocument(styled, { targetStyleSuffix: SUFFIX });
+    expect(findStyle(document, `Clause-${SUFFIX}`)).toBeDefined();
+
+    const reparsed = await parseDocx(await createDocx(document), { preloadFonts: false });
+    expect(findStyle(reparsed, `Clause-${SUFFIX}`)).toBeDefined();
+    const relsAfter = await (
+      await JSZip.loadAsync(await createDocx(document))
+    )
+      .file(relsPath)!
+      .async("text");
+    expect(relsAfter).toContain("relationships/styles");
   });
 
   test("leaves a document without numbering free of clones", async () => {

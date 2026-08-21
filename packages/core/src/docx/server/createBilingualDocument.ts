@@ -15,6 +15,8 @@
  * and read once, and its labels are translated inline rather than duplicated.
  */
 
+import { TaggedError } from "better-result";
+
 import { getParagraphText } from "../paragraphParser";
 import type {
   AbstractNumbering,
@@ -88,6 +90,13 @@ export type CreateBilingualDocumentResult = {
 };
 
 const STYLE_SUFFIX_PATTERN = /^[A-Za-z0-9-]+$/u;
+
+export class InvalidBilingualDocumentOptionsError extends TaggedError(
+  "InvalidBilingualDocumentOptionsError",
+)<{
+  message: string;
+  option: "targetStyleSuffix";
+}>() {}
 const FULL_WIDTH_PCT = 5000;
 const HALF_WIDTH_PCT = 2500;
 const A4_TEXT_WIDTH_TWIPS = 9072;
@@ -119,9 +128,10 @@ export function createBilingualDocument(
   options: CreateBilingualDocumentOptions,
 ): CreateBilingualDocumentResult {
   if (!STYLE_SUFFIX_PATTERN.test(options.targetStyleSuffix)) {
-    throw new RangeError(
-      `targetStyleSuffix must match ${STYLE_SUFFIX_PATTERN}; received ${JSON.stringify(options.targetStyleSuffix)}`,
-    );
+    throw new InvalidBilingualDocumentOptionsError({
+      message: `targetStyleSuffix must match ${STYLE_SUFFIX_PATTERN}; received ${JSON.stringify(options.targetStyleSuffix)}`,
+      option: "targetStyleSuffix",
+    });
   }
   const borders = options.borders ?? "none";
   const warnings: string[] = [];
@@ -137,7 +147,7 @@ export function createBilingualDocument(
     suffix: options.targetStyleSuffix,
     cloner,
   });
-  const paraIds = createParaIdMinter(collectParaIds(blocks));
+  const paraIds = createParaIdMinter(collectPackageParaIds(source.package));
 
   const rows: BilingualRow[] = [];
   const content: BlockContent[] = [];
@@ -185,7 +195,7 @@ export function createBilingualDocument(
     }));
     rows.push({
       kind: "table",
-      rowId: paragraphs.at(0)?.paraId ?? paraIds.mint(undefined),
+      rowId: paragraphs.at(0)?.paraId ?? tableRowHandle(rows.length),
       paragraphs,
     });
     sectionRows.push(buildSpanningRow(block));
@@ -210,6 +220,10 @@ export function createBilingualDocument(
 // ----------------------------------------------------------------------------
 
 type BodyBlock = Paragraph | Table;
+
+/** Handle for a table row whose paragraphs carry no `paraId`: its position in
+ *  the manifest, which creation and reading derive identically. */
+const tableRowHandle = (index: number): string => `table-${index}`;
 
 /** Top-level body blocks with content controls flattened to their children. */
 const flattenBlocks = (content: BlockContent[]): BodyBlock[] => {
@@ -396,9 +410,17 @@ const createNumberingCloner = ({
     }
     const source = numById.get(numId);
     if (!source) {
+      warnings.push(
+        `Numbering instance ${numId} is not defined; paragraphs using it keep the source instance.`,
+      );
       return numId;
     }
     const abstract = cloneAbstract(source.abstractNumId);
+    if (!abstract) {
+      warnings.push(
+        `Numbering instance ${numId} references abstractNum ${source.abstractNumId}, which is not defined; its copy shares the source counters.`,
+      );
+    }
     const clone: NumberingInstance = {
       ...source,
       numId: nextNumId,
@@ -517,6 +539,9 @@ const cloneParagraphForTarget = (
   };
   return {
     ...rest,
+    // Own content nodes: repacking assigns rIds to images and hyperlinks in
+    // place, which must not hit one shared node graph twice.
+    content: structuredClone(paragraph.content),
     paraId: targetParaId,
     ...(nextFormatting && { formatting: nextFormatting }),
     ...(paragraph.listRendering && {
@@ -613,33 +638,43 @@ const resolveTextWidthTwips = (doc: Document): number => {
 // paraIds
 // ----------------------------------------------------------------------------
 
-const collectParaIds = (blocks: BodyBlock[]): Set<string> => {
+/**
+ * Every `paraId` anywhere in the package (body, headers, footers, notes,
+ * comments), so a minted id cannot collide with a part the body never sees.
+ * Walks the model generically: any object with `type: "paragraph"` and a
+ * string `paraId` counts.
+ */
+const collectPackageParaIds = (pkg: Document["package"]): Set<string> => {
   const ids = new Set<string>();
-  const visitParagraph = (paragraph: Paragraph): void => {
-    if (paragraph.paraId) {
-      ids.add(paragraph.paraId);
+  const seen = new Set<object>();
+  const visit = (value: unknown): void => {
+    if (typeof value !== "object" || value === null || seen.has(value)) {
+      return;
     }
-  };
-  const visitTable = (table: Table): void => {
-    for (const row of table.rows) {
-      for (const cell of row.cells) {
-        for (const item of cell.content) {
-          if (item.type === "paragraph") {
-            visitParagraph(item);
-          } else {
-            visitTable(item);
-          }
-        }
+    seen.add(value);
+    if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        visit(item);
       }
+      return;
+    }
+    if (value instanceof Map) {
+      for (const item of value.values()) {
+        visit(item);
+      }
+      return;
+    }
+    if (isParagraphWithId(value)) {
+      ids.add(value.paraId);
+    }
+    for (const child of Object.values(value)) {
+      visit(child);
     }
   };
-  for (const block of blocks) {
-    if (block.type === "paragraph") {
-      visitParagraph(block);
-    } else {
-      visitTable(block);
-    }
-  }
+  visit(pkg);
   return ids;
 };
 
@@ -681,13 +716,11 @@ export function readBilingualDocument(document: Document): BilingualRow[] {
     (document.package.styles?.styles ?? []).map((style) => [style.styleId, style]),
   );
   const rows: BilingualRow[] = [];
-  let ordinal = 0;
   for (const block of flattenBlocks(document.package.document.content)) {
     if (block.type !== "table" || !isBilingualTable(block)) {
       continue;
     }
     for (const row of block.rows) {
-      ordinal += 1;
       const [left, right] = row.cells;
       if (!left) {
         continue;
@@ -702,7 +735,7 @@ export function readBilingualDocument(document: Document): BilingualRow[] {
           }));
         rows.push({
           kind: "table",
-          rowId: paragraphs.at(0)?.paraId ?? `table-${ordinal}`,
+          rowId: paragraphs.at(0)?.paraId ?? tableRowHandle(rows.length),
           paragraphs,
         });
         continue;
@@ -745,3 +778,9 @@ const isBilingualTable = (table: Table): boolean => {
   }
   return pairs > 0;
 };
+
+const isParagraphWithId = (value: object): value is { type: "paragraph"; paraId: string } =>
+  "type" in value &&
+  value.type === "paragraph" &&
+  "paraId" in value &&
+  typeof value.paraId === "string";

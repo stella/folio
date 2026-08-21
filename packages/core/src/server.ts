@@ -200,6 +200,7 @@ export {
 export { docxToMarkdown } from "./docx/server/docxToMarkdown";
 export {
   createBilingualDocument,
+  InvalidBilingualDocumentOptionsError,
   readBilingualDocument,
   type BilingualBorders,
   type BilingualParagraphRef,
