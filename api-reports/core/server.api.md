@@ -4,8 +4,16 @@
 
 ```ts
 
+import { Hyperlink } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
+import { Paragraph } from '@stll/docx-core/model';
+import { ParagraphContent } from '@stll/docx-core/model';
+import { ParagraphFormatting } from '@stll/docx-core/model';
+import { Run } from '@stll/docx-core/model';
+import { ShadingProperties } from '@stll/docx-core/model';
+import { Table } from '@stll/docx-core/model';
 import { TaggedErrorClass } from 'better-result';
+import { TextFormatting } from '@stll/docx-core/model';
 
 // @public
 export const applyDocxXmlPatchProposal: (input: ApplyDocxXmlPatchProposalArgs) => Promise<FolioDocxXmlPatchApplication>;
@@ -42,6 +50,9 @@ export const applyFolioVersionDiffPrivacy: (diff: FolioVersionDiff, options: Fol
 export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
 // @public
+export const bookmark: (input: BookmarkOptions) => ParagraphContent[];
+
+// @public
 export const compareDocxVersions: (base: ArrayBuffer, revised: ArrayBuffer, options?: FolioCompareDocxVersionsOptions) => Promise<FolioVersionDiff>;
 
 // @public (undocumented)
@@ -69,6 +80,9 @@ export const createStellaStyleDocumentPreset: () => DocumentPreset;
 
 // @public
 export const createStellaStyleSet: () => DocumentStyleSet;
+
+// @public
+export const createTableOfContentsField: (input?: TableOfContentsOptions) => Paragraph;
 
 // @public (undocumented)
 export const deriveBlockId: (input: DeriveBlockIdInput) => FolioBlockId;
@@ -151,6 +165,9 @@ export type DocxTableRowPosition = {
 
 // @public
 export function docxToMarkdown(input: ArrayBuffer | Uint8Array, opts?: MarkdownOptions): Promise<string>;
+
+// @public
+export const endnote: (doc: import__stll_docx_core_model.Document, content: string | Paragraph[]) => Run;
 
 // @public
 export const ensureParaIds: (docx: Uint8Array | ArrayBuffer, options?: EnsureParaIdsOptions) => Promise<EnsureParaIdsResult>;
@@ -1249,6 +1266,18 @@ export const getFolioParaIdFromBlockId: (id: string) => string | null;
 // @public (undocumented)
 export const hashFolioAIBlockText: (text: string) => string;
 
+// @public
+export const heading: (input: HeadingOptions) => Paragraph;
+
+// @public (undocumented)
+export const HEADING_LEVELS: readonly [1, 2, 3, 4, 5, 6];
+
+// @public (undocumented)
+export type HeadingLevel = (typeof HEADING_LEVELS)[number];
+
+// @public
+export const hyperlink: (input: HyperlinkOptions) => Hyperlink;
+
 // @public (undocumented)
 export const inspectDocumentStyles: (document: import__stll_docx_core_model.Document) => DocumentStyleCatalog;
 
@@ -1313,11 +1342,32 @@ export const isSupportedFolioDocumentOperationVersion: (value: unknown) => value
 // @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;
 
+// @public
+export const pageBreak: () => Paragraph;
+
+// @public (undocumented)
+export const paragraph: (content: string | ParagraphContent[], formatting?: ParagraphFormatting) => Paragraph;
+
+// @public
+export function parseDocx(input: DocxInput, options?: ParseOptions): Promise<import__stll_docx_core_model.Document>;
+
 // @public (undocumented)
 export const parseFolioDocumentOperationBatch: (value: unknown) => FolioDocumentOperationBatch;
 
 // @public (undocumented)
 export const parseFolioDocxXmlPatchProposal: (value: unknown) => FolioDocxXmlPatchProposal;
+
+// @public
+export type ParseOptions = {
+    onProgress?: ProgressCallback;
+    preloadFonts?: boolean;
+    parseHeadersFooters?: boolean;
+    parseNotes?: boolean;
+    detectVariables?: boolean;
+    password?: string | undefined;
+    unzipLimits?: DocxUnzipOptions;
+    mediaResolver?: MediaResolver;
+};
 
 // @public
 export const readFolioDocumentSection: (snapshot: FolioAIEditSnapshot, handle: FolioDocumentSectionHandle) => FolioDocumentSectionReadResult;
@@ -1335,7 +1385,21 @@ export type RewriteDocxMetadataPrivacyResult = {
 };
 
 // @public (undocumented)
+export const run: (text: string, formatting?: TextFormatting) => Run;
+
+// @public (undocumented)
 export const STELLA_STYLE_SET_NAME = "Stella Style";
+
+// @public
+export const table: (input: TableOptions) => Table;
+
+// @public (undocumented)
+export type TableCellSpec = string | {
+    content: Paragraph[];
+    shading?: ShadingProperties;
+    gridSpan?: number;
+    vMerge?: "restart" | "continue";
+};
 
 // @public (undocumented)
 export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}

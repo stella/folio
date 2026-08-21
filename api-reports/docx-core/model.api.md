@@ -179,6 +179,7 @@ export type DocumentSettings = {
     compatibilityMode?: number;
     defaultTabStop: number;
     evenAndOddHeaders?: boolean;
+    updateFields?: boolean;
     themeFontLang?: {
         eastAsia?: string;
         bidi?: string;
