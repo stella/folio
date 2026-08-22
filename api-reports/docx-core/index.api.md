@@ -4,7 +4,7 @@
 
 ```ts
 
-import { Buffer } from 'node:buffer';
+import { Buffer as Buffer_2 } from 'node:buffer';
 
 // @public (undocumented)
 export const assertValidDocumentModel: (document: Document_2) => void;
@@ -161,7 +161,7 @@ export type LegalSourceCompileResult = ({
 // @public (undocumented)
 export type LegalSourceDocxCompileResult = ({
     status: "ok";
-    buffer: Buffer;
+    buffer: Buffer_2;
 } & CompiledLegalDocument) | Extract<LegalSourceCompileResult, {
     status: "needs_llm_repair";
 }>;
