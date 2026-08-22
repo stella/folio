@@ -54,7 +54,7 @@ export class InvalidFolioReportBuilderOptionsError extends TaggedError(
 )<{
   message: string;
   path: string;
-}>() {}
+}> {}
 
 const assertPositiveInteger = (value: number, path: string): void => {
   if (!Number.isInteger(value) || value < 1) {

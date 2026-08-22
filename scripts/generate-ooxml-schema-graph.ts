@@ -153,7 +153,7 @@ type WalkContext = {
 class SchemaGraphError extends TaggedError("SchemaGraphError")<{
   message: string;
   cause?: unknown;
-}>() {}
+}> {}
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const OUTPUT_PATH = path.join(

@@ -17,7 +17,7 @@ export class DocxArchiveError extends TaggedError("DocxArchiveError")<{
     | "total-too-large"
     | "invalid-options";
   cause?: unknown;
-}>() {}
+}> {}
 
 export type DocxArchiveOptions = {
   maxInputBytes?: number;

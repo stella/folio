@@ -21,7 +21,7 @@ type XmlResourceLimitKind = "bytes" | "depth" | "nodes" | "syntax";
 export class XmlResourceLimitError extends TaggedError("XmlResourceLimitError")<{
   message: string;
   limit: XmlResourceLimitKind;
-}>() {}
+}> {}
 
 const exceedsUtf8ByteLimit = (value: string, maxBytes: number): boolean => {
   let bytes = 0;

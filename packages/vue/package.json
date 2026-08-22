@@ -75,7 +75,7 @@
   },
   "dependencies": {
     "@stll/folio-core": "workspace:^",
-    "better-result": "2.10.0",
+    "better-result": "3.0.1",
     "use-intl": "^4.13.0",
     "yjs": "^13.6.31"
   },

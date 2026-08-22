@@ -101,7 +101,7 @@ export class UnsupportedFolioDocxXmlPatchApplicationProfileError extends TaggedE
 )<{
   message: string;
   profile: unknown;
-}>() {}
+}> {}
 
 export class FolioDocxXmlPatchApplicationError extends TaggedError(
   "FolioDocxXmlPatchApplicationError",
@@ -110,7 +110,7 @@ export class FolioDocxXmlPatchApplicationError extends TaggedError(
   stage: "verify" | "load" | "replace" | "generate";
   part?: string;
   cause?: unknown;
-}>() {}
+}> {}
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 

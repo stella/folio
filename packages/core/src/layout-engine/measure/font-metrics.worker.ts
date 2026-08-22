@@ -29,7 +29,7 @@ import type { FontKerningMode } from "./textMeasurementPolicy";
 
 class WorkerInitError extends TaggedError("WorkerInitError")<{
   message: string;
-}>() {}
+}> {}
 
 type WorkerCanvasContext = {
   font: string;

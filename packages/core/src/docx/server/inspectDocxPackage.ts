@@ -34,7 +34,7 @@ export class FolioDocxPackageInspectionError extends TaggedError(
   code: FolioDocxPackageInspectionErrorCode;
   part?: string;
   cause?: unknown;
-}>() {}
+}> {}
 
 export type FolioDocxPackageInspectionLimits = {
   readonly maxXmlParts?: number;

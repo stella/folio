@@ -57,7 +57,7 @@ export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
   message: string;
   option: "baseView" | "revisedView";
   receivedValue: unknown;
-}>() {}
+}> {}
 
 /** A document story that could not be paired across the two input packages. */
 export type GenerateRedlineUnprocessedStory = {

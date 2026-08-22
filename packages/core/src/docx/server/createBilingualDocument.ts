@@ -96,7 +96,7 @@ export class InvalidBilingualDocumentOptionsError extends TaggedError(
 )<{
   message: string;
   option: "targetStyleSuffix";
-}>() {}
+}> {}
 const FULL_WIDTH_PCT = 5000;
 const HALF_WIDTH_PCT = 2500;
 const A4_TEXT_WIDTH_TWIPS = 9072;

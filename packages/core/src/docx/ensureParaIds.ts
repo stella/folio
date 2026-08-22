@@ -59,7 +59,7 @@ import { loadDocxArchive } from "./server/boundedArchive";
 export class EnsureParaIdsError extends TaggedError("EnsureParaIdsError")<{
   message: string;
   cause?: unknown;
-}>() {}
+}> {}
 
 /** Counts and normalized bytes returned by {@link ensureParaIds}. */
 export type EnsureParaIdsResult = {

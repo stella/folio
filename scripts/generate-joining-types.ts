@@ -31,7 +31,7 @@ const GENERAL_CATEGORY_ID = "unicode-derived-general-category";
 
 class GenerateJoiningTypesError extends TaggedError("GenerateJoiningTypesError")<{
   message: string;
-}>() {}
+}> {}
 
 /**
  * Joining_Type values this generator distinguishes.

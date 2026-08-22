@@ -68,12 +68,12 @@ export class DocxProjectionInitializationError extends TaggedError(
 )<{
   message: string;
   cause: unknown;
-}>() {}
+}> {}
 
 export class DocxProjectionError extends TaggedError("DocxProjectionError")<{
   message: string;
   cause: unknown;
-}>() {}
+}> {}
 
 export type DocxProjectionWasmSource =
   | RequestInfo

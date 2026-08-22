@@ -154,7 +154,7 @@ export class UnsupportedFolioDocumentOperationVersionError extends TaggedError(
 )<{
   message: string;
   receivedVersion: unknown;
-}>() {}
+}> {}
 
 export class InvalidFolioDocumentOperationBatchError extends TaggedError(
   "InvalidFolioDocumentOperationBatchError",
@@ -162,7 +162,7 @@ export class InvalidFolioDocumentOperationBatchError extends TaggedError(
   message: string;
   path: string;
   reason: string;
-}>() {}
+}> {}
 
 export const assertSupportedFolioDocumentOperationVersion = (
   value: unknown,

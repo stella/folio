@@ -115,14 +115,14 @@ export class InvalidFolioDocxXmlPatchProposalError extends TaggedError(
   message: string;
   path: string;
   reason: string;
-}>() {}
+}> {}
 
 export class InvalidFolioDocxXmlPatchProposalOptionsError extends TaggedError(
   "InvalidFolioDocxXmlPatchProposalOptionsError",
 )<{
   message: string;
   path: string;
-}>() {}
+}> {}
 
 const SHA256_PATTERN = /^[\da-f]{64}$/u;
 const XML_DECLARED_ENCODING_PATTERN =

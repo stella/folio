@@ -121,7 +121,7 @@ export class InvalidFolioVersionComparisonOptionsError extends TaggedError(
   message: string;
   option: "include" | "privacy.transforms";
   receivedValue: unknown;
-}>() {}
+}> {}
 
 export { FOLIO_DOCUMENT_METADATA_PROPERTIES };
 export type { FolioDocumentMetadataProperty };

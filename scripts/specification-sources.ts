@@ -51,7 +51,7 @@ type SpecificationSourceManifest = {
 class SpecificationSourceError extends TaggedError("SpecificationSourceError")<{
   message: string;
   cause?: unknown;
-}>() {}
+}> {}
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..");
 const MANIFEST_PATH = path.join(REPOSITORY_ROOT, "specifications", "sources.json");

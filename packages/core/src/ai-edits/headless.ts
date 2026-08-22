@@ -263,14 +263,14 @@ export class UnsupportedFolioReviewedViewError extends TaggedError(
 )<{
   message: string;
   receivedView: unknown;
-}>() {}
+}> {}
 
 export class FolioDocumentStoryNotFoundError extends TaggedError(
   "FolioDocumentStoryNotFoundError",
 )<{
   message: string;
   story: FolioEditableDocumentStoryHandle;
-}>() {}
+}> {}
 
 export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOperationsOptions & {
   story: FolioEditableDocumentStoryHandle;

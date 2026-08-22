@@ -462,7 +462,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
 export class DocxParseError extends TaggedError("DocxParseError")<{
   message: string;
   cause?: unknown;
-}>() {}
+}> {}
 
 // ============================================================================
 // HELPER FUNCTIONS

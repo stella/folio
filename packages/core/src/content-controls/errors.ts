@@ -18,7 +18,7 @@ export class ContentControlLockedError extends TaggedError("ContentControlLocked
   lock: NonNullable<SdtProperties["lock"]>;
   tag?: string;
   alias?: string;
-}>() {}
+}> {}
 
 /**
  * Refused because the target control is bound to a `<w:dataBinding>`.
@@ -40,7 +40,7 @@ export class ContentControlBoundError extends TaggedError("ContentControlBoundEr
   storeItemID?: string;
   tag?: string;
   alias?: string;
-}>() {}
+}> {}
 
 /**
  * Refused because the requested operation does not make sense for the
@@ -53,4 +53,4 @@ export class ContentControlTypeError extends TaggedError("ContentControlTypeErro
   reason: string;
   tag?: string;
   alias?: string;
-}>() {}
+}> {}

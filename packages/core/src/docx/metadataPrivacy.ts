@@ -52,7 +52,7 @@ export class InvalidFolioDocumentPrivacyOptionsError extends TaggedError(
 )<{
   message: string;
   receivedValue: unknown;
-}>() {}
+}> {}
 
 export class FolioDocumentPrivacyArchiveError extends TaggedError(
   "FolioDocumentPrivacyArchiveError",
@@ -60,7 +60,7 @@ export class FolioDocumentPrivacyArchiveError extends TaggedError(
   message: string;
   reason: "input-too-large" | "load-failed" | "too-many-entries" | "core-properties-too-large";
   cause?: unknown;
-}>() {}
+}> {}
 
 export const PRIVATE_METADATA_PROPERTIES_BY_TRANSFORM = {
   "remove-attribution": ["creator", "lastModifiedBy"],
