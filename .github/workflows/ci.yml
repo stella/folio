@@ -89,6 +89,9 @@ jobs:
       - name: Lockfile workspace-version check
         run: bun run check:lockfile-versions
 
+      - name: Lockfile deduplication check
+        run: bun run check:dedupe
+
       - name: Quarantine-exclude guard
         # The 5-day release-age quarantine is excluded per package for the
         # first-party @stll/* code folio pulls from npm, and bun matches those
