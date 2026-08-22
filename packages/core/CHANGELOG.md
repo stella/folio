@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.22.1
+
+### Patch Changes
+
+- [#584](https://github.com/stella/folio/pull/584) [`a7111a1`](https://github.com/stella/folio/commit/a7111a1eb558ce052c49062d045d28ba52130a84) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve accepted tracked changes, wrapped text, and tables when reading note stories.
+
 ## 0.22.0
 
 ### Minor Changes
