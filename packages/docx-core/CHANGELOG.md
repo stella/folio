@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.15.1
+
+### Patch Changes
+
+- [#587](https://github.com/stella/folio/pull/587) [`692e0ba`](https://github.com/stella/folio/commit/692e0ba01feabf7f852be6ecde053c7574b1a4d9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Upgrade `better-result` to v3.
+
 ## 0.15.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @stll/folio-react
 
+## 0.15.3
+
+### Patch Changes
+
+- [#587](https://github.com/stella/folio/pull/587) [`692e0ba`](https://github.com/stella/folio/commit/692e0ba01feabf7f852be6ecde053c7574b1a4d9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Upgrade `better-result` to v3.
+- Updated dependencies [[`692e0ba`](https://github.com/stella/folio/commit/692e0ba01feabf7f852be6ecde053c7574b1a4d9)]:
+  - @stll/folio-core@0.22.2
+
 ## 0.15.2
 
 ### Patch Changes
