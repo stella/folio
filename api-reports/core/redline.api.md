@@ -34,7 +34,11 @@ export type GenerateRedlineUnprocessedStory = {
 };
 
 // @public
-export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsError_base {}
+export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsError_base<{
+    message: string;
+    option: "baseView" | "revisedView";
+    receivedValue: unknown;
+}> {}
 
 // (No @packageDocumentation comment for this package)
 

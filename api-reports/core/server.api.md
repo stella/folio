@@ -192,7 +192,11 @@ export type DocumentStyleSet = {
 };
 
 // @public
-export class DocxArchiveError extends DocxArchiveError_base {}
+export class DocxArchiveError extends DocxArchiveError_base<{
+    message: string;
+    reason: "load-failed" | "input-too-large" | "too-many-entries" | "entry-too-large" | "total-too-large" | "invalid-options";
+    cause?: unknown;
+}> {}
 
 // @public (undocumented)
 export type DocxArchiveOptions = {
@@ -228,7 +232,10 @@ export const endnote: (doc: import__stll_docx_core_model.Document, content: stri
 export const ensureParaIds: (docx: Uint8Array | ArrayBuffer, options?: EnsureParaIdsOptions) => Promise<EnsureParaIdsResult>;
 
 // @public
-export class EnsureParaIdsError extends EnsureParaIdsError_base {}
+export class EnsureParaIdsError extends EnsureParaIdsError_base<{
+    message: string;
+    cause?: unknown;
+}> {}
 
 // @public
 export type EnsureParaIdsOptions = {
@@ -832,7 +839,11 @@ export type FolioDocumentOutlineEntry = {
 };
 
 // @public (undocumented)
-export class FolioDocumentPrivacyArchiveError extends FolioDocumentPrivacyArchiveError_base {}
+export class FolioDocumentPrivacyArchiveError extends FolioDocumentPrivacyArchiveError_base<{
+    message: string;
+    reason: "input-too-large" | "load-failed" | "too-many-entries" | "core-properties-too-large";
+    cause?: unknown;
+}> {}
 
 // @public (undocumented)
 export type FolioDocumentPrivacyOptions = {
@@ -898,7 +909,10 @@ export type FolioDocumentStoryHandle = {
 };
 
 // @public (undocumented)
-export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundError_base {}
+export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundError_base<{
+    message: string;
+    story: FolioEditableDocumentStoryHandle;
+}> {}
 
 // @public (undocumented)
 export type FolioDocxConformanceCheck = {
@@ -958,7 +972,12 @@ export type FolioDocxPackageInspection = {
 };
 
 // @public (undocumented)
-export class FolioDocxPackageInspectionError extends FolioDocxPackageInspectionError_base {}
+export class FolioDocxPackageInspectionError extends FolioDocxPackageInspectionError_base<{
+    message: string;
+    code: FolioDocxPackageInspectionErrorCode;
+    part?: string;
+    cause?: unknown;
+}> {}
 
 // @public (undocumented)
 export type FolioDocxPackageInspectionErrorCode = (typeof FOLIO_DOCX_PACKAGE_INSPECTION_ERROR_CODES)[number];
@@ -1066,7 +1085,12 @@ export type FolioDocxXmlPatchApplication = {
 };
 
 // @public (undocumented)
-export class FolioDocxXmlPatchApplicationError extends FolioDocxXmlPatchApplicationError_base {}
+export class FolioDocxXmlPatchApplicationError extends FolioDocxXmlPatchApplicationError_base<{
+    message: string;
+    stage: "verify" | "load" | "replace" | "generate";
+    part?: string;
+    cause?: unknown;
+}> {}
 
 // @public (undocumented)
 export type FolioDocxXmlPatchApplicationReceipt = {
@@ -1350,28 +1374,56 @@ export type InspectDocxPackageOptions = {
 };
 
 // @public (undocumented)
-export class InvalidBilingualDocumentOptionsError extends InvalidBilingualDocumentOptionsError_base {}
+export class InvalidBilingualDocumentOptionsError extends InvalidBilingualDocumentOptionsError_base<{
+    message: string;
+    option: "targetStyleSuffix";
+}> {}
 
 // @public (undocumented)
-export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
+export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base<{
+    message: string;
+    path: string;
+    reason: string;
+}> {}
 
 // @public (undocumented)
-export class InvalidFolioDocumentPrivacyOptionsError extends InvalidFolioDocumentPrivacyOptionsError_base {}
+export class InvalidFolioDocumentPrivacyOptionsError extends InvalidFolioDocumentPrivacyOptionsError_base<{
+    message: string;
+    receivedValue: unknown;
+}> {}
 
 // @public (undocumented)
-export class InvalidFolioDocxXmlPatchProposalError extends InvalidFolioDocxXmlPatchProposalError_base {}
+export class InvalidFolioDocxXmlPatchProposalError extends InvalidFolioDocxXmlPatchProposalError_base<{
+    message: string;
+    path: string;
+    reason: string;
+}> {}
 
 // @public (undocumented)
-export class InvalidFolioDocxXmlPatchProposalOptionsError extends InvalidFolioDocxXmlPatchProposalOptionsError_base {}
+export class InvalidFolioDocxXmlPatchProposalOptionsError extends InvalidFolioDocxXmlPatchProposalOptionsError_base<{
+    message: string;
+    path: string;
+}> {}
 
 // @public
-export class InvalidFolioReportBuilderOptionsError extends InvalidFolioReportBuilderOptionsError_base {}
+export class InvalidFolioReportBuilderOptionsError extends InvalidFolioReportBuilderOptionsError_base<{
+    message: string;
+    path: string;
+}> {}
 
 // @public (undocumented)
-export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsError_base {}
+export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsError_base<{
+    message: string;
+    option: "include" | "privacy.transforms";
+    receivedValue: unknown;
+}> {}
 
 // @public
-export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsError_base {}
+export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsError_base<{
+    message: string;
+    option: "baseView" | "revisedView";
+    receivedValue: unknown;
+}> {}
 
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
@@ -1469,13 +1521,22 @@ export type TableCellSpec = string | {
 };
 
 // @public (undocumented)
-export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}
+export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base<{
+    message: string;
+    receivedVersion: unknown;
+}> {}
 
 // @public (undocumented)
-export class UnsupportedFolioDocxXmlPatchApplicationProfileError extends UnsupportedFolioDocxXmlPatchApplicationProfileError_base {}
+export class UnsupportedFolioDocxXmlPatchApplicationProfileError extends UnsupportedFolioDocxXmlPatchApplicationProfileError_base<{
+    message: string;
+    profile: unknown;
+}> {}
 
 // @public (undocumented)
-export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewError_base {}
+export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedViewError_base<{
+    message: string;
+    receivedView: unknown;
+}> {}
 
 // @public
 export const validateDocxConformance: (bytes: ArrayBuffer | Uint8Array, options?: ValidateDocxConformanceOptions) => Promise<FolioDocxConformanceReport>;

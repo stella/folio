@@ -30,7 +30,11 @@ export const DOCX_ENCRYPTION_ERROR_CODES: {
 };
 
 // @public (undocumented)
-export class DocxEncryptionError extends DocxEncryptionError_base {}
+export class DocxEncryptionError extends DocxEncryptionError_base<{
+    message: string;
+    code: DocxEncryptionErrorCode;
+    cause?: unknown;
+}> {}
 
 // @public (undocumented)
 export type DocxEncryptionErrorCode = (typeof DOCX_ENCRYPTION_ERROR_CODES)[keyof typeof DOCX_ENCRYPTION_ERROR_CODES];
@@ -45,7 +49,11 @@ export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly ["remove-attribution", 
 export type FolioDocumentMetadataProperty = (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
 
 // @public (undocumented)
-export class FolioDocumentPrivacyArchiveError extends FolioDocumentPrivacyArchiveError_base {}
+export class FolioDocumentPrivacyArchiveError extends FolioDocumentPrivacyArchiveError_base<{
+    message: string;
+    reason: "input-too-large" | "load-failed" | "too-many-entries" | "core-properties-too-large";
+    cause?: unknown;
+}> {}
 
 // @public (undocumented)
 export type FolioDocumentPrivacyOptions = {
@@ -65,7 +73,10 @@ export type FolioDocumentPrivacyTransform = (typeof FOLIO_DOCUMENT_PRIVACY_TRANS
 export function getCachedNumberingMap(definitions: import__stll_docx_core_model.NumberingDefinitions): NumberingMap;
 
 // @public (undocumented)
-export class InvalidFolioDocumentPrivacyOptionsError extends InvalidFolioDocumentPrivacyOptionsError_base {}
+export class InvalidFolioDocumentPrivacyOptionsError extends InvalidFolioDocumentPrivacyOptionsError_base<{
+    message: string;
+    receivedValue: unknown;
+}> {}
 
 // @public (undocumented)
 export const isDocxEncryptionError: (error: unknown) => error is DocxEncryptionError;

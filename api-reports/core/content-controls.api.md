@@ -8,7 +8,13 @@ import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { TaggedErrorClass } from 'better-result';
 
 // @public
-export class ContentControlBoundError extends ContentControlBoundError_base {}
+export class ContentControlBoundError extends ContentControlBoundError_base<{
+    message: string;
+    xpath: string;
+    storeItemID?: string;
+    tag?: string;
+    alias?: string;
+}> {}
 
 // @public (undocumented)
 export type ContentControlFilter = {
@@ -20,7 +26,12 @@ export type ContentControlFilter = {
 };
 
 // @public
-export class ContentControlLockedError extends ContentControlLockedError_base {}
+export class ContentControlLockedError extends ContentControlLockedError_base<{
+    message: string;
+    lock: NonNullable<import__stll_docx_core_model.SdtProperties["lock"]>;
+    tag?: string;
+    alias?: string;
+}> {}
 
 // @public (undocumented)
 export type ContentControlMatch = {
@@ -31,7 +42,13 @@ export type ContentControlMatch = {
 };
 
 // @public
-export class ContentControlTypeError extends ContentControlTypeError_base {}
+export class ContentControlTypeError extends ContentControlTypeError_base<{
+    message: string;
+    sdtType: import__stll_docx_core_model.SdtProperties["sdtType"];
+    reason: string;
+    tag?: string;
+    alias?: string;
+}> {}
 
 // @public (undocumented)
 export function findContentControl(doc: import__stll_docx_core_model.Document, filter: ContentControlFilter): ContentControlMatch | null;

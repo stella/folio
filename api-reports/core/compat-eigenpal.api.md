@@ -893,7 +893,11 @@ export const inspectDocxCompatibility: (doc: import__stll_docx_core_model.Docume
 export type InspectDocxCompatibilityOptions = Partial<DocxCompatibilityContext>;
 
 // @public (undocumented)
-export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base {}
+export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base<{
+    message: string;
+    path: string;
+    reason: string;
+}> {}
 
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;
@@ -1070,7 +1074,10 @@ export function toMarkdown(doc: import__stll_docx_core_model.Document, opts?: Ma
 export function toMarkdownResult(doc: import__stll_docx_core_model.Document, opts?: MarkdownOptions): MarkdownResult;
 
 // @public (undocumented)
-export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base {}
+export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFolioDocumentOperationVersionError_base<{
+    message: string;
+    receivedVersion: unknown;
+}> {}
 
 // @public
 export type WordDiffSegment = {

@@ -28,7 +28,10 @@ export type DocxProjectionAlignmentValue = "center" | "justify" | "left" | "righ
 export type DocxProjectionBookmarkFact = readonly [paragraphOrdinal: number, bookmarkId: number, name: string, span: DocxProjectionStructuralSpan];
 
 // @public (undocumented)
-export class DocxProjectionError extends DocxProjectionError_base {}
+export class DocxProjectionError extends DocxProjectionError_base<{
+    message: string;
+    cause: unknown;
+}> {}
 
 // @public (undocumented)
 export type DocxProjectionFactSet<T> = readonly [status: "known", items: readonly T[]] | readonly [status: "unknown", reason: DocxProjectionUnknownReason];
@@ -46,7 +49,10 @@ export type DocxProjectionFormattingUnknownReason = "document-part-only" | "styl
 export type DocxProjectionIndentationFact = readonly [paragraphOrdinal: number, firstLineTwips: number | null, hangingTwips: number | null, leftTwips: number | null, rightTwips: number | null, startTwips: number | null, endTwips: number | null, firstLineCharsHundredths: number | null, hangingCharsHundredths: number | null, leftCharsHundredths: number | null, rightCharsHundredths: number | null, startCharsHundredths: number | null, endCharsHundredths: number | null];
 
 // @public (undocumented)
-export class DocxProjectionInitializationError extends DocxProjectionInitializationError_base {}
+export class DocxProjectionInitializationError extends DocxProjectionInitializationError_base<{
+    message: string;
+    cause: unknown;
+}> {}
 
 // @public (undocumented)
 export type DocxProjectionNumberingFact = readonly [paragraphOrdinal: number, parentParagraphOrdinal: number | null, childParagraphOrdinals: readonly number[]];
