@@ -29,7 +29,8 @@ import type {
   MediaFile,
 } from "../types/document";
 import type { NumberingMap } from "./numberingParser";
-import { parseParagraph } from "./paragraphParser";
+import { getParagraphText, parseParagraph } from "./paragraphParser";
+import { panic } from "better-result";
 import { parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
 import { parseTable } from "./tableParser";
@@ -408,10 +409,7 @@ export { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertie
 /**
  * Get plain text content of a footnote.
  *
- * Recurses into block-level SDTs so a citation slot inside a note still
- * contributes its text; without recursion, the BlockSdt addition from
- * the previous commit would silently hide the slot's body from this
- * helper.
+ * Uses the accepted tracked-change view and recurses through every note block.
  */
 export function getFootnoteText(footnote: Footnote): string {
   return collectNoteBlockTexts(footnote.content).join("\n");
@@ -427,23 +425,28 @@ export function getEndnoteText(endnote: Endnote): string {
 function collectNoteBlockTexts(blocks: readonly (Paragraph | Table | BlockSdt)[]): string[] {
   const texts: string[] = [];
   for (const block of blocks) {
-    if (block.type === "paragraph") {
-      const paraTexts: string[] = [];
-      for (const content of block.content) {
-        if (content.type === "run") {
-          for (const runContent of content.content) {
-            if (runContent.type === "text") {
-              paraTexts.push(runContent.text);
-            }
+    switch (block.type) {
+      case "paragraph":
+        texts.push(getParagraphText(block));
+        break;
+      case "table":
+        for (const row of block.rows) {
+          if (row.formatting?.hidden === true) {
+            continue;
           }
+          texts.push(
+            row.cells.map((cell) => collectNoteBlockTexts(cell.content).join("\n")).join("\t"),
+          );
         }
+        break;
+      case "blockSdt":
+        texts.push(...collectNoteBlockTexts(block.content));
+        break;
+      default: {
+        const unsupported: never = block;
+        panic(`Unsupported note block in plain-text extraction: ${JSON.stringify(unsupported)}`);
       }
-      texts.push(paraTexts.join(""));
-    } else if (block.type === "blockSdt") {
-      texts.push(...collectNoteBlockTexts(block.content));
     }
-    // Table cells aren't surfaced by this helper today; pre-existing
-    // limitation, leaving out of scope.
   }
   return texts;
 }

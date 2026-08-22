@@ -2594,7 +2594,57 @@ const readNotesFixture = async (): Promise<ArrayBuffer> => {
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
+const readRichNotesFixture = async (): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(await readNotesFixture());
+  const footnotesFile = zip.file("word/footnotes.xml");
+  if (!footnotesFile) {
+    throw new Error("fixture missing word/footnotes.xml");
+  }
+  const footnotesXml = await footnotesFile.async("text");
+  zip.file(
+    "word/footnotes.xml",
+    footnotesXml.replace(
+      /<w:footnote w:id="2">.*?<\/w:footnote>/u,
+      `<w:footnote w:id="2">
+        <w:p w14:paraId="B2000001">
+          <w:r><w:t xml:space="preserve">See </w:t></w:r>
+          <w:ins w:id="1" w:author="Reviewer"><w:r><w:t xml:space="preserve">INSERTED </w:t></w:r></w:ins>
+          <w:del w:id="2" w:author="Reviewer"><w:r><w:delText xml:space="preserve">DELETED </w:delText></w:r></w:del>
+          <w:moveFrom w:id="3" w:author="Reviewer"><w:r><w:t xml:space="preserve">MOVED FROM </w:t></w:r></w:moveFrom>
+          <w:moveTo w:id="4" w:author="Reviewer"><w:r><w:t xml:space="preserve">MOVED TO </w:t></w:r></w:moveTo>
+          <w:hyperlink w:anchor="citation"><w:r><w:t xml:space="preserve">LINK </w:t></w:r></w:hyperlink>
+          <w:fldSimple w:instr=" REF citation "><w:r><w:t xml:space="preserve">SIMPLE </w:t></w:r></w:fldSimple>
+          <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+          <w:r><w:instrText xml:space="preserve"> REF citation </w:instrText></w:r>
+          <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+          <w:r><w:t xml:space="preserve">COMPLEX </w:t></w:r>
+          <w:r><w:fldChar w:fldCharType="end"/></w:r>
+          <w:sdt><w:sdtPr/><w:sdtContent><w:r><w:t>SDT.</w:t></w:r></w:sdtContent></w:sdt>
+        </w:p>
+        <w:tbl><w:tr><w:tc><w:p><w:r><w:t>TABLE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+      </w:footnote>`,
+    ),
+  );
+  zip.file(
+    "word/endnotes.xml",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="B2000002"><w:r><w:t xml:space="preserve">Endnote </w:t></w:r><w:ins w:id="5" w:author="Reviewer"><w:r><w:t>INSERTED</w:t></w:r></w:ins><w:del w:id="6" w:author="Reviewer"><w:r><w:delText>DELETED</w:delText></w:r></w:del></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:endnote></w:endnotes>',
+  );
+  return zip.generateAsync({ type: "arraybuffer" });
+};
+
 describe("headless docx review notes read surface", () => {
+  test("reads every visible note content kind in the accepted view", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await readRichNotesFixture());
+    const footnote = reviewer
+      .listStories()
+      .find(({ handle }) => handle.type === "footnote" && handle.noteId === 2);
+
+    expect(footnote?.text).toBe("See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT. TABLE CELL");
+    expect(reviewer.readStory({ type: "endnote", noteId: 3 })?.text).toBe(
+      "Endnote INSERTED ENDNOTE CELL",
+    );
+  });
+
   test("edits a footnote through story-scoped document operations", async () => {
     const baseline = await readNotesFixture();
     const story = { type: "footnote", noteId: 2 } as const;

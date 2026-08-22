@@ -34,8 +34,10 @@ import type {
   ParagraphPropertyChange,
   TrackedChangeInfo,
   MathEquation,
+  RunContent,
 } from "../types/document";
 import { normalizeRevisionId } from "@stll/docx-core/model";
+import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
 import {
   parseBookmarkStart as parseBookmarkStartFromModule,
@@ -2061,6 +2063,101 @@ function styleChainInd(
 // UTILITY FUNCTIONS
 // ============================================================================
 
+const getRunContentText = (content: RunContent): string => {
+  switch (content.type) {
+    case "text":
+      return content.text;
+    case "tab":
+      return "\t";
+    case "break":
+      return content.breakType === "page" ? "\f" : "\n";
+    case "noBreakHyphen":
+      return "\u2011";
+    case "softHyphen":
+      return "\u00ad";
+    case "drawing":
+    case "endnoteRef":
+    case "fieldChar":
+    case "footnoteRef":
+    case "instrText":
+    case "renderedPageBreak":
+    case "shape":
+    case "symbol":
+      return "";
+    default: {
+      const unsupported: never = content;
+      return panic(
+        `Unsupported run content in plain-text extraction: ${JSON.stringify(unsupported)}`,
+      );
+    }
+  }
+};
+
+const getRunText = (run: Run): string => {
+  if (run.formatting?.hidden === true) {
+    return "";
+  }
+  return run.content.map(getRunContentText).join("");
+};
+
+const getHyperlinkText = (hyperlink: Hyperlink): string =>
+  hyperlink.children
+    .map((child) => {
+      switch (child.type) {
+        case "run":
+          return getRunText(child);
+        case "bookmarkStart":
+        case "bookmarkEnd":
+          return "";
+        default: {
+          const unsupported: never = child;
+          return panic(
+            `Unsupported hyperlink child in plain-text extraction: ${JSON.stringify(unsupported)}`,
+          );
+        }
+      }
+    })
+    .join("");
+
+const getParagraphContentText = (content: ParagraphContent): string => {
+  switch (content.type) {
+    case "run":
+      return getRunText(content);
+    case "hyperlink":
+      return getHyperlinkText(content);
+    case "simpleField":
+      return content.content.map(getParagraphContentText).join("");
+    case "complexField":
+      return content.fieldResult.map(getRunText).join("");
+    case "inlineSdt":
+      return content.content.map(getParagraphContentText).join("");
+    case "insertion":
+    case "moveTo":
+      return content.content.map(getParagraphContentText).join("");
+    case "deletion":
+    case "moveFrom":
+      return "";
+    case "mathEquation":
+      return content.plainText ?? "";
+    case "bookmarkEnd":
+    case "bookmarkStart":
+    case "commentRangeEnd":
+    case "commentRangeStart":
+    case "commentReference":
+    case "moveFromRangeEnd":
+    case "moveFromRangeStart":
+    case "moveToRangeEnd":
+    case "moveToRangeStart":
+      return "";
+    default: {
+      const unsupported: never = content;
+      return panic(
+        `Unsupported paragraph content in plain-text extraction: ${JSON.stringify(unsupported)}`,
+      );
+    }
+  }
+};
+
 /**
  * Get plain text from a paragraph
  *
@@ -2068,55 +2165,7 @@ function styleChainInd(
  * @returns Concatenated text content
  */
 export function getParagraphText(paragraph: Paragraph): string {
-  let text = "";
-
-  for (const content of paragraph.content) {
-    if (content.type === "run") {
-      for (const runContent of content.content) {
-        if (runContent.type === "text") {
-          text += runContent.text;
-        } else if (runContent.type === "tab") {
-          text += "\t";
-        } else if (runContent.type === "break") {
-          if (runContent.breakType === "page") {
-            text += "\f";
-          } else {
-            text += "\n";
-          }
-        }
-      }
-    } else if (content.type === "hyperlink") {
-      for (const child of content.children) {
-        if (child.type === "run") {
-          for (const runContent of child.content) {
-            if (runContent.type === "text") {
-              text += runContent.text;
-            }
-          }
-        }
-      }
-    } else if (content.type === "simpleField") {
-      for (const child of content.content) {
-        if (child.type === "run") {
-          for (const runContent of child.content) {
-            if (runContent.type === "text") {
-              text += runContent.text;
-            }
-          }
-        }
-      }
-    } else if (content.type === "complexField") {
-      for (const run of content.fieldResult) {
-        for (const runContent of run.content) {
-          if (runContent.type === "text") {
-            text += runContent.text;
-          }
-        }
-      }
-    }
-  }
-
-  return text;
+  return paragraph.content.map(getParagraphContentText).join("");
 }
 
 /**
