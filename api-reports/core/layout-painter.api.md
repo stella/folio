@@ -123,6 +123,7 @@ export type PainterOptions = {
 // @public
 export type RenderContext = {
     pageNumber: number;
+    pageNumberFormat?: string;
     totalPages: number;
     section: "body" | "header" | "footer";
     bookmarkPages?: ReadonlyMap<string, number>;

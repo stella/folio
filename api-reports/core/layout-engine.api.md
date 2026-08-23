@@ -132,7 +132,7 @@ export function createPaginator(options: PaginatorOptions): {
         w: number;
         h: number;
     }, newMargins?: PageMargins, applyImmediately?: boolean) => void;
-    startSection: (sectionIndex: number) => void;
+    startSection: (sectionIndex: number, pageNumbering?: SectionPageNumbering) => void;
 };
 
 // @public
@@ -428,6 +428,7 @@ export type LayoutOptions = {
     };
     finalMargins?: PageMargins;
     finalColumns?: ColumnLayout;
+    finalPageNumbering?: SectionPageNumbering;
     columns?: ColumnLayout;
     pageGap?: number;
     defaultLineHeight?: number;
@@ -490,6 +491,8 @@ export type MeasuredLine = {
 // @public
 export type Page = {
     number: number;
+    logicalNumber: number;
+    logicalNumberFormat?: string;
     fragments: Fragment[];
     margins: PageMargins;
     authoredMargins?: PageMargins;
@@ -566,6 +569,7 @@ export type PaginatorOptions = {
     mirrorMargins?: boolean;
     firstPageMargins?: PageMargins;
     sectionEvenPageMargins?: (PageMargins | undefined)[];
+    pageNumbering?: SectionPageNumbering;
     columns?: ColumnLayout;
     footnoteReservedHeights?: Map<number, number>;
     sectionHeaderFooterRefs?: PageHeaderFooterRefs[];
@@ -804,6 +808,7 @@ export type SectionBreakBlock = {
     orientation?: "portrait" | "landscape";
     margins?: PageMargins;
     columns?: ColumnLayout;
+    pageNumbering?: SectionPageNumbering;
     documentGridLinePitchTwips?: number;
 };
 
@@ -819,7 +824,18 @@ export type SectionLayoutConfig = {
         h: number;
     };
     margins: PageMargins;
+    pageNumbering: SectionPageNumbering;
     columns?: ColumnLayout;
+};
+
+// @public
+export type SectionPageNumbering = {
+    type: "continue";
+    format?: string;
+} | {
+    type: "restart";
+    start: number;
+    format?: string;
 };
 
 // @public
