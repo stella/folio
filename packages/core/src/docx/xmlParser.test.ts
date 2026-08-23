@@ -5,6 +5,7 @@ import {
   collectXmlnsDeclarations,
   elementToXml,
   NAMESPACES,
+  parseOnOffValue,
   parseXmlDocument,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -80,6 +81,24 @@ describe("OOXML parsing", () => {
     expect(serialized).toContain(`xmlns:w="${NAMESPACES.w}"`);
     expect(serialized).toContain(`xmlns:v="${NAMESPACES.v}"`);
     expect(serialized).toContain(`xmlns:r="${NAMESPACES.r}"`);
+  });
+});
+
+describe("ST_OnOff values", () => {
+  test("recognizes every on and off spelling", () => {
+    for (const value of ["1", "true", "on"]) {
+      expect(parseOnOffValue(value)).toBe(true);
+    }
+    for (const value of ["0", "false", "off"]) {
+      expect(parseOnOffValue(value)).toBe(false);
+    }
+  });
+
+  test("leaves absent and invalid values unresolved", () => {
+    expect(parseOnOffValue(null)).toBeUndefined();
+    expect(parseOnOffValue(undefined)).toBeUndefined();
+    expect(parseOnOffValue("yes")).toBeUndefined();
+    expect(parseOnOffValue(" TRUE ")).toBeUndefined();
   });
 });
 

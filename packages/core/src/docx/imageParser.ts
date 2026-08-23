@@ -53,6 +53,7 @@ import {
   getChildElements,
   getAttribute,
   parseNumericAttribute,
+  parseOnOffValue,
   findByFullName,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -173,7 +174,7 @@ function parseDocProps(docPr: XmlElement | null): {
 
   // Check for decorative flag (accessibility)
   // In newer OOXML, this is indicated by a:decorative element or attribute
-  const decorative = getAttribute(docPr, null, "decorative") === "1";
+  const decorative = parseOnOffValue(getAttribute(docPr, null, "decorative")) === true;
 
   // Check for hyperlink (a:hlinkClick) — clickable image
   const hlinkClickEl = findChild(docPr, "a", "hlinkClick");
@@ -202,8 +203,8 @@ function parseTransform(xfrm: XmlElement | null): ImageTransform | undefined {
   }
 
   const rot = getAttribute(xfrm, null, "rot");
-  const flipH = getAttribute(xfrm, null, "flipH") === "1";
-  const flipV = getAttribute(xfrm, null, "flipV") === "1";
+  const flipH = parseOnOffValue(getAttribute(xfrm, null, "flipH")) === true;
+  const flipV = parseOnOffValue(getAttribute(xfrm, null, "flipV")) === true;
 
   const rotation = rotToDegrees(rot);
 
@@ -309,17 +310,7 @@ function parseImageCrop(blipFill: XmlElement | null): ImageCrop | undefined {
  * spec-defined default.
  */
 function parseOnOffAttr(element: XmlElement, name: string): boolean | undefined {
-  const raw = getAttribute(element, null, name);
-  if (raw === null) {
-    return undefined;
-  }
-  if (raw === "1" || raw === "true" || raw === "on") {
-    return true;
-  }
-  if (raw === "0" || raw === "false" || raw === "off") {
-    return false;
-  }
-  return undefined;
+  return parseOnOffValue(getAttribute(element, null, name));
 }
 
 /**
@@ -696,7 +687,7 @@ function parseAnchor(
   const props = parseDocProps(docPr);
 
   // Check behindDoc attribute
-  const behindDoc = getAttribute(anchorEl, null, "behindDoc") === "1";
+  const behindDoc = parseOnOffValue(getAttribute(anchorEl, null, "behindDoc")) === true;
 
   // OOXML defaults `layoutInCell` and `allowOverlap` to "1" (true) when the
   // attributes are absent. We only record the value when the document

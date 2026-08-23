@@ -790,13 +790,7 @@ export function hasFlag(
     return false;
   }
 
-  // Explicitly false
-  if (value === "0" || value === "false" || value === "off") {
-    return false;
-  }
-
-  // Any other value (including "1", "true", "on", or empty string) means true
-  return true;
+  return parseOnOffValue(value) ?? true;
 }
 
 /**
@@ -913,12 +907,34 @@ export function parseTableMeasurementValue(
 }
 
 /**
+ * Parse an OOXML `ST_OnOff` lexical value.
+ */
+export function parseOnOffValue(value: string | null | undefined): boolean | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  switch (value) {
+    case "1":
+    case "true":
+    case "on":
+      return true;
+    case "0":
+    case "false":
+    case "off":
+      return false;
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Parse a boolean value from an attribute or element presence
  *
  * OOXML boolean conventions:
  * - Element presence with no val attribute = true
- * - w:val="true" or w:val="1" = true
- * - w:val="false" or w:val="0" = false
+ * - w:val="true", w:val="1", or w:val="on" = true
+ * - w:val="false", w:val="0", or w:val="off" = false
  *
  * @param element - Element to check
  * @param namespace - Namespace for val attribute
@@ -967,12 +983,7 @@ export function parseBooleanElement(
     return true;
   }
 
-  // Explicit false values
-  if (val === "0" || val === "false" || val === "off") {
-    return false;
-  }
-
-  return true;
+  return parseOnOffValue(val) ?? true;
 }
 
 /**

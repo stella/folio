@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { serializeStylesXml } from "./serializer/stylesSerializer";
-import { parseStyleDefinitions, parseStyles } from "./styleParser";
+import { getDefaultParagraphStyle, parseStyleDefinitions, parseStyles } from "./styleParser";
 
 const STYLES_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
@@ -40,6 +40,43 @@ describe("docDefaults presence (#909)", () => {
       val: "cs-CZ",
       eastAsia: "ja-JP",
       bidi: "ar-SA",
+    });
+  });
+});
+
+describe("style default ST_OnOff values", () => {
+  test("recognizes on as a default paragraph style value", () => {
+    const styles = parseStyles(
+      `<w:styles ${STYLES_NS}>
+        <w:style w:type="paragraph" w:default="on" w:styleId="BodyText">
+          <w:name w:val="Body Text"/>
+        </w:style>
+      </w:styles>`,
+      null,
+    );
+
+    expect(styles.get("BodyText")?.default).toBe(true);
+    expect(getDefaultParagraphStyle(styles)?.styleId).toBe("BodyText");
+  });
+
+  test("uses the same decoder for latent and table style flags", () => {
+    const definitions = parseStyleDefinitions(
+      `<w:styles ${STYLES_NS}>
+        <w:latentStyles w:defLockedState="on" w:defQFormat="off"/>
+        <w:style w:type="table" w:styleId="Grid">
+          <w:tblPr><w:tblLook w:firstRow="on" w:lastRow="off"/></w:tblPr>
+        </w:style>
+      </w:styles>`,
+      null,
+    );
+
+    expect(definitions.latentStyles).toMatchObject({
+      defLockedState: true,
+      defQFormat: false,
+    });
+    expect(definitions.styles.at(0)?.tblPr?.look).toMatchObject({
+      firstRow: true,
+      lastRow: false,
     });
   });
 });

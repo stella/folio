@@ -69,6 +69,7 @@ import {
   parseBooleanElement,
   parseNumberingLevelAttribute,
   parseNumericAttribute,
+  parseOnOffValue,
   parseTableMeasurementValue,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -523,12 +524,12 @@ function parseBorderSpec(border: XmlElement | null): BorderSpec | undefined {
 
   const shadowAttr = getAttribute(border, "w", "shadow");
   if (shadowAttr) {
-    spec.shadow = shadowAttr === "1" || shadowAttr === "true";
+    spec.shadow = parseOnOffValue(shadowAttr) ?? false;
   }
 
   const frame = getAttribute(border, "w", "frame");
   if (frame) {
-    spec.frame = frame === "1" || frame === "true";
+    spec.frame = parseOnOffValue(frame) ?? false;
   }
 
   return spec;
@@ -629,12 +630,12 @@ function parseParagraphProperties(
 
     const beforeAuto = getAttribute(spacing, "w", "beforeAutospacing");
     if (beforeAuto) {
-      formatting.beforeAutospacing = beforeAuto === "1" || beforeAuto === "true";
+      formatting.beforeAutospacing = parseOnOffValue(beforeAuto) ?? false;
     }
 
     const afterAuto = getAttribute(spacing, "w", "afterAutospacing");
     if (afterAuto) {
-      formatting.afterAutospacing = afterAuto === "1" || afterAuto === "true";
+      formatting.afterAutospacing = parseOnOffValue(afterAuto) ?? false;
     }
   }
 
@@ -969,32 +970,32 @@ function parseTableLook(tblLook: XmlElement | null): TableLook | undefined {
   // Individual attributes override
   const firstColumn = getAttribute(tblLook, "w", "firstColumn");
   if (firstColumn) {
-    look.firstColumn = firstColumn === "1";
+    look.firstColumn = parseOnOffValue(firstColumn) ?? false;
   }
 
   const firstRow = getAttribute(tblLook, "w", "firstRow");
   if (firstRow) {
-    look.firstRow = firstRow === "1";
+    look.firstRow = parseOnOffValue(firstRow) ?? false;
   }
 
   const lastColumn = getAttribute(tblLook, "w", "lastColumn");
   if (lastColumn) {
-    look.lastColumn = lastColumn === "1";
+    look.lastColumn = parseOnOffValue(lastColumn) ?? false;
   }
 
   const lastRow = getAttribute(tblLook, "w", "lastRow");
   if (lastRow) {
-    look.lastRow = lastRow === "1";
+    look.lastRow = parseOnOffValue(lastRow) ?? false;
   }
 
   const noHBand = getAttribute(tblLook, "w", "noHBand");
   if (noHBand) {
-    look.noHBand = noHBand === "1";
+    look.noHBand = parseOnOffValue(noHBand) ?? false;
   }
 
   const noVBand = getAttribute(tblLook, "w", "noVBand");
   if (noVBand) {
-    look.noVBand = noVBand === "1";
+    look.noVBand = parseOnOffValue(noVBand) ?? false;
   }
 
   return Object.keys(look).length > 0 ? look : undefined;
@@ -1364,7 +1365,7 @@ function parseStyle(styleEl: XmlElement, theme: Theme | null): Style {
   // Default flag
   const defaultAttr = getAttribute(styleEl, "w", "default");
   if (defaultAttr) {
-    style.default = defaultAttr === "1" || defaultAttr === "true";
+    style.default = parseOnOffValue(defaultAttr) ?? false;
   }
 
   const children = collectStyleChildren(styleEl);
@@ -1738,10 +1739,12 @@ function parseStyleDefinitionsFromDocument(
     const latentStylesEl = findChild(doc, "w", "latentStyles");
     if (latentStylesEl) {
       const latentStyles: NonNullable<StyleDefinitions["latentStyles"]> = {
-        defLockedState: getAttribute(latentStylesEl, "w", "defLockedState") === "1",
-        defSemiHidden: getAttribute(latentStylesEl, "w", "defSemiHidden") === "1",
-        defUnhideWhenUsed: getAttribute(latentStylesEl, "w", "defUnhideWhenUsed") === "1",
-        defQFormat: getAttribute(latentStylesEl, "w", "defQFormat") === "1",
+        defLockedState:
+          parseOnOffValue(getAttribute(latentStylesEl, "w", "defLockedState")) ?? false,
+        defSemiHidden: parseOnOffValue(getAttribute(latentStylesEl, "w", "defSemiHidden")) ?? false,
+        defUnhideWhenUsed:
+          parseOnOffValue(getAttribute(latentStylesEl, "w", "defUnhideWhenUsed")) ?? false,
+        defQFormat: parseOnOffValue(getAttribute(latentStylesEl, "w", "defQFormat")) ?? false,
       };
       const defUIPriority = parseNumericAttribute(latentStylesEl, "w", "defUIPriority");
       if (defUIPriority !== undefined) {
