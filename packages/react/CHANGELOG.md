@@ -1,5 +1,13 @@
 # @stll/folio-react
 
+## 0.15.5
+
+### Patch Changes
+
+- [#601](https://github.com/stella/folio/pull/601) [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Avoid reparsing already validated agent document-operation batches while keeping core batch validation canonical.
+- Updated dependencies [[`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634), [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634), [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634), [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634), [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634), [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634)]:
+  - @stll/folio-core@0.23.0
+
 ## 0.15.4
 
 ### Patch Changes

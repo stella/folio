@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.15.2
+
+### Patch Changes
+
+- [#601](https://github.com/stella/folio/pull/601) [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use one bounded DOCX package validator with structured failure codes.
+
 ## 0.15.1
 
 ### Patch Changes

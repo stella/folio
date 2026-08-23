@@ -1,5 +1,25 @@
 # @stll/folio-core
 
+## 0.23.0
+
+### Minor Changes
+
+- [#601](https://github.com/stella/folio/pull/601) [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Avoid reparsing already validated agent document-operation batches while keeping core batch validation canonical.
+
+### Patch Changes
+
+- [#601](https://github.com/stella/folio/pull/601) [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use one bounded DOCX package validator with structured failure codes.
+
+- [#601](https://github.com/stella/folio/pull/601) [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve typed document values during auto-save recovery and validate SDT list items consistently.
+
+- [#601](https://github.com/stella/folio/pull/601) [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Type core command lookups and remove unchecked assertions from formatting, paragraph, and table wrappers.
+
+- [#601](https://github.com/stella/folio/pull/601) [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve complex-script theme fonts and consolidate typed selection formatting extraction.
+
+- [#601](https://github.com/stella/folio/pull/601) [`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Validate nested paragraph property-change formatting at the ProseMirror boundary and consume it through typed paragraph attrs.
+- Updated dependencies [[`6b636ad`](https://github.com/stella/folio/commit/6b636ad6a386fab1166c9a43441792258d352634)]:
+  - @stll/docx-core@0.15.2
+
 ## 0.22.3
 
 ### Patch Changes
