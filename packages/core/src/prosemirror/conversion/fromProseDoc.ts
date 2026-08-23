@@ -1130,6 +1130,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     typeof spaceBefore === "number" && (!beforeHasAutospacingBase || beforeAutospacingEdited);
   const shouldSerializeSpaceAfter =
     typeof spaceAfter === "number" && (!afterHasAutospacingBase || afterAutospacingEdited);
+  const hasDirectLineSpacing = attrs.lineSpacingExplicit === true;
 
   if (attrs._originalFormatting) {
     const orig = attrs._originalFormatting;
@@ -1149,6 +1150,31 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
         result.spaceAfter = spaceAfter;
       } else {
         delete result.spaceAfter;
+      }
+    }
+
+    // A spacing command is a direct override even when the imported value was
+    // inherited from a style. Keep the explicit zero instead of dropping the
+    // side and letting the style value reappear on the next load.
+    if (attrs.spacingExplicit?.before && typeof spaceBefore === "number") {
+      result.spaceBefore = spaceBefore;
+    }
+    if (attrs.spacingExplicit?.after && typeof spaceAfter === "number") {
+      result.spaceAfter = spaceAfter;
+    }
+
+    const originalHasDirectLineSpacing =
+      orig.lineSpacing !== undefined || orig.lineSpacingRule !== undefined;
+    if (hasDirectLineSpacing || originalHasDirectLineSpacing) {
+      if (typeof attrs.lineSpacing === "number") {
+        result.lineSpacing = attrs.lineSpacing;
+      } else {
+        Reflect.deleteProperty(result, "lineSpacing");
+      }
+      if (attrs.lineSpacingRule) {
+        result.lineSpacingRule = attrs.lineSpacingRule;
+      } else {
+        Reflect.deleteProperty(result, "lineSpacingRule");
       }
     }
 
@@ -1220,7 +1246,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     shouldSerializeSpaceAfter ||
     beforeAutospacingEdited ||
     afterAutospacingEdited ||
-    attrs.lineSpacing ||
+    hasDirectLineSpacing ||
     attrs.snapToGrid != null ||
     attrs.indentLeft ||
     attrs.indentRight ||
@@ -1262,10 +1288,10 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (afterAutospacingEdited) {
     f.afterAutospacing = false;
   }
-  if (attrs.lineSpacing) {
+  if (hasDirectLineSpacing && typeof attrs.lineSpacing === "number") {
     f.lineSpacing = attrs.lineSpacing;
   }
-  if (attrs.lineSpacingRule) {
+  if (hasDirectLineSpacing && attrs.lineSpacingRule) {
     f.lineSpacingRule = attrs.lineSpacingRule;
   }
   if (attrs.snapToGrid != null) {

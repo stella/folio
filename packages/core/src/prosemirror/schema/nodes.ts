@@ -81,6 +81,7 @@ export type ParagraphAttrs = {
   spaceAfter?: number;
   lineSpacing?: number;
   lineSpacingRule?: LineSpacingRule;
+  lineSpacingExplicit?: boolean;
   snapToGrid?: boolean;
   spacingExplicit?: SpacingExplicit;
   /** Layout provenance: document defaults survive on empty paragraphs. */

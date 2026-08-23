@@ -289,6 +289,7 @@ function extractParagraphAttrsFromStyle(element: HTMLElement): Partial<Paragraph
     if (spacing) {
       attrs.lineSpacing = spacing.lineSpacing;
       attrs.lineSpacingRule = spacing.lineSpacingRule;
+      attrs.lineSpacingExplicit = true;
     }
   }
 
@@ -327,6 +328,7 @@ const paragraphNodeSpec: NodeSpec = {
     spaceAfter: { default: null },
     lineSpacing: { default: null },
     lineSpacingRule: { default: null },
+    lineSpacingExplicit: { default: null },
     snapToGrid: { default: null },
     spacingExplicit: { default: null },
     spacingFromDocDefaults: { default: null },
@@ -511,6 +513,37 @@ function setParagraphAttr(attr: string, value: unknown): Command {
   };
 }
 
+function setParagraphSpacingAttr(side: "before" | "after", twips: number): Command {
+  return (state, dispatch) => {
+    const { $from, $to } = state.selection;
+
+    if (!dispatch) {
+      return true;
+    }
+
+    let tr = state.tr;
+    const seen = new Set<number>();
+
+    state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
+      if (node.type.name === "paragraph" && !seen.has(pos)) {
+        seen.add(pos);
+        const spacingExplicit = {
+          ...node.attrs["spacingExplicit"],
+          [side]: true,
+        };
+        tr = tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          [side === "before" ? "spaceBefore" : "spaceAfter"]: twips,
+          spacingExplicit,
+        });
+      }
+    });
+
+    dispatch(tr.scrollIntoView());
+    return true;
+  };
+}
+
 function setParagraphAttrsCmd(attrs: Record<string, unknown>): Command {
   return (state, dispatch) => {
     const { $from, $to } = state.selection;
@@ -567,6 +600,7 @@ function makeSetLineSpacing(value: number, rule: LineSpacingRule = "auto"): Comm
     setParagraphAttrsCmd({
       lineSpacing: value,
       lineSpacingRule: rule,
+      lineSpacingExplicit: true,
     })(state, dispatch);
 }
 
@@ -823,8 +857,8 @@ export const ParagraphExtension = createNodeExtension({
         singleSpacing: () => makeSetLineSpacing(240),
         oneAndHalfSpacing: () => makeSetLineSpacing(360),
         doubleSpacing: () => makeSetLineSpacing(480),
-        setSpaceBefore: (twips: number) => setParagraphAttr("spaceBefore", twips),
-        setSpaceAfter: (twips: number) => setParagraphAttr("spaceAfter", twips),
+        setSpaceBefore: (twips: number) => setParagraphSpacingAttr("before", twips),
+        setSpaceAfter: (twips: number) => setParagraphSpacingAttr("after", twips),
         increaseIndent: (amount?: number) => makeIncreaseIndent(amount),
         decreaseIndent: (amount?: number) => makeDecreaseIndent(amount),
         setIndentLeft: (twips: number) => setParagraphAttr("indentLeft", twips > 0 ? twips : null),

@@ -72,4 +72,26 @@ describe("extractSelectionState — bold detection", () => {
 
     expect(result?.textFormatting.bold).toBeUndefined();
   });
+
+  test("preserves zero line spacing in paragraph selection state", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          lineSpacing: 0,
+          lineSpacingRule: "auto",
+        },
+        [schema.text("Zero")],
+      ),
+    ]);
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 2, 2),
+    });
+
+    const result = extractSelectionState(state);
+
+    expect(result?.paragraphFormatting.lineSpacing).toBe(0);
+    expect(result?.paragraphFormatting.lineSpacingRule).toBe("auto");
+  });
 });

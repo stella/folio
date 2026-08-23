@@ -90,7 +90,7 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
     if (paragraph.attrs["alignment"]) {
       paragraphFormatting.alignment = paragraph.attrs["alignment"];
     }
-    if (paragraph.attrs["lineSpacing"]) {
+    if (typeof paragraph.attrs["lineSpacing"] === "number") {
       paragraphFormatting.lineSpacing = paragraph.attrs["lineSpacing"];
       paragraphFormatting.lineSpacingRule = paragraph.attrs["lineSpacingRule"];
     }

@@ -639,6 +639,53 @@ describe("fromProseDoc", () => {
     expect((block.formatting as Record<string, unknown>)["_autospacingBase"]).toBeUndefined();
   });
 
+  test("round-trips inherited line spacing without inlining the style value", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          styles: [
+            {
+              styleId: "Normal",
+              type: "paragraph",
+              default: true,
+              pPr: { lineSpacing: 240, lineSpacingRule: "auto" },
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { styleId: "Normal" },
+              content: [
+                {
+                  type: "run",
+                  content: [{ type: "text", text: "Inherited line spacing" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const pmDoc = toProseDoc(document, { styles: document.package.styles });
+    const attrs = expectParagraphAttrs(pmDoc.child(0));
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const block = roundTripped.package.document.content.at(0);
+
+    expect(attrs.lineSpacing).toBe(240);
+    expect(attrs.lineSpacingRule).toBe("auto");
+    expect(attrs.lineSpacingExplicit).toBeUndefined();
+    expect(block?.type).toBe("paragraph");
+    if (block?.type !== "paragraph") {
+      return;
+    }
+    expect(block.formatting?.styleId).toBe("Normal");
+    expect(block.formatting?.lineSpacing).toBeUndefined();
+    expect(block.formatting?.lineSpacingRule).toBeUndefined();
+  });
+
   test("saves edited inherited auto spacing as direct spacing with auto disabled", () => {
     const document: Document = {
       package: {

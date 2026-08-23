@@ -3,6 +3,8 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import { toFlowBlocks } from "../../../layout-bridge/convert/toFlowBlocks";
+import type { Document } from "../../../types/document";
+import { fromProseDoc } from "../../conversion/fromProseDoc";
 import { AUTO_PARAGRAPH_SPACING_PX, formatPx } from "../../../utils/units";
 import { schema, singletonManager } from "../../schema";
 
@@ -83,6 +85,110 @@ describe("ParagraphExtension", () => {
     const domAttrs = paragraphDomAttrs(para?.attrs ?? {});
     expect(domAttrs["style"]).toContain("margin-top: 16px");
     expect(domAttrs["style"]).not.toContain(`margin-top: ${formatPx(AUTO_PARAGRAPH_SPACING_PX)}`);
+  });
+
+  test("line-spacing edits preserve the imported before and after sides", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          spaceBefore: 120,
+          spaceAfter: 240,
+          lineSpacing: 240,
+          lineSpacingRule: "auto",
+          _originalFormatting: {
+            spaceBefore: 120,
+            spaceAfter: 240,
+            lineSpacing: 240,
+            lineSpacingRule: "auto",
+          },
+        },
+        [schema.text("x")],
+      ),
+    ]);
+    let state = EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, 1),
+    });
+
+    const setLineSpacing = singletonManager.getCommand("setLineSpacing");
+    if (!setLineSpacing) {
+      throw new Error("Missing setLineSpacing command");
+    }
+    setLineSpacing(480)(state, (tr: Transaction) => {
+      state = state.apply(tr);
+    });
+
+    const baseDocument: Document = { package: { document: { content: [] } } };
+    const paragraph = fromProseDoc(state.doc, baseDocument).package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") {
+      return;
+    }
+    expect(paragraph.formatting?.lineSpacing).toBe(480);
+    expect(paragraph.formatting?.spaceBefore).toBe(120);
+    expect(paragraph.formatting?.spaceAfter).toBe(240);
+  });
+
+  test("setting zero line spacing writes a direct override", () => {
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text("x")])]);
+    let state = EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, 1),
+    });
+
+    const setLineSpacing = singletonManager.getCommand("setLineSpacing");
+    if (!setLineSpacing) {
+      throw new Error("Missing setLineSpacing command");
+    }
+    setLineSpacing(0)(state, (tr: Transaction) => {
+      state = state.apply(tr);
+    });
+
+    const baseDocument: Document = { package: { document: { content: [] } } };
+    const paragraph = fromProseDoc(state.doc, baseDocument).package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") {
+      return;
+    }
+    expect(paragraph.formatting?.lineSpacing).toBe(0);
+    expect(paragraph.formatting?.lineSpacingRule).toBe("auto");
+  });
+
+  test("removing inherited spacing writes an explicit zero", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          spaceBefore: 200,
+          _originalFormatting: { styleId: "Normal" },
+        },
+        [schema.text("x")],
+      ),
+    ]);
+    let state = EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, 1),
+    });
+
+    const setSpaceBefore = singletonManager.getCommand("setSpaceBefore");
+    if (!setSpaceBefore) {
+      throw new Error("Missing setSpaceBefore command");
+    }
+    setSpaceBefore(0)(state, (tr: Transaction) => {
+      state = state.apply(tr);
+    });
+
+    const baseDocument: Document = { package: { document: { content: [] } } };
+    const paragraph = fromProseDoc(state.doc, baseDocument).package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") {
+      return;
+    }
+    expect(paragraph.formatting?.spaceBefore).toBe(0);
   });
 
   test("applying a style with spacing overrides imported auto-spacing (#823)", () => {

@@ -149,7 +149,7 @@ export function extractSelectionState(state: EditorState): SelectionState | null
     if (paragraph.attrs["alignment"]) {
       paragraphFormatting.alignment = paragraph.attrs["alignment"];
     }
-    if (paragraph.attrs["lineSpacing"]) {
+    if (typeof paragraph.attrs["lineSpacing"] === "number") {
       paragraphFormatting.lineSpacing = paragraph.attrs["lineSpacing"];
       paragraphFormatting.lineSpacingRule = paragraph.attrs["lineSpacingRule"];
     }

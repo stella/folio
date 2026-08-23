@@ -690,6 +690,12 @@ function paragraphFormattingToAttrs(
     set("spaceAfter", formatting?.spaceAfter ?? stylePpr?.spaceAfter);
     set("lineSpacing", formatting?.lineSpacing ?? stylePpr?.lineSpacing);
     set("lineSpacingRule", formatting?.lineSpacingRule ?? stylePpr?.lineSpacingRule);
+    set(
+      "lineSpacingExplicit",
+      formatting?.lineSpacing !== undefined || formatting?.lineSpacingRule !== undefined
+        ? true
+        : undefined,
+    );
     set("snapToGrid", formatting?.snapToGrid ?? stylePpr?.snapToGrid);
     set("spacingExplicit", formatting?.spacingExplicit);
     const paragraphStyle = styleId

@@ -66,6 +66,7 @@ export const PPR_CHANGE_SCOPED_ATTR_KEYS = [
   "spaceAfter",
   "lineSpacing",
   "lineSpacingRule",
+  "lineSpacingExplicit",
   "snapToGrid",
   "spacingExplicit",
   "indentLeft",
