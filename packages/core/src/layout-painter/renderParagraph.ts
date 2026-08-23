@@ -42,6 +42,10 @@ import { calculateTabWidth } from "../prosemirror/utils/tabCalculator";
 import type { TabContext, TabStop as TabCalcStop } from "../prosemirror/utils/tabCalculator";
 import { getAuthorColorIdx, AUTHOR_COLORS } from "../utils/authorColors";
 import { detectBaseDirection } from "../utils/baseDirection";
+import {
+  hasComplexScriptFormatting,
+  resolveComplexScriptFormatting,
+} from "../layout-engine/measure/complexScriptFormatting";
 import { planCursiveJoiners, withCursiveJoiners } from "./cursiveJoiners";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
@@ -1089,6 +1093,9 @@ function renderFieldRun(run: FieldRun, doc: Document, context: RenderContext): H
     kind: "text",
     text,
   };
+  if (resolvedRun.forceComplexScript && hasComplexScriptFormatting(resolvedRun)) {
+    return renderTextRun({ ...resolvedRun, ...resolveComplexScriptFormatting(resolvedRun) }, doc);
+  }
 
   // A CJK field result is generated text inside one atomic pm range, so the
   // measurer's per-script EA segmentation is mirrored for the font: each script
@@ -1121,7 +1128,7 @@ function renderFieldRun(run: FieldRun, doc: Document, context: RenderContext): H
       const segmentRun: TextRun = {
         ...segmentBase,
         text: segment.text,
-        ...scriptFontOverride(resolvedRun, segment.script),
+        ...scriptFormattingOverride(resolvedRun, segment.script),
       };
       wrapper.append(renderTextRun(segmentRun, doc));
     }
@@ -1310,12 +1317,15 @@ export function sliceRunsForLine(block: ParagraphBlock, line: MeasuredLine): Run
  * The font a script segment paints with, mirroring the measurer's
  * `scriptFontFamily`. Returning undefined leaves the run's own `fontFamily`.
  */
-const scriptFontOverride = (run: TextRun, script: ScriptClass): { fontFamily?: string } => {
+const scriptFormattingOverride = (
+  run: TextRun,
+  script: ScriptClass,
+): ReturnType<typeof resolveComplexScriptFormatting> => {
+  if (run.forceComplexScript || script === SCRIPT_CLASS.complex) {
+    return resolveComplexScriptFormatting(run);
+  }
   if (script === SCRIPT_CLASS.eastAsia && run.eastAsiaFontFamily !== undefined) {
     return { fontFamily: run.eastAsiaFontFamily };
-  }
-  if (script === SCRIPT_CLASS.complex && run.complexScriptFontFamily !== undefined) {
-    return { fontFamily: run.complexScriptFontFamily };
   }
   return {};
 };
@@ -1329,7 +1339,7 @@ const scriptFontOverride = (run: TextRun, script: ScriptClass): { fontFamily?: s
 const needsPerScriptSpans = (run: TextRun): boolean => {
   if (run.letterSpacing) return false;
   if (run.eastAsiaFontFamily !== undefined && hasCjk(run.text)) return true;
-  return run.complexScriptFontFamily !== undefined && hasComplexScript(run.text);
+  return hasComplexScriptFormatting(run) && hasComplexScript(run.text);
 };
 
 /**
@@ -1345,6 +1355,10 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
   const result: Run[] = [];
 
   for (const run of runs) {
+    if (isTextRun(run) && run.forceComplexScript && hasComplexScriptFormatting(run)) {
+      result.push({ ...run, ...resolveComplexScriptFormatting(run) });
+      continue;
+    }
     if (!isTextRun(run) || !needsPerScriptSpans(run)) {
       result.push(run);
       continue;
@@ -1355,7 +1369,7 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
       result.push({
         ...run,
         text: segment.text,
-        ...scriptFontOverride(run, segment.script),
+        ...scriptFormattingOverride(run, segment.script),
         ...(run.pmStart !== undefined
           ? {
               pmStart: run.pmStart + offset,
@@ -1553,6 +1567,14 @@ function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
     ...(run.complexScriptFontFamily !== undefined
       ? { complexScriptFontFamily: run.complexScriptFontFamily }
       : {}),
+    ...(run.complexScriptFontSize !== undefined
+      ? { complexScriptFontSize: run.complexScriptFontSize }
+      : {}),
+    ...(run.complexScriptBold !== undefined ? { complexScriptBold: run.complexScriptBold } : {}),
+    ...(run.complexScriptItalic !== undefined
+      ? { complexScriptItalic: run.complexScriptItalic }
+      : {}),
+    ...(run.forceComplexScript !== undefined ? { forceComplexScript: run.forceComplexScript } : {}),
     kerning: getRunFontKerningMode(run, DEFAULT_FONT_SIZE) === FONT_KERNING_MODE.enabled,
   };
 }
@@ -1748,6 +1770,10 @@ type TextMeasureStyle = {
   eastAsiaFontFamily?: string;
   /** Complex-script font for Arabic/Hebrew/Indic code points; same contract. */
   complexScriptFontFamily?: string;
+  complexScriptFontSize?: number;
+  complexScriptBold?: boolean;
+  complexScriptItalic?: boolean;
+  forceComplexScript?: boolean;
   kerning?: boolean;
 };
 
@@ -1776,49 +1802,63 @@ function createTextMeasurer(
     ctx.fontKerning = getFontKerningMode(style);
     // Use font resolver for category-appropriate fallback stacks,
     // matching measureContainer.ts
-    const cssFallback = resolveFontFamily(fontFamily).cssFallback;
-    // Convert pt to px for canvas (1pt = 96/72 px)
-    const fontSizePx = (fontSize * 96) / 72;
-    const fontPrefixParts: string[] = [];
-    if (style.italic) {
-      fontPrefixParts.push("italic");
-    }
-    if (style.smallCaps) {
-      fontPrefixParts.push("small-caps");
-    }
-    if (style.bold) {
-      fontPrefixParts.push(DOCX_BOLD_FONT_WEIGHT);
-    }
-    fontPrefixParts.push(`${fontSizePx}px`);
-    const fontPrefix = fontPrefixParts.join(" ");
-
-    // CJK code points measure with the EA font (matching the per-script sub-spans
-    // the painter emits and measureContainer's segmentation). Gated off for
-    // letter-spaced runs, which keep a single base-font span.
-    const perScriptFallback: Partial<Record<ScriptClass, string>> = {
-      ...(style.eastAsiaFontFamily
-        ? { [SCRIPT_CLASS.eastAsia]: resolveFontFamily(style.eastAsiaFontFamily).cssFallback }
-        : {}),
-      ...(style.complexScriptFontFamily
-        ? {
-            [SCRIPT_CLASS.complex]: resolveFontFamily(style.complexScriptFontFamily).cssFallback,
-          }
-        : {}),
+    const fontString = (
+      family: string,
+      size: number,
+      bold: boolean | undefined,
+      italic: boolean | undefined,
+    ): string => {
+      const fontPrefixParts: string[] = [];
+      if (italic) {
+        fontPrefixParts.push("italic");
+      }
+      if (style.smallCaps) {
+        fontPrefixParts.push("small-caps");
+      }
+      if (bold) {
+        fontPrefixParts.push(DOCX_BOLD_FONT_WEIGHT);
+      }
+      fontPrefixParts.push(`${(size * 96) / 72}px`);
+      return `${fontPrefixParts.join(" ")} ${resolveFontFamily(family).cssFallback}`;
     };
+    const baseFont = fontString(fontFamily, fontSize, style.bold, style.italic);
+    const complex = resolveComplexScriptFormatting(style);
+    const complexFont = fontString(
+      complex.fontFamily ?? fontFamily,
+      complex.fontSize ?? fontSize,
+      complex.bold ?? style.bold,
+      complex.italic ?? style.italic,
+    );
+
+    if (style.forceComplexScript) {
+      ctx.font = complexFont;
+      return applyLetterSpacingToMeasuredWidth(
+        ctx.measureText(text).width,
+        text,
+        style.letterSpacing,
+      );
+    }
+
     if (
       !style.letterSpacing &&
       ((style.eastAsiaFontFamily && hasCjk(text)) ||
-        (style.complexScriptFontFamily && hasComplexScript(text)))
+        (hasComplexScriptFormatting(style) && hasComplexScript(text)))
     ) {
       let segmentedWidth = 0;
       for (const segment of segmentByScript(text)) {
-        ctx.font = `${fontPrefix} ${perScriptFallback[segment.script] ?? cssFallback}`;
+        if (segment.script === SCRIPT_CLASS.eastAsia && style.eastAsiaFontFamily) {
+          ctx.font = fontString(style.eastAsiaFontFamily, fontSize, style.bold, style.italic);
+        } else if (segment.script === SCRIPT_CLASS.complex) {
+          ctx.font = complexFont;
+        } else {
+          ctx.font = baseFont;
+        }
         segmentedWidth += ctx.measureText(segment.text).width;
       }
       return segmentedWidth;
     }
 
-    ctx.font = `${fontPrefix} ${cssFallback}`;
+    ctx.font = baseFont;
     return applyLetterSpacingToMeasuredWidth(
       ctx.measureText(text).width,
       text,
@@ -2330,12 +2370,7 @@ export function renderLine(
         run.allCaps ? run.text.toLocaleUpperCase() : run.text,
         fontSize,
         fontFamily,
-        {
-          ...(run.bold !== undefined ? { bold: run.bold } : {}),
-          ...(run.italic !== undefined ? { italic: run.italic } : {}),
-          ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
-          ...(run.smallCaps !== undefined ? { smallCaps: run.smallCaps } : {}),
-        },
+        runMeasureStyle(run),
       );
       reserveScaledAdvance(runEl, measuredWidth, run.horizontalScale);
       currentX += measuredWidth * ((run.horizontalScale ?? 100) / 100);

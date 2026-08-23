@@ -10,9 +10,8 @@ import type { Mark } from "prosemirror-model";
 
 import type { TextFormatting } from "../../../types/document";
 import { expectRunFormattingOverrideMarkAttrs } from "../../attrs";
+import type { RunFormattingOverrideAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
-
-type RunFormattingOverrideAttrs = Record<string, false | "none">;
 
 export function buildRunFormattingOverrideAttrs(
   formatting: TextFormatting | undefined,
@@ -24,50 +23,64 @@ export function buildRunFormattingOverrideAttrs(
   const attrs: RunFormattingOverrideAttrs = {};
 
   if (formatting.bold === false) {
-    attrs["bold"] = false;
+    attrs.bold = false;
   }
   if (formatting.italic === false) {
-    attrs["italic"] = false;
+    attrs.italic = false;
   }
   if (formatting.underline?.style === "none") {
-    attrs["underline"] = "none";
+    attrs.underline = "none";
   }
   if (formatting.strike === false) {
-    attrs["strike"] = false;
+    attrs.strike = false;
   }
   if (formatting.doubleStrike === false) {
-    attrs["doubleStrike"] = false;
+    attrs.doubleStrike = false;
   }
   if (formatting.allCaps === false) {
-    attrs["allCaps"] = false;
+    attrs.allCaps = false;
   }
   if (formatting.smallCaps === false) {
-    attrs["smallCaps"] = false;
+    attrs.smallCaps = false;
   }
   if (formatting.hidden === false) {
-    attrs["hidden"] = false;
+    attrs.hidden = false;
   }
   if (formatting.emboss === false) {
-    attrs["emboss"] = false;
+    attrs.emboss = false;
   }
   if (formatting.imprint === false) {
-    attrs["imprint"] = false;
+    attrs.imprint = false;
   }
   if (formatting.shadow === false) {
-    attrs["shadow"] = false;
+    attrs.shadow = false;
   }
   if (formatting.outline === false) {
-    attrs["outline"] = false;
+    attrs.outline = false;
   }
   if (formatting.rtl === false) {
-    attrs["rtl"] = false;
+    attrs.rtl = false;
+  }
+  if (formatting.boldCs !== undefined && formatting.boldCs !== formatting.bold) {
+    attrs.boldCs = formatting.boldCs;
+  }
+  if (formatting.italicCs !== undefined && formatting.italicCs !== formatting.italic) {
+    attrs.italicCs = formatting.italicCs;
+  }
+  if (formatting.fontSizeCs !== undefined && formatting.fontSizeCs !== formatting.fontSize) {
+    attrs.fontSizeCs = formatting.fontSizeCs;
+  }
+  if (formatting.cs !== undefined) {
+    attrs.cs = formatting.cs;
   }
 
   return Object.keys(attrs).length > 0 ? attrs : undefined;
 }
 
-export function applyRunFormattingOverrideMark(formatting: TextFormatting, mark: Mark): void {
-  const attrs = expectRunFormattingOverrideMarkAttrs(mark);
+export function applyRunFormattingOverrideAttrs(
+  formatting: TextFormatting,
+  attrs: RunFormattingOverrideAttrs,
+): void {
   if (attrs.bold === false) {
     formatting.bold = false;
   }
@@ -107,6 +120,22 @@ export function applyRunFormattingOverrideMark(formatting: TextFormatting, mark:
   if (attrs.rtl === false) {
     formatting.rtl = false;
   }
+  if (attrs.boldCs !== undefined) {
+    formatting.boldCs = attrs.boldCs;
+  }
+  if (attrs.italicCs !== undefined) {
+    formatting.italicCs = attrs.italicCs;
+  }
+  if (attrs.fontSizeCs !== undefined) {
+    formatting.fontSizeCs = attrs.fontSizeCs;
+  }
+  if (attrs.cs !== undefined) {
+    formatting.cs = attrs.cs;
+  }
+}
+
+export function applyRunFormattingOverrideMark(formatting: TextFormatting, mark: Mark): void {
+  applyRunFormattingOverrideAttrs(formatting, expectRunFormattingOverrideMarkAttrs(mark));
 }
 
 export const RunFormattingOverrideExtension = createMarkExtension({
@@ -127,6 +156,10 @@ export const RunFormattingOverrideExtension = createMarkExtension({
       shadow: { default: null },
       outline: { default: null },
       rtl: { default: null },
+      boldCs: { default: null },
+      italicCs: { default: null },
+      fontSizeCs: { default: null },
+      cs: { default: null },
     },
     toDOM(mark) {
       const attrs = expectRunFormattingOverrideMarkAttrs(mark);

@@ -24,7 +24,8 @@ import {
 } from "./bookmarkPlacement";
 import type { BookmarkMarker } from "./bookmarkPlacement";
 import { convertBulletToUnicode } from "./bulletMarkers";
-import { padDecimal, type NumberingMap } from "./numberingParser";
+import type { NumberingMap } from "./numberingParser";
+import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { parseParagraph } from "./paragraphParser";
 import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import { parseSdtProperties } from "./sdtProperties";
@@ -44,72 +45,6 @@ type ParseBlockContentOptions = {
   // Source root `xmlns:*` declarations, threaded to the run parser so a captured
   // VML `w:pict` replay stays self-contained under non-canonical prefixes.
   rootXmlns?: Record<string, string>;
-};
-
-const toRoman = (numParam: number): string => {
-  let num = numParam;
-  const romanNumerals: [number, string][] = [
-    [1000, "M"],
-    [900, "CM"],
-    [500, "D"],
-    [400, "CD"],
-    [100, "C"],
-    [90, "XC"],
-    [50, "L"],
-    [40, "XL"],
-    [10, "X"],
-    [9, "IX"],
-    [5, "V"],
-    [4, "IV"],
-    [1, "I"],
-  ];
-
-  let result = "";
-  for (const [value, symbol] of romanNumerals) {
-    while (num >= value) {
-      result += symbol;
-      num -= value;
-    }
-  }
-  return result;
-};
-
-const toRepeatedLetter = (value: number, baseCodePoint: number): string => {
-  if (value <= 0) {
-    return "0";
-  }
-  const zeroBased = value - 1;
-  const letter = String.fromCodePoint(baseCodePoint + (zeroBased % 26));
-  return letter.repeat(Math.floor(zeroBased / 26) + 1);
-};
-
-const formatNumber = (value: number, numFmt: string): string => {
-  switch (numFmt) {
-    case "decimal":
-      return String(value);
-    case "decimalZero":
-      return padDecimal(value, 2);
-    case "decimalZero3":
-      return padDecimal(value, 3);
-    case "decimalZero4":
-      return padDecimal(value, 4);
-    case "decimalZero5":
-      return padDecimal(value, 5);
-    case "lowerLetter":
-      return toRepeatedLetter(value, 97);
-    case "upperLetter":
-      return toRepeatedLetter(value, 65);
-    case "lowerRoman":
-      return toRoman(value).toLowerCase();
-    case "upperRoman":
-      return toRoman(value);
-    case "bullet":
-      return "\u2022";
-    case "none":
-      return "";
-    default:
-      return String(value);
-  }
 };
 
 type PreviousListState = {
@@ -296,7 +231,7 @@ const computeListMarker = (
     if (computedMarker.includes(placeholder)) {
       const value = counters[lvl] ?? 0;
       const levelInfo = numbering.getLevel(numId, lvl);
-      const formatted = formatNumber(
+      const formatted = formatOoxmlCounter(
         value,
         useLegalNumbering ? "decimal" : levelInfo?.numFmt || "decimal",
       );

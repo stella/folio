@@ -740,6 +740,10 @@ export type RunFormatting = {
     fontFamily?: string;
     eastAsiaFontFamily?: string;
     complexScriptFontFamily?: string;
+    complexScriptFontSize?: number;
+    complexScriptBold?: boolean;
+    complexScriptItalic?: boolean;
+    forceComplexScript?: boolean;
     language?: {
         val?: string;
         eastAsia?: string;

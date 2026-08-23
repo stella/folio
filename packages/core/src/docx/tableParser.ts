@@ -686,9 +686,9 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
   }
 
   // Bidirectional (w:bidiVisual)
-  const bidi = parseBooleanElement(findChild(tblPrElement, "w", "bidiVisual"));
-  if (bidi) {
-    formatting.bidi = true;
+  const bidiVisual = findChild(tblPrElement, "w", "bidiVisual");
+  if (bidiVisual) {
+    formatting.bidi = parseBooleanElement(bidiVisual);
   }
 
   if (Object.keys(formatting).length === 0) {

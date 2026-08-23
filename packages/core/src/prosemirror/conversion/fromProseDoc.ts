@@ -103,7 +103,7 @@ import {
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
 import { directionToBidi } from "../paragraphDirection";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
-import type { RunFormattingOverrideAttrs } from "../schema/marks";
+import { applyRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
 import type {
   ParagraphAttrs,
   ParagraphPropertyChangeAttrs,
@@ -2429,6 +2429,7 @@ function createShapeRun(node: PMNode): Run {
 export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
   const formatting: TextFormatting = {};
   let characterStyleRPr: TextFormatting | undefined;
+  let runFormattingOverrideMark: Mark | undefined;
 
   for (const mark of marks) {
     switch (mark.type.name) {
@@ -2614,7 +2615,7 @@ export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
         break;
 
       case "runFormattingOverride":
-        applyRunFormattingOverrideAttrs(formatting, expectRunFormattingOverrideMarkAttrs(mark));
+        runFormattingOverrideMark = mark;
         break;
 
       case "characterStyle": {
@@ -2628,6 +2629,16 @@ export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
       default:
         break;
     }
+  }
+
+  // ProseMirror orders marks by schema rank rather than source order. Apply
+  // independent CS and explicit-negative values after ordinary marks so a
+  // bold/font-size mark cannot overwrite their more specific OOXML values.
+  if (runFormattingOverrideMark) {
+    applyRunFormattingOverrideAttrs(
+      formatting,
+      expectRunFormattingOverrideMarkAttrs(runFormattingOverrideMark),
+    );
   }
 
   if (characterStyleRPr) {
@@ -2712,51 +2723,6 @@ function subtractCharacterStyleFormatting(
   }
 
   return result;
-}
-
-function applyRunFormattingOverrideAttrs(
-  formatting: TextFormatting,
-  attrs: RunFormattingOverrideAttrs,
-): void {
-  if (attrs.bold === false) {
-    formatting.bold = false;
-  }
-  if (attrs.italic === false) {
-    formatting.italic = false;
-  }
-  if (attrs.underline === "none") {
-    formatting.underline = { style: "none" };
-  }
-  if (attrs.strike === false) {
-    formatting.strike = false;
-  }
-  if (attrs.doubleStrike === false) {
-    formatting.doubleStrike = false;
-  }
-  if (attrs.allCaps === false) {
-    formatting.allCaps = false;
-  }
-  if (attrs.smallCaps === false) {
-    formatting.smallCaps = false;
-  }
-  if (attrs.hidden === false) {
-    formatting.hidden = false;
-  }
-  if (attrs.emboss === false) {
-    formatting.emboss = false;
-  }
-  if (attrs.imprint === false) {
-    formatting.imprint = false;
-  }
-  if (attrs.shadow === false) {
-    formatting.shadow = false;
-  }
-  if (attrs.outline === false) {
-    formatting.outline = false;
-  }
-  if (attrs.rtl === false) {
-    formatting.rtl = false;
-  }
 }
 
 // ============================================================================

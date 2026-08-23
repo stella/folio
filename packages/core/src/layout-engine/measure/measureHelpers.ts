@@ -46,6 +46,14 @@ export function buildRunFontStyle(
     ...(run.complexScriptFontFamily !== undefined
       ? { complexScriptFontFamily: run.complexScriptFontFamily }
       : {}),
+    ...(run.complexScriptFontSize !== undefined
+      ? { complexScriptFontSize: run.complexScriptFontSize }
+      : {}),
+    ...(run.complexScriptBold !== undefined ? { complexScriptBold: run.complexScriptBold } : {}),
+    ...(run.complexScriptItalic !== undefined
+      ? { complexScriptItalic: run.complexScriptItalic }
+      : {}),
+    ...(run.forceComplexScript !== undefined ? { forceComplexScript: run.forceComplexScript } : {}),
     fontSize,
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),

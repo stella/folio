@@ -2711,6 +2711,18 @@ function runContentKey(run: Run): string {
   if (run.complexScriptFontFamily) {
     parts.push(`cs:${run.complexScriptFontFamily}`);
   }
+  if (run.complexScriptFontSize !== undefined) {
+    parts.push(`cs-size:${run.complexScriptFontSize}`);
+  }
+  if (run.complexScriptBold !== undefined) {
+    parts.push(`cs-bold:${run.complexScriptBold}`);
+  }
+  if (run.complexScriptItalic !== undefined) {
+    parts.push(`cs-italic:${run.complexScriptItalic}`);
+  }
+  if (run.forceComplexScript !== undefined) {
+    parts.push(`cs-force:${run.forceComplexScript}`);
+  }
   if (run.eastAsiaFontFamily) {
     parts.push(`ea:${run.eastAsiaFontFamily}`);
   }

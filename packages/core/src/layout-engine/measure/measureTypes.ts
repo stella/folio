@@ -24,6 +24,10 @@ export type FontStyle = {
    * points. Same contract as `eastAsiaFontFamily`, over a different slot.
    */
   complexScriptFontFamily?: string;
+  complexScriptFontSize?: number;
+  complexScriptBold?: boolean;
+  complexScriptItalic?: boolean;
+  forceComplexScript?: boolean;
   fontSize?: number; // in points
   bold?: boolean;
   italic?: boolean;

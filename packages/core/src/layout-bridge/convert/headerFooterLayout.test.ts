@@ -614,6 +614,37 @@ describe("header/footer layout conversion", () => {
     expect(result?.height).toBe(24);
   });
 
+  test("complex-script formatting invalidates same-height header/footer content", () => {
+    const header = (fontSizeCs: number): HeaderFooter => ({
+      type: "header",
+      hdrFtrType: "default",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "run",
+              formatting: {
+                fontFamily: { ascii: "Arial", cs: "Traditional Arabic" },
+                fontSize: 20,
+                fontSizeCs,
+                bold: true,
+                boldCs: false,
+              },
+              content: [{ type: "text", text: "Aع" }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const smaller = convertHeaderFooterToContent(header(20), 600, metrics, { measureBlocks });
+    const larger = convertHeaderFooterToContent(header(32), 600, metrics, { measureBlocks });
+
+    expect(smaller?.height).toBe(larger?.height);
+    expect(smaller?.textSig).not.toBe(larger?.textSig);
+  });
+
   test("normalizes inherited spacing inside table-cell paragraphs", () => {
     const [normalized] = normalizeHeaderFooterMeasureBlocks([
       table([

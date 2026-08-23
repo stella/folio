@@ -9,7 +9,7 @@ import type { Node as PMNode, Mark } from "prosemirror-model";
 
 import { convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
-import { padDecimal } from "../../docx/numberingParser";
+import { formatOoxmlCounter } from "../../docx/ooxmlCounterFormatter";
 import type {
   FlowBlock,
   ParagraphBlock,
@@ -219,77 +219,8 @@ function formatNumberedMarker(counters: number[], level: number): string {
   return `${parts.join(".")}.`;
 }
 
-const ROMAN_PAIRS: [number, string][] = [
-  [1000, "M"],
-  [900, "CM"],
-  [500, "D"],
-  [400, "CD"],
-  [100, "C"],
-  [90, "XC"],
-  [50, "L"],
-  [40, "XL"],
-  [10, "X"],
-  [9, "IX"],
-  [5, "V"],
-  [4, "IV"],
-  [1, "I"],
-];
-
-function toRoman(value: number, upper: boolean): string {
-  if (value <= 0) {
-    return "";
-  }
-  let remaining = value;
-  let output = "";
-  for (const [number, symbol] of ROMAN_PAIRS) {
-    while (remaining >= number) {
-      output += symbol;
-      remaining -= number;
-    }
-  }
-  return upper ? output : output.toLowerCase();
-}
-
-function toLetter(value: number, upper: boolean): string {
-  if (value <= 0) {
-    return "";
-  }
-  const zeroBased = value - 1;
-  const baseCodePoint = upper ? 65 : 97;
-  const letter = String.fromCodePoint(baseCodePoint + (zeroBased % 26));
-  return letter.repeat(Math.floor(zeroBased / 26) + 1);
-}
-
 export function formatCounter(value: number, format: NumberFormat | undefined): string {
-  if (!Number.isFinite(value)) {
-    return "";
-  }
-  // NumberFormat is the OOXML w:numFmt enum (70+ values). This switch
-  // handles every format whose counter-rendering differs from a simple
-  // decimal; CJK/Hindi/Arabic counters fall through to the decimal
-  // default. Matches Word's display when those font glyphs are absent.
-  switch (format) {
-    case "upperRoman":
-      return toRoman(value, true);
-    case "lowerRoman":
-      return toRoman(value, false);
-    case "upperLetter":
-      return toLetter(value, true);
-    case "lowerLetter":
-      return toLetter(value, false);
-    case "decimalZero":
-      return padDecimal(value, 2);
-    case "decimalZero3":
-      return padDecimal(value, 3);
-    case "decimalZero4":
-      return padDecimal(value, 4);
-    case "decimalZero5":
-      return padDecimal(value, 5);
-    case "none":
-      return "";
-    default:
-      return String(value);
-  }
+  return formatOoxmlCounter(value, format);
 }
 
 export function resolveListTemplate(
@@ -813,6 +744,18 @@ function applyRunFormattingOverrides(
   if (attrs.rtl === false) {
     formatting.rtl = false;
   }
+  if (attrs.boldCs !== undefined) {
+    formatting.complexScriptBold = attrs.boldCs;
+  }
+  if (attrs.italicCs !== undefined) {
+    formatting.complexScriptItalic = attrs.italicCs;
+  }
+  if (attrs.fontSizeCs !== undefined) {
+    formatting.complexScriptFontSize = attrs.fontSizeCs / 2;
+  }
+  if (attrs.cs !== undefined) {
+    formatting.forceComplexScript = attrs.cs;
+  }
 }
 
 function paragraphRunDefaults(pmAttrs: PMParagraphAttrs, theme?: Theme | null): RunFormatting {
@@ -849,11 +792,23 @@ function paragraphRunDefaults(pmAttrs: PMParagraphAttrs, theme?: Theme | null): 
   if (defaultTextFormatting.fontSize !== undefined) {
     result.fontSize = defaultTextFormatting.fontSize / 2;
   }
+  if (defaultTextFormatting.fontSizeCs !== undefined) {
+    result.complexScriptFontSize = defaultTextFormatting.fontSizeCs / 2;
+  }
   if (defaultTextFormatting.bold !== undefined) {
     result.bold = defaultTextFormatting.bold;
   }
+  if (defaultTextFormatting.boldCs !== undefined) {
+    result.complexScriptBold = defaultTextFormatting.boldCs;
+  }
   if (defaultTextFormatting.italic !== undefined) {
     result.italic = defaultTextFormatting.italic;
+  }
+  if (defaultTextFormatting.italicCs !== undefined) {
+    result.complexScriptItalic = defaultTextFormatting.italicCs;
+  }
+  if (defaultTextFormatting.cs !== undefined) {
+    result.forceComplexScript = defaultTextFormatting.cs;
   }
   if (defaultTextFormatting.underline && defaultTextFormatting.underline.style !== "none") {
     result.underline = { style: defaultTextFormatting.underline.style };
@@ -2458,17 +2413,8 @@ function convertTable(node: PMNode, startPos: number, options: ToFlowBlocksOptio
   // (w:tblInd, w:bidiVisual). bidiVisual is import-only — folio has no UI to
   // toggle it — so reading the preserved formatting is sufficient
   // (eigenpal/docx-editor#940).
-  const originalFormatting = attrs._originalFormatting as
-    | {
-        indent?: { value: number; type: string };
-        bidi?: boolean;
-        layout?: "fixed" | "autofit";
-      }
-    | undefined;
-  const resolvedIndent = attrs._resolvedIndent as
-    | { value: number; type: string }
-    | null
-    | undefined;
+  const originalFormatting = attrs._originalFormatting;
+  const resolvedIndent = attrs._resolvedIndent;
   const effectiveIndent = resolvedIndent ?? originalFormatting?.indent;
   const indentPx =
     effectiveIndent?.value !== undefined && effectiveIndent?.type === "dxa"
@@ -2554,7 +2500,8 @@ function convertTable(node: PMNode, startPos: number, options: ToFlowBlocksOptio
   if (floatingPx) {
     tableBlock.floating = floatingPx;
   }
-  if (originalFormatting?.bidi) {
+  const effectiveBidi = attrs._resolvedBidi ?? originalFormatting?.bidi;
+  if (effectiveBidi) {
     tableBlock.bidi = true;
   }
   return tableBlock;

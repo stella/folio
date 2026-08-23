@@ -115,4 +115,61 @@ describe("splitTextRunsByEastAsia", () => {
 
     expect(splitTextRunsByEastAsia([run])).toEqual([run]);
   });
+
+  test("applies independent CS formatting only to Arabic in a mixed run", () => {
+    const run = textRun({
+      text: "Aع",
+      fontFamily: "Arial",
+      complexScriptFontFamily: "Traditional Arabic",
+      fontSize: 10,
+      complexScriptFontSize: 16,
+      bold: true,
+      complexScriptBold: false,
+      italic: false,
+      complexScriptItalic: true,
+      pmStart: 20,
+      pmEnd: 22,
+    });
+
+    expect(splitTextRunsByEastAsia([run])).toEqual([
+      { ...run, text: "A", pmStart: 20, pmEnd: 21 },
+      {
+        ...run,
+        text: "ع",
+        fontFamily: "Traditional Arabic",
+        fontSize: 16,
+        bold: false,
+        italic: true,
+        pmStart: 21,
+        pmEnd: 22,
+      },
+    ]);
+  });
+
+  test("force-CS applies the complex slot to the whole run without adding bidi boundaries", () => {
+    const run = textRun({
+      text: "Latin",
+      fontFamily: "Arial",
+      complexScriptFontFamily: "Traditional Arabic",
+      fontSize: 10,
+      complexScriptFontSize: 15,
+      bold: true,
+      complexScriptBold: false,
+      italic: false,
+      complexScriptItalic: true,
+      forceComplexScript: true,
+      pmStart: 30,
+      pmEnd: 35,
+    });
+
+    expect(splitTextRunsByEastAsia([run])).toEqual([
+      {
+        ...run,
+        fontFamily: "Traditional Arabic",
+        fontSize: 15,
+        bold: false,
+        italic: true,
+      },
+    ]);
+  });
 });

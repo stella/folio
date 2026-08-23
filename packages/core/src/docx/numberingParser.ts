@@ -21,6 +21,7 @@ import type {
   ParagraphFormatting,
   TextFormatting,
 } from "../types/document";
+import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { FontHintSchema, LevelSuffixSchema, ThemeColorSlotSchema, narrowEnum } from "./parserEnums";
 import {
   parseXmlDocument,
@@ -31,6 +32,8 @@ import {
   parseNumericAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+
+export { formatOoxmlCounter as formatNumber, padDecimal } from "./ooxmlCounterFormatter";
 
 /**
  * Map of rId to numbering definitions
@@ -990,76 +993,6 @@ export function computeListRendering(
 }
 
 /**
- * Format a number according to the specified format
- *
- * @param num - The number to format
- * @param format - The number format
- * @returns Formatted string
- */
-export function formatNumber(num: number, format: NumberFormat): string {
-  // NumberFormat is the OOXML w:numFmt enum (70+ values). This switch
-  // handles every format whose rendering differs from a decimal
-  // fallback; CJK/Hindi/Hebrew/etc. counters all map to the decimal
-  // default below, matching Word's behaviour when the specialised font
-  // glyphs are absent.
-  switch (format) {
-    case "decimal":
-      return num.toString();
-
-    case "decimalZero":
-      return padDecimal(num, 2);
-
-    case "decimalZero3":
-      return padDecimal(num, 3);
-
-    case "decimalZero4":
-      return padDecimal(num, 4);
-
-    case "decimalZero5":
-      return padDecimal(num, 5);
-
-    case "upperRoman":
-      return toRoman(num).toUpperCase();
-
-    case "lowerRoman":
-      return toRoman(num).toLowerCase();
-
-    case "upperLetter":
-      return toLetter(num).toUpperCase();
-
-    case "lowerLetter":
-      return toLetter(num).toLowerCase();
-
-    case "ordinal":
-      return toOrdinal(num);
-
-    case "bullet":
-      return "•"; // Default bullet
-
-    case "none":
-      return "";
-
-    case "decimalEnclosedParen":
-      return `(${num})`;
-
-    case "numberInDash":
-      return `-${num}-`;
-
-    default:
-      // For CJK and other special formats, fall back to decimal
-      return num.toString();
-  }
-}
-
-/** Zero-pad a counter to `width` digits ("decimalZero" family, §17.18.59). */
-export function padDecimal(num: number, width: number): string {
-  if (num < 0) {
-    return num.toString();
-  }
-  return num.toString().padStart(width, "0");
-}
-
-/**
  * Compare two `numPr` references by value — `numId` plus `ilvl` (a missing
  * `ilvl` is level 0). Used for the style-sourced-numbering provenance check;
  * avoids JSON.stringify equality, which is sensitive to key order.
@@ -1072,62 +1005,6 @@ export function numPrEqual(
     return a == null && b == null;
   }
   return a.numId === b.numId && (a.ilvl ?? 0) === (b.ilvl ?? 0);
-}
-
-/**
- * Convert number to Roman numerals
- */
-function toRoman(num: number): string {
-  if (num <= 0 || num > 3999) {
-    return num.toString();
-  }
-
-  const romanNumerals: [number, string][] = [
-    [1000, "m"],
-    [900, "cm"],
-    [500, "d"],
-    [400, "cd"],
-    [100, "c"],
-    [90, "xc"],
-    [50, "l"],
-    [40, "xl"],
-    [10, "x"],
-    [9, "ix"],
-    [5, "v"],
-    [4, "iv"],
-    [1, "i"],
-  ];
-
-  let result = "";
-  let remaining = num;
-
-  for (const [value, numeral] of romanNumerals) {
-    while (remaining >= value) {
-      result += numeral;
-      remaining -= value;
-    }
-  }
-
-  return result;
-}
-
-function toLetter(num: number): string {
-  if (num <= 0) {
-    return "";
-  }
-
-  const zeroBased = num - 1;
-  const letter = String.fromCodePoint(97 + (zeroBased % 26));
-  return letter.repeat(Math.floor(zeroBased / 26) + 1);
-}
-
-/**
- * Convert number to ordinal (1st, 2nd, 3rd, ...)
- */
-function toOrdinal(num: number): string {
-  const suffix = ["th", "st", "nd", "rd"];
-  const v = num % 100;
-  return num + (suffix[(v - 20) % 10] ?? suffix[v] ?? suffix[0] ?? "th");
 }
 
 /**
@@ -1152,7 +1029,7 @@ export function renderListMarker(
       const counterIndex = i - 1;
       const counter = counters[counterIndex] ?? 1;
       const format = formats[counterIndex] ?? "decimal";
-      const formatted = formatNumber(counter, format);
+      const formatted = formatOoxmlCounter(counter, format);
       result = result.replaceAll(placeholder, formatted);
     }
   }

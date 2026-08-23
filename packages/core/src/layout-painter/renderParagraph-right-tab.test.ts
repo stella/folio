@@ -51,16 +51,14 @@ class FakeElement {
     if (this.tagName !== "canvas") {
       return null;
     }
-    return {
+    const context = {
       font: "",
       measureText(text: string) {
-        // 7px per character keeps the math simple; bold/italic don't change
-        // the count here because the right-tab anchor doesn't depend on the
-        // exact width, only on whether `currentX + tab + trailing` reaches
-        // the right edge.
-        return { width: text.length * 7 };
+        const width = context.font.includes("FolioCsTestFont") ? 30 : 7;
+        return { width: text.length * width };
       },
     };
+    return context;
   }
 }
 
@@ -79,6 +77,45 @@ function findFieldOrTextEls(lineEl: FakeElement): FakeElement[] {
 }
 
 describe("renderLine right-tab flex anchor", () => {
+  test("tracks Arabic advance with complex-script typography before a tab", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "arabic-before-tab",
+      runs: [
+        {
+          kind: "text",
+          text: "ع",
+          fontFamily: "FolioBaseTestFont",
+          complexScriptFontFamily: "FolioCsTestFont",
+        },
+        { kind: "tab" },
+        { kind: "text", text: "x" },
+      ],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 1,
+      width: 107,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 200,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [{ val: "start", pos: 1500 }],
+      leftIndentPx: 0,
+      lineRightEdgePx: 200,
+    }) as unknown as FakeElement;
+
+    expect(findTabEl(lineEl)?.style["width"]).toBe("70px");
+  });
+
   test("does NOT clamp a leading left tab to fit following text at the right edge", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",

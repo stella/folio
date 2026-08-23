@@ -13,7 +13,7 @@ import {
   isCjkFont,
 } from "../../utils/fontResolver";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
-import { hasCjk } from "../../utils/scriptSegments";
+import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 import { measuredLineAdvance } from "../lineFlow";
 import type {
   ParagraphBlock,
@@ -38,6 +38,10 @@ import {
   type FloatingLineSegmentZone,
 } from "./floatingZones";
 import { getListMarkerInlineWidth } from "./listMarkerWidth";
+import {
+  hasComplexScriptFormatting,
+  resolveComplexScriptFormatting,
+} from "./complexScriptFormatting";
 import { buildRunFontStyle, ptToPx, twipsToPx } from "./measureHelpers";
 import { getFontMetrics, measureRun, measureTextWidth } from "./measureProvider";
 import type { FontMetrics, FontStyle } from "./measureTypes";
@@ -211,6 +215,20 @@ function cjkLineHeightStyle(run: TextRun, baseStyle: FontStyle): FontStyle {
     return baseStyle;
   }
   return { ...baseStyle, fontFamily: CJK_FALLBACK_FONT_FAMILY };
+}
+
+/** Pick the dominant typography metrics for a run containing complex script. */
+function complexScriptLineHeightStyle(run: TextRun, baseStyle: FontStyle): FontStyle {
+  if (
+    !hasComplexScriptFormatting(run) ||
+    (!run.forceComplexScript && !hasComplexScript(run.text))
+  ) {
+    return baseStyle;
+  }
+  const complexStyle = { ...baseStyle, ...resolveComplexScriptFormatting(run) };
+  return (complexStyle.fontSize ?? DEFAULT_FONT_SIZE) >= (baseStyle.fontSize ?? DEFAULT_FONT_SIZE)
+    ? complexStyle
+    : baseStyle;
 }
 
 /**
@@ -1828,7 +1846,10 @@ export function measureParagraph(
       const breakPolicy = effectiveLineBreakPolicy.provider;
       // Line height comes from the CJK-aware style; width measurement below
       // keeps `style` so wrapping is unchanged.
-      const lineHeightStyle = cjkLineHeightStyle(textRun, style);
+      const lineHeightStyle = cjkLineHeightStyle(
+        textRun,
+        complexScriptLineHeightStyle(textRun, style),
+      );
 
       updateMaxFont(lineHeightStyle);
 
@@ -1967,7 +1988,12 @@ export function measureParagraph(
           }
           if (fittingPrefix) {
             for (const segment of fittingPrefix.segments) {
-              updateMaxFont(cjkLineHeightStyle(segment.run, segment.style));
+              updateMaxFont(
+                cjkLineHeightStyle(
+                  segment.run,
+                  complexScriptLineHeightStyle(segment.run, segment.style),
+                ),
+              );
             }
             currentLine.width +=
               fittingPrefix.width + measureTextWidth("-", fittingPrefix.hyphenStyle);

@@ -16,6 +16,9 @@ import { withFakeTextMeasure } from "./fakeTextMeasure";
 const eaAwareCharWidth: FakeCharWidth = (_char, font) =>
   font.includes("FolioEaTestFont") ? 100 : 10;
 
+const complexScriptAwareCharWidth: FakeCharWidth = (_char, font) =>
+  font.includes("FolioCsTestFont") ? 100 : 10;
+
 describe("measureTextWidth with eastAsiaFontFamily", () => {
   test("measures CJK with the EA font and Latin with the base font", () => {
     withFakeTextMeasure(
@@ -124,6 +127,49 @@ describe("measureRun with eastAsiaFontFamily", () => {
   });
 });
 
+describe("complex-script measurement", () => {
+  test("measures Arabic with the CS font while Latin keeps the base font", () => {
+    withFakeTextMeasure(
+      () => {
+        const style = {
+          fontFamily: "FolioBaseTestFont",
+          complexScriptFontFamily: "FolioCsTestFont",
+          fontSize: 12,
+          complexScriptFontSize: 16,
+          bold: true,
+          complexScriptBold: false,
+          italic: false,
+          complexScriptItalic: true,
+        };
+
+        expect(measureTextWidth("Aع", style)).toBe(110);
+        expect(measureRun("Aع", style)).toMatchObject({
+          width: 110,
+          charWidths: [10, 100],
+        });
+      },
+      { charWidth: complexScriptAwareCharWidth },
+    );
+  });
+
+  test("force-CS measures Latin text with the CS slot", () => {
+    withFakeTextMeasure(
+      () => {
+        const style = {
+          fontFamily: "FolioBaseTestFont",
+          complexScriptFontFamily: "FolioCsTestFont",
+          fontSize: 12,
+          forceComplexScript: true,
+        };
+
+        expect(measureTextWidth("AB", style)).toBe(200);
+        expect(measureRun("AB", style).charWidths).toEqual([100, 100]);
+      },
+      { charWidth: complexScriptAwareCharWidth },
+    );
+  });
+});
+
 describe("buildRunFontStyle", () => {
   test("carries eastAsiaFontFamily so every measurement path measures CJK with the EA font", () => {
     const style = buildRunFontStyle(
@@ -141,5 +187,29 @@ describe("buildRunFontStyle", () => {
     expect(style.fontFamily).toBe("Arial");
     expect(style.fontSize).toBe(11);
     expect(style.eastAsiaFontFamily).toBeUndefined();
+  });
+
+  test("carries independent complex-script formatting without widening it", () => {
+    const style = buildRunFontStyle(
+      {
+        complexScriptFontFamily: "Traditional Arabic",
+        complexScriptFontSize: 16,
+        complexScriptBold: false,
+        complexScriptItalic: true,
+        forceComplexScript: true,
+      },
+      "Arial",
+      11,
+    );
+
+    expect(style).toMatchObject({
+      fontFamily: "Arial",
+      fontSize: 11,
+      complexScriptFontFamily: "Traditional Arabic",
+      complexScriptFontSize: 16,
+      complexScriptBold: false,
+      complexScriptItalic: true,
+      forceComplexScript: true,
+    });
   });
 });

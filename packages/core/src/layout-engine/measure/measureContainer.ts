@@ -34,6 +34,10 @@ import {
   setCachedTextWidth,
 } from "./cache";
 import {
+  hasComplexScriptFormatting,
+  resolveComplexScriptFormatting,
+} from "./complexScriptFormatting";
+import {
   buildFontString,
   DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_SIZE,
@@ -190,17 +194,24 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
  * @param style - Font styling properties
  * @returns Width in pixels
  */
-function canvasMeasureTextWidth(text: string, style: FontStyle): number {
+function canvasMeasureTextWidth(text: string, sourceStyle: FontStyle): number {
   if (!text) {
     return 0;
   }
+  const style = sourceStyle.forceComplexScript
+    ? { ...sourceStyle, ...resolveComplexScriptFormatting(sourceStyle) }
+    : sourceStyle;
   const measuredText = applyTextTransform(text, style);
 
   // Letter spacing is left to a single span: CSS letter-spacing does not add a
   // gap across the per-script sibling spans the painter would emit, so a
   // letter-spaced run keeps the base font for CJK too (measurement and painting
   // agree; the EA typeface is the trade-off for that narrow case).
-  if (!style.letterSpacing && needsPerScriptFonts(style, measuredText)) {
+  if (
+    !sourceStyle.forceComplexScript &&
+    !style.letterSpacing &&
+    needsPerScriptFonts(style, measuredText)
+  ) {
     return measureMixedScriptWidth(measuredText, style);
   }
 
@@ -280,10 +291,10 @@ function canvasMeasureTextWidth(text: string, style: FontStyle): number {
  * letter spacing, horizontal scale, transform, and the EA font so the segment
  * takes the single-font path (no double-counting, no recursion).
  */
-function glyphAdvanceStyle(style: FontStyle, fontFamily: string | undefined): FontStyle {
+function glyphAdvanceStyle(style: FontStyle): FontStyle {
   const result: FontStyle = {};
-  if (fontFamily !== undefined) {
-    result.fontFamily = fontFamily;
+  if (style.fontFamily !== undefined) {
+    result.fontFamily = style.fontFamily;
   }
   if (style.fontSize !== undefined) {
     result.fontSize = style.fontSize;
@@ -318,18 +329,24 @@ function needsPerScriptFonts(style: FontStyle, measuredText: string): boolean {
   if (style.eastAsiaFontFamily && hasCjk(measuredText)) {
     return true;
   }
-  return Boolean(style.complexScriptFontFamily) && hasComplexScript(measuredText);
+  return hasComplexScriptFormatting(style) && hasComplexScript(measuredText);
 }
 
-/** The font slot a script class selects, falling back to the western one. */
-function scriptFontFamily(style: FontStyle, script: ScriptClass): string | undefined {
+/** Resolve the independent font/style slot selected by a script segment. */
+function scriptStyle(style: FontStyle, script: ScriptClass): FontStyle {
   if (script === SCRIPT_CLASS.eastAsia) {
-    return style.eastAsiaFontFamily ?? style.fontFamily;
+    if (style.eastAsiaFontFamily === undefined) {
+      return style;
+    }
+    return {
+      ...style,
+      fontFamily: style.eastAsiaFontFamily,
+    };
   }
   if (script === SCRIPT_CLASS.complex) {
-    return style.complexScriptFontFamily ?? style.fontFamily;
+    return { ...style, ...resolveComplexScriptFormatting(style) };
   }
-  return style.fontFamily;
+  return style;
 }
 
 function measureMixedScriptWidth(measuredText: string, style: FontStyle): number {
@@ -340,7 +357,7 @@ function measureMixedScriptWidth(measuredText: string, style: FontStyle): number
   for (const segment of segmentByScript(measuredText)) {
     glyphWidth += canvasMeasureTextWidth(
       segment.text,
-      glyphAdvanceStyle(style, scriptFontFamily(style, segment.script)),
+      glyphAdvanceStyle(scriptStyle(style, segment.script)),
     );
   }
 
@@ -419,7 +436,10 @@ function canvasMeasureText(text: string, style: FontStyle): TextMeasurement {
  * @param style - Font styling properties
  * @returns Run measurement with width and per-character widths
  */
-function canvasMeasureRun(text: string, style: FontStyle): RunMeasurement {
+function canvasMeasureRun(text: string, sourceStyle: FontStyle): RunMeasurement {
+  const style = sourceStyle.forceComplexScript
+    ? { ...sourceStyle, ...resolveComplexScriptFormatting(sourceStyle) }
+    : sourceStyle;
   const metrics = canvasGetFontMetrics(style);
 
   if (!text) {
@@ -443,8 +463,8 @@ function canvasMeasureRun(text: string, style: FontStyle): RunMeasurement {
       ? buildFontString({ ...style, fontFamily: style.eastAsiaFontFamily })
       : undefined;
   const complexScriptFont =
-    style.complexScriptFontFamily !== undefined && !style.letterSpacing
-      ? buildFontString({ ...style, fontFamily: style.complexScriptFontFamily })
+    hasComplexScriptFormatting(style) && !style.letterSpacing
+      ? buildFontString(scriptStyle(style, SCRIPT_CLASS.complex))
       : undefined;
 
   const letterSpacing = style.letterSpacing ?? 0;

@@ -291,6 +291,7 @@ const tableSpec: NodeSpec = {
     look: { default: null },
     borders: { default: null },
     _resolvedIndent: { default: null },
+    _resolvedBidi: { default: null },
     _originalFormatting: { default: null },
     tblPrChange: { default: null },
     _suggestedInsert: { default: null },

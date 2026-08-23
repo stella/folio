@@ -68,6 +68,14 @@ export type RunFormatting = {
    * does NOT do and is why this slot has to reach layout at all.
    */
   complexScriptFontFamily?: string;
+  /** Independent complex-script size (`w:szCs`), in points. */
+  complexScriptFontSize?: number;
+  /** Independent complex-script weight (`w:bCs`). */
+  complexScriptBold?: boolean;
+  /** Independent complex-script slant (`w:iCs`). */
+  complexScriptItalic?: boolean;
+  /** Force the complex-script formatting slot for every character (`w:cs`). */
+  forceComplexScript?: boolean;
   /** Run language metadata resolved from `w:lang`. */
   language?: { val?: string; eastAsia?: string; bidi?: string };
   fontSize?: number;

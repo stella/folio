@@ -284,6 +284,10 @@ export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.Par
 
 // @public (undocumented)
 export type RunFormattingOverrideAttrs = { [K in keyof Pick<import__stll_docx_core_model.TextFormatting, "bold" | "italic" | "strike" | "doubleStrike" | "allCaps" | "smallCaps" | "hidden" | "emboss" | "imprint" | "shadow" | "outline" | "rtl">]?: false; } & {
+    boldCs?: boolean;
+    cs?: boolean;
+    fontSizeCs?: number;
+    italicCs?: boolean;
     underline?: "none";
 };
 
@@ -394,6 +398,7 @@ export type TableAttrs = {
     look?: import__stll_docx_core_model.TableLook;
     borders?: import__stll_docx_core_model.TableBorders;
     _resolvedIndent?: NonNullable<import__stll_docx_core_model.TableFormatting["indent"]>;
+    _resolvedBidi?: boolean;
     _originalFormatting?: import__stll_docx_core_model.TableFormatting;
     tblPrChange?: import__stll_docx_core_model.TablePropertyChange[];
     _suggestedInsert?: SuggestedStructuralMarker | null;

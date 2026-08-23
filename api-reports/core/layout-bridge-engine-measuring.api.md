@@ -97,6 +97,10 @@ export type FontStyle = {
     fontFamily?: string;
     eastAsiaFontFamily?: string;
     complexScriptFontFamily?: string;
+    complexScriptFontSize?: number;
+    complexScriptBold?: boolean;
+    complexScriptItalic?: boolean;
+    forceComplexScript?: boolean;
     fontSize?: number;
     bold?: boolean;
     italic?: boolean;

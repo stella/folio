@@ -379,8 +379,8 @@ export function serializeTableFormatting(
     }
 
     // Bidirectional
-    if (formatting.bidi) {
-      parts.push("<w:bidiVisual/>");
+    if (formatting.bidi !== undefined) {
+      parts.push(formatting.bidi ? "<w:bidiVisual/>" : '<w:bidiVisual w:val="0"/>');
     }
 
     // Table width

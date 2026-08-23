@@ -1429,6 +1429,8 @@ function convertTable(
     table.formatting?.indent ??
     tableStyle?.tblPr?.indent ??
     (fallbackTableIndent?.value === 0 ? undefined : fallbackTableIndent);
+  const resolvedTableBidi =
+    table.formatting?.bidi ?? tableStyle?.tblPr?.bidi ?? fallbackTableStyle?.tblPr?.bidi;
 
   // Resolve default cell margins through the same table-style cascade.
   const tableCellMargins =
@@ -1483,6 +1485,9 @@ function convertTable(
   }
   if (resolvedTableIndent) {
     attrs._resolvedIndent = resolvedTableIndent;
+  }
+  if (resolvedTableBidi !== undefined) {
+    attrs._resolvedBidi = resolvedTableBidi;
   }
   if (table.formatting) {
     attrs._originalFormatting = table.formatting;

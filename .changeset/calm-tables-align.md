@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Align unindented tables, preserve paragraph direction and section page numbering, and paginate independent table rows.
+Align unindented tables, preserve paragraph and table direction, section page numbering, complex-script typography, Arabic list counters, and independent table-row pagination.

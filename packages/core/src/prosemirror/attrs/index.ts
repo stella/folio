@@ -479,6 +479,7 @@ export const readTableAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableAt
     "insideH",
     "insideV",
   ]);
+  optionalBoolean(attrs, "_resolvedBidi", "table.attrs._resolvedBidi", issues);
   optionalRecord(attrs, "_originalFormatting", "table.attrs._originalFormatting", issues);
 
   return attrsResult(attrs, issues);
@@ -1122,6 +1123,10 @@ export const readRunFormattingOverrideMarkAttrs = (
   for (const key of RUN_FORMATTING_OVERRIDE_FALSE_KEYS) {
     optionalFalse(attrs, key, `runFormattingOverride.attrs.${key}`, issues);
   }
+  optionalBoolean(attrs, "boldCs", "runFormattingOverride.attrs.boldCs", issues);
+  optionalBoolean(attrs, "italicCs", "runFormattingOverride.attrs.italicCs", issues);
+  optionalNumber(attrs, "fontSizeCs", "runFormattingOverride.attrs.fontSizeCs", issues);
+  optionalBoolean(attrs, "cs", "runFormattingOverride.attrs.cs", issues);
   optionalOneOf(attrs, "underline", "runFormattingOverride.attrs.underline", issues, ["none"]);
 
   return attrsResult(attrs, issues);

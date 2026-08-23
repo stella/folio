@@ -169,6 +169,14 @@ export type RunFormattingOverrideAttrs = {
     | "rtl"
   >]?: false;
 } & {
+  /** Independent complex-script weight (`w:bCs`). */
+  boldCs?: boolean;
+  /** Force complex-script formatting for the full run (`w:cs`). */
+  cs?: boolean;
+  /** Independent complex-script size in half-points (`w:szCs`). */
+  fontSizeCs?: number;
+  /** Independent complex-script slant (`w:iCs`). */
+  italicCs?: boolean;
   underline?: "none";
 };
 
