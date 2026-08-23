@@ -8,12 +8,43 @@ import type { MarkType, Mark, Schema } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
 import type { TextFormatting, UnderlineStyle, ThemeColorSlot } from "../../../types/document";
+import { FONT_THEME_VALUES } from "../../../types/documentEnumValues";
+import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
+import { expectFontFamilyMarkAttrs } from "../../attrs";
+import type { FontFamilyAttrs } from "../../schema/marks";
 import {
   applyRunFormattingOverrideMark,
   buildRunFormattingOverrideAttrs,
 } from "./RunFormattingOverrideExtension";
 
 type MarkAttrs = Record<string, unknown>;
+type FontFamilyFormatting = NonNullable<TextFormatting["fontFamily"]>;
+type FontTheme = NonNullable<FontFamilyFormatting["asciiTheme"]>;
+
+const isFontTheme = (value: string | undefined): value is FontTheme =>
+  value !== undefined && FONT_THEME_VALUES.some((theme) => theme === value);
+
+const fontFamilyAttrsToFormatting = ({
+  ascii,
+  hAnsi,
+  eastAsia,
+  cs,
+  hint,
+  asciiTheme,
+  hAnsiTheme,
+  eastAsiaTheme,
+  csTheme,
+}: FontFamilyAttrs): FontFamilyFormatting => ({
+  ...(ascii !== undefined ? { ascii } : {}),
+  ...(hAnsi !== undefined ? { hAnsi } : {}),
+  ...(eastAsia !== undefined ? { eastAsia } : {}),
+  ...(cs !== undefined ? { cs } : {}),
+  ...(hint !== undefined ? { hint } : {}),
+  ...(isFontTheme(asciiTheme) ? { asciiTheme } : {}),
+  ...(hAnsiTheme !== undefined ? { hAnsiTheme } : {}),
+  ...(eastAsiaTheme !== undefined ? { eastAsiaTheme } : {}),
+  ...(csTheme !== undefined ? { csTheme } : {}),
+});
 
 // ============================================================================
 // PARAGRAPH DEFAULT FORMATTING HELPERS
@@ -35,7 +66,12 @@ function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
         const underlineStyle = (
           typeof mark.attrs["style"] === "string" ? mark.attrs["style"] : "single"
         ) as UnderlineStyle;
-        formatting.underline = { style: underlineStyle };
+        formatting.underline = {
+          style: underlineStyle,
+          ...(mark.attrs["color"] !== null && mark.attrs["color"] !== undefined
+            ? { color: mark.attrs["color"] }
+            : {}),
+        };
         break;
       }
       case "strike":
@@ -79,21 +115,7 @@ function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
         formatting.fontSize = Number(mark.attrs["size"]);
         break;
       case "fontFamily": {
-        // SAFETY: fontFamily mark always has ascii/hAnsi attrs per schema
-        const ascii =
-          mark.attrs["ascii"] !== null && mark.attrs["ascii"] !== undefined
-            ? String(mark.attrs["ascii"])
-            : undefined;
-        const hAnsi =
-          mark.attrs["hAnsi"] !== null && mark.attrs["hAnsi"] !== undefined
-            ? String(mark.attrs["hAnsi"])
-            : undefined;
-        const hint = mark.attrs["hint"];
-        formatting.fontFamily = {
-          ...(ascii !== undefined ? { ascii } : {}),
-          ...(hAnsi !== undefined ? { hAnsi } : {}),
-          ...(hint === "default" || hint === "eastAsia" || hint === "cs" ? { hint } : {}),
-        };
+        formatting.fontFamily = fontFamilyAttrsToFormatting(expectFontFamilyMarkAttrs(mark));
         break;
       }
       case "language": {
@@ -176,17 +198,77 @@ function dispatchStoredMarks(
   dispatch(tr);
 }
 
+function compactAttrs(attrs: MarkAttrs | undefined): MarkAttrs {
+  if (!attrs) {
+    return {};
+  }
+
+  const result: MarkAttrs = {};
+
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value !== null && value !== undefined) {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
+function mergeMarkAttrs(
+  markType: MarkType,
+  currentMark: Mark | undefined,
+  nextAttrs: MarkAttrs,
+): MarkAttrs {
+  const next = compactAttrs(nextAttrs);
+
+  switch (markType.name) {
+    case "fontFamily": {
+      const current = currentMark
+        ? fontFamilyAttrsToFormatting(expectFontFamilyMarkAttrs(currentMark))
+        : undefined;
+      const incoming = fontFamilyAttrsToFormatting(
+        expectFontFamilyMarkAttrs(markType.create(next)),
+      );
+      return mergeFontFamily(current, incoming);
+    }
+    case "underline":
+      return {
+        ...compactAttrs(currentMark?.attrs),
+        ...next,
+      };
+    default:
+      return nextAttrs;
+  }
+}
+
+function markRequiresAttrMerge(markType: MarkType): boolean {
+  return markType.name === "fontFamily" || markType.name === "underline";
+}
+
+function createMarkWithMergedAttrs(
+  markType: MarkType,
+  currentMark: Mark | undefined,
+  nextAttrs: MarkAttrs,
+): Mark {
+  if (!markRequiresAttrMerge(markType)) {
+    return markType.create(nextAttrs);
+  }
+
+  return markType.create(mergeMarkAttrs(markType, currentMark, nextAttrs));
+}
+
 export function setMark(markType: MarkType, attrs: MarkAttrs): Command {
   return (state, dispatch) => {
     const { from, to, empty } = state.selection;
-    const mark = markType.create(attrs);
 
     if (empty) {
       if (dispatch) {
         const current = state.storedMarks ?? state.selection.$from.marks();
+        const currentMark = markType.isInSet(current);
         const marks = markType.isInSet(current)
           ? current.filter((m) => m.type !== markType)
           : current;
+        const mark = createMarkWithMergedAttrs(markType, currentMark, attrs);
 
         dispatchStoredMarks(state, dispatch, [...marks, mark]);
       }
@@ -194,11 +276,62 @@ export function setMark(markType: MarkType, attrs: MarkAttrs): Command {
     }
 
     if (dispatch) {
-      dispatch(state.tr.addMark(from, to, mark).scrollIntoView());
+      if (!markRequiresAttrMerge(markType)) {
+        dispatch(state.tr.addMark(from, to, markType.create(attrs)).scrollIntoView());
+        return true;
+      }
+
+      let tr = state.tr;
+      state.doc.nodesBetween(from, to, (node, pos) => {
+        if (!node.isText) {
+          return;
+        }
+
+        const start = Math.max(from, pos);
+        const end = Math.min(to, pos + node.nodeSize);
+        const currentMark = markType.isInSet(node.marks);
+        const mark = createMarkWithMergedAttrs(markType, currentMark, attrs);
+        tr = tr.addMark(start, end, mark);
+      });
+
+      dispatch(tr.scrollIntoView());
     }
 
     return true;
   };
+}
+
+function selectionHasVisibleUnderline(state: EditorState, markType: MarkType): boolean {
+  const { from, to, empty, $from } = state.selection;
+
+  if (empty) {
+    const mark = markType.isInSet(state.storedMarks ?? $from.marks());
+    return mark !== undefined && mark.attrs["style"] !== "none";
+  }
+
+  let hasVisibleUnderline = false;
+  state.doc.nodesBetween(from, to, (node) => {
+    if (!node.isText) {
+      return true;
+    }
+
+    const mark = markType.isInSet(node.marks);
+    if (mark && mark.attrs["style"] !== "none") {
+      hasVisibleUnderline = true;
+      return false;
+    }
+
+    return true;
+  });
+
+  return hasVisibleUnderline;
+}
+
+export function toggleUnderlineMark(markType: MarkType): Command {
+  return (state, dispatch) =>
+    setMark(markType, {
+      style: selectionHasVisibleUnderline(state, markType) ? "none" : "single",
+    })(state, dispatch);
 }
 
 export function removeMark(markType: MarkType): Command {
@@ -351,8 +484,13 @@ export function textFormattingToMarks(formatting: TextFormatting, schema: Schema
       schema.marks["fontFamily"].create({
         ascii: formatting.fontFamily.ascii,
         hAnsi: formatting.fontFamily.hAnsi,
+        eastAsia: formatting.fontFamily.eastAsia,
+        cs: formatting.fontFamily.cs,
         hint: formatting.fontFamily.hint,
         asciiTheme: formatting.fontFamily.asciiTheme,
+        hAnsiTheme: formatting.fontFamily.hAnsiTheme,
+        eastAsiaTheme: formatting.fontFamily.eastAsiaTheme,
+        csTheme: formatting.fontFamily.csTheme,
       }),
     );
   }

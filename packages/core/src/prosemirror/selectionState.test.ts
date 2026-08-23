@@ -5,6 +5,7 @@ import { schema } from "./schema";
 import { extractSelectionState } from "./selectionState";
 
 const bold = schema.marks["bold"]!;
+const underline = schema.marks["underline"]!;
 
 function paragraphWithBoldRun() {
   // Text node layout: "before " (plain) + "Parent" (bold) + " after" (plain).
@@ -93,5 +94,39 @@ describe("extractSelectionState — bold detection", () => {
 
     expect(result?.paragraphFormatting.lineSpacing).toBe(0);
     expect(result?.paragraphFormatting.lineSpacingRule).toBe("auto");
+  });
+});
+
+describe("extractSelectionState — underline none", () => {
+  test('treats underline style "none" as inactive for toolbar state', () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("text", [underline.create({ style: "none", color: { rgb: "FF0000" } })]),
+      ]),
+    ]);
+    const state = EditorState.create({ doc }).apply(
+      EditorState.create({ doc }).tr.setSelection(TextSelection.create(doc, 3, 3)),
+    );
+
+    const result = extractSelectionState(state);
+
+    expect(result?.textFormatting.underline).toBeUndefined();
+  });
+
+  test("prefers visible underline when hidden underline occurs first", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("hidden", [underline.create({ style: "none" })]),
+        schema.text("visible", [underline.create({ style: "single" })]),
+      ]),
+    ]);
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 1, 14),
+    });
+
+    expect(extractSelectionState(state)?.textFormatting.underline).toMatchObject({
+      style: "single",
+    });
   });
 });

@@ -4,11 +4,11 @@
  * Extracts selection state from ProseMirror for toolbar integration.
  */
 
-import type { Mark } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
 import type { TextFormatting, ParagraphFormatting } from "../types/document";
 import { directionIsRtl } from "./paragraphDirection";
+import { collectMarksInRange } from "./selectionMarks";
 
 // ============================================================================
 // TYPES
@@ -83,7 +83,7 @@ export function extractSelectionState(state: EditorState): SelectionState | null
   // the toolbar's active state agrees with what a toggle click will toggle.
   const marks = empty
     ? state.storedMarks || selection.$from.marks()
-    : collectMarksInRange(doc, from, to);
+    : collectMarksInRange({ doc, from, to });
 
   // If in empty paragraph with no marks but has defaultTextFormatting, use that
   if (isEmptyParagraph && marks.length === 0 && paragraphDefaultFormatting) {
@@ -100,10 +100,12 @@ export function extractSelectionState(state: EditorState): SelectionState | null
         textFormatting.italic = true;
         break;
       case "underline":
-        textFormatting.underline = {
-          style: mark.attrs["style"] || "single",
-          color: mark.attrs["color"],
-        };
+        if (mark.attrs["style"] !== "none") {
+          textFormatting.underline = {
+            style: mark.attrs["style"] || "single",
+            color: mark.attrs["color"],
+          };
+        }
         break;
       case "strike":
         if (mark.attrs["double"]) {
@@ -191,26 +193,4 @@ export function extractSelectionState(state: EditorState): SelectionState | null
     startParagraphIndex,
     endParagraphIndex,
   };
-}
-
-/**
- * Collect the first occurrence of each mark type found on any text node within
- * the range. Mirrors the "any inline child has this mark" semantics that
- * prosemirror-commands' toggleMark uses to decide add-vs-remove, so the
- * toolbar's active state stays consistent with what a toggle click will do.
- */
-function collectMarksInRange(doc: EditorState["doc"], from: number, to: number): Mark[] {
-  const seen = new Map<string, Mark>();
-  doc.nodesBetween(from, to, (node) => {
-    if (!node.isText) {
-      return;
-    }
-    for (const mark of node.marks) {
-      const name = mark.type.name;
-      if (!seen.has(name)) {
-        seen.set(name, mark);
-      }
-    }
-  });
-  return Array.from(seen.values());
 }

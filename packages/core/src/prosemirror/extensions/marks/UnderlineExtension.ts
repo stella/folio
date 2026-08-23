@@ -3,13 +3,12 @@
  */
 
 import { panic } from "better-result";
-import { toggleMark } from "prosemirror-commands";
 
 import { expectUnderlineMarkAttrs } from "../../attrs";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { setMark } from "./markUtils";
+import { setMark, toggleUnderlineMark } from "./markUtils";
 
 export const UnderlineExtension = createMarkExtension({
   name: "underline",
@@ -23,16 +22,21 @@ export const UnderlineExtension = createMarkExtension({
       { tag: "u" },
       {
         style: "text-decoration",
-        getAttrs: (value) => (value.includes("underline") ? {} : false),
+        getAttrs: (value) => {
+          if (value.includes("underline")) {
+            return {};
+          }
+          return value.includes("none") ? { style: "none" } : false;
+        },
       },
     ],
     toDOM(mark) {
       const attrs = expectUnderlineMarkAttrs(mark);
       const style = attrs.style;
       const colorRgb = attrs.color?.rgb;
-      const cssStyle: string[] = ["text-decoration: underline"];
+      const cssStyle: string[] = [`text-decoration: ${style === "none" ? "none" : "underline"}`];
 
-      if (style && style !== "single") {
+      if (style && style !== "single" && style !== "none") {
         const styleMap: Record<string, string> = {
           double: "double",
           dotted: "dotted",
@@ -59,12 +63,12 @@ export const UnderlineExtension = createMarkExtension({
     }
     return {
       commands: {
-        toggleUnderline: () => toggleMark(underlineType),
+        toggleUnderline: () => toggleUnderlineMark(underlineType),
         setUnderlineStyle: (style: string, color?: TextColorAttrs) =>
           setMark(underlineType, { style, color }),
       },
       keyboardShortcuts: {
-        "Mod-u": toggleMark(underlineType),
+        "Mod-u": toggleUnderlineMark(underlineType),
       },
     };
   },

@@ -13,6 +13,7 @@ import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { TextFormatting, ParagraphFormatting } from "../../types/document";
+import { collectMarksInRange } from "../selectionMarks";
 
 /**
  * Selection context for toolbar state
@@ -169,11 +170,11 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
  * Extract text formatting from current selection/cursor marks
  */
 function extractTextFormatting(state: EditorState): TextFormatting {
-  const { selection } = state;
-  const { empty, $from } = selection;
+  const { selection, doc } = state;
+  const { from, to, empty, $from } = selection;
 
   // Get marks: stored marks take precedence, then marks at cursor
-  const marks = state.storedMarks || (empty ? $from.marks() : []);
+  const marks = empty ? state.storedMarks || $from.marks() : collectMarksInRange({ doc, from, to });
   const formatting: TextFormatting = {};
 
   for (const mark of marks) {
@@ -185,10 +186,12 @@ function extractTextFormatting(state: EditorState): TextFormatting {
         formatting.italic = true;
         break;
       case "underline":
-        formatting.underline = {
-          style: mark.attrs["style"] || "single",
-          color: mark.attrs["color"],
-        };
+        if (mark.attrs["style"] !== "none") {
+          formatting.underline = {
+            style: mark.attrs["style"] || "single",
+            color: mark.attrs["color"],
+          };
+        }
         break;
       case "strike":
         if (mark.attrs["double"]) {

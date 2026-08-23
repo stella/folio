@@ -3,6 +3,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import {
   FIELD_TYPE_VALUES,
+  FONT_THEME_VALUES,
   HIGHLIGHT_COLOR_VALUES,
   IMAGE_HORIZONTAL_ALIGNMENT_VALUES,
   IMAGE_HORIZONTAL_RELATIVE_TO_VALUES,
@@ -933,10 +934,16 @@ export const readFontFamilyMarkAttrs = (
   optionalString(attrs, "eastAsia", "fontFamily.attrs.eastAsia", issues);
   optionalString(attrs, "cs", "fontFamily.attrs.cs", issues);
   optionalString(attrs, "hint", "fontFamily.attrs.hint", issues);
-  optionalString(attrs, "asciiTheme", "fontFamily.attrs.asciiTheme", issues);
-  optionalString(attrs, "hAnsiTheme", "fontFamily.attrs.hAnsiTheme", issues);
-  optionalString(attrs, "eastAsiaTheme", "fontFamily.attrs.eastAsiaTheme", issues);
-  optionalString(attrs, "csTheme", "fontFamily.attrs.csTheme", issues);
+  optionalOneOf(attrs, "asciiTheme", "fontFamily.attrs.asciiTheme", issues, FONT_THEME_VALUES);
+  optionalOneOf(attrs, "hAnsiTheme", "fontFamily.attrs.hAnsiTheme", issues, FONT_THEME_VALUES);
+  optionalOneOf(
+    attrs,
+    "eastAsiaTheme",
+    "fontFamily.attrs.eastAsiaTheme",
+    issues,
+    FONT_THEME_VALUES,
+  );
+  optionalOneOf(attrs, "csTheme", "fontFamily.attrs.csTheme", issues, FONT_THEME_VALUES);
 
   return attrsResult(attrs, issues);
 };
