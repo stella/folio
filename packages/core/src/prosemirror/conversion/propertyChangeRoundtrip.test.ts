@@ -16,8 +16,22 @@ const samplePropertyChange: ParagraphPropertyChange = {
     author: "Reviewer",
     date: "2026-05-15T12:00:00Z",
   },
-  previousFormatting: { alignment: "left" },
-  currentFormatting: { alignment: "center" },
+  previousFormatting: {
+    alignment: "left",
+    runProperties: {
+      fontFamily: { cs: "Noto Naskh Arabic", csTheme: "majorBidi" },
+      language: { bidi: "ar-SA" },
+      spacing: 12,
+    },
+  },
+  currentFormatting: {
+    alignment: "center",
+    runProperties: {
+      fontFamily: { cs: "Noto Naskh Arabic", csTheme: "majorBidi" },
+      language: { bidi: "ar-SA" },
+      spacing: 24,
+    },
+  },
 };
 
 function paragraphWithPropertyChange(): Paragraph {
@@ -71,6 +85,32 @@ describe("paragraph propertyChanges PM round-trip", () => {
     const roundtripped = fromProseDoc(pmDoc).package.document.content[0] as Paragraph | undefined;
 
     expect(roundtripped?.propertyChanges).toEqual([samplePropertyChange]);
+  });
+
+  test("keeps nested property-change formatting fixed across repeated PM decoding", () => {
+    const original = paragraphWithPropertyChange();
+    const first = fromProseDoc(
+      toProseDoc({
+        package: {
+          document: {
+            content: [original],
+            finalSectionProperties: {},
+          },
+        },
+      } as never),
+    ).package.document.content[0] as Paragraph;
+    const second = fromProseDoc(
+      toProseDoc({
+        package: {
+          document: {
+            content: [first],
+            finalSectionProperties: {},
+          },
+        },
+      } as never),
+    ).package.document.content[0] as Paragraph;
+
+    expect(second.propertyChanges).toEqual(first.propertyChanges);
   });
 
   test("paragraphs without propertyChanges round-trip without inventing them", () => {

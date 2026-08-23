@@ -7,6 +7,7 @@
  */
 
 import { ExtensionManager } from "../extensions/ExtensionManager";
+import type { FolioCommandName } from "../extensions/types";
 // oxlint-disable-next-line import/no-cycle -- singleton registry; StarterKit pulls in extensions that read back the singleton at runtime
 import { createStarterKit } from "../extensions/StarterKit";
 
@@ -16,6 +17,7 @@ export type {
   TabAttrs,
   SymbolAttrs,
   ParagraphAttrs,
+  ParagraphPropertyChangeAttrs,
   FieldAttrs,
   ImageAttrs,
   ImagePositionAttrs,
@@ -55,6 +57,100 @@ export type {
 const mgr = new ExtensionManager(createStarterKit());
 mgr.buildSchema();
 mgr.initializeRuntime();
+
+const completeCommandNames = <const Names extends readonly FolioCommandName[]>(
+  names: Names & (FolioCommandName extends Names[number] ? unknown : never),
+): Names => names;
+
+const requiredCommands = completeCommandNames([
+  "toggleBold",
+  "toggleItalic",
+  "toggleUnderline",
+  "toggleStrike",
+  "toggleSuperscript",
+  "toggleSubscript",
+  "setTextColor",
+  "clearTextColor",
+  "setHighlight",
+  "clearHighlight",
+  "setFontSize",
+  "clearFontSize",
+  "setFontFamily",
+  "clearFontFamily",
+  "setUnderlineStyle",
+  "setHyperlink",
+  "removeHyperlink",
+  "insertHyperlink",
+  "setAlignment",
+  "alignLeft",
+  "alignCenter",
+  "alignRight",
+  "alignJustify",
+  "setLineSpacing",
+  "singleSpacing",
+  "oneAndHalfSpacing",
+  "doubleSpacing",
+  "increaseIndent",
+  "decreaseIndent",
+  "setIndentLeft",
+  "setIndentRight",
+  "setIndentFirstLine",
+  "toggleBulletList",
+  "toggleNumberedList",
+  "increaseListLevel",
+  "decreaseListLevel",
+  "removeList",
+  "setSpaceBefore",
+  "setSpaceAfter",
+  "applyStyle",
+  "clearStyle",
+  "insertSectionBreak",
+  "removeSectionBreak",
+  "addTabStop",
+  "removeTabStop",
+  "toggleBidi",
+  "setRtl",
+  "setLtr",
+  "setTabs",
+  "generateTOC",
+  "insertTable",
+  "addRowAbove",
+  "addRowBelow",
+  "deleteRow",
+  "addColumnLeft",
+  "addColumnRight",
+  "deleteColumn",
+  "deleteTable",
+  "selectTable",
+  "selectRow",
+  "selectColumn",
+  "mergeCells",
+  "splitCell",
+  "setCellBorder",
+  "setTableBorderPreset",
+  "setTableBorders",
+  "removeTableBorders",
+  "setAllTableBorders",
+  "setOutsideTableBorders",
+  "setInsideTableBorders",
+  "setCellVerticalAlign",
+  "setCellMargins",
+  "setCellTextDirection",
+  "toggleNoWrap",
+  "setRowHeight",
+  "toggleHeaderRow",
+  "distributeColumns",
+  "autoFitContents",
+  "setTableProperties",
+  "applyTableStyle",
+  "setCellFillColor",
+  "setTableBorderColor",
+  "setTableBorderWidth",
+]);
+
+for (const commandName of requiredCommands) {
+  mgr.requireCommand(commandName);
+}
 
 export const singletonManager = mgr;
 export const schema = mgr.getSchema();

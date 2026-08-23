@@ -253,7 +253,7 @@ export type ParagraphAttrs = {
    *  them in UI today, but stripping them on every edit would corrupt the
    *  `w:pPrChange` history Word relies on for "show previous formatting"
    *  and for reverting an accepted property change. */
-  _propertyChanges?: ParagraphPropertyChange[];
+  _propertyChanges?: ParagraphPropertyChangeAttrs[];
 
   /** Paragraph-mark insertion / deletion (`<w:pPr><w:rPr><w:ins/>` /
    *  `<w:del/>`). Word emits this when the paragraph break itself was
@@ -268,6 +268,42 @@ export type ParagraphAttrs = {
    * it into a real inserted-paragraph tracked change (paragraph-mark `w:ins`).
    */
   _suggestedInsert?: SuggestedStructuralMarker | null;
+};
+
+/**
+ * ProseMirror property-change attrs may also carry the editor's list-marker
+ * snapshot fields alongside the canonical paragraph formatting fields.
+ * Keeping that shape typed here lets layout consume validated attrs directly.
+ */
+export type ParagraphPropertyChangeAttrs = Omit<
+  ParagraphPropertyChange,
+  "previousFormatting" | "currentFormatting"
+> & {
+  previousFormatting?: Omit<ParagraphFormatting, "numPr"> & {
+    numPr?: ParagraphFormatting["numPr"] | null;
+  } & Partial<
+      Pick<
+        ParagraphAttrs,
+        | "listIsBullet"
+        | "listIsLegal"
+        | "listNumFmt"
+        | "listMarker"
+        | "listMarkerHidden"
+        | "listMarkerFontFamily"
+        | "listMarkerFontSize"
+        | "listMarkerBold"
+        | "listMarkerAlignment"
+        | "listMarkerSuffix"
+        | "listLevelNumFmts"
+        | "listLevelStarts"
+        | "listAbstractNumId"
+        | "listStartOverride"
+        | "lineSpacingExplicit"
+        | "direction"
+        | "_autospacingBase"
+      >
+    >;
+  currentFormatting?: ParagraphFormatting;
 };
 
 /**

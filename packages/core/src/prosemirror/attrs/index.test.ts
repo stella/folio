@@ -148,6 +148,66 @@ describe("ProseMirror attr readers", () => {
     );
   });
 
+  test("rejects malformed nested text formatting and paragraph property changes", () => {
+    const node = schema.nodes.paragraph.create({
+      defaultTextFormatting: {
+        fontFamily: { csTheme: 42 },
+        language: { bidi: 7 },
+        scale: "wide",
+        emphasisMark: "zigzag",
+      },
+      _propertyChanges: [
+        {
+          type: "paragraphPropertyChange",
+          info: { id: 4, author: "Reviewer" },
+          previousFormatting: {
+            numPr: { numId: "bad" },
+            tabs: [{ position: "720", alignment: "left" }],
+            runProperties: { fontSize: "large" },
+            suppressLineNumbers: "bad",
+            runInWithNext: "bad",
+            _autospacingBase: { before: "bad" },
+          },
+        },
+      ],
+    });
+
+    const result = readParagraphAttrs(node);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("Expected nested formatting attrs to be rejected");
+    }
+    expect(result.issues.map((issue) => issue.path)).toEqual(
+      expect.arrayContaining([
+        "paragraph.attrs.defaultTextFormatting.fontFamily.csTheme",
+        "paragraph.attrs.defaultTextFormatting.language.bidi",
+        "paragraph.attrs.defaultTextFormatting.scale",
+        "paragraph.attrs.defaultTextFormatting.emphasisMark",
+        "paragraph.attrs._propertyChanges[0].previousFormatting.numPr.numId",
+        "paragraph.attrs._propertyChanges[0].previousFormatting.tabs[0].position",
+        "paragraph.attrs._propertyChanges[0].previousFormatting.runProperties.fontSize",
+        "paragraph.attrs._propertyChanges[0].previousFormatting.suppressLineNumbers",
+        "paragraph.attrs._propertyChanges[0].previousFormatting.runInWithNext",
+        "paragraph.attrs._propertyChanges[0].previousFormatting._autospacingBase.before",
+      ]),
+    );
+  });
+
+  test("accepts a null previous numPr tombstone for an added list", () => {
+    const node = schema.nodes.paragraph.create({
+      _propertyChanges: [
+        {
+          type: "paragraphPropertyChange",
+          info: { id: 4, author: "Reviewer" },
+          previousFormatting: { numPr: null },
+        },
+      ],
+    });
+
+    expect(readParagraphAttrs(node).ok).toBe(true);
+  });
+
   test("rejects malformed table column widths", () => {
     const node = schema.nodes.table.create({
       columnWidths: [1200, "bad"],

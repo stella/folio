@@ -38,7 +38,16 @@ import {
 } from "../../attrs";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
 import { createNodeExtension, createExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime, AnyExtension } from "../types";
+import type {
+  AnyExtension,
+  ExtensionContext,
+  ExtensionRuntime,
+  TableBorderCommandSpec,
+  TableCellBorderCommandSpec,
+  TableCellMarginsCommand,
+  TablePropertiesCommand,
+  TableStyleCommand,
+} from "../types";
 
 type TableCellBorders = NonNullable<TableCellAttrs["borders"]>;
 type TableCellBorderSide = "top" | "bottom" | "left" | "right";
@@ -2353,55 +2362,7 @@ export const TablePluginExtension = createExtension({
      * Apply a table style to the current table.
      * Accepts pre-resolved style data (borders, shading per conditional type).
      */
-    function applyTableStyle(styleData: {
-      styleId: string;
-      tableBorders?: {
-        top?: { style: string; size?: number; color?: { rgb: string } };
-        bottom?: { style: string; size?: number; color?: { rgb: string } };
-        left?: { style: string; size?: number; color?: { rgb: string } };
-        right?: { style: string; size?: number; color?: { rgb: string } };
-        insideH?: { style: string; size?: number; color?: { rgb: string } };
-        insideV?: { style: string; size?: number; color?: { rgb: string } };
-      };
-      conditionals?: Record<
-        string,
-        {
-          backgroundColor?: string;
-          borders?: {
-            top?: {
-              style: string;
-              size?: number;
-              color?: { rgb: string };
-            } | null;
-            bottom?: {
-              style: string;
-              size?: number;
-              color?: { rgb: string };
-            } | null;
-            left?: {
-              style: string;
-              size?: number;
-              color?: { rgb: string };
-            } | null;
-            right?: {
-              style: string;
-              size?: number;
-              color?: { rgb: string };
-            } | null;
-          };
-          bold?: boolean;
-          color?: string;
-        }
-      >;
-      look?: {
-        firstRow?: boolean;
-        lastRow?: boolean;
-        firstCol?: boolean;
-        lastCol?: boolean;
-        noHBand?: boolean;
-        noVBand?: boolean;
-      };
-    }): Command {
+    function applyTableStyle(styleData: TableStyleCommand): Command {
       return (state, dispatch) => {
         const context = getTableContext(state);
         if (!context.isInTable || context.tablePos === undefined || !context.table) {
@@ -2534,11 +2495,7 @@ export const TablePluginExtension = createExtension({
       };
     }
 
-    function setTableProperties(props: {
-      width?: number | null;
-      widthType?: string | null;
-      justification?: "left" | "center" | "right" | null;
-    }): Command {
+    function setTableProperties(props: TablePropertiesCommand): Command {
       return (state, dispatch) => {
         if (
           props.widthType !== undefined &&
@@ -2894,25 +2851,14 @@ export const TablePluginExtension = createExtension({
         splitCell: () => pmSplitCell,
         setCellBorder: (
           side: "top" | "bottom" | "left" | "right" | "all",
-          spec: {
-            style: string;
-            size?: number;
-            color?: { rgb: string };
-          } | null,
+          spec: TableCellBorderCommandSpec | null,
           clearOthers?: boolean,
         ) => setCellBorder(side, spec, clearOthers),
-        setTableBorders: (
-          preset: BorderPreset,
-          borderSpec?: { style: string; size: number; color: { rgb: string } },
-        ) => setTableBorders(preset, borderSpec),
+        setTableBorders: (preset: BorderPreset, borderSpec?: TableBorderCommandSpec) =>
+          setTableBorders(preset, borderSpec),
         setTableBorderPreset: (preset: TableBorderPreset) => setTableBorderPreset(preset),
         setCellVerticalAlign: (align: "top" | "center" | "bottom") => setCellVerticalAlign(align),
-        setCellMargins: (margins: {
-          top?: number;
-          bottom?: number;
-          left?: number;
-          right?: number;
-        }) => setCellMargins(margins),
+        setCellMargins: (margins: TableCellMarginsCommand) => setCellMargins(margins),
         setCellTextDirection: (direction: string | null) => setCellTextDirection(direction),
         toggleNoWrap: () => toggleNoWrap(),
         setRowHeight: (height: number | null, rule?: "auto" | "atLeast" | "exact") =>
@@ -2920,32 +2866,18 @@ export const TablePluginExtension = createExtension({
         toggleHeaderRow: () => toggleHeaderRow(),
         distributeColumns: () => distributeColumns(),
         autoFitContents: () => autoFitContents(),
-        setTableProperties: (props: {
-          width?: number | null;
-          widthType?: string | null;
-          justification?: "left" | "center" | "right" | null;
-        }) => setTableProperties(props),
-        applyTableStyle: (styleData: Parameters<typeof applyTableStyle>[0]) =>
-          applyTableStyle(styleData),
+        setTableProperties: (props: TablePropertiesCommand) => setTableProperties(props),
+        applyTableStyle: (styleData: TableStyleCommand) => applyTableStyle(styleData),
         setCellFillColor: (color: string | null) => setCellFillColor(color),
         setTableBorderColor: (color: string) => setTableBorderColor(color),
         setTableBorderWidth: (size: number) => setTableBorderWidth(size),
         removeTableBorders: () => setTableBorders("none"),
-        setAllTableBorders: (borderSpec?: {
-          style: string;
-          size: number;
-          color: { rgb: string };
-        }) => setTableBorders("all", borderSpec),
-        setOutsideTableBorders: (borderSpec?: {
-          style: string;
-          size: number;
-          color: { rgb: string };
-        }) => setTableBorders("outside", borderSpec),
-        setInsideTableBorders: (borderSpec?: {
-          style: string;
-          size: number;
-          color: { rgb: string };
-        }) => setTableBorders("inside", borderSpec),
+        setAllTableBorders: (borderSpec?: TableBorderCommandSpec) =>
+          setTableBorders("all", borderSpec),
+        setOutsideTableBorders: (borderSpec?: TableBorderCommandSpec) =>
+          setTableBorders("outside", borderSpec),
+        setInsideTableBorders: (borderSpec?: TableBorderCommandSpec) =>
+          setTableBorders("inside", borderSpec),
       },
     };
   },

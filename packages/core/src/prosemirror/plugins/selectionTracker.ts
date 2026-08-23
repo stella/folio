@@ -12,8 +12,9 @@ import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { expectCommentMarkAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
+import { extractSelectionSnapshot } from "../selectionState";
 import type { TextFormatting, ParagraphFormatting } from "../../types/document";
-import { collectMarksInRange } from "../selectionMarks";
 
 /**
  * Selection context for toolbar state
@@ -59,70 +60,17 @@ export type SelectionChangeCallback = (context: SelectionContext) => void;
  * Extract selection context from editor state
  */
 export function extractSelectionContext(state: EditorState): SelectionContext {
-  const { selection, doc } = state;
-  const { from, to, empty } = selection;
-  const $from = doc.resolve(from);
+  const { selection } = state;
+  const { empty } = selection;
+  const snapshot = extractSelectionSnapshot(state);
 
-  // Find paragraph indices
-  let startParagraphIndex = 0;
-  let endParagraphIndex = 0;
-
-  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-  doc.forEach((_node, offset, index) => {
-    if (offset > to) {
-      return;
-    }
-    if (offset <= from) {
-      startParagraphIndex = index;
-    }
-    if (offset <= to) {
-      endParagraphIndex = index;
-    }
-  });
-
-  // Extract text formatting from marks
-  const textFormatting = extractTextFormatting(state);
-
-  // Extract paragraph formatting
-  const paragraph = $from.parent;
-  const paragraphFormatting: ParagraphFormatting = {};
-
-  if (paragraph.type.name === "paragraph") {
-    if (paragraph.attrs["alignment"]) {
-      paragraphFormatting.alignment = paragraph.attrs["alignment"];
-    }
-    if (typeof paragraph.attrs["lineSpacing"] === "number") {
-      paragraphFormatting.lineSpacing = paragraph.attrs["lineSpacing"];
-      paragraphFormatting.lineSpacingRule = paragraph.attrs["lineSpacingRule"];
-    }
-    if (typeof paragraph.attrs["snapToGrid"] === "boolean") {
-      paragraphFormatting.snapToGrid = paragraph.attrs["snapToGrid"];
-    }
-    if (paragraph.attrs["indentLeft"]) {
-      paragraphFormatting.indentLeft = paragraph.attrs["indentLeft"];
-    }
-    if (paragraph.attrs["indentRight"]) {
-      paragraphFormatting.indentRight = paragraph.attrs["indentRight"];
-    }
-    if (paragraph.attrs["indentFirstLine"]) {
-      paragraphFormatting.indentFirstLine = paragraph.attrs["indentFirstLine"];
-    }
-    if (paragraph.attrs["hangingIndent"]) {
-      paragraphFormatting.hangingIndent = paragraph.attrs["hangingIndent"];
-    }
-    if (paragraph.attrs["tabs"]) {
-      paragraphFormatting.tabs = paragraph.attrs["tabs"];
-    }
-    if (paragraph.attrs["numPr"]) {
-      paragraphFormatting.numPr = paragraph.attrs["numPr"];
-    }
-    if (paragraph.attrs["styleId"]) {
-      paragraphFormatting.styleId = paragraph.attrs["styleId"];
-    }
-  }
+  const paragraphFormatting: ParagraphFormatting =
+    snapshot.styleId === null
+      ? snapshot.paragraphFormatting
+      : { ...snapshot.paragraphFormatting, styleId: snapshot.styleId };
 
   // List detection
-  const numPr = paragraph.attrs["numPr"];
+  const numPr = snapshot.paragraphFormatting.numPr;
   const inList = !!numPr?.numId;
   let listType: "bullet" | "numbered" | undefined;
   if (numPr?.numId === 1) {
@@ -133,30 +81,32 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
   const listLevel = numPr?.ilvl;
 
   // Comment and tracked change detection
-  const allMarks = state.storedMarks || (empty ? $from.marks() : []);
+  const allMarks = state.storedMarks || (empty ? selection.$from.marks() : []);
   const activeCommentIds: number[] = [];
   let inInsertion = false;
   let inDeletion = false;
 
   for (const mark of allMarks) {
-    if (mark.type.name === "comment" && mark.attrs["commentId"]) {
-      activeCommentIds.push(mark.attrs["commentId"]);
+    if (mark.type.name === "comment") {
+      activeCommentIds.push(expectCommentMarkAttrs(mark).commentId);
     }
     if (mark.type.name === "insertion") {
+      expectTrackedChangeMarkAttrs(mark);
       inInsertion = true;
     }
     if (mark.type.name === "deletion") {
+      expectTrackedChangeMarkAttrs(mark);
       inDeletion = true;
     }
   }
 
   return {
-    hasSelection: !empty,
-    isMultiParagraph: startParagraphIndex !== endParagraphIndex,
-    textFormatting,
+    hasSelection: snapshot.hasSelection,
+    isMultiParagraph: snapshot.isMultiParagraph,
+    textFormatting: snapshot.textFormatting,
     paragraphFormatting,
-    startParagraphIndex,
-    endParagraphIndex,
+    startParagraphIndex: snapshot.startParagraphIndex,
+    endParagraphIndex: snapshot.endParagraphIndex,
     inList,
     ...(listType !== undefined ? { listType } : {}),
     ...(listLevel !== undefined ? { listLevel } : {}),
@@ -164,75 +114,6 @@ export function extractSelectionContext(state: EditorState): SelectionContext {
     inInsertion,
     inDeletion,
   };
-}
-
-/**
- * Extract text formatting from current selection/cursor marks
- */
-function extractTextFormatting(state: EditorState): TextFormatting {
-  const { selection, doc } = state;
-  const { from, to, empty, $from } = selection;
-
-  // Get marks: stored marks take precedence, then marks at cursor
-  const marks = empty ? state.storedMarks || $from.marks() : collectMarksInRange({ doc, from, to });
-  const formatting: TextFormatting = {};
-
-  for (const mark of marks) {
-    switch (mark.type.name) {
-      case "bold":
-        formatting.bold = true;
-        break;
-      case "italic":
-        formatting.italic = true;
-        break;
-      case "underline":
-        if (mark.attrs["style"] !== "none") {
-          formatting.underline = {
-            style: mark.attrs["style"] || "single",
-            color: mark.attrs["color"],
-          };
-        }
-        break;
-      case "strike":
-        if (mark.attrs["double"]) {
-          formatting.doubleStrike = true;
-        } else {
-          formatting.strike = true;
-        }
-        break;
-      case "textColor":
-        formatting.color = {
-          rgb: mark.attrs["rgb"],
-          themeColor: mark.attrs["themeColor"],
-          themeTint: mark.attrs["themeTint"],
-          themeShade: mark.attrs["themeShade"],
-        };
-        break;
-      case "highlight":
-        formatting.highlight = mark.attrs["color"];
-        break;
-      case "fontSize":
-        formatting.fontSize = mark.attrs["size"];
-        break;
-      case "fontFamily":
-        formatting.fontFamily = {
-          ascii: mark.attrs["ascii"],
-          hAnsi: mark.attrs["hAnsi"],
-          asciiTheme: mark.attrs["asciiTheme"],
-        };
-        break;
-      case "superscript":
-        formatting.vertAlign = "superscript";
-        break;
-      case "subscript":
-        formatting.vertAlign = "subscript";
-        break;
-      default:
-        break;
-    }
-  }
-
-  return formatting;
 }
 
 /**

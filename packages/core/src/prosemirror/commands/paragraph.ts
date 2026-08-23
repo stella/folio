@@ -31,73 +31,71 @@ export { isInList, getListInfo } from "../extensions/features/ListExtension";
 // COMMANDS — delegated to singleton extension manager
 // ============================================================================
 
-// SAFETY: All commands below are registered by ParagraphExtension and related
-// extensions at startup. The CommandMap Record type makes indexed access return
-// T | undefined, but these keys are structurally guaranteed to exist.
-const cmds = singletonManager.getCommands();
+// The singleton validates the complete built-in registry during startup.
+const cmds = singletonManager;
 
 // Alignment
 export function setAlignment(alignment: ParagraphAlignment): Command {
-  return cmds["setAlignment"]!(alignment);
+  return cmds.requireCommand("setAlignment")(alignment);
 }
-export const alignLeft: Command = cmds["alignLeft"]!();
-export const alignCenter: Command = cmds["alignCenter"]!();
-export const alignRight: Command = cmds["alignRight"]!();
-export const alignJustify: Command = cmds["alignJustify"]!();
+export const alignLeft: Command = cmds.requireCommand("alignLeft")();
+export const alignCenter: Command = cmds.requireCommand("alignCenter")();
+export const alignRight: Command = cmds.requireCommand("alignRight")();
+export const alignJustify: Command = cmds.requireCommand("alignJustify")();
 
 // Line spacing
 export function setLineSpacing(value: number, rule: LineSpacingRule = "auto"): Command {
-  return cmds["setLineSpacing"]!(value, rule);
+  return cmds.requireCommand("setLineSpacing")(value, rule);
 }
-export const singleSpacing: Command = cmds["singleSpacing"]!();
-export const oneAndHalfSpacing: Command = cmds["oneAndHalfSpacing"]!();
-export const doubleSpacing: Command = cmds["doubleSpacing"]!();
+export const singleSpacing: Command = cmds.requireCommand("singleSpacing")();
+export const oneAndHalfSpacing: Command = cmds.requireCommand("oneAndHalfSpacing")();
+export const doubleSpacing: Command = cmds.requireCommand("doubleSpacing")();
 
 // Indentation
 export function increaseIndent(amount: number = 720): Command {
-  return cmds["increaseIndent"]!(amount);
+  return cmds.requireCommand("increaseIndent")(amount);
 }
 export function decreaseIndent(amount: number = 720): Command {
-  return cmds["decreaseIndent"]!(amount);
+  return cmds.requireCommand("decreaseIndent")(amount);
 }
 export function setIndentLeft(twips: number): Command {
-  return cmds["setIndentLeft"]!(twips);
+  return cmds.requireCommand("setIndentLeft")(twips);
 }
 export function setIndentRight(twips: number): Command {
-  return cmds["setIndentRight"]!(twips);
+  return cmds.requireCommand("setIndentRight")(twips);
 }
 export function setIndentFirstLine(twips: number, hanging?: boolean): Command {
-  return cmds["setIndentFirstLine"]!(twips, hanging);
+  return cmds.requireCommand("setIndentFirstLine")(twips, hanging);
 }
 
 // Lists
-export const toggleBulletList: Command = cmds["toggleBulletList"]!();
-export const toggleNumberedList: Command = cmds["toggleNumberedList"]!();
-export const increaseListLevel: Command = cmds["increaseListLevel"]!();
-export const decreaseListLevel: Command = cmds["decreaseListLevel"]!();
-export const removeList: Command = cmds["removeList"]!();
+export const toggleBulletList: Command = cmds.requireCommand("toggleBulletList")();
+export const toggleNumberedList: Command = cmds.requireCommand("toggleNumberedList")();
+export const increaseListLevel: Command = cmds.requireCommand("increaseListLevel")();
+export const decreaseListLevel: Command = cmds.requireCommand("decreaseListLevel")();
+export const removeList: Command = cmds.requireCommand("removeList")();
 
 // Spacing
 export function setSpaceBefore(twips: number): Command {
-  return cmds["setSpaceBefore"]!(twips);
+  return cmds.requireCommand("setSpaceBefore")(twips);
 }
 export function setSpaceAfter(twips: number): Command {
-  return cmds["setSpaceAfter"]!(twips);
+  return cmds.requireCommand("setSpaceAfter")(twips);
 }
 
 // Paragraph styles
 export function applyStyle(styleId: string, resolvedAttrs?: ResolvedStyleAttrs): Command {
-  return cmds["applyStyle"]!(styleId, resolvedAttrs);
+  return cmds.requireCommand("applyStyle")(styleId, resolvedAttrs);
 }
-export const clearStyle: Command = cmds["clearStyle"]!();
+export const clearStyle: Command = cmds.requireCommand("clearStyle")();
 
 // Section breaks
 export function insertSectionBreak(
   breakType: "nextPage" | "continuous" | "oddPage" | "evenPage",
 ): Command {
-  return cmds["insertSectionBreak"]!(breakType);
+  return cmds.requireCommand("insertSectionBreak")(breakType);
 }
-export const removeSectionBreak: Command = cmds["removeSectionBreak"]!();
+export const removeSectionBreak: Command = cmds.requireCommand("removeSectionBreak")();
 
 // Tab stops
 export function addTabStop(
@@ -105,16 +103,16 @@ export function addTabStop(
   alignment: TabStopAlignment = "left",
   leader: TabLeader = "none",
 ): Command {
-  return cmds["addTabStop"]!(position, alignment, leader);
+  return cmds.requireCommand("addTabStop")(position, alignment, leader);
 }
 export function removeTabStop(position: number): Command {
-  return cmds["removeTabStop"]!(position);
+  return cmds.requireCommand("removeTabStop")(position);
 }
 
 // Text direction
-export const toggleBidi: Command = cmds["toggleBidi"]!();
-export const setRtl: Command = cmds["setRtl"]!();
-export const setLtr: Command = cmds["setLtr"]!();
+export const toggleBidi: Command = cmds.requireCommand("toggleBidi")();
+export const setRtl: Command = cmds.requireCommand("setRtl")();
+export const setLtr: Command = cmds.requireCommand("setLtr")();
 
 // Table of Contents
-export const generateTOC: Command = cmds["generateTOC"]!();
+export const generateTOC: Command = cmds.requireCommand("generateTOC")();

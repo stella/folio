@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { schema } from "./schema";
-import { extractSelectionState } from "./selectionState";
+import { extractSelectionSnapshot, extractSelectionState } from "./selectionState";
 
 const bold = schema.marks["bold"]!;
 const underline = schema.marks["underline"]!;
@@ -94,6 +94,76 @@ describe("extractSelectionState — bold detection", () => {
 
     expect(result?.paragraphFormatting.lineSpacing).toBe(0);
     expect(result?.paragraphFormatting.lineSpacingRule).toBe("auto");
+  });
+
+  test("preserves explicit zero and false paragraph attributes", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          indentLeft: 0,
+          indentRight: 0,
+          indentFirstLine: 0,
+          hangingIndent: false,
+          snapToGrid: false,
+          styleId: "",
+        },
+        [schema.text("Explicit")],
+      ),
+    ]);
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 2, 2),
+    });
+
+    const result = extractSelectionState(state);
+
+    expect(result?.paragraphFormatting).toMatchObject({
+      indentLeft: 0,
+      indentRight: 0,
+      indentFirstLine: 0,
+      hangingIndent: false,
+      snapToGrid: false,
+    });
+    expect(result?.styleId).toBe("");
+  });
+
+  test("keeps every canonical font-family slot in the selection snapshot", () => {
+    const fontFamily = schema.marks.fontFamily;
+    if (!fontFamily) {
+      throw new Error("Expected fontFamily mark in schema");
+    }
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("Fonts", [
+          fontFamily.create({
+            ascii: "Aptos",
+            hAnsi: "Aptos",
+            eastAsia: "Yu Gothic",
+            cs: "Noto Naskh Arabic",
+            asciiTheme: "majorAscii",
+            hAnsiTheme: "majorHAnsi",
+            eastAsiaTheme: "majorEastAsia",
+            csTheme: "majorBidi",
+          }),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 1, 6),
+    });
+
+    expect(extractSelectionSnapshot(state).textFormatting.fontFamily).toEqual({
+      ascii: "Aptos",
+      hAnsi: "Aptos",
+      eastAsia: "Yu Gothic",
+      cs: "Noto Naskh Arabic",
+      asciiTheme: "majorAscii",
+      hAnsiTheme: "majorHAnsi",
+      eastAsiaTheme: "majorEastAsia",
+      csTheme: "majorBidi",
+    });
   });
 });
 

@@ -7,12 +7,14 @@
 
 import type { Command, EditorState } from "prosemirror-state";
 
+import { expectParagraphAttrs } from "../../attrs";
 import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "../../commands/propertyChangeScope";
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
 import { Priority } from "../types";
 import type { ExtensionRuntime } from "../types";
+import type { ParagraphPropertyChangeAttrs } from "../../schema/nodes";
 
 // ============================================================================
 // CHAIN COMMANDS HELPER
@@ -35,16 +37,14 @@ function chainCommands(...commands: Command[]): Command {
 
 function appendParagraphPropertyChange(
   attrs: Record<string, unknown>,
+  existing: ParagraphPropertyChangeAttrs[] | undefined,
   previousFormatting: Record<string, unknown>,
   rev: { id: number; author: string; date: string },
 ): Record<string, unknown> {
-  const existing = Array.isArray(attrs["_propertyChanges"])
-    ? (attrs["_propertyChanges"] as unknown[])
-    : [];
   return {
     ...attrs,
     _propertyChanges: [
-      ...existing,
+      ...(existing ?? []),
       {
         type: "paragraphPropertyChange",
         info: { id: rev.id, author: rev.author, date: rev.date },
@@ -145,6 +145,7 @@ function toggleList(numId: number): Command {
         if (rev) {
           nextAttrs = appendParagraphPropertyChange(
             nextAttrs,
+            expectParagraphAttrs(node)._propertyChanges,
             getPreviousListFormatting(node.attrs),
             rev,
           );

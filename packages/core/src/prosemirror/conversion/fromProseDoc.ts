@@ -30,6 +30,7 @@ import type {
   Document,
   DocumentBody,
   Paragraph,
+  ParagraphPropertyChange,
   Run,
   TextFormatting,
   ParagraphFormatting,
@@ -105,6 +106,7 @@ import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import type { RunFormattingOverrideAttrs } from "../schema/marks";
 import type {
   ParagraphAttrs,
+  ParagraphPropertyChangeAttrs,
   TableAttrs,
   TableRowAttrs,
   TableCellAttrs,
@@ -114,7 +116,7 @@ import type {
 import { assertValidProseMirrorDocument } from "../validation";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { runShadingAttrsToShading } from "./runShadingMark";
-import { sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
+import { decodeSdtListItems, sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
 // `fromProseDoc` and `toProseDoc` are the two halves of one round-trip and
 // already reference each other (`toProseDoc` imports `marksToTextFormatting`
 // from here). Reusing the inverse converter to revert a stripped suggested
@@ -537,10 +539,7 @@ function convertPMBlockSdt(node: PMNode): BlockSdt {
     properties.dateValueISO = attrs.dateValueISO;
   }
   if (attrs.listItems) {
-    const items = parseListItemsJson(attrs.listItems);
-    if (items) {
-      properties.listItems = items;
-    }
+    properties.listItems = decodeSdtListItems(attrs.listItems);
   }
   if (typeof attrs.dropdownLastValue === "string") {
     properties.dropdownLastValue = attrs.dropdownLastValue;
@@ -606,31 +605,6 @@ function isStillSyntheticFiller(blocks: BlockContent[]): boolean {
     return false;
   }
   return true;
-}
-
-function parseListItemsJson(raw: string): { displayText: string; value: string }[] | undefined {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return undefined;
-    }
-    const items: { displayText: string; value: string }[] = [];
-    for (const entry of parsed) {
-      if (
-        entry !== null &&
-        typeof entry === "object" &&
-        "displayText" in entry &&
-        "value" in entry &&
-        typeof (entry as { displayText: unknown }).displayText === "string" &&
-        typeof (entry as { value: unknown }).value === "string"
-      ) {
-        items.push(entry as { displayText: string; value: string });
-      }
-    }
-    return items.length > 0 ? items : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function appendTextBoxBlock(
@@ -1043,8 +1017,8 @@ function convertPMParagraph(
   // saved DOCX still contains the property-change history Word relies
   // on. Shallow-clone the array so the rebuilt Folio document doesn't
   // share a mutable reference with PM's attrs.
-  if (Array.isArray(attrs._propertyChanges) && attrs._propertyChanges.length > 0) {
-    paragraph.propertyChanges = [...attrs._propertyChanges];
+  if (attrs._propertyChanges && attrs._propertyChanges.length > 0) {
+    paragraph.propertyChanges = attrs._propertyChanges.map(propertyChangeFromAttrs);
   }
 
   if (attrs.pPrMark) {
@@ -1053,6 +1027,23 @@ function convertPMParagraph(
 
   return paragraph;
 }
+
+const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): ParagraphPropertyChange => {
+  const { previousFormatting, currentFormatting, ...info } = change;
+  if (previousFormatting === undefined) {
+    return currentFormatting === undefined ? info : { ...info, currentFormatting };
+  }
+  const { numPr, ...previousWithoutNumPr } = previousFormatting;
+  const normalizedPrevious =
+    numPr === null || numPr === undefined
+      ? previousWithoutNumPr
+      : { ...previousWithoutNumPr, numPr };
+  return {
+    ...info,
+    previousFormatting: normalizedPrevious,
+    ...(currentFormatting !== undefined && { currentFormatting }),
+  };
+};
 
 /**
  * Whether the paragraph's numbering still comes verbatim from its style —

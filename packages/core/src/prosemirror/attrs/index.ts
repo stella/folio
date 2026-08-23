@@ -3,7 +3,9 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import {
   FIELD_TYPE_VALUES,
+  FONT_HINT_VALUES,
   FONT_THEME_VALUES,
+  EMPHASIS_MARK_VALUES,
   HIGHLIGHT_COLOR_VALUES,
   IMAGE_HORIZONTAL_ALIGNMENT_VALUES,
   IMAGE_HORIZONTAL_RELATIVE_TO_VALUES,
@@ -12,6 +14,7 @@ import {
   IMAGE_WRAP_TEXT_VALUES,
   IMAGE_WRAP_TYPE_VALUES,
   LINE_SPACING_RULE_VALUES,
+  NUMBER_FORMAT_VALUES,
   OUTLINE_STYLE_ATTR_VALUES,
   PARAGRAPH_ALIGNMENT_VALUES,
   POSITIONAL_TAB_ALIGNMENT_VALUES,
@@ -31,6 +34,7 @@ import {
   THEME_COLOR_SLOT_VALUES,
   UNDERLINE_STYLE_VALUES,
 } from "../../types/documentEnumValues";
+import type { ParagraphFormatting } from "../../types/document";
 import { isOoxmlSymbolCharacter } from "@stll/docx-core/model";
 import { isParagraphDirection } from "../paragraphDirection";
 import type {
@@ -192,22 +196,6 @@ const RUN_FORMATTING_OVERRIDE_FALSE_KEYS = [
   "outline",
 ] as const satisfies readonly (keyof RunFormattingOverrideAttrs)[];
 
-const TEXT_FORMATTING_BOOLEAN_KEYS = [
-  "bold",
-  "boldCs",
-  "italic",
-  "italicCs",
-  "strike",
-  "doubleStrike",
-  "smallCaps",
-  "allCaps",
-  "hidden",
-  "emboss",
-  "imprint",
-  "shadow",
-  "outline",
-] as const;
-
 const SECTION_ORIENTATIONS = ["portrait", "landscape"] as const;
 const SECTION_START_TYPES = [
   "continuous",
@@ -269,6 +257,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalBoolean(attrs, "kinsoku", "paragraph.attrs.kinsoku", issues);
   optionalBoolean(attrs, "overflowPunctuation", "paragraph.attrs.overflowPunctuation", issues);
   optionalBoolean(attrs, "suppressAutoHyphens", "paragraph.attrs.suppressAutoHyphens", issues);
+  optionalBoolean(attrs, "suppressLineNumbers", "paragraph.attrs.suppressLineNumbers", issues);
   optionalNumber(attrs, "spaceBefore", "paragraph.attrs.spaceBefore", issues);
   optionalNumber(attrs, "spaceAfter", "paragraph.attrs.spaceAfter", issues);
   optionalNumber(attrs, "lineSpacing", "paragraph.attrs.lineSpacing", issues);
@@ -322,9 +311,11 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
     issues,
   );
   optionalBoolean(attrs, "_trailingPageBreak", "paragraph.attrs._trailingPageBreak", issues);
+  optionalBoolean(attrs, "_pageBreakCarrier", "paragraph.attrs._pageBreakCarrier", issues);
   optionalBoolean(attrs, "runInWithNext", "paragraph.attrs.runInWithNext", issues);
   optionalBoolean(attrs, "keepNext", "paragraph.attrs.keepNext", issues);
   optionalBoolean(attrs, "keepLines", "paragraph.attrs.keepLines", issues);
+  optionalBoolean(attrs, "widowControl", "paragraph.attrs.widowControl", issues);
   optionalBoolean(attrs, "contextualSpacing", "paragraph.attrs.contextualSpacing", issues);
   const direction = attrs["direction"];
   if (direction !== undefined && direction !== null && !isParagraphDirection(direction)) {
@@ -371,7 +362,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   validateNumPr(attrs["numPr"], issues);
   optionalBookmarkArray(attrs["bookmarks"], issues);
   optionalEmptyHyperlinkArray(attrs["_emptyHyperlinks"], issues);
-  optionalAutospacingBase(attrs, issues);
+  optionalAutospacingBase(attrs, "paragraph.attrs._autospacingBase", issues);
   optionalSectionProperties(
     attrs,
     "_sectionProperties",
@@ -1807,6 +1798,7 @@ const validateSdtAttrsRecord = (
 
 const optionalAutospacingBase = (
   attrs: Record<string, unknown>,
+  path: string,
   issues: ProseMirrorAttrIssue[],
 ): void => {
   const value = attrs["_autospacingBase"];
@@ -1816,14 +1808,14 @@ const optionalAutospacingBase = (
 
   if (!isRecord(value)) {
     issues.push({
-      path: "paragraph.attrs._autospacingBase",
+      path,
       message: "Expected an object.",
     });
     return;
   }
 
-  optionalNumber(value, "before", "paragraph.attrs._autospacingBase.before", issues);
-  optionalNumber(value, "after", "paragraph.attrs._autospacingBase.after", issues);
+  optionalNumber(value, "before", `${path}.before`, issues);
+  optionalNumber(value, "after", `${path}.after`, issues);
 };
 
 const optionalArray = (
@@ -1960,25 +1952,85 @@ const optionalTextFormatting = (
     return;
   }
 
-  for (const booleanKey of TEXT_FORMATTING_BOOLEAN_KEYS) {
+  validateTextFormatting(value, path, issues);
+};
+
+const validateTextFormatting = (
+  value: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  for (const booleanKey of [
+    "bold",
+    "boldCs",
+    "italic",
+    "italicCs",
+    "strike",
+    "doubleStrike",
+    "smallCaps",
+    "allCaps",
+    "hidden",
+    "emboss",
+    "imprint",
+    "outline",
+    "shadow",
+    "rtl",
+    "cs",
+  ] as const) {
     optionalBoolean(value, booleanKey, `${path}.${booleanKey}`, issues);
   }
+
+  optionalOneOf(value, "vertAlign", `${path}.vertAlign`, issues, [
+    "baseline",
+    "superscript",
+    "subscript",
+  ]);
   optionalNumber(value, "fontSize", `${path}.fontSize`, issues);
   optionalNumber(value, "fontSizeCs", `${path}.fontSizeCs`, issues);
-  optionalOneOf(value, "highlight", `${path}.highlight`, issues, HIGHLIGHT_COLOR_VALUES);
+  optionalNumber(value, "spacing", `${path}.spacing`, issues);
+  optionalNumber(value, "position", `${path}.position`, issues);
+  optionalNumber(value, "scale", `${path}.scale`, issues);
+  optionalNumber(value, "kerning", `${path}.kerning`, issues);
+  optionalString(value, "styleId", `${path}.styleId`, issues);
+  optionalOneOf(value, "effect", `${path}.effect`, issues, TEXT_EFFECT_VALUES);
+  optionalOneOf(value, "emphasisMark", `${path}.emphasisMark`, issues, EMPHASIS_MARK_VALUES);
   optionalColorValue(value, "color", `${path}.color`, issues);
+  optionalOneOf(value, "highlight", `${path}.highlight`, issues, HIGHLIGHT_COLOR_VALUES);
   optionalShading(value, "shading", `${path}.shading`, issues);
 
   const underline = value["underline"];
   if (underline !== undefined && underline !== null) {
     if (!isRecord(underline)) {
-      issues.push({
-        path: `${path}.underline`,
-        message: "Expected an object.",
-      });
+      issues.push({ path: `${path}.underline`, message: "Expected an object." });
     } else {
       requiredOneOf(underline, "style", `${path}.underline.style`, issues, UNDERLINE_STYLE_VALUES);
       optionalColorValue(underline, "color", `${path}.underline.color`, issues);
+    }
+  }
+
+  const fontFamily = value["fontFamily"];
+  if (fontFamily !== undefined && fontFamily !== null) {
+    if (!isRecord(fontFamily)) {
+      issues.push({ path: `${path}.fontFamily`, message: "Expected an object." });
+    } else {
+      for (const key of ["ascii", "hAnsi", "eastAsia", "cs"] as const) {
+        optionalString(fontFamily, key, `${path}.fontFamily.${key}`, issues);
+      }
+      optionalOneOf(fontFamily, "hint", `${path}.fontFamily.hint`, issues, FONT_HINT_VALUES);
+      for (const key of ["asciiTheme", "hAnsiTheme", "eastAsiaTheme", "csTheme"] as const) {
+        optionalOneOf(fontFamily, key, `${path}.fontFamily.${key}`, issues, FONT_THEME_VALUES);
+      }
+    }
+  }
+
+  const language = value["language"];
+  if (language !== undefined && language !== null) {
+    if (!isRecord(language)) {
+      issues.push({ path: `${path}.language`, message: "Expected an object." });
+    } else {
+      for (const key of ["val", "eastAsia", "bidi"] as const) {
+        optionalString(language, key, `${path}.language.${key}`, issues);
+      }
     }
   }
 };
@@ -2074,8 +2126,251 @@ const optionalPropertyChanges = (
     }
     requiredOneOf(item, "type", `${itemPath}.type`, issues, allowedTypes);
     validatePropertyChangeInfo(item["info"], `${itemPath}.info`, issues);
-    optionalRecord(item, "previousFormatting", `${itemPath}.previousFormatting`, issues);
-    optionalRecord(item, "currentFormatting", `${itemPath}.currentFormatting`, issues);
+    let validateFormatting:
+      | ((value: Record<string, unknown>, path: string, issues: ProseMirrorAttrIssue[]) => void)
+      | undefined;
+    if (allowedTypes.includes("paragraphPropertyChange")) {
+      validateFormatting = validateParagraphFormatting;
+    } else if (allowedTypes.includes("runPropertyChange")) {
+      validateFormatting = validateTextFormatting;
+    }
+    if (validateFormatting) {
+      optionalNestedRecord(
+        item,
+        "previousFormatting",
+        `${itemPath}.previousFormatting`,
+        issues,
+        validateFormatting,
+      );
+      optionalNestedRecord(
+        item,
+        "currentFormatting",
+        `${itemPath}.currentFormatting`,
+        issues,
+        validateFormatting,
+      );
+    } else {
+      optionalRecord(item, "previousFormatting", `${itemPath}.previousFormatting`, issues);
+      optionalRecord(item, "currentFormatting", `${itemPath}.currentFormatting`, issues);
+    }
+  }
+};
+
+const optionalNestedRecord = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+  validate: (value: Record<string, unknown>, path: string, issues: ProseMirrorAttrIssue[]) => void,
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  validate(value, path, issues);
+};
+
+const PARAGRAPH_FORMATTING_BOOLEAN_KEYS = [
+  "bidi",
+  "kinsoku",
+  "overflowPunctuation",
+  "suppressAutoHyphens",
+  "suppressLineNumbers",
+  "snapToGrid",
+  "beforeAutospacing",
+  "afterAutospacing",
+  "hangingIndent",
+  "keepNext",
+  "keepLines",
+  "widowControl",
+  "pageBreakBefore",
+  "contextualSpacing",
+  "runInWithNext",
+] as const satisfies readonly (keyof ParagraphFormatting)[];
+
+const PARAGRAPH_FORMATTING_NUMBER_KEYS = [
+  "spaceBefore",
+  "spaceAfter",
+  "lineSpacing",
+  "indentLeft",
+  "indentRight",
+  "indentFirstLine",
+  "outlineLevel",
+] as const satisfies readonly (keyof ParagraphFormatting)[];
+
+type ValidatedParagraphFormattingKey =
+  | (typeof PARAGRAPH_FORMATTING_BOOLEAN_KEYS)[number]
+  | (typeof PARAGRAPH_FORMATTING_NUMBER_KEYS)[number]
+  | "alignment"
+  | "lineSpacingRule"
+  | "styleId"
+  | "numPr"
+  | "numPrFromStyle"
+  | "spacingExplicit"
+  | "borders"
+  | "shading"
+  | "tabs"
+  | "runProperties"
+  | "frame";
+
+const paragraphFormattingValidationIsTotal: Record<
+  Exclude<keyof ParagraphFormatting, ValidatedParagraphFormattingKey>,
+  never
+> = {};
+void paragraphFormattingValidationIsTotal;
+
+const validateParagraphFormatting = (
+  value: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  optionalOneOf(value, "alignment", `${path}.alignment`, issues, PARAGRAPH_ALIGNMENT_VALUES);
+  for (const key of PARAGRAPH_FORMATTING_BOOLEAN_KEYS) {
+    optionalBoolean(value, key, `${path}.${key}`, issues);
+  }
+  for (const key of [
+    "lineSpacingExplicit",
+    "listIsBullet",
+    "listIsLegal",
+    "listMarkerHidden",
+    "listMarkerBold",
+    "listMarkerAllCaps",
+  ] as const) {
+    optionalBoolean(value, key, `${path}.${key}`, issues);
+  }
+  for (const key of PARAGRAPH_FORMATTING_NUMBER_KEYS) {
+    optionalNumber(value, key, `${path}.${key}`, issues);
+  }
+  for (const key of [
+    "listMarkerFontSize",
+    "listImplicitChildLevelAdvances",
+    "listMarkerSecondSlotOffsetTwips",
+    "listAbstractNumId",
+    "listStartOverride",
+  ] as const) {
+    optionalNumber(value, key, `${path}.${key}`, issues);
+  }
+  optionalOneOf(
+    value,
+    "lineSpacingRule",
+    `${path}.lineSpacingRule`,
+    issues,
+    LINE_SPACING_RULE_VALUES,
+  );
+  optionalString(value, "styleId", `${path}.styleId`, issues);
+  optionalOneOf(value, "listNumFmt", `${path}.listNumFmt`, issues, NUMBER_FORMAT_VALUES);
+  optionalString(value, "listMarker", `${path}.listMarker`, issues);
+  optionalString(value, "listMarkerFontFamily", `${path}.listMarkerFontFamily`, issues);
+  optionalOneOf(value, "listMarkerAlignment", `${path}.listMarkerAlignment`, issues, [
+    "left",
+    "center",
+    "right",
+  ]);
+  optionalOneOf(value, "listMarkerSuffix", `${path}.listMarkerSuffix`, issues, [
+    "tab",
+    "space",
+    "nothing",
+  ]);
+  optionalOneOfArray(
+    value,
+    "listLevelNumFmts",
+    `${path}.listLevelNumFmts`,
+    issues,
+    NUMBER_FORMAT_VALUES,
+  );
+  optionalNumberArray(value, "listLevelStarts", `${path}.listLevelStarts`, issues);
+  optionalAutospacingBase(value, `${path}._autospacingBase`, issues);
+  for (const key of ["numPr", "numPrFromStyle"] as const) {
+    const nested = value[key];
+    if (nested === undefined || nested === null) {
+      continue;
+    }
+    if (!isRecord(nested)) {
+      issues.push({ path: `${path}.${key}`, message: "Expected an object." });
+      continue;
+    }
+    optionalNumber(nested, "numId", `${path}.${key}.numId`, issues);
+    optionalNumber(nested, "ilvl", `${path}.${key}.ilvl`, issues);
+  }
+  const direction = value["direction"];
+  if (direction !== undefined && direction !== null && !isParagraphDirection(direction)) {
+    issues.push({ path: `${path}.direction`, message: "Expected a ParagraphDirection." });
+  }
+
+  for (const key of [
+    "spacingExplicit",
+    "spacingFromDocDefaults",
+    "spacingFromImplicitDefaultStyle",
+  ] as const) {
+    const nested = value[key];
+    if (nested === undefined || nested === null) {
+      continue;
+    }
+    if (!isRecord(nested)) {
+      issues.push({ path: `${path}.${key}`, message: "Expected an object." });
+      continue;
+    }
+    optionalBoolean(nested, "before", `${path}.${key}.before`, issues);
+    optionalBoolean(nested, "after", `${path}.${key}.after`, issues);
+  }
+
+  optionalBorderMap(value, "borders", `${path}.borders`, issues, [
+    "top",
+    "bottom",
+    "left",
+    "right",
+    "between",
+    "bar",
+  ]);
+  optionalShading(value, "shading", `${path}.shading`, issues);
+  optionalTabStops(value, "tabs", `${path}.tabs`, issues);
+  optionalNestedRecord(
+    value,
+    "runProperties",
+    `${path}.runProperties`,
+    issues,
+    validateTextFormatting,
+  );
+
+  const frame = value["frame"];
+  if (frame !== undefined && frame !== null) {
+    if (!isRecord(frame)) {
+      issues.push({ path: `${path}.frame`, message: "Expected an object." });
+    } else {
+      optionalOneOf(frame, "dropCap", `${path}.frame.dropCap`, issues, ["none", "drop", "margin"]);
+      optionalOneOf(frame, "hAnchor", `${path}.frame.hAnchor`, issues, ["text", "margin", "page"]);
+      optionalOneOf(frame, "vAnchor", `${path}.frame.vAnchor`, issues, ["text", "margin", "page"]);
+      optionalOneOf(frame, "xAlign", `${path}.frame.xAlign`, issues, [
+        "left",
+        "center",
+        "right",
+        "inside",
+        "outside",
+      ]);
+      optionalOneOf(frame, "yAlign", `${path}.frame.yAlign`, issues, [
+        "top",
+        "center",
+        "bottom",
+        "inside",
+        "outside",
+        "inline",
+      ]);
+      optionalOneOf(frame, "wrap", `${path}.frame.wrap`, issues, [
+        "around",
+        "auto",
+        "none",
+        "notBeside",
+        "through",
+        "tight",
+      ]);
+      for (const key of ["lines", "width", "height", "hSpace", "vSpace", "x", "y"] as const) {
+        optionalNumber(frame, key, `${path}.frame.${key}`, issues);
+      }
+    }
   }
 };
 
@@ -2211,6 +2506,33 @@ const optionalStringArray = (
       issues.push({
         path: `${path}[${index}]`,
         message: "Expected a string.",
+      });
+    }
+  }
+};
+
+const optionalOneOfArray = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+  allowed: readonly string[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  if (!Array.isArray(value)) {
+    issues.push({ path, message: "Expected an array." });
+    return;
+  }
+
+  for (const [index, item] of value.entries()) {
+    if (typeof item !== "string" || !allowed.includes(item)) {
+      issues.push({
+        path: `${path}[${index}]`,
+        message: `Expected one of ${allowed.join(", ")}.`,
       });
     }
   }

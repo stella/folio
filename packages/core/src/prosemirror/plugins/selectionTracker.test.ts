@@ -3,6 +3,7 @@ import { panic } from "better-result";
 import { TextSelection, EditorState } from "prosemirror-state";
 
 import { schema } from "../schema";
+import { extractSelectionSnapshot } from "../selectionState";
 import { extractSelectionContext } from "./selectionTracker";
 
 describe("extractSelectionContext", () => {
@@ -53,5 +54,33 @@ describe("extractSelectionContext", () => {
     expect(extractSelectionContext(state).textFormatting.underline).toMatchObject({
       style: "single",
     });
+  });
+
+  test("matches the canonical snapshot for shared formatting and paragraph fields", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          indentLeft: 0,
+          hangingIndent: false,
+          styleId: "Heading1",
+        },
+        [schema.text("Shared")],
+      ),
+    ]);
+    const state = EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, 1, 7),
+    });
+
+    const snapshot = extractSelectionSnapshot(state);
+    const context = extractSelectionContext(state);
+
+    expect(context.textFormatting).toEqual(snapshot.textFormatting);
+    expect(context.paragraphFormatting).toMatchObject(snapshot.paragraphFormatting);
+    expect(context.paragraphFormatting.styleId).toBe(snapshot.styleId);
+    expect(context.startParagraphIndex).toBe(snapshot.startParagraphIndex);
+    expect(context.endParagraphIndex).toBe(snapshot.endParagraphIndex);
   });
 });

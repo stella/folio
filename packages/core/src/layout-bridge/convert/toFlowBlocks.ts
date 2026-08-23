@@ -72,6 +72,7 @@ import { directionIsRtl } from "../../prosemirror/paragraphDirection";
 import type { RunFormattingOverrideAttrs } from "../../prosemirror/schema/marks";
 import type {
   ImageAttrs,
+  ParagraphPropertyChangeAttrs,
   ParagraphAttrs as PMParagraphAttrs,
 } from "../../prosemirror/schema/nodes";
 import { assertValidProseMirrorDocument } from "../../prosemirror/validation";
@@ -82,7 +83,6 @@ import type {
   NumberFormat,
   TextFormatting,
 } from "../../types/document";
-import { NUMBER_FORMAT_VALUES } from "../../types/documentEnumValues";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
@@ -703,15 +703,9 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
   return formatting;
 }
 
-type ThemeFontAttributes = {
-  ascii?: string | null;
-  hAnsi?: string | null;
-  eastAsia?: string | null;
-  cs?: string | null;
-  asciiTheme?: string | null;
-  hAnsiTheme?: string | null;
-  eastAsiaTheme?: string | null;
-  cstheme?: string | null;
+type ThemeFontAttributes = Omit<NonNullable<TextFormatting["fontFamily"]>, "asciiTheme"> & {
+  /** The ProseMirror attr reader validates this against the canonical theme values. */
+  asciiTheme?: string;
 };
 
 const resolveWesternThemeFont = (
@@ -727,10 +721,10 @@ const resolveComplexScriptThemeFont = (
   fontFamily: ThemeFontAttributes,
   theme?: Theme | null,
 ): string | undefined => {
-  // OOXML spells this attribute all-lowercase (`w:cstheme`), unlike its
-  // camelCase siblings; the parser reads it that way too.
-  const themedFont = fontFamily.cstheme
-    ? resolveThemeFont(fontFamily.cstheme, theme?.fontScheme)
+  // OOXML spells this attribute all-lowercase (`w:cstheme`), but the
+  // canonical model uses the camelCase `csTheme` field.
+  const themedFont = fontFamily.csTheme
+    ? resolveThemeFont(fontFamily.csTheme, theme?.fontScheme)
     : null;
   return themedFont ?? fontFamily.cs ?? undefined;
 };
@@ -1251,10 +1245,8 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
  */
 type ListMarkerRevision = NonNullable<ParagraphAttrs["listMarkerRevision"]>;
 
-type ListPropertyChange = {
-  info?: { id?: unknown; author?: unknown; date?: unknown };
-  previousFormatting?: Record<string, unknown> | null;
-};
+type ListPropertyChange = ParagraphPropertyChangeAttrs;
+type ListPropertyFormatting = NonNullable<ListPropertyChange["previousFormatting"]>;
 
 function toListMarkerRevision(
   kind: ListMarkerRevision["kind"],
@@ -1273,40 +1265,38 @@ function toListMarkerRevision(
   return revision;
 }
 
-function isAddedNumberingChange(change: ListPropertyChange): change is ListPropertyChange & {
-  previousFormatting: Record<string, unknown>;
-} {
+function isAddedNumberingChange(
+  change: ListPropertyChange,
+): change is ListPropertyChange & { previousFormatting: ListPropertyFormatting } {
   const previousFormatting = change.previousFormatting;
   return (
     previousFormatting != null &&
     Object.hasOwn(previousFormatting, "numPr") &&
-    previousFormatting["numPr"] == null
+    previousFormatting.numPr == null
   );
 }
 
-function isRemovedNumberingChange(change: ListPropertyChange): change is ListPropertyChange & {
-  previousFormatting: Record<string, unknown>;
-} {
+function isRemovedNumberingChange(
+  change: ListPropertyChange,
+): change is ListPropertyChange & { previousFormatting: ListPropertyFormatting } {
   const previousFormatting = change.previousFormatting;
   return (
     previousFormatting != null &&
     Object.hasOwn(previousFormatting, "numPr") &&
-    isListNumPr(previousFormatting["numPr"])
+    isListNumPr(previousFormatting.numPr)
   );
 }
 
 function isChangedNumberingChange(
   currentNumPr: NonNullable<PMParagraphAttrs["numPr"]>,
   change: ListPropertyChange,
-): change is ListPropertyChange & {
-  previousFormatting: Record<string, unknown>;
-} {
+): change is ListPropertyChange & { previousFormatting: ListPropertyFormatting } {
   const previousFormatting = change.previousFormatting;
   return (
     previousFormatting != null &&
     Object.hasOwn(previousFormatting, "numPr") &&
-    isListNumPr(previousFormatting["numPr"]) &&
-    !areListNumPrEqual(previousFormatting["numPr"], currentNumPr)
+    isListNumPr(previousFormatting.numPr) &&
+    !areListNumPrEqual(previousFormatting.numPr, currentNumPr)
   );
 }
 
@@ -1317,134 +1307,86 @@ function areListNumPrEqual(
   return left.numId === right.numId && left.ilvl === right.ilvl;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+function isListNumPr(
+  value: PMParagraphAttrs["numPr"] | null | undefined,
+): value is NonNullable<PMParagraphAttrs["numPr"]> {
+  return value !== undefined && value !== null;
 }
 
-function isListNumPr(value: unknown): value is NonNullable<PMParagraphAttrs["numPr"]> {
-  if (!isRecord(value)) {
-    return false;
-  }
-  const numId = value["numId"];
-  const ilvl = value["ilvl"];
-  return (
-    (numId === undefined || typeof numId === "number") &&
-    (ilvl === undefined || typeof ilvl === "number")
-  );
-}
-
-function isNumberFormat(value: unknown): value is NumberFormat {
-  return NUMBER_FORMAT_VALUES.some((format) => format === value);
-}
-
-function readNumberFormats(value: unknown): NumberFormat[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  const formats: NumberFormat[] = [];
-  for (const item of value) {
-    if (!isNumberFormat(item)) {
-      return undefined;
-    }
-    formats.push(item);
-  }
-  return formats;
-}
-
-function readListMarkerSuffix(value: unknown): PMParagraphAttrs["listMarkerSuffix"] | undefined {
-  if (value === "tab" || value === "space" || value === "nothing") {
-    return value;
-  }
-  return undefined;
-}
-
-function readListMarkerAlignment(
-  value: unknown,
-): PMParagraphAttrs["listMarkerAlignment"] | undefined {
-  if (value === "left" || value === "center" || value === "right") {
-    return value;
-  }
-  return undefined;
-}
-
-function toPreviousListAttrs(previousFormatting: Record<string, unknown>): PMParagraphAttrs {
+function toPreviousListAttrs(previousFormatting: ListPropertyFormatting): PMParagraphAttrs {
   const attrs: PMParagraphAttrs = {};
-  const numPr = previousFormatting["numPr"];
+  const numPr = previousFormatting.numPr;
   if (isListNumPr(numPr)) {
     attrs.numPr = numPr;
   }
 
-  const listIsBullet = previousFormatting["listIsBullet"];
-  if (typeof listIsBullet === "boolean") {
+  const listIsBullet = previousFormatting.listIsBullet;
+  if (listIsBullet !== undefined) {
     attrs.listIsBullet = listIsBullet;
   }
 
-  const listIsLegal = previousFormatting["listIsLegal"];
-  if (typeof listIsLegal === "boolean") {
+  const listIsLegal = previousFormatting.listIsLegal;
+  if (listIsLegal !== undefined) {
     attrs.listIsLegal = listIsLegal;
   }
 
-  const listMarker = previousFormatting["listMarker"];
-  if (typeof listMarker === "string") {
+  const listMarker = previousFormatting.listMarker;
+  if (listMarker !== undefined) {
     attrs.listMarker = listMarker;
   }
 
-  const listNumFmt = previousFormatting["listNumFmt"];
-  if (isNumberFormat(listNumFmt)) {
+  const listNumFmt = previousFormatting.listNumFmt;
+  if (listNumFmt !== undefined) {
     attrs.listNumFmt = listNumFmt;
   }
 
-  const listLevelNumFmts = readNumberFormats(previousFormatting["listLevelNumFmts"]);
-  if (listLevelNumFmts) {
+  const listLevelNumFmts = previousFormatting.listLevelNumFmts;
+  if (listLevelNumFmts !== undefined) {
     attrs.listLevelNumFmts = listLevelNumFmts;
   }
 
-  const listLevelStarts = previousFormatting["listLevelStarts"];
-  if (
-    Array.isArray(listLevelStarts) &&
-    listLevelStarts.every((value) => typeof value === "number")
-  ) {
+  const listLevelStarts = previousFormatting.listLevelStarts;
+  if (listLevelStarts !== undefined) {
     attrs.listLevelStarts = listLevelStarts;
   }
 
-  const listAbstractNumId = previousFormatting["listAbstractNumId"];
-  if (typeof listAbstractNumId === "number") {
+  const listAbstractNumId = previousFormatting.listAbstractNumId;
+  if (listAbstractNumId !== undefined) {
     attrs.listAbstractNumId = listAbstractNumId;
   }
 
-  const listStartOverride = previousFormatting["listStartOverride"];
-  if (typeof listStartOverride === "number") {
+  const listStartOverride = previousFormatting.listStartOverride;
+  if (listStartOverride !== undefined) {
     attrs.listStartOverride = listStartOverride;
   }
 
-  const listMarkerHidden = previousFormatting["listMarkerHidden"];
-  if (typeof listMarkerHidden === "boolean") {
+  const listMarkerHidden = previousFormatting.listMarkerHidden;
+  if (listMarkerHidden !== undefined) {
     attrs.listMarkerHidden = listMarkerHidden;
   }
 
-  const listMarkerFontFamily = previousFormatting["listMarkerFontFamily"];
-  if (typeof listMarkerFontFamily === "string") {
+  const listMarkerFontFamily = previousFormatting.listMarkerFontFamily;
+  if (listMarkerFontFamily !== undefined) {
     attrs.listMarkerFontFamily = listMarkerFontFamily;
   }
 
-  const listMarkerFontSize = previousFormatting["listMarkerFontSize"];
-  if (typeof listMarkerFontSize === "number") {
+  const listMarkerFontSize = previousFormatting.listMarkerFontSize;
+  if (listMarkerFontSize !== undefined) {
     attrs.listMarkerFontSize = listMarkerFontSize;
   }
 
-  const listMarkerBold = previousFormatting["listMarkerBold"];
-  if (typeof listMarkerBold === "boolean") {
+  const listMarkerBold = previousFormatting.listMarkerBold;
+  if (listMarkerBold !== undefined) {
     attrs.listMarkerBold = listMarkerBold;
   }
 
-  const listMarkerAlignment = readListMarkerAlignment(previousFormatting["listMarkerAlignment"]);
-  if (listMarkerAlignment) {
+  const listMarkerAlignment = previousFormatting.listMarkerAlignment;
+  if (listMarkerAlignment !== undefined) {
     attrs.listMarkerAlignment = listMarkerAlignment;
   }
 
-  const listMarkerSuffix = readListMarkerSuffix(previousFormatting["listMarkerSuffix"]);
-  if (listMarkerSuffix) {
+  const listMarkerSuffix = previousFormatting.listMarkerSuffix;
+  if (listMarkerSuffix !== undefined) {
     attrs.listMarkerSuffix = listMarkerSuffix;
   }
 
@@ -1488,9 +1430,7 @@ function resolveDeletedListMarker(
 
 function applyDeletedListMarkerAttrs(
   attrs: ParagraphAttrs,
-  change: ListPropertyChange & {
-    previousFormatting: Record<string, unknown>;
-  },
+  change: ListPropertyChange & { previousFormatting: ListPropertyFormatting },
   listCounters: Map<number, number[]> | undefined,
   listAbstractCounters: Map<number, number[]> | undefined,
   listSeenNumIds: Set<string> | undefined,
@@ -1815,10 +1755,9 @@ function convertParagraphAttrs(
   }
 
   // List properties
-  const pPrChange = pmAttrs._propertyChanges as ListPropertyChange[] | null;
-  const propertyChanges = Array.isArray(pPrChange) ? pPrChange : [];
+  const propertyChanges = pmAttrs._propertyChanges ?? [];
   let changedNumberingChange:
-    | (ListPropertyChange & { previousFormatting: Record<string, unknown> })
+    | (ListPropertyChange & { previousFormatting: ListPropertyFormatting })
     | undefined;
   if (pmAttrs.numPr) {
     const numPr: ParagraphAttrs["numPr"] & object = {};
@@ -1841,7 +1780,7 @@ function convertParagraphAttrs(
         (
           change,
         ): change is ListPropertyChange & {
-          previousFormatting: Record<string, unknown>;
+          previousFormatting: ListPropertyFormatting;
         } => isChangedNumberingChange(currentNumPr, change),
       );
       const numberingInsertionChange = numberingAddedChange ?? changedNumberingChange;

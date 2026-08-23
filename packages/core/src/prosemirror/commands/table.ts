@@ -9,6 +9,13 @@
 import type { EditorState, Transaction } from "prosemirror-state";
 
 import type { BorderPreset, TableBorderPreset } from "../extensions/nodes/TableExtension";
+import type {
+  TableBorderCommandSpec,
+  TableCellBorderCommandSpec,
+  TableCellMarginsCommand,
+  TablePropertiesCommand,
+  TableStyleCommand,
+} from "../extensions/types";
 import { singletonManager } from "../schema";
 
 // Re-export types and query helpers from TableExtension
@@ -23,138 +30,133 @@ export { getTableContext, isInTable } from "../extensions/nodes/TableExtension";
 // COMMANDS — delegated to singleton extension manager
 // ============================================================================
 
-// SAFETY: All commands below are registered by TablePluginExtension at startup.
-// The CommandMap Record type makes indexed access return T | undefined, but
-// these keys are structurally guaranteed to exist.
-const cmds = singletonManager.getCommands();
+// The singleton validates the complete built-in registry during startup.
+const cmds = singletonManager;
 
 // Table creation
 export function insertTable(
   rows: number,
   cols: number,
 ): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["insertTable"]!(rows, cols);
+  return cmds.requireCommand("insertTable")(rows, cols);
 }
 
 // Row operations
 export function addRowAbove(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["addRowAbove"]!()(state, dispatch);
+  return cmds.requireCommand("addRowAbove")()(state, dispatch);
 }
 export function addRowBelow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["addRowBelow"]!()(state, dispatch);
+  return cmds.requireCommand("addRowBelow")()(state, dispatch);
 }
 export function deleteRow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["deleteRow"]!()(state, dispatch);
+  return cmds.requireCommand("deleteRow")()(state, dispatch);
 }
 
 // Column operations
 export function addColumnLeft(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["addColumnLeft"]!()(state, dispatch);
+  return cmds.requireCommand("addColumnLeft")()(state, dispatch);
 }
 export function addColumnRight(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["addColumnRight"]!()(state, dispatch);
+  return cmds.requireCommand("addColumnRight")()(state, dispatch);
 }
 export function deleteColumn(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["deleteColumn"]!()(state, dispatch);
+  return cmds.requireCommand("deleteColumn")()(state, dispatch);
 }
 
 // Table deletion
 export function deleteTable(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["deleteTable"]!()(state, dispatch);
+  return cmds.requireCommand("deleteTable")()(state, dispatch);
 }
 
 // Table selection
 export function selectTable(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["selectTable"]!()(state, dispatch);
+  return cmds.requireCommand("selectTable")()(state, dispatch);
 }
 export function selectRow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["selectRow"]!()(state, dispatch);
+  return cmds.requireCommand("selectRow")()(state, dispatch);
 }
 export function selectColumn(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["selectColumn"]!()(state, dispatch);
+  return cmds.requireCommand("selectColumn")()(state, dispatch);
 }
 
 // Merge/Split — delegated to prosemirror-tables via singleton extension manager
 export function mergeCells(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["mergeCells"]!()(state, dispatch);
+  return cmds.requireCommand("mergeCells")()(state, dispatch);
 }
 export function splitCell(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-  return cmds["splitCell"]!()(state, dispatch);
+  return cmds.requireCommand("splitCell")()(state, dispatch);
 }
 
 // Per-cell border editing
 export function setCellBorder(
   side: "top" | "bottom" | "left" | "right" | "all",
-  spec: { style: string; size?: number; color?: { rgb: string } } | null,
+  spec: TableCellBorderCommandSpec | null,
   clearOthers?: boolean,
 ): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setCellBorder"]!(side, spec, clearOthers);
+  return cmds.requireCommand("setCellBorder")(side, spec, clearOthers);
 }
 
 // Whole-table border presets (applied to the table under the caret)
 export function setTableBorderPreset(
   preset: TableBorderPreset,
 ): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setTableBorderPreset"]!(preset);
+  return cmds.requireCommand("setTableBorderPreset")(preset);
 }
 
 // Borders
 export function setTableBorders(
   preset: BorderPreset,
-  borderSpec?: { style: string; size: number; color: { rgb: string } },
+  borderSpec?: TableBorderCommandSpec,
 ): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setTableBorders"]!(preset, borderSpec);
+  return cmds.requireCommand("setTableBorders")(preset, borderSpec);
 }
 export function removeTableBorders(
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
 ): boolean {
-  return cmds["removeTableBorders"]!()(state, dispatch);
+  return cmds.requireCommand("removeTableBorders")()(state, dispatch);
 }
 export function setAllTableBorders(
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
-  borderSpec?: { style: string; size: number; color: { rgb: string } },
+  borderSpec?: TableBorderCommandSpec,
 ): boolean {
-  return cmds["setAllTableBorders"]!(borderSpec)(state, dispatch);
+  return cmds.requireCommand("setAllTableBorders")(borderSpec)(state, dispatch);
 }
 export function setOutsideTableBorders(
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
-  borderSpec?: { style: string; size: number; color: { rgb: string } },
+  borderSpec?: TableBorderCommandSpec,
 ): boolean {
-  return cmds["setOutsideTableBorders"]!(borderSpec)(state, dispatch);
+  return cmds.requireCommand("setOutsideTableBorders")(borderSpec)(state, dispatch);
 }
 export function setInsideTableBorders(
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
-  borderSpec?: { style: string; size: number; color: { rgb: string } },
+  borderSpec?: TableBorderCommandSpec,
 ): boolean {
-  return cmds["setInsideTableBorders"]!(borderSpec)(state, dispatch);
+  return cmds.requireCommand("setInsideTableBorders")(borderSpec)(state, dispatch);
 }
 
 // Vertical alignment
 export function setCellVerticalAlign(
   align: "top" | "center" | "bottom",
 ): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setCellVerticalAlign"]!(align);
+  return cmds.requireCommand("setCellVerticalAlign")(align);
 }
 
 // Cell margins
-export function setCellMargins(margins: {
-  top?: number;
-  bottom?: number;
-  left?: number;
-  right?: number;
-}): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setCellMargins"]!(margins);
+export function setCellMargins(
+  margins: TableCellMarginsCommand,
+): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
+  return cmds.requireCommand("setCellMargins")(margins);
 }
 
 // Text direction
 export function setCellTextDirection(
   direction: string | null,
 ): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setCellTextDirection"]!(direction);
+  return cmds.requireCommand("setCellTextDirection")(direction);
 }
 
 // No-wrap toggle
@@ -162,7 +164,7 @@ export function toggleNoWrap(): (
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
 ) => boolean {
-  return cmds["toggleNoWrap"]!();
+  return cmds.requireCommand("toggleNoWrap")();
 }
 
 // Row height
@@ -170,7 +172,7 @@ export function setRowHeight(
   height: number | null,
   rule?: "auto" | "atLeast" | "exact",
 ): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setRowHeight"]!(height, rule);
+  return cmds.requireCommand("setRowHeight")(height, rule);
 }
 
 // Header row
@@ -178,7 +180,7 @@ export function toggleHeaderRow(): (
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
 ) => boolean {
-  return cmds["toggleHeaderRow"]!();
+  return cmds.requireCommand("toggleHeaderRow")();
 }
 
 // Column distribution
@@ -186,47 +188,42 @@ export function distributeColumns(): (
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
 ) => boolean {
-  return cmds["distributeColumns"]!();
+  return cmds.requireCommand("distributeColumns")();
 }
 export function autoFitContents(): (
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
 ) => boolean {
-  return cmds["autoFitContents"]!();
+  return cmds.requireCommand("autoFitContents")();
 }
 
 // Table properties
-export function setTableProperties(props: {
-  width?: number | null;
-  widthType?: string | null;
-  justification?: "left" | "center" | "right" | null;
-}): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setTableProperties"]!(props);
+export function setTableProperties(
+  props: TablePropertiesCommand,
+): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
+  return cmds.requireCommand("setTableProperties")(props);
 }
 
 // Table style gallery
-export function applyTableStyle(styleData: {
-  styleId: string;
-  tableBorders?: Record<string, unknown>;
-  conditionals?: Record<string, unknown>;
-  look?: Record<string, boolean>;
-}): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["applyTableStyle"]!(styleData);
+export function applyTableStyle(
+  styleData: TableStyleCommand,
+): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
+  return cmds.requireCommand("applyTableStyle")(styleData);
 }
 
 // Cell styling
 export function setCellFillColor(
   color: string | null,
 ): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setCellFillColor"]!(color);
+  return cmds.requireCommand("setCellFillColor")(color);
 }
 export function setTableBorderColor(
   color: string,
 ): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setTableBorderColor"]!(color);
+  return cmds.requireCommand("setTableBorderColor")(color);
 }
 export function setTableBorderWidth(
   size: number,
 ): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean {
-  return cmds["setTableBorderWidth"]!(size);
+  return cmds.requireCommand("setTableBorderWidth")(size);
 }

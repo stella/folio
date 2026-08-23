@@ -10,15 +10,24 @@ import { panic } from "better-result";
 import { keymap } from "prosemirror-keymap";
 import { Schema } from "prosemirror-model";
 import type { NodeSpec, MarkSpec } from "prosemirror-model";
-import type { Plugin as PMPlugin, Command } from "prosemirror-state";
+import type { Plugin as PMPlugin } from "prosemirror-state";
 
-import type { AnyExtension, ExtensionContext, CommandMap, KeyboardShortcutMap } from "./types";
+import type {
+  AnyExtension,
+  CommandFactory,
+  CommandMap,
+  ExtensionCommandMap,
+  ExtensionContext,
+  FolioCommandName,
+  FolioCommandArguments,
+  KeyboardShortcutMap,
+} from "./types";
 
 export class ExtensionManager {
   private readonly extensions: AnyExtension[];
   private schema: Schema | null = null;
   private plugins: PMPlugin[] = [];
-  private commands: CommandMap = {};
+  private commands: ExtensionCommandMap = {};
 
   constructor(extensions: AnyExtension[]) {
     // Sort by priority (lower number = higher priority)
@@ -55,7 +64,7 @@ export class ExtensionManager {
     const ctx: ExtensionContext = { schema: this.schema };
     const allKeyboardShortcuts: KeyboardShortcutMap[] = [];
     const allPlugins: PMPlugin[] = [];
-    const allCommands: CommandMap = {};
+    const allCommands: ExtensionCommandMap = {};
 
     for (const ext of this.extensions) {
       const runtime = ext.onSchemaReady(ctx);
@@ -108,8 +117,24 @@ export class ExtensionManager {
   /**
    * Get a specific command by name
    */
-  getCommand(name: string): ((...args: unknown[]) => Command) | undefined {
+  getCommand<Name extends FolioCommandName>(
+    name: Name,
+  ): CommandFactory<FolioCommandArguments[Name]> | undefined;
+  getCommand(name: string): CommandFactory | undefined;
+  getCommand(name: string): CommandFactory | undefined {
     return this.commands[name];
+  }
+
+  requireCommand<Name extends FolioCommandName>(
+    name: Name,
+  ): CommandFactory<FolioCommandArguments[Name]>;
+  requireCommand(name: string): CommandFactory;
+  requireCommand(name: string): CommandFactory {
+    const command = this.getCommand(name);
+    if (!command) {
+      panic(`ExtensionManager: command "${name}" is not registered`);
+    }
+    return command;
   }
 
   /**

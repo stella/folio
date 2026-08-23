@@ -15,11 +15,12 @@ import type {
   TableFormatting,
   TableRowFormatting,
 } from "../../types/document";
-import { expectRunPropertyChangeMarkAttrs } from "../attrs";
+import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../attrs";
 import { textFormattingToMarks } from "../conversion/toProseDoc";
 import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
+import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import {
   hasMatchingCollapsedTableCellMerge,
@@ -134,12 +135,7 @@ function resolveChange(
           let nextAttrs: Record<string, unknown> | null = null;
 
           // Process paragraph property changes (w:pPrChange)
-          const propertyChanges = node.attrs["_propertyChanges"] as
-            | {
-                info?: { id: number; author: string; date: string };
-                previousFormatting?: Record<string, unknown>;
-              }[]
-            | undefined;
+          const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
 
           if (Array.isArray(propertyChanges) && propertyChanges.length > 0 && boundaryCovered) {
             const matches = propertyChanges.filter(
@@ -656,11 +652,6 @@ type RevisionInfoAttrs = {
   date?: unknown;
 };
 
-type ParagraphPropertyChangeAttrs = {
-  info?: RevisionInfoAttrs;
-  previousFormatting?: Record<string, unknown> | null;
-};
-
 function collectPPrMarkOp(
   node: { attrs: Record<string, unknown>; nodeSize: number },
   pos: number,
@@ -894,9 +885,7 @@ export function findParagraphBoundaryChangeAtPosition(
     );
   }
 
-  const propertyChanges = node.attrs["_propertyChanges"] as
-    | ParagraphPropertyChangeAttrs[]
-    | undefined;
+  const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
   if (!Array.isArray(propertyChanges)) {
     return null;
   }

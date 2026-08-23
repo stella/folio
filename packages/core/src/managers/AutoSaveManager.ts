@@ -15,6 +15,12 @@
 
 import type { Document } from "../types/document";
 import { Subscribable } from "./Subscribable";
+import {
+  decodeAutoSaveEnvelope,
+  encodeAutoSaveDocument,
+  encodeAutoSaveEnvelopeFromDocument,
+  type EncodedAutoSaveDocument,
+} from "./autoSaveCodec";
 
 // ============================================================================
 // TYPES
@@ -71,7 +77,6 @@ const DEFAULT_STORAGE_KEY = "docx-editor-autosave";
 const DEFAULT_INTERVAL = 30_000; // 30 seconds
 const DEFAULT_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 const DEFAULT_DEBOUNCE_DELAY = 2000; // 2 seconds
-const SAVE_VERSION = 1;
 
 // ============================================================================
 // HELPERS
@@ -88,38 +93,8 @@ function isLocalStorageAvailable(): boolean {
   }
 }
 
-function serializeForStorage(document: Document): string {
-  return JSON.stringify({ ...document, originalBuffer: null });
-}
-
-function isDocumentLike(value: unknown): value is Document {
-  return typeof value === "object" && value !== null && "package" in value;
-}
-
-function parseSavedData(json: string): SavedDocumentData | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(json);
-  } catch {
-    return null;
-  }
-
-  if (typeof parsed !== "object" || parsed === null) {
-    return null;
-  }
-  if (!("document" in parsed) || !("savedAt" in parsed) || !("version" in parsed)) {
-    return null;
-  }
-
-  const { document, savedAt, version } = parsed;
-  if (typeof savedAt !== "string" || typeof version !== "number") {
-    return null;
-  }
-  if (!isDocumentLike(document)) {
-    return null;
-  }
-
-  return { document, savedAt, version };
+function serializeForStorage(document: Document): EncodedAutoSaveDocument {
+  return encodeAutoSaveDocument(document);
 }
 
 function isStale(savedAt: string, maxAge: number): boolean {
@@ -205,13 +180,13 @@ export class AutoSaveManager extends Subscribable<AutoSaveSnapshot> {
       const serialized = serializeForStorage(doc);
 
       // Skip if unchanged
-      if (serialized === this.lastSavedJson) {
+      if (serialized.json === this.lastSavedJson) {
         this.updateStatus("saved");
         return true;
       }
 
-      this.persistToStorage(doc);
-      this.lastSavedJson = serialized;
+      this.persistToStorage(serialized);
+      this.lastSavedJson = serialized.json;
 
       const saveTime = new Date();
       this.lastSaveTime = saveTime;
@@ -250,7 +225,7 @@ export class AutoSaveManager extends Subscribable<AutoSaveSnapshot> {
       return null;
     }
 
-    const savedData = parseSavedData(savedJson);
+    const savedData = decodeAutoSaveEnvelope(savedJson);
     if (!savedData) {
       return null;
     }
@@ -312,7 +287,7 @@ export class AutoSaveManager extends Subscribable<AutoSaveSnapshot> {
 
     if (this.isEnabled && this.currentDocument && this.storageAvailable) {
       try {
-        this.persistToStorage(this.currentDocument);
+        this.persistToStorage(serializeForStorage(this.currentDocument));
       } catch (error) {
         this.onErrorCallback?.(error instanceof Error ? error : new Error(String(error)));
       }
@@ -335,13 +310,11 @@ export class AutoSaveManager extends Subscribable<AutoSaveSnapshot> {
     }
   }
 
-  private persistToStorage(document: Document): void {
-    const dataToSave = {
-      document: { ...document, originalBuffer: null },
-      savedAt: new Date().toISOString(),
-      version: SAVE_VERSION,
-    };
-    localStorage.setItem(this.storageKey, JSON.stringify(dataToSave));
+  private persistToStorage(document: EncodedAutoSaveDocument): void {
+    localStorage.setItem(
+      this.storageKey,
+      encodeAutoSaveEnvelopeFromDocument(document, new Date().toISOString()),
+    );
   }
 
   private debounceSave(): void {

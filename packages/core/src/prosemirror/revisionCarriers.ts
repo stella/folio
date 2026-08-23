@@ -1,5 +1,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 
+import { expectParagraphAttrs } from "./attrs";
+
 export type FolioNodeRevisionKind =
   | "paragraphMarkInserted"
   | "paragraphMarkDeleted"
@@ -82,6 +84,7 @@ export const getFolioNodeRevisionCarriers = (
   if (node.type.name === "paragraph") {
     const from = nodePos + node.nodeSize - 1;
     const to = nodePos + node.nodeSize;
+    const paragraphAttrs = expectParagraphAttrs(node);
     const paragraphMark = node.attrs["pPrMark"];
     if (
       isObjectRecord(paragraphMark) &&
@@ -100,7 +103,7 @@ export const getFolioNodeRevisionCarriers = (
     }
     appendPropertyCarriers({
       carriers,
-      changes: node.attrs["_propertyChanges"],
+      changes: paragraphAttrs._propertyChanges,
       type: "paragraphPropertiesChanged",
       node,
       from,

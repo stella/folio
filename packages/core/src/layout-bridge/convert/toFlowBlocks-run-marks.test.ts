@@ -60,9 +60,11 @@ const schema = new Schema({
         ascii: { default: null },
         hAnsi: { default: null },
         eastAsia: { default: null },
+        cs: { default: null },
         asciiTheme: { default: null },
         hAnsiTheme: { default: null },
         eastAsiaTheme: { default: null },
+        csTheme: { default: null },
       },
     },
     textEffect: {
@@ -127,6 +129,23 @@ describe("toFlowBlocks run-level OOXML marks", () => {
 
     expect(themedRun.fontFamily).toBe("Aptos");
     expect(fallbackRun.fontFamily).toBe("Calibri");
+  });
+
+  test("resolves a complex-script theme font from the canonical csTheme field", () => {
+    const doc = buildSingleRunDoc("مكتب", "fontFamily", {
+      cs: "Noto Naskh Arabic",
+      csTheme: "majorBidi",
+    });
+
+    const themedRun = firstRun(
+      toFlowBlocks(doc, {
+        theme: { fontScheme: { majorFont: { cs: "Sakkal Majalla" } } },
+      }),
+    );
+    const fallbackRun = firstRun(toFlowBlocks(doc, {}));
+
+    expect(themedRun.complexScriptFontFamily).toBe("Sakkal Majalla");
+    expect(fallbackRun.complexScriptFontFamily).toBe("Noto Naskh Arabic");
   });
 
   test("propagates caps and text effect marks to run formatting", () => {

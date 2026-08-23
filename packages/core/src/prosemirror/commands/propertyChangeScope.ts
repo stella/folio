@@ -36,9 +36,10 @@ import type {
 } from "../../types/document";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { directionFromBidi } from "../paragraphDirection";
-import type { ParagraphAttrs } from "../schema/nodes";
+import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "../schema/nodes";
 
 type AttrPatch = Record<string, unknown>;
+type ParagraphPropertySnapshot = NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]>;
 
 /**
  * Paragraph attrs governed by a `w:pPrChange` — the attrs
@@ -152,9 +153,9 @@ const PPR_CHANGE_SCOPED_FORMATTING_KEYS = [
  * bookkeeping attrs) merge through 1:1 so their pre-change values restore too.
  */
 export function paragraphRejectAttrPatch(
-  previousFormatting: Record<string, unknown> | null | undefined,
+  previousFormatting: ParagraphPropertySnapshot | null | undefined,
 ): AttrPatch {
-  const prev = previousFormatting ?? {};
+  const prev: ParagraphPropertySnapshot = previousFormatting ?? {};
   const patch: AttrPatch = {};
   for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
     patch[key] = Object.hasOwn(prev, key) ? (prev[key] ?? null) : null;
@@ -162,7 +163,7 @@ export function paragraphRejectAttrPatch(
   // Parser-shaped fallbacks for the two renamed attrs (attr-shaped records
   // carrying `direction` / `_autospacingBase` already won above).
   if (!Object.hasOwn(prev, "direction")) {
-    patch["direction"] = directionFromBidi(prev["bidi"] as boolean | null | undefined);
+    patch["direction"] = directionFromBidi(prev.bidi);
   }
   if (!Object.hasOwn(prev, "_autospacingBase")) {
     patch["_autospacingBase"] = autospacingBaseFromFormatting(prev);
@@ -184,23 +185,23 @@ export function paragraphRejectAttrPatch(
  * not drop them.
  */
 export function paragraphRejectOriginalFormatting(
-  previousFormatting: Record<string, unknown> | null | undefined,
+  previousFormatting: ParagraphPropertySnapshot | null | undefined,
   liveOriginal: unknown,
 ): ParagraphFormatting | null {
-  const prev = previousFormatting ?? {};
-  const result: Record<string, unknown> = {};
+  const prev: ParagraphPropertySnapshot = previousFormatting ?? {};
+  const result: Partial<ParagraphFormatting> = {};
   for (const key of PPR_CHANGE_SCOPED_FORMATTING_KEYS) {
     const value = Object.hasOwn(prev, key) ? prev[key] : undefined;
     if (value != null) {
-      result[key] = value;
+      Object.assign(result, { [key]: value });
     }
   }
   const live = isRecord(liveOriginal) ? liveOriginal : {};
   if (live["runProperties"] != null) {
-    result["runProperties"] = live["runProperties"];
+    Object.assign(result, { runProperties: live["runProperties"] });
   }
   if (live["runInWithNext"] != null) {
-    result["runInWithNext"] = live["runInWithNext"];
+    Object.assign(result, { runInWithNext: live["runInWithNext"] });
   }
   if (Object.keys(result).length === 0) {
     return null;
@@ -208,21 +209,21 @@ export function paragraphRejectOriginalFormatting(
   // SAFETY: every key written above is a ParagraphFormatting key; values come
   // from a stored ParagraphFormatting (or an attr-shaped snapshot whose
   // overlapping keys share the same value shapes).
-  return result as ParagraphFormatting;
+  return result;
 }
 
-function autospacingBaseFromFormatting(prev: Record<string, unknown>): AttrPatch | null {
-  const before = prev["beforeAutospacing"] === true;
-  const after = prev["afterAutospacing"] === true;
+function autospacingBaseFromFormatting(prev: ParagraphPropertySnapshot): AttrPatch | null {
+  const before = prev.beforeAutospacing === true;
+  const after = prev.afterAutospacing === true;
   if (!before && !after) {
     return null;
   }
   const base: NonNullable<ParagraphAttrs["_autospacingBase"]> = {};
   if (before) {
-    setAutospacingBaseValue(base, "before", prev["spaceBefore"]);
+    setAutospacingBaseValue(base, "before", prev.spaceBefore);
   }
   if (after) {
-    setAutospacingBaseValue(base, "after", prev["spaceAfter"]);
+    setAutospacingBaseValue(base, "after", prev.spaceAfter);
   }
   return base;
 }

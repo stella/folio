@@ -53,7 +53,7 @@ export const sdtPropertiesFromAttrs = (attrs: SdtAttrs): SdtProperties => {
     properties.dateValueISO = attrs.dateValueISO;
   }
   if (attrs.listItems) {
-    properties.listItems = parseSdtListItems(attrs.listItems);
+    properties.listItems = decodeSdtListItems(attrs.listItems);
   }
   if (typeof attrs.dropdownLastValue === "string") {
     properties.dropdownLastValue = attrs.dropdownLastValue;
@@ -74,8 +74,13 @@ export const sdtPropertiesMatchAttrs = (properties: SdtProperties, attrs: SdtAtt
   JSON.stringify(sdtAttrsFromProperties(properties)) ===
   JSON.stringify(sdtAttrsFromProperties(sdtPropertiesFromAttrs(attrs)));
 
-const parseSdtListItems = (rawItems: string): NonNullable<SdtProperties["listItems"]> => {
-  const parsed = JSON.parse(rawItems) as unknown;
+export const decodeSdtListItems = (rawItems: string): NonNullable<SdtProperties["listItems"]> => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawItems);
+  } catch {
+    throw new TypeError("Invalid ProseMirror sdt attrs: listItems is not valid JSON");
+  }
   if (!Array.isArray(parsed)) {
     throw new TypeError("Invalid ProseMirror sdt attrs: listItems is not an array");
   }

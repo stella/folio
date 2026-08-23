@@ -485,6 +485,23 @@ describe("fromProseDoc", () => {
     expect(() => fromProseDoc(pmDoc)).toThrow("sdt.attrs.listItems[0].displayText");
   });
 
+  test("surfaces the same strict list-items failure for block and inline SDTs", () => {
+    const listItems = "not-json";
+    const inlineDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.node("sdt", { sdtType: "dropdown", listItems }, [schema.text("Choice")]),
+      ]),
+    ]);
+    const blockDoc = schema.node("doc", null, [
+      schema.node("blockSdt", { sdtType: "dropdown", listItems }, [
+        schema.node("paragraph", null, [schema.text("Choice")]),
+      ]),
+    ]);
+
+    expect(() => fromProseDoc(inlineDoc)).toThrow("Expected valid JSON");
+    expect(() => fromProseDoc(blockDoc)).toThrow("Expected valid JSON");
+  });
+
   test("keeps tracked run changes inside inline content controls", () => {
     const insertion = schema.mark("insertion", {
       revisionId: 11,
