@@ -28,7 +28,7 @@ import {
   ExtractorConfig,
   ExtractorLogLevel,
 } from "@microsoft/api-extractor";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
 type PackageTarget = { slug: string; name: string; root: string };
@@ -43,6 +43,7 @@ const PACKAGES: PackageTarget[] = [
   { slug: "react", name: "@stll/folio-react", root: path.join(repoRoot, "packages/react") },
   { slug: "agents", name: "@stll/folio-agents", root: path.join(repoRoot, "packages/agents") },
   { slug: "vue", name: "@stll/folio-vue", root: path.join(repoRoot, "packages/vue") },
+  { slug: "nuxt", name: "@stll/folio-nuxt", root: path.join(repoRoot, "packages/nuxt") },
 ];
 
 type Entry = { key: string; slug: string; dts: string };
@@ -201,6 +202,20 @@ const runPackage = (pkg: PackageTarget, isLocal: boolean): RunResult => {
   const tempDir = tempDirFor(pkg);
   mkdirSync(reportDir, { recursive: true });
   mkdirSync(tempDir, { recursive: true });
+
+  const expectedReports = new Set(entries.map(({ slug }) => `${slug}.api.md`));
+  const staleReports = readdirSync(reportDir)
+    .filter((file) => file.endsWith(".api.md") && !expectedReports.has(file))
+    .toSorted();
+  if (staleReports.length > 0 && !isLocal) {
+    console.error(`\nStale public-API reports for ${pkg.name}:`);
+    for (const report of staleReports) console.error(`  - ${report}`);
+    console.error("\nRun `bun run api:update` to remove obsolete reports.");
+    process.exit(1);
+  }
+  for (const report of staleReports) {
+    rmSync(path.join(reportDir, report));
+  }
 
   // Share one CompilerState across every entry so the tsconfig is parsed and
   // the dist tree walked once, not once per subpath.

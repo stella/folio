@@ -65,6 +65,15 @@ export const DOCX_CONFORMANCE_CLASSES: Readonly<{
     readonly UNKNOWN: "unknown";
 }>;
 
+// @public (undocumented)
+export const DOCX_PACKAGE_ISSUE_CODES: {
+    readonly ArchiveBoundsExceeded: "archive_bounds_exceeded";
+    readonly InvalidArchive: "invalid_archive";
+    readonly InvalidDocumentRoot: "invalid_document_root";
+    readonly MissingNumberingPart: "missing_numbering_part";
+    readonly MissingPackagePart: "missing_package_part";
+};
+
 // @public
 export type DocxConformanceClass = (typeof DOCX_CONFORMANCE_CLASSES)[keyof typeof DOCX_CONFORMANCE_CLASSES];
 
@@ -95,6 +104,9 @@ export type DocxPackage = {
         modified?: Date;
     };
 };
+
+// @public (undocumented)
+export type DocxPackageIssueCode = (typeof DOCX_PACKAGE_ISSUE_CODES)[keyof typeof DOCX_PACKAGE_ISSUE_CODES];
 
 // @public (undocumented)
 export type LegalDraft = {
@@ -373,6 +385,7 @@ export type ValidateDocxPackageResult = {
     valid: true;
 } | {
     valid: false;
+    code: DocxPackageIssueCode;
     error: string;
 };
 

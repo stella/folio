@@ -55,12 +55,7 @@ export function applyFormatMarks(marks: readonly Mark[]): Command;
 export function applyStyle(styleId: string, resolvedAttrs?: ResolvedStyleAttrs): Command;
 
 // @public (undocumented)
-export function applyTableStyle(styleData: {
-    styleId: string;
-    tableBorders?: Record<string, unknown>;
-    conditionals?: Record<string, unknown>;
-    look?: Record<string, boolean>;
-}): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
+export function applyTableStyle(styleData: TableStyleCommand): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
 // @public (undocumented)
 export const assertValidProseMirrorDocument: (doc: Node_2, context: string) => void;
@@ -371,7 +366,7 @@ export type ParagraphAttrs = {
         after?: number | null;
     };
     _sectionProperties?: import__stll_docx_core_model.SectionProperties;
-    _propertyChanges?: import__stll_docx_core_model.ParagraphPropertyChange[];
+    _propertyChanges?: ParagraphPropertyChangeAttrs[];
     pPrMark?: import__stll_docx_core_model.ParagraphMarkChange;
     _suggestedInsert?: SuggestedStructuralMarker | null;
 };
@@ -426,15 +421,7 @@ export type SelectionContext = {
 };
 
 // @public
-export type SelectionState = {
-    hasSelection: boolean;
-    isMultiParagraph: boolean;
-    textFormatting: import__stll_docx_core_model.TextFormatting;
-    paragraphFormatting: import__stll_docx_core_model.ParagraphFormatting;
-    styleId: string | null;
-    startParagraphIndex: number;
-    endParagraphIndex: number;
-};
+export type SelectionState = SelectionSnapshot;
 
 // @public
 export const selectionTrackerKey: PluginKey<SelectionContext>;
@@ -449,33 +436,16 @@ export function selectTable(state: EditorState, dispatch?: (tr: Transaction) => 
 export function setAlignment(alignment: import__stll_docx_core_model.ParagraphAlignment): Command;
 
 // @public (undocumented)
-export function setAllTableBorders(state: EditorState, dispatch?: (tr: Transaction) => void, borderSpec?: {
-    style: string;
-    size: number;
-    color: {
-        rgb: string;
-    };
-}): boolean;
+export function setAllTableBorders(state: EditorState, dispatch?: (tr: Transaction) => void, borderSpec?: TableBorderCommandSpec): boolean;
 
 // @public (undocumented)
-export function setCellBorder(side: "top" | "bottom" | "left" | "right" | "all", spec: {
-    style: string;
-    size?: number;
-    color?: {
-        rgb: string;
-    };
-} | null, clearOthers?: boolean): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
+export function setCellBorder(side: "top" | "bottom" | "left" | "right" | "all", spec: TableCellBorderCommandSpec | null, clearOthers?: boolean): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
 // @public (undocumented)
 export function setCellFillColor(color: string | null): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
 // @public (undocumented)
-export function setCellMargins(margins: {
-    top?: number;
-    bottom?: number;
-    left?: number;
-    right?: number;
-}): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
+export function setCellMargins(margins: TableCellMarginsCommand): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
 // @public (undocumented)
 export function setCellTextDirection(direction: string | null): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
@@ -505,13 +475,7 @@ export function setIndentLeft(twips: number): Command;
 export function setIndentRight(twips: number): Command;
 
 // @public (undocumented)
-export function setInsideTableBorders(state: EditorState, dispatch?: (tr: Transaction) => void, borderSpec?: {
-    style: string;
-    size: number;
-    color: {
-        rgb: string;
-    };
-}): boolean;
+export function setInsideTableBorders(state: EditorState, dispatch?: (tr: Transaction) => void, borderSpec?: TableBorderCommandSpec): boolean;
 
 // @public (undocumented)
 export function setLineSpacing(value: number, rule?: import__stll_docx_core_model.LineSpacingRule): Command;
@@ -520,13 +484,7 @@ export function setLineSpacing(value: number, rule?: import__stll_docx_core_mode
 export const setLtr: Command;
 
 // @public (undocumented)
-export function setOutsideTableBorders(state: EditorState, dispatch?: (tr: Transaction) => void, borderSpec?: {
-    style: string;
-    size: number;
-    color: {
-        rgb: string;
-    };
-}): boolean;
+export function setOutsideTableBorders(state: EditorState, dispatch?: (tr: Transaction) => void, borderSpec?: TableBorderCommandSpec): boolean;
 
 // @public (undocumented)
 export function setRowHeight(height: number | null, rule?: "auto" | "atLeast" | "exact"): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
@@ -541,23 +499,13 @@ export function setTableBorderColor(color: string): (state: EditorState, dispatc
 export function setTableBorderPreset(preset: TableBorderPreset): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
 // @public (undocumented)
-export function setTableBorders(preset: BorderPreset, borderSpec?: {
-    style: string;
-    size: number;
-    color: {
-        rgb: string;
-    };
-}): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
+export function setTableBorders(preset: BorderPreset, borderSpec?: TableBorderCommandSpec): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
 // @public (undocumented)
 export function setTableBorderWidth(size: number): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
 // @public (undocumented)
-export function setTableProperties(props: {
-    width?: number | null;
-    widthType?: string | null;
-    justification?: "left" | "center" | "right" | null;
-}): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
+export function setTableProperties(props: TablePropertiesCommand): (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean;
 
 // @public (undocumented)
 export function setTextColor(attrs: TextColorAttrs): Command;

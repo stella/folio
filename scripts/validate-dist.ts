@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Clean-room validation that the *published* shape of a folio package works.
 //
-// Usage: `bun scripts/validate-dist.ts <docx-core|core|react|agents|vue>`
+// Usage: `bun scripts/validate-dist.ts <docx-core|core|react|agents|vue|nuxt>`
 //
 // For the named package it builds, transforms its package.json to the dist
 // shape exactly like the publish workflow (`prepare-publish.ts`), packs a
@@ -14,9 +14,7 @@
 // `./src/*.ts` string exports). Its type check runs under `bundler` resolution
 // only — the resolution Vite/Nuxt consumers use — because vite-plugin-dts
 // emits extensionless relative re-exports that a node16/nodenext consumer
-// rejects (a pre-existing vue build gap). nuxt is a Nuxt module (a different
-// dist shape: `module.mjs` + `types.d.mts`) and is validated by its own
-// `nuxt-module-build` step, not here.
+// rejects (a pre-existing vue build gap).
 //
 //   docx-core — runtime, types, externals, packaged assets, and attribution.
 //
@@ -56,6 +54,9 @@
 //     3. External — `@stll/folio-core` is imported as an external, never
 //                   bundled into the JS.
 //
+//   nuxt — the packed Nuxt module entry, runtime component, public types,
+//          module metadata, and external package references.
+//
 // Exits non-zero on any failure. Run via `bun run validate-dist:<pkg>`.
 
 import { panic } from "better-result";
@@ -89,9 +90,10 @@ if (
   target !== "core" &&
   target !== "react" &&
   target !== "agents" &&
-  target !== "vue"
+  target !== "vue" &&
+  target !== "nuxt"
 ) {
-  panic("usage: bun scripts/validate-dist.ts <docx-core|core|react|agents|vue>");
+  panic("usage: bun scripts/validate-dist.ts <docx-core|core|react|agents|vue|nuxt>");
 }
 
 type CheckResult = { name: string; ok: boolean; detail: string };
@@ -142,6 +144,7 @@ const dirs: Record<string, string> = {
   react: path.join(repoRoot, "packages", "react"),
   agents: path.join(repoRoot, "packages", "agents"),
   vue: path.join(repoRoot, "packages", "vue"),
+  nuxt: path.join(repoRoot, "packages", "nuxt"),
 };
 const docxCoreDir = dirs["docx-core"];
 const coreDir = dirs.core;
@@ -149,11 +152,12 @@ const coreDir = dirs.core;
 const packDir = await mkdtemp(path.join(tmpdir(), "folio-pack-"));
 const docxCorePackDir = await mkdtemp(path.join(tmpdir(), "folio-docx-core-pack-"));
 const corePackDir = await mkdtemp(path.join(tmpdir(), "folio-core-pack-"));
+const vuePackDir = await mkdtemp(path.join(tmpdir(), "folio-vue-pack-"));
 const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-"));
 
 // core/react/agents carry source-shaped exports that prepare-publish
 // rewrites; vue already ships dist-shaped exports (skip the transform).
-const needsPrepare = target !== "vue";
+const needsPrepare = target !== "vue" && target !== "nuxt";
 const pkgDir = dirs[target];
 const pkgName = target === "docx-core" ? "@stll/docx-core" : `@stll/folio-${target}`;
 const tarball = await buildAndPack(pkgDir, packDir, needsPrepare);
@@ -169,8 +173,16 @@ if (target !== "docx-core") {
 
 // react, agents, and vue all depend on @stll/folio-core.
 let coreTarball: string | null = null;
-if (target === "react" || target === "agents" || target === "vue") {
+if (target === "react" || target === "agents" || target === "vue" || target === "nuxt") {
   coreTarball = await buildAndPack(coreDir, corePackDir, true);
+}
+
+// The Nuxt module's runtime component delegates to @stll/folio-vue. Pack that
+// adapter as well so the clean room exercises the coordinated unpublished
+// dependency graph rather than resolving an older registry release.
+let vueTarball: string | null = null;
+if (target === "nuxt") {
+  vueTarball = await buildAndPack(dirs.vue, vuePackDir, false);
 }
 
 console.log(`→ installing tarball into ${consumerDir}`);
@@ -186,6 +198,9 @@ if (docxCoreTarball) {
 }
 if (coreTarball) {
   overrides["@stll/folio-core"] = coreTarball;
+}
+if (vueTarball) {
+  overrides["@stll/folio-vue"] = vueTarball;
 }
 if (Object.keys(overrides).length > 0) {
   consumerPkg.overrides = overrides;
@@ -211,6 +226,21 @@ if (target === "vue") {
   if (!coreTarball) panic("validate-dist: vue needs a @stll/folio-core tarball");
   installArgs.push(
     coreTarball,
+    "vue@^3",
+    "prosemirror-history@^1",
+    "prosemirror-model@^1",
+    "prosemirror-state@^1",
+    "prosemirror-tables@^1",
+    "prosemirror-view@^1",
+  );
+}
+if (target === "nuxt") {
+  if (!coreTarball || !vueTarball) {
+    panic("validate-dist: nuxt needs @stll/folio-core and @stll/folio-vue tarballs");
+  }
+  installArgs.push(
+    coreTarball,
+    vueTarball,
     "vue@^3",
     "prosemirror-history@^1",
     "prosemirror-model@^1",
@@ -292,6 +322,9 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "SplitCellDialog",
     ],
   },
+  nuxt: {
+    "@stll/folio-nuxt": ["default"],
+  },
 };
 
 // The messages subpath must return a live `{ folio }` catalog for a bundled and
@@ -312,6 +345,19 @@ try {
 `
     : "";
 
+const nuxtRuntimeCheck =
+  target === "nuxt"
+    ? `
+try {
+  const component = await import("./node_modules/@stll/folio-nuxt/dist/runtime/components/DocxEditor.js");
+  if (!("default" in component)) {
+    failed = true;
+    console.error("Nuxt runtime DocxEditor has no default export");
+  }
+} catch (err) { failed = true; console.error("Nuxt runtime component threw: " + (err?.message ?? err)); }
+`
+    : "";
+
 // --- Check 1: runtime ESM import -------------------------------------------
 const runtimeScript = `
 const expect = ${JSON.stringify(runtimeExpect[target])};
@@ -324,6 +370,7 @@ for (const [spec, names] of Object.entries(expect)) {
   } catch (err) { failed = true; console.error("import threw for " + spec + ": " + (err?.message ?? err)); }
 }
 ${messagesRuntimeCheck}
+${nuxtRuntimeCheck}
 process.exit(failed ? 1 : 0);
 `;
 const runtimeFile = path.join(consumerDir, "runtime-check.mjs");
@@ -410,6 +457,13 @@ import { useDocxEditor, useZoom } from "@stll/folio-vue/composables";
 
 export const used = [DocxEditor, createDocx, useDocxEditor, useZoom];
 export type Surface = [DocxEditorProps];
+`,
+  nuxt: `
+import folioNuxt, { type ModuleOptions } from "@stll/folio-nuxt";
+import DocxEditor from "./node_modules/@stll/folio-nuxt/dist/runtime/components/DocxEditor.js";
+
+export const used = [folioNuxt, DocxEditor];
+export type Surface = ModuleOptions;
 `,
 };
 const consumerTs =
@@ -626,8 +680,8 @@ if (target === "vue") {
 // --- Check 4: externals not bundled into the JS -----------------------------
 // Recurse: @stll/folio-core ships a source-mirrored dist tree, so the dep
 // imports live in nested modules, not only at the dist root.
-const jsFiles = (await readdir(installedDist, { recursive: true })).filter((f) =>
-  f.endsWith(".js"),
+const jsFiles = (await readdir(installedDist, { recursive: true })).filter(
+  (f) => f.endsWith(".js") || f.endsWith(".mjs"),
 );
 const jsContents = await Promise.all(
   jsFiles.map(async (f) => ({
@@ -652,6 +706,7 @@ const externalsByTarget: Record<string, string[]> = {
   react: ["react", "react-dom", "react/jsx-runtime", "react-compiler-runtime", "@stll/folio-core"],
   agents: ["@stll/folio-core"],
   vue: ["vue", "@stll/folio-core", "prosemirror-history", "prosemirror-state"],
+  nuxt: ["@nuxt/kit", "@stll/folio-vue"],
 };
 const expectedExternals = externalsByTarget[target] ?? [];
 const notExternalized = expectedExternals.filter(
@@ -665,6 +720,7 @@ const externalLabels: Record<string, string> = {
   react: "external: React / compiler runtime / ProseMirror / @stll/folio-core not bundled",
   agents: "external: @stll/folio-core not bundled into JS",
   vue: "external: Vue / ProseMirror / @stll/folio-core not bundled into JS",
+  nuxt: "external: Nuxt Kit / @stll/folio-vue not bundled into JS",
 };
 record(
   externalLabels[target] ?? "external: declared externals not bundled into JS",
@@ -702,6 +758,45 @@ if (target === "react") {
       uncovered.length === 0
         ? `${candidates} utility class(es) referenced, all present in standalone.css`
         : `missing from standalone.css: ${uncovered.join(", ")}`,
+    );
+  }
+}
+
+// Nuxt module-builder emits a metadata file consumed by Nuxt tooling plus a
+// separate public declaration entry. These files are not reached by importing
+// the runtime entry, so guard their packed presence and essential identity.
+if (target === "nuxt") {
+  const requiredFiles = [
+    "module.mjs",
+    "module.d.mts",
+    "module.json",
+    "types.d.mts",
+    "runtime/components/DocxEditor.js",
+    "runtime/components/DocxEditor.d.ts",
+  ];
+  const missingFiles = requiredFiles.filter((file) => !existsSync(path.join(installedDist, file)));
+  record(
+    "nuxt: module metadata, runtime, and declarations ship",
+    missingFiles.length === 0,
+    missingFiles.length === 0
+      ? `${requiredFiles.length} required files present`
+      : `missing: ${missingFiles.join(", ")}`,
+  );
+
+  const metadataPath = path.join(installedDist, "module.json");
+  if (existsSync(metadataPath)) {
+    const metadata: unknown = JSON.parse(await readFile(metadataPath, "utf-8"));
+    const metadataOk =
+      typeof metadata === "object" &&
+      metadata !== null &&
+      "name" in metadata &&
+      metadata.name === "@stll/folio-nuxt" &&
+      "configKey" in metadata &&
+      metadata.configKey === "docxEditor";
+    record(
+      "nuxt: packed module metadata identifies the public module",
+      metadataOk,
+      metadataOk ? "name and configKey match" : "module.json identity is invalid",
     );
   }
 }
@@ -791,6 +886,7 @@ if (target === "react") {
 await rm(packDir, { recursive: true, force: true });
 await rm(docxCorePackDir, { recursive: true, force: true });
 await rm(corePackDir, { recursive: true, force: true });
+await rm(vuePackDir, { recursive: true, force: true });
 await rm(consumerDir, { recursive: true, force: true });
 
 const failed = results.filter((r) => !r.ok);

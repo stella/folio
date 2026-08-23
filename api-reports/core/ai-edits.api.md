@@ -392,10 +392,10 @@ export type FolioDocumentOperationAffectedTarget = {
 // @public (undocumented)
 export type FolioDocumentOperationBatch = {
     readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
-    operations: FolioDocumentOperation[];
-    mode?: FolioDocumentOperationMode;
-    atomic?: boolean;
-    dryRun?: boolean;
+    readonly operations: readonly FolioDocumentOperation[];
+    readonly mode?: FolioDocumentOperationMode;
+    readonly atomic?: boolean;
+    readonly dryRun?: boolean;
 };
 
 // @public (undocumented)

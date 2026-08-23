@@ -19,11 +19,17 @@ export class ExtensionManager {
     constructor(extensions: AnyExtension[]);
     buildSchema(): void;
     destroy(): void;
-    getCommand(name: string): ((...args: unknown[]) => Command) | undefined;
+    getCommand<Name extends FolioCommandName>(name: Name): CommandFactory<FolioCommandArguments[Name]> | undefined;
+    // (undocumented)
+    getCommand(name: string): CommandFactory | undefined;
     getCommands(): CommandMap;
     getPlugins(): Plugin_2[];
     getSchema(): Schema;
     initializeRuntime(): void;
+    // (undocumented)
+    requireCommand<Name extends FolioCommandName>(name: Name): CommandFactory<FolioCommandArguments[Name]>;
+    // (undocumented)
+    requireCommand(name: string): CommandFactory;
 }
 
 // @public (undocumented)

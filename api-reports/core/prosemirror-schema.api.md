@@ -269,9 +269,17 @@ export type ParagraphAttrs = {
         after?: number | null;
     };
     _sectionProperties?: import__stll_docx_core_model.SectionProperties;
-    _propertyChanges?: import__stll_docx_core_model.ParagraphPropertyChange[];
+    _propertyChanges?: ParagraphPropertyChangeAttrs[];
     pPrMark?: import__stll_docx_core_model.ParagraphMarkChange;
     _suggestedInsert?: SuggestedStructuralMarker | null;
+};
+
+// @public
+export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.ParagraphPropertyChange, "previousFormatting" | "currentFormatting"> & {
+    previousFormatting?: Omit<import__stll_docx_core_model.ParagraphFormatting, "numPr"> & {
+        numPr?: import__stll_docx_core_model.ParagraphFormatting["numPr"] | null;
+    } & Partial<Pick<ParagraphAttrs, "listIsBullet" | "listIsLegal" | "listNumFmt" | "listMarker" | "listMarkerHidden" | "listMarkerFontFamily" | "listMarkerFontSize" | "listMarkerBold" | "listMarkerAlignment" | "listMarkerSuffix" | "listLevelNumFmts" | "listLevelStarts" | "listAbstractNumId" | "listStartOverride" | "lineSpacingExplicit" | "direction" | "_autospacingBase">>;
+    currentFormatting?: import__stll_docx_core_model.ParagraphFormatting;
 };
 
 // @public (undocumented)

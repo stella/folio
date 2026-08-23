@@ -1,0 +1,38 @@
+{
+  "docx-core": {
+    "types": 7438,
+    "instantiations": 5788
+  },
+  "core": {
+    "types": 106165,
+    "instantiations": 76444
+  },
+  "react": {
+    "types": 134167,
+    "instantiations": 283583
+  },
+  "agents": {
+    "types": 68036,
+    "instantiations": 57690
+  },
+  "vue": {
+    "types": 165153,
+    "instantiations": 825845
+  },
+  "nuxt": {
+    "types": 99728,
+    "instantiations": 102505
+  },
+  "playground": {
+    "types": 133988,
+    "instantiations": 186355
+  },
+  "playground-vue": {
+    "types": 162488,
+    "instantiations": 815996
+  },
+  "parity": {
+    "types": 61308,
+    "instantiations": 47672
+  }
+}
