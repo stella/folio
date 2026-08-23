@@ -1,5 +1,23 @@
 # @stll/folio-core
 
+## 0.22.3
+
+### Patch Changes
+
+- [#597](https://github.com/stella/folio/pull/597) [`cfcaf36`](https://github.com/stella/folio/commit/cfcaf36927d858549f4b5ee39f4bb911312d59af) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Anchor body drawings to authored bottom margins and repaint when margin frames change.
+
+- [#599](https://github.com/stella/folio/pull/599) [`d4e6d7f`](https://github.com/stella/folio/commit/d4e6d7ff18f0146a3fb0f97d3c427f8162df777d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve run font slots and underline color when formatting marks are rewritten at a selection or collapsed caret.
+
+- [#590](https://github.com/stella/folio/pull/590) [`70c8bd4`](https://github.com/stella/folio/commit/70c8bd4f2f2fa5cfe36ed822688a43d22176c9fd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Measure superscript and subscript text at the same scale used for painting.
+
+- [#598](https://github.com/stella/folio/pull/598) [`cdde112`](https://github.com/stella/folio/commit/cdde112f1a85f7121a50b2250266093cfaddebae) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve direct paragraph spacing edits without inlining inherited line spacing, including explicit zero overrides.
+
+- [#596](https://github.com/stella/folio/pull/596) [`550f0f8`](https://github.com/stella/folio/commit/550f0f8a064279ad572a7b16cfeba11ade3d023e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor the hanging-indent flag when generating paragraph CSS.
+
+- [#595](https://github.com/stella/folio/pull/595) [`35608fc`](https://github.com/stella/folio/commit/35608fce912f6c7196dc86467cee3e0413e73355) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Parse every OOXML `ST_OnOff` spelling consistently across style and drawing attributes.
+
+- [#600](https://github.com/stella/folio/pull/600) [`022b326`](https://github.com/stella/folio/commit/022b32636157d17601b1ec8a646e22ee4b68d485) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve typed errors when inspecting malformed XML package parts.
+
 ## 0.22.2
 
 ### Patch Changes

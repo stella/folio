@@ -1,5 +1,15 @@
 # @stll/folio-react
 
+## 0.15.4
+
+### Patch Changes
+
+- [#594](https://github.com/stella/folio/pull/594) [`8c63057`](https://github.com/stella/folio/commit/8c630571696ffffbb6ad427a91a771a99b72c8a4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep nested header and footer drawings inert until their region is being edited.
+
+- [#593](https://github.com/stella/folio/pull/593) [`3778fb5`](https://github.com/stella/folio/commit/3778fb5ce2836589c77f43e03a51b2e49bdccae1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Leave Cmd+R to browser reload while retaining Ctrl+R for right alignment.
+- Updated dependencies [[`cfcaf36`](https://github.com/stella/folio/commit/cfcaf36927d858549f4b5ee39f4bb911312d59af), [`d4e6d7f`](https://github.com/stella/folio/commit/d4e6d7ff18f0146a3fb0f97d3c427f8162df777d), [`70c8bd4`](https://github.com/stella/folio/commit/70c8bd4f2f2fa5cfe36ed822688a43d22176c9fd), [`cdde112`](https://github.com/stella/folio/commit/cdde112f1a85f7121a50b2250266093cfaddebae), [`550f0f8`](https://github.com/stella/folio/commit/550f0f8a064279ad572a7b16cfeba11ade3d023e), [`35608fc`](https://github.com/stella/folio/commit/35608fce912f6c7196dc86467cee3e0413e73355), [`022b326`](https://github.com/stella/folio/commit/022b32636157d17601b1ec8a646e22ee4b68d485)]:
+  - @stll/folio-core@0.22.3
+
 ## 0.15.3
 
 ### Patch Changes
