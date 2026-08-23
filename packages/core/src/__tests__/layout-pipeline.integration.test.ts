@@ -198,6 +198,16 @@ describe("Layout Engine - Page Production", () => {
       expect(resolved.values.get(field?.pmStart ?? -1)).toBe("13");
     });
 
+    test("starts logical numbering from the initial section policy", () => {
+      const layout = layoutDocument(
+        [makeParagraphBlock(0, "First", 1)],
+        [makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)])],
+        makeLayoutOptions({ pageNumbering: { type: "restart", start: 13 } }),
+      );
+
+      expect(layout.pages.at(0)).toMatchObject({ number: 1, logicalNumber: 13 });
+    });
+
     test("positions a text-anchored floating table from the current text cursor", () => {
       const paragraph = makeParagraphBlock(0, "Anchor", 1);
       const table: TableBlock = {
@@ -1660,6 +1670,46 @@ describe("Section Breaks", () => {
     expect(layout.pages.map(({ number }) => number)).toEqual([1, 2, 3]);
     expect(layout.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([13, 14, 4]);
     expect(layout.pages.map(({ sectionPageNumber }) => sectionPageNumber)).toEqual([1, 1, 1]);
+  });
+
+  test.each([
+    { type: "evenPage" as const, leadingBreaks: 1, targetPage: 4 },
+    { type: "oddPage" as const, leadingBreaks: 0, targetPage: 3 },
+  ])("keeps $type filler pages in the previous section", ({ type, leadingBreaks, targetPage }) => {
+    const blocks: FlowBlock[] = [makeParagraphBlock(0, "Before", 1)];
+    const measures: Measure[] = [makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)])];
+    for (let index = 0; index < leadingBreaks; index += 1) {
+      blocks.push({ kind: "pageBreak", id: `page-break-${index}` });
+      measures.push({ kind: "pageBreak" });
+      blocks.push(makeParagraphBlock(`before-${index}`, "Before", 1));
+      measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]));
+    }
+    blocks.push({ kind: "sectionBreak", id: "section", type });
+    measures.push({ kind: "sectionBreak" });
+    blocks.push(makeParagraphBlock("after", "After", 1));
+    measures.push(makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]));
+
+    const layout = layoutDocument(
+      blocks,
+      measures,
+      makeLayoutOptions({
+        bodyBreakType: type,
+        finalPageNumbering: { type: "restart", start: 13 },
+      }),
+    );
+
+    const target = layout.pages.at(-1);
+    expect(target).toMatchObject({
+      number: targetPage,
+      logicalNumber: 13,
+      sectionIndex: 1,
+      sectionPageNumber: 1,
+    });
+    expect(layout.pages.at(-2)).toMatchObject({
+      number: targetPage - 1,
+      logicalNumber: targetPage - 1,
+      sectionIndex: 0,
+    });
   });
 
   test("continuous section break does not force new page", () => {

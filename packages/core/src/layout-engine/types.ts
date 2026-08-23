@@ -1269,6 +1269,8 @@ export type LayoutOptions = {
   firstPageMargins?: PageMargins;
   /** Per-section body margins used on even authored page numbers. */
   sectionEvenPageMargins?: (PageMargins | undefined)[];
+  /** Page-number policy for the initial section. */
+  pageNumbering?: SectionPageNumbering;
   /** Body-level final section page size. */
   finalPageSize?: { w: number; h: number };
   /** Body-level final section margins. */

@@ -1082,7 +1082,12 @@ describe("footnote rendering", () => {
         footnoteReservedHeight: 24,
         fragments: [],
       },
-      { pageNumber: 7, totalPages: 9, section: "body" },
+      {
+        pageNumber: 7,
+        pageNumberFormat: "upperRoman",
+        totalPages: 9,
+        section: "body",
+      },
       {
         document: fakeDocument,
         footnoteArea: [
@@ -1098,7 +1103,7 @@ describe("footnote rendering", () => {
       },
     );
 
-    expect(pageEl.textContent).toContain("Page 7 of 9");
+    expect(pageEl.textContent).toContain("Page VII of 9");
   });
 
   test("renders structured table footnote content without body PM anchors", () => {

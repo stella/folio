@@ -322,7 +322,7 @@ export function layoutDocument(
   const bodyConfig: SectionLayoutConfig = {
     pageSize,
     margins,
-    pageNumbering: CONTINUE_PAGE_NUMBERING,
+    pageNumbering: options.pageNumbering ?? CONTINUE_PAGE_NUMBERING,
   };
   if (options.columns !== undefined) {
     bodyConfig.columns = options.columns;
@@ -330,7 +330,7 @@ export function layoutDocument(
   const finalConfig: SectionLayoutConfig = {
     pageSize: finalPageSize,
     margins: finalMargins,
-    pageNumbering: options.finalPageNumbering ?? CONTINUE_PAGE_NUMBERING,
+    pageNumbering: options.finalPageNumbering ?? bodyConfig.pageNumbering,
   };
   const finalColumns = options.finalColumns ?? options.columns;
   if (finalColumns !== undefined) {
@@ -1658,27 +1658,31 @@ function handleSectionBreak(
       break;
 
     case "evenPage": {
+      const target = paginator.forcePageBreak({ coalesceBlankPage: true });
+      if (target.page.number % 2 !== 0) {
+        paginator.forcePageBreak();
+      }
       paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
       if (nextSectionIndex !== undefined) {
         paginator.startSection(nextSectionIndex, nextSectionConfig.pageNumbering);
       }
-      const state = paginator.forcePageBreak({ coalesceBlankPage: true });
-      // If landed on odd page, add another page
-      if (state.page.number % 2 !== 0) {
-        paginator.forcePageBreak();
+      if (!paginator.retargetCurrentBlankPage()) {
+        panic("Even-page section target must be blank");
       }
       break;
     }
 
     case "oddPage": {
+      const target = paginator.forcePageBreak({ coalesceBlankPage: true });
+      if (target.page.number % 2 === 0) {
+        paginator.forcePageBreak();
+      }
       paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
       if (nextSectionIndex !== undefined) {
         paginator.startSection(nextSectionIndex, nextSectionConfig.pageNumbering);
       }
-      const state = paginator.forcePageBreak({ coalesceBlankPage: true });
-      // If landed on even page, add another page
-      if (state.page.number % 2 === 0) {
-        paginator.forcePageBreak();
+      if (!paginator.retargetCurrentBlankPage()) {
+        panic("Odd-page section target must be blank");
       }
       break;
     }

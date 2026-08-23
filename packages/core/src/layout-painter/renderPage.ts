@@ -1385,6 +1385,9 @@ function renderFootnoteContent(
 
   const renderContext: RenderContext = {
     pageNumber: context?.pageNumber ?? 0,
+    ...(context?.pageNumberFormat === undefined
+      ? {}
+      : { pageNumberFormat: context.pageNumberFormat }),
     totalPages: context?.totalPages ?? 0,
     section: context?.section ?? "body",
     contentWidth,

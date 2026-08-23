@@ -665,6 +665,7 @@ export function runLayoutPipeline<THfPMs>(
       const nextLayoutOpts: Parameters<typeof layoutDocument>[2] = {
         pageSize,
         margins: initialBodyMargins,
+        pageNumbering: bodyLayoutConfig.pageNumbering,
         pageGap,
         mirrorMargins,
       };

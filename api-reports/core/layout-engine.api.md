@@ -422,6 +422,7 @@ export type LayoutOptions = {
     margins: PageMargins;
     firstPageMargins?: PageMargins;
     sectionEvenPageMargins?: (PageMargins | undefined)[];
+    pageNumbering?: SectionPageNumbering;
     finalPageSize?: {
         w: number;
         h: number;
