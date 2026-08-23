@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { TaggedError } from "better-result";
+import { Result, TaggedError } from "better-result";
 
 import { getAttributeAnyPrefix, getLocalName, parseXmlDocument } from "../xmlParser";
 import type { DocxArchiveEntry, DocxArchiveOptions } from "./boundedArchive";
@@ -104,16 +104,20 @@ const decodeXml = (bytes: Uint8Array, part: string): string => {
     encoding = "utf-16be";
   }
 
-  try {
-    return new TextDecoder(encoding, { fatal: true }).decode(bytes);
-  } catch (cause) {
-    throw new FolioDocxPackageInspectionError({
-      message: `Failed to decode XML package part "${part}"`,
-      code: "xml-decode-failed",
-      part,
-      cause,
-    });
+  const decoded = Result.try({
+    try: () => new TextDecoder(encoding, { fatal: true }).decode(bytes),
+    catch: (cause) =>
+      new FolioDocxPackageInspectionError({
+        message: `Failed to decode XML package part "${part}"`,
+        code: "xml-decode-failed",
+        part,
+        cause,
+      }),
+  });
+  if (decoded.isOk()) {
+    return decoded.value;
   }
+  throw decoded.error;
 };
 
 const parseContentTypes = (xml: string | null): ContentTypeDeclarations => {

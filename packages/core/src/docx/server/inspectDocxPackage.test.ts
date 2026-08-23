@@ -101,6 +101,23 @@ describe("inspectDocxPackage", () => {
     expect(inspection.xmlParts.map(({ text }) => text)).toEqual(["", "<"]);
   });
 
+  test("reports malformed XML bytes as a typed inspection error", async () => {
+    const bytes = await mutateEmptyPackage((zip) => {
+      zip.file("malformed.xml", new Uint8Array([0xc3, 0x28]));
+    });
+
+    const error = await rejection(inspectDocxPackage(bytes, { xmlParts: ["malformed.xml"] }));
+
+    expect(error).toMatchObject({
+      message: 'Failed to decode XML package part "malformed.xml"',
+      code: "xml-decode-failed",
+      part: "malformed.xml",
+    });
+    expect(error).toBeInstanceOf(FolioDocxPackageInspectionError);
+    expect(error).toHaveProperty("cause");
+    expect(error.cause).toBeInstanceOf(TypeError);
+  });
+
   test("rejects missing, binary, and duplicate requested parts", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
       zip.file("word/media/payload.bin", "data");
