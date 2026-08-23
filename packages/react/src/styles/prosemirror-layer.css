@@ -668,14 +668,14 @@
    for the document text. The band element itself keeps pointer events so it
    stays the double-click-to-edit target; only its content is passed through.
    See eigenpal/docx-editor#869. */
-.layout-page-header > *,
-.layout-page-footer > * {
+.layout-page-header *,
+.layout-page-footer * {
   pointer-events: none;
 }
 /* While editing a region, its content is hittable again so clicks map to
    header/footer caret positions. */
-.paged-editor--editing-header .layout-page-header > *,
-.paged-editor--editing-footer .layout-page-footer > * {
+.paged-editor--editing-header .layout-page-header *,
+.paged-editor--editing-footer .layout-page-footer * {
   pointer-events: auto;
 }
 
