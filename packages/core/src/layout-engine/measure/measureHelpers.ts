@@ -5,6 +5,10 @@
  * char-offset geometry. The layout engine imports these directly so it never
  * transitively pulls the canvas measurement backend; the canvas implementation
  * (`measureContainer.ts`) consumes them too.
+ *
+ * Superscript/subscript measurement is adapted from Eigenpal docx-editor
+ * commit 585413d0c58cdce6fc67a8d36bdba5bd70eb7c86 (Apache-2.0), modified for
+ * Folio's shared canvas measurement seam.
  */
 
 import { resolveFontFamily } from "../../utils/fontResolver";
@@ -21,6 +25,7 @@ const TWIPS_PER_PX = TWIPS_PER_INCH / PX_PER_INCH; // 15 twips per pixel
 // Default typography values
 export const DEFAULT_FONT_SIZE = 11; // 11pt (Word 2007+ default)
 export const DEFAULT_FONT_FAMILY = "Calibri";
+export const DOCX_SCRIPT_FONT_SCALE = 0.75;
 
 /**
  * Build a measurement `FontStyle` from a run's formatting. Single source of
@@ -35,7 +40,9 @@ export function buildRunFontStyle(
   fallbackFontFamily: string,
   fallbackFontSize: number,
 ): FontStyle {
-  const fontSize = run.fontSize ?? fallbackFontSize;
+  const baseFontSize = run.fontSize ?? fallbackFontSize;
+  const fontSize =
+    run.superscript || run.subscript ? baseFontSize * DOCX_SCRIPT_FONT_SCALE : baseFontSize;
   return {
     fontFamily: run.fontFamily ?? fallbackFontFamily,
     ...(run.eastAsiaFontFamily !== undefined ? { eastAsiaFontFamily: run.eastAsiaFontFamily } : {}),

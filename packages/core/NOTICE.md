@@ -4,6 +4,15 @@ This package contains code originally from [Eigenpal docx-editor](https://github
 The upstream Eigenpal code was originally licensed under the MIT License;
 the original license text is reproduced below.
 
+## Apache-Licensed Adaptations
+
+This package also contains portions adapted from later Eigenpal docx-editor
+work licensed under the Apache License, Version 2.0. These portions were
+modified for Folio. The applicable license is reproduced in `LICENSE`.
+
+- Superscript and subscript measurement parity, adapted from commit
+  `585413d0c58cdce6fc67a8d36bdba5bd70eb7c86`.
+
 ## Original MIT License
 
 MIT License

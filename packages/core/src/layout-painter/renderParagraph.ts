@@ -13,7 +13,7 @@ import {
   getListMarkerInlineWidth,
   getListMarkerVisualOffset,
 } from "../layout-engine/measure/listMarkerWidth";
-import { DEFAULT_FONT_SIZE } from "../layout-engine/measure/measureHelpers";
+import { DEFAULT_FONT_SIZE, DOCX_SCRIPT_FONT_SCALE } from "../layout-engine/measure/measureHelpers";
 import {
   FONT_KERNING_MODE,
   countCompressibleSpaces,
@@ -148,7 +148,6 @@ function isMathRun(run: Run): run is MathRun {
 
 const AUTOMATIC_TEXT_COLOR_VALUES = new Set(["auto", "windowtext"]);
 const DEFAULT_BLACK_TEXT_COLOR_VALUES = new Set(["000000", "000"]);
-const DOCX_SUPERSCRIPT_SCALE = 0.75;
 
 // Suggested (AI-proposed) tracked changes render with a dotted stroke and a
 // dedicated hue, distinct from the per-author redline palette. Driven by the
@@ -218,9 +217,9 @@ function fontSizePtToPx(fontSizePt: number): number {
 
 function getRaisedRunFontSize(run: TextRun | TabRun): string {
   if (run.fontSize) {
-    return `${fontSizePtToPx(run.fontSize) * DOCX_SUPERSCRIPT_SCALE}px`;
+    return `${fontSizePtToPx(run.fontSize) * DOCX_SCRIPT_FONT_SCALE}px`;
   }
-  return `${DOCX_SUPERSCRIPT_SCALE}em`;
+  return `${DOCX_SCRIPT_FONT_SCALE}em`;
 }
 
 /**

@@ -8,7 +8,7 @@ import {
 } from "./__tests__/fakeTextMeasure";
 import { hashParagraphBlock } from "./cache";
 import { resetLineBreakProvider, setLineBreakProvider } from "./lineBreakProvider";
-import { buildFontString, buildRunFontStyle } from "./measureHelpers";
+import { buildFontString, buildRunFontStyle, DOCX_SCRIPT_FONT_SCALE } from "./measureHelpers";
 import { clampFloatingWrapMargins, getRunCharWidths, measureParagraph } from "./measureParagraph";
 import {
   getFontMetrics,
@@ -59,6 +59,26 @@ describe("text measurement cache", () => {
 
       expect(getMeasureCount()).toBe(2);
     }, fakeMeasure);
+  });
+});
+
+describe("script measurement", () => {
+  test("uses the exact paint scale for superscript and subscript", () => {
+    expect(DOCX_SCRIPT_FONT_SCALE).toBe(0.75);
+
+    for (const fontSize of [0.5, 8, 11, 13.5, 72]) {
+      const baseline = buildRunFontStyle({ fontSize }, "Calibri", 11);
+      const superscript = buildRunFontStyle({ fontSize, superscript: true }, "Calibri", 11);
+      const subscript = buildRunFontStyle({ fontSize, subscript: true }, "Calibri", 11);
+
+      expect(superscript.fontSize).toBe(fontSize * 0.75);
+      expect(subscript.fontSize).toBe(fontSize * 0.75);
+      expect(baseline.fontSize).toBe(fontSize);
+    }
+  });
+
+  test("shares the same scale when the run inherits its font size", () => {
+    expect(buildRunFontStyle({ superscript: true }, "Calibri", 11).fontSize).toBe(8.25);
   });
 });
 
