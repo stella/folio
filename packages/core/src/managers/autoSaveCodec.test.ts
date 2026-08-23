@@ -46,7 +46,7 @@ describe("auto-save codec", () => {
   test("rejects encoded object keys that could mutate a decoded prototype", () => {
     const poisoned =
       '{"document":{"type":"object","value":{"__proto__":{"type":"object","value":{}}}},' +
-      '"savedAt":"2026-08-23T11:00:00.000Z","version":2}';
+      `"savedAt":"2026-08-23T11:00:00.000Z","version":${AUTOSAVE_FORMAT_VERSION}}`;
 
     expect(decodeAutoSaveEnvelope(poisoned)).toBeNull();
   });

@@ -170,6 +170,7 @@ import { Style } from '@stll/folio-core/types/document';
 import { SuggestionAppliedAs } from '@stll/folio-core/prosemirror/commands/comments';
 import { SuggestionKind } from '@stll/folio-core/prosemirror/commands/comments';
 import { TableAction } from '@stll/folio-core/utils/tableOperations';
+import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
 import { TemplatePreviewSpan } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValue } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
 import { TemplatePreviewValues } from '@stll/folio-core/prosemirror/plugins/templatePreviewValues';
@@ -943,12 +944,8 @@ export { SuggestionAppliedAs }
 
 export { SuggestionKind }
 
-// @public
-export type TableProperties = {
-    width?: number | null;
-    widthType?: string | null;
-    justification?: "left" | "center" | "right" | null;
-};
+// @public (undocumented)
+export type TableProperties = TablePropertiesCommand;
 
 // @public (undocumented)
 export function TablePropertiesDialog(input: TablePropertiesDialogProps): JSX.Element;
@@ -958,11 +955,7 @@ export type TablePropertiesDialogProps = {
     isOpen: boolean;
     onClose: () => void;
     onApply: (props: TableProperties) => void;
-    currentProps?: {
-        width?: number;
-        widthType?: string;
-        justification?: string;
-    };
+    currentProps?: TableProperties;
 };
 
 export { TemplatePreviewSpan }

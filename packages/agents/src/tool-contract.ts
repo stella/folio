@@ -20,7 +20,7 @@ import type {
   FolioToolCallResult,
 } from "./types";
 
-type EmptyArgs = Record<never, never>;
+type EmptyArgs = Readonly<Record<string, never>>;
 
 export type FolioAgentFindTextScope =
   | { type: "document" }

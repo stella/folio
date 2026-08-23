@@ -8,7 +8,7 @@ const packageWithDocument = async (documentXml: string): Promise<Uint8Array> => 
   zip.file("[Content_Types].xml", "<Types/>");
   zip.file("_rels/.rels", "<Relationships/>");
   zip.file("word/document.xml", documentXml);
-  return zip.generateAsync({ type: "uint8array" });
+  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
 };
 
 describe("validateDocxPackage", () => {
@@ -69,6 +69,34 @@ describe("validateDocxPackage", () => {
       valid: false,
       code: DOCX_PACKAGE_ISSUE_CODES.InvalidDocumentRoot,
       error: "Generated DOCX document root has no WordprocessingML body.",
+    });
+  });
+
+  test("rejects oversized document XML before parsing it", async () => {
+    const namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const bytes = await packageWithDocument(
+      `<w:document xmlns:w="${namespace}"><w:body><w:p>${"x".repeat(32 * 1024 * 1024)}</w:p></w:body></w:document>`,
+    );
+
+    const result = await validateDocxPackage(bytes);
+    expect(result.valid).toBe(false);
+    if (result.valid) {
+      throw new Error("Expected oversized document XML to be rejected");
+    }
+    expect(result.code).toBe(DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded);
+    expect(result.error).toContain("word/document.xml");
+  });
+
+  test("rejects malformed XML even though the parser itself is permissive", async () => {
+    const bytes = await packageWithDocument(
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+        "<w:body></w:document>",
+    );
+
+    expect(await validateDocxPackage(bytes)).toEqual({
+      valid: false,
+      code: DOCX_PACKAGE_ISSUE_CODES.InvalidDocumentRoot,
+      error: "Generated DOCX has malformed word/document.xml.",
     });
   });
 });

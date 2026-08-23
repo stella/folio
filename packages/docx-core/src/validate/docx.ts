@@ -61,6 +61,7 @@ export type ValidateDocumentModelResult = {
 const VALIDATE_DOCX_MAX_ENTRIES = 4096;
 const VALIDATE_DOCX_MAX_ENTRY_BYTES = 128 * 1024 * 1024;
 const VALIDATE_DOCX_MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+const VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES = 32 * 1024 * 1024;
 
 const WORDPROCESSINGML_NAMESPACES = new Set([
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
@@ -206,7 +207,32 @@ export const validateDocxPackage = async (
       }
     }
 
-    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const documentPart = zip.file("word/document.xml");
+    const declaredDocumentBytes = documentPart ? getDeclaredUncompressedSize(documentPart) : null;
+    if (
+      declaredDocumentBytes !== null &&
+      declaredDocumentBytes > VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES
+    ) {
+      return {
+        valid: false,
+        code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
+        error:
+          `Generated DOCX word/document.xml declares ${declaredDocumentBytes} uncompressed bytes, ` +
+          `over the ${VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES}-byte limit.`,
+      };
+    }
+    const documentBytes = await documentPart?.async("uint8array");
+    if (
+      documentBytes !== undefined &&
+      documentBytes.byteLength > VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES
+    ) {
+      return {
+        valid: false,
+        code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
+        error: `Generated DOCX word/document.xml exceeds the ${VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES}-byte limit.`,
+      };
+    }
+    const documentXml = documentBytes ? new TextDecoder().decode(documentBytes) : undefined;
     const documentError = documentXml
       ? validateDocumentXml(documentXml)
       : "Generated DOCX has no word/document.xml root document.";

@@ -441,6 +441,7 @@ import {
   insertTableInView,
   insertTableOfContentsInView,
 } from "@stll/folio-core/prosemirror";
+import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
@@ -454,6 +455,7 @@ import { twipsToPixels } from "@stll/folio-core/paged-layout/sectionGeometry";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document, SectionProperties, Style } from "@stll/folio-core/types/document";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
+import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import {
   getDocumentWatermark,
   setDocumentWatermark,
@@ -1053,20 +1055,7 @@ const currentTableProperties = computed(() => {
   if (!table) {
     return {};
   }
-  const current: { width?: number; widthType?: string; justification?: string } = {};
-  const width = table.attrs["width"];
-  const widthType = table.attrs["widthType"];
-  const justification = table.attrs["justification"];
-  if (typeof width === "number") {
-    current.width = width;
-  }
-  if (typeof widthType === "string") {
-    current.widthType = widthType;
-  }
-  if (typeof justification === "string") {
-    current.justification = justification;
-  }
-  return current;
+  return expectTableAttrs(table);
 });
 
 // Optional Toolbar props that must be OMITTED (not passed as `undefined`) under
@@ -1304,13 +1293,7 @@ function handleMenuTableInsert(rows: number, cols: number): void {
   handleInsertTableAction(rows, cols);
 }
 
-type TablePropertiesUpdate = {
-  width?: number | null;
-  widthType?: string | null;
-  justification?: "left" | "center" | "right" | null;
-};
-
-function handleTablePropertiesApply(properties: TablePropertiesUpdate): void {
+function handleTablePropertiesApply(properties: TablePropertiesCommand): void {
   const view = activeEditorView.value;
   const factory = getCommands()["setTableProperties"];
   if (!view || !factory) {

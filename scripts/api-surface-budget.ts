@@ -2,6 +2,9 @@
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { Result, TaggedError } from "better-result";
+
+import { keyDifferences, validateExactObjectKeys } from "./lib/exact-object";
 
 const REPORT_ROOT = path.resolve(import.meta.dir, "../api-reports");
 const BASELINE_PATH = path.join(import.meta.dir, "api-surface-budget.json");
@@ -36,41 +39,13 @@ const METRICS = {
 const isSize = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 
-type KeyDifferences = { missing: string[]; extra: string[] };
+class ApiSurfaceBudgetError extends TaggedError("ApiSurfaceBudgetError")<{
+  message: string;
+  cause?: unknown;
+}> {}
 
-const keyDifferences = (
-  actual: readonly string[],
-  expected: readonly string[],
-): KeyDifferences => ({
-  missing: expected.filter((key) => !actual.includes(key)),
-  extra: actual.filter((key) => !expected.includes(key)),
-});
-
-const assertExactKeys = (
-  value: unknown,
-  expected: readonly string[],
-  label: string,
-): asserts value is Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`Invalid ${label}: expected an object`);
-  }
-  const { missing, extra } = keyDifferences(Object.keys(value), expected);
-  if (missing.length > 0 || extra.length > 0) {
-    throw new Error(
-      `Invalid ${label} keys; missing: ${missing.join(", ") || "none"}; ` +
-        `extra: ${extra.join(", ") || "none"}`,
-    );
-  }
-};
-
-const rejectsExactKeys = (value: unknown, expected: readonly string[]): boolean => {
-  try {
-    assertExactKeys(value, expected, "self-test baseline");
-    return false;
-  } catch {
-    return true;
-  }
-};
+const rejectsExactKeys = (value: unknown, expected: readonly string[]): boolean =>
+  validateExactObjectKeys(value, expected, "self-test baseline").isErr();
 
 type FileSize = { bytes: number; lines: number };
 
@@ -96,7 +71,7 @@ const measurePackage = (name: PackageName): SurfaceSize => {
   const distDirectory = path.resolve(REPORT_ROOT, "../packages", name, "dist");
   const declarationFiles = readdirSync(distDirectory, { recursive: true })
     .filter(
-      (file) =>
+      (file): file is string =>
         typeof file === "string" &&
         (file.endsWith(".d.ts") || file.endsWith(".d.mts") || file.endsWith(".d.cts")),
     )
@@ -123,41 +98,74 @@ const measureAll = (): Baseline => ({
   nuxt: measurePackage("nuxt"),
 });
 
-const readEntry = (value: unknown, name: PackageName): SurfaceSize => {
+const readEntry = (value: Record<string, unknown>, name: PackageName) => {
   if (typeof value !== "object" || value === null || !(name in value)) {
-    throw new Error(`Missing ${name} API surface budget`);
+    return Result.err(new ApiSurfaceBudgetError({ message: `Missing ${name} API surface budget` }));
   }
   const entry = value[name];
   if (typeof entry !== "object" || entry === null) {
-    throw new Error(`Invalid ${name} API surface budget`);
+    return Result.err(new ApiSurfaceBudgetError({ message: `Invalid ${name} API surface budget` }));
   }
-  assertExactKeys(entry, METRIC_NAMES, `${name} API surface budget`);
-  const reportBytes = entry["reportBytes"];
-  const reportLines = entry["reportLines"];
-  const declarationBytes = entry["declarationBytes"];
-  const declarationLines = entry["declarationLines"];
+  const exactEntry = validateExactObjectKeys(entry, METRIC_NAMES, `${name} API surface budget`);
+  if (exactEntry.isErr()) {
+    return exactEntry;
+  }
+  const reportBytes = exactEntry.value["reportBytes"];
+  const reportLines = exactEntry.value["reportLines"];
+  const declarationBytes = exactEntry.value["declarationBytes"];
+  const declarationLines = exactEntry.value["declarationLines"];
   if (
     !isSize(reportBytes) ||
     !isSize(reportLines) ||
     !isSize(declarationBytes) ||
     !isSize(declarationLines)
   ) {
-    throw new Error(`Invalid ${name} API surface budget`);
+    return Result.err(new ApiSurfaceBudgetError({ message: `Invalid ${name} API surface budget` }));
   }
-  return { reportBytes, reportLines, declarationBytes, declarationLines };
+  return Result.ok({ reportBytes, reportLines, declarationBytes, declarationLines });
 };
 
-const readBaseline = (): Baseline => {
-  const parsed: unknown = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
-  assertExactKeys(parsed, PACKAGES, "scripts/api-surface-budget.json");
-  return {
-    "docx-core": readEntry(parsed, "docx-core"),
-    core: readEntry(parsed, "core"),
-    react: readEntry(parsed, "react"),
-    agents: readEntry(parsed, "agents"),
-    vue: readEntry(parsed, "vue"),
-    nuxt: readEntry(parsed, "nuxt"),
-  };
+const readBaseline = () => {
+  const parseJson = (): unknown => JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
+  const parsed = Result.try({
+    try: parseJson,
+    catch: (cause) =>
+      new ApiSurfaceBudgetError({
+        message: "Invalid scripts/api-surface-budget.json: expected JSON",
+        cause,
+      }),
+  });
+  if (parsed.isErr()) {
+    return parsed;
+  }
+  const exactBaseline = validateExactObjectKeys(
+    parsed.value,
+    PACKAGES,
+    "scripts/api-surface-budget.json",
+  );
+  if (exactBaseline.isErr()) {
+    return exactBaseline;
+  }
+  const docxCore = readEntry(exactBaseline.value, "docx-core");
+  const core = readEntry(exactBaseline.value, "core");
+  const react = readEntry(exactBaseline.value, "react");
+  const agents = readEntry(exactBaseline.value, "agents");
+  const vue = readEntry(exactBaseline.value, "vue");
+  const nuxt = readEntry(exactBaseline.value, "nuxt");
+  if (docxCore.isErr()) return docxCore;
+  if (core.isErr()) return core;
+  if (react.isErr()) return react;
+  if (agents.isErr()) return agents;
+  if (vue.isErr()) return vue;
+  if (nuxt.isErr()) return nuxt;
+  return Result.ok({
+    "docx-core": docxCore.value,
+    core: core.value,
+    react: react.value,
+    agents: agents.value,
+    vue: vue.value,
+    nuxt: nuxt.value,
+  } satisfies Baseline);
 };
 
 const maximum = (baseline: number, floor: number): number =>
@@ -182,7 +190,12 @@ const report = (measured: Baseline): void => {
 };
 
 const check = (measured: Baseline): number => {
-  const baseline = readBaseline();
+  const baselineResult = readBaseline();
+  if (baselineResult.isErr()) {
+    console.error(baselineResult.error.message);
+    return 1;
+  }
+  const baseline = baselineResult.value;
   const failures: string[] = [];
   for (const name of PACKAGES) {
     for (const metric of METRIC_NAMES) {

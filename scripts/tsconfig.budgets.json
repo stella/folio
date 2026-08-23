@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false,
+    "types": ["bun-types"]
+  },
+  "include": ["api-surface-budget.ts", "typecheck-budget.ts", "lib/exact-object.ts"]
+}

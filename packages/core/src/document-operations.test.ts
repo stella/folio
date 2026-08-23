@@ -149,8 +149,11 @@ describe("document operation contract", () => {
     expect(parseFolioDocumentOperationBatch(batch)).toBe(batch);
     expect(Object.isFrozen(batch)).toBe(true);
     expect(Object.isFrozen(batch.operations)).toBe(true);
-    expect(Object.isFrozen(batch.operations[0])).toBe(true);
-    expect(Object.isFrozen(batch.operations[0]?.precondition)).toBe(true);
+    const operation = batch.operations.at(0);
+    expect(operation).toBeDefined();
+    expect(Object.isFrozen(operation)).toBe(true);
+    expect(operation?.precondition).toEqual({ blockTextHash: "h123" });
+    expect(Object.isFrozen(operation?.precondition)).toBe(true);
   });
 
   test("builds input-ordered receipts for successful affected targets", () => {

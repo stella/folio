@@ -10,6 +10,9 @@ import type { FolioToolCallResultFor } from "../src/tool-contract";
 
 declare const bridge: FolioAgentBridge;
 
+// @ts-expect-error empty-input tools reject undeclared fields
+executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, { unexpected: true }, bridge);
+
 const readDocumentResult = executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge);
 const readDocumentCheck: FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.readDocument> =
   readDocumentResult;

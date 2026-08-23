@@ -77,21 +77,11 @@ const MAX_FIND_MATCHES = 200;
  * Every bridge member used here ({@link FolioDocxReviewer} and the live-editor
  * ref) is synchronous, so this stays synchronous too.
  */
-export function executeFolioToolCall<TName extends FolioAgentToolName>(
-  name: TName,
-  args: FolioAgentToolInputByName[TName],
-  bridge: FolioAgentBridge,
-): FolioToolCallResultFor<TName>;
-export function executeFolioToolCall(
+export const executeFolioToolCallUntyped = (
   name: string,
   args: unknown,
   bridge: FolioAgentBridge,
-): FolioToolCallResult;
-export function executeFolioToolCall(
-  name: string,
-  args: unknown,
-  bridge: FolioAgentBridge,
-): FolioToolCallResult {
+): FolioToolCallResult => {
   if (!VALID_TOOL_NAMES.includes(name)) {
     return fail(`Unknown tool "${name}". Valid tools: ${VALID_TOOL_NAMES.join(", ")}.`);
   }
@@ -101,6 +91,19 @@ export function executeFolioToolCall(
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }
+};
+
+export function executeFolioToolCall<TName extends FolioAgentToolName>(
+  name: TName,
+  args: FolioAgentToolInputByName[TName],
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<TName>;
+export function executeFolioToolCall(
+  name: string,
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResult {
+  return executeFolioToolCallUntyped(name, args, bridge);
 }
 
 const dispatch = (name: string, args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {

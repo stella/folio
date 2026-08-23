@@ -52,6 +52,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import { useTranslation } from "../../i18n";
 import { useFolioUI } from "../../ui/folio-ui";
 
@@ -63,15 +64,11 @@ const { Dialog: FolioDialog } = useFolioUI();
 
 type TableJustification = "left" | "center" | "right";
 
-export type TableProperties = {
-  width?: number | null;
-  widthType?: string | null;
-  justification?: TableJustification | null;
-};
+export type TableProperties = TablePropertiesCommand;
 
 const props = defineProps<{
   isOpen: boolean;
-  currentProps?: { width?: number; widthType?: string; justification?: string };
+  currentProps?: TableProperties;
 }>();
 
 const emit = defineEmits<{
@@ -80,10 +77,20 @@ const emit = defineEmits<{
 }>();
 
 const width = ref(0);
-const widthType = ref("auto");
+const editableWidthType = (value: string): NonNullable<TableProperties["widthType"]> => {
+  switch (value) {
+    case "dxa":
+    case "pct":
+      return value;
+    default:
+      return "auto";
+  }
+};
+
+const widthType = ref(editableWidthType(props.currentProps?.widthType ?? "auto"));
 const justification = ref<TableJustification>("left");
 
-function toJustification(value: string | undefined): TableJustification {
+function toJustification(value: string | null | undefined): TableJustification {
   return value === "center" || value === "right" ? value : "left";
 }
 
@@ -92,7 +99,7 @@ watch(
   (open) => {
     if (open) {
       width.value = props.currentProps?.width ?? 0;
-      widthType.value = props.currentProps?.widthType ?? "auto";
+      widthType.value = editableWidthType(props.currentProps?.widthType ?? "auto");
       justification.value = toJustification(props.currentProps?.justification);
     }
   },

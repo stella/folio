@@ -79,6 +79,7 @@ export const decodeSectionHandle = (value: unknown): FolioDocumentSectionHandle 
     value["story"] !== "main" ||
     !isNonEmptyString(headingBlockId) ||
     !isNonEmptyString(headingTextHash) ||
+    !NORMALIZED_TEXT_HASH_PATTERN.test(headingTextHash) ||
     typeof headingLevel !== "number" ||
     !Number.isInteger(headingLevel) ||
     headingLevel < 1 ||

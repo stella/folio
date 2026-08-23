@@ -5,24 +5,38 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { useTranslations } from "use-intl";
 
+import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
+
 import { useFolioUI } from "../../ui/folio-ui";
 import { useCloseOnDialogOpenChange } from "./dialogChrome";
 
-export type TableProperties = {
-  width?: number | null;
-  widthType?: string | null;
-  justification?: "left" | "center" | "right" | null;
-};
+export type TableProperties = TablePropertiesCommand;
 
 export type TablePropertiesDialogProps = {
   isOpen: boolean;
   onClose: () => void;
   onApply: (props: TableProperties) => void;
-  currentProps?: {
-    width?: number;
-    widthType?: string;
-    justification?: string;
-  };
+  currentProps?: TableProperties;
+};
+
+const editableWidthType = (value: string): NonNullable<TableProperties["widthType"]> => {
+  switch (value) {
+    case "dxa":
+    case "pct":
+      return value;
+    default:
+      return "auto";
+  }
+};
+
+const editableJustification = (value: string): NonNullable<TableProperties["justification"]> => {
+  switch (value) {
+    case "center":
+    case "right":
+      return value;
+    default:
+      return "left";
+  }
 };
 
 export function TablePropertiesDialog({
@@ -43,14 +57,16 @@ export function TablePropertiesDialog({
   const t = useTranslations("folio");
   const id = useId();
   const [width, setWidth] = useState(currentProps?.width ?? 0);
-  const [widthType, setWidthType] = useState(currentProps?.widthType ?? "auto");
-  const [justification, setJustification] = useState(currentProps?.justification ?? "left");
+  const [widthType, setWidthType] = useState(editableWidthType(currentProps?.widthType ?? "auto"));
+  const [justification, setJustification] = useState(
+    editableJustification(currentProps?.justification ?? "left"),
+  );
 
   useEffect(() => {
     if (isOpen) {
       setWidth(currentProps?.width ?? 0);
-      setWidthType(currentProps?.widthType ?? "auto");
-      setJustification(currentProps?.justification ?? "left");
+      setWidthType(editableWidthType(currentProps?.widthType ?? "auto"));
+      setJustification(editableJustification(currentProps?.justification ?? "left"));
     }
   }, [isOpen, currentProps]);
 
@@ -99,7 +115,7 @@ export function TablePropertiesDialog({
               <select
                 className={inputCls}
                 id={fieldIds.widthType}
-                onChange={(e) => setWidthType(e.target.value)}
+                onChange={(e) => setWidthType(editableWidthType(e.target.value))}
                 value={widthType}
               >
                 <option value="auto">{t("dialogs.tableProperties.widthTypes.auto")}</option>
@@ -137,7 +153,7 @@ export function TablePropertiesDialog({
               <select
                 className={inputCls}
                 id={fieldIds.align}
-                onChange={(e) => setJustification(e.target.value)}
+                onChange={(e) => setJustification(editableJustification(e.target.value))}
                 value={justification}
               >
                 <option value="left">{t("dialogs.tableProperties.alignOptions.left")}</option>

@@ -70,7 +70,7 @@ cannot silently apply one.
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 import {
   createReviewerBridge,
-  executeFolioToolCall,
+  executeFolioToolCallUntyped,
   getFolioToolDefinitions,
   toAnthropicTools,
 } from "@stll/folio-agents";
@@ -80,7 +80,7 @@ const bridge = createReviewerBridge(reviewer);
 const tools = toAnthropicTools(getFolioToolDefinitions());
 
 // Inside your tool-use loop, for each tool_use block the model emits:
-const result = executeFolioToolCall(toolName, toolInput, bridge);
+const result = executeFolioToolCallUntyped(toolName, toolInput, bridge);
 // result: { ok: true, result } | { ok: false, error } — feed either back to the model.
 
 const reviewedBuffer = await reviewer.toBuffer();
@@ -230,7 +230,7 @@ SDK's own `jsonSchema()` / `tool()` helpers:
 
 ```ts
 import { jsonSchema, tool } from "ai";
-import { executeFolioToolCall, getFolioToolDefinitions } from "@stll/folio-agents";
+import { executeFolioToolCallUntyped, getFolioToolDefinitions } from "@stll/folio-agents";
 
 const tools = Object.fromEntries(
   getFolioToolDefinitions().map((def) => [
@@ -238,7 +238,7 @@ const tools = Object.fromEntries(
     tool({
       description: def.description,
       inputSchema: jsonSchema(def.inputSchema),
-      execute: async (input) => executeFolioToolCall(def.name, input, bridge),
+      execute: async (input) => executeFolioToolCallUntyped(def.name, input, bridge),
     }),
   ]),
 );

@@ -13,6 +13,7 @@ import { FootnoteProperties } from '@stll/folio-core/types/document';
 import { JSX } from 'react';
 import { default as React_2 } from 'react';
 import { SectionProperties } from '@stll/folio-core/types/document';
+import { TablePropertiesCommand } from '@stll/folio-core/utils/tableOperations';
 import { Watermark } from '@stll/folio-core/watermark';
 
 // @public
@@ -223,12 +224,8 @@ export type SplitCellDialogProps = {
     defaultColumns?: number;
 };
 
-// @public
-export type TableProperties = {
-    width?: number | null;
-    widthType?: string | null;
-    justification?: "left" | "center" | "right" | null;
-};
+// @public (undocumented)
+export type TableProperties = TablePropertiesCommand;
 
 // @public (undocumented)
 export function TablePropertiesDialog(input: TablePropertiesDialogProps): JSX.Element;
@@ -238,11 +235,7 @@ export type TablePropertiesDialogProps = {
     isOpen: boolean;
     onClose: () => void;
     onApply: (props: TableProperties) => void;
-    currentProps?: {
-        width?: number;
-        widthType?: string;
-        justification?: string;
-    };
+    currentProps?: TableProperties;
 };
 
 // @public (undocumented)

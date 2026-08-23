@@ -66,6 +66,7 @@
 <script setup lang="ts">
 import type { EditorView } from "prosemirror-view";
 
+import type { TablePropertiesCommand } from "@stll/folio-core/utils/tableOperations";
 import type { SectionProperties } from "@stll/folio-core/types/document";
 import type { Watermark } from "@stll/folio-core/watermark";
 
@@ -89,18 +90,6 @@ type HyperlinkSubmitPayload = {
   tooltip: string;
 };
 
-type TableProperties = {
-  width?: number | null;
-  widthType?: string | null;
-  justification?: "left" | "center" | "right" | null;
-};
-
-type CurrentTableProperties = {
-  width?: number;
-  widthType?: string;
-  justification?: string;
-};
-
 defineProps<{
   view: EditorView | null;
   bookmarks: BookmarkOption[];
@@ -115,7 +104,7 @@ defineProps<{
   showTableProperties: boolean;
   showWatermark: boolean;
   currentWatermark: Watermark | undefined;
-  tableProperties: CurrentTableProperties;
+  tableProperties: TablePropertiesCommand;
 }>();
 
 const emit = defineEmits<{
@@ -130,7 +119,7 @@ const emit = defineEmits<{
   (e: "hyperlink-submit", data: HyperlinkSubmitPayload): void;
   (e: "hyperlink-remove"): void;
   (e: "page-setup-apply", props: Partial<SectionProperties>): void;
-  (e: "table-properties-apply", props: TableProperties): void;
+  (e: "table-properties-apply", props: TablePropertiesCommand): void;
   (e: "watermark-apply", watermark: Watermark | undefined): void;
 }>();
 </script>

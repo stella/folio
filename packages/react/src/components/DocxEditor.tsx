@@ -168,6 +168,7 @@ import { resolveFindMatchRange } from "@stll/folio-core/prosemirror/findReplaceS
 import { createAICitationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiCitationDecorations";
 import { createAISuggestionDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/aiSuggestionDecorations";
 import { createAnonymizationDecorationsPlugin } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
+import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
@@ -4009,15 +4010,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       handleReplaceAll,
     ],
   );
-  const tablePropertiesDialog = useMemo(
-    () => ({
+  const tablePropertiesDialog = useMemo(() => {
+    const table = state.pmTableContext?.table;
+    return {
       isOpen: tablePropsOpen,
       onClose: closeTableProperties,
       onApply: applyTableProperties,
-      currentProps: state.pmTableContext?.table?.attrs as Record<string, unknown> | undefined,
-    }),
-    [applyTableProperties, closeTableProperties, state.pmTableContext, tablePropsOpen],
-  );
+      currentProps: table ? expectTableAttrs(table) : undefined,
+    };
+  }, [applyTableProperties, closeTableProperties, state.pmTableContext, tablePropsOpen]);
   const imagePositionDialog = useMemo(
     () => ({
       isOpen: imagePositionOpen,

@@ -8,7 +8,13 @@
  * ProseMirror, no DOM, no React.
  */
 
-import type { Table, TableCell, TableRow } from "../types/document";
+import type { Table, TableCell, TableRow, TableWidthType } from "../types/document";
+
+export type TablePropertiesCommand = {
+  width?: number | null;
+  widthType?: TableWidthType | null;
+  justification?: "left" | "center" | "right" | null;
+};
 
 export type TableAction =
   | "addRowAbove"
@@ -63,11 +69,7 @@ export type TableAction =
   | { type: "autoFitContents" }
   | {
       type: "tableProperties";
-      props: {
-        width?: number | null;
-        widthType?: string | null;
-        justification?: "left" | "center" | "right" | null;
-      };
+      props: TablePropertiesCommand;
     }
   | { type: "openTableProperties" }
   | { type: "applyTableStyle"; styleId: string };

@@ -13,7 +13,7 @@ import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { createReviewerBridge } from "./bridges/reviewer";
 import type { FolioAgentBridge } from "./bridge";
-import { executeFolioToolCall } from "./execute";
+import { executeFolioToolCall, executeFolioToolCallUntyped } from "./execute";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
   FolioAgentApplyOperationsSummary,
@@ -56,7 +56,7 @@ describe("executeFolioToolCall: argument validation", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const bridge = createReviewerBridge(reviewer);
 
-    const result = executeFolioToolCall("not_a_real_tool", {}, bridge);
+    const result = executeFolioToolCallUntyped("not_a_real_tool", {}, bridge);
     const error = expectError(result);
     expect(error).toContain("not_a_real_tool");
     expect(error).toContain("read_document");

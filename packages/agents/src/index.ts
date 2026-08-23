@@ -16,7 +16,7 @@ export type {
   FolioAgentVersionDiffSegment,
 } from "./compare";
 export { compareDocxVersions, formatVersionDiffForLLM, generateRedlineDocx } from "./compare";
-export { executeFolioToolCall } from "./execute";
+export { executeFolioToolCall, executeFolioToolCallUntyped } from "./execute";
 export {
   FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA,
   FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA,

@@ -66,6 +66,15 @@ describe("boundary codecs", () => {
         headingLevel: 0,
       }),
     ).toBeNull();
+    expect(
+      decodeSectionHandle({
+        type: "headingSection",
+        story: "main",
+        headingBlockId: "block-3",
+        headingTextHash: "not-a-hash",
+        headingLevel: 2,
+      }),
+    ).toBeNull();
   });
 
   test("decodeMainStoryTextRangeHandle rejects hashes and offsets that cannot round-trip from find_text", () => {

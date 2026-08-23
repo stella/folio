@@ -18,6 +18,7 @@ import type {
   TabLeader,
   TabStopAlignment,
 } from "../../types/document";
+import type { TablePropertiesCommand } from "../../utils/tableOperations";
 import type { ResolvedStyleAttrs } from "./core/ParagraphExtension";
 import type { BorderPreset, TableBorderPreset } from "./nodes/TableExtension";
 
@@ -40,11 +41,7 @@ export type TableCellMarginsCommand = {
   right?: number;
 };
 
-export type TablePropertiesCommand = {
-  width?: number | null;
-  widthType?: string | null;
-  justification?: "left" | "center" | "right" | null;
-};
+export type { TablePropertiesCommand } from "../../utils/tableOperations";
 
 export type TableStyleCommand = {
   styleId: string;

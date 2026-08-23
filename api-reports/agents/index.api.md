@@ -64,11 +64,11 @@ export type CreateReviewerBridgeOptions = {
     mode?: FolioAIEditApplyMode;
 };
 
-// @public
+// @public (undocumented)
 export function executeFolioToolCall<TName extends FolioAgentToolName>(name: TName, args: FolioAgentToolInputByName[TName], bridge: FolioAgentBridge): FolioToolCallResultFor<TName>;
 
-// @public (undocumented)
-export function executeFolioToolCall(name: string, args: unknown, bridge: FolioAgentBridge): FolioToolCallResult;
+// @public
+export const executeFolioToolCallUntyped: (name: string, args: unknown, bridge: FolioAgentBridge) => FolioToolCallResult;
 
 // @public
 export const FOLIO_AGENT_TOOL_NAMES: {

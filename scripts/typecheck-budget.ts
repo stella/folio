@@ -2,6 +2,9 @@
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { Result, TaggedError } from "better-result";
+
+import { keyDifferences, validateExactObjectKeys } from "./lib/exact-object";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const BASELINE_PATH = path.join(import.meta.dir, "typecheck-budget.json");
@@ -41,49 +44,29 @@ type Measurement = {
 };
 
 const readDiagnostic = (output: string, label: string): number | null => {
-  const match = new RegExp(`^${label}:\\s+([\\d.]+)`, "mu").exec(output);
-  const value = match?.at(1);
-  return value === undefined ? null : Number(value);
+  const prefix = `${label}:`;
+  const line = output.split("\n").find((candidate) => candidate.startsWith(prefix));
+  if (line === undefined) {
+    return null;
+  }
+  const value = line.slice(prefix.length).trim().split(/\s/u).at(0);
+  if (value === undefined) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const isCounter = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 
-type KeyDifferences = { missing: string[]; extra: string[] };
+class TypecheckBudgetError extends TaggedError("TypecheckBudgetError")<{
+  message: string;
+  cause?: unknown;
+}> {}
 
-const keyDifferences = (
-  actual: readonly string[],
-  expected: readonly string[],
-): KeyDifferences => ({
-  missing: expected.filter((key) => !actual.includes(key)),
-  extra: actual.filter((key) => !expected.includes(key)),
-});
-
-const assertExactKeys = (
-  value: unknown,
-  expected: readonly string[],
-  label: string,
-): asserts value is Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`Invalid ${label}: expected an object`);
-  }
-  const { missing, extra } = keyDifferences(Object.keys(value), expected);
-  if (missing.length > 0 || extra.length > 0) {
-    throw new Error(
-      `Invalid ${label} keys; missing: ${missing.join(", ") || "none"}; ` +
-        `extra: ${extra.join(", ") || "none"}`,
-    );
-  }
-};
-
-const rejectsExactKeys = (value: unknown, expected: readonly string[]): boolean => {
-  try {
-    assertExactKeys(value, expected, "self-test baseline");
-    return false;
-  } catch {
-    return true;
-  }
-};
+const rejectsExactKeys = (value: unknown, expected: readonly string[]): boolean =>
+  validateExactObjectKeys(value, expected, "self-test baseline").isErr();
 
 const parseCounters = (output: string, project: string): Counters => {
   const types = readDiagnostic(output, "Types");
@@ -146,39 +129,74 @@ const measureAll = (): Measurement[] =>
     return measureProject(project);
   });
 
-const readBaselineEntry = (parsed: Record<string, unknown>, id: ProjectId): Counters => {
+const readBaselineEntry = (parsed: Record<string, unknown>, id: ProjectId) => {
   const value = parsed[id];
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("types" in value) ||
-    !isCounter(value.types) ||
-    !("instantiations" in value) ||
-    !isCounter(value.instantiations)
-  ) {
-    throw new Error(`Invalid ${id} entry in ${BASELINE_RELATIVE_PATH}`);
+  const exactEntry = validateExactObjectKeys(value, GATED_FIELDS, `${id} typecheck budget`);
+  if (exactEntry.isErr()) {
+    return exactEntry;
   }
-  return { types: value.types, instantiations: value.instantiations };
+  const types = exactEntry.value["types"];
+  const instantiations = exactEntry.value["instantiations"];
+  if (!isCounter(types) || !isCounter(instantiations)) {
+    return Result.err(
+      new TypecheckBudgetError({
+        message: `Invalid ${id} entry in ${BASELINE_RELATIVE_PATH}`,
+      }),
+    );
+  }
+  return Result.ok({ types, instantiations });
 };
 
-const readBaseline = (): Baseline => {
-  const parsed: unknown = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
-  assertExactKeys(
-    parsed,
+const readBaseline = () => {
+  const parseJson = (): unknown => JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
+  const parsed = Result.try({
+    try: parseJson,
+    catch: (cause) =>
+      new TypecheckBudgetError({
+        message: `Invalid ${BASELINE_RELATIVE_PATH}: expected JSON`,
+        cause,
+      }),
+  });
+  if (parsed.isErr()) {
+    return parsed;
+  }
+  const exactBaseline = validateExactObjectKeys(
+    parsed.value,
     PROJECTS.map(({ id }) => id),
     BASELINE_RELATIVE_PATH,
   );
-  return {
-    "docx-core": readBaselineEntry(parsed, "docx-core"),
-    core: readBaselineEntry(parsed, "core"),
-    react: readBaselineEntry(parsed, "react"),
-    agents: readBaselineEntry(parsed, "agents"),
-    vue: readBaselineEntry(parsed, "vue"),
-    nuxt: readBaselineEntry(parsed, "nuxt"),
-    playground: readBaselineEntry(parsed, "playground"),
-    "playground-vue": readBaselineEntry(parsed, "playground-vue"),
-    parity: readBaselineEntry(parsed, "parity"),
-  };
+  if (exactBaseline.isErr()) {
+    return exactBaseline;
+  }
+  const docxCore = readBaselineEntry(exactBaseline.value, "docx-core");
+  const core = readBaselineEntry(exactBaseline.value, "core");
+  const react = readBaselineEntry(exactBaseline.value, "react");
+  const agents = readBaselineEntry(exactBaseline.value, "agents");
+  const vue = readBaselineEntry(exactBaseline.value, "vue");
+  const nuxt = readBaselineEntry(exactBaseline.value, "nuxt");
+  const playground = readBaselineEntry(exactBaseline.value, "playground");
+  const playgroundVue = readBaselineEntry(exactBaseline.value, "playground-vue");
+  const parity = readBaselineEntry(exactBaseline.value, "parity");
+  if (docxCore.isErr()) return docxCore;
+  if (core.isErr()) return core;
+  if (react.isErr()) return react;
+  if (agents.isErr()) return agents;
+  if (vue.isErr()) return vue;
+  if (nuxt.isErr()) return nuxt;
+  if (playground.isErr()) return playground;
+  if (playgroundVue.isErr()) return playgroundVue;
+  if (parity.isErr()) return parity;
+  return Result.ok({
+    "docx-core": docxCore.value,
+    core: core.value,
+    react: react.value,
+    agents: agents.value,
+    vue: vue.value,
+    nuxt: nuxt.value,
+    playground: playground.value,
+    "playground-vue": playgroundVue.value,
+    parity: parity.value,
+  } satisfies Baseline);
 };
 
 const allowedMaximum = (field: GatedField, baseline: number): number =>
@@ -220,7 +238,12 @@ const report = (measurements: readonly Measurement[]): void => {
 };
 
 const check = (measurements: readonly Measurement[]): number => {
-  const baseline = readBaseline();
+  const baselineResult = readBaseline();
+  if (baselineResult.isErr()) {
+    console.error(baselineResult.error.message);
+    return 1;
+  }
+  const baseline = baselineResult.value;
   const failures: string[] = [];
   const improvements: string[] = [];
   for (const measurement of measurements) {
