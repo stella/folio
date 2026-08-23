@@ -1,0 +1,21 @@
+@stll/premirror-bridge
+=======================
+
+This package is folio-side glue between folio-core's measurement seam and the
+pretext/premirror text-layout stack. It contains no verbatim third-party source,
+but it exists to serve, and descends in design from, the following works. Credit
+is given here as a moral duty, not merely to satisfy a license file.
+
+- @chenglou/pretext  (MIT)  — the segment-fit layout design and arithmetic this
+  bridge's engine wraps (prepare-once segmentation + measurement, then pure-math
+  line fitting). Copyright (c) chenglou.
+  https://www.npmjs.com/package/@chenglou/pretext
+
+- samwillis/premirror  (MIT © 2026 Sam Willis)  — the premirror line this bridge
+  belongs to. Improvements worth upstreaming are offered back as pull requests.
+  https://github.com/samwillis/premirror
+
+This package itself is licensed Apache-2.0, consistent with the STLL/folio
+project (see package.json). Apache-2.0 is compatible with building on the
+MIT-licensed works credited above; their MIT terms continue to govern those
+upstream sources.

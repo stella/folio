@@ -151,6 +151,17 @@
         "vue-tsc": "^3.3.7",
       },
     },
+    "packages/premirror-bridge": {
+      "name": "@stll/premirror-bridge",
+      "version": "0.1.0",
+      "dependencies": {
+        "@chenglou/pretext": "0.0.3",
+        "@stll/folio-core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "1.3.14",
+      },
+    },
     "packages/react": {
       "name": "@stll/folio-react",
       "version": "0.15.2",
@@ -324,6 +335,8 @@
     "@changesets/types": ["@changesets/types@7.0.0", "", {}, "sha512-c5GoiQyt3pxiXjrWSNoP8/GRf4kG+VnKzovx1OQM8dYYALlSwgedmkPmJ+ZqGxqwg9D3Bkj85Uo4KLd5BN3A0w=="],
 
     "@changesets/write": ["@changesets/write@1.0.0", "", { "dependencies": { "@changesets/format": "^0.1.1", "@changesets/types": "^7.0.0", "human-id": "^4.2.0" } }, "sha512-xCK3/4C7Z7muQB/wguE6HcbjtY9iOtaK9orZKE+7xi573cMGD8rLZz7qlo6IvK7s+SIUIKajzj1l+F1QuP97tw=="],
+
+    "@chenglou/pretext": ["@chenglou/pretext@0.0.3", "", {}, "sha512-RQmqMqUAPRCyv4R3LlRi/ao6KbNWYclqLA+V1HS7sWgyUUbjn3JmmlfXZSY/BjM4rbmIaMSyIVisYocYGYftiQ=="],
 
     "@clack/core": ["@clack/core@1.4.3", "", { "dependencies": { "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-/kr3UWNtdJfxZtPgDqUOmG2pvwlmcLGheex5yiZKdwbzZJxhV+HMNR9QNmyY5cGwTNV6LrR7Jtp+KjhUAP1qBQ=="],
 
@@ -820,6 +833,8 @@
     "@stll/playground": ["@stll/playground@workspace:packages/playground"],
 
     "@stll/playground-vue": ["@stll/playground-vue@workspace:packages/playground-vue"],
+
+    "@stll/premirror-bridge": ["@stll/premirror-bridge@workspace:packages/premirror-bridge"],
 
     "@stll/template-conditions": ["@stll/template-conditions@0.1.0", "", { "dependencies": { "@stll/conditions": "^0.1.0", "better-result": "2.9.2" } }, "sha512-GkgzEDiSqpzG3GexlOfVXHgYiQSME8osQIZ645F9ooQbvDcsTVX5YVpfvmPwe3EOhRol6WjEyO2t/39+hNvQsg=="],
 
