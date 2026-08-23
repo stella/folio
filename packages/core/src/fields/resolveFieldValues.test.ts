@@ -53,6 +53,7 @@ const tableFragment = (blockId: string, fromRow: number, toRow: number): TableFr
 
 const page = (number: number, blockIds: string[]): Page => ({
   number,
+  logicalNumber: number,
   fragments: blockIds.map(fragment),
   margins: MARGINS,
   size: { w: 816, h: 1056 },
@@ -81,6 +82,13 @@ describe("resolveFieldValues", () => {
     expect(values.get(10)).toBe("1"); // block a on page 1
     expect(values.get(20)).toBe("3"); // block b on page 3
     expect(values.get(30)).toBe("4"); // NUMPAGES = totalPages
+  });
+
+  test("evaluates PAGE from the authored logical number", () => {
+    const blocks = [para("a", [field(10, "PAGE")])];
+    const logicalPage = { ...page(1, ["a"]), logicalNumber: 13 };
+
+    expect(resolveFieldValues(blocks, [logicalPage], shared()).values.get(10)).toBe("13");
   });
 
   test("resolves PAGEREF and SEQ from the shared inputs", () => {
@@ -149,6 +157,7 @@ describe("resolveFieldValues", () => {
     const pages: Page[] = [
       {
         number: 9,
+        logicalNumber: 9,
         fragments: [tableFragment("table", 0, 1)],
         margins: MARGINS,
         size: { w: 816, h: 1056 },
@@ -156,6 +165,7 @@ describe("resolveFieldValues", () => {
       },
       {
         number: 10,
+        logicalNumber: 10,
         fragments: [tableFragment("table", 1, 2)],
         margins: MARGINS,
         size: { w: 816, h: 1056 },

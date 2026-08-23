@@ -2268,8 +2268,7 @@ export function applySectionHeaderFooterOptions(
 
   const isFirstSectionPage = page.sectionPageNumber === 1;
   const useFirst = refs.titlePg === true && isFirstSectionPage;
-  const sectionPageNumber = page.sectionPageNumber ?? page.number;
-  const useEven = refs.evenAndOddHeaders === true && sectionPageNumber % 2 === 0;
+  const useEven = refs.evenAndOddHeaders === true && page.logicalNumber % 2 === 0;
 
   const headerRId = (() => {
     if (useFirst) {
@@ -2355,7 +2354,10 @@ function buildPageRenderArgs(
   options: FullPageOptions,
 ): { context: RenderContext; pageOptions: RenderPageOptions } {
   const context: RenderContext = {
-    pageNumber: page.number,
+    pageNumber: page.logicalNumber,
+    ...(page.logicalNumberFormat === undefined
+      ? {}
+      : { pageNumberFormat: page.logicalNumberFormat }),
     totalPages,
     section: "body",
     ...(options.bookmarkPages ? { bookmarkPages: options.bookmarkPages } : {}),
@@ -2461,6 +2463,7 @@ function computePageFingerprintInternal(
     parts.push(`am:${pageMarginsFingerprint(page.authoredMargins)}`);
   }
   parts.push(`n:${page.number}`);
+  parts.push(`ln:${page.logicalNumber},${page.logicalNumberFormat ?? ""}`);
   if (page.sectionIndex !== undefined) {
     parts.push(`si:${page.sectionIndex}`);
   }

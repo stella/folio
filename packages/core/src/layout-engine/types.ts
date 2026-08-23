@@ -734,9 +734,16 @@ export type SectionBreakBlock = {
   orientation?: "portrait" | "landscape";
   margins?: PageMargins;
   columns?: ColumnLayout;
+  /** Authored page-number continuation or restart policy for the section ending here. */
+  pageNumbering?: SectionPageNumbering;
   /** Line pitch authored by the section properties that end at this boundary, in twips. */
   documentGridLinePitchTwips?: number;
 };
+
+/** Normalized section page-number policy. An omitted OOXML start continues numbering. */
+export type SectionPageNumbering =
+  | { type: "continue"; format?: string }
+  | { type: "restart"; start: number; format?: string };
 
 export type PageHeaderFooterRefs = {
   titlePg?: boolean;
@@ -1143,8 +1150,12 @@ export type PageMargins = {
  * A rendered page containing positioned fragments.
  */
 export type Page = {
-  /** Page number (1-indexed). */
+  /** Physical page number (1-indexed), used for navigation and page counts. */
   number: number;
+  /** Authored page number shown by PAGE fields. */
+  logicalNumber: number;
+  /** OOXML number format for this page's section. */
+  logicalNumberFormat?: string;
   /** Fragments positioned on this page. */
   fragments: Fragment[];
   /** Page margins. */
@@ -1256,7 +1267,7 @@ export type LayoutOptions = {
    * same extension.
    */
   firstPageMargins?: PageMargins;
-  /** Per-section body margins used on even section pages. */
+  /** Per-section body margins used on even authored page numbers. */
   sectionEvenPageMargins?: (PageMargins | undefined)[];
   /** Body-level final section page size. */
   finalPageSize?: { w: number; h: number };
@@ -1264,6 +1275,8 @@ export type LayoutOptions = {
   finalMargins?: PageMargins;
   /** Body-level final section column configuration. */
   finalColumns?: ColumnLayout;
+  /** Body-level final section page-number policy. */
+  finalPageNumbering?: SectionPageNumbering;
   /** Column configuration. */
   columns?: ColumnLayout;
   /** Gap between rendered pages (for UI). */

@@ -45,6 +45,7 @@ const tableFragment = (blockId: string, fromRow: number, toRow: number): TableFr
 
 const page = (number: number, blockIds: string[]): Page => ({
   number,
+  logicalNumber: number,
   fragments: blockIds.map(fragment),
   margins: MARGINS,
   size: { w: 816, h: 1056 },
@@ -65,6 +66,12 @@ describe("buildBookmarkPageMap", () => {
     expect(map.get("schedule")).toBe(2);
     expect(map.get("exhibit")).toBe(2);
     expect(map.size).toBe(3);
+  });
+
+  test("maps bookmarks to authored logical page numbers", () => {
+    const logicalPage = { ...page(1, ["a"]), logicalNumber: 13 };
+
+    expect(buildBookmarkPageMap([logicalPage], [para("a", ["target"])]).get("target")).toBe(13);
   });
 
   test("a bookmark whose paragraph splits across pages takes the first page", () => {
@@ -95,6 +102,7 @@ describe("buildBookmarkPageMap", () => {
     const pages: Page[] = [
       {
         number: 4,
+        logicalNumber: 4,
         fragments: [tableFragment("table", 0, 1)],
         margins: MARGINS,
         size: { w: 816, h: 1056 },
@@ -126,12 +134,14 @@ describe("buildBookmarkPageMap", () => {
     const pages: Page[] = [
       {
         number: 8,
+        logicalNumber: 8,
         fragments: [tableFragment("table", 0, 1)],
         margins: MARGINS,
         size: { w: 816, h: 1056 },
       },
       {
         number: 9,
+        logicalNumber: 9,
         fragments: [tableFragment("table", 1, 2)],
         margins: MARGINS,
         size: { w: 816, h: 1056 },

@@ -68,7 +68,8 @@ import {
 } from "../../prosemirror/attrs";
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadingMark";
-import { directionIsRtl } from "../../prosemirror/paragraphDirection";
+import { directionToBidi } from "../../prosemirror/paragraphDirection";
+import { getPageNumbering } from "../../paged-layout/sectionGeometry";
 import type { RunFormattingOverrideAttrs } from "../../prosemirror/schema/marks";
 import type {
   ImageAttrs,
@@ -1747,8 +1748,9 @@ function convertParagraphAttrs(
   if (pmAttrs.runInWithNext) {
     attrs.runInWithNext = true;
   }
-  if (directionIsRtl(pmAttrs.direction)) {
-    attrs.bidi = true;
+  const bidi = directionToBidi(pmAttrs.direction);
+  if (bidi !== undefined) {
+    attrs.bidi = bidi;
   }
   if (pmAttrs.styleId) {
     attrs.styleId = pmAttrs.styleId;
@@ -3024,6 +3026,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
           }
 
           if (secProps) {
+            sectionBreak.pageNumbering = getPageNumbering(secProps);
             const documentGridLinePitchTwips = resolveDocumentGridLinePitch(secProps.docGrid);
             if (documentGridLinePitchTwips !== undefined) {
               sectionBreak.documentGridLinePitchTwips = documentGridLinePitchTwips;

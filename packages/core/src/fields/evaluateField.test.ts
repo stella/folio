@@ -30,6 +30,14 @@ describe("evaluateField page-number family", () => {
     expect(evalInstr("SECTIONPAGES", ctx)).toBe("5");
   });
 
+  test("PAGE uses the section format unless its field instruction overrides it", () => {
+    const ctx = baseContext({ pageNumber: 13, pageNumberFormat: "lowerRoman" });
+
+    expect(evalInstr("PAGE", ctx)).toBe("xiii");
+    expect(evalInstr("PAGE \\* MERGEFORMAT", ctx)).toBe("xiii");
+    expect(evalInstr("PAGE \\* ROMAN", ctx)).toBe("XIII");
+  });
+
   test("locked fields preserve their cached fallback", () => {
     const ctx = baseContext();
     expect(

@@ -1,4 +1,4 @@
-import type { PageMargins } from "../layout-engine/types";
+import type { PageMargins, SectionPageNumbering } from "../layout-engine/types";
 import type { SectionProperties } from "../types/document";
 
 export const DEFAULT_PAGE_WIDTH_PX = 816;
@@ -44,3 +44,16 @@ export const getMargins = (sectionProps: SectionProperties | null | undefined): 
   header: twipsToPxOr(sectionProps?.headerDistance, DEFAULT_HEADER_FOOTER_DISTANCE_PX),
   footer: twipsToPxOr(sectionProps?.footerDistance, DEFAULT_HEADER_FOOTER_DISTANCE_PX),
 });
+
+export const getPageNumbering = (
+  sectionProps: SectionProperties | null | undefined,
+): SectionPageNumbering => {
+  const pageNumbering = sectionProps?.pageNumbering;
+  const format = pageNumbering?.format;
+  if (pageNumbering?.start === undefined) {
+    return format === undefined ? { type: "continue" } : { type: "continue", format };
+  }
+  return format === undefined
+    ? { type: "restart", start: pageNumbering.start }
+    : { type: "restart", start: pageNumbering.start, format };
+};

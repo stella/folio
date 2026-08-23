@@ -20,6 +20,7 @@ import {
   collapseParagraphSpacing,
   getParagraphSpacingAfter,
   getParagraphSpacingBefore,
+  isEmptyParagraph,
   paragraphsShareStyle,
   resolveEffectiveParagraphSpacingTree,
 } from "./paragraphSpacing";
@@ -53,6 +54,7 @@ import type {
   TextBoxMeasure,
   TextBoxFragment,
   SectionBreakBlock,
+  SectionPageNumbering,
 } from "./types";
 
 const RENDERED_BREAK_REFLOW_TOLERANCE_LINES = 3;
@@ -60,11 +62,13 @@ const RENDERED_BREAK_REFLOW_TOLERANCE_LINES = 3;
 export type SectionLayoutConfig = {
   pageSize: { w: number; h: number };
   margins: PageMargins;
+  pageNumbering: SectionPageNumbering;
   columns?: ColumnLayout;
 };
 
 const DEFAULT_COLUMNS: ColumnLayout = { count: 1, gap: 0 };
 const DEFAULT_SECTION_BREAK_TYPE = "nextPage";
+const CONTINUE_PAGE_NUMBERING: SectionPageNumbering = { type: "continue" };
 
 export function collectSectionConfigs(
   blocks: FlowBlock[],
@@ -88,6 +92,7 @@ export function collectSectionConfigs(
     const config: SectionLayoutConfig = {
       pageSize: sectionBreak.pageSize ?? previousConfig.pageSize,
       margins: sectionBreak.margins ?? previousConfig.margins,
+      pageNumbering: sectionBreak.pageNumbering ?? CONTINUE_PAGE_NUMBERING,
     };
     if (sectionBreak.columns !== undefined) {
       config.columns = sectionBreak.columns;
@@ -317,6 +322,7 @@ export function layoutDocument(
   const bodyConfig: SectionLayoutConfig = {
     pageSize,
     margins,
+    pageNumbering: CONTINUE_PAGE_NUMBERING,
   };
   if (options.columns !== undefined) {
     bodyConfig.columns = options.columns;
@@ -324,6 +330,7 @@ export function layoutDocument(
   const finalConfig: SectionLayoutConfig = {
     pageSize: finalPageSize,
     margins: finalMargins,
+    pageNumbering: options.finalPageNumbering ?? CONTINUE_PAGE_NUMBERING,
   };
   const finalColumns = options.finalColumns ?? options.columns;
   if (finalColumns !== undefined) {
@@ -349,6 +356,7 @@ export function layoutDocument(
       ? { sectionEvenPageMargins: options.sectionEvenPageMargins }
       : {}),
     columns: initialConfig.columns ?? DEFAULT_COLUMNS,
+    pageNumbering: initialConfig.pageNumbering,
     ...(options.footnoteReservedHeights !== undefined
       ? { footnoteReservedHeights: options.footnoteReservedHeights }
       : {}),
@@ -888,11 +896,47 @@ export function getHeaderRowsHeight(measure: TableMeasure, headerRowCount: numbe
   return height;
 }
 
-const tableRowStartsWithRenderedPageBreak = (block: TableBlock, rowIndex: number): boolean =>
-  block.rows[rowIndex]?.cells.some((cell) => {
-    const firstBlock = cell.blocks.at(0);
-    return firstBlock?.kind === "paragraph" && firstBlock.attrs?.renderedPageBreakBefore === true;
-  }) ?? false;
+const tableRowStartsWithRenderedPageBreak = (block: TableBlock, rowIndex: number): boolean => {
+  const visibleCells = block.rows[rowIndex]?.cells.filter((cell) =>
+    cell.blocks.some((cellBlock) => cellBlock.kind !== "paragraph" || !isEmptyParagraph(cellBlock)),
+  );
+  if (!visibleCells || visibleCells.length === 0) {
+    return false;
+  }
+  return visibleCells.every((cell) => {
+    const firstVisibleBlock = cell.blocks.find(
+      (cellBlock) => cellBlock.kind !== "paragraph" || !isEmptyParagraph(cellBlock),
+    );
+    return (
+      firstVisibleBlock?.kind === "paragraph" &&
+      firstVisibleBlock.attrs?.renderedPageBreakBefore === true
+    );
+  });
+};
+
+const getVerticallyMergedRows = (block: TableBlock): Set<number> => {
+  const mergedRows = new Set<number>();
+  for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex += 1) {
+    const row = block.rows[rowIndex];
+    if (!row) {
+      continue;
+    }
+    for (const cell of row.cells) {
+      const rowSpan = cell.rowSpan ?? 1;
+      if (rowSpan <= 1) {
+        continue;
+      }
+      for (
+        let mergedRowIndex = rowIndex;
+        mergedRowIndex < Math.min(block.rows.length, rowIndex + rowSpan);
+        mergedRowIndex += 1
+      ) {
+        mergedRows.add(mergedRowIndex);
+      }
+    }
+  }
+  return mergedRows;
+};
 
 const flowBlockHasTrackedChanges = (block: FlowBlock): boolean => {
   if (block.kind === "paragraph") {
@@ -941,9 +985,7 @@ function layoutTable(
   let currentRowIndex = 0;
 
   const breakInfo = buildTableRowBreakInfo(block, measure);
-  const hasVerticalMerges = block.rows.some((row) =>
-    row.cells.some((cell) => (cell.rowSpan ?? 1) > 1),
-  );
+  const verticallyMergedRows = getVerticallyMergedRows(block);
   // X position from justification / indent, recomputed per fragment because the
   // active column can change across section breaks.
   const computeTableX = (columnIndex: number): number => {
@@ -993,7 +1035,13 @@ function layoutTable(
   const canSplitRow = (rowIndex: number, state = paginator.getCurrentState()): boolean => {
     const row = rows[rowIndex];
     const sourceRow = block.rows[rowIndex];
-    if (!row || !sourceRow || sourceRow.cantSplit || sourceRow.isHeader || hasVerticalMerges) {
+    if (
+      !row ||
+      !sourceRow ||
+      sourceRow.cantSplit ||
+      sourceRow.isHeader ||
+      verticallyMergedRows.has(rowIndex)
+    ) {
       return false;
     }
     if ((breakInfo.breakOffsets[rowIndex]?.length ?? 0) <= 1) {
@@ -1604,7 +1652,7 @@ function handleSectionBreak(
     case "nextPage":
       paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
       if (nextSectionIndex !== undefined) {
-        paginator.startSection(nextSectionIndex);
+        paginator.startSection(nextSectionIndex, nextSectionConfig.pageNumbering);
       }
       paginator.forcePageBreak({ coalesceBlankPage: true });
       break;
@@ -1612,7 +1660,7 @@ function handleSectionBreak(
     case "evenPage": {
       paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
       if (nextSectionIndex !== undefined) {
-        paginator.startSection(nextSectionIndex);
+        paginator.startSection(nextSectionIndex, nextSectionConfig.pageNumbering);
       }
       const state = paginator.forcePageBreak({ coalesceBlankPage: true });
       // If landed on odd page, add another page
@@ -1625,7 +1673,7 @@ function handleSectionBreak(
     case "oddPage": {
       paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
       if (nextSectionIndex !== undefined) {
-        paginator.startSection(nextSectionIndex);
+        paginator.startSection(nextSectionIndex, nextSectionConfig.pageNumbering);
       }
       const state = paginator.forcePageBreak({ coalesceBlankPage: true });
       // If landed on even page, add another page
@@ -1653,7 +1701,7 @@ function handleSectionBreak(
         (Math.round(nextSize.w) !== Math.round(currentPage.size.w) ||
           Math.round(nextSize.h) !== Math.round(currentPage.size.h));
       if (nextSectionIndex !== undefined) {
-        paginator.startSection(nextSectionIndex);
+        paginator.startSection(nextSectionIndex, nextSectionConfig.pageNumbering);
       }
       if (pageSizeChanges) {
         // Promote to a page break, but reuse an already blank current page as

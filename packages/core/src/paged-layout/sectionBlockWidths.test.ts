@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
+import type { SectionLayoutConfig } from "../layout-engine";
 import type { FlowBlock, ParagraphBlock } from "../layout-engine/types";
 import { computePerBlockMeasureInputs, computePerBlockWidths } from "./sectionBlockWidths";
 
 const BODY_CONFIG = {
   pageSize: { w: 1000, h: 1200 },
   margins: { top: 50, right: 100, bottom: 50, left: 100 },
-};
+  pageNumbering: { type: "continue" },
+} satisfies SectionLayoutConfig;
 
 function paragraph(id: string): ParagraphBlock {
   return {

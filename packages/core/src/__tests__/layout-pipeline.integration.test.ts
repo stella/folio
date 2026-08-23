@@ -9,12 +9,17 @@
 
 import { describe, test, expect } from "bun:test";
 
+import { parseDocumentBody } from "../docx/documentParser";
+import { resolveFieldValues } from "../fields/resolveFieldValues";
 import {
   clickToPosition,
   clickToPositionInParagraph,
 } from "../layout-bridge/engine/clickToPosition";
 import { hitTestPage, hitTestFragment, getPageTop } from "../layout-bridge/engine/hitTest";
 import { layoutDocument } from "../layout-engine/index";
+import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
+import { getPageNumbering } from "../paged-layout/sectionGeometry";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type {
   ParagraphBlock,
   ParagraphMeasure,
@@ -152,6 +157,45 @@ describe("Layout Engine - Page Production", () => {
       const fragment = layout.pages[0].fragments[0];
       expect(fragment.kind).toBe("paragraph");
       expect(fragment.blockId).toBe(0);
+    });
+
+    test("renders PAGE from a final sectPr restart instead of the physical page", () => {
+      const body = parseDocumentBody(`
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:body>
+            <w:p>
+              <w:fldSimple w:instr="PAGE"><w:r><w:t>1</w:t></w:r></w:fldSimple>
+            </w:p>
+            <w:sectPr><w:pgNumType w:start="13"/></w:sectPr>
+          </w:body>
+        </w:document>
+      `);
+      const blocks = toFlowBlocks(toProseDoc({ package: { document: body } }), {});
+      const paragraph = blocks.at(0);
+      expect(paragraph?.kind).toBe("paragraph");
+      if (paragraph?.kind !== "paragraph") {
+        throw new Error("expected PAGE field paragraph");
+      }
+      const field = paragraph.runs.find((run) => run.kind === "field");
+      expect(field?.pmStart).toBeDefined();
+      const layout = layoutDocument(
+        blocks,
+        [makeParagraphMeasure([makeLine(0, 0, 0, 1, 10, 24)])],
+        makeLayoutOptions({
+          finalPageNumbering: getPageNumbering(body.finalSectionProperties),
+        }),
+      );
+      const resolved = resolveFieldValues(blocks, layout.pages, {
+        totalPages: layout.pages.length,
+        bookmarkPages: new Map(),
+        bookmarkText: new Map(),
+        seqValues: new Map(),
+        sectionPageCounts: new Map([[0, 1]]),
+        now: new Date(0),
+      });
+
+      expect(layout.pages.at(0)).toMatchObject({ number: 1, logicalNumber: 13 });
+      expect(resolved.values.get(field?.pmStart ?? -1)).toBe("13");
     });
 
     test("positions a text-anchored floating table from the current text cursor", () => {
@@ -1578,6 +1622,44 @@ describe("Section Breaks", () => {
     expect(layout.pages[0].sectionPageNumber).toBe(1);
     expect(layout.pages[0].headerFooterRefs?.footerDefault).toBe("next-footer");
     expect(layout.pages[0].fragments.some((f) => f.blockId === 2)).toBe(true);
+  });
+
+  test("continues and restarts authored page numbers across section configs", () => {
+    const blocks: FlowBlock[] = [
+      makeParagraphBlock(0, "First", 1),
+      {
+        kind: "sectionBreak",
+        id: 1,
+        type: "nextPage",
+        pageNumbering: { type: "restart", start: 13 },
+      },
+      makeParagraphBlock(2, "Second", 10),
+      {
+        kind: "sectionBreak",
+        id: 3,
+        type: "nextPage",
+        pageNumbering: { type: "continue" },
+      },
+      makeParagraphBlock(4, "Third", 20),
+    ];
+    const paragraphMeasure = makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]);
+    const measures: Measure[] = [
+      paragraphMeasure,
+      { kind: "sectionBreak" },
+      paragraphMeasure,
+      { kind: "sectionBreak" },
+      paragraphMeasure,
+    ];
+
+    const layout = layoutDocument(
+      blocks,
+      measures,
+      makeLayoutOptions({ finalPageNumbering: { type: "restart", start: 4 } }),
+    );
+
+    expect(layout.pages.map(({ number }) => number)).toEqual([1, 2, 3]);
+    expect(layout.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([13, 14, 4]);
+    expect(layout.pages.map(({ sectionPageNumber }) => sectionPageNumber)).toEqual([1, 1, 1]);
   });
 
   test("continuous section break does not force new page", () => {

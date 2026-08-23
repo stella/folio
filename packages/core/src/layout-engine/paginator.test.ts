@@ -37,6 +37,66 @@ describe("paginator even-page margins", () => {
     expect(paginator.forcePageBreak().page.margins).toEqual(evenMargins);
     expect(paginator.forcePageBreak().page.margins).toEqual(MARGINS);
   });
+
+  test("uses authored page-number parity after a restart", () => {
+    const evenMargins = { ...MARGINS, top: 30, bottom: 35 };
+    const paginator = createPaginator({
+      pageSize: SIZE,
+      margins: MARGINS,
+      pageNumbering: { type: "restart", start: 2 },
+      sectionEvenPageMargins: [evenMargins],
+    });
+
+    expect(paginator.getCurrentState().page.margins).toEqual(evenMargins);
+  });
+
+  test("retargets a coalesced section page with its restarted parity", () => {
+    const evenMargins = { ...MARGINS, top: 30, bottom: 35 };
+    const paginator = createPaginator({
+      pageSize: SIZE,
+      margins: MARGINS,
+      sectionEvenPageMargins: [undefined, evenMargins],
+    });
+    paginator.forcePageBreak();
+    paginator.startSection(1, { type: "restart", start: 2 });
+
+    const page = paginator.forcePageBreak({ coalesceBlankPage: true }).page;
+
+    expect(paginator.pages).toHaveLength(1);
+    expect(page.logicalNumber).toBe(2);
+    expect(page.margins).toEqual(evenMargins);
+  });
+});
+
+describe("paginator logical page numbers", () => {
+  test("keeps physical, logical, and section page numbers distinct", () => {
+    const paginator = createPaginator({
+      pageSize: SIZE,
+      margins: MARGINS,
+      pageNumbering: { type: "restart", start: 13 },
+    });
+
+    const first = paginator.getCurrentState().page;
+    const second = paginator.forcePageBreak().page;
+    paginator.startSection(1, { type: "continue" });
+    const continued = paginator.forcePageBreak().page;
+    paginator.startSection(2, { type: "restart", start: 4 });
+    const restarted = paginator.forcePageBreak().page;
+
+    expect([first.number, second.number, continued.number, restarted.number]).toEqual([1, 2, 3, 4]);
+    expect([
+      first.logicalNumber,
+      second.logicalNumber,
+      continued.logicalNumber,
+      restarted.logicalNumber,
+    ]).toEqual([13, 14, 15, 4]);
+    expect([
+      first.sectionPageNumber,
+      second.sectionPageNumber,
+      continued.sectionPageNumber,
+      restarted.sectionPageNumber,
+    ]).toEqual([1, 2, 1, 1]);
+  });
 });
 
 describe("paginator forcePageBreak", () => {

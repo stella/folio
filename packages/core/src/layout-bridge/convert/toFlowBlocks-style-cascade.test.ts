@@ -3,8 +3,10 @@ import { describe, expect, test } from "bun:test";
 import type {
   ParagraphBlock,
   TableBlock as LayoutTableBlock,
+  TableMeasure,
   TextRun,
 } from "../../layout-engine/types";
+import { layoutDocument } from "../../layout-engine";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, StyleDefinitions, Table } from "../../types/document";
 import { toFlowBlocks } from "./toFlowBlocks";
@@ -34,6 +36,27 @@ function firstTableRun(blocks: unknown[]): TextRun {
   ) as LayoutTableBlock;
   const paragraph = table.rows[0]?.cells[0]?.blocks[0] as ParagraphBlock;
   return paragraph.runs[0] as TextRun;
+}
+
+function firstTableX(block: LayoutTableBlock): number | undefined {
+  const measure: TableMeasure = {
+    kind: "table",
+    rows: [
+      {
+        cells: [{ blocks: [], width: 100, height: 20 }],
+        height: 20,
+      },
+    ],
+    columnWidths: [100],
+    totalWidth: 100,
+    totalHeight: 20,
+  };
+  const layout = layoutDocument([block], [measure], {
+    pageSize: { w: 300, h: 200 },
+    margins: { top: 40, right: 40, bottom: 40, left: 40 },
+    pageGap: 20,
+  });
+  return layout.pages.at(0)?.fragments.find((fragment) => fragment.kind === "table")?.x;
 }
 
 describe("toFlowBlocks style cascade", () => {
@@ -371,7 +394,7 @@ describe("toFlowBlocks style cascade", () => {
     expect(firstTableRun(blocks).fontFamily).toBe("Arial");
   });
 
-  test("default table style supplies cell margins when table has no style ID", () => {
+  test("default table style supplies cell margins without authoring its zero indent", () => {
     const styles: StyleDefinitions = {
       styles: [
         {
@@ -427,15 +450,68 @@ describe("toFlowBlocks style cascade", () => {
       left: 144,
       right: 288,
     });
-    expect(tableNode?.attrs["_resolvedIndent"]).toEqual({ value: 0, type: "dxa" });
+    expect(tableNode?.attrs["_resolvedIndent"]).toBeNull();
     expect(tableNode?.attrs["_originalFormatting"]?.indent).toBeUndefined();
 
     const tableBlock = toFlowBlocks(pmDoc, {})[0];
     expect(tableBlock?.kind).toBe("table");
     if (tableBlock?.kind === "table") {
-      expect(tableBlock.indent).toBe(0);
+      expect(tableBlock.indent).toBeUndefined();
       expect(tableBlock.rows[0]?.cells[0]?.padding?.left).toBeCloseTo(9.6, 1);
       expect(tableBlock.rows[0]?.cells[0]?.padding?.right).toBeCloseTo(19.2, 1);
+      expect(firstTableX(tableBlock)).toBeCloseTo(30.4, 1);
+    }
+  });
+
+  test.each([
+    {
+      name: "direct",
+      formatting: { indent: { value: 0, type: "dxa" as const } },
+      styles: undefined,
+    },
+    {
+      name: "explicit style",
+      formatting: { styleId: "AuthoredTable" },
+      styles: {
+        styles: [
+          {
+            styleId: "AuthoredTable",
+            type: "table" as const,
+            name: "Authored Table",
+            tblPr: { indent: { value: 0, type: "dxa" as const } },
+          },
+        ],
+      },
+    },
+  ])("keeps $name zero table indentation authored", ({ formatting, styles }) => {
+    const table: Table = {
+      type: "table",
+      formatting,
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [{ type: "paragraph", content: [] }],
+            },
+          ],
+        },
+      ],
+    };
+    const document: Document = {
+      package: {
+        document: { content: [table] },
+        ...(styles ? { styles } : {}),
+      },
+    };
+
+    const tableBlock = toFlowBlocks(toProseDoc(document, styles ? { styles } : {}), {}).at(0);
+
+    expect(tableBlock?.kind).toBe("table");
+    if (tableBlock?.kind === "table") {
+      expect(tableBlock.indent).toBe(0);
+      expect(firstTableX(tableBlock)).toBe(40);
     }
   });
 

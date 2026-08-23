@@ -8,7 +8,14 @@
 import { panic } from "better-result";
 
 import { collapseParagraphSpacing } from "./paragraphSpacing";
-import type { Page, PageMargins, Fragment, ColumnLayout, PageHeaderFooterRefs } from "./types";
+import type {
+  Page,
+  PageMargins,
+  Fragment,
+  ColumnLayout,
+  PageHeaderFooterRefs,
+  SectionPageNumbering,
+} from "./types";
 import { FOOTNOTE_SEPARATOR_HEIGHT } from "./types";
 
 /**
@@ -63,8 +70,10 @@ export type PaginatorOptions = {
    * first-page header) vs. its body pages. Pages 2+ use `margins`.
    */
   firstPageMargins?: PageMargins;
-  /** Per-section body margins used on even section pages. */
+  /** Per-section body margins used on even authored page numbers. */
   sectionEvenPageMargins?: (PageMargins | undefined)[];
+  /** Page-number policy for the initial section. */
+  pageNumbering?: SectionPageNumbering;
   /** Column configuration (optional). */
   columns?: ColumnLayout;
   /** Per-page footnote reserved heights (pageNumber → height in pixels). */
@@ -130,6 +139,10 @@ export function createPaginator(options: PaginatorOptions) {
   let pendingMargins: PageMargins | undefined;
   let currentSectionIndex = 0;
   let currentSectionPageNumber = 0;
+  let currentPageNumbering: SectionPageNumbering = options.pageNumbering ?? { type: "continue" };
+  let nextLogicalPageNumber =
+    currentPageNumbering.type === "restart" ? currentPageNumbering.start : 1;
+  let sectionStartPending = true;
 
   const pages: Page[] = [];
   const states: PageState[] = [];
@@ -154,7 +167,7 @@ export function createPaginator(options: PaginatorOptions) {
       arePageSizesEqual(state.page.size, pageSize) &&
       areMarginsEqual(
         state.page.margins,
-        getPageMargins(state.page.number, state.page.sectionPageNumber ?? currentSectionPageNumber),
+        getPageMargins(state.page.number, state.page.logicalNumber),
       )
     );
   }
@@ -184,9 +197,9 @@ export function createPaginator(options: PaginatorOptions) {
     recalculateColumnWidths();
   }
 
-  function getPageMargins(pageNumber: number, sectionPageNumber: number): PageMargins {
+  function getPageMargins(pageNumber: number, logicalPageNumber: number): PageMargins {
     const evenMargins =
-      sectionPageNumber % 2 === 0
+      logicalPageNumber % 2 === 0
         ? options.sectionEvenPageMargins?.[currentSectionIndex]
         : undefined;
     const pageMargins =
@@ -210,7 +223,8 @@ export function createPaginator(options: PaginatorOptions) {
    * Get X position for a given column index.
    */
   function getColumnX(columnIndex: number): number {
-    const activeLeftMargin = states.at(-1)?.page.margins.left ?? getPageMargins(1, 1).left;
+    const activeLeftMargin =
+      states.at(-1)?.page.margins.left ?? getPageMargins(1, nextLogicalPageNumber).left;
     let x = activeLeftMargin;
     for (let index = 0; index < columnIndex; index++) {
       x += (columnWidths[index] ?? columnWidths[0] ?? 0) + gapAfterColumn(columns, index);
@@ -227,6 +241,9 @@ export function createPaginator(options: PaginatorOptions) {
     }
 
     const pageNumber = pages.length + 1;
+    const logicalNumber = nextLogicalPageNumber;
+    nextLogicalPageNumber += 1;
+    sectionStartPending = false;
     currentSectionPageNumber += 1;
     // Page 1 of the document may use first-page margins (extended top to
     // clear an overflowing first-page header on a titlePg section) while
@@ -234,7 +251,7 @@ export function createPaginator(options: PaginatorOptions) {
     // every page in the section would inherit page 1's title-page top
     // margin, leaving large empty space at the top of pages 2+ on
     // first-page-header docs (NVCA-style templates).
-    const pageMargins = getPageMargins(pageNumber, currentSectionPageNumber);
+    const pageMargins = getPageMargins(pageNumber, logicalNumber);
     const topMargin = pageMargins.top;
     const contentBottom = pageSize.h - pageMargins.bottom;
 
@@ -248,6 +265,10 @@ export function createPaginator(options: PaginatorOptions) {
 
     const page: Page = {
       number: pageNumber,
+      logicalNumber,
+      ...(currentPageNumbering.format === undefined
+        ? {}
+        : { logicalNumberFormat: currentPageNumbering.format }),
       fragments: [],
       margins: pageMargins,
       size: { ...pageSize },
@@ -453,14 +474,15 @@ export function createPaginator(options: PaginatorOptions) {
       breakOptions.coalesceBlankPage &&
       current &&
       current.page.fragments.length === 0 &&
-      current.cursorY === current.topMargin &&
-      currentPageUsesActiveLayout(current)
+      current.cursorY === current.topMargin
     ) {
       if (current.page.sectionIndex !== currentSectionIndex) {
-        currentSectionPageNumber = 1;
-        applySectionMetadata(current.page);
+        retargetCurrentBlankPage();
+        return current;
       }
-      return current;
+      if (currentPageUsesActiveLayout(current)) {
+        return current;
+      }
     }
     return createNewPage();
   }
@@ -475,7 +497,8 @@ export function createPaginator(options: PaginatorOptions) {
       applyPendingLayout();
     }
 
-    const pageMargins = getPageMargins(current.page.number, 1);
+    retargetSectionMetadata(current.page);
+    const pageMargins = getPageMargins(current.page.number, current.page.logicalNumber);
     const topMargin = pageMargins.top;
     const rawContentBottom = pageSize.h - pageMargins.bottom;
     const footnoteHeight = options.footnoteReservedHeights?.get(current.page.number) ?? 0;
@@ -502,8 +525,6 @@ export function createPaginator(options: PaginatorOptions) {
     current.trailingSpacing = 0;
     columnRegionTop = topMargin;
 
-    currentSectionPageNumber = 1;
-    applySectionMetadata(current.page);
     return true;
   }
 
@@ -579,9 +600,32 @@ export function createPaginator(options: PaginatorOptions) {
     pendingMargins = undefined;
   }
 
-  function startSection(sectionIndex: number): void {
+  function startSection(
+    sectionIndex: number,
+    pageNumbering: SectionPageNumbering = { type: "continue" },
+  ): void {
     currentSectionIndex = sectionIndex;
     currentSectionPageNumber = 0;
+    currentPageNumbering = pageNumbering;
+    sectionStartPending = true;
+    if (pageNumbering.type === "restart") {
+      nextLogicalPageNumber = pageNumbering.start;
+    }
+  }
+
+  function retargetSectionMetadata(page: Page): void {
+    currentSectionPageNumber = 1;
+    if (sectionStartPending && currentPageNumbering.type === "restart") {
+      page.logicalNumber = currentPageNumbering.start;
+      nextLogicalPageNumber = currentPageNumbering.start + 1;
+    }
+    sectionStartPending = false;
+    if (currentPageNumbering.format === undefined) {
+      delete page.logicalNumberFormat;
+    } else {
+      page.logicalNumberFormat = currentPageNumbering.format;
+    }
+    applySectionMetadata(page);
   }
 
   function applySectionMetadata(page: Page): void {

@@ -129,6 +129,72 @@ function markFirstTableParagraphWithRenderedBreak(block: TableBlock): void {
   firstBlock.attrs = { renderedPageBreakBefore: true };
 }
 
+function tableWithVerticalMergeAndTallBody(): {
+  block: TableBlock;
+  measure: TableMeasure;
+} {
+  const shortCellBlock = (id: string) => ({
+    kind: "paragraph" as const,
+    id,
+    runs: [{ kind: "text" as const, text: id }],
+  });
+  const shortCellMeasure = {
+    blocks: [paraMeasure(1)],
+    width: 110,
+    height: LINE,
+  };
+  const tallHeight = 15 * LINE;
+  return {
+    block: {
+      kind: "table",
+      id: "t-merged",
+      rows: [
+        {
+          id: "r-merge-origin",
+          cells: [
+            {
+              id: "c-merge",
+              rowSpan: 2,
+              blocks: [shortCellBlock("p-merge")],
+            },
+            { id: "c-origin", blocks: [shortCellBlock("p-origin")] },
+          ],
+        },
+        {
+          id: "r-merge-continuation",
+          cells: [{ id: "c-continuation", blocks: [shortCellBlock("p-continuation")] }],
+        },
+        {
+          id: "r-tall",
+          cells: [
+            {
+              id: "c-tall",
+              colSpan: 2,
+              padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              blocks: [shortCellBlock("p-tall")],
+            },
+          ],
+        },
+      ],
+      columnWidths: [110, 110],
+    },
+    measure: {
+      kind: "table",
+      rows: [
+        { cells: [shortCellMeasure, shortCellMeasure], height: LINE },
+        { cells: [shortCellMeasure], height: LINE },
+        {
+          cells: [{ blocks: [paraMeasure(15)], width: 220, height: tallHeight }],
+          height: tallHeight,
+        },
+      ],
+      columnWidths: [110, 110],
+      totalWidth: 220,
+      totalHeight: 2 * LINE + tallHeight,
+    },
+  };
+}
+
 function tableWithHeaderAndTallBody(bodyLines: number): {
   block: TableBlock;
   measure: TableMeasure;
@@ -1195,6 +1261,48 @@ describe("oversized table row splits across pages (#570)", () => {
     expect(fragment).toMatchObject({ y: OPTIONS.margins.top + 20, height: 3 * LINE });
   });
 
+  test("does not promote one cell's cached boundary to the whole row", () => {
+    const spacer: FlowBlock = {
+      kind: "paragraph",
+      id: "spacer",
+      runs: [{ kind: "text", text: "spacer" }],
+    };
+    const spacerMeasure = paraMeasureWithLineHeight(1, 70);
+    const { block, measure } = tallTable(5);
+    markFirstTableParagraphWithRenderedBreak(block);
+    block.rows[0]!.cells.push({
+      id: "c1",
+      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      blocks: [
+        {
+          kind: "paragraph",
+          id: "p1",
+          runs: [{ kind: "text", text: "continues before the cached boundary" }],
+        },
+      ],
+    });
+    block.columnWidths = [110, 110];
+    measure.rows[0]!.cells.push({
+      blocks: [paraMeasure(5)],
+      width: 110,
+      height: 5 * LINE,
+    });
+    measure.rows[0]!.cells[0]!.width = 110;
+    measure.columnWidths = [110, 110];
+
+    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const firstPageFragment = layout.pages[0]?.fragments.find(
+      (fragment): fragment is TableFragment => fragment.kind === "table",
+    );
+
+    expect(firstPageFragment).toMatchObject({
+      y: OPTIONS.margins.top + 70,
+      fromRow: 0,
+      toRow: 1,
+      bottomClip: 2 * LINE,
+    });
+  });
+
   test("still splits an oversized cached-boundary row on the fresh page", () => {
     const spacer: FlowBlock = {
       kind: "paragraph",
@@ -1214,6 +1322,61 @@ describe("oversized table row splits across pages (#570)", () => {
     expect(frags.length).toBeGreaterThan(1);
     expect(frags[0]).toMatchObject({ y: OPTIONS.margins.top, bottomClip: 6 * LINE });
     expect(frags.at(-1)?.bottomClip).toBeUndefined();
+  });
+
+  test("splits an ordinary oversized row when another row has a vertical merge", () => {
+    const { block, measure } = tableWithVerticalMergeAndTallBody();
+
+    const fragments = tableFragments(block, measure);
+    const mergedFragments = fragments.filter((fragment) => fragment.fromRow < 2);
+    const tallRowFragments = fragments.filter((fragment) => fragment.fromRow === 2);
+
+    expect(
+      mergedFragments.every(
+        ({ topClip, bottomClip }) => topClip === undefined && bottomClip === undefined,
+      ),
+    ).toBe(true);
+    expect(tallRowFragments.length).toBeGreaterThan(1);
+    expect(tallRowFragments.at(0)?.bottomClip).toBeDefined();
+    expect(tallRowFragments.at(-1)?.topClip).toBeDefined();
+    expect(tallRowFragments.at(-1)?.bottomClip).toBeUndefined();
+  });
+
+  test("keeps every row covered by a vertical merge unsplit", () => {
+    const { block, measure } = tableWithVerticalMergeAndTallBody();
+    measure.rows[1] = {
+      cells: [{ blocks: [paraMeasure(15)], width: 110, height: 15 * LINE }],
+      height: 15 * LINE,
+    };
+    measure.totalHeight += 14 * LINE;
+
+    const mergedContinuationFragments = tableFragments(block, measure).filter(
+      (fragment) => fragment.fromRow === 1,
+    );
+
+    expect(mergedContinuationFragments).toHaveLength(1);
+    expect(mergedContinuationFragments[0]?.topClip).toBeUndefined();
+    expect(mergedContinuationFragments[0]?.bottomClip).toBeUndefined();
+  });
+
+  test("keeps an oversized vertical-merge origin unsplit", () => {
+    const { block, measure } = tableWithVerticalMergeAndTallBody();
+    measure.rows[0] = {
+      cells: [
+        { blocks: [paraMeasure(15)], width: 110, height: 15 * LINE },
+        { blocks: [paraMeasure(1)], width: 110, height: LINE },
+      ],
+      height: 15 * LINE,
+    };
+    measure.totalHeight += 14 * LINE;
+
+    const mergeOriginFragments = tableFragments(block, measure).filter(
+      (fragment) => fragment.fromRow === 0,
+    );
+
+    expect(mergeOriginFragments).toHaveLength(1);
+    expect(mergeOriginFragments[0]?.topClip).toBeUndefined();
+    expect(mergeOriginFragments[0]?.bottomClip).toBeUndefined();
   });
 
   test("splits a break-permitted row after adjacent table rows", () => {

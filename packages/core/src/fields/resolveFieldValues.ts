@@ -20,7 +20,7 @@ export type HeaderFooterFieldInputs = Pick<
   "bookmarkPages" | "bookmarkText" | "seqValues" | "sectionPageCounts"
 >;
 
-type BlockLocation = { page: number; sectionIndex: number };
+type BlockLocation = { page: number; pageFormat?: string; sectionIndex: number };
 type FieldAnchor =
   | { type: "block"; blockId: BlockId; run: FieldRun }
   | { type: "tableRow"; blockId: BlockId; rowIndex: number; run: FieldRun };
@@ -66,6 +66,7 @@ export function resolveFieldValues(
     const sectionPages = location ? shared.sectionPageCounts.get(location.sectionIndex) : undefined;
     const context: FieldContext = {
       pageNumber: location?.page ?? 1,
+      ...(location?.pageFormat === undefined ? {} : { pageNumberFormat: location.pageFormat }),
       totalPages: shared.totalPages,
       bookmarkPages: shared.bookmarkPages,
       bookmarkText: shared.bookmarkText,
@@ -235,7 +236,10 @@ function buildBlockPageMap(pages: readonly Page[]): Map<BlockId, BlockLocation> 
     for (const fragment of page.fragments) {
       if (!map.has(fragment.blockId)) {
         map.set(fragment.blockId, {
-          page: page.number,
+          page: page.logicalNumber,
+          ...(page.logicalNumberFormat === undefined
+            ? {}
+            : { pageFormat: page.logicalNumberFormat }),
           sectionIndex: page.sectionIndex ?? 0,
         });
       }
@@ -255,7 +259,10 @@ function buildTableRowPageMap(pages: readonly Page[]): Map<string, BlockLocation
         const key = tableRowKey(fragment.blockId, rowIndex);
         if (!map.has(key)) {
           map.set(key, {
-            page: page.number,
+            page: page.logicalNumber,
+            ...(page.logicalNumberFormat === undefined
+              ? {}
+              : { pageFormat: page.logicalNumberFormat }),
             sectionIndex: page.sectionIndex ?? 0,
           });
         }

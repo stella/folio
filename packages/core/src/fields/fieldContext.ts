@@ -8,6 +8,8 @@
 export type FieldContext = {
   /** 1-indexed page the field is on (PAGE). */
   pageNumber: number;
+  /** OOXML section-level format used when PAGE has no explicit format switch. */
+  pageNumberFormat?: string;
   /** Total pages in the document (NUMPAGES). */
   totalPages: number;
   /** Pages in the field's current section (SECTIONPAGES); omit until the

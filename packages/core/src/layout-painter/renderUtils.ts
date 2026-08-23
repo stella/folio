@@ -46,6 +46,8 @@ export function resolveImageLineAlign(
 export type RenderContext = {
   /** Current page number (1-indexed) */
   pageNumber: number;
+  /** OOXML section-level format for the current logical page number. */
+  pageNumberFormat?: string;
   /** Total number of pages */
   totalPages: number;
   /** Which section is being rendered */

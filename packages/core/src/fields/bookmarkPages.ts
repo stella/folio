@@ -31,7 +31,7 @@ export function buildBookmarkPageMap(
         if (!fragmentContainsAnchor(fragment, anchor)) {
           continue;
         }
-        assignBookmarkPage(pageByBookmark, anchor.names, page.number);
+        assignBookmarkPage(pageByBookmark, anchor.names, page.logicalNumber);
       }
     }
   }

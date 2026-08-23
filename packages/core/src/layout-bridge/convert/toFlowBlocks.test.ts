@@ -6,6 +6,19 @@ import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  test("projects authored section page-number restarts", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", {
+        _sectionProperties: { pageNumbering: { start: 13, format: "lowerRoman" } },
+      }),
+    ]);
+
+    expect(toFlowBlocks(doc, {}).at(0)).toMatchObject({
+      kind: "sectionBreak",
+      pageNumbering: { type: "restart", start: 13, format: "lowerRoman" },
+    });
+  });
+
   test("stamps each top-level paragraph with its section line pitch", () => {
     const doc = schema.node("doc", null, [
       schema.node(

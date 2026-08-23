@@ -1422,8 +1422,13 @@ function convertTable(
   const conditionalTableStyleId = tableStyle?.styleId ?? fallbackTableStyle?.styleId;
   const resolvedTableBorders =
     table.formatting?.borders ?? tableStyle?.tblPr?.borders ?? fallbackTableStyle?.tblPr?.borders;
+  const fallbackTableIndent = fallbackTableStyle?.tblPr?.indent;
+  // TableNormal's zero is Word's unindented default: keep it absent so layout
+  // aligns first-cell text with the margin. Direct and explicit-style zero remain authored.
   const resolvedTableIndent =
-    table.formatting?.indent ?? tableStyle?.tblPr?.indent ?? fallbackTableStyle?.tblPr?.indent;
+    table.formatting?.indent ??
+    tableStyle?.tblPr?.indent ??
+    (fallbackTableIndent?.value === 0 ? undefined : fallbackTableIndent);
 
   // Resolve default cell margins through the same table-style cascade.
   const tableCellMargins =

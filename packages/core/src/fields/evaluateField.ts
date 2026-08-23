@@ -62,7 +62,7 @@ export function evaluateField(
 
   switch (parsed.type) {
     case "PAGE":
-      return computePageNumber(ctx.pageNumber, parsed);
+      return computePageNumber(ctx.pageNumber, parsed, ctx.pageNumberFormat);
     case "NUMPAGES":
       return computePageNumber(ctx.totalPages, parsed);
     case "SECTIONPAGES":

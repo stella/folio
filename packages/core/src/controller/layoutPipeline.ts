@@ -63,7 +63,12 @@ import { tryBuildIncrementalMeasures } from "../paged-layout/incrementalMeasure"
 import type { DirtyRange } from "../paged-layout/incrementalMeasure";
 import type { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
 import { computePerBlockMeasureInputs } from "../paged-layout/sectionBlockWidths";
-import { getMargins, getPageSize, twipsToPixels } from "../paged-layout/sectionGeometry";
+import {
+  getMargins,
+  getPageNumbering,
+  getPageSize,
+  twipsToPixels,
+} from "../paged-layout/sectionGeometry";
 import { templatePreviewValuesKey } from "../prosemirror/plugins/templatePreviewValues";
 import type { TemplatePreviewEntry } from "../prosemirror/plugins/templatePreviewValues";
 import type {
@@ -563,6 +568,7 @@ export function runLayoutPipeline<THfPMs>(
     const bodyLayoutConfig: SectionLayoutConfig = {
       pageSize,
       margins: initialBodyMargins,
+      pageNumbering: getPageNumbering(sectionProperties),
     };
     if (columns !== undefined) {
       bodyLayoutConfig.columns = columns;
@@ -590,6 +596,7 @@ export function runLayoutPipeline<THfPMs>(
             preparedHeader: finalHeaderForLayout,
             preparedFooter: finalFooterForLayout,
           }),
+          pageNumbering: getPageNumbering(finalSectionProperties),
         }
       : bodyLayoutConfig;
     const finalColumns = getColumns(finalSectionProperties);
@@ -672,6 +679,7 @@ export function runLayoutPipeline<THfPMs>(
         nextLayoutOpts.finalPageSize = finalLayoutConfig.pageSize;
         nextLayoutOpts.finalMargins = finalLayoutConfig.margins;
         nextLayoutOpts.finalColumns = finalLayoutConfig.columns ?? { count: 1, gap: 0 };
+        nextLayoutOpts.finalPageNumbering = finalLayoutConfig.pageNumbering;
       }
       if (columns !== undefined) {
         nextLayoutOpts.columns = columns;

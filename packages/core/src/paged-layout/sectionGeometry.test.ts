@@ -5,6 +5,7 @@ import {
   DEFAULT_HEADER_FOOTER_DISTANCE_PX,
   DEFAULT_PAGE_WIDTH_PX,
   getMargins,
+  getPageNumbering,
   getPageSize,
   twipsToPixels,
   twipsToPxOr,
@@ -55,5 +56,17 @@ describe("paged editor section geometry", () => {
     expect(page.w).toBe(twipsToPixels(1001));
     expect(margins.left).toBe(twipsToPixels(101));
     expect(page.w - margins.left - margins.right).toBeCloseTo(twipsToPixels(698), 10);
+  });
+
+  test("normalizes omitted starts as continuation and authored starts as restarts", () => {
+    expect(getPageNumbering(undefined)).toEqual({ type: "continue" });
+    expect(getPageNumbering({ pageNumbering: { format: "lowerRoman" } })).toEqual({
+      type: "continue",
+      format: "lowerRoman",
+    });
+    expect(getPageNumbering({ pageNumbering: { start: 13 } })).toEqual({
+      type: "restart",
+      start: 13,
+    });
   });
 });

@@ -545,14 +545,11 @@ export function isTocField(field: Field): boolean {
 export function computePageNumber(
   pageNumber: number,
   instruction?: ParsedFieldInstruction,
+  sectionFormat?: string,
 ): string {
-  if (!instruction) {
-    return String(pageNumber);
-  }
-
-  const format = getFormatSwitch(instruction);
-  if (!format) {
-    return String(pageNumber);
+  const format = instruction ? getFormatSwitch(instruction) : undefined;
+  if (!format || format.toUpperCase() === "MERGEFORMAT") {
+    return formatSectionPageNumber(pageNumber, sectionFormat);
   }
 
   // Handle common format switches
@@ -561,6 +558,21 @@ export function computePageNumber(
       return toRoman(pageNumber);
     case "ALPHABETIC":
       return toLetter(pageNumber);
+    default:
+      return String(pageNumber);
+  }
+}
+
+function formatSectionPageNumber(pageNumber: number, format: string | undefined): string {
+  switch (format) {
+    case "upperRoman":
+      return toRoman(pageNumber);
+    case "lowerRoman":
+      return toRoman(pageNumber).toLowerCase();
+    case "upperLetter":
+      return toLetter(pageNumber);
+    case "lowerLetter":
+      return toLetter(pageNumber).toLowerCase();
     default:
       return String(pageNumber);
   }

@@ -181,7 +181,10 @@ export class LayoutPainter {
     for (const i_item of pages) {
       const page = i_item;
       const context: RenderContext = {
-        pageNumber: page.number,
+        pageNumber: page.logicalNumber,
+        ...(page.logicalNumberFormat === undefined
+          ? {}
+          : { pageNumberFormat: page.logicalNumberFormat }),
         totalPages: this.totalPages,
         section: "body",
       };

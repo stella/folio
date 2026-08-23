@@ -1058,6 +1058,9 @@ function resolveFieldText(run: FieldRun, context: RenderContext | undefined): st
   }
   const fieldContext: FieldContext = {
     pageNumber: context.pageNumber,
+    ...(context.pageNumberFormat === undefined
+      ? {}
+      : { pageNumberFormat: context.pageNumberFormat }),
     totalPages: context.totalPages,
     bookmarkPages: context.bookmarkPages ?? EMPTY_BOOKMARK_PAGES,
     bookmarkText: context.bookmarkText ?? EMPTY_BOOKMARK_TEXT,
