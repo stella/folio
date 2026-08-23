@@ -1,4 +1,5 @@
 import { panic } from "better-result";
+import { XMLParser, XMLValidator } from "fast-xml-parser";
 import JSZip from "jszip";
 
 import {
@@ -22,7 +23,20 @@ import {
   type TrackedRunChange,
 } from "../model/document";
 
-export type ValidateDocxPackageResult = { valid: true } | { valid: false; error: string };
+export const DOCX_PACKAGE_ISSUE_CODES = {
+  ArchiveBoundsExceeded: "archive_bounds_exceeded",
+  InvalidArchive: "invalid_archive",
+  InvalidDocumentRoot: "invalid_document_root",
+  MissingNumberingPart: "missing_numbering_part",
+  MissingPackagePart: "missing_package_part",
+} as const;
+
+export type DocxPackageIssueCode =
+  (typeof DOCX_PACKAGE_ISSUE_CODES)[keyof typeof DOCX_PACKAGE_ISSUE_CODES];
+
+export type ValidateDocxPackageResult =
+  | { valid: true }
+  | { valid: false; code: DocxPackageIssueCode; error: string };
 
 export type ValidateDocumentModelIssue = {
   path: string;
@@ -47,6 +61,21 @@ export type ValidateDocumentModelResult = {
 const VALIDATE_DOCX_MAX_ENTRIES = 4096;
 const VALIDATE_DOCX_MAX_ENTRY_BYTES = 128 * 1024 * 1024;
 const VALIDATE_DOCX_MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+
+const WORDPROCESSINGML_NAMESPACES = new Set([
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+  "http://purl.oclc.org/ooxml/wordprocessingml/main",
+]);
+
+const packageXmlParser = new XMLParser({
+  preserveOrder: true,
+  ignoreAttributes: false,
+  attributeNamePrefix: "",
+  parseTagValue: false,
+  parseAttributeValue: false,
+  processEntities: false,
+  ignoreDeclaration: true,
+});
 
 type ZipEntryWithMetadata = { _data?: { uncompressedSize?: number } };
 
@@ -85,6 +114,73 @@ const checkDocxArchiveBounds = (zip: JSZip): string | null => {
   return null;
 };
 
+type OrderedXmlNode = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const elementName = (node: OrderedXmlNode): string | null =>
+  Object.keys(node).find((key) => key !== ":@" && !key.startsWith("?")) ?? null;
+
+const localName = (name: string): string => name.slice(name.indexOf(":") + 1);
+
+const prefix = (name: string): string => {
+  const separator = name.indexOf(":");
+  return separator === -1 ? "" : name.slice(0, separator);
+};
+
+const namespaceFor = (
+  name: string,
+  attributes: Record<string, unknown>,
+  inherited: Record<string, unknown> = {},
+): string | null => {
+  const key = prefix(name) === "" ? "xmlns" : `xmlns:${prefix(name)}`;
+  const value = attributes[key] ?? inherited[key];
+  return typeof value === "string" ? value : null;
+};
+
+const validateDocumentXml = (xml: string): string | null => {
+  if (XMLValidator.validate(xml) !== true) {
+    return "Generated DOCX has malformed word/document.xml.";
+  }
+  const parsed: unknown = packageXmlParser.parse(xml);
+  if (!Array.isArray(parsed)) {
+    return "Generated DOCX has no word/document.xml root document.";
+  }
+  const root = parsed.find(isRecord);
+  if (!root) {
+    return "Generated DOCX has no word/document.xml root document.";
+  }
+  const rootName = elementName(root);
+  const rootAttributes = isRecord(root[":@"]) ? root[":@"] : {};
+  if (
+    rootName === null ||
+    localName(rootName) !== "document" ||
+    !WORDPROCESSINGML_NAMESPACES.has(namespaceFor(rootName, rootAttributes) ?? "")
+  ) {
+    return "Generated DOCX has no WordprocessingML document root.";
+  }
+  const children = root[rootName];
+  if (!Array.isArray(children)) {
+    return "Generated DOCX document root has no WordprocessingML body.";
+  }
+  const hasBody = children.some((child) => {
+    if (!isRecord(child)) {
+      return false;
+    }
+    const childName = elementName(child);
+    const childAttributes = isRecord(child[":@"]) ? child[":@"] : {};
+    return (
+      childName !== null &&
+      localName(childName) === "body" &&
+      WORDPROCESSINGML_NAMESPACES.has(
+        namespaceFor(childName, childAttributes, rootAttributes) ?? "",
+      )
+    );
+  });
+  return hasBody ? null : "Generated DOCX document root has no WordprocessingML body.";
+};
+
 export const validateDocxPackage = async (
   buffer: ArrayBuffer | Uint8Array,
 ): Promise<ValidateDocxPackageResult> => {
@@ -93,29 +189,32 @@ export const validateDocxPackage = async (
 
     const boundsError = checkDocxArchiveBounds(zip);
     if (boundsError) {
-      return { valid: false, error: boundsError };
+      return {
+        valid: false,
+        code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
+        error: boundsError,
+      };
     }
 
-    for (const requiredPath of [
-      "[Content_Types].xml",
-      "_rels/.rels",
-      "word/document.xml",
-      "word/styles.xml",
-      "word/_rels/document.xml.rels",
-    ]) {
+    for (const requiredPath of ["[Content_Types].xml", "_rels/.rels", "word/document.xml"]) {
       if (!zip.file(requiredPath)) {
         return {
           valid: false,
+          code: DOCX_PACKAGE_ISSUE_CODES.MissingPackagePart,
           error: `Generated DOCX is missing required package part: ${requiredPath}`,
         };
       }
     }
 
     const documentXml = await zip.file("word/document.xml")?.async("string");
-    if (!documentXml?.includes("<w:document")) {
+    const documentError = documentXml
+      ? validateDocumentXml(documentXml)
+      : "Generated DOCX has no word/document.xml root document.";
+    if (documentError) {
       return {
         valid: false,
-        error: "Generated DOCX has no word/document.xml root document.",
+        code: DOCX_PACKAGE_ISSUE_CODES.InvalidDocumentRoot,
+        error: documentError,
       };
     }
 
@@ -123,6 +222,7 @@ export const validateDocxPackage = async (
     if (documentRelsXml?.includes("/relationships/numbering") && !zip.file("word/numbering.xml")) {
       return {
         valid: false,
+        code: DOCX_PACKAGE_ISSUE_CODES.MissingNumberingPart,
         error: "Generated DOCX references numbering.xml but does not include it.",
       };
     }
@@ -131,6 +231,7 @@ export const validateDocxPackage = async (
   } catch (error) {
     return {
       valid: false,
+      code: DOCX_PACKAGE_ISSUE_CODES.InvalidArchive,
       error: error instanceof Error ? error.message : "Invalid DOCX package.",
     };
   }

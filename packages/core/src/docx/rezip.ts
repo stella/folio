@@ -29,6 +29,7 @@
  * - docProps/* - Document properties (preserved)
  */
 
+import { validateDocxPackage } from "@stll/docx-core";
 import { panic } from "better-result";
 import JSZip from "jszip";
 
@@ -2227,80 +2228,18 @@ function getContentTypeForExtension(extension: string, mimeType: string): string
  * @param buffer - Buffer to validate
  * @returns Promise resolving to validation result
  */
-export async function validateDocx(buffer: ArrayBuffer): Promise<{
+export const validateDocx = async (
+  buffer: ArrayBuffer,
+): Promise<{
   valid: boolean;
   errors: string[];
   warnings: string[];
-}> {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  try {
-    const zip = await JSZip.loadAsync(buffer);
-
-    // Check for required files
-    const requiredFiles = ["[Content_Types].xml", "word/document.xml"];
-
-    for (const file of requiredFiles) {
-      if (!zip.file(file)) {
-        errors.push(`Missing required file: ${file}`);
-      }
-    }
-
-    // Check for recommended files
-    const recommendedFiles = ["_rels/.rels", "word/_rels/document.xml.rels", "word/styles.xml"];
-
-    for (const file of recommendedFiles) {
-      if (!zip.file(file)) {
-        warnings.push(`Missing recommended file: ${file}`);
-      }
-    }
-
-    // Validate document.xml is valid XML
-    const docFile = zip.file("word/document.xml");
-    if (docFile) {
-      const docXml = await docFile.async("text");
-
-      // Basic XML validation
-      if (!docXml.includes("<?xml")) {
-        warnings.push("document.xml missing XML declaration");
-      }
-
-      if (!docXml.includes("<w:document")) {
-        errors.push("document.xml missing w:document element");
-      }
-
-      if (!docXml.includes("<w:body>")) {
-        errors.push("document.xml missing w:body element");
-      }
-    }
-
-    // Validate Content_Types.xml
-    const ctFile = zip.file("[Content_Types].xml");
-    if (ctFile) {
-      const ctXml = await ctFile.async("text");
-
-      if (
-        !ctXml.includes("word/document.xml") &&
-        !ctXml.includes(
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
-        )
-      ) {
-        warnings.push("Content_Types.xml may be missing document.xml type declaration");
-      }
-    }
-  } catch (error) {
-    errors.push(
-      `Failed to read as ZIP: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings,
-  };
-}
+}> => {
+  const result = await validateDocxPackage(buffer);
+  return result.valid
+    ? { valid: true, errors: [], warnings: [] }
+    : { valid: false, errors: [result.error], warnings: [] };
+};
 
 /**
  * Check if buffer looks like a DOCX file (quick check)

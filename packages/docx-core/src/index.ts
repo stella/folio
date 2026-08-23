@@ -38,10 +38,12 @@ export type {
 export { serializeDocumentToDocx } from "./serialize/docx";
 export {
   assertValidDocumentModel,
+  DOCX_PACKAGE_ISSUE_CODES,
   validateDocxPackage,
   validateDocumentModel,
 } from "./validate/docx";
 export type {
+  DocxPackageIssueCode,
   ValidateDocumentModelIssue,
   ValidateDocumentModelResult,
   ValidateDocxPackageResult,
