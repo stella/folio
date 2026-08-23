@@ -227,6 +227,48 @@ function bodyBlocksClearSectionHeaderFooter(
   return changed ? nextBlocks : blocks;
 }
 
+const arePageMarginsEqual = (left: PageMargins, right: PageMargins): boolean =>
+  left.top === right.top &&
+  left.right === right.right &&
+  left.bottom === right.bottom &&
+  left.left === right.left &&
+  left.header === right.header &&
+  left.footer === right.footer;
+
+const mirrorPageMarginsIfNeeded = (
+  authoredMargins: PageMargins,
+  pageNumber: number,
+  mirrorMargins: boolean,
+): PageMargins =>
+  mirrorMargins && pageNumber % 2 === 0
+    ? { ...authoredMargins, left: authoredMargins.right, right: authoredMargins.left }
+    : authoredMargins;
+
+function attachAuthoredMarginsToLayoutPages(
+  layout: Layout,
+  options: {
+    authoredMargins: PageMargins;
+    mirrorMargins: boolean;
+    sectionPropertiesForMargins: readonly (SectionProperties | undefined)[];
+  },
+): Layout {
+  let changed = false;
+  const pages = layout.pages.map((page) => {
+    const sectionProperties = options.sectionPropertiesForMargins[page.sectionIndex ?? 0];
+    const authoredMargins = mirrorPageMarginsIfNeeded(
+      sectionProperties ? getMargins(sectionProperties) : options.authoredMargins,
+      page.number,
+      options.mirrorMargins,
+    );
+    if (page.authoredMargins && arePageMarginsEqual(page.authoredMargins, authoredMargins)) {
+      return page;
+    }
+    changed = true;
+    return { ...page, authoredMargins };
+  });
+  return changed ? { ...layout, pages } : layout;
+}
+
 export function runLayoutPipeline<THfPMs>(
   deps: LayoutPipelineDeps<THfPMs>,
   state: EditorState,
@@ -810,6 +852,12 @@ export function runLayoutPipeline<THfPMs>(
     // (typing) path to keep keystrokes cheap.
     let stabilizedFieldValues: Map<number, string> | undefined;
     stabilizeFieldWidths();
+
+    newLayout = attachAuthoredMarginsToLayoutPages(newLayout, {
+      authoredMargins: margins,
+      mirrorMargins,
+      sectionPropertiesForMargins,
+    });
 
     const rebuildHeaderFooterForLayout = (): void => {
       const seqValues = buildSeqValues(newBlocks);

@@ -46,6 +46,7 @@ import type {
   TextBoxFragment,
   FootnoteContent,
   HeaderFooterContent,
+  PageMargins,
 } from "../layout-engine/types";
 import type { BorderSpec, Theme, Watermark } from "../types/document";
 import { resolveFontFamily } from "../utils/fontResolver";
@@ -1660,6 +1661,7 @@ export function renderPage(
     marginTop: page.margins.top,
     marginRight: page.margins.right,
     marginBottom: page.margins.bottom,
+    ...(page.authoredMargins ? { authoredMargins: page.authoredMargins } : {}),
     contentWidth,
     contentHeight: page.size.h - page.margins.top - page.margins.bottom,
   };
@@ -2435,6 +2437,16 @@ function computePageRenderFingerprint(page: Page, blockLookup?: BlockLookup): st
   });
 }
 
+const pageMarginsFingerprint = (margins: PageMargins): string =>
+  [
+    margins.top,
+    margins.right,
+    margins.bottom,
+    margins.left,
+    margins.header ?? "",
+    margins.footer ?? "",
+  ].join(",");
+
 function computePageFingerprintInternal(
   page: Page,
   blockLookup: BlockLookup | undefined,
@@ -2444,9 +2456,10 @@ function computePageFingerprintInternal(
 
   // Page-level properties
   parts.push(`s:${page.size.w},${page.size.h}`);
-  parts.push(
-    `m:${page.margins.top},${page.margins.right},${page.margins.bottom},${page.margins.left}`,
-  );
+  parts.push(`m:${pageMarginsFingerprint(page.margins)}`);
+  if (page.authoredMargins) {
+    parts.push(`am:${pageMarginsFingerprint(page.authoredMargins)}`);
+  }
   parts.push(`n:${page.number}`);
   if (page.sectionIndex !== undefined) {
     parts.push(`si:${page.sectionIndex}`);

@@ -1149,6 +1149,12 @@ export type Page = {
   fragments: Fragment[];
   /** Page margins. */
   margins: PageMargins;
+  /**
+   * Authored section margins before header/footer clearance expands the body
+   * content box insets. Page-margin-relative anchors use these page-setup
+   * landmarks instead of furniture-expanded content insets.
+   */
+  authoredMargins?: PageMargins;
   /** Page size (width, height). */
   size: { w: number; h: number };
   /** Page orientation. */

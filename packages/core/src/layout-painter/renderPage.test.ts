@@ -368,6 +368,29 @@ function textBoxMeasure(width: number, height: number): TextBoxMeasure {
 }
 
 describe("render page fingerprint", () => {
+  test("changes when the authored margin frame changes without changing effective margins", () => {
+    const withAuthoredMargins = {
+      ...page,
+      authoredMargins: { top: 72, right: 72, bottom: 72, left: 72 },
+    };
+
+    expect(computePageFingerprint(withAuthoredMargins)).not.toBe(
+      computePageFingerprint({
+        ...withAuthoredMargins,
+        authoredMargins: { ...withAuthoredMargins.authoredMargins, bottom: 96 },
+      }),
+    );
+  });
+
+  test("changes when a header or footer distance changes", () => {
+    expect(computePageFingerprint(page)).not.toBe(
+      computePageFingerprint({
+        ...page,
+        margins: { ...page.margins, header: 48 },
+      }),
+    );
+  });
+
   test("changes when comment annotations change without layout geometry changing", () => {
     expect(computePageFingerprint(page, lookup(blockWithComment()))).not.toBe(
       computePageFingerprint(page, lookup(blockWithComment(123))),
@@ -932,6 +955,59 @@ describe("header and footer rendering", () => {
     expect(image?.style.zIndex).toBe("0");
     expect(image?.dataset["hfSlotKind"]).toBe("footer");
     expect(image?.dataset["hfRid"]).toBe("rIdFooter");
+  });
+
+  test("uses authored bottom margins for body bottom-margin anchors after footer clearance expands", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "body-float",
+      runs: [
+        {
+          kind: "image",
+          src: "body-float.png",
+          width: 80,
+          height: 24,
+          displayMode: "float",
+          wrapType: "behind",
+          position: {
+            vertical: { relativeTo: "bottomMargin", align: "top" },
+          },
+        },
+      ],
+    };
+    const blockLookup: BlockLookup = new Map([
+      ["body-float", { block, measure: { kind: "paragraph", lines: [], totalHeight: 0 } }],
+    ]);
+
+    const pageElement = renderPage(
+      {
+        ...page,
+        authoredMargins: { top: 72, right: 72, bottom: 72, left: 72 },
+        margins: { top: 120, right: 72, bottom: 160, left: 72 },
+        fragments: [
+          {
+            kind: "paragraph",
+            blockId: "body-float",
+            x: 72,
+            y: 120,
+            width: 672,
+            height: 0,
+            fromLine: 0,
+            toLine: 0,
+          },
+        ],
+      },
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      {
+        document: fakeDocument,
+        blockLookup,
+      },
+    ) as unknown as FakeElement;
+
+    const image = pageElement.querySelector("img");
+    const floatContainer = image?.parent;
+    expect(floatContainer?.style.top).toBe(`${page.size.h - 120 - 72}px`);
+    expect(floatContainer?.style.top).not.toBe(`${page.size.h - 120 - 160}px`);
   });
 });
 

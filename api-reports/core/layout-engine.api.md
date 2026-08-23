@@ -492,6 +492,7 @@ export type Page = {
     number: number;
     fragments: Fragment[];
     margins: PageMargins;
+    authoredMargins?: PageMargins;
     size: {
         w: number;
         h: number;

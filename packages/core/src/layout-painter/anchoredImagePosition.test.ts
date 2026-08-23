@@ -202,6 +202,58 @@ describe("resolveAnchoredImagePosition — vertical align (eigenpal #424)", () =
     expect(result.y).toBe(CONTENT_HEIGHT); // 912
   });
 
+  test("relativeFrom='bottomMargin' uses the authored margin frame when footer clearance expands the inset", () => {
+    const run = baseRun({
+      horizontal: { relativeTo: "margin" },
+      vertical: { relativeTo: "bottomMargin", align: "top" },
+    });
+    const footerExpandedGeometry = {
+      contentWidth: CONTENT_WIDTH,
+      contentHeight: PAGE.pageHeight - 120 - 160,
+      ...PAGE,
+      marginTop: 120,
+      marginBottom: 160,
+      authoredMargins: { top: 72, right: 72, bottom: 72, left: 72 },
+    };
+    const result = resolveAnchoredImagePosition(run, fragmentY, footerExpandedGeometry);
+    expect(result.y).toBe(PAGE.pageHeight - footerExpandedGeometry.marginTop - 72);
+    expect(result.y).not.toBe(footerExpandedGeometry.contentHeight);
+  });
+
+  test("margin reference bands remain authored when furniture expands content insets", () => {
+    const geometry = {
+      contentWidth: PAGE.pageWidth - 120 - 160,
+      contentHeight: PAGE.pageHeight - 120 - 160,
+      ...PAGE,
+      marginTop: 120,
+      marginRight: 160,
+      marginBottom: 160,
+      marginLeft: 120,
+      authoredMargins: { top: 72, right: 72, bottom: 72, left: 72 },
+    };
+    const top = resolveAnchoredImagePosition(
+      baseRun({
+        horizontal: { relativeTo: "leftMargin", align: "right" },
+        vertical: { relativeTo: "topMargin", align: "bottom" },
+      }),
+      fragmentY,
+      geometry,
+    );
+    const bottom = resolveAnchoredImagePosition(
+      baseRun({
+        horizontal: { relativeTo: "rightMargin", align: "left" },
+        vertical: { relativeTo: "bottomMargin", align: "top" },
+      }),
+      fragmentY,
+      geometry,
+    );
+
+    expect(top.x).toBe(-120 + 72 - IMG_W);
+    expect(top.y).toBe(-120 + 72 - IMG_H);
+    expect(bottom.x).toBe(PAGE.pageWidth - 120 - 72);
+    expect(bottom.y).toBe(PAGE.pageHeight - 120 - 72);
+  });
+
   test("relativeFrom='topMargin' with posOffset shifts down from the top margin strip", () => {
     const run = baseRun({
       horizontal: { relativeTo: "margin" },

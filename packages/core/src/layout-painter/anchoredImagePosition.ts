@@ -1,4 +1,4 @@
-import type { ImageRun } from "../layout-engine/types";
+import type { ImageRun, PageMargins } from "../layout-engine/types";
 import { emuToPixels } from "./renderUtils";
 
 export type PageGeometry = {
@@ -8,6 +8,7 @@ export type PageGeometry = {
   marginTop: number;
   marginRight: number;
   marginBottom: number;
+  authoredMargins?: PageMargins;
   contentWidth: number;
   contentHeight: number;
 };
@@ -19,19 +20,31 @@ export type AnchoredImagePosition = {
   side: "left" | "right";
 };
 
+const authoredMargins = (geometry: PageGeometry): PageMargins =>
+  geometry.authoredMargins ?? {
+    top: geometry.marginTop,
+    right: geometry.marginRight,
+    bottom: geometry.marginBottom,
+    left: geometry.marginLeft,
+  };
+
 function resolveHorizontalBand(
   relativeTo: string | undefined,
   geometry: PageGeometry,
 ): { baseX: number; bandWidth: number } {
+  const margins = authoredMargins(geometry);
   switch (relativeTo) {
     case "page":
       return { baseX: -geometry.marginLeft, bandWidth: geometry.pageWidth };
     case "leftMargin":
     case "insideMargin":
-      return { baseX: -geometry.marginLeft, bandWidth: geometry.marginLeft };
+      return { baseX: -geometry.marginLeft, bandWidth: margins.left };
     case "rightMargin":
     case "outsideMargin":
-      return { baseX: geometry.contentWidth, bandWidth: geometry.marginRight };
+      return {
+        baseX: geometry.pageWidth - geometry.marginLeft - margins.right,
+        bandWidth: margins.right,
+      };
     case "character":
       return { baseX: 0, bandWidth: 0 };
     default:
@@ -44,13 +57,17 @@ function resolveVerticalBand(
   fragmentY: number,
   geometry: PageGeometry,
 ): { baseY: number; bandHeight: number } {
+  const margins = authoredMargins(geometry);
   switch (relativeTo) {
     case "page":
       return { baseY: -geometry.marginTop, bandHeight: geometry.pageHeight };
     case "topMargin":
-      return { baseY: -geometry.marginTop, bandHeight: geometry.marginTop };
+      return { baseY: -geometry.marginTop, bandHeight: margins.top };
     case "bottomMargin":
-      return { baseY: geometry.contentHeight, bandHeight: geometry.marginBottom };
+      return {
+        baseY: geometry.pageHeight - geometry.marginTop - margins.bottom,
+        bandHeight: margins.bottom,
+      };
     case "paragraph":
     case "line":
       return { baseY: fragmentY, bandHeight: 0 };
