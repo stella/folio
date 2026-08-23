@@ -1,5 +1,13 @@
 # @stll/folio-core
 
+## 0.23.1
+
+### Patch Changes
+
+- [#603](https://github.com/stella/folio/pull/603) [`d277e14`](https://github.com/stella/folio/commit/d277e14616d53028b40f906f15c75c68c93fad29) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align unindented tables, preserve paragraph direction and section page numbering, and paginate independent table rows.
+
+- [#605](https://github.com/stella/folio/pull/605) [`8f32b83`](https://github.com/stella/folio/commit/8f32b83d8006bc28bbc03083240a04dab1017c51) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve complex-script typography, Arabic list counters, and table direction.
+
 ## 0.23.0
 
 ### Minor Changes
