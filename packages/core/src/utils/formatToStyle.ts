@@ -363,9 +363,11 @@ export function paragraphToStyle(
 
   // First line indent / hanging indent
   if (formatting.indentFirstLine !== undefined) {
-    // Both hanging indent and regular first-line indent use the same CSS:
-    // text-indent handles both (negative for hanging, positive for regular).
-    style.textIndent = formatPx(twipsToPixels(formatting.indentFirstLine));
+    // ProseMirror stores hanging indents as a positive magnitude plus this flag.
+    const textIndent = formatting.hangingIndent
+      ? -Math.abs(formatting.indentFirstLine)
+      : formatting.indentFirstLine;
+    style.textIndent = formatPx(twipsToPixels(textIndent));
   }
 
   // ============================================================================
