@@ -40,6 +40,7 @@ import { cn } from "../lib/utils";
 import { useFolioUI } from "../ui/folio-ui";
 import type { ColorPreset } from "../ui/folio-ui";
 import { containedHandler } from "../utils/contained-handler";
+import { shouldClaimRightAlignmentShortcut } from "./formattingShortcutPolicy";
 import { ToolbarButton, ToolbarGroup, ToolbarSeparator } from "./toolbarPrimitives";
 import type { ToolbarProps, FormattingAction } from "./toolbarPrimitives";
 import { AlignmentButtons } from "./ui/AlignmentButtons";
@@ -439,6 +440,9 @@ export function FormattingBar(props: FormattingBarProps) {
           handleAlignmentChange("center");
           break;
         case "r":
+          if (!shouldClaimRightAlignmentShortcut(event)) {
+            break;
+          }
           claimShortcut(event);
           handleAlignmentChange("right");
           break;
