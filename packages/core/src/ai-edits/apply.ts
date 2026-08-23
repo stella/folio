@@ -74,7 +74,7 @@ export type FolioAIEditView = {
 type ApplyFolioAIEditOperationsOptions = {
   view: FolioAIEditView;
   snapshot: FolioAIEditSnapshot;
-  operations: FolioAIEditOperation[];
+  operations: readonly FolioAIEditOperation[];
   mode?: FolioAIEditApplyMode;
   author?: string;
   /** Optional author initials (w:initials) stamped alongside the author. */

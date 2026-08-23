@@ -1,5 +1,6 @@
 import type {
   FolioAIEditSnapshot,
+  FolioDocumentOperationMode,
   FolioDocumentOperationBatch,
   FolioDocumentOperationResult,
   FolioDocumentOperationUndoHandle,
@@ -9,6 +10,7 @@ import type {
   FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
+import type { FolioAgentCommentId } from "./codecs";
 import type { FolioAgentChange, FolioAgentComment } from "./types";
 
 /**
@@ -27,6 +29,12 @@ import type { FolioAgentChange, FolioAgentComment } from "./types";
 export type FolioAgentBridge = {
   /** Snapshot the current document into AI-facing blocks + anchors. */
   snapshot(): FolioAIEditSnapshot;
+  /**
+   * Default document-operation mode this surface applies when a batch omits
+   * `mode`. The executor uses it when it prepares already-parsed batches so
+   * the bridge can usually forward them without rebuilding the batch object.
+   */
+  documentOperationMode?: FolioDocumentOperationMode;
   /**
    * Apply a versioned operation batch against the current document. The
    * bridge decides mode (tracked-changes by default) and author internally.
@@ -68,3 +76,22 @@ export type FolioAgentBridge = {
   /** Select and reveal a stable block or text range in the live editor. */
   showInDocument?(target: FolioDocumentNavigationTarget): boolean;
 };
+
+type DecodedCommentHandlers = {
+  replyToComment(commentId: FolioAgentCommentId, text: string): boolean;
+  resolveComment(commentId: FolioAgentCommentId, resolved: boolean): boolean;
+};
+
+const decodedCommentHandlers = new WeakMap<FolioAgentBridge, DecodedCommentHandlers>();
+
+export const registerDecodedCommentHandlers = (
+  bridge: FolioAgentBridge,
+  handlers: DecodedCommentHandlers,
+): FolioAgentBridge => {
+  decodedCommentHandlers.set(bridge, handlers);
+  return bridge;
+};
+
+export const getDecodedCommentHandlers = (
+  bridge: FolioAgentBridge,
+): DecodedCommentHandlers | undefined => decodedCommentHandlers.get(bridge);

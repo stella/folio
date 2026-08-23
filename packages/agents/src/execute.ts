@@ -8,17 +8,25 @@ import {
   type FolioAIBlock,
   type FolioAITextRangeHandle,
   type FolioDocumentOperation,
-  type FolioDocumentSectionHandle,
   type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
 import type { FolioAgentBridge } from "./bridge";
 import {
+  decodeCommentId,
+  decodeMainStoryTextRangeHandle,
+  decodeSectionHandle,
+  decodeStoryHandle,
+} from "./codecs";
+import { getDecodedCommentHandlers } from "./bridge";
+import {
   explainTextTooLong,
   MAX_OPERATION_TEXT_LENGTH,
   parseAddCommentInput,
+  prepareFolioAgentDocumentOperationBatch,
   parseSuggestChangesInput,
 } from "./parse";
+import type { FolioAgentToolInputByName, FolioToolCallResultFor } from "./tool-contract";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
   FolioAgentApplyOperationsSummary,
@@ -26,6 +34,7 @@ import type {
   FolioAgentFindTextResult,
   FolioAgentStoryFindTextResult,
   FolioAgentStoryTextMatch,
+  FolioAgentToolName,
   FolioAgentTextMatch,
   FolioToolCallResult,
 } from "./types";
@@ -36,8 +45,8 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
 
-const ok = (result: unknown): FolioToolCallResult => ({ ok: true, result });
-const fail = (error: string): FolioToolCallResult => ({ ok: false, error });
+const ok = <TResult>(result: TResult): FolioToolCallResult<TResult> => ({ ok: true, result });
+const fail = (error: string): FolioToolCallResult<never> => ({ ok: false, error });
 
 const VALID_TOOL_NAMES: readonly string[] = Object.values(FOLIO_AGENT_TOOL_NAMES);
 
@@ -68,11 +77,21 @@ const MAX_FIND_MATCHES = 200;
  * Every bridge member used here ({@link FolioDocxReviewer} and the live-editor
  * ref) is synchronous, so this stays synchronous too.
  */
-export const executeFolioToolCall = (
+export function executeFolioToolCall<TName extends FolioAgentToolName>(
+  name: TName,
+  args: FolioAgentToolInputByName[TName],
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<TName>;
+export function executeFolioToolCall(
   name: string,
   args: unknown,
   bridge: FolioAgentBridge,
-): FolioToolCallResult => {
+): FolioToolCallResult;
+export function executeFolioToolCall(
+  name: string,
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResult {
   if (!VALID_TOOL_NAMES.includes(name)) {
     return fail(`Unknown tool "${name}". Valid tools: ${VALID_TOOL_NAMES.join(", ")}.`);
   }
@@ -82,64 +101,18 @@ export const executeFolioToolCall = (
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }
-};
+}
 
 const dispatch = (name: string, args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
-  if (name === FOLIO_AGENT_TOOL_NAMES.readDocument) {
-    return readDocument(bridge);
+  if (!isFolioAgentToolName(name)) {
+    return fail(`Unknown tool "${name}".`);
   }
-  if (name === FOLIO_AGENT_TOOL_NAMES.getDocumentOutline) {
-    return getDocumentOutline(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.readSection) {
-    return readSection(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.listStories) {
-    return bridge.listStories
-      ? ok(bridge.listStories())
-      : fail("This editor surface does not support story discovery.");
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.readStory) {
-    return readStory(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.findText) {
-    return findText(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.readComments) {
-    return readComments(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.readChanges) {
-    return ok(bridge.getChanges());
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.addComment) {
-    return addComment(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.suggestChanges) {
-    return suggestChanges(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.replyComment) {
-    return replyComment(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.resolveComment) {
-    return resolveComment(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.readPage) {
-    return readPage(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.readSelection) {
-    return readSelection(bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.scrollToBlock) {
-    return scrollToBlock(args, bridge);
-  }
-  if (name === FOLIO_AGENT_TOOL_NAMES.showInDocument) {
-    return showInDocument(args, bridge);
-  }
-  // Unreachable: `name` was checked against VALID_TOOL_NAMES above.
-  return fail(`Unknown tool "${name}".`);
+  return TOOL_HANDLERS[name](args, bridge);
 };
 
-const readDocument = (bridge: FolioAgentBridge): FolioToolCallResult => {
+const readDocument = (
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.readDocument> => {
   const { blocks } = bridge.snapshot();
   return ok(
     blocks.map((block) => ({
@@ -151,35 +124,10 @@ const readDocument = (bridge: FolioAgentBridge): FolioToolCallResult => {
   );
 };
 
-const parseSectionHandle = (value: unknown): FolioDocumentSectionHandle | null => {
-  if (!isPlainObject(value)) {
-    return null;
-  }
-  const headingBlockId = value["headingBlockId"];
-  const headingTextHash = value["headingTextHash"];
-  const headingLevel = value["headingLevel"];
-  if (
-    value["type"] !== "headingSection" ||
-    value["story"] !== "main" ||
-    !isNonEmptyString(headingBlockId) ||
-    !isNonEmptyString(headingTextHash) ||
-    typeof headingLevel !== "number" ||
-    !Number.isInteger(headingLevel) ||
-    headingLevel < 1 ||
-    headingLevel > 9
-  ) {
-    return null;
-  }
-  return {
-    type: "headingSection",
-    story: "main",
-    headingBlockId,
-    headingTextHash,
-    headingLevel,
-  };
-};
-
-const getDocumentOutline = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const getDocumentOutline = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.getDocumentOutline> => {
   const maxDepth = isPlainObject(args) ? args["maxDepth"] : undefined;
   if (
     maxDepth !== undefined &&
@@ -207,11 +155,14 @@ const getDocumentOutline = (args: unknown, bridge: FolioAgentBridge): FolioToolC
   });
 };
 
-const readSection = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const readSection = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.readSection> => {
   if (!isPlainObject(args)) {
     return fail("read_section expects a section `handle` from get_document_outline.");
   }
-  const handle = parseSectionHandle(args["handle"]);
+  const handle = decodeSectionHandle(args["handle"]);
   if (handle === null) {
     return fail("read_section requires a valid `handle` from get_document_outline.");
   }
@@ -263,37 +214,14 @@ const readSection = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResu
   });
 };
 
-const parseStoryHandle = (value: unknown): FolioDocumentStoryHandle | null => {
-  if (!isPlainObject(value)) {
-    return null;
-  }
-  const handle = value;
-  const type = handle["type"];
-  if (type === "main") {
-    return { type };
-  }
-  if (type === "header" || type === "footer") {
-    const relationshipId = handle["relationshipId"];
-    if (!isNonEmptyString(relationshipId)) {
-      return null;
-    }
-    return { type, relationshipId };
-  }
-  if (type === "footnote" || type === "endnote") {
-    const noteId = handle["noteId"];
-    if (typeof noteId !== "number" || !Number.isInteger(noteId)) {
-      return null;
-    }
-    return { type, noteId };
-  }
-  return null;
-};
-
-const readStory = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const readStory = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.readStory> => {
   if (!bridge.readStory) {
     return fail("This editor surface does not support story reads.");
   }
-  const parsed = isPlainObject(args) ? parseStoryHandle(args["handle"]) : null;
+  const parsed = isPlainObject(args) ? decodeStoryHandle(args["handle"]) : null;
   if (parsed === null) {
     return fail("read_story requires a valid typed `handle` from list_stories.");
   }
@@ -427,7 +355,10 @@ const findStoryTextMatches = (
   return { matches, totalMatches };
 };
 
-const findText = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const findText = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.findText> => {
   if (!isPlainObject(args)) {
     return fail("find_text expects an object with a non-empty `query` string.");
   }
@@ -458,7 +389,7 @@ const findText = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult 
       return fail("find_text's `scope` must be a document, section, page, or story scope.");
     }
     if (scope["type"] === "section") {
-      const handle = parseSectionHandle(scope["handle"]);
+      const handle = decodeSectionHandle(scope["handle"]);
       if (handle === null) {
         return fail("find_text's section scope requires a handle from get_document_outline.");
       }
@@ -482,7 +413,7 @@ const findText = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult 
       getTargetPage = bridge.getTargetPage;
       pageFilter = page;
     } else if (scope["type"] === "story") {
-      const handle = parseStoryHandle(scope["handle"]);
+      const handle = decodeStoryHandle(scope["handle"]);
       if (handle === null) {
         return fail("find_text's story scope requires a handle from list_stories.");
       }
@@ -530,7 +461,10 @@ const findText = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult 
 const isCommentFilter = (value: unknown): value is FolioAgentCommentFilter =>
   value === "all" || value === "open" || value === "resolved";
 
-const readComments = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const readComments = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.readComments> => {
   const filter = isPlainObject(args) ? args["filter"] : undefined;
   if (filter !== undefined && !isCommentFilter(filter)) {
     return fail('read_comments\' `filter` must be one of "all", "open", "resolved" when provided.');
@@ -642,14 +576,21 @@ const applyOperations = (
     });
   }
   return summarizeApplyResult(
-    bridge.applyDocumentOperations({
-      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-      operations: guardedOperations,
-    }),
+    bridge.applyDocumentOperations(
+      prepareFolioAgentDocumentOperationBatch({
+        operations: guardedOperations,
+        ...(bridge.documentOperationMode !== undefined && {
+          mode: bridge.documentOperationMode,
+        }),
+      }),
+    ),
   );
 };
 
-const addComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const addComment = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.addComment> => {
   const parsed = parseAddCommentInput(args);
   if (!parsed.ok) {
     return fail(parsed.error);
@@ -657,7 +598,10 @@ const addComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResul
   return ok(applyOperations(bridge, [parsed.operation]));
 };
 
-const suggestChanges = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const suggestChanges = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.suggestChanges> => {
   const parsed = parseSuggestChangesInput(args);
   if (!parsed.ok) {
     return fail(parsed.error);
@@ -665,7 +609,10 @@ const suggestChanges = (args: unknown, bridge: FolioAgentBridge): FolioToolCallR
   return ok(applyOperations(bridge, parsed.operations));
 };
 
-const replyComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const replyComment = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.replyComment> => {
   if (!isPlainObject(args)) {
     return fail("reply_comment expects an object with `commentId` and `text` strings.");
   }
@@ -680,14 +627,26 @@ const replyComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallRes
   if (text.length > MAX_OPERATION_TEXT_LENGTH) {
     return fail(explainTextTooLong("reply_comment's `text`", text.length));
   }
-  const replied = bridge.replyToComment(commentId, text);
+  const decodedHandlers = getDecodedCommentHandlers(bridge);
+  if (decodedHandlers === undefined) {
+    const replied = bridge.replyToComment(commentId, text);
+    return replied ? ok({ replied: true }) : fail(`No comment with id "${commentId}" was found.`);
+  }
+  const decodedCommentId = decodeCommentId(commentId);
+  if (decodedCommentId === null) {
+    return fail("reply_comment's `commentId` must be a comment id from `read_comments`.");
+  }
+  const replied = decodedHandlers.replyToComment(decodedCommentId, text);
   if (!replied) {
     return fail(`No comment with id "${commentId}" was found.`);
   }
   return ok({ replied: true });
 };
 
-const resolveComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const resolveComment = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.resolveComment> => {
   if (!isPlainObject(args)) {
     return fail("resolve_comment expects an object with a `commentId` string.");
   }
@@ -700,14 +659,26 @@ const resolveComment = (args: unknown, bridge: FolioAgentBridge): FolioToolCallR
     return fail("resolve_comment's `reopen` must be a boolean when provided.");
   }
   const resolved = reopen !== true;
-  const changed = bridge.resolveComment(commentId, resolved);
+  const decodedHandlers = getDecodedCommentHandlers(bridge);
+  if (decodedHandlers === undefined) {
+    const changed = bridge.resolveComment(commentId, resolved);
+    return changed ? ok({ resolved }) : fail(`No comment with id "${commentId}" was found.`);
+  }
+  const decodedCommentId = decodeCommentId(commentId);
+  if (decodedCommentId === null) {
+    return fail("resolve_comment's `commentId` must be a comment id from `read_comments`.");
+  }
+  const changed = decodedHandlers.resolveComment(decodedCommentId, resolved);
   if (!changed) {
     return fail(`No comment with id "${commentId}" was found.`);
   }
   return ok({ resolved });
 };
 
-const readPage = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const readPage = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.readPage> => {
   if (!bridge.getPageText) {
     return fail("This editor surface does not support read_page (no live paginated view).");
   }
@@ -719,17 +690,26 @@ const readPage = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult 
   if (pageCount !== undefined && page > pageCount) {
     return fail(`read_page's \`page\` (${page}) exceeds the document's page count (${pageCount}).`);
   }
-  return ok({ page, totalPages: pageCount, text: bridge.getPageText(page) });
+  return ok({
+    page,
+    ...(pageCount !== undefined && { totalPages: pageCount }),
+    text: bridge.getPageText(page),
+  });
 };
 
-const readSelection = (bridge: FolioAgentBridge): FolioToolCallResult => {
+const readSelection = (
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.readSelection> => {
   if (!bridge.getSelectionText) {
     return fail("This editor surface does not support read_selection (no live selection).");
   }
   return ok({ text: bridge.getSelectionText() });
 };
 
-const scrollToBlock = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const scrollToBlock = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.scrollToBlock> => {
   if (!bridge.scrollToBlock) {
     return fail("This editor surface does not support scroll_to_block (no live editor view).");
   }
@@ -740,39 +720,10 @@ const scrollToBlock = (args: unknown, bridge: FolioAgentBridge): FolioToolCallRe
   return ok({ scrolled: bridge.scrollToBlock(blockId) });
 };
 
-const parseTextRange = (value: unknown): FolioAITextRangeHandle | null => {
-  if (!isPlainObject(value)) {
-    return null;
-  }
-  const blockId = value["blockId"];
-  const startOffset = value["startOffset"];
-  const endOffset = value["endOffset"];
-  const selectedTextHash = value["selectedTextHash"];
-  if (
-    value["type"] !== "textRange" ||
-    value["story"] !== "main" ||
-    !isNonEmptyString(blockId) ||
-    typeof startOffset !== "number" ||
-    !Number.isInteger(startOffset) ||
-    startOffset < 0 ||
-    typeof endOffset !== "number" ||
-    !Number.isInteger(endOffset) ||
-    endOffset <= startOffset ||
-    !isNonEmptyString(selectedTextHash)
-  ) {
-    return null;
-  }
-  return {
-    type: "textRange",
-    story: "main",
-    blockId,
-    startOffset,
-    endOffset,
-    selectedTextHash,
-  };
-};
-
-const showInDocument = (args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const showInDocument = (
+  args: unknown,
+  bridge: FolioAgentBridge,
+): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.showInDocument> => {
   if (!bridge.showInDocument) {
     return fail("This editor surface does not support show_in_document (no live editor view).");
   }
@@ -792,9 +743,41 @@ const showInDocument = (args: unknown, bridge: FolioAgentBridge): FolioToolCallR
       shown: bridge.showInDocument({ type: "block", story: "main", blockId }),
     });
   }
-  const range = parseTextRange(rawRange);
+  const range = decodeMainStoryTextRangeHandle(rawRange);
   if (range === null) {
     return fail("show_in_document's `range` must be copied from find_text.");
   }
   return ok({ shown: bridge.showInDocument(range) });
 };
+
+type FolioAgentToolHandlers = {
+  [Name in FolioAgentToolName]: (
+    args: unknown,
+    bridge: FolioAgentBridge,
+  ) => FolioToolCallResultFor<Name>;
+};
+
+const TOOL_HANDLERS = {
+  [FOLIO_AGENT_TOOL_NAMES.readDocument]: (_args, bridge) => readDocument(bridge),
+  [FOLIO_AGENT_TOOL_NAMES.getDocumentOutline]: getDocumentOutline,
+  [FOLIO_AGENT_TOOL_NAMES.readSection]: readSection,
+  [FOLIO_AGENT_TOOL_NAMES.listStories]: (_args, bridge) =>
+    bridge.listStories
+      ? ok(bridge.listStories())
+      : fail("This editor surface does not support story discovery."),
+  [FOLIO_AGENT_TOOL_NAMES.readStory]: readStory,
+  [FOLIO_AGENT_TOOL_NAMES.findText]: findText,
+  [FOLIO_AGENT_TOOL_NAMES.readComments]: readComments,
+  [FOLIO_AGENT_TOOL_NAMES.readChanges]: (_args, bridge) => ok(bridge.getChanges()),
+  [FOLIO_AGENT_TOOL_NAMES.addComment]: addComment,
+  [FOLIO_AGENT_TOOL_NAMES.suggestChanges]: suggestChanges,
+  [FOLIO_AGENT_TOOL_NAMES.replyComment]: replyComment,
+  [FOLIO_AGENT_TOOL_NAMES.resolveComment]: resolveComment,
+  [FOLIO_AGENT_TOOL_NAMES.readPage]: readPage,
+  [FOLIO_AGENT_TOOL_NAMES.readSelection]: (_args, bridge) => readSelection(bridge),
+  [FOLIO_AGENT_TOOL_NAMES.scrollToBlock]: scrollToBlock,
+  [FOLIO_AGENT_TOOL_NAMES.showInDocument]: showInDocument,
+} satisfies FolioAgentToolHandlers;
+
+const isFolioAgentToolName = (name: string): name is FolioAgentToolName =>
+  Object.hasOwn(TOOL_HANDLERS, name);

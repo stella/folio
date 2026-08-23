@@ -16,6 +16,15 @@ import type {
  * that single shape onto each SDK's own tool-definition envelope.
  */
 
+declare const folioAgentToolDefinitionBrand: unique symbol;
+
+export type FolioAgentJsonObjectSchema = {
+  readonly type: "object";
+  readonly properties: Record<string, unknown>;
+  readonly required: readonly string[];
+  readonly additionalProperties: false;
+} & Record<string, unknown>;
+
 /** Every tool name this package exposes, as a stable string union (no enums). */
 export const FOLIO_AGENT_TOOL_NAMES = {
   readDocument: "read_document",
@@ -51,6 +60,20 @@ export type FolioAgentToolDefinition = {
   inputSchema: Record<string, unknown>;
 };
 
+export type FolioAgentTypedToolDefinition<
+  TName extends FolioAgentToolName = FolioAgentToolName,
+  TInput = unknown,
+  TOutput = unknown,
+  TSchema extends FolioAgentJsonObjectSchema = FolioAgentJsonObjectSchema,
+> = FolioAgentToolDefinition & {
+  readonly name: TName;
+  readonly inputSchema: TSchema;
+  readonly [folioAgentToolDefinitionBrand]?: {
+    readonly input: TInput;
+    readonly output: TOutput;
+  };
+};
+
 /**
  * Result of executing one tool call. `ok: false` covers every EXPECTED failure
  * (bad arguments, an unknown tool, a capability the bridge does not support, a
@@ -59,7 +82,9 @@ export type FolioAgentToolDefinition = {
  * is the only boundary layer allowed to catch an unexpected throw and fold it
  * into this shape too.
  */
-export type FolioToolCallResult = { ok: true; result: unknown } | { ok: false; error: string };
+export type FolioToolCallResult<TResult = unknown> =
+  | { ok: true; result: TResult }
+  | { ok: false; error: string };
 
 /** One document block as exposed to a model: id, kind, and its plain text. */
 export type FolioAgentBlock = {

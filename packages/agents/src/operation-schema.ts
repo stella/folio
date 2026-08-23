@@ -22,6 +22,22 @@ import {
   type FolioDocumentOperationBatch,
 } from "@stll/folio-core/server";
 
+/** Compact public shape for the runtime JSON Schema projections. */
+export type FolioJsonSchema = {
+  readonly type?: string;
+  readonly description?: string;
+  readonly enum?: readonly unknown[];
+  readonly minimum?: number;
+  readonly minLength?: number;
+  readonly minProperties?: number;
+  readonly pattern?: string;
+  readonly properties?: Readonly<Record<string, FolioJsonSchema>>;
+  readonly required?: readonly string[];
+  readonly additionalProperties?: boolean;
+  readonly items?: FolioJsonSchema;
+  readonly oneOf?: readonly FolioJsonSchema[];
+};
+
 /**
  * Pattern for the normalized text hashes the contract uses to detect stale
  * targets (`selectedTextHash`, `precondition.blockTextHash`). Mirrors the
@@ -37,7 +53,7 @@ const NORMALIZED_TEXT_HASH_PATTERN = "^h[0-9a-z]+$";
  * drift. `endOffset` must be greater than `startOffset`; JSON Schema cannot
  * express that relation, the parser enforces it.
  */
-export const FOLIO_TEXT_RANGE_JSON_SCHEMA = {
+export const FOLIO_TEXT_RANGE_JSON_SCHEMA: FolioJsonSchema = {
   type: "object",
   description:
     "A range over the visible text of one main-story block. Offsets are zero-based UTF-16 " +
@@ -62,7 +78,7 @@ export const FOLIO_TEXT_RANGE_JSON_SCHEMA = {
   },
   required: ["type", "story", "blockId", "startOffset", "endOffset", "selectedTextHash"],
   additionalProperties: false,
-} as const;
+};
 
 /**
  * JSON Schema for the contract's optional `precondition` guard: `{
@@ -71,7 +87,7 @@ export const FOLIO_TEXT_RANGE_JSON_SCHEMA = {
  * `tools.ts` can attach the same shape to `suggest_changes` and
  * `add_comment` without redeclaring it.
  */
-export const FOLIO_PRECONDITION_JSON_SCHEMA = {
+export const FOLIO_PRECONDITION_JSON_SCHEMA: FolioJsonSchema = {
   type: "object",
   description:
     "Optional guard against editing a block that changed since you read it: echo the `blockTextHash` " +
@@ -86,7 +102,7 @@ export const FOLIO_PRECONDITION_JSON_SCHEMA = {
   },
   required: ["blockTextHash"],
   additionalProperties: false,
-} as const;
+};
 
 const commentJsonSchema = {
   type: "object",
@@ -135,7 +151,7 @@ const blockIdProperty = {
  * it; note that the `suggest_changes` tool in `tools.ts` deliberately
  * narrows this union (see the comment there).
  */
-export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
+export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
   description:
     "One document operation, discriminated by `type`. Mirrors the operation union accepted by " +
     "`parseFolioDocumentOperationBatch` in @stll/folio-core.",
@@ -435,7 +451,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
       additionalProperties: false,
     },
   ],
-} as const;
+};
 
 /**
  * JSON Schema (draft-07 compatible) for the versioned batch envelope accepted
@@ -445,7 +461,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA = {
  * `FolioDocumentOperationBatch`. Hand this to an LLM tool definition (or any
  * JSON Schema consumer) instead of re-declaring the contract.
  */
-export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
+export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: FolioJsonSchema = {
   type: "object",
   description:
     "A versioned batch of document operations. Operation ids must be unique within the batch " +
@@ -480,7 +496,7 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA = {
   },
   required: ["version", "operations"],
   additionalProperties: false,
-} as const;
+};
 
 /**
  * Minimal structural subset of the Standard Schema V1 interface
@@ -514,7 +530,7 @@ type FolioDocumentOperationBatchSchema = StandardSchemaV1<unknown, FolioDocument
    * builders get the runtime validator and the LLM-facing schema from one
    * import.
    */
-  readonly jsonSchema: typeof FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA;
+  readonly jsonSchema: FolioJsonSchema;
 };
 
 /**

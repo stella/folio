@@ -6,6 +6,8 @@ import type {
 } from "@stll/folio-core/server";
 
 import type { FolioAgentBridge } from "../bridge";
+import { registerDecodedCommentHandlers } from "../bridge";
+import { decodeCommentId } from "../codecs";
 import type { FolioAgentComment, FolioAgentCommentReply } from "../types";
 import { toAgentChange } from "./shared";
 
@@ -32,15 +34,6 @@ const toAgentComment = (comment: FolioReviewComment): FolioAgentComment => ({
 });
 
 /**
- * Parse a tool-supplied comment id into the numeric id `FolioDocxReviewer`
- * expects, rejecting anything but a bare non-negative integer. `Number.
- * parseInt` alone would silently accept trailing junk (`"12abc"` -> `12`),
- * which could reply to the wrong comment thread on malformed tool input.
- */
-const parseCommentId = (commentId: string): number | null =>
-  /^\d+$/.test(commentId) ? Number.parseInt(commentId, 10) : null;
-
-/**
  * Build a {@link FolioAgentBridge} over a headless {@link FolioDocxReviewer}
  * (`@stll/folio-core/server`). No optional capability members are
  * implemented: a headless document has no live page/selection/scroll
@@ -54,21 +47,27 @@ export const createReviewerBridge = (
 ): FolioAgentBridge => {
   const mode = options.mode ?? "tracked-changes";
 
-  return {
+  const bridge: FolioAgentBridge = {
     snapshot: () => reviewer.snapshot(),
-    applyDocumentOperations: (batch) => reviewer.applyDocumentOperations({ ...batch, mode }),
+    documentOperationMode: mode,
+    applyDocumentOperations: (batch) =>
+      reviewer.applyDocumentOperations(batch.mode === undefined ? { ...batch, mode } : batch),
     undoDocumentOperations: (undoHandle) => reviewer.undoDocumentOperations(undoHandle),
     getComments: () => reviewer.getComments().map(toAgentComment),
     getChanges: () => reviewer.getChanges().map(toAgentChange),
     listStories: () => reviewer.listStories(),
     readStory: (handle) => reviewer.readStory(handle),
     replyToComment: (commentId, text) => {
-      const parentId = parseCommentId(commentId);
-      if (parentId === null) {
-        return false;
-      }
-      return reviewer.replyTo(parentId, { text }) !== null;
+      const decoded = decodeCommentId(commentId);
+      return decoded !== null && reviewer.replyTo(decoded.numeric, { text }) !== null;
     },
-    resolveComment: (commentId, resolved) => reviewer.resolveComment(commentId, { resolved }),
+    resolveComment: (commentId, resolved) => {
+      const decoded = decodeCommentId(commentId);
+      return decoded !== null && reviewer.resolveComment(decoded.raw, { resolved });
+    },
   };
+  return registerDecodedCommentHandlers(bridge, {
+    replyToComment: ({ numeric }, text) => reviewer.replyTo(numeric, { text }) !== null,
+    resolveComment: ({ raw }, resolved) => reviewer.resolveComment(raw, { resolved }),
+  });
 };

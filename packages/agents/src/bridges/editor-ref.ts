@@ -19,13 +19,15 @@ import type { FolioCommentAnchor, FolioReviewChange } from "@stll/folio-core/ai-
 import { createReply } from "@stll/folio-core/docx/replyToComment";
 import type { Comment } from "@stll/folio-core/types/content";
 
-import type { FolioAgentBridge } from "../bridge";
+import { registerDecodedCommentHandlers, type FolioAgentBridge } from "../bridge";
+import { decodeCommentId } from "../codecs";
 import type { FolioAgentChange, FolioAgentComment, FolioAgentCommentReply } from "../types";
 import { toAgentChange } from "./shared";
 
 export type FolioAgentEditorApplyDocumentOperationsOptions = {
   snapshot: FolioAIEditSnapshot;
   batch: FolioDocumentOperationBatch;
+  mode?: FolioAIEditApplyMode;
   author?: string;
 };
 
@@ -118,16 +120,6 @@ const toAgentCommentReply = (reply: Comment): FolioAgentCommentReply => ({
   text: replyPlainText(reply),
 });
 
-/**
- * Parse a tool-supplied comment id into the numeric `Comment.id` this bridge
- * matches against, rejecting anything but a bare non-negative integer.
- * `Number.parseInt` alone would silently accept trailing junk (`"12abc"` ->
- * `12`), which could reply to or resolve the wrong comment on malformed tool
- * input.
- */
-const parseCommentId = (commentId: string): number | null =>
-  /^\d+$/.test(commentId) ? Number.parseInt(commentId, 10) : null;
-
 /** A host-state `Comment`'s plain text, its paragraphs joined by newlines (mirrors `FolioDocxReviewer`'s reading). */
 const replyPlainText = (comment: Comment): string =>
   comment.content.map(paragraphPlainText).join("\n");
@@ -178,6 +170,33 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
   const undoDocumentOperations = ref.undoDocumentOperations?.bind(ref);
   const mode = options.mode ?? "tracked-changes";
 
+  const replyToDecodedComment = (commentId: number, text: string): boolean => {
+    const comments = getComments();
+    const reply = createReply(comments, commentId, { author, text });
+    if (!reply) {
+      return false;
+    }
+    setComments([...comments, reply]);
+    return true;
+  };
+
+  const resolveDecodedComment = (commentId: number, resolved: boolean): boolean => {
+    const comments = getComments();
+    let found = false;
+    const next = comments.map((comment) => {
+      if (comment.id !== commentId) {
+        return comment;
+      }
+      found = true;
+      return Object.assign({}, comment, { done: resolved });
+    });
+    if (!found) {
+      return false;
+    }
+    setComments(next);
+    return true;
+  };
+
   const requireSnapshot = (): FolioAIEditSnapshot => {
     const snapshot = ref.createAIEditSnapshot();
     if (!snapshot) {
@@ -188,12 +207,18 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
 
   const bridge: FolioAgentBridge = {
     snapshot: requireSnapshot,
+    documentOperationMode: mode,
     applyDocumentOperations: (batch) => {
       assertSupportedFolioDocumentOperationVersion(batch.version);
       const snapshot = requireSnapshot();
-      const versionedBatch = { ...batch, mode };
+      const versionedBatch = batch.mode === undefined ? { ...batch, mode } : batch;
       if (ref.applyDocumentOperations) {
-        const result = ref.applyDocumentOperations({ snapshot, batch: versionedBatch, author });
+        const result = ref.applyDocumentOperations({
+          snapshot,
+          batch: versionedBatch,
+          mode,
+          author,
+        });
         return {
           ...result,
           issues:
@@ -237,9 +262,9 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
       }
       const result = ref.applyAIEditOperations({
         snapshot,
-        operations: versionedBatch.operations,
-        mode: versionedBatch.mode,
+        operations: [...versionedBatch.operations],
         author,
+        ...(versionedBatch.mode !== undefined && { mode: versionedBatch.mode }),
       });
       return {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -298,37 +323,12 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
       return changes ? changes.map(toAgentChange) : [];
     },
     replyToComment: (commentId, text) => {
-      const parentId = parseCommentId(commentId);
-      if (parentId === null) {
-        return false;
-      }
-      const comments = getComments();
-      const reply = createReply(comments, parentId, { author, text });
-      if (!reply) {
-        return false;
-      }
-      setComments([...comments, reply]);
-      return true;
+      const decoded = decodeCommentId(commentId);
+      return decoded !== null && replyToDecodedComment(decoded.numeric, text);
     },
     resolveComment: (commentId, resolved) => {
-      const targetId = parseCommentId(commentId);
-      if (targetId === null) {
-        return false;
-      }
-      const comments = getComments();
-      let found = false;
-      const next = comments.map((comment) => {
-        if (comment.id !== targetId) {
-          return comment;
-        }
-        found = true;
-        return Object.assign({}, comment, { done: resolved });
-      });
-      if (!found) {
-        return false;
-      }
-      setComments(next);
-      return true;
+      const decoded = decodeCommentId(commentId);
+      return decoded !== null && resolveDecodedComment(decoded.numeric, resolved);
     },
     scrollToBlock: (blockId) => ref.scrollToBlock(blockId),
     getPageCount: () => ref.getTotalPages(),
@@ -361,5 +361,8 @@ export const createEditorRefBridge = (options: CreateEditorRefBridgeOptions): Fo
     bridge.showInDocument = (target) => showInDocument(target);
   }
 
-  return bridge;
+  return registerDecodedCommentHandlers(bridge, {
+    replyToComment: ({ numeric }, text) => replyToDecodedComment(numeric, text),
+    resolveComment: ({ numeric }, resolved) => resolveDecodedComment(numeric, resolved),
+  });
 };

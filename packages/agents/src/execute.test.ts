@@ -18,7 +18,6 @@ import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
   FolioAgentApplyOperationsSummary,
   FolioAgentBlock,
-  FolioAgentComment,
   FolioAgentFindTextResult,
   FolioAgentDocumentOutline,
   FolioAgentSectionRead,
@@ -38,7 +37,7 @@ const readFixture = (): ArrayBuffer => {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 };
 
-const expectOk = (result: FolioToolCallResult): unknown => {
+const expectOk = <TResult>(result: FolioToolCallResult<TResult>): TResult => {
   if (!result.ok) {
     throw new Error(`expected ok:true, got error: ${result.error}`);
   }
@@ -105,15 +104,46 @@ describe("executeFolioToolCall: argument validation", () => {
       ),
     ).toContain("scroll_to_block");
   });
+
+  test("custom bridges retain opaque comment ids", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const base = createReviewerBridge(reviewer);
+    const received: string[] = [];
+    const bridge = {
+      ...base,
+      replyToComment: (commentId: string) => {
+        received.push(`reply:${commentId}`);
+        return true;
+      },
+      resolveComment: (commentId: string) => {
+        received.push(`resolve:${commentId}`);
+        return true;
+      },
+    } satisfies FolioAgentBridge;
+
+    expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.replyComment,
+        { commentId: "thread:legal-review", text: "Noted." },
+        bridge,
+      ),
+    );
+    expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.resolveComment,
+        { commentId: "thread:legal-review" },
+        bridge,
+      ),
+    );
+    expect(received).toEqual(["reply:thread:legal-review", "resolve:thread:legal-review"]);
+  });
 });
 
 describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", () => {
   test("list_stories returns typed handles that read_story accepts", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const bridge = createReviewerBridge(reviewer);
-    const stories = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.listStories, {}, bridge),
-    ) as { handle: { type: string }; text: string }[];
+    const stories = expectOk(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.listStories, {}, bridge));
     expect(stories.at(0)?.handle).toEqual({ type: "main" });
     const main = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readStory, { handle: { type: "main" } }, bridge),
@@ -126,9 +156,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     const bridge = createReviewerBridge(reviewer);
 
     // read_document
-    const blocks = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge),
-    ) as FolioAgentBlock[];
+    const blocks = expectOk(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge));
     expect(blocks.length).toBeGreaterThan(0);
     const heading = blocks.find((block) => block.text.includes("Heading"));
     if (!heading) {
@@ -138,7 +166,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     // find_text
     const findTextResult = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.findText, { query: "heading" }, bridge),
-    ) as FolioAgentFindTextResult;
+    );
     expect(findTextResult.truncated).toBe(false);
     expect(findTextResult.totalMatches).toBe(findTextResult.matches.length);
     expect(findTextResult.matches.some((match) => match.blockId === heading.blockId)).toBe(true);
@@ -154,7 +182,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         },
         bridge,
       ),
-    ) as FolioAgentApplyOperationsSummary;
+    );
     expect(suggestResult.version).toBe(1);
     expect(suggestResult.applied).toHaveLength(1);
     expect(suggestResult.applied[0]?.id).toBe("op-1");
@@ -175,12 +203,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     ]);
 
     // read_changes: the replace is now a pending tracked change
-    const changes = expectOk(
-      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readChanges, {}, bridge),
-    ) as {
-      type: string;
-      blockId: string | null;
-    }[];
+    const changes = expectOk(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readChanges, {}, bridge));
     expect(changes.length).toBeGreaterThanOrEqual(2);
     expect(changes.some((change) => change.type === "insertion")).toBe(true);
     expect(changes.some((change) => change.type === "deletion")).toBe(true);
@@ -192,7 +215,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         { blockId: heading.blockId, text: "Please clarify." },
         bridge,
       ),
-    ) as FolioAgentApplyOperationsSummary;
+    );
     expect(addCommentResult.version).toBe(1);
     expect(addCommentResult.applied).toHaveLength(1);
     expect(addCommentResult.skipped).toEqual([]);
@@ -215,7 +238,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     // read_comments
     const comments = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, {}, bridge),
-    ) as FolioAgentComment[];
+    );
     expect(comments).toHaveLength(1);
     const comment = comments[0];
     if (!comment) {
@@ -231,12 +254,12 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         { commentId: comment.id, text: "Clarifying now." },
         bridge,
       ),
-    ) as { replied: boolean };
+    );
     expect(replyResult.replied).toBe(true);
 
     const afterReply = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, {}, bridge),
-    ) as FolioAgentComment[];
+    );
     expect(afterReply[0]?.replies).toHaveLength(1);
     expect(afterReply[0]?.replies[0]?.text).toBe("Clarifying now.");
 
@@ -262,7 +285,7 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
           bridge,
         ),
       ),
-    ).toContain(`${comment.id}abc`);
+    ).toBe("reply_comment's `commentId` must be a comment id from `read_comments`.");
 
     // resolve_comment
     const resolveResult = expectOk(
@@ -271,16 +294,16 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
         { commentId: comment.id },
         bridge,
       ),
-    ) as { resolved: boolean };
+    );
     expect(resolveResult.resolved).toBe(true);
 
     const afterResolve = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, { filter: "resolved" }, bridge),
-    ) as FolioAgentComment[];
+    );
     expect(afterResolve).toHaveLength(1);
     const afterResolveOpen = expectOk(
       executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readComments, { filter: "open" }, bridge),
-    ) as FolioAgentComment[];
+    );
     expect(afterResolveOpen).toHaveLength(0);
   });
 

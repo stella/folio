@@ -15,7 +15,15 @@ import type {
   FolioAIComment,
   FolioAIEditOperation,
   FolioAITextRangeHandle,
+  FolioDocumentOperationBatch,
+  FolioDocumentOperationMode,
 } from "@stll/folio-core/server";
+import {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  parseFolioDocumentOperationBatch,
+} from "@stll/folio-core/server";
+
+import { decodeMainStoryTextRangeHandle } from "./codecs";
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -96,6 +104,33 @@ const consumeTextBudget = (budget: TextBudget, length: number): boolean => {
   budget.remaining -= length;
   return budget.remaining < 0;
 };
+
+export type PrepareFolioAgentDocumentOperationBatchOptions = {
+  operations: readonly FolioAIEditOperation[];
+  mode?: FolioDocumentOperationMode;
+  atomic?: boolean;
+  dryRun?: boolean;
+};
+
+/**
+ * Wrap agent-preprocessed operations in the versioned batch envelope and
+ * delegate the canonical contract validation to core's parser. The returned
+ * batch is safe to hand straight to `applyDocumentOperations`; core marks
+ * parsed batches internally so the downstream apply path can skip reparsing.
+ */
+export const prepareFolioAgentDocumentOperationBatch = ({
+  operations,
+  mode,
+  atomic,
+  dryRun,
+}: PrepareFolioAgentDocumentOperationBatchOptions): FolioDocumentOperationBatch =>
+  parseFolioDocumentOperationBatch({
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    operations,
+    ...(mode !== undefined && { mode }),
+    ...(atomic !== undefined && { atomic }),
+    ...(dryRun !== undefined && { dryRun }),
+  });
 
 /** Result of {@link parseAddCommentInput}. */
 export type ParseAddCommentResult =
@@ -186,28 +221,37 @@ const readTextRange = (value: unknown, index: number): FolioAITextRangeHandle | 
   if (!isPlainObject(value)) {
     return `${path} must be an object copied from find_text.`;
   }
-  const type = value["type"];
-  const story = value["story"];
-  const blockId = value["blockId"];
-  const startOffset = value["startOffset"];
-  const endOffset = value["endOffset"];
-  const selectedTextHash = value["selectedTextHash"];
-  if (type !== "textRange" || story !== "main") {
+  const range = decodeMainStoryTextRangeHandle(value);
+  if (range !== null) {
+    return range;
+  }
+  if (value["type"] !== "textRange" || value["story"] !== "main") {
     return `${path} must be a main-story textRange copied from find_text.`;
   }
-  if (!isNonEmptyString(blockId)) {
+  if (!isNonEmptyString(value["blockId"])) {
     return `${path}.blockId must be a non-empty string.`;
   }
-  if (typeof startOffset !== "number" || !Number.isInteger(startOffset) || startOffset < 0) {
+  if (
+    typeof value["startOffset"] !== "number" ||
+    !Number.isInteger(value["startOffset"]) ||
+    value["startOffset"] < 0
+  ) {
     return `${path}.startOffset must be a non-negative integer.`;
   }
-  if (typeof endOffset !== "number" || !Number.isInteger(endOffset) || endOffset <= startOffset) {
+  if (
+    typeof value["endOffset"] !== "number" ||
+    !Number.isInteger(value["endOffset"]) ||
+    value["endOffset"] <= value["startOffset"]
+  ) {
     return `${path}.endOffset must be an integer greater than startOffset.`;
   }
-  if (!isNonEmptyString(selectedTextHash) || !NORMALIZED_TEXT_HASH_PATTERN.test(selectedTextHash)) {
+  if (
+    !isNonEmptyString(value["selectedTextHash"]) ||
+    !NORMALIZED_TEXT_HASH_PATTERN.test(value["selectedTextHash"])
+  ) {
     return `${path}.selectedTextHash must be a normalized text hash.`;
   }
-  return { type, story, blockId, startOffset, endOffset, selectedTextHash };
+  return `${path} must be copied from find_text.`;
 };
 
 /**

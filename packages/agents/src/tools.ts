@@ -3,51 +3,22 @@ import {
   type FolioDocumentOperationType,
 } from "@stll/folio-core/server";
 
-import { FOLIO_PRECONDITION_JSON_SCHEMA, FOLIO_TEXT_RANGE_JSON_SCHEMA } from "./operation-schema";
+import {
+  FOLIO_COMMENT_ID_JSON_SCHEMA,
+  FOLIO_SCOPED_HANDLE_JSON_SCHEMA,
+  FOLIO_SECTION_HANDLE_JSON_SCHEMA,
+  FOLIO_STORY_HANDLE_JSON_SCHEMA,
+  FOLIO_TEXT_RANGE_JSON_SCHEMA,
+} from "./codecs";
+import { FOLIO_PRECONDITION_JSON_SCHEMA } from "./operation-schema";
+import { defineFolioAgentToolDefinition } from "./tool-contract";
+import type { FolioAgentToolInputByName, FolioAgentToolOutputByName } from "./tool-contract";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
-import type { FolioAgentToolDefinition } from "./types";
-
-const storyHandleSchema = {
-  type: "object",
-  properties: {
-    type: { type: "string", enum: ["main", "header", "footer", "footnote", "endnote"] },
-    relationshipId: { type: "string" },
-    noteId: { type: "integer" },
-  },
-  required: ["type"],
-  additionalProperties: false,
-} as const;
-
-const sectionHandleSchema = {
-  type: "object",
-  properties: {
-    type: { type: "string", enum: ["headingSection"] },
-    story: { type: "string", enum: ["main"] },
-    headingBlockId: { type: "string" },
-    headingTextHash: { type: "string" },
-    headingLevel: { type: "integer", minimum: 1, maximum: 9 },
-  },
-  required: ["type", "story", "headingBlockId", "headingTextHash", "headingLevel"],
-  additionalProperties: false,
-} as const;
-
-const scopedHandleSchema = {
-  type: "object",
-  properties: {
-    type: {
-      type: "string",
-      enum: ["main", "header", "footer", "footnote", "endnote", "headingSection"],
-    },
-    story: { type: "string", enum: ["main"] },
-    relationshipId: { type: "string" },
-    noteId: { type: "integer" },
-    headingBlockId: { type: "string" },
-    headingTextHash: { type: "string" },
-    headingLevel: { type: "integer", minimum: 1, maximum: 9 },
-  },
-  required: ["type"],
-  additionalProperties: false,
-} as const;
+import type {
+  FolioAgentToolDefinition,
+  FolioAgentToolName,
+  FolioAgentTypedToolDefinition,
+} from "./types";
 
 /**
  * `suggest_changes` deliberately narrows the full document-operation contract
@@ -165,6 +136,17 @@ const suggestChangesOperationSchema = {
   additionalProperties: false,
 } as const;
 
+type FolioAgentToolRegistry = {
+  [Name in FolioAgentToolName]: FolioAgentTypedToolDefinition<
+    Name,
+    FolioAgentToolInputByName[Name],
+    FolioAgentToolOutputByName[Name]
+  >;
+};
+
+const definitionsFromRegistry = (registry: FolioAgentToolRegistry): FolioAgentToolDefinition[] =>
+  Object.values(registry);
+
 /**
  * The tools this package exposes, described for an LLM. Every tool that reads
  * or mutates the document expects `blockId` values that came from
@@ -173,8 +155,8 @@ const suggestChangesOperationSchema = {
  * mutation (`add_comment`, `suggest_changes`) becomes a tracked change or
  * comment pending human review; nothing is silently finalized.
  */
-export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
-  {
+export const FOLIO_AGENT_TOOL_REGISTRY = {
+  [FOLIO_AGENT_TOOL_NAMES.readDocument]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.readDocument,
     description:
       "Read the full document body as a list of blocks (paragraphs, headings, list items). Call this first, " +
@@ -187,8 +169,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: [],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.getDocumentOutline]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.getDocumentOutline,
     description:
       "Read a lightweight heading outline before opening document content. Returns stable section handles, " +
@@ -206,8 +188,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: [],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.readSection]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.readSection,
     description:
       "Read one logical heading section using a handle from get_document_outline. Content is block-bounded " +
@@ -216,7 +198,7 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        handle: sectionHandleSchema,
+        handle: FOLIO_SECTION_HANDLE_JSON_SCHEMA,
         maxBlocks: {
           type: "integer",
           minimum: 1,
@@ -231,8 +213,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: ["handle"],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.listStories]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.listStories,
     description: "List readable document stories and their typed handles.",
     inputSchema: {
@@ -241,20 +223,20 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: [],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.readStory]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.readStory,
     description: "Read one document story using a handle returned by `list_stories`.",
     inputSchema: {
       type: "object",
       properties: {
-        handle: storyHandleSchema,
+        handle: FOLIO_STORY_HANDLE_JSON_SCHEMA,
       },
       required: ["handle"],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.findText]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.findText,
     description:
       "Search a document, section, rendered page, or story and return `{ matches, truncated, totalMatches }`. " +
@@ -282,7 +264,7 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
           type: "object",
           properties: {
             type: { type: "string", enum: ["document", "section", "page", "story"] },
-            handle: scopedHandleSchema,
+            handle: FOLIO_SCOPED_HANDLE_JSON_SCHEMA,
             page: { type: "integer", minimum: 1 },
           },
           required: ["type"],
@@ -294,8 +276,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: ["query"],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.readComments]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.readComments,
     description:
       "Read comment threads in the document, each with its author, text, resolved status, anchored block, and " +
@@ -312,8 +294,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: [],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.readChanges]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.readChanges,
     description:
       "Read pending tracked changes awaiting human review. Use this to see the effect " +
@@ -324,8 +306,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: [],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.addComment]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.addComment,
     description:
       "Attach a comment to a block, optionally quoting the specific text it is about. The comment is added " +
@@ -349,8 +331,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: ["blockId", "text"],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.suggestChanges]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.suggestChanges,
     description:
       "Propose one or more edits as tracked changes for a human to accept or reject — nothing is applied " +
@@ -372,8 +354,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: ["operations"],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.replyComment]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.replyComment,
     description:
       "Reply to an existing comment thread, referenced by the id from `read_comments`. `text` is capped at " +
@@ -381,21 +363,21 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        commentId: { type: "string", description: "The comment id from `read_comments`." },
+        commentId: FOLIO_COMMENT_ID_JSON_SCHEMA,
         text: { type: "string", description: "The reply body, up to 100,000 characters." },
       },
       required: ["commentId", "text"],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.resolveComment]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.resolveComment,
     description:
       "Mark a comment thread resolved, or pass `reopen: true` to reopen a previously resolved one.",
     inputSchema: {
       type: "object",
       properties: {
-        commentId: { type: "string", description: "The comment id from `read_comments`." },
+        commentId: FOLIO_COMMENT_ID_JSON_SCHEMA,
         reopen: {
           type: "boolean",
           description: "Reopen an already-resolved thread instead of resolving it.",
@@ -404,8 +386,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: ["commentId"],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.readPage]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.readPage,
     description:
       "Read the plain text of one page (1-based) as currently paginated in the live editor. Only available when " +
@@ -418,8 +400,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: ["page"],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.readSelection]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.readSelection,
     description:
       "Read the user's current text selection in the live editor, as plain text. Only available on a live editor " +
@@ -430,8 +412,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: [],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.showInDocument]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.showInDocument,
     description:
       "Reveal and select a block or exact text range in the live editor. Pass either blockId or the range " +
@@ -445,8 +427,8 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: [],
       additionalProperties: false,
     },
-  },
-  {
+  }),
+  [FOLIO_AGENT_TOOL_NAMES.scrollToBlock]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.scrollToBlock,
     description:
       "Scroll the live editor to the given block and select it, so the user can see what you are discussing. " +
@@ -462,8 +444,10 @@ export const FOLIO_AGENT_TOOLS: FolioAgentToolDefinition[] = [
       required: ["blockId"],
       additionalProperties: false,
     },
-  },
-];
+  }),
+} as const satisfies FolioAgentToolRegistry;
+
+export const FOLIO_AGENT_TOOLS = definitionsFromRegistry(FOLIO_AGENT_TOOL_REGISTRY);
 
 /** The tool definitions this package exposes. Same array as {@link FOLIO_AGENT_TOOLS}, as a function for symmetry with the other providers. */
 export const getFolioToolDefinitions = (): FolioAgentToolDefinition[] => FOLIO_AGENT_TOOLS;

@@ -9,11 +9,16 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import {
+  InvalidFolioDocumentOperationBatchError,
+  parseFolioDocumentOperationBatch,
+} from "@stll/folio-core/server";
 
 import {
   MAX_TOTAL_OPERATION_TEXT_LENGTH,
   parseAddCommentInput,
   parseSuggestChangesInput,
+  prepareFolioAgentDocumentOperationBatch,
 } from "./parse";
 import { SUGGEST_CHANGES_OPERATION_TYPES } from "./tools";
 
@@ -529,5 +534,50 @@ describe("parseSuggestChangesInput", () => {
         },
       ],
     });
+  });
+});
+
+describe("prepareFolioAgentDocumentOperationBatch", () => {
+  test("delegates to the canonical core parser and produces an equivalent batch", () => {
+    const operations = [
+      {
+        id: "op-1",
+        type: "replaceInBlock",
+        blockId: "p1",
+        find: "Heading",
+        replace: "Intro",
+      },
+    ] as const;
+
+    expect(
+      prepareFolioAgentDocumentOperationBatch({
+        operations,
+        mode: "tracked-changes",
+        dryRun: true,
+      }),
+    ).toEqual(
+      parseFolioDocumentOperationBatch({
+        version: 1,
+        operations,
+        mode: "tracked-changes",
+        dryRun: true,
+      }),
+    );
+  });
+
+  test("rejects malformed cast input through the canonical core parser", () => {
+    expect(() =>
+      prepareFolioAgentDocumentOperationBatch({
+        operations: [
+          {
+            id: "op-1",
+            type: "replaceRange",
+            replace: "Intro",
+          } as unknown as Parameters<
+            typeof prepareFolioAgentDocumentOperationBatch
+          >[0]["operations"][number],
+        ],
+      }),
+    ).toThrow(InvalidFolioDocumentOperationBatchError);
   });
 });

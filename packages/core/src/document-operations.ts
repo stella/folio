@@ -63,6 +63,8 @@ export type FolioDocumentOperationMode = FolioAIEditApplyMode;
 export type FolioDocumentOperationPrecondition = FolioAIEditPrecondition;
 export type FolioDocumentOperationType = FolioDocumentOperation["type"];
 
+const parsedFolioDocumentOperationBatches = new WeakSet<object>();
+
 // Suggested mode covers inline text/format edits and block/table structural
 // operations whose revisions the serialization strip removes (see apply.ts).
 // Comment ops (not tracked changes) and cell merge/split stay direct-and-tracked.
@@ -178,14 +180,36 @@ export const assertSupportedFolioDocumentOperationVersion = (
 
 export type FolioDocumentOperationBatch = {
   readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
-  operations: FolioDocumentOperation[];
-  mode?: FolioDocumentOperationMode;
-  atomic?: boolean;
-  dryRun?: boolean;
+  readonly operations: readonly FolioDocumentOperation[];
+  readonly mode?: FolioDocumentOperationMode;
+  readonly atomic?: boolean;
+  readonly dryRun?: boolean;
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isParsedFolioDocumentOperationBatch = (
+  value: unknown,
+): value is FolioDocumentOperationBatch =>
+  typeof value === "object" && value !== null && parsedFolioDocumentOperationBatches.has(value);
+
+const freezeParsedValue = (value: unknown): void => {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      freezeParsedValue(entry);
+    }
+    Object.freeze(value);
+    return;
+  }
+  if (!isPlainObject(value)) {
+    return;
+  }
+  for (const entry of Object.values(value)) {
+    freezeParsedValue(entry);
+  }
+  Object.freeze(value);
+};
 
 const invalidBatch = (path: string, reason: string): never => {
   throw new InvalidFolioDocumentOperationBatchError({
@@ -683,6 +707,9 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 };
 
 export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentOperationBatch => {
+  if (isParsedFolioDocumentOperationBatch(value)) {
+    return value;
+  }
   if (!isPlainObject(value)) {
     return invalidBatch("$", "expected an object");
   }
@@ -714,13 +741,16 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
     }
     operationIds.add(operation.id);
   }
-  return {
+  const parsedBatch = {
     version,
     operations: parsedOperations,
     ...(mode !== undefined && { mode }),
     ...(atomic !== undefined && { atomic }),
     ...(dryRun !== undefined && { dryRun }),
-  };
+  } satisfies FolioDocumentOperationBatch;
+  freezeParsedValue(parsedBatch);
+  parsedFolioDocumentOperationBatches.add(parsedBatch);
+  return parsedBatch;
 };
 
 export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected";

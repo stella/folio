@@ -130,6 +130,29 @@ describe("document operation contract", () => {
     expect(FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION).toBe(1);
   });
 
+  test("reparsing an already parsed batch is a fixed point", () => {
+    const batch = parseFolioDocumentOperationBatch({
+      version: 1,
+      operations: [
+        {
+          id: "replace-heading",
+          type: "replaceInBlock",
+          blockId: "0304003A",
+          find: "Heading",
+          replace: "Intro",
+          precondition: { blockTextHash: "h123" },
+        },
+      ],
+      mode: "tracked-changes",
+    });
+
+    expect(parseFolioDocumentOperationBatch(batch)).toBe(batch);
+    expect(Object.isFrozen(batch)).toBe(true);
+    expect(Object.isFrozen(batch.operations)).toBe(true);
+    expect(Object.isFrozen(batch.operations[0])).toBe(true);
+    expect(Object.isFrozen(batch.operations[0]?.precondition)).toBe(true);
+  });
+
   test("builds input-ordered receipts for successful affected targets", () => {
     const range = {
       type: "textRange",
