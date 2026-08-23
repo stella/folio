@@ -5,10 +5,7 @@
  * char-offset geometry. The layout engine imports these directly so it never
  * transitively pulls the canvas measurement backend; the canvas implementation
  * (`measureContainer.ts`) consumes them too.
- *
- * Superscript/subscript measurement is adapted from Eigenpal docx-editor
- * commit 585413d0c58cdce6fc67a8d36bdba5bd70eb7c86 (Apache-2.0), modified for
- * Folio's shared canvas measurement seam.
+ * Script sizing: eigenpal/docx-editor@585413d0 (Apache-2.0), modified for Folio.
  */
 
 import { resolveFontFamily } from "../../utils/fontResolver";
