@@ -38,6 +38,7 @@ import type {
   MathRun,
   TabStop,
   ParagraphAttrs,
+  HyperlinkInfo,
 } from "../layout-engine/types";
 import { calculateTabWidth } from "../prosemirror/utils/tabCalculator";
 import type { TabContext, TabStop as TabCalcStop } from "../prosemirror/utils/tabCalculator";
@@ -89,6 +90,10 @@ export const PARAGRAPH_CLASS_NAMES = {
   lineBreak: "layout-run-linebreak",
 };
 
+const LEFT_TO_RIGHT_DIRECTION = "ltr";
+const RIGHT_TO_LEFT_DIRECTION = "rtl";
+const DISPLAYED_URL_PATTERN = /^(?:https?:\/\/|www\.)\S+$/iu;
+
 // Text wrapping around floating images is implemented via measurement-time
 // per-line leftOffset/rightOffset. renderPage.ts re-measures paragraphs with
 // FloatingImageZone[] when floating images are present on the page.
@@ -114,6 +119,54 @@ export type RenderParagraphOptions = {
  */
 function isTextRun(run: Run): run is TextRun {
   return run.kind === "text";
+}
+
+function hyperlinksMatch(left: HyperlinkInfo, right: HyperlinkInfo): boolean {
+  return (
+    left.href === right.href &&
+    left.tooltip === right.tooltip &&
+    left.noDefaultStyle === right.noDefaultStyle
+  );
+}
+
+function collectLeftToRightDisplayedUrlHyperlinks(runs: Run[]): ReadonlySet<HyperlinkInfo> {
+  const result = new Set<HyperlinkInfo>();
+  let index = 0;
+
+  while (index < runs.length) {
+    const first = runs[index];
+    if (!first || !isTextRun(first) || !first.hyperlink) {
+      index += 1;
+      continue;
+    }
+
+    const hyperlinks: HyperlinkInfo[] = [];
+    let displayedText = "";
+    let groupEnd = index;
+    while (groupEnd < runs.length) {
+      const run = runs[groupEnd];
+      if (
+        !run ||
+        !isTextRun(run) ||
+        !run.hyperlink ||
+        !hyperlinksMatch(first.hyperlink, run.hyperlink)
+      ) {
+        break;
+      }
+      displayedText += toPaintedText(run.text);
+      hyperlinks.push(run.hyperlink);
+      groupEnd += 1;
+    }
+
+    if (DISPLAYED_URL_PATTERN.test(displayedText.trim())) {
+      for (const hyperlink of hyperlinks) {
+        result.add(hyperlink);
+      }
+    }
+    index = groupEnd;
+  }
+
+  return result;
 }
 
 /**
@@ -307,9 +360,9 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   // just this run, independent of the paragraph direction. `false` is an
   // explicit override that disables inherited paragraph/style RTL.
   if (run.rtl === true) {
-    element.dir = "rtl";
+    element.dir = RIGHT_TO_LEFT_DIRECTION;
   } else if (run.rtl === false) {
-    element.dir = "ltr";
+    element.dir = LEFT_TO_RIGHT_DIRECTION;
   }
 
   // Text effect animation (w:effect). Host CSS opts in to the actual
@@ -545,7 +598,11 @@ function applyPmPositions(element: HTMLElement, pmStart?: number, pmEnd?: number
 /**
  * Render a text run
  */
-function renderTextRun(run: TextRun, doc: Document): HTMLElement {
+function renderTextRun(
+  run: TextRun,
+  doc: Document,
+  hyperlinkDirection?: typeof LEFT_TO_RIGHT_DIRECTION,
+): HTMLElement {
   const span = doc.createElement("span");
   span.className = `${PARAGRAPH_CLASS_NAMES.run} ${PARAGRAPH_CLASS_NAMES.text}`;
 
@@ -575,8 +632,8 @@ function renderTextRun(run: TextRun, doc: Document): HTMLElement {
   if (run.hyperlink) {
     const anchor = doc.createElement("a");
     anchor.href = run.hyperlink.href;
-    if (/^(?:https?:\/\/|www\.)\S+$/iu.test(paintedText.trim())) {
-      anchor.dir = "ltr";
+    if (hyperlinkDirection || DISPLAYED_URL_PATTERN.test(paintedText.trim())) {
+      anchor.dir = LEFT_TO_RIGHT_DIRECTION;
     }
     // Internal bookmark links (starting with #) should scroll within the document
     // External links should open in a new tab
@@ -1529,6 +1586,8 @@ type RenderLineOptions = {
   floatingMargins?: { leftMargin: number; rightMargin: number };
   /** Track inline image runs already rendered in this paragraph fragment to prevent duplicates */
   renderedInlineImageKeys?: Set<string>;
+  /** Hyperlink fragments whose complete displayed text is a URL. */
+  leftToRightDisplayedUrlHyperlinks?: ReadonlySet<HyperlinkInfo>;
   /**
    * Rightmost x where inline content may render, in content-area coords. Used
    * by the right-tab anchor (TOC pattern); passed in directly rather than
@@ -1946,7 +2005,11 @@ export function renderLine(
     return withCursiveJoiners(runEl, run, cursiveJoinerPlan, applyJoinerRunStyles, doc);
   };
   const renderLineTextRun = (run: TextRun): HTMLElement => {
-    const runEl = renderTextRun(run, doc);
+    const hyperlinkDirection =
+      run.hyperlink && options?.leftToRightDisplayedUrlHyperlinks?.has(run.hyperlink)
+        ? LEFT_TO_RIGHT_DIRECTION
+        : undefined;
+    const runEl = renderTextRun(run, doc, hyperlinkDirection);
     if (collapsedLeadingSpaceRuns.has(run)) {
       runEl.dataset["collapsedLeadingSpaces"] = "true";
     }
@@ -2813,6 +2876,9 @@ export function renderParagraphFragment(
   // Render each line with per-line floating margin calculation
   let _cumulativeLineY = 0; // Track Y position within the fragment
   const renderedInlineImageKeys = options.renderedInlineImageKeys ?? new Set<string>();
+  const leftToRightDisplayedUrlHyperlinks = isRtl
+    ? collectLeftToRightDisplayedUrlHyperlinks(block.runs)
+    : undefined;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!; // SAFETY: i < lines.length
@@ -2851,6 +2917,9 @@ export function renderParagraphFragment(
         rightMargin: lineRightOffset,
       },
       renderedInlineImageKeys,
+      ...(leftToRightDisplayedUrlHyperlinks === undefined
+        ? {}
+        : { leftToRightDisplayedUrlHyperlinks }),
       // Absolute right edge in content-area coords. The fragment starts at
       // content-area-x=0 with full content-area width; the rightmost x where
       // inline content can land is `fragment.width - indentRight - lineRightOffset`.

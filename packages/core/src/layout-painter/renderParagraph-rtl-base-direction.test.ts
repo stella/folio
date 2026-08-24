@@ -135,6 +135,14 @@ function findByTag(element: FakeElement, tagName: string): FakeElement | undefin
   return undefined;
 }
 
+function findAllByTag(element: FakeElement, tagName: string): FakeElement[] {
+  const matches = element.tagName === tagName ? [element] : [];
+  for (const child of element.children) {
+    matches.push(...findAllByTag(child, tagName));
+  }
+  return matches;
+}
+
 const text = (value: string, rtl?: boolean): TextRun => ({
   kind: "text",
   text: value,
@@ -234,6 +242,19 @@ describe("Issue #719 — RTL base direction detection", () => {
     expect(findByTag(paragraph, "a")?.dir).toBe("ltr");
   });
 
+  test("isolates every formatting fragment of a displayed URL", () => {
+    const href = "https://www.jobaccess.gov.au/find-a-provider";
+    const paragraph = render(
+      [
+        { kind: "text", text: "https://www.jobaccess.", hyperlink: { href } },
+        { kind: "text", text: "gov.au/find-a-provider", bold: true, hyperlink: { href } },
+      ],
+      { bidi: true },
+    ) as unknown as FakeElement;
+
+    expect(findAllByTag(paragraph, "a").map((anchor) => anchor.dir)).toEqual(["ltr", "ltr"]);
+  });
+
   test("does not force a link label or Arabic link text left-to-right", () => {
     const renderLink = (value: string): FakeElement =>
       render(
@@ -249,5 +270,18 @@ describe("Issue #719 — RTL base direction detection", () => {
 
     expect(findByTag(renderLink("معلومات إضافية"), "a")?.dir).toBe("");
     expect(findByTag(renderLink("Job Access"), "a")?.dir).toBe("");
+  });
+
+  test("does not force a split link label left-to-right", () => {
+    const href = "https://example.com";
+    const paragraph = render(
+      [
+        { kind: "text", text: "Job", hyperlink: { href } },
+        { kind: "text", text: " Access", italic: true, hyperlink: { href } },
+      ],
+      { bidi: true },
+    ) as unknown as FakeElement;
+
+    expect(findAllByTag(paragraph, "a").map((anchor) => anchor.dir)).toEqual(["", ""]);
   });
 });
