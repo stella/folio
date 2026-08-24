@@ -1,5 +1,17 @@
 # @stll/folio-core
 
+## 0.25.5
+
+### Patch Changes
+
+- [#624](https://github.com/stella/folio/pull/624) [`8724016`](https://github.com/stella/folio/commit/872401629e10ca7837bdcf59978d303ef7ccbac5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Parse, render, and round-trip adjusted right-brace shapes as editable geometry.
+
+- [#625](https://github.com/stella/folio/pull/625) [`b10833d`](https://github.com/stella/folio/commit/b10833dedbca1682fdceaec5ddf8ab6f47aefc88) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Recognize localized table-of-contents styles so entry hyperlinks use TOC typography.
+
+- [#623](https://github.com/stella/folio/pull/623) [`036b534`](https://github.com/stella/folio/commit/036b534d8c10d81ff084fce781498cb9e511b3b5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Allow text editing when unsupported drawings are preserved as inert raw OOXML.
+- Updated dependencies [[`8724016`](https://github.com/stella/folio/commit/872401629e10ca7837bdcf59978d303ef7ccbac5), [`036b534`](https://github.com/stella/folio/commit/036b534d8c10d81ff084fce781498cb9e511b3b5)]:
+  - @stll/docx-core@0.17.1
+
 ## 0.25.4
 
 ### Patch Changes
