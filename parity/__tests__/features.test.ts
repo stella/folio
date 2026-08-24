@@ -273,7 +273,63 @@ describe("attributeDivergences", () => {
     expect(attributed.attributed[0]?.features).toEqual(["table"]);
   });
 
-  test("falls back to best textSimilarity above the 0.6 threshold when no substring matches", () => {
+  test("canonicalizes Word Arabic glyph aliases only for paragraph attribution", () => {
+    const doc: DocFeatures = {
+      paragraphs: [
+        paragraph(
+          "يخضع هذا (المستند) لحقوق التأليف والنشر ولا يجوز استخدام هذا المستند أو إعادة إصداره لأغراض تجارية",
+          ["rtl"],
+        ),
+        paragraph("یخضع ھذا ]المستند[ لحقوق التألیف والنشر ولا یجوز استغلال ھذا المستند", [
+          "spacing-multiple",
+        ]),
+      ],
+      docFeatures: ["headers"],
+    };
+    const result = baseResult([
+      {
+        kind: "missing-line",
+        page: 1,
+        text: "یخضع ھذا ]المستند[ لحقوق التألیف والنشر ولا یجوز استخدام ھذا المستند",
+      },
+    ]);
+
+    const attributed = attributeDivergences(result, doc);
+
+    expect(attributed.attributed[0]?.features).toEqual(["rtl"]);
+  });
+
+  test("rejects duplicate substring matches with different feature sets", () => {
+    const doc: DocFeatures = {
+      paragraphs: [
+        paragraph("Shared clause", ["table"]),
+        paragraph("X Shared clause", ["spacing-multiple"]),
+      ],
+      docFeatures: ["headers"],
+    };
+    const result = baseResult([{ kind: "missing-line", page: 1, text: "Shared clause" }]);
+
+    const attributed = attributeDivergences(result, doc);
+
+    expect(attributed.attributed[0]?.features).toEqual(["doc:headers"]);
+  });
+
+  test("accepts duplicate substring matches when their feature sets agree", () => {
+    const doc: DocFeatures = {
+      paragraphs: [
+        paragraph("First Shared clause text", ["table", "rtl"]),
+        paragraph("Second Shared clause text", ["rtl", "table"]),
+      ],
+      docFeatures: ["headers"],
+    };
+    const result = baseResult([{ kind: "missing-line", page: 1, text: "Shared clause" }]);
+
+    const attributed = attributeDivergences(result, doc);
+
+    expect(attributed.attributed[0]?.features).toEqual(["table", "rtl"]);
+  });
+
+  test("falls back to high-confidence fuzzy matching when no substring matches", () => {
     const doc: DocFeatures = {
       paragraphs: [
         paragraph("The quick brown fox jumps over", ["justify"]),
@@ -288,6 +344,41 @@ describe("attributeDivergences", () => {
     ]);
     const attributed = attributeDivergences(result, doc);
     expect(attributed.attributed[0]?.features).toEqual(["justify"]);
+  });
+
+  test("rejects fuzzy candidates with substantially different lengths", () => {
+    const doc: DocFeatures = {
+      paragraphs: [
+        paragraph("The quick brown fox jumps over and keeps running across the entire field", [
+          "spacing-multiple",
+        ]),
+      ],
+      docFeatures: ["headers"],
+    };
+    const result = baseResult([
+      { kind: "missing-line", page: 1, text: "The quick brown fox jumps ovex" },
+    ]);
+
+    const attributed = attributeDivergences(result, doc);
+
+    expect(attributed.attributed[0]?.features).toEqual(["doc:headers"]);
+  });
+
+  test("rejects ambiguous fuzzy matches with different feature sets", () => {
+    const doc: DocFeatures = {
+      paragraphs: [
+        paragraph("The quick brown fox jumps over", ["justify"]),
+        paragraph("The quick brown fox jumps oven", ["spacing-multiple"]),
+      ],
+      docFeatures: ["headers"],
+    };
+    const result = baseResult([
+      { kind: "missing-line", page: 1, text: "The quick brown fox jumps ovex" },
+    ]);
+
+    const attributed = attributeDivergences(result, doc);
+
+    expect(attributed.attributed[0]?.features).toEqual(["doc:headers"]);
   });
 
   test("falls back to doc:-prefixed docFeatures when nothing matches", () => {
@@ -322,7 +413,7 @@ describe("attributeDivergences", () => {
   test("short strings (< 4 chars) never match by substring, avoiding junk matches", () => {
     // "ab" is too short (< MIN_MATCH_LEN) for the substring step even though
     // it is trivially a substring of "abcdef"; the similarity fallback also
-    // fails ("ab" vs "abcdef" scores well below 0.6), so this falls through
+    // fails ("ab" vs "abcdef" has a low score and length ratio), so this falls through
     // to docFeatures.
     const doc: DocFeatures = {
       paragraphs: [paragraph("abcdef", ["table"])],
@@ -559,6 +650,7 @@ const fontGeom = (source: "word" | "folio", lines: Array<[string, string]>): Doc
         heightPt: 12,
         fontName,
         region: "body",
+        direction: "unknown",
       })),
     },
   ],

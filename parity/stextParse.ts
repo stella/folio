@@ -16,6 +16,7 @@
  */
 
 import { normalizeLineText } from "./textNorm";
+import { firstStrongTextDirection } from "./textDirection";
 import type { LineBox, PageGeom } from "./types";
 
 const PAGE_RE = /<page\b([^>]*)>([\s\S]*?)<\/page>/g;
@@ -199,6 +200,7 @@ const parseLines = (pageContent: string): LineBox[] => {
       ...(font.name !== undefined ? { fontName: font.name } : {}),
       ...(font.sizePt !== undefined ? { fontSizePt: font.sizePt } : {}),
       region: "unknown",
+      direction: firstStrongTextDirection(text),
     });
   }
   lines.sort((a, b) => a.yPt - b.yPt || a.xPt - b.xPt);

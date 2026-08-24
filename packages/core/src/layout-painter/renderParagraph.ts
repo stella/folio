@@ -2918,10 +2918,11 @@ export function renderParagraphFragment(
     // Apply left offset from floating images (lines start after the floating image)
     // Also constrain width so text doesn't overflow into the image area
     const lineMarginLeft = Math.min(indentLeft, 0) + lineLeftOffset;
+    const lineMarginRight = Math.min(indentRight, 0) + lineRightOffset;
     if (lineMarginLeft !== 0 || lineRightOffset > 0 || indentLeft < 0 || indentRight < 0) {
       lineEl.style.marginLeft = `${lineMarginLeft}px`;
-      if (lineRightOffset > 0) {
-        lineEl.style.marginRight = `${lineRightOffset}px`;
+      if (lineMarginRight !== 0) {
+        lineEl.style.marginRight = `${lineMarginRight}px`;
       }
       // Constrain line width to prevent text from extending into floating image area
       const constrainedWidth = lineAvailableWidth - lineLeftOffset - lineRightOffset;
@@ -2970,8 +2971,8 @@ export function renderParagraphFragment(
 
     // Add list marker to first line
     // List first lines have special handling:
-    // - Marker starts at (indentLeft - hanging)
-    // - Text starts at indentLeft
+    // - Marker starts at (inline-start indent - hanging)
+    // - Text starts at the inline-start indent
     // - The marker box fills the hanging space
     if (isFirstLine && block.attrs?.listMarker && !block.attrs.listMarkerHidden) {
       // Override padding for list first lines.
@@ -2990,30 +2991,42 @@ export function renderParagraphFragment(
       //    use this shape — the body of "(i) Tranche Closing..."
       //    wraps to the page margin, only the first line's marker is
       //    indented.
-      // The marker occupies a `hanging`-wide slot starting `hanging` left of
-      // the body (at `indentLeft - hanging`); the body lands at `indentLeft`.
-      // The offset rides on padding-left (NOT text-indent: Chrome folds
+      // The marker occupies a `hanging`-wide slot before the body. The offset
+      // rides on the physical inline-start padding (NOT text-indent: Chrome folds
       // text-indent into the first inline-block's box, overriding the marker's
       // min-width and breaking tab-stop alignment).
       const hanging = indent?.hanging ?? 0;
       const firstLine = indent?.firstLine ?? 0;
-      const markerStart = hanging > 0 ? indentLeft - hanging : indentLeft + firstLine;
-      lineEl.style.paddingLeft = `${Math.max(0, markerStart)}px`;
+      const markerPhysicalStart = block.attrs.bidi === true ? "right" : "left";
+      const markerIndent = markerPhysicalStart === "right" ? indentRight : indentLeft;
+      const markerStart = hanging > 0 ? markerIndent - hanging : markerIndent + firstLine;
+      const logicalMarkerVisualOffset = getListMarkerVisualOffset(block);
+      if (markerPhysicalStart === "right") {
+        lineEl.style.paddingRight = `${Math.max(0, markerStart)}px`;
+      } else {
+        lineEl.style.paddingLeft = `${Math.max(0, markerStart)}px`;
+      }
       lineEl.style.textIndent = "0"; // Don't use textIndent for lists
 
       // Resolve marker font per ECMA-376 §17.9.6:
       // 1. Numbering level rPr (explicit marker font)
       // 2. First text run's font (paragraph content)
       // 3. Paragraph default font (from style)
-      const marker = renderListMarker(
-        block.attrs.listMarker,
-        getListMarkerInlineWidth(block),
-        getListMarkerVisualOffset(block),
+      const marker = renderListMarker({
+        marker: block.attrs.listMarker,
+        inlineWidth: getListMarkerInlineWidth(block),
+        visualOffset:
+          markerPhysicalStart === "right" ? -logicalMarkerVisualOffset : logicalMarkerVisualOffset,
         doc,
-        resolveListMarkerFont(block),
-        block.attrs.listMarkerRevision,
-        block.attrs.listMarkerSecondSlotOffsetTwips,
-      );
+        formatting: resolveListMarkerFont(block),
+        ...(block.attrs.listMarkerRevision === undefined
+          ? {}
+          : { revision: block.attrs.listMarkerRevision }),
+        ...(block.attrs.listMarkerSecondSlotOffsetTwips === undefined
+          ? {}
+          : { secondSlotOffsetTwips: block.attrs.listMarkerSecondSlotOffsetTwips }),
+        physicalStart: markerPhysicalStart,
+      });
       // When the marker sits left of the line's own start it belongs in the
       // left margin — exactly where Word puts it (a list whose direct `w:ind`
       // has `hanging` > `left`, eigenpal #730 / #729, OR a NEGATIVE `left`, e.g.
@@ -3023,10 +3036,15 @@ export function renderParagraphFragment(
       // that so the marker only takes the REMAINING negative offset: for a
       // positive left indent the line margin is 0 and this is just `markerStart`;
       // for a negative left indent it is `markerStart - indentLeft = -hanging`.
-      const markerLineMargin = Math.min(indentLeft, 0);
+      const markerLineMargin =
+        markerPhysicalStart === "right" ? Math.min(indentRight, 0) : Math.min(indentLeft, 0);
       const markerMarginLeft = markerStart - markerLineMargin;
       if (markerMarginLeft < 0) {
-        marker.style.marginLeft = `${markerMarginLeft}px`;
+        if (markerPhysicalStart === "right") {
+          marker.style.marginRight = `${markerMarginLeft}px`;
+        } else {
+          marker.style.marginLeft = `${markerMarginLeft}px`;
+        }
       }
       lineEl.prepend(marker);
     }
@@ -3046,15 +3064,27 @@ export function renderParagraphFragment(
  * tab grid. Long markers like "1.1.1." therefore grow to the next stop
  * instead of butting against the body text.
  */
-function renderListMarker(
-  marker: string,
-  inlineWidth: number,
-  visualOffset: number,
-  doc: Document,
-  formatting: ReturnType<typeof resolveListMarkerFont>,
-  revision?: ParagraphAttrs["listMarkerRevision"],
-  secondSlotOffsetTwips?: number,
-): HTMLElement {
+type RenderListMarkerOptions = {
+  marker: string;
+  inlineWidth: number;
+  visualOffset: number;
+  doc: Document;
+  formatting: ReturnType<typeof resolveListMarkerFont>;
+  revision?: ParagraphAttrs["listMarkerRevision"];
+  secondSlotOffsetTwips?: number;
+  physicalStart: "left" | "right";
+};
+
+function renderListMarker({
+  marker,
+  inlineWidth,
+  visualOffset,
+  doc,
+  formatting,
+  revision,
+  secondSlotOffsetTwips,
+  physicalStart,
+}: RenderListMarkerOptions): HTMLElement {
   const span = doc.createElement("span");
   span.className = "layout-list-marker";
   span.style.display = "inline-block";
@@ -3079,9 +3109,9 @@ function renderListMarker(
   // `text-align-last` inherits, so a justified paragraph would distribute the
   // marker's internal whitespace across its minWidth box — pushing folded
   // LISTNUM markers like "(a)" away from "7.1" to the right edge. Force the
-  // marker's own last (only) line back to left.
-  span.style.textAlign = "left";
-  span.style.textAlignLast = "left";
+  // marker's own last (only) line back to the paragraph's physical start edge.
+  span.style.textAlign = physicalStart;
+  span.style.textAlignLast = physicalStart;
   span.style.boxSizing = "border-box";
   span.style.width = `${inlineWidth}px`;
   if (visualOffset !== 0) {
@@ -3140,7 +3170,11 @@ function renderListMarker(
     // the first slot's width.
     span.style.position = "relative";
     secondSlot.style.position = "absolute";
-    secondSlot.style.left = `${secondSlotOffsetTwips / 15}px`;
+    if (physicalStart === "right") {
+      secondSlot.style.right = `${secondSlotOffsetTwips / 15}px`;
+    } else {
+      secondSlot.style.left = `${secondSlotOffsetTwips / 15}px`;
+    }
     secondSlot.style.top = "0";
     span.append(firstSlot, secondSlot);
     return span;

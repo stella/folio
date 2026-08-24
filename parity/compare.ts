@@ -11,7 +11,14 @@
 
 import { DEFAULT_TOLERANCES } from "./config";
 import { normalizeLineText, textSimilarity } from "./textNorm";
-import type { ComparisonTolerances, Divergence, DocGeom, LineBox, ParityResult } from "./types";
+import type {
+  ComparisonTolerances,
+  Divergence,
+  DocGeom,
+  LineBox,
+  ParityResult,
+  TextDirection,
+} from "./types";
 
 /** Minimum text similarity for two lines to be considered the same line
  * (rather than a gap on one or both sides). */
@@ -146,7 +153,7 @@ const MARKER_ROW_MERGE_GAP_PT = 36;
  * ignored here because reference geometry has no equivalent metadata; using it
  * would normalize the two extractors differently. Logical line identity is
  * used only to recombine segments that came from the same painted line. The
- * result is ordered row-by-row, left-to-right within a row: reference ink boxes on one
+ * result is ordered row-by-row, in base inline direction within a row: reference ink boxes on one
  * visual row can differ by fractions of a pt vertically (e.g. table cells), so
  * a raw (y, x) sort would order the same row differently on the two sides and
  * derail the sequence alignment. Applied to BOTH sides so the pass itself
@@ -165,23 +172,49 @@ export const mergeVisualRows = (lines: LineBox[]): LineBox[] => {
   const merged: LineBox[] = [];
   for (const row of rows) {
     row.sort((a, b) => a.xPt - b.xPt);
-    let current = row[0];
-    if (!current) continue;
-    for (const next of row.slice(1)) {
-      if (shouldMergeRowBoxes(current, next)) {
-        current = mergeBoxes(current, next);
-        continue;
+    const components: LineBox[][] = [];
+    for (const line of row) {
+      const component = components.at(-1);
+      const current = component?.at(-1);
+      if (component && current && shouldMergeRowBoxes(current, line)) {
+        component.push(line);
+      } else {
+        components.push([line]);
       }
-      merged.push(current);
-      current = next;
     }
-    merged.push(current);
+    const mergedComponents = components.flatMap(mergeConnectedComponent);
+    if (resolveDirection(mergedComponents) === "rtl") {
+      mergedComponents.reverse();
+    }
+    merged.push(...mergedComponents);
   }
   return merged;
 };
 
+const mergeConnectedComponent = (component: LineBox[]): LineBox[] => {
+  const direction = resolveDirection(component);
+  component.sort((a, b) => (direction === "rtl" ? b.xPt - a.xPt : a.xPt - b.xPt));
+  const first = component[0];
+  if (!first) return [];
+  const merged: LineBox[] = [];
+  let current = first;
+  for (const next of component.slice(1)) {
+    if (shouldMergeRowBoxes(current, next)) {
+      const combined = mergeBoxes(current, next);
+      if (combined) {
+        current = combined;
+        continue;
+      }
+    }
+    merged.push(current);
+    current = next;
+  }
+  merged.push(current);
+  return merged;
+};
+
 const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
-  if (current.region !== next.region) {
+  if (current.region !== next.region || resolveDirection([current, next]) === null) {
     return false;
   }
   if (
@@ -221,18 +254,33 @@ const mergeBaselines = (a: number | undefined, b: number | undefined): number | 
   return (a + b) / 2;
 };
 
-const mergeBoxes = (a: LineBox, b: LineBox): LineBox => {
-  const [left, right] = a.xPt <= b.xPt ? [a, b] : [b, a];
+/** Resolve one base direction when every known fact agrees. Unknown facts do
+ * not override a known direction; conflicting known facts reject the merge. */
+const resolveDirection = (lines: LineBox[]): TextDirection | null => {
+  let resolved: TextDirection = "unknown";
+  for (const line of lines) {
+    if (line.direction === "unknown") continue;
+    if (resolved !== "unknown" && resolved !== line.direction) return null;
+    resolved = line.direction;
+  }
+  return resolved;
+};
+
+/** Merge boxes already supplied in logical reading order. Geometry remains a
+ * physical union; callers choose left-to-right or right-to-left traversal. */
+const mergeBoxes = (a: LineBox, b: LineBox): LineBox | null => {
+  const direction = resolveDirection([a, b]);
+  if (direction === null) return null;
   const xPt = Math.min(a.xPt, b.xPt);
   const yPt = Math.min(a.yPt, b.yPt);
-  const text = `${left.text} ${right.text}`;
-  // Prefer the left box's font, but fall back to the right box's so font
-  // metadata is not discarded when only the right side carries it.
-  const fontName = left.fontName ?? right.fontName;
-  const fontSizePt = left.fontSizePt ?? right.fontSizePt;
+  const text = `${a.text} ${b.text}`;
+  // Prefer the first logical box's font, but retain metadata when only the
+  // following box carries it.
+  const fontName = a.fontName ?? b.fontName;
+  const fontSizePt = a.fontSizePt ?? b.fontSizePt;
   const logicalLineGroup =
-    left.logicalLineGroup !== undefined && left.logicalLineGroup === right.logicalLineGroup
-      ? left.logicalLineGroup
+    a.logicalLineGroup !== undefined && a.logicalLineGroup === b.logicalLineGroup
+      ? a.logicalLineGroup
       : undefined;
   const baselinePt = mergeBaselines(a.baselinePt, b.baselinePt);
   return {
@@ -243,7 +291,8 @@ const mergeBoxes = (a: LineBox, b: LineBox): LineBox => {
     widthPt: Math.max(a.xPt + a.widthPt, b.xPt + b.widthPt) - xPt,
     heightPt: Math.max(a.yPt + a.heightPt, b.yPt + b.heightPt) - yPt,
     ...(baselinePt !== undefined ? { baselinePt } : {}),
-    region: left.region,
+    region: a.region,
+    direction,
     ...(fontName !== undefined ? { fontName } : {}),
     ...(fontSizePt !== undefined ? { fontSizePt } : {}),
     ...(logicalLineGroup !== undefined ? { logicalLineGroup } : {}),
@@ -1120,15 +1169,21 @@ const groupGapLinesByVisualRow = (idxs: number[], flat: FlatLine[]): number[][] 
 const mergeFlatLines = (idxs: number[], flat: FlatLine[]): FlatLine | null => {
   const members = idxs
     .map((idx) => flat[idx])
-    .filter((member): member is FlatLine => member !== undefined)
-    .sort((left, right) => left.line.xPt - right.line.xPt);
+    .filter((member): member is FlatLine => member !== undefined);
+  const direction = resolveDirection(members.map((member) => member.line));
+  if (direction === null) return null;
+  members.sort((left, right) =>
+    direction === "rtl" ? right.line.xPt - left.line.xPt : left.line.xPt - right.line.xPt,
+  );
   const first = members[0];
   if (!first || members.length !== idxs.length) return null;
   let mergedLine = first.line;
   for (let index = 1; index < members.length; index++) {
     const member = members[index];
     if (!member) return null;
-    mergedLine = mergeBoxes(mergedLine, member.line);
+    const combined = mergeBoxes(mergedLine, member.line);
+    if (!combined) return null;
+    mergedLine = combined;
   }
   return {
     page: first.page,

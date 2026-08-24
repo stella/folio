@@ -41,6 +41,7 @@ const makeGeom = (source: DocGeom["source"], file: string): DocGeom => ({
           widthPt: 100,
           heightPt: 12,
           region: "body",
+          direction: "ltr",
         },
       ],
     },

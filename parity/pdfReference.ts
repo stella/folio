@@ -12,6 +12,7 @@ import path from "node:path";
 import { CACHE_DIR } from "./config";
 import { parseStextXml } from "./stextParse";
 import { normalizeLineText } from "./textNorm";
+import { firstStrongTextDirection } from "./textDirection";
 import type { DocGeom, PageGeom } from "./types";
 
 const PNG_DPI = 96;
@@ -40,6 +41,23 @@ type ReadCachedGeomOptions = {
   absDocxPath: string;
 };
 
+/** Refresh facts derived from cached text so detector and normalization changes
+ * never inherit stale cache metadata. */
+export const refreshCachedReferenceGeom = (geom: DocGeom, absDocxPath: string): DocGeom =>
+  Object.assign({}, geom, {
+    file: absDocxPath,
+    pages: geom.pages.map((page) =>
+      Object.assign({}, page, {
+        lines: page.lines.map((line) =>
+          Object.assign({}, line, {
+            normText: normalizeLineText(line.text),
+            direction: firstStrongTextDirection(line.text),
+          }),
+        ),
+      }),
+    ),
+  });
+
 export const readCachedGeom = async ({
   geomPath,
   absDocxPath,
@@ -47,16 +65,7 @@ export const readCachedGeom = async ({
   const file = Bun.file(geomPath);
   if (!(await file.exists())) return null;
   const geom = (await file.json()) as DocGeom;
-  return Object.assign({}, geom, {
-    file: absDocxPath,
-    pages: geom.pages.map((page) =>
-      Object.assign({}, page, {
-        lines: page.lines.map((line) =>
-          Object.assign({}, line, { normText: normalizeLineText(line.text) }),
-        ),
-      }),
-    ),
-  });
+  return refreshCachedReferenceGeom(geom, absDocxPath);
 };
 
 type ExtractPdfGeometryOptions = {

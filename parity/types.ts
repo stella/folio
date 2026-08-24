@@ -19,6 +19,11 @@ export type ReferenceRendererInfo = {
 
 export type Region = "body" | "header" | "footer" | "footnote" | "unknown";
 
+/** Base inline direction established by an extractor. `unknown` is reserved
+ * for content without a strong directional character or an unavailable
+ * renderer fact. */
+export type TextDirection = "ltr" | "rtl" | "unknown";
+
 export type LineBox = {
   /** Raw extracted text of the visual line. */
   text: string;
@@ -39,6 +44,7 @@ export type LineBox = {
   fontName?: string;
   fontSizePt?: number;
   region: Region;
+  direction: TextDirection;
   /** DOM visual container, used to keep adjacent table cells distinct. */
   visualGroup?: string;
   /** Page-local identity shared by segments extracted from one logical line. */

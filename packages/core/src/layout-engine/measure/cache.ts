@@ -5,8 +5,7 @@
  * Improves performance by avoiding repeated measurements of identical content.
  */
 
-import type { ParagraphBlock, ParagraphMeasure } from "../types";
-import { lineBreakPolicyCacheParts } from "./effectiveLineBreakPolicy";
+import type { ImageRun, ParagraphBlock, ParagraphMeasure, Run } from "../types";
 import { getLineBreakProviderGeneration } from "./lineBreakProvider";
 import { clearFontResolvedCache } from "./measureHelpers";
 
@@ -288,89 +287,88 @@ let paragraphCacheMaxSize = DEFAULT_PARAGRAPH_CACHE_SIZE;
  */
 const paragraphMeasureCache = new Map<string, ParagraphMeasureEntry>();
 
-/**
- * Generate a simple hash for a paragraph block
- * Used as cache key to identify identical content
- */
+type ImageMeasureCacheField =
+  | "kind"
+  | "width"
+  | "height"
+  | "transform"
+  | "wrapType"
+  | "displayMode"
+  | "distTop"
+  | "distBottom"
+  | "exactLineHeight"
+  | "position";
+
+type ImageIgnoredCacheField =
+  | "src"
+  | "alt"
+  | "opacity"
+  | "layoutInCell"
+  | "cssFloat"
+  | "distLeft"
+  | "distRight"
+  | "cropTop"
+  | "cropRight"
+  | "cropBottom"
+  | "cropLeft"
+  | "borderWidth"
+  | "borderColor"
+  | "borderStyle"
+  | "isInsertion"
+  | "isDeletion"
+  | "changeAuthor"
+  | "changeDate"
+  | "changeRevisionId"
+  | "pmStart"
+  | "pmEnd";
+
+type ClassifiedImageCacheField = ImageMeasureCacheField | ImageIgnoredCacheField;
+type ExhaustivelyClassifiedImageRun = [
+  Exclude<keyof ImageRun, ClassifiedImageCacheField>,
+  Exclude<ClassifiedImageCacheField, keyof ImageRun>,
+] extends [never, never]
+  ? ImageRun
+  : never;
+
+/** Keep image payloads bounded while classifying every field as measured or intentionally ignored. */
+const imageMeasureCacheInput = (run: ExhaustivelyClassifiedImageRun) => ({
+  kind: run.kind,
+  width: run.width,
+  height: run.height,
+  transform: run.transform,
+  wrapType: run.wrapType,
+  displayMode: run.displayMode,
+  distTop: run.distTop,
+  distBottom: run.distBottom,
+  exactLineHeight: run.exactLineHeight,
+  positioned: run.position !== undefined,
+});
+
+const runMeasureCacheInput = (run: Run) => {
+  switch (run.kind) {
+    case "text":
+    case "tab":
+    case "lineBreak":
+    case "renderedPageBreak":
+    case "field":
+    case "math":
+      return run;
+    case "image":
+      return imageMeasureCacheInput(run);
+    default: {
+      const exhaustive: never = run;
+      return exhaustive;
+    }
+  }
+};
+
+/** Serialize the complete paragraph measurement contract into a cache key. */
 export function hashParagraphBlock(block: ParagraphBlock): string {
-  // Simple hash based on runs content
-  const parts: string[] = [`lbp:${getLineBreakProviderGeneration()}`];
-
-  for (const run of block.runs) {
-    if (run.kind === "text") {
-      parts.push(
-        `t:${run.text}|${run.fontFamily}|${run.eastAsiaFontFamily}|${run.complexScriptFontFamily}|${run.fontSize}|${run.complexScriptFontSize}|${run.bold}|${run.complexScriptBold}|${run.italic}|${run.complexScriptItalic}|${run.forceComplexScript}|${run.allCaps}|${run.smallCaps}|${run.horizontalScale}|${run.letterSpacing}|${run.language?.val}|${run.language?.eastAsia}|${run.language?.bidi}`,
-      );
-    } else if (run.kind === "tab") {
-      parts.push(`tab:${run.width}`);
-    } else if (run.kind === "image") {
-      parts.push(
-        `img:${run.width}x${run.height}:${run.exactLineHeight === true ? "exact" : "text"}`,
-      );
-    } else if (run.kind === "lineBreak") {
-      parts.push("br");
-    }
-  }
-
-  // Include relevant attrs in hash
-  const attrs = block.attrs;
-  if (attrs) {
-    if (attrs.alignment) {
-      parts.push(`align:${attrs.alignment}`);
-    }
-    if (attrs.outlineLevel !== undefined) {
-      parts.push(`outline:${attrs.outlineLevel}`);
-    }
-    if (attrs.indent) {
-      parts.push(
-        `indent:${attrs.indent.left}|${attrs.indent.right}|${attrs.indent.firstLine}|${attrs.indent.hanging}`,
-      );
-    }
-    if (attrs.spacing) {
-      parts.push(
-        `spacing:${attrs.spacing.before}|${attrs.spacing.after}|${attrs.spacing.line}|${attrs.spacing.lineRule}`,
-      );
-    }
-    // Default font drives line height for empty paragraphs, which otherwise
-    // have no text runs in this cache key.
-    if (attrs.defaultFontSize != null) {
-      parts.push(`dfs:${attrs.defaultFontSize}`);
-    }
-    if (attrs.defaultFontFamily != null) {
-      parts.push(`dff:${attrs.defaultFontFamily}`);
-    }
-    if (attrs.suppressEmptyParagraphHeight) {
-      parts.push("sup");
-    }
-    if (attrs.reserveEmptyOutlineHeight) {
-      parts.push("outline-empty-reserve");
-    }
-    if (attrs.documentGridLinePitch !== undefined) {
-      parts.push(`documentGrid:${attrs.documentGridLinePitch}|${attrs.snapToGrid !== false}`);
-    }
-    if (attrs.justificationCompatibility) {
-      parts.push(`justify-compat:${attrs.justificationCompatibility.type}`);
-    }
-    if (attrs.listMarker !== undefined) {
-      const marker = attrs.listMarkerFormatting;
-      parts.push(
-        `marker:${attrs.listMarker}|${attrs.listMarkerHidden}|${attrs.listMarkerAlignment}|${attrs.listMarkerSuffix}|${marker?.fontFamily}|${marker?.eastAsiaFontFamily}|${marker?.complexScriptFontFamily}|${marker?.fontSize}|${marker?.complexScriptFontSize}|${marker?.bold}|${marker?.complexScriptBold}|${marker?.italic}|${marker?.complexScriptItalic}|${marker?.rtl}|${marker?.forceComplexScript}`,
-      );
-    }
-    parts.push(...lineBreakPolicyCacheParts(attrs));
-    const borders = attrs.borders;
-    if (borders) {
-      const signature = (border?: { width?: number; style?: string; color?: string }): string =>
-        border ? `${border.width ?? ""},${border.style ?? ""},${border.color ?? ""}` : "";
-      parts.push(
-        `bdr:${signature(borders.top)}|${signature(borders.bottom)}|${signature(
-          borders.left,
-        )}|${signature(borders.right)}`,
-      );
-    }
-  }
-
-  return parts.join("||");
+  return JSON.stringify({
+    lineBreakProviderGeneration: getLineBreakProviderGeneration(),
+    attrs: block.attrs,
+    runs: block.runs.map(runMeasureCacheInput),
+  });
 }
 
 /**

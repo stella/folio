@@ -12,6 +12,7 @@ const makeLine = (overrides: Partial<LineBox> & Pick<LineBox, "text">): LineBox 
   widthPt: 100,
   heightPt: 12,
   region: "body",
+  direction: "unknown",
   ...overrides,
 });
 
@@ -32,13 +33,21 @@ const makeDoc = (source: "word" | "folio", pages: PageGeom[]): DocGeom => ({
 describe("compareGeoms", () => {
   test("merges tabbed legal markers on the same visual row", () => {
     const merged = mergeVisualRows([
-      makeLine({ text: "(b)", xPt: 90, yPt: 100, widthPt: 12.8, heightPt: 12 }),
+      makeLine({
+        text: "(b)",
+        xPt: 90,
+        yPt: 100,
+        widthPt: 12.8,
+        heightPt: 12,
+        direction: "ltr",
+      }),
       makeLine({
         text: "Liquidity Event. If there is a Liquidity Event",
         xPt: 126,
         yPt: 100,
         widthPt: 250,
         heightPt: 12,
+        direction: "ltr",
       }),
     ]);
 
@@ -215,6 +224,95 @@ describe("compareGeoms", () => {
 
     expect(merged).toHaveLength(1);
     expect(merged[0]?.normText).toBe(normalizeLineText("(i) Junior to payment"));
+  });
+
+  test("merges RTL row fragments from physical right to left", () => {
+    const merged = mergeVisualRows([
+      makeLine({
+        text: "التزامات البيئة والمجتمع",
+        xPt: 190,
+        yPt: 100,
+        widthPt: 100,
+        direction: "rtl",
+      }),
+      makeLine({ text: ")د( يقصد", xPt: 300, yPt: 100, widthPt: 100, direction: "rtl" }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.text).toBe(")د( يقصد التزامات البيئة والمجتمع");
+    expect(merged[0]?.direction).toBe("rtl");
+  });
+
+  test("keeps quoted Latin text in an RTL row's right-to-left fragment order", () => {
+    const merged = mergeVisualRows([
+      makeLine({
+        text: "التزامات البيئة والمجتمع والصحة والسلامة",
+        xPt: 180,
+        yPt: 100,
+        widthPt: 110,
+        direction: "rtl",
+      }),
+      makeLine({
+        text: ")د( يقصد بـ “ESHS”",
+        xPt: 300,
+        yPt: 100,
+        widthPt: 120,
+        direction: "rtl",
+      }),
+    ]);
+
+    expect(merged[0]?.text).toBe(")د( يقصد بـ “ESHS” التزامات البيئة والمجتمع والصحة والسلامة");
+  });
+
+  test("does not merge nearby fragments with conflicting base directions", () => {
+    const merged = mergeVisualRows([
+      makeLine({ text: "بند عربي", xPt: 90, yPt: 100, widthPt: 60, direction: "rtl" }),
+      makeLine({ text: "English clause", xPt: 155, yPt: 100, widthPt: 60, direction: "ltr" }),
+    ]);
+
+    expect(merged.map((line) => line.text)).toEqual(["بند عربي", "English clause"]);
+  });
+
+  test("resolves direction per connected component beside an unrelated sibling", () => {
+    const rtlPair = mergeVisualRows([
+      makeLine({ text: "التكملة", xPt: 100, widthPt: 50, direction: "rtl" }),
+      makeLine({ text: "بداية", xPt: 155, widthPt: 50, direction: "rtl" }),
+      makeLine({ text: "English cell", xPt: 300, widthPt: 70, direction: "ltr" }),
+    ]);
+    const ltrPair = mergeVisualRows([
+      makeLine({ text: "Clause", xPt: 100, widthPt: 50, direction: "ltr" }),
+      makeLine({ text: "continued", xPt: 155, widthPt: 50, direction: "ltr" }),
+      makeLine({ text: "خلية", xPt: 300, widthPt: 70, direction: "rtl" }),
+    ]);
+
+    expect(rtlPair.map((line) => line.text)).toEqual(["بداية التكملة", "English cell"]);
+    expect(ltrPair.map((line) => line.text)).toEqual(["Clause continued", "خلية"]);
+  });
+
+  test("orders nearby RTL table-cell boxes symmetrically", () => {
+    const reference = mergeVisualRows([
+      makeLine({ text: "الخلية اليسرى", xPt: 90, widthPt: 60, direction: "rtl" }),
+      makeLine({ text: "الخلية اليمنى", xPt: 155, widthPt: 60, direction: "rtl" }),
+    ]);
+    const folio = mergeVisualRows([
+      makeLine({
+        text: "الخلية اليسرى",
+        xPt: 90,
+        widthPt: 60,
+        direction: "rtl",
+        visualGroup: "table-cell:1",
+      }),
+      makeLine({
+        text: "الخلية اليمنى",
+        xPt: 155,
+        widthPt: 60,
+        direction: "rtl",
+        visualGroup: "table-cell:0",
+      }),
+    ]);
+
+    expect(reference[0]?.text).toBe("الخلية اليمنى الخلية اليسرى");
+    expect(folio[0]?.text).toBe(reference[0]?.text);
   });
 
   test("identical docs score 1 with zero divergences and zero median offset", () => {

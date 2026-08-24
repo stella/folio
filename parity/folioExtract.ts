@@ -30,6 +30,7 @@ import {
   TMP_FIXTURE_PREFIX,
 } from "./config";
 import { normalizeLineText } from "./textNorm";
+import { firstStrongTextDirection } from "./textDirection";
 import type { DocGeom, LineBox, PageGeom, Region } from "./types";
 
 export class FolioExtractError extends Error {
@@ -476,6 +477,7 @@ export const toPageGeom = (rawPage: RawPage): PageGeom => {
         : {}),
       ...(fontName !== undefined ? { fontName } : {}),
       ...(fontSizePt !== undefined ? { fontSizePt } : {}),
+      direction: firstStrongTextDirection(rawLine.text),
     });
   }
 

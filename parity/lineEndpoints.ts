@@ -165,6 +165,7 @@ const endpointToLineBox = ({ text, region }: LineEndpoint, index: number): LineB
     widthPt: normText.length,
     heightPt: 10,
     region,
+    direction: "unknown",
   };
 };
 

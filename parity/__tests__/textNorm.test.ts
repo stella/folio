@@ -20,6 +20,12 @@ describe("normalizeLineText", () => {
     expect(normalizeLineText("1 ........ Definitions")).toBe("1 … Definitions");
     expect(normalizeLineText("1 عنوان عربي")).toBe("1 عنوان عربي");
     expect(normalizeLineText("1 ........ Terms وشروط")).toBe("1 … Terms وشروط");
+    expect(normalizeLineText("- عنوان عربي 1")).toBe("- عنوان عربي 1");
+    expect(normalizeLineText("- Definitions 1 ........ 2")).toBe("- Definitions 1 … 2");
+    expect(normalizeLineText("- المبلغ 100 ........ 5")).toBe("- المبلغ 100 … 5");
+    expect(normalizeLineText("- رابط https://example.com 2 ........ 7")).toBe(
+      "- رابط https://example.com 2 … 7",
+    );
   });
 
   test("normalizes Symbol-font copyright extraction noise", () => {

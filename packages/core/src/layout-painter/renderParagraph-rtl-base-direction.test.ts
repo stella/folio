@@ -171,6 +171,15 @@ describe("Issue #719 — RTL base direction detection", () => {
     expect(line?.style["textIndent"]).toBe("-48px");
   });
 
+  test("mirrors a negative logical-start indent into the physical right margin", () => {
+    const paragraph = render([text("عنوان عربي", true)], {
+      bidi: true,
+      indent: { left: -9 },
+    }) as unknown as FakeElement;
+
+    expect(paragraph.children.at(0)?.style["marginRight"]).toBe("-9px");
+  });
+
   test("mirrors explicit bidi justification onto the physical page", () => {
     expect(render([text("13")], { alignment: "right", bidi: true }).style.textAlign).toBe("left");
     expect(render([text("13")], { alignment: "left", bidi: true }).style.textAlign).toBe("right");

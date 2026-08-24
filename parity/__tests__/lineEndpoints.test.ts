@@ -165,4 +165,5 @@ const makeLine = (
   widthPt,
   heightPt: 10,
   region,
+  direction: "unknown",
 });

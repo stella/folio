@@ -606,33 +606,83 @@ const divergenceSearchText = (divergence: Divergence): string | undefined => {
 };
 
 const MIN_MATCH_LEN = 4;
-const SIMILARITY_THRESHOLD = 0.6;
+const SIMILARITY_THRESHOLD = 0.9;
+const MIN_LENGTH_RATIO = 0.8;
+const MIN_SIMILARITY_MARGIN = 0.05;
 
-/** First tries a (bidirectional, case-sensitive) substring match, requiring
- * the shorter string to carry at least `MIN_MATCH_LEN` chars so short/empty
- * strings cannot match spuriously; falls back to best-`textSimilarity`. */
+/** Canonicalization used only to identify a divergence's source paragraph.
+ * It must not hide text differences from the comparator. */
+const normalizeAttributionText = (text: string): string =>
+  normalizeLineText(text)
+    .normalize("NFKC")
+    .replace(/\u06cc/gu, "\u064a")
+    .replace(/\u06be/gu, "\u0647")
+    .replace(/[()[\]]/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+const featureSetKey = ({ features }: ParagraphFeatures): string =>
+  JSON.stringify([...new Set(features)].toSorted());
+
+type ParagraphCandidate = {
+  paragraph: ParagraphFeatures;
+  normText: string;
+  featureKey: string;
+};
+
+const buildParagraphCandidates = (paragraphs: ParagraphFeatures[]): ParagraphCandidate[] =>
+  paragraphs.flatMap((paragraph) => {
+    const normText = normalizeAttributionText(paragraph.normText);
+    return normText.length === 0
+      ? []
+      : [{ paragraph, normText, featureKey: featureSetKey(paragraph) }];
+  });
+
+const shareFeatureSet = (candidates: ParagraphCandidate[]): boolean => {
+  const first = candidates[0];
+  return (
+    first !== undefined && candidates.every(({ featureKey }) => featureKey === first.featureKey)
+  );
+};
+
+/** Prefer unambiguous substring matches. Fuzzy attribution is limited to
+ * similarly sized, high-confidence candidates with a clear winner. */
 const findMatchingParagraph = (
   searchText: string,
-  paragraphs: ParagraphFeatures[],
+  candidates: ParagraphCandidate[],
 ): ParagraphFeatures | undefined => {
-  for (const paragraph of paragraphs) {
-    if (paragraph.normText.length === 0) continue;
-    const shorterLen = Math.min(paragraph.normText.length, searchText.length);
-    if (shorterLen < MIN_MATCH_LEN) continue;
-    if (paragraph.normText.includes(searchText) || searchText.includes(paragraph.normText)) {
-      return paragraph;
-    }
+  const normalizedSearchText = normalizeAttributionText(searchText);
+
+  const substringMatches = candidates.filter(({ normText }) => {
+    const shorterLen = Math.min(normText.length, normalizedSearchText.length);
+    if (shorterLen < MIN_MATCH_LEN) return false;
+    return normText.includes(normalizedSearchText) || normalizedSearchText.includes(normText);
+  });
+  if (substringMatches.length > 0) {
+    if (substringMatches.length === 1) return substringMatches[0]?.paragraph;
+    return shareFeatureSet(substringMatches) ? substringMatches[0]?.paragraph : undefined;
   }
 
-  let best: { paragraph: ParagraphFeatures; score: number } | undefined;
-  for (const paragraph of paragraphs) {
-    if (paragraph.normText.length === 0) continue;
-    const score = textSimilarity(paragraph.normText, searchText);
-    if (score >= SIMILARITY_THRESHOLD && (!best || score > best.score)) {
-      best = { paragraph, score };
-    }
+  const fuzzyMatches = candidates
+    .flatMap((candidate) => {
+      const { normText } = candidate;
+      const maxLength = Math.max(normText.length, normalizedSearchText.length);
+      const lengthRatio = Math.min(normText.length, normalizedSearchText.length) / maxLength;
+      if (lengthRatio < MIN_LENGTH_RATIO) return [];
+      const score = textSimilarity(normText, normalizedSearchText);
+      return score >= SIMILARITY_THRESHOLD ? [{ candidate, score }] : [];
+    })
+    .toSorted((a, b) => b.score - a.score);
+  const best = fuzzyMatches[0];
+  if (!best) return undefined;
+
+  const competingMatches = fuzzyMatches.filter(
+    ({ score }) => best.score - score < MIN_SIMILARITY_MARGIN,
+  );
+  if (shareFeatureSet(competingMatches.map(({ candidate }) => candidate))) {
+    return best.candidate.paragraph;
   }
-  return best?.paragraph;
+  return undefined;
 };
 
 export const attributeDivergences = (
@@ -641,11 +691,12 @@ export const attributeDivergences = (
 ): FeatureAttributedResult => {
   const docPrefixed =
     doc.docFeatures.length > 0 ? doc.docFeatures.map((f) => `doc:${f}`) : ["doc:unattributed"];
+  const candidates = buildParagraphCandidates(doc.paragraphs);
 
   const attributed: AttributedDivergence[] = result.divergences.map((divergence) => {
     const searchText = divergenceSearchText(divergence);
     if (searchText === undefined) return { divergence, features: docPrefixed };
-    const matched = findMatchingParagraph(searchText, doc.paragraphs);
+    const matched = findMatchingParagraph(searchText, candidates);
     return { divergence, features: matched ? matched.features : docPrefixed };
   });
 

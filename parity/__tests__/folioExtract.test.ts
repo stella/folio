@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { PX_TO_PT } from "../config";
+import { PLAYGROUND_URL, PX_TO_PT } from "../config";
 import {
   CLEAN_SCREENSHOT_CSS,
   computeZoomFactor,
@@ -29,7 +29,7 @@ const rect = (left: number, top: number, width: number, height: number) => ({
 describe("local font routes", () => {
   test("uses a private browser route without exposing the local path", () => {
     const source = localFontRouteUrl(3, "/private/fonts/Example.ttf");
-    expect(source).toBe("http://localhost:4393/__folio-parity-font/3.ttf");
+    expect(source).toBe(`${PLAYGROUND_URL}/__folio-parity-font/3.ttf`);
     expect(source).not.toContain("/private/fonts");
     expect(localFontContentType("Example.ttf")).toBe("font/ttf");
   });
@@ -418,6 +418,22 @@ describe("toPageGeom", () => {
     });
 
     expect(toPageGeom(rawPage).lines.at(0)?.logicalLineGroup).toBe("layout-line:4");
+  });
+
+  test("derives segment direction symmetrically from first-strong text", () => {
+    const rawPage = makeRawPage({
+      lines: [
+        makeRawLine({ text: "عنوان عربي", rect: rect(0, 0, 40, 10) }),
+        makeRawLine({ text: "https://example.com", rect: rect(0, 20, 40, 10) }),
+        makeRawLine({ text: "(...) 123", rect: rect(0, 40, 40, 10) }),
+      ],
+    });
+
+    expect(toPageGeom(rawPage).lines.map((line) => line.direction)).toEqual([
+      "rtl",
+      "ltr",
+      "unknown",
+    ]);
   });
 
   test("computes fontName/fontSizePt from raw px values, omitting when absent", () => {

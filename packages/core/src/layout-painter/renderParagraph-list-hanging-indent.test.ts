@@ -85,16 +85,20 @@ const fakeDocument = {
 
 type RenderListItemOptions = {
   indent: { left: number; hanging: number };
+  bidi?: boolean;
   marker?: string;
   markerFormatting?: NonNullable<ParagraphBlock["attrs"]>["listMarkerFormatting"];
   markerAlignment?: "left" | "center" | "right";
+  markerSecondSlotOffsetTwips?: number;
 };
 
 function renderListItem({
   indent,
+  bidi,
   marker = "1.",
   markerFormatting,
   markerAlignment,
+  markerSecondSlotOffsetTwips,
 }: RenderListItemOptions): {
   line: HTMLElement;
   marker: HTMLElement | undefined;
@@ -106,7 +110,11 @@ function renderListItem({
     attrs: {
       listMarker: marker,
       indent,
+      ...(bidi === undefined ? {} : { bidi }),
       listMarkerAlignment: markerAlignment,
+      ...(markerSecondSlotOffsetTwips === undefined
+        ? {}
+        : { listMarkerSecondSlotOffsetTwips: markerSecondSlotOffsetTwips }),
       ...(markerFormatting !== undefined ? { listMarkerFormatting: markerFormatting } : {}),
     },
   };
@@ -248,6 +256,45 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
     const { line, marker } = renderListItem({ indent: { left: 0, hanging: 24 } });
     expect(marker?.style.marginLeft).toBe("-24px");
     expect(line.style.paddingLeft).toBe("0px");
+  });
+
+  test("explicit bidi reserves the marker slot from the physical right edge", () => {
+    const { line, marker } = renderListItem({
+      bidi: true,
+      indent: { left: 24, hanging: 24 },
+      marker: "(أ)",
+    });
+
+    expect(line.style.paddingRight).toBe("0px");
+    expect(marker?.style.textAlign).toBe("right");
+    expect(marker?.style.marginRight).toBeFalsy();
+  });
+
+  test.each([
+    ["right", 14],
+    ["center", 7],
+  ] as const)("explicit bidi mirrors %s marker alignment", (markerAlignment, offset) => {
+    const { marker } = renderListItem({
+      bidi: true,
+      indent: { left: 24, hanging: 24 },
+      marker: "1.",
+      markerAlignment,
+    });
+
+    expect(Number.parseFloat(marker?.style.transform?.slice(11) ?? "")).toBeCloseTo(offset, 1);
+  });
+
+  test("explicit bidi positions a folded marker slot from the physical right", () => {
+    const { marker } = renderListItem({
+      bidi: true,
+      indent: { left: 48, hanging: 24 },
+      marker: "7.1\t(أ)",
+      markerSecondSlotOffsetTwips: 300,
+    });
+    const secondSlot = marker?.children[1] as HTMLElement | undefined;
+
+    expect(secondSlot?.style.right).toBe("20px");
+    expect(secondSlot?.style.left).toBeFalsy();
   });
 
   test("left == 0 with hanging: continuation lines stay at the content edge", () => {

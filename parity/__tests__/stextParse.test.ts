@@ -186,6 +186,25 @@ describe("parseStextXml", () => {
     expect(box?.region).toBe("unknown");
   });
 
+  test("infers first-strong direction from extracted reference text", () => {
+    const xml = documentEl(
+      pageEl(
+        1,
+        "612",
+        "792",
+        [
+          lineEl({ bbox: "0 0 100 10", chars: ")د( يقصد بـ ESHS" }),
+          lineEl({ bbox: "0 20 100 30", chars: "(12) English" }),
+          lineEl({ bbox: "0 40 100 50", chars: "(...) 123" }),
+        ].join(""),
+      ),
+    );
+
+    const pages = parseStextXml(xml);
+
+    expect(pages[0]?.lines.map((line) => line.direction)).toEqual(["rtl", "ltr", "unknown"]);
+  });
+
   test("uses the median non-whitespace character origin as the line baseline", () => {
     const chars = [
       charEl("A", "0 10 10 10 0 20 10 20").replace('y="0"', 'y="18"'),
