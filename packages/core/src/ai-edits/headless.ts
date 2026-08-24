@@ -1122,7 +1122,7 @@ export class FolioDocxReviewer {
         serialized &&
         serializedState &&
         serialized.changes.length === 0 &&
-        serialized.text === text &&
+        formatStoryStateForLLM(serializedState, false) === text &&
         JSON.stringify(createFolioAIEditSnapshot(serializedState.doc).blocks) ===
           JSON.stringify(blocks)
       ) {
@@ -1132,7 +1132,7 @@ export class FolioDocxReviewer {
         message: "Resolved document story did not persist to the serialized DOCX.",
         story,
         expectedText: text,
-        actualText: serialized?.text ?? null,
+        actualText: serializedState ? formatStoryStateForLLM(serializedState, false) : null,
         remainingChangeCount: serialized?.changes.length ?? null,
       });
     }

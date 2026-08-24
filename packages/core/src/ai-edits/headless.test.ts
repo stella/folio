@@ -2601,6 +2601,37 @@ describe("headless docx review annotated read surface", () => {
     expect(reopened.getContentAsText()).toContain("Intro paragraph.");
   });
 
+  test("persists a resolved final main story with a comment anchor", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await makeParaIdBaseline(readFixture()), {
+      author: "Reviewer",
+    });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    reviewer.applyOperations([
+      {
+        id: "final-comment-replace",
+        type: "replaceInBlock",
+        blockId: target.id,
+        find: "Heading",
+        replace: "Intro",
+      },
+      {
+        id: "final-comment-anchor",
+        type: "commentOnBlock",
+        blockId: target.id,
+        comment: { text: "Keep this comment." },
+      },
+    ]);
+
+    expect(reviewer.resolveReviewedStory({ view: "final" })).toBe(true);
+    const saved = await reviewer.toBuffer();
+    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    expect(reopened.readReviewedStory({ view: "current-markup" })?.changes).toEqual([]);
+    expect(reopened.getComments().at(0)).toMatchObject({
+      text: "Keep this comment.",
+      anchoredText: expect.stringContaining("Intro paragraph."),
+    });
+  });
+
   test("rejects an unsupported reviewed view at the public boundary", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await makeParaIdBaseline(readFixture()));
     expect(() =>
