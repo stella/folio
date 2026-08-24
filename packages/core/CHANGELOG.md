@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.25.1
+
+### Patch Changes
+
+- [#614](https://github.com/stella/folio/pull/614) [`e17e8f5`](https://github.com/stella/folio/commit/e17e8f5ccbfd25141b9d20953821096df842beb2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve safe cached page boundaries inside split table rows.
+
 ## 0.25.0
 
 ### Minor Changes
